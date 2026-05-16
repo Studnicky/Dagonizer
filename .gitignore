@@ -1,0 +1,8 @@
+node_modules/
+dist/
+dist-test/
+dist-testing/
+*.tsbuildinfo
+.DS_Store
+docs/.vitepress/dist
+docs/.vitepress/cache

@@ -1,0 +1,151 @@
+{
+  "name": "@noocodex/dagonizer",
+  "version": "0.4.0",
+  "description": "Omniscient orchestration for directed acyclic graphs. Type-safe stages, abortable execution, deterministic resume.",
+  "private": false,
+  "license": "MIT",
+  "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
+  "keywords": [
+    "workflow",
+    "dag",
+    "dispatcher",
+    "orchestration",
+    "flow",
+    "state-machine",
+    "graph",
+    "pipeline",
+    "fsm",
+    "async-iterable",
+    "abort-signal",
+    "checkpoint",
+    "cancellation",
+    "retry"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Studnicky/Dagonizer.git"
+  },
+  "homepage": "https://github.com/Studnicky/Dagonizer#readme",
+  "bugs": {
+    "url": "https://github.com/Studnicky/Dagonizer/issues"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=24"
+  },
+  "files": [
+    "dist",
+    "dist-testing",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "exports": {
+    ".": {
+      "default": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./errors": {
+      "default": "./dist/errors/index.js",
+      "types": "./dist/errors/index.d.ts"
+    },
+    "./constants": {
+      "default": "./dist/constants.js",
+      "types": "./dist/constants.d.ts"
+    },
+    "./lifecycle": {
+      "default": "./dist/lifecycle/index.js",
+      "types": "./dist/lifecycle/index.d.ts"
+    },
+    "./runtime": {
+      "default": "./dist/runtime/index.js",
+      "types": "./dist/runtime/index.d.ts"
+    },
+    "./builder": {
+      "default": "./dist/builder/index.js",
+      "types": "./dist/builder/index.d.ts"
+    },
+    "./validation": {
+      "default": "./dist/validation/index.js",
+      "types": "./dist/validation/index.d.ts"
+    },
+    "./entities": {
+      "default": "./dist/entities/index.js",
+      "types": "./dist/entities/index.d.ts"
+    },
+    "./checkpoint": {
+      "default": "./dist/checkpoint/index.js",
+      "types": "./dist/checkpoint/index.d.ts"
+    },
+    "./testing": {
+      "default": "./dist-testing/index.js",
+      "types": "./dist-testing/index.d.ts"
+    },
+    "./contracts": {
+      "default": "./dist/contracts/index.js",
+      "types": "./dist/contracts/index.d.ts"
+    },
+    "./core": {
+      "default": "./dist/core/index.js",
+      "types": "./dist/core/index.d.ts"
+    },
+    "./derive": {
+      "default": "./dist/derive/index.js",
+      "types": "./dist/derive/index.d.ts"
+    },
+    "./viz": {
+      "default": "./dist/viz/index.js",
+      "types": "./dist/viz/index.d.ts"
+    },
+    "./types": {
+      "default": "./dist/types/index.js",
+      "types": "./dist/types/index.d.ts"
+    }
+  },
+  "scripts": {
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs",
+    "clean": "rm -rf dist dist-test dist-testing",
+    "build:src": "tsc -p tsconfig.json",
+    "build:testing": "tsc -p tsconfig.testing.json",
+    "build": "npm run build:src && npm run build:testing",
+    "pretest": "rm -rf dist-test && tsc -p tsconfig.test.json",
+    "test": "node --test 'dist-test/tests/**/*.test.js'",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --fix --max-warnings 0",
+    "ci": "npm run typecheck && npm run lint && npm run test",
+    "prepack": "npm run clean && npm run build",
+    "prepublishOnly": "npm run ci",
+    "example:01": "tsx examples/01-linear.ts",
+    "example:02": "tsx examples/02-fanout.ts",
+    "example:03": "tsx examples/03-subflows.ts",
+    "example:04": "tsx examples/04-cancellation.ts",
+    "example:05": "tsx examples/05-retry.ts",
+    "example:06": "tsx examples/06-builder.ts",
+    "example:07": "tsx examples/07-schema.ts",
+    "example:08": "tsx examples/08-checkpoint.ts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^25.2.0",
+    "eslint": "^10.3.0",
+    "eslint-plugin-import-x": "^4.16.2",
+    "mermaid": "^11.15.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.59.3",
+    "vitepress": "^1.6.4",
+    "vitepress-plugin-mermaid": "^2.0.17"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "json-schema-to-ts": "^3.1.1"
+  }
+}

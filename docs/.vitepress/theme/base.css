@@ -1,0 +1,608 @@
+/**
+ * base.css — Dagonizer shared visual rules.
+ * Silver brushed-metal chrome around navy hex-interior panels with
+ * steel-shine text, black-pearl buttons, and gem-orb accents.
+ *
+ * Typography:
+ *   - Body: Caudex (Google Fonts) — a humanist serif with old-god gravitas
+ *   - Code: Share Tech Mono — a CRT-terminal monospace that pairs the
+ *     mechanical talisman read of the icon
+ *
+ * Texture:
+ *   - .dagonizer-texture-* tokens paint a subtle engraved noise pattern
+ *     on navy panels, mirroring the brushed-metal grain of the icon
+ *   - .dagonizer-eye is the obsidian-eye motif from the talisman, used
+ *     as bullet markers, section separators, and sidebar group glyphs
+ */
+
+:root {
+  --vp-font-family-base: "Caudex", "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --vp-font-family-mono: "Share Tech Mono", "SF Mono", Menlo, Consolas, ui-monospace, monospace;
+
+  /* ── Texture: SVG noise grain. Encoded so no extra HTTP request is
+        needed; tile is small so panels look engraved, not noisy.
+        Override the opacity / scale per surface as needed. ── */
+  --dagonizer-texture-grain:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='3'/><feColorMatrix values='0 0 0 0 0.137  0 0 0 0 0.176  0 0 0 0 0.231  0 0 0 0.22 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  --dagonizer-texture-silver:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='2' seed='7'/><feColorMatrix values='0 0 0 0 0.62  0 0 0 0 0.67  0 0 0 0 0.74  0 0 0 0.16 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+
+/* ===== Body / typography ===== */
+
+body {
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+  /* Brushed-metal grain over the silver body — subtle, not noisy. */
+  background-image: var(--dagonizer-texture-silver);
+  background-size: 200px 200px;
+  background-attachment: fixed;
+}
+
+.vp-doc a {
+  color: var(--dagonizer-cyan);
+  text-decoration: none;
+  font-weight: 500;
+}
+.vp-doc a:hover {
+  color: var(--dagonizer-gold);
+  text-decoration: underline;
+}
+
+.vp-doc h1 {
+  color: var(--dagonizer-silver);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  border-bottom: 1px solid var(--dagonizer-cyan);
+  padding-bottom: 0.3em;
+}
+.vp-doc h2 {
+  border-bottom: 1px solid var(--vp-c-divider);
+  padding-bottom: 0.4rem;
+  margin-top: 2.4rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--dagonizer-silver);
+}
+.vp-doc h3 {
+  font-weight: 600;
+  margin-top: 1.75rem;
+  color: var(--dagonizer-cyan);
+}
+.vp-doc h4 { color: var(--dagonizer-seagreen); font-weight: 600; }
+
+.vp-doc strong { color: var(--dagonizer-silver); font-weight: 600; }
+.vp-doc em { color: var(--dagonizer-silver-dim); }
+
+.vp-doc :not(pre) > code {
+  background: var(--vp-code-bg);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  color: var(--vp-code-color);
+  font-size: 0.875em;
+  padding: 0.1em 0.35em;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+/* Code blocks: pearl-black surface with engraved navy grain. */
+.vp-doc div[class*="language-"] {
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  background-color: var(--dagonizer-pearl);
+  background-image: var(--dagonizer-texture-grain);
+  background-size: 160px 160px;
+}
+
+/* Shiki token overrides — map gem palette to syntax roles */
+.vp-doc div[class*="language-"] .shiki {
+  background: var(--dagonizer-obsidian) !important;
+}
+/* strings → cyan */
+.vp-doc .shiki .string,
+.vp-doc .shiki [style*="color:#"] { /* let Shiki own fine-grained colors */ }
+
+.vp-doc pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* ===== Button hover/active states ===== */
+
+.VPButton.brand:hover,
+.VPButton.brand:active {
+  background: var(--vp-c-brand-hover) !important;
+  color: var(--dagonizer-pearl) !important;
+}
+
+.VPButton.ghost {
+  background-color: transparent;
+  color: var(--dagonizer-silver-dim);
+  border: 1px solid transparent;
+}
+.VPButton.ghost:hover {
+  color: var(--dagonizer-gold);
+  background-color: transparent;
+  border-color: var(--vp-c-divider);
+}
+
+/* ===== Heading anchors — clickable + visible on hover ===== */
+
+.VPDoc h1, .VPDoc h2, .VPDoc h3, .VPDoc h4, .VPDoc h5, .VPDoc h6 {
+  scroll-margin-top: calc(var(--vp-nav-height) + 24px);
+  position: relative;
+}
+
+/* Make the entire heading clickable while keeping its appearance */
+.vp-doc h1, .vp-doc h2, .vp-doc h3, .vp-doc h4, .vp-doc h5, .vp-doc h6 {
+  cursor: pointer;
+}
+.vp-doc h1:hover, .vp-doc h2:hover, .vp-doc h3:hover, .vp-doc h4:hover {
+  color: var(--vp-c-brand-1);
+}
+
+/* VitePress already injects <a class="header-anchor" href="#slug">#</a>;
+   reveal it on heading hover and pin to the left margin so the visual
+   weight stays on the heading text. */
+.vp-doc .header-anchor {
+  position: absolute;
+  left: -1.05em;
+  top: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  width: 1em;
+  color: var(--vp-c-brand-1);
+  font-weight: 400;
+  text-decoration: none;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease;
+}
+.vp-doc .header-anchor::before {
+  content: '#';
+  font-size: 0.85em;
+}
+.vp-doc h1:hover .header-anchor,
+.vp-doc h2:hover .header-anchor,
+.vp-doc h3:hover .header-anchor,
+.vp-doc h4:hover .header-anchor,
+.vp-doc h5:hover .header-anchor,
+.vp-doc h6:hover .header-anchor,
+.vp-doc .header-anchor:focus {
+  opacity: 1;
+}
+.vp-doc .header-anchor:hover {
+  color: var(--vp-c-brand-hover);
+  text-decoration: none;
+}
+
+/* Nav link hover */
+.VPNavBarMenuLink:hover,
+.VPNavBarMenuLink.active {
+  color: var(--dagonizer-gold) !important;
+}
+
+/* ===== Tables ===== */
+
+.vp-doc table { border-collapse: collapse; width: 100%; }
+.vp-doc th {
+  background: var(--vp-c-bg-alt);
+  border-bottom: 1px solid var(--vp-c-divider);
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--dagonizer-cyan);
+  text-align: left;
+}
+.vp-doc td, .vp-doc th { border-bottom: 1px solid var(--vp-c-divider); padding: 0.55rem 0.85rem; }
+.vp-doc tr:hover td { background: var(--vp-c-bg-alt); }
+
+/* ===== Blockquotes ===== */
+
+.vp-doc blockquote {
+  border-left: 3px solid var(--dagonizer-cyan);
+  background-color: var(--vp-c-bg-alt);
+  background-image: var(--dagonizer-texture-grain);
+  background-size: 160px 160px;
+  border-radius: 0 4px 4px 0;
+  color: var(--vp-c-text-1);
+  padding: 0.65rem 1rem;
+  font-style: italic;
+}
+.vp-doc blockquote p { color: var(--vp-c-text-1); }
+
+/* ===== HR — two-eye obsidian separator ===== */
+
+.vp-doc hr {
+  border: 0;
+  height: auto;
+  text-align: center;
+  margin: 2.4rem 0;
+  background: none;
+}
+.vp-doc hr::before {
+  content: "● ●";
+  display: inline-block;
+  color: var(--dagonizer-pearl);
+  text-shadow:
+    0 0 6px var(--dagonizer-orb-teal),
+    0 0 14px rgba(34, 232, 255, 0.35);
+  font-size: 0.7rem;
+  letter-spacing: 1em;
+  padding-left: 1em;
+}
+
+/* ===== Sidebar icon ===== */
+
+.dagonizer-sidebar-icon {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 24px 16px 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--vp-c-divider);
+  background: transparent;
+}
+.dagonizer-sidebar-icon img {
+  width: 100%;
+  max-width: 160px;
+  height: auto;
+  display: block;
+  background: transparent;
+  filter:
+    drop-shadow(0 0 24px rgba(34, 232, 255, 0.35))
+    drop-shadow(0 0 48px rgba(177, 140, 255, 0.18));
+  transition: filter 600ms ease;
+  pointer-events: none;
+}
+.dagonizer-sidebar-icon img:hover {
+  filter:
+    drop-shadow(0 0 32px rgba(34, 232, 255, 0.55))
+    drop-shadow(0 0 64px rgba(212, 166, 73, 0.22));
+}
+
+/* ===== Sidebar ===== */
+
+.VPSidebar {
+  background-color: var(--vp-c-bg-alt);
+  /* Engraved navy grain — the inside-the-hex texture. */
+  background-image: var(--dagonizer-texture-grain);
+  background-size: 160px 160px;
+  border-right: 1px solid var(--vp-c-divider);
+}
+/* Eye motif between sidebar groups — two obsidian dots, like the
+   talisman's eyes. Replaces the plain divider rule. */
+.VPSidebar .group {
+  border-top: 0;
+  padding-top: 1rem;
+  position: relative;
+}
+.VPSidebar .group::before {
+  content: "● ●";
+  display: block;
+  text-align: center;
+  color: var(--dagonizer-pearl);
+  text-shadow: 0 0 4px var(--dagonizer-orb-teal);
+  font-size: 0.5rem;
+  letter-spacing: 0.6em;
+  margin-bottom: 0.6rem;
+  opacity: 0.85;
+}
+.VPSidebar .group:first-of-type::before { content: none; }
+
+.VPSidebarItem.level-0 > .item > .text {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dagonizer-seagreen);
+}
+.VPSidebarItem.level-1 .link .text {
+  color: var(--vp-c-text-1);
+  font-weight: 400;
+}
+.VPSidebarItem.level-1:hover .link .text { color: var(--dagonizer-gold); }
+.VPSidebarItem.is-active > .item > .link > .text {
+  color: var(--dagonizer-cyan);
+  font-weight: 600;
+}
+
+/* ===== Top nav =====
+   Caudex has a taller x-height than system-ui — lock the nav row height
+   and the title's line-height so descenders aren't clipped by the bottom
+   border. */
+
+.VPNav,
+.VPNavBar {
+  height: var(--vp-nav-height);
+}
+.VPNavBar .container {
+  align-items: center;
+}
+.VPNavBar .content {
+  height: var(--vp-nav-height);
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.VPNavBar .VPNavBarTitle {
+  height: var(--vp-nav-height);
+  line-height: var(--vp-nav-height);
+}
+.VPNavBar .VPNavBarTitle .title {
+  height: auto;
+  line-height: 1.2;
+  color: var(--dagonizer-silver);
+  font-family: var(--vp-font-family-base);
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+}
+.VPNavBarMenuLink {
+  color: var(--vp-c-text-2) !important;
+  font-weight: 500;
+  line-height: var(--vp-nav-height);
+}
+
+/* ===== Right outline (On this page) =====
+   Invert the rail's vertical gradient: deepest accent at the top (where
+   the current heading anchors live), fading to dim at the bottom. The
+   reader's eye starts at the heading, so the rail should bloom from the
+   top, not from below the scroll. */
+
+.VPDocAsideOutline .outline-title {
+  color: var(--dagonizer-seagreen) !important;
+  font-size: 0.78rem !important;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.VPDocAsideOutlineItem a { color: var(--vp-c-text-2) !important; }
+.VPDocAsideOutlineItem a:hover,
+.VPDocAsideOutlineItem.active a { color: var(--dagonizer-cyan) !important; }
+
+/* The vertical rail VitePress draws behind outline items.
+   Flip the default top→bottom shading: cyan up top, transparent at the
+   bottom. The fade matches the reading direction. */
+.VPDocAsideOutline {
+  position: relative;
+}
+.VPDocAsideOutline::before {
+  background: linear-gradient(
+    to bottom,
+    var(--dagonizer-cyan) 0%,
+    var(--vp-c-divider) 100%
+  ) !important;
+  opacity: 0.55;
+}
+.VPDocAside .outline-marker { background: var(--dagonizer-cyan) !important; }
+
+/* ===== Last updated ===== */
+
+.VPLastUpdated { color: var(--vp-c-text-3); }
+
+/* ===== Custom hero (index.md, layout: doc) ===== */
+
+.dagonizer-hero {
+  padding: 2rem 0 2.5rem;
+  border-bottom: 1px solid var(--vp-c-divider);
+  margin-bottom: 2.5rem;
+  text-align: center;
+}
+
+.dagonizer-hero h1 {
+  font-size: 2.6rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin: 0 0 0.6rem;
+  border: 0;
+  padding: 0;
+  color: var(--dagonizer-silver);
+}
+.dagonizer-hero .tagline {
+  font-size: 1rem;
+  color: var(--vp-c-text-2);
+  margin: 0 auto 0.6rem;
+  max-width: 56ch;
+  line-height: 1.6;
+}
+.dagonizer-hero .subtitle {
+  font-size: 0.875rem;
+  font-style: italic;
+  color: var(--dagonizer-silver-dim);
+  margin: 0 auto 1.4rem;
+  max-width: 48ch;
+}
+.dagonizer-hero .actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.dagonizer-hero .actions a {
+  display: inline-block;
+  background: var(--dagonizer-cyan);
+  color: var(--dagonizer-pearl);
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 0.55rem 1.2rem;
+  border-radius: 6px;
+  text-decoration: none;
+}
+.dagonizer-hero .actions a:hover {
+  background: var(--dagonizer-gold);
+  color: var(--dagonizer-pearl);
+}
+.dagonizer-hero .actions a.alt {
+  background: transparent;
+  color: var(--vp-c-text-1);
+  border: 1px solid var(--vp-c-divider);
+}
+.dagonizer-hero .actions a.alt:hover {
+  border-color: var(--dagonizer-gold);
+  color: var(--dagonizer-gold);
+  background: rgba(212, 166, 73, 0.08);
+  text-decoration: none;
+}
+
+/* ===== Feature grid (index.md) ===== */
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+.feature-grid .card {
+  background-color: var(--vp-c-bg-alt);
+  background-image: var(--dagonizer-texture-grain);
+  background-size: 160px 160px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+  padding: 1rem 1.1rem;
+}
+/* Gradient seam on card top edge */
+.feature-grid .card {
+  border-top: 1px solid transparent;
+  background-clip: padding-box;
+  position: relative;
+}
+.feature-grid .card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  padding: 1px 0 0;
+  background: linear-gradient(135deg, var(--dagonizer-cyan), var(--dagonizer-seagreen), var(--dagonizer-violet));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+.feature-grid .card h3 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin: 0 0 0.35rem;
+  color: var(--dagonizer-cyan);
+}
+.feature-grid .card p {
+  font-size: 0.82rem;
+  color: var(--vp-c-text-2);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* ===== Mermaid diagrams =====
+   Frame matches the doc surface; SVG colors resolve from the
+   --mermaid-* tokens in palette.css so themes and modes propagate. */
+
+.vp-doc div[class*="mermaid"],
+.vp-doc .dagonizer-mermaid-frame {
+  position: relative;
+  max-width: 100%;
+  margin: 1.5rem 0;
+  padding: 0.75rem;
+  background-color: var(--vp-c-bg-alt);
+  background-image: var(--dagonizer-texture-grain);
+  background-size: 160px 160px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.vp-doc div[class*="mermaid"] svg,
+.vp-doc .dagonizer-mermaid-frame svg {
+  max-width: 100% !important;
+  height: auto !important;
+  display: block;
+  margin: 0 auto;
+  background: var(--mermaid-bg);
+}
+
+/* Node fills / strokes / text — every shape route through the same tokens */
+.vp-doc .mermaid svg .node rect,
+.vp-doc .mermaid svg .node polygon,
+.vp-doc .mermaid svg .node path,
+.vp-doc .mermaid svg .node circle,
+.vp-doc .mermaid svg .node ellipse {
+  fill: var(--mermaid-node-fill) !important;
+  stroke: var(--mermaid-node-stroke) !important;
+  stroke-width: 1.4px !important;
+}
+.vp-doc .mermaid svg .node .label,
+.vp-doc .mermaid svg .nodeLabel,
+.vp-doc .mermaid svg .node text,
+.vp-doc .mermaid svg .node foreignObject span {
+  fill: var(--mermaid-node-text) !important;
+  color: var(--mermaid-node-text) !important;
+}
+
+/* Hexagonal nodes (fan-out — Mermaid `{{name}}`) */
+.vp-doc .mermaid svg .node[id*="flowchart-fan"] polygon,
+.vp-doc .mermaid svg .node.hexagon polygon,
+.vp-doc .mermaid svg g.node:has(polygon) polygon {
+  fill: var(--mermaid-hex-fill) !important;
+  stroke: var(--mermaid-hex-stroke) !important;
+}
+/* Stadium nodes (sub-dag and END terminator — Mermaid `([name])`) */
+.vp-doc .mermaid svg g.node:has(rect.label-container) ~ rect,
+.vp-doc .mermaid svg .node.stadium rect {
+  fill: var(--mermaid-stadium-fill) !important;
+  stroke: var(--mermaid-stadium-stroke) !important;
+}
+
+/* Edges — straight angled lines, gem accent stroke */
+.vp-doc .mermaid svg .edgePath path,
+.vp-doc .mermaid svg .flowchart-link {
+  stroke: var(--mermaid-edge-stroke) !important;
+  stroke-width: 1.4px !important;
+  fill: none !important;
+}
+.vp-doc .mermaid svg .arrowheadPath,
+.vp-doc .mermaid svg marker path {
+  fill: var(--mermaid-arrow) !important;
+  stroke: var(--mermaid-arrow) !important;
+}
+
+/* Edge labels (the route names: success / error / partial / etc.) */
+.vp-doc .mermaid svg .edgeLabel {
+  background: var(--mermaid-edge-label-bg) !important;
+}
+.vp-doc .mermaid svg .edgeLabel rect {
+  fill: var(--mermaid-edge-label-bg) !important;
+  stroke: none !important;
+}
+.vp-doc .mermaid svg .edgeLabel,
+.vp-doc .mermaid svg .edgeLabel span,
+.vp-doc .mermaid svg .edgeLabel foreignObject span {
+  color: var(--mermaid-edge-label-text) !important;
+  fill: var(--mermaid-edge-label-text) !important;
+  font-size: 0.78rem !important;
+}
+
+/* Subgraph clusters (parallel placement wrappers) */
+.vp-doc .mermaid svg .cluster rect {
+  fill: var(--mermaid-cluster-fill) !important;
+  stroke: var(--mermaid-cluster-stroke) !important;
+  stroke-dasharray: 3 3;
+}
+.vp-doc .mermaid svg .cluster .nodeLabel,
+.vp-doc .mermaid svg .cluster text {
+  fill: var(--mermaid-cluster-text) !important;
+  color: var(--mermaid-cluster-text) !important;
+  font-weight: 600;
+}
+
+/* State diagrams (lifecycle FSM) */
+.vp-doc .mermaid svg .state rect,
+.vp-doc .mermaid svg g.statediagram-state rect {
+  fill: var(--mermaid-state-bg) !important;
+  stroke: var(--mermaid-state-stroke) !important;
+}
+.vp-doc .mermaid svg g.statediagram-state .nodeLabel {
+  fill: var(--mermaid-node-text) !important;
+}
+
+/* Comments / titles */
+.vp-doc .mermaid svg text.titleText,
+.vp-doc .mermaid svg .label foreignObject span {
+  font-family: var(--vp-font-family-base) !important;
+}
