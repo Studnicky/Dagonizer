@@ -1,0 +1,1033 @@
+import type { ExecuteOptionsInterface } from './contracts/ExecuteOptionsInterface.js';
+import type { NodeInterface } from './contracts/NodeInterface.js';
+import type { StateAccessor } from './contracts/StateAccessor.js';
+import { FanInStrategies } from './core/FanInStrategies.js';
+import type { FanInExecution } from './core/FanInStrategies.js';
+import { ParallelCombiners } from './core/ParallelCombiners.js';
+import type { DAG } from './entities/dag/DAG.js';
+import type { FanInConfig } from './entities/dag/FanInConfig.js';
+import type { FanOutNode } from './entities/dag/FanOutNode.js';
+import type { ParallelNode } from './entities/dag/ParallelNode.js';
+import type { SingleNodePlacementInterface } from './entities/dag/SingleNode.js';
+import type { SubDAGNode } from './entities/dag/SubDAGNode.js';
+import type { ExecutionResultInterface } from './entities/execution/ExecutionResult.js';
+import type { NodeContextInterface } from './entities/node/NodeContext.js';
+import type { NodeResultInterface } from './entities/node/NodeResult.js';
+import { DAGError, ValidationError } from './errors/index.js';
+import { Execution } from './Execution.js';
+import { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
+import type { NodeStateInterface } from './NodeStateBase.js';
+import { DottedPathAccessor } from './runtime/DottedPathAccessor.js';
+import { SignalComposer } from './runtime/SignalComposer.js';
+import { Validator } from './validation/Validator.js';
+
+/** Default state accessor — installed when the dispatcher is constructed without one. */
+const DEFAULT_STATE_ACCESSOR: StateAccessor = new DottedPathAccessor();
+
+/**
+ * Constructor options for `Dagonizer`.
+ *
+ * `TServices` is the consumer-defined services bag that the dispatcher
+ * passes through every `NodeContextInterface`. Default `undefined` means
+ * nodes receive `context.services === undefined`.
+ */
+export interface DagonizerOptionsInterface<TServices = undefined> {
+  /**
+   * Path resolver used for fan-out source reads, fan-in writes, and
+   * sub-DAG state mapping. Defaults to a `DottedPathAccessor` that
+   * walks `path.split('.')`.
+   */
+  readonly accessor?: StateAccessor;
+  /**
+   * Services bag exposed to every node via `context.services`. Construct
+   * the dispatcher with `{ services: { logger, db, ... } }` and the same
+   * reference flows into every `NodeInterface.execute(state, context)`
+   * call.
+   */
+  readonly services?: TServices;
+}
+
+
+type DAGNodeType = FanOutNode | ParallelNode | SingleNodePlacementInterface | SubDAGNode;
+
+/**
+ * Interface for Dagonizer. One execution path — `execute()` and `resume()`
+ * both return an `Execution`, which is async-iterable (each stage as it
+ * completes) and awaitable (the final summary).
+ *
+ * `TServices` flows through every node's `NodeContextInterface.services`
+ * field — defaults to `undefined` when the dispatcher is constructed
+ * without a services bag.
+ */
+export interface DagonizerInterface<
+  TState extends NodeStateInterface,
+  TServices = undefined,
+> {
+  /**
+   * Clean up all registered nodes.
+   */
+  destroy(): Promise<void>;
+
+  /**
+   * Execute a DAG from its entrypoint.
+   */
+  execute(
+    dagName: string,
+    initialState: TState,
+    options?: ExecuteOptionsInterface,
+  ): Execution<TState>;
+
+  /**
+   * Look up a registered DAG by name.
+   */
+  getDAG(name: string): DAG | undefined;
+
+  /**
+   * Look up a registered node by name.
+   */
+  getNode(name: string): NodeInterface<TState, string, TServices> | undefined;
+
+  /**
+   * List every registered DAG. Useful for visualization, contract checks,
+   * and tooling that needs to walk the registry.
+   */
+  listDAGs(): readonly DAG[];
+
+  /**
+   * List every registered node. Useful for visualization and tooling.
+   */
+  listNodes(): readonly NodeInterface<TState, string, TServices>[];
+
+  /**
+   * Resume a DAG from a given node name. The caller is responsible for
+   * rehydrating `state` before the call (typically via `Checkpoint.restore`).
+   */
+  resume(
+    dagName: string,
+    state: TState,
+    fromStage: string,
+    options?: ExecuteOptionsInterface,
+  ): Execution<TState>;
+
+  /**
+   * Register a DAG configuration.
+   */
+  registerDAG(dag: DAG): void;
+
+  /**
+   * Register a DAG node.
+   */
+  registerNode<TOutput extends string>(
+    node: NodeInterface<TState, TOutput, TServices>,
+  ): void;
+}
+
+interface InternalNodeResultInterface<TState extends NodeStateInterface> {
+  'nextStage': null | string;
+  'result': NodeResultInterface<TState>;
+}
+
+/**
+ * Graph-based DAG dispatcher for state-machine-style multi-step
+ * node execution.
+ *
+ * Subclass to attach observability — override `onFlowStart`, `onFlowEnd`,
+ * `onNodeStart`, `onNodeEnd`, `onError`. Default implementations are no-ops.
+ *
+ * Cancellation: pass `{ signal }` (and/or `{ deadlineMs }`) to `execute()`.
+ * The dispatcher composes them via `AbortSignal.any()` and marks state
+ * `cancelled` / `timed_out` when the signal fires.
+ *
+ * @example
+ * ```ts
+ * class MyState extends NodeStateBase { value = 0; }
+ *
+ * const node: NodeInterface<MyState, 'done'> = {
+ *   name: 'increment', outputs: ['done'],
+ *   async execute(state) { state.value++; return { output: 'done' }; },
+ * };
+ *
+ * const dispatcher = new Dagonizer<MyState>();
+ * dispatcher.registerNode(node);
+ * dispatcher.registerDAG({
+ *   name: 'demo', version: '1', entrypoint: 'increment',
+ *   nodes: [{ type: 'single', name: 'increment', node: 'increment', outputs: { done: null } }],
+ * });
+ *
+ * const result = await dispatcher.execute('demo', new MyState());
+ * // result.state.value === 1
+ * // result.cursor === null (completed)
+ * ```
+ */
+export class Dagonizer<TState extends NodeStateInterface, TServices = undefined>
+implements DagonizerInterface<TState, TServices> {
+  private readonly dags = new Map<string, DAG>();
+  private readonly nodes = new Map<string, NodeInterface<TState, string, TServices>>();
+  private readonly nodeIndex = new Map<string, DAGNodeType>();
+  private readonly accessor: StateAccessor;
+  private readonly services: TServices;
+
+  /**
+   * Construct a dispatcher. Subclass and override the protected hooks
+   * (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`)
+   * for observability — no factory indirection, no callbacks.
+   *
+   * `options.accessor` swaps the path resolver used for fan-out source
+   * reads, fan-in writes, and sub-DAG state mapping. Defaults to
+   * `DottedPathAccessor`.
+   *
+   * `options.services` is the typed services bag exposed to every node
+   * via `context.services`. Defaults to `undefined`.
+   */
+  constructor(options: DagonizerOptionsInterface<TServices> = {}) {
+    this.accessor = options.accessor ?? DEFAULT_STATE_ACCESSOR;
+    this.services = options.services as TServices;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Observability hooks — protected, no-op defaults. Subclass + override.
+  // ---------------------------------------------------------------------------
+
+  protected onFlowStart(_dagName: string, _state: TState): void { /* override */ }
+  protected onFlowEnd(_dagName: string, _state: TState, _result: ExecutionResultInterface<TState>): void { /* override */ }
+  protected onNodeStart(_nodeName: string, _state: TState): void { /* override */ }
+  protected onNodeEnd(_nodeName: string, _output: string | undefined, _state: TState): void { /* override */ }
+  protected onError(_nodeName: string, _error: Error, _state: TState): void { /* override */ }
+
+  // ---------------------------------------------------------------------------
+
+  private createChildState(parentState: TState, inputMapping?: Record<string, string>): TState {
+    const childState = parentState.clone() as TState;
+
+    if (inputMapping) {
+      for (const [
+        childKey,
+        parentKey
+      ] of Object.entries(inputMapping)) {
+        const value = this.accessor.get(parentState, parentKey);
+
+        this.accessor.set(childState, childKey, value);
+      }
+    }
+
+    return childState;
+  }
+
+  async destroy(): Promise<void> {
+    for (const node of this.nodes.values()) {
+      if (node.destroy) {
+        await node.destroy();
+      }
+    }
+    this.nodes.clear();
+    this.dags.clear();
+    this.nodeIndex.clear();
+  }
+
+  /**
+   * Look up a registered DAG by name. Returns `undefined` when the DAG has
+   * not been registered.
+   */
+  getDAG(name: string): DAG | undefined {
+    return this.dags.get(name);
+  }
+
+  /**
+   * Look up a registered node by name. Returns `undefined` when the node
+   * has not been registered.
+   */
+  getNode(name: string): NodeInterface<TState, string, TServices> | undefined {
+    return this.nodes.get(name);
+  }
+
+  /**
+   * Snapshot of every registered DAG. The returned array is a fresh
+   * shallow copy; mutating it does not affect the registry.
+   */
+  listDAGs(): readonly DAG[] {
+    return [...this.dags.values()];
+  }
+
+  /**
+   * Snapshot of every registered node. The returned array is a fresh
+   * shallow copy; mutating it does not affect the registry.
+   */
+  listNodes(): readonly NodeInterface<TState, string, TServices>[] {
+    return [...this.nodes.values()];
+  }
+
+  /**
+   * Execute a flow from its entrypoint.
+   *
+   * Returns an `Execution<TState>` that is both async-iterable (yields
+   * each node as it completes) and awaitable (resolves to the final
+   * `ExecutionResultInterface`). One execution path — sync-style is just
+   * iteration that consumes every node before resolving.
+   *
+   * On abort (signal aborted, deadline expired, node threw, output
+   * unwired) the iterator stops cleanly and the final result's `cursor`
+   * carries the next node to run. State lifecycle records what happened.
+   */
+  execute(
+    dagName: string,
+    initialState: TState,
+    options: ExecuteOptionsInterface = {},
+  ): Execution<TState> {
+    return new Execution<TState>(() => this.runNodes(dagName, initialState, null, options));
+  }
+
+  /**
+   * Resume a flow from `fromStage`. Same generator as `execute()` but
+   * begins at the given cursor instead of the flow's entrypoint. Caller
+   * is responsible for rehydrating `state` (typically via
+   * `Checkpoint.restore`) before calling.
+   */
+  resume(
+    dagName: string,
+    state: TState,
+    fromStage: string,
+    options: ExecuteOptionsInterface = {},
+  ): Execution<TState> {
+    return new Execution<TState>(() => this.runNodes(dagName, state, fromStage, options));
+  }
+
+  /**
+   * Canonical generator. Yields each node result (including the
+   * intermediate yields from parallel / fan-out / sub-flow nodes) and
+   * returns the final `ExecutionResultInterface` with `cursor` set.
+   * Never throws.
+   */
+  private async *runNodes(
+    dagName: string,
+    state: TState,
+    fromStage: string | null,
+    options: ExecuteOptionsInterface,
+  ): AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void> {
+    const dag = this.dags.get(dagName);
+
+    if (!dag) {
+      // Unknown DAG: synthesize an error result without starting the
+      // lifecycle. `state` may not have been touched yet, so don't mark
+      // running. The cursor is null because there is no DAG to resume.
+      const error = new DAGError(`Unknown DAG: ${dagName}`);
+      this.onError('<unknown>', error, state);
+      try { state.markFailed(error); } catch { /* state may already be terminal */ }
+      const result: ExecutionResultInterface<TState> = {
+        'cursor': null, 'executedNodes': [], 'skippedNodes': [], state,
+      };
+      this.onFlowEnd(dagName, state, result);
+      return result;
+    }
+
+    const signal = SignalComposer.compose(options);
+
+    state.markRunning();
+    this.onFlowStart(dagName, state);
+
+    const executedNodes: string[] = [];
+    const skippedNodes: string[] = [];
+    let currentNodeName: null | string = fromStage ?? dag.entrypoint;
+    let cursor: null | string = currentNodeName;
+
+    while (currentNodeName !== null) {
+      if (signal?.aborted) {
+        this.handleAbort(state, signal);
+        const reason = signal.reason instanceof Error ? signal.reason : new Error(String(signal.reason ?? 'aborted'));
+        this.onError(currentNodeName, reason, state);
+        const result: ExecutionResultInterface<TState> = {
+          cursor, executedNodes, skippedNodes, state,
+        };
+        this.onFlowEnd(dagName, state, result);
+        return result;
+      }
+
+      const node = this.nodeIndex.get(`${dagName}:${currentNodeName}`);
+
+      if (!node) {
+        const error = new DAGError(`Unknown node: ${currentNodeName} in DAG ${dagName}`);
+        this.onError(currentNodeName, error, state);
+        try { state.markFailed(error); } catch { /* already terminal */ }
+        const result: ExecutionResultInterface<TState> = {
+          cursor, executedNodes, skippedNodes, state,
+        };
+        this.onFlowEnd(dagName, state, result);
+        return result;
+      }
+
+      this.onNodeStart(node.name, state);
+
+      let nodeOutcome: InternalNodeResultInterface<TState>;
+      try {
+        nodeOutcome = await this.executeDAGNode(node, state, dagName, signal);
+      } catch (caughtError) {
+        const error = caughtError instanceof Error ? caughtError : new Error(String(caughtError));
+        this.onError(currentNodeName, error, state);
+        if (signal?.aborted) {
+          this.handleAbort(state, signal);
+        } else if (!DAGLifecycleMachine.isTerminal(state.lifecycle)) {
+          try { state.markFailed(error); } catch { /* already terminal */ }
+        }
+        const result: ExecutionResultInterface<TState> = {
+          cursor, executedNodes, skippedNodes, state,
+        };
+        this.onFlowEnd(dagName, state, result);
+        return result;
+      }
+
+      const { nextStage, "result": nodeResult } = nodeOutcome;
+
+      // Yield intermediate results from parallel/fan-out/sub-DAG nodes
+      if ('intermediateResults' in nodeResult) {
+        const inter = (nodeResult as NodeResultInterface<TState> & { 'intermediateResults': Array<NodeResultInterface<TState>> }).intermediateResults;
+        for (const intermediate of inter) {
+          yield intermediate;
+        }
+      }
+
+      if (nodeResult.skipped) {
+        skippedNodes.push(nodeResult.nodeName);
+      } else {
+        executedNodes.push(nodeResult.nodeName);
+      }
+
+      this.onNodeEnd(node.name, nodeResult.output, state);
+
+      yield nodeResult;
+
+      currentNodeName = nextStage;
+      cursor = nextStage;
+    }
+
+    state.markCompleted();
+    const result: ExecutionResultInterface<TState> = {
+      'cursor': null, executedNodes, skippedNodes, state,
+    };
+    this.onFlowEnd(dagName, state, result);
+    return result;
+  }
+
+  /**
+   * Build the per-node context. Falls back to a never-aborting signal
+   * when no cancellation was requested. Carries the dispatcher's
+   * services bag (or `undefined`) on the `services` field.
+   */
+  private buildContext(
+    dagName: string,
+    nodeName: string,
+    signal: AbortSignal | null,
+  ): NodeContextInterface<TServices> {
+    return {
+      'signal': signal ?? new AbortController().signal,
+      'dagName': dagName,
+      nodeName,
+      'services': this.services,
+    };
+  }
+
+  /**
+   * Inspect a triggered abort and mark the lifecycle terminal accordingly.
+   * Returns the error to surface on the dispatcher boundary.
+   */
+  private handleAbort(state: TState, signal: AbortSignal): Error {
+    const reason = signal.reason;
+    const isTimeout = reason instanceof Error && reason.name === 'TimeoutError';
+    if (isTimeout) {
+      try { state.markTimedOut(); } catch { /* lifecycle already terminal */ }
+      return reason;
+    }
+    const message = reason instanceof Error
+      ? reason.message
+      : (typeof reason === 'string' ? reason : 'aborted');
+    try { state.markCancelled(message); } catch { /* lifecycle already terminal */ }
+    return reason instanceof Error ? reason : new Error(message);
+  }
+
+  private async executeFanOut(
+    fanOut: FanOutNode,
+    state: TState,
+    dagName: string,
+    signal: AbortSignal | null,
+  ): Promise<InternalNodeResultInterface<TState>> {
+    const sourceArray = this.accessor.get(state, fanOut.source) as unknown[];
+
+    if (!Array.isArray(sourceArray) || sourceArray.length === 0) {
+      const nextStage = fanOut.outputs['empty'] ?? null;
+      const result: NodeResultInterface<TState> = {
+        'output': 'empty',
+        'skipped': true,
+        'nodeName': fanOut.name,
+        state
+      };
+
+      return {
+        nextStage,
+        result
+      };
+    }
+
+    const node = this.nodes.get(fanOut.node);
+
+    if (!node) {
+      throw new DAGError(`Unknown node: ${fanOut.node}`);
+    }
+    const itemKey = fanOut.itemKey ?? 'currentItem';
+    const concurrency = fanOut.concurrency ?? sourceArray.length;
+
+    const resultsByOutput = new Map<string, unknown[]>();
+    const itemResults: Array<{ 'item': unknown;
+      'output': string }> = [];
+
+    for (let i = 0; i < sourceArray.length; i += concurrency) {
+      const batch = sourceArray.slice(i, i + concurrency);
+      const batchPromises = batch.map(async (item, batchIndex) => {
+        const itemState = state.clone() as TState;
+
+        itemState.setMetadata(itemKey, item);
+        itemState.setMetadata('itemIndex', i + batchIndex);
+
+        const context = this.buildContext(dagName, fanOut.name, signal);
+        const opResult = await node.execute(itemState, context);
+
+        if (opResult.errors) {
+          for (const error of opResult.errors) {
+            state.collectError(error);
+          }
+        }
+
+        return {
+          item,
+          'output': opResult.output
+        };
+      });
+
+      const batchResults = await Promise.all(batchPromises);
+
+      itemResults.push(...batchResults);
+    }
+
+    for (const {
+      item, output
+    } of itemResults) {
+      const outputArray = resultsByOutput.get(output);
+
+      if (outputArray) {
+        outputArray.push(item);
+      } else {
+        resultsByOutput.set(output, [item]);
+      }
+    }
+
+    await this.fanIn(state, fanOut.fanIn, resultsByOutput, dagName, signal);
+
+    const successCount = resultsByOutput.get('success')?.length ?? 0;
+    const errorCount = itemResults.length - successCount;
+    let aggregateOutput: string;
+
+    if (errorCount === 0) {
+      aggregateOutput = 'all-success';
+    } else if (successCount === 0) {
+      aggregateOutput = 'all-error';
+    } else {
+      aggregateOutput = 'partial';
+    }
+
+    const nextStage = fanOut.outputs[aggregateOutput] ?? null;
+    const result: NodeResultInterface<TState> = {
+      'output': aggregateOutput,
+      'skipped': false,
+      'nodeName': fanOut.name,
+      state
+    };
+
+    return {
+      nextStage,
+      result
+    };
+  }
+
+  private async executeParallelGroup(
+    group: ParallelNode,
+    state: TState,
+    dagName: string,
+    signal: AbortSignal | null,
+  ): Promise<InternalNodeResultInterface<TState>> {
+    const nodes = group.nodes.map((nodeName) => {
+      const node = this.nodeIndex.get(`${dagName}:${nodeName}`);
+
+      if (node?.type !== 'single') {
+        throw new DAGError(`Parallel group ${group.name} references invalid node: ${String(nodeName)}`);
+      }
+
+      return node;
+    });
+
+    const promises = nodes.map(async (nodeConfig) => {
+      const dagNode = this.nodes.get(nodeConfig.node);
+
+      if (!dagNode) {
+        throw new DAGError(`Unknown node: ${nodeConfig.node}`);
+      }
+      const context = this.buildContext(dagName, nodeConfig.name, signal);
+      const opResult = await dagNode.execute(state, context);
+
+      return {
+        opResult,
+        'node': nodeConfig
+      };
+    });
+
+    const results = await Promise.all(promises);
+
+    for (const { opResult } of results) {
+      if (opResult.errors) {
+        for (const error of opResult.errors) {
+          state.collectError(error);
+        }
+      }
+    }
+
+    const intermediateResults: Array<NodeResultInterface<TState>> = results.map(({
+      opResult, node
+    }) => ({
+      'output': opResult.output,
+      'skipped': false,
+      'nodeName': node.name,
+      state
+    }));
+
+    const outputs = results.map((resultItem) => resultItem.opResult.output);
+    const combiner = ParallelCombiners.resolve(group.combine);
+    const combinedOutput = combiner.combine(outputs, results, state);
+
+    const nextStage = group.outputs[combinedOutput] ?? null;
+    const result: NodeResultInterface<TState> & { 'intermediateResults': Array<NodeResultInterface<TState>> } = {
+      intermediateResults,
+      'output': combinedOutput,
+      'skipped': false,
+      'nodeName': group.name,
+      state
+    };
+
+    return {
+      nextStage,
+      result
+    };
+  }
+
+  private async executeSingleNode(
+    nodeConfig: SingleNodePlacementInterface,
+    state: TState,
+    dagName: string,
+    signal: AbortSignal | null,
+  ): Promise<InternalNodeResultInterface<TState>> {
+    const dagNode = this.nodes.get(nodeConfig.node);
+
+    if (!dagNode) {
+      throw new DAGError(`Unknown node: ${nodeConfig.node}`);
+    }
+
+    const context = this.buildContext(dagName, nodeConfig.name, signal);
+    const opResult = await dagNode.execute(state, context);
+
+    if (opResult.errors) {
+      for (const error of opResult.errors) {
+        state.collectError(error);
+      }
+    }
+
+    const nextStage = nodeConfig.outputs[opResult.output];
+
+    if (nextStage === undefined) {
+      throw new DAGError(`Node ${dagNode.name} returned output '${opResult.output}' but node ${nodeConfig.name} has no routing for it. `
+        + `Available outputs: ${Object.keys(nodeConfig.outputs).join(', ')}`);
+    }
+
+    const result: NodeResultInterface<TState> = {
+      'output': opResult.output,
+      'skipped': false,
+      'nodeName': nodeConfig.name,
+      state
+    };
+
+    return {
+      nextStage,
+      result
+    };
+  }
+
+  private async executeDAGNode(
+    entry: DAGNodeType,
+    state: TState,
+    dagName: string,
+    signal: AbortSignal | null,
+  ): Promise<InternalNodeResultInterface<TState>> {
+    const dispatch: Readonly<Record<DAGNodeType['type'], () => Promise<InternalNodeResultInterface<TState>>>> = {
+      'fan-out': () => this.executeFanOut(entry as FanOutNode, state, dagName, signal),
+      'parallel': () => this.executeParallelGroup(entry as ParallelNode, state, dagName, signal),
+      'single': () => this.executeSingleNode(entry as SingleNodePlacementInterface, state, dagName, signal),
+      'sub-dag': () => this.executeSubDAG(entry as SubDAGNode, state, signal),
+    };
+    const handler = dispatch[entry.type];
+    if (handler === undefined) {
+      throw new DAGError(`Unknown node type: ${(entry as DAGNodeType).type}`);
+    }
+    return handler();
+  }
+
+  private async executeSubDAG(
+    subDAG: SubDAGNode,
+    state: TState,
+    signal: AbortSignal | null,
+  ): Promise<InternalNodeResultInterface<TState>> {
+    const childState = this.createChildState(state, subDAG.stateMapping?.input);
+
+    const intermediateResults: Array<NodeResultInterface<TState>> = [];
+
+    // Forward the signal into the nested execution so child nodes also
+    // observe cancellation/timeouts.
+    const childOptions: ExecuteOptionsInterface = signal ? { 'signal': signal } : {};
+
+    for await (const nodeResult of this.runNodes(subDAG.dag, childState, null, childOptions)) {
+      const intermediate: NodeResultInterface<TState> = {
+        'skipped': nodeResult.skipped,
+        'nodeName': `${subDAG.name}.${nodeResult.nodeName}`,
+        state
+      };
+
+      if (nodeResult.output !== undefined) {
+        intermediate.output = nodeResult.output;
+      }
+      intermediateResults.push(intermediate);
+    }
+
+    this.mapOutputState(childState, state, subDAG.stateMapping?.output);
+
+    for (const error of childState.errors) {
+      state.collectError(error);
+    }
+    for (const warning of childState.warnings) {
+      state.collectWarning(warning);
+    }
+
+    const childOutput = childState.errors.length > 0 ? 'error' : 'success';
+    const nextStage = subDAG.outputs[childOutput] ?? null;
+
+    const result: NodeResultInterface<TState> & { 'intermediateResults': Array<NodeResultInterface<TState>> } = {
+      intermediateResults,
+      'output': childOutput,
+      'skipped': false,
+      'nodeName': subDAG.name,
+      state
+    };
+
+    return {
+      nextStage,
+      result
+    };
+  }
+
+  private async fanIn(
+    state: TState,
+    config: FanInConfig,
+    resultsByOutput: Map<string, unknown[]>,
+    dagName: string,
+    signal: AbortSignal | null,
+  ): Promise<void> {
+    const strategy = FanInStrategies.resolve(config.strategy);
+    const execution = this.buildFanInExecution(state, resultsByOutput, dagName, signal);
+    await strategy.apply(config, execution);
+  }
+
+  /**
+   * Build the per-fan-in execution context handed to a `FanInStrategy`.
+   * Carries the state accessor, the results map, the dag/signal, and the
+   * `invokeNode` method that strategies use to dispatch a registered
+   * node back through the engine.
+   */
+  private buildFanInExecution(
+    state: TState,
+    resultsByOutput: Map<string, unknown[]>,
+    dagName: string,
+    signal: AbortSignal | null,
+  ): FanInExecution<TState> {
+    const dispatcher = this;
+    const readonlyResults: ReadonlyMap<string, readonly unknown[]> = resultsByOutput;
+    return {
+      state,
+      'results': readonlyResults,
+      dagName,
+      signal,
+      'accessor': dispatcher.accessor,
+      async invokeNode(nodeName: string): Promise<void> {
+        const dagNode = dispatcher.nodes.get(nodeName);
+        if (!dagNode) {
+          throw new DAGError(`Unknown custom node: ${nodeName}`);
+        }
+        const context = dispatcher.buildContext(dagName, nodeName, signal);
+        await dagNode.execute(state, context);
+      },
+    };
+  }
+
+  private mapOutputState(
+    childState: TState,
+    parentState: TState,
+    outputMapping?: Record<string, string>
+  ): void {
+    if (outputMapping) {
+      for (const [
+        parentKey,
+        childKey
+      ] of Object.entries(outputMapping)) {
+        const value = this.accessor.get(childState, childKey);
+
+        this.accessor.set(parentState, parentKey, value);
+      }
+    }
+  }
+
+  private static validateDAGConfig<TState extends NodeStateInterface, TServices>(
+    dag: DAG,
+    nodes: Map<string, NodeInterface<TState, string, TServices>>,
+    dags: Map<string, DAG>
+  ): void {
+    const errors: string[] = [];
+    const nodeNames = new Set<string>();
+
+    for (const node of dag.nodes) {
+      if (nodeNames.has(node.name)) {
+        errors.push(`Duplicate node name: ${node.name}`);
+      }
+      nodeNames.add(node.name);
+    }
+
+    if (!nodeNames.has(dag.entrypoint)) {
+      errors.push(`Entrypoint '${dag.entrypoint}' does not exist in nodes`);
+    }
+
+    for (const node of dag.nodes) {
+      Dagonizer.validateDAGNode(node, nodes, dags, nodeNames, errors);
+    }
+
+    const subDAGRefs = new Set<string>();
+    Dagonizer.collectSubDAGReferences(dag, dags, subDAGRefs, new Set([dag.name]), errors);
+
+    if (errors.length > 0) {
+      throw new DAGError(`Invalid DAG '${dag.name}':\n  - ${errors.join('\n  - ')}`);
+    }
+  }
+
+  private static validateDAGNode<TState extends NodeStateInterface, TServices>(
+    entry: DAGNodeType,
+    nodes: Map<string, NodeInterface<TState, string, TServices>>,
+    dags: Map<string, DAG>,
+    nodeNames: Set<string>,
+    errors: string[]
+  ): void {
+    const validators: Readonly<Record<DAGNodeType['type'], () => void>> = {
+      'fan-out': () => Dagonizer.validateFanOutNode(entry as FanOutNode, nodes, nodeNames, errors),
+      'parallel': () => Dagonizer.validateParallelNode(entry as ParallelNode, nodeNames, errors),
+      'single': () => Dagonizer.validateSingleNode(entry as SingleNodePlacementInterface, nodes, nodeNames, errors),
+      'sub-dag': () => Dagonizer.validateSubDAGNode(entry as SubDAGNode, dags, nodeNames, errors),
+    };
+    validators[entry.type]?.();
+  }
+
+  private static validateSingleNode<TState extends NodeStateInterface, TServices>(
+    nodeConfig: SingleNodePlacementInterface,
+    nodes: Map<string, NodeInterface<TState, string, TServices>>,
+    nodeNames: Set<string>,
+    errors: string[]
+  ): void {
+    const dagNode = nodes.get(nodeConfig.node);
+
+    if (!dagNode) {
+      errors.push(`Node '${nodeConfig.name}' references unknown registered node: ${nodeConfig.node}`);
+      return;
+    }
+
+    for (const output of dagNode.outputs) {
+      if (!(output in nodeConfig.outputs)) {
+        errors.push(`Node '${nodeConfig.name}': registered node '${dagNode.name}' declares output '${output}' but no routing is defined`);
+      }
+    }
+
+    for (const [output, target] of Object.entries(nodeConfig.outputs)) {
+      if (target !== null && !nodeNames.has(target)) {
+        errors.push(`Node '${nodeConfig.name}': output '${output}' routes to unknown node '${target}'`);
+      }
+    }
+  }
+
+  private static validateParallelNode(
+    group: ParallelNode,
+    nodeNames: Set<string>,
+    errors: string[]
+  ): void {
+    for (const nodeName of group.nodes) {
+      if (!nodeNames.has(nodeName)) {
+        errors.push(`Parallel group '${group.name}' references unknown node: ${nodeName}`);
+      }
+    }
+
+    for (const [output, target] of Object.entries(group.outputs)) {
+      if (target !== null && !nodeNames.has(target)) {
+        errors.push(`Parallel group '${group.name}': output '${output}' routes to unknown node '${target}'`);
+      }
+    }
+  }
+
+  private static validateFanOutNode<TState extends NodeStateInterface, TServices>(
+    fanOut: FanOutNode,
+    nodes: Map<string, NodeInterface<TState, string, TServices>>,
+    nodeNames: Set<string>,
+    errors: string[]
+  ): void {
+    const dagNode = nodes.get(fanOut.node);
+
+    if (!dagNode) {
+      errors.push(`Fan-out '${fanOut.name}' references unknown registered node: ${fanOut.node}`);
+    }
+
+    if (fanOut.fanIn.strategy === 'append' && fanOut.fanIn.target === undefined) {
+      errors.push(`Fan-out '${fanOut.name}': 'append' strategy requires 'target' path`);
+    }
+    if (fanOut.fanIn.strategy === 'partition' && fanOut.fanIn.partitions === undefined) {
+      errors.push(`Fan-out '${fanOut.name}': 'partition' strategy requires 'partitions' config`);
+    }
+    if (fanOut.fanIn.strategy === 'custom') {
+      if (fanOut.fanIn.customNode === undefined) {
+        errors.push(`Fan-out '${fanOut.name}': 'custom' strategy requires 'customNode'`);
+      } else if (!nodes.has(fanOut.fanIn.customNode)) {
+        errors.push(`Fan-out '${fanOut.name}': custom node '${fanOut.fanIn.customNode}' not found`);
+      }
+    }
+
+    for (const [output, target] of Object.entries(fanOut.outputs)) {
+      if (target !== null && !nodeNames.has(target)) {
+        errors.push(`Fan-out '${fanOut.name}': output '${output}' routes to unknown node '${target}'`);
+      }
+    }
+  }
+
+  private static validateSubDAGNode(
+    subDAG: SubDAGNode,
+    dags: Map<string, DAG>,
+    nodeNames: Set<string>,
+    errors: string[]
+  ): void {
+    if (!dags.has(subDAG.dag)) {
+      errors.push(`Sub-DAG '${subDAG.name}' references unknown DAG: ${subDAG.dag}`);
+    }
+
+    for (const [output, target] of Object.entries(subDAG.outputs)) {
+      if (target !== null && !nodeNames.has(target)) {
+        errors.push(`Sub-DAG '${subDAG.name}': output '${output}' routes to unknown node '${target}'`);
+      }
+    }
+  }
+
+  private static collectSubDAGReferences(
+    dag: DAG,
+    dags: Map<string, DAG>,
+    visited: Set<string>,
+    path: Set<string>,
+    errors: string[]
+  ): void {
+    for (const node of dag.nodes) {
+      if (node.type === 'sub-dag') {
+        if (path.has(node.dag)) {
+          errors.push(`Circular sub-DAG reference detected: ${Array.from(path).join(' -> ')} -> ${node.dag}`);
+          continue;
+        }
+
+        if (!visited.has(node.dag)) {
+          visited.add(node.dag);
+          const subDAG = dags.get(node.dag);
+
+          if (subDAG) {
+            const newPath = new Set(path);
+            newPath.add(node.dag);
+            Dagonizer.collectSubDAGReferences(subDAG, dags, visited, newPath, errors);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Register a DAG configuration.
+   *
+   * Runs two validation passes:
+   * 1. Schema pass — `Validator.dag.validate(dag)` checks structure (required fields, valid
+   *    `type` and `strategy` enumerations).
+   * 2. Semantic pass — verifies entrypoint exists, all node references are resolvable,
+   *    no circular sub-DAG references, and every registered node output has a routing
+   *    entry in the placement's `outputs` map.
+   */
+  registerDAG(dag: DAG): void {
+    // Schema pre-pass: catches malformed JSON (missing fields, wrong
+    // node `type`, fan-in strategy mismatch) before semantic validation
+    // surfaces node/DAG cross-references.
+    Validator.dag.validate(dag);
+    Dagonizer.validateDAGConfig(dag, this.nodes, this.dags);
+    this.dags.set(dag.name, dag);
+    for (const node of dag.nodes) {
+      this.nodeIndex.set(`${dag.name}:${node.name}`, node);
+    }
+  }
+
+  /**
+   * Parse JSON and validate against `DAGSchema`. The single permitted
+   * ingest boundary where `unknown` enters the package.
+   *
+   * Throws `ValidationError` for malformed JSON or schema-noncompliant input.
+   */
+  static load(json: string): DAG {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(json);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new ValidationError(`Invalid JSON: ${message}`);
+    }
+    return Validator.dag.validate(parsed);
+  }
+
+  /**
+   * Parse an already-decoded value and validate. Same boundary semantics
+   * as `load` but skips JSON.parse for callers that have already decoded.
+   */
+  static fromValue(value: unknown): DAG {
+    return Validator.dag.validate(value);
+  }
+
+  /** Serialize a DAG to pretty JSON (2-space indent). */
+  static serialize(dag: DAG): string {
+    return JSON.stringify(dag, null, 2);
+  }
+
+  /** Serialize a DAG to compact JSON (no whitespace). */
+  static serializeCompact(dag: DAG): string {
+    return JSON.stringify(dag);
+  }
+
+  /**
+   * Register a node. Accepts narrowly-typed nodes
+   * (`NodeInterface<TState, 'success' | 'error', TServices>`) and stores
+   * them widened to `NodeInterface<TState, string, TServices>` — narrow →
+   * wide is sound covariantly on both `outputs` and the result `output`.
+   */
+  registerNode<TOutput extends string>(
+    node: NodeInterface<TState, TOutput, TServices>,
+  ): void {
+    if (node.validate) {
+      const result = node.validate();
+
+      if (!result.valid) {
+        throw new DAGError(`Invalid node ${node.name}: ${result.errors.join(', ')}`);
+      }
+    }
+    this.nodes.set(node.name, node as NodeInterface<TState, string, TServices>);
+  }
+}
