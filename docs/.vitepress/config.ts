@@ -83,8 +83,8 @@ const SITE_DESCRIPTION_SHORT = 'Type-safe DAG dispatcher for Node.js. Abortable 
 const SITE_BASE = '/Dagonizer/';
 const SITE_URL = `https://studnicky.github.io${SITE_BASE}`;
 const SITE_ICON = `${SITE_URL}dagonizer-icon.svg`;
-const SITE_OG_IMAGE = SITE_ICON;
-const SITE_THEME_COLOR = '#0e1525';
+const SITE_OG_IMAGE = `${SITE_URL}og-image.png`;
+const SITE_THEME_COLOR = '#22e8ff';
 const SITE_KEYWORDS = 'dagonizer, dag, workflow, orchestration, dispatcher, node.js, typescript, flow, pipeline, state-machine, fan-out, fan-in, sub-dag, parallel, checkpoint, abortable, deterministic resume, mermaid visualization, json schema, retry policy, cancellation, async-iterable, contract-derived flow';
 const SITE_AUTHOR_NAME = 'Andrew Studnicky';
 const SITE_AUTHOR_URL = 'https://github.com/Studnicky';
@@ -94,58 +94,90 @@ export default withMermaid(defineConfig({
   title: SITE_TITLE,
   titleTemplate: `:title | ${SITE_TITLE}`,
   description: SITE_DESCRIPTION,
+  lang: 'en-US',
+  base: SITE_BASE,
   sitemap: { hostname: SITE_URL },
   appearance: true,
   cleanUrls: true,
   lastUpdated: true,
   head: [
-    // ── Favicon — the talisman, served as SVG with a 32x32 fallback
-    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/dagonizer-icon.svg' }],
-    ['link', { rel: 'apple-touch-icon', href: '/dagonizer-icon.svg' }],
-    ['link', { rel: 'mask-icon', href: '/dagonizer-icon.svg', color: '#22e8ff' }],
+    // ── Favicon stack — SVG for modern browsers, raster fallbacks for legacy
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: `${SITE_BASE}dagonizer-icon.svg` }],
+    ['link', { rel: 'icon', type: 'image/x-icon', href: `${SITE_BASE}favicon.ico` }],
+    ['link', { rel: 'icon', type: 'image/png', sizes: '32x32', href: `${SITE_BASE}favicon-32.png` }],
+    ['link', { rel: 'icon', type: 'image/png', sizes: '192x192', href: `${SITE_BASE}favicon-192.png` }],
+    ['link', { rel: 'shortcut icon', href: `${SITE_BASE}favicon.ico` }],
+    ['link', { rel: 'apple-touch-icon', sizes: '180x180', href: `${SITE_BASE}apple-touch-icon.png` }],
+    ['link', { rel: 'mask-icon', href: `${SITE_BASE}dagonizer-icon.svg`, color: SITE_THEME_COLOR }],
 
-    // ── Canonical + robots
-    ['meta', { name: 'robots', content: 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1' }],
-    ['meta', { name: 'author', content: 'Andrew Studnicky' }],
-    ['meta', { name: 'keywords', content: SITE_KEYWORDS }],
-    ['meta', { name: 'theme-color', content: '#0e1525' }],
+    // ── Mobile / browser chrome
+    ['meta', { name: 'theme-color', content: SITE_THEME_COLOR }],
     ['meta', { name: 'color-scheme', content: 'dark light' }],
+    ['meta', { name: 'msapplication-TileColor', content: SITE_THEME_COLOR }],
+    ['meta', { name: 'msapplication-TileImage', content: `${SITE_BASE}dagonizer-icon-512.png` }],
     ['meta', { name: 'application-name', content: SITE_TITLE }],
+    ['meta', { name: 'apple-mobile-web-app-title', content: SITE_TITLE }],
+    ['meta', { name: 'apple-mobile-web-app-capable', content: 'yes' }],
+    ['meta', { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' }],
 
-    // ── Open Graph (Facebook, Slack, Discord, LinkedIn, etc.)
-    ['meta', { property: 'og:site_name', content: SITE_TITLE }],
+    // ── SEO basics
+    ['meta', { name: 'description', content: SITE_DESCRIPTION }],
+    ['meta', { name: 'keywords', content: SITE_KEYWORDS }],
+    ['meta', { name: 'author', content: SITE_AUTHOR_NAME }],
+    ['meta', { name: 'robots', content: 'index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1' }],
+    ['meta', { name: 'googlebot', content: 'index, follow' }],
+    ['meta', { name: 'generator', content: 'VitePress' }],
+    ['link', { rel: 'sitemap', type: 'application/xml', href: `${SITE_BASE}sitemap.xml` }],
+
+    // ── Open Graph — per-page overrides applied in transformPageData
     ['meta', { property: 'og:type', content: 'website' }],
-    ['meta', { property: 'og:url', content: SITE_URL }],
+    ['meta', { property: 'og:site_name', content: SITE_TITLE }],
     ['meta', { property: 'og:title', content: `${SITE_TITLE} — ${SITE_TAGLINE}` }],
     ['meta', { property: 'og:description', content: SITE_DESCRIPTION }],
-    ['meta', { property: 'og:image', content: SITE_ICON }],
-    ['meta', { property: 'og:image:type', content: 'image/svg+xml' }],
-    ['meta', { property: 'og:image:width', content: '1190' }],
-    ['meta', { property: 'og:image:height', content: '1190' }],
-    ['meta', { property: 'og:image:alt', content: 'Dagonizer hexagonal talisman icon' }],
+    ['meta', { property: 'og:url', content: SITE_URL }],
+    ['meta', { property: 'og:image', content: SITE_OG_IMAGE }],
+    ['meta', { property: 'og:image:secure_url', content: SITE_OG_IMAGE }],
+    ['meta', { property: 'og:image:type', content: 'image/png' }],
+    ['meta', { property: 'og:image:width', content: '1200' }],
+    ['meta', { property: 'og:image:height', content: '630' }],
+    ['meta', { property: 'og:image:alt', content: `${SITE_TITLE} — ${SITE_TAGLINE}` }],
     ['meta', { property: 'og:locale', content: 'en_US' }],
 
-    // ── Twitter Card
+    // ── Twitter Card — per-page overrides applied in transformPageData
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
     ['meta', { name: 'twitter:title', content: `${SITE_TITLE} — ${SITE_TAGLINE}` }],
-    ['meta', { name: 'twitter:description', content: SITE_DESCRIPTION }],
-    ['meta', { name: 'twitter:image', content: SITE_ICON }],
-    ['meta', { name: 'twitter:image:alt', content: 'Dagonizer hexagonal talisman icon' }],
+    ['meta', { name: 'twitter:description', content: SITE_DESCRIPTION_SHORT }],
+    ['meta', { name: 'twitter:image', content: SITE_OG_IMAGE }],
+    ['meta', { name: 'twitter:image:alt', content: `${SITE_TITLE} — ${SITE_TAGLINE}` }],
 
-    // ── Schema.org JSON-LD (SoftwareSourceCode for organic-discovery indexing)
+    // ── JSON-LD: SoftwareSourceCode for code-discovery results
     ['script', { type: 'application/ld+json' }, JSON.stringify({
       '@context': 'https://schema.org',
       '@type': 'SoftwareSourceCode',
       'name': SITE_TITLE,
       'description': SITE_DESCRIPTION,
       'url': SITE_URL,
-      'codeRepository': 'https://github.com/Studnicky/Dagonizer',
+      'codeRepository': SITE_REPO,
       'programmingLanguage': 'TypeScript',
       'runtimePlatform': 'Node.js >=24',
       'license': 'https://opensource.org/licenses/MIT',
-      'author': { '@type': 'Person', 'name': 'Andrew Studnicky' },
+      'image': SITE_OG_IMAGE,
+      'author': {
+        '@type': 'Person',
+        'name': SITE_AUTHOR_NAME,
+        'url': SITE_AUTHOR_URL,
+      },
       'keywords': SITE_KEYWORDS,
-      'image': SITE_ICON,
+    })],
+
+    // ── JSON-LD: WebSite for site-card results
+    ['script', { type: 'application/ld+json' }, JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      'name': SITE_TITLE,
+      'url': SITE_URL,
+      'description': SITE_DESCRIPTION,
+      'inLanguage': 'en-US',
     })],
 
     // ── Google Fonts — Caudex (body) + Share Tech Mono (code)
@@ -156,6 +188,35 @@ export default withMermaid(defineConfig({
       href: 'https://fonts.googleapis.com/css2?family=Caudex:ital,wght@0,400;0,700;1,400;1,700&family=Share+Tech+Mono&display=swap',
     }],
   ],
+  /**
+   * Per-page metadata. Emits page-specific og:url / og:title /
+   * og:description / twitter:title / twitter:description / canonical so
+   * social unfurls and SEO results surface the page's own title and URL
+   * rather than the site-level default. Without this, every Discord
+   * paste of any page would show the homepage card.
+   */
+  transformPageData(pageData): void {
+    const relPath = pageData.relativePath
+      .replace(/\.md$/, '')
+      .replace(/(^|\/)index$/, '');
+    const pageUrl = relPath === '' ? SITE_URL : `${SITE_URL}${relPath}`;
+    const fmTitle = pageData.frontmatter['title'] as string | undefined;
+    const fmDescription = pageData.frontmatter['description'] as string | undefined;
+    const title = fmTitle ?? pageData.title ?? SITE_TITLE;
+    const description = fmDescription ?? pageData.description ?? SITE_DESCRIPTION;
+    const displayTitle = title === SITE_TITLE ? SITE_TITLE : `${title} | ${SITE_TITLE}`;
+
+    pageData.frontmatter['head'] = [
+      ...(pageData.frontmatter['head'] as ReadonlyArray<readonly [string, Record<string, string>]> ?? []),
+      ['link', { rel: 'canonical', href: pageUrl }],
+      ['meta', { property: 'og:url', content: pageUrl }],
+      ['meta', { property: 'og:title', content: displayTitle }],
+      ['meta', { property: 'og:description', content: description }],
+      ['meta', { name: 'twitter:title', content: displayTitle }],
+      ['meta', { name: 'twitter:description', content: description }],
+      ['meta', { name: 'description', content: description }],
+    ];
+  },
   markdown: {
     theme: {
       light: 'github-light',
