@@ -7,51 +7,11 @@ description: 'A bookstore help-bot built on Dagonizer — multi-branch DAG with 
 
 The Archivist is the running demo every Dagonizer example refers to. It is a bookstore help-bot — a visitor describes a book or asks for a recommendation, and the Archivist composes a response by classifying the question, fanning out across the shop's local catalog and an external RAG provider, merging the candidates, and composing + validating a draft response in a bounded retry loop.
 
-Try it live below — the demo runs in your browser. The runner detects the best LLM backend available (Chrome's built-in Gemini Nano, your Gemini AI Studio key, or the offline stub) and surfaces which one is answering. The DAG itself executes the same nodes shipped in [`examples/the-archivist/`](https://github.com/Studnicky/Dagonizer/tree/main/examples/the-archivist).
-
-## Live demo
+Try it live below — the demo runs in your browser. The runner detects the best LLM backend available (Chrome's built-in Gemini Nano, your Gemini AI Studio key, or the offline stub) and surfaces which one is answering.
 
 <ArchivistRunner />
 
 Watch the **DAG** pane: each node lights cyan while executing, then settles to "completed" with the taken edge highlighted. The **Memory** pane mirrors `state.intent`, `state.terms`, `state.shortlist`, `state.attempts.compose` as the dispatcher mutates them. Everything is driven by the dispatcher's `onFlowStart` / `onNodeStart` / `onNodeEnd` / `onError` / `onFlowEnd` hooks — there is no timer-based animation, the runner is a pure observer of the state machine.
-
-Same shape as Nocturne's concierge / scout pattern, applied to one coherent domain that touches every Dagonizer feature: hard gates, soft gates, parallel placements, retry-loop nodes, services container, checkpoint round-trip, and the Mermaid renderer.
-
-The vocabulary (`Book`, `Isbn`, `Title`, `Money`) mirrors json-tology's [Bookstore domain](https://studnicky.github.io/json-tology/bookstore-domain) so the two demos cross-reference cleanly.
-
-## Flow
-
-```mermaid
-flowchart TB
-  classify[classify-intent]
-  extract[extract-query]
-  scout[scout-parallel]
-  local[local-catalog-scout]
-  rag[external-rag-scout]
-  merge[merge-candidates]
-  compose[compose-response]
-  validate[validate-response]
-  respond([respond-to-visitor])
-  declineOff([decline-off-topic])
-  declineEmpty([decline-empty])
-  END([end])
-
-  classify -->|on-topic| extract
-  classify -->|off-topic| declineOff
-  extract -->|success| scout
-  scout --> local
-  scout --> rag
-  scout --> merge
-  merge -->|ranked| compose
-  merge -->|empty| declineEmpty
-  compose -->|drafted| validate
-  validate -->|approved| respond
-  validate -->|retry| compose
-  validate -->|exhausted| respond
-  respond --> END
-  declineOff --> END
-  declineEmpty --> END
-```
 
 ## Branches and gates
 
@@ -64,50 +24,6 @@ Three exit conditions, each carrying a different outcome.
 | **Best-effort response** | `validateResponse` exhausts `MAX_COMPOSE_ATTEMPTS` | `respond-to-visitor` | Sends the last draft anyway — the dispatcher never throws. |
 | **Approved response** | `validateResponse` returns `approved` | `respond-to-visitor` | Normal happy path. |
 | **Retry loop** | `validateResponse` returns `retry` | back to `compose-response` | Bounded by the counter on `state.attempts.compose`. |
-
-## Domain files
-
-The full implementation lives under [`examples/the-archivist/`](https://github.com/Studnicky/Dagonizer/tree/main/examples/the-archivist) in the repo. Every docs snippet is excerpted from those files; clone and run them directly.
-
-```
-examples/the-archivist/
-├── ArchivistState.ts       # NodeStateBase subclass — query, intent, candidates, draft, attempts, toolPlan
-├── services.ts             # CatalogReader, RagReader, WebSearchTool, MemoryStore, LlmClient
-├── dag.ts                  # Canonical DAG declaration
-├── runArchivist.ts         # End-to-end demo runner — picks the best LLM backend at boot
-├── entities/
-│   └── Book.ts             # Book / Money / Candidate — mirrors json-tology bookstore
-├── memory/
-│   └── MemoryStore.ts      # n3.js triple store + SPARQL-style ASK/SELECT helpers
-├── tools/
-│   ├── ToolDefinition.ts   # Tool / ToolDefinition / ToolCall (nocturne contract)
-│   └── OpenLibrarySearchTool.ts # Real web search via openlibrary.org (CORS-friendly)
-├── logger/
-│   └── ConsoleLogger.ts    # Logger service — Node stdout + browser subscriber stream
-├── nodes/
-│   ├── ArchivistNode.ts    # NodeKind tagging (deterministic vs non-deterministic)
-│   ├── classifyIntent.ts   # Entry classifier — hard-gates off-topic
-│   ├── extractQuery.ts     # Free-text → search terms
-│   ├── decideTools.ts      # LLM decides which tools to invoke (native function-calling)
-│   ├── scouts.ts           # localCatalogScout + externalRagScout + webSearchScout (LLM-gated)
-│   ├── mergeCandidates.ts  # Dedupe + rank + soft-gate empty
-│   ├── recordFindings.ts   # Memory write — triples to the n3 store
-│   ├── hasCitationsGate.ts # SPARQL ASK gate — pass only when shortlist is sourced
-│   ├── composeResponse.ts  # composeResponse + validateResponse (bounded loop)
-│   └── respondToVisitor.ts # 3 terminal nodes
-└── providers/
-    ├── index.ts                  # detectBackends + pickBestBackend + instantiateProvider
-    ├── BaseLlmClient.ts          # Single LlmClient impl on top of any LlmAdapter
-    ├── prompts.ts                # Composable directives + prompt builders + output schemas
-    └── adapters/                 # ── Provider-agnostic adapter pattern ──
-        ├── LlmAdapter.ts           # ChatRequest / ChatResponse / ToolDefinition contract
-        ├── LlmError.ts             # Error taxonomy + classifyHttp
-        ├── BaseAdapter.ts          # Retry plumbing (RetryPolicy + Retry-After honour)
-        ├── GeminiApiAdapter.ts     # Native functionDeclarations + JSON schema
-        ├── GeminiNanoAdapter.ts    # Chrome on-device, responseConstraint JSON schema
-        ├── WebLlmAdapter.ts        # WebGPU Phi-3.5 via response_format json_object
-        └── StubAdapter.ts          # Pattern-match tool calls; canned text otherwise
-```
 
 ## Running it for real
 
@@ -181,35 +97,6 @@ npx tsx examples/the-archivist/runArchivist.ts
 GEMINI_API_KEY=AIza... npx tsx examples/the-archivist/runArchivist.ts
 ```
 
-In the browser the umbrella widget surfaces a backend banner ("Running on Gemini Nano (local)" / "Running on Gemini 2.0 Flash (your key)" / etc.) and exposes a dropdown to override the auto-pick.
-
-## Services bag
-
-The Archivist depends on three injected readers:
-
-```ts
-interface ArchivistServices {
-  readonly catalog: CatalogReader; // local in-stock database
-  readonly rag:     RagReader;     // external retrieval-augmented provider
-  readonly llm:     LlmClient;     // classify / extract / compose / validate
-  readonly logger:  { info, warn };
-}
-```
-
-Constructed once and handed to `Dagonizer<ArchivistState, ArchivistServices>({ services })`. Every node receives the same reference through `context.services`. Swap stubs for real clients in production; the DAG never changes.
-
-## State
-
-`ArchivistState` extends `NodeStateBase` and adds the per-execution fields the nodes mutate: `query`, `intent`, `terms`, `candidates`, `shortlist`, `draft`, `approved`, `attempts`. `snapshotData()` and `restoreData()` round-trip the domain fields so `Checkpoint.from` / `Checkpoint.restore` work without losing the visitor's question or the half-composed draft.
-
-## Run it
-
-```bash
-npx tsx docs/.examples/the-archivist/runArchivist.ts
-```
-
-The runner ships stub services that produce a small in-process catalog and a single mock RAG hit, so the demo runs offline.
-
 ## What each phase example covers
 
 The eight per-phase example pages each isolate one Dagonizer feature against this domain:
@@ -226,6 +113,51 @@ The eight per-phase example pages each isolate one Dagonizer feature against thi
 | 08 | Checkpoint mid-draft and resume | [Phase 08 · Checkpoint + resume](./08-checkpoint) |
 
 Every page starts from the same `ArchivistState` + `services` + node set; only the DAG variation and the registered subset change.
+
+## Compositional sub-DAGs
+
+The Archivist's DAG is composed of two reusable sub-DAGs that ship as independent components. Each is a `DAG` value any consumer can import, register, and reference as a `.subDAG(...)` placement in their own DAG.
+
+- **`book-search-fanout`** — extract-query + decide-tools + 4-source parallel scout cluster (OpenLibrary, Google Books, Subject, Wikipedia) + rank-candidates + merge-candidates + record-findings + has-citations-gate + recall-past-visits. Used in three intent branches (`on-topic-search`, `author-search`, `similar-search`); one definition, three placements.
+- **`compose-retry-loop`** — compose-response + validate-response (with bounded retry loop back to compose) + respond-to-visitor. Every successful search branch funnels through this one shared cluster.
+
+The renderer expands both sub-DAGs inline in the diagram — compound-graph children render inside the placement box so the full topology is visible. No opaque boxes.
+
+Reviews and describe branches are inlined in the parent DAG because they substitute `rankByRating` and `pickBestMatch` for `rankCandidates` respectively — the structural variation is explicit rather than hidden behind a sub-DAG parameter.
+
+### BookSearchFanoutDAG
+
+<<< ../../examples/the-archivist/subdags/BookSearchFanoutDAG.ts
+
+### ComposeRetryLoopDAG
+
+<<< ../../examples/the-archivist/subdags/ComposeRetryLoopDAG.ts
+
+## Source
+
+### DAG topology
+
+<<< ../../examples/the-archivist/dag.ts
+
+### State
+
+<<< ../../examples/the-archivist/ArchivistState.ts
+
+### Prompts (composable directives)
+
+<<< ../../examples/the-archivist/providers/prompts.ts
+
+### Classification node
+
+<<< ../../examples/the-archivist/nodes/classifyIntent.ts
+
+### Memory + ontology
+
+<<< ../../examples/the-archivist/memory/MemoryStore.ts
+
+### Ontology (TBox + ABox)
+
+<<< ../../examples/the-archivist/ontology/ArchivistOntology.ts
 
 ## See also
 

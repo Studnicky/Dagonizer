@@ -2,16 +2,14 @@
 /**
  * ArchivistRunner — orchestrator for the in-browser Archivist demo.
  *
- *   ┌─────────────────────────────────────────────────────────────────┐
- *   │  BackendPicker                                                   │
- *   │  ┌───────────────────────────────────────────────────────────┐   │
- *   │  │                       DagGraph                            │   │
- *   │  └───────────────────────────────────────────────────────────┘   │
- *   │  ┌─────────────────────┬──────────────────────┬──────────────┐  │
- *   │  │   Conversation      │       Memory         │   Trace      │  │
- *   │  └─────────────────────┴──────────────────────┴──────────────┘  │
- *   │  RunControls                                                     │
- *   └─────────────────────────────────────────────────────────────────┘
+ * Two-column iridis-style layout with container-query breakpoint:
+ *
+ *   ┌──────────────────────────────────────────────────────────────────────┐
+ *   │ <single-column on narrow; two-column at ≥720px container width>      │
+ *   ├──────────────────────────┬───────────────────────────────────────────┤
+ *   │ LEFT COL                  │ RIGHT COL                                │
+ *   │ tabs: Conversation|Config │ tabs: DAG | Memory | Trace               │
+ *   └──────────────────────────┴───────────────────────────────────────────┘
  *
  * Pure observer: the dispatcher's lifecycle hooks toggle CSS classes on
  * cytoscape nodes / edges via the DagGraph's imperative surface — no
@@ -35,20 +33,20 @@ import { RdfProvObserver } from '../../../../examples/the-archivist/provenance/R
 import { StateProjection } from '../../../../examples/the-archivist/state/StateProjection.ts';
 import { NODE_KINDS } from '../../../../examples/the-archivist/nodes/ArchivistNode.ts';
 import { classifyIntent } from '../../../../examples/the-archivist/nodes/classifyIntent.ts';
-import { composeResponse, validateResponse } from '../../../../examples/the-archivist/nodes/composeResponse.ts';
 import { decideTools } from '../../../../examples/the-archivist/nodes/decideTools.ts';
 import { extractQuery } from '../../../../examples/the-archivist/nodes/extractQuery.ts';
 import { groupByYear } from '../../../../examples/the-archivist/nodes/groupByYear.ts';
 import { hasCitationsGate } from '../../../../examples/the-archivist/nodes/hasCitationsGate.ts';
 import { mergeCandidates } from '../../../../examples/the-archivist/nodes/mergeCandidates.ts';
-import { rankCandidates } from '../../../../examples/the-archivist/nodes/rankCandidates.ts';
 import { rankByRating } from '../../../../examples/the-archivist/nodes/rankByRating.ts';
 import { pickBestMatch } from '../../../../examples/the-archivist/nodes/pickBestMatch.ts';
 import { recallContext } from '../../../../examples/the-archivist/nodes/recallContext.ts';
 import { recallPastVisits } from '../../../../examples/the-archivist/nodes/recallPastVisits.ts';
 import { recommendSimilar } from '../../../../examples/the-archivist/nodes/recommendSimilar.ts';
 import { recordFindings } from '../../../../examples/the-archivist/nodes/recordFindings.ts';
-import { declineEmpty, declineOffTopic, respondToVisitor } from '../../../../examples/the-archivist/nodes/respondToVisitor.ts';
+import { composeResponse, validateResponse } from '../../../../examples/the-archivist/nodes/composeResponse.ts';
+import { rankCandidates } from '../../../../examples/the-archivist/nodes/rankCandidates.ts';
+import { declineEmpty, declineOffTopic } from '../../../../examples/the-archivist/nodes/respondToVisitor.ts';
 import { webSearchScout, openLibraryScout, googleBooksScout, subjectScout, wikipediaScout } from '../../../../examples/the-archivist/nodes/scouts.ts';
 import { detectBackends, hasNoRunnableModel, instantiateProvider, pickBestBackend } from '../../../../examples/the-archivist/providers/index.ts';
 import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
@@ -57,6 +55,14 @@ import { GoogleBooksTool } from '../../../../examples/the-archivist/tools/Google
 import { OpenLibrarySearchTool } from '../../../../examples/the-archivist/tools/OpenLibrarySearchTool.ts';
 import { SubjectSearchTool } from '../../../../examples/the-archivist/tools/SubjectSearchTool.ts';
 import { WikipediaSummaryTool } from '../../../../examples/the-archivist/tools/WikipediaSummaryTool.ts';
+import {
+  BookSearchFanoutDAG,
+  registerBookSearchFanoutNodes,
+} from '../../../../examples/the-archivist/subdags/BookSearchFanoutDAG.ts';
+import {
+  ComposeRetryLoopDAG,
+  registerComposeRetryLoopNodes,
+} from '../../../../examples/the-archivist/subdags/ComposeRetryLoopDAG.ts';
 
 import { ObservedDagonizer } from './ObservedDagonizer.ts';
 import BackendPicker from './BackendPicker.vue';
@@ -97,7 +103,7 @@ const memoryTick = ref(0); // bumped after each write so MemoryGraph re-renders
 const isPersisted = ref(memoryStore.isPersisted);
 const logger = new ConsoleLogger();
 
-// ── Timeout settings (deliverable 1) ────────────────────────────────────
+// ── Timeout settings ─────────────────────────────────────────────────────
 const timeoutSettings = ref<TimeoutSettings>({
   'composeMs':   30_000,
   'webSearchMs': 20_000,
@@ -119,7 +125,7 @@ function overallDeadlineMs(): number {
   return composeMs + webSearchMs + rankMs + grace;
 }
 
-// ── Cancel button (deliverable 2) ────────────────────────────────────────
+// ── Cancel button ────────────────────────────────────────────────────────
 let activeAbortController: AbortController | null = null;
 
 function cancel(): void {
@@ -128,7 +134,7 @@ function cancel(): void {
   }
 }
 
-// ── Checkpoint (deliverable 3) ───────────────────────────────────────────
+// ── Checkpoint ───────────────────────────────────────────────────────────
 const CHECKPOINT_KEY = 'dagonizer-archivist-checkpoint';
 const checkpointNode = ref<string | null>(null);
 const hasCheckpoint = ref(
@@ -210,16 +216,20 @@ async function resumeFromCheckpoint(): Promise<void> {
     'observer': buildObserver(restored.cursor, prov),
   });
 
+  // Register sub-DAGs (molecular pattern)
+  registerBookSearchFanoutNodes(dispatcher);
+  dispatcher.registerDAG(BookSearchFanoutDAG);
+  registerComposeRetryLoopNodes(dispatcher);
+  dispatcher.registerDAG(ComposeRetryLoopDAG);
+
   for (const node of [
     recallContext,
     classifyIntent, extractQuery, decideTools,
     webSearchScout, openLibraryScout, googleBooksScout, subjectScout, wikipediaScout,
-    rankCandidates,
     rankByRating, pickBestMatch,
     mergeCandidates, recordFindings, hasCitationsGate,
     recallPastVisits, groupByYear, recommendSimilar,
-    composeResponse, validateResponse,
-    respondToVisitor, declineOffTopic, declineEmpty,
+    declineOffTopic, declineEmpty,
   ]) dispatcher.registerNode(node);
   dispatcher.registerDAG(archivistDAG);
 
@@ -246,7 +256,7 @@ async function resumeFromCheckpoint(): Promise<void> {
   }
 }
 
-// ── Persistence badge toggle (deliverable 4) ─────────────────────────────
+// ── Persistence toggle ───────────────────────────────────────────────────
 function togglePersistence(): void {
   if (memoryStore.isPersisted) {
     memoryStore.disablePersistence();
@@ -261,8 +271,7 @@ function togglePersistence(): void {
 }
 
 // UI state machine — runner subscribes; views derive UI from the
-// machine's current state instead of independent refs. Pulses fire on
-// sub-events (node-start, node-end) without shifting top-level state.
+// machine's current state instead of independent refs.
 const runnerMachine = new RunnerMachine();
 
 // Selected IRI in the memory graph — TripleInspector reads this.
@@ -275,33 +284,37 @@ function clearMemory(): void {
   logger.info('memory store cleared');
 }
 
-// Re-detect backend availability when the visitor pastes or types an
-// API key, so the gemini-api option flips runnable as soon as the key
-// has any length.
+// Re-detect backend availability when the visitor pastes or types an API key.
 watch(apiKey, async () => {
   backends.value = await detectBackends({ 'apiKey': apiKey.value || undefined });
   noModel.value = hasNoRunnableModel(backends.value);
 });
 
-// Workshop tabs — 4 tabs. Conversation is standalone in the left column.
-//   DAG       — live execution graph
-//   Memory    — unified RDF graph (ontology + memory + state + prov layers)
-//   Trace     — merged node lifecycle events + logger lines
-//   Timeouts  — per-phase timeout sliders
-const workshopTabs = computed(() => {
+// ── Left-column tabs: Conversation | Config ──────────────────────────────
+const leftTabs = computed(() => [
+  { 'key': 'conversation', 'label': 'Conversation', 'badge': '', 'tone': 'default' as const },
+  { 'key': 'config',       'label': 'Config',       'badge': '', 'tone': 'default' as const },
+]);
+
+// ── Right-column tabs: DAG | Memory | Trace ──────────────────────────────
+const rightTabs = computed(() => {
   const traceCount = trace.value.length + logger.history().length;
   return [
-    { 'key': 'dag',      'label': 'DAG',      'badge': isRunning.value ? 'live' : '',        'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
-    { 'key': 'memory',   'label': 'Memory',   'badge': String(memoryStore.size || ''),       'tone': 'accent' as const },
-    { 'key': 'trace',    'label': 'Trace',    'badge': String(traceCount || ''),             'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
-    { 'key': 'timeouts', 'label': 'Timeouts', 'badge': '',                                  'tone': 'default' as const },
+    { 'key': 'dag',    'label': 'DAG',    'badge': isRunning.value ? 'live' : '',   'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
+    { 'key': 'memory', 'label': 'Memory', 'badge': String(memoryStore.size || ''), 'tone': 'accent' as const },
+    { 'key': 'trace',  'label': 'Trace',  'badge': String(traceCount || ''),        'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
   ];
 });
 
 const dagElements = computed<ElementDefinition[]>(() => {
-  // Enrich every node element with `kind` so the cytoscape stylesheet
-  // can style deterministic vs non-deterministic placements differently.
-  const raw = CytoscapeRenderer.render(archivistDAG) as ElementDefinition[];
+  // Sub-DAG registry: placements whose dag name appears here are expanded
+  // inline in the Cytoscape diagram — full compound-graph children visible,
+  // no opaque boxes. This is the renderer-side of molecular composition.
+  const subDagRegistry = new Map([
+    ['book-search-fanout', BookSearchFanoutDAG],
+    ['compose-retry-loop', ComposeRetryLoopDAG],
+  ]);
+  const raw = CytoscapeRenderer.render(archivistDAG, { 'subDags': subDagRegistry }) as ElementDefinition[];
   return raw.map((el) => {
     const data = el.data as { id?: string; node?: string };
     const nodeName = data.node ?? data.id;
@@ -325,9 +338,7 @@ function buildServices(): ArchivistServices {
 
 /**
  * Shared observer used by both `ask()` (fresh run) and
- * `resumeFromCheckpoint()` (resume from a cursor). When `fromCursor`
- * is non-null the observer highlights the resume node on flow-start so
- * the visitor sees where execution picks back up.
+ * `resumeFromCheckpoint()` (resume from a cursor).
  */
 function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
   return {
@@ -384,7 +395,6 @@ function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
 
 // ── Boot ─────────────────────────────────────────────────────────────────
 onMounted(async () => {
-  // TBox must be available before any run writes ABox triples.
   memoryStore.loadOntology(ONTOLOGY_NTRIPLES);
   memoryTick.value++;
 
@@ -419,13 +429,10 @@ async function ask(): Promise<void> {
   }];
 
   dagGraph.value?.reset();
-  // Memory persists across runs — clear via the Memory pane's button.
   memoryTick.value++;
   logger.clear();
   logger.info(`run start — query: "${visitorQuery.value}"`);
 
-  // Per-run identifier — used as the suffix for both
-  // urn:dagonizer:state:<runId> and urn:dagonizer:prov:<runId>.
   const runId = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
     ? crypto.randomUUID()
     : `r-${String(Date.now())}-${String(Math.floor(Math.random() * 1e6))}`;
@@ -442,28 +449,37 @@ async function ask(): Promise<void> {
     'observer': buildObserver(null, prov),
   });
 
-  // Apply per-phase timeouts from the visitor's Timeouts tab settings.
-  // The node objects from the module are treated as defaults; each run gets
-  // a fresh instance with the user's chosen budget injected via spread.
   const { composeMs, webSearchMs, rankMs } = timeoutSettings.value;
-  const composeNode     = { ...composeResponse,    'timeoutMs': composeMs };
-  const rankNode        = { ...rankCandidates,     'timeoutMs': rankMs };
-  const scoutNode       = { ...webSearchScout,     'timeoutMs': webSearchMs };
-  const olScoutNode     = { ...openLibraryScout,   'timeoutMs': webSearchMs };
-  const gbScoutNode     = { ...googleBooksScout,   'timeoutMs': webSearchMs };
-  const subjectScoutNode = { ...subjectScout,      'timeoutMs': webSearchMs };
-  const wikiScoutNode   = { ...wikipediaScout,     'timeoutMs': webSearchMs };
+
+  // Register sub-DAGs first (molecular pattern) — each helper registers the
+  // base nodes needed by that sub-DAG. Then re-register timeout-overridden
+  // versions which overwrite the base entries in the node map.
+  registerBookSearchFanoutNodes(dispatcher);
+  dispatcher.registerDAG(BookSearchFanoutDAG);
+  registerComposeRetryLoopNodes(dispatcher);
+  dispatcher.registerDAG(ComposeRetryLoopDAG);
+
+  // Timeout overrides — re-register after DAG registration (validation already
+  // passed; execution looks up nodes from the map at run time, so overwriting
+  // here applies the configured budget to every subsequent execution).
+  const composeNode      = { ...composeResponse, 'timeoutMs': composeMs };
+  const rankNode         = { ...rankCandidates,  'timeoutMs': rankMs };
+  const scoutNode        = { ...webSearchScout,  'timeoutMs': webSearchMs };
+  const olScoutNode      = { ...openLibraryScout,   'timeoutMs': webSearchMs };
+  const gbScoutNode      = { ...googleBooksScout,   'timeoutMs': webSearchMs };
+  const subjectScoutNode = { ...subjectScout,       'timeoutMs': webSearchMs };
+  const wikiScoutNode    = { ...wikipediaScout,     'timeoutMs': webSearchMs };
+  for (const node of [composeNode, rankNode, scoutNode, olScoutNode, gbScoutNode, subjectScoutNode, wikiScoutNode]) {
+    dispatcher.registerNode(node);
+  }
 
   for (const node of [
     recallContext,
     classifyIntent, extractQuery, decideTools,
-    scoutNode, olScoutNode, gbScoutNode, subjectScoutNode, wikiScoutNode,
-    rankNode,
     rankByRating, pickBestMatch,
     mergeCandidates, recordFindings, hasCitationsGate,
     groupByYear, recallPastVisits, recommendSimilar,
-    composeNode, validateResponse,
-    respondToVisitor, declineOffTopic, declineEmpty,
+    declineOffTopic, declineEmpty,
   ]) dispatcher.registerNode(node);
   dispatcher.registerDAG(archivistDAG);
 
@@ -471,10 +487,7 @@ async function ask(): Promise<void> {
   visitor.query = visitorQuery.value;
   visitor.runId = runId;
 
-  // Create a fresh AbortController for this run (deliverable 2).
   activeAbortController = new AbortController();
-  // Overall safety-net deadline: per-node timeouts are primary; this catches
-  // any node that does not declare its own budget.
   const deadlineMs = overallDeadlineMs();
 
   try {
@@ -506,7 +519,6 @@ function reset(): void {
   checkpointNode.value = null;
   lastResult = null;
   dagGraph.value?.reset();
-  // Reset does NOT wipe persisted memory — use the Memory pane's Clear button.
   memoryTick.value++;
   logger.clear();
   runnerMachine.dispatch({ 'type': 'reset' });
@@ -526,6 +538,8 @@ function loadKey(): string {
 
 <template>
   <div :class="['archivist-runner', { 'is-running': isRunning }]">
+
+    <!-- No-model gate — shown before a backend is available -->
     <section v-if="noModel" class="no-model-gate" role="alert">
       <h3>No LLM backend detected</h3>
       <p>The Archivist demo runs against real on-device or web LLMs only — there is no canned fallback in the browser. To watch the DAG execute, enable one of:</p>
@@ -544,99 +558,133 @@ function loadKey(): string {
       />
     </section>
 
+    <!-- Main layout — two-column grid, container-query driven -->
     <template v-else>
-    <div class="backend-row">
-      <BackendPicker
-        :backends="backends"
-        :active-id="activeBackend"
-        :api-key="apiKey"
-        :disabled="isRunning"
-        @update:active-id="activeBackend = $event as ProviderId"
-        @update:api-key="apiKey = $event"
-      />
-      <div class="backend-accessories">
-        <PersistenceBadge
-          :triple-count="memoryStore.size"
-          :is-persisted="isPersisted"
-          @toggle="togglePersistence"
-        />
-      </div>
-    </div>
+      <div class="ar-grid">
 
-    <div class="runner-layout">
-      <section class="runner-conversation">
-        <Conversation :turns="conversation" />
+        <!-- LEFT: Conversation | Config -->
+        <div class="ar-col ar-col--left">
+          <div class="ar-col-head">
+            <span class="ar-label">Archivist</span>
+            <span class="ar-hint">{{ isRunning ? 'running…' : 'ready' }}</span>
+          </div>
+          <PanesTabs :tabs="leftTabs" default-key="conversation" class="ar-tabs">
+            <!-- Conversation tab: the visual-first surface -->
+            <template #conversation>
+              <div class="ar-left-pane">
+                <Conversation :turns="conversation" />
+                <SendForm
+                  :query="visitorQuery"
+                  :running="isRunning"
+                  :terminal-kind="terminalKind"
+                  @update:query="visitorQuery = $event"
+                  @ask="ask"
+                  @cancel="cancel"
+                  @reset="reset"
+                />
+              </div>
+            </template>
 
-        <div class="conversation-footer">
-          <CheckpointControls
-            :checkpoint-node="checkpointNode"
-            :running="isRunning"
-            :has-checkpoint="hasCheckpoint"
-            @save="saveCheckpoint"
-            @resume="resumeFromCheckpoint"
-          />
+            <!-- Config tab: backend + persistence + timeouts + checkpoints -->
+            <template #config>
+              <div class="ar-config-pane">
+                <section class="ar-config-section">
+                  <h5 class="ar-config-head">Backend</h5>
+                  <BackendPicker
+                    :backends="backends"
+                    :active-id="activeBackend"
+                    :api-key="apiKey"
+                    :disabled="isRunning"
+                    @update:active-id="activeBackend = $event as ProviderId"
+                    @update:api-key="apiKey = $event"
+                  />
+                </section>
+
+                <section class="ar-config-section">
+                  <h5 class="ar-config-head">Memory store</h5>
+                  <PersistenceBadge
+                    :triple-count="memoryStore.size"
+                    :is-persisted="isPersisted"
+                    @toggle="togglePersistence"
+                  />
+                </section>
+
+                <section class="ar-config-section">
+                  <h5 class="ar-config-head">Checkpoints</h5>
+                  <CheckpointControls
+                    :checkpoint-node="checkpointNode"
+                    :running="isRunning"
+                    :has-checkpoint="hasCheckpoint"
+                    @save="saveCheckpoint"
+                    @resume="resumeFromCheckpoint"
+                  />
+                </section>
+
+                <section class="ar-config-section">
+                  <TimeoutPane @update:settings="onTimeoutSettingsUpdate" />
+                </section>
+              </div>
+            </template>
+          </PanesTabs>
         </div>
 
-        <SendForm
-          :query="visitorQuery"
-          :running="isRunning"
-          :terminal-kind="terminalKind"
-          @update:query="visitorQuery = $event"
-          @ask="ask"
-          @cancel="cancel"
-          @reset="reset"
-        />
-      </section>
-
-      <section class="runner-workshop">
-        <PanesTabs :tabs="workshopTabs" default-key="dag" class="workshop-tabs">
-          <template #dag>
-            <div class="dag-wrapper">
-              <DagGraph
-                ref="dagGraph"
-                :elements="dagElements"
-                aria-label="Archivist DAG live execution"
-              />
-              <div class="dag-legend-anchor">
-                <NodeLegend />
-                <StateLegend />
+        <!-- RIGHT: DAG | Memory | Trace -->
+        <div class="ar-col ar-col--right">
+          <div class="ar-col-head">
+            <span class="ar-label">Graph</span>
+            <span class="ar-hint">{{ memoryStore.size }} triples</span>
+          </div>
+          <PanesTabs :tabs="rightTabs" default-key="dag" class="ar-tabs ar-tabs--right">
+            <!-- DAG tab: live execution graph -->
+            <template #dag>
+              <div class="dag-wrapper">
+                <DagGraph
+                  ref="dagGraph"
+                  :elements="dagElements"
+                  aria-label="Archivist DAG live execution"
+                />
+                <div class="dag-legend-anchor">
+                  <NodeLegend />
+                  <StateLegend />
+                </div>
               </div>
-            </div>
-          </template>
-          <template #memory>
-            <div class="memory-graph-wrap">
-              <MemoryGraph
-                :store="memoryStore"
-                :tick="memoryTick"
-                @clear="clearMemory"
-                @select="onMemorySelect"
-              />
-              <TripleInspector
-                :store="memoryStore"
-                :tick="memoryTick"
-                :selected-iri="selectedIri"
-                @close="selectedIri = null"
-              />
-            </div>
-          </template>
-          <template #trace>
-            <TraceFeed :entries="trace" :logger="logger" />
-          </template>
-          <template #timeouts>
-            <TimeoutPane @update:settings="onTimeoutSettingsUpdate" />
-          </template>
-        </PanesTabs>
-      </section>
-    </div>
+            </template>
+
+            <!-- Memory tab: cosmos.gl RDF graph -->
+            <template #memory>
+              <div class="memory-graph-wrap">
+                <MemoryGraph
+                  :store="memoryStore"
+                  :tick="memoryTick"
+                  @clear="clearMemory"
+                  @select="onMemorySelect"
+                />
+                <TripleInspector
+                  :store="memoryStore"
+                  :tick="memoryTick"
+                  :selected-iri="selectedIri"
+                  @close="selectedIri = null"
+                />
+              </div>
+            </template>
+
+            <!-- Trace tab: merged node lifecycle + logger feed -->
+            <template #trace>
+              <TraceFeed :entries="trace" :logger="logger" />
+            </template>
+          </PanesTabs>
+        </div>
+
+      </div>
     </template>
   </div>
 </template>
 
 <style scoped>
+/* ── Container ─────────────────────────────────────────────────────────── */
 .archivist-runner {
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
+  container-type: inline-size;
+  container-name: archivist;
   border: 1px solid var(--vp-c-divider);
   border-radius: 8px;
   padding: 1rem;
@@ -645,6 +693,7 @@ function loadKey(): string {
   width: 100%;
 }
 
+/* ── No-model gate ─────────────────────────────────────────────────────── */
 .no-model-gate {
   border: 1px dashed var(--dagonizer-brand3);
   border-radius: 6px;
@@ -683,88 +732,106 @@ function loadKey(): string {
   font-size: 0.82rem;
 }
 
-/* Backend row: picker + accessories (persistence badge, timeout drawer). */
-.backend-row {
+/* ── Two-column grid — iridis pattern ──────────────────────────────────── */
+.ar-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+
+@container archivist (min-width: 720px) {
+  .ar-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr);
+  }
+}
+
+/* ── Column ────────────────────────────────────────────────────────────── */
+.ar-col {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.75rem;
+  min-width: 0;
 }
 
-.backend-accessories {
+/* ── Column head (iridis pattern) ──────────────────────────────────────── */
+.ar-col-head {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 1.75rem;
 }
 
-/* Two-column workshop layout: conversation on the left (standalone),
-   tabbed workshop on the right (DAG / RDF memory / state / trace / logger). */
-.runner-layout {
-  display: grid;
-  grid-template-columns: minmax(360px, 1fr) minmax(0, 1.6fr);
-  gap: 1.2rem;
-  align-items: stretch;
+.ar-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-3);
 }
 
-.runner-conversation {
+.ar-hint {
+  font-size: 0.7rem;
+  color: var(--vp-c-text-3);
+  font-family: var(--vp-font-family-mono);
+}
+
+/* ── Tab panels ────────────────────────────────────────────────────────── */
+.ar-tabs {
+  flex: 1 1 auto;
+  min-height: 520px;
+}
+
+.ar-tabs--right {
+  min-height: 680px;
+}
+
+/* ── Conversation tab pane ─────────────────────────────────────────────── */
+.ar-left-pane {
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
-  min-width: 0;
+  height: 100%;
+  padding: 0.75rem;
 }
 
-.conversation-footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  padding: 0 0.1rem;
-}
-
-.runner-workshop {
+/* ── Config tab pane ───────────────────────────────────────────────────── */
+.ar-config-pane {
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  gap: 1.1rem;
+  padding: 0.85rem 0.9rem;
+  overflow-y: auto;
+  height: 100%;
 }
 
-.workshop-tabs            { min-height: 720px; }
-.workshop-tabs :deep(.tab-pane) { min-height: 680px; }
-
-@media (max-width: 960px) {
-  .runner-layout { grid-template-columns: 1fr; }
+.ar-config-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
 }
 
-/* DAG wrapper — fixed-height shell so the cytoscape canvas always has a
-   non-zero box before mount, and gets a pulsing border while running. */
+.ar-config-head {
+  margin: 0;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-3);
+}
+
+/* ── DAG wrapper ───────────────────────────────────────────────────────── */
 .dag-wrapper {
   position: relative;
   width: 100%;
-  height: 680px;
+  height: 640px;
   border-radius: 8px;
   transition: box-shadow 0.25s ease;
-}
-
-/* Memory-graph wrapper hosts the cosmos canvas + the click-to-inspect
-   side panel. Relative so the absolutely-positioned panel anchors here. */
-.memory-graph-wrap {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  min-height: 680px;
 }
 
 .archivist-runner.is-running .dag-wrapper {
   box-shadow: 0 0 0 1px var(--dagonizer-brand), 0 0 28px -6px var(--dagonizer-brand);
   animation: dag-pulse 1.8s ease-in-out infinite;
-}
-
-/* Bottom-row tabs — each active pane occupies the full center-column
-   width, so trace / memory / logger can breathe horizontally. */
-.runner-tabs {
-  min-height: 280px;
-}
-
-@media (max-width: 640px) {
-  .dag-wrapper { height: 420px; }
 }
 
 .dag-legend-anchor {
@@ -781,6 +848,14 @@ function loadKey(): string {
   border-radius: 6px;
   backdrop-filter: blur(4px);
   min-width: 108px;
+}
+
+/* ── Memory graph wrapper ──────────────────────────────────────────────── */
+.memory-graph-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 640px;
 }
 
 @keyframes dag-pulse {

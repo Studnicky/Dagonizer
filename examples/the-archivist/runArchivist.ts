@@ -2,7 +2,16 @@
  * runArchivist — end-to-end demo runner (CLI).
  *
  * Wires the registered nodes onto a `Dagonizer<ArchivistState, ArchivistServices>`,
- * registers the canonical DAG, and runs one visitor question through.
+ * registers the canonical DAG (and its sub-DAG components), and runs one
+ * visitor question through.
+ *
+ * Molecular sub-DAG registration order:
+ *   1. registerBookSearchFanoutNodes(dispatcher) — registers all nodes used by
+ *      the book-search-fanout sub-DAG (extract, decide, scouts, rank, merge, ...)
+ *   2. dispatcher.registerDAG(BookSearchFanoutDAG) — registers the sub-DAG itself
+ *   3. registerComposeRetryLoopNodes(dispatcher) — compose, validate, respond
+ *   4. dispatcher.registerDAG(ComposeRetryLoopDAG) — registers the compose sub-DAG
+ *   5. dispatcher.registerDAG(archivistDAG) — registers the parent (references sub-DAGs by name)
  *
  * LLM resolved by the provider matrix: Gemini Nano (only in a browser),
  * Gemini REST (free tier, `GEMINI_API_KEY` env), WebLLM (only in a
@@ -18,7 +27,6 @@ import { archivistDAG } from './dag.ts';
 import { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { classifyIntent } from './nodes/classifyIntent.ts';
-import { composeResponse, validateResponse } from './nodes/composeResponse.ts';
 import { decideTools } from './nodes/decideTools.ts';
 import { extractQuery } from './nodes/extractQuery.ts';
 import { groupByYear } from './nodes/groupByYear.ts';
@@ -26,19 +34,26 @@ import { hasCitationsGate } from './nodes/hasCitationsGate.ts';
 import { mergeCandidates } from './nodes/mergeCandidates.ts';
 import { pickBestMatch } from './nodes/pickBestMatch.ts';
 import { rankByRating } from './nodes/rankByRating.ts';
-import { rankCandidates } from './nodes/rankCandidates.ts';
 import { recallContext }    from './nodes/recallContext.ts';
 import { recallPastVisits } from './nodes/recallPastVisits.ts';
 import { recommendSimilar } from './nodes/recommendSimilar.ts';
 import { recordFindings } from './nodes/recordFindings.ts';
-import { declineEmpty, declineOffTopic, respondToVisitor } from './nodes/respondToVisitor.ts';
-import { webSearchScout, openLibraryScout, googleBooksScout, subjectScout, wikipediaScout } from './nodes/scouts.ts';
+import { declineEmpty, declineOffTopic } from './nodes/respondToVisitor.ts';
+import { openLibraryScout, googleBooksScout, subjectScout, wikipediaScout, webSearchScout } from './nodes/scouts.ts';
 import {
   GeminiApiAdapter,
   StubAdapter,
 } from './providers/adapters/index.ts';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
 import type { ArchivistServices, LlmClient } from './services.ts';
+import {
+  BookSearchFanoutDAG,
+  registerBookSearchFanoutNodes,
+} from './subdags/BookSearchFanoutDAG.ts';
+import {
+  ComposeRetryLoopDAG,
+  registerComposeRetryLoopNodes,
+} from './subdags/ComposeRetryLoopDAG.ts';
 import { GoogleBooksTool } from './tools/GoogleBooksTool.ts';
 import { OpenLibrarySearchTool } from './tools/OpenLibrarySearchTool.ts';
 import { SubjectSearchTool } from './tools/SubjectSearchTool.ts';
@@ -70,9 +85,21 @@ const services: ArchivistServices = {
 // ── Dispatcher ───────────────────────────────────────────────────────────
 const dispatcher = new Dagonizer<ArchivistState, ArchivistServices>({ services });
 
+// ── Sub-DAG node registration (molecular pattern) ────────────────────────
+// Each sub-DAG module exports a registerXxxNodes helper that registers
+// the nodes it needs. Call it before registerDAG so the validator can
+// resolve all node references when the DAG is registered.
+registerBookSearchFanoutNodes(dispatcher);
+dispatcher.registerDAG(BookSearchFanoutDAG);
+
+registerComposeRetryLoopNodes(dispatcher);
+dispatcher.registerDAG(ComposeRetryLoopDAG);
+
+// ── Parent-DAG-only nodes (not used by sub-DAGs) ─────────────────────────
 for (const node of [
   recallContext,
   classifyIntent,
+  // Inlined branch nodes (reviews + describe) — not in the sub-DAGs
   extractQuery,
   decideTools,
   webSearchScout,
@@ -80,7 +107,6 @@ for (const node of [
   googleBooksScout,
   subjectScout,
   wikipediaScout,
-  rankCandidates,
   rankByRating,
   pickBestMatch,
   mergeCandidates,
@@ -89,9 +115,6 @@ for (const node of [
   groupByYear,
   recallPastVisits,
   recommendSimilar,
-  composeResponse,
-  validateResponse,
-  respondToVisitor,
   declineOffTopic,
   declineEmpty,
 ]) {

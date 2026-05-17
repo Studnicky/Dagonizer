@@ -3,8 +3,7 @@
  *
  * DO NOT EDIT BY HAND. Edit docs/.vitepress/iridis.config.json and run
  *   npm run docs:theme
- * to regenerate. Every token is WCAG 2.1 AA verified by `enforce:wcagAA`
- * against the contrast pairs declared in the config.
+ * to regenerate. Every token is WCAG 2.1 AAA verified by `enforce:wcagAAA`.
  */
 :root {
   --dagonizer-bg: #04060a;
