@@ -106,6 +106,12 @@ export type { ParallelResult, ParallelCombiner } from '../core/ParallelCombiners
 export type { FanInExecution, FanInStrategy } from '../core/FanInStrategies.js';
 export type { FlowDeriverOptions } from '../derive/FlowDeriver.js';
 export type { FlowAnnotations, FlowFanOut, FlowTerminal } from '../derive/FlowAnnotations.js';
+export type { DagJsonLdDocument, JsonLdGraphEntry } from '../viz/JsonLdRenderer.js';
+export type {
+  CytoscapeElement,
+  CytoscapeNodeElement,
+  CytoscapeEdgeElement,
+} from '../viz/CytoscapeRenderer.js';
 
 // ---------------------------------------------------------------------------
 // Validation

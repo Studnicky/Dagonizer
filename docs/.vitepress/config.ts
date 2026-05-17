@@ -1,5 +1,11 @@
+import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vitepress';
 import { withMermaid } from 'vitepress-plugin-mermaid';
+
+// Repo paths the in-browser ArchivistRunner Vue component imports from.
+const REPO_ROOT  = fileURLToPath(new URL('../..', import.meta.url));
+const ARCHIVIST  = fileURLToPath(new URL('../../examples/the-archivist', import.meta.url));
+const VIZ_SRC    = fileURLToPath(new URL('../../src/viz', import.meta.url));
 
 const sidebar = [
   {
@@ -9,6 +15,14 @@ const sidebar = [
       { text: 'Getting Started', link: '/getting-started' },
       { text: 'Architecture', link: '/architecture' },
       { text: 'Concepts', link: '/concepts' },
+    ],
+  },
+  {
+    // Live runnable demo — appears right after the introduction so
+    // visitors who skim the home page land on the interactive runner.
+    text: 'Live demo',
+    items: [
+      { text: 'The Archivist', link: '/examples/the-archivist' },
     ],
   },
   {
@@ -40,6 +54,24 @@ const sidebar = [
     ],
   },
   {
+    // Examples come before Reference — the running biblio-assistant demo
+    // anchors every concept introduced in Usage. Reference is the lookup
+    // tier readers consult once they're inside the code.
+    text: 'Examples',
+    collapsed: false,
+    items: [
+      { text: 'Running domain: The Archivist', link: '/examples/the-archivist' },
+      { text: 'Phase 01 · Linear intake',          link: '/examples/01-linear' },
+      { text: 'Phase 02 · Fan-out scout',          link: '/examples/02-fanout' },
+      { text: 'Phase 03 · Sub-DAG fallback',       link: '/examples/03-subflows' },
+      { text: 'Phase 04 · Cancellation',           link: '/examples/04-cancellation' },
+      { text: 'Phase 05 · Retry compose',          link: '/examples/05-retry' },
+      { text: 'Phase 06 · DAGBuilder',             link: '/examples/06-builder' },
+      { text: 'Phase 07 · JSON DAG load',          link: '/examples/07-schema' },
+      { text: 'Phase 08 · Checkpoint + resume',    link: '/examples/08-checkpoint' },
+    ],
+  },
+  {
     text: 'Reference',
     collapsed: false,
     items: [
@@ -57,20 +89,6 @@ const sidebar = [
       { text: 'Entities', link: '/reference/entities' },
       { text: 'Testing', link: '/reference/testing' },
       { text: 'Errors', link: '/reference/errors' },
-    ],
-  },
-  {
-    text: 'Examples',
-    collapsed: false,
-    items: [
-      { text: 'Linear Flow', link: '/examples/01-linear' },
-      { text: 'Fan-Out + Fan-In', link: '/examples/02-fanout' },
-      { text: 'Sub-Flows', link: '/examples/03-subflows' },
-      { text: 'Cancellation', link: '/examples/04-cancellation' },
-      { text: 'Retry', link: '/examples/05-retry' },
-      { text: 'FlowBuilder', link: '/examples/06-builder' },
-      { text: 'Schema Loading', link: '/examples/07-schema' },
-      { text: 'Checkpoint Resume', link: '/examples/08-checkpoint' },
     ],
   },
 ];
@@ -97,7 +115,7 @@ export default withMermaid(defineConfig({
   lang: 'en-US',
   base: SITE_BASE,
   sitemap: { hostname: SITE_URL },
-  appearance: true,
+  appearance: false,
   cleanUrls: true,
   lastUpdated: true,
   head: [
@@ -217,65 +235,55 @@ export default withMermaid(defineConfig({
       ['meta', { name: 'description', content: description }],
     ];
   },
+  // Syntax highlighting uses VitePress's bundled Shiki themes. `night-owl`
+  // is a dark navy-grounded theme that harmonizes with the navy / pearl
+  // chrome and the teal / violet / yellow brand orbs used throughout the
+  // page. We do NOT ship a custom Shiki theme — the code-block CHROME
+  // (background, border, font, padding) is themed via CSS using our
+  // palette tokens; the syntax token colors come from a well-tested
+  // pre-built theme that already meets contrast guarantees.
   markdown: {
-    theme: {
-      light: 'github-light',
-      dark: {
-        name: 'dagonizer-dark',
-        type: 'dark',
-        settings: [
-          { settings: { background: '#0a0e1a', foreground: '#c9d0d8' } },
-          { scope: ['comment', 'punctuation.definition.comment'],
-            settings: { foreground: '#5a6070', fontStyle: 'italic' } },
-          { scope: ['keyword', 'storage', 'storage.type', 'keyword.control', 'keyword.operator.new'],
-            settings: { foreground: '#b18cff' } },
-          { scope: ['string', 'string.quoted', 'string.template'],
-            settings: { foreground: '#22e8ff' } },
-          { scope: ['constant.numeric', 'constant.language.boolean', 'constant.language.null'],
-            settings: { foreground: '#d4a649' } },
-          { scope: ['entity.name.function', 'support.function', 'meta.function-call'],
-            settings: { foreground: '#22e8ff' } },
-          { scope: ['entity.name.class', 'entity.name.type', 'support.class', 'support.type'],
-            settings: { foreground: '#22e8ff', fontStyle: 'italic' } },
-          { scope: ['variable.parameter', 'variable.other.readwrite'],
-            settings: { foreground: '#c9d0d8' } },
-          { scope: ['variable.other.property', 'meta.object.member'],
-            settings: { foreground: '#c9d0d8' } },
-          { scope: ['punctuation', 'meta.brace'],
-            settings: { foreground: '#8990a0' } },
-          { scope: ['entity.name.tag', 'meta.tag'],
-            settings: { foreground: '#22e8ff' } },
-          { scope: ['entity.other.attribute-name'],
-            settings: { foreground: '#d4a649' } },
-          { scope: ['constant.language', 'support.constant'],
-            settings: { foreground: '#d4a649' } },
-          { scope: ['markup.heading'],
-            settings: { foreground: '#22e8ff', fontStyle: 'bold' } },
-          { scope: ['markup.bold'], settings: { fontStyle: 'bold' } },
-          { scope: ['markup.italic'], settings: { fontStyle: 'italic' } },
-        ],
-      },
-    },
+    theme: 'night-owl',
   },
   mermaid: {
     // Theme colors are owned by base.css overrides on the rendered SVG so
-    // dark/light mode switching is instant and consistent across the site.
-    // The `themeVariables` here are SSR-time placeholders — the runtime CSS
-    // wins. Keep them visible (mid-tone neutrals) for first paint.
+    // mode switching is instant and consistent across the site. The
+    // `themeVariables` here are SSR-time placeholders — the runtime CSS
+    // wins. Values mirror the palette tokens from iridis.palette.css so
+    // first paint already shows the mechanicus chrome (pearl-black node
+    // surface, teal accent border, monospace text on the navy panel).
     theme: 'base',
-    fontFamily: 'inherit',
+    // Berkeley Mono falls back through JetBrains/SF/Menlo to the
+    // generic UI mono stack — same family as `--vp-font-family-mono`.
+    fontFamily: '"Share Tech Mono", "Berkeley Mono", "JetBrains Mono", "SF Mono", Menlo, Consolas, ui-monospace, monospace',
     themeVariables: {
-      fontFamily: 'inherit',
+      fontFamily: '"Share Tech Mono", "Berkeley Mono", "JetBrains Mono", "SF Mono", Menlo, Consolas, ui-monospace, monospace',
       background: 'transparent',
-      primaryColor: '#ffffff',
+      // Node interior matches the pearl-black code-block surface.
+      primaryColor: '#020306',
+      // Teal brand accent for default node borders.
       primaryBorderColor: '#22e8ff',
-      primaryTextColor: '#0f1620',
+      // Pearl text on pearl-black — high contrast for AAA.
+      primaryTextColor: '#eef3f7',
+      // Edges use the same teal accent as default node borders.
       lineColor: '#22e8ff',
       arrowheadColor: '#22e8ff',
-      edgeLabelBackground: '#ffffff',
-      clusterBkg: '#e7ecf2',
-      clusterBorder: '#aab4c0',
-      titleColor: '#0f1620',
+      // Edge labels sit on the navy panel surface so they pop off the
+      // pearl-black diagram interior.
+      edgeLabelBackground: '#0e1525',
+      // Clusters use the deepest navy with a steel divider edge.
+      clusterBkg: '#04060a',
+      clusterBorder: '#7a8290',
+      titleColor: '#eef3f7',
+      // Secondary / tertiary accent slots map to violet / gold so
+      // state diagrams and special nodes pick up the right brand orb
+      // without further overrides.
+      secondaryColor: '#020306',
+      secondaryBorderColor: '#8f6dff',
+      secondaryTextColor: '#eef3f7',
+      tertiaryColor: '#020306',
+      tertiaryBorderColor: '#d4a649',
+      tertiaryTextColor: '#eef3f7',
     },
     flowchart: {
       // `linear` produces straight angled (hex-style) edge segments —
@@ -318,5 +326,18 @@ export default withMermaid(defineConfig({
     },
     outline: { label: 'On this page', level: [2, 3] as [number, number] },
     docFooter: { next: 'Next', prev: 'Previous' },
+  },
+  vite: {
+    // Aliases so the in-browser ArchivistRunner can import the canonical
+    // domain files straight from `examples/the-archivist/` and the
+    // renderer source from `src/viz/`. Browser bundles use these; the
+    // package's own consumers see the published `@noocodex/dagonizer/*`.
+    resolve: {
+      alias: {
+        '@archivist': ARCHIVIST,
+        '@dagonizer-viz': VIZ_SRC,
+        '@dagonizer-src': REPO_ROOT,
+      },
+    },
   },
 }));

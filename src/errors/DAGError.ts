@@ -103,3 +103,26 @@ export class ValidationError extends DAGError {
     this.name = 'ValidationError';
   }
 }
+
+/**
+ * Error thrown when a node's per-node `timeoutMs` budget expires.
+ *
+ * Carries the node name and the budget that elapsed so callers can
+ * distinguish node-level timeouts from run-level deadline exhaustion.
+ */
+export class NodeTimeoutError extends DAGError {
+  readonly 'nodeName': string;
+  readonly 'timeoutMs': number;
+
+  constructor(nodeName: string, timeoutMs: number, options?: ErrorOptions) {
+    super(
+      `Node "${nodeName}" exceeded its ${String(timeoutMs)} ms timeout`,
+      'NODE_TIMEOUT',
+      { nodeName, timeoutMs },
+      options,
+    );
+    this.name = 'NodeTimeoutError';
+    this.nodeName = nodeName;
+    this.timeoutMs = timeoutMs;
+  }
+}

@@ -41,6 +41,8 @@ export type { SubDAGNode } from './dag/SubDAGNode.js';
 export { DAGSchema } from './dag/DAG.js';
 export type { DAG } from './dag/DAG.js';
 
+export { DAG_CONTEXT, toJsonLd, fromJsonLd } from './dag/DagJsonLd.js';
+
 // ---------------------------------------------------------------------------
 // state-machines
 // ---------------------------------------------------------------------------

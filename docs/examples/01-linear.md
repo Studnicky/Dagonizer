@@ -1,101 +1,78 @@
-# Example: Linear DAG
+---
+title: 'Phase 01 · Linear intake'
+description: 'The Archivist demo, reduced to its two-step intake: classify the visitor question and route to one of two terminals. Demonstrates Dagonizer single-node placements, narrowed output unions, and `null` terminal routing.'
+---
 
-A minimal two-node chain: `classify → respond → END`. Demonstrates the core pattern: define a state class, implement nodes, build a DAG config, and await the execution.
+# Phase 01 · Linear intake
+
+The simplest slice of [The Archivist](./the-archivist): classify the visitor's question, then route to one of two terminal nodes — answer the question or politely decline.
 
 ## Flow
 
 ```mermaid
 flowchart TB
-  start([entrypoint])
-  classify[classify]
-  respond[respond]
+  start([visitor query])
+  classify[classify-intent]
+  decline([decline-off-topic])
+  respond([respond-to-visitor])
   END([end])
   start --> classify
-  classify -->|on_topic| respond
-  classify -->|off_topic| respond
-  respond -->|success| END
+  classify -->|on-topic| respond
+  classify -->|off-topic| decline
+  respond --> END
+  decline --> END
 ```
 
 ## Code
 
 ```ts
-/**
- * 01-linear — minimal node chain.
- *
- *   classify → respond → END
- *
- * Run: npx tsx examples/01-linear.ts
- */
+import { Dagonizer } from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
 
-import {
-  NodeStateBase,
-  Dagonizer,
-} from '../src/index.js';
-import type { DAG, NodeInterface } from '../src/index.js';
-
-class ChatState extends NodeStateBase {
-  input = '';
-  reply = '';
-  topic: 'on_topic' | 'off_topic' = 'on_topic';
-}
-
-const classify: NodeInterface<ChatState, 'on_topic' | 'off_topic'> = {
-  "name": 'classify',
-  "outputs": ['on_topic', 'off_topic'],
-  async execute(state) {
-    state.topic = state.input.toLowerCase().includes('weather') ? 'off_topic' : 'on_topic';
-    return { "output": state.topic };
-  },
-};
-
-const respond: NodeInterface<ChatState, 'success'> = {
-  "name": 'respond',
-  "outputs": ['success'],
-  async execute(state) {
-    state.reply = state.topic === 'on_topic'
-      ? `Echo: ${state.input}`
-      : `I only talk about coding, not the weather.`;
-    return { "output": 'success' };
-  },
-};
+import { ArchivistState } from '../the-archivist/ArchivistState.ts';
+import { classifyIntent } from '../the-archivist/nodes/classifyIntent.ts';
+import { declineOffTopic, respondToVisitor } from '../the-archivist/nodes/respondToVisitor.ts';
+import type { ArchivistServices } from '../the-archivist/services.ts';
 
 const dag: DAG = {
-  "name": 'chat',
-  "version": '1',
-  "entrypoint": 'classify',
-  "nodes": [
-    { "type": 'single', "name": 'classify', "node": 'classify',
-      "outputs": { "on_topic": 'respond', "off_topic": 'respond' } },
-    { "type": 'single', "name": 'respond', "node": 'respond',
-      "outputs": { "success": null } },
+  name: 'archivist-intake',
+  version: '1.0',
+  entrypoint: 'classify-intent',
+  nodes: [
+    { type: 'single', name: 'classify-intent', node: 'classify-intent',
+      outputs: { 'on-topic': 'respond', 'off-topic': 'decline' } },
+    { type: 'single', name: 'respond', node: 'respond-to-visitor',
+      outputs: { success: null } },
+    { type: 'single', name: 'decline', node: 'decline-off-topic',
+      outputs: { success: null } },
   ],
 };
 
-const dispatcher = new Dagonizer<ChatState>();
-dispatcher.registerNode(classify);
-dispatcher.registerNode(respond);
+const dispatcher = new Dagonizer<ArchivistState, ArchivistServices>({ services });
+dispatcher.registerNode(classifyIntent);
+dispatcher.registerNode(respondToVisitor);
+dispatcher.registerNode(declineOffTopic);
 dispatcher.registerDAG(dag);
 
-const state = new ChatState();
-state.input = 'How do I declare a const in TypeScript?';
-await dispatcher.execute('chat', state);
-process.stdout.write(`${state.reply}\n`);
+const visitor = new ArchivistState();
+visitor.query = "What's a good cosmic-horror novella?";
+const result = await dispatcher.execute('archivist-intake', visitor);
+
+console.log(result.state.intent);          // 'search'
+console.log(result.state.lifecycle.kind);  // 'completed'
 ```
 
 ## What it demonstrates
 
-- `NodeStateBase` subclass with typed domain fields (`input`, `reply`, `topic`).
-- `NodeInterface<TState, TOutput>` with a narrowed output union (`'on_topic' | 'off_topic'`).
-- Both outputs of `classify` route to the same next node — conditional branching does not require separate downstream nodes.
-- `await dispatcher.execute(...)` is the one-shot pattern. The state is mutated in place; read it after the await.
-- `result.cursor === null` after a normal completion — no resume needed.
+- **Single-node placements** with explicit output routing.
+- **Narrowed `TOutput` union** on `NodeInterface<ArchivistState, 'on-topic' | 'off-topic', ArchivistServices>` — TypeScript exhaustiveness-checks the `outputs` map at compile time.
+- **Terminal routing** with `null` — the dispatcher stops cleanly when an output routes to nothing.
+- **The services bag** — `classifyIntent` calls `context.services.llm.classifyIntent(state.query)`; the node never instantiates its own LLM client.
 
 ## See also
 
-- [Subclassing State](../guide/subclassing)
-- [DAGBuilder](../guide/builder) — same DAG via the chainable API → [Example 06](./06-builder)
-
-## Related reference
-
+- [Running domain: The Archivist](./the-archivist)
+- [Phase 02 · Fan-out scout](./02-fanout) — add the parallel scout layer
+- [DAGBuilder](../guide/builder)
 - [Reference: Dagonizer](../reference/dagonizer)
 - [Reference: Entities — `SingleNode`](../reference/entities)

@@ -1,100 +1,116 @@
-# Example: Fan-Out + Fan-In
+---
+title: 'Phase 02 · Fan-out scout'
+description: 'Fan-out the Archivist''s search terms across many in-stock catalogs in parallel, partition the per-catalog results into named state buckets, and merge.'
+---
 
-Process an array of items in parallel (concurrency 2), partition results into separate state fields by output name.
+# Phase 02 · Fan-out scout
+
+The [Archivist](./the-archivist) talks to several in-stock catalog branches at once — local sci-fi, local fiction, the rare-books annex. Each branch is independent and reports back a per-branch candidate list. Fan-out runs the catalog scout once per branch with bounded concurrency; fan-in partitions the results into named state buckets so the downstream merge sees them grouped by branch.
 
 ## Flow
 
 ```mermaid
 flowchart TB
-  start([state.urls])
-  fan{{probe-all\nfan-out}}
-  succeeded([state.succeeded])
-  failed([state.failed])
+  start([state.branches])
+  fan{{branch-scout\nfan-out}}
+  scifi([state.candidatesBy.scifi])
+  fiction([state.candidatesBy.fiction])
+  rare([state.candidatesBy.rare])
+  merge([merge-candidates])
   END([end])
-  start -->|each url| fan
-  fan -->|ok| succeeded
-  fan -->|fail| failed
-  succeeded --> END
-  failed --> END
+  start -->|each branch| fan
+  fan -->|scifi| scifi
+  fan -->|fiction| fiction
+  fan -->|rare| rare
+  scifi --> merge
+  fiction --> merge
+  rare --> merge
+  merge --> END
 ```
 
 ## Code
 
 ```ts
-/**
- * 02-fanout — fan-out + fan-in.
- *
- * Fans out over an array of URLs (concurrency 2), classifies each as
- * `ok | fail`, partitions results into separate state buckets.
- *
- * Run: npx tsx examples/02-fanout.ts
- */
+import { Dagonizer } from '@noocodex/dagonizer';
+import type { DAG, NodeInterface } from '@noocodex/dagonizer';
 
-import {
-  NodeStateBase,
-  Dagonizer,
-} from '../src/index.js';
-import type { DAG, NodeInterface } from '../src/index.js';
+import { ArchivistState } from '../the-archivist/ArchivistState.ts';
+import { mergeCandidates } from '../the-archivist/nodes/mergeCandidates.ts';
+import type { ArchivistServices } from '../the-archivist/services.ts';
+import type { Candidate } from '../the-archivist/entities/Book.ts';
 
-class ScrapeState extends NodeStateBase {
-  urls: string[] = [];
-  succeeded: string[] = [];
-  failed: string[] = [];
-}
-
-const probe: NodeInterface<ScrapeState, 'ok' | 'fail'> = {
-  "name": 'probe',
-  "outputs": ['ok', 'fail'],
-  async execute(state) {
-    const url = state.getMetadata<string>('url') ?? '';
-    // Fake: even-length URLs succeed, odd fail.
-    return { "output": url.length % 2 === 0 ? 'ok' : 'fail' };
+// One catalog scout, dispatched per branch the fan-out node fans over.
+const branchScout: NodeInterface<ArchivistState, 'scifi' | 'fiction' | 'rare', ArchivistServices> = {
+  name: 'branch-scout',
+  outputs: ['scifi', 'fiction', 'rare'],
+  async execute(state, context) {
+    const branch = state.getMetadata<'scifi' | 'fiction' | 'rare'>('branch') ?? 'fiction';
+    const hits = await context.services.catalog.search(state.terms);
+    // The fan-in 'partition' strategy reads per-output `output` values
+    // and pushes the corresponding items into state.candidatesBy[output].
+    state.setMetadata('hits', hits.map<Candidate>((book) => ({
+      book, source: 'local-catalog', score: book.inStock === true ? 0.95 : 0.7,
+    })));
+    return { output: branch };
   },
 };
 
 const dag: DAG = {
-  "name": 'scrape',
-  "version": '1',
-  "entrypoint": 'probe-all',
-  "nodes": [
+  name: 'archivist-fanout',
+  version: '1.0',
+  entrypoint: 'branch-scout-all',
+  nodes: [
     {
-      "type": 'fan-out',
-      "name": 'probe-all',
-      "node": 'probe',
-      "source": 'urls',
-      "itemKey": 'url',
-      "concurrency": 2,
-      "fanIn": { "strategy": 'partition', "partitions": { "ok": 'succeeded', "fail": 'failed' } },
-      "outputs": { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+      type: 'fan-out',
+      name: 'branch-scout-all',
+      node: 'branch-scout',
+      source: 'branches',                // state.branches: readonly Branch[]
+      itemKey: 'branch',                  // metadata key the worker reads
+      concurrency: 3,                     // up to 3 branches at once
+      fanIn: {
+        strategy: 'partition',
+        partitions: {
+          scifi:   'candidatesBy.scifi',
+          fiction: 'candidatesBy.fiction',
+          rare:    'candidatesBy.rare',
+        },
+      },
+      outputs: {
+        'all-success': 'merge',
+        'partial':     'merge',
+        'all-error':   'merge',
+        'empty':       'merge',
+      },
     },
+    { type: 'single', name: 'merge', node: 'merge-candidates',
+      outputs: { ranked: null, empty: null } },
   ],
 };
 
-const dispatcher = new Dagonizer<ScrapeState>();
-dispatcher.registerNode(probe);
+const dispatcher = new Dagonizer<ArchivistState, ArchivistServices>({ services });
+dispatcher.registerNode(branchScout);
+dispatcher.registerNode(mergeCandidates);
 dispatcher.registerDAG(dag);
 
-const state = new ScrapeState();
-state.urls = ['https://a.example', 'https://bb.example', 'https://ccc.example', 'https://dddd.example'];
-await dispatcher.execute('scrape', state);
-process.stdout.write(`OK: ${JSON.stringify(state.succeeded)}\n`);
-process.stdout.write(`FAIL: ${JSON.stringify(state.failed)}\n`);
+const visitor = new ArchivistState();
+visitor.query = 'something like Piranesi';
+visitor.terms = ['piranesi', 'labyrinth', 'house'];
+(visitor as ArchivistState & { branches: readonly string[] }).branches = ['scifi', 'fiction', 'rare'];
+
+await dispatcher.execute('archivist-fanout', visitor);
 ```
 
 ## What it demonstrates
 
-- The `fan-out` node type reads `state.urls` (dotted path `'urls'`), creates one node call per item.
-- `itemKey: 'url'` — each item is written into `state.metadata.url` for the node to read via `state.getMetadata<string>('url')`.
-- `concurrency: 2` — at most two items run simultaneously.
-- `fanIn.strategy: 'partition'` — results are grouped by output name and written to the dotted paths `state.succeeded` and `state.failed`.
-- Aggregate output is `all-success`, `partial`, or `all-error` depending on item counts. All four aggregate outputs route to `null` here (single terminal node).
+- **Fan-out placement** — reads `state.branches`, dispatches `branch-scout` once per item with `concurrency: 3`.
+- **Partition fan-in strategy** — each per-item `output` ('scifi' / 'fiction' / 'rare') routes the item's metadata into a distinct dotted path on state. Downstream `merge-candidates` reads the unified set without caring which branch produced what.
+- **Aggregate routing** — the fan-out node itself reports one of `'all-success' | 'partial' | 'all-error' | 'empty'` so the parent flow can branch on the overall outcome (here all four route to the same merge).
+- **State path resolution via `StateAccessor`** — partition targets use dotted paths the dispatcher's accessor walks; swap the accessor to change the path language.
 
 ## See also
 
-- [State accessors](../guide/state-accessor) — `source` and `partitions` paths run through the accessor
-- [DAGBuilder — `.fanOut(...)`](../guide/builder)
-
-## Related reference
-
-- [Reference: Core — `FanInStrategy`](../reference/core)
+- [Running domain: The Archivist](./the-archivist)
+- [Phase 01 · Linear intake](./01-linear)
+- [Phase 03 · Sub-DAG fallback](./03-subflows)
+- [Reference: Core — `FanInStrategies`](../reference/core)
 - [Reference: Entities — `FanOutNode`, `FanInConfig`](../reference/entities)

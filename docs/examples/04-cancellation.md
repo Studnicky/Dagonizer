@@ -1,94 +1,84 @@
-# Example: Cancellation
+---
+title: 'Phase 04 · Cancellation'
+description: 'Abort the Archivist mid-scout when the visitor closes the connection, or cap the entire flow with a hard deadline.'
+---
 
-Demonstrates both cancellation shapes: caller-controlled `AbortController.signal` and a dispatcher-managed `deadlineMs` hard limit.
+# Phase 04 · Cancellation
+
+[The Archivist](./the-archivist) sometimes talks to a slow external RAG provider. When the visitor closes the page, the dispatcher must abort cleanly — every node sees the signal flip and skips its work, the state's lifecycle marks `cancelled`, and the cursor records exactly where the run stopped so a later resume is possible.
 
 ## Flow
 
 ```mermaid
 flowchart TB
-  start([entrypoint])
-  slow[slow]
-  fast[fast]
-  END([end])
-  start --> slow
-  slow -->|done| fast
-  fast -->|done| END
-  slow -. signal.abort .-> cancelled([cancelled])
-  slow -. deadlineMs hits .-> timedOut([timed_out])
+  start([visitor query])
+  classify[classify-intent]
+  extract[extract-query]
+  scout[scout-rag\nslow RAG call]
+  merge[merge-candidates]
+  respond([respond-to-visitor])
+  cancelled([state.lifecycle.kind = cancelled])
+  timedOut([state.lifecycle.kind = timed_out])
+  start --> classify
+  classify -->|on-topic| extract
+  extract --> scout
+  scout -. visitor closes page .-> cancelled
+  scout -. 5s deadline expires .-> timedOut
+  scout --> merge
+  merge --> respond
 ```
 
 ## Code
 
 ```ts
-/**
- * 04-cancellation — AbortSignal + deadlineMs.
- *
- * Demonstrates both shapes of cancellation:
- *   (a) caller-controlled abort via AbortController.signal
- *   (b) dispatcher deadline via deadlineMs
- *
- * Inspect `state.lifecycle.kind` after each run — 'cancelled' vs 'timed_out'.
- *
- * Run: npx tsx examples/04-cancellation.ts
- */
+import { Dagonizer } from '@noocodex/dagonizer';
+import { archivistDAG } from '../the-archivist/dag.ts';
+// ... register all nodes from the runArchivist demo ...
 
-import {
-  NodeStateBase,
-  Dagonizer,
-} from '../src/index.js';
-import type { DAG, NodeInterface } from '../src/index.js';
+const controller = new AbortController();
 
-const slow: NodeInterface<NodeStateBase, 'success'> = {
-  "name": 'slow',
-  "outputs": ['success'],
-  async execute(_state, context) {
-    await new Promise<void>((resolve, reject) => {
-      const t = setTimeout(resolve, 5_000);
-      context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { "once": true });
-    });
-    return { "output": 'success' };
-  },
-};
+// Caller-driven abort — fire 800ms in.
+setTimeout(() => controller.abort('visitor closed page'), 800);
 
-const dag: DAG = {
-  "name": 'slow-dag',
-  "version": '1',
-  "entrypoint": 'slow',
-  "nodes": [{ "type": 'single', "name": 'slow', "node": 'slow', "outputs": { "success": null } }],
-};
+const visitor = new ArchivistState();
+visitor.query = 'something about a labyrinth';
 
-const dispatcher = new Dagonizer<NodeStateBase>();
-dispatcher.registerNode(slow);
-dispatcher.registerDAG(dag);
+const result = await dispatcher.execute('the-archivist', visitor, {
+  signal:     controller.signal,
+  deadlineMs: 5000,                   // hard 5s budget regardless
+});
 
-// (a) User cancellation
-const ctl = new AbortController();
-setTimeout(() => ctl.abort(new Error('user pressed cancel')), 25);
-const aState = new NodeStateBase();
-const aResult = await dispatcher.execute('slow-dag', aState, { "signal": ctl.signal });
-process.stdout.write(`cancelled → ${aState.lifecycle.kind}, cursor=${aResult.cursor}\n`);
+const lc = result.state.lifecycle;
+switch (lc.kind) {
+  case 'completed':
+    console.log('responded:', result.state.draft);
+    break;
+  case 'cancelled':
+    console.log('visitor abandoned the request:', lc.reason);
+    break;
+  case 'timed_out':
+    console.log('hit the 5s deadline at', lc.finishedAt);
+    break;
+}
 
-// (b) Deadline timeout
-const bState = new NodeStateBase();
-const bResult = await dispatcher.execute('slow-dag', bState, { "deadlineMs": 25 });
-process.stdout.write(`deadline → ${bState.lifecycle.kind}, cursor=${bResult.cursor}\n`);
+// result.cursor tells us where to resume from if we want to.
+if (result.cursor !== null) {
+  console.log(`stopped at ${result.cursor} — checkpointable`);
+}
 ```
 
 ## What it demonstrates
 
-- The `slow` node propagates `context.signal` to an internal `setTimeout` via a listener — when the signal fires, the timeout is cleared and the promise rejects, terminating the node cleanly.
-- `lifecycle.kind === 'cancelled'` when the caller's `AbortController` fires.
-- `lifecycle.kind === 'timed_out'` when `deadlineMs` expires (the dispatcher uses `AbortSignal.timeout` internally).
-- `result.cursor` holds the `'slow'` node name in both cases — the DAG stopped mid-execution and can be resumed from that cursor.
-- The dispatcher never throws. Both cancellation paths reach a final `ExecutionResultInterface` with the lifecycle reflecting what happened.
+- **Signal + deadline composition** — `SignalComposer` combines `signal` and `deadlineMs` into a single `AbortSignal` passed to every node via `context.signal`.
+- **Nodes propagate the signal** — `externalRagScout` passes `context.signal` to its `RetryPolicy.run` call, so retries abort instead of waiting through the backoff window.
+- **Lifecycle records the exact terminal state** — `cancelled` carries the abort `reason`; `timed_out` carries the deadline-finished timestamp.
+- **`result.cursor`** records the next node that would have run — pair with `Checkpoint.from` (see [Phase 08](./08-checkpoint)) to resume in a later process.
 
 ## See also
 
-- [Cancellation](../guide/cancellation)
-- [Checkpoint](../guide/checkpoint) — abort + persist for resume
-
-## Related reference
-
+- [Running domain: The Archivist](./the-archivist)
+- [Cancellation guide](../guide/cancellation)
+- [Phase 05 · Retry compose](./05-retry) — `RetryPolicy.run` honors the same signal
+- [Phase 08 · Checkpoint + resume](./08-checkpoint)
 - [Reference: Runtime — `SignalComposer`](../reference/runtime)
-- [Reference: Contracts — `ExecuteOptionsInterface`](../reference/contracts)
 - [Reference: Lifecycle](../reference/lifecycle)
