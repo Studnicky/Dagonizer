@@ -25,12 +25,13 @@ type IntentOutput =
   | 'find-reviews'
   | 'describe-book'
   | 'recommend-similar'
+  | 'recall-memories'
   | 'on-topic'
   | 'off-topic';
 
 export const classifyIntent: NodeInterface<ArchivistState, IntentOutput, ArchivistServices> = {
   "name": 'classify-intent',
-  "outputs": ['lookup-author', 'find-reviews', 'describe-book', 'recommend-similar', 'on-topic', 'off-topic'],
+  "outputs": ['lookup-author', 'find-reviews', 'describe-book', 'recommend-similar', 'recall-memories', 'on-topic', 'off-topic'],
   async execute(state, context) {
     const summary = state.recalledContext.summary.length > 0
       ? state.recalledContext.summary
@@ -44,6 +45,7 @@ export const classifyIntent: NodeInterface<ArchivistState, IntentOutput, Archivi
       case 'find-reviews':      return { "output": 'find-reviews' };
       case 'describe-book':     return { "output": 'describe-book' };
       case 'recommend-similar': return { "output": 'recommend-similar' };
+      case 'recall-memories':   return { "output": 'recall-memories' };
       default:                  return { "output": 'on-topic' };
     }
   },

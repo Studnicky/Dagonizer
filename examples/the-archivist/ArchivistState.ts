@@ -14,6 +14,24 @@ import type { JsonObject } from '@noocodex/dagonizer/types';
 
 
 /**
+ * A roll-up of everything the Archivist has accumulated in its memory
+ * store across all prior runs — produced by `recallMemories` and consumed
+ * by `composeMemoryResponse`.
+ */
+export interface MemoryDigest {
+  /** Total distinct books recorded across all runs. */
+  readonly bookCount: number;
+  /** Total visitor queries issued across all runs. */
+  readonly queryCount: number;
+  /** Up to the last 10 distinct shortlisted books (most-recent first). */
+  readonly recentBooks: ReadonlyArray<{ readonly title: string; readonly author?: string }>;
+  /** Intent distribution: how many times each intent was classified. */
+  readonly intentBreakdown: ReadonlyArray<{ readonly intent: string; readonly count: number }>;
+  /** 1–2 sentence LLM-ready summary of the digest. */
+  readonly summary: string;
+}
+
+/**
  * Prior-context facts recalled from the memory graph before classification.
  * `summary` is an LLM-ready 1–2 sentence hint; the structured arrays are
  * available directly on `state.recalledContext` for downstream nodes.
@@ -42,10 +60,11 @@ export type ArchivistIntent =
   | 'find-reviews'       // visitor wants opinions / reviews / what readers think
   | 'describe-book'      // visitor named a specific title and wants a description
   | 'recommend-similar'  // visitor wants something like a previous read
+  | 'recall-memories'    // visitor asked what the agent has seen / remembered
   | 'search'             // visitor named a title / author / ISBN (generic search)
   | 'describe'           // visitor described a book without naming it
   | 'recommend'          // visitor asked for a generic recommendation
-  | 'off-topic';         // visitor wandered — terminate politely
+  | 'off-topic';         // visitor wandered — not a book query and not memory-related
 
 export class ArchivistState extends NodeStateBase {
   /** Raw question the visitor submitted. */
@@ -94,6 +113,17 @@ export class ArchivistState extends NodeStateBase {
     'similarPriorQueries': [],
     'summary':             '',
   };
+  /**
+   * Memory roll-up produced by `recallMemories` for the `recall-memories`
+   * intent. Empty/zero-valued when the intent is not `recall-memories`.
+   */
+  memoryDigest: MemoryDigest = {
+    'bookCount':       0,
+    'queryCount':      0,
+    'recentBooks':     [],
+    'intentBreakdown': [],
+    'summary':         '',
+  };
 
   override clone(): ArchivistState {
     const copy = new ArchivistState();
@@ -113,6 +143,13 @@ export class ArchivistState extends NodeStateBase {
       'recentCandidates':    [...this.recalledContext.recentCandidates],
       'similarPriorQueries': [...this.recalledContext.similarPriorQueries],
       'summary':             this.recalledContext.summary,
+    };
+    copy.memoryDigest = {
+      'bookCount':       this.memoryDigest.bookCount,
+      'queryCount':      this.memoryDigest.queryCount,
+      'recentBooks':     [...this.memoryDigest.recentBooks],
+      'intentBreakdown': [...this.memoryDigest.intentBreakdown],
+      'summary':         this.memoryDigest.summary,
     };
     return copy;
   }
@@ -145,6 +182,13 @@ export class ArchivistState extends NodeStateBase {
         "similarPriorQueries": this.recalledContext.similarPriorQueries as unknown as JsonObject[],
         "summary":             this.recalledContext.summary,
       },
+      "memoryDigest": {
+        "bookCount":       this.memoryDigest.bookCount,
+        "queryCount":      this.memoryDigest.queryCount,
+        "recentBooks":     this.memoryDigest.recentBooks as unknown as JsonObject[],
+        "intentBreakdown": this.memoryDigest.intentBreakdown as unknown as JsonObject[],
+        "summary":         this.memoryDigest.summary,
+      },
     };
   }
 
@@ -167,6 +211,17 @@ export class ArchivistState extends NodeStateBase {
         'recentCandidates':    Array.isArray(rcObj['recentCandidates'])    ? rcObj['recentCandidates'] as RecalledContext['recentCandidates'] : [],
         'similarPriorQueries': Array.isArray(rcObj['similarPriorQueries']) ? rcObj['similarPriorQueries'] as RecalledContext['similarPriorQueries'] : [],
         'summary':             typeof rcObj['summary'] === 'string'        ? rcObj['summary']  : '',
+      };
+    }
+    const md = snap['memoryDigest'];
+    if (md !== null && md !== undefined && typeof md === 'object' && !Array.isArray(md)) {
+      const mdObj = md as Record<string, unknown>;
+      this.memoryDigest = {
+        'bookCount':       typeof mdObj['bookCount']  === 'number' ? mdObj['bookCount']  : 0,
+        'queryCount':      typeof mdObj['queryCount'] === 'number' ? mdObj['queryCount'] : 0,
+        'recentBooks':     Array.isArray(mdObj['recentBooks'])     ? mdObj['recentBooks']     as MemoryDigest['recentBooks']     : [],
+        'intentBreakdown': Array.isArray(mdObj['intentBreakdown']) ? mdObj['intentBreakdown'] as MemoryDigest['intentBreakdown'] : [],
+        'summary':         typeof mdObj['summary'] === 'string'    ? mdObj['summary'] : '',
       };
     }
   }

@@ -20,6 +20,9 @@ import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 import type { Core, ElementDefinition, EdgeCollection, NodeSingular } from 'cytoscape';
 
 import DiagramFrame from './DiagramFrame.vue';
+import GraphDpad from './graph/GraphDpad.vue';
+import GraphLegend from './graph/GraphLegend.vue';
+import type { LegendTab } from './graph/GraphLegend.vue';
 import { DagVizMachine, type DagVizEvent } from './viz/DagVizMachine.ts';
 import type { EdgeVizAdapter } from './viz/EdgeVizMachine.ts';
 import type { NodeVizAdapter } from './viz/NodeVizMachine.ts';
@@ -46,7 +49,19 @@ const cy = shallowRef<Core | null>(null);
 const machine = shallowRef<DagVizMachine | null>(null);
 const loading = ref(true);
 const loadError = ref<string | null>(null);
+const zoomLevel = ref<number>(1);
 let resizeObserver: ResizeObserver | null = null;
+
+const dagLegendTabs: readonly LegendTab[] = [
+  {
+    key: 'kinds',
+    label: 'Kinds',
+    entries: [
+      { key: 'deterministic',     swatch: 'solid',  color: '#22e8ff', label: 'deterministic' },
+      { key: 'non-deterministic', swatch: 'dashed', color: '#9b51e0', label: 'non-deterministic' },
+    ],
+  },
+];
 
 onMounted(async () => {
   let cytoscape: typeof import('cytoscape').default;
@@ -94,12 +109,14 @@ onMounted(async () => {
     },
   });
 
+  cy.value.on('zoom', () => { pollZoom(); });
   cy.value.one('layoutstop', () => {
     cy.value?.fit(undefined, 40);
     requestAnimationFrame(() => {
       const fitZoom = cy.value?.zoom() ?? 1;
       cy.value?.minZoom(fitZoom * 0.4);
       cy.value?.maxZoom(fitZoom * 4);
+      pollZoom();
     });
   });
 
@@ -146,6 +163,10 @@ function rerunLayout(): void {
   const layout = cy.value.layout(dagLayout());
   layout.run();
   cy.value.one('layoutstop', () => cy.value?.fit(undefined, 40));
+}
+
+function pollZoom(): void {
+  zoomLevel.value = cy.value?.zoom() ?? 1;
 }
 
 function zoomIn(): void {
@@ -409,24 +430,27 @@ function dagStylesheet(): unknown[] {
     ></div>
 
     <!-- Kind legend — bottom-left corner -->
-    <aside v-if="!loading && !loadError" class="dag-legend" aria-label="Node kind legend">
-      <span class="dag-leg-det">— deterministic</span>
-      <span class="dag-leg-nd">- - non-deterministic</span>
-    </aside>
+    <GraphLegend
+      v-if="!loading && !loadError"
+      :tabs="dagLegendTabs"
+      class="dag-legend-pos"
+    />
 
     <!-- D-pad navigation — 3×3 grid anchored to the bottom-right corner -->
-    <div class="dag-dpad" aria-label="DAG navigation controls">
-      <button class="dpad-btn" title="Zoom in"      @click="zoomIn">＋</button>
-      <button class="dpad-btn" title="Pan up"        @click="panUp">▲</button>
-      <button class="dpad-btn" title="Zoom out"     @click="zoomOut">－</button>
-
-      <button class="dpad-btn" title="Pan left"     @click="panLeft">◀</button>
-      <button class="dpad-btn" title="Centre view"  @click="centerView">⊙</button>
-      <button class="dpad-btn" title="Pan right"    @click="panRight">▶</button>
-
-      <button class="dpad-btn" title="Expand zoom"  @click="expandZoom">⛶</button>
-      <button class="dpad-btn" title="Pan down"     @click="panDown">▼</button>
-      <button class="dpad-btn" title="Fit to view"  @click="fitScreen">⤢</button>
+    <div v-if="!loading && !loadError" class="dag-dpad-pos">
+      <GraphDpad
+        :zoom-level="zoomLevel"
+        :pan-enabled="true"
+        @zoom-in="zoomIn"
+        @zoom-out="zoomOut"
+        @pan-up="panUp"
+        @pan-down="panDown"
+        @pan-left="panLeft"
+        @pan-right="panRight"
+        @centre="centerView"
+        @expand="expandZoom"
+        @fit="fitScreen"
+      />
     </div>
   </DiagramFrame>
 </template>
@@ -452,75 +476,19 @@ function dagStylesheet(): unknown[] {
 
 .dag-error { color: var(--dagonizer-brand3); }
 
-/* Kind legend — bottom-left corner. */
-.dag-legend {
+/* Legend — bottom-left positioning anchor. */
+.dag-legend-pos {
   position: absolute;
   bottom: 10px;
   left: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(4px);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 4px;
-  padding: 0.35rem 0.6rem;
-  pointer-events: none;
   z-index: 4;
 }
 
-.dag-legend span {
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.65rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.dag-leg-det { color: #22e8ff; }
-.dag-leg-nd  { color: #9b51e0; }
-
-/* D-pad — 3×3 navigation grid anchored to the bottom-right of the frame body. */
-.dag-dpad {
+/* D-pad — bottom-right positioning anchor. */
+.dag-dpad-pos {
   position: absolute;
   right: 10px;
   bottom: 10px;
-  display: grid;
-  grid-template-columns: repeat(3, 32px);
-  grid-template-rows: repeat(3, 32px);
-  gap: 4px;
   z-index: 5;
-  background: rgba(0, 0, 0, 0.30);
-  padding: 6px;
-  border-radius: 8px;
-  backdrop-filter: blur(4px);
-}
-
-.dpad-btn {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--vp-c-bg-alt);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 4px;
-  color: var(--vp-c-text-1);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 0;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-  line-height: 1;
-}
-
-.dpad-btn:hover {
-  background: var(--vp-c-bg);
-  border-color: var(--dagonizer-brand);
-  color: var(--dagonizer-brand);
-}
-
-.dpad-btn:focus-visible {
-  outline: 2px solid var(--dagonizer-brand);
-  outline-offset: 1px;
 }
 </style>

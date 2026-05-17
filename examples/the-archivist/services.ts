@@ -17,6 +17,7 @@
  *   logger     — Node stdout + browser observable stream.
  */
 
+import type { MemoryDigest } from './ArchivistState.ts';
 import type { Candidate } from './entities/Book.ts';
 import type { MemoryStore } from './memory/MemoryStore.ts';
 import type { Tool } from './tools/ToolDefinition.ts';
@@ -46,13 +47,15 @@ export interface ScoredCandidate {
  * (`search` / `describe` / `recommend` / `off-topic`) drive the original
  * pipeline; the four newer intents (`lookup-author` / `find-reviews` /
  * `describe-book` / `recommend-similar`) each route to a dedicated
- * sub-DAG branch.
+ * sub-DAG branch. `recall-memories` is the meta-query intent — the
+ * visitor asked what the agent has seen/remembered across sessions.
  */
 export type ClassifiedIntent =
   | 'lookup-author'
   | 'find-reviews'
   | 'describe-book'
   | 'recommend-similar'
+  | 'recall-memories'
   | 'search'
   | 'describe'
   | 'recommend'
@@ -128,6 +131,18 @@ export interface LlmClient {
   ): Promise<string>;
   /** Validate a draft against quality rules (length, citations, tone). */
   validate(draft: string, shortlist: readonly Candidate[]): Promise<boolean>;
+  /**
+   * Compose a friendly prose response listing what the Archivist
+   * remembers. `digest` is the structured roll-up from `recallMemories`;
+   * `recalledSummary` is the optional 1–2 sentence hint from
+   * `recallContext`. When the digest is empty (bookCount === 0) the
+   * response gracefully says the shelves are fresh.
+   */
+  composeMemoryRecall(
+    query: string,
+    digest: MemoryDigest,
+    recalledSummary?: string,
+  ): Promise<string>;
 }
 
 /**

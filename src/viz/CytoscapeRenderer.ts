@@ -211,6 +211,12 @@ function renderInto(
       // Suppress synthetic-END routes for children inside a parallel —
       // the parent placement's own edges carry the collected result.
       if (parallelParent !== undefined && edge.data.target === idIn(prefix, END_ID)) continue;
+      // Inside an expanded sub-DAG (prefix non-empty), `null` targets
+      // refer to the sub-DAG's terminus, not the parent's END. The
+      // compound parent's own placementEdges carry the real external
+      // routing — drop these internal terminal markers so cytoscape
+      // doesn't try to wire an edge to a non-existent prefixed END.
+      if (prefix !== '' && edge.data.target === idIn(prefix, END_ID)) continue;
       if (edge.data.target === idIn(prefix, END_ID)) state.touchesTerminal = true;
       state.elements.push(edge);
     }

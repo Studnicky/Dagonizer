@@ -10,6 +10,7 @@
  * primitives so the persona stays consistent across calls.
  */
 
+import type { MemoryDigest } from '../ArchivistState.ts';
 import type { Candidate } from '../entities/Book.ts';
 import type { ClassifiedIntent, LlmClient, ScoredCandidate } from '../services.ts';
 
@@ -18,12 +19,14 @@ import { prompts, schemas } from './prompts.ts';
 
 // Order matters: longer / more-specific labels appear BEFORE their
 // short-form siblings so a substring match never collapses
-// `describe-book` to `describe` or `recommend-similar` to `recommend`.
+// `describe-book` to `describe`, `recommend-similar` to `recommend`,
+// or `recall-memories` to any shorter token.
 const VALID_INTENTS: readonly ClassifiedIntent[] = [
   'lookup-author',
   'find-reviews',
   'describe-book',
   'recommend-similar',
+  'recall-memories',
   'off-topic',
   'describe',
   'recommend',
@@ -171,6 +174,14 @@ export class BaseLlmClient implements LlmClient {
   async validate(draft: string, shortlist: readonly Candidate[]): Promise<boolean> {
     const raw = (await this.#text(prompts.validate(draft, shortlist))).trim().toLowerCase();
     return raw.startsWith('yes');
+  }
+
+  async composeMemoryRecall(
+    query: string,
+    digest: MemoryDigest,
+    recalledSummary?: string,
+  ): Promise<string> {
+    return (await this.#text(prompts.composeMemoryRecall(query, digest, recalledSummary))).trim();
   }
 
   async #text(prompt: string): Promise<string> {
