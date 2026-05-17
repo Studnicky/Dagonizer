@@ -1,32 +1,58 @@
 /**
- * RealTimeScheduler — wraps `node:timers/promises` for promise-based scheduling.
+ * RealTimeScheduler — promise-based scheduling backed by `globalThis.setTimeout`.
  *
- * Operates on monotonic-ms timestamps from `Clock.monotonicMs()`. This is
- * the ONLY place in Dagonizer's runtime where platform timer APIs are called.
+ * Operates on monotonic-ms timestamps from `Clock.monotonicMs()`. This
+ * is the ONLY place in Dagonizer's runtime where platform timer APIs
+ * are called.
+ *
+ * Isomorphic by design: every Node 24+ runtime and every modern browser
+ * exposes `setTimeout` / `clearTimeout` on `globalThis`, so the same
+ * default works in both. The implementation wraps each delay in a
+ * `Promise` and wires its own abort listener — no `node:timers/promises`
+ * dependency, so consumers can bundle Dagonizer straight into a browser
+ * build (Vite, esbuild, Rollup) without polyfills or aliases.
  */
-
-import { setTimeout as sleep } from 'node:timers/promises';
 
 import type { SchedulerProvider } from '../contracts/SchedulerProvider.js';
 
 import { Clock } from './Clock.js';
 
+type TimerGlobals = typeof globalThis & {
+  setTimeout(handler: () => void, delayMs: number): unknown;
+  clearTimeout(handle: unknown): void;
+};
+
+const G = globalThis as TimerGlobals;
+
 /**
- * Default `SchedulerProvider` backed by `node:timers/promises`.
- * This is the only permitted call site for platform timer APIs in the runtime.
+ * Default `SchedulerProvider`. The single permitted call site for
+ * platform timer APIs in the runtime. Works in Node and the browser
+ * unmodified — both expose `setTimeout` on `globalThis`.
  */
 export class RealTimeScheduler implements SchedulerProvider {
-  readonly #activeControllers: Set<AbortController> = new Set();
+  readonly #activeHandles = new Set<unknown>();
 
   async after(delayMs: number, signal?: AbortSignal): Promise<void> {
-    const controller = new AbortController();
-    this.#activeControllers.add(controller);
-    const composed = this.#compose(controller.signal, signal);
-    try {
-      await sleep(Math.max(0, delayMs), undefined, { 'signal': composed });
-    } finally {
-      this.#activeControllers.delete(controller);
-    }
+    return new Promise<void>((resolve, reject) => {
+      if (signal?.aborted === true) {
+        reject(this.#abortReason(signal));
+        return;
+      }
+      const handle = G.setTimeout(() => {
+        this.#activeHandles.delete(handle);
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      }, Math.max(0, delayMs));
+      this.#activeHandles.add(handle);
+
+      const onAbort = (): void => {
+        this.#activeHandles.delete(handle);
+        G.clearTimeout(handle);
+        signal?.removeEventListener('abort', onAbort);
+        reject(this.#abortReason(signal));
+      };
+      signal?.addEventListener('abort', onAbort, { 'once': true });
+    });
   }
 
   async at(atMs: number, signal?: AbortSignal): Promise<void> {
@@ -45,14 +71,15 @@ export class RealTimeScheduler implements SchedulerProvider {
   }
 
   cancelAll(): void {
-    for (const controller of this.#activeControllers) {
-      controller.abort();
+    for (const handle of this.#activeHandles) {
+      G.clearTimeout(handle);
     }
-    this.#activeControllers.clear();
+    this.#activeHandles.clear();
   }
 
-  #compose(internal: AbortSignal, external?: AbortSignal): AbortSignal {
-    if (external === undefined) return internal;
-    return AbortSignal.any([internal, external]);
+  #abortReason(signal?: AbortSignal): Error {
+    const reason = signal?.reason;
+    if (reason instanceof Error) return reason;
+    return new Error(typeof reason === 'string' ? reason : 'aborted');
   }
 }

@@ -1,110 +1,123 @@
-# Example: Sub-DAGs
+---
+title: 'Phase 03 · Sub-DAG fallback'
+description: 'When merge produces an empty shortlist, the Archivist routes to a nested fallback DAG that broadens the search and asks the visitor for more detail. Demonstrates Dagonizer sub-dag placements with input/output state mapping.'
+---
 
-Invoke a child DAG from a parent DAG with input/output node state mapping. `stateMapping.input` copies fields from the parent node state into the child node state before the sub-DAG runs. `stateMapping.output` copies fields from the child node state back into the parent after the sub-DAG returns.
+# Phase 03 · Sub-DAG fallback
+
+When [The Archivist](./the-archivist)'s merge returns an empty shortlist, the main flow routes to a nested fallback DAG that broadens the search vocabulary and re-runs the scouts. The fallback runs in isolated state — `stateMapping.input` copies the original query in, `stateMapping.output` writes the broadened candidate set back.
 
 ## Flow
 
 ```mermaid
 flowchart TB
-  start([parent.seed = 41])
-  invoke([invoke\nsub-dag])
-  inc[child: inc]
-  END([parent.result = 42])
-  start -->|input: payload ← seed| invoke
-  invoke --> inc
-  inc -->|success| invoke
-  invoke -->|output: result ← payload| END
+  merge[merge-candidates]
+  fallback([invoke-fallback\nsub-dag])
+  broaden[broaden-terms]
+  rescout[scout-parallel]
+  remerge[merge-candidates]
+  END([end])
+  merge -->|empty| fallback
+  fallback -->|input: query, terms| broaden
+  broaden --> rescout
+  rescout --> remerge
+  remerge -->|output: shortlist| fallback
+  fallback -->|success| END
 ```
 
 ## Code
 
 ```ts
-/**
- * 03-subflows — nested DAG with input/output node state mapping.
- *
- *   parent: dispatch → enrich(sub-DAG) → END
- *
- * The sub-DAG increments a number; parent maps its `seed` in and `result` out.
- *
- * Run: npx tsx examples/03-subflows.ts
- */
+import { Dagonizer } from '@noocodex/dagonizer';
+import type { DAG, NodeInterface } from '@noocodex/dagonizer';
 
-import {
-  NodeStateBase,
-  Dagonizer,
-} from '../src/index.js';
-import type { DAG, NodeInterface } from '../src/index.js';
+import { ArchivistState } from '../the-archivist/ArchivistState.ts';
+import { mergeCandidates } from '../the-archivist/nodes/mergeCandidates.ts';
+import { externalRagScout, localCatalogScout } from '../the-archivist/nodes/scouts.ts';
+import type { ArchivistServices } from '../the-archivist/services.ts';
 
-class S extends NodeStateBase {
-  seed = 0;
-  result = 0;
-  payload = 0;
-}
-
-const increment: NodeInterface<S, 'success'> = {
-  "name": 'increment',
-  "outputs": ['success'],
+// Broaden the search terms — drop short tokens, add synonyms.
+const broadenTerms: NodeInterface<ArchivistState, 'success', ArchivistServices> = {
+  name: 'broaden-terms',
+  outputs: ['success'],
   async execute(state) {
-    state.payload = state.payload + 1;
-    return { "output": 'success' };
+    const broader = state.terms.flatMap((term) =>
+      term === 'house'    ? ['house', 'home', 'dwelling']
+      : term === 'cosmic' ? ['cosmic', 'eldritch', 'liminal']
+      : [term],
+    );
+    state.terms = [...new Set(broader)];
+    return { output: 'success' };
   },
 };
 
-const child: DAG = {
-  "name": 'child',
-  "version": '1',
-  "entrypoint": 'inc',
-  "nodes": [
-    { "type": 'single', "name": 'inc', "node": 'increment', "outputs": { "success": null } },
+// Child DAG — broaden, re-scout, re-merge.
+const fallbackDAG: DAG = {
+  name: 'archivist-fallback',
+  version: '1.0',
+  entrypoint: 'broaden',
+  nodes: [
+    { type: 'single', name: 'broaden', node: 'broaden-terms',
+      outputs: { success: 'scout-local' } },
+    { type: 'single', name: 'scout-local', node: 'local-catalog-scout',
+      outputs: { success: 'scout-rag', empty: 'scout-rag' } },
+    { type: 'single', name: 'scout-rag', node: 'external-rag-scout',
+      outputs: { success: 'merge', empty: 'merge' } },
+    { type: 'single', name: 'merge', node: 'merge-candidates',
+      outputs: { ranked: null, empty: null } },
   ],
 };
 
-const parent: DAG = {
-  "name": 'parent',
-  "version": '1',
-  "entrypoint": 'invoke',
-  "nodes": [
+// Parent DAG — primary merge; on empty, invoke the fallback sub-DAG.
+const parentDAG: DAG = {
+  name: 'archivist-with-fallback',
+  version: '1.0',
+  entrypoint: 'merge',
+  nodes: [
+    { type: 'single', name: 'merge', node: 'merge-candidates',
+      outputs: { ranked: null, empty: 'fallback' } },
     {
-      "type": 'sub-dag',
-      "name": 'invoke',
-      "dag": 'child',
-      "stateMapping": {
-        // stateMapping.input copies fields from the parent node state into the
-        // child node state before the sub-DAG runs.
-        "input": { "payload": 'seed' },
-        // stateMapping.output copies fields from the child node state back into
-        // the parent after the sub-DAG returns.
-        "output": { "result": 'payload' },
+      type: 'sub-dag',
+      name: 'fallback',
+      dag: 'archivist-fallback',
+      stateMapping: {
+        // Copy the original query + terms into the child execution.
+        input:  { query: 'query', terms: 'terms' },
+        // Copy the broadened shortlist back into the parent.
+        output: { shortlist: 'shortlist' },
       },
-      "outputs": { "success": null, "error": null },
+      outputs: { success: null, error: null },
     },
   ],
 };
 
-const dispatcher = new Dagonizer<S>();
-dispatcher.registerNode(increment);
-dispatcher.registerDAG(child);
-dispatcher.registerDAG(parent);
+const dispatcher = new Dagonizer<ArchivistState, ArchivistServices>({ services });
+dispatcher.registerNode(broadenTerms);
+dispatcher.registerNode(localCatalogScout);
+dispatcher.registerNode(externalRagScout);
+dispatcher.registerNode(mergeCandidates);
+dispatcher.registerDAG(fallbackDAG);
+dispatcher.registerDAG(parentDAG);
 
-const state = new S();
-state.seed = 41;
-await dispatcher.execute('parent', state);
-process.stdout.write(`seed=${state.seed} → result=${state.result}\n`); // 41 → 42
+const visitor = new ArchivistState();
+visitor.query = 'something cosmic about a house';
+visitor.terms = ['cosmic', 'house'];
+// (Pretend the primary scouts returned nothing.)
+
+await dispatcher.execute('archivist-with-fallback', visitor);
+console.log(visitor.shortlist.length); // broadened candidates from the fallback
 ```
 
 ## What it demonstrates
 
-- `sub-dag` node invokes a second registered DAG as a nested call.
-- `stateMapping.input` copies fields from the parent node state into the child node state before the sub-DAG runs. Here `parentState.seed` is written into `childState.payload`.
-- `stateMapping.output` copies fields from the child node state back into the parent after the sub-DAG returns. Here `childState.payload` is written back into `parentState.result`.
-- The child operates on a cloned node state — changes to the child's lifecycle and errors do not propagate automatically (errors and warnings do bubble up, lifecycle does not).
-- Both child and parent DAGs use the same node registry — register `increment` once.
+- **Sub-DAG placement** — the parent dispatches a registered child DAG as a nested call.
+- **`stateMapping.input` / `output`** — explicit field copies between parent and child state. Other parent fields stay isolated from the child's mutations.
+- **Errors and warnings bubble up** — anything the child collects via `state.collectError` / `state.collectWarning` reaches the parent's accumulators automatically.
+- **Same node registry** — `merge-candidates` is registered once and reused in both DAGs.
 
 ## See also
 
+- [Running domain: The Archivist](./the-archivist)
+- [Phase 02 · Fan-out scout](./02-fanout)
 - [State accessors](../guide/state-accessor) — `stateMapping` paths route through the accessor
-- [DAGBuilder — `.subDAG(...)`](../guide/builder)
-
-## Related reference
-
 - [Reference: Entities — `SubDAGNode`](../reference/entities)

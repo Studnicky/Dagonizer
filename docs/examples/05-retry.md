@@ -1,107 +1,108 @@
-# Example: Retry
+---
+title: 'Phase 05 · Retry compose'
+description: 'Two retry surfaces in The Archivist: per-call retry against the flaky RAG provider (RetryPolicy.run inside the node) and a DAG-level bounded retry loop around the compose/validate pair.'
+---
 
-A flaky downstream that fails twice then succeeds. The node wraps the call in `RetryPolicy.run()`, which cooperates with the dispatcher's abort signal.
+# Phase 05 · Retry compose
+
+[The Archivist](./the-archivist) exercises two distinct retry shapes:
+
+1. **Per-call retry** — `externalRagScout` wraps its RAG fetch in `RetryPolicy.run`, so a flaky upstream is automatically retried with exponential backoff before the node reports `success` or `empty`.
+2. **DAG-level retry loop** — `validateResponse` routes back to `compose-response` when the draft fails the quality check, bounded by `state.attempts.compose` so the loop terminates instead of spinning.
+
+Two different shapes, neither one throws — the dispatcher always sees a named output.
 
 ## Flow
 
 ```mermaid
 flowchart TB
-  start([entrypoint])
-  fetch[fetch\nRetryPolicy.run]
-  END([end])
-  start --> fetch
-  fetch -->|attempt 1: fail| fetch
-  fetch -->|attempt 2: fail| fetch
-  fetch -->|attempt 3: success| END
-  fetch -.->|abortOn or maxAttempts| failure([error])
+  scout[external-rag-scout]
+  retry([RetryPolicy.run\nexp backoff])
+  compose[compose-response]
+  validate[validate-response]
+  respond([respond-to-visitor])
+  scout --> retry
+  retry -->|attempt 1: fail| retry
+  retry -->|attempt 2: fail| retry
+  retry -->|attempt 3: success| scout
+  scout --> compose
+  compose -->|drafted| validate
+  validate -->|retry| compose
+  validate -->|approved| respond
+  validate -->|exhausted| respond
 ```
 
 ## Code
 
+### Per-call retry (inside the node)
+
 ```ts
-/**
- * 05-retry — `RetryPolicy` inside a node.
- *
- * A flaky downstream fails twice then succeeds. The node wraps the call
- * in `RetryPolicy.run()` which cooperates with the dispatcher's abort signal.
- *
- * Run: npx tsx examples/05-retry.ts
- */
+import { BackoffStrategy, RetryPolicy } from '@noocodex/dagonizer/runtime';
 
-import {
-  BackoffStrategy,
-  NodeStateBase,
-  Dagonizer,
-  RetryPolicy,
-} from '../src/index.js';
-import type { DAG, NodeInterface } from '../src/index.js';
+const ragRetry = new RetryPolicy({
+  maxAttempts: 2,
+  strategy: BackoffStrategy.EXPONENTIAL,
+  baseDelay: 250,
+});
 
-class TransientError extends Error { constructor() { super('transient'); } }
-
-let flakyAttempts = 0;
-const flakyDownstream = async (): Promise<string> => {
-  flakyAttempts++;
-  if (flakyAttempts < 3) throw new TransientError();
-  return 'OK';
-};
-
-class S extends NodeStateBase {
-  result = '';
-}
-
-const fetchNode: NodeInterface<S, 'success' | 'error'> = {
-  "name": 'fetch',
-  "outputs": ['success', 'error'],
+export const externalRagScout: NodeInterface<ArchivistState, 'success' | 'empty', ArchivistServices> = {
+  name: 'external-rag-scout',
+  outputs: ['success', 'empty'],
   async execute(state, context) {
-    const policy = new RetryPolicy({
-      "maxAttempts": 5,
-      "strategy": BackoffStrategy.EXPONENTIAL,
-      "baseDelay": 50,
-      "jitterFactor": 0,
-      "retryOn": [TransientError],
-    });
     try {
-      state.result = await policy.run(flakyDownstream, context.signal);
-      return { "output": 'success' };
-    } catch {
-      return { "output": 'error' };
+      const candidates = await ragRetry.run(
+        () => context.services.rag.retrieve(state.terms),
+        context.signal,                  // cooperates with the dispatcher's abort
+      );
+      state.candidates = [...state.candidates, ...candidates];
+      return { output: candidates.length > 0 ? 'success' : 'empty' };
+    } catch (error) {
+      state.collectError({
+        code: 'RAG_RETRIEVE_FAILED',
+        message: error instanceof Error ? error.message : String(error),
+        operation: 'external-rag-scout',
+        recoverable: true,
+        timestamp: new Date().toISOString(),
+      });
+      return { output: 'empty' };
     }
   },
 };
+```
 
-const dag: DAG = {
-  "name": 'retry-dag',
-  "version": '1',
-  "entrypoint": 'fetch',
-  "nodes": [
-    { "type": 'single', "name": 'fetch', "node": 'fetch',
-      "outputs": { "success": null, "error": null } },
+### DAG-level retry loop (compose ↔ validate)
+
+```ts
+const composeLoopDAG: DAG = {
+  name: 'archivist-compose-loop',
+  version: '1.0',
+  entrypoint: 'compose',
+  nodes: [
+    { type: 'single', name: 'compose', node: 'compose-response',
+      outputs: { drafted: 'validate' } },
+    { type: 'single', name: 'validate', node: 'validate-response',
+      outputs: {
+        approved:  'respond',
+        retry:     'compose',              // route back — bounded by state.attempts.compose
+        exhausted: 'respond',               // best-effort response
+      } },
+    { type: 'single', name: 'respond', node: 'respond-to-visitor',
+      outputs: { success: null } },
   ],
 };
-
-const dispatcher = new Dagonizer<S>();
-dispatcher.registerNode(fetchNode);
-dispatcher.registerDAG(dag);
-
-const state = new S();
-await dispatcher.execute('retry-dag', state);
-process.stdout.write(`attempts=${flakyAttempts} result=${state.result}\n`);
 ```
 
 ## What it demonstrates
 
-- `RetryPolicy` is instantiated inside `execute()`. Each node call gets a fresh policy instance — nodes are stateless.
-- `retryOn: [TransientError]` — only `TransientError` instances trigger a retry. Other errors propagate immediately.
-- `context.signal` is passed to `policy.run()` — if the dispatcher's abort signal fires during a backoff wait, the wait resolves early and the retry loop stops.
-- `jitterFactor: 0` disables random jitter for reproducible delays in examples and tests. In production, leave jitter enabled to spread retry traffic.
-- The node returns `'error'` if all attempts are exhausted. The DAG routes both `'success'` and `'error'` to `null` — the caller inspects `state.result` after execution.
+- **`RetryPolicy.run(task, signal)`** — composable per-call retry with `EXPONENTIAL` / `LINEAR` / `CONSTANT` / `DECORRELATED_JITTER` backoff. Aborts mid-wait when the signal fires.
+- **Bounded loop modeled in the DAG itself** — the validate node routes back to compose; the bound is read off `state.attempts.compose`. No special "loop" placement type.
+- **Best-effort fallback** — `validateResponse` distinguishes `retry` (try again) from `exhausted` (give up but still respond). The visitor always gets something.
+- **`RetryPolicy.retryOn` / `abortOn`** — filter which error classes retry; an `AuthError` aborts immediately.
 
 ## See also
 
-- [Retry](../guide/retry)
-- [Cancellation](../guide/cancellation)
-
-## Related reference
-
+- [Running domain: The Archivist](./the-archivist)
+- [Retry guide](../guide/retry)
+- [Phase 04 · Cancellation](./04-cancellation)
 - [Reference: Runtime — `RetryPolicy`, `BackoffStrategy`](../reference/runtime)
 - [Reference: Contracts — `RetryPolicyOptionsInterface`](../reference/contracts)

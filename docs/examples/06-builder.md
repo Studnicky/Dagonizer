@@ -1,95 +1,85 @@
-# Example: DAGBuilder
+---
+title: 'Phase 06 · DAGBuilder'
+description: 'Author the Archivist DAG with the chainable DAGBuilder API instead of a plain-object literal. Compile-time exhaustiveness checks every output route.'
+---
 
-Builds the same DAG as the linear example using the chainable `DAGBuilder` API. Output routing is exhaustiveness-checked at compile time.
+# Phase 06 · DAGBuilder
+
+The same [Archivist](./the-archivist) DAG, authored with the chainable `DAGBuilder` API. The builder is a thin layer over plain-object DAG configs — `.build()` returns the exact same `DAG` data structure the dispatcher consumes. The win is compile-time exhaustiveness: each `.node(name, dagNode, routes)` call narrows `routes` to the node's `TOutput` union, so TypeScript flags any missing or stray output mapping.
 
 ## Flow
 
 ```mermaid
 flowchart TB
-  start([entrypoint])
-  classify[classify]
-  respond[respond]
+  classify[classify-intent]
+  extract[extract-query]
+  scout[scout-parallel]
+  merge[merge-candidates]
+  compose[compose-response]
+  validate[validate-response]
+  respond([respond-to-visitor])
+  declineOff([decline-off-topic])
+  declineEmpty([decline-empty])
   END([end])
-  start --> classify
-  classify -->|on_topic| respond
-  classify -->|off_topic| respond
-  respond -->|success| END
+  classify -->|on-topic| extract
+  classify -->|off-topic| declineOff
+  extract --> scout
+  scout --> merge
+  merge -->|ranked| compose
+  merge -->|empty| declineEmpty
+  compose --> validate
+  validate -->|approved| respond
+  validate -->|retry| compose
+  validate -->|exhausted| respond
+  respond --> END
+  declineOff --> END
+  declineEmpty --> END
 ```
 
 ## Code
 
 ```ts
-/**
- * 06-builder — `DAGBuilder` chainable API.
- *
- * Builds the same DAG as 01-linear but via the builder. Outputs are
- * exhaustiveness-checked at compile time when the node declares a
- * narrow TOutput union.
- *
- * Run: npx tsx examples/06-builder.ts
- */
+import { DAGBuilder, Dagonizer } from '@noocodex/dagonizer';
 
-import {
-  NodeStateBase,
-  Dagonizer,
-  DAGBuilder,
-} from '../src/index.js';
-import type { NodeInterface } from '../src/index.js';
+import { ArchivistState } from '../the-archivist/ArchivistState.ts';
+import { classifyIntent } from '../the-archivist/nodes/classifyIntent.ts';
+import { composeResponse, validateResponse } from '../the-archivist/nodes/composeResponse.ts';
+import { extractQuery } from '../the-archivist/nodes/extractQuery.ts';
+import { mergeCandidates } from '../the-archivist/nodes/mergeCandidates.ts';
+import { declineEmpty, declineOffTopic, respondToVisitor } from '../the-archivist/nodes/respondToVisitor.ts';
+import { externalRagScout, localCatalogScout } from '../the-archivist/nodes/scouts.ts';
+import type { ArchivistServices } from '../the-archivist/services.ts';
 
-class ChatState extends NodeStateBase {
-  input = '';
-  reply = '';
-  topic: 'on_topic' | 'off_topic' = 'on_topic';
-}
-
-const classify: NodeInterface<ChatState, 'on_topic' | 'off_topic'> = {
-  "name": 'classify',
-  "outputs": ['on_topic', 'off_topic'],
-  async execute(state) {
-    state.topic = state.input.toLowerCase().includes('weather') ? 'off_topic' : 'on_topic';
-    return { "output": state.topic };
-  },
-};
-
-const respond: NodeInterface<ChatState, 'success'> = {
-  "name": 'respond',
-  "outputs": ['success'],
-  async execute(state) {
-    state.reply = state.topic === 'on_topic'
-      ? `Echo: ${state.input}`
-      : `I only talk about coding, not the weather.`;
-    return { "output": 'success' };
-  },
-};
-
-const dag = new DAGBuilder('chat', '1')
-  .node('classify', classify, { "on_topic": 'respond', "off_topic": 'respond' })
-  .node('respond', respond, { "success": null })
+const dag = new DAGBuilder('the-archivist', '1.0')
+  .node('classify',   classifyIntent,   { 'on-topic': 'extract', 'off-topic': 'decline-off' })
+  .node('extract',    extractQuery,     { success: 'scout-group' })
+  .parallel('scout-group', ['scout-local', 'scout-rag'], 'collect',
+    { success: 'merge', error: 'merge' })
+  .node('scout-local', localCatalogScout, { success: null, empty: null })
+  .node('scout-rag',   externalRagScout,  { success: null, empty: null })
+  .node('merge',       mergeCandidates,   { ranked: 'compose', empty: 'decline-empty' })
+  .node('compose',     composeResponse,   { drafted: 'validate' })
+  .node('validate',    validateResponse,  { approved: 'respond', retry: 'compose', exhausted: 'respond' })
+  .node('respond',     respondToVisitor,  { success: null })
+  .node('decline-off', declineOffTopic,   { success: null })
+  .node('decline-empty', declineEmpty,    { success: null })
   .build();
 
-const dispatcher = new Dagonizer<ChatState>();
-dispatcher.registerNode(classify);
-dispatcher.registerNode(respond);
+const dispatcher = new Dagonizer<ArchivistState, ArchivistServices>({ services });
+// ...register nodes...
 dispatcher.registerDAG(dag);
-
-const state = new ChatState();
-state.input = 'What is a generic type parameter?';
-await dispatcher.execute('chat', state);
-process.stdout.write(`${state.reply}\n`);
 ```
 
 ## What it demonstrates
 
-- `new DAGBuilder('chat', '1')` starts the chain. The first `.node()` call automatically sets the entrypoint.
-- `.node(name, dagNode, routes)` — the third argument is typed as `Record<TOutput, string | null>`, so missing output keys are TypeScript errors at the call site.
-- `.build()` materializes the accumulated nodes into a `DAG`. The returned value is identical to a hand-written plain object.
-- The builder is a thin layer — nodes are still registered on the dispatcher separately.
+- **Chainable authoring** — every `.node()` / `.parallel()` / `.fanOut()` / `.subDAG()` returns `this` for fluent composition.
+- **Compile-time route exhaustiveness** — the `routes` argument is typed as `Record<TOutput, null | string>`. Drop a route, TypeScript fails. Add a stray output, TypeScript fails.
+- **Same output as a literal `DAG`** — `.build()` returns the same plain object the dispatcher consumes. The builder is a convenience layer, not a separate runtime.
+- **Auto-entrypoint** — the first `.node()` call sets the entrypoint. Override with `.entrypoint(name)` if needed.
 
 ## See also
 
-- [DAGBuilder](../guide/builder)
-- [Example 01: Linear DAG](./01-linear) — same flow, written as a plain object
-
-## Related reference
-
-- [Reference: Entities — `DAG`, `SingleNode`](../reference/entities)
+- [Running domain: The Archivist](./the-archivist)
+- [DAGBuilder guide](../guide/builder)
+- [Phase 07 · JSON DAG load](./07-schema) — same DAG loaded from a JSON file instead
+- [Reference: Entities — `DAG`, `SingleNode`, `ParallelNode`](../reference/entities)

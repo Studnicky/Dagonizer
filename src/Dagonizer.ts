@@ -13,11 +13,12 @@ import type { SubDAGNode } from './entities/dag/SubDAGNode.js';
 import type { ExecutionResultInterface } from './entities/execution/ExecutionResult.js';
 import type { NodeContextInterface } from './entities/node/NodeContext.js';
 import type { NodeResultInterface } from './entities/node/NodeResult.js';
-import { DAGError, ValidationError } from './errors/index.js';
+import { DAGError, NodeTimeoutError, ValidationError } from './errors/index.js';
 import { Execution } from './Execution.js';
 import { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
 import { DottedPathAccessor } from './runtime/DottedPathAccessor.js';
+import { Scheduler } from './runtime/Scheduler.js';
 import { SignalComposer } from './runtime/SignalComposer.js';
 import { Validator } from './validation/Validator.js';
 
@@ -614,6 +615,82 @@ implements DagonizerInterface<TState, TServices> {
     };
   }
 
+  /**
+   * Wrap a node execute call with a per-node timeout when `dagNode.timeoutMs`
+   * is set. Derives a child `AbortController` from the run's signal, arms a
+   * Scheduler timer, and races the node's execute against a deadline rejection.
+   *
+   * The child signal is passed to the node so signal-aware IO (fetch, retry)
+   * also cancels. Nodes that do not observe the signal are hard-stopped by the
+   * race. On expiry `NodeTimeoutError` propagates; `executeSingleNode` re-throws
+   * so the `runNodes` catch block fires `onError` and marks state failed.
+   *
+   * Timer and parent-abort listener are cleaned up in `finally`.
+   */
+  private async withNodeTimeout<TResult>(
+    dagNode: NodeInterface<TState, string, TServices>,
+    parentSignal: AbortSignal | null,
+    fn: (signal: AbortSignal) => Promise<TResult>,
+  ): Promise<TResult> {
+    const { timeoutMs } = dagNode;
+
+    if (timeoutMs === undefined) {
+      // No per-node budget — pass parent signal through unchanged.
+      const sig = parentSignal ?? new AbortController().signal;
+      return fn(sig);
+    }
+
+    const childCtrl = new AbortController();
+    const onParentAbort = (): void => { childCtrl.abort(parentSignal?.reason); };
+
+    if (parentSignal !== null) {
+      if (parentSignal.aborted) {
+        // Parent already aborted before node started.
+        childCtrl.abort(parentSignal.reason);
+      } else {
+        parentSignal.addEventListener('abort', onParentAbort, { 'once': true });
+      }
+    }
+
+    const timeoutError = new NodeTimeoutError(dagNode.name, timeoutMs);
+
+    // Deadline race: resolves when time elapses (child not yet aborted),
+    // rejects immediately if child is already aborted (parent propagation).
+    // The Scheduler is swappable via VirtualScheduler in tests.
+    let deadlineReject!: (reason: Error) => void;
+    const deadlinePromise = new Promise<never>((_resolve, reject) => {
+      deadlineReject = reject;
+    });
+
+    const schedulerPromise = Scheduler.current()
+      .after(timeoutMs, childCtrl.signal)
+      .then(() => {
+        childCtrl.abort(timeoutError);
+        deadlineReject(timeoutError);
+      })
+      .catch(() => { /* scheduler aborted early (cleanup or parent abort) */ });
+
+    // Start the node execute. Attach a no-op catch so the rejected promise
+    // does not surface as an unhandled rejection when the deadline race wins
+    // and the finally block aborts the child signal (causing execute to reject
+    // after Promise.race has already settled).
+    const nodePromise = fn(childCtrl.signal);
+    nodePromise.catch(() => { /* swallowed — deadline race already settled */ });
+
+    try {
+      // Race the node execute against the deadline rejection.
+      return await Promise.race([nodePromise, deadlinePromise]);
+    } finally {
+      // Cancel the pending Scheduler entry (no-op if already resolved/aborted)
+      // and detach the parent-abort listener.
+      childCtrl.abort(new Error('node-timeout-cleanup'));
+      if (parentSignal !== null) {
+        parentSignal.removeEventListener('abort', onParentAbort);
+      }
+      await schedulerPromise;
+    }
+  }
+
   private async executeSingleNode(
     nodeConfig: SingleNodePlacementInterface,
     state: TState,
@@ -626,8 +703,10 @@ implements DagonizerInterface<TState, TServices> {
       throw new DAGError(`Unknown node: ${nodeConfig.node}`);
     }
 
-    const context = this.buildContext(dagName, nodeConfig.name, signal);
-    const opResult = await dagNode.execute(state, context);
+    const opResult = await this.withNodeTimeout(dagNode, signal, (nodeSignal) => {
+      const context = this.buildContext(dagName, nodeConfig.name, nodeSignal);
+      return dagNode.execute(state, context);
+    });
 
     if (opResult.errors) {
       for (const error of opResult.errors) {

@@ -25,6 +25,7 @@ export {
   ConfigurationError,
   DAGError,
   ExecutionError,
+  NodeTimeoutError,
   NotFoundError,
   ValidationError,
 } from './errors/index.js';
@@ -87,6 +88,9 @@ export {
   ParallelCombineSchema,
   NodeTypeSchema,
   BackoffStrategySchema,
+  DAG_CONTEXT,
+  toJsonLd,
+  fromJsonLd,
 } from './entities/index.js';
 export type {
   FanInConfig,

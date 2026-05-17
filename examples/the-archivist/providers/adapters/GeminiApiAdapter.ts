@@ -1,0 +1,196 @@
+/**
+ * GeminiApiAdapter — Google AI Studio REST adapter.
+ *
+ * Maps the shared `ChatRequest` to Gemini's `generateContent` body:
+ *
+ *   { contents:           ChatMessage[] → contents[]
+ *   , tools:              ToolDefinition[] → tools.functionDeclarations[]
+ *   , toolConfig:         ToolChoice → toolConfig.functionCallingConfig
+ *   , generationConfig:   { responseMimeType, responseSchema, … }
+ *   }
+ *
+ * Response shape:
+ *
+ *   { candidates: [{ content: { parts: [{ text, functionCall: {name,args} }] } }] }
+ *
+ * Function calls land as `parts[].functionCall` — adapter translates
+ * back to `ChatResponse.message.toolCalls` so callers never see the
+ * wire format. Errors map through `classifyHttp` from the shared
+ * taxonomy.
+ */
+
+import { BaseAdapter } from './BaseAdapter.ts';
+import type {
+  ChatMessage,
+  ChatRequest,
+  ChatResponse,
+  ToolCall,
+  ToolChoice,
+  ToolDefinition,
+} from './LlmAdapter.ts';
+import { asNetworkError, classifyHttp, Classifications, LlmError, type ErrorClassification } from './LlmError.ts';
+
+const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
+const DEFAULT_MODEL = 'gemini-2.0-flash';
+
+interface GeminiPart {
+  readonly text?: string;
+  readonly functionCall?: { readonly name: string; readonly args?: Record<string, unknown> };
+}
+
+interface GeminiResponseBody {
+  candidates?: ReadonlyArray<{
+    content?:   { parts?: readonly GeminiPart[] };
+    finishReason?: string;
+  }>;
+  usageMetadata?: {
+    promptTokenCount?: number;
+    candidatesTokenCount?: number;
+  };
+}
+
+export interface GeminiApiAdapterOptions {
+  readonly apiKey: string;
+  readonly model?: string;
+  readonly maxAttempts?: number;
+}
+
+export class GeminiApiAdapter extends BaseAdapter {
+  readonly #apiKey: string;
+  readonly #model:  string;
+
+  constructor(options: GeminiApiAdapterOptions) {
+    super({ 'id': 'gemini-api', 'displayName': 'Gemini API (your AI Studio key)', 'maxAttempts': options.maxAttempts ?? 3 });
+    this.#apiKey = options.apiKey;
+    this.#model  = options.model ?? DEFAULT_MODEL;
+  }
+
+  protected async performChat(request: ChatRequest): Promise<ChatResponse> {
+    const url = `${ENDPOINT}/${encodeURIComponent(this.#model)}:generateContent?key=${encodeURIComponent(this.#apiKey)}`;
+    const body = this.#buildBody(request);
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        'method':  'POST',
+        'headers': { 'content-type': 'application/json' },
+        'body':    JSON.stringify(body),
+        ...(request.signal !== undefined ? { 'signal': request.signal } : {}),
+      });
+    } catch (err) {
+      throw asNetworkError(err);
+    }
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new LlmError(`Gemini REST ${String(res.status)}: ${text}`, classifyHttp(res.status, text));
+    }
+
+    const payload = (await res.json()) as GeminiResponseBody;
+    return this.#parseResponse(payload);
+  }
+
+  protected override classify(error: unknown): ErrorClassification {
+    if (error instanceof LlmError) return error.classification;
+    if (error instanceof Error && /aborted/iu.test(error.message)) return Classifications['NETWORK'];
+    return Classifications['UNKNOWN'];
+  }
+
+  #buildBody(request: ChatRequest): Record<string, unknown> {
+    const body: Record<string, unknown> = {
+      'contents': request.messages.map(toGeminiContent),
+      'generationConfig': {
+        'temperature': request.temperature ?? 0.2,
+        'maxOutputTokens': request.maxTokens ?? 512,
+      },
+    };
+
+    // Native function calling. Gemini's `tools.functionDeclarations` is
+    // the canonical wire format — we forward the JSON Schema as
+    // `parameters`. When `tools` is set, the model decides whether to
+    // emit `parts[].functionCall` based on the prompt + tool description.
+    if (request.tools !== undefined && request.tools.length > 0) {
+      body['tools'] = [{ 'functionDeclarations': request.tools.map(toFunctionDeclaration) }];
+      if (request.toolChoice !== undefined) {
+        body['toolConfig'] = { 'functionCallingConfig': toGeminiToolConfig(request.toolChoice) };
+      }
+    } else if (request.outputSchema !== undefined) {
+      // Structured-output path — JSON Schema constrains the response
+      // body to the requested shape. (Gemini honours `responseSchema` on
+      // text models since v1beta.)
+      (body['generationConfig'] as Record<string, unknown>)['responseMimeType'] = 'application/json';
+      (body['generationConfig'] as Record<string, unknown>)['responseSchema'] = request.outputSchema.schema;
+    }
+
+    return body;
+  }
+
+  #parseResponse(payload: GeminiResponseBody): ChatResponse {
+    const candidate = payload.candidates?.[0];
+    const parts = candidate?.content?.parts ?? [];
+    const toolCalls: ToolCall[] = [];
+    let text = '';
+    for (const part of parts) {
+      if (part.functionCall !== undefined) {
+        toolCalls.push({
+          'id':   `gemini-${String(toolCalls.length)}-${String(Date.now())}`,
+          'name': part.functionCall.name,
+          'arguments': part.functionCall.args ?? {},
+        });
+      } else if (part.text !== undefined) {
+        text += part.text;
+      }
+    }
+    const finishReason = toolCalls.length > 0
+      ? 'tool_call'
+      : candidate?.finishReason === 'MAX_TOKENS' ? 'length' : 'stop';
+    return {
+      'message': toolCalls.length > 0
+        ? { 'toolCalls': toolCalls, 'content': text === '' ? undefined : text }
+        : { 'content': text },
+      'finishReason': finishReason,
+      ...(payload.usageMetadata !== undefined ? {
+        'usage': {
+          'promptTokens':     payload.usageMetadata.promptTokenCount,
+          'completionTokens': payload.usageMetadata.candidatesTokenCount,
+        } as { promptTokens?: number; completionTokens?: number },
+      } : {}),
+    };
+  }
+}
+
+function toGeminiContent(message: ChatMessage): Record<string, unknown> {
+  // Gemini uses `model` instead of `assistant`; `tool` becomes `function`.
+  const role = message.role === 'assistant' ? 'model'
+    : message.role === 'tool' ? 'function'
+    : message.role;
+  const parts: Record<string, unknown>[] = [];
+  if (message.role === 'tool') {
+    parts.push({
+      'functionResponse': {
+        'name':     message.toolName ?? 'unknown',
+        'response': { 'result': message.content },
+      },
+    });
+  } else {
+    parts.push({ 'text': message.content });
+  }
+  return { role, parts };
+}
+
+function toFunctionDeclaration(tool: ToolDefinition): Record<string, unknown> {
+  return {
+    'name':        tool.name,
+    'description': tool.description,
+    'parameters':  tool.inputSchema,
+  };
+}
+
+function toGeminiToolConfig(choice: ToolChoice): Record<string, unknown> {
+  switch (choice.type) {
+    case 'auto':     return { 'mode': 'AUTO' };
+    case 'required': return { 'mode': 'ANY' };
+    case 'none':     return { 'mode': 'NONE' };
+    case 'tool':     return { 'mode': 'ANY', 'allowedFunctionNames': [choice.name] };
+  }
+}

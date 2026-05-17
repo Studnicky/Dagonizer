@@ -1,17 +1,22 @@
-# Example: Schema Loading
+---
+title: 'Phase 07 · JSON DAG load'
+description: 'Load the Archivist DAG from a JSON file, validate against DAGSchema before registration, then execute. Demonstrates Dagonizer.load and Validator.dag.'
+---
 
-Load a DAG from a JSON string, validate against `DAGSchema`, then execute. Demonstrates error handling for malformed input and a round-trip serialization check.
+# Phase 07 · JSON DAG load
+
+[The Archivist](./the-archivist) DAG can live in version control as a JSON document — useful when the DAG topology changes per deployment (different shops carry different scout backends). `Dagonizer.load(json)` parses + validates against `DAGSchema` in one call; `Validator.dag.is(value)` is the predicate alternative that doesn't throw.
 
 ## Flow
 
 ```mermaid
 flowchart TB
-  json([JSON text])
+  json([archivist.dag.json])
   load[Dagonizer.load]
   validate[Validator.dag.validate]
   register[dispatcher.registerDAG]
   execute[dispatcher.execute]
-  END([result])
+  END([visitor response])
   json --> load
   load --> validate
   validate -->|valid DAG| register
@@ -23,81 +28,68 @@ flowchart TB
 ## Code
 
 ```ts
-/**
- * 07-schema — load a DAG from a JSON string, validate against
- * `DAGSchema`, then execute.
- *
- * The runtime validator catches malformed JSON at the ingest boundary
- * before any semantic checks. ValidationError carries every Ajv failure as
- * a formatted `<instancePath>: <message>` line.
- *
- * Run: npx tsx examples/07-schema.ts
- */
+import { readFileSync } from 'node:fs';
+import { Dagonizer, ValidationError } from '@noocodex/dagonizer';
+import { Validator } from '@noocodex/dagonizer/validation';
 
-import {
-  NodeStateBase,
-  Dagonizer,
-  ValidationError,
-} from '../src/index.js';
-import type { NodeInterface } from '../src/index.js';
+import { ArchivistState } from '../the-archivist/ArchivistState.ts';
+import type { ArchivistServices } from '../the-archivist/services.ts';
 
-const echo: NodeInterface<NodeStateBase, 'success'> = {
-  "name": 'echo',
-  "outputs": ['success'],
-  async execute(state) {
-    state.setMetadata('seen', true);
-    return { "output": 'success' };
-  },
-};
+const json = readFileSync('./archivist.dag.json', 'utf8');
 
-const dagJson = `{
-  "name": "from-json",
-  "version": "1",
-  "entrypoint": "echo",
-  "nodes": [
-    { "type": "single", "name": "echo", "node": "echo", "outputs": { "success": null } }
-  ]
-}`;
-
-const dag = Dagonizer.load(dagJson);
-process.stdout.write(`loaded: ${dag.name} v${dag.version}\n`);
-
-const dispatcher = new Dagonizer<NodeStateBase>();
-dispatcher.registerNode(echo);
-dispatcher.registerDAG(dag);
-
-const state = new NodeStateBase();
-await dispatcher.execute('from-json', state);
-process.stdout.write(`ran DAG; seen = ${String(state.getMetadata('seen'))}\n`);
-
-// Round-trip: serialize → load yields an equivalent DAG.
-const roundTripped = Dagonizer.load(Dagonizer.serialize(dag));
-process.stdout.write(`round-trip equal: ${String(JSON.stringify(roundTripped) === JSON.stringify(dag))}\n`);
-
-// Malformed input is rejected with a ValidationError listing each Ajv failure.
 try {
-  Dagonizer.load('{ "name": "broken" }');
+  const dag = Dagonizer.load(json);
+  const dispatcher = new Dagonizer<ArchivistState, ArchivistServices>({ services });
+  // ...register every Archivist node...
+  dispatcher.registerDAG(dag);
+  await dispatcher.execute('the-archivist', new ArchivistState());
 } catch (error) {
   if (error instanceof ValidationError) {
-    process.stdout.write(`validation error path works: ${error.message.split('\n')[0]}\n`);
+    console.error('archivist DAG schema error:', error.message);
+    process.exit(1);
   }
+  throw error;
+}
+
+// Predicate alternative — doesn't throw.
+const raw: unknown = JSON.parse(json);
+if (Validator.dag.is(raw)) {
+  // raw is narrowed to DAG here
+}
+```
+
+### Sample `archivist.dag.json`
+
+```json
+{
+  "name": "the-archivist",
+  "version": "1.0",
+  "entrypoint": "classify-intent",
+  "nodes": [
+    { "type": "single", "name": "classify-intent", "node": "classify-intent",
+      "outputs": { "on-topic": "extract-query", "off-topic": "decline-off-topic" } },
+    { "type": "single", "name": "extract-query", "node": "extract-query",
+      "outputs": { "success": "scout-parallel" } },
+    { "type": "parallel", "name": "scout-parallel",
+      "nodes": ["scout-local", "scout-rag"], "combine": "collect",
+      "outputs": { "success": "merge-candidates", "error": "merge-candidates" } },
+    { "type": "single", "name": "merge-candidates", "node": "merge-candidates",
+      "outputs": { "ranked": "compose-response", "empty": "decline-empty" } }
+  ]
 }
 ```
 
 ## What it demonstrates
 
-- `Dagonizer.load(text)` is the single permitted ingest boundary for external DAG JSON. It calls `JSON.parse`, then validates against `DAGSchema` (Ajv 2020-12).
-- `ValidationError` carries a multi-line message with one `<instancePath>: <message>` entry per Ajv failure.
-- `Dagonizer.serialize(dag)` serializes a validated DAG to pretty-printed JSON. The round-trip produces an equivalent object.
-- The `Dagonizer.fromValue(obj)` variant accepts an already-parsed value (e.g., from a YAML loader).
-- `state.setMetadata` / `state.getMetadata` are the correct way for nodes to store untyped cross-node data.
+- **`Dagonizer.load(json)`** — single boundary that runs `JSON.parse` + `Validator.dag.validate` and returns a typed `DAG`. The only place `unknown` enters the package.
+- **`ValidationError` vs `DAGError`** — schema failures throw `ValidationError` (subclass of `DAGError` with `code: 'VALIDATION_ERROR'`). Semantic failures (unknown node refs, output wiring gaps, circular sub-DAG refs) throw `DAGError`.
+- **`Validator.dag.is(value)`** — typed predicate for callers who want to inspect without throwing.
+- **`registerDAG` runs the schema pre-pass internally** so even hand-built DAGs are validated before being trusted.
 
 ## See also
 
-- [Schema & JSON loading](../guide/schema)
-- [DAGBuilder](../guide/builder) — author in code instead of loading JSON
-
-## Related reference
-
+- [Running domain: The Archivist](./the-archivist)
+- [Schema & JSON loading guide](../guide/schema)
+- [Phase 06 · DAGBuilder](./06-builder) — the same DAG authored in code
 - [Reference: Validation — `Validator.dag`](../reference/validation)
 - [Reference: Errors — `ValidationError`](../reference/errors)
