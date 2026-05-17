@@ -40,6 +40,7 @@ export const directives = {
   "authorSurvey":     'Treat the shortlist as one author\'s body of work; sketch its arc, not a single recommendation.',
   "similarToPrior":   'Frame each suggestion as "similar to <prior title>" using the persistent-memory facts as the anchor.',
   "weighOpinions":    'Quote average ratings and ratings counts when present; explain what readers seem to feel about each title.',
+  "continuityHint":   'Use the recent context if it suggests a likely intent or recurring interest.',
 } as const;
 
 // ── Shared system message — composed from persona directives ───────────
@@ -101,7 +102,13 @@ export const schemas = {
 // ── Prompt builders ────────────────────────────────────────────────────
 /** Helpers expose only the builders; nodes never assemble prose themselves. */
 export const prompts = {
-  classifyIntent(query: string): string {
+  classifyIntent(query: string, recalledSummary?: string): string {
+    const contextBlock = (recalledSummary === undefined || recalledSummary.length === 0)
+      ? ''
+      : [
+          '',
+          `Recent context: ${recalledSummary} ${directives.continuityHint}`,
+        ].join('\n');
     return [
       SYSTEM,
       '',
@@ -115,6 +122,7 @@ export const prompts = {
       '  recommend          — the visitor asked for a generic recommendation',
       '  off-topic          — the visitor wandered off books',
       'Prefer the most specific intent. Respond with the single token only.',
+      contextBlock,
       '',
       `Visitor question: ${query}`,
     ].join('\n');
@@ -161,6 +169,7 @@ export const prompts = {
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
+    recalledSummary?: string,
   ): string {
     const rows = shortlist.map((c, i) => formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
@@ -170,12 +179,16 @@ export const prompts = {
           'PERSISTENT MEMORY (background only — cite only on explicit recall request):',
           ...priorContext.map((p) => `- [${p.kind}] ${p.text}`),
         ].join('\n');
+    const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
+      ? ''
+      : `\nConversation context: ${recalledSummary}`;
     return [
       SYSTEM,
       directives.beTerse,
       directives.citeShortlist,
       '',
       `Visitor question: ${query}`,
+      continuityBlock,
       contextBlock,
       '',
       'Shortlist (ranked, top first):',
@@ -187,6 +200,7 @@ export const prompts = {
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
+    recalledSummary?: string,
   ): string {
     const rows = shortlist.map((c, i) => formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
@@ -196,6 +210,9 @@ export const prompts = {
           'PERSISTENT MEMORY (background only — cite only on explicit recall request):',
           ...priorContext.map((p) => `- [${p.kind}] ${p.text}`),
         ].join('\n');
+    const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
+      ? ''
+      : `\nConversation context: ${recalledSummary}`;
     return [
       SYSTEM,
       directives.beTerse,
@@ -204,6 +221,7 @@ export const prompts = {
       directives.authorSurvey,
       '',
       `Visitor question: ${query}`,
+      continuityBlock,
       contextBlock,
       '',
       'Shortlist (chronological, oldest first):',
@@ -215,6 +233,7 @@ export const prompts = {
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
+    recalledSummary?: string,
   ): string {
     const rows = shortlist.map((c, i) => formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
@@ -224,6 +243,9 @@ export const prompts = {
           'PERSISTENT MEMORY (background only — cite only on explicit recall request):',
           ...priorContext.map((p) => `- [${p.kind}] ${p.text}`),
         ].join('\n');
+    const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
+      ? ''
+      : `\nConversation context: ${recalledSummary}`;
     return [
       SYSTEM,
       directives.beTerse,
@@ -232,6 +254,7 @@ export const prompts = {
       directives.weighOpinions,
       '',
       `Visitor question: ${query}`,
+      continuityBlock,
       contextBlock,
       '',
       'Shortlist (ranked by rating signal):',
@@ -243,6 +266,7 @@ export const prompts = {
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
+    recalledSummary?: string,
   ): string {
     const rows = shortlist.map((c, i) => formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
@@ -252,6 +276,9 @@ export const prompts = {
           'PERSISTENT MEMORY (background only — cite only on explicit recall request):',
           ...priorContext.map((p) => `- [${p.kind}] ${p.text}`),
         ].join('\n');
+    const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
+      ? ''
+      : `\nConversation context: ${recalledSummary}`;
     return [
       SYSTEM,
       directives.describeOnly,
@@ -259,6 +286,7 @@ export const prompts = {
       directives.groundInShortlist,
       '',
       `Visitor question: ${query}`,
+      continuityBlock,
       contextBlock,
       '',
       'Matched book(s):',
@@ -270,6 +298,7 @@ export const prompts = {
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
+    recalledSummary?: string,
   ): string {
     const rows = shortlist.map((c, i) => formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
@@ -279,6 +308,9 @@ export const prompts = {
           'PERSISTENT MEMORY (anchor — cite explicitly as the basis for similarity):',
           ...priorContext.map((p) => `- [${p.kind}] ${p.text}`),
         ].join('\n');
+    const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
+      ? ''
+      : `\nConversation context: ${recalledSummary}`;
     return [
       SYSTEM,
       directives.beTerse,
@@ -286,6 +318,7 @@ export const prompts = {
       directives.similarToPrior,
       '',
       `Visitor question: ${query}`,
+      continuityBlock,
       contextBlock,
       '',
       'Shortlist (ranked, top first):',

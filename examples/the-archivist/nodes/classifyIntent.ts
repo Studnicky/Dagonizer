@@ -32,7 +32,10 @@ export const classifyIntent: NodeInterface<ArchivistState, IntentOutput, Archivi
   "name": 'classify-intent',
   "outputs": ['lookup-author', 'find-reviews', 'describe-book', 'recommend-similar', 'on-topic', 'off-topic'],
   async execute(state, context) {
-    const intent = await context.services.llm.classifyIntent(state.query);
+    const summary = state.recalledContext.summary.length > 0
+      ? state.recalledContext.summary
+      : undefined;
+    const intent = await context.services.llm.classifyIntent(state.query, summary);
     state.intent = intent;
     context.services.logger.info(`intent=${intent}`);
     switch (intent) {

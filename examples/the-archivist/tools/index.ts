@@ -12,4 +12,5 @@ export type { Tool, ToolCall, ToolDefinition, ToolOutcome } from './ToolDefiniti
 export { CanonicalId } from './CanonicalId.ts';
 export { OpenLibrarySearchTool } from './OpenLibrarySearchTool.ts';
 export { GoogleBooksTool }       from './GoogleBooksTool.ts';
+export { SubjectSearchTool }     from './SubjectSearchTool.ts';
 export { WikipediaSummaryTool }  from './WikipediaSummaryTool.ts';

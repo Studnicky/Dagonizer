@@ -21,6 +21,14 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 - Archivist demo: workshop UI with DAG / RDF memory / state / trace / logger / ontology tabs. `MemoryGraph` uses cosmos.gl native defaults with layer-chip filter (memory/state/prov). `DagGraph` D-pad navigation (3x3 grid: zoom/pan/center/expand/fit). `StateLegend` left column with equal-width rows.
 - Archivist demo: three external tools — `OpenLibrarySearchTool`, `GoogleBooksTool`, `WikipediaSummaryTool`. Each returns normalized `Candidate[]` with overlapping `CanonicalId` keys so cross-source merge is natural.
 - Three LLM adapters under `providers/adapters/`: `GeminiNanoAdapter` (in-browser via `chrome.aiOriginTrial`), `GeminiApiAdapter` (REST), `WebLlmAdapter` (in-browser MLC). Tool calling via each backend's native channel (`functionDeclarations` / `responseConstraint` / `response_format`).
+- Archivist demo: `recallContext` node runs first on every visitor message. Issues SPARQL queries across `urn:dagonizer:state:*` graphs for prior intents (token-overlap ranked), recently shortlisted candidates, and similar prior queries (Jaccard ≥ 0.15). Populates `state.recalledContext` and a 1–2 sentence `summary` string. `classifyIntent` and all five `composeResponse` paths consume the summary as conversational priors for continuity across sessions.
+- Archivist demo: `SubjectSearchTool` + `subjectScout`. OpenLibrary subject search wired into every fan-out branch (now 4 sources per intent: openlibrary + google-books + subject + wikipedia). Visitors can find books by theme/subject ("labyrinth house that eats people") rather than only by title/author.
+- Archivist demo: workshop UI collapsed to 4 tabs — DAG, Memory (merged ontology + memory + state + prov RDF graph), Trace (merged logger + lifecycle + state-update feed via new `TraceFeed`), Timeouts (per-phase controls promoted from a floating drawer to a proper tab via `TimeoutPane`). Memory graph rendering bug fixed — ontology layer (`urn:dagonizer:ontology`) now mapped, colored, and chip-filterable alongside memory/state/prov.
+- Archivist demo: graph chrome normalized across DagGraph and MemoryGraph — D-pad navigation bottom-right, kind/layer legend bottom-left. DagGraph uses strict `rankDir: 'TB'` with `ranker: 'tight-tree'` for a clean top-to-bottom flowchart.
+
+### Removed
+
+- Archivist demo: `OntologyGraph.vue`, `MemoryPane.vue`, `LogStream.vue`, `TraceList.vue`, `TimeoutDrawer.vue` — superseded by the merged Memory tab, `TraceFeed`, and `TimeoutPane`.
 
 - `./types` subpath export — type-only barrel of every public interface and entity-derived type. Consumers import the type surface without pulling runtime classes (`import type { DAG, NodeInterface } from '@noocodex/dagonizer/types'`).
 - `./core` subpath export — pluggable execution primitives (`ParallelCombiner`/`ParallelCombiners`, `FanInStrategy`/`FanInStrategies`).

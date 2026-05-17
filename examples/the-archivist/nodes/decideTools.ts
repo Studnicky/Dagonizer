@@ -27,10 +27,15 @@
 
 import { GoogleBooksTool } from '../tools/GoogleBooksTool.ts';
 import { OpenLibrarySearchTool } from '../tools/OpenLibrarySearchTool.ts';
+import { SubjectSearchTool } from '../tools/SubjectSearchTool.ts';
 
 import type { ArchivistNode } from './ArchivistNode.ts';
 
-/** Intents that benefit from the full tool set (OpenLibrary + GoogleBooks). */
+/**
+ * Intents that benefit from the full tool set (OpenLibrary + GoogleBooks +
+ * SubjectSearch). SubjectSearch is included in every intent so the LLM can
+ * always pick it when the visitor describes a book thematically.
+ */
 const DUAL_CATALOG_INTENTS = new Set(['find-reviews', 'lookup-author', 'recommend-similar']);
 
 export const decideTools: ArchivistNode<'tools' | 'no-tools'> = {
@@ -39,8 +44,8 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools'> = {
   'outputs': ['tools', 'no-tools'],
   async execute(state, context) {
     const available = DUAL_CATALOG_INTENTS.has(state.intent)
-      ? [OpenLibrarySearchTool.definition, GoogleBooksTool.definition]
-      : [OpenLibrarySearchTool.definition];
+      ? [OpenLibrarySearchTool.definition, GoogleBooksTool.definition, SubjectSearchTool.definition]
+      : [OpenLibrarySearchTool.definition, SubjectSearchTool.definition];
     try {
       const calls = await context.services.llm.decideTools(state.query, available);
       state.toolPlan = calls;

@@ -72,18 +72,26 @@ import { mergeCandidates }   from './nodes/mergeCandidates.ts';
 import { pickBestMatch }     from './nodes/pickBestMatch.ts';
 import { rankByRating }      from './nodes/rankByRating.ts';
 import { rankCandidates }    from './nodes/rankCandidates.ts';
+import { recallContext }     from './nodes/recallContext.ts';
 import { recallPastVisits }  from './nodes/recallPastVisits.ts';
 import { recommendSimilar }  from './nodes/recommendSimilar.ts';
 import { recordFindings }    from './nodes/recordFindings.ts';
 import { respondToVisitor, declineOffTopic, declineEmpty } from './nodes/respondToVisitor.ts';
-import { openLibraryScout, googleBooksScout, wikipediaScout } from './nodes/scouts.ts';
+import { openLibraryScout, googleBooksScout, subjectScout, wikipediaScout } from './nodes/scouts.ts';
 
 import { DAGBuilder } from '@noocodex/dagonizer/builder';
 
-export const archivistDAG = new DAGBuilder('the-archivist', '4.0')
+export const archivistDAG = new DAGBuilder('the-archivist', '4.1')
+
+  // ── 0. recall-context ────────────────────────────────────────────────────
+  // First added → auto-entrypoint. Runs before classifyIntent so the
+  // classifier can benefit from prior-session continuity hints.
+  .node('recall-context', recallContext, {
+    'recalled': 'classify-intent',
+  })
 
   // ── 1. classify-intent ───────────────────────────────────────────────────
-  // First added → auto-entrypoint. Wide output union routes to five branches.
+  // Wide output union routes to five branches.
   // Literal: { type:'single', name:'classify-intent', node:'classify-intent', outputs:{...} }
   .node('classify-intent', classifyIntent, {
     'lookup-author':     'author-extract',
@@ -111,17 +119,18 @@ export const archivistDAG = new DAGBuilder('the-archivist', '4.0')
   })
 
   // ── 4. web-search-fan-out ────────────────────────────────────────────────
-  // Parallel placement: all three scouts run concurrently. combine:'collect'
-  // waits for all three and merges their state mutations. Each child node
+  // Parallel placement: all four scouts run concurrently. combine:'collect'
+  // waits for all four and merges their state mutations. Each child node
   // writes to state.candidates; mergeCandidates dedupes via CanonicalId.
-  // Cytoscape renders this as a compound cluster containing web-ol/gb/wiki.
-  .parallel('web-search-fan-out', ['web-ol', 'web-gb', 'web-wiki'], 'collect', {
+  // Cytoscape renders this as a compound cluster containing web-ol/gb/subject/wiki.
+  .parallel('web-search-fan-out', ['web-ol', 'web-gb', 'web-subject', 'web-wiki'], 'collect', {
     'success': 'rank-candidates',
     'error':   'rank-candidates',
   })
-  .node('web-ol',   openLibraryScout, { 'success': null, 'empty': null })
-  .node('web-gb',   googleBooksScout, { 'success': null, 'empty': null })
-  .node('web-wiki', wikipediaScout,   { 'success': null, 'empty': null })
+  .node('web-ol',      openLibraryScout, { 'success': null, 'empty': null })
+  .node('web-gb',      googleBooksScout, { 'success': null, 'empty': null })
+  .node('web-subject', subjectScout,     { 'success': null, 'empty': null })
+  .node('web-wiki',    wikipediaScout,   { 'success': null, 'empty': null })
 
   // ── 5. rank-candidates ───────────────────────────────────────────────────
   // Always routes 'ranked' — even an empty set — so merge can soft-gate.
@@ -167,13 +176,14 @@ export const archivistDAG = new DAGBuilder('the-archivist', '4.0')
     'tools':    'author-fan-out',
     'no-tools': 'author-fan-out',
   })
-  .parallel('author-fan-out', ['author-ol', 'author-gb', 'author-wiki'], 'collect', {
+  .parallel('author-fan-out', ['author-ol', 'author-gb', 'author-subject', 'author-wiki'], 'collect', {
     'success': 'author-rank',
     'error':   'author-rank',
   })
-  .node('author-ol',   openLibraryScout, { 'success': null, 'empty': null })
-  .node('author-gb',   googleBooksScout, { 'success': null, 'empty': null })
-  .node('author-wiki', wikipediaScout,   { 'success': null, 'empty': null })
+  .node('author-ol',      openLibraryScout, { 'success': null, 'empty': null })
+  .node('author-gb',      googleBooksScout, { 'success': null, 'empty': null })
+  .node('author-subject', subjectScout,     { 'success': null, 'empty': null })
+  .node('author-wiki',    wikipediaScout,   { 'success': null, 'empty': null })
   .node('author-rank', rankCandidates, {
     'ranked': 'author-merge',
   })
@@ -205,16 +215,17 @@ export const archivistDAG = new DAGBuilder('the-archivist', '4.0')
     'tools':    'reviews-fan-out',
     'no-tools': 'reviews-fan-out',
   })
-  // reviews-fan-out: parallel fetch from all three sources.
+  // reviews-fan-out: parallel fetch from all four sources.
   // reviews-rank uses deterministic rating-weighted ranking; google-books scout
   // carries notes.rating / notes.ratingsCount from the source.
-  .parallel('reviews-fan-out', ['reviews-ol', 'reviews-gb', 'reviews-wiki'], 'collect', {
+  .parallel('reviews-fan-out', ['reviews-ol', 'reviews-gb', 'reviews-subject', 'reviews-wiki'], 'collect', {
     'success': 'reviews-rank',
     'error':   'reviews-rank',
   })
-  .node('reviews-ol',   openLibraryScout, { 'success': null, 'empty': null })
-  .node('reviews-gb',   googleBooksScout, { 'success': null, 'empty': null })
-  .node('reviews-wiki', wikipediaScout,   { 'success': null, 'empty': null })
+  .node('reviews-ol',      openLibraryScout, { 'success': null, 'empty': null })
+  .node('reviews-gb',      googleBooksScout, { 'success': null, 'empty': null })
+  .node('reviews-subject', subjectScout,     { 'success': null, 'empty': null })
+  .node('reviews-wiki',    wikipediaScout,   { 'success': null, 'empty': null })
   // reviews-rank uses deterministic rating-weighted ranking instead of LLM ranking.
   .node('reviews-rank', rankByRating, {
     'ranked': 'reviews-merge',
@@ -243,13 +254,14 @@ export const archivistDAG = new DAGBuilder('the-archivist', '4.0')
     'tools':    'describe-fan-out',
     'no-tools': 'describe-fan-out',
   })
-  .parallel('describe-fan-out', ['describe-ol', 'describe-gb', 'describe-wiki'], 'collect', {
+  .parallel('describe-fan-out', ['describe-ol', 'describe-gb', 'describe-subject', 'describe-wiki'], 'collect', {
     'success': 'describe-pick',
     'error':   'decline-empty',
   })
-  .node('describe-ol',   openLibraryScout, { 'success': null, 'empty': null })
-  .node('describe-gb',   googleBooksScout, { 'success': null, 'empty': null })
-  .node('describe-wiki', wikipediaScout,   { 'success': null, 'empty': null })
+  .node('describe-ol',      openLibraryScout, { 'success': null, 'empty': null })
+  .node('describe-gb',      googleBooksScout, { 'success': null, 'empty': null })
+  .node('describe-subject', subjectScout,     { 'success': null, 'empty': null })
+  .node('describe-wiki',    wikipediaScout,   { 'success': null, 'empty': null })
   // describe-pick narrows multi-hit results to the top-3 title-similar candidates
   // before merge so the composer receives the right book, not the first 5 arbitrary hits.
   .node('describe-pick', pickBestMatch, {
@@ -281,13 +293,14 @@ export const archivistDAG = new DAGBuilder('the-archivist', '4.0')
     'tools':    'similar-fan-out',
     'no-tools': 'similar-fan-out',
   })
-  .parallel('similar-fan-out', ['similar-ol', 'similar-gb', 'similar-wiki'], 'collect', {
+  .parallel('similar-fan-out', ['similar-ol', 'similar-gb', 'similar-subject', 'similar-wiki'], 'collect', {
     'success': 'similar-rank',
     'error':   'similar-rank',
   })
-  .node('similar-ol',   openLibraryScout, { 'success': null, 'empty': null })
-  .node('similar-gb',   googleBooksScout, { 'success': null, 'empty': null })
-  .node('similar-wiki', wikipediaScout,   { 'success': null, 'empty': null })
+  .node('similar-ol',      openLibraryScout, { 'success': null, 'empty': null })
+  .node('similar-gb',      googleBooksScout, { 'success': null, 'empty': null })
+  .node('similar-subject', subjectScout,     { 'success': null, 'empty': null })
+  .node('similar-wiki',    wikipediaScout,   { 'success': null, 'empty': null })
   .node('similar-rank', rankCandidates, {
     'ranked': 'similar-merge',
   })

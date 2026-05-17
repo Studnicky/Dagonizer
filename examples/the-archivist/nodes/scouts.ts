@@ -147,6 +147,46 @@ export const googleBooksScout: NodeInterface<ArchivistState, 'success' | 'empty'
   },
 };
 
+// ── Subject search scout ─────────────────────────────────────────────────
+// Gates on `state.toolPlan` for a `subject_search` call. Writes to
+// `state.candidates`. Non-deterministic (live network + LLM-supplied args).
+
+export const subjectScout: NodeInterface<ArchivistState, 'success' | 'empty', ArchivistServices> = {
+  "name":    'subject-scout',
+  "kind":    'non-deterministic',
+  "outputs": ['success', 'empty'],
+  async execute(state, context) {
+    const planned = state.toolPlan.find((call) => call.name === 'subject_search');
+    if (planned === undefined) return { "output": 'empty' };
+    const args = planned.arguments as { subject?: string; limit?: number };
+    const subject = typeof args.subject === 'string' && args.subject.length > 0
+      ? args.subject
+      : state.terms.join(' ');
+    if (subject.length === 0) return { "output": 'empty' };
+    try {
+      const tool = context.services.subjectSearch;
+      context.services.logger.info(`subject-search: "${subject}" (limit ${String(args.limit ?? 8)})`);
+      const candidates = await scoutRetry.run(
+        () => tool.execute({ subject, "limit": args.limit ?? 8 }, context.signal),
+        context.signal,
+      );
+      state.candidates = [...state.candidates, ...candidates];
+      context.services.logger.info(`subject-search: ${String(candidates.length)} hits`);
+      return { "output": candidates.length > 0 ? 'success' : 'empty' };
+    } catch (error) {
+      state.collectError({
+        "code":        'SUBJECT_SEARCH_FAILED',
+        "message":     error instanceof Error ? error.message : String(error),
+        "operation":   'subject-scout',
+        "recoverable": true,
+        "timestamp":   new Date().toISOString(),
+      });
+      context.services.logger.warn(`subject-search failed: ${String(error)}`);
+      return { "output": 'empty' };
+    }
+  },
+};
+
 // ── Wikipedia scout ──────────────────────────────────────────────────────────
 // Enrichment-only. Runs even without a toolPlan entry — uses `state.terms`
 // as the query. Skips only when terms is empty. Non-deterministic (live network).
