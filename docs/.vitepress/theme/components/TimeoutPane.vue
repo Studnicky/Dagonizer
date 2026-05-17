@@ -1,14 +1,13 @@
 <script setup lang="ts">
 /**
- * TimeoutDrawer — settings drawer for per-phase timeouts.
+ * TimeoutPane — per-phase timeout controls as a proper tab pane.
  *
- * Exposed as a collapsible <details> block. Emits updated timeout values
- * whenever the visitor changes a slider or input. The parent is responsible
- * for passing the values to `execute()` as `{ deadlineMs }` (the dispatcher
- * composes them via AbortSignal.any).
+ * Replaces the old floating TimeoutDrawer. Same sliders + numeric inputs,
+ * same localStorage persistence, but rendered as an open panel instead of
+ * a collapsible <details> drawer.
  *
- * Values are persisted to localStorage under `dagonizer-archivist-settings`
- * so the visitor's preferences survive page reloads.
+ * Emits `update:settings` whenever any value changes so ArchivistRunner
+ * can pass the values through to `execute()`.
  */
 
 import { onMounted, ref, watch } from 'vue';
@@ -97,19 +96,19 @@ onMounted(() => {
 </script>
 
 <template>
-  <details class="timeout-drawer">
-    <summary class="timeout-summary">
-      <span class="timeout-icon" aria-hidden="true">⚙</span>
-      <span class="timeout-label">timeouts</span>
-    </summary>
+  <section class="timeout-pane">
+    <header class="tp-header">
+      <h4>Timeouts</h4>
+      <span class="tp-hint">per-phase budgets — applied to the next run</span>
+    </header>
 
-    <div class="timeout-body">
-      <div class="timeout-row">
-        <label class="timeout-field-label" for="td-compose">compose</label>
+    <div class="tp-body">
+      <div class="tp-row">
+        <label class="tp-label" for="tp-compose">compose</label>
         <input
-          id="td-compose"
+          id="tp-compose"
           type="range"
-          class="timeout-slider"
+          class="tp-slider"
           :value="composeMs"
           min="5000"
           max="120000"
@@ -118,22 +117,22 @@ onMounted(() => {
         />
         <input
           type="number"
-          class="timeout-num"
+          class="tp-num"
           :value="composeMs"
           min="5000"
           max="120000"
           step="1000"
           @change="onComposeInput"
         />
-        <span class="timeout-unit">ms</span>
+        <span class="tp-unit">ms</span>
       </div>
 
-      <div class="timeout-row">
-        <label class="timeout-field-label" for="td-websearch">web-search</label>
+      <div class="tp-row">
+        <label class="tp-label" for="tp-websearch">web-search</label>
         <input
-          id="td-websearch"
+          id="tp-websearch"
           type="range"
-          class="timeout-slider"
+          class="tp-slider"
           :value="webSearchMs"
           min="5000"
           max="120000"
@@ -142,22 +141,22 @@ onMounted(() => {
         />
         <input
           type="number"
-          class="timeout-num"
+          class="tp-num"
           :value="webSearchMs"
           min="5000"
           max="120000"
           step="1000"
           @change="onWebSearchInput"
         />
-        <span class="timeout-unit">ms</span>
+        <span class="tp-unit">ms</span>
       </div>
 
-      <div class="timeout-row">
-        <label class="timeout-field-label" for="td-rank">rank</label>
+      <div class="tp-row">
+        <label class="tp-label" for="tp-rank">rank</label>
         <input
-          id="td-rank"
+          id="tp-rank"
           type="range"
-          class="timeout-slider"
+          class="tp-slider"
           :value="rankMs"
           min="5000"
           max="120000"
@@ -166,111 +165,123 @@ onMounted(() => {
         />
         <input
           type="number"
-          class="timeout-num"
+          class="tp-num"
           :value="rankMs"
           min="5000"
           max="120000"
           step="1000"
           @change="onRankInput"
         />
-        <span class="timeout-unit">ms</span>
+        <span class="tp-unit">ms</span>
       </div>
 
-      <button class="timeout-reset" type="button" @click="reset">reset defaults</button>
+      <div class="tp-footer">
+        <button class="tp-reset" type="button" @click="reset">reset defaults</button>
+      </div>
     </div>
-  </details>
+  </section>
 </template>
 
 <style scoped>
-.timeout-drawer {
+.timeout-pane {
+  background: var(--vp-c-bg-elv);
   border: 1px solid var(--vp-c-divider);
   border-radius: 6px;
-  background: var(--vp-c-bg-elv);
-  font-size: 0.8rem;
-}
-
-.timeout-summary {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.45rem 0.75rem;
-  cursor: pointer;
-  user-select: none;
-  color: var(--vp-c-text-3);
-  list-style: none;
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.timeout-summary::-webkit-details-marker { display: none; }
-.timeout-summary::marker { display: none; }
-
-.timeout-icon { font-size: 0.85rem; }
-
-.timeout-body {
-  padding: 0.6rem 0.75rem 0.65rem;
+  padding: 0.8rem 0.9rem;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  border-top: 1px solid var(--vp-c-divider);
+  gap: 0;
 }
 
-.timeout-row {
+.tp-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 1.1rem;
+}
+
+.tp-header h4 {
+  margin: 0;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--vp-c-text-3);
+  flex-shrink: 0;
+}
+
+.tp-hint {
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.68rem;
+  color: var(--vp-c-text-3);
+  font-style: italic;
+}
+
+.tp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  max-width: 560px;
+}
+
+.tp-row {
   display: grid;
-  grid-template-columns: 72px 1fr 70px 22px;
-  gap: 0.5rem;
+  grid-template-columns: 80px 1fr 76px 26px;
+  gap: 0.65rem;
   align-items: center;
 }
 
-.timeout-field-label {
+.tp-label {
   font-family: var(--vp-font-family-mono);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   color: var(--vp-c-text-2);
   white-space: nowrap;
 }
 
-.timeout-slider {
+.tp-slider {
   width: 100%;
   accent-color: var(--dagonizer-brand);
   cursor: pointer;
 }
 
-.timeout-num {
+.tp-num {
   width: 100%;
-  padding: 0.2rem 0.35rem;
+  padding: 0.25rem 0.4rem;
   background: var(--vp-c-bg);
   color: var(--vp-c-text-1);
   border: 1px solid var(--vp-c-divider);
   border-radius: 3px;
   font-family: var(--vp-font-family-mono);
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   text-align: right;
 }
 
-.timeout-num:focus { outline: none; border-color: var(--dagonizer-brand); }
+.tp-num:focus { outline: none; border-color: var(--dagonizer-brand); }
 
-.timeout-unit {
+.tp-unit {
   font-family: var(--vp-font-family-mono);
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   color: var(--vp-c-text-3);
 }
 
-.timeout-reset {
-  margin-top: 0.2rem;
-  align-self: flex-end;
+.tp-footer {
+  margin-top: 0.4rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.tp-reset {
   background: transparent;
   color: var(--vp-c-text-3);
   border: 0;
   padding: 0.15rem 0.3rem;
   font-family: var(--vp-font-family-mono);
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   cursor: pointer;
   transition: color 0.12s ease;
 }
 
-.timeout-reset:hover { color: var(--dagonizer-brand3); }
+.tp-reset:hover { color: var(--dagonizer-brand3); }
 </style>

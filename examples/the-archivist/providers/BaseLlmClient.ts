@@ -40,8 +40,8 @@ export class BaseLlmClient implements LlmClient {
     this.adapter = adapter;
   }
 
-  async classifyIntent(query: string): Promise<ClassifiedIntent> {
-    const raw = (await this.#text(prompts.classifyIntent(query))).toLowerCase();
+  async classifyIntent(query: string, recalledSummary?: string): Promise<ClassifiedIntent> {
+    const raw = (await this.#text(prompts.classifyIntent(query, recalledSummary))).toLowerCase();
     const found = VALID_INTENTS.find((intent) => raw.includes(intent));
     return found ?? 'search';
   }
@@ -127,40 +127,45 @@ export class BaseLlmClient implements LlmClient {
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
+    recalledSummary?: string,
   ): Promise<string> {
-    return (await this.#text(prompts.compose(query, shortlist, priorContext))).trim();
+    return (await this.#text(prompts.compose(query, shortlist, priorContext, recalledSummary))).trim();
   }
 
   async composeAuthor(
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
+    recalledSummary?: string,
   ): Promise<string> {
-    return (await this.#text(prompts.composeAuthor(query, shortlist, priorContext))).trim();
+    return (await this.#text(prompts.composeAuthor(query, shortlist, priorContext, recalledSummary))).trim();
   }
 
   async composeReviews(
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
+    recalledSummary?: string,
   ): Promise<string> {
-    return (await this.#text(prompts.composeReviews(query, shortlist, priorContext))).trim();
+    return (await this.#text(prompts.composeReviews(query, shortlist, priorContext, recalledSummary))).trim();
   }
 
   async describeBook(
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
+    recalledSummary?: string,
   ): Promise<string> {
-    return (await this.#text(prompts.describeBook(query, shortlist, priorContext))).trim();
+    return (await this.#text(prompts.describeBook(query, shortlist, priorContext, recalledSummary))).trim();
   }
 
   async composeSimilar(
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
+    recalledSummary?: string,
   ): Promise<string> {
-    return (await this.#text(prompts.composeSimilar(query, shortlist, priorContext))).trim();
+    return (await this.#text(prompts.composeSimilar(query, shortlist, priorContext, recalledSummary))).trim();
   }
 
   async validate(draft: string, shortlist: readonly Candidate[]): Promise<boolean> {

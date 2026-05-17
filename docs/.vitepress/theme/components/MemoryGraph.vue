@@ -46,7 +46,7 @@ type GraphHandle = {
 };
 
 /** Which named-graph layer a point belongs to. */
-type GraphLayer = 'memory' | 'state' | 'prov' | 'default';
+type GraphLayer = 'ontology' | 'memory' | 'state' | 'prov' | 'default';
 
 const props = defineProps<{
   store: MemoryStore;
@@ -60,6 +60,7 @@ const emit = defineEmits<{
 
 /** Per-layer visibility toggles — chip filter at top of canvas. */
 const layerVisible = ref<Record<GraphLayer, boolean>>({
+  'ontology': true,
   'memory':  true,
   'state':   true,
   'prov':    true,
@@ -169,6 +170,22 @@ function pollZoom(): void {
   try { zoomLevel.value = graph.value?.getZoomLevel() ?? 1; } catch { /* ignore */ }
 }
 
+function mgZoomIn(): void {
+  const g = graph.value;
+  if (g === null) return;
+  try { g.setZoomLevel(g.getZoomLevel() * 1.3); pollZoom(); } catch { /* ignore */ }
+}
+
+function mgZoomOut(): void {
+  const g = graph.value;
+  if (g === null) return;
+  try { g.setZoomLevel(g.getZoomLevel() / 1.3); pollZoom(); } catch { /* ignore */ }
+}
+
+function mgFit(): void {
+  try { graph.value?.fitView(300); } catch { /* ignore */ }
+}
+
 onBeforeUnmount(() => {
   resizeObserver?.disconnect();
   resizeObserver = null;
@@ -210,14 +227,6 @@ function paint(): void {
 function onFrameResize(): void {
   resizeLabelCanvas();
   scheduleLabelPaint();
-}
-
-async function waitForSize(el: HTMLElement): Promise<void> {
-  for (let i = 0; i < 60; i++) {
-    const rect = el.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) return;
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-  }
 }
 
 // ── Label overlay ─────────────────────────────────────────────────────────
@@ -334,14 +343,16 @@ interface Buffers {
 
 /** Layer → base RGBA (0..1). Tinted further by node-kind alpha. */
 const LAYER_COLOR: Readonly<Record<GraphLayer, [number, number, number]>> = {
-  'memory':  [0.13, 0.91, 1.00], // teal
-  'state':   [0.83, 0.65, 0.29], // gold
-  'prov':    [0.61, 0.32, 0.88], // violet
-  'default': [0.55, 0.55, 0.65], // neutral
+  'ontology': [0.13, 0.91, 0.60], // green-teal (TBox schema)
+  'memory':   [0.13, 0.91, 1.00], // teal
+  'state':    [0.83, 0.65, 0.29], // gold
+  'prov':     [0.61, 0.32, 0.88], // violet
+  'default':  [0.55, 0.55, 0.65], // neutral
 };
 
 function graphLayer(graphIri: string): GraphLayer {
-  if (graphIri === 'urn:dagonizer:memory')        return 'memory';
+  if (graphIri === 'urn:dagonizer:ontology')       return 'ontology';
+  if (graphIri === 'urn:dagonizer:memory')         return 'memory';
   if (graphIri.startsWith('urn:dagonizer:state:')) return 'state';
   if (graphIri.startsWith('urn:dagonizer:prov:'))  return 'prov';
   return 'default';
@@ -415,7 +426,7 @@ function objectLabel(q: Quad): string {
 </script>
 
 <template>
-  <DiagramFrame title="RDF memory" :aria-label="`RDF triple graph: ${String(store.size)} triples`" @resize="onFrameResize">
+  <DiagramFrame title="RDF graph" :aria-label="`RDF triple graph: ${String(store.size)} triples`" @resize="onFrameResize">
     <template #meta>
       <span class="mg-count">{{ store.size }} {{ store.size === 1 ? 'triple' : 'triples' }}</span>
     </template>
@@ -438,10 +449,10 @@ function objectLabel(q: Quad): string {
         No triples yet. Ask the Archivist and watch the store grow.
       </p>
 
-      <!-- Layer chip filter — toggle visibility per named graph. -->
+      <!-- Layer chip filter — bottom-left corner. -->
       <aside v-if="!loading && !loadError" class="mg-layers" aria-label="Named-graph filters">
         <button
-          v-for="layer in (['memory', 'state', 'prov'] as const)"
+          v-for="layer in (['ontology', 'memory', 'state', 'prov'] as const)"
           :key="layer"
           type="button"
           :class="['mg-layer-chip', `mg-layer-${layer}`, { 'mg-layer-off': !layerVisible[layer] }]"
@@ -451,13 +462,18 @@ function objectLabel(q: Quad): string {
         >{{ layer }}</button>
       </aside>
 
-      <!-- Native pan/zoom indicator: cosmos.gl already binds wheel-zoom
-           and click-drag-pan; the HUD just surfaces the current zoom +
-           a hint so visitors know the canvas is interactive. -->
-      <aside v-if="!loading && !loadError" class="mg-hud" aria-live="polite">
-        <span class="mg-hud-zoom">×{{ zoomLevel.toFixed(2) }}</span>
-        <span class="mg-hud-hint">drag · wheel · click</span>
-      </aside>
+      <!-- Zoom HUD + navigation D-pad — bottom-right corner. -->
+      <div v-if="!loading && !loadError" class="mg-nav" aria-label="Graph navigation">
+        <aside class="mg-hud" aria-live="polite">
+          <span class="mg-hud-zoom">×{{ zoomLevel.toFixed(2) }}</span>
+          <span class="mg-hud-hint">drag · wheel</span>
+        </aside>
+        <div class="mg-dpad" aria-label="Graph zoom controls">
+          <button class="mg-dpad-btn" title="Zoom in"    @click="mgZoomIn">＋</button>
+          <button class="mg-dpad-btn" title="Fit view"   @click="mgFit">⤢</button>
+          <button class="mg-dpad-btn" title="Zoom out"   @click="mgZoomOut">－</button>
+        </div>
+      </div>
     </div>
   </DiagramFrame>
 </template>
@@ -537,12 +553,20 @@ function objectLabel(q: Quad): string {
   color: var(--dagonizer-brand3);
 }
 
-/* Pan/zoom HUD — bottom-left overlay. Native cosmos.gl handles the
-   actual gesture; the HUD just surfaces state + a one-line hint. */
-.mg-hud {
+/* Navigation container — bottom-right, stacks HUD above D-pad. */
+.mg-nav {
   position: absolute;
   bottom: 10px;
-  left: 10px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  z-index: 5;
+}
+
+/* Zoom HUD — sits above the D-pad in the nav container. */
+.mg-hud {
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;
@@ -555,7 +579,46 @@ function objectLabel(q: Quad): string {
   font-size: 0.7rem;
   color: var(--vp-c-text-2);
   pointer-events: none;
-  z-index: 4;
+}
+
+/* D-pad — 3-button row (zoom in / fit / zoom out). */
+.mg-dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 32px);
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.30);
+  padding: 6px;
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+}
+
+.mg-dpad-btn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vp-c-bg-alt);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  color: var(--vp-c-text-1);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  line-height: 1;
+}
+
+.mg-dpad-btn:hover {
+  background: var(--vp-c-bg);
+  border-color: var(--dagonizer-brand);
+  color: var(--dagonizer-brand);
+}
+
+.mg-dpad-btn:focus-visible {
+  outline: 2px solid var(--dagonizer-brand);
+  outline-offset: 1px;
 }
 
 .mg-hud-zoom {
@@ -571,10 +634,10 @@ function objectLabel(q: Quad): string {
   font-size: 0.62rem;
 }
 
-/* Layer chips — top-left overlay. One per named-graph layer. */
+/* Layer chips — bottom-left overlay. One per named-graph layer. */
 .mg-layers {
   position: absolute;
-  top: 10px;
+  bottom: 10px;
   left: 10px;
   display: inline-flex;
   gap: 0.35rem;
@@ -599,9 +662,10 @@ function objectLabel(q: Quad): string {
 
 .mg-layer-chip:hover { transform: translateY(-1px); }
 
-.mg-layer-memory { color: var(--dagonizer-brand);  }
-.mg-layer-state  { color: var(--dagonizer-brand3); }
-.mg-layer-prov   { color: var(--dagonizer-brand2); }
+.mg-layer-ontology { color: #21ee99; }
+.mg-layer-memory   { color: var(--dagonizer-brand);  }
+.mg-layer-state    { color: var(--dagonizer-brand3); }
+.mg-layer-prov     { color: var(--dagonizer-brand2); }
 
 .mg-layer-off {
   opacity: 0.4;

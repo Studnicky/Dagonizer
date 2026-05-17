@@ -5,8 +5,8 @@
  *
  *   • Subscriber surface — `subscribe(fn)` / `unsubscribe(fn)` for the
  *     in-browser demo. Every log call fans out to subscribers with a
- *     structured `LogEvent` so the Vue runner's `<LogStream>` pane can
- *     render the same lines the CLI sees.
+ *     structured `LogEvent` so the Vue runner's trace tab can render the
+ *     same lines the CLI sees.
  *
  *   • Sink surface — `info(message)` / `warn(message)` satisfy the
  *     `ArchivistServices.logger` contract. In Node, lines also go to

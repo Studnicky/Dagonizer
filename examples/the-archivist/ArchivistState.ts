@@ -13,6 +13,29 @@ import { NodeStateBase } from '@noocodex/dagonizer';
 import type { JsonObject } from '@noocodex/dagonizer/types';
 
 
+/**
+ * Prior-context facts recalled from the memory graph before classification.
+ * `summary` is an LLM-ready 1–2 sentence hint; the structured arrays are
+ * available directly on `state.recalledContext` for downstream nodes.
+ */
+export interface RecalledContext {
+  /** Intents the classifier returned for similar prior queries. */
+  readonly priorIntents: ReadonlyArray<{
+    readonly query: string;
+    readonly intent: string;
+    readonly ts: string;
+  }>;
+  /** Books seen in recent state graphs (shortlisted candidates). */
+  readonly recentCandidates: ReadonlyArray<Candidate>;
+  /** Prior queries that overlap with the current query text. */
+  readonly similarPriorQueries: ReadonlyArray<{
+    readonly query: string;
+    readonly ts: string;
+  }>;
+  /** 1–2 sentence LLM-ready hint; empty string when nothing was recalled. */
+  readonly summary: string;
+}
+
 /** What the visitor asked the Archivist to do. */
 export type ArchivistIntent =
   | 'lookup-author'      // visitor named an author and wants their body of work
@@ -59,6 +82,18 @@ export class ArchivistState extends NodeStateBase {
    * 'prior-recommendation') and free-text content the LLM can cite.
    */
   priorContext: ReadonlyArray<{ readonly kind: string; readonly text: string }> = [];
+  /**
+   * Structured context recalled from the unified memory graph by
+   * `recallContext` (runs before `classifyIntent`). The `summary` field
+   * is injected into the classifier prompt; all fields are available to
+   * downstream nodes (decideTools, composeResponse).
+   */
+  recalledContext: RecalledContext = {
+    'priorIntents':        [],
+    'recentCandidates':    [],
+    'similarPriorQueries': [],
+    'summary':             '',
+  };
 
   override clone(): ArchivistState {
     const copy = new ArchivistState();
@@ -73,6 +108,12 @@ export class ArchivistState extends NodeStateBase {
     copy.toolPlan     = [...this.toolPlan];
     copy.runId        = this.runId;
     copy.priorContext = [...this.priorContext];
+    copy.recalledContext = {
+      'priorIntents':        [...this.recalledContext.priorIntents],
+      'recentCandidates':    [...this.recalledContext.recentCandidates],
+      'similarPriorQueries': [...this.recalledContext.similarPriorQueries],
+      'summary':             this.recalledContext.summary,
+    };
     return copy;
   }
 
@@ -94,6 +135,16 @@ export class ArchivistState extends NodeStateBase {
       "draft":      this.draft,
       "approved":   this.approved,
       "attempts":   { ...this.attempts },
+      "recalledContext": {
+        "priorIntents":        this.recalledContext.priorIntents as unknown as JsonObject[],
+        "recentCandidates":    this.recalledContext.recentCandidates.map((c) => ({
+          "book":   { ...c.book, "authors": [...c.book.authors] },
+          "score":  c.score,
+          "source": c.source,
+        })) as unknown as JsonObject[],
+        "similarPriorQueries": this.recalledContext.similarPriorQueries as unknown as JsonObject[],
+        "summary":             this.recalledContext.summary,
+      },
     };
   }
 
@@ -107,6 +158,16 @@ export class ArchivistState extends NodeStateBase {
     if (Array.isArray(snap['shortlist']))  this.shortlist  = snap['shortlist'] as unknown as Candidate[];
     if (snap['attempts'] && typeof snap['attempts'] === 'object') {
       this.attempts = { ...snap['attempts'] as Record<string, number> };
+    }
+    const rc = snap['recalledContext'];
+    if (rc !== null && rc !== undefined && typeof rc === 'object' && !Array.isArray(rc)) {
+      const rcObj = rc as Record<string, unknown>;
+      this.recalledContext = {
+        'priorIntents':        Array.isArray(rcObj['priorIntents'])        ? rcObj['priorIntents'] as RecalledContext['priorIntents']        : [],
+        'recentCandidates':    Array.isArray(rcObj['recentCandidates'])    ? rcObj['recentCandidates'] as RecalledContext['recentCandidates'] : [],
+        'similarPriorQueries': Array.isArray(rcObj['similarPriorQueries']) ? rcObj['similarPriorQueries'] as RecalledContext['similarPriorQueries'] : [],
+        'summary':             typeof rcObj['summary'] === 'string'        ? rcObj['summary']  : '',
+      };
     }
   }
 }

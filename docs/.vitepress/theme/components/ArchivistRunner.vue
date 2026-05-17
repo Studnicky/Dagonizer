@@ -27,10 +27,9 @@ import type { ExecutionResultInterface } from '@noocodex/dagonizer';
 import { CytoscapeRenderer } from '../../../../src/viz/CytoscapeRenderer.ts';
 
 import { ArchivistState } from '../../../../examples/the-archivist/ArchivistState.ts';
-import type { ArchivistIntent } from '../../../../examples/the-archivist/ArchivistState.ts';
 import { archivistDAG } from '../../../../examples/the-archivist/dag.ts';
 import { ConsoleLogger } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
-import { MemoryStore, GRAPH_ONTOLOGY } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
+import { MemoryStore } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
 import { ONTOLOGY_NTRIPLES } from '../../../../examples/the-archivist/ontology/ArchivistOntology.ts';
 import { RdfProvObserver } from '../../../../examples/the-archivist/provenance/RdfProvObserver.ts';
 import { StateProjection } from '../../../../examples/the-archivist/state/StateProjection.ts';
@@ -45,16 +44,18 @@ import { mergeCandidates } from '../../../../examples/the-archivist/nodes/mergeC
 import { rankCandidates } from '../../../../examples/the-archivist/nodes/rankCandidates.ts';
 import { rankByRating } from '../../../../examples/the-archivist/nodes/rankByRating.ts';
 import { pickBestMatch } from '../../../../examples/the-archivist/nodes/pickBestMatch.ts';
+import { recallContext } from '../../../../examples/the-archivist/nodes/recallContext.ts';
 import { recallPastVisits } from '../../../../examples/the-archivist/nodes/recallPastVisits.ts';
 import { recommendSimilar } from '../../../../examples/the-archivist/nodes/recommendSimilar.ts';
 import { recordFindings } from '../../../../examples/the-archivist/nodes/recordFindings.ts';
 import { declineEmpty, declineOffTopic, respondToVisitor } from '../../../../examples/the-archivist/nodes/respondToVisitor.ts';
-import { webSearchScout, openLibraryScout, googleBooksScout, wikipediaScout } from '../../../../examples/the-archivist/nodes/scouts.ts';
+import { webSearchScout, openLibraryScout, googleBooksScout, subjectScout, wikipediaScout } from '../../../../examples/the-archivist/nodes/scouts.ts';
 import { detectBackends, hasNoRunnableModel, instantiateProvider, pickBestBackend } from '../../../../examples/the-archivist/providers/index.ts';
 import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
 import type { ArchivistServices } from '../../../../examples/the-archivist/services.ts';
 import { GoogleBooksTool } from '../../../../examples/the-archivist/tools/GoogleBooksTool.ts';
 import { OpenLibrarySearchTool } from '../../../../examples/the-archivist/tools/OpenLibrarySearchTool.ts';
+import { SubjectSearchTool } from '../../../../examples/the-archivist/tools/SubjectSearchTool.ts';
 import { WikipediaSummaryTool } from '../../../../examples/the-archivist/tools/WikipediaSummaryTool.ts';
 
 import { ObservedDagonizer } from './ObservedDagonizer.ts';
@@ -62,18 +63,15 @@ import BackendPicker from './BackendPicker.vue';
 import CheckpointControls from './CheckpointControls.vue';
 import Conversation from './Conversation.vue';
 import DagGraph from './DagGraph.vue';
-import LogStream from './LogStream.vue';
 import MemoryGraph from './MemoryGraph.vue';
-import MemoryPane from './MemoryPane.vue';
 import NodeLegend from './NodeLegend.vue';
-import OntologyGraph from './OntologyGraph.vue';
 import PanesTabs from './PanesTabs.vue';
 import PersistenceBadge from './PersistenceBadge.vue';
 import SendForm from './SendForm.vue';
 import StateLegend from './StateLegend.vue';
-import TimeoutDrawer from './TimeoutDrawer.vue';
-import type { TimeoutSettings } from './TimeoutDrawer.vue';
-import TraceList from './TraceList.vue';
+import TimeoutPane from './TimeoutPane.vue';
+import type { TimeoutSettings } from './TimeoutPane.vue';
+import TraceFeed from './TraceFeed.vue';
 import TripleInspector from './TripleInspector.vue';
 
 import { RunnerMachine } from '../runner/RunnerMachine.ts';
@@ -89,7 +87,6 @@ const isRunning = ref(false);
 const conversation = ref<Array<{ role: 'visitor' | 'archivist'; text: string; ts: number }>>([
   { 'role': 'archivist', 'text': ARCHIVIST_GREETING, 'ts': Date.now() },
 ]);
-const memorySnapshot = ref<MemorySnapshot | null>(null);
 const trace = ref<Array<{ node: string; output?: string; ts: number; kind: 'start' | 'end' | 'error' }>>([]);
 const terminalKind = ref<'pending' | 'completed' | 'failed' | 'cancelled' | 'timed_out'>('pending');
 
@@ -214,8 +211,9 @@ async function resumeFromCheckpoint(): Promise<void> {
   });
 
   for (const node of [
+    recallContext,
     classifyIntent, extractQuery, decideTools,
-    webSearchScout, openLibraryScout, googleBooksScout, wikipediaScout,
+    webSearchScout, openLibraryScout, googleBooksScout, subjectScout, wikipediaScout,
     rankCandidates,
     rankByRating, pickBestMatch,
     mergeCandidates, recordFindings, hasCitationsGate,
@@ -285,20 +283,18 @@ watch(apiKey, async () => {
   noModel.value = hasNoRunnableModel(backends.value);
 });
 
-// Workshop tabs — the right-column tab strip. Conversation lives in its
-// own standalone column, NOT here. Order matches the run's narrative:
-//   DAG (what's happening) → RDF memory (the graph) → state mirror
-//   (typed pane) → trace (per-node) → logger (line-stream) → ontology (TBox).
+// Workshop tabs — 4 tabs. Conversation is standalone in the left column.
+//   DAG       — live execution graph
+//   Memory    — unified RDF graph (ontology + memory + state + prov layers)
+//   Trace     — merged node lifecycle events + logger lines
+//   Timeouts  — per-phase timeout sliders
 const workshopTabs = computed(() => {
-  const ontologyCount = memoryStore.count({ 'graph': GRAPH_ONTOLOGY });
+  const traceCount = trace.value.length + logger.history().length;
   return [
-    { 'key': 'dag',          'label': 'DAG',        'badge': isRunning.value ? 'live' : '',                  'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
-    { 'key': 'memory-graph', 'label': 'RDF memory', 'badge': String(memoryStore.size || ''),                 'tone': 'accent' as const },
-    { 'key': 'memory',       'label': 'State',      'badge': isRunning.value ? 'live' : (memorySnapshot.value !== null ? 'set' : ''),
-                                                                                                              'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
-    { 'key': 'trace',        'label': 'Trace',      'badge': String(trace.value.length || ''),               'tone': 'default' as const },
-    { 'key': 'logger',       'label': 'Logger',     'badge': String(logger.history().length || ''),          'tone': 'default' as const },
-    { 'key': 'ontology',     'label': 'Ontology',   'badge': String(ontologyCount || ''),                    'tone': 'accent' as const },
+    { 'key': 'dag',      'label': 'DAG',      'badge': isRunning.value ? 'live' : '',        'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
+    { 'key': 'memory',   'label': 'Memory',   'badge': String(memoryStore.size || ''),       'tone': 'accent' as const },
+    { 'key': 'trace',    'label': 'Trace',    'badge': String(traceCount || ''),             'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
+    { 'key': 'timeouts', 'label': 'Timeouts', 'badge': '',                                  'tone': 'default' as const },
   ];
 });
 
@@ -315,34 +311,15 @@ const dagElements = computed<ElementDefinition[]>(() => {
   });
 });
 
-interface MemorySnapshot {
-  readonly intent: ArchivistIntent;
-  readonly terms: readonly string[];
-  readonly candidateCount: number;
-  readonly shortlistCount: number;
-  readonly composeAttempts: number;
-  readonly approved: boolean | null;
-}
-
 function buildServices(): ArchivistServices {
   return {
     'webSearch':         OpenLibrarySearchTool,
     'googleBooks':       GoogleBooksTool,
+    'subjectSearch':     SubjectSearchTool,
     'wikipediaSummary':  WikipediaSummaryTool,
     'memory':            memoryStore,
     'llm':               instantiateProvider(activeBackend.value, { 'apiKey': apiKey.value || undefined }),
     'logger':            logger,
-  };
-}
-
-function snapshot(state: ArchivistState): MemorySnapshot {
-  return {
-    'intent': state.intent,
-    'terms': [...state.terms],
-    'candidateCount': state.candidates.length,
-    'shortlistCount': state.shortlist.length,
-    'composeAttempts': state.attempts['compose'] ?? 0,
-    'approved': state.approved,
   };
 }
 
@@ -355,7 +332,6 @@ function snapshot(state: ArchivistState): MemorySnapshot {
 function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
   return {
     onFlowStart(dagName: string) {
-      memorySnapshot.value = null;
       dagGraph.value?.reset();
       if (fromCursor !== null) dagGraph.value?.setActive(fromCursor);
       prov.recordFlowStart(dagName);
@@ -370,7 +346,6 @@ function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
       trace.value = [...trace.value, { 'node': nodeName, output, 'ts': Date.now(), 'kind': 'end' }];
       dagGraph.value?.setCompleted(nodeName);
       if (output !== undefined) dagGraph.value?.markEdgeTraversed(nodeName, output);
-      memorySnapshot.value = snapshot(state);
       StateProjection.project(state, memoryStore);
       prov.recordNodeEnd(nodeName, output);
       memoryTick.value++;
@@ -385,7 +360,6 @@ function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
       runnerMachine.pulse({ 'type': 'nodeError', 'node': nodeName, 'error': error });
     },
     onFlowEnd(dagName: string, state: ArchivistState, result: { cursor: string | null }) {
-      memorySnapshot.value = snapshot(state);
       const kind = state.lifecycle.kind;
       if (kind === 'completed' || kind === 'failed' || kind === 'cancelled' || kind === 'timed_out') {
         terminalKind.value = kind;
@@ -468,7 +442,7 @@ async function ask(): Promise<void> {
     'observer': buildObserver(null, prov),
   });
 
-  // Apply per-phase timeouts from the visitor's TimeoutDrawer settings.
+  // Apply per-phase timeouts from the visitor's Timeouts tab settings.
   // The node objects from the module are treated as defaults; each run gets
   // a fresh instance with the user's chosen budget injected via spread.
   const { composeMs, webSearchMs, rankMs } = timeoutSettings.value;
@@ -477,11 +451,13 @@ async function ask(): Promise<void> {
   const scoutNode       = { ...webSearchScout,     'timeoutMs': webSearchMs };
   const olScoutNode     = { ...openLibraryScout,   'timeoutMs': webSearchMs };
   const gbScoutNode     = { ...googleBooksScout,   'timeoutMs': webSearchMs };
+  const subjectScoutNode = { ...subjectScout,      'timeoutMs': webSearchMs };
   const wikiScoutNode   = { ...wikipediaScout,     'timeoutMs': webSearchMs };
 
   for (const node of [
+    recallContext,
     classifyIntent, extractQuery, decideTools,
-    scoutNode, olScoutNode, gbScoutNode, wikiScoutNode,
+    scoutNode, olScoutNode, gbScoutNode, subjectScoutNode, wikiScoutNode,
     rankNode,
     rankByRating, pickBestMatch,
     mergeCandidates, recordFindings, hasCitationsGate,
@@ -525,7 +501,6 @@ function reset(): void {
     { 'role': 'archivist', 'text': ARCHIVIST_GREETING, 'ts': Date.now() },
   ];
   trace.value = [];
-  memorySnapshot.value = null;
   terminalKind.value = 'pending';
   selectedIri.value = null;
   checkpointNode.value = null;
@@ -585,7 +560,6 @@ function loadKey(): string {
           :is-persisted="isPersisted"
           @toggle="togglePersistence"
         />
-        <TimeoutDrawer @update:settings="onTimeoutSettingsUpdate" />
       </div>
     </div>
 
@@ -629,7 +603,7 @@ function loadKey(): string {
               </div>
             </div>
           </template>
-          <template #memory-graph>
+          <template #memory>
             <div class="memory-graph-wrap">
               <MemoryGraph
                 :store="memoryStore"
@@ -645,17 +619,11 @@ function loadKey(): string {
               />
             </div>
           </template>
-          <template #memory>
-            <MemoryPane :snapshot="memorySnapshot" :running="isRunning" />
-          </template>
           <template #trace>
-            <TraceList :entries="trace" />
+            <TraceFeed :entries="trace" :logger="logger" />
           </template>
-          <template #logger>
-            <LogStream :logger="logger" />
-          </template>
-          <template #ontology>
-            <OntologyGraph :store="memoryStore" :tick="memoryTick" />
+          <template #timeouts>
+            <TimeoutPane @update:settings="onTimeoutSettingsUpdate" />
           </template>
         </PanesTabs>
       </section>

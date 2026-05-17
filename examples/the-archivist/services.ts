@@ -59,8 +59,13 @@ export type ClassifiedIntent =
   | 'off-topic';
 
 export interface LlmClient {
-  /** Classify the visitor's question into one of the supported intents. */
-  classifyIntent(query: string): Promise<ClassifiedIntent>;
+  /**
+   * Classify the visitor's question into one of the supported intents.
+   * The optional `recalledSummary` is a 1–2 sentence hint from the
+   * recallContext node — injected into the prompt when non-empty so the
+   * classifier benefits from prior-session continuity.
+   */
+  classifyIntent(query: string, recalledSummary?: string): Promise<ClassifiedIntent>;
   /** Extract structured search terms from a free-text question. */
   extractTerms(query: string): Promise<readonly string[]>;
   /**
@@ -84,35 +89,42 @@ export interface LlmClient {
    * if appropriate — e.g. previous visitor queries, previously
    * recommended titles. The LLM may use this to weave continuity
    * commentary ("Last visit you asked about cosmic horror; now…").
+   * The optional `recalledSummary` is a 1–2 sentence hint from the
+   * recallContext node injected when non-empty for session continuity.
    */
   compose(
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
+    recalledSummary?: string,
   ): Promise<string>;
   /** Author-survey compose — chronological body-of-work prose. */
   composeAuthor(
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
+    recalledSummary?: string,
   ): Promise<string>;
   /** Reviews compose — weight ratings (notes.rating / notes.ratingsCount). */
   composeReviews(
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
+    recalledSummary?: string,
   ): Promise<string>;
   /** Describe a single title — no recommendations. */
   describeBook(
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
+    recalledSummary?: string,
   ): Promise<string>;
   /** Recommend similar — anchored on persistent memory. */
   composeSimilar(
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
+    recalledSummary?: string,
   ): Promise<string>;
   /** Validate a draft against quality rules (length, citations, tone). */
   validate(draft: string, shortlist: readonly Candidate[]): Promise<boolean>;
@@ -136,10 +148,19 @@ export type GoogleBooksToolContract = Tool<{ query: string; maxResults?: number 
  */
 export type WikipediaSummaryToolContract = Tool<{ query: string } & Record<string, unknown>, readonly Candidate[]>;
 
+/**
+ * SubjectSearchTool — adapter contract for the OpenLibrary subject/theme
+ * search. Concrete instance lives in `tools/SubjectSearchTool.ts`. The
+ * `subject_search` tool lets visitors locate books by thematic content
+ * (e.g. "labyrinth", "haunted house") rather than by title or author.
+ */
+export type SubjectSearchToolContract = Tool<{ subject: string; limit?: number } & Record<string, unknown>, readonly Candidate[]>;
+
 export interface ArchivistServices {
   readonly webSearch: WebSearchTool;
   readonly googleBooks: GoogleBooksToolContract;
   readonly wikipediaSummary: WikipediaSummaryToolContract;
+  readonly subjectSearch: SubjectSearchToolContract;
   readonly llm: LlmClient;
   /**
    * RDF triple store (n3.js in-memory). Per-run scratchpad: memory

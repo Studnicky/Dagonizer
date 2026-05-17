@@ -27,11 +27,12 @@ import { mergeCandidates } from './nodes/mergeCandidates.ts';
 import { pickBestMatch } from './nodes/pickBestMatch.ts';
 import { rankByRating } from './nodes/rankByRating.ts';
 import { rankCandidates } from './nodes/rankCandidates.ts';
+import { recallContext }    from './nodes/recallContext.ts';
 import { recallPastVisits } from './nodes/recallPastVisits.ts';
 import { recommendSimilar } from './nodes/recommendSimilar.ts';
 import { recordFindings } from './nodes/recordFindings.ts';
 import { declineEmpty, declineOffTopic, respondToVisitor } from './nodes/respondToVisitor.ts';
-import { webSearchScout, openLibraryScout, googleBooksScout, wikipediaScout } from './nodes/scouts.ts';
+import { webSearchScout, openLibraryScout, googleBooksScout, subjectScout, wikipediaScout } from './nodes/scouts.ts';
 import {
   GeminiApiAdapter,
   StubAdapter,
@@ -40,6 +41,7 @@ import { BaseLlmClient } from './providers/BaseLlmClient.ts';
 import type { ArchivistServices, LlmClient } from './services.ts';
 import { GoogleBooksTool } from './tools/GoogleBooksTool.ts';
 import { OpenLibrarySearchTool } from './tools/OpenLibrarySearchTool.ts';
+import { SubjectSearchTool } from './tools/SubjectSearchTool.ts';
 import { WikipediaSummaryTool } from './tools/WikipediaSummaryTool.ts';
 
 import { Dagonizer } from '@noocodex/dagonizer';
@@ -58,6 +60,7 @@ logger.info(`backend: ${apiKey !== undefined && apiKey.length > 0 ? 'Gemini REST
 const services: ArchivistServices = {
   "webSearch":         OpenLibrarySearchTool,
   "googleBooks":       GoogleBooksTool,
+  "subjectSearch":     SubjectSearchTool,
   "wikipediaSummary":  WikipediaSummaryTool,
   "memory":            new MemoryStore(),
   "llm":               llm,
@@ -68,12 +71,14 @@ const services: ArchivistServices = {
 const dispatcher = new Dagonizer<ArchivistState, ArchivistServices>({ services });
 
 for (const node of [
+  recallContext,
   classifyIntent,
   extractQuery,
   decideTools,
   webSearchScout,
   openLibraryScout,
   googleBooksScout,
+  subjectScout,
   wikipediaScout,
   rankCandidates,
   rankByRating,

@@ -120,14 +120,6 @@ onBeforeUnmount(() => {
   machine.value = null;
 });
 
-async function waitForContainerSize(el: HTMLElement): Promise<void> {
-  for (let i = 0; i < 60; i++) {
-    const rect = el.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) return;
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-  }
-}
-
 // ── Public dispatch surface ──────────────────────────────────────────────
 
 function dispatch(event: DagVizEvent): void {
@@ -416,7 +408,13 @@ function dagStylesheet(): unknown[] {
       :aria-label="ariaLabel ?? 'DAG execution graph'"
     ></div>
 
-    <!-- D-pad navigation — 3×3 grid anchored to the right-centre of the canvas -->
+    <!-- Kind legend — bottom-left corner -->
+    <aside v-if="!loading && !loadError" class="dag-legend" aria-label="Node kind legend">
+      <span class="dag-leg-det">— deterministic</span>
+      <span class="dag-leg-nd">- - non-deterministic</span>
+    </aside>
+
+    <!-- D-pad navigation — 3×3 grid anchored to the bottom-right corner -->
     <div class="dag-dpad" aria-label="DAG navigation controls">
       <button class="dpad-btn" title="Zoom in"      @click="zoomIn">＋</button>
       <button class="dpad-btn" title="Pan up"        @click="panUp">▲</button>
@@ -454,12 +452,38 @@ function dagStylesheet(): unknown[] {
 
 .dag-error { color: var(--dagonizer-brand3); }
 
-/* D-pad — 3×3 navigation grid anchored to the right-centre of the frame body. */
+/* Kind legend — bottom-left corner. */
+.dag-legend {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  padding: 0.35rem 0.6rem;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.dag-legend span {
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.65rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.dag-leg-det { color: #22e8ff; }
+.dag-leg-nd  { color: #9b51e0; }
+
+/* D-pad — 3×3 navigation grid anchored to the bottom-right of the frame body. */
 .dag-dpad {
   position: absolute;
   right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
+  bottom: 10px;
   display: grid;
   grid-template-columns: repeat(3, 32px);
   grid-template-rows: repeat(3, 32px);

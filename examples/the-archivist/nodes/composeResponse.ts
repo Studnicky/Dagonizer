@@ -50,17 +50,20 @@ export const composeResponse: NodeInterface<ArchivistState, 'drafted', Archivist
     state.attempts['compose'] = (state.attempts['compose'] ?? 0) + 1;
     const llm = context.services.llm;
     const prior = state.priorContext.length > 0 ? state.priorContext : undefined;
+    const recalledSummary = state.recalledContext.summary.length > 0
+      ? state.recalledContext.summary
+      : undefined;
     // Each per-intent branch keeps the same `compose-response` node
     // (the retry loop and validate-response wiring stays one
     // implementation), and dispatches to the intent-flavoured prompt
     // builder so the LLM gets the right directives + framing.
     const composeCall = (): Promise<string> => {
       switch (state.intent) {
-        case 'lookup-author':     return llm.composeAuthor(state.query, state.shortlist, prior);
-        case 'find-reviews':      return llm.composeReviews(state.query, state.shortlist, prior);
-        case 'describe-book':     return llm.describeBook(state.query, state.shortlist, prior);
-        case 'recommend-similar': return llm.composeSimilar(state.query, state.shortlist, prior);
-        default:                  return llm.compose(state.query, state.shortlist, prior);
+        case 'lookup-author':     return llm.composeAuthor(state.query, state.shortlist, prior, recalledSummary);
+        case 'find-reviews':      return llm.composeReviews(state.query, state.shortlist, prior, recalledSummary);
+        case 'describe-book':     return llm.describeBook(state.query, state.shortlist, prior, recalledSummary);
+        case 'recommend-similar': return llm.composeSimilar(state.query, state.shortlist, prior, recalledSummary);
+        default:                  return llm.compose(state.query, state.shortlist, prior, recalledSummary);
       }
     };
     state.draft = await composeRetry.run(composeCall, context.signal);
