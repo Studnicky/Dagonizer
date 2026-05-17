@@ -1,58 +1,55 @@
 /**
- * The Archivist — canonical DAG, built with DAGBuilder.
+ * The Archivist — canonical DAG, built with DAGBuilder. Version 5.0.
+ *
+ * Molecular composition: the parent DAG is composed of two reusable
+ * sub-DAGs that ship as independent components and are imported as
+ * `.subDAG(...)` placements. The sub-DAGs are registered separately
+ * and referenced by name — the parent DAG never knows their internals.
+ *
+ *   recall-context
+ *     └─ recalled ──► classify-intent
  *
  *   classify-intent
+ *     ├─ off-topic         ──► decline-off-topic ──► END
  *     │
- *     ├─ off-topic ─────────────────────────────────► decline-off-topic ► END
+ *     ├─ on-topic          ──► [book-search-fanout] (extract+decide+4scouts+rank+merge+record+gate+recall)
+ *     │                             ├─ success ──► [compose-retry-loop] (compose+validate+retry+respond)
+ *     │                             └─ error   ──► decline-empty ──► END
  *     │
- *     ├─ on-topic (search | describe | recommend) ► extract-query
- *     │      │
- *     │      ▼ ... decide-tools
- *     │          → web-search-fan-out [web-ol | web-gb | web-wiki]
- *     │          → rank → merge → record
- *     │          → has-citations-gate → recall-past-visits → compose-response
- *     │          → validate-response → respond-to-visitor / loop
+ *     ├─ lookup-author     ──► [book-search-fanout]
+ *     │                             ├─ success ──► group-by-year ──► [compose-retry-loop]
+ *     │                             └─ error   ──► decline-empty ──► END
  *     │
- *     ├─ lookup-author ► author-extract → author-decide-tools
- *     │      → author-fan-out [author-ol | author-gb | author-wiki]
- *     │      → author-rank → author-merge
- *     │      → author-record → author-gate → group-by-year
- *     │      → author-recall → compose-response → validate ...
+ *     ├─ find-reviews      ──► reviews-extract ──► (inline: decide+4scouts+rankByRating+merge+record+gate+recall)
+ *     │                             └─ [compose-retry-loop]
  *     │
- *     ├─ find-reviews ► reviews-extract → reviews-decide-tools
- *     │      → reviews-fan-out [reviews-ol | reviews-gb | reviews-wiki]
- *     │      → reviews-rank → reviews-merge
- *     │      → reviews-record → reviews-gate → reviews-recall
- *     │      → compose-response → validate ...
+ *     ├─ describe-book     ──► describe-extract ──► (inline: decide+4scouts+pickBestMatch+merge+record+gate+recall)
+ *     │                             └─ [compose-retry-loop]
  *     │
- *     ├─ describe-book ► describe-extract → describe-decide-tools
- *     │      → describe-fan-out [describe-ol | describe-gb | describe-wiki]
- *     │      → describe-pick → describe-merge → describe-record
- *     │      → describe-gate → describe-recall → compose-response
- *     │      → validate ...
- *     │
- *     └─ recommend-similar ► recommend-similar
- *            │
- *            ├─ empty  ─────────────────────────────► decline-empty ► END
- *            └─ seeded ► similar-decide-tools
- *                   → similar-fan-out [similar-ol | similar-gb | similar-wiki]
- *                   → similar-rank
- *                   → similar-merge → similar-record → similar-gate
- *                   → similar-recall → compose-response → validate ...
+ *     └─ recommend-similar ──► recommend-similar-gate
+ *                               ├─ seeded ──► [book-search-fanout]
+ *                               │                ├─ success ──► [compose-retry-loop]
+ *                               │                └─ error   ──► decline-empty ──► END
+ *                               └─ empty  ──► decline-empty ──► END
  *
- * Multi-source fan-out: every per-intent branch fans out to three scouts
- * (OpenLibrary, Google Books, Wikipedia) in parallel under a `combine:
- * 'collect'` placement. All three scouts write to `state.candidates`;
- * `mergeCandidates` dedupes via `CanonicalId.dedupe` before the top-K cut.
- * The cytoscape renderer draws each parallel placement as a compound cluster
- * containing its three child scout nodes.
+ * Sub-DAGs (molecular components):
+ *   book-search-fanout  — extract-query + decide-tools + 4-source parallel scouts
+ *                         (OpenLibrary, Google Books, Subject, Wikipedia) + rankCandidates
+ *                         + mergeCandidates + recordFindings + hasCitationsGate +
+ *                         recallPastVisits. Three placements in this DAG:
+ *                         on-topic-search, author-search, similar-search.
  *
- * Every branch funnels back through one shared `compose-response` /
- * `validate-response` / `respond-to-visitor` terminal so the retry
- * loop, validation gate, and conversation append stay one
- * implementation. The per-branch placements reuse the registered node
- * implementations under different placement names so cytoscape can
- * draw the branches as distinct lanes.
+ *   compose-retry-loop  — composeResponse + validateResponse (with bounded retry loop)
+ *                         + respondToVisitor. Four placements in this DAG:
+ *                         compose-loop (shared by all four convergent branches).
+ *
+ * Inlined branches (reviews, describe):
+ *   Reviews uses `rankByRating` (deterministic, rating-weighted) instead of
+ *   `rankCandidates` (LLM-driven). Describe uses `pickBestMatch` to narrow to the
+ *   top-3 title-similar candidates before merge. Both are structurally identical to
+ *   book-search-fanout except for the post-scout ranking step — keeping them inline
+ *   makes the intentional distinction explicit rather than hiding it behind a
+ *   sub-DAG parameter.
  *
  * Builder vs literal equivalence:
  *   DAGBuilder.node(placementName, nodeImpl, routes) emits the same
@@ -62,26 +59,24 @@
  */
 
 
-import { classifyIntent }    from './nodes/classifyIntent.ts';
-import { composeResponse, validateResponse } from './nodes/composeResponse.ts';
-import { decideTools }       from './nodes/decideTools.ts';
-import { extractQuery }      from './nodes/extractQuery.ts';
-import { groupByYear }       from './nodes/groupByYear.ts';
-import { hasCitationsGate }  from './nodes/hasCitationsGate.ts';
-import { mergeCandidates }   from './nodes/mergeCandidates.ts';
-import { pickBestMatch }     from './nodes/pickBestMatch.ts';
-import { rankByRating }      from './nodes/rankByRating.ts';
-import { rankCandidates }    from './nodes/rankCandidates.ts';
-import { recallContext }     from './nodes/recallContext.ts';
-import { recallPastVisits }  from './nodes/recallPastVisits.ts';
-import { recommendSimilar }  from './nodes/recommendSimilar.ts';
-import { recordFindings }    from './nodes/recordFindings.ts';
-import { respondToVisitor, declineOffTopic, declineEmpty } from './nodes/respondToVisitor.ts';
+import { classifyIntent }   from './nodes/classifyIntent.ts';
+import { decideTools }      from './nodes/decideTools.ts';
+import { extractQuery }     from './nodes/extractQuery.ts';
+import { groupByYear }      from './nodes/groupByYear.ts';
+import { hasCitationsGate } from './nodes/hasCitationsGate.ts';
+import { mergeCandidates }  from './nodes/mergeCandidates.ts';
+import { pickBestMatch }    from './nodes/pickBestMatch.ts';
+import { rankByRating }     from './nodes/rankByRating.ts';
+import { recallContext }    from './nodes/recallContext.ts';
+import { recallPastVisits } from './nodes/recallPastVisits.ts';
+import { recommendSimilar } from './nodes/recommendSimilar.ts';
+import { recordFindings }   from './nodes/recordFindings.ts';
+import { declineOffTopic, declineEmpty } from './nodes/respondToVisitor.ts';
 import { openLibraryScout, googleBooksScout, subjectScout, wikipediaScout } from './nodes/scouts.ts';
 
 import { DAGBuilder } from '@noocodex/dagonizer/builder';
 
-export const archivistDAG = new DAGBuilder('the-archivist', '4.1')
+export const archivistDAG = new DAGBuilder('the-archivist', '5.0')
 
   // ── 0. recall-context ────────────────────────────────────────────────────
   // First added → auto-entrypoint. Runs before classifyIntent so the
@@ -91,123 +86,65 @@ export const archivistDAG = new DAGBuilder('the-archivist', '4.1')
   })
 
   // ── 1. classify-intent ───────────────────────────────────────────────────
-  // Wide output union routes to five branches.
-  // Literal: { type:'single', name:'classify-intent', node:'classify-intent', outputs:{...} }
+  // Wide output union routes to five branches. Sub-DAG placements and inline
+  // branches share the same shared terminal: compose-loop and decline-empty.
   .node('classify-intent', classifyIntent, {
-    'lookup-author':     'author-extract',
+    'lookup-author':     'author-search',
     'find-reviews':      'reviews-extract',
     'describe-book':     'describe-extract',
     'recommend-similar': 'recommend-similar',
-    'on-topic':          'extract-query',
+    'on-topic':          'on-topic-search',
     'off-topic':         'decline-off-topic',
   })
 
-  // ── Legacy on-topic pipeline (search | describe | recommend) ─────────────
-
-  // ── 2. extract-query ─────────────────────────────────────────────────────
-  // Placement name = node name. LLM parses raw question into search terms.
-  .node('extract-query', extractQuery, {
-    'success': 'decide-tools',
-  })
-
-  // ── 3. decide-tools ──────────────────────────────────────────────────────
-  // Both outputs route to the fan-out — each scout gates internally on
-  // state.toolPlan; wikipedia runs on terms regardless of toolPlan.
-  .node('decide-tools', decideTools, {
-    'tools':    'web-search-fan-out',
-    'no-tools': 'web-search-fan-out',
-  })
-
-  // ── 4. web-search-fan-out ────────────────────────────────────────────────
-  // Parallel placement: all four scouts run concurrently. combine:'collect'
-  // waits for all four and merges their state mutations. Each child node
-  // writes to state.candidates; mergeCandidates dedupes via CanonicalId.
-  // Cytoscape renders this as a compound cluster containing web-ol/gb/subject/wiki.
-  .parallel('web-search-fan-out', ['web-ol', 'web-gb', 'web-subject', 'web-wiki'], 'collect', {
-    'success': 'rank-candidates',
-    'error':   'rank-candidates',
-  })
-  .node('web-ol',      openLibraryScout, { 'success': null, 'empty': null })
-  .node('web-gb',      googleBooksScout, { 'success': null, 'empty': null })
-  .node('web-subject', subjectScout,     { 'success': null, 'empty': null })
-  .node('web-wiki',    wikipediaScout,   { 'success': null, 'empty': null })
-
-  // ── 5. rank-candidates ───────────────────────────────────────────────────
-  // Always routes 'ranked' — even an empty set — so merge can soft-gate.
-  .node('rank-candidates', rankCandidates, {
-    'ranked': 'merge-candidates',
-  })
-
-  // ── 6. merge-candidates ──────────────────────────────────────────────────
-  // Cross-source dedupe via CanonicalId, top-5. Routes 'empty' when shortlist
-  // is zero-length.
-  .node('merge-candidates', mergeCandidates, {
-    'ranked': 'record-findings',
-    'empty':  'decline-empty',
-  })
-
-  // ── 7. record-findings ───────────────────────────────────────────────────
-  // Deterministic RDF write — same input always produces the same triples.
-  .node('record-findings', recordFindings, {
-    'recorded': 'has-citations-gate',
-  })
-
-  // ── 8. has-citations-gate ────────────────────────────────────────────────
-  // SPARQL ASK over the per-run state graph. Symbolic fence for the LLM.
-  .node('has-citations-gate', hasCitationsGate, {
-    'pass': 'recall-past-visits',
-    'fail': 'decline-empty',
-  })
-
-  // ── 9. recall-past-visits ────────────────────────────────────────────────
-  // Injects prior-session context (prior queries + shortlisted titles).
-  .node('recall-past-visits', recallPastVisits, {
-    'recalled': 'compose-response',
+  // ── on-topic branch ──────────────────────────────────────────────────────
+  // Sub-DAG placement: book-search-fanout handles extract-query, decide-tools,
+  // all four scouts, rank-candidates, merge, record, gate, and recall.
+  // One packaged cluster — first of three placements of the same sub-DAG.
+  // stateMapping.output copies the fields the sub-DAG writes back to the
+  // parent state so compose-loop and group-by-year can read them.
+  .subDAG('on-topic-search', 'book-search-fanout', {
+    'success': 'compose-loop',
+    'error':   'decline-empty',
+  }, {
+    'stateMapping': {
+      'output': {
+        'terms':       'terms',
+        'toolPlan':    'toolPlan',
+        'candidates':  'candidates',
+        'shortlist':   'shortlist',
+        'priorContext':'priorContext',
+      },
+    },
   })
 
   // ── lookup-author branch ─────────────────────────────────────────────────
-  // Reuses existing node implementations under branch-prefixed placement names.
-  // Demonstrates: DAGBuilder.node(differentPlacementName, sameNodeImpl, routes).
-
-  .node('author-extract', extractQuery, {
-    'success': 'author-decide-tools',
+  // Sub-DAG placement: same book-search-fanout cluster, second placement.
+  // After success, group-by-year sorts results chronologically before the
+  // compose loop — author surveys read better in publication-timeline order.
+  .subDAG('author-search', 'book-search-fanout', {
+    'success': 'group-by-year',
+    'error':   'decline-empty',
+  }, {
+    'stateMapping': {
+      'output': {
+        'terms':       'terms',
+        'toolPlan':    'toolPlan',
+        'candidates':  'candidates',
+        'shortlist':   'shortlist',
+        'priorContext':'priorContext',
+      },
+    },
   })
-  .node('author-decide-tools', decideTools, {
-    'tools':    'author-fan-out',
-    'no-tools': 'author-fan-out',
-  })
-  .parallel('author-fan-out', ['author-ol', 'author-gb', 'author-subject', 'author-wiki'], 'collect', {
-    'success': 'author-rank',
-    'error':   'author-rank',
-  })
-  .node('author-ol',      openLibraryScout, { 'success': null, 'empty': null })
-  .node('author-gb',      googleBooksScout, { 'success': null, 'empty': null })
-  .node('author-subject', subjectScout,     { 'success': null, 'empty': null })
-  .node('author-wiki',    wikipediaScout,   { 'success': null, 'empty': null })
-  .node('author-rank', rankCandidates, {
-    'ranked': 'author-merge',
-  })
-  .node('author-merge', mergeCandidates, {
-    'ranked': 'author-record',
-    'empty':  'decline-empty',
-  })
-  .node('author-record', recordFindings, {
-    'recorded': 'author-gate',
-  })
-  .node('author-gate', hasCitationsGate, {
-    'pass': 'group-by-year',
-    'fail': 'decline-empty',
-  })
-  // groupByYear is branch-specific: sorts chronologically for author surveys.
+  // group-by-year is author-branch-specific: sorts shortlist chronologically.
   .node('group-by-year', groupByYear, {
-    'ordered': 'author-recall',
-  })
-  .node('author-recall', recallPastVisits, {
-    'recalled': 'compose-response',
+    'ordered': 'compose-loop',
   })
 
-  // ── find-reviews branch ──────────────────────────────────────────────────
-
+  // ── find-reviews branch ───────────────────────────────────────────────────
+  // Inlined — uses rankByRating (deterministic, rating-weighted) in place of
+  // rankCandidates (LLM-driven). The Google Books scout carries notes.rating /
+  // notes.ratingsCount; rankByRating weights those for reviews-style output.
   .node('reviews-extract', extractQuery, {
     'success': 'reviews-decide-tools',
   })
@@ -215,9 +152,6 @@ export const archivistDAG = new DAGBuilder('the-archivist', '4.1')
     'tools':    'reviews-fan-out',
     'no-tools': 'reviews-fan-out',
   })
-  // reviews-fan-out: parallel fetch from all four sources.
-  // reviews-rank uses deterministic rating-weighted ranking; google-books scout
-  // carries notes.rating / notes.ratingsCount from the source.
   .parallel('reviews-fan-out', ['reviews-ol', 'reviews-gb', 'reviews-subject', 'reviews-wiki'], 'collect', {
     'success': 'reviews-rank',
     'error':   'reviews-rank',
@@ -226,34 +160,18 @@ export const archivistDAG = new DAGBuilder('the-archivist', '4.1')
   .node('reviews-gb',      googleBooksScout, { 'success': null, 'empty': null })
   .node('reviews-subject', subjectScout,     { 'success': null, 'empty': null })
   .node('reviews-wiki',    wikipediaScout,   { 'success': null, 'empty': null })
-  // reviews-rank uses deterministic rating-weighted ranking instead of LLM ranking.
-  .node('reviews-rank', rankByRating, {
-    'ranked': 'reviews-merge',
-  })
-  .node('reviews-merge', mergeCandidates, {
-    'ranked': 'reviews-record',
-    'empty':  'decline-empty',
-  })
-  .node('reviews-record', recordFindings, {
-    'recorded': 'reviews-gate',
-  })
-  .node('reviews-gate', hasCitationsGate, {
-    'pass': 'reviews-recall',
-    'fail': 'decline-empty',
-  })
-  .node('reviews-recall', recallPastVisits, {
-    'recalled': 'compose-response',
-  })
+  .node('reviews-rank',    rankByRating,     { 'ranked': 'reviews-merge' })
+  .node('reviews-merge',   mergeCandidates,  { 'ranked': 'reviews-record', 'empty': 'decline-empty' })
+  .node('reviews-record',  recordFindings,   { 'recorded': 'reviews-gate' })
+  .node('reviews-gate',    hasCitationsGate, { 'pass': 'reviews-recall', 'fail': 'decline-empty' })
+  .node('reviews-recall',  recallPastVisits, { 'recalled': 'compose-loop' })
 
-  // ── describe-book branch (one-hit, skip ranking) ─────────────────────────
-
-  .node('describe-extract', extractQuery, {
-    'success': 'describe-decide-tools',
-  })
-  .node('describe-decide-tools', decideTools, {
-    'tools':    'describe-fan-out',
-    'no-tools': 'describe-fan-out',
-  })
+  // ── describe-book branch ─────────────────────────────────────────────────
+  // Inlined — uses pickBestMatch to narrow multi-hit results to the top-3
+  // title-similar candidates before merge. Ensures the composer receives the
+  // specific book the visitor named, not arbitrary top-5 hits.
+  .node('describe-extract',      extractQuery,     { 'success': 'describe-decide-tools' })
+  .node('describe-decide-tools', decideTools,      { 'tools': 'describe-fan-out', 'no-tools': 'describe-fan-out' })
   .parallel('describe-fan-out', ['describe-ol', 'describe-gb', 'describe-subject', 'describe-wiki'], 'collect', {
     'success': 'describe-pick',
     'error':   'decline-empty',
@@ -262,86 +180,57 @@ export const archivistDAG = new DAGBuilder('the-archivist', '4.1')
   .node('describe-gb',      googleBooksScout, { 'success': null, 'empty': null })
   .node('describe-subject', subjectScout,     { 'success': null, 'empty': null })
   .node('describe-wiki',    wikipediaScout,   { 'success': null, 'empty': null })
-  // describe-pick narrows multi-hit results to the top-3 title-similar candidates
-  // before merge so the composer receives the right book, not the first 5 arbitrary hits.
-  .node('describe-pick', pickBestMatch, {
-    'picked': 'describe-merge',
-  })
-  .node('describe-merge', mergeCandidates, {
-    'ranked': 'describe-record',
-    'empty':  'decline-empty',
-  })
-  .node('describe-record', recordFindings, {
-    'recorded': 'describe-gate',
-  })
-  .node('describe-gate', hasCitationsGate, {
-    'pass': 'describe-recall',
-    'fail': 'decline-empty',
-  })
-  .node('describe-recall', recallPastVisits, {
-    'recalled': 'compose-response',
-  })
+  .node('describe-pick',   pickBestMatch,    { 'picked': 'describe-merge' })
+  .node('describe-merge',  mergeCandidates,  { 'ranked': 'describe-record', 'empty': 'decline-empty' })
+  .node('describe-record', recordFindings,   { 'recorded': 'describe-gate' })
+  .node('describe-gate',   hasCitationsGate, { 'pass': 'describe-recall', 'fail': 'decline-empty' })
+  .node('describe-recall', recallPastVisits, { 'recalled': 'compose-loop' })
 
   // ── recommend-similar branch ─────────────────────────────────────────────
   // recommendSimilar seeds state.terms from prior-run shortlist memory.
-
+  // 'seeded' routes to the book-search-fanout sub-DAG — third placement of
+  // the same packaged cluster. 'empty' routes to the decline terminal.
   .node('recommend-similar', recommendSimilar, {
-    'seeded': 'similar-decide-tools',
+    'seeded': 'similar-search',
     'empty':  'decline-empty',
   })
-  .node('similar-decide-tools', decideTools, {
-    'tools':    'similar-fan-out',
-    'no-tools': 'similar-fan-out',
-  })
-  .parallel('similar-fan-out', ['similar-ol', 'similar-gb', 'similar-subject', 'similar-wiki'], 'collect', {
-    'success': 'similar-rank',
-    'error':   'similar-rank',
-  })
-  .node('similar-ol',      openLibraryScout, { 'success': null, 'empty': null })
-  .node('similar-gb',      googleBooksScout, { 'success': null, 'empty': null })
-  .node('similar-subject', subjectScout,     { 'success': null, 'empty': null })
-  .node('similar-wiki',    wikipediaScout,   { 'success': null, 'empty': null })
-  .node('similar-rank', rankCandidates, {
-    'ranked': 'similar-merge',
-  })
-  .node('similar-merge', mergeCandidates, {
-    'ranked': 'similar-record',
-    'empty':  'decline-empty',
-  })
-  .node('similar-record', recordFindings, {
-    'recorded': 'similar-gate',
-  })
-  .node('similar-gate', hasCitationsGate, {
-    'pass': 'similar-recall',
-    'fail': 'decline-empty',
-  })
-  .node('similar-recall', recallPastVisits, {
-    'recalled': 'compose-response',
+
+  // Sub-DAG placement: same book-search-fanout, third and final placement.
+  .subDAG('similar-search', 'book-search-fanout', {
+    'success': 'compose-loop',
+    'error':   'decline-empty',
+  }, {
+    'stateMapping': {
+      'output': {
+        'terms':       'terms',
+        'toolPlan':    'toolPlan',
+        'candidates':  'candidates',
+        'shortlist':   'shortlist',
+        'priorContext':'priorContext',
+      },
+    },
   })
 
-  // ── Shared compose / validate / terminal nodes ────────────────────────────
-  // All five branches converge here. The retry loop (validate→compose→validate)
-  // is modeled in the DAG so the dispatcher's abort and checkpoint machinery
-  // applies to every iteration — not just the first LLM call.
-
-  // ── compose-response ────────────────────────────────────────────────────
-  // Wrapped with RetryPolicy inside the node for transient LLM failures.
-  .node('compose-response', composeResponse, {
-    'drafted': 'validate-response',
-  })
-
-  // ── validate-response ────────────────────────────────────────────────────
-  // On 'retry', routes back to compose-response (bounded by MAX_COMPOSE_ATTEMPTS
-  // tracked on state). 'exhausted' is the best-effort exit after the limit.
-  .node('validate-response', validateResponse, {
-    'approved':  'respond-to-visitor',
-    'retry':     'compose-response',
-    'exhausted': 'respond-to-visitor',
+  // ── compose-loop — shared compose/validate/respond sub-DAG ───────────────
+  // All branches that successfully find candidates converge here.
+  // composeResponse → validateResponse (retry loop, bounded by state.attempts.compose)
+  // → respondToVisitor. One sub-DAG definition serves all four convergent branches.
+  // stateMapping.output copies the compose loop's writes back to the parent.
+  .subDAG('compose-loop', 'compose-retry-loop', {
+    'success': null,
+    'error':   null,
+  }, {
+    'stateMapping': {
+      'output': {
+        'draft':    'draft',
+        'approved': 'approved',
+        'attempts': 'attempts',
+      },
+    },
   })
 
   // ── Terminal nodes ───────────────────────────────────────────────────────
-  .node('respond-to-visitor',  respondToVisitor,  { 'success': null })
-  .node('decline-off-topic',   declineOffTopic,   { 'success': null })
-  .node('decline-empty',       declineEmpty,       { 'success': null })
+  .node('decline-off-topic', declineOffTopic, { 'success': null })
+  .node('decline-empty',     declineEmpty,     { 'success': null })
 
   .build();
