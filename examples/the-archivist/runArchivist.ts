@@ -27,6 +27,7 @@ import { archivistDAG } from './dag.ts';
 import { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { classifyIntent } from './nodes/classifyIntent.ts';
+import { composeMemoryResponse } from './nodes/composeMemoryResponse.ts';
 import { decideTools } from './nodes/decideTools.ts';
 import { extractQuery } from './nodes/extractQuery.ts';
 import { groupByYear } from './nodes/groupByYear.ts';
@@ -34,11 +35,12 @@ import { hasCitationsGate } from './nodes/hasCitationsGate.ts';
 import { mergeCandidates } from './nodes/mergeCandidates.ts';
 import { pickBestMatch } from './nodes/pickBestMatch.ts';
 import { rankByRating } from './nodes/rankByRating.ts';
-import { recallContext }    from './nodes/recallContext.ts';
+import { recallContext } from './nodes/recallContext.ts';
+import { recallMemories } from './nodes/recallMemories.ts';
 import { recallPastVisits } from './nodes/recallPastVisits.ts';
 import { recommendSimilar } from './nodes/recommendSimilar.ts';
 import { recordFindings } from './nodes/recordFindings.ts';
-import { declineEmpty, declineOffTopic } from './nodes/respondToVisitor.ts';
+import { declineEmpty, declineOffTopic, respondToVisitor } from './nodes/respondToVisitor.ts';
 import { openLibraryScout, googleBooksScout, subjectScout, wikipediaScout, webSearchScout } from './nodes/scouts.ts';
 import {
   GeminiApiAdapter,
@@ -115,6 +117,10 @@ for (const node of [
   groupByYear,
   recallPastVisits,
   recommendSimilar,
+  // recall-memories branch
+  recallMemories,
+  composeMemoryResponse,
+  respondToVisitor,
   declineOffTopic,
   declineEmpty,
 ]) {

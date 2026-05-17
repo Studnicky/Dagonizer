@@ -41,12 +41,14 @@ import { mergeCandidates } from '../../../../examples/the-archivist/nodes/mergeC
 import { rankByRating } from '../../../../examples/the-archivist/nodes/rankByRating.ts';
 import { pickBestMatch } from '../../../../examples/the-archivist/nodes/pickBestMatch.ts';
 import { recallContext } from '../../../../examples/the-archivist/nodes/recallContext.ts';
+import { recallMemories } from '../../../../examples/the-archivist/nodes/recallMemories.ts';
+import { composeMemoryResponse } from '../../../../examples/the-archivist/nodes/composeMemoryResponse.ts';
 import { recallPastVisits } from '../../../../examples/the-archivist/nodes/recallPastVisits.ts';
 import { recommendSimilar } from '../../../../examples/the-archivist/nodes/recommendSimilar.ts';
 import { recordFindings } from '../../../../examples/the-archivist/nodes/recordFindings.ts';
 import { composeResponse, validateResponse } from '../../../../examples/the-archivist/nodes/composeResponse.ts';
 import { rankCandidates } from '../../../../examples/the-archivist/nodes/rankCandidates.ts';
-import { declineEmpty, declineOffTopic } from '../../../../examples/the-archivist/nodes/respondToVisitor.ts';
+import { declineEmpty, declineOffTopic, respondToVisitor } from '../../../../examples/the-archivist/nodes/respondToVisitor.ts';
 import { webSearchScout, openLibraryScout, googleBooksScout, subjectScout, wikipediaScout } from '../../../../examples/the-archivist/nodes/scouts.ts';
 import { detectBackends, hasNoRunnableModel, instantiateProvider, pickBestBackend } from '../../../../examples/the-archivist/providers/index.ts';
 import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
@@ -70,11 +72,9 @@ import CheckpointControls from './CheckpointControls.vue';
 import Conversation from './Conversation.vue';
 import DagGraph from './DagGraph.vue';
 import MemoryGraph from './MemoryGraph.vue';
-import NodeLegend from './NodeLegend.vue';
 import PanesTabs from './PanesTabs.vue';
 import PersistenceBadge from './PersistenceBadge.vue';
 import SendForm from './SendForm.vue';
-import StateLegend from './StateLegend.vue';
 import TimeoutPane from './TimeoutPane.vue';
 import type { TimeoutSettings } from './TimeoutPane.vue';
 import TraceFeed from './TraceFeed.vue';
@@ -229,6 +229,8 @@ async function resumeFromCheckpoint(): Promise<void> {
     rankByRating, pickBestMatch,
     mergeCandidates, recordFindings, hasCitationsGate,
     recallPastVisits, groupByYear, recommendSimilar,
+    // recall-memories branch
+    recallMemories, composeMemoryResponse, respondToVisitor,
     declineOffTopic, declineEmpty,
   ]) dispatcher.registerNode(node);
   dispatcher.registerDAG(archivistDAG);
@@ -479,6 +481,8 @@ async function ask(): Promise<void> {
     rankByRating, pickBestMatch,
     mergeCandidates, recordFindings, hasCitationsGate,
     groupByYear, recallPastVisits, recommendSimilar,
+    // recall-memories branch
+    recallMemories, composeMemoryResponse, respondToVisitor,
     declineOffTopic, declineEmpty,
   ]) dispatcher.registerNode(node);
   dispatcher.registerDAG(archivistDAG);
@@ -637,22 +641,18 @@ function loadKey(): string {
           <PanesTabs :tabs="rightTabs" default-key="dag" class="ar-tabs ar-tabs--right">
             <!-- DAG tab: live execution graph -->
             <template #dag>
-              <div class="dag-wrapper">
+              <div class="graph-pane">
                 <DagGraph
                   ref="dagGraph"
                   :elements="dagElements"
                   aria-label="Archivist DAG live execution"
                 />
-                <div class="dag-legend-anchor">
-                  <NodeLegend />
-                  <StateLegend />
-                </div>
               </div>
             </template>
 
             <!-- Memory tab: cosmos.gl RDF graph -->
             <template #memory>
-              <div class="memory-graph-wrap">
+              <div class="graph-pane">
                 <MemoryGraph
                   :store="memoryStore"
                   :tick="memoryTick"
@@ -820,42 +820,17 @@ function loadKey(): string {
   color: var(--vp-c-text-3);
 }
 
-/* ── DAG wrapper ───────────────────────────────────────────────────────── */
-.dag-wrapper {
+/* ── Shared graph pane — identical dimensions for DAG and Memory tabs ──── */
+.graph-pane {
   position: relative;
   width: 100%;
   height: 640px;
-  border-radius: 8px;
-  transition: box-shadow 0.25s ease;
 }
 
-.archivist-runner.is-running .dag-wrapper {
+.archivist-runner.is-running .graph-pane {
   box-shadow: 0 0 0 1px var(--dagonizer-brand), 0 0 28px -6px var(--dagonizer-brand);
   animation: dag-pulse 1.8s ease-in-out infinite;
-}
-
-.dag-legend-anchor {
-  position: absolute;
-  top: 50%;
-  left: 10px;
-  transform: translateY(-50%);
-  z-index: 4;
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-  background: rgba(0, 0, 0, 0.35);
-  padding: 0.5rem 0.6rem;
-  border-radius: 6px;
-  backdrop-filter: blur(4px);
-  min-width: 108px;
-}
-
-/* ── Memory graph wrapper ──────────────────────────────────────────────── */
-.memory-graph-wrap {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  min-height: 640px;
+  border-radius: 8px;
 }
 
 @keyframes dag-pulse {

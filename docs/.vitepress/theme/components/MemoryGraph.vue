@@ -22,11 +22,14 @@
  * fraction of the surface (single store, no streaming, no worker).
  */
 
-import { onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { Quad } from 'n3';
 
 import type { MemoryStore } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
 import DiagramFrame from './DiagramFrame.vue';
+import GraphDpad from './graph/GraphDpad.vue';
+import GraphLegend from './graph/GraphLegend.vue';
+import type { LegendEntry, LegendTab } from './graph/GraphLegend.vue';
 
 type GraphHandle = {
   setPointPositions(arr: Float32Array): void;
@@ -66,6 +69,27 @@ const layerVisible = ref<Record<GraphLayer, boolean>>({
   'prov':    true,
   'default': true,
 });
+
+/** Cosmos.gl does not expose a first-class pan API — pan buttons are disabled. */
+const PAN_ENABLED = false;
+
+/** Layer entries for GraphLegend — reactive so active state reflects layerVisible. */
+const memoryLegendTabs = computed<readonly LegendTab[]>(() => {
+  const entries: LegendEntry[] = [
+    { key: 'ontology', swatch: 'solid',  color: '#21ee99', label: 'ontology', active: layerVisible.value['ontology'] },
+    { key: 'memory',   swatch: 'solid',  color: '#22e8ff', label: 'memory',   active: layerVisible.value['memory'] },
+    { key: 'state',    swatch: 'solid',  color: '#d4a649', label: 'state',    active: layerVisible.value['state'] },
+    { key: 'prov',     swatch: 'solid',  color: '#9b51e0', label: 'prov',     active: layerVisible.value['prov'] },
+  ];
+  return [{ key: 'layers', label: 'Layers', entries }];
+});
+
+function onLayerToggle(key: string): void {
+  const layer = key as GraphLayer;
+  if (layer in layerVisible.value) {
+    layerVisible.value[layer] = !layerVisible.value[layer];
+  }
+}
 
 defineOptions({ inheritAttrs: false });
 
@@ -449,30 +473,29 @@ function objectLabel(q: Quad): string {
         No triples yet. Ask the Archivist and watch the store grow.
       </p>
 
-      <!-- Layer chip filter — bottom-left corner. -->
-      <aside v-if="!loading && !loadError" class="mg-layers" aria-label="Named-graph filters">
-        <button
-          v-for="layer in (['ontology', 'memory', 'state', 'prov'] as const)"
-          :key="layer"
-          type="button"
-          :class="['mg-layer-chip', `mg-layer-${layer}`, { 'mg-layer-off': !layerVisible[layer] }]"
-          :aria-pressed="layerVisible[layer]"
-          :title="layerVisible[layer] ? `Hide ${layer} layer` : `Show ${layer} layer`"
-          @click="layerVisible[layer] = !layerVisible[layer]"
-        >{{ layer }}</button>
-      </aside>
+      <!-- Layer legend — bottom-left corner (replaces chip filter). -->
+      <GraphLegend
+        v-if="!loading && !loadError"
+        :tabs="memoryLegendTabs"
+        class="mg-legend-pos"
+        @toggle="onLayerToggle"
+      />
 
-      <!-- Zoom HUD + navigation D-pad — bottom-right corner. -->
-      <div v-if="!loading && !loadError" class="mg-nav" aria-label="Graph navigation">
-        <aside class="mg-hud" aria-live="polite">
-          <span class="mg-hud-zoom">×{{ zoomLevel.toFixed(2) }}</span>
-          <span class="mg-hud-hint">drag · wheel</span>
-        </aside>
-        <div class="mg-dpad" aria-label="Graph zoom controls">
-          <button class="mg-dpad-btn" title="Zoom in"    @click="mgZoomIn">＋</button>
-          <button class="mg-dpad-btn" title="Fit view"   @click="mgFit">⤢</button>
-          <button class="mg-dpad-btn" title="Zoom out"   @click="mgZoomOut">－</button>
-        </div>
+      <!-- D-pad navigation — bottom-right corner (replaces zoom HUD + mg-dpad). -->
+      <div v-if="!loading && !loadError" class="mg-dpad-pos">
+        <GraphDpad
+          :zoom-level="zoomLevel"
+          :pan-enabled="PAN_ENABLED"
+          @zoom-in="mgZoomIn"
+          @zoom-out="mgZoomOut"
+          @centre="mgFit"
+          @fit="mgFit"
+          @expand="mgZoomIn"
+          @pan-up="() => {}"
+          @pan-down="() => {}"
+          @pan-left="() => {}"
+          @pan-right="() => {}"
+        />
       </div>
     </div>
   </DiagramFrame>
@@ -489,7 +512,6 @@ function objectLabel(q: Quad): string {
   position: relative;
   width: 100%;
   height: 100%;
-  min-height: 680px;
   background: radial-gradient(circle at center, rgba(155, 81, 224, 0.08), var(--vp-c-bg) 70%);
 }
 
@@ -553,123 +575,19 @@ function objectLabel(q: Quad): string {
   color: var(--dagonizer-brand3);
 }
 
-/* Navigation container — bottom-right, stacks HUD above D-pad. */
-.mg-nav {
-  position: absolute;
-  bottom: 10px;
-  right: 10px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-  z-index: 5;
-}
-
-/* Zoom HUD — sits above the D-pad in the nav container. */
-.mg-hud {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.3rem 0.6rem;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(4px);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 4px;
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.7rem;
-  color: var(--vp-c-text-2);
-  pointer-events: none;
-}
-
-/* D-pad — 3-button row (zoom in / fit / zoom out). */
-.mg-dpad {
-  display: grid;
-  grid-template-columns: repeat(3, 32px);
-  gap: 4px;
-  background: rgba(0, 0, 0, 0.30);
-  padding: 6px;
-  border-radius: 8px;
-  backdrop-filter: blur(4px);
-}
-
-.mg-dpad-btn {
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--vp-c-bg-alt);
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 4px;
-  color: var(--vp-c-text-1);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 0;
-  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
-  line-height: 1;
-}
-
-.mg-dpad-btn:hover {
-  background: var(--vp-c-bg);
-  border-color: var(--dagonizer-brand);
-  color: var(--dagonizer-brand);
-}
-
-.mg-dpad-btn:focus-visible {
-  outline: 2px solid var(--dagonizer-brand);
-  outline-offset: 1px;
-}
-
-.mg-hud-zoom {
-  color: var(--dagonizer-brand2);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.mg-hud-hint {
-  color: var(--vp-c-text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.62rem;
-}
-
-/* Layer chips — bottom-left overlay. One per named-graph layer. */
-.mg-layers {
+/* Legend — bottom-left positioning anchor. */
+.mg-legend-pos {
   position: absolute;
   bottom: 10px;
   left: 10px;
-  display: inline-flex;
-  gap: 0.35rem;
+  z-index: 4;
+}
+
+/* D-pad — bottom-right positioning anchor. */
+.mg-dpad-pos {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
   z-index: 5;
-}
-
-.mg-layer-chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.22rem 0.55rem;
-  border: 1px solid currentColor;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(4px);
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.62rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  cursor: pointer;
-  transition: opacity 0.12s ease, filter 0.12s ease, transform 0.12s ease;
-}
-
-.mg-layer-chip:hover { transform: translateY(-1px); }
-
-.mg-layer-ontology { color: #21ee99; }
-.mg-layer-memory   { color: var(--dagonizer-brand);  }
-.mg-layer-state    { color: var(--dagonizer-brand3); }
-.mg-layer-prov     { color: var(--dagonizer-brand2); }
-
-.mg-layer-off {
-  opacity: 0.4;
-  filter: grayscale(0.6);
-  text-decoration: line-through;
 }
 </style>

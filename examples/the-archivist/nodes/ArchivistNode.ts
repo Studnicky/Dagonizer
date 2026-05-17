@@ -31,7 +31,9 @@ export interface ArchivistNode<TOutput extends string>
 /** Map node name → kind. Used by the cytoscape renderer to colour the graph. */
 export const NODE_KINDS: Readonly<Record<string, NodeKind>> = {
   // Non-deterministic (added here so it sorts with its peers below)
-  'recall-context':        'non-deterministic',
+  'recall-context':          'non-deterministic',
+  'recall-memories':         'non-deterministic',
+  'compose-memory-response': 'non-deterministic',
   // Deterministic
   'extract-query':         'deterministic',
   'merge-candidates':      'deterministic',

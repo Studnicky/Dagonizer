@@ -60,6 +60,22 @@ function toolCallFor(query: string, tools: readonly ToolDefinition[]): ToolCall[
 
 function cannedAnswer(query: string): string {
   const q = query.toLowerCase();
+
+  // Memory-recall branch — detect the digest marker injected by prompts.composeMemoryRecall.
+  if (q.includes('memory status:')) {
+    if (q.includes('no books have been recorded')) {
+      return "Stay a while and listen! My shelves are fresh for you — nothing recorded yet. Ask me about a title, author, or topic and we'll build up a history together.";
+    }
+    // Extract counts from the digest block for a verifiable stub response.
+    const bookMatch  = /(\d+) distinct book/.exec(q);
+    const queryMatch = /(\d+) prior (session|sessions)/.exec(q);
+    const titleMatch = /recent titles?: ([^.]+)\./.exec(q);
+    const bookCount  = bookMatch  !== null ? bookMatch[1]  : 'several';
+    const sessions   = queryMatch !== null ? queryMatch[1] : 'several';
+    const titles     = titleMatch !== null ? titleMatch[1] : 'various titles';
+    return `Stay a while and listen! I have looked up ${bookCount} book${bookCount === '1' ? '' : 's'} across ${sessions} ${Number(sessions) === 1 ? 'session' : 'sessions'}. The most recent include ${titles}. Ask me about any of them, or let's explore something new.`;
+  }
+
   if (q.includes('house') || q.includes('library') || q.includes('labyrinth')) {
     return 'Try "Piranesi" by Susanna Clarke — a quiet, cosmic novel about a man living in an endless House.';
   }

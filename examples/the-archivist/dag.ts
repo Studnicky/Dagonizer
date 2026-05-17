@@ -1,5 +1,5 @@
 /**
- * The Archivist — canonical DAG, built with DAGBuilder. Version 5.0.
+ * The Archivist — canonical DAG, built with DAGBuilder. Version 5.1.
  *
  * Molecular composition: the parent DAG is composed of two reusable
  * sub-DAGs that ship as independent components and are imported as
@@ -59,24 +59,26 @@
  */
 
 
-import { classifyIntent }   from './nodes/classifyIntent.ts';
-import { decideTools }      from './nodes/decideTools.ts';
-import { extractQuery }     from './nodes/extractQuery.ts';
-import { groupByYear }      from './nodes/groupByYear.ts';
-import { hasCitationsGate } from './nodes/hasCitationsGate.ts';
-import { mergeCandidates }  from './nodes/mergeCandidates.ts';
-import { pickBestMatch }    from './nodes/pickBestMatch.ts';
-import { rankByRating }     from './nodes/rankByRating.ts';
-import { recallContext }    from './nodes/recallContext.ts';
-import { recallPastVisits } from './nodes/recallPastVisits.ts';
-import { recommendSimilar } from './nodes/recommendSimilar.ts';
-import { recordFindings }   from './nodes/recordFindings.ts';
-import { declineOffTopic, declineEmpty } from './nodes/respondToVisitor.ts';
+import { classifyIntent }      from './nodes/classifyIntent.ts';
+import { composeMemoryResponse } from './nodes/composeMemoryResponse.ts';
+import { decideTools }          from './nodes/decideTools.ts';
+import { extractQuery }         from './nodes/extractQuery.ts';
+import { groupByYear }          from './nodes/groupByYear.ts';
+import { hasCitationsGate }     from './nodes/hasCitationsGate.ts';
+import { mergeCandidates }      from './nodes/mergeCandidates.ts';
+import { pickBestMatch }        from './nodes/pickBestMatch.ts';
+import { rankByRating }         from './nodes/rankByRating.ts';
+import { recallContext }        from './nodes/recallContext.ts';
+import { recallMemories }       from './nodes/recallMemories.ts';
+import { recallPastVisits }     from './nodes/recallPastVisits.ts';
+import { recommendSimilar }     from './nodes/recommendSimilar.ts';
+import { recordFindings }       from './nodes/recordFindings.ts';
+import { declineOffTopic, declineEmpty, respondToVisitor } from './nodes/respondToVisitor.ts';
 import { openLibraryScout, googleBooksScout, subjectScout, wikipediaScout } from './nodes/scouts.ts';
 
 import { DAGBuilder } from '@noocodex/dagonizer/builder';
 
-export const archivistDAG = new DAGBuilder('the-archivist', '5.0')
+export const archivistDAG = new DAGBuilder('the-archivist', '5.1')
 
   // ── 0. recall-context ────────────────────────────────────────────────────
   // First added → auto-entrypoint. Runs before classifyIntent so the
@@ -86,13 +88,16 @@ export const archivistDAG = new DAGBuilder('the-archivist', '5.0')
   })
 
   // ── 1. classify-intent ───────────────────────────────────────────────────
-  // Wide output union routes to five branches. Sub-DAG placements and inline
+  // Wide output union routes to six branches. Sub-DAG placements and inline
   // branches share the same shared terminal: compose-loop and decline-empty.
+  // recall-memories routes directly to memory-recall → compose-memory-recall
+  // → memory-respond (no search fanout needed; the memory store is the source).
   .node('classify-intent', classifyIntent, {
     'lookup-author':     'author-search',
     'find-reviews':      'reviews-extract',
     'describe-book':     'describe-extract',
     'recommend-similar': 'recommend-similar',
+    'recall-memories':   'memory-recall',
     'on-topic':          'on-topic-search',
     'off-topic':         'decline-off-topic',
   })
@@ -228,6 +233,13 @@ export const archivistDAG = new DAGBuilder('the-archivist', '5.0')
       },
     },
   })
+
+  // ── recall-memories branch ───────────────────────────────────────────────
+  // No search fanout needed — the memory store is queried directly.
+  // recallMemories → composeMemoryResponse → respondToVisitor (shared terminal).
+  .node('memory-recall',          recallMemories,       { 'recalled': 'compose-memory-recall' })
+  .node('compose-memory-recall',  composeMemoryResponse, { 'drafted':  'memory-respond' })
+  .node('memory-respond',         respondToVisitor,      { 'success':  null })
 
   // ── Terminal nodes ───────────────────────────────────────────────────────
   .node('decline-off-topic', declineOffTopic, { 'success': null })

@@ -15,6 +15,7 @@
  *     citation when the visitor explicitly references their past.
  */
 
+import type { MemoryDigest } from '../ArchivistState.ts';
 import type { Candidate } from '../entities/Book.ts';
 
 // ── Persona greeting (shown as the first turn before the visitor types).
@@ -41,6 +42,7 @@ export const directives = {
   "similarToPrior":   'Frame each suggestion as "similar to <prior title>" using the persistent-memory facts as the anchor.',
   "weighOpinions":    'Quote average ratings and ratings counts when present; explain what readers seem to feel about each title.',
   "continuityHint":   'Use the recent context if it suggests a likely intent or recurring interest.',
+  "recallMemories":   'When the visitor asks what you remember, what books you have seen, or what they have asked before, give a warm roll-up of your memory.',
 } as const;
 
 // ── Shared system message — composed from persona directives ───────────
@@ -117,11 +119,12 @@ export const prompts = {
       '  find-reviews       — the visitor wants opinions, reviews, or what readers think',
       '  describe-book      — the visitor named a specific title and wants a description',
       '  recommend-similar  — the visitor wants something like a previous read',
+      '  recall-memories    — the visitor asks about your own memory or history: what books you have looked up, what they have asked before, what has been recommended; any meta-question about your past activity',
       '  search             — the visitor named a topic / title / ISBN (no clear sub-case)',
       '  describe           — the visitor described a book without naming it',
       '  recommend          — the visitor asked for a generic recommendation',
-      '  off-topic          — the visitor wandered off books',
-      'Prefer the most specific intent. Respond with the single token only.',
+      '  off-topic          — the visitor asked something unrelated to books and unrelated to your memory',
+      'Prefer the most specific intent. Use recall-memories for any question about your activity, history, or memory. Respond with the single token only.',
       contextBlock,
       '',
       `Visitor question: ${query}`,
@@ -336,6 +339,39 @@ export const prompts = {
       `Shortlisted titles: ${titles}`,
       '',
       `Draft: ${draft}`,
+    ].join('\n');
+  },
+
+  composeMemoryRecall(
+    query: string,
+    digest: MemoryDigest,
+    recalledSummary?: string,
+  ): string {
+    const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
+      ? ''
+      : `\nConversation context: ${recalledSummary}`;
+
+    const digestBlock = digest.bookCount === 0
+      ? 'Memory status: my shelves are fresh — no books have been recorded yet this session.'
+      : [
+          `Memory status: ${String(digest.bookCount)} distinct book${digest.bookCount === 1 ? '' : 's'} recorded, ${String(digest.queryCount)} visitor ${digest.queryCount === 1 ? 'query' : 'queries'} seen.`,
+          digest.recentBooks.length > 0
+            ? `Recent titles: ${digest.recentBooks.map((b) => `"${b.title}"${b.author !== undefined ? ` by ${b.author}` : ''}`).join('; ')}.`
+            : '',
+          digest.intentBreakdown.length > 0
+            ? `Intent breakdown: ${digest.intentBreakdown.map((e) => `${e.intent} (${String(e.count)})`).join(', ')}.`
+            : '',
+        ].filter(Boolean).join(' ');
+
+    return [
+      SYSTEM,
+      directives.recallMemories,
+      directives.beTerse,
+      '',
+      `Visitor question: ${query}`,
+      continuityBlock,
+      '',
+      digestBlock,
     ].join('\n');
   },
 };
