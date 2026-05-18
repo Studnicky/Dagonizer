@@ -18,7 +18,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -79,14 +79,22 @@ const result = spawnSync(
   { stdio: 'inherit' },
 );
 
-if (result.error) {
-  console.error('build-og-image: rsvg-convert not found —', result.error.message);
-  console.error('Install via: brew install librsvg');
-  process.exit(1);
-}
-
-if (result.status !== 0) {
-  console.error(`build-og-image: rsvg-convert exited with status ${result.status}`);
+if (result.error || result.status !== 0) {
+  // Tolerate rsvg-convert absence (CI without librsvg) or any rasterizer
+  // failure when the committed PNG fallback exists. The SVG was already
+  // written with the current version stamp; the PNG just won't refresh
+  // until a build with librsvg present (locally, or CI with librsvg2-bin).
+  if (existsSync(PNG_OUT)) {
+    const why = result.error ? `not found (${result.error.message})` : `exited ${result.status}`;
+    console.log(`build-og-image: rsvg-convert ${why} — keeping committed ${PNG_OUT}`);
+    process.exit(0);
+  }
+  if (result.error) {
+    console.error('build-og-image: rsvg-convert not found —', result.error.message);
+    console.error('Install via: brew install librsvg (macOS) or apt-get install librsvg2-bin (Debian/Ubuntu).');
+  } else {
+    console.error(`build-og-image: rsvg-convert exited with status ${result.status}`);
+  }
   process.exit(result.status ?? 1);
 }
 
