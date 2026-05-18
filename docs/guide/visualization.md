@@ -17,7 +17,7 @@ console.log(source);
 |-----------|---------------|----------------|
 | `single`  | rectangle     | `greet[greet]` |
 | `fan-out` | hexagon       | `scout{{scout}}` |
-| `sub-dag` | stadium       | `enrich([enrich])` |
+| `deep-dag` | stadium       | `enrich([enrich])` |
 | `parallel`| subgraph      | `subgraph group["group (parallel)"]` … `end` |
 
 Routes render as labeled directed edges. Routes targeting `null` route to a synthetic `END([end])` terminator (one per DAG).

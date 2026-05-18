@@ -17,7 +17,7 @@ Four node kinds:
 
 **`fan-out`** — reads an array from a dotted path in state, runs one registered node per item (with configurable concurrency), then merges results back through a fan-in strategy. Aggregate output is `all-success`, `partial`, `all-error`, or `empty`.
 
-**`sub-dag`** — invokes a second registered DAG as a nested call, with optional state mapping for input and output. Errors and warnings from the child DAG bubble up to the parent.
+**`deep-dag`** — invokes a second registered DAG as a nested call, with optional state mapping for input and output. Errors and warnings from the child DAG bubble up to the parent.
 
 ### When to choose each
 
@@ -26,7 +26,7 @@ Four node kinds:
 | Sequential steps with conditional branching | `single` |
 | Multiple independent fetches that must all finish before proceeding | `parallel` |
 | Process every item in a collection, then aggregate | `fan-out` |
-| Reuse a DAG across multiple parent DAGs | `sub-dag` |
+| Reuse a DAG across multiple parent DAGs | `deep-dag` |
 
 ---
 
@@ -49,7 +49,7 @@ class PipelineState extends NodeStateBase {
 }
 ```
 
-`NodeStateBase.clone()` is called by the dispatcher before fan-out items and sub-DAG calls. The clone carries a copy of `metadata` but resets `lifecycle` to `pending` and clears `errors` and `warnings` — each child execution is a fresh run that accumulates its own results.
+`NodeStateBase.clone()` is called by the dispatcher before fan-out items and deep-DAG calls. The clone carries a copy of `metadata` but resets `lifecycle` to `pending` and clears `errors` and `warnings` — each child execution is a fresh run that accumulates its own results.
 
 To implement `NodeStateInterface` from scratch (without extending `NodeStateBase`), provide your own lifecycle FSM and `clone()`. This is uncommon; most consumers subclass `NodeStateBase`.
 
@@ -173,11 +173,11 @@ When to use each:
 
 ---
 
-## Sub-DAG state mapping
+## Deep-DAG state mapping
 
-Sub-DAGs run in a cloned child state. State mapping controls what crosses the parent/child boundary.
+Deep-DAGs run in a cloned child state. State mapping controls what crosses the parent/child boundary.
 
-**`input` mapping** — `stateMapping.input` copies fields from the parent node state into the child node state before the sub-DAG runs.
+**`input` mapping** — `stateMapping.input` copies fields from the parent node state into the child node state before the deep-DAG runs.
 
 ```ts
 stateMapping: {
@@ -187,7 +187,7 @@ stateMapping: {
 
 Reads `parentState['parent']['nested']['key']` and writes it to `childState['childKey']`.
 
-**`output` mapping** — `stateMapping.output` copies fields from the child node state back into the parent after the sub-DAG returns.
+**`output` mapping** — `stateMapping.output` copies fields from the child node state back into the parent after the deep-DAG returns.
 
 ```ts
 stateMapping: {

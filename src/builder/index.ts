@@ -1,5 +1,5 @@
 export { DAGBuilder } from './DAGBuilder.js';
 export type {
   FanOutOptionsInterface,
-  SubDAGOptionsInterface,
+  DeepDAGOptionsInterface,
 } from './DAGBuilder.js';

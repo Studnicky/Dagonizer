@@ -14,24 +14,24 @@
  *     └─ bsf-rank-candidates
  *     └─ bsf-merge-candidates
  *          ├─ ranked ──► bsf-record-findings
- *          └─ empty  ──► bsf-no-results (collects error → sub-DAG exits error)
+ *          └─ empty  ──► bsf-no-results (collects error → deep-DAG exits error)
  *     └─ bsf-record-findings
  *     └─ bsf-has-citations-gate
  *          ├─ pass ──► bsf-recall-past-visits ──► END (success)
- *          └─ fail ──► bsf-no-results (collects error → sub-DAG exits error)
+ *          └─ fail ──► bsf-no-results (collects error → deep-DAG exits error)
  *
  * Outputs:
  *   success — query extracted, candidates found, ranked, recorded, and recalled
  *   error   — no candidates after merge, or citations gate failed;
- *             signalled via collectError on childState so executeSubDAG
+ *             signalled via collectError on childState so executeDeepDAG
  *             routes the parent to its 'error' branch
  *
  * Molecular import pattern:
- *   import { BookSearchFanoutDAG, registerBookSearchFanoutNodes } from './subdags/BookSearchFanoutDAG.ts';
+ *   import { BookSearchFanoutDAG, registerBookSearchFanoutNodes } from './deepdags/BookSearchFanoutDAG.ts';
  *   registerBookSearchFanoutNodes(dispatcher);
  *   dispatcher.registerDAG(BookSearchFanoutDAG);
  *
- * The sub-DAG operates on the parent's state directly (no stateMapping
+ * The deep-DAG operates on the parent's state directly (no stateMapping
  * needed) — it reads `state.query` and writes `state.terms`, `state.toolPlan`,
  * `state.candidates`, `state.shortlist`, and `state.priorContext`, which are
  * the same fields every intent branch in the parent DAG expects.
@@ -72,7 +72,7 @@ import type { DAG } from '@noocodex/dagonizer/entities';
  * Used when the fan-out cluster finds no usable candidates — either
  * because merge produced an empty shortlist, or because the citations
  * gate found nothing written in the state graph. Collecting the error
- * causes `executeSubDAG` to route the parent placement to its `error`
+ * causes `executeDeepDAG` to route the parent placement to its `error`
  * branch so the parent can dispatch to its own empty-result handling.
  */
 const bsfNoResults: NodeInterface<ArchivistState, 'no-results', ArchivistServices> = {
@@ -97,7 +97,7 @@ const bsfNoResults: NodeInterface<ArchivistState, 'no-results', ArchivistService
 
 /**
  * The `book-search-fanout` DAG — one packaged unit that any parent DAG
- * can reference via `.subDAG('placement-name', 'book-search-fanout', routes)`.
+ * can reference via `.deepDAG('placement-name', 'book-search-fanout', routes)`.
  */
 export const BookSearchFanoutDAG: DAG = new DAGBuilder('book-search-fanout', '1.0')
 
@@ -160,14 +160,14 @@ export const BookSearchFanoutDAG: DAG = new DAGBuilder('book-search-fanout', '1.
 
   // ── 8. recall-past-visits ────────────────────────────────────────────────
   // Injects prior-session context (prior queries + shortlisted titles) into
-  // state.priorContext. Terminal node — sub-DAG exits cleanly → 'success'.
+  // state.priorContext. Terminal node — deep-DAG exits cleanly → 'success'.
   .node('bsf-recall-past-visits', recallPastVisits, {
     'recalled': null,
   })
 
   // ── 9. bsf-no-results ────────────────────────────────────────────────────
   // Internal error-signal node. Collects a recoverable error so
-  // executeSubDAG routes the parent placement to its 'error' branch.
+  // executeDeepDAG routes the parent placement to its 'error' branch.
   .node('bsf-no-results', bsfNoResults, {
     'no-results': null,
   })

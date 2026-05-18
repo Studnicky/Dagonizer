@@ -26,15 +26,15 @@
  */
 
 import type { DAG } from '../entities/dag/DAG.js';
+import type { DeepDAGNode } from '../entities/dag/DeepDAGNode.js';
 import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
-import type { SubDAGNode } from '../entities/dag/SubDAGNode.js';
 
 /** Stable JSON-LD vocabulary URI for the Dagonizer DAG vocabulary. */
 export const DAGONIZER_VOCAB = 'https://noocodex.dev/ontology/dagonizer/';
 
-type DAGNodeEntry = FanOutNode | ParallelNode | SingleNodePlacementInterface | SubDAGNode;
+type DAGNodeEntry = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode;
 
 /** A single node entry in the rendered `@graph`. */
 export interface JsonLdGraphEntry {
@@ -49,11 +49,11 @@ export interface DagJsonLdDocument {
   readonly '@graph': readonly JsonLdGraphEntry[];
 }
 
-const TYPE_BY_KIND: Readonly<Record<DAGNodeEntry['type'], string>> = {
-  'single':   'dag:SingleNode',
-  'parallel': 'dag:ParallelNode',
-  'fan-out':  'dag:FanOutNode',
-  'sub-dag':  'dag:SubDAGNode',
+const TYPE_BY_KIND: Readonly<Record<DAGNodeEntry['@type'], string>> = {
+  'SingleNode':  'dag:SingleNode',
+  'ParallelNode': 'dag:ParallelNode',
+  'FanOutNode':  'dag:FanOutNode',
+  'DeepDAGNode': 'dag:DeepDAGNode',
 };
 
 const placementIri = (dagName: string, placementName: string): string =>
@@ -80,21 +80,21 @@ const renderRoutes = (
 const renderPlacement = (dagName: string, placement: DAGNodeEntry): JsonLdGraphEntry => {
   const base = {
     '@id': placementIri(dagName, placement.name),
-    '@type': TYPE_BY_KIND[placement.type],
+    '@type': TYPE_BY_KIND[placement['@type']],
     'dag:name': placement.name,
     'dag:routes': renderRoutes(dagName, placement.outputs),
   } as const;
 
-  switch (placement.type) {
-    case 'single':
+  switch (placement['@type']) {
+    case 'SingleNode':
       return { ...base, 'dag:node': placement.node };
-    case 'parallel':
+    case 'ParallelNode':
       return {
         ...base,
         'dag:combine': placement.combine,
-        'dag:children': placement.nodes.map((child) => placementIri(dagName, child)),
+        'dag:children': placement.nodes.map((child: string) => placementIri(dagName, child)),
       };
-    case 'fan-out': {
+    case 'FanOutNode': {
       const out: JsonLdGraphEntry & Record<string, unknown> = {
         ...base,
         'dag:node':   placement.node,
@@ -105,7 +105,7 @@ const renderPlacement = (dagName: string, placement: DAGNodeEntry): JsonLdGraphE
       if (placement.concurrency !== undefined) out['dag:concurrency'] = placement.concurrency;
       return out;
     }
-    case 'sub-dag': {
+    case 'DeepDAGNode': {
       const out: JsonLdGraphEntry & Record<string, unknown> = {
         ...base,
         'dag:dag': dagIri(placement.dag),
