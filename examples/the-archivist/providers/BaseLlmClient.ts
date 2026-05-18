@@ -188,6 +188,10 @@ export class BaseLlmClient implements LlmClient {
     return (await this.#text(prompts.composeEmptyResponse(query, failureCause))).trim();
   }
 
+  async suggestStarterQuery(): Promise<string> {
+    return (await this.#text(prompts.suggestStarterQuery())).trim();
+  }
+
   async #text(prompt: string): Promise<string> {
     const response = await this.adapter.chat({
       'messages':    [{ 'role': 'user', 'content': prompt }],

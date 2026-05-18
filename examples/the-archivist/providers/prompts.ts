@@ -358,6 +358,16 @@ export const prompts = {
     ].join('\n');
   },
 
+  suggestStarterQuery(): string {
+    return [
+      directives.persona,
+      'Pick one popular author or series at random from world literature.',
+      'Phrase ONE short curious question a first-time visitor to a bookstore might ask about it.',
+      'The question must be under 20 words.',
+      'Return just the question — no preamble, no quotation marks, no explanation.',
+    ].join(' ');
+  },
+
   composeMemoryRecall(
     query: string,
     digest: MemoryDigest,

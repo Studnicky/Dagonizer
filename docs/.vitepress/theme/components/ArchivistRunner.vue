@@ -88,7 +88,7 @@ const backends = ref<readonly BackendAvailability[]>([]);
 const activeBackend = ref<ProviderId>('gemini-nano');
 const noModel = ref(false);
 const apiKey = ref(loadKey());
-const visitorQuery = ref("I'm looking for a book about a strange house and a library");
+const visitorQuery = ref('');
 const isRunning = ref(false);
 const conversation = ref<Array<{ role: 'visitor' | 'archivist'; text: string; ts: number }>>([
   { 'role': 'archivist', 'text': ARCHIVIST_GREETING, 'ts': Date.now() },
@@ -379,7 +379,13 @@ function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
       if (kind === 'completed' || kind === 'failed' || kind === 'cancelled' || kind === 'timed_out') {
         terminalKind.value = kind;
       }
-      if (state.draft.length > 0) {
+      // Belt-and-suspenders guard: only the root DAG's onFlowEnd pushes to
+      // conversation. Sub-DAG flows (compose-retry-loop, book-search-fanout)
+      // fire onFlowEnd on the same dispatcher instance — those must not
+      // duplicate the response. The structural fix (single respond-to-visitor
+      // at the parent level) is the primary guarantee; this guard is the
+      // secondary one so any future sub-DAG addition cannot regress it.
+      if (dagName === 'the-archivist' && state.draft.length > 0) {
         conversation.value = [...conversation.value, {
           'role': 'archivist',
           'text': state.draft,
@@ -395,6 +401,28 @@ function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
       runnerMachine.dispatch({ 'type': 'flowEnd', 'lifecycle': kind });
     },
   };
+}
+
+// ── Starter query fallback pool ──────────────────────────────────────────
+const STATIC_STARTER_QUERIES: readonly string[] = [
+  'Do you have the complete Dune saga by Frank Herbert?',
+  'What order should I read The Lord of the Rings?',
+  'Which Stephen King novel is the scariest?',
+  'Are all the Harry Potter books in stock?',
+  'What did Agatha Christie write before Hercule Poirot?',
+  'Where should I start with Brandon Sanderson?',
+  'Can you tell me about Neil Gaiman\'s mythology books?',
+  'What are the major themes in Octavia Butler\'s Kindred?',
+  'Is there a reading order for Terry Pratchett\'s Discworld?',
+  'Which Ursula Le Guin novel should I read first?',
+  'What is Murakami\'s most accessible novel for new readers?',
+  'Which Hemingway is a good introduction to his work?',
+];
+
+function isFreshSession(): boolean {
+  // A fresh session has exactly one entry — the archivist greeting.
+  // Once the visitor has sent any message the session is no longer fresh.
+  return conversation.value.length === 1 && conversation.value[0]?.role === 'archivist';
 }
 
 // ── Boot ─────────────────────────────────────────────────────────────────
@@ -414,6 +442,22 @@ onMounted(async () => {
     activeBackend.value = picked.id;
     logger.info(`backend: ${picked.displayName}`);
   }
+
+  // Pre-fill the input with an LLM-generated question on a fresh session.
+  // Only runs once per session — once the visitor sends a message the
+  // input is cleared (via ask()) and this condition never fires again.
+  if (isFreshSession() && visitorQuery.value.length === 0) {
+    const llm = instantiateProvider(activeBackend.value, { 'apiKey': apiKey.value || undefined });
+    try {
+      const suggestion = await llm.suggestStarterQuery();
+      if (suggestion.length > 0 && isFreshSession() && visitorQuery.value.length === 0) {
+        visitorQuery.value = suggestion;
+      }
+    } catch {
+      // Fallback: deterministic pick from the static pool.
+      visitorQuery.value = STATIC_STARTER_QUERIES[Date.now() % STATIC_STARTER_QUERIES.length] as string;
+    }
+  }
 });
 
 watch(apiKey, saveKey);
@@ -426,16 +470,19 @@ async function ask(): Promise<void> {
   terminalKind.value = 'pending';
   trace.value = [];
 
+  const queryText = visitorQuery.value;
   conversation.value = [...conversation.value, {
     'role': 'visitor',
-    'text': visitorQuery.value,
+    'text': queryText,
     'ts': Date.now(),
   }];
+  // Clear the input immediately after capturing — the send-and-clear pattern.
+  visitorQuery.value = '';
 
   dagGraph.value?.reset();
   memoryTick.value++;
   logger.clear();
-  logger.info(`run start — query: "${visitorQuery.value}"`);
+  logger.info(`run start — query: "${queryText}"`);
 
   const runId = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
     ? crypto.randomUUID()
@@ -493,7 +540,7 @@ async function ask(): Promise<void> {
   dispatcher.registerDAG(archivistDAG);
 
   const visitor = new ArchivistState();
-  visitor.query = visitorQuery.value;
+  visitor.query = queryText;
   visitor.runId = runId;
 
   activeAbortController = new AbortController();

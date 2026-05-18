@@ -5,13 +5,19 @@
  *
  *   crl-compose-response
  *     └─ drafted ──► crl-validate-response
- *          ├─ approved  ──► crl-respond-to-visitor ──► END (success)
+ *          ├─ approved  ──► END (success) ─► parent: respond-to-visitor
  *          ├─ retry     ──► crl-compose-response   (bounded by state.attempts.compose)
- *          └─ exhausted ──► crl-respond-to-visitor ──► END (success)
+ *          └─ exhausted ──► END (success) ─► parent: respond-to-visitor
  *
  * Outputs:
- *   success — response was composed and delivered (approved or best-effort)
+ *   success — draft composed (approved or best-effort); parent routes to
+ *             the shared respond-to-visitor terminal.
  *   error   — child-state errors accumulated (propagated by executeSubDAG)
+ *
+ * Fan-in policy: this sub-DAG does NOT contain respondToVisitor. It is a
+ * pure compose/validate unit that produces state.draft and exits. The
+ * single shared respond-to-visitor placement lives at the parent DAG level
+ * so that every converging branch strikes exactly one terminal node per run.
  *
  * Molecular import pattern:
  *   import { ComposeRetryLoopDAG, registerComposeRetryLoopNodes } from './subdags/ComposeRetryLoopDAG.ts';
@@ -22,12 +28,11 @@
  * needed) — it reads `state.shortlist` / `state.intent` / `state.priorContext`
  * and writes `state.draft` / `state.approved`, which the parent DAG already
  * manages. Every intent branch funnels through this one composed loop rather
- * than each branch owning its own compose→validate→terminal chain.
+ * than each branch owning its own compose→validate chain.
  */
 
 import type { ArchivistState }    from '../ArchivistState.ts';
 import { composeResponse, validateResponse } from '../nodes/composeResponse.ts';
-import { respondToVisitor }                  from '../nodes/respondToVisitor.ts';
 import type { ArchivistServices } from '../services.ts';
 
 import type { Dagonizer } from '@noocodex/dagonizer';
@@ -36,10 +41,15 @@ import type { DAG } from '@noocodex/dagonizer/entities';
 
 
 /**
- * The `compose-retry-loop` DAG — one packaged terminal unit that every
+ * The `compose-retry-loop` DAG — one packaged compose/validate unit that every
  * intent branch references via `.subDAG('compose-loop', 'compose-retry-loop', routes)`.
+ *
+ * Exits with `success` when the draft is approved or attempts are exhausted.
+ * The parent DAG routes `compose-loop → success → respond-to-visitor` so
+ * exactly ONE respond-to-visitor fires per run regardless of how many branches
+ * converge into this sub-DAG.
  */
-export const ComposeRetryLoopDAG: DAG = new DAGBuilder('compose-retry-loop', '1.0')
+export const ComposeRetryLoopDAG: DAG = new DAGBuilder('compose-retry-loop', '1.1')
 
   // ── 1. compose-response ──────────────────────────────────────────────────
   // LLM call wrapped with RetryPolicy for transient failures. Writes
@@ -52,19 +62,12 @@ export const ComposeRetryLoopDAG: DAG = new DAGBuilder('compose-retry-loop', '1.
   // ── 2. validate-response ─────────────────────────────────────────────────
   // Quality gate: length, citations, tone. On 'retry', routes back to
   // compose (bounded by MAX_COMPOSE_ATTEMPTS on state.attempts.compose).
-  // 'exhausted' sends the best-effort draft to the visitor — the dispatcher
-  // never throws on exhaustion.
+  // 'approved' and 'exhausted' both exit the sub-DAG cleanly (null terminal)
+  // so the parent receives output 'success' and routes to respond-to-visitor.
   .node('crl-validate-response', validateResponse, {
-    'approved':  'crl-respond-to-visitor',
+    'approved':  null,
     'retry':     'crl-compose-response',
-    'exhausted': 'crl-respond-to-visitor',
-  })
-
-  // ── 3. respond-to-visitor ────────────────────────────────────────────────
-  // Terminal node: writes state.draft to the conversation, emits 'success'.
-  // Sub-DAG exits cleanly — parent receives output 'success'.
-  .node('crl-respond-to-visitor', respondToVisitor, {
-    'success': null,
+    'exhausted': null,
   })
 
   .build();
@@ -88,7 +91,6 @@ export function registerComposeRetryLoopNodes(
   for (const node of [
     composeResponse,
     validateResponse,
-    respondToVisitor,
   ]) {
     dispatcher.registerNode(node);
   }

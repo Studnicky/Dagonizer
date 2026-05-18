@@ -13,24 +13,32 @@
  *     ├─ off-topic         ──► decline-off-topic ──► END
  *     │
  *     ├─ on-topic          ──► [book-search-fanout] (extract+decide+4scouts+rank+merge+record+gate+recall)
- *     │                             ├─ success ──► [compose-retry-loop] (compose+validate+retry+respond)
- *     │                             └─ error   ──► compose-empty ──► respond-to-visitor ──► END
- *     │
- *     ├─ lookup-author     ──► [book-search-fanout]
+ *     │                             ├─ success ──► [compose-retry-loop] (compose+validate+retry)
+ *     │                             └─ error   ──► compose-empty ──┐
+ *     │                                                             │
+ *     ├─ lookup-author     ──► [book-search-fanout]                 │
  *     │                             ├─ success ──► group-by-year ──► [compose-retry-loop]
- *     │                             └─ error   ──► compose-empty ──► respond-to-visitor ──► END
+ *     │                             └─ error   ──► compose-empty ──┐
+ *     │                                                             ▼
+ *     ├─ find-reviews      ──► reviews-extract ──►  [compose-retry-loop] (success) ──► respond-to-visitor ──► END
+ *     │                             (inline: decide+4scouts+rankByRating+merge+record+gate+recall)       ▲
+ *     │                                                             ▲
+ *     ├─ describe-book     ──► describe-extract ──► [compose-retry-loop]
+ *     │                             (inline: decide+4scouts+pickBestMatch+merge+record+gate+recall)
  *     │
- *     ├─ find-reviews      ──► reviews-extract ──► (inline: decide+4scouts+rankByRating+merge+record+gate+recall)
- *     │                             └─ [compose-retry-loop]
- *     │
- *     ├─ describe-book     ──► describe-extract ──► (inline: decide+4scouts+pickBestMatch+merge+record+gate+recall)
- *     │                             └─ [compose-retry-loop]
- *     │
- *     └─ recommend-similar ──► recommend-similar-gate
- *                               ├─ seeded ──► [book-search-fanout]
- *                               │                ├─ success ──► [compose-retry-loop]
- *                               │                └─ error   ──► compose-empty ──► respond-to-visitor ──► END
- *                               └─ empty  ──► compose-empty ──► respond-to-visitor ──► END
+ *     ├─ recall-memories   ──► memory-recall ──► compose-memory-recall ──────────────────────────────┐
+ *     │                                                                                               ▼
+ *     └─ recommend-similar ──► recommend-similar-gate                                  respond-to-visitor ──► END
+ *                               ├─ seeded ──► [book-search-fanout]                                   ▲
+ *                               │                ├─ success ──► [compose-retry-loop] (success) ──────┘
+ *                               │                └─ error   ──► compose-empty ──────────────────────►┘
+ *                               └─ empty  ──► compose-empty ───────────────────────────────────────►┘
+ *
+ * Fan-in policy (v5.3): all response-producing branches converge into ONE
+ * shared `respond-to-visitor` terminal at this (parent) level. The
+ * compose-retry-loop sub-DAG exits with `success` after producing state.draft
+ * and does NOT contain respondToVisitor internally. This ensures exactly one
+ * terminal node fires per run with the full converged state.draft.
  *
  * Sub-DAGs (molecular components):
  *   book-search-fanout  — extract-query + decide-tools + 4-source parallel scouts
@@ -85,7 +93,7 @@ import { openLibraryScout, googleBooksScout, subjectScout, wikipediaScout } from
 
 import { DAGBuilder } from '@noocodex/dagonizer/builder';
 
-export const archivistDAG = new DAGBuilder('the-archivist', '5.2')
+export const archivistDAG = new DAGBuilder('the-archivist', '5.3')
 
   // ── 0. recall-context ────────────────────────────────────────────────────
   // First added → auto-entrypoint. Runs before classifyIntent so the
@@ -227,13 +235,17 @@ export const archivistDAG = new DAGBuilder('the-archivist', '5.2')
     },
   })
 
-  // ── compose-loop — shared compose/validate/respond sub-DAG ───────────────
+  // ── compose-loop — shared compose/validate sub-DAG ──────────────────────
   // All branches that successfully find candidates converge here.
-  // composeResponse → validateResponse (retry loop, bounded by state.attempts.compose)
-  // → respondToVisitor. One sub-DAG definition serves all four convergent branches.
+  // composeResponse → validateResponse (retry loop, bounded by state.attempts.compose).
+  // One sub-DAG definition serves all four convergent branches.
   // stateMapping.output copies the compose loop's writes back to the parent.
+  //
+  // Fan-in policy: 'success' routes to the shared respond-to-visitor terminal
+  // at the parent level — the sub-DAG produces state.draft and exits cleanly;
+  // exactly ONE respond-to-visitor fires per run regardless of branch count.
   .subDAG('compose-loop', 'compose-retry-loop', {
-    'success': null,
+    'success': 'respond-to-visitor',
     'error':   null,
   }, {
     'stateMapping': {
@@ -246,19 +258,24 @@ export const archivistDAG = new DAGBuilder('the-archivist', '5.2')
   })
   // #endregion subdag-placements
 
+  // ── respond-to-visitor — single shared happy-path terminal ───────────────
+  // Every branch that successfully composes a response converges here.
+  // compose-loop (success) and both memory + empty-result paths all route
+  // through this one placement — fan-in policy: exactly ONE respond-to-visitor
+  // fires per run with the full converged state.draft in context.
+  .node('respond-to-visitor', respondToVisitor, { 'success': null })
+
   // ── recall-memories branch ───────────────────────────────────────────────
   // No search fanout needed — the memory store is queried directly.
-  // recallMemories → composeMemoryResponse → respondToVisitor (shared terminal).
+  // recallMemories → composeMemoryResponse → respond-to-visitor (shared terminal).
   .node('memory-recall',          recallMemories,       { 'recalled': 'compose-memory-recall' })
-  .node('compose-memory-recall',  composeMemoryResponse, { 'drafted':  'memory-respond' })
-  .node('memory-respond',         respondToVisitor,      { 'success':  null })
+  .node('compose-memory-recall',  composeMemoryResponse, { 'drafted':  'respond-to-visitor' })
 
   // ── Terminal nodes ───────────────────────────────────────────────────────
   .node('decline-off-topic', declineOffTopic, { 'success': null })
   // decline-empty kept for checkpoint backward compatibility — new flows use
   // compose-empty → respond-to-visitor for in-character failure responses.
   .node('decline-empty',     declineEmpty,          { 'success': null })
-  .node('compose-empty',     composeEmptyResponse,  { 'drafted': 'empty-respond' })
-  .node('empty-respond',     respondToVisitor,      { 'success': null })
+  .node('compose-empty',     composeEmptyResponse,  { 'drafted': 'respond-to-visitor' })
 
   .build();

@@ -38,8 +38,11 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 - Archivist demo: per-phase timeout defaults raised to 60s (compose, web-search) and 30s (rank) — agents are slow, especially web-bound scouts. `TimeoutPane` + `ArchivistRunner` reflect the new defaults.
 - Docs: phase example pages (`01-linear` through `08-checkpoint`) now import their snippets from `examples/the-archivist/` via VitePress `<<<` code imports (`#region` markers for partial files). Single source — the runtime example IS the documented example. Eight pages, six source files with region markers added.
 
+- Archivist demo: starter-query LLM suggestion + clear-on-send. On fresh sessions the input pre-fills with a random visitor-style question about a popular author/series (via new `LlmClient.suggestStarterQuery()`); falls back to a 12-entry static pool if the model errors. After every send, the input clears immediately.
+
 ### Fixed
 
+- Archivist demo: duplicate response bug. `executeSubDAG` re-uses the parent Dagonizer instance so `onFlowEnd` was firing twice (once for `compose-retry-loop`, once for `the-archivist`) — each pushing `state.draft` to the conversation feed. Structural fix: `ComposeRetryLoopDAG` no longer terminates internally with `respondToVisitor`; the parent DAG owns the single `respond-to-visitor` placement that every branch (`compose-loop`, `compose-empty`, `compose-memory-recall`) converges to. UI-side guard: `ArchivistRunner.onFlowEnd` only pushes when `dagName === 'the-archivist'`, preventing future sub-DAG additions from regressing.
 - Engine: `CytoscapeRenderer` sub-DAG inline expansion no longer emits dangling `<placement>/END` edges. When recursing into an expanded sub-DAG (`prefix` non-empty), `null` targets refer to the sub-DAG's terminus, not the parent's END — those internal terminal markers are now suppressed so the compound parent's own outgoing edges carry the real external routing.
 
 ### Removed
