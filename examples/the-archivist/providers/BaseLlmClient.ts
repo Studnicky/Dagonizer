@@ -184,6 +184,10 @@ export class BaseLlmClient implements LlmClient {
     return (await this.#text(prompts.composeMemoryRecall(query, digest, recalledSummary))).trim();
   }
 
+  async composeEmptyResponse(query: string, failureCause: string): Promise<string> {
+    return (await this.#text(prompts.composeEmptyResponse(query, failureCause))).trim();
+  }
+
   async #text(prompt: string): Promise<string> {
     const response = await this.adapter.chat({
       'messages':    [{ 'role': 'user', 'content': prompt }],

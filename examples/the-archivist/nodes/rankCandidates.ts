@@ -23,6 +23,7 @@ import type { ArchivistNode } from './ArchivistNode.ts';
 
 import { BackoffStrategy, RetryPolicy } from '@noocodex/dagonizer/runtime';
 
+// #region rank-retry
 /**
  * RetryPolicy for transient LLM ranking failures.
  * Schema-violation or network errors are retried up to 2 times before
@@ -33,9 +34,10 @@ const rankRetry = new RetryPolicy({
   "strategy":    BackoffStrategy.EXPONENTIAL,
   "baseDelay":   400,
 });
+// #endregion rank-retry
 
 /** Default wall-clock budget for the rank phase (ms). Overridden at runtime by the runner. */
-export const RANK_TIMEOUT_MS = 15_000;
+export const RANK_TIMEOUT_MS = 30_000;
 
 export const rankCandidates: ArchivistNode<'ranked'> = {
   'name':    'rank-candidates',

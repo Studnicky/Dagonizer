@@ -143,6 +143,13 @@ export interface LlmClient {
     digest: MemoryDigest,
     recalledSummary?: string,
   ): Promise<string>;
+  /**
+   * Compose an in-character failure response when all scouts returned
+   * empty. `failureCause` is a sanitized one-liner summary accumulated
+   * by the scouts. The response acknowledges what was searched, explains
+   * the gap, and offers one concrete next step — never silent-fails.
+   */
+  composeEmptyResponse(query: string, failureCause: string): Promise<string>;
 }
 
 /**

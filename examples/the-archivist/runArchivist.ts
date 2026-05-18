@@ -40,7 +40,7 @@ import { recallMemories } from './nodes/recallMemories.ts';
 import { recallPastVisits } from './nodes/recallPastVisits.ts';
 import { recommendSimilar } from './nodes/recommendSimilar.ts';
 import { recordFindings } from './nodes/recordFindings.ts';
-import { declineEmpty, declineOffTopic, respondToVisitor } from './nodes/respondToVisitor.ts';
+import { composeEmptyResponse, declineEmpty, declineOffTopic, respondToVisitor } from './nodes/respondToVisitor.ts';
 import { openLibraryScout, googleBooksScout, subjectScout, wikipediaScout, webSearchScout } from './nodes/scouts.ts';
 import {
   GeminiApiAdapter,
@@ -84,6 +84,7 @@ const services: ArchivistServices = {
   "logger":            logger,
 };
 
+// #region linear-run
 // ── Dispatcher ───────────────────────────────────────────────────────────
 const dispatcher = new Dagonizer<ArchivistState, ArchivistServices>({ services });
 
@@ -123,6 +124,8 @@ for (const node of [
   respondToVisitor,
   declineOffTopic,
   declineEmpty,
+  // empty-result LLM response branch
+  composeEmptyResponse,
 ]) {
   dispatcher.registerNode(node);
 }
@@ -140,3 +143,38 @@ logger.result(`shortlist=${String(result.state.shortlist.length)}`);
 logger.result(`draft=${result.state.draft}`);
 logger.result(`lifecycle=${result.state.lifecycle.kind}`);
 logger.result(`triples=${String(services.memory.size)} written`);
+// #endregion linear-run
+
+// #region cancellation-run
+// Caller-driven cancellation — the visitor closes the page.
+const controller = new AbortController();
+// Simulate visitor abandoning 800 ms in.
+setTimeout(() => controller.abort('visitor closed page'), 800);
+
+const cancelVisitor = new ArchivistState();
+cancelVisitor.query = "What's a book about a labyrinth?";
+
+const cancelResult = await dispatcher.execute('the-archivist', cancelVisitor, {
+  'signal':     controller.signal,
+  'deadlineMs': 5000,              // hard 5s ceiling regardless of signal
+});
+
+const lc = cancelResult.state.lifecycle;
+switch (lc.kind) {
+  case 'completed':
+    logger.result(`responded: ${cancelResult.state.draft}`);
+    break;
+  case 'cancelled':
+    logger.result(`visitor abandoned at: ${lc.reason}`);
+    break;
+  case 'timed_out':
+    logger.result(`hit deadline at: ${lc.finishedAt}`);
+    break;
+}
+
+// result.cursor is the next node that would have run — pass it to
+// Checkpoint.from to persist and resume in a later process.
+if (cancelResult.cursor !== null) {
+  logger.result(`stopped at ${cancelResult.cursor} — resumable`);
+}
+// #endregion cancellation-run

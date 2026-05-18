@@ -1,11 +1,11 @@
 ---
 title: 'Phase 04 · Cancellation'
-description: 'Abort the Archivist mid-scout when the visitor closes the connection, or cap the entire flow with a hard deadline.'
+description: 'Abort the Archivist mid-scout when the visitor closes the connection, or cap the entire flow with a hard deadline. The signal propagates through RetryPolicy to every node.'
 ---
 
 # Phase 04 · Cancellation
 
-[The Archivist](./the-archivist) sometimes talks to a slow external RAG provider. When the visitor closes the page, the dispatcher must abort cleanly — every node sees the signal flip and skips its work, the state's lifecycle marks `cancelled`, and the cursor records exactly where the run stopped so a later resume is possible.
+[The Archivist](./the-archivist) sometimes talks to slow external APIs. When the visitor closes the page, the dispatcher aborts cleanly — every node that is mid-network call sees the signal flip, skips its work, and the lifecycle records `cancelled` with the abort reason. A `deadlineMs` cap adds a hard ceiling regardless of the signal.
 
 ## Flow
 
@@ -13,10 +13,10 @@ description: 'Abort the Archivist mid-scout when the visitor closes the connecti
 flowchart TB
   start([visitor query])
   classify[classify-intent]
-  extract[extract-query]
-  scout[scout-rag\nslow RAG call]
-  merge[merge-candidates]
-  respond([respond-to-visitor])
+  extract[bsf-extract-query]
+  scout[book-search-fan-out\n4 parallel scouts]
+  merge[bsf-merge-candidates]
+  compose[compose-retry-loop]
   cancelled([state.lifecycle.kind = cancelled])
   timedOut([state.lifecycle.kind = timed_out])
   start --> classify
@@ -25,54 +25,31 @@ flowchart TB
   scout -. visitor closes page .-> cancelled
   scout -. 5s deadline expires .-> timedOut
   scout --> merge
-  merge --> respond
+  merge --> compose
 ```
 
 ## Code
 
-```ts
-import { Dagonizer } from '@noocodex/dagonizer';
-import { archivistDAG } from '../the-archivist/dag.ts';
-// ... register all nodes from the runArchivist demo ...
+### Dispatcher + signal + deadline
 
-const controller = new AbortController();
+The `#cancellation-run` region shows the `AbortController`, the `signal` + `deadlineMs` execute options, and the lifecycle switch that reads the terminal state:
 
-// Caller-driven abort — fire 800ms in.
-setTimeout(() => controller.abort('visitor closed page'), 800);
+<<< ../../examples/the-archivist/runArchivist.ts#cancellation-run
 
-const visitor = new ArchivistState();
-visitor.query = 'something about a labyrinth';
+### Scout signal pass-through
 
-const result = await dispatcher.execute('the-archivist', visitor, {
-  signal:     controller.signal,
-  deadlineMs: 5000,                   // hard 5s budget regardless
-});
+The `#signal-scout` region shows how `openLibraryScout` propagates `context.signal` through the `scoutRetry` policy and into the tool call — when the signal fires, the retry policy aborts mid-backoff instead of waiting:
 
-const lc = result.state.lifecycle;
-switch (lc.kind) {
-  case 'completed':
-    console.log('responded:', result.state.draft);
-    break;
-  case 'cancelled':
-    console.log('visitor abandoned the request:', lc.reason);
-    break;
-  case 'timed_out':
-    console.log('hit the 5s deadline at', lc.finishedAt);
-    break;
-}
-
-// result.cursor tells us where to resume from if we want to.
-if (result.cursor !== null) {
-  console.log(`stopped at ${result.cursor} — checkpointable`);
-}
-```
+<<< ../../examples/the-archivist/nodes/scouts.ts#signal-scout
 
 ## What it demonstrates
 
-- **Signal + deadline composition** — `SignalComposer` combines `signal` and `deadlineMs` into a single `AbortSignal` passed to every node via `context.signal`.
-- **Nodes propagate the signal** — `externalRagScout` passes `context.signal` to its `RetryPolicy.run` call, so retries abort instead of waiting through the backoff window.
-- **Lifecycle records the exact terminal state** — `cancelled` carries the abort `reason`; `timed_out` carries the deadline-finished timestamp.
-- **`result.cursor`** records the next node that would have run — pair with `Checkpoint.from` (see [Phase 08](./08-checkpoint)) to resume in a later process.
+- **`signal` + `deadlineMs` composition** — `SignalComposer` combines the caller-supplied `AbortSignal` with the deadline into one internal signal passed to every node via `context.signal`. Neither option is required; both can be used together.
+- **Nodes propagate the signal** — every scout passes `context.signal` as the second argument to `scoutRetry.run(task, signal)`. The retry policy aborts mid-wait when the signal fires, so scouts do not wait through the full backoff window.
+- **Lifecycle records the exact terminal state** — `cancelled` carries the abort `reason` string; `timed_out` carries the deadline-finished timestamp. `completed` means all nodes ran to their terminal outputs.
+- **`result.cursor`** — records the next node that would have run. When non-null, the flow was interrupted. Pair with `Checkpoint.from` (see [Phase 08](./08-checkpoint)) to resume in a later process.
+
+See this in action in the [Archivist live demo](./the-archivist) — the cancel button fires the same `AbortController.abort()` path.
 
 ## See also
 

@@ -40,7 +40,7 @@ const composeRetry = new RetryPolicy({
 const MAX_COMPOSE_ATTEMPTS = 3;
 
 /** Default wall-clock budget for the compose phase (ms). Overridden at runtime by the runner. */
-export const COMPOSE_TIMEOUT_MS = 30_000;
+export const COMPOSE_TIMEOUT_MS = 60_000;
 
 export const composeResponse: NodeInterface<ArchivistState, 'drafted', ArchivistServices> = {
   "name": 'compose-response',

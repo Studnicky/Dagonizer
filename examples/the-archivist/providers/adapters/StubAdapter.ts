@@ -61,6 +61,14 @@ function toolCallFor(query: string, tools: readonly ToolDefinition[]): ToolCall[
 function cannedAnswer(query: string): string {
   const q = query.toLowerCase();
 
+  // Empty-response branch — detect the ownTheGap directive injected by
+  // prompts.composeEmptyResponse. Extract the search notes if present.
+  if (q.includes('acknowledge which sources were searched')) {
+    const notesMatch = /search notes:\s*([^\n]+)/i.exec(query);
+    const hint = notesMatch !== null ? ` (${notesMatch[1].trim().slice(0, 120)})` : '';
+    return `Stay a while and listen — I searched OpenLibrary, Google Books, the subject index, and Wikipedia, but nothing came back for your description${hint}. The combination may be quite specific. Try a single keyword — the author name alone, or one strong image from the book — and I will cast a wider net.`;
+  }
+
   // Memory-recall branch — detect the digest marker injected by prompts.composeMemoryRecall.
   if (q.includes('memory status:')) {
     if (q.includes('no books have been recorded')) {

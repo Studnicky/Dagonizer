@@ -1,95 +1,59 @@
 ---
-title: 'Phase 07 · JSON DAG load'
-description: 'Load the Archivist DAG from a JSON file, validate against DAGSchema before registration, then execute. Demonstrates Dagonizer.load and Validator.dag.'
+title: 'Phase 07 · Tool schemas'
+description: 'Tool schema design in The Archivist: JSON Schema 2020-12 input schemas on SubjectSearchTool and CanonicalId cross-source deduplication. Shape-only examples prevent LLM verbatim echo.'
 ---
 
-# Phase 07 · JSON DAG load
+# Phase 07 · Tool schemas
 
-[The Archivist](./the-archivist) DAG can live in version control as a JSON document — useful when the DAG topology changes per deployment (different shops carry different scout backends). `Dagonizer.load(json)` parses + validates against `DAGSchema` in one call; `Validator.dag.is(value)` is the predicate alternative that doesn't throw.
+[The Archivist](./the-archivist) exposes its capabilities to the LLM as typed tools with JSON Schema 2020-12 `inputSchema` definitions. `decideTools` hands these schemas to the LLM and asks it to produce a `toolPlan` — a list of `{ name, arguments }` calls the scouts then execute. The schema design principles used here apply to any Dagonizer tool.
 
 ## Flow
 
 ```mermaid
 flowchart TB
-  json([archivist.dag.json])
-  load[Dagonizer.load]
-  validate[Validator.dag.validate]
-  register[dispatcher.registerDAG]
-  execute[dispatcher.execute]
-  END([visitor response])
-  json --> load
-  load --> validate
-  validate -->|valid DAG| register
-  register --> execute
-  execute --> END
-  validate -.->|ValidationError| failure([throw])
+  query([state.query + tools])
+  decide[decideTools\nLLM → toolPlan]
+  plan([state.toolPlan\narray of tool calls])
+  scouts[4 parallel scouts]
+  candidates([state.candidates])
+  merge[CanonicalId.dedupe\nmergeCandidates]
+  shortlist([state.shortlist])
+  query --> decide
+  decide --> plan
+  plan --> scouts
+  scouts --> candidates
+  candidates --> merge
+  merge --> shortlist
 ```
 
 ## Code
 
-```ts
-import { readFileSync } from 'node:fs';
-import { Dagonizer, ValidationError } from '@noocodex/dagonizer';
-import { Validator } from '@noocodex/dagonizer/validation';
+### SubjectSearchTool: input schema
 
-import { ArchivistState } from '../the-archivist/ArchivistState.ts';
-import type { ArchivistServices } from '../the-archivist/services.ts';
+The `#tool-schema` region covers the `definition` constant — the tool name, description, and `inputSchema`. Note the `examples` fields: they are intentionally generic placeholders, not real titles or ISBNs. Some models quote schema examples verbatim into responses; shape-only examples prevent that:
 
-const json = readFileSync('./archivist.dag.json', 'utf8');
+<<< ../../examples/the-archivist/tools/SubjectSearchTool.ts#tool-schema
 
-try {
-  const dag = Dagonizer.load(json);
-  const dispatcher = new Dagonizer<ArchivistState, ArchivistServices>({ services });
-  // ...register every Archivist node...
-  dispatcher.registerDAG(dag);
-  await dispatcher.execute('the-archivist', new ArchivistState());
-} catch (error) {
-  if (error instanceof ValidationError) {
-    console.error('archivist DAG schema error:', error.message);
-    process.exit(1);
-  }
-  throw error;
-}
+### CanonicalId: cross-source deduplication
 
-// Predicate alternative — doesn't throw.
-const raw: unknown = JSON.parse(json);
-if (Validator.dag.is(raw)) {
-  // raw is narrowed to DAG here
-}
-```
+Every tool produces `Candidate[]` with a `book.isbn` field set by `CanonicalId.pick`. The same work indexed by OpenLibrary key, Google Books volumeId, and Wikipedia title still deduplicates because `CanonicalId` normalises all three to one stable identifier:
 
-### Sample `archivist.dag.json`
-
-```json
-{
-  "name": "the-archivist",
-  "version": "1.0",
-  "entrypoint": "classify-intent",
-  "nodes": [
-    { "type": "single", "name": "classify-intent", "node": "classify-intent",
-      "outputs": { "on-topic": "extract-query", "off-topic": "decline-off-topic" } },
-    { "type": "single", "name": "extract-query", "node": "extract-query",
-      "outputs": { "success": "scout-parallel" } },
-    { "type": "parallel", "name": "scout-parallel",
-      "nodes": ["scout-local", "scout-rag"], "combine": "collect",
-      "outputs": { "success": "merge-candidates", "error": "merge-candidates" } },
-    { "type": "single", "name": "merge-candidates", "node": "merge-candidates",
-      "outputs": { "ranked": "compose-response", "empty": "decline-empty" } }
-  ]
-}
-```
+<<< ../../examples/the-archivist/tools/CanonicalId.ts
 
 ## What it demonstrates
 
-- **`Dagonizer.load(json)`** — single boundary that runs `JSON.parse` + `Validator.dag.validate` and returns a typed `DAG`. The only place `unknown` enters the package.
-- **`ValidationError` vs `DAGError`** — schema failures throw `ValidationError` (subclass of `DAGError` with `code: 'VALIDATION_ERROR'`). Semantic failures (unknown node refs, output wiring gaps, circular sub-DAG refs) throw `DAGError`.
-- **`Validator.dag.is(value)`** — typed predicate for callers who want to inspect without throwing.
-- **`registerDAG` runs the schema pre-pass internally** so even hand-built DAGs are validated before being trusted.
+- **`additionalProperties: true`** — the schema lets the LLM pass extra OpenLibrary parameters (`lang`, `first_publish_year`) without a schema change. Strict mode on input validation would reject them; `additionalProperties: true` allows pass-through.
+- **Shape-only `examples`** — `'<subject-or-theme>'`, `'<plot-motif>'` are descriptive placeholders. Never use real data in `examples` fields when the LLM will see the schema — it may copy them back verbatim into responses.
+- **`strict: true`** — signals to the Gemini API that the tool definition should be treated as a strict JSON schema. The field is passed through to the model's function declaration.
+- **`CanonicalId.pick`** — resolves ISBN-13 → ISBN-10 → `urn:work:<slug>` in priority order. All four scouts call it so `CanonicalId.dedupe` in `mergeCandidates` can collapse cross-source duplicates by the same stable key.
+- **`CanonicalId.merge`** — when two candidates share the same canonical id, `merge` unions their authors, subjects, publishers, and `_sources[]` arrays, keeping the richer description and higher score.
+
+See this in action in the [Archivist live demo](./the-archivist).
 
 ## See also
 
 - [Running domain: The Archivist](./the-archivist)
 - [Schema & JSON loading guide](../guide/schema)
-- [Phase 06 · DAGBuilder](./06-builder) — the same DAG authored in code
+- [Phase 06 · DAGBuilder](./06-builder) — the DAG topology the tools feed into
 - [Reference: Validation — `Validator.dag`](../reference/validation)
 - [Reference: Errors — `ValidationError`](../reference/errors)

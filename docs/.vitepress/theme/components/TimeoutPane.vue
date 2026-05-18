@@ -21,9 +21,9 @@ export interface TimeoutSettings {
 const STORAGE_KEY = 'dagonizer-archivist-settings';
 
 const DEFAULTS: TimeoutSettings = {
-  'composeMs':   30_000,
-  'webSearchMs': 20_000,
-  'rankMs':      15_000,
+  'composeMs':   60_000,
+  'webSearchMs': 60_000,
+  'rankMs':      30_000,
 };
 
 const emit = defineEmits<{
