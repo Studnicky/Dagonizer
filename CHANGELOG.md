@@ -6,6 +6,8 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 ### Added
 
+- Full iridis SEO parity: `llms.txt` (llmstxt.org canonical URL index), RSS `feed.xml` generated from CHANGELOG at build time, BreadcrumbList JSON-LD per page, HowTo JSON-LD for examples pages, `manifest.webmanifest`, hreflang alternates (`en-US` + `x-default`), `article:modified_time` + `article:author` from git lastUpdated, Organization JSON-LD block, bingbot directive, referrer policy meta, title-template suppression on home page. Search-console verification tags gated on `package.json` `dagonizer.seo.*` placeholders (values added next release).
+
 - Per-node timeout support via `NodeInterface.timeoutMs?: number`. When set, the engine derives a child `AbortController` from the run's signal, races the node's `execute()` against a `Scheduler`-backed deadline, and throws `NodeTimeoutError` on expiry. The child signal is passed as `context.signal` so signal-aware IO also cancels. `onError` fires with the `NodeTimeoutError`; the run is marked failed. Nodes without `timeoutMs` are unaffected.
 - `NodeTimeoutError` — `DAGError` subclass (`code: 'NODE_TIMEOUT'`) carrying `nodeName` and `timeoutMs`. Exported from `./errors` and the root barrel.
 - `DAG` is canonically JSON-LD 1.1. `@context` / `@id` / `@type` are required on the document and every node placement; the `@context` uses type-scoped contexts so `ParallelNode.nodes` and `DAG.nodes` map to distinct IRIs without key collision. Placements use `@type` IRIs (`"SingleNode"`, `"ParallelNode"`, `"FanOutNode"`, `"DeepDAGNode"`) as the discriminator. No projection layer — what `DAGBuilder.build()` returns is the JSON-LD document the engine consumes and the schema validates.
