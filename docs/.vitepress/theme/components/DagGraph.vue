@@ -58,7 +58,7 @@ const dagLegendTabs: readonly LegendTab[] = [
     label: 'Kinds',
     entries: [
       { key: 'deterministic',     swatch: 'solid',  color: '#22e8ff', label: 'deterministic' },
-      { key: 'non-deterministic', swatch: 'dashed', color: '#9b51e0', label: 'non-deterministic' },
+      { key: 'non-deterministic', swatch: 'dashed', color: '#7a6a9c', label: 'non-deterministic' },
     ],
   },
 ];
@@ -104,7 +104,8 @@ onMounted(async () => {
     nodeAdapter: (id) => makeNodeAdapter(cy.value, id),
     edgeAdapter: (source, route) => makeEdgeAdapter(cy.value, source, route),
     resetAll: () => {
-      cy.value?.elements().removeClass('dag-active dag-completed dag-errored dag-traversed');
+      // Synchronous hard-clear; the async fade is handled in reset() below.
+      cy.value?.elements().removeClass('dag-active dag-completed dag-errored dag-traversed dag-resetting');
       cy.value?.elements().stop(true, true);
     },
   });
@@ -149,7 +150,21 @@ function setErrored(node: string):    void { dispatch({ type: 'NODE_ERROR', node
 function markEdgeTraversed(source: string, route: string): void {
   dispatch({ type: 'EDGE_TRAVERSE', source, route });
 }
-function reset(): void { dispatch({ type: 'RESET' }); }
+/**
+ * Reset the visualisation with a brief fade-out transition before clearing
+ * state classes. Adds `dag-resetting` (opacity fade via stylesheet) for
+ * ~280 ms, then dispatches RESET to remove all state classes so the next
+ * run lights nodes on a clean slate. Callers should await this before
+ * emitting NODE_START events to ensure the fade completes first.
+ */
+async function reset(): Promise<void> {
+  const stateEls = cy.value?.elements('.dag-active, .dag-completed, .dag-errored, .dag-traversed');
+  if (stateEls !== undefined && stateEls.length > 0) {
+    stateEls.addClass('dag-resetting');
+    await new Promise<void>((resolve) => { setTimeout(resolve, 280); });
+  }
+  dispatch({ type: 'RESET' });
+}
 
 /**
  * Fit the graph to the viewport and re-clamp minZoom to the resulting
@@ -276,12 +291,12 @@ function dagLayout(): Record<string, unknown> {
   // never overlap because dagre measures ranks then packs them.
   return {
     name: 'dagre',
-    rankDir: 'TB',          // top → bottom
+    rankDir: 'TB',          // top → bottom; never overridden elsewhere
     align: 'UL',
-    rankSep: 90,            // vertical gap between ranks
+    rankSep: 110,           // vertical gap between ranks — wider for cleaner lanes
     nodeSep: 60,            // horizontal gap between siblings in same rank
     edgeSep: 30,
-    ranker: 'tight-tree',
+    ranker: 'longest-path', // produces strict vertical lanes; avoids tight-tree compression
     fit: true,
     padding: 40,
     animate: false,
@@ -292,10 +307,10 @@ function dagLayout(): Record<string, unknown> {
 // Contrast pairs — every fill colour is paired with a text colour that
 // reaches WCAG AAA against it on both light and dark themes.
 //
-//   teal #22e8ff  →  text #04141c (very-dark navy)
-//   violet #9b51e0 → text #ffffff
-//   gold #d4a649  →  text #1a1410 (very-dark)
-//   default bg-alt → text-1 (theme-driven, already AAA)
+//   teal #22e8ff   →  text #04141c (very-dark navy)
+//   dusty violet   →  compound bg #3a2f4a, node fill #7a6a9c, label #a99cc4
+//   gold #d4a649   →  text #1a1410 (very-dark)
+//   default bg-alt →  text-1 (theme-driven, already AAA)
 function dagStylesheet(): unknown[] {
   return [
     { selector: 'node', style: {
@@ -318,15 +333,15 @@ function dagStylesheet(): unknown[] {
       'width': 'label',
       'height': 'label',
       'shape': 'round-rectangle',
-      'transition-property': 'border-color, border-width, background-color, color',
+      'transition-property': 'border-color, border-width, background-color, color, opacity',
       'transition-duration': 220,
     } },
     { selector: 'node[type="fan-out"]',  style: { 'shape': 'hexagon' } },
     { selector: 'node[type="parallel"]', style: {
       'shape': 'round-rectangle',
-      'background-color': 'rgba(155, 81, 224, 0.08)',
+      'background-color': 'rgba(58, 47, 74, 0.55)',
       'background-opacity': 1,
-      'border-color': '#9b51e0',
+      'border-color': '#7a6a9c',
       'border-width': 2,
       'border-style': 'dashed',
       'text-valign': 'top',
@@ -334,15 +349,15 @@ function dagStylesheet(): unknown[] {
       'text-margin-y': -6,
       'padding': '24px',
       'font-size': 12,
-      'color': '#c89bff',
+      'color': '#a99cc4',
     } },
     { selector: 'node[type="sub-dag"]',  style: { 'shape': 'cut-rectangle' } },
     { selector: 'node[type="terminal"]', style: { 'shape': 'round-rectangle', 'background-color': 'var(--vp-c-bg-elv)', 'border-color': '#d4a649' } },
     // Compound-graph children inside a parallel — slightly indented look.
     { selector: 'node:parent', style: {
       'shape': 'round-rectangle',
-      'background-color': 'rgba(155, 81, 224, 0.06)',
-      'border-color': '#9b51e0',
+      'background-color': '#3a2f4a',
+      'border-color': '#7a6a9c',
       'border-style': 'dashed',
       'border-width': 2,
       'text-valign': 'top',
@@ -356,7 +371,7 @@ function dagStylesheet(): unknown[] {
       'border-width': 2,
     } },
     { selector: 'node[kind="non-deterministic"]', style: {
-      'border-color': '#9b51e0',
+      'border-color': '#7a6a9c',
       'border-style': 'dashed',
       'border-width': 2.5,
     } },
@@ -389,6 +404,14 @@ function dagStylesheet(): unknown[] {
       'text-outline-width': 2,
       'text-outline-opacity': 1,
     } },
+    // Transient fade-out class applied during reset — opacity glides to 0.15
+    // over 280 ms (matching the transition-duration on the node base style),
+    // then RESET removes it and all state classes so the next run starts clean.
+    { selector: 'node.dag-resetting', style: {
+      'opacity': 0.15,
+      'transition-property': 'opacity',
+      'transition-duration': 280,
+    } },
     { selector: 'node:selected', style: { 'border-color': '#22e8ff', 'border-width': 4 } },
 
     // Edges — labels on dark pill, brand-violet text so they pop against
@@ -403,12 +426,12 @@ function dagStylesheet(): unknown[] {
       'font-family': 'var(--vp-font-family-mono)',
       'font-size': 13,
       'font-weight': 600,
-      'color': '#c89bff',
+      'color': '#a99cc4',
       'text-background-color': '#0c0a14',
       'text-background-opacity': 0.96,
       'text-background-padding': '5px',
       'text-background-shape': 'round-rectangle',
-      'text-border-color': '#9b51e0',
+      'text-border-color': '#7a6a9c',
       'text-border-width': 1,
       'text-border-opacity': 0.7,
       'text-margin-y': -3,
