@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="FSM finite state machine node with state transitions">
+
+  <defs>
+    <linearGradient id="facetViolet" x1="86" y1="32" x2="314" y2="368" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2a1f4a"/>
+      <stop offset="0.50" stop-color="#1a1235"/>
+      <stop offset="1" stop-color="#08060f"/>
+    </linearGradient>
+    <filter id="nodeShadow" x="-35%" y="-35%" width="170%" height="170%">
+      <feDropShadow dx="0" dy="12" stdDeviation="11" flood-color="#000000" flood-opacity="0.30"/>
+    </filter>
+    <marker id="arrowViolet" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 Z" fill="#8f6dff"/>
+    </marker>
+    <marker id="arrowTeal" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 Z" fill="#22e8ff"/>
+    </marker>
+    <style>
+      .round { stroke-linecap: round; stroke-linejoin: round; }
+      .monoText { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: 900; }
+    </style>
+  </defs>
+
+  <g id="fsm-node">
+
+    <g id="node-body" filter="url(#nodeShadow)">
+      <path id="node-base"         d="M200 24 L352.42 112 L352.42 288 L200 376 L47.58 288 L47.58 112 Z" fill="url(#facetViolet)" stroke="#8f6dff" stroke-width="4"/>
+      <path id="facet-top-left"    d="M200 24 L47.58 112 L112 149 L200 98 Z"       fill="#FFFFFF" opacity="0.08"/>
+      <path id="facet-top-right"   d="M200 24 L352.42 112 L288 149 L200 98 Z"      fill="#FFFFFF" opacity="0.05"/>
+      <path id="facet-lower-left"  d="M47.58 112 L112 149 L200 376 L47.58 288 Z"   fill="#000000" opacity="0.14"/>
+      <path id="facet-lower-right" d="M352.42 112 L288 149 L200 376 L352.42 288 Z" fill="#000000" opacity="0.20"/>
+      <path id="facet-center"      d="M112 149 L200 98 L288 149 L200 376 Z"        fill="#FFFFFF" opacity="0.05"/>
+    </g>
+
+    <!-- FSM glyph: pending → running → completed with a cancel branch -->
+    <!-- State circles -->
+    <circle cx="120" cy="185" r="28" fill="none" stroke="#22e8ff" stroke-width="7"/>
+    <circle cx="200" cy="185" r="28" fill="none" stroke="#8f6dff" stroke-width="7"/>
+    <circle cx="280" cy="185" r="28" fill="none" stroke="#22e8ff" stroke-width="7"/>
+    <circle cx="280" cy="185" r="20" fill="none" stroke="#22e8ff" stroke-width="4"/>
+    <!-- Transition arrows -->
+    <line x1="149" y1="185" x2="170" y2="185" stroke="#22e8ff" stroke-width="7" marker-end="url(#arrowTeal)" stroke-linecap="round"/>
+    <line x1="229" y1="185" x2="250" y2="185" stroke="#8f6dff" stroke-width="7" marker-end="url(#arrowViolet)" stroke-linecap="round"/>
+    <!-- Cancel branch down from running -->
+    <path d="M200 214 C200 240 240 256 260 266" fill="none" stroke="#d4a649" stroke-width="6" stroke-linecap="round"/>
+    <polygon points="258,278 265,262 272,272" fill="#d4a649"/>
+
+    <text class="monoText" x="200" y="314" text-anchor="middle" font-size="56" fill="#8f6dff" opacity="0.95">FSM</text>
+
+  </g>
+
+</svg>

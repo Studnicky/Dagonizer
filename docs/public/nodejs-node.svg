@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Node.js cohesive hex node">
+
+  <defs>
+    <linearGradient id="facetGreen" x1="92" y1="36" x2="308" y2="364" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8ECF69"/>
+      <stop offset="0.48" stop-color="#65A85D"/>
+      <stop offset="1" stop-color="#2F7E39"/>
+    </linearGradient>
+    <linearGradient id="facetBlue" x1="92" y1="36" x2="308" y2="364" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#58A9E6"/>
+      <stop offset="0.5" stop-color="#317FC4"/>
+      <stop offset="1" stop-color="#005A9C"/>
+    </linearGradient>
+    <linearGradient id="facetBlack" x1="92" y1="36" x2="308" y2="364" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3A3A3A"/>
+      <stop offset="0.56" stop-color="#222222"/>
+      <stop offset="1" stop-color="#050505"/>
+    </linearGradient>
+    <linearGradient id="facetWhite" x1="92" y1="36" x2="308" y2="364" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.52" stop-color="#F4F6F8"/>
+      <stop offset="1" stop-color="#D8DEE5"/>
+    </linearGradient>
+    <linearGradient id="facetGold" x1="92" y1="36" x2="308" y2="364" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FCEE21"/>
+      <stop offset="0.52" stop-color="#F9B233"/>
+      <stop offset="1" stop-color="#E36D12"/>
+    </linearGradient>
+    <linearGradient id="facetRed" x1="92" y1="36" x2="308" y2="364" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF5A4E"/>
+      <stop offset="0.52" stop-color="#E02B2B"/>
+      <stop offset="1" stop-color="#9B1022"/>
+    </linearGradient>
+    <filter id="nodeShadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="12" stdDeviation="11" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+    <style>
+      .markText { font-family: Inter, Arial, Helvetica, sans-serif; font-weight: 900; }
+      .monoText { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: 900; }
+      .round { stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+
+
+  <g id="nodejs-node">
+    
+  <g id="node" filter="url(#nodeShadow)">
+    <path id="node-base" d="M200 24 L352.42 112 L352.42 288 L200 376 L47.58 288 L47.58 112 Z" fill="url(#facetBlack)"/>
+    <path id="facet-top-left" d="M200 24 L47.58 112 L112 149 L200 98 Z" fill="#FFFFFF" opacity="0.12"/>
+    <path id="facet-top-right" d="M200 24 L352.42 112 L288 149 L200 98 Z" fill="#FFFFFF" opacity="0.07"/>
+    <path id="facet-center-left" d="M47.58 112 L112 149 L200 376 L47.58 288 Z" fill="#000000" opacity="0.1"/>
+    <path id="facet-center-right" d="M352.42 112 L288 149 L200 376 L352.42 288 Z" fill="#000000" opacity="0.16"/>
+    <path id="facet-center" d="M112 149 L200 98 L288 149 L200 376 Z" fill="#FFFFFF" opacity="0.08"/>
+  </g>
+
+    <g id="nodejs-mark">
+      <path id="node-outline" d="M200 78 L306 139 L306 261 L200 322 L94 261 L94 139 Z" fill="none" stroke="#6FA866" stroke-width="24" class="round"/>
+      <text id="js-label" class="markText" x="200" y="255" text-anchor="middle" font-size="138" fill="#6FA866">JS</text>
+    </g>
+  </g>
+
+</svg>
