@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="146" height="28" role="img" aria-label="version: __VERSION__">
+  <title>version: __VERSION__</title>
+  <linearGradient id="bg-label" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#141a2e"/>
+    <stop offset="1" stop-color="#0a0e1a"/>
+  </linearGradient>
+  <linearGradient id="bg-value" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#1bd4ef"/>
+    <stop offset="1" stop-color="#12a8c4"/>
+  </linearGradient>
+  <!-- pill outline -->
+  <rect x="0" y="0" width="146" height="28" rx="6" ry="6" fill="url(#bg-label)"/>
+  <!-- value half overlaps to fill right side cleanly -->
+  <rect x="75" y="0" width="71" height="28" rx="6" ry="6" fill="url(#bg-value)"/>
+  <rect x="75" y="0" width="6" height="28" fill="url(#bg-value)"/>
+  <!-- label text -->
+  <text
+    x="37.5"
+    y="19"
+    font-family="ui-monospace,'SF Mono',Menlo,Consolas,monospace"
+    font-size="13"
+    font-weight="600"
+    fill="#a0bfd4"
+    text-anchor="middle"
+    xml:space="preserve"
+  >version</text>
+  <!-- value text -->
+  <text
+    x="110.5"
+    y="19"
+    font-family="ui-monospace,'SF Mono',Menlo,Consolas,monospace"
+    font-size="13"
+    font-weight="700"
+    fill="#0a0e1a"
+    text-anchor="middle"
+    xml:space="preserve"
+  >__VERSION__</text>
+</svg>

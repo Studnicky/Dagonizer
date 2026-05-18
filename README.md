@@ -2,21 +2,21 @@
 
 # @noocodex/dagonizer
 
-> DAG + FSM architecture framework for TypeScript: type-safe nodes, abortable execution, deterministic resume, and JSON-LD canonical wire format.
+> ⦿ DAG + FSM architecture framework for TypeScript: type-safe nodes, abortable execution, deterministic resume, and JSON-LD canonical wire format.
 
 ## Documentation
 
 The full documentation is published at **https://studnicky.github.io/Dagonizer/**.
 
-- [Getting Started](https://studnicky.github.io/Dagonizer/getting-started)
-- [Architecture](https://studnicky.github.io/Dagonizer/architecture) — DAG, Node, Placement kinds
-- [Concepts](https://studnicky.github.io/Dagonizer/concepts) — state lifecycle, placement routing, fan-out
-- [DAGBuilder](https://studnicky.github.io/Dagonizer/guide/builder) — fluent authoring API
-- [Lifecycle / FSM](https://studnicky.github.io/Dagonizer/reference/lifecycle) — DAGLifecycleMachine, state transitions
-- [Cancellation & Retry](https://studnicky.github.io/Dagonizer/guide/cancellation) — abort signals, deadlines, backoff strategies
-- [Checkpoint / Resume](https://studnicky.github.io/Dagonizer/guide/checkpoint) — deterministic pause and resume
-- [Schema & JSON-LD](https://studnicky.github.io/Dagonizer/guide/schema) — JSON Schema validation, canonical wire format
-- [The Archivist](https://studnicky.github.io/Dagonizer/examples/the-archivist) — in-browser demo running on Dagonizer
+- ⦿ [Getting Started](https://studnicky.github.io/Dagonizer/getting-started)
+- ⦿ [Architecture](https://studnicky.github.io/Dagonizer/architecture) — DAG, Node, Placement kinds
+- ⦿ [Concepts](https://studnicky.github.io/Dagonizer/concepts) — state lifecycle, placement routing, fan-out
+- ⦿ [DAGBuilder](https://studnicky.github.io/Dagonizer/guide/builder) — fluent authoring API
+- ⦿ [Lifecycle / FSM](https://studnicky.github.io/Dagonizer/reference/lifecycle) — DAGLifecycleMachine, state transitions
+- ⦿ [Cancellation & Retry](https://studnicky.github.io/Dagonizer/guide/cancellation) — abort signals, deadlines, backoff strategies
+- ⦿ [Checkpoint / Resume](https://studnicky.github.io/Dagonizer/guide/checkpoint) — deterministic pause and resume
+- ⦿ [Schema & JSON-LD](https://studnicky.github.io/Dagonizer/guide/schema) — JSON Schema validation, canonical wire format
+- ⦾ [The Archivist](https://studnicky.github.io/Dagonizer/examples/the-archivist) — in-browser demo running on Dagonizer
 
 ## Requirements
 
