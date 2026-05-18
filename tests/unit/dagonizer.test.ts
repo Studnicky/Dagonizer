@@ -221,6 +221,7 @@ void describe('Dagonizer sub-DAGs', () => {
         return { 'output': 'success' };
       },
     });
+    dispatcher.registerNode(makeNode('done', ['success'], () => 'success'));
 
     const child: DAG = {
       'name': 'child',
@@ -231,6 +232,8 @@ void describe('Dagonizer sub-DAGs', () => {
           'outputs': { 'success': null } },
       ],
     };
+    // Parent DAG: sub-dag placement routes to a parent-owned terminal node.
+    // Sub-DAGs cannot terminate the run — only the parent DAG owns END (null).
     const parent: DAG = {
       'name': 'parent',
       'version': '1',
@@ -241,7 +244,9 @@ void describe('Dagonizer sub-DAGs', () => {
             'input': { 'childValue': 'parentValue' },
             'output': { 'parentValue': 'result' },
           },
-          'outputs': { 'success': null, 'error': null } },
+          'outputs': { 'success': 'done', 'error': 'done' } },
+        { 'type': 'single', 'name': 'done', 'node': 'done',
+          'outputs': { 'success': null } },
       ],
     };
     dispatcher.registerDAG(child);
@@ -255,13 +260,19 @@ void describe('Dagonizer sub-DAGs', () => {
 
   void it('rejects sub-DAG referencing an unregistered DAG', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
+    dispatcher.registerNode(makeNode('done', ['success'], () => 'success'));
     const dag: DAG = {
       'name': 'orphan',
       'version': '1',
       'entrypoint': 's',
       'nodes': [
+        // Sub-dag outputs route to a parent placement (not null) so the
+        // terminal-output invariant passes; registration still fails because
+        // 'ghost' is not a registered DAG.
         { 'type': 'sub-dag', 'name': 's', 'dag': 'ghost',
-          'outputs': { 'success': null, 'error': null } },
+          'outputs': { 'success': 'done', 'error': 'done' } },
+        { 'type': 'single', 'name': 'done', 'node': 'done',
+          'outputs': { 'success': null } },
       ],
     };
     assert.throws(() => dispatcher.registerDAG(dag), DAGError);

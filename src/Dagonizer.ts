@@ -297,12 +297,20 @@ implements DagonizerInterface<TState, TServices> {
    * intermediate yields from parallel / fan-out / sub-flow nodes) and
    * returns the final `ExecutionResultInterface` with `cursor` set.
    * Never throws.
+   *
+   * `isSubDag` is a private implementation detail for recursive sub-DAG
+   * re-entry. When `true`, lifecycle transitions (`markRunning`,
+   * `markCompleted`) and flow hooks (`onFlowStart`, `onFlowEnd`) are
+   * suppressed — those are top-level concerns owned by the consumer's
+   * `execute()` / `resume()` call. Node hooks (`onNodeStart`, `onNodeEnd`,
+   * `onError`) still fire for every child node.
    */
   private async *runNodes(
     dagName: string,
     state: TState,
     fromStage: string | null,
     options: ExecuteOptionsInterface,
+    isSubDag: boolean = false,
   ): AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void> {
     const dag = this.dags.get(dagName);
 
@@ -312,18 +320,22 @@ implements DagonizerInterface<TState, TServices> {
       // running. The cursor is null because there is no DAG to resume.
       const error = new DAGError(`Unknown DAG: ${dagName}`);
       this.onError('<unknown>', error, state);
-      try { state.markFailed(error); } catch { /* state may already be terminal */ }
+      if (!isSubDag) {
+        try { state.markFailed(error); } catch { /* state may already be terminal */ }
+      }
       const result: ExecutionResultInterface<TState> = {
         'cursor': null, 'executedNodes': [], 'skippedNodes': [], state,
       };
-      this.onFlowEnd(dagName, state, result);
+      if (!isSubDag) this.onFlowEnd(dagName, state, result);
       return result;
     }
 
     const signal = SignalComposer.compose(options);
 
-    state.markRunning();
-    this.onFlowStart(dagName, state);
+    if (!isSubDag) {
+      state.markRunning();
+      this.onFlowStart(dagName, state);
+    }
 
     const executedNodes: string[] = [];
     const skippedNodes: string[] = [];
@@ -338,7 +350,7 @@ implements DagonizerInterface<TState, TServices> {
         const result: ExecutionResultInterface<TState> = {
           cursor, executedNodes, skippedNodes, state,
         };
-        this.onFlowEnd(dagName, state, result);
+        if (!isSubDag) this.onFlowEnd(dagName, state, result);
         return result;
       }
 
@@ -347,11 +359,13 @@ implements DagonizerInterface<TState, TServices> {
       if (!node) {
         const error = new DAGError(`Unknown node: ${currentNodeName} in DAG ${dagName}`);
         this.onError(currentNodeName, error, state);
-        try { state.markFailed(error); } catch { /* already terminal */ }
+        if (!isSubDag) {
+          try { state.markFailed(error); } catch { /* already terminal */ }
+        }
         const result: ExecutionResultInterface<TState> = {
           cursor, executedNodes, skippedNodes, state,
         };
-        this.onFlowEnd(dagName, state, result);
+        if (!isSubDag) this.onFlowEnd(dagName, state, result);
         return result;
       }
 
@@ -363,15 +377,17 @@ implements DagonizerInterface<TState, TServices> {
       } catch (caughtError) {
         const error = caughtError instanceof Error ? caughtError : new Error(String(caughtError));
         this.onError(currentNodeName, error, state);
-        if (signal?.aborted) {
-          this.handleAbort(state, signal);
-        } else if (!DAGLifecycleMachine.isTerminal(state.lifecycle)) {
-          try { state.markFailed(error); } catch { /* already terminal */ }
+        if (!isSubDag) {
+          if (signal?.aborted) {
+            this.handleAbort(state, signal);
+          } else if (!DAGLifecycleMachine.isTerminal(state.lifecycle)) {
+            try { state.markFailed(error); } catch { /* already terminal */ }
+          }
         }
         const result: ExecutionResultInterface<TState> = {
           cursor, executedNodes, skippedNodes, state,
         };
-        this.onFlowEnd(dagName, state, result);
+        if (!isSubDag) this.onFlowEnd(dagName, state, result);
         return result;
       }
 
@@ -399,11 +415,13 @@ implements DagonizerInterface<TState, TServices> {
       cursor = nextStage;
     }
 
-    state.markCompleted();
+    if (!isSubDag) {
+      state.markCompleted();
+    }
     const result: ExecutionResultInterface<TState> = {
       'cursor': null, executedNodes, skippedNodes, state,
     };
-    this.onFlowEnd(dagName, state, result);
+    if (!isSubDag) this.onFlowEnd(dagName, state, result);
     return result;
   }
 
@@ -766,7 +784,7 @@ implements DagonizerInterface<TState, TServices> {
     // observe cancellation/timeouts.
     const childOptions: ExecuteOptionsInterface = signal ? { 'signal': signal } : {};
 
-    for await (const nodeResult of this.runNodes(subDAG.dag, childState, null, childOptions)) {
+    for await (const nodeResult of this.runNodes(subDAG.dag, childState, null, childOptions, true)) {
       const intermediate: NodeResultInterface<TState> = {
         'skipped': nodeResult.skipped,
         'nodeName': `${subDAG.name}.${nodeResult.nodeName}`,
@@ -1049,6 +1067,24 @@ implements DagonizerInterface<TState, TServices> {
     // node `type`, fan-in strategy mismatch) before semantic validation
     // surfaces node/DAG cross-references.
     Validator.dag.validate(dag);
+
+    // Invariant: sub-DAG placements are reusable components and must not
+    // terminate the run. Only the parent DAG owns END (null output target).
+    // Reject misconfigurations at registration time so they fail loud
+    // rather than silently producing duplicate lifecycle events at runtime.
+    for (const placement of dag.nodes) {
+      if (placement.type !== 'sub-dag') continue;
+      for (const [route, target] of Object.entries(placement.outputs)) {
+        if (target === null) {
+          throw new DAGError(
+            `Sub-DAG placement '${placement.name}' in DAG '${dag.name}' routes output '${route}' to null. ` +
+            `Sub-DAGs are reusable components — they cannot terminate the run. ` +
+            `The parent DAG owns END. Route '${route}' to a parent placement instead.`
+          );
+        }
+      }
+    }
+
     Dagonizer.validateDAGConfig(dag, this.nodes, this.dags);
     this.dags.set(dag.name, dag);
     for (const node of dag.nodes) {
