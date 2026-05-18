@@ -186,7 +186,7 @@ export default withMermaid(defineConfig({
     ['link', { 'rel': 'dns-prefetch', 'href': 'https://esm.run' }],
     ['link', {
       'rel': 'stylesheet',
-      'href': 'https://fonts.googleapis.com/css2?family=Caudex:ital,wght@0,400;0,700;1,400;1,700&family=Share+Tech+Mono&display=swap',
+      'href': 'https://fonts.googleapis.com/css2?family=Caudex:ital,wght@0,400;0,700;1,400;1,700&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=JetBrains+Mono:wght@400;500&display=swap',
     }],
 
     /* `hreflang` declares this is the en-US canonical of the site. With
@@ -499,11 +499,17 @@ export default withMermaid(defineConfig({
     // first paint already shows the mechanicus chrome (pearl-black node
     // surface, teal accent border, monospace text on the navy panel).
     theme: 'base',
-    // Berkeley Mono falls back through JetBrains/SF/Menlo to the
-    // generic UI mono stack — same family as `--vp-font-family-mono`.
-    fontFamily: '"Share Tech Mono", "Berkeley Mono", "JetBrains Mono", "SF Mono", Menlo, Consolas, ui-monospace, monospace',
+    // JetBrains Mono is the canonical mono — clean, no-serif, high legibility
+    // for node labels and edge annotations. Falls through the standard UI mono
+    // stack so diagrams stay uniform even before the font loads.
+    fontFamily: '"JetBrains Mono", "SF Mono", Menlo, Consolas, ui-monospace, monospace',
     themeVariables: {
-      fontFamily: '"Share Tech Mono", "Berkeley Mono", "JetBrains Mono", "SF Mono", Menlo, Consolas, ui-monospace, monospace',
+      fontFamily: '"JetBrains Mono", "SF Mono", Menlo, Consolas, ui-monospace, monospace',
+      // Fixed font size applied globally so every diagram type (flowchart,
+      // state, sequence) renders nodes at the same typographic scale.
+      // Complex diagrams that would otherwise explode in size are handled
+      // by the pan/zoom expand modal.
+      fontSize: '13px',
       background: 'transparent',
       // Node interior matches the pearl-black code-block surface.
       primaryColor: '#020306',
@@ -535,14 +541,26 @@ export default withMermaid(defineConfig({
       // `linear` produces straight angled (hex-style) edge segments —
       // not the default curved Bezier and not 90° step routes.
       curve: 'linear',
-      htmlLabels: true,
+      // htmlLabels: false so node sizes are computed from SVG text
+      // geometry rather than HTML foreignObject, giving Mermaid a stable
+      // bounding box for every node regardless of diagram complexity.
+      htmlLabels: false,
       useMaxWidth: true,
-      padding: 16,
+      // Compact, consistent spacing so large graphs don't blow out the
+      // frame. The expand modal handles the wide case via pan/zoom.
+      nodeSpacing: 50,
+      rankSpacing: 60,
+      padding: 8,
       diagramPadding: 8,
     },
     stateDiagram: {
       curve: 'linear',
       useMaxWidth: true,
+    },
+    sequence: {
+      useMaxWidth: true,
+      diagramMarginX: 8,
+      diagramMarginY: 8,
     },
   },
   mermaidPlugin: { class: 'mermaid dagonizer-mermaid' },

@@ -5,6 +5,7 @@ import './palette.css'
 import './base.css'
 
 import SidebarToggle from './components/SidebarToggle.vue'
+import MermaidGate from './components/MermaidGate.vue'
 
 // ArchivistRunner is heavy (cytoscape + fcose + LLM provider matrix);
 // lazy-load so doc pages that don't embed it don't pay for the bundle.
@@ -22,6 +23,7 @@ export default {
       // Toggle button mounted into the navbar — collapses / re-opens the
       // page-tree drawer at every viewport.
       'nav-bar-content-after': () => h(SidebarToggle),
+      'doc-after': () => h(MermaidGate),
       'sidebar-nav-before': () =>
         h('div', { class: 'dagonizer-sidebar-icon' }, [
           // <img> renders the SVG with native transparency. The src is
