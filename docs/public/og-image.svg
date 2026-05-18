@@ -79,71 +79,18 @@
     <line x1="1050" y1="0" x2="1050" y2="630"/>
   </g>
 
-  <!-- Left panel: large hexagonal talisman icon (SVG primitive rendering) -->
-  <!-- Outer hex: flat-top, centered at (215, 315), radius 195 -->
-  <g transform="translate(215, 315)" filter="url(#hexShadow)">
-    <!-- Hex faces — built from flat-top hex with r=195 -->
-    <!-- Vertices: (0,-195) (169,-97.5) (169,97.5) (0,195) (-169,97.5) (-169,-97.5) -->
-    <polygon
-      points="0,-195 169,-97.5 169,97.5 0,195 -169,97.5 -169,-97.5"
-      fill="none"
-      stroke="url(#hexGrad)"
-      stroke-width="4"
-      opacity="0.9"
-    />
-    <!-- Inner hex face fill (dark) -->
-    <polygon
-      points="0,-195 169,-97.5 169,97.5 0,195 -169,97.5 -169,-97.5"
-      fill="#0a0e1a"
-      opacity="0.7"
-    />
-    <!-- Top face highlight -->
-    <polygon
-      points="0,-195 169,-97.5 0,-50 -169,-97.5"
-      fill="#22e8ff"
-      opacity="0.08"
-    />
-
-    <!-- DAG nodes within hex — 5-node topology: source → [A,B] → [C] → sink -->
-    <!-- source node @ (0, -110) -->
-    <circle cx="0" cy="-110" r="18" fill="#22e8ff" filter="url(#glow)" opacity="0.95"/>
-    <text class="nodeLabel" x="0" y="-107" text-anchor="middle">S</text>
-
-    <!-- A @ (-70, -20) -->
-    <circle cx="-70" cy="-20" r="16" fill="#b18cff" filter="url(#glow)" opacity="0.9"/>
-    <text class="nodeLabel" x="-70" y="-17" text-anchor="middle">A</text>
-
-    <!-- B @ (70, -20) -->
-    <circle cx="70" cy="-20" r="16" fill="#b18cff" filter="url(#glow)" opacity="0.9"/>
-    <text class="nodeLabel" x="70" y="-17" text-anchor="middle">B</text>
-
-    <!-- C (fan-in) @ (0, 75) -->
-    <circle cx="0" cy="75" r="18" fill="#22e8ff" filter="url(#glow)" opacity="0.95"/>
-    <text class="nodeLabel" x="0" y="78" text-anchor="middle">C</text>
-
-    <!-- sink @ (0, 155) — near bottom vertex -->
-    <circle cx="0" cy="155" r="14" fill="#0eb8d8" filter="url(#glow)" opacity="0.85"/>
-    <text class="nodeLabel" x="0" y="158" text-anchor="middle">∎</text>
-
-    <!-- Edges: source→A, source→B, A→C, B→C, C→sink -->
-    <g stroke="#22e8ff" stroke-width="2" stroke-opacity="0.55" fill="none" marker-end="url(#arr)">
-      <line x1="0" y1="-92" x2="-62" y2="-36"/>
-      <line x1="0" y1="-92" x2="62" y2="-36"/>
-      <line x1="-60" y1="-6" x2="-10" y2="59"/>
-      <line x1="60" y1="-6" x2="10" y2="59"/>
-      <line x1="0" y1="93" x2="0" y2="141"/>
-    </g>
-
-    <!-- Arrowhead marker (defined inline via path for compat) -->
-    <g stroke="#22e8ff" stroke-width="1.5" stroke-opacity="0.7">
-      <!-- arrowheads as tiny triangles at line ends -->
-      <polygon points="-62,-36 -68,-44 -54,-42" fill="#22e8ff" opacity="0.7"/>
-      <polygon points="62,-36 54,-44 68,-42" fill="#22e8ff" opacity="0.7"/>
-      <polygon points="-10,59 -16,51 -2,53" fill="#22e8ff" opacity="0.7"/>
-      <polygon points="10,59 2,51 16,53" fill="#22e8ff" opacity="0.7"/>
-      <polygon points="0,141 -6,133 6,133" fill="#22e8ff" opacity="0.7"/>
-    </g>
-  </g>
+  <!-- Left panel: the canonical Dagonizer brand icon — the same talisman
+       used by the favicon, app icon, and the Twitter / OG unfurl across
+       every SEO surface. Loaded by relative href so build-time rasterization
+       resolves against docs/public/ where both files live. The 500×500 box
+       is vertically centred in the 630-tall canvas (y=65 gives 65px top
+       and bottom). -->
+  <image
+    href="dagonizer-icon-512.png"
+    x="65" y="65" width="500" height="500"
+    preserveAspectRatio="xMidYMid meet"
+    filter="url(#hexShadow)"
+  />
 
   <!-- Right panel: title + tagline -->
   <g transform="translate(470, 235)">
