@@ -58,4 +58,5 @@ export const NODE_KINDS: Readonly<Record<string, NodeKind>> = {
   'compose-response':      'non-deterministic',
   'validate-response':     'non-deterministic',
   'find-reviews':          'non-deterministic',
+  'compose-empty':         'non-deterministic',
 };

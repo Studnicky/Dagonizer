@@ -21,6 +21,10 @@ export class StubAdapter extends BaseAdapter {
     const lastUser = [...request.messages].reverse().find((m) => m.role === 'user');
     const query = lastUser?.content ?? '';
 
+    if (isStarterQueryPrompt(query)) {
+      return { 'message': { 'content': starterQuery() }, 'finishReason': 'stop' };
+    }
+
     if (request.tools !== undefined && request.tools.length > 0 && shouldInvokeWebSearch(query)) {
       const calls = toolCallFor(query, request.tools);
       return { 'message': { 'toolCalls': calls }, 'finishReason': 'tool_call' };
@@ -34,6 +38,29 @@ export class StubAdapter extends BaseAdapter {
 
     return { 'message': { 'content': cannedAnswer(query) }, 'finishReason': 'stop' };
   }
+}
+
+const STARTER_QUERIES: readonly string[] = [
+  'Do you have the complete Dune saga by Frank Herbert?',
+  'What order should I read The Lord of the Rings?',
+  'Which Stephen King novel is the scariest?',
+  'Are all the Harry Potter books in stock?',
+  'What did Agatha Christie write before Hercule Poirot?',
+  'Where should I start with Brandon Sanderson?',
+  'Can you tell me about Neil Gaiman\'s mythology books?',
+  'What are the major themes in Octavia Butler\'s Kindred?',
+  'Is there a reading order for Terry Pratchett\'s Discworld?',
+  'Which Ursula Le Guin novel should I read first?',
+  'What is Murakami\'s most accessible novel for new readers?',
+  'Which Hemingway is a good introduction to his work?',
+];
+
+function isStarterQueryPrompt(query: string): boolean {
+  return query.includes('Pick one popular author or series at random');
+}
+
+function starterQuery(): string {
+  return STARTER_QUERIES[Date.now() % STARTER_QUERIES.length] as string;
 }
 
 function shouldInvokeWebSearch(query: string): boolean {

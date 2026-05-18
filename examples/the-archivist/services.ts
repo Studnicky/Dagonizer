@@ -150,6 +150,13 @@ export interface LlmClient {
    * the gap, and offers one concrete next step — never silent-fails.
    */
   composeEmptyResponse(query: string, failureCause: string): Promise<string>;
+  /**
+   * Generate a short, curious visitor-style question about a popular
+   * book, author, or series — used to pre-fill the input on a fresh
+   * session before the visitor types anything. Returns a single
+   * question under 20 words. No preamble.
+   */
+  suggestStarterQuery(): Promise<string>;
 }
 
 /**
