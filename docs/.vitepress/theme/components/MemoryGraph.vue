@@ -135,33 +135,55 @@ onMounted(async () => {
 
   // Cosmos.gl needs non-zero dimensions to init its WebGL context.
   // When this component mounts inside a hidden PanesTabs tab the
-  // container is `display: none` (0×0). ResizeObserver doesn't fire on
-  // display:none → block transitions (no box exists), so we poll the
-  // container's bounding rect and init Cosmos the first time it has
-  // measurable size. Polling stops after init (or after 30s safety
-  // ceiling). Once Cosmos exists, ResizeObserver handles subsequent
-  // layout changes (window resize, panel drag).
-  const startInitWatch = (): void => {
-    const ceiling = Date.now() + 30_000;
-    const tick = (): void => {
-      if (graph.value !== null) return; // already initialised
-      const rect = container.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        initCosmos(container);
-        if (graph.value !== null && typeof ResizeObserver !== 'undefined') {
-          resizeObserver = new ResizeObserver(() => {
-            resizeLabelCanvas();
-            scheduleLabelPaint();
-          });
-          resizeObserver.observe(container);
-        }
-        return;
-      }
-      if (Date.now() < ceiling) setTimeout(tick, 200);
-    };
-    tick();
+  // container is `display: none` (0×0). Init must fire the first time
+  // the container becomes visible — and "first time" might be 30s or
+  // 30min into the session (visitor explores other tabs first). We use
+  // two complementary triggers so no visibility transition is missed:
+  //
+  //   1. ResizeObserver — fires when the content rect changes,
+  //      including the `display: none → block` transition that
+  //      happens when the visitor activates the Memory tab.
+  //   2. IntersectionObserver — fires when the container enters the
+  //      viewport, covering scroll-into-view scenarios.
+  //
+  // Both call the same idempotent `tryInit`. Once cosmos is alive,
+  // ResizeObserver keeps running to drive label-canvas resize and
+  // re-paint on layout changes.
+  const tryInit = (): void => {
+    if (graph.value !== null) return;
+    const rect = container.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    initCosmos(container);
   };
-  startInitWatch();
+
+  if (typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(() => {
+      tryInit();
+      if (graph.value !== null) {
+        resizeLabelCanvas();
+        scheduleLabelPaint();
+      }
+    });
+    resizeObserver.observe(container);
+  }
+
+  if (typeof IntersectionObserver !== 'undefined') {
+    const io = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          tryInit();
+          if (graph.value !== null) io.disconnect();
+        }
+      }
+    });
+    io.observe(container);
+  }
+
+  // Immediate first attempt for the case where the container is already
+  // sized (Memory is the default-active tab, or the visitor lands with
+  // a deep link). ResizeObserver only fires on changes, so without this
+  // a Memory-default render path would wait forever.
+  tryInit();
 });
 
 function initCosmos(container: HTMLDivElement): void {
