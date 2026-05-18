@@ -1,31 +1,28 @@
 ---
 title: 'Phase 05 · Retry compose'
-description: 'Two retry surfaces in The Archivist: per-call retry against the flaky RAG provider (RetryPolicy.run inside the node) and a DAG-level bounded retry loop around the compose/validate pair.'
+description: 'Two retry surfaces in The Archivist: per-call retry on every scout and on LLM ranking (RetryPolicy.run inside the node), and a DAG-level bounded retry loop in ComposeRetryLoopDAG.'
 ---
 
 # Phase 05 · Retry compose
 
 [The Archivist](./the-archivist) exercises two distinct retry shapes:
 
-1. **Per-call retry** — `externalRagScout` wraps its RAG fetch in `RetryPolicy.run`, so a flaky upstream is automatically retried with exponential backoff before the node reports `success` or `empty`.
+1. **Per-call retry** — every scout and the LLM ranker wrap their external calls in `RetryPolicy.run`, so transient failures (network errors, malformed LLM JSON) are automatically retried with exponential backoff before the node reports its output.
 2. **DAG-level retry loop** — `validateResponse` routes back to `compose-response` when the draft fails the quality check, bounded by `state.attempts.compose` so the loop terminates instead of spinning.
 
-Two different shapes, neither one throws — the dispatcher always sees a named output.
+Neither shape throws. The dispatcher always sees a named output.
 
 ## Flow
 
 ```mermaid
 flowchart TB
-  scout[external-rag-scout]
-  retry([RetryPolicy.run\nexp backoff])
-  compose[compose-response]
-  validate[validate-response]
-  respond([respond-to-visitor])
-  scout --> retry
-  retry -->|attempt 1: fail| retry
-  retry -->|attempt 2: fail| retry
-  retry -->|attempt 3: success| scout
-  scout --> compose
+  scout[scout\nscoutRetry inside]
+  rank[rank-candidates\nrankRetry inside]
+  compose[crl-compose-response]
+  validate[crl-validate-response]
+  respond([crl-respond-to-visitor])
+  scout --> rank
+  rank --> compose
   compose -->|drafted| validate
   validate -->|retry| compose
   validate -->|approved| respond
@@ -34,70 +31,32 @@ flowchart TB
 
 ## Code
 
-### Per-call retry (inside the node)
+### Per-call retry: scouts
 
-```ts
-import { BackoffStrategy, RetryPolicy } from '@noocodex/dagonizer/runtime';
+The `#scout-retry` region shows the `scoutRetry` policy used by all four scouts — exponential backoff, 2 max attempts, signal-aware:
 
-const ragRetry = new RetryPolicy({
-  maxAttempts: 2,
-  strategy: BackoffStrategy.EXPONENTIAL,
-  baseDelay: 250,
-});
+<<< ../../examples/the-archivist/nodes/scouts.ts#scout-retry
 
-export const externalRagScout: NodeInterface<ArchivistState, 'success' | 'empty', ArchivistServices> = {
-  name: 'external-rag-scout',
-  outputs: ['success', 'empty'],
-  async execute(state, context) {
-    try {
-      const candidates = await ragRetry.run(
-        () => context.services.rag.retrieve(state.terms),
-        context.signal,                  // cooperates with the dispatcher's abort
-      );
-      state.candidates = [...state.candidates, ...candidates];
-      return { output: candidates.length > 0 ? 'success' : 'empty' };
-    } catch (error) {
-      state.collectError({
-        code: 'RAG_RETRIEVE_FAILED',
-        message: error instanceof Error ? error.message : String(error),
-        operation: 'external-rag-scout',
-        recoverable: true,
-        timestamp: new Date().toISOString(),
-      });
-      return { output: 'empty' };
-    }
-  },
-};
-```
+### Per-call retry: LLM ranking
 
-### DAG-level retry loop (compose ↔ validate)
+The `#rank-retry` region shows the `rankRetry` policy used by `rankCandidates` — same shape, wrapping the LLM rank call so schema-violation responses get a second chance:
 
-```ts
-const composeLoopDAG: DAG = {
-  name: 'archivist-compose-loop',
-  version: '1.0',
-  entrypoint: 'compose',
-  nodes: [
-    { type: 'single', name: 'compose', node: 'compose-response',
-      outputs: { drafted: 'validate' } },
-    { type: 'single', name: 'validate', node: 'validate-response',
-      outputs: {
-        approved:  'respond',
-        retry:     'compose',              // route back — bounded by state.attempts.compose
-        exhausted: 'respond',               // best-effort response
-      } },
-    { type: 'single', name: 'respond', node: 'respond-to-visitor',
-      outputs: { success: null } },
-  ],
-};
-```
+<<< ../../examples/the-archivist/nodes/rankCandidates.ts#rank-retry
+
+### DAG-level retry loop
+
+The complete `ComposeRetryLoopDAG` — a bounded compose → validate → retry loop built from plain `.node()` routes:
+
+<<< ../../examples/the-archivist/subdags/ComposeRetryLoopDAG.ts
 
 ## What it demonstrates
 
-- **`RetryPolicy.run(task, signal)`** — composable per-call retry with `EXPONENTIAL` / `LINEAR` / `CONSTANT` / `DECORRELATED_JITTER` backoff. Aborts mid-wait when the signal fires.
-- **Bounded loop modeled in the DAG itself** — the validate node routes back to compose; the bound is read off `state.attempts.compose`. No special "loop" placement type.
-- **Best-effort fallback** — `validateResponse` distinguishes `retry` (try again) from `exhausted` (give up but still respond). The visitor always gets something.
-- **`RetryPolicy.retryOn` / `abortOn`** — filter which error classes retry; an `AuthError` aborts immediately.
+- **`RetryPolicy.run(task, signal)`** — composable per-call retry with `EXPONENTIAL` / `LINEAR` / `CONSTANT` / `DECORRELATED_JITTER` backoff. The second argument is `context.signal`; the policy aborts mid-backoff when the signal fires (see [Phase 04](./04-cancellation)).
+- **Bounded loop modeled in the DAG itself** — `validateResponse` routes `'retry'` back to `'crl-compose-response'`. The bound is tracked on `state.attempts.compose` inside the node — no special loop placement type.
+- **Best-effort fallback** — `'exhausted'` and `'approved'` both route to `crl-respond-to-visitor`. The visitor always gets a response; the dispatcher never throws on exhaustion.
+- **Ranking is best-effort too** — if `rankRetry` exhausts without a valid score, the `catch` block routes `'ranked'` with zero-scored candidates so `mergeCandidates` can still soft-gate.
+
+See this in action in the [Archivist live demo](./the-archivist).
 
 ## See also
 

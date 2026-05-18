@@ -80,6 +80,10 @@ const bsfNoResults: NodeInterface<ArchivistState, 'no-results', ArchivistService
   'outputs': ['no-results'],
   async execute(state, context) {
     context.services.logger.warn('book-search-fanout: no candidates found — routing error to parent');
+    if (state.failureCause.trim().length === 0) {
+      // No cause was accumulated by scouts — synthesise a generic one.
+      state.failureCause = 'No candidates found after searching all available sources. ';
+    }
     state.collectError({
       'code':        'NO_CANDIDATES',
       'message':     'book-search-fanout found no usable candidates after merge and gate',

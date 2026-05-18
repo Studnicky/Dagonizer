@@ -1,78 +1,51 @@
 ---
 title: 'Phase 01 · Linear intake'
-description: 'The Archivist demo, reduced to its two-step intake: classify the visitor question and route to one of two terminals. Demonstrates Dagonizer single-node placements, narrowed output unions, and `null` terminal routing.'
+description: 'The Archivist demo end-to-end: dispatcher wiring, molecular sub-DAG registration, and a single execute call. Demonstrates Dagonizer node registration, DAG registration order, and lifecycle output.'
 ---
 
 # Phase 01 · Linear intake
 
-The simplest slice of [The Archivist](./the-archivist): classify the visitor's question, then route to one of two terminal nodes — answer the question or politely decline.
+The simplest slice of [The Archivist](./the-archivist): wire a dispatcher, register its nodes and DAGs in dependency order, execute one visitor query, and read the lifecycle result. The full runner is below — this is the real code.
 
 ## Flow
 
 ```mermaid
 flowchart TB
   start([visitor query])
+  recall[recall-context]
   classify[classify-intent]
-  decline([decline-off-topic])
-  respond([respond-to-visitor])
+  search([book-search-fanout\nsub-DAG])
+  compose([compose-retry-loop\nsub-DAG])
+  decline([decline-off-topic / decline-empty])
   END([end])
-  start --> classify
-  classify -->|on-topic| respond
+  start --> recall
+  recall --> classify
+  classify -->|on-topic| search
+  search -->|success| compose
+  compose --> END
   classify -->|off-topic| decline
-  respond --> END
   decline --> END
 ```
 
 ## Code
 
-```ts
-import { Dagonizer } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
+The `#linear-run` region covers the dispatcher construction, molecular sub-DAG registration, and the `execute` call that drives the full flow:
 
-import { ArchivistState } from '../the-archivist/ArchivistState.ts';
-import { classifyIntent } from '../the-archivist/nodes/classifyIntent.ts';
-import { declineOffTopic, respondToVisitor } from '../the-archivist/nodes/respondToVisitor.ts';
-import type { ArchivistServices } from '../the-archivist/services.ts';
-
-const dag: DAG = {
-  name: 'archivist-intake',
-  version: '1.0',
-  entrypoint: 'classify-intent',
-  nodes: [
-    { type: 'single', name: 'classify-intent', node: 'classify-intent',
-      outputs: { 'on-topic': 'respond', 'off-topic': 'decline' } },
-    { type: 'single', name: 'respond', node: 'respond-to-visitor',
-      outputs: { success: null } },
-    { type: 'single', name: 'decline', node: 'decline-off-topic',
-      outputs: { success: null } },
-  ],
-};
-
-const dispatcher = new Dagonizer<ArchivistState, ArchivistServices>({ services });
-dispatcher.registerNode(classifyIntent);
-dispatcher.registerNode(respondToVisitor);
-dispatcher.registerNode(declineOffTopic);
-dispatcher.registerDAG(dag);
-
-const visitor = new ArchivistState();
-visitor.query = "What's a good cosmic-horror novella?";
-const result = await dispatcher.execute('archivist-intake', visitor);
-
-console.log(result.state.intent);          // 'search'
-console.log(result.state.lifecycle.kind);  // 'completed'
-```
+<<< ../../examples/the-archivist/runArchivist.ts#linear-run
 
 ## What it demonstrates
 
-- **Single-node placements** with explicit output routing.
-- **Narrowed `TOutput` union** on `NodeInterface<ArchivistState, 'on-topic' | 'off-topic', ArchivistServices>` — TypeScript exhaustiveness-checks the `outputs` map at compile time.
-- **Terminal routing** with `null` — the dispatcher stops cleanly when an output routes to nothing.
-- **The services bag** — `classifyIntent` calls `context.services.llm.classifyIntent(state.query)`; the node never instantiates its own LLM client.
+- **Molecular registration order** — sub-DAG nodes must be registered before their DAG is registered (`registerBookSearchFanoutNodes` → `dispatcher.registerDAG(BookSearchFanoutDAG)`), and both sub-DAGs before the parent `archivistDAG`. The dispatcher validates all node references at registration time.
+- **Single execute call** — `dispatcher.execute('the-archivist', visitor)` drives the entire multi-branch flow. The caller sees one `ExecutionResult<ArchivistState>` containing the final state and lifecycle.
+- **Lifecycle result** — `result.state.lifecycle.kind` is `'completed'`, `'cancelled'`, or `'timed_out'`. Nodes never throw; the dispatcher always returns.
+- **Services bag** — every node receives `context.services` (LLM, search tools, memory, logger). Nodes never construct their own clients.
+
+See this in action in the [Archivist live demo](./the-archivist).
 
 ## See also
 
 - [Running domain: The Archivist](./the-archivist)
-- [Phase 02 · Fan-out scout](./02-fanout) — add the parallel scout layer
+- [Phase 02 · Fan-out scout](./02-fanout) — the `book-search-fanout` sub-DAG internals
 - [DAGBuilder](../guide/builder)
 - [Reference: Dagonizer](../reference/dagonizer)
 - [Reference: Entities — `SingleNode`](../reference/entities)

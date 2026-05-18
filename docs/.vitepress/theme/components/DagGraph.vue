@@ -114,7 +114,7 @@ onMounted(async () => {
     cy.value?.fit(undefined, 40);
     requestAnimationFrame(() => {
       const fitZoom = cy.value?.zoom() ?? 1;
-      cy.value?.minZoom(fitZoom * 0.4);
+      cy.value?.minZoom(fitZoom);
       cy.value?.maxZoom(fitZoom * 4);
       pollZoom();
     });
@@ -123,7 +123,7 @@ onMounted(async () => {
   if (typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver(() => {
       cy.value?.resize();
-      cy.value?.fit(undefined, 40);
+      applyFit();
     });
     resizeObserver.observe(container);
   }
@@ -151,18 +151,31 @@ function markEdgeTraversed(source: string, route: string): void {
 }
 function reset(): void { dispatch({ type: 'RESET' }); }
 
-function fit(): void { cy.value?.fit(undefined, 40); }
+/**
+ * Fit the graph to the viewport and re-clamp minZoom to the resulting
+ * zoom level, so the visitor can never zoom out past the fitted view.
+ */
+function applyFit(): void {
+  cy.value?.fit(undefined, 40);
+  requestAnimationFrame(() => {
+    const fitZoom = cy.value?.zoom() ?? 1;
+    cy.value?.minZoom(fitZoom);
+    pollZoom();
+  });
+}
+
+function fit(): void { applyFit(); }
 
 function onFrameResize(): void {
   cy.value?.resize();
-  cy.value?.fit(undefined, 40);
+  applyFit();
 }
 
 function rerunLayout(): void {
   if (cy.value === null) return;
   const layout = cy.value.layout(dagLayout());
   layout.run();
-  cy.value.one('layoutstop', () => cy.value?.fit(undefined, 40));
+  cy.value.one('layoutstop', () => { applyFit(); });
 }
 
 function pollZoom(): void {
@@ -200,7 +213,7 @@ function expandZoom(): void {
   });
 }
 
-function fitScreen(): void { cy.value?.fit(undefined, 40); }
+function fitScreen(): void { applyFit(); }
 
 // ── Adapters — the only place that touches cytoscape from the FSM. ───────
 

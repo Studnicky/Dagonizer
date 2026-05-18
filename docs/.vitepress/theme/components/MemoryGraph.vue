@@ -98,6 +98,8 @@ const labelsRef = ref<HTMLCanvasElement | null>(null);
 const loading = ref(true);
 const loadError = ref<string | null>(null);
 const zoomLevel = ref<number>(1);
+/** Zoom level at last fitView — zoom-out floor so graph never shrinks to a dot. */
+const fitZoomLevel = ref<number | null>(null);
 
 const graph = shallowRef<GraphHandle | null>(null);
 interface PointMeta {
@@ -171,7 +173,19 @@ function initCosmos(container: HTMLDivElement): void {
     // physics, layout) uses cosmos's built-in choices.
     graph.value = new GraphCtor(container, {
       'onSimulationTick': () => { scheduleLabelPaint(); pollZoom(); },
-      'onZoom':           () => { scheduleLabelPaint(); pollZoom(); },
+      'onZoom': () => {
+        scheduleLabelPaint();
+        pollZoom();
+        // Clamp zoom-out to fit floor (cosmos.gl has no native minZoom).
+        const g = graph.value;
+        const floor = fitZoomLevel.value;
+        if (g !== null && floor !== null) {
+          try {
+            const current = g.getZoomLevel();
+            if (current < floor) g.setZoomLevel(floor);
+          } catch { /* ignore */ }
+        }
+      },
       // Cosmos passes the clicked point's index (or undefined for the
       // background). We map back to the IRI and emit `select`.
       'onClick': (index: number | undefined) => {
@@ -203,11 +217,25 @@ function mgZoomIn(): void {
 function mgZoomOut(): void {
   const g = graph.value;
   if (g === null) return;
-  try { g.setZoomLevel(g.getZoomLevel() / 1.3); pollZoom(); } catch { /* ignore */ }
+  try {
+    const next = g.getZoomLevel() / 1.3;
+    const floor = fitZoomLevel.value ?? 0;
+    g.setZoomLevel(Math.max(next, floor));
+    pollZoom();
+  } catch { /* ignore */ }
 }
 
 function mgFit(): void {
-  try { graph.value?.fitView(300); } catch { /* ignore */ }
+  try {
+    graph.value?.fitView(300);
+    // Capture the fit zoom after the animation settles so the floor stays current.
+    setTimeout(() => {
+      try {
+        const level = graph.value?.getZoomLevel() ?? null;
+        if (level !== null) fitZoomLevel.value = level;
+      } catch { /* ignore */ }
+    }, 350);
+  } catch { /* ignore */ }
 }
 
 onBeforeUnmount(() => {
@@ -244,7 +272,16 @@ function paint(): void {
   // Wait long enough for the simulation to spread points before fitting.
   // Pokemontology uses 400ms + secondary at 900ms; we mirror that.
   setTimeout(() => handle.fitView(400), 400);
-  setTimeout(() => handle.fitView(500), 900);
+  setTimeout(() => {
+    handle.fitView(500);
+    // Capture fit zoom after the final fit settles — this becomes the zoom-out floor.
+    setTimeout(() => {
+      try {
+        const level = graph.value?.getZoomLevel() ?? null;
+        if (level !== null) fitZoomLevel.value = level;
+      } catch { /* ignore */ }
+    }, 550);
+  }, 900);
   scheduleLabelPaint();
 }
 

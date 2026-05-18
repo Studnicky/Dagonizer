@@ -62,6 +62,7 @@ interface SubjectSearchInput extends Record<string, unknown> {
 
 const ENDPOINT = 'https://openlibrary.org/search.json';
 
+// #region tool-schema
 const definition: ToolDefinition = {
   'name': 'subject_search',
   'description':
@@ -90,6 +91,7 @@ const definition: ToolDefinition = {
   },
   'strict': true,
 };
+// #endregion tool-schema
 
 export const SubjectSearchTool: Tool<SubjectSearchInput, readonly Candidate[]> = {
   definition,

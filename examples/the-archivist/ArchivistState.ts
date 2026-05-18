@@ -96,6 +96,13 @@ export class ArchivistState extends NodeStateBase {
    */
   runId: string = '';
   /**
+   * Sanitized one-liner description of why the search produced no
+   * results. Accumulated by scouts and gate nodes; consumed by
+   * `composeEmptyResponse` to craft an in-character failure message.
+   * Empty string when no failure has been recorded.
+   */
+  failureCause = '';
+  /**
    * Prior-context facts the recall node SELECTs out of memory before
    * compose. Each entry has a `kind` (e.g. 'prior-query',
    * 'prior-recommendation') and free-text content the LLM can cite.
@@ -137,6 +144,7 @@ export class ArchivistState extends NodeStateBase {
     copy.attempts     = { ...this.attempts };
     copy.toolPlan     = [...this.toolPlan];
     copy.runId        = this.runId;
+    copy.failureCause = this.failureCause;
     copy.priorContext = [...this.priorContext];
     copy.recalledContext = {
       'priorIntents':        [...this.recalledContext.priorIntents],
@@ -154,6 +162,7 @@ export class ArchivistState extends NodeStateBase {
     return copy;
   }
 
+  // #region snapshot-restore
   protected override snapshotData(): JsonObject {
     return {
       "query":      this.query,
@@ -169,9 +178,10 @@ export class ArchivistState extends NodeStateBase {
         "score":  candidate.score,
         "source": candidate.source,
       })) as unknown as JsonObject[],
-      "draft":      this.draft,
-      "approved":   this.approved,
-      "attempts":   { ...this.attempts },
+      "draft":        this.draft,
+      "approved":     this.approved,
+      "attempts":     { ...this.attempts },
+      "failureCause": this.failureCause,
       "recalledContext": {
         "priorIntents":        this.recalledContext.priorIntents as unknown as JsonObject[],
         "recentCandidates":    this.recalledContext.recentCandidates.map((c) => ({
@@ -195,8 +205,9 @@ export class ArchivistState extends NodeStateBase {
   protected override restoreData(snap: JsonObject): void {
     if (typeof snap['query']  === 'string')  this.query  = snap['query'];
     if (typeof snap['intent'] === 'string')  this.intent = snap['intent'] as ArchivistIntent;
-    if (typeof snap['draft']  === 'string')  this.draft  = snap['draft'];
-    if (typeof snap['approved'] === 'boolean') this.approved = snap['approved'];
+    if (typeof snap['draft']        === 'string')  this.draft  = snap['draft'];
+    if (typeof snap['approved']    === 'boolean') this.approved = snap['approved'];
+    if (typeof snap['failureCause'] === 'string') this.failureCause = snap['failureCause'];
     if (Array.isArray(snap['terms']))      this.terms      = snap['terms'] as string[];
     if (Array.isArray(snap['candidates'])) this.candidates = snap['candidates'] as unknown as Candidate[];
     if (Array.isArray(snap['shortlist']))  this.shortlist  = snap['shortlist'] as unknown as Candidate[];
@@ -225,4 +236,5 @@ export class ArchivistState extends NodeStateBase {
       };
     }
   }
+  // #endregion snapshot-restore
 }

@@ -48,7 +48,7 @@ import { recommendSimilar } from '../../../../examples/the-archivist/nodes/recom
 import { recordFindings } from '../../../../examples/the-archivist/nodes/recordFindings.ts';
 import { composeResponse, validateResponse } from '../../../../examples/the-archivist/nodes/composeResponse.ts';
 import { rankCandidates } from '../../../../examples/the-archivist/nodes/rankCandidates.ts';
-import { declineEmpty, declineOffTopic, respondToVisitor } from '../../../../examples/the-archivist/nodes/respondToVisitor.ts';
+import { composeEmptyResponse, declineEmpty, declineOffTopic, respondToVisitor } from '../../../../examples/the-archivist/nodes/respondToVisitor.ts';
 import { webSearchScout, openLibraryScout, googleBooksScout, subjectScout, wikipediaScout } from '../../../../examples/the-archivist/nodes/scouts.ts';
 import { detectBackends, hasNoRunnableModel, instantiateProvider, pickBestBackend } from '../../../../examples/the-archivist/providers/index.ts';
 import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
@@ -105,9 +105,9 @@ const logger = new ConsoleLogger();
 
 // ── Timeout settings ─────────────────────────────────────────────────────
 const timeoutSettings = ref<TimeoutSettings>({
-  'composeMs':   30_000,
-  'webSearchMs': 20_000,
-  'rankMs':      15_000,
+  'composeMs':   60_000,
+  'webSearchMs': 60_000,
+  'rankMs':      30_000,
 });
 
 function onTimeoutSettingsUpdate(settings: TimeoutSettings): void {
@@ -232,6 +232,8 @@ async function resumeFromCheckpoint(): Promise<void> {
     // recall-memories branch
     recallMemories, composeMemoryResponse, respondToVisitor,
     declineOffTopic, declineEmpty,
+    // empty-result LLM response branch
+    composeEmptyResponse,
   ]) dispatcher.registerNode(node);
   dispatcher.registerDAG(archivistDAG);
 
@@ -464,14 +466,15 @@ async function ask(): Promise<void> {
   // Timeout overrides — re-register after DAG registration (validation already
   // passed; execution looks up nodes from the map at run time, so overwriting
   // here applies the configured budget to every subsequent execution).
-  const composeNode      = { ...composeResponse, 'timeoutMs': composeMs };
-  const rankNode         = { ...rankCandidates,  'timeoutMs': rankMs };
-  const scoutNode        = { ...webSearchScout,  'timeoutMs': webSearchMs };
-  const olScoutNode      = { ...openLibraryScout,   'timeoutMs': webSearchMs };
-  const gbScoutNode      = { ...googleBooksScout,   'timeoutMs': webSearchMs };
-  const subjectScoutNode = { ...subjectScout,       'timeoutMs': webSearchMs };
-  const wikiScoutNode    = { ...wikipediaScout,     'timeoutMs': webSearchMs };
-  for (const node of [composeNode, rankNode, scoutNode, olScoutNode, gbScoutNode, subjectScoutNode, wikiScoutNode]) {
+  const composeNode          = { ...composeResponse,     'timeoutMs': composeMs };
+  const composeEmptyNode     = { ...composeEmptyResponse, 'timeoutMs': composeMs };
+  const rankNode             = { ...rankCandidates,       'timeoutMs': rankMs };
+  const scoutNode            = { ...webSearchScout,        'timeoutMs': webSearchMs };
+  const olScoutNode          = { ...openLibraryScout,      'timeoutMs': webSearchMs };
+  const gbScoutNode          = { ...googleBooksScout,      'timeoutMs': webSearchMs };
+  const subjectScoutNode     = { ...subjectScout,          'timeoutMs': webSearchMs };
+  const wikiScoutNode        = { ...wikipediaScout,        'timeoutMs': webSearchMs };
+  for (const node of [composeNode, composeEmptyNode, rankNode, scoutNode, olScoutNode, gbScoutNode, subjectScoutNode, wikiScoutNode]) {
     dispatcher.registerNode(node);
   }
 
@@ -484,6 +487,8 @@ async function ask(): Promise<void> {
     // recall-memories branch
     recallMemories, composeMemoryResponse, respondToVisitor,
     declineOffTopic, declineEmpty,
+    // empty-result LLM response branch
+    composeEmptyResponse,
   ]) dispatcher.registerNode(node);
   dispatcher.registerDAG(archivistDAG);
 

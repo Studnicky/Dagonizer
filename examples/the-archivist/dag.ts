@@ -1,5 +1,5 @@
 /**
- * The Archivist — canonical DAG, built with DAGBuilder. Version 5.1.
+ * The Archivist — canonical DAG, built with DAGBuilder. Version 5.2.
  *
  * Molecular composition: the parent DAG is composed of two reusable
  * sub-DAGs that ship as independent components and are imported as
@@ -14,11 +14,11 @@
  *     │
  *     ├─ on-topic          ──► [book-search-fanout] (extract+decide+4scouts+rank+merge+record+gate+recall)
  *     │                             ├─ success ──► [compose-retry-loop] (compose+validate+retry+respond)
- *     │                             └─ error   ──► decline-empty ──► END
+ *     │                             └─ error   ──► compose-empty ──► respond-to-visitor ──► END
  *     │
  *     ├─ lookup-author     ──► [book-search-fanout]
  *     │                             ├─ success ──► group-by-year ──► [compose-retry-loop]
- *     │                             └─ error   ──► decline-empty ──► END
+ *     │                             └─ error   ──► compose-empty ──► respond-to-visitor ──► END
  *     │
  *     ├─ find-reviews      ──► reviews-extract ──► (inline: decide+4scouts+rankByRating+merge+record+gate+recall)
  *     │                             └─ [compose-retry-loop]
@@ -29,8 +29,8 @@
  *     └─ recommend-similar ──► recommend-similar-gate
  *                               ├─ seeded ──► [book-search-fanout]
  *                               │                ├─ success ──► [compose-retry-loop]
- *                               │                └─ error   ──► decline-empty ──► END
- *                               └─ empty  ──► decline-empty ──► END
+ *                               │                └─ error   ──► compose-empty ──► respond-to-visitor ──► END
+ *                               └─ empty  ──► compose-empty ──► respond-to-visitor ──► END
  *
  * Sub-DAGs (molecular components):
  *   book-search-fanout  — extract-query + decide-tools + 4-source parallel scouts
@@ -50,6 +50,13 @@
  *   book-search-fanout except for the post-scout ranking step — keeping them inline
  *   makes the intentional distinction explicit rather than hiding it behind a
  *   sub-DAG parameter.
+ *
+ * Empty-result handling (v5.2):
+ *   `decline-empty` (canned response) is replaced by `compose-empty` →
+ *   `respond-to-visitor` throughout. `compose-empty` calls the LLM with
+ *   `state.failureCause` (accumulated by scouts) to produce an in-character
+ *   message that acknowledges what was searched and offers a concrete next step.
+ *   `decline-empty` is kept as a registered node for checkpoint backward compat.
  *
  * Builder vs literal equivalence:
  *   DAGBuilder.node(placementName, nodeImpl, routes) emits the same
@@ -73,12 +80,12 @@ import { recallMemories }       from './nodes/recallMemories.ts';
 import { recallPastVisits }     from './nodes/recallPastVisits.ts';
 import { recommendSimilar }     from './nodes/recommendSimilar.ts';
 import { recordFindings }       from './nodes/recordFindings.ts';
-import { declineOffTopic, declineEmpty, respondToVisitor } from './nodes/respondToVisitor.ts';
+import { declineOffTopic, declineEmpty, respondToVisitor, composeEmptyResponse } from './nodes/respondToVisitor.ts';
 import { openLibraryScout, googleBooksScout, subjectScout, wikipediaScout } from './nodes/scouts.ts';
 
 import { DAGBuilder } from '@noocodex/dagonizer/builder';
 
-export const archivistDAG = new DAGBuilder('the-archivist', '5.1')
+export const archivistDAG = new DAGBuilder('the-archivist', '5.2')
 
   // ── 0. recall-context ────────────────────────────────────────────────────
   // First added → auto-entrypoint. Runs before classifyIntent so the
@@ -89,7 +96,7 @@ export const archivistDAG = new DAGBuilder('the-archivist', '5.1')
 
   // ── 1. classify-intent ───────────────────────────────────────────────────
   // Wide output union routes to six branches. Sub-DAG placements and inline
-  // branches share the same shared terminal: compose-loop and decline-empty.
+  // branches share the same shared terminal: compose-loop and compose-empty.
   // recall-memories routes directly to memory-recall → compose-memory-recall
   // → memory-respond (no search fanout needed; the memory store is the source).
   .node('classify-intent', classifyIntent, {
@@ -102,6 +109,7 @@ export const archivistDAG = new DAGBuilder('the-archivist', '5.1')
     'off-topic':         'decline-off-topic',
   })
 
+  // #region subdag-placements
   // ── on-topic branch ──────────────────────────────────────────────────────
   // Sub-DAG placement: book-search-fanout handles extract-query, decide-tools,
   // all four scouts, rank-candidates, merge, record, gate, and recall.
@@ -110,15 +118,16 @@ export const archivistDAG = new DAGBuilder('the-archivist', '5.1')
   // parent state so compose-loop and group-by-year can read them.
   .subDAG('on-topic-search', 'book-search-fanout', {
     'success': 'compose-loop',
-    'error':   'decline-empty',
+    'error':   'compose-empty',
   }, {
     'stateMapping': {
       'output': {
-        'terms':       'terms',
-        'toolPlan':    'toolPlan',
-        'candidates':  'candidates',
-        'shortlist':   'shortlist',
-        'priorContext':'priorContext',
+        'terms':         'terms',
+        'toolPlan':      'toolPlan',
+        'candidates':    'candidates',
+        'shortlist':     'shortlist',
+        'priorContext':  'priorContext',
+        'failureCause':  'failureCause',
       },
     },
   })
@@ -129,15 +138,16 @@ export const archivistDAG = new DAGBuilder('the-archivist', '5.1')
   // compose loop — author surveys read better in publication-timeline order.
   .subDAG('author-search', 'book-search-fanout', {
     'success': 'group-by-year',
-    'error':   'decline-empty',
+    'error':   'compose-empty',
   }, {
     'stateMapping': {
       'output': {
-        'terms':       'terms',
-        'toolPlan':    'toolPlan',
-        'candidates':  'candidates',
-        'shortlist':   'shortlist',
-        'priorContext':'priorContext',
+        'terms':         'terms',
+        'toolPlan':      'toolPlan',
+        'candidates':    'candidates',
+        'shortlist':     'shortlist',
+        'priorContext':  'priorContext',
+        'failureCause':  'failureCause',
       },
     },
   })
@@ -166,9 +176,9 @@ export const archivistDAG = new DAGBuilder('the-archivist', '5.1')
   .node('reviews-subject', subjectScout,     { 'success': null, 'empty': null })
   .node('reviews-wiki',    wikipediaScout,   { 'success': null, 'empty': null })
   .node('reviews-rank',    rankByRating,     { 'ranked': 'reviews-merge' })
-  .node('reviews-merge',   mergeCandidates,  { 'ranked': 'reviews-record', 'empty': 'decline-empty' })
+  .node('reviews-merge',   mergeCandidates,  { 'ranked': 'reviews-record', 'empty': 'compose-empty' })
   .node('reviews-record',  recordFindings,   { 'recorded': 'reviews-gate' })
-  .node('reviews-gate',    hasCitationsGate, { 'pass': 'reviews-recall', 'fail': 'decline-empty' })
+  .node('reviews-gate',    hasCitationsGate, { 'pass': 'reviews-recall', 'fail': 'compose-empty' })
   .node('reviews-recall',  recallPastVisits, { 'recalled': 'compose-loop' })
 
   // ── describe-book branch ─────────────────────────────────────────────────
@@ -179,16 +189,16 @@ export const archivistDAG = new DAGBuilder('the-archivist', '5.1')
   .node('describe-decide-tools', decideTools,      { 'tools': 'describe-fan-out', 'no-tools': 'describe-fan-out' })
   .parallel('describe-fan-out', ['describe-ol', 'describe-gb', 'describe-subject', 'describe-wiki'], 'collect', {
     'success': 'describe-pick',
-    'error':   'decline-empty',
+    'error':   'compose-empty',
   })
   .node('describe-ol',      openLibraryScout, { 'success': null, 'empty': null })
   .node('describe-gb',      googleBooksScout, { 'success': null, 'empty': null })
   .node('describe-subject', subjectScout,     { 'success': null, 'empty': null })
   .node('describe-wiki',    wikipediaScout,   { 'success': null, 'empty': null })
   .node('describe-pick',   pickBestMatch,    { 'picked': 'describe-merge' })
-  .node('describe-merge',  mergeCandidates,  { 'ranked': 'describe-record', 'empty': 'decline-empty' })
+  .node('describe-merge',  mergeCandidates,  { 'ranked': 'describe-record', 'empty': 'compose-empty' })
   .node('describe-record', recordFindings,   { 'recorded': 'describe-gate' })
-  .node('describe-gate',   hasCitationsGate, { 'pass': 'describe-recall', 'fail': 'decline-empty' })
+  .node('describe-gate',   hasCitationsGate, { 'pass': 'describe-recall', 'fail': 'compose-empty' })
   .node('describe-recall', recallPastVisits, { 'recalled': 'compose-loop' })
 
   // ── recommend-similar branch ─────────────────────────────────────────────
@@ -197,21 +207,22 @@ export const archivistDAG = new DAGBuilder('the-archivist', '5.1')
   // the same packaged cluster. 'empty' routes to the decline terminal.
   .node('recommend-similar', recommendSimilar, {
     'seeded': 'similar-search',
-    'empty':  'decline-empty',
+    'empty':  'compose-empty',
   })
 
   // Sub-DAG placement: same book-search-fanout, third and final placement.
   .subDAG('similar-search', 'book-search-fanout', {
     'success': 'compose-loop',
-    'error':   'decline-empty',
+    'error':   'compose-empty',
   }, {
     'stateMapping': {
       'output': {
-        'terms':       'terms',
-        'toolPlan':    'toolPlan',
-        'candidates':  'candidates',
-        'shortlist':   'shortlist',
-        'priorContext':'priorContext',
+        'terms':         'terms',
+        'toolPlan':      'toolPlan',
+        'candidates':    'candidates',
+        'shortlist':     'shortlist',
+        'priorContext':  'priorContext',
+        'failureCause':  'failureCause',
       },
     },
   })
@@ -233,6 +244,7 @@ export const archivistDAG = new DAGBuilder('the-archivist', '5.1')
       },
     },
   })
+  // #endregion subdag-placements
 
   // ── recall-memories branch ───────────────────────────────────────────────
   // No search fanout needed — the memory store is queried directly.
@@ -243,6 +255,10 @@ export const archivistDAG = new DAGBuilder('the-archivist', '5.1')
 
   // ── Terminal nodes ───────────────────────────────────────────────────────
   .node('decline-off-topic', declineOffTopic, { 'success': null })
-  .node('decline-empty',     declineEmpty,     { 'success': null })
+  // decline-empty kept for checkpoint backward compatibility — new flows use
+  // compose-empty → respond-to-visitor for in-character failure responses.
+  .node('decline-empty',     declineEmpty,          { 'success': null })
+  .node('compose-empty',     composeEmptyResponse,  { 'drafted': 'empty-respond' })
+  .node('empty-respond',     respondToVisitor,      { 'success': null })
 
   .build();

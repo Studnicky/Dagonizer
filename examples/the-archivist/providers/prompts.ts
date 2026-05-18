@@ -43,6 +43,7 @@ export const directives = {
   "weighOpinions":    'Quote average ratings and ratings counts when present; explain what readers seem to feel about each title.',
   "continuityHint":   'Use the recent context if it suggests a likely intent or recurring interest.',
   "recallMemories":   'When the visitor asks what you remember, what books you have seen, or what they have asked before, give a warm roll-up of your memory.',
+  "ownTheGap":        'Acknowledge which sources were searched. Explain in one sentence why nothing matched. Offer one concrete alternative angle the visitor could try.',
 } as const;
 
 // ── Shared system message — composed from persona directives ───────────
@@ -149,7 +150,8 @@ export const prompts = {
     return [
       SYSTEM,
       directives.pickTerseQuery,
-      'Pick the smallest set of tool calls that would answer the visitor.',
+      'For any visitor question that names an author or describes a book to find, call ALL of the available tools — do not omit any source.',
+      'Use a short, keyword-only query (no surrounding quotes, no filler phrases).',
       '',
       `Visitor question: ${query}`,
     ].join('\n');
@@ -326,6 +328,20 @@ export const prompts = {
       '',
       'Shortlist (ranked, top first):',
       rows,
+    ].join('\n');
+  },
+
+  composeEmptyResponse(query: string, failureCause: string): string {
+    const causeBlock = failureCause.trim().length > 0
+      ? `\nSearch notes: ${failureCause.trim()}`
+      : '';
+    return [
+      SYSTEM,
+      directives.ownTheGap,
+      directives.beTerse,
+      '',
+      `Visitor question: ${query}`,
+      causeBlock,
     ].join('\n');
   },
 

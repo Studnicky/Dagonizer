@@ -7,17 +7,31 @@
  *                       via `state.toolPlan` (tool name: web_search_books).
  *   googleBooksScout  — Google Books `google_books_search` call; LLM-gated
  *                       via `state.toolPlan` (tool name: google_books_search).
+ *   subjectScout      — OpenLibrary subject search; LLM-gated via
+ *                       `state.toolPlan` (tool name: subject_search).
  *   wikipediaScout    — Wikipedia `page/summary` enrichment; runs even
  *                       without a toolPlan entry, using `state.terms` as the
  *                       query, unless terms is empty.
  *
- * All three are non-deterministic (network + possible model-supplied args).
+ * All four are non-deterministic (network + possible model-supplied args).
  * Each appends to `state.candidates` so the downstream merge step can
  * dedupe across sources via `CanonicalId.dedupe`.
  *
  * The legacy `webSearchScout` is preserved for backward compatibility with
  * any external consumer that registers it by name. New branches use the
- * three named scouts via the `parallel` DAG placement.
+ * four named scouts via the `parallel` DAG placement.
+ *
+ * Query sanitisation:
+ *   Every scout applies `unquote()` to the LLM-supplied query before
+ *   passing it to the tool. This strips the outer matching quote pair
+ *   that some models emit (e.g. `"strange house neil gaiman"` becomes
+ *   `strange house neil gaiman`), which otherwise causes OpenLibrary to
+ *   return zero hits for AND-matching against the literal quotes.
+ *
+ * Failure accumulation:
+ *   When a scout errors or returns zero hits, it appends a sanitized
+ *   one-liner to `state.failureCause`. `composeEmptyResponse` uses this
+ *   to produce an in-character message that acknowledges what was tried.
  */
 
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -26,24 +40,53 @@ import type { ArchivistServices } from '../services.ts';
 import type { NodeInterface } from '@noocodex/dagonizer';
 import { BackoffStrategy, RetryPolicy } from '@noocodex/dagonizer/runtime';
 
+// #region scout-retry
 const scoutRetry = new RetryPolicy({
   "maxAttempts": 2,
   "strategy":    BackoffStrategy.EXPONENTIAL,
   "baseDelay":   400,
 });
+// #endregion scout-retry
 
-// ── Legacy scout (kept for backward-compat; new branches use the three below) ─
+/**
+ * Strip outer matching quote pairs from a string. Handles straight double
+ * quotes, straight single quotes, and guillemets. Returns the inner content
+ * when a matching pair is detected; returns the trimmed original otherwise.
+ *
+ * Examples:
+ *   unquote('"strange house neil gaiman"') → 'strange house neil gaiman'
+ *   unquote("'foo'")                        → 'foo'
+ *   unquote('«bar»')                        → 'bar'
+ *   unquote('no quotes')                    → 'no quotes'
+ */
+function unquote(s: string): string {
+  const t = s.trim();
+  if (
+    (t.startsWith('"') && t.endsWith('"')) ||
+    (t.startsWith("'") && t.endsWith("'"))
+  ) {
+    return t.slice(1, -1).trim();
+  }
+  if (t.startsWith('«') && t.endsWith('»')) {
+    return t.slice(1, -1).trim();
+  }
+  return t;
+}
+
+// ── Legacy scout (kept for backward-compat; new branches use the four below) ─
 
 export const webSearchScout: NodeInterface<ArchivistState, 'success' | 'empty', ArchivistServices> = {
-  "name":    'web-search-scout',
-  "outputs": ['success', 'empty'],
+  "name":      'web-search-scout',
+  "outputs":   ['success', 'empty'],
+  "timeoutMs": 60_000,
   async execute(state, context) {
     const planned = state.toolPlan.find((call) => call.name === 'web_search_books');
     if (planned === undefined) return { "output": 'empty' };
     const args = planned.arguments as { query?: string; limit?: number };
-    const query = typeof args.query === 'string' && args.query.length > 0
+    const rawQuery = typeof args.query === 'string' && args.query.length > 0
       ? args.query
       : state.terms.join(' ');
+    const query = unquote(rawQuery);
     if (query.length === 0) return { "output": 'empty' };
     try {
       const tool = context.services.webSearch;
@@ -54,8 +97,12 @@ export const webSearchScout: NodeInterface<ArchivistState, 'success' | 'empty', 
       );
       state.candidates = [...state.candidates, ...candidates];
       context.services.logger.info(`web search: ${String(candidates.length)} hits`);
+      if (candidates.length === 0) {
+        state.failureCause += `OpenLibrary: 0 hits for "${query}". `;
+      }
       return { "output": candidates.length > 0 ? 'success' : 'empty' };
     } catch (error) {
+      const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
       state.collectError({
         "code":        'WEB_SEARCH_FAILED',
         "message":     error instanceof Error ? error.message : String(error),
@@ -63,26 +110,30 @@ export const webSearchScout: NodeInterface<ArchivistState, 'success' | 'empty', 
         "recoverable": true,
         "timestamp":   new Date().toISOString(),
       });
+      state.failureCause += `OpenLibrary: error — ${msg}. `;
       context.services.logger.warn(`web search failed: ${String(error)}`);
       return { "output": 'empty' };
     }
   },
 };
 
+// #region signal-scout
 // ── OpenLibrary scout ────────────────────────────────────────────────────────
 // Gates on `state.toolPlan` for a `web_search_books` call. Writes to
 // `state.candidates`. Non-deterministic (live network).
 
 export const openLibraryScout: NodeInterface<ArchivistState, 'success' | 'empty', ArchivistServices> = {
-  "name":    'open-library-scout',
-  "outputs": ['success', 'empty'],
+  "name":      'open-library-scout',
+  "outputs":   ['success', 'empty'],
+  "timeoutMs": 60_000,
   async execute(state, context) {
     const planned = state.toolPlan.find((call) => call.name === 'web_search_books');
     if (planned === undefined) return { "output": 'empty' };
     const args = planned.arguments as { query?: string; limit?: number };
-    const query = typeof args.query === 'string' && args.query.length > 0
+    const rawQuery = typeof args.query === 'string' && args.query.length > 0
       ? args.query
       : state.terms.join(' ');
+    const query = unquote(rawQuery);
     if (query.length === 0) return { "output": 'empty' };
     try {
       const tool = context.services.webSearch;
@@ -93,8 +144,12 @@ export const openLibraryScout: NodeInterface<ArchivistState, 'success' | 'empty'
       );
       state.candidates = [...state.candidates, ...candidates];
       context.services.logger.info(`openlibrary: ${String(candidates.length)} hits`);
+      if (candidates.length === 0) {
+        state.failureCause += `OpenLibrary: 0 hits for "${query}". `;
+      }
       return { "output": candidates.length > 0 ? 'success' : 'empty' };
     } catch (error) {
+      const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
       state.collectError({
         "code":        'OPEN_LIBRARY_FAILED',
         "message":     error instanceof Error ? error.message : String(error),
@@ -102,26 +157,30 @@ export const openLibraryScout: NodeInterface<ArchivistState, 'success' | 'empty'
         "recoverable": true,
         "timestamp":   new Date().toISOString(),
       });
+      state.failureCause += `OpenLibrary: error — ${msg}. `;
       context.services.logger.warn(`openlibrary failed: ${String(error)}`);
       return { "output": 'empty' };
     }
   },
 };
+// #endregion signal-scout
 
 // ── Google Books scout ───────────────────────────────────────────────────────
 // Gates on `state.toolPlan` for a `google_books_search` call. Writes to
 // `state.candidates`. Non-deterministic (live network).
 
 export const googleBooksScout: NodeInterface<ArchivistState, 'success' | 'empty', ArchivistServices> = {
-  "name":    'google-books-scout',
-  "outputs": ['success', 'empty'],
+  "name":      'google-books-scout',
+  "outputs":   ['success', 'empty'],
+  "timeoutMs": 60_000,
   async execute(state, context) {
     const planned = state.toolPlan.find((call) => call.name === 'google_books_search');
     if (planned === undefined) return { "output": 'empty' };
     const args = planned.arguments as { query?: string; maxResults?: number };
-    const query = typeof args.query === 'string' && args.query.length > 0
+    const rawQuery = typeof args.query === 'string' && args.query.length > 0
       ? args.query
       : state.terms.join(' ');
+    const query = unquote(rawQuery);
     if (query.length === 0) return { "output": 'empty' };
     try {
       const tool = context.services.googleBooks;
@@ -132,8 +191,12 @@ export const googleBooksScout: NodeInterface<ArchivistState, 'success' | 'empty'
       );
       state.candidates = [...state.candidates, ...candidates];
       context.services.logger.info(`google-books: ${String(candidates.length)} hits`);
+      if (candidates.length === 0) {
+        state.failureCause += `Google Books: 0 hits for "${query}". `;
+      }
       return { "output": candidates.length > 0 ? 'success' : 'empty' };
     } catch (error) {
+      const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
       state.collectError({
         "code":        'GOOGLE_BOOKS_FAILED',
         "message":     error instanceof Error ? error.message : String(error),
@@ -141,6 +204,7 @@ export const googleBooksScout: NodeInterface<ArchivistState, 'success' | 'empty'
         "recoverable": true,
         "timestamp":   new Date().toISOString(),
       });
+      state.failureCause += `Google Books: error — ${msg}. `;
       context.services.logger.warn(`google-books failed: ${String(error)}`);
       return { "output": 'empty' };
     }
@@ -152,16 +216,18 @@ export const googleBooksScout: NodeInterface<ArchivistState, 'success' | 'empty'
 // `state.candidates`. Non-deterministic (live network + LLM-supplied args).
 
 export const subjectScout: NodeInterface<ArchivistState, 'success' | 'empty', ArchivistServices> = {
-  "name":    'subject-scout',
-  "kind":    'non-deterministic',
-  "outputs": ['success', 'empty'],
+  "name":      'subject-scout',
+  "kind":      'non-deterministic',
+  "outputs":   ['success', 'empty'],
+  "timeoutMs": 60_000,
   async execute(state, context) {
     const planned = state.toolPlan.find((call) => call.name === 'subject_search');
     if (planned === undefined) return { "output": 'empty' };
     const args = planned.arguments as { subject?: string; limit?: number };
-    const subject = typeof args.subject === 'string' && args.subject.length > 0
+    const rawSubject = typeof args.subject === 'string' && args.subject.length > 0
       ? args.subject
       : state.terms.join(' ');
+    const subject = unquote(rawSubject);
     if (subject.length === 0) return { "output": 'empty' };
     try {
       const tool = context.services.subjectSearch;
@@ -172,8 +238,12 @@ export const subjectScout: NodeInterface<ArchivistState, 'success' | 'empty', Ar
       );
       state.candidates = [...state.candidates, ...candidates];
       context.services.logger.info(`subject-search: ${String(candidates.length)} hits`);
+      if (candidates.length === 0) {
+        state.failureCause += `Subject search: 0 hits for "${subject}". `;
+      }
       return { "output": candidates.length > 0 ? 'success' : 'empty' };
     } catch (error) {
+      const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
       state.collectError({
         "code":        'SUBJECT_SEARCH_FAILED',
         "message":     error instanceof Error ? error.message : String(error),
@@ -181,6 +251,7 @@ export const subjectScout: NodeInterface<ArchivistState, 'success' | 'empty', Ar
         "recoverable": true,
         "timestamp":   new Date().toISOString(),
       });
+      state.failureCause += `Subject search: error — ${msg}. `;
       context.services.logger.warn(`subject-search failed: ${String(error)}`);
       return { "output": 'empty' };
     }
@@ -192,8 +263,9 @@ export const subjectScout: NodeInterface<ArchivistState, 'success' | 'empty', Ar
 // as the query. Skips only when terms is empty. Non-deterministic (live network).
 
 export const wikipediaScout: NodeInterface<ArchivistState, 'success' | 'empty', ArchivistServices> = {
-  "name":    'wikipedia-scout',
-  "outputs": ['success', 'empty'],
+  "name":      'wikipedia-scout',
+  "outputs":   ['success', 'empty'],
+  "timeoutMs": 60_000,
   async execute(state, context) {
     const query = state.terms.join(' ').trim();
     if (query.length === 0) return { "output": 'empty' };
@@ -206,8 +278,12 @@ export const wikipediaScout: NodeInterface<ArchivistState, 'success' | 'empty', 
       );
       state.candidates = [...state.candidates, ...candidates];
       context.services.logger.info(`wikipedia: ${String(candidates.length)} hits`);
+      if (candidates.length === 0) {
+        state.failureCause += `Wikipedia: 0 hits for "${query}". `;
+      }
       return { "output": candidates.length > 0 ? 'success' : 'empty' };
     } catch (error) {
+      const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
       state.collectError({
         "code":        'WIKIPEDIA_FAILED',
         "message":     error instanceof Error ? error.message : String(error),
@@ -215,6 +291,7 @@ export const wikipediaScout: NodeInterface<ArchivistState, 'success' | 'empty', 
         "recoverable": true,
         "timestamp":   new Date().toISOString(),
       });
+      state.failureCause += `Wikipedia: error — ${msg}. `;
       context.services.logger.warn(`wikipedia failed: ${String(error)}`);
       return { "output": 'empty' };
     }
