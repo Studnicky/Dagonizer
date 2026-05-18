@@ -9,7 +9,7 @@ Omniscient orchestration for directed acyclic graphs. Type-safe nodes, abortable
 - **Placement** — a position in the graph referencing a registered node. Routes to next placements by mapping each output to a node name (or `null` to terminate).
 - **DAG** — a named directed acyclic graph of placements with an entrypoint.
 
-Placement kinds: `single` (one registered node), `parallel` (concurrent nodes with combine strategy), `fan-out` (one execution per source-array item, with fan-in), `sub-dag` (nested dispatcher invocation with state mapping).
+Placement kinds: `single` (one registered node), `parallel` (concurrent nodes with combine strategy), `fan-out` (one execution per source-array item, with fan-in), `deep-dag` (nested dispatcher invocation with state mapping).
 
 ## Install
 
@@ -95,16 +95,16 @@ One execution per item in a state-array source. Fan-in collects results.
 
 Default fan-in strategies: `append` (flat-append all results to `target`), `partition` (route items by output name into distinct paths), `custom` (invoke a registered node with `fanInResults` metadata). Custom strategies extend `FanInStrategy` and register via `FanInStrategies.register(new MyFanIn())`.
 
-### Sub-DAG
+### Deep-DAG
 
 Invoke a nested DAG with optional input/output state mapping. Errors and warnings bubble up.
 
 ```ts
-{ type: 'sub-dag', name: 'enrich', dag: 'enrichmentDAG',
+{ '@type': 'DeepDAGNode', name: 'enrich', dag: 'enrichmentDAG',
   stateMapping: {
-    // copies fields from parent state into child state before the sub-DAG runs
+    // copies fields from parent state into child state before the deep-DAG runs
     input:  { 'targetUrl': 'currentItem.url' },
-    // copies fields from child state back into parent after the sub-DAG returns
+    // copies fields from child state back into parent after the deep-DAG returns
     output: { 'enrichedItem': 'result' },
   },
   outputs: { success: 'next', error: null } }
@@ -124,7 +124,7 @@ const dag = new DAGBuilder('demo', '1.0')
   .build();
 ```
 
-The first `.node()` call (or `.fanOut()`, `.parallel()`, `.subDAG()`) sets the entrypoint automatically. Call `.entrypoint(name)` to override.
+The first `.node()` call (or `.fanOut()`, `.parallel()`, `.deepDAG()`) sets the entrypoint automatically. Call `.entrypoint(name)` to override.
 
 ## Streaming + sync-style execution
 
@@ -140,7 +140,7 @@ for await (const node of dispatcher.execute('my-dag', state)) {
 }
 ```
 
-Intermediate results from parallel and sub-flow nodes are yielded before the aggregate result. Sub-flow node names are prefixed with the sub-flow node name (`parentNode.childNode`).
+Intermediate results from parallel and deep-DAG nodes are yielded before the aggregate result. Deep-DAG node names are prefixed with the deep-DAG node name (`parentNode.childNode`).
 
 `result.cursor` is `null` when the flow ran to completion. When execution stopped early (abort, deadline, error, unwired output) `cursor` holds the name of the next node that would have run.
 
@@ -261,7 +261,7 @@ dispatcher.registerNode(fetchNode);
 
 ## State accessors
 
-Fan-out source reads, fan-in writes, and sub-DAG state mapping all walk paths into state. The default `DottedPathAccessor` walks `path.split('.')`. Swap it via the constructor option:
+Fan-out source reads, fan-in writes, and deep-DAG state mapping all walk paths into state. The default `DottedPathAccessor` walks `path.split('.')`. Swap it via the constructor option:
 
 ```ts
 import { Dagonizer } from '@noocodex/dagonizer';
@@ -402,9 +402,9 @@ if (Validator.dag.is(value)) {
 }
 ```
 
-`Validator` exposes one sub-validator per top-level entity: `dag`, `singleNode`, `parallelNode`, `fanOutNode`, `subDAGNode`, `fanInConfig`, `node`, `nodeContext`, `nodeOutput`, `nodeError`, `nodeWarning`, `nodeResult`, `nodeStateData`, `executionResult`, `dagLifecycleState`, `checkpoint`, `validationResult`, `dagErrorJson`. Each provides `.is(x)`, `.validate(x)`, and `.errors(x)`.
+`Validator` exposes one sub-validator per top-level entity: `dag`, `singleNode`, `parallelNode`, `fanOutNode`, `deepDAGNode`, `fanInConfig`, `node`, `nodeContext`, `nodeOutput`, `nodeError`, `nodeWarning`, `nodeResult`, `nodeStateData`, `executionResult`, `dagLifecycleState`, `checkpoint`, `validationResult`, `dagErrorJson`. Each provides `.is(x)`, `.validate(x)`, and `.errors(x)`.
 
-`registerDAG` runs the schema pre-pass internally before its semantic validation tier (node refs, output wiring, sub-DAG cycle detection).
+`registerDAG` runs the schema pre-pass internally before its semantic validation tier (node refs, output wiring, deep-DAG cycle detection).
 
 `ValidationError` is a subclass of `DAGError` with `code: 'VALIDATION_ERROR'`. Use `instanceof ValidationError` to distinguish schema failures from operational errors.
 
@@ -460,7 +460,7 @@ Class extension is the only extension mechanism. Multi-observer composition is a
 - Node outputs without a routing entry
 - Routes targeting unknown nodes
 - Fan-in strategy mismatches (e.g. `append` without `target`)
-- Circular sub-DAG references
+- Circular deep-DAG references
 
 A JSON Schema pre-pass runs first (via `Validator.dag`) and catches structural issues before semantic validation.
 
@@ -565,7 +565,7 @@ console.log(source);
 //   END([end])
 ```
 
-Single placements render as rectangles, fan-outs as hexagons, sub-dags as stadia, parallel placements as subgraphs. Routes targeting `null` route to a synthetic `END` terminator.
+Single placements render as rectangles, fan-outs as hexagons, deep-dags as stadia, parallel placements as subgraphs. Routes targeting `null` route to a synthetic `END` terminator.
 
 ## Read accessors
 

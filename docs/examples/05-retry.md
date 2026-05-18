@@ -1,107 +1,67 @@
-# Example: Retry
+---
+title: 'Phase 05 · Retry compose'
+description: 'Two retry surfaces in The Archivist: per-call retry on every scout and on LLM ranking (RetryPolicy.run inside the node), and a DAG-level bounded retry loop in ComposeRetryLoopDAG.'
+---
 
-A flaky downstream that fails twice then succeeds. The node wraps the call in `RetryPolicy.run()`, which cooperates with the dispatcher's abort signal.
+# Phase 05 · Retry compose
+
+[The Archivist](./the-archivist) exercises two distinct retry shapes:
+
+1. **Per-call retry** — every scout and the LLM ranker wrap their external calls in `RetryPolicy.run`, so transient failures (network errors, malformed LLM JSON) are automatically retried with exponential backoff before the node reports its output.
+2. **DAG-level retry loop** — `validateResponse` routes back to `compose-response` when the draft fails the quality check, bounded by `state.attempts.compose` so the loop terminates instead of spinning.
+
+Neither shape throws. The dispatcher always sees a named output.
 
 ## Flow
 
 ```mermaid
 flowchart TB
-  start([entrypoint])
-  fetch[fetch\nRetryPolicy.run]
-  END([end])
-  start --> fetch
-  fetch -->|attempt 1: fail| fetch
-  fetch -->|attempt 2: fail| fetch
-  fetch -->|attempt 3: success| END
-  fetch -.->|abortOn or maxAttempts| failure([error])
+  scout[scout\nscoutRetry inside]
+  rank[rank-candidates\nrankRetry inside]
+  compose[crl-compose-response]
+  validate[crl-validate-response]
+  respond([crl-respond-to-visitor])
+  scout --> rank
+  rank --> compose
+  compose -->|drafted| validate
+  validate -->|retry| compose
+  validate -->|approved| respond
+  validate -->|exhausted| respond
 ```
 
 ## Code
 
-```ts
-/**
- * 05-retry — `RetryPolicy` inside a node.
- *
- * A flaky downstream fails twice then succeeds. The node wraps the call
- * in `RetryPolicy.run()` which cooperates with the dispatcher's abort signal.
- *
- * Run: npx tsx examples/05-retry.ts
- */
+### Per-call retry: scouts
 
-import {
-  BackoffStrategy,
-  NodeStateBase,
-  Dagonizer,
-  RetryPolicy,
-} from '../src/index.js';
-import type { DAG, NodeInterface } from '../src/index.js';
+The `#scout-retry` region shows the `scoutRetry` policy used by all four scouts — exponential backoff, 2 max attempts, signal-aware:
 
-class TransientError extends Error { constructor() { super('transient'); } }
+<<< ../../examples/the-archivist/nodes/scouts.ts#scout-retry
 
-let flakyAttempts = 0;
-const flakyDownstream = async (): Promise<string> => {
-  flakyAttempts++;
-  if (flakyAttempts < 3) throw new TransientError();
-  return 'OK';
-};
+### Per-call retry: LLM ranking
 
-class S extends NodeStateBase {
-  result = '';
-}
+The `#rank-retry` region shows the `rankRetry` policy used by `rankCandidates` — same shape, wrapping the LLM rank call so schema-violation responses get a second chance:
 
-const fetchNode: NodeInterface<S, 'success' | 'error'> = {
-  "name": 'fetch',
-  "outputs": ['success', 'error'],
-  async execute(state, context) {
-    const policy = new RetryPolicy({
-      "maxAttempts": 5,
-      "strategy": BackoffStrategy.EXPONENTIAL,
-      "baseDelay": 50,
-      "jitterFactor": 0,
-      "retryOn": [TransientError],
-    });
-    try {
-      state.result = await policy.run(flakyDownstream, context.signal);
-      return { "output": 'success' };
-    } catch {
-      return { "output": 'error' };
-    }
-  },
-};
+<<< ../../examples/the-archivist/nodes/rankCandidates.ts#rank-retry
 
-const dag: DAG = {
-  "name": 'retry-dag',
-  "version": '1',
-  "entrypoint": 'fetch',
-  "nodes": [
-    { "type": 'single', "name": 'fetch', "node": 'fetch',
-      "outputs": { "success": null, "error": null } },
-  ],
-};
+### DAG-level retry loop
 
-const dispatcher = new Dagonizer<S>();
-dispatcher.registerNode(fetchNode);
-dispatcher.registerDAG(dag);
+The complete `ComposeRetryLoopDAG` — a bounded compose → validate → retry loop built from plain `.node()` routes:
 
-const state = new S();
-await dispatcher.execute('retry-dag', state);
-process.stdout.write(`attempts=${flakyAttempts} result=${state.result}\n`);
-```
+<<< ../../examples/the-archivist/deepdags/ComposeRetryLoopDAG.ts
 
 ## What it demonstrates
 
-- `RetryPolicy` is instantiated inside `execute()`. Each node call gets a fresh policy instance — nodes are stateless.
-- `retryOn: [TransientError]` — only `TransientError` instances trigger a retry. Other errors propagate immediately.
-- `context.signal` is passed to `policy.run()` — if the dispatcher's abort signal fires during a backoff wait, the wait resolves early and the retry loop stops.
-- `jitterFactor: 0` disables random jitter for reproducible delays in examples and tests. In production, leave jitter enabled to spread retry traffic.
-- The node returns `'error'` if all attempts are exhausted. The DAG routes both `'success'` and `'error'` to `null` — the caller inspects `state.result` after execution.
+- **`RetryPolicy.run(task, signal)`** — composable per-call retry with `EXPONENTIAL` / `LINEAR` / `CONSTANT` / `DECORRELATED_JITTER` backoff. The second argument is `context.signal`; the policy aborts mid-backoff when the signal fires (see [Phase 04](./04-cancellation)).
+- **Bounded loop modeled in the DAG itself** — `validateResponse` routes `'retry'` back to `'crl-compose-response'`. The bound is tracked on `state.attempts.compose` inside the node — no special loop placement type.
+- **Best-effort fallback** — `'exhausted'` and `'approved'` both route to `crl-respond-to-visitor`. The visitor always gets a response; the dispatcher never throws on exhaustion.
+- **Ranking is best-effort too** — if `rankRetry` exhausts without a valid score, the `catch` block routes `'ranked'` with zero-scored candidates so `mergeCandidates` can still soft-gate.
+
+See this in action in the [Archivist live demo](./the-archivist).
 
 ## See also
 
-- [Retry](../guide/retry)
-- [Cancellation](../guide/cancellation)
-
-## Related reference
-
+- [Running domain: The Archivist](./the-archivist)
+- [Retry guide](../guide/retry)
+- [Phase 04 · Cancellation](./04-cancellation)
 - [Reference: Runtime — `RetryPolicy`, `BackoffStrategy`](../reference/runtime)
 - [Reference: Contracts — `RetryPolicyOptionsInterface`](../reference/contracts)

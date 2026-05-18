@@ -19,24 +19,46 @@
   --vp-font-family-base: "Caudex", "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
   --vp-font-family-mono: "Share Tech Mono", "SF Mono", Menlo, Consolas, ui-monospace, monospace;
 
-  /* ── Texture: SVG noise grain. Encoded so no extra HTTP request is
-        needed; tile is small so panels look engraved, not noisy.
-        Override the opacity / scale per surface as needed. ── */
+  /* Mirror the iridis layout: sidebar is an overlay drawer at every
+     viewport width, content fills nearly the whole viewport. The
+     `--vp-sidebar-width` becomes the drawer's target width, not a
+     reservation in the content flow. */
+  --vp-sidebar-width: 300px;
+  --vp-layout-max-width: 100%;
+
+  /* ── Texture: SVG noise grain for navy panels (sidebar, cards, code,
+        mermaid frames, nav bar). Encoded so no extra HTTP request is
+        needed; tile is small so panels look engraved, not noisy. The
+        grain matrix paints near-navy noise at ~22% alpha, which is
+        invisible on the silver body but readable on navy surfaces. ── */
   --dagonizer-texture-grain:
     url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='3'/><feColorMatrix values='0 0 0 0 0.137  0 0 0 0 0.176  0 0 0 0 0.231  0 0 0 0.22 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
-  --dagonizer-texture-silver:
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='2' seed='7'/><feColorMatrix values='0 0 0 0 0.62  0 0 0 0 0.67  0 0 0 0 0.74  0 0 0 0.16 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
 }
 
-/* ===== Body / typography ===== */
+/* ===== Body / typography =====
+   The body is the silver chrome frame around the navy content well.
+   The actual document scrolls inside .VPContent, which sits on a navy
+   panel (rule below) so steel-shine text is always reading against
+   navy — never against the silver bg. */
 
 body {
   background: var(--vp-c-bg);
   color: var(--vp-c-text-1);
-  /* Brushed-metal grain over the silver body — subtle, not noisy. */
-  background-image: var(--dagonizer-texture-silver);
-  background-size: 200px 200px;
-  background-attachment: fixed;
+}
+
+/* The main scroll area — VitePress wraps every page in .VPContent.
+   Give it the navy panel surface so paragraph text never lands on
+   the silver body and contrast stays high in both modes. */
+.VPContent,
+.VPContent.is-home,
+.VPDoc {
+  background-color: var(--vp-c-bg-alt);
+  background-image: var(--dagonizer-texture-grain);
+  background-size: 160px 160px;
+}
+.VPDoc > .container,
+.VPDoc .content {
+  background: transparent;
 }
 
 .vp-doc a {
@@ -86,18 +108,26 @@ body {
   white-space: normal;
 }
 
-/* Code blocks: pearl-black surface with engraved navy grain. */
+/* Code blocks: pearl-black surface with engraved navy grain. Chrome
+   (border, radius, surface, grain) is identical to Mermaid frames so
+   the two read as the same terminal panel. */
 .vp-doc div[class*="language-"] {
   border: 1px solid var(--vp-c-divider);
   border-radius: 4px;
   background-color: var(--dagonizer-pearl);
   background-image: var(--dagonizer-texture-grain);
   background-size: 160px 160px;
+  margin: 1.5rem 0;
 }
 
-/* Shiki token overrides — map gem palette to syntax roles */
-.vp-doc div[class*="language-"] .shiki {
-  background: var(--dagonizer-obsidian) !important;
+/* Shiki token overrides — let the inner <pre class="shiki"> stay
+   transparent so the grain texture from the parent shows through.
+   The night-owl token palette already carries its own foreground
+   colors that satisfy WCAG AAA against the pearl-black surface. */
+.vp-doc div[class*="language-"] .shiki,
+.vp-doc div[class*="language-"] pre {
+  background: transparent !important;
+  font-family: var(--vp-font-family-mono);
 }
 /* strings → cyan */
 .vp-doc .shiki .string,
@@ -262,7 +292,10 @@ body {
     drop-shadow(0 0 64px rgba(212, 166, 73, 0.22));
 }
 
-/* ===== Sidebar ===== */
+/* ===== Sidebar =====
+   Iridis-style: outer sidebar scrolls when content overflows, inner
+   nav containers don't add their own scrollbars, and the visible
+   scrollbar is hidden so the sidebar reads as a single solid panel. */
 
 .VPSidebar {
   background-color: var(--vp-c-bg-alt);
@@ -270,6 +303,23 @@ body {
   background-image: var(--dagonizer-texture-grain);
   background-size: 160px 160px;
   border-right: 1px solid var(--vp-c-divider);
+  overflow-y: auto;
+  /* Firefox / standards: hide scrollbar but keep scroll behavior */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+/* Webkit / Blink: hide the scrollbar gutter entirely */
+.VPSidebar::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+/* Inner nav containers don't add nested scrollbars — let the outer
+   sidebar own all the scrolling. Without this VitePress paints inner
+   `overflow: hidden` regions that clip group lists awkwardly. */
+.VPSidebarNav,
+.VPSidebar .nav,
+.VPSidebar .group {
+  overflow: visible !important;
+  height: auto !important;
+  max-height: none !important;
 }
 /* Eye motif between sidebar groups — two obsidian dots, like the
    talisman's eyes. Replaces the plain divider rule. */
@@ -309,34 +359,65 @@ body {
 }
 
 /* ===== Top nav =====
-   Caudex has a taller x-height than system-ui — lock the nav row height
-   and the title's line-height so descenders aren't clipped by the bottom
-   border. */
+   Full-viewport-width navy strip with engraved grain. VitePress's
+   default container caps `.content` at `--vp-layout-max-width`; remove
+   that cap so the bar runs edge-to-edge across the page (matches the
+   iridis layout). */
 
 .VPNav,
 .VPNavBar {
   height: var(--vp-nav-height);
+  width: 100%;
+  max-width: 100% !important;
+}
+.VPNavBar {
+  background-color: var(--vp-c-bg-alt) !important;
+  background-image: var(--dagonizer-texture-grain);
+  background-size: 160px 160px;
+  border-bottom: 1px solid var(--vp-c-divider);
+  backdrop-filter: none;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+.VPNavBar .wrapper,
+.VPNavBar .container,
+.VPNavBar .content,
+.VPNavBar .content-body {
+  max-width: 100% !important;
+  width: 100%;
 }
 .VPNavBar .container {
   align-items: center;
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
 }
 .VPNavBar .content {
   height: var(--vp-nav-height);
-  padding-top: 0;
-  padding-bottom: 0;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  /* Vitepress draws a divider via .content::before — kill it so the
+     full strip reads as one band, not two. */
+  background: none !important;
+}
+.VPNavBar .content::before {
+  display: none !important;
 }
 .VPNavBar .VPNavBarTitle {
   height: var(--vp-nav-height);
-  line-height: var(--vp-nav-height);
+  display: flex;
+  align-items: center;
 }
 .VPNavBar .VPNavBarTitle .title {
   height: auto;
-  line-height: 1.2;
+  line-height: 1.5;
   color: var(--dagonizer-silver);
   font-family: var(--vp-font-family-base);
   font-weight: 700;
   font-size: 1.05rem;
   letter-spacing: 0.02em;
+  border-bottom: 0 !important;
 }
 .VPNavBarMenuLink {
   color: var(--vp-c-text-2) !important;
@@ -492,20 +573,23 @@ body {
 }
 
 /* ===== Mermaid diagrams =====
-   Frame matches the doc surface; SVG colors resolve from the
-   --mermaid-* tokens in palette.css so themes and modes propagate. */
+   Frame chrome is unified with code blocks: same pearl-black surface,
+   same engraved navy grain, same 4px radius, same divider border, same
+   padding. Mermaid diagrams and `pre` blocks read as terminals on the
+   same wall. SVG colors resolve from the --mermaid-* tokens in
+   palette.css so themes and modes propagate. */
 
 .vp-doc div[class*="mermaid"],
 .vp-doc .dagonizer-mermaid-frame {
   position: relative;
   max-width: 100%;
   margin: 1.5rem 0;
-  padding: 0.75rem;
-  background-color: var(--vp-c-bg-alt);
+  padding: 16px;
+  background-color: var(--dagonizer-pearl);
   background-image: var(--dagonizer-texture-grain);
   background-size: 160px 160px;
   border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
+  border-radius: 4px;
   overflow-x: auto;
 }
 .vp-doc div[class*="mermaid"] svg,
@@ -533,6 +617,16 @@ body {
 .vp-doc .mermaid svg .node foreignObject span {
   fill: var(--mermaid-node-text) !important;
   color: var(--mermaid-node-text) !important;
+  /* Bigger, wrapping labels — diagrams stay readable without overflow */
+  font-size: 0.95rem !important;
+  line-height: 1.25 !important;
+}
+
+.vp-doc .mermaid svg .nodeLabel,
+.vp-doc .mermaid svg .node foreignObject {
+  overflow: visible !important;
+  white-space: normal !important;
+  word-break: break-word;
 }
 
 /* Hexagonal nodes (fan-out — Mermaid `{{name}}`) */
@@ -575,7 +669,9 @@ body {
 .vp-doc .mermaid svg .edgeLabel foreignObject span {
   color: var(--mermaid-edge-label-text) !important;
   fill: var(--mermaid-edge-label-text) !important;
-  font-size: 0.78rem !important;
+  font-size: 0.85rem !important;
+  font-weight: 600 !important;
+  padding: 1px 4px !important;
 }
 
 /* Subgraph clusters (parallel placement wrappers) */
@@ -601,8 +697,153 @@ body {
   fill: var(--mermaid-node-text) !important;
 }
 
-/* Comments / titles */
+/* Typography — every glyph the diagram renders uses the same monospace
+   stack as code blocks. Mermaid and `pre` blocks share one terminal
+   typeface so the diagrams read as ASCII-on-pearl, not serif-on-pearl. */
+.vp-doc .mermaid svg,
+.vp-doc .mermaid svg text,
 .vp-doc .mermaid svg text.titleText,
-.vp-doc .mermaid svg .label foreignObject span {
-  font-family: var(--vp-font-family-base) !important;
+.vp-doc .mermaid svg .label,
+.vp-doc .mermaid svg .label foreignObject span,
+.vp-doc .mermaid svg .nodeLabel,
+.vp-doc .mermaid svg .edgeLabel,
+.vp-doc .mermaid svg .edgeLabel span,
+.vp-doc .mermaid svg .cluster .nodeLabel,
+.vp-doc .mermaid svg .cluster text,
+.vp-doc .mermaid svg foreignObject span,
+.vp-doc .mermaid svg foreignObject div {
+  font-family: var(--vp-font-family-mono) !important;
+  font-size: 0.85rem !important;
+  letter-spacing: 0.01em;
+}
+/* Edge labels stay slightly smaller for hierarchy */
+.vp-doc .mermaid svg .edgeLabel,
+.vp-doc .mermaid svg .edgeLabel span,
+.vp-doc .mermaid svg .edgeLabel foreignObject span {
+  font-size: 0.78rem !important;
+}
+
+/* ============================================================
+   Sidebar-as-overlay-drawer layout
+   ------------------------------------------------------------
+   Mirrors iridis: the page-tree sidebar is a fixed-position
+   drawer at every viewport. Content never reserves space for
+   it. A navbar toggle adds/removes the
+   `.dagonizer-sidebar-collapsed` class on <html> to slide the
+   drawer off-screen and back. Default state on first paint is
+   OPEN on wide screens, CLOSED on narrow.
+   ============================================================ */
+
+/* Content reserves the sidebar width on the left WHEN open, no padding
+   when collapsed — so the runner / docs never sit under the overlay
+   on wide screens. On narrow screens (<1100px) the sidebar is hidden
+   by default; even when toggled open it overlays (the dim backdrop
+   makes the dismiss path obvious). */
+html:not(.dagonizer-sidebar-collapsed) .VPContent.has-sidebar,
+html:not(.dagonizer-sidebar-collapsed) .VPContent.VPContent.has-sidebar {
+  padding-left: min(85vw, var(--vp-sidebar-width, 300px)) !important;
+  transition: padding-left 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+html.dagonizer-sidebar-collapsed .VPContent.has-sidebar,
+html.dagonizer-sidebar-collapsed .VPContent.VPContent.has-sidebar {
+  padding-left: 0 !important;
+  transition: padding-left 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+/* Below the desktop breakpoint, the sidebar is an overlay even when
+   open — don't reserve space for it. */
+@media (max-width: 1099px) {
+  html:not(.dagonizer-sidebar-collapsed) .VPContent.has-sidebar,
+  html.dagonizer-sidebar-collapsed .VPContent.has-sidebar {
+    padding-left: 0 !important;
+  }
+}
+
+/* Content container — fill the viewport, leave generous padding so
+   the demo runner has room to breathe. */
+.VPDoc .container {
+  max-width: none;
+  margin-left:  auto;
+  margin-right: auto;
+}
+.VPDoc.has-aside .content-container,
+.VPDoc .content-container {
+  max-width: min(1280px, 88vw) !important;
+  margin-left:  auto !important;
+  margin-right: auto !important;
+}
+
+/* Sidebar: fixed overlay drawer at every viewport. */
+.VPSidebar {
+  position: fixed !important;
+  top: var(--vp-nav-height, 64px) !important;
+  left: 0 !important;
+  right: auto !important;
+  bottom: 0 !important;
+  width: min(85vw, var(--vp-sidebar-width, 300px)) !important;
+  max-width: 320px !important;
+  height: calc(100vh - var(--vp-nav-height, 64px)) !important;
+  max-height: calc(100vh - var(--vp-nav-height, 64px)) !important;
+  overflow-y: auto !important;
+  z-index: 30;
+  background: var(--vp-c-bg) !important;
+  border-right: 1px solid var(--vp-c-divider);
+  border-radius: 0 8px 8px 0;
+  box-shadow: 8px 0 24px -8px rgba(0, 0, 0, 0.45);
+  transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1),
+              opacity   220ms cubic-bezier(0.4, 0, 0.2, 1);
+  padding-top: 0.75rem !important;
+  padding-left: 1rem !important;
+  padding-right: 0.75rem !important;
+}
+
+/* Open state (default): drawer is visible. */
+html:not(.dagonizer-sidebar-collapsed) .VPSidebar,
+html:not(.dagonizer-sidebar-collapsed) .VPSidebarContainer {
+  transform: translateX(0) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
+/* Collapsed state: drawer slides fully off-screen left. */
+html.dagonizer-sidebar-collapsed .VPSidebar,
+html.dagonizer-sidebar-collapsed .VPSidebarContainer {
+  transform: translateX(-100%) !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+/* Backdrop scrim — only painted on narrow viewports where the open
+   drawer covers a meaningful portion of the page. Clicking it
+   collapses the drawer (wired via the toggle script). */
+.dagonizer-sidebar-backdrop {
+  position: fixed;
+  inset: var(--vp-nav-height, 64px) 0 0 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 29;
+  backdrop-filter: blur(2px);
+  transition: opacity 220ms cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0;
+  pointer-events: none;
+}
+@media (max-width: 1099px) {
+  html:not(.dagonizer-sidebar-collapsed) .dagonizer-sidebar-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* Right aside (table of contents) — hide everywhere. The fixed-overlay
+   sidebar covers page navigation; the in-page TOC was eating ~340px
+   on the right and pushing the content column off-center. */
+.VPDoc .aside,
+.VPDoc.has-aside .aside { display: none !important; }
+.VPDoc.has-aside .container { max-width: none !important; }
+.VPDoc.has-aside .content { padding-right: 0 !important; }
+
+/* On phones, the content padding tightens. */
+@media (max-width: 640px) {
+  .VPDoc .content { padding-left: 1rem !important; padding-right: 1rem !important; }
+  .VPDoc .content-container { max-width: 100% !important; }
 }

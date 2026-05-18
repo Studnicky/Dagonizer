@@ -4,6 +4,7 @@ import { afterEach, describe, it } from 'node:test';
 import { Checkpoint } from '../../src/checkpoint/Checkpoint.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
 import { DAGError, ValidationError } from '../../src/errors/index.js';
@@ -66,8 +67,14 @@ void describe('cursor on ExecutionResultInterface', () => {
     };
     dispatcher.registerNode(op);
     dispatcher.registerDAG({
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:clean',
+      '@type':    'DAG',
       'name': 'clean', 'version': '1', 'entrypoint': 's',
-      'nodes': [{ 'type': 'single', 'name': 's', 'node': 'op', 'outputs': { 'success': null } }],
+      'nodes': [{
+        '@id': 'urn:noocodex:dag:clean/node/s', '@type': 'SingleNode',
+        'name': 's', 'node': 'op', 'outputs': { 'success': null },
+      }],
     });
     const result = await dispatcher.execute('clean', new NodeStateBase());
     assert.equal(result.cursor, null);
@@ -88,10 +95,15 @@ void describe('cursor on ExecutionResultInterface', () => {
     };
     dispatcher.registerNode(op);
     dispatcher.registerDAG({
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:two',
+      '@type':    'DAG',
       'name': 'two', 'version': '1', 'entrypoint': 'a',
       'nodes': [
-        { 'type': 'single', 'name': 'a', 'node': 'op', 'outputs': { 'success': 'b' } },
-        { 'type': 'single', 'name': 'b', 'node': 'op', 'outputs': { 'success': null } },
+        { '@id': 'urn:noocodex:dag:two/node/a', '@type': 'SingleNode',
+          'name': 'a', 'node': 'op', 'outputs': { 'success': 'b' } },
+        { '@id': 'urn:noocodex:dag:two/node/b', '@type': 'SingleNode',
+          'name': 'b', 'node': 'op', 'outputs': { 'success': null } },
       ],
     });
     const ctl = new AbortController();
@@ -121,11 +133,17 @@ void describe('Checkpoint round-trip', () => {
     };
     dispatcher.registerNode(inc);
     const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:count',
+      '@type':    'DAG',
       'name': 'count', 'version': '1', 'entrypoint': 'a',
       'nodes': [
-        { 'type': 'single', 'name': 'a', 'node': 'inc', 'outputs': { 'success': 'b' } },
-        { 'type': 'single', 'name': 'b', 'node': 'inc', 'outputs': { 'success': 'c' } },
-        { 'type': 'single', 'name': 'c', 'node': 'inc', 'outputs': { 'success': null } },
+        { '@id': 'urn:noocodex:dag:count/node/a', '@type': 'SingleNode',
+          'name': 'a', 'node': 'inc', 'outputs': { 'success': 'b' } },
+        { '@id': 'urn:noocodex:dag:count/node/b', '@type': 'SingleNode',
+          'name': 'b', 'node': 'inc', 'outputs': { 'success': 'c' } },
+        { '@id': 'urn:noocodex:dag:count/node/c', '@type': 'SingleNode',
+          'name': 'c', 'node': 'inc', 'outputs': { 'success': null } },
       ],
     };
     dispatcher.registerDAG(dag);
@@ -170,8 +188,14 @@ void describe('Checkpoint round-trip', () => {
     };
     dispatcher.registerNode(op);
     dispatcher.registerDAG({
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:done',
+      '@type':    'DAG',
       'name': 'done', 'version': '1', 'entrypoint': 's',
-      'nodes': [{ 'type': 'single', 'name': 's', 'node': 'op', 'outputs': { 'success': null } }],
+      'nodes': [{
+        '@id': 'urn:noocodex:dag:done/node/s', '@type': 'SingleNode',
+        'name': 's', 'node': 'op', 'outputs': { 'success': null },
+      }],
     });
     const result = await dispatcher.execute('done', new NodeStateBase());
     assert.throws(() => Checkpoint.from('done', result), DAGError);

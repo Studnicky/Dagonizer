@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
@@ -25,11 +26,15 @@ void describe('Dagonizer fan-in strategies', () => {
     dispatcher.registerNode(classify);
 
     const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:partition',
+      '@type':    'DAG',
       'name': 'partition',
       'version': '1',
       'entrypoint': 'fan',
       'nodes': [
-        { 'type': 'fan-out', 'name': 'fan', 'node': 'classify',
+        { '@id': 'urn:noocodex:dag:partition/node/fan', '@type': 'FanOutNode',
+          'name': 'fan', 'node': 'classify',
           'source': 'items', 'itemKey': 'item',
           'fanIn': { 'strategy': 'partition', 'partitions': { 'even': 'evens', 'odd': 'odds' } },
           'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
@@ -67,11 +72,15 @@ void describe('Dagonizer fan-in strategies', () => {
 
     interface S extends NodeStateBase { items: number[] }
     const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:customfan',
+      '@type':    'DAG',
       'name': 'customfan',
       'version': '1',
       'entrypoint': 'fan',
       'nodes': [
-        { 'type': 'fan-out', 'name': 'fan', 'node': 'classify',
+        { '@id': 'urn:noocodex:dag:customfan/node/fan', '@type': 'FanOutNode',
+          'name': 'fan', 'node': 'classify',
           'source': 'items', 'itemKey': 'item',
           'fanIn': { 'strategy': 'custom', 'customNode': 'merge' },
           'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
@@ -103,11 +112,15 @@ void describe('Dagonizer fan-in strategies', () => {
     };
     dispatcher.registerNode(slow);
     const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:conc',
+      '@type':    'DAG',
       'name': 'conc',
       'version': '1',
       'entrypoint': 'fan',
       'nodes': [
-        { 'type': 'fan-out', 'name': 'fan', 'node': 'slow',
+        { '@id': 'urn:noocodex:dag:conc/node/fan', '@type': 'FanOutNode',
+          'name': 'fan', 'node': 'slow',
           'source': 'items', 'concurrency': 2,
           'fanIn': { 'strategy': 'append', 'target': 'out' },
           'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },

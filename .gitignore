@@ -6,3 +6,5 @@ dist-testing/
 .DS_Store
 docs/.vitepress/dist
 docs/.vitepress/cache
+.claude/
+docs/.claude/

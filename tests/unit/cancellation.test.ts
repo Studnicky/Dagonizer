@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 void describe('Dagonizer AbortSignal cancellation', () => {
@@ -21,10 +22,17 @@ void describe('Dagonizer AbortSignal cancellation', () => {
     };
     dispatcher.registerNode(slowNode);
     dispatcher.registerDAG({
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:cancel',
+      '@type':    'DAG',
       'name': 'cancel',
       'version': '1',
       'entrypoint': 'slow',
-      'nodes': [{ 'type': 'single', 'name': 'slow', 'node': 'slow', 'outputs': { 'success': null } }],
+      'nodes': [{
+        '@id':   'urn:noocodex:dag:cancel/node/slow',
+        '@type': 'SingleNode',
+        'name':  'slow', 'node': 'slow', 'outputs': { 'success': null },
+      }],
     });
 
     const controller = new AbortController();
@@ -50,10 +58,17 @@ void describe('Dagonizer AbortSignal cancellation', () => {
     };
     dispatcher.registerNode(slowNode);
     dispatcher.registerDAG({
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:t',
+      '@type':    'DAG',
       'name': 't',
       'version': '1',
       'entrypoint': 'slow',
-      'nodes': [{ 'type': 'single', 'name': 'slow', 'node': 'slow', 'outputs': { 'success': null } }],
+      'nodes': [{
+        '@id':   'urn:noocodex:dag:t/node/slow',
+        '@type': 'SingleNode',
+        'name':  'slow', 'node': 'slow', 'outputs': { 'success': null },
+      }],
     });
 
     const state = new NodeStateBase();
@@ -76,10 +91,17 @@ void describe('Dagonizer AbortSignal cancellation', () => {
     };
     dispatcher.registerNode(op);
     dispatcher.registerDAG({
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:inspect-dag',
+      '@type':    'DAG',
       'name': 'inspect-dag',
       'version': '1',
       'entrypoint': 's1',
-      'nodes': [{ 'type': 'single', 'name': 's1', 'node': 'inspect', 'outputs': { 'success': null } }],
+      'nodes': [{
+        '@id':   'urn:noocodex:dag:inspect-dag/node/s1',
+        '@type': 'SingleNode',
+        'name':  's1', 'node': 'inspect', 'outputs': { 'success': null },
+      }],
     });
     await dispatcher.execute('inspect-dag', new NodeStateBase());
     assert.equal(seen.dag, 'inspect-dag');
@@ -114,12 +136,17 @@ void describe('Dagonizer extension hooks', () => {
     };
     dispatcher.registerNode(op);
     dispatcher.registerDAG({
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:hooked',
+      '@type':    'DAG',
       'name': 'hooked',
       'version': '1',
       'entrypoint': 'a',
       'nodes': [
-        { 'type': 'single', 'name': 'a', 'node': 'op', 'outputs': { 'success': 'b' } },
-        { 'type': 'single', 'name': 'b', 'node': 'op', 'outputs': { 'success': null } },
+        { '@id': 'urn:noocodex:dag:hooked/node/a', '@type': 'SingleNode',
+          'name': 'a', 'node': 'op', 'outputs': { 'success': 'b' } },
+        { '@id': 'urn:noocodex:dag:hooked/node/b', '@type': 'SingleNode',
+          'name': 'b', 'node': 'op', 'outputs': { 'success': null } },
       ],
     });
     await dispatcher.execute('hooked', new NodeStateBase());
@@ -150,10 +177,17 @@ void describe('Dagonizer extension hooks', () => {
     };
     dispatcher.registerNode(op);
     dispatcher.registerDAG({
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:err',
+      '@type':    'DAG',
       'name': 'err',
       'version': '1',
       'entrypoint': 's',
-      'nodes': [{ 'type': 'single', 'name': 's', 'node': 'boom', 'outputs': { 'success': null } }],
+      'nodes': [{
+        '@id':   'urn:noocodex:dag:err/node/s',
+        '@type': 'SingleNode',
+        'name':  's', 'node': 'boom', 'outputs': { 'success': null },
+      }],
     });
     const result = await dispatcher.execute('err', new NodeStateBase());
     assert.equal(result.cursor, 's');

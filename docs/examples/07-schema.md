@@ -1,103 +1,59 @@
-# Example: Schema Loading
+---
+title: 'Phase 07 · Tool schemas'
+description: 'Tool schema design in The Archivist: JSON Schema 2020-12 input schemas on SubjectSearchTool and CanonicalId cross-source deduplication. Shape-only examples prevent LLM verbatim echo.'
+---
 
-Load a DAG from a JSON string, validate against `DAGSchema`, then execute. Demonstrates error handling for malformed input and a round-trip serialization check.
+# Phase 07 · Tool schemas
+
+[The Archivist](./the-archivist) exposes its capabilities to the LLM as typed tools with JSON Schema 2020-12 `inputSchema` definitions. `decideTools` hands these schemas to the LLM and asks it to produce a `toolPlan` — a list of `{ name, arguments }` calls the scouts then execute. The schema design principles used here apply to any Dagonizer tool.
 
 ## Flow
 
 ```mermaid
 flowchart TB
-  json([JSON text])
-  load[Dagonizer.load]
-  validate[Validator.dag.validate]
-  register[dispatcher.registerDAG]
-  execute[dispatcher.execute]
-  END([result])
-  json --> load
-  load --> validate
-  validate -->|valid DAG| register
-  register --> execute
-  execute --> END
-  validate -.->|ValidationError| failure([throw])
+  query([state.query + tools])
+  decide[decideTools\nLLM → toolPlan]
+  plan([state.toolPlan\narray of tool calls])
+  scouts[4 parallel scouts]
+  candidates([state.candidates])
+  merge[CanonicalId.dedupe\nmergeCandidates]
+  shortlist([state.shortlist])
+  query --> decide
+  decide --> plan
+  plan --> scouts
+  scouts --> candidates
+  candidates --> merge
+  merge --> shortlist
 ```
 
 ## Code
 
-```ts
-/**
- * 07-schema — load a DAG from a JSON string, validate against
- * `DAGSchema`, then execute.
- *
- * The runtime validator catches malformed JSON at the ingest boundary
- * before any semantic checks. ValidationError carries every Ajv failure as
- * a formatted `<instancePath>: <message>` line.
- *
- * Run: npx tsx examples/07-schema.ts
- */
+### SubjectSearchTool: input schema
 
-import {
-  NodeStateBase,
-  Dagonizer,
-  ValidationError,
-} from '../src/index.js';
-import type { NodeInterface } from '../src/index.js';
+The `#tool-schema` region covers the `definition` constant — the tool name, description, and `inputSchema`. Note the `examples` fields: they are intentionally generic placeholders, not real titles or ISBNs. Some models quote schema examples verbatim into responses; shape-only examples prevent that:
 
-const echo: NodeInterface<NodeStateBase, 'success'> = {
-  "name": 'echo',
-  "outputs": ['success'],
-  async execute(state) {
-    state.setMetadata('seen', true);
-    return { "output": 'success' };
-  },
-};
+<<< ../../examples/the-archivist/tools/SubjectSearchTool.ts#tool-schema
 
-const dagJson = `{
-  "name": "from-json",
-  "version": "1",
-  "entrypoint": "echo",
-  "nodes": [
-    { "type": "single", "name": "echo", "node": "echo", "outputs": { "success": null } }
-  ]
-}`;
+### CanonicalId: cross-source deduplication
 
-const dag = Dagonizer.load(dagJson);
-process.stdout.write(`loaded: ${dag.name} v${dag.version}\n`);
+Every tool produces `Candidate[]` with a `book.isbn` field set by `CanonicalId.pick`. The same work indexed by OpenLibrary key, Google Books volumeId, and Wikipedia title still deduplicates because `CanonicalId` normalises all three to one stable identifier:
 
-const dispatcher = new Dagonizer<NodeStateBase>();
-dispatcher.registerNode(echo);
-dispatcher.registerDAG(dag);
-
-const state = new NodeStateBase();
-await dispatcher.execute('from-json', state);
-process.stdout.write(`ran DAG; seen = ${String(state.getMetadata('seen'))}\n`);
-
-// Round-trip: serialize → load yields an equivalent DAG.
-const roundTripped = Dagonizer.load(Dagonizer.serialize(dag));
-process.stdout.write(`round-trip equal: ${String(JSON.stringify(roundTripped) === JSON.stringify(dag))}\n`);
-
-// Malformed input is rejected with a ValidationError listing each Ajv failure.
-try {
-  Dagonizer.load('{ "name": "broken" }');
-} catch (error) {
-  if (error instanceof ValidationError) {
-    process.stdout.write(`validation error path works: ${error.message.split('\n')[0]}\n`);
-  }
-}
-```
+<<< ../../examples/the-archivist/tools/CanonicalId.ts
 
 ## What it demonstrates
 
-- `Dagonizer.load(text)` is the single permitted ingest boundary for external DAG JSON. It calls `JSON.parse`, then validates against `DAGSchema` (Ajv 2020-12).
-- `ValidationError` carries a multi-line message with one `<instancePath>: <message>` entry per Ajv failure.
-- `Dagonizer.serialize(dag)` serializes a validated DAG to pretty-printed JSON. The round-trip produces an equivalent object.
-- The `Dagonizer.fromValue(obj)` variant accepts an already-parsed value (e.g., from a YAML loader).
-- `state.setMetadata` / `state.getMetadata` are the correct way for nodes to store untyped cross-node data.
+- **`additionalProperties: true`** — the schema lets the LLM pass extra OpenLibrary parameters (`lang`, `first_publish_year`) without a schema change. Strict mode on input validation would reject them; `additionalProperties: true` allows pass-through.
+- **Shape-only `examples`** — `'<subject-or-theme>'`, `'<plot-motif>'` are descriptive placeholders. Never use real data in `examples` fields when the LLM will see the schema — it may copy them back verbatim into responses.
+- **`strict: true`** — signals to the Gemini API that the tool definition should be treated as a strict JSON schema. The field is passed through to the model's function declaration.
+- **`CanonicalId.pick`** — resolves ISBN-13 → ISBN-10 → `urn:work:<slug>` in priority order. All four scouts call it so `CanonicalId.dedupe` in `mergeCandidates` can collapse cross-source duplicates by the same stable key.
+- **`CanonicalId.merge`** — when two candidates share the same canonical id, `merge` unions their authors, subjects, publishers, and `_sources[]` arrays, keeping the richer description and higher score.
+
+See this in action in the [Archivist live demo](./the-archivist).
 
 ## See also
 
-- [Schema & JSON loading](../guide/schema)
-- [DAGBuilder](../guide/builder) — author in code instead of loading JSON
-
-## Related reference
-
+- [Running domain: The Archivist](./the-archivist)
+- [Schema & JSON loading guide](../guide/schema)
+- [Phase 06 · DAGBuilder](./06-builder) — the DAG topology the tools feed into
 - [Reference: Validation — `Validator.dag`](../reference/validation)
 - [Reference: Errors — `ValidationError`](../reference/errors)

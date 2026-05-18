@@ -35,10 +35,10 @@ export type { ParallelNode } from './dag/ParallelNode.js';
 export { FanOutNodeSchema } from './dag/FanOutNode.js';
 export type { FanOutNode } from './dag/FanOutNode.js';
 
-export { SubDAGNodeSchema } from './dag/SubDAGNode.js';
-export type { SubDAGNode } from './dag/SubDAGNode.js';
+export { DeepDAGNodeSchema } from './dag/DeepDAGNode.js';
+export type { DeepDAGNode } from './dag/DeepDAGNode.js';
 
-export { DAGSchema } from './dag/DAG.js';
+export { DAGSchema, DAG_CONTEXT } from './dag/DAG.js';
 export type { DAG } from './dag/DAG.js';
 
 // ---------------------------------------------------------------------------

@@ -24,7 +24,7 @@ Render a `DAG` as Mermaid `flowchart` source. The output is a complete Mermaid b
 |-----------|---------------|----------------|
 | `single`  | rectangle     | `greet[greet]` |
 | `fan-out` | hexagon       | `scout{{scout}}` |
-| `sub-dag` | stadium       | `enrich([enrich])` |
+| `deep-dag` | stadium       | `enrich([enrich])` |
 | `parallel`| subgraph      | `subgraph group["group (parallel)"]` … `end` |
 
 Every output route renders as a labeled directed edge: `from -->|outcome| to`. Routes targeting `null` route to a synthetic `END` terminator (one per DAG, rendered as `END([end])`).

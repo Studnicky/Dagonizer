@@ -1,100 +1,62 @@
-# Example: Fan-Out + Fan-In
+---
+title: 'Phase 02 · Fan-out scout'
+description: 'Four-source parallel scout cluster in the Archivist — OpenLibrary, Google Books, Subject search, and Wikipedia run concurrently, combine with the collect strategy, then feed rank and merge.'
+---
 
-Process an array of items in parallel (concurrency 2), partition results into separate state fields by output name.
+# Phase 02 · Fan-out scout
+
+[The Archivist](./the-archivist) queries four book sources at once: OpenLibrary keyword search, Google Books, OpenLibrary subject search, and Wikipedia enrichment. All four scouts run in a `parallel` placement with `combine: 'collect'` — the fan-in waits for all four and merges their `state.candidates` mutations before routing forward to rank and merge. The `BookSearchFanoutDAG` packages this entire cluster as a reusable deep-DAG.
 
 ## Flow
 
 ```mermaid
 flowchart TB
-  start([state.urls])
-  fan{{probe-all\nfan-out}}
-  succeeded([state.succeeded])
-  failed([state.failed])
-  END([end])
-  start -->|each url| fan
-  fan -->|ok| succeeded
-  fan -->|fail| failed
-  succeeded --> END
-  failed --> END
+  extract[bsf-extract-query]
+  decide[bsf-decide-tools]
+  fan{{book-search-fan-out\nparallel collect}}
+  ol([bsf-ol OpenLibrary])
+  gb([bsf-gb Google Books])
+  sub([bsf-subject Subject])
+  wiki([bsf-wiki Wikipedia])
+  rank[bsf-rank-candidates]
+  merge[bsf-merge-candidates]
+  record[bsf-record-findings]
+  gate[bsf-has-citations-gate]
+  recall([bsf-recall-past-visits])
+  END([success / error])
+  extract --> decide
+  decide --> fan
+  fan --> ol & gb & sub & wiki
+  ol & gb & sub & wiki --> rank
+  rank --> merge
+  merge -->|ranked| record
+  merge -->|empty| END
+  record --> gate
+  gate -->|pass| recall
+  gate -->|fail| END
+  recall --> END
 ```
 
 ## Code
 
-```ts
-/**
- * 02-fanout — fan-out + fan-in.
- *
- * Fans out over an array of URLs (concurrency 2), classifies each as
- * `ok | fail`, partitions results into separate state buckets.
- *
- * Run: npx tsx examples/02-fanout.ts
- */
+The complete `BookSearchFanoutDAG` — the actual deep-DAG the Archivist places three times for on-topic, author, and similar-search branches:
 
-import {
-  NodeStateBase,
-  Dagonizer,
-} from '../src/index.js';
-import type { DAG, NodeInterface } from '../src/index.js';
-
-class ScrapeState extends NodeStateBase {
-  urls: string[] = [];
-  succeeded: string[] = [];
-  failed: string[] = [];
-}
-
-const probe: NodeInterface<ScrapeState, 'ok' | 'fail'> = {
-  "name": 'probe',
-  "outputs": ['ok', 'fail'],
-  async execute(state) {
-    const url = state.getMetadata<string>('url') ?? '';
-    // Fake: even-length URLs succeed, odd fail.
-    return { "output": url.length % 2 === 0 ? 'ok' : 'fail' };
-  },
-};
-
-const dag: DAG = {
-  "name": 'scrape',
-  "version": '1',
-  "entrypoint": 'probe-all',
-  "nodes": [
-    {
-      "type": 'fan-out',
-      "name": 'probe-all',
-      "node": 'probe',
-      "source": 'urls',
-      "itemKey": 'url',
-      "concurrency": 2,
-      "fanIn": { "strategy": 'partition', "partitions": { "ok": 'succeeded', "fail": 'failed' } },
-      "outputs": { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
-    },
-  ],
-};
-
-const dispatcher = new Dagonizer<ScrapeState>();
-dispatcher.registerNode(probe);
-dispatcher.registerDAG(dag);
-
-const state = new ScrapeState();
-state.urls = ['https://a.example', 'https://bb.example', 'https://ccc.example', 'https://dddd.example'];
-await dispatcher.execute('scrape', state);
-process.stdout.write(`OK: ${JSON.stringify(state.succeeded)}\n`);
-process.stdout.write(`FAIL: ${JSON.stringify(state.failed)}\n`);
-```
+<<< ../../examples/the-archivist/deepdags/BookSearchFanoutDAG.ts
 
 ## What it demonstrates
 
-- The `fan-out` node type reads `state.urls` (dotted path `'urls'`), creates one node call per item.
-- `itemKey: 'url'` — each item is written into `state.metadata.url` for the node to read via `state.getMetadata<string>('url')`.
-- `concurrency: 2` — at most two items run simultaneously.
-- `fanIn.strategy: 'partition'` — results are grouped by output name and written to the dotted paths `state.succeeded` and `state.failed`.
-- Aggregate output is `all-success`, `partial`, or `all-error` depending on item counts. All four aggregate outputs route to `null` here (single terminal node).
+- **`parallel` placement** — `.parallel('book-search-fan-out', ['bsf-ol', 'bsf-gb', 'bsf-subject', 'bsf-wiki'], 'collect', routes)` runs all four scout nodes concurrently. `combine: 'collect'` waits for every branch and merges their state mutations before routing forward.
+- **Scout gating via `state.toolPlan`** — each scout checks `state.toolPlan` before making a network call. `decideTools` (an LLM call) populates the plan; scouts that find no matching plan entry return `'empty'` immediately. `wikipediaScout` is the exception — it runs on terms alone, always.
+- **`scoutRetry` pass-through** — every scout calls `scoutRetry.run(() => tool.execute(..., context.signal), context.signal)`. The signal propagates from the dispatcher through the retry policy — if the parent flow is cancelled, retries abort mid-backoff.
+- **Aggregate routing** — the `parallel` node reports `'success'`, `'error'`, or a partial aggregate once all branches settle. Both `'success'` and `'error'` route to `bsf-rank-candidates` here — the cluster always attempts ranking regardless of partial failures.
+- **Molecular `registerBookSearchFanoutNodes`** — the exported helper registers the exact node set the deep-DAG needs. Call it before `dispatcher.registerDAG(BookSearchFanoutDAG)`.
+
+See this in action in the [Archivist live demo](./the-archivist).
 
 ## See also
 
-- [State accessors](../guide/state-accessor) — `source` and `partitions` paths run through the accessor
-- [DAGBuilder — `.fanOut(...)`](../guide/builder)
-
-## Related reference
-
-- [Reference: Core — `FanInStrategy`](../reference/core)
-- [Reference: Entities — `FanOutNode`, `FanInConfig`](../reference/entities)
+- [Running domain: The Archivist](./the-archivist)
+- [Phase 01 · Linear intake](./01-linear)
+- [Phase 03 · Deep-DAG composition](./03-deepflows)
+- [Reference: Core — `FanInStrategies`](../reference/core)
+- [Reference: Entities — `ParallelNode`](../reference/entities)

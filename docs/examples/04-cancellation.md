@@ -1,94 +1,61 @@
-# Example: Cancellation
+---
+title: 'Phase 04 · Cancellation'
+description: 'Abort the Archivist mid-scout when the visitor closes the connection, or cap the entire flow with a hard deadline. The signal propagates through RetryPolicy to every node.'
+---
 
-Demonstrates both cancellation shapes: caller-controlled `AbortController.signal` and a dispatcher-managed `deadlineMs` hard limit.
+# Phase 04 · Cancellation
+
+[The Archivist](./the-archivist) sometimes talks to slow external APIs. When the visitor closes the page, the dispatcher aborts cleanly — every node that is mid-network call sees the signal flip, skips its work, and the lifecycle records `cancelled` with the abort reason. A `deadlineMs` cap adds a hard ceiling regardless of the signal.
 
 ## Flow
 
 ```mermaid
 flowchart TB
-  start([entrypoint])
-  slow[slow]
-  fast[fast]
-  END([end])
-  start --> slow
-  slow -->|done| fast
-  fast -->|done| END
-  slow -. signal.abort .-> cancelled([cancelled])
-  slow -. deadlineMs hits .-> timedOut([timed_out])
+  start([visitor query])
+  classify[classify-intent]
+  extract[bsf-extract-query]
+  scout[book-search-fan-out\n4 parallel scouts]
+  merge[bsf-merge-candidates]
+  compose[compose-retry-loop]
+  cancelled([state.lifecycle.kind = cancelled])
+  timedOut([state.lifecycle.kind = timed_out])
+  start --> classify
+  classify -->|on-topic| extract
+  extract --> scout
+  scout -. visitor closes page .-> cancelled
+  scout -. 5s deadline expires .-> timedOut
+  scout --> merge
+  merge --> compose
 ```
 
 ## Code
 
-```ts
-/**
- * 04-cancellation — AbortSignal + deadlineMs.
- *
- * Demonstrates both shapes of cancellation:
- *   (a) caller-controlled abort via AbortController.signal
- *   (b) dispatcher deadline via deadlineMs
- *
- * Inspect `state.lifecycle.kind` after each run — 'cancelled' vs 'timed_out'.
- *
- * Run: npx tsx examples/04-cancellation.ts
- */
+### Dispatcher + signal + deadline
 
-import {
-  NodeStateBase,
-  Dagonizer,
-} from '../src/index.js';
-import type { DAG, NodeInterface } from '../src/index.js';
+The `#cancellation-run` region shows the `AbortController`, the `signal` + `deadlineMs` execute options, and the lifecycle switch that reads the terminal state:
 
-const slow: NodeInterface<NodeStateBase, 'success'> = {
-  "name": 'slow',
-  "outputs": ['success'],
-  async execute(_state, context) {
-    await new Promise<void>((resolve, reject) => {
-      const t = setTimeout(resolve, 5_000);
-      context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { "once": true });
-    });
-    return { "output": 'success' };
-  },
-};
+<<< ../../examples/the-archivist/runArchivist.ts#cancellation-run
 
-const dag: DAG = {
-  "name": 'slow-dag',
-  "version": '1',
-  "entrypoint": 'slow',
-  "nodes": [{ "type": 'single', "name": 'slow', "node": 'slow', "outputs": { "success": null } }],
-};
+### Scout signal pass-through
 
-const dispatcher = new Dagonizer<NodeStateBase>();
-dispatcher.registerNode(slow);
-dispatcher.registerDAG(dag);
+The `#signal-scout` region shows how `openLibraryScout` propagates `context.signal` through the `scoutRetry` policy and into the tool call — when the signal fires, the retry policy aborts mid-backoff instead of waiting:
 
-// (a) User cancellation
-const ctl = new AbortController();
-setTimeout(() => ctl.abort(new Error('user pressed cancel')), 25);
-const aState = new NodeStateBase();
-const aResult = await dispatcher.execute('slow-dag', aState, { "signal": ctl.signal });
-process.stdout.write(`cancelled → ${aState.lifecycle.kind}, cursor=${aResult.cursor}\n`);
-
-// (b) Deadline timeout
-const bState = new NodeStateBase();
-const bResult = await dispatcher.execute('slow-dag', bState, { "deadlineMs": 25 });
-process.stdout.write(`deadline → ${bState.lifecycle.kind}, cursor=${bResult.cursor}\n`);
-```
+<<< ../../examples/the-archivist/nodes/scouts.ts#signal-scout
 
 ## What it demonstrates
 
-- The `slow` node propagates `context.signal` to an internal `setTimeout` via a listener — when the signal fires, the timeout is cleared and the promise rejects, terminating the node cleanly.
-- `lifecycle.kind === 'cancelled'` when the caller's `AbortController` fires.
-- `lifecycle.kind === 'timed_out'` when `deadlineMs` expires (the dispatcher uses `AbortSignal.timeout` internally).
-- `result.cursor` holds the `'slow'` node name in both cases — the DAG stopped mid-execution and can be resumed from that cursor.
-- The dispatcher never throws. Both cancellation paths reach a final `ExecutionResultInterface` with the lifecycle reflecting what happened.
+- **`signal` + `deadlineMs` composition** — `SignalComposer` combines the caller-supplied `AbortSignal` with the deadline into one internal signal passed to every node via `context.signal`. Neither option is required; both can be used together.
+- **Nodes propagate the signal** — every scout passes `context.signal` as the second argument to `scoutRetry.run(task, signal)`. The retry policy aborts mid-wait when the signal fires, so scouts do not wait through the full backoff window.
+- **Lifecycle records the exact terminal state** — `cancelled` carries the abort `reason` string; `timed_out` carries the deadline-finished timestamp. `completed` means all nodes ran to their terminal outputs.
+- **`result.cursor`** — records the next node that would have run. When non-null, the flow was interrupted. Pair with `Checkpoint.from` (see [Phase 08](./08-checkpoint)) to resume in a later process.
+
+See this in action in the [Archivist live demo](./the-archivist) — the cancel button fires the same `AbortController.abort()` path.
 
 ## See also
 
-- [Cancellation](../guide/cancellation)
-- [Checkpoint](../guide/checkpoint) — abort + persist for resume
-
-## Related reference
-
+- [Running domain: The Archivist](./the-archivist)
+- [Cancellation guide](../guide/cancellation)
+- [Phase 05 · Retry compose](./05-retry) — `RetryPolicy.run` honors the same signal
+- [Phase 08 · Checkpoint + resume](./08-checkpoint)
 - [Reference: Runtime — `SignalComposer`](../reference/runtime)
-- [Reference: Contracts — `ExecuteOptionsInterface`](../reference/contracts)
 - [Reference: Lifecycle](../reference/lifecycle)

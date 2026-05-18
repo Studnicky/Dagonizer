@@ -108,7 +108,7 @@ const dag = new DAGBuilder('batch', '1')
 
 ```ts
 const dag = new DAGBuilder('parent', '1')
-  .subDAG('run-child', 'child-dag-name', { success: 'finalize', error: null }, {
+  .deepDAG('run-child', 'child-dag-name', { success: 'finalize', error: null }, {
     stateMapping: {
       input:  { childKey: 'parent.value' },
       output: { 'parent.result': 'childResult' },
@@ -146,4 +146,4 @@ The returned object is identical to one written by hand — pass it directly to 
 ## Related reference
 
 - [Reference: Dagonizer](../reference/dagonizer)
-- [Reference: Entities — `DAG`, `SingleNode`, `ParallelNode`, `FanOutNode`, `SubDAGNode`](../reference/entities)
+- [Reference: Entities — `DAG`, `SingleNode`, `ParallelNode`, `FanOutNode`, `DeepDAGNode`](../reference/entities)

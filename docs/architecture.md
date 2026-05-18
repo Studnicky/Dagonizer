@@ -21,7 +21,7 @@ flowchart TB
     A[single] --> B[one registered node, output-routed]
     C[parallel] --> D[concurrent nodes, combine → route]
     E[fan-out] --> F[one node per item, fan-in → aggregate route]
-    G[sub-dag] --> H[nested registered DAG, state mapped]
+    G[deep-dag] --> H[nested registered DAG, state mapped]
   end
 ```
 
@@ -31,7 +31,7 @@ flowchart TB
 
 **`fan-out`** — reads an array from a dotted state path, runs one registered node per item (with configurable concurrency), then merges results through a fan-in strategy (`append`, `partition`, or `custom`). Aggregate output is one of `all-success`, `partial`, `all-error`, or `empty`.
 
-**`sub-dag`** — invokes another registered DAG as a nested call. The child runs in a cloned node state; optional `stateMapping` copies keys in before the sub-DAG and copies keys out after. Errors and warnings from the child always bubble up to the parent.
+**`deep-dag`** — invokes another registered DAG as a nested call. The child runs in a cloned node state; optional `stateMapping` copies keys in before the deep-DAG and copies keys out after. Errors and warnings from the child always bubble up to the parent.
 
 ## Sample three-node DAG
 
@@ -109,7 +109,7 @@ node.execute(state, { signal: composedSignal, dagName, nodeName })
 context.signal propagated to IO (fetch, db, sleep in RetryPolicy)
 ```
 
-Sub-DAGs receive the composed signal from the parent — cancellation propagates through the full nesting depth.
+Deep-DAGs receive the composed signal from the parent — cancellation propagates through the full nesting depth.
 
 ## State flow
 
@@ -121,13 +121,13 @@ initialState travels through each node's execute(state, context)
     │  (nodes mutate state in place)
     ▼
 fan-out items get a clone of state (metadata copied, lifecycle reset)
-sub-DAGs get a clone of state (optional key mapping in/out)
+deep-DAGs get a clone of state (optional key mapping in/out)
     │
     ▼
 result.state === initialState  // same reference
 ```
 
-`NodeStateBase.clone()` is called for fan-out items and sub-DAGs. The clone carries metadata but resets lifecycle to `pending` and clears errors/warnings — each child execution is a fresh lifecycle run.
+`NodeStateBase.clone()` is called for fan-out items and deep-DAGs. The clone carries metadata but resets lifecycle to `pending` and clears errors/warnings — each child execution is a fresh lifecycle run.
 
 ## Interface taxonomy
 

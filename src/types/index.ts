@@ -61,7 +61,7 @@ export type { FanInConfig } from '../entities/dag/FanInConfig.js';
 export type { FanOutNode } from '../entities/dag/FanOutNode.js';
 export type { ParallelNode } from '../entities/dag/ParallelNode.js';
 export type { SingleNode } from '../entities/dag/SingleNode.js';
-export type { SubDAGNode } from '../entities/dag/SubDAGNode.js';
+export type { DeepDAGNode } from '../entities/dag/DeepDAGNode.js';
 
 export type { Node } from '../entities/node/Node.js';
 export type { NodeContext } from '../entities/node/NodeContext.js';
@@ -93,7 +93,7 @@ export type {
 
 export type {
   FanOutOptionsInterface,
-  SubDAGOptionsInterface,
+  DeepDAGOptionsInterface,
 } from '../builder/DAGBuilder.js';
 
 // ---------------------------------------------------------------------------
@@ -106,6 +106,12 @@ export type { ParallelResult, ParallelCombiner } from '../core/ParallelCombiners
 export type { FanInExecution, FanInStrategy } from '../core/FanInStrategies.js';
 export type { FlowDeriverOptions } from '../derive/FlowDeriver.js';
 export type { FlowAnnotations, FlowFanOut, FlowTerminal } from '../derive/FlowAnnotations.js';
+export type { DagJsonLdDocument, JsonLdGraphEntry } from '../viz/JsonLdRenderer.js';
+export type {
+  CytoscapeElement,
+  CytoscapeNodeElement,
+  CytoscapeEdgeElement,
+} from '../viz/CytoscapeRenderer.js';
 
 // ---------------------------------------------------------------------------
 // Validation

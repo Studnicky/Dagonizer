@@ -1,27 +1,28 @@
 /**
  * DAGBuilder — chainable authoring API for `DAG`.
  *
- * Plain-object DAG configs remain the source of truth (and the form the
- * dispatcher consumes). `DAGBuilder` is a thin chainable layer that
- * accumulates nodes and returns the same plain object via `build()`.
+ * Builds a JSON-LD canonical `DAG` document. Each node placement receives
+ * `@id` (a URN scoped under the DAG name) and `@type` (the RDF class name).
+ * The returned object from `build()` satisfies `DAGSchema` and can be passed
+ * directly to `dispatcher.registerDAG(dag)`.
  *
- * Cross-ref: the RDF builder in `semantics/` workspace — same shape,
- * same chainable surface, output is plain data.
+ * Cross-ref: the RDF builder in `semantics/` workspace — same shape, same
+ * chainable surface, output is plain data.
  *
- * Subclass to extend the builder; methods preserve `this` for fluent
- * chaining.
+ * Subclass to extend the builder; methods preserve `this` for fluent chaining.
  */
 
 import type { NodeInterface } from '../contracts/NodeInterface.js';
 import type { DAG } from '../entities/dag/DAG.js';
+import { DAG_CONTEXT } from '../entities/dag/DAG.js';
+import type { DeepDAGNode } from '../entities/dag/DeepDAGNode.js';
 import type { FanInConfig } from '../entities/dag/FanInConfig.js';
 import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
-import type { SubDAGNode } from '../entities/dag/SubDAGNode.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-type DAGNodeType = FanOutNode | ParallelNode | SingleNodePlacementInterface | SubDAGNode;
+type DAGNodeType = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode;
 
 /** Optional configuration for a fan-out node added via `DAGBuilder.fanOut`. */
 export interface FanOutOptionsInterface {
@@ -31,11 +32,11 @@ export interface FanOutOptionsInterface {
   'itemKey'?: string;
 }
 
-/** Optional configuration for a sub-DAG node added via `DAGBuilder.subDAG`. */
-export interface SubDAGOptionsInterface {
+/** Optional configuration for a deep-DAG node added via `DAGBuilder.deepDAG`. */
+export interface DeepDAGOptionsInterface {
   /**
    * State mapping between parent and child DAGs. `input` copies fields from the
-   * parent node state into the child node state before the sub-DAG runs;
+   * parent node state into the child node state before the deep-DAG runs;
    * `output` copies fields from the child node state back into the parent after
    * it completes.
    */
@@ -46,11 +47,11 @@ export interface SubDAGOptionsInterface {
 }
 
 /**
- * Chainable authoring API that builds a `DAG`.
+ * Chainable authoring API that builds a `DAG` in JSON-LD canonical form.
  *
- * Plain-object DAG configs remain the source of truth and the form the
- * dispatcher consumes. `DAGBuilder` is a thin layer that accumulates nodes
- * and materializes them via `build()`.
+ * Each node placement is assigned:
+ *   - `@id`:   `urn:noocodex:dag:<dagName>/node/<placementName>`
+ *   - `@type`: the RDF class name (`'SingleNode'`, `'ParallelNode'`, etc.)
  *
  * @example
  * ```ts
@@ -73,6 +74,11 @@ export class DAGBuilder {
     this.#version = version;
   }
 
+  /** Compute the placement `@id` URN. */
+  #nodeId(placementName: string): string {
+    return `urn:noocodex:dag:${this.#name}/node/${placementName}`;
+  }
+
   /** Set (or override) the entrypoint node name. */
   entrypoint(nodeName: string): this {
     this.#entrypoint = nodeName;
@@ -89,9 +95,10 @@ export class DAGBuilder {
     routes: Record<TOutput, null | string>,
   ): this {
     this.#nodes.push({
-      'type': 'single',
+      '@id':     this.#nodeId(name),
+      '@type':   'SingleNode',
       name,
-      'node': dagNode.name,
+      'node':    dagNode.name,
       'outputs': routes as Record<string, null | string>,
     });
     if (this.#entrypoint === null) this.#entrypoint = name;
@@ -106,9 +113,10 @@ export class DAGBuilder {
     routes: Record<string, null | string>,
   ): this {
     this.#nodes.push({
-      'type': 'parallel',
+      '@id':     this.#nodeId(name),
+      '@type':   'ParallelNode',
       name,
-      'nodes': [...nodes],
+      'nodes':   [...nodes],
       combine,
       'outputs': routes,
     });
@@ -126,9 +134,10 @@ export class DAGBuilder {
     options: FanOutOptionsInterface = {},
   ): this {
     const dagNodeEntry: FanOutNode = {
-      'type': 'fan-out',
+      '@id':     this.#nodeId(name),
+      '@type':   'FanOutNode',
       name,
-      'node': dagNode.name,
+      'node':    dagNode.name,
       source,
       fanIn,
       'outputs': routes,
@@ -140,17 +149,18 @@ export class DAGBuilder {
     return this;
   }
 
-  /** Append a sub-DAG node. `routes` covers `success | error`. */
-  subDAG(
+  /** Append a deep-DAG node. `routes` covers `success | error`. */
+  deepDAG(
     name: string,
     dagName: string,
     routes: Record<'success' | 'error', null | string>,
-    options: SubDAGOptionsInterface = {},
+    options: DeepDAGOptionsInterface = {},
   ): this {
-    const dagNode: SubDAGNode = {
-      'type': 'sub-dag',
+    const dagNode: DeepDAGNode = {
+      '@id':   this.#nodeId(name),
+      '@type': 'DeepDAGNode',
       name,
-      'dag': dagName,
+      'dag':   dagName,
       'outputs': routes,
     };
     if (options.stateMapping !== undefined) dagNode.stateMapping = options.stateMapping;
@@ -159,16 +169,19 @@ export class DAGBuilder {
     return this;
   }
 
-  /** Materialize the accumulated nodes into a `DAG`. */
+  /** Materialize the accumulated nodes into a canonical JSON-LD `DAG` document. */
   build(): DAG {
     if (this.#entrypoint === null) {
       throw new Error(`DAGBuilder('${this.#name}'): cannot build DAG without an entrypoint — call .entrypoint() or add at least one node first`);
     }
     return {
-      'name': this.#name,
-      'version': this.#version,
+      '@context': DAG_CONTEXT,
+      '@id':      `urn:noocodex:dag:${this.#name}`,
+      '@type':    'DAG',
+      'name':       this.#name,
+      'version':    this.#version,
       'entrypoint': this.#entrypoint,
-      'nodes': [...this.#nodes],
+      'nodes':      [...this.#nodes],
     };
   }
 }

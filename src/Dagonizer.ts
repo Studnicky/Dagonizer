@@ -5,19 +5,20 @@ import { FanInStrategies } from './core/FanInStrategies.js';
 import type { FanInExecution } from './core/FanInStrategies.js';
 import { ParallelCombiners } from './core/ParallelCombiners.js';
 import type { DAG } from './entities/dag/DAG.js';
+import type { DeepDAGNode } from './entities/dag/DeepDAGNode.js';
 import type { FanInConfig } from './entities/dag/FanInConfig.js';
 import type { FanOutNode } from './entities/dag/FanOutNode.js';
 import type { ParallelNode } from './entities/dag/ParallelNode.js';
 import type { SingleNodePlacementInterface } from './entities/dag/SingleNode.js';
-import type { SubDAGNode } from './entities/dag/SubDAGNode.js';
 import type { ExecutionResultInterface } from './entities/execution/ExecutionResult.js';
 import type { NodeContextInterface } from './entities/node/NodeContext.js';
 import type { NodeResultInterface } from './entities/node/NodeResult.js';
-import { DAGError, ValidationError } from './errors/index.js';
+import { DAGError, NodeTimeoutError, ValidationError } from './errors/index.js';
 import { Execution } from './Execution.js';
 import { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
 import { DottedPathAccessor } from './runtime/DottedPathAccessor.js';
+import { Scheduler } from './runtime/Scheduler.js';
 import { SignalComposer } from './runtime/SignalComposer.js';
 import { Validator } from './validation/Validator.js';
 
@@ -34,7 +35,7 @@ const DEFAULT_STATE_ACCESSOR: StateAccessor = new DottedPathAccessor();
 export interface DagonizerOptionsInterface<TServices = undefined> {
   /**
    * Path resolver used for fan-out source reads, fan-in writes, and
-   * sub-DAG state mapping. Defaults to a `DottedPathAccessor` that
+   * deep-DAG state mapping. Defaults to a `DottedPathAccessor` that
    * walks `path.split('.')`.
    */
   readonly accessor?: StateAccessor;
@@ -48,7 +49,8 @@ export interface DagonizerOptionsInterface<TServices = undefined> {
 }
 
 
-type DAGNodeType = FanOutNode | ParallelNode | SingleNodePlacementInterface | SubDAGNode;
+type DAGNodeType = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode;
+type DAGNodeAtType = DAGNodeType['@type'];
 
 /**
  * Interface for Dagonizer. One execution path — `execute()` and `resume()`
@@ -150,8 +152,10 @@ interface InternalNodeResultInterface<TState extends NodeStateInterface> {
  * const dispatcher = new Dagonizer<MyState>();
  * dispatcher.registerNode(node);
  * dispatcher.registerDAG({
+ *   '@context': DAG_CONTEXT, '@id': 'urn:noocodex:dag:demo', '@type': 'DAG',
  *   name: 'demo', version: '1', entrypoint: 'increment',
- *   nodes: [{ type: 'single', name: 'increment', node: 'increment', outputs: { done: null } }],
+ *   nodes: [{ '@id': 'urn:noocodex:dag:demo/node/increment', '@type': 'SingleNode',
+ *             name: 'increment', node: 'increment', outputs: { done: null } }],
  * });
  *
  * const result = await dispatcher.execute('demo', new MyState());
@@ -173,7 +177,7 @@ implements DagonizerInterface<TState, TServices> {
    * for observability — no factory indirection, no callbacks.
    *
    * `options.accessor` swaps the path resolver used for fan-out source
-   * reads, fan-in writes, and sub-DAG state mapping. Defaults to
+   * reads, fan-in writes, and deep-DAG state mapping. Defaults to
    * `DottedPathAccessor`.
    *
    * `options.services` is the typed services bag exposed to every node
@@ -296,12 +300,20 @@ implements DagonizerInterface<TState, TServices> {
    * intermediate yields from parallel / fan-out / sub-flow nodes) and
    * returns the final `ExecutionResultInterface` with `cursor` set.
    * Never throws.
+   *
+   * `isDeepDag` is a private implementation detail for recursive deep-DAG
+   * re-entry. When `true`, lifecycle transitions (`markRunning`,
+   * `markCompleted`) and flow hooks (`onFlowStart`, `onFlowEnd`) are
+   * suppressed — those are top-level concerns owned by the consumer's
+   * `execute()` / `resume()` call. Node hooks (`onNodeStart`, `onNodeEnd`,
+   * `onError`) still fire for every child node.
    */
   private async *runNodes(
     dagName: string,
     state: TState,
     fromStage: string | null,
     options: ExecuteOptionsInterface,
+    isDeepDag: boolean = false,
   ): AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void> {
     const dag = this.dags.get(dagName);
 
@@ -311,18 +323,22 @@ implements DagonizerInterface<TState, TServices> {
       // running. The cursor is null because there is no DAG to resume.
       const error = new DAGError(`Unknown DAG: ${dagName}`);
       this.onError('<unknown>', error, state);
-      try { state.markFailed(error); } catch { /* state may already be terminal */ }
+      if (!isDeepDag) {
+        try { state.markFailed(error); } catch { /* state may already be terminal */ }
+      }
       const result: ExecutionResultInterface<TState> = {
         'cursor': null, 'executedNodes': [], 'skippedNodes': [], state,
       };
-      this.onFlowEnd(dagName, state, result);
+      if (!isDeepDag) this.onFlowEnd(dagName, state, result);
       return result;
     }
 
     const signal = SignalComposer.compose(options);
 
-    state.markRunning();
-    this.onFlowStart(dagName, state);
+    if (!isDeepDag) {
+      state.markRunning();
+      this.onFlowStart(dagName, state);
+    }
 
     const executedNodes: string[] = [];
     const skippedNodes: string[] = [];
@@ -337,7 +353,7 @@ implements DagonizerInterface<TState, TServices> {
         const result: ExecutionResultInterface<TState> = {
           cursor, executedNodes, skippedNodes, state,
         };
-        this.onFlowEnd(dagName, state, result);
+        if (!isDeepDag) this.onFlowEnd(dagName, state, result);
         return result;
       }
 
@@ -346,11 +362,13 @@ implements DagonizerInterface<TState, TServices> {
       if (!node) {
         const error = new DAGError(`Unknown node: ${currentNodeName} in DAG ${dagName}`);
         this.onError(currentNodeName, error, state);
-        try { state.markFailed(error); } catch { /* already terminal */ }
+        if (!isDeepDag) {
+          try { state.markFailed(error); } catch { /* already terminal */ }
+        }
         const result: ExecutionResultInterface<TState> = {
           cursor, executedNodes, skippedNodes, state,
         };
-        this.onFlowEnd(dagName, state, result);
+        if (!isDeepDag) this.onFlowEnd(dagName, state, result);
         return result;
       }
 
@@ -362,21 +380,23 @@ implements DagonizerInterface<TState, TServices> {
       } catch (caughtError) {
         const error = caughtError instanceof Error ? caughtError : new Error(String(caughtError));
         this.onError(currentNodeName, error, state);
-        if (signal?.aborted) {
-          this.handleAbort(state, signal);
-        } else if (!DAGLifecycleMachine.isTerminal(state.lifecycle)) {
-          try { state.markFailed(error); } catch { /* already terminal */ }
+        if (!isDeepDag) {
+          if (signal?.aborted) {
+            this.handleAbort(state, signal);
+          } else if (!DAGLifecycleMachine.isTerminal(state.lifecycle)) {
+            try { state.markFailed(error); } catch { /* already terminal */ }
+          }
         }
         const result: ExecutionResultInterface<TState> = {
           cursor, executedNodes, skippedNodes, state,
         };
-        this.onFlowEnd(dagName, state, result);
+        if (!isDeepDag) this.onFlowEnd(dagName, state, result);
         return result;
       }
 
       const { nextStage, "result": nodeResult } = nodeOutcome;
 
-      // Yield intermediate results from parallel/fan-out/sub-DAG nodes
+      // Yield intermediate results from parallel/fan-out/deep-DAG nodes
       if ('intermediateResults' in nodeResult) {
         const inter = (nodeResult as NodeResultInterface<TState> & { 'intermediateResults': Array<NodeResultInterface<TState>> }).intermediateResults;
         for (const intermediate of inter) {
@@ -398,11 +418,13 @@ implements DagonizerInterface<TState, TServices> {
       cursor = nextStage;
     }
 
-    state.markCompleted();
+    if (!isDeepDag) {
+      state.markCompleted();
+    }
     const result: ExecutionResultInterface<TState> = {
       'cursor': null, executedNodes, skippedNodes, state,
     };
-    this.onFlowEnd(dagName, state, result);
+    if (!isDeepDag) this.onFlowEnd(dagName, state, result);
     return result;
   }
 
@@ -554,7 +576,7 @@ implements DagonizerInterface<TState, TServices> {
     const nodes = group.nodes.map((nodeName) => {
       const node = this.nodeIndex.get(`${dagName}:${nodeName}`);
 
-      if (node?.type !== 'single') {
+      if (node?.['@type'] !== 'SingleNode') {
         throw new DAGError(`Parallel group ${group.name} references invalid node: ${String(nodeName)}`);
       }
 
@@ -614,6 +636,82 @@ implements DagonizerInterface<TState, TServices> {
     };
   }
 
+  /**
+   * Wrap a node execute call with a per-node timeout when `dagNode.timeoutMs`
+   * is set. Derives a child `AbortController` from the run's signal, arms a
+   * Scheduler timer, and races the node's execute against a deadline rejection.
+   *
+   * The child signal is passed to the node so signal-aware IO (fetch, retry)
+   * also cancels. Nodes that do not observe the signal are hard-stopped by the
+   * race. On expiry `NodeTimeoutError` propagates; `executeSingleNode` re-throws
+   * so the `runNodes` catch block fires `onError` and marks state failed.
+   *
+   * Timer and parent-abort listener are cleaned up in `finally`.
+   */
+  private async withNodeTimeout<TResult>(
+    dagNode: NodeInterface<TState, string, TServices>,
+    parentSignal: AbortSignal | null,
+    fn: (signal: AbortSignal) => Promise<TResult>,
+  ): Promise<TResult> {
+    const { timeoutMs } = dagNode;
+
+    if (timeoutMs === undefined) {
+      // No per-node budget — pass parent signal through unchanged.
+      const sig = parentSignal ?? new AbortController().signal;
+      return fn(sig);
+    }
+
+    const childCtrl = new AbortController();
+    const onParentAbort = (): void => { childCtrl.abort(parentSignal?.reason); };
+
+    if (parentSignal !== null) {
+      if (parentSignal.aborted) {
+        // Parent already aborted before node started.
+        childCtrl.abort(parentSignal.reason);
+      } else {
+        parentSignal.addEventListener('abort', onParentAbort, { 'once': true });
+      }
+    }
+
+    const timeoutError = new NodeTimeoutError(dagNode.name, timeoutMs);
+
+    // Deadline race: resolves when time elapses (child not yet aborted),
+    // rejects immediately if child is already aborted (parent propagation).
+    // The Scheduler is swappable via VirtualScheduler in tests.
+    let deadlineReject!: (reason: Error) => void;
+    const deadlinePromise = new Promise<never>((_resolve, reject) => {
+      deadlineReject = reject;
+    });
+
+    const schedulerPromise = Scheduler.current()
+      .after(timeoutMs, childCtrl.signal)
+      .then(() => {
+        childCtrl.abort(timeoutError);
+        deadlineReject(timeoutError);
+      })
+      .catch(() => { /* scheduler aborted early (cleanup or parent abort) */ });
+
+    // Start the node execute. Attach a no-op catch so the rejected promise
+    // does not surface as an unhandled rejection when the deadline race wins
+    // and the finally block aborts the child signal (causing execute to reject
+    // after Promise.race has already settled).
+    const nodePromise = fn(childCtrl.signal);
+    nodePromise.catch(() => { /* swallowed — deadline race already settled */ });
+
+    try {
+      // Race the node execute against the deadline rejection.
+      return await Promise.race([nodePromise, deadlinePromise]);
+    } finally {
+      // Cancel the pending Scheduler entry (no-op if already resolved/aborted)
+      // and detach the parent-abort listener.
+      childCtrl.abort(new Error('node-timeout-cleanup'));
+      if (parentSignal !== null) {
+        parentSignal.removeEventListener('abort', onParentAbort);
+      }
+      await schedulerPromise;
+    }
+  }
+
   private async executeSingleNode(
     nodeConfig: SingleNodePlacementInterface,
     state: TState,
@@ -626,8 +724,10 @@ implements DagonizerInterface<TState, TServices> {
       throw new DAGError(`Unknown node: ${nodeConfig.node}`);
     }
 
-    const context = this.buildContext(dagName, nodeConfig.name, signal);
-    const opResult = await dagNode.execute(state, context);
+    const opResult = await this.withNodeTimeout(dagNode, signal, (nodeSignal) => {
+      const context = this.buildContext(dagName, nodeConfig.name, nodeSignal);
+      return dagNode.execute(state, context);
+    });
 
     if (opResult.errors) {
       for (const error of opResult.errors) {
@@ -661,25 +761,25 @@ implements DagonizerInterface<TState, TServices> {
     dagName: string,
     signal: AbortSignal | null,
   ): Promise<InternalNodeResultInterface<TState>> {
-    const dispatch: Readonly<Record<DAGNodeType['type'], () => Promise<InternalNodeResultInterface<TState>>>> = {
-      'fan-out': () => this.executeFanOut(entry as FanOutNode, state, dagName, signal),
-      'parallel': () => this.executeParallelGroup(entry as ParallelNode, state, dagName, signal),
-      'single': () => this.executeSingleNode(entry as SingleNodePlacementInterface, state, dagName, signal),
-      'sub-dag': () => this.executeSubDAG(entry as SubDAGNode, state, signal),
+    const dispatch: Readonly<Record<DAGNodeAtType, () => Promise<InternalNodeResultInterface<TState>>>> = {
+      'FanOutNode':  () => this.executeFanOut(entry as FanOutNode, state, dagName, signal),
+      'ParallelNode': () => this.executeParallelGroup(entry as ParallelNode, state, dagName, signal),
+      'SingleNode':  () => this.executeSingleNode(entry as SingleNodePlacementInterface, state, dagName, signal),
+      'DeepDAGNode': () => this.executeDeepDAG(entry as DeepDAGNode, state, signal),
     };
-    const handler = dispatch[entry.type];
+    const handler = dispatch[entry['@type']];
     if (handler === undefined) {
-      throw new DAGError(`Unknown node type: ${(entry as DAGNodeType).type}`);
+      throw new DAGError(`Unknown node type: ${(entry as DAGNodeType)['@type']}`);
     }
     return handler();
   }
 
-  private async executeSubDAG(
-    subDAG: SubDAGNode,
+  private async executeDeepDAG(
+    deepDAG: DeepDAGNode,
     state: TState,
     signal: AbortSignal | null,
   ): Promise<InternalNodeResultInterface<TState>> {
-    const childState = this.createChildState(state, subDAG.stateMapping?.input);
+    const childState = this.createChildState(state, deepDAG.stateMapping?.input);
 
     const intermediateResults: Array<NodeResultInterface<TState>> = [];
 
@@ -687,10 +787,10 @@ implements DagonizerInterface<TState, TServices> {
     // observe cancellation/timeouts.
     const childOptions: ExecuteOptionsInterface = signal ? { 'signal': signal } : {};
 
-    for await (const nodeResult of this.runNodes(subDAG.dag, childState, null, childOptions)) {
+    for await (const nodeResult of this.runNodes(deepDAG.dag, childState, null, childOptions, true)) {
       const intermediate: NodeResultInterface<TState> = {
         'skipped': nodeResult.skipped,
-        'nodeName': `${subDAG.name}.${nodeResult.nodeName}`,
+        'nodeName': `${deepDAG.name}.${nodeResult.nodeName}`,
         state
       };
 
@@ -700,7 +800,7 @@ implements DagonizerInterface<TState, TServices> {
       intermediateResults.push(intermediate);
     }
 
-    this.mapOutputState(childState, state, subDAG.stateMapping?.output);
+    this.mapOutputState(childState, state, deepDAG.stateMapping?.output);
 
     for (const error of childState.errors) {
       state.collectError(error);
@@ -710,13 +810,13 @@ implements DagonizerInterface<TState, TServices> {
     }
 
     const childOutput = childState.errors.length > 0 ? 'error' : 'success';
-    const nextStage = subDAG.outputs[childOutput] ?? null;
+    const nextStage = deepDAG.outputs[childOutput] ?? null;
 
     const result: NodeResultInterface<TState> & { 'intermediateResults': Array<NodeResultInterface<TState>> } = {
       intermediateResults,
       'output': childOutput,
       'skipped': false,
-      'nodeName': subDAG.name,
+      'nodeName': deepDAG.name,
       state
     };
 
@@ -809,8 +909,8 @@ implements DagonizerInterface<TState, TServices> {
       Dagonizer.validateDAGNode(node, nodes, dags, nodeNames, errors);
     }
 
-    const subDAGRefs = new Set<string>();
-    Dagonizer.collectSubDAGReferences(dag, dags, subDAGRefs, new Set([dag.name]), errors);
+    const deepDAGRefs = new Set<string>();
+    Dagonizer.collectDeepDAGReferences(dag, dags, deepDAGRefs, new Set([dag.name]), errors);
 
     if (errors.length > 0) {
       throw new DAGError(`Invalid DAG '${dag.name}':\n  - ${errors.join('\n  - ')}`);
@@ -824,13 +924,13 @@ implements DagonizerInterface<TState, TServices> {
     nodeNames: Set<string>,
     errors: string[]
   ): void {
-    const validators: Readonly<Record<DAGNodeType['type'], () => void>> = {
-      'fan-out': () => Dagonizer.validateFanOutNode(entry as FanOutNode, nodes, nodeNames, errors),
-      'parallel': () => Dagonizer.validateParallelNode(entry as ParallelNode, nodeNames, errors),
-      'single': () => Dagonizer.validateSingleNode(entry as SingleNodePlacementInterface, nodes, nodeNames, errors),
-      'sub-dag': () => Dagonizer.validateSubDAGNode(entry as SubDAGNode, dags, nodeNames, errors),
+    const validators: Readonly<Record<DAGNodeAtType, () => void>> = {
+      'FanOutNode':  () => Dagonizer.validateFanOutNode(entry as FanOutNode, nodes, nodeNames, errors),
+      'ParallelNode': () => Dagonizer.validateParallelNode(entry as ParallelNode, nodeNames, errors),
+      'SingleNode':  () => Dagonizer.validateSingleNode(entry as SingleNodePlacementInterface, nodes, nodeNames, errors),
+      'DeepDAGNode': () => Dagonizer.validateDeepDAGNode(entry as DeepDAGNode, dags, nodeNames, errors),
     };
-    validators[entry.type]?.();
+    validators[entry['@type']]?.();
   }
 
   private static validateSingleNode<TState extends NodeStateInterface, TServices>(
@@ -910,24 +1010,24 @@ implements DagonizerInterface<TState, TServices> {
     }
   }
 
-  private static validateSubDAGNode(
-    subDAG: SubDAGNode,
+  private static validateDeepDAGNode(
+    deepDAG: DeepDAGNode,
     dags: Map<string, DAG>,
     nodeNames: Set<string>,
     errors: string[]
   ): void {
-    if (!dags.has(subDAG.dag)) {
-      errors.push(`Sub-DAG '${subDAG.name}' references unknown DAG: ${subDAG.dag}`);
+    if (!dags.has(deepDAG.dag)) {
+      errors.push(`Deep-DAG '${deepDAG.name}' references unknown DAG: ${deepDAG.dag}`);
     }
 
-    for (const [output, target] of Object.entries(subDAG.outputs)) {
+    for (const [output, target] of Object.entries(deepDAG.outputs)) {
       if (target !== null && !nodeNames.has(target)) {
-        errors.push(`Sub-DAG '${subDAG.name}': output '${output}' routes to unknown node '${target}'`);
+        errors.push(`Deep-DAG '${deepDAG.name}': output '${output}' routes to unknown node '${target}'`);
       }
     }
   }
 
-  private static collectSubDAGReferences(
+  private static collectDeepDAGReferences(
     dag: DAG,
     dags: Map<string, DAG>,
     visited: Set<string>,
@@ -935,20 +1035,20 @@ implements DagonizerInterface<TState, TServices> {
     errors: string[]
   ): void {
     for (const node of dag.nodes) {
-      if (node.type === 'sub-dag') {
+      if (node['@type'] === 'DeepDAGNode') {
         if (path.has(node.dag)) {
-          errors.push(`Circular sub-DAG reference detected: ${Array.from(path).join(' -> ')} -> ${node.dag}`);
+          errors.push(`Circular deep-DAG reference detected: ${Array.from(path).join(' -> ')} -> ${node.dag}`);
           continue;
         }
 
         if (!visited.has(node.dag)) {
           visited.add(node.dag);
-          const subDAG = dags.get(node.dag);
+          const deepDAG = dags.get(node.dag);
 
-          if (subDAG) {
+          if (deepDAG) {
             const newPath = new Set(path);
             newPath.add(node.dag);
-            Dagonizer.collectSubDAGReferences(subDAG, dags, visited, newPath, errors);
+            Dagonizer.collectDeepDAGReferences(deepDAG, dags, visited, newPath, errors);
           }
         }
       }
@@ -962,7 +1062,7 @@ implements DagonizerInterface<TState, TServices> {
    * 1. Schema pass — `Validator.dag.validate(dag)` checks structure (required fields, valid
    *    `type` and `strategy` enumerations).
    * 2. Semantic pass — verifies entrypoint exists, all node references are resolvable,
-   *    no circular sub-DAG references, and every registered node output has a routing
+   *    no circular deep-DAG references, and every registered node output has a routing
    *    entry in the placement's `outputs` map.
    */
   registerDAG(dag: DAG): void {
@@ -970,6 +1070,24 @@ implements DagonizerInterface<TState, TServices> {
     // node `type`, fan-in strategy mismatch) before semantic validation
     // surfaces node/DAG cross-references.
     Validator.dag.validate(dag);
+
+    // Invariant: deep-DAG placements are reusable components and must not
+    // terminate the run. Only the parent DAG owns END (null output target).
+    // Reject misconfigurations at registration time so they fail loud
+    // rather than silently producing duplicate lifecycle events at runtime.
+    for (const placement of dag.nodes) {
+      if (placement['@type'] !== 'DeepDAGNode') continue;
+      for (const [route, target] of Object.entries(placement.outputs)) {
+        if (target === null) {
+          throw new DAGError(
+            `Deep-DAG placement '${placement.name}' in DAG '${dag.name}' routes output '${route}' to null. ` +
+            `Deep-DAGs are reusable components — they cannot terminate the run. ` +
+            `The parent DAG owns END. Route '${route}' to a parent placement instead.`
+          );
+        }
+      }
+    }
+
     Dagonizer.validateDAGConfig(dag, this.nodes, this.dags);
     this.dags.set(dag.name, dag);
     for (const node of dag.nodes) {

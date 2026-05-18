@@ -2,9 +2,59 @@
 
 All notable changes to `@noocodex/dagonizer` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.5.0] - 2026-05-18
 
 ### Added
+
+- Full iridis SEO parity: `llms.txt` (llmstxt.org canonical URL index), RSS `feed.xml` generated from CHANGELOG at build time, BreadcrumbList JSON-LD per page, HowTo JSON-LD for examples pages, `manifest.webmanifest`, hreflang alternates (`en-US` + `x-default`), `article:modified_time` + `article:author` from git lastUpdated, Organization JSON-LD block, bingbot directive, referrer policy meta, title-template suppression on home page. Search-console verification tags gated on `package.json` `dagonizer.seo.*` placeholders (values added next release).
+
+- Per-node timeout support via `NodeInterface.timeoutMs?: number`. When set, the engine derives a child `AbortController` from the run's signal, races the node's `execute()` against a `Scheduler`-backed deadline, and throws `NodeTimeoutError` on expiry. The child signal is passed as `context.signal` so signal-aware IO also cancels. `onError` fires with the `NodeTimeoutError`; the run is marked failed. Nodes without `timeoutMs` are unaffected.
+- `NodeTimeoutError` — `DAGError` subclass (`code: 'NODE_TIMEOUT'`) carrying `nodeName` and `timeoutMs`. Exported from `./errors` and the root barrel.
+- `DAG` is canonically JSON-LD 1.1. `@context` / `@id` / `@type` are required on the document and every node placement; the `@context` uses type-scoped contexts so `ParallelNode.nodes` and `DAG.nodes` map to distinct IRIs without key collision. Placements use `@type` IRIs (`"SingleNode"`, `"ParallelNode"`, `"FanOutNode"`, `"DeepDAGNode"`) as the discriminator. No projection layer — what `DAGBuilder.build()` returns is the JSON-LD document the engine consumes and the schema validates.
+- `CytoscapeRenderer` — recursive deep-DAG inline expansion. The `deepDags?: ReadonlyMap<string, DAG>` option drives full-fidelity expansion of nested DAGs into compound parents (no opaque shortcut nodes). Cycle-safe via `visited` set and `maxDepth` (default 6).
+- Archivist demo: full multi-source fan-out per intent. Five intent branches (`lookup-author`, `find-reviews`, `describe-book`, `recommend-similar`, `on-topic`) each fan out across `openLibraryScout` + `googleBooksScout` + `wikipediaScout` via `parallel` placements with `combine: 'collect'`. Results merge through `CanonicalId.dedupe` (ISBN-13 → ISBN-10 → `urn:work:<title>::<author>`).
+- Archivist demo: typed-state mirroring to RDF named graph. `StateProjection` projects `ArchivistState` into `urn:dagonizer:state:<runId>` on every `onNodeEnd`; nodes query via SPARQL across state graphs for cross-run memory recall.
+- Archivist demo: PROV-O activity log. `RdfProvObserver` writes `prov:Activity` quads (`startedAtTime`, `endedAtTime`, `wasInformedBy`, `wasAssociatedWith`) per node/tool/llm call into `urn:dagonizer:prov:<runId>`.
+- Archivist demo: TBox + ABox ontology in `ArchivistOntology.ts` (7 classes, 8 object properties, 13 datatype properties). `dag:Run` and `dag:Activity` subclass `prov:Activity`; ontology loads into `urn:dagonizer:ontology` graph at startup.
+- Archivist demo: browser persistence. `MemoryStore.enablePersistence()` writes N-Quads to `localStorage`; survives reloads. `PersistenceBadge` reflects state in the UI.
+- Archivist demo: checkpoint resume. `CheckpointControls` saves the current run's cursor + typed state; `ask()` resume path reuses `buildObserver(fromCursor, prov)` so prov + state projection stay continuous across resume.
+- Archivist demo: per-phase `TimeoutDrawer` controls + cancel button. Visitor adjusts compose/web-search/rank budgets; cancel button aborts the active `AbortController`. The overall `deadlineMs` is a safety-net only.
+- Archivist demo: composable prompt directives in `prompts.ts`. Positive attractors only (no negative directives). Schema examples are shape-only (`<title-words>`, `<author-name>`, `<ISBN-13>`) to prevent LLM poisoning.
+- Archivist demo: workshop UI with DAG / RDF memory / state / trace / logger / ontology tabs. `MemoryGraph` uses cosmos.gl native defaults with layer-chip filter (memory/state/prov). `DagGraph` D-pad navigation (3x3 grid: zoom/pan/center/expand/fit). `StateLegend` left column with equal-width rows.
+- Archivist demo: three external tools — `OpenLibrarySearchTool`, `GoogleBooksTool`, `WikipediaSummaryTool`. Each returns normalized `Candidate[]` with overlapping `CanonicalId` keys so cross-source merge is natural.
+- Three LLM adapters under `providers/adapters/`: `GeminiNanoAdapter` (in-browser via `chrome.aiOriginTrial`), `GeminiApiAdapter` (REST), `WebLlmAdapter` (in-browser MLC). Tool calling via each backend's native channel (`functionDeclarations` / `responseConstraint` / `response_format`).
+- Archivist demo: `recallContext` node runs first on every visitor message. Issues SPARQL queries across `urn:dagonizer:state:*` graphs for prior intents (token-overlap ranked), recently shortlisted candidates, and similar prior queries (Jaccard ≥ 0.15). Populates `state.recalledContext` and a 1–2 sentence `summary` string. `classifyIntent` and all five `composeResponse` paths consume the summary as conversational priors for continuity across sessions.
+- Archivist demo: `SubjectSearchTool` + `subjectScout`. OpenLibrary subject search wired into every fan-out branch (now 4 sources per intent: openlibrary + google-books + subject + wikipedia). Visitors can find books by theme/subject ("labyrinth house that eats people") rather than only by title/author.
+- Archivist demo: workshop UI collapsed to 4 tabs — DAG, Memory (merged ontology + memory + state + prov RDF graph), Trace (merged logger + lifecycle + state-update feed via new `TraceFeed`), Timeouts (per-phase controls promoted from a floating drawer to a proper tab via `TimeoutPane`). Memory graph rendering bug fixed — ontology layer (`urn:dagonizer:ontology`) now mapped, colored, and chip-filterable alongside memory/state/prov.
+- Archivist demo: graph chrome normalized across DagGraph and MemoryGraph — D-pad navigation bottom-right, kind/layer legend bottom-left. DagGraph uses strict `rankDir: 'TB'` with `ranker: 'tight-tree'` for a clean top-to-bottom flowchart.
+
+- Archivist demo: molecular DAG composition. Two reusable deep-DAGs shipped as components — `BookSearchFanoutDAG` (4-source parallel scout cluster + rank + merge + record + citations-gate, used in three intent branches) and `ComposeRetryLoopDAG` (recall + compose + validate with bounded retry, the shared response terminus). Each deep-DAG exports a `register{Name}Nodes(dispatcher)` helper so consumers import the cluster and register its nodes in one call. `archivistDAG` shrinks from 348 → 236 lines and now reads as a composition of named deep-DAGs. `CytoscapeRenderer` receives the deep-DAG registry and expands each placement inline — no opaque boxes.
+- Archivist demo: two-column responsive layout following the iridis container-query pattern. Left column tabs: Conversation, Config (absorbs BackendPicker, TimeoutPane, PersistenceBadge, CheckpointControls, API key). Right column tabs: DAG, Memory, Trace. Single-column on narrow widths; switches to two-column at ≥720px container width via `@container archivist (min-width: 720px)` — breakpoint is the component's own width, not the viewport.
+- Archivist demo: docs page (`docs/examples/the-archivist.md`) inlines example source via VitePress `<<<` code imports directly from `examples/the-archivist/`. Single source — the file that runs in the demo is the same file shown on the page. Removed the stale Mermaid flow block (pre-fan-out topology), the GitHub source-tree listing, and other content the live demo now visualizes.
+- Archivist demo: shared graph chrome — `GraphDpad.vue` (3×3 D-pad with optional zoom readout) and `GraphLegend.vue` (tab-based, click-to-toggle entries) drive both DagGraph and MemoryGraph identically. Both panes share a `.graph-pane` class (`640px`) so tab-switching feels consistent. Both auto-fit after their layout settles.
+- Archivist demo: `recall-memories` meta-query intent. Visitor questions about the agent's own history (what books seen, what queries asked, what intents classified) route through a dedicated branch — `recallMemories` SPARQL-aggregates the persistent state graphs into a `MemoryDigest`, `composeMemoryResponse` turns it into a warm in-character reply via a new `LlmClient.composeMemoryRecall` method. Classifier prompt narrowed: off-topic now means "unrelated to books **and** unrelated to your memory".
+
+- Archivist demo: zoom-out clamped at fit on both graphs. DagGraph's `minZoom` re-anchors to the fit zoom level after every `fit()`; MemoryGraph tracks `fitZoomLevel` and clamps both button + wheel zoom-out so the graph never shrinks below its fitted view.
+- Archivist demo: `decideTools` now requires all four search tools (OpenLibrary, Google Books, Subject, Wikipedia) for visitor lookups — strengthened prompt + safety-net post-processor that appends missing tools when the LLM returns a partial plan. Tool-plan query strings are unwrapped via an `unquote()` helper before being passed to fetch, fixing the `""double-quoted""` query bug.
+- Archivist demo: always-respond on failure. New `composeEmptyResponse` LLM node replaces the canned `declineEmpty` path — when all scouts return empty, an `ownTheGap` prompt directive produces an in-character response that acknowledges what was searched, explains the gap, and offers one alternative angle. `state.failureCause` accumulates sanitized per-scout failure notes (source + outcome, no URLs/keys/stack traces) and feeds the prompt.
+- Archivist demo: per-phase timeout defaults raised to 60s (compose, web-search) and 30s (rank) — agents are slow, especially web-bound scouts. `TimeoutPane` + `ArchivistRunner` reflect the new defaults.
+- Docs: phase example pages (`01-linear` through `08-checkpoint`) now import their snippets from `examples/the-archivist/` via VitePress `<<<` code imports (`#region` markers for partial files). Single source — the runtime example IS the documented example. Eight pages, six source files with region markers added.
+
+- Archivist demo: starter-query LLM suggestion + clear-on-send. On fresh sessions the input pre-fills with a random visitor-style question about a popular author/series (via new `LlmClient.suggestStarterQuery()`); falls back to a 12-entry static pool if the model errors. After every send, the input clears immediately.
+
+### Fixed
+
+- Engine: `runNodes` no longer fires `onFlowStart`/`onFlowEnd` or calls `state.markRunning`/`markCompleted` when invoked recursively from `executeDeepDAG`. Consumers see exactly one flow-start and one flow-end per top-level `execute()` call regardless of deep-DAG depth.
+- Archivist demo: duplicate response bug resolved at the engine level. `ComposeRetryLoopDAG` routes its outputs to the parent-owned `respond-to-visitor` placement; the engine lifecycle fix ensures `onFlowEnd` fires once per run. The UI-side `dagName === 'the-archivist'` guard is removed — the engine invariant is the guarantee.
+- Engine: `CytoscapeRenderer` deep-DAG inline expansion no longer emits dangling `<placement>/END` edges. When recursing into an expanded deep-DAG (`prefix` non-empty), `null` targets refer to the deep-DAG's terminus, not the parent's END — those internal terminal markers are now suppressed so the compound parent's own outgoing edges carry the real external routing.
+
+### Changed
+
+- Engine: deep-DAG placements that route any output to `null` (terminal) are rejected at `registerDAG` time. Deep-DAGs are reusable components; only the parent DAG owns END. The error message names the offending placement, route, and DAG so misconfiguration is immediately actionable.
+
+### Removed
+
+- Archivist demo: `OntologyGraph.vue`, `MemoryPane.vue`, `LogStream.vue`, `TraceList.vue`, `TimeoutDrawer.vue` — superseded by the merged Memory tab, `TraceFeed`, and `TimeoutPane`.
 
 - `./types` subpath export — type-only barrel of every public interface and entity-derived type. Consumers import the type surface without pulling runtime classes (`import type { DAG, NodeInterface } from '@noocodex/dagonizer/types'`).
 - `./core` subpath export — pluggable execution primitives (`ParallelCombiner`/`ParallelCombiners`, `FanInStrategy`/`FanInStrategies`).
@@ -15,11 +65,11 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 - `ParallelCombiner` abstract class + `ParallelCombiners` registry in `core/`. Defaults `all-success` / `any-success` / `collect` register at module load. Consumers extend `ParallelCombiner` and call `ParallelCombiners.register(new MyCombiner())`.
 - `FanInStrategy` abstract class + `FanInStrategies` registry in `core/`. Defaults `append` / `partition` / `custom` register at module load. The `FanInExecution` context exposes the state accessor and an `invokeNode(name)` method for custom strategies.
 - `StateAccessor` adapter contract in `contracts/` with default `DottedPathAccessor` in `runtime/`. `Dagonizer` accepts an `accessor` option to swap path resolution.
-- Per-entity validators on `Validator`: `node`, `nodeContext`, `nodeOutput`, `nodeError`, `nodeWarning`, `nodeResult`, `nodeStateData`, `executionResult`, `validationResult`, `dagErrorJson`, `fanInConfig`, `singleNode`, `parallelNode`, `fanOutNode`, `subDAGNode`, `dagLifecycleState`. Existing `dag` and `checkpoint` retained.
+- Per-entity validators on `Validator`: `node`, `nodeContext`, `nodeOutput`, `nodeError`, `nodeWarning`, `nodeResult`, `nodeStateData`, `executionResult`, `validationResult`, `dagErrorJson`, `fanInConfig`, `singleNode`, `parallelNode`, `fanOutNode`, `deepDAGNode`, `dagLifecycleState`. Existing `dag` and `checkpoint` retained.
 - Generic services container on `NodeContextInterface<TServices>`. `Dagonizer<TState, TServices>` accepts `{ services }` at construction; the same reference flows through every node's `context.services`. `TServices` defaults to `undefined` for nodes that don't depend on injected services.
 - `CheckpointStore` adapter contract in `contracts/`. `MemoryCheckpointStore` ships as a reference in-process implementation. `Checkpoint.persist(store, key, data)` and `Checkpoint.recall(store, key, restoreState)` compose the codec with the store; `RecalledCheckpoint<TState>` is the recall return shape.
 - `./derive` subpath export. `OperationContract` adapter contract in `contracts/`; `FlowDeriver.derive(opts)` produces a `DAG` from a contract registry plus declared `FlowAnnotations` (terminals, fanouts). Topology updates automatically as contracts change.
-- `./viz` subpath export. `MermaidRenderer.render(dag)` emits Mermaid `flowchart` source for any `DAG`. Single nodes render as rectangles, fan-outs as hexagons, sub-dags as stadia, parallel placements as subgraphs.
+- `./viz` subpath export. `MermaidRenderer.render(dag)` emits Mermaid `flowchart` source for any `DAG`. Single nodes render as rectangles, fan-outs as hexagons, deep-dags as stadia, parallel placements as subgraphs.
 
 ### Changed
 
@@ -29,6 +79,14 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 - Constant exports unified — `FanInStrategyName`, `FanOutOutput`, `MetadataKey`, `Output`, `ParallelCombine`, `NodeType` each ship value+type under one identifier. The `…Type` aliases are removed.
 - Wire-shape constant `FanInStrategy` renamed to `FanInStrategyName` (JSON enum unchanged: `'append' | 'custom' | 'partition'`). The `FanInStrategy` identifier is the abstract class consumers extend in `core/`.
 - `Dagonizer` constructor takes `DagonizerOptionsInterface` (currently `{ accessor?: StateAccessor }`). Calls without arguments continue to work.
+
+### Breaking
+
+- **DAG wire format is canonically JSON-LD.** The flat `'type'` discriminator field is removed. Node placements use `@type` with string IRIs: `"SingleNode"`, `"ParallelNode"`, `"FanOutNode"`, `"DeepDAGNode"`. Persisted DAG JSON using the old flat `type` shape does not parse.
+- **`SubDAGNode` → `DeepDAGNode`.** The entity, schema, and TypeScript type are renamed. `Validator.subDAGNode` → `Validator.deepDAGNode`. `SubDAGNodeSchema` → `DeepDAGNodeSchema`. All identifiers that referenced `SubDAG` now reference `DeepDAG`.
+- **`DAGBuilder.subDAG()` → `DAGBuilder.deepDAG()`.** The builder method is renamed. Call sites using `.subDAG(name, dagName, routes, options)` must change to `.deepDAG(name, dagName, routes, options)`.
+- **`DagJsonLd` projection module removed.** The DAG IS JSON-LD natively; there is no separate projection layer and there are no `toJsonLd` / `fromJsonLd` helpers. Code that imported `{ toJsonLd, fromJsonLd } from '@noocodex/dagonizer'` or `from '@noocodex/dagonizer/entities'` must be deleted — the DAG value returned by `DAGBuilder.build()` (or read off the wire) IS the JSON-LD document. `Dagonizer.load(json)` / `serialize(dag)` remain the standard parse/stringify surface.
+- **`examples/the-archivist/subdags/` directory renamed to `examples/the-archivist/deepdags/`.** Any import paths that referenced `subdags/` must be updated to `deepdags/`.
 
 ## [0.4.0] - 2026-05-15
 
