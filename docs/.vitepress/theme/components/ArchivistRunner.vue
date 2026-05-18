@@ -193,7 +193,7 @@ async function resumeFromCheckpoint(): Promise<void> {
   isRunning.value = true;
   terminalKind.value = 'pending';
   trace.value = [];
-  dagGraph.value?.reset();
+  await dagGraph.value?.reset();
   memoryTick.value++;
   logger.clear();
   logger.info(`resuming from checkpoint at node: ${restored.cursor}`);
@@ -347,7 +347,8 @@ function buildServices(): ArchivistServices {
 function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
   return {
     onFlowStart(dagName: string) {
-      dagGraph.value?.reset();
+      // reset() is awaited by the caller (ask / resumeFromCheckpoint) before
+      // execute() fires, so the fade-out completes before this point.
       if (fromCursor !== null) dagGraph.value?.setActive(fromCursor);
       prov.recordFlowStart(dagName);
     },
@@ -473,7 +474,7 @@ async function ask(): Promise<void> {
   // Clear the input immediately after capturing — the send-and-clear pattern.
   visitorQuery.value = '';
 
-  dagGraph.value?.reset();
+  await dagGraph.value?.reset();
   memoryTick.value++;
   logger.clear();
   logger.info(`run start — query: "${queryText}"`);
@@ -568,7 +569,9 @@ function reset(): void {
   selectedIri.value = null;
   checkpointNode.value = null;
   lastResult = null;
-  dagGraph.value?.reset();
+  // Fire-and-forget: the manual reset button is not starting a new run,
+  // so no need to await — the fade plays visually but nothing depends on it.
+  void dagGraph.value?.reset();
   memoryTick.value++;
   logger.clear();
   runnerMachine.dispatch({ 'type': 'reset' });

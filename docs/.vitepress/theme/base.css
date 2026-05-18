@@ -3,10 +3,14 @@
  * Silver brushed-metal chrome around navy hex-interior panels with
  * steel-shine text, black-pearl buttons, and gem-orb accents.
  *
- * Typography:
- *   - Body: Caudex (Google Fonts) — a humanist serif with old-god gravitas
- *   - Code: Share Tech Mono — a CRT-terminal monospace that pairs the
- *     mechanical talisman read of the icon
+ * Typography — three-tier system:
+ *   - Display / headers (h1–h4): Caudex — the brand voice; humanist serif
+ *     with old-god gravitas. Used for headings only.
+ *   - Body (p, li, table, blockquote, nav): Source Serif 4 — a clean
+ *     transitional serif, low contrast, high x-height. Sturdy at small
+ *     sizes (sidebar, footnotes), barely-serif at body sizes.
+ *   - Mono (code, pre, kbd, mermaid): JetBrains Mono — clean no-serif
+ *     monospace. Uniform for code blocks and diagram labels.
  *
  * Texture:
  *   - .dagonizer-texture-* tokens paint a subtle engraved noise pattern
@@ -16,8 +20,12 @@
  */
 
 :root {
-  --vp-font-family-base: "Caudex", "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
-  --vp-font-family-mono: "Share Tech Mono", "SF Mono", Menlo, Consolas, ui-monospace, monospace;
+  /* Display / headings — Caudex for brand voice, falls back to classic serifs */
+  --vp-font-family-display: "Caudex", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  /* Body — Source Serif 4: clean transitional serif, readable at sidebar sizes */
+  --vp-font-family-base: "Source Serif 4", Charter, "Georgia Pro", Georgia, serif;
+  /* Mono — JetBrains Mono: no-serif, uniform for code and diagram labels */
+  --vp-font-family-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, ui-monospace, monospace;
 
   /* Mirror the iridis layout: sidebar is an overlay drawer at every
      viewport width, content fills nearly the whole viewport. The
@@ -72,6 +80,7 @@ body {
 }
 
 .vp-doc h1 {
+  font-family: var(--vp-font-family-display);
   color: var(--dagonizer-silver);
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -79,6 +88,7 @@ body {
   padding-bottom: 0.3em;
 }
 .vp-doc h2 {
+  font-family: var(--vp-font-family-display);
   border-bottom: 1px solid var(--vp-c-divider);
   padding-bottom: 0.4rem;
   margin-top: 2.4rem;
@@ -87,11 +97,12 @@ body {
   color: var(--dagonizer-silver);
 }
 .vp-doc h3 {
+  font-family: var(--vp-font-family-display);
   font-weight: 600;
   margin-top: 1.75rem;
   color: var(--dagonizer-cyan);
 }
-.vp-doc h4 { color: var(--dagonizer-seagreen); font-weight: 600; }
+.vp-doc h4 { font-family: var(--vp-font-family-display); color: var(--dagonizer-seagreen); font-weight: 600; }
 
 .vp-doc strong { color: var(--dagonizer-silver); font-weight: 600; }
 .vp-doc em { color: var(--dagonizer-silver-dim); }
@@ -413,7 +424,7 @@ body {
   height: auto;
   line-height: 1.5;
   color: var(--dagonizer-silver);
-  font-family: var(--vp-font-family-base);
+  font-family: var(--vp-font-family-display);
   font-weight: 700;
   font-size: 1.05rem;
   letter-spacing: 0.02em;
@@ -471,6 +482,7 @@ body {
 }
 
 .dagonizer-hero h1 {
+  font-family: var(--vp-font-family-display);
   font-size: 2.6rem;
   font-weight: 800;
   letter-spacing: -0.03em;
@@ -591,6 +603,8 @@ body {
   border: 1px solid var(--vp-c-divider);
   border-radius: 4px;
   overflow-x: auto;
+  /* expand button needs a positional context; zoom-in cursor signals click-to-expand */
+  cursor: zoom-in;
 }
 .vp-doc div[class*="mermaid"] svg,
 .vp-doc .dagonizer-mermaid-frame svg {
@@ -721,6 +735,101 @@ body {
 .vp-doc .mermaid svg .edgeLabel span,
 .vp-doc .mermaid svg .edgeLabel foreignObject span {
   font-size: 0.78rem !important;
+}
+
+/* ===== Mermaid expand button + modal (pan/zoom viewer) =====
+   The .dagonizer-mermaid-expand button is injected by MermaidEnhancer.client.ts
+   into each diagram frame. The modal overlay is appended to <body>. */
+
+.dagonizer-mermaid-expand {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 9px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--vp-c-text-2);
+  background: var(--dagonizer-pearl);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  cursor: zoom-in;
+  z-index: 1;
+  user-select: none;
+}
+.dagonizer-mermaid-expand:hover {
+  color: var(--dagonizer-cyan);
+  border-color: var(--dagonizer-cyan);
+}
+
+/* Modal overlay */
+.dagonizer-mermaid-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 3, 6, 0.94);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: stretch;
+  cursor: grab;
+}
+.dagonizer-mermaid-modal.dragging { cursor: grabbing; }
+
+.dagonizer-mermaid-modal-toolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  display: flex;
+  gap: 6px;
+}
+.dagonizer-mermaid-modal-toolbar button {
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  background: var(--dagonizer-pearl);
+  border: 1px solid var(--vp-c-divider);
+  color: var(--vp-c-text-1);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.dagonizer-mermaid-modal-toolbar button:hover {
+  border-color: var(--dagonizer-cyan);
+  color: var(--dagonizer-cyan);
+}
+
+.dagonizer-mermaid-modal-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.dagonizer-mermaid-modal-stage svg {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform-origin: 0 0;
+  max-width: none !important;
+  height: auto !important;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.dagonizer-mermaid-modal-hint {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.72rem;
+  color: var(--vp-c-text-3);
+  background: var(--dagonizer-pearl);
+  padding: 4px 10px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  z-index: 2;
+  white-space: nowrap;
 }
 
 /* ============================================================
