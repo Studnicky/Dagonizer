@@ -194,6 +194,11 @@ function initCosmos(container: HTMLDivElement): void {
     // the simulation does. Everything else (point size, link color,
     // physics, layout) uses cosmos's built-in choices.
     graph.value = new GraphCtor(container, {
+      // Faster cooldown — cosmos.gl default decay is 1000 (slow), which
+      // animates the layout for tens of seconds after the first paint.
+      // 5000 settles the layout in ~1s; the graph picks a stable form
+      // and stops jittering well before the visitor reads any node.
+      'simulationDecay': 5000,
       'onSimulationTick': () => { scheduleLabelPaint(); pollZoom(); },
       'onZoom': () => {
         scheduleLabelPaint();
