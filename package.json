@@ -105,9 +105,11 @@
   },
   "scripts": {
     "docs:dev": "vitepress dev docs",
-    "docs:build": "npm run docs:theme && vitepress build docs",
+    "docs:build": "npm run docs:theme && npm run docs:og-image && npm run docs:version-badge && vitepress build docs",
     "docs:preview": "vitepress preview docs",
     "docs:theme": "node docs/.vitepress/scripts/build-palette.mjs",
+    "docs:og-image": "node docs/.vitepress/scripts/build-og-image.mjs",
+    "docs:version-badge": "node docs/.vitepress/scripts/build-version-badge.mjs",
     "clean": "rm -rf dist dist-test dist-testing",
     "build:src": "tsc -p tsconfig.json",
     "build:testing": "tsc -p tsconfig.testing.json",

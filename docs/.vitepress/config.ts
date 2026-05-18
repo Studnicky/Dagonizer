@@ -61,14 +61,6 @@ const sidebar = [
     ],
   },
   {
-    // Live runnable demo — appears right after the introduction so
-    // visitors who skim the home page land on the interactive runner.
-    text: 'Live demo',
-    items: [
-      { text: 'The Archivist', link: '/examples/the-archivist' },
-    ],
-  },
-  {
     // Order: what a consumer needs to know first → progressively deeper.
     //   1. State + builder — author the things you want to run
     //   2. Schema & JSON loading — load DAGs from outside
@@ -97,13 +89,12 @@ const sidebar = [
     ],
   },
   {
-    // Examples come before Reference — the running biblio-assistant demo
-    // anchors every concept introduced in Usage. Reference is the lookup
-    // tier readers consult once they're inside the code.
-    text: 'Examples',
+    // Demos: The Archivist is the end-to-end runnable demo of the framework.
+    // Phase examples walk each framework capability step by step.
+    text: 'Demos',
     collapsed: false,
     items: [
-      { text: 'Running domain: The Archivist', link: '/examples/the-archivist' },
+      { text: 'The Archivist (in-browser demo)', link: '/examples/the-archivist' },
       { text: 'Phase 01 · Linear intake',          link: '/examples/01-linear' },
       { text: 'Phase 02 · Fan-out scout',          link: '/examples/02-fanout' },
       { text: 'Phase 03 · Deep-DAG composition',    link: '/examples/03-deepflows' },
@@ -138,9 +129,9 @@ const sidebar = [
 
 // ── Site identity — single source of truth for SEO, OG, JSON-LD ─────────
 const SITE_TITLE = 'Dagonizer';
-const SITE_TAGLINE = 'Omniscient orchestration for directed acyclic graphs';
-const SITE_DESCRIPTION = 'Dagonizer is a type-safe DAG dispatcher for Node.js — JSON-Schema-validated graph definitions, abortable execution, deterministic resume, pluggable combiners and fan-in strategies, contract-derived flow generation, and Mermaid visualization.';
-const SITE_DESCRIPTION_SHORT = 'Type-safe DAG dispatcher for Node.js. Abortable execution, deterministic resume, pluggable strategies, contract-derived flows, Mermaid visualization.';
+const SITE_TAGLINE = 'TypeScript framework for orchestrating work as a DAG of typed nodes with a state machine lifecycle';
+const SITE_DESCRIPTION = 'Dagonizer is a TypeScript framework for orchestrating work as a directed acyclic graph of typed nodes — type-safe routing, abortable execution, deterministic resume, deep-DAG composition, per-node retry policies, JSON-LD canonical wire format, FSM-driven lifecycle, and pluggable visualization. No external runtime required.';
+const SITE_DESCRIPTION_SHORT = 'TypeScript DAG orchestration framework. Type-safe nodes, abortable execution, deterministic resume, deep-DAG composition, FSM lifecycle, no external runtime.';
 const SITE_BASE = '/Dagonizer/';
 const SITE_URL = `https://studnicky.github.io${SITE_BASE}`;
 const SITE_ICON = `${SITE_URL}dagonizer-icon.svg`;
