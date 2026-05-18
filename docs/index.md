@@ -16,7 +16,7 @@ title: Dagonizer
 
 Dagonizer is a self-contained DAG orchestration framework. Define flows as plain JSON objects or via the fluent `DAGBuilder` API, register typed nodes, and execute. The dispatcher walks the node graph, propagates cancellation signals, retries on failure, and snapshots in-flight state for deterministic resume — with no external broker, queue, or process boundary required.
 
-## What it is
+## ⦿ What it is
 
 A **node** is a typed, stateless unit of work that receives shared state and a context (including an `AbortSignal`) and returns a named output. The dispatcher routes on that output to the next node. Four placement kinds cover the full composition space:
 
@@ -27,7 +27,7 @@ A **node** is a typed, stateless unit of work that receives shared state and a c
 | `fan-out` | One node per item in a state array; fan-in strategy merges results |
 | `deep-dag` | A registered DAG invoked as a nested call; state mapped in and out |
 
-## FSM-driven lifecycle
+## ⦿ FSM-driven lifecycle
 
 Every execution runs through `DAGLifecycleMachine`: `pending → running → completed | failed | cancelled | timed_out`. Terminal states are sticky. Every transition is timestamped with monotonic milliseconds. The lifecycle state travels on `NodeStateInterface` through every node in the graph.
 
@@ -39,7 +39,7 @@ pending ──start──▶ running ──succeed──▶ completed
                       └──timeout──────▶ timed_out
 ```
 
-## Key capabilities
+## ⦿ Key capabilities
 
 <div class="feature-grid">
   <div class="card">
@@ -80,10 +80,10 @@ pending ──start──▶ running ──succeed──▶ completed
   </div>
 </div>
 
-## No external runtime
+## ⦿ No external runtime
 
 Dagonizer runs in-process. No worker pool, no external state store, no IPC. DAG definitions are plain JSON objects — store them in files, databases, or configuration services and load them at runtime via `Dagonizer.load`. The framework is browser-runnable: no Node.js-only primitives in the core engine.
 
-## See it in action
+## ⦾ See it in action
 
 [The Archivist](/examples/the-archivist) is an end-to-end in-browser demo built entirely on Dagonizer — a bibliographic-assistant pipeline that exercises linear intake, fan-out, deep-DAG composition, cancellation, retry, checkpoint, and visualization in a single runnable flow.
