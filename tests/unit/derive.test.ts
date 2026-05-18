@@ -22,13 +22,17 @@ void describe('FlowDeriver.derive', () => {
     });
     assert.equal(dag.name, 'chain');
     assert.equal(dag.entrypoint, 'a');
+    // JSON-LD canonical shape: @context, @id, @type at root
+    assert.equal(dag['@type'], 'DAG');
+    assert.ok(dag['@id'].startsWith('urn:noocodex:dag:'));
+    assert.ok(dag['@context'] !== undefined);
     const names = dag.nodes.map((node) => node.name);
     assert.deepEqual(names, ['a', 'b', 'c']);
     const a = dag.nodes[0];
-    if (a !== undefined && a.type === 'single') {
+    if (a !== undefined && a['@type'] === 'SingleNode') {
       assert.equal(a.outputs['success'], 'b');
     } else {
-      assert.fail('expected first node to be single');
+      assert.fail('expected first node to be SingleNode');
     }
   });
 
@@ -44,7 +48,7 @@ void describe('FlowDeriver.derive', () => {
       'entrypoint': 'fan-a',
       contracts,
     });
-    const parallel = dag.nodes.find((node) => node.type === 'parallel');
+    const parallel = dag.nodes.find((node) => node['@type'] === 'ParallelNode');
     assert.ok(parallel !== undefined, 'parallel placement is emitted');
   });
 
@@ -71,9 +75,9 @@ void describe('FlowDeriver.derive', () => {
         },
       },
     });
-    const fanOut = dag.nodes.find((node) => node.type === 'fan-out');
+    const fanOut = dag.nodes.find((node) => node['@type'] === 'FanOutNode');
     assert.ok(fanOut !== undefined);
-    if (fanOut !== undefined && fanOut.type === 'fan-out') {
+    if (fanOut !== undefined && fanOut['@type'] === 'FanOutNode') {
       assert.equal(fanOut.fanIn.strategy, 'custom');
       assert.equal(fanOut.fanIn.customNode, 'merge');
       assert.equal(fanOut.concurrency, 3);
@@ -100,7 +104,7 @@ void describe('FlowDeriver.derive', () => {
     });
     const classify = dag.nodes.find((node) => node.name === 'classify');
     assert.ok(classify !== undefined);
-    if (classify !== undefined && classify.type === 'single') {
+    if (classify !== undefined && classify['@type'] === 'SingleNode') {
       assert.equal(classify.outputs['off-topic'], null);
       assert.equal(classify.outputs['success'], 'plan');
     }

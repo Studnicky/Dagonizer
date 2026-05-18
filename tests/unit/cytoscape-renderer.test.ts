@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { DAG } from '../../src/entities/index.js';
+import { DAG_CONTEXT } from '../../src/entities/index.js';
 import { CytoscapeRenderer } from '../../src/viz/CytoscapeRenderer.js';
 import type { CytoscapeNodeElement } from '../../src/viz/CytoscapeRenderer.js';
 
@@ -11,10 +12,19 @@ const isNode = (element: { group: 'nodes' | 'edges' }): element is CytoscapeNode
 void describe('CytoscapeRenderer.render', () => {
   void it('emits one node + edges-with-labels for a single-node DAG with terminal route', () => {
     const dag: DAG = {
-      'name': 'mini',
-      'version': '1',
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:mini',
+      '@type':    'DAG',
+      'name':       'mini',
+      'version':    '1',
       'entrypoint': 'greet',
-      'nodes': [{ 'type': 'single', 'name': 'greet', 'node': 'greet', 'outputs': { 'success': null } }],
+      'nodes': [{
+        '@id':    'urn:noocodex:dag:mini/node/greet',
+        '@type':  'SingleNode',
+        'name':   'greet',
+        'node':   'greet',
+        'outputs': { 'success': null },
+      }],
     };
     const elements = CytoscapeRenderer.render(dag);
     const nodes = elements.filter((entry) => entry.group === 'nodes');
@@ -27,13 +37,17 @@ void describe('CytoscapeRenderer.render', () => {
 
   void it('marks fan-out placements with type=fan-out', () => {
     const dag: DAG = {
-      'name': 'fan',
-      'version': '1',
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:fan',
+      '@type':    'DAG',
+      'name':       'fan',
+      'version':    '1',
       'entrypoint': 'fan',
       'nodes': [{
-        'type': 'fan-out',
-        'name': 'fan',
-        'node': 'worker',
+        '@id':    'urn:noocodex:dag:fan/node/fan',
+        '@type':  'FanOutNode',
+        'name':   'fan',
+        'node':   'worker',
         'source': 'items',
         'fanIn': { 'strategy': 'append', 'target': 'collected' },
         'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
@@ -47,13 +61,17 @@ void describe('CytoscapeRenderer.render', () => {
 
   void it('parallel placements carry children + combine in data', () => {
     const dag: DAG = {
-      'name': 'par',
-      'version': '1',
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:par',
+      '@type':    'DAG',
+      'name':       'par',
+      'version':    '1',
       'entrypoint': 'group',
       'nodes': [{
-        'type': 'parallel',
-        'name': 'group',
-        'nodes': ['a', 'b'],
+        '@id':     'urn:noocodex:dag:par/node/group',
+        '@type':   'ParallelNode',
+        'name':    'group',
+        'nodes':   ['a', 'b'],
         'combine': 'collect',
         'outputs': { 'success': null, 'error': null },
       }],
@@ -67,12 +85,15 @@ void describe('CytoscapeRenderer.render', () => {
 
   void it('routes targeting named placements produce non-terminal edges', () => {
     const dag: DAG = {
-      'name': 'chain',
-      'version': '1',
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:chain',
+      '@type':    'DAG',
+      'name':       'chain',
+      'version':    '1',
       'entrypoint': 'a',
       'nodes': [
-        { 'type': 'single', 'name': 'a', 'node': 'n', 'outputs': { 'success': 'b' } },
-        { 'type': 'single', 'name': 'b', 'node': 'n', 'outputs': { 'success': null } },
+        { '@id': 'urn:noocodex:dag:chain/node/a', '@type': 'SingleNode', 'name': 'a', 'node': 'n', 'outputs': { 'success': 'b' } },
+        { '@id': 'urn:noocodex:dag:chain/node/b', '@type': 'SingleNode', 'name': 'b', 'node': 'n', 'outputs': { 'success': null } },
       ],
     };
     const elements = CytoscapeRenderer.render(dag);
@@ -86,10 +107,19 @@ void describe('CytoscapeRenderer.render', () => {
 
   void it('every edge has a stable id derived from source/output/target', () => {
     const dag: DAG = {
-      'name': 'ids',
-      'version': '1',
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:ids',
+      '@type':    'DAG',
+      'name':       'ids',
+      'version':    '1',
       'entrypoint': 'a',
-      'nodes': [{ 'type': 'single', 'name': 'a', 'node': 'n', 'outputs': { 'success': null, 'error': null } }],
+      'nodes': [{
+        '@id':    'urn:noocodex:dag:ids/node/a',
+        '@type':  'SingleNode',
+        'name':   'a',
+        'node':   'n',
+        'outputs': { 'success': null, 'error': null },
+      }],
     };
     const elements = CytoscapeRenderer.render(dag);
     const ids = elements

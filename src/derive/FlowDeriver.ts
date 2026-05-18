@@ -35,6 +35,7 @@
 
 import type { OperationContract } from '../contracts/OperationContract.js';
 import type { DAG } from '../entities/dag/DAG.js';
+import { DAG_CONTEXT } from '../entities/dag/DAG.js';
 import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
@@ -60,6 +61,10 @@ export class FlowDeriver {
    * Operations named as a fan-out's `fanInOperation` are emitted as
    * registered single-node placements alongside the fan-out so the
    * `custom` fan-in strategy can resolve them.
+   *
+   * The returned document is a canonical JSON-LD DAG with `@context`,
+   * `@id`, and `@type` at the root; each placement carries `@id` and
+   * `@type` as required by `DAGSchema`.
    */
   static derive(opts: FlowDeriverOptions): DAG {
     const annotations = opts.annotations ?? {};
@@ -76,11 +81,14 @@ export class FlowDeriver {
     const eligibleContracts = contracts.filter((contract) => !fanInOps.has(contract.name));
     const edges = FlowDeriver.edges(eligibleContracts);
     const buckets = FlowDeriver.depthBuckets(eligibleContracts, edges);
-    const nodes = FlowDeriver.renderNodes(buckets, edges, annotations);
+    const nodes = FlowDeriver.renderNodes(buckets, edges, annotations, opts.name);
 
     return {
-      'name': opts.name,
-      'version': opts.version,
+      '@context': DAG_CONTEXT,
+      '@id':      `urn:noocodex:dag:${opts.name}`,
+      '@type':    'DAG',
+      'name':       opts.name,
+      'version':    opts.version,
       'entrypoint': opts.entrypoint,
       nodes,
     };
@@ -179,21 +187,26 @@ export class FlowDeriver {
     buckets: readonly (readonly string[])[],
     edges: ReadonlyMap<string, ReadonlySet<string>>,
     annotations: FlowAnnotations,
+    dagName: string,
   ): DAGNodeEntry[] {
     const nodes: DAGNodeEntry[] = [];
+    const nodeId = (placementName: string): string =>
+      `urn:noocodex:dag:${dagName}/node/${placementName}`;
 
     buckets.forEach((bucket, depth) => {
       const next = buckets[depth + 1] ?? [];
       if (bucket.length > 1) {
         const join = next[0] ?? null;
+        const parallelName = `depth_${depth.toString()}`;
         const parallelNode: ParallelNode = {
-          'type': 'parallel',
-          'name': `depth_${depth.toString()}`,
-          'nodes': [...bucket],
+          '@id':     nodeId(parallelName),
+          '@type':   'ParallelNode',
+          'name':    parallelName,
+          'nodes':   [...bucket],
           'combine': 'collect',
           'outputs': {
             'success': join,
-            'error': join,
+            'error':   join,
           },
         };
         nodes.push(parallelNode);
@@ -208,9 +221,10 @@ export class FlowDeriver {
             fanOutOutputs[outcome] = next0;
           }
           const fanOutNode: FanOutNode = {
-            'type': 'fan-out',
+            '@id':    nodeId(name),
+            '@type':  'FanOutNode',
             name,
-            'node': name,
+            'node':   name,
             'source': fan.source,
             'itemKey': fan.itemKey,
             'fanIn': { 'strategy': 'custom', 'customNode': fan.fanInOperation },
@@ -220,7 +234,8 @@ export class FlowDeriver {
           nodes.push(fanOutNode);
         } else {
           const single: SingleNodePlacementInterface = {
-            'type': 'single',
+            '@id':   nodeId(name),
+            '@type': 'SingleNode',
             name,
             'node': name,
             'outputs': FlowDeriver.stageOutputsFor(name, succs, annotations),

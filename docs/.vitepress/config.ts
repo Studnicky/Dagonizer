@@ -63,7 +63,7 @@ const sidebar = [
       { text: 'Running domain: The Archivist', link: '/examples/the-archivist' },
       { text: 'Phase 01 · Linear intake',          link: '/examples/01-linear' },
       { text: 'Phase 02 · Fan-out scout',          link: '/examples/02-fanout' },
-      { text: 'Phase 03 · Sub-DAG fallback',       link: '/examples/03-subflows' },
+      { text: 'Phase 03 · Deep-DAG composition',    link: '/examples/03-deepflows' },
       { text: 'Phase 04 · Cancellation',           link: '/examples/04-cancellation' },
       { text: 'Phase 05 · Retry compose',          link: '/examples/05-retry' },
       { text: 'Phase 06 · DAGBuilder',             link: '/examples/06-builder' },
@@ -103,7 +103,7 @@ const SITE_URL = `https://studnicky.github.io${SITE_BASE}`;
 const SITE_ICON = `${SITE_URL}dagonizer-icon.svg`;
 const SITE_OG_IMAGE = `${SITE_URL}og-image.png`;
 const SITE_THEME_COLOR = '#22e8ff';
-const SITE_KEYWORDS = 'dagonizer, dag, workflow, orchestration, dispatcher, node.js, typescript, flow, pipeline, state-machine, fan-out, fan-in, sub-dag, parallel, checkpoint, abortable, deterministic resume, mermaid visualization, json schema, retry policy, cancellation, async-iterable, contract-derived flow';
+const SITE_KEYWORDS = 'dagonizer, dag, workflow, orchestration, dispatcher, node.js, typescript, flow, pipeline, state-machine, fan-out, fan-in, deep-dag, parallel, checkpoint, abortable, deterministic resume, mermaid visualization, json schema, retry policy, cancellation, async-iterable, contract-derived flow';
 const SITE_AUTHOR_NAME = 'Andrew Studnicky';
 const SITE_AUTHOR_URL = 'https://github.com/Studnicky';
 const SITE_REPO = 'https://github.com/Studnicky/Dagonizer';

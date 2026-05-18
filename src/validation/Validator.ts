@@ -19,6 +19,8 @@ import { CheckpointDataSchema } from '../entities/checkpoint/CheckpointData.js';
 import type { CheckpointData } from '../entities/checkpoint/CheckpointData.js';
 import { DAGSchema } from '../entities/dag/DAG.js';
 import type { DAG } from '../entities/dag/DAG.js';
+import { DeepDAGNodeSchema } from '../entities/dag/DeepDAGNode.js';
+import type { DeepDAGNode } from '../entities/dag/DeepDAGNode.js';
 import { FanInConfigSchema } from '../entities/dag/FanInConfig.js';
 import type { FanInConfig } from '../entities/dag/FanInConfig.js';
 import { FanOutNodeSchema } from '../entities/dag/FanOutNode.js';
@@ -27,8 +29,6 @@ import { ParallelNodeSchema } from '../entities/dag/ParallelNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import { SingleNodeSchema } from '../entities/dag/SingleNode.js';
 import type { SingleNode } from '../entities/dag/SingleNode.js';
-import { SubDAGNodeSchema } from '../entities/dag/SubDAGNode.js';
-import type { SubDAGNode } from '../entities/dag/SubDAGNode.js';
 import { DAGErrorJSONSchema } from '../entities/errors/DAGErrorJSON.js';
 import type { DAGErrorJSON } from '../entities/errors/DAGErrorJSON.js';
 import { ExecutionResultSchema } from '../entities/execution/ExecutionResult.js';
@@ -116,7 +116,7 @@ export class Validator {
   static readonly singleNode: EntityValidator<SingleNode> = compileEntity('SingleNode', SingleNodeSchema);
   static readonly parallelNode: EntityValidator<ParallelNode> = compileEntity('ParallelNode', ParallelNodeSchema);
   static readonly fanOutNode: EntityValidator<FanOutNode> = compileEntity('FanOutNode', FanOutNodeSchema);
-  static readonly subDAGNode: EntityValidator<SubDAGNode> = compileEntity('SubDAGNode', SubDAGNodeSchema);
+  static readonly deepDAGNode: EntityValidator<DeepDAGNode> = compileEntity('DeepDAGNode', DeepDAGNodeSchema);
   static readonly fanInConfig: EntityValidator<FanInConfig> = compileEntity('FanInConfig', FanInConfigSchema);
 
   // Node runtime shapes

@@ -34,9 +34,10 @@ void describe('Validator per-entity sub-validators', () => {
   void it('Validator.singleNode accepts a placement', () => {
     assert.equal(
       Validator.singleNode.is({
-        'type': 'single',
-        'name': 'greet',
-        'node': 'greet',
+        '@id':   'urn:noocodex:dag:pipeline/node/greet',
+        '@type': 'SingleNode',
+        'name':  'greet',
+        'node':  'greet',
         'outputs': { 'done': null },
       }),
       true,
@@ -46,9 +47,10 @@ void describe('Validator per-entity sub-validators', () => {
   void it('Validator.parallelNode accepts a parallel placement', () => {
     assert.equal(
       Validator.parallelNode.is({
-        'type': 'parallel',
-        'name': 'fanout',
-        'nodes': ['a', 'b'],
+        '@id':     'urn:noocodex:dag:pipeline/node/fanout',
+        '@type':   'ParallelNode',
+        'name':    'fanout',
+        'nodes':   ['a', 'b'],
         'combine': 'all-success',
         'outputs': { 'success': null, 'error': null },
       }),
@@ -59,23 +61,25 @@ void describe('Validator per-entity sub-validators', () => {
   void it('Validator.fanOutNode accepts a fan-out placement', () => {
     assert.equal(
       Validator.fanOutNode.is({
-        'type': 'fan-out',
-        'name': 'scout',
-        'node': 'scoutOne',
+        '@id':    'urn:noocodex:dag:pipeline/node/scout',
+        '@type':  'FanOutNode',
+        'name':   'scout',
+        'node':   'scoutOne',
         'source': 'tasks',
-        'fanIn': { 'strategy': 'append', 'target': 'results' },
+        'fanIn':  { 'strategy': 'append', 'target': 'results' },
         'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
       }),
       true,
     );
   });
 
-  void it('Validator.subDAGNode accepts a sub-dag placement', () => {
+  void it('Validator.deepDAGNode accepts a deep-dag placement', () => {
     assert.equal(
-      Validator.subDAGNode.is({
-        'type': 'sub-dag',
-        'name': 'enrich',
-        'dag': 'enrichment',
+      Validator.deepDAGNode.is({
+        '@id':   'urn:noocodex:dag:pipeline/node/enrich',
+        '@type': 'DeepDAGNode',
+        'name':  'enrich',
+        'dag':   'enrichment',
         'outputs': { 'success': null, 'error': null },
       }),
       true,

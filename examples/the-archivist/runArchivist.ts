@@ -2,16 +2,16 @@
  * runArchivist — end-to-end demo runner (CLI).
  *
  * Wires the registered nodes onto a `Dagonizer<ArchivistState, ArchivistServices>`,
- * registers the canonical DAG (and its sub-DAG components), and runs one
+ * registers the canonical DAG (and its deep-DAG components), and runs one
  * visitor question through.
  *
- * Molecular sub-DAG registration order:
+ * Molecular deep-DAG registration order:
  *   1. registerBookSearchFanoutNodes(dispatcher) — registers all nodes used by
- *      the book-search-fanout sub-DAG (extract, decide, scouts, rank, merge, ...)
- *   2. dispatcher.registerDAG(BookSearchFanoutDAG) — registers the sub-DAG itself
+ *      the book-search-fanout deep-DAG (extract, decide, scouts, rank, merge, ...)
+ *   2. dispatcher.registerDAG(BookSearchFanoutDAG) — registers the deep-DAG itself
  *   3. registerComposeRetryLoopNodes(dispatcher) — compose, validate, respond
- *   4. dispatcher.registerDAG(ComposeRetryLoopDAG) — registers the compose sub-DAG
- *   5. dispatcher.registerDAG(archivistDAG) — registers the parent (references sub-DAGs by name)
+ *   4. dispatcher.registerDAG(ComposeRetryLoopDAG) — registers the compose deep-DAG
+ *   5. dispatcher.registerDAG(archivistDAG) — registers the parent (references deep-DAGs by name)
  *
  * LLM resolved by the provider matrix: Gemini Nano (only in a browser),
  * Gemini REST (free tier, `GEMINI_API_KEY` env), WebLLM (only in a
@@ -24,6 +24,14 @@
 
 import { ArchivistState } from './ArchivistState.ts';
 import { archivistDAG } from './dag.ts';
+import {
+  BookSearchFanoutDAG,
+  registerBookSearchFanoutNodes,
+} from './deepdags/BookSearchFanoutDAG.ts';
+import {
+  ComposeRetryLoopDAG,
+  registerComposeRetryLoopNodes,
+} from './deepdags/ComposeRetryLoopDAG.ts';
 import { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { classifyIntent } from './nodes/classifyIntent.ts';
@@ -48,14 +56,6 @@ import {
 } from './providers/adapters/index.ts';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
 import type { ArchivistServices, LlmClient } from './services.ts';
-import {
-  BookSearchFanoutDAG,
-  registerBookSearchFanoutNodes,
-} from './subdags/BookSearchFanoutDAG.ts';
-import {
-  ComposeRetryLoopDAG,
-  registerComposeRetryLoopNodes,
-} from './subdags/ComposeRetryLoopDAG.ts';
 import { GoogleBooksTool } from './tools/GoogleBooksTool.ts';
 import { OpenLibrarySearchTool } from './tools/OpenLibrarySearchTool.ts';
 import { SubjectSearchTool } from './tools/SubjectSearchTool.ts';
@@ -88,8 +88,8 @@ const services: ArchivistServices = {
 // ── Dispatcher ───────────────────────────────────────────────────────────
 const dispatcher = new Dagonizer<ArchivistState, ArchivistServices>({ services });
 
-// ── Sub-DAG node registration (molecular pattern) ────────────────────────
-// Each sub-DAG module exports a registerXxxNodes helper that registers
+// ── Deep-DAG node registration (molecular pattern) ───────────────────────
+// Each deep-DAG module exports a registerXxxNodes helper that registers
 // the nodes it needs. Call it before registerDAG so the validator can
 // resolve all node references when the DAG is registered.
 registerBookSearchFanoutNodes(dispatcher);
@@ -98,11 +98,11 @@ dispatcher.registerDAG(BookSearchFanoutDAG);
 registerComposeRetryLoopNodes(dispatcher);
 dispatcher.registerDAG(ComposeRetryLoopDAG);
 
-// ── Parent-DAG-only nodes (not used by sub-DAGs) ─────────────────────────
+// ── Parent-DAG-only nodes (not used by deep-DAGs) ────────────────────────
 for (const node of [
   recallContext,
   classifyIntent,
-  // Inlined branch nodes (reviews + describe) — not in the sub-DAGs
+  // Inlined branch nodes (reviews + describe) — not in the deep-DAGs
   extractQuery,
   decideTools,
   webSearchScout,

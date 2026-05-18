@@ -105,7 +105,7 @@ The eight per-phase example pages each isolate one Dagonizer feature against thi
 |-------|---------|------|
 | 01 | Linear intake + terminal routing | [Phase 01 · Linear intake](./01-linear) |
 | 02 | Fan-out scout with partition fan-in | [Phase 02 · Fan-out scout](./02-fanout) |
-| 03 | Sub-DAG fallback for empty results | [Phase 03 · Sub-DAG fallback](./03-subflows) |
+| 03 | Deep-DAG composition | [Phase 03 · Deep-DAG composition](./03-deepflows) |
 | 04 | Abortable visitor request | [Phase 04 · Cancellation](./04-cancellation) |
 | 05 | RetryPolicy against the LLM composer | [Phase 05 · Retry compose](./05-retry) |
 | 06 | DAGBuilder authoring | [Phase 06 · DAGBuilder](./06-builder) |
@@ -114,26 +114,54 @@ The eight per-phase example pages each isolate one Dagonizer feature against thi
 
 Every page starts from the same `ArchivistState` + `services` + node set; only the DAG variation and the registered subset change.
 
-## Compositional sub-DAGs
+## Compositional deep-DAGs
 
-The Archivist's DAG is composed of two reusable sub-DAGs that ship as independent components. Each is a `DAG` value any consumer can import, register, and reference as a `.subDAG(...)` placement in their own DAG.
+The Archivist's DAG is composed of two reusable deep-DAGs that ship as independent components. Each is a `DAG` value any consumer can import, register, and reference as a `.deepDAG(...)` placement in their own DAG.
 
 - **`book-search-fanout`** — extract-query + decide-tools + 4-source parallel scout cluster (OpenLibrary, Google Books, Subject, Wikipedia) + rank-candidates + merge-candidates + record-findings + has-citations-gate + recall-past-visits. Used in three intent branches (`on-topic-search`, `author-search`, `similar-search`); one definition, three placements.
 - **`compose-retry-loop`** — compose-response + validate-response (with bounded retry loop back to compose) + respond-to-visitor. Every successful search branch funnels through this one shared cluster.
 
-The renderer expands both sub-DAGs inline in the diagram — compound-graph children render inside the placement box so the full topology is visible. No opaque boxes.
+The renderer expands both deep-DAGs inline in the diagram — compound-graph children render inside the placement box so the full topology is visible. No opaque boxes.
 
-Reviews and describe branches are inlined in the parent DAG because they substitute `rankByRating` and `pickBestMatch` for `rankCandidates` respectively — the structural variation is explicit rather than hidden behind a sub-DAG parameter.
+Reviews and describe branches are inlined in the parent DAG because they substitute `rankByRating` and `pickBestMatch` for `rankCandidates` respectively — the structural variation is explicit rather than hidden behind a deep-DAG parameter.
 
 ### BookSearchFanoutDAG
 
-<<< ../../examples/the-archivist/subdags/BookSearchFanoutDAG.ts
+<<< ../../examples/the-archivist/deepdags/BookSearchFanoutDAG.ts
 
 ### ComposeRetryLoopDAG
 
-<<< ../../examples/the-archivist/subdags/ComposeRetryLoopDAG.ts
+<<< ../../examples/the-archivist/deepdags/ComposeRetryLoopDAG.ts
 
 ## Source
+
+### JSON-LD as the canonical DAG format
+
+The DAG is JSON-LD natively. `DAGBuilder` produces a plain JavaScript object; `toJsonLd(dag)` serializes it to JSON-LD 1.1 with type-scoped `@context` so every placement carries a typed IRI — `"SingleNode"`, `"ParallelNode"`, `"FanOutNode"`, `"DeepDAGNode"` — under `@type`. `fromJsonLd(jsonld)` round-trips back to the same object with identity preservation.
+
+There is no separate projection layer or dual configuration. The object `DAGBuilder.build()` returns is the same object the engine consumes and the same object that serializes to JSON-LD. Load a DAG from JSON-LD, register it, execute it — one surface throughout.
+
+```ts
+import { toJsonLd, fromJsonLd } from '@noocodex/dagonizer';
+
+// Serialize the Archivist DAG to JSON-LD for persistence or transfer:
+const jsonld = toJsonLd(archivistDAG);
+
+// Restore it in another process or reload:
+const dag = fromJsonLd(jsonld);
+dispatcher.registerDAG(dag);
+```
+
+Deep-DAG placements in the JSON-LD output look like:
+
+```json
+{
+  "@type": "DeepDAGNode",
+  "name": "on-topic-search",
+  "dag": "book-search-fanout",
+  "outputs": { "success": "compose-loop", "error": "decline-empty" }
+}
+```
 
 ### DAG topology
 

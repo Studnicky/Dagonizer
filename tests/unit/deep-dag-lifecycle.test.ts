@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { ExecutionResultInterface } from '../../src/entities/execution/ExecutionResult.js';
 import type { DAG } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
@@ -43,39 +44,68 @@ const makeNode = (
   async execute() { return { 'output': outputs[0] as string }; },
 });
 
-// ── Sub-DAG (two nodes: start → finish) ──────────────────────────────────
+// ── Child DAG (two nodes: start → finish) ────────────────────────────────
 
 const childDAG: DAG = {
-  'name': 'child',
-  'version': '1',
+  '@context': DAG_CONTEXT,
+  '@id':      'urn:noocodex:dag:child',
+  '@type':    'DAG',
+  'name':       'child',
+  'version':    '1',
   'entrypoint': 'child-start',
   'nodes': [
-    { 'type': 'single', 'name': 'child-start', 'node': 'child-start', 'outputs': { 'done': 'child-finish' } },
-    { 'type': 'single', 'name': 'child-finish', 'node': 'child-finish', 'outputs': { 'done': null } },
+    {
+      '@id':   'urn:noocodex:dag:child/node/child-start',
+      '@type': 'SingleNode',
+      'name':  'child-start',
+      'node':  'child-start',
+      'outputs': { 'done': 'child-finish' },
+    },
+    {
+      '@id':   'urn:noocodex:dag:child/node/child-finish',
+      '@type': 'SingleNode',
+      'name':  'child-finish',
+      'node':  'child-finish',
+      'outputs': { 'done': null },
+    },
   ],
 };
 
-// ── Parent DAG: entry → run-child (sub-dag) → parent-end ─────────────────
+// ── Parent DAG: entry → run-child (deep-dag) → parent-end ────────────────
 
 const parentDAG: DAG = {
-  'name': 'parent',
-  'version': '1',
+  '@context': DAG_CONTEXT,
+  '@id':      'urn:noocodex:dag:parent',
+  '@type':    'DAG',
+  'name':       'parent',
+  'version':    '1',
   'entrypoint': 'parent-entry',
   'nodes': [
-    { 'type': 'single', 'name': 'parent-entry', 'node': 'parent-entry',
-      'outputs': { 'next': 'run-child' } },
     {
-      'type': 'sub-dag',
-      'name': 'run-child',
-      'dag': 'child',
+      '@id':   'urn:noocodex:dag:parent/node/parent-entry',
+      '@type': 'SingleNode',
+      'name':  'parent-entry',
+      'node':  'parent-entry',
+      'outputs': { 'next': 'run-child' },
+    },
+    {
+      '@id':   'urn:noocodex:dag:parent/node/run-child',
+      '@type': 'DeepDAGNode',
+      'name':  'run-child',
+      'dag':   'child',
       'outputs': { 'success': 'parent-end', 'error': 'parent-end' },
     },
-    { 'type': 'single', 'name': 'parent-end', 'node': 'parent-end',
-      'outputs': { 'done': null } },
+    {
+      '@id':   'urn:noocodex:dag:parent/node/parent-end',
+      '@type': 'SingleNode',
+      'name':  'parent-end',
+      'node':  'parent-end',
+      'outputs': { 'done': null },
+    },
   ],
 };
 
-void describe('Sub-DAG lifecycle scoping', () => {
+void describe('Deep-DAG lifecycle scoping', () => {
   void it('onFlowStart and onFlowEnd each fire exactly once per top-level execute()', async () => {
     const dispatcher = new CountingDagonizer<NodeStateBase>();
 
@@ -95,7 +125,7 @@ void describe('Sub-DAG lifecycle scoping', () => {
     assert.equal(dispatcher.flowEndCount,   1, 'onFlowEnd fired exactly once');
   });
 
-  void it('onNodeStart and onNodeEnd fire for both parent and sub-DAG nodes', async () => {
+  void it('onNodeStart and onNodeEnd fire for both parent and deep-DAG nodes', async () => {
     const dispatcher = new CountingDagonizer<NodeStateBase>();
 
     dispatcher.registerNode(makeNode('child-start',  ['done']));
@@ -108,9 +138,9 @@ void describe('Sub-DAG lifecycle scoping', () => {
 
     await dispatcher.execute('parent', new NodeStateBase());
 
-    // Parent nodes appear by their placement name; sub-DAG nodes appear
-    // prefixed as "<sub-dag-placement>.<child-placement>" via intermediateResults
-    // but onNodeStart/onNodeEnd fire for each node in the sub-DAG too.
+    // Parent nodes appear by their placement name; deep-DAG nodes appear
+    // prefixed as "<deep-dag-placement>.<child-placement>" via intermediateResults
+    // but onNodeStart/onNodeEnd fire for each node in the deep-DAG too.
     const allStarted = dispatcher.nodeStartNames;
     const allEnded   = dispatcher.nodeEndNames;
 
@@ -120,7 +150,7 @@ void describe('Sub-DAG lifecycle scoping', () => {
     assert.ok(allEnded.includes('parent-entry'),   'parent-entry ended');
     assert.ok(allEnded.includes('parent-end'),     'parent-end ended');
 
-    // Sub-DAG placement names must appear (engine fires onNodeStart/End per child node)
+    // Deep-DAG placement names must appear (engine fires onNodeStart/End per child node)
     assert.ok(allStarted.includes('child-start'),  'child-start started');
     assert.ok(allStarted.includes('child-finish'), 'child-finish started');
     assert.ok(allEnded.includes('child-start'),    'child-start ended');
@@ -144,12 +174,12 @@ void describe('Sub-DAG lifecycle scoping', () => {
     await dispatcher.execute('parent', state);
 
     // State must complete cleanly — no spurious markRunning / markCompleted
-    // from the sub-DAG re-entry (which would throw on a terminal → running
+    // from the deep-DAG re-entry (which would throw on a terminal → running
     // transition and leave the lifecycle in an invalid state).
     assert.equal(state.lifecycle.kind, 'completed');
   });
 
-  void it('executedNodes reflects parent placements only (not sub-DAG internals)', async () => {
+  void it('executedNodes reflects parent placements only (not deep-DAG internals)', async () => {
     const dispatcher = new CountingDagonizer<NodeStateBase>();
 
     dispatcher.registerNode(makeNode('child-start',  ['done']));
@@ -163,9 +193,9 @@ void describe('Sub-DAG lifecycle scoping', () => {
     const result = await dispatcher.execute('parent', new NodeStateBase());
 
     // The top-level runNodes only records the placements it dispatches:
-    // parent-entry, run-child (the sub-dag placement), parent-end.
+    // parent-entry, run-child (the deep-dag placement), parent-end.
     assert.ok(result.executedNodes.includes('parent-entry'), 'parent-entry executed');
-    assert.ok(result.executedNodes.includes('run-child'),    'run-child (sub-dag) executed');
+    assert.ok(result.executedNodes.includes('run-child'),    'run-child (deep-dag) executed');
     assert.ok(result.executedNodes.includes('parent-end'),   'parent-end executed');
     assert.equal(result.executedNodes.length, 3, 'exactly 3 parent-level nodes recorded');
   });

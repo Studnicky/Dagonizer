@@ -84,15 +84,15 @@ import type { FanInConfig } from '@noocodex/dagonizer/entities';
 
 ---
 
-## `SubDAGNodeSchema`
+## `DeepDAGNodeSchema`
 
-`$id`: `https://noocodex.dev/schemas/dagonizer/SubDAGNode`
+`$id`: `https://noocodex.dev/schemas/dagonizer/DeepDAGNode`
 
-Nested DAG invocation. Required: `type: 'sub-dag'`, `name`, `dag` (registered DAG name), `outputs`. Optional: `stateMapping.input` and `stateMapping.output` (both `Record<string, string>`).
+Nested DAG invocation. Required: `type: 'DeepDAGNode'`, `name`, `dag` (registered DAG name), `outputs`. Optional: `stateMapping.input` and `stateMapping.output` (both `Record<string, string>`).
 
 ```ts
-import { SubDAGNodeSchema } from '@noocodex/dagonizer/entities';
-import type { SubDAGNode } from '@noocodex/dagonizer/entities';
+import { DeepDAGNodeSchema } from '@noocodex/dagonizer/entities';
+import type { DeepDAGNode } from '@noocodex/dagonizer/entities';
 ```
 
 `outputs` keys are `success` and `error`.

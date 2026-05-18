@@ -5,7 +5,7 @@ description: 'Four-source parallel scout cluster in the Archivist — OpenLibrar
 
 # Phase 02 · Fan-out scout
 
-[The Archivist](./the-archivist) queries four book sources at once: OpenLibrary keyword search, Google Books, OpenLibrary subject search, and Wikipedia enrichment. All four scouts run in a `parallel` placement with `combine: 'collect'` — the fan-in waits for all four and merges their `state.candidates` mutations before routing forward to rank and merge. The `BookSearchFanoutDAG` packages this entire cluster as a reusable sub-DAG.
+[The Archivist](./the-archivist) queries four book sources at once: OpenLibrary keyword search, Google Books, OpenLibrary subject search, and Wikipedia enrichment. All four scouts run in a `parallel` placement with `combine: 'collect'` — the fan-in waits for all four and merges their `state.candidates` mutations before routing forward to rank and merge. The `BookSearchFanoutDAG` packages this entire cluster as a reusable deep-DAG.
 
 ## Flow
 
@@ -39,9 +39,9 @@ flowchart TB
 
 ## Code
 
-The complete `BookSearchFanoutDAG` — the actual sub-DAG the Archivist places three times for on-topic, author, and similar-search branches:
+The complete `BookSearchFanoutDAG` — the actual deep-DAG the Archivist places three times for on-topic, author, and similar-search branches:
 
-<<< ../../examples/the-archivist/subdags/BookSearchFanoutDAG.ts
+<<< ../../examples/the-archivist/deepdags/BookSearchFanoutDAG.ts
 
 ## What it demonstrates
 
@@ -49,7 +49,7 @@ The complete `BookSearchFanoutDAG` — the actual sub-DAG the Archivist places t
 - **Scout gating via `state.toolPlan`** — each scout checks `state.toolPlan` before making a network call. `decideTools` (an LLM call) populates the plan; scouts that find no matching plan entry return `'empty'` immediately. `wikipediaScout` is the exception — it runs on terms alone, always.
 - **`scoutRetry` pass-through** — every scout calls `scoutRetry.run(() => tool.execute(..., context.signal), context.signal)`. The signal propagates from the dispatcher through the retry policy — if the parent flow is cancelled, retries abort mid-backoff.
 - **Aggregate routing** — the `parallel` node reports `'success'`, `'error'`, or a partial aggregate once all branches settle. Both `'success'` and `'error'` route to `bsf-rank-candidates` here — the cluster always attempts ranking regardless of partial failures.
-- **Molecular `registerBookSearchFanoutNodes`** — the exported helper registers the exact node set the sub-DAG needs. Call it before `dispatcher.registerDAG(BookSearchFanoutDAG)`.
+- **Molecular `registerBookSearchFanoutNodes`** — the exported helper registers the exact node set the deep-DAG needs. Call it before `dispatcher.registerDAG(BookSearchFanoutDAG)`.
 
 See this in action in the [Archivist live demo](./the-archivist).
 
@@ -57,6 +57,6 @@ See this in action in the [Archivist live demo](./the-archivist).
 
 - [Running domain: The Archivist](./the-archivist)
 - [Phase 01 · Linear intake](./01-linear)
-- [Phase 03 · Sub-DAG fallback](./03-subflows)
+- [Phase 03 · Deep-DAG composition](./03-deepflows)
 - [Reference: Core — `FanInStrategies`](../reference/core)
 - [Reference: Entities — `ParallelNode`](../reference/entities)

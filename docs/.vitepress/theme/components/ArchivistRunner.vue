@@ -60,11 +60,11 @@ import { WikipediaSummaryTool } from '../../../../examples/the-archivist/tools/W
 import {
   BookSearchFanoutDAG,
   registerBookSearchFanoutNodes,
-} from '../../../../examples/the-archivist/subdags/BookSearchFanoutDAG.ts';
+} from '../../../../examples/the-archivist/deepdags/BookSearchFanoutDAG.ts';
 import {
   ComposeRetryLoopDAG,
   registerComposeRetryLoopNodes,
-} from '../../../../examples/the-archivist/subdags/ComposeRetryLoopDAG.ts';
+} from '../../../../examples/the-archivist/deepdags/ComposeRetryLoopDAG.ts';
 
 import { ObservedDagonizer } from './ObservedDagonizer.ts';
 import BackendPicker from './BackendPicker.vue';
@@ -216,7 +216,7 @@ async function resumeFromCheckpoint(): Promise<void> {
     'observer': buildObserver(restored.cursor, prov),
   });
 
-  // Register sub-DAGs (molecular pattern)
+  // Register deep-DAGs (molecular pattern)
   registerBookSearchFanoutNodes(dispatcher);
   dispatcher.registerDAG(BookSearchFanoutDAG);
   registerComposeRetryLoopNodes(dispatcher);
@@ -311,14 +311,14 @@ const rightTabs = computed(() => {
 });
 
 const dagElements = computed<ElementDefinition[]>(() => {
-  // Sub-DAG registry: placements whose dag name appears here are expanded
+  // Deep-DAG registry: placements whose dag name appears here are expanded
   // inline in the Cytoscape diagram — full compound-graph children visible,
   // no opaque boxes. This is the renderer-side of molecular composition.
-  const subDagRegistry = new Map([
+  const deepDagRegistry = new Map([
     ['book-search-fanout', BookSearchFanoutDAG],
     ['compose-retry-loop', ComposeRetryLoopDAG],
   ]);
-  const raw = CytoscapeRenderer.render(archivistDAG, { 'subDags': subDagRegistry }) as ElementDefinition[];
+  const raw = CytoscapeRenderer.render(archivistDAG, { 'deepDags': deepDagRegistry }) as ElementDefinition[];
   return raw.map((el) => {
     const data = el.data as { id?: string; node?: string };
     const nodeName = data.node ?? data.id;
@@ -496,8 +496,8 @@ async function ask(): Promise<void> {
 
   const { composeMs, webSearchMs, rankMs } = timeoutSettings.value;
 
-  // Register sub-DAGs first (molecular pattern) — each helper registers the
-  // base nodes needed by that sub-DAG. Then re-register timeout-overridden
+  // Register deep-DAGs first (molecular pattern) — each helper registers the
+  // base nodes needed by that deep-DAG. Then re-register timeout-overridden
   // versions which overwrite the base entries in the node map.
   registerBookSearchFanoutNodes(dispatcher);
   dispatcher.registerDAG(BookSearchFanoutDAG);

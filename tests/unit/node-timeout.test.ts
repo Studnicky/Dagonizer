@@ -33,6 +33,7 @@ import { afterEach, describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import { NodeTimeoutError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
@@ -54,13 +55,17 @@ function buildSingleNodeDag(
 ): void {
   dispatcher.registerNode(node);
   dispatcher.registerDAG({
+    '@context': DAG_CONTEXT,
+    '@id':      `urn:noocodex:dag:${dagName}`,
+    '@type':    'DAG',
     'name': dagName,
     'version': '1',
     'entrypoint': 'stage',
     'nodes': [{
-      'type': 'single',
-      'name': 'stage',
-      'node': node.name,
+      '@id':   `urn:noocodex:dag:${dagName}/node/stage`,
+      '@type': 'SingleNode',
+      'name':  'stage',
+      'node':  node.name,
       'outputs': { [output]: null },
     }],
   });

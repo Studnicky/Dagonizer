@@ -61,7 +61,7 @@ export type { FanInConfig } from '../entities/dag/FanInConfig.js';
 export type { FanOutNode } from '../entities/dag/FanOutNode.js';
 export type { ParallelNode } from '../entities/dag/ParallelNode.js';
 export type { SingleNode } from '../entities/dag/SingleNode.js';
-export type { SubDAGNode } from '../entities/dag/SubDAGNode.js';
+export type { DeepDAGNode } from '../entities/dag/DeepDAGNode.js';
 
 export type { Node } from '../entities/node/Node.js';
 export type { NodeContext } from '../entities/node/NodeContext.js';
@@ -93,7 +93,7 @@ export type {
 
 export type {
   FanOutOptionsInterface,
-  SubDAGOptionsInterface,
+  DeepDAGOptionsInterface,
 } from '../builder/DAGBuilder.js';
 
 // ---------------------------------------------------------------------------

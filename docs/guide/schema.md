@@ -44,7 +44,7 @@ console.log(DAGSchema.$id);
 // 'https://noocodex.dev/schemas/dagonizer/DAG'
 ```
 
-The schema covers: `name`, `version`, `entrypoint`, and `nodes`. Each node variant (`single`, `parallel`, `fan-out`, `sub-dag`) has its own sub-schema enforcing required fields and valid enumerations for `type`, `combine`, fan-in `strategy`, and node-output values.
+The schema covers: `name`, `version`, `entrypoint`, and `nodes`. Each node variant (`single`, `parallel`, `fan-out`, `deep-dag`) has its own sub-schema enforcing required fields and valid enumerations for `type`, `combine`, fan-in `strategy`, and node-output values.
 
 ## `Validator.dag`
 
