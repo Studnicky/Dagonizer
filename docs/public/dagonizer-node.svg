@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 400 400" role="img" aria-label="Dagonizer DAG and FSM architecture framework">
+
+  <defs>
+    <linearGradient id="facetNavy" x1="86" y1="32" x2="314" y2="368" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1a2840"/>
+      <stop offset="0.48" stop-color="#0e1525"/>
+      <stop offset="1" stop-color="#04060a"/>
+    </linearGradient>
+    <linearGradient id="facetTeal" x1="86" y1="32" x2="314" y2="368" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5ef5ff"/>
+      <stop offset="0.52" stop-color="#22e8ff"/>
+      <stop offset="1" stop-color="#0bb8cc"/>
+    </linearGradient>
+    <filter id="nodeShadow" x="-35%" y="-35%" width="170%" height="170%">
+      <feDropShadow dx="0" dy="14" stdDeviation="13" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    <filter id="glowTeal" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <style>
+      .round { stroke-linecap: round; stroke-linejoin: round; }
+      .monoText { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: 900; }
+    </style>
+  </defs>
+
+  <g id="dagonizer-node">
+
+    <g id="node-body" filter="url(#nodeShadow)">
+      <path id="node-base" d="M200 24 L352.42 112 L352.42 288 L200 376 L47.58 288 L47.58 112 Z" fill="url(#facetNavy)" stroke="#22e8ff" stroke-width="5"/>
+      <path id="facet-top-left"    d="M200 24 L47.58 112 L112 149 L200 98 Z"          fill="#FFFFFF" opacity="0.09"/>
+      <path id="facet-top-right"   d="M200 24 L352.42 112 L288 149 L200 98 Z"         fill="#FFFFFF" opacity="0.05"/>
+      <path id="facet-lower-left"  d="M47.58 112 L112 149 L200 376 L47.58 288 Z"      fill="#000000" opacity="0.12"/>
+      <path id="facet-lower-right" d="M352.42 112 L288 149 L200 376 L352.42 288 Z"    fill="#000000" opacity="0.18"/>
+      <path id="facet-center"      d="M112 149 L200 98 L288 149 L200 376 Z"           fill="#FFFFFF" opacity="0.06"/>
+    </g>
+
+    <!-- DAG flow glyph: three nodes connected by directed edges -->
+    <g id="dag-glyph" filter="url(#glowTeal)">
+      <!-- edges -->
+      <line x1="138" y1="174" x2="188" y2="200" stroke="#22e8ff" stroke-width="8" class="round"/>
+      <line x1="138" y1="226" x2="188" y2="200" stroke="#22e8ff" stroke-width="8" class="round"/>
+      <line x1="212" y1="200" x2="262" y2="200" stroke="#22e8ff" stroke-width="8" class="round"/>
+      <!-- arrowhead right -->
+      <polygon points="262,193 275,200 262,207" fill="#22e8ff"/>
+      <!-- nodes -->
+      <circle cx="124" cy="174" r="22" fill="#22e8ff" opacity="0.90"/>
+      <circle cx="124" cy="226" r="22" fill="#8f6dff" opacity="0.90"/>
+      <circle cx="200" cy="200" r="22" fill="#22e8ff" opacity="0.90"/>
+      <circle cx="276" cy="200" r="22" fill="#d4a649" opacity="0.90"/>
+    </g>
+
+    <!-- "DAG" label below glyph -->
+    <text class="monoText" x="200" y="308" text-anchor="middle" font-size="46" fill="#22e8ff" opacity="0.95">DAG+FSM</text>
+
+  </g>
+
+</svg>
