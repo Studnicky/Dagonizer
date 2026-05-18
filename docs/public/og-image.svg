@@ -82,18 +82,18 @@
   <!-- Left panel: the canonical Dagonizer brand icon — the same talisman
        used by the favicon, app icon, and the Twitter / OG unfurl across
        every SEO surface. Loaded by relative href so build-time rasterization
-       resolves against docs/public/ where both files live. The 500×500 box
-       is vertically centred in the 630-tall canvas (y=65 gives 65px top
-       and bottom). -->
+       resolves against docs/public/ where both files live. The 420×420 box
+       sits left-aligned with breathing room above/below and stays clear of
+       the title text starting at x=520 (icon right edge = 70 + 420 = 490). -->
   <image
     href="dagonizer-icon-512.png"
-    x="65" y="65" width="500" height="500"
+    x="70" y="105" width="420" height="420"
     preserveAspectRatio="xMidYMid meet"
-    filter="url(#hexShadow)"
   />
 
-  <!-- Right panel: title + tagline -->
-  <g transform="translate(470, 235)">
+  <!-- Right panel: title + tagline — anchored at x=540 to clear the icon's
+       right edge (x=490) with 50px of breathing room. -->
+  <g transform="translate(540, 235)">
     <text class="title" x="0" y="0" font-size="82">Dagonizer</text>
     <text class="tagline" x="0" y="58" font-size="27">Omniscient orchestration for</text>
     <text class="tagline" x="0" y="93" font-size="27">directed acyclic graphs.</text>
