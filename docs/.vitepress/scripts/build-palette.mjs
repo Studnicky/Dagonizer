@@ -33,8 +33,17 @@ const FINAL_CSS  = resolve(HERE, '..', 'theme', 'iridis.palette.css');
 const IRIDIS_BIN = resolve(REPO_ROOT, '..', 'iridis', 'node_modules', '.bin', 'iridis');
 
 if (!existsSync(IRIDIS_BIN)) {
-  console.error(`iridis CLI not found at ${IRIDIS_BIN}`);
-  console.error('Install the iridis workspace first.');
+  // CI builds (and any environment without a sibling iridis workspace
+  // checkout) skip regeneration and use the committed iridis.palette.css.
+  // The generated CSS is the source of truth for the docs site; the iridis
+  // CLI is only needed when changing iridis.config.json. Hard-fail only
+  // when the committed CSS is also missing.
+  if (existsSync(FINAL_CSS)) {
+    console.log(`iridis CLI not found at ${IRIDIS_BIN} — using committed ${FINAL_CSS}`);
+    process.exit(0);
+  }
+  console.error(`iridis CLI not found at ${IRIDIS_BIN} and no committed ${FINAL_CSS}`);
+  console.error('Install the iridis workspace first, or commit a fallback iridis.palette.css.');
   process.exit(1);
 }
 
