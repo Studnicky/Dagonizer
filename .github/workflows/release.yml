@@ -1,0 +1,92 @@
+name: Publish GitHub release
+
+# Fires when a version tag is pushed. Reads the matching CHANGELOG section
+# and the per-tag dagonizer-node.svg, composes a release body, and creates or
+# updates the GitHub release. The SVG URL uses the tag ref so each release
+# page renders the version that was stamped at tag time.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to (re)publish a release for (e.g. v0.4.1)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG='${{ inputs.tag }}'
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=$TAG"         >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Verify stamped SVG matches tag version
+        run: |
+          STAMPED=$(grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' docs/public/dagonizer-node.svg | head -1 || true)
+          EXPECTED='${{ steps.tag.outputs.tag }}'
+          if [ "$STAMPED" != "$EXPECTED" ]; then
+            echo "::error::dagonizer-node.svg carries '$STAMPED' but the tag is '$EXPECTED'. Run 'npm run stamp-version' before tagging."
+            exit 1
+          fi
+
+      - name: Extract CHANGELOG section
+        id: changelog
+        run: |
+          VERSION='${{ steps.tag.outputs.version }}'
+          # Capture lines between "## [<version>]" and the next "## [" header.
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { capture = 1; next }
+            capture && /^## \[/    { exit }
+            capture                { print }
+          ' CHANGELOG.md > /tmp/section.md
+          if [ ! -s /tmp/section.md ]; then
+            echo "::error::No CHANGELOG section found for [$VERSION]"
+            exit 1
+          fi
+
+      - name: Compose release body
+        id: body
+        run: |
+          TAG='${{ steps.tag.outputs.tag }}'
+          REPO='${{ github.repository }}'
+          SVG_URL="https://raw.githubusercontent.com/${REPO}/${TAG}/docs/public/dagonizer-node.svg"
+          {
+            echo "<p align=\"center\"><img src=\"${SVG_URL}\" alt=\"Dagonizer ${TAG}\" width=\"200\" /></p>"
+            echo
+            cat /tmp/section.md
+          } > /tmp/body.md
+          echo "path=/tmp/body.md" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG='${{ steps.tag.outputs.tag }}'
+          if gh release view "$TAG" --repo '${{ github.repository }}' >/dev/null 2>&1; then
+            gh release edit "$TAG" \
+              --repo '${{ github.repository }}' \
+              --title "$TAG" \
+              --notes-file '${{ steps.body.outputs.path }}'
+          else
+            gh release create "$TAG" \
+              --repo '${{ github.repository }}' \
+              --title "$TAG" \
+              --notes-file '${{ steps.body.outputs.path }}'
+          fi
