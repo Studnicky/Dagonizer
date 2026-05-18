@@ -3,17 +3,22 @@ import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/dag/DAG.js';
 import { DAGError, ValidationError } from '../../src/errors/index.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 
 const validDAG: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id':      'urn:noocodex:dag:demo',
+  '@type':    'DAG',
   'name': 'demo',
   'version': '1',
   'entrypoint': 's',
   'nodes': [
-    { 'type': 'single', 'name': 's', 'node': 'op', 'outputs': { 'success': null } },
+    { '@id': 'urn:noocodex:dag:demo/node/s', '@type': 'SingleNode',
+      'name': 's', 'node': 'op', 'outputs': { 'success': null } },
   ],
 };
 
@@ -30,20 +35,37 @@ void describe('Validator.dag', () => {
     assert.throws(() => Validator.dag.validate(bad), ValidationError);
   });
 
-  void it('rejects unknown node type', () => {
-    const bad = {
+  void it('rejects a flat DAG missing @context, @id, @type', () => {
+    // A flat (non-JSON-LD) DAG must fail schema validation
+    const flat = {
       'name': 'x', 'version': '1', 'entrypoint': 's',
-      'nodes': [{ 'type': 'not-a-node-type', 'name': 's', 'node': 'op', 'outputs': {} }],
+      'nodes': [{ '@id': 'urn:x', '@type': 'SingleNode', 'name': 's', 'node': 'op', 'outputs': {} }],
+    };
+    assert.throws(() => Validator.dag.validate(flat), ValidationError);
+  });
+
+  void it('rejects unknown @type on a node placement', () => {
+    const bad = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:x',
+      '@type':    'DAG',
+      'name': 'x', 'version': '1', 'entrypoint': 's',
+      'nodes': [{ '@id': 'urn:x', '@type': 'NotANodeType', 'name': 's', 'node': 'op', 'outputs': {} }],
     };
     assert.throws(() => Validator.dag.validate(bad), ValidationError);
   });
 
   void it('rejects fan-in with invalid strategy', () => {
     const bad = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:x',
+      '@type':    'DAG',
       'name': 'x', 'version': '1', 'entrypoint': 'f',
       'nodes': [{
-        'type': 'fan-out', 'name': 'f', 'node': 'op', 'source': 'items',
-        'fanIn': { 'strategy': 'magic' },
+        '@id':    'urn:noocodex:dag:x/node/f',
+        '@type':  'FanOutNode',
+        'name':   'f', 'node': 'op', 'source': 'items',
+        'fanIn':  { 'strategy': 'magic' },
         'outputs': { 'all-success': null },
       }],
     };
@@ -96,9 +118,9 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
     };
     dispatcher.registerNode(op);
 
-    // Missing version field — fails schema pre-pass before semantic check.
+    // Missing @context, @id, @type — fails schema pre-pass before semantic check.
     const bad = { 'name': 'x', 'entrypoint': 's', 'nodes': [
-      { 'type': 'single', 'name': 's', 'node': 'op', 'outputs': { 'success': null } },
+      { '@id': 'urn:x', '@type': 'SingleNode', 'name': 's', 'node': 'op', 'outputs': { 'success': null } },
     ] } as unknown as DAG;
 
     assert.throws(() => dispatcher.registerDAG(bad), ValidationError);
@@ -115,8 +137,12 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
 
     // Schema-valid but references unknown node — semantic tier rejects.
     const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:x',
+      '@type':    'DAG',
       'name': 'x', 'version': '1', 'entrypoint': 's',
-      'nodes': [{ 'type': 'single', 'name': 's', 'node': 'ghost', 'outputs': { 'success': null } }],
+      'nodes': [{ '@id': 'urn:noocodex:dag:x/node/s', '@type': 'SingleNode',
+        'name': 's', 'node': 'ghost', 'outputs': { 'success': null } }],
     };
     try {
       dispatcher.registerDAG(dag);

@@ -5,10 +5,10 @@
  * per placement and one edge per output route. Node-shape hints encode
  * the placement type:
  *
- *   single   → rectangle:    `nodeName[name]`
- *   parallel → subgraph wrapping its child node names
- *   fan-out  → hexagon:      `nodeName{{name}}`
- *   sub-dag  → stadium:      `nodeName([name])`
+ *   single    → rectangle:    `nodeName[name]`
+ *   parallel  → subgraph wrapping its child node names
+ *   fan-out   → hexagon:      `nodeName{{name}}`
+ *   deep-dag  → stadium:      `nodeName([name])`
  *
  * Output routes render as labeled edges. Routes targeting `null` render
  * as edges to a synthetic `END` terminator (one per DAG).
@@ -22,12 +22,12 @@
  */
 
 import type { DAG } from '../entities/dag/DAG.js';
+import type { DeepDAGNode } from '../entities/dag/DeepDAGNode.js';
 import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
-import type { SubDAGNode } from '../entities/dag/SubDAGNode.js';
 
-type AnyPlacement = FanOutNode | ParallelNode | SingleNodePlacementInterface | SubDAGNode;
+type AnyPlacement = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode;
 
 const TERMINAL_ID = 'END';
 
@@ -35,14 +35,14 @@ const escapeLabel = (value: string): string => value.replace(/"/gu, '#quot;');
 
 const renderShape = (placement: AnyPlacement): string => {
   const label = escapeLabel(placement.name);
-  switch (placement.type) {
-    case 'single':
+  switch (placement['@type']) {
+    case 'SingleNode':
       return `${placement.name}[${label}]`;
-    case 'fan-out':
+    case 'FanOutNode':
       return `${placement.name}{{${label}}}`;
-    case 'sub-dag':
+    case 'DeepDAGNode':
       return `${placement.name}([${label}])`;
-    case 'parallel':
+    case 'ParallelNode':
       // parallel placements render as subgraphs, not single shapes
       return placement.name;
   }
@@ -74,7 +74,7 @@ export class MermaidRenderer {
     let touchesTerminal = false;
 
     for (const placement of dag.nodes as readonly AnyPlacement[]) {
-      if (placement.type === 'parallel') {
+      if (placement['@type'] === 'ParallelNode') {
         lines.push(`  subgraph ${placement.name}["${escapeLabel(placement.name)} (parallel)"]`);
         for (const childName of placement.nodes) {
           lines.push(`    ${childName}[${escapeLabel(childName)}]`);

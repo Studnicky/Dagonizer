@@ -10,6 +10,7 @@ import {
 } from '../../src/core/index.js';
 import type { FanInExecution, ParallelResult } from '../../src/core/index.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG, FanInConfig } from '../../src/entities/index.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
@@ -121,10 +122,17 @@ void describe('Dagonizer.getDAG / listDAGs / getNode / listNodes', () => {
     const node = makeNode('greet', ['done'], () => 'done');
     dispatcher.registerNode(node);
     const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:demo',
+      '@type':    'DAG',
       'name': 'demo',
       'version': '1',
       'entrypoint': 'greet',
-      'nodes': [{ 'type': 'single', 'name': 'greet', 'node': 'greet', 'outputs': { 'done': null } }],
+      'nodes': [{
+        '@id':   'urn:noocodex:dag:demo/node/greet',
+        '@type': 'SingleNode',
+        'name':  'greet', 'node': 'greet', 'outputs': { 'done': null },
+      }],
     };
     dispatcher.registerDAG(dag);
 

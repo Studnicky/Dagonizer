@@ -30,6 +30,22 @@ export interface NodeInterface<
   destroy?(): Promise<void>;
 
   /**
+   * Optional per-node wall-clock budget in milliseconds.
+   *
+   * When set, the engine derives a child `AbortController` from the run's
+   * signal and schedules an abort after `timeoutMs`. The child signal is
+   * passed as `context.signal` to this node's `execute()` call only —
+   * other nodes in the same run are unaffected. On expiry the engine throws
+   * a `NodeTimeoutError` wrapped as a `DAGError`, fires `onError`, and
+   * marks the run failed.
+   *
+   * Omitting this field (or setting it to `undefined`) leaves the node
+   * subject only to the run-level `deadlineMs` / `signal` from
+   * `ExecuteOptionsInterface`.
+   */
+  readonly 'timeoutMs'?: number;
+
+  /**
    * Execute the node, mutating state.
    * Returns a result indicating which output port to route to.
    * Never throws — catches all errors internally and routes to error output.

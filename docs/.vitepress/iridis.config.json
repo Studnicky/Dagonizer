@@ -1,0 +1,150 @@
+{
+  "input": {
+    "colors": [
+      "#22e8ff",
+      "#8f6dff",
+      "#d4a649",
+      "#0e1525",
+      "#142036",
+      "#04060a",
+      "#c9d0d8",
+      "#eef3f7",
+      "#7a8290"
+    ],
+    "contrast": { "level": "AA", "algorithm": "wcag21" },
+    "metadata": {
+      "themeName": "dagonizer",
+      "cssVarPrefix": "--dagonizer-",
+      "scopeAttr": "data-theme",
+      "scopePrefix": "dagonizer"
+    },
+    "roles": {
+      "name": "dagonizer",
+      "description": "Page-wide WCAG 2.1 AA palette for the Dagonizer talisman aesthetic. Backgrounds are navy + pearl ONLY — silver / steel are highlights and accents, never surfaces. Brand orbs (teal, violet, gold) carry every accent. Iridis assigns each input color to the role whose lightness AND chroma range fits best (chroma separates brand orbs from neutrals), then `enforce:wcagAA` lifts each token along OKLCH L until every contrast pair meets AA.",
+      "roles": [
+        {
+          "name": "bg",
+          "description": "Page body — navy hex interior",
+          "intent": "background",
+          "required": true,
+          "lightnessRange": [0.10, 0.20],
+          "chromaRange": [0.0, 0.05]
+        },
+        {
+          "name": "bgAlt",
+          "description": "Sidebar / nav / panels — navy mid (raised)",
+          "intent": "background",
+          "required": true,
+          "lightnessRange": [0.14, 0.24],
+          "chromaRange": [0.0, 0.05]
+        },
+        {
+          "name": "bgElv",
+          "description": "Code blocks / deep elevation — pearl black",
+          "intent": "background",
+          "required": true,
+          "lightnessRange": [0.0, 0.10],
+          "chromaRange": [0.0, 0.05]
+        },
+        {
+          "name": "bgSoft",
+          "description": "Hover / lift surface — navy soft",
+          "intent": "background",
+          "lightnessRange": [0.16, 0.26],
+          "chromaRange": [0.0, 0.05]
+        },
+        {
+          "name": "text",
+          "description": "Body text — steel shine highlight",
+          "intent": "text",
+          "required": true,
+          "lightnessRange": [0.92, 1.00],
+          "chromaRange": [0.0, 0.04]
+        },
+        {
+          "name": "text2",
+          "description": "Secondary text — polished silver accent",
+          "intent": "text",
+          "required": true,
+          "lightnessRange": [0.78, 0.92],
+          "chromaRange": [0.0, 0.04]
+        },
+        {
+          "name": "text3",
+          "description": "Tertiary text / captions — graphite accent",
+          "intent": "muted",
+          "lightnessRange": [0.55, 0.72],
+          "chromaRange": [0.0, 0.04]
+        },
+        {
+          "name": "divider",
+          "description": "Borders and dividers — silver-line accent",
+          "intent": "muted",
+          "lightnessRange": [0.50, 0.68],
+          "chromaRange": [0.0, 0.04]
+        },
+        {
+          "name": "brand",
+          "description": "Primary brand — teal orb",
+          "intent": "accent",
+          "required": true,
+          "lightnessRange": [0.78, 0.96],
+          "chromaRange": [0.10, 0.50]
+        },
+        {
+          "name": "brand2",
+          "description": "Secondary brand — violet orb",
+          "intent": "accent",
+          "required": true,
+          "lightnessRange": [0.55, 0.78],
+          "chromaRange": [0.10, 0.50]
+        },
+        {
+          "name": "brand3",
+          "description": "Tertiary brand — yellow / gold orb",
+          "intent": "accent",
+          "required": true,
+          "lightnessRange": [0.70, 0.86],
+          "chromaRange": [0.06, 0.50]
+        }
+      ],
+      "contrastPairs": [
+        { "foreground": "text",    "background": "bg",    "minRatio": 7.0, "algorithm": "wcag21" },
+        { "foreground": "text",    "background": "bgAlt", "minRatio": 7.0, "algorithm": "wcag21" },
+        { "foreground": "text",    "background": "bgElv", "minRatio": 7.0, "algorithm": "wcag21" },
+        { "foreground": "text2",   "background": "bg",    "minRatio": 7.0, "algorithm": "wcag21" },
+        { "foreground": "text2",   "background": "bgAlt", "minRatio": 7.0, "algorithm": "wcag21" },
+        { "foreground": "text2",   "background": "bgElv", "minRatio": 7.0, "algorithm": "wcag21" },
+        { "foreground": "text3",   "background": "bg",    "minRatio": 4.5, "algorithm": "wcag21" },
+        { "foreground": "text3",   "background": "bgAlt", "minRatio": 4.5, "algorithm": "wcag21" },
+        { "foreground": "text3",   "background": "bgElv", "minRatio": 4.5, "algorithm": "wcag21" },
+        { "foreground": "divider", "background": "bg",    "minRatio": 3.0, "algorithm": "wcag21" },
+        { "foreground": "divider", "background": "bgAlt", "minRatio": 3.0, "algorithm": "wcag21" },
+        { "foreground": "brand",   "background": "bg",    "minRatio": 7.0, "algorithm": "wcag21" },
+        { "foreground": "brand",   "background": "bgAlt", "minRatio": 7.0, "algorithm": "wcag21" },
+        { "foreground": "brand",   "background": "bgElv", "minRatio": 7.0, "algorithm": "wcag21" },
+        { "foreground": "brand2",  "background": "bg",    "minRatio": 4.5, "algorithm": "wcag21" },
+        { "foreground": "brand2",  "background": "bgAlt", "minRatio": 4.5, "algorithm": "wcag21" },
+        { "foreground": "brand2",  "background": "bgElv", "minRatio": 4.5, "algorithm": "wcag21" },
+        { "foreground": "brand3",  "background": "bg",    "minRatio": 7.0, "algorithm": "wcag21" },
+        { "foreground": "brand3",  "background": "bgAlt", "minRatio": 7.0, "algorithm": "wcag21" },
+        { "foreground": "brand3",  "background": "bgElv", "minRatio": 7.0, "algorithm": "wcag21" }
+      ]
+    }
+  },
+  "enableContrast": true,
+  "enableStylesheet": true,
+  "pipeline": [
+    "intake:any",
+    "expand:family",
+    "resolve:roles",
+    "enforce:wcagAAA",
+    "emit:cssVars"
+  ],
+  "output": {
+    "directory": "./docs/.vitepress/theme",
+    "files": {
+      "cssVars": "iridis.palette.json"
+    }
+  }
+}

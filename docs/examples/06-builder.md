@@ -1,95 +1,54 @@
-# Example: DAGBuilder
+---
+title: 'Phase 06 · DAGBuilder'
+description: 'The Archivist parent DAG authored with the chainable DAGBuilder API. Compile-time route exhaustiveness, deep-DAG placements, parallel nodes, and auto-entrypoint — all in one fluent chain.'
+---
 
-Builds the same DAG as the linear example using the chainable `DAGBuilder` API. Output routing is exhaustiveness-checked at compile time.
+# Phase 06 · DAGBuilder
+
+The same [Archivist](./the-archivist) DAG, authored with the chainable `DAGBuilder` API. The builder is a thin layer over plain-object DAG configs — `.build()` returns the exact same `DAG` data structure the dispatcher consumes. The win is compile-time exhaustiveness: each `.node(name, nodeImpl, routes)` call narrows `routes` to the node's `TOutput` union, so TypeScript flags any missing or stray output mapping before the code ships.
 
 ## Flow
 
 ```mermaid
 flowchart TB
-  start([entrypoint])
-  classify[classify]
-  respond[respond]
+  recall[recall-context]
+  classify[classify-intent]
+  on-topic([on-topic-search\n.deepDAG])
+  author([author-search\n.deepDAG])
+  similar([similar-search\n.deepDAG])
+  reviews([reviews-fan-out\n.parallel inline])
+  describe([describe-fan-out\n.parallel inline])
+  compose([compose-loop\n.deepDAG])
+  decline([decline-off-topic / decline-empty])
   END([end])
-  start --> classify
-  classify -->|on_topic| respond
-  classify -->|off_topic| respond
-  respond -->|success| END
+  recall --> classify
+  classify --> on-topic & author & similar & reviews & describe
+  on-topic & author & similar & reviews & describe -->|success| compose
+  compose --> END
+  classify -->|off-topic| decline --> END
 ```
 
 ## Code
 
-```ts
-/**
- * 06-builder — `DAGBuilder` chainable API.
- *
- * Builds the same DAG as 01-linear but via the builder. Outputs are
- * exhaustiveness-checked at compile time when the node declares a
- * narrow TOutput union.
- *
- * Run: npx tsx examples/06-builder.ts
- */
+The complete `archivistDAG` — the parent DAG as a single DAGBuilder chain. The full source file includes inline branches for reviews and describe (which use distinct post-scout ranking steps):
 
-import {
-  NodeStateBase,
-  Dagonizer,
-  DAGBuilder,
-} from '../src/index.js';
-import type { NodeInterface } from '../src/index.js';
-
-class ChatState extends NodeStateBase {
-  input = '';
-  reply = '';
-  topic: 'on_topic' | 'off_topic' = 'on_topic';
-}
-
-const classify: NodeInterface<ChatState, 'on_topic' | 'off_topic'> = {
-  "name": 'classify',
-  "outputs": ['on_topic', 'off_topic'],
-  async execute(state) {
-    state.topic = state.input.toLowerCase().includes('weather') ? 'off_topic' : 'on_topic';
-    return { "output": state.topic };
-  },
-};
-
-const respond: NodeInterface<ChatState, 'success'> = {
-  "name": 'respond',
-  "outputs": ['success'],
-  async execute(state) {
-    state.reply = state.topic === 'on_topic'
-      ? `Echo: ${state.input}`
-      : `I only talk about coding, not the weather.`;
-    return { "output": 'success' };
-  },
-};
-
-const dag = new DAGBuilder('chat', '1')
-  .node('classify', classify, { "on_topic": 'respond', "off_topic": 'respond' })
-  .node('respond', respond, { "success": null })
-  .build();
-
-const dispatcher = new Dagonizer<ChatState>();
-dispatcher.registerNode(classify);
-dispatcher.registerNode(respond);
-dispatcher.registerDAG(dag);
-
-const state = new ChatState();
-state.input = 'What is a generic type parameter?';
-await dispatcher.execute('chat', state);
-process.stdout.write(`${state.reply}\n`);
-```
+<<< ../../examples/the-archivist/dag.ts
 
 ## What it demonstrates
 
-- `new DAGBuilder('chat', '1')` starts the chain. The first `.node()` call automatically sets the entrypoint.
-- `.node(name, dagNode, routes)` — the third argument is typed as `Record<TOutput, string | null>`, so missing output keys are TypeScript errors at the call site.
-- `.build()` materializes the accumulated nodes into a `DAG`. The returned value is identical to a hand-written plain object.
-- The builder is a thin layer — nodes are still registered on the dispatcher separately.
+- **Chainable authoring** — every `.node()`, `.parallel()`, and `.deepDAG()` returns `this` for fluent composition. The chain calls `build()` once at the end to produce the plain `DAG` object.
+- **Compile-time route exhaustiveness** — the `routes` argument is typed as `Record<TOutput, null | string>`. TypeScript catches missing outputs (forgot `'error'`) and stray outputs (typo in output name) at compile time.
+- **Auto-entrypoint** — the first `.node()` call (`'recall-context'`) sets the DAG entrypoint automatically. Override with `.entrypoint(name)` if needed.
+- **Deep-DAG placements via `.deepDAG()`** — `on-topic-search`, `author-search`, `similar-search`, and `compose-loop` are deep-DAG placements. Each references a registered child DAG by name and declares its `stateMapping.output`.
+- **Parallel nodes via `.parallel()`** — `reviews-fan-out` and `describe-fan-out` run four scouts concurrently per branch (inlined because they use `rankByRating` / `pickBestMatch` instead of the standard `rankCandidates`).
+- **Same output as a literal `DAG`** — `.build()` returns the identical wire shape `Dagonizer.load()` expects. The builder is a convenience layer, not a separate runtime.
+
+See this in action in the [Archivist live demo](./the-archivist).
 
 ## See also
 
-- [DAGBuilder](../guide/builder)
-- [Example 01: Linear DAG](./01-linear) — same flow, written as a plain object
-
-## Related reference
-
-- [Reference: Entities — `DAG`, `SingleNode`](../reference/entities)
+- [Running domain: The Archivist](./the-archivist)
+- [DAGBuilder guide](../guide/builder)
+- [Phase 07 · JSON DAG load](./07-schema) — the same topology loaded from a JSON file instead
+- [Phase 03 · Deep-DAG composition](./03-deepflows) — the deep-DAG internals
+- [Reference: Entities — `DAG`, `SingleNode`, `ParallelNode`](../reference/entities)

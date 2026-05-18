@@ -18,7 +18,7 @@ const plan: NodeInterface<NodeStateBase, 'success' | 'error'> = {
 };
 
 void describe('DAGBuilder', () => {
-  void it('builds a single-node DAG', () => {
+  void it('builds a single-node DAG in JSON-LD canonical form', () => {
     const dag = new DAGBuilder('demo', '1.0')
       .node('greet', greet, { 'success': null })
       .build();
@@ -27,8 +27,13 @@ void describe('DAGBuilder', () => {
     assert.equal(dag.version, '1.0');
     assert.equal(dag.entrypoint, 'greet');
     assert.equal(dag.nodes.length, 1);
+    // JSON-LD shape: @type discriminator, @id URN, @context at root
+    assert.equal(dag['@type'], 'DAG');
+    assert.ok(dag['@id'].startsWith('urn:noocodex:dag:'));
+    assert.ok(dag['@context'] !== undefined);
     const first = dag.nodes[0];
-    assert.equal(first?.type, 'single');
+    assert.equal(first?.['@type'], 'SingleNode');
+    assert.ok((first?.['@id'] as string).includes('demo/node/greet'));
   });
 
   void it('uses explicit entrypoint when set', () => {
@@ -56,13 +61,13 @@ void describe('DAGBuilder', () => {
     assert.throws(() => new DAGBuilder('empty', '1').build());
   });
 
-  void it('parallel/fanOut/subDAG round-trip into DAG shape', () => {
+  void it('parallel/fanOut/deepDAG round-trip into DAG shape', () => {
     const dag = new DAGBuilder('mix', '1')
       .node('a', greet, { 'success': 'b' })
       .node('b', greet, { 'success': 'group' })
       .parallel('group', ['a', 'b'], 'all-success', { 'success': null })
       .build();
     assert.equal(dag.nodes.length, 3);
-    assert.equal(dag.nodes[2]?.type, 'parallel');
+    assert.equal(dag.nodes[2]?.['@type'], 'ParallelNode');
   });
 });

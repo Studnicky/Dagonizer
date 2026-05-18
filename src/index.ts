@@ -25,6 +25,7 @@ export {
   ConfigurationError,
   DAGError,
   ExecutionError,
+  NodeTimeoutError,
   NotFoundError,
   ValidationError,
 } from './errors/index.js';
@@ -46,7 +47,7 @@ export type {
 export { DAGBuilder } from './builder/index.js';
 export type {
   FanOutOptionsInterface,
-  SubDAGOptionsInterface,
+  DeepDAGOptionsInterface,
 } from './builder/index.js';
 
 // =============================================================================
@@ -69,7 +70,7 @@ export {
   DAGLifecycleStateSchema,
   ParallelNodeSchema,
   SingleNodeSchema,
-  SubDAGNodeSchema,
+  DeepDAGNodeSchema,
   NodeSchema,
   NodeContextSchema,
   NodeErrorSchema,
@@ -87,6 +88,7 @@ export {
   ParallelCombineSchema,
   NodeTypeSchema,
   BackoffStrategySchema,
+  DAG_CONTEXT,
 } from './entities/index.js';
 export type {
   FanInConfig,
@@ -95,7 +97,7 @@ export type {
   DAGLifecycleStateData,
   ParallelNode,
   SingleNode,
-  SubDAGNode,
+  DeepDAGNode,
   Node,
   NodeContext,
   NodeError,

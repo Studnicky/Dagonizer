@@ -1,133 +1,101 @@
-# Example: Checkpoint Resume
+---
+title: 'Phase 08 · Checkpoint + resume'
+description: 'The Archivist mid-conversation: snapshot the state via ArchivistState.snapshotData / restoreData, persist to a CheckpointStore, restore in a later process, and resume from the cursor.'
+---
 
-Full checkpoint cycle: run partway, abort, persist the checkpoint as JSON, restore the state, and resume from the cursor. Final state matches a non-interrupted run.
+# Phase 08 · Checkpoint + resume
+
+The compose / validate loop in [The Archivist](./the-archivist) is the most expensive segment — multiple LLM calls per attempt. If the visitor's session times out mid-loop, the dispatcher records the cursor (`crl-compose-response` or `crl-validate-response`), the partial draft, and the attempt counter. A later process recalls the checkpoint and finishes the response without paying for the upstream scouts again.
+
+The `ArchivistState` makes this possible by overriding `snapshotData()` and `restoreData()` — the two methods `NodeStateBase` calls during `Checkpoint.from` and `Checkpoint.recall`.
 
 ## Flow
 
 ```mermaid
 flowchart TB
-  start([entrypoint])
-  a[a]
-  b[b]
-  c[c]
-  END([end])
-  start --> a
-  a --> b
-  b -. abort .-> ckpt([Checkpoint.from])
-  ckpt --> json([JSON store])
-  json --> recall([Checkpoint.restore])
-  recall --> resume([dispatcher.resume])
-  resume --> b
-  b --> c
-  c --> END
+  start([visitor query])
+  scouts[book-search-fanout]
+  compose[crl-compose-response]
+  validate[crl-validate-response]
+  ckpt([Checkpoint.from + persist])
+  store[(CheckpointStore)]
+  recall([Checkpoint.recall])
+  resume([dispatcher.resume])
+  respond([crl-respond-to-visitor])
+  start --> scouts
+  scouts --> compose
+  compose --> validate
+  validate -. session timeout .-> ckpt
+  ckpt --> store
+  store --> recall
+  recall --> resume
+  resume --> validate
+  validate -->|approved| respond
 ```
 
 ## Code
 
+### State snapshot round-trip
+
+The `#snapshot-restore` region covers `snapshotData()` and `restoreData()` — the two methods that serialize and rehydrate the domain fields (`query`, `intent`, `terms`, `candidates`, `shortlist`, `draft`, `approved`, `attempts`, `recalledContext`, `memoryDigest`):
+
+<<< ../../examples/the-archivist/ArchivistState.ts#snapshot-restore
+
+### Cancellation → checkpoint → resume
+
+The `#cancellation-run` region in the runner shows the execute call with `signal` and `deadlineMs`, the cursor check after cancellation, and how to read the lifecycle kind:
+
+<<< ../../examples/the-archivist/runArchivist.ts#cancellation-run
+
+## Persist and resume (illustrative)
+
+The persist and resume calls below use the standard `Checkpoint` API with `MemoryCheckpointStore` — swap to any `CheckpointStore` implementation (Postgres, Redis, S3) without changing the calling code:
+
 ```ts
-/**
- * 08-checkpoint — abort → snapshot → restore → resume.
- *
- * Demonstrates the full checkpoint cycle: run partway, abort, persist the
- * checkpoint (as JSON), parse it back, rehydrate state, and resume from
- * the cursor. Final state matches a non-interrupted run.
- *
- * Run: npx tsx examples/08-checkpoint.ts
- */
+// illustrative — runtime equivalent in examples/the-archivist/runArchivist.ts
+import { Checkpoint, MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
 
-import type { JsonObject } from '../src/entities/json.js';
-import {
-  NodeStateBase,
-  Checkpoint,
-  Dagonizer,
-} from '../src/index.js';
-import type { DAG, NodeInterface } from '../src/index.js';
+const store = new MemoryCheckpointStore();
 
-class CountingState extends NodeStateBase {
-  count = 0;
-  log: string[] = [];
-
-  protected override snapshotData(): JsonObject {
-    return { "count": this.count, "log": [...this.log] };
-  }
-
-  protected override restoreData(snapshot: JsonObject): void {
-    const c = snapshot['count'];
-    if (typeof c === 'number') this.count = c;
-    const l = snapshot['log'];
-    if (Array.isArray(l)) this.log = l.filter((x): x is string => typeof x === 'string');
-  }
+// After a cancelled/timed-out execute call:
+if (result.cursor !== null) {
+  const data = Checkpoint.from('the-archivist', result);
+  await Checkpoint.persist(store, `archivist:${result.state.query}`, data);
 }
 
-const inc: NodeInterface<CountingState, 'success'> = {
-  "name": 'inc',
-  "outputs": ['success'],
-  async execute(state) {
-    state.count++;
-    state.log.push(`tick:${state.count}`);
-    return { "output": 'success' };
-  },
-};
+// In a later process:
+const recalled = await Checkpoint.recall(
+  store,
+  `archivist:${visitor.query}`,
+  (snap) => ArchivistState.restore(snap),  // rehydrates via restoreData()
+);
 
-const dag: DAG = {
-  "name": 'count',
-  "version": '1',
-  "entrypoint": 'a',
-  "nodes": [
-    { "type": 'single', "name": 'a', "node": 'inc', "outputs": { "success": 'b' } },
-    { "type": 'single', "name": 'b', "node": 'inc', "outputs": { "success": 'c' } },
-    { "type": 'single', "name": 'c', "node": 'inc', "outputs": { "success": null } },
-  ],
-};
-
-const dispatcher = new Dagonizer<CountingState>();
-dispatcher.registerNode(inc);
-dispatcher.registerDAG(dag);
-
-// Partial run: abort after the first node.
-const ctl = new AbortController();
-const initial = new CountingState();
-const execution = dispatcher.execute('count', initial, { "signal": ctl.signal });
-let stages = 0;
-for await (const _stage of execution) {
-  stages++;
-  if (stages === 1) ctl.abort(new Error('pause'));
+if (recalled !== null) {
+  const final = await dispatcher.resume(
+    recalled.dagName,
+    recalled.state,
+    recalled.cursor,                       // 'crl-validate-response'
+  );
+  console.log(final.state.draft);          // validated response
+  console.log(final.state.lifecycle.kind); // 'completed'
 }
-const partial = await execution;
-process.stdout.write(`partial: count=${partial.state.count} cursor=${partial.cursor}\n`);
-
-// Persist the checkpoint as JSON.
-const checkpoint = Checkpoint.from('count', partial);
-const persisted = Checkpoint.toJson(checkpoint);
-
-// ... time passes, process restarts, etc. ...
-
-// Restore + resume.
-const parsed = JSON.parse(persisted) as unknown;
-const { state, dagName, cursor } = Checkpoint.restore(parsed, (snap) => CountingState.restore(snap));
-process.stdout.write(`restored: count=${state.count} cursor=${cursor}\n`);
-
-const resumed = await dispatcher.resume(dagName, state, cursor);
-process.stdout.write(`resumed: count=${resumed.state.count} log=${JSON.stringify(resumed.state.log)}\n`);
 ```
 
 ## What it demonstrates
 
-- `CountingState` overrides `snapshotData()` to include domain fields in the checkpoint, and `restoreData()` to restore them.
-- The execution is iterated in streaming mode. After the first node completes, `ctl.abort()` stops the DAG. The `for await` loop ends; `await execution` returns the cached partial result.
-- `Checkpoint.from('count', partial)` throws if `partial.cursor` is `null` — this example aborts after exactly one node so the cursor is always `'b'`.
-- `Checkpoint.toJson(checkpoint)` produces a JSON string. In a real system, store it in a database, KV store, or message envelope.
-- `Checkpoint.restore(parsed, factory)` validates the raw JSON against `CheckpointDataSchema`, then calls the factory to rehydrate the state class.
-- `dispatcher.resume(dagName, state, cursor)` is identical to `execute()` except it begins at `cursor` instead of the DAG's entrypoint. The resumed execution is a fresh lifecycle run from `pending`.
-- Final `resumed.state.count === 3` and `resumed.state.log` contains all three ticks, matching a non-interrupted run.
+- **`ArchivistState.snapshotData()` / `restoreData()`** — domain-specific serialization. `NodeStateBase` calls `snapshotData` during `Checkpoint.from` and `restoreData` during `Checkpoint.recall`. The lifecycle resets to `pending` on restore; the resumed execution is a fresh lifecycle run on the recovered state data.
+- **`Checkpoint.from(dagName, result)`** — produces a `CheckpointData` record only when `result.cursor !== null` (an in-progress flow). A completed flow produces no cursor.
+- **`CheckpointStore` adapter contract** — `MemoryCheckpointStore` is the test-time implementation. Swap to Postgres / Redis / S3 without touching the dispatcher or state.
+- **`Checkpoint.persist` / `Checkpoint.recall`** — codec + store in one call per side. `Checkpoint.recall` returns `null` when nothing is stored under the key.
+- **`dispatcher.resume(dagName, state, cursor)`** — starts from the recalled cursor instead of the DAG's entrypoint. The compose/validate retry counter (`state.attempts.compose`) survives the round-trip so the loop is still bounded.
+
+See this in action in the [Archivist live demo](./the-archivist).
 
 ## See also
 
-- [Checkpoint](../guide/checkpoint)
-- [Persistence](../guide/persistence) — `CheckpointStore` + `Checkpoint.persist` / `Checkpoint.recall`
-- [Cancellation](../guide/cancellation) — produce the cursor that gets checkpointed
-
-## Related reference
-
+- [Running domain: The Archivist](./the-archivist)
+- [Checkpoint guide](../guide/checkpoint)
+- [Persistence guide](../guide/persistence) — Postgres example for `CheckpointStore`
+- [Phase 04 · Cancellation](./04-cancellation) — produces the cursor that this phase checkpoints
 - [Reference: Checkpoint](../reference/checkpoint)
 - [Reference: Contracts — `CheckpointStore`](../reference/contracts)

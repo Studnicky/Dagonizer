@@ -1,0 +1,252 @@
+/**
+ * MemoryStore — browser-runnable RDF quad store for the Archivist.
+ *
+ * Wraps `n3.Store` (pure JS, ~30KB gzipped, identical surface on Node
+ * and in the browser) and exposes a named-graph-aware surface:
+ *
+ *   assert(s, p, o, graph?)              — write one quad
+ *   ask({ s?, p?, o?, graph? })          — boolean existence check
+ *   select({ s?, p?, o?, graph? })       — list bound rows (vars start with ?)
+ *   triplesIn(graph)                     — iterate quads in one graph
+ *   triples()                            — iterate every quad
+ *
+ * Four named graphs are reserved by convention:
+ *
+ *   urn:dagonizer:ontology              — TBox schema (classes, properties, domains, ranges)
+ *                                          loaded once on mount via loadOntology()
+ *   urn:dagonizer:memory                — persistent cross-run facts
+ *                                          (books, sources, scores — survives reloads)
+ *   urn:dagonizer:state:<runId>         — per-run typed-state mirror
+ *                                          (ArchivistState fields → triples on every node end)
+ *   urn:dagonizer:prov:<runId>          — PROV-O activity log
+ *                                          (which node did what when, attributed to which agent)
+ *
+ * Pattern surface intentionally mirrors SPARQL's basic graph pattern
+ * (`{ ?s <pred> ?o }`) without a full SPARQL engine. For richer query
+ * shapes (UNION, FILTER, paths) swap in `@comunica/query-sparql`.
+ */
+
+import { DataFactory, Parser, Store, Writer } from 'n3';
+import type { Quad, Term } from 'n3';
+
+const { namedNode, literal, quad, defaultGraph } = DataFactory;
+
+const LOCALSTORAGE_KEY = 'dagonizer-archivist-memory';
+
+export const DAG_NS = 'https://noocodex.dev/ontology/dagonizer/';
+export const BOOK_NS = 'urn:dagonizer:book:';
+export const RUN_NS  = 'urn:dagonizer:run:';
+
+/** Named-graph IRIs reserved by the Archivist demo. */
+export const GRAPH_ONTOLOGY = namedNode('urn:dagonizer:ontology');
+export const GRAPH_MEMORY   = namedNode('urn:dagonizer:memory');
+export const STATE_GRAPH_PREFIX = 'urn:dagonizer:state:';
+export const PROV_GRAPH_PREFIX  = 'urn:dagonizer:prov:';
+export const stateGraphIri = (runId: string): Term => namedNode(`${STATE_GRAPH_PREFIX}${runId}`);
+export const provGraphIri  = (runId: string): Term => namedNode(`${PROV_GRAPH_PREFIX}${runId}`);
+
+/**
+ * One bound row from `select()`. Keys are pattern variable names without
+ * the leading `?`. Values are the raw n3 terms (NamedNode | Literal | …).
+ */
+export type Binding = Readonly<Record<string, Term>>;
+
+interface SlotPattern {
+  readonly subject?:   Term | string;
+  readonly predicate?: Term | string;
+  readonly object?:    Term | string;
+  readonly graph?:     Term | string;
+}
+
+export class MemoryStore {
+  readonly #store = new Store();
+  /** Auto-persist writes to localStorage when true (browser only). */
+  #persist = false;
+
+  /**
+   * Hydrate from localStorage and enable auto-persistence. Safe to call
+   * in Node (no-ops) since we check for `localStorage`.
+   */
+  enablePersistence(): void {
+    if (typeof localStorage === 'undefined') return;
+    this.#persist = true;
+    const dump = localStorage.getItem(LOCALSTORAGE_KEY);
+    if (dump === null || dump.length === 0) return;
+    try {
+      const parser = new Parser({ 'format': 'N-Quads' });
+      const quads = parser.parse(dump);
+      for (const q of quads) this.#store.addQuad(q);
+    } catch {
+      localStorage.removeItem(LOCALSTORAGE_KEY);
+    }
+  }
+
+  /**
+   * Disable auto-persistence and remove the stored dump from localStorage.
+   * Subsequent writes are held only in memory until `enablePersistence()` is
+   * called again. Safe to call in Node (no-ops).
+   */
+  disablePersistence(): void {
+    this.#persist = false;
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem(LOCALSTORAGE_KEY);
+    }
+  }
+
+  /** True when writes are being auto-persisted to localStorage. */
+  get isPersisted(): boolean { return this.#persist; }
+
+  /** Total quad count — useful for the live UI counter. */
+  get size(): number { return this.#store.size; }
+
+  /** Pre-bake a named-node IRI for the `dag:` vocabulary. */
+  static dagIri(local: string): Term { return namedNode(`${DAG_NS}${local}`); }
+  /** Pre-bake a named-node IRI for a candidate book by ISBN. */
+  static bookIri(isbn: string): Term { return namedNode(`${BOOK_NS}${isbn}`); }
+  /** Per-run subject IRI. */
+  static runIri(id: string):   Term { return namedNode(`${RUN_NS}${id}`); }
+  /** Make any IRI. */
+  static iri(value: string):   Term { return namedNode(value); }
+
+  /** Literal helpers — typed XSD where it matters for SPARQL FILTER. */
+  static lit = {
+    str(value: string):   Term { return literal(value); },
+    num(value: number):   Term { return literal(String(value), namedNode('http://www.w3.org/2001/XMLSchema#double')); },
+    int(value: number):   Term { return literal(String(value), namedNode('http://www.w3.org/2001/XMLSchema#integer')); },
+    bool(value: boolean): Term { return literal(String(value), namedNode('http://www.w3.org/2001/XMLSchema#boolean')); },
+    dateTime(value: Date): Term { return literal(value.toISOString(), namedNode('http://www.w3.org/2001/XMLSchema#dateTime')); },
+  };
+
+  /**
+   * Load the TBox ontology into `urn:dagonizer:ontology`.
+   *
+   * Accepts the `ONTOLOGY_NTRIPLES` array from `ArchivistOntology.ts`.
+   * Idempotent: clears the graph before writing so repeated calls on
+   * mount are safe.  The `typeof` guard lets tests supply any string[].
+   */
+  loadOntology(ntriples: readonly string[]): void {
+    this.#store.removeQuads(this.#store.getQuads(null, null, null, GRAPH_ONTOLOGY));
+    const parser = new Parser({ 'format': 'N-Triples' });
+    const joined = ntriples.join('\n');
+    const parsed = parser.parse(joined);
+    for (const q of parsed) {
+      this.#store.addQuad(
+        quad(q.subject, q.predicate, q.object, GRAPH_ONTOLOGY),
+      );
+    }
+    this.#flush();
+  }
+
+  /** Write one quad. `graph` defaults to the default graph. */
+  assert(s: Term, p: Term, o: Term, graph?: Term): void {
+    this.#store.addQuad(quad(s, p, o, graph ?? defaultGraph()));
+    this.#flush();
+  }
+
+  /** Write many quads. Each quad carries its own graph. */
+  assertAll(quads: readonly Quad[]): void {
+    for (const q of quads) this.#store.addQuad(q);
+    this.#flush();
+  }
+
+  /** ASK — true when at least one quad matches the pattern. */
+  ask(pattern: SlotPattern): boolean {
+    return this.#store.getQuads(
+      asTerm(pattern.subject)   ?? null,
+      asTerm(pattern.predicate) ?? null,
+      asTerm(pattern.object)    ?? null,
+      asTerm(pattern.graph)     ?? null,
+    ).length > 0;
+  }
+
+  /**
+   * SELECT — list bound rows. Variables: pass a string `?name` in any
+   * slot and it becomes a binding key; concrete terms filter.
+   */
+  select(pattern: SlotPattern): Binding[] {
+    const subject   = asTerm(pattern.subject)   ?? null;
+    const predicate = asTerm(pattern.predicate) ?? null;
+    const object    = asTerm(pattern.object)    ?? null;
+    const graph     = asTerm(pattern.graph)     ?? null;
+    const quads = this.#store.getQuads(subject, predicate, object, graph);
+    return quads.map((q) => {
+      const row: Record<string, Term> = {};
+      if (isVar(pattern.subject))   row[stripQuestion(pattern.subject)]   = q.subject;
+      if (isVar(pattern.predicate)) row[stripQuestion(pattern.predicate)] = q.predicate;
+      if (isVar(pattern.object))    row[stripQuestion(pattern.object)]    = q.object;
+      if (isVar(pattern.graph))     row[stripQuestion(pattern.graph)]     = q.graph;
+      return row;
+    });
+  }
+
+  /** Count matching quads. */
+  count(pattern: SlotPattern): number {
+    return this.#store.getQuads(
+      asTerm(pattern.subject)   ?? null,
+      asTerm(pattern.predicate) ?? null,
+      asTerm(pattern.object)    ?? null,
+      asTerm(pattern.graph)     ?? null,
+    ).length;
+  }
+
+  /** Empty the entire store and the persisted dump. */
+  clear(): void {
+    this.#store.removeQuads(this.#store.getQuads(null, null, null, null));
+    if (this.#persist && typeof localStorage !== 'undefined') {
+      localStorage.removeItem(LOCALSTORAGE_KEY);
+    }
+  }
+
+  /** Drop every quad in one named graph (useful when a run resets). */
+  clearGraph(graph: Term): void {
+    this.#store.removeQuads(this.#store.getQuads(null, null, null, graph));
+    this.#flush();
+  }
+
+  /** Write the current store to localStorage as N-Quads. */
+  #flush(): void {
+    if (!this.#persist || typeof localStorage === 'undefined') return;
+    const writer = new Writer({ 'format': 'N-Quads' });
+    writer.addQuads(this.#store.getQuads(null, null, null, null));
+    writer.end((err, result) => {
+      if (err === null || err === undefined) {
+        localStorage.setItem(LOCALSTORAGE_KEY, result);
+      }
+    });
+  }
+
+  /** Iterate every quad in every graph. */
+  *triples(): IterableIterator<Quad> {
+    for (const q of this.#store.getQuads(null, null, null, null)) yield q;
+  }
+
+  /** Iterate every quad in a single named graph. */
+  *triplesIn(graph: Term): IterableIterator<Quad> {
+    for (const q of this.#store.getQuads(null, null, null, graph)) yield q;
+  }
+
+  /** Distinct graph IRIs the store currently knows about. */
+  graphs(): readonly Term[] {
+    const seen = new Map<string, Term>();
+    for (const q of this.#store.getQuads(null, null, null, null)) {
+      if (q.graph.termType === 'DefaultGraph') continue;
+      if (!seen.has(q.graph.value)) seen.set(q.graph.value, q.graph);
+    }
+    return [...seen.values()];
+  }
+}
+
+function isVar(slot: Term | string | undefined): slot is string {
+  return typeof slot === 'string' && slot.startsWith('?');
+}
+
+function stripQuestion(name: string): string {
+  return name.startsWith('?') ? name.slice(1) : name;
+}
+
+function asTerm(slot: Term | string | undefined): Term | null {
+  if (slot === undefined) return null;
+  if (isVar(slot)) return null;
+  if (typeof slot === 'string') return null;
+  return slot;
+}

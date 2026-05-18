@@ -1,14 +1,17 @@
 /**
- * SingleNode — single-node placement.
+ * SingleNode — single-node placement in JSON-LD canonical form.
  *
- * Compile-time consumers may use the `SingleNodePlacementInterface<TOutput>`
- * generic for exhaustiveness-checked output routing. The schema itself is
- * necessarily generic-free: `outputs` is a `Record<string, string | null>`
- * at the JSON boundary.
+ * Uses `@type: 'SingleNode'` as the discriminator (replacing the flat `type`
+ * key). `@id` is the placement URN: `urn:noocodex:dag:<dagName>/node/<name>`.
  *
- * Naming: the placement interface is distinct from `NodeInterface` (the
- * adapter contract consumers implement). A "node" is the registered unit of
- * work; a "placement" is its appearance inside a `DAG`.
+ * Compile-time consumers may use `SingleNodePlacementInterface<TOutput>` for
+ * exhaustiveness-checked output routing. The schema itself is necessarily
+ * generic-free: `outputs` is a `Record<string, string | null>` at the JSON
+ * boundary.
+ *
+ * Naming: the placement interface is distinct from `NodeInterface` (the adapter
+ * contract consumers implement). A "node" is the registered unit of work; a
+ * "placement" is its appearance inside a `DAG`.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
@@ -17,11 +20,12 @@ export const SingleNodeSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/SingleNode',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['name', 'node', 'outputs', 'type'],
+  'required': ['@id', '@type', 'name', 'node', 'outputs'],
   'properties': {
-    'type': { 'type': 'string', 'const': 'single' },
-    'name': { 'type': 'string', 'minLength': 1 },
-    'node': { 'type': 'string', 'minLength': 1 },
+    '@id':   { 'type': 'string', 'minLength': 1 },
+    '@type': { 'type': 'string', 'const': 'SingleNode' },
+    'name':  { 'type': 'string', 'minLength': 1 },
+    'node':  { 'type': 'string', 'minLength': 1 },
     'outputs': {
       'type': 'object',
       'additionalProperties': { 'type': ['string', 'null'] },

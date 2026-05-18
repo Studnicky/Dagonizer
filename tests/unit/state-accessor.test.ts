@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import type { StateAccessor } from '../../src/contracts/StateAccessor.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { DottedPathAccessor } from '../../src/runtime/DottedPathAccessor.js';
@@ -70,13 +71,17 @@ void describe('Dagonizer accepts a custom StateAccessor', () => {
     const dispatcher = new Dagonizer<FanOutState>({ 'accessor': trackingAccessor });
     dispatcher.registerNode(handler);
     const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:fan-test',
+      '@type':    'DAG',
       'name': 'fan-test',
       'version': '1',
       'entrypoint': 'fan',
       'nodes': [{
-        'type': 'fan-out',
-        'name': 'fan',
-        'node': 'handler',
+        '@id':    'urn:noocodex:dag:fan-test/node/fan',
+        '@type':  'FanOutNode',
+        'name':   'fan',
+        'node':   'handler',
         'source': 'items',
         'itemKey': 'item',
         'fanIn': { 'strategy': 'append', 'target': 'collected' },
