@@ -244,9 +244,11 @@ export const archivistDAG = new DAGBuilder('the-archivist', '5.3')
   // Fan-in policy: 'success' routes to the shared respond-to-visitor terminal
   // at the parent level — the sub-DAG produces state.draft and exits cleanly;
   // exactly ONE respond-to-visitor fires per run regardless of branch count.
+  // 'error' (retry budget exhausted) falls through to compose-empty so the
+  // visitor always receives an in-character response rather than a silent drop.
   .subDAG('compose-loop', 'compose-retry-loop', {
     'success': 'respond-to-visitor',
-    'error':   null,
+    'error':   'compose-empty',
   }, {
     'stateMapping': {
       'output': {

@@ -42,8 +42,13 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 ### Fixed
 
-- Archivist demo: duplicate response bug. `executeSubDAG` re-uses the parent Dagonizer instance so `onFlowEnd` was firing twice (once for `compose-retry-loop`, once for `the-archivist`) — each pushing `state.draft` to the conversation feed. Structural fix: `ComposeRetryLoopDAG` no longer terminates internally with `respondToVisitor`; the parent DAG owns the single `respond-to-visitor` placement that every branch (`compose-loop`, `compose-empty`, `compose-memory-recall`) converges to. UI-side guard: `ArchivistRunner.onFlowEnd` only pushes when `dagName === 'the-archivist'`, preventing future sub-DAG additions from regressing.
+- Engine: `runNodes` no longer fires `onFlowStart`/`onFlowEnd` or calls `state.markRunning`/`markCompleted` when invoked recursively from `executeSubDAG`. Consumers see exactly one flow-start and one flow-end per top-level `execute()` call regardless of sub-DAG depth.
+- Archivist demo: duplicate response bug resolved at the engine level. `ComposeRetryLoopDAG` routes its outputs to the parent-owned `respond-to-visitor` placement; the engine lifecycle fix ensures `onFlowEnd` fires once per run. The UI-side `dagName === 'the-archivist'` guard is removed — the engine invariant is the guarantee.
 - Engine: `CytoscapeRenderer` sub-DAG inline expansion no longer emits dangling `<placement>/END` edges. When recursing into an expanded sub-DAG (`prefix` non-empty), `null` targets refer to the sub-DAG's terminus, not the parent's END — those internal terminal markers are now suppressed so the compound parent's own outgoing edges carry the real external routing.
+
+### Changed
+
+- Engine: sub-DAG placements that route any output to `null` (terminal) are rejected at `registerDAG` time. Sub-DAGs are reusable components; only the parent DAG owns END. The error message names the offending placement, route, and DAG so misconfiguration is immediately actionable.
 
 ### Removed
 

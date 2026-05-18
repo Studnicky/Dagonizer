@@ -374,18 +374,12 @@ function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
       prov.recordError(nodeName, error);
       runnerMachine.pulse({ 'type': 'nodeError', 'node': nodeName, 'error': error });
     },
-    onFlowEnd(dagName: string, state: ArchivistState, result: { cursor: string | null }) {
+    onFlowEnd(_dagName: string, state: ArchivistState, result: { cursor: string | null }) {
       const kind = state.lifecycle.kind;
       if (kind === 'completed' || kind === 'failed' || kind === 'cancelled' || kind === 'timed_out') {
         terminalKind.value = kind;
       }
-      // Belt-and-suspenders guard: only the root DAG's onFlowEnd pushes to
-      // conversation. Sub-DAG flows (compose-retry-loop, book-search-fanout)
-      // fire onFlowEnd on the same dispatcher instance — those must not
-      // duplicate the response. The structural fix (single respond-to-visitor
-      // at the parent level) is the primary guarantee; this guard is the
-      // secondary one so any future sub-DAG addition cannot regress it.
-      if (dagName === 'the-archivist' && state.draft.length > 0) {
+      if (state.draft.length > 0) {
         conversation.value = [...conversation.value, {
           'role': 'archivist',
           'text': state.draft,
@@ -393,7 +387,7 @@ function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
         }];
       }
       lastResult = result as never;
-      lastDagName = dagName;
+      lastDagName = _dagName;
       if (result.cursor !== null) checkpointNode.value = result.cursor;
       prov.recordFlowEnd(kind);
       memoryTick.value++;
