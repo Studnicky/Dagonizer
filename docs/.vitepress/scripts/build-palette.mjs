@@ -52,12 +52,17 @@ const result = spawnSync(IRIDIS_BIN, [CONFIG], {
   stdio: ['ignore', 'inherit', 'inherit'],
 });
 
-if (result.status !== 0) {
-  process.exit(result.status ?? 1);
-}
-
-if (!existsSync(RAW_OUTPUT)) {
-  console.error(`expected iridis output at ${RAW_OUTPUT} — none written`);
+// Tolerate iridis CLI failures (slot-name drift, config schema changes,
+// missing output) when the committed CSS exists. The committed file is
+// the source of truth for the docs site; regeneration is a developer
+// convenience, not a build requirement.
+if (result.status !== 0 || !existsSync(RAW_OUTPUT)) {
+  if (existsSync(FINAL_CSS)) {
+    console.log(`iridis CLI exited ${result.status ?? 'with no output'} — using committed ${FINAL_CSS}`);
+    process.exit(0);
+  }
+  if (result.status !== 0) process.exit(result.status ?? 1);
+  console.error(`expected iridis output at ${RAW_OUTPUT} — none written, and no committed ${FINAL_CSS} fallback`);
   process.exit(1);
 }
 

@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="RDF node with greyscale hex and blue RDF graph">
+
+  <defs>
+    <linearGradient id="facetBlue" x1="86" y1="32" x2="314" y2="368" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#58A9E6"/>
+      <stop offset="0.48" stop-color="#317FC4"/>
+      <stop offset="1" stop-color="#3178C6"/>
+    </linearGradient>
+    <linearGradient id="facetGrey" x1="86" y1="32" x2="314" y2="368" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F7F7F7"/>
+      <stop offset="0.52" stop-color="#D9DEE3"/>
+      <stop offset="1" stop-color="#8A929A"/>
+    </linearGradient>
+    <linearGradient id="facetWhite" x1="86" y1="32" x2="314" y2="368" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.55" stop-color="#F3F6F9"/>
+      <stop offset="1" stop-color="#D7DEE6"/>
+    </linearGradient>
+    <filter id="nodeShadow" x="-35%" y="-35%" width="170%" height="170%">
+      <feDropShadow dx="0" dy="12" stdDeviation="11" flood-color="#000000" flood-opacity="0.24"/>
+    </filter>
+    <style>
+      .tsText { font-family: "Segoe UI", Arial, Helvetica, sans-serif; font-weight: 700; letter-spacing: -0.065em; }
+      .w3Text { font-family: Arial Black, Arial, Helvetica, sans-serif; font-weight: 900; letter-spacing: -0.09em; }
+      .round { stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+
+
+  <g id="rdf-node">
+    
+    <g id="node-body" filter="url(#nodeShadow)">
+      <path id="node-base" d="M200 24 L352.42 112 L352.42 288 L200 376 L47.58 288 L47.58 112 Z" fill="url(#facetGrey)" stroke="#5E6670" stroke-width="6"/>
+      <path id="facet-top-left" d="M200 24 L47.58 112 L112 149 L200 98 Z" fill="#FFFFFF" opacity="0.11"/>
+      <path id="facet-top-right" d="M200 24 L352.42 112 L288 149 L200 98 Z" fill="#FFFFFF" opacity="0.07"/>
+      <path id="facet-lower-left" d="M47.58 112 L112 149 L200 376 L47.58 288 Z" fill="#000000" opacity="0.10"/>
+      <path id="facet-lower-right" d="M352.42 112 L288 149 L200 376 L352.42 288 Z" fill="#000000" opacity="0.16"/>
+      <path id="facet-center" d="M112 149 L200 98 L288 149 L200 376 Z" fill="#FFFFFF" opacity="0.08"/>
+    </g>
+
+    <g id="rdf-blue-graph" transform="translate(0 0)">
+      <path id="edge-left-top" d="M142 184 C164 170 186 153 214 128" fill="none" stroke="#1C55A6" stroke-width="17" class="round"/>
+      <path id="edge-left-bottom" d="M142 216 C170 220 194 240 216 272" fill="none" stroke="#1C55A6" stroke-width="17" class="round"/>
+      <path id="edge-right" d="M222 130 C242 176 242 224 222 270" fill="none" stroke="#1C55A6" stroke-width="17" class="round"/>
+      <circle id="subject-node" cx="132" cy="200" r="42" fill="#1C55A6"/>
+      <circle id="predicate-node" cx="228" cy="120" r="42" fill="#1C55A6"/>
+      <circle id="object-node" cx="228" cy="280" r="42" fill="#1C55A6"/>
+    </g>
+    <g id="rdf-highlights" fill="none" stroke="#FFFFFF" stroke-width="7" class="round" opacity="0.9">
+      <path d="M106 186 C112 169 126 160 142 160"/>
+      <path d="M202 108 C209 91 223 85 240 88"/>
+      <path d="M202 268 C209 251 223 245 240 248"/>
+    </g>
+  </g>
+
+</svg>

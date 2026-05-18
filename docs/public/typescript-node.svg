@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="TypeScript node matching TS logo lettering">
+
+  <defs>
+    <linearGradient id="facetBlue" x1="86" y1="32" x2="314" y2="368" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#58A9E6"/>
+      <stop offset="0.48" stop-color="#317FC4"/>
+      <stop offset="1" stop-color="#3178C6"/>
+    </linearGradient>
+    <linearGradient id="facetGrey" x1="86" y1="32" x2="314" y2="368" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F7F7F7"/>
+      <stop offset="0.52" stop-color="#D9DEE3"/>
+      <stop offset="1" stop-color="#8A929A"/>
+    </linearGradient>
+    <linearGradient id="facetWhite" x1="86" y1="32" x2="314" y2="368" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="0.55" stop-color="#F3F6F9"/>
+      <stop offset="1" stop-color="#D7DEE6"/>
+    </linearGradient>
+    <filter id="nodeShadow" x="-35%" y="-35%" width="170%" height="170%">
+      <feDropShadow dx="0" dy="12" stdDeviation="11" flood-color="#000000" flood-opacity="0.24"/>
+    </filter>
+    <style>
+      .tsText { font-family: "Segoe UI", Arial, Helvetica, sans-serif; font-weight: 700; letter-spacing: -0.065em; }
+      .w3Text { font-family: Arial Black, Arial, Helvetica, sans-serif; font-weight: 900; letter-spacing: -0.09em; }
+      .round { stroke-linecap: round; stroke-linejoin: round; }
+    </style>
+  </defs>
+
+
+  <g id="typescript-node">
+    
+    <g id="node-body" filter="url(#nodeShadow)">
+      <path id="node-base" d="M200 24 L352.42 112 L352.42 288 L200 376 L47.58 288 L47.58 112 Z" fill="url(#facetBlue)"/>
+      <path id="facet-top-left" d="M200 24 L47.58 112 L112 149 L200 98 Z" fill="#FFFFFF" opacity="0.11"/>
+      <path id="facet-top-right" d="M200 24 L352.42 112 L288 149 L200 98 Z" fill="#FFFFFF" opacity="0.07"/>
+      <path id="facet-lower-left" d="M47.58 112 L112 149 L200 376 L47.58 288 Z" fill="#000000" opacity="0.10"/>
+      <path id="facet-lower-right" d="M352.42 112 L288 149 L200 376 L352.42 288 Z" fill="#000000" opacity="0.16"/>
+      <path id="facet-center" d="M112 149 L200 98 L288 149 L200 376 Z" fill="#FFFFFF" opacity="0.08"/>
+    </g>
+
+    <g id="typescript-mark">
+      <text id="ts-label" class="tsText" x="205" y="272" text-anchor="middle" font-size="160" fill="#FFFFFF">TS</text>
+    </g>
+  </g>
+
+</svg>

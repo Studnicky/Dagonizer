@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="DAG directed acyclic graph concept node">
+
+  <defs>
+    <linearGradient id="facetDark" x1="86" y1="32" x2="314" y2="368" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2a3a52"/>
+      <stop offset="0.50" stop-color="#161e2e"/>
+      <stop offset="1" stop-color="#04060a"/>
+    </linearGradient>
+    <filter id="nodeShadow" x="-35%" y="-35%" width="170%" height="170%">
+      <feDropShadow dx="0" dy="12" stdDeviation="11" flood-color="#000000" flood-opacity="0.28"/>
+    </filter>
+    <style>
+      .round { stroke-linecap: round; stroke-linejoin: round; }
+      .monoText { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-weight: 900; }
+    </style>
+  </defs>
+
+  <g id="dag-node">
+
+    <g id="node-body" filter="url(#nodeShadow)">
+      <path id="node-base"         d="M200 24 L352.42 112 L352.42 288 L200 376 L47.58 288 L47.58 112 Z" fill="url(#facetDark)" stroke="#22e8ff" stroke-width="4"/>
+      <path id="facet-top-left"    d="M200 24 L47.58 112 L112 149 L200 98 Z"       fill="#FFFFFF" opacity="0.08"/>
+      <path id="facet-top-right"   d="M200 24 L352.42 112 L288 149 L200 98 Z"      fill="#FFFFFF" opacity="0.05"/>
+      <path id="facet-lower-left"  d="M47.58 112 L112 149 L200 376 L47.58 288 Z"   fill="#000000" opacity="0.12"/>
+      <path id="facet-lower-right" d="M352.42 112 L288 149 L200 376 L352.42 288 Z" fill="#000000" opacity="0.18"/>
+      <path id="facet-center"      d="M112 149 L200 98 L288 149 L200 376 Z"        fill="#FFFFFF" opacity="0.05"/>
+    </g>
+
+    <!-- DAG glyph: two inputs → merge → output -->
+    <g id="graph-glyph" stroke="#22e8ff" stroke-width="9" class="round">
+      <line x1="130" y1="160" x2="185" y2="200"/>
+      <line x1="130" y1="240" x2="185" y2="200"/>
+      <line x1="215" y1="200" x2="270" y2="200"/>
+      <polygon points="270,193 284,200 270,207" fill="#22e8ff" stroke="none"/>
+    </g>
+    <circle cx="118" cy="160" r="25" fill="#22e8ff" opacity="0.85"/>
+    <circle cx="118" cy="240" r="25" fill="#8f6dff" opacity="0.85"/>
+    <circle cx="200" cy="200" r="25" fill="#22e8ff" opacity="0.85"/>
+    <circle cx="284" cy="200" r="25" fill="#d4a649" opacity="0.85"/>
+
+    <text class="monoText" x="200" y="314" text-anchor="middle" font-size="56" fill="#22e8ff" opacity="0.95">DAG</text>
+
+  </g>
+
+</svg>

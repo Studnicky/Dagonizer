@@ -111,4 +111,22 @@
     text-anchor="end"
   >studnicky.github.io/Dagonizer</text>
 
+
+
+
+
+
+
+
+
+
+
+
+  <text
+    class="version-stamp meta"
+    x="52"
+    y="598"
+    font-size="15"
+  >v0.5.0</text>
+
 </svg>
