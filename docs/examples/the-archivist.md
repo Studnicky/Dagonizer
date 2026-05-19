@@ -1,7 +1,27 @@
 ---
 title: 'The Archivist'
 description: 'A bookstore help-bot built on Dagonizer — multi-branch DAG with hard and soft gates, parallel scouts, RAG fallback, and a bounded compose/validate retry loop. The running demo every Dagonizer example references.'
+seeAlso:
+  - text: 'Concepts'
+    link: '../concepts'
+    description: 'Dagonizer vocabulary the Archivist exercises'
+  - text: 'Architecture'
+    link: '../architecture'
+    description: 'three-tier interface taxonomy'
+  - text: 'Contract-derived flows'
+    link: '../guide/derive'
+    description: 'generate the Archivist DAG from `OperationContract`s'
+  - text: 'Visualization'
+    link: '../guide/visualization'
+    description: 'render the Archivist DAG with `MermaidRenderer.render(dag)`'
+  - text: 'Persistence'
+    link: '../guide/persistence'
+    description: 'wire `Checkpoint.persist` / `Checkpoint.recall` to a `CheckpointStore`'
+  - text: 'json-tology Bookstore domain'
+    link: 'https://studnicky.github.io/json-tology/bookstore-domain'
+    description: 'the schema vocabulary the Archivist''s `Book` entity mirrors'
 ---
+
 
 # The Archivist
 
@@ -44,9 +64,9 @@ Chrome's on-device Gemini Nano honours the same plan via the Prompt API's
 `responseConstraint` JSON-schema field, which arrived behind feature flags.
 
 1. **Open `chrome://flags`** and enable each of:
-   - `#prompt-api-for-gemini-nano` → **Enabled**
-   - `#prompt-api-for-gemini-nano-multimodal-input` → **Enabled** (newer flag name in some channels)
-   - `#optimization-guide-on-device-model` → **EnabledBypassPerfRequirement**
+   ⦿ `#prompt-api-for-gemini-nano` → **Enabled**
+   ⦿ `#prompt-api-for-gemini-nano-multimodal-input` → **Enabled** (newer flag name in some channels)
+   ⦿ `#optimization-guide-on-device-model` → **EnabledBypassPerfRequirement**
 2. **Restart Chrome.**
 3. **Trigger the download.** Visit any page that calls `LanguageModel.create()`
    (this demo will, but you can also paste the snippet below into DevTools):
@@ -104,12 +124,12 @@ The eight per-phase example pages each isolate one Dagonizer feature against thi
 | Phase | Feature | Page |
 |-------|---------|------|
 | 01 | Linear intake + terminal routing | [Phase 01 · Linear intake](./01-linear) |
-| 02 | Fan-out scout with partition fan-in | [Phase 02 · Fan-out scout](./02-fanout) |
-| 03 | Deep-DAG composition | [Phase 03 · Deep-DAG composition](./03-deepflows) |
-| 04 | Abortable visitor request | [Phase 04 · Cancellation](./04-cancellation) |
-| 05 | RetryPolicy against the LLM composer | [Phase 05 · Retry compose](./05-retry) |
-| 06 | DAGBuilder authoring | [Phase 06 · DAGBuilder](./06-builder) |
-| 07 | Loading the DAG from JSON config | [Phase 07 · JSON DAG load](./07-schema) |
+| 02 | DAGBuilder authoring | [Phase 02 · DAGBuilder](./02-builder) |
+| 03 | Tool schema design (JSON Schema 2020-12 inputSchema) | [Phase 03 · Tool schemas](./03-schema) |
+| 04 | Fan-out scout with partition fan-in | [Phase 04 · Fan-out scout](./04-fanout) |
+| 05 | Deep-DAG composition | [Phase 05 · Deep-DAG composition](./05-deepflows) |
+| 06 | Abortable visitor request | [Phase 06 · Cancellation](./06-cancellation) |
+| 07 | RetryPolicy against the LLM composer | [Phase 07 · Retry](./07-retry) |
 | 08 | Checkpoint mid-draft and resume | [Phase 08 · Checkpoint + resume](./08-checkpoint) |
 
 Every page starts from the same `ArchivistState` + `services` + node set; only the DAG variation and the registered subset change.
@@ -118,8 +138,8 @@ Every page starts from the same `ArchivistState` + `services` + node set; only t
 
 The Archivist's DAG is composed of two reusable deep-DAGs that ship as independent components. Each is a `DAG` value any consumer can import, register, and reference as a `.deepDAG(...)` placement in their own DAG.
 
-- **`book-search-fanout`** — extract-query + decide-tools + 4-source parallel scout cluster (OpenLibrary, Google Books, Subject, Wikipedia) + rank-candidates + merge-candidates + record-findings + has-citations-gate + recall-past-visits. Used in three intent branches (`on-topic-search`, `author-search`, `similar-search`); one definition, three placements.
-- **`compose-retry-loop`** — compose-response + validate-response (with bounded retry loop back to compose) + respond-to-visitor. Every successful search branch funnels through this one shared cluster.
+⦿ **`book-search-fanout`** — extract-query + decide-tools + 4-source parallel scout cluster (OpenLibrary, Google Books, Subject, Wikipedia) + rank-candidates + merge-candidates + record-findings + has-citations-gate + recall-past-visits. Used in three intent branches (`on-topic-search`, `author-search`, `similar-search`); one definition, three placements.
+⦿ **`compose-retry-loop`** — compose-response + validate-response (with bounded retry loop back to compose) + respond-to-visitor. Every successful search branch funnels through this one shared cluster.
 
 The renderer expands both deep-DAGs inline in the diagram — compound-graph children render inside the placement box so the full topology is visible. No opaque boxes.
 
@@ -137,18 +157,18 @@ Reviews and describe branches are inlined in the parent DAG because they substit
 
 ### JSON-LD as the canonical DAG format
 
-The DAG is JSON-LD natively. `DAGBuilder` produces a plain JavaScript object; `toJsonLd(dag)` serializes it to JSON-LD 1.1 with type-scoped `@context` so every placement carries a typed IRI — `"SingleNode"`, `"ParallelNode"`, `"FanOutNode"`, `"DeepDAGNode"` — under `@type`. `fromJsonLd(jsonld)` round-trips back to the same object with identity preservation.
+The DAG is JSON-LD natively. `DAGBuilder.build()` returns a plain JavaScript object whose wire shape is JSON-LD 1.1 — every placement carries a typed IRI under `@type`. `Dagonizer.serialize(dag)` produces the JSON string; `Dagonizer.load(json)` parses and validates it back to an equivalent typed `DAG`.
 
-There is no separate projection layer or dual configuration. The object `DAGBuilder.build()` returns is the same object the engine consumes and the same object that serializes to JSON-LD. Load a DAG from JSON-LD, register it, execute it — one surface throughout.
+There is no separate projection layer or dual configuration. The object `DAGBuilder.build()` returns is the same object the engine consumes and the same object that serializes to JSON-LD. Load a DAG from JSON, register it, execute it — one surface throughout.
 
 ```ts
-import { toJsonLd, fromJsonLd } from '@noocodex/dagonizer';
+import { Dagonizer } from '@noocodex/dagonizer';
 
-// Serialize the Archivist DAG to JSON-LD for persistence or transfer:
-const jsonld = toJsonLd(archivistDAG);
+// Serialize the Archivist DAG to JSON for persistence or transfer:
+const json = Dagonizer.serialize(archivistDAG);
 
 // Restore it in another process or reload:
-const dag = fromJsonLd(jsonld);
+const dag = Dagonizer.load(json);
 dispatcher.registerDAG(dag);
 ```
 
@@ -186,12 +206,3 @@ Deep-DAG placements in the JSON-LD output look like:
 ### Ontology (TBox + ABox)
 
 <<< ../../examples/the-archivist/ontology/ArchivistOntology.ts
-
-## See also
-
-- [Concepts](../concepts) — Dagonizer vocabulary the Archivist exercises
-- [Architecture](../architecture) — three-tier interface taxonomy
-- [Contract-derived flows](../guide/derive) — generate the Archivist DAG from `OperationContract`s
-- [Visualization](../guide/visualization) — render the Archivist DAG with `MermaidRenderer.render(dag)`
-- [Persistence](../guide/persistence) — wire `Checkpoint.persist` / `Checkpoint.recall` to a `CheckpointStore`
-- [json-tology Bookstore domain](https://studnicky.github.io/json-tology/bookstore-domain) — the schema vocabulary the Archivist's `Book` entity mirrors

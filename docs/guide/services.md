@@ -1,3 +1,16 @@
+---
+seeAlso:
+  - text: 'Subclassing State'
+    link: './subclassing'
+    description: 'services are dispatcher-scoped; per-execution data lives on state'
+  - text: 'Observability'
+    link: './observability'
+    description: 'pass loggers / tracers through the services bag'
+  - text: 'State accessors'
+    link: './state-accessor'
+    description: 'accessor + services together customize what nodes see'
+---
+
 # Services container
 
 Nodes often need shared dependencies — loggers, database clients, registries, retry pools. The dispatcher accepts a typed services bag at construction; the same reference flows through every node's `context.services`.
@@ -87,8 +100,8 @@ The generic parameter ensures `context.services` is fully typed inside the node 
 
 Nodes without a services parameter (`NodeInterface<S, 'success'>`, default `TServices = undefined`) cannot register on a dispatcher with non-`undefined` services because the registration signature requires the same `TServices`. Either:
 
-- Always declare the bag (most consistent).
-- Or split into two dispatchers — one with services, one without — when nodes truly cannot share a bag.
+⦿ Always declare the bag (most consistent).
+⦿ Or split into two dispatchers — one with services, one without — when nodes truly cannot share a bag.
 
 In practice the bag is wide enough to cover everything a flow needs, and every node accepts the same parameter.
 
@@ -97,14 +110,7 @@ In practice the bag is wide enough to cover everything a flow needs, and every n
 Services live on the dispatcher instance. There is no per-execution scope; the same bag is handed to every node in every execution, including sub-DAG nested calls and fan-out items.
 
 If a service needs per-execution state (e.g. a request ID), put the per-execution data in `state` instead. The bag is for things that outlive any one execution.
-
-## See also
-
-- [Subclassing State](./subclassing) — services are dispatcher-scoped; per-execution data lives on state
-- [Observability](./observability) — pass loggers / tracers through the services bag
-- [State accessors](./state-accessor) — accessor + services together customize what nodes see
-
 ## Related reference
 
-- [Reference: Dagonizer](../reference/dagonizer)
-- [Reference: Contracts — `NodeInterface`](../reference/contracts)
+⦿ [Reference: Dagonizer](../reference/dagonizer)
+⦿ [Reference: Contracts — `NodeInterface`](../reference/contracts)

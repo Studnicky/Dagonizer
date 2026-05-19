@@ -1,3 +1,14 @@
+---
+seeAlso:
+  - text: 'Reference: Contracts — `OperationContract`'
+    link: './contracts'
+  - text: 'Reference: Entities — `DAG`, `ParallelNode`, `FanOutNode`'
+    link: './entities'
+  - text: 'Reference: Viz — `MermaidRenderer`'
+    link: './viz'
+    description: 'render the DAG `derive()` returned'
+---
+
 # Derive
 
 Contract-derived flow generation. Ships through `@noocodex/dagonizer/derive`.
@@ -82,22 +93,18 @@ interface FlowFanOut {
 
 ```ts
 interface OperationContract {
-  readonly name: string;
+  readonly name:         string;
   readonly hardRequired: readonly string[];
-  readonly produces: readonly string[];
+  readonly produces:     readonly string[];
+  readonly outputs:      readonly string[];
 }
 ```
 
 Defined in `@noocodex/dagonizer/contracts`; re-exported from `@noocodex/dagonizer/derive` for convenience.
 
-## See also
-
-- [Reference: Contracts — `OperationContract`](./contracts)
-- [Reference: Entities — `DAG`, `ParallelNode`, `FanOutNode`](./entities)
-- [Reference: Viz — `MermaidRenderer`](./viz) — render the DAG `derive()` returned
-
+`outputs` declares every port the node can emit. `FlowDeriver` auto-wires each port to the next derived stage; `FlowAnnotations.terminals[name]` overrides individual ports per-operation. Terminals declaring a port not in the contract's `outputs` throw `DAGError` at derive time.
 ## Related guides
 
-- [Contract-derived flows](../guide/derive)
-- [DAGBuilder](../guide/builder) — the imperative alternative
-- [Visualization](../guide/visualization)
+⦿ [Contract-derived flows](../guide/derive)
+⦿ [DAGBuilder](../guide/builder) — the imperative alternative
+⦿ [Visualization](../guide/visualization)

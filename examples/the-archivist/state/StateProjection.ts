@@ -23,7 +23,10 @@ import type { Term } from 'n3';
 import type { ArchivistState } from '../ArchivistState.ts';
 import { MemoryStore, stateGraphIri } from '../memory/MemoryStore.ts';
 
-const dag = (local: string): Term => MemoryStore.dagIri(local);
+const dag     = (local: string): Term => MemoryStore.dagIri(local);
+const rdfType = MemoryStore.iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#type');
+const dagBook = MemoryStore.dagIri('Book');
+const dagRun  = MemoryStore.dagIri('Run');
 
 export class StateProjection {
   /** Wipe everything in the per-run state graph. */
@@ -40,6 +43,10 @@ export class StateProjection {
     const graph = stateGraphIri(state.runId);
     store.clearGraph(graph);
     const run = MemoryStore.runIri(state.runId);
+
+    // rdf:type links this ABox run instance to the TBox dag:Run class —
+    // connects the state graph to the ontology graph in the MemoryGraph view.
+    store.assert(run, rdfType, dagRun, graph);
 
     // Scalar fields
     store.assert(run, dag('visitorQuery'), MemoryStore.lit.str(state.query), graph);
@@ -61,10 +68,13 @@ export class StateProjection {
     // Candidates — full book metadata + scoring per candidate
     for (const candidate of state.candidates) {
       const book = MemoryStore.bookIri(candidate.book.isbn);
-      store.assert(run, dag('candidate'), book, graph);
-      store.assert(book, dag('title'),    MemoryStore.lit.str(candidate.book.title), graph);
-      store.assert(book, dag('source'),   MemoryStore.lit.str(candidate.source), graph);
-      store.assert(book, dag('score'),    MemoryStore.lit.num(candidate.score), graph);
+      // rdf:type links this ABox book instance to the TBox dag:Book class —
+      // connects the state graph to the ontology graph in the MemoryGraph view.
+      store.assert(book, rdfType,          dagBook,                                          graph);
+      store.assert(run,  dag('candidate'), book,                                             graph);
+      store.assert(book, dag('title'),     MemoryStore.lit.str(candidate.book.title),        graph);
+      store.assert(book, dag('source'),    MemoryStore.lit.str(candidate.source),            graph);
+      store.assert(book, dag('score'),     MemoryStore.lit.num(candidate.score),             graph);
       for (const author of candidate.book.authors) {
         store.assert(book, dag('author'), MemoryStore.lit.str(author), graph);
       }

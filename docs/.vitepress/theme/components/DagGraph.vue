@@ -32,6 +32,10 @@ const props = defineProps<{
   ariaLabel?: string;
 }>();
 
+const emit = defineEmits<{
+  (event: 'node-click', name: string): void;
+}>();
+
 defineExpose({
   dispatch,
   // Backwards-compat thin wrappers so the existing runner keeps working.
@@ -68,10 +72,11 @@ onMounted(async () => {
   try {
     const [coreMod, dagreMod] = await Promise.all([
       import('cytoscape'),
-      import('cytoscape-dagre'),
+      // cytoscape-dagre ships CommonJS; cast through unknown so tsc is happy.
+      import('cytoscape-dagre') as Promise<unknown>,
     ]);
     cytoscape = coreMod.default;
-    cytoscape.use(dagreMod.default);
+    cytoscape.use((dagreMod as { default: Parameters<typeof cytoscape.use>[0] }).default);
   } catch (err) {
     loadError.value = err instanceof Error ? err.message : String(err);
     loading.value = false;
@@ -108,6 +113,13 @@ onMounted(async () => {
       cy.value?.elements().removeClass('dag-active dag-completed dag-errored dag-traversed dag-resetting');
       cy.value?.elements().stop(true, true);
     },
+  });
+
+  cy.value.on('tap', 'node', (evt) => {
+    const node = evt.target as NodeSingular;
+    const data = node.data() as { node?: string; id?: string };
+    const name = data.node ?? data.id;
+    if (typeof name === 'string' && name.length > 0) emit('node-click', name);
   });
 
   cy.value.on('zoom', () => { pollZoom(); });
@@ -286,21 +298,24 @@ function makeEdgeAdapter(cy: Core | null, source: string, route: string): EdgeVi
 // ── Layout + stylesheet ──────────────────────────────────────────────────
 
 function dagLayout(): Record<string, unknown> {
-  // Dagre — directed-acyclic flowchart layout. Entrypoint sits at the
-  // top, terminals at the bottom, arrows always flow downward. Nodes
-  // never overlap because dagre measures ranks then packs them.
+  // dagre — hierarchical top-down layout with native compound-graph support.
+  // Compound parents are laid out as their own subgraphs recursively, which
+  // structurally GUARANTEES no two compound clusters overlap. Replaced fcose
+  // (force-directed) which produced overlapping clusters for the Archivist
+  // deep-DAG topology (5 compound parents × ~10 children each).
   return {
     name: 'dagre',
-    rankDir: 'TB',          // top → bottom; never overridden elsewhere
-    align: 'UL',
-    rankSep: 110,           // vertical gap between ranks — wider for cleaner lanes
-    nodeSep: 60,            // horizontal gap between siblings in same rank
+    rankDir: 'TB',
+    ranker: 'network-simplex',
+    rankSep: 180,
+    nodeSep: 80,
     edgeSep: 30,
-    ranker: 'longest-path', // produces strict vertical lanes; avoids tight-tree compression
-    fit: true,
-    padding: 40,
-    animate: false,
+    align: 'UL',
+    acyclicer: 'greedy',
     nodeDimensionsIncludeLabels: true,
+    fit: true,
+    animate: false,
+    padding: 40,
   };
 }
 
@@ -312,97 +327,112 @@ function dagLayout(): Record<string, unknown> {
 //   gold #d4a649   →  text #1a1410 (very-dark)
 //   default bg-alt →  text-1 (theme-driven, already AAA)
 function dagStylesheet(): unknown[] {
+  // Palette mirrors the mermaid theme tokens in palette.css so the
+  // cytoscape canvas and SSR mermaid SVGs read as the same family:
+  // pearl-black node fill, teal accent border, pearl text, monospace
+  // type. Active / completed / errored states change the BORDER
+  // (loud) and a subtle interior tint — the fill stays mostly dark
+  // so the canvas isn't dominated by one color when a graph is
+  // largely "completed".
   return [
     { selector: 'node', style: {
-      'background-color': 'var(--vp-c-bg-alt)',
-      'border-color': 'var(--vp-c-divider)',
-      'border-width': 1.5,
-      'color': 'var(--vp-c-text-1)',
-      'label': 'data(label)',
-      'font-family': 'var(--vp-font-family-mono)',
-      'font-size': 15,
-      'font-weight': 700,
-      'text-halign': 'center',
-      'text-valign': 'center',
-      'text-wrap': 'wrap',
-      'text-max-width': '200px',
-      'text-outline-color': 'var(--vp-c-bg)',
-      'text-outline-width': 1,
-      'text-outline-opacity': 0.8,
-      'padding': '16px',
-      'width': 'label',
-      'height': 'label',
-      'shape': 'round-rectangle',
+      'background-color': '#020306',           // --mermaid-node-fill (pearl-black)
+      'border-color':     '#22e8ff',           // --mermaid-node-stroke (teal)
+      'border-width':     1.4,
+      'color':            '#eef3f7',           // --mermaid-node-text (pearl)
+      'label':            'data(label)',
+      'font-family':      'var(--vp-font-family-mono)',
+      'font-size':        14,
+      'font-weight':      500,
+      'text-halign':      'center',
+      'text-valign':      'center',
+      'text-wrap':        'wrap',
+      'text-max-width':   '220px',
+      'text-outline-color':   '#020306',
+      'text-outline-width':   2,
+      'text-outline-opacity': 1,
+      'padding':          '14px',
+      'width':            'label',
+      'height':           'label',
+      'shape':            'round-rectangle',
       'transition-property': 'border-color, border-width, background-color, color, opacity',
       'transition-duration': 220,
     } },
     { selector: 'node[type="fan-out"]',  style: { 'shape': 'hexagon' } },
     { selector: 'node[type="parallel"]', style: {
-      'shape': 'round-rectangle',
-      'background-color': 'rgba(58, 47, 74, 0.55)',
+      'shape':            'round-rectangle',
+      'background-color': '#04060a',           // --mermaid-cluster-fill (deepest navy)
       'background-opacity': 1,
-      'border-color': '#7a6a9c',
-      'border-width': 2,
-      'border-style': 'dashed',
-      'text-valign': 'top',
-      'text-halign': 'center',
-      'text-margin-y': -6,
-      'padding': '24px',
-      'font-size': 12,
-      'color': '#a99cc4',
+      'border-color':     '#7a8290',           // --mermaid-cluster-stroke (steel)
+      'border-width':     1.4,
+      'border-style':     'dashed',
+      'text-valign':      'top',
+      'text-halign':      'center',
+      'text-margin-y':    -6,
+      'padding':          '22px',
+      'font-family':      'var(--vp-font-family-mono)',
+      'font-size':        13,
+      'font-weight':      600,
+      'color':            '#eef3f7',
     } },
-    { selector: 'node[type="sub-dag"]',  style: { 'shape': 'cut-rectangle' } },
-    { selector: 'node[type="terminal"]', style: { 'shape': 'round-rectangle', 'background-color': 'var(--vp-c-bg-elv)', 'border-color': '#d4a649' } },
-    // Compound-graph children inside a parallel — slightly indented look.
+    { selector: 'node[type="deep-dag"]', style: { 'shape': 'cut-rectangle' } },
+    { selector: 'node[type="terminal"]', style: {
+      'shape':            'round-rectangle',
+      'background-color': '#020306',
+      'border-color':     '#d4a649',           // gold accent for terminals
+    } },
+    // Compound parent (deep-dag / parallel wrapper) — calm steel
+    // border on the deepest navy so the cluster reads as a frame,
+    // not a focal point.
     { selector: 'node:parent', style: {
-      'shape': 'round-rectangle',
-      'background-color': '#3a2f4a',
-      'border-color': '#7a6a9c',
-      'border-style': 'dashed',
-      'border-width': 2,
-      'text-valign': 'top',
+      'shape':            'round-rectangle',
+      'background-color': '#04060a',
+      'border-color':     '#7a8290',
+      'border-style':     'dashed',
+      'border-width':     1.4,
+      'text-valign':      'top',
+      'font-family':      'var(--vp-font-family-mono)',
+      'font-size':        13,
+      'font-weight':      600,
+      'color':            '#eef3f7',
     } },
 
-    // Kind-tagged styling — solid teal border for deterministic, dashed
-    // violet for non-deterministic. Mirrors the NodeLegend chip colors.
+    // Kind-tagged styling — solid teal border for deterministic,
+    // dashed violet for non-deterministic. Mirrors NodeLegend.
     { selector: 'node[kind="deterministic"]', style: {
       'border-color': '#22e8ff',
       'border-style': 'solid',
-      'border-width': 2,
+      'border-width': 1.4,
     } },
     { selector: 'node[kind="non-deterministic"]', style: {
-      'border-color': '#7a6a9c',
+      'border-color': '#8f6dff',                // brand violet
       'border-style': 'dashed',
-      'border-width': 2.5,
+      'border-width': 1.6,
     } },
 
-    // State styling — LOUD solid fills with paired AAA-contrast text.
+    // State styling — keep the pearl-black interior and shift the
+    // border / outline color so the canvas stays calm and one
+    // active node pops without flooding the viewport with cyan.
     { selector: 'node.dag-active', style: {
-      'background-color': '#22e8ff',
-      'border-color': '#22e8ff',
-      'border-width': 4,
-      'color': '#04141c',
-      'text-outline-color': '#22e8ff',
-      'text-outline-width': 2,
-      'text-outline-opacity': 1,
+      'background-color': '#020306',
+      'border-color':     '#22e8ff',
+      'border-width':     3,
+      'color':            '#22e8ff',
+      'text-outline-color': '#020306',
     } },
     { selector: 'node.dag-completed', style: {
-      'background-color': '#0e8a99',
-      'border-color': '#22e8ff',
-      'border-width': 3,
-      'color': '#eafcff',
-      'text-outline-color': '#0e8a99',
-      'text-outline-width': 2,
-      'text-outline-opacity': 1,
+      'background-color': '#020306',
+      'border-color':     '#0e8a99',
+      'border-width':     2,
+      'color':            '#eafcff',
+      'text-outline-color': '#020306',
     } },
     { selector: 'node.dag-errored', style: {
-      'background-color': '#d4a649',
-      'border-color': '#7a5a1c',
-      'border-width': 4,
-      'color': '#1a1410',
-      'text-outline-color': '#d4a649',
-      'text-outline-width': 2,
-      'text-outline-opacity': 1,
+      'background-color': '#020306',
+      'border-color':     '#d4a649',
+      'border-width':     3,
+      'color':            '#d4a649',
+      'text-outline-color': '#020306',
     } },
     // Transient fade-out class applied during reset — opacity glides to 0.15
     // over 280 ms (matching the transition-duration on the node base style),
@@ -414,37 +444,40 @@ function dagStylesheet(): unknown[] {
     } },
     { selector: 'node:selected', style: { 'border-color': '#22e8ff', 'border-width': 4 } },
 
-    // Edges — labels on dark pill, brand-violet text so they pop against
-    // both light and dark themes.
+    // Edges — straight angled lines (matches mermaid curve: linear),
+    // teal stroke and arrowheads, labels on the navy panel surface
+    // for pop. Same chrome as the mermaid SVG edges.
     { selector: 'edge', style: {
-      'curve-style': 'bezier',
-      'line-color': 'var(--vp-c-divider)',
-      'target-arrow-color': 'var(--vp-c-divider)',
-      'target-arrow-shape': 'triangle',
-      'arrow-scale': 1.3,
-      'label': 'data(label)',
-      'font-family': 'var(--vp-font-family-mono)',
-      'font-size': 13,
-      'font-weight': 600,
-      'color': '#a99cc4',
-      'text-background-color': '#0c0a14',
-      'text-background-opacity': 0.96,
-      'text-background-padding': '5px',
-      'text-background-shape': 'round-rectangle',
-      'text-border-color': '#7a6a9c',
-      'text-border-width': 1,
-      'text-border-opacity': 0.7,
-      'text-margin-y': -3,
-      'width': 1.8,
+      'curve-style':         'taxi',          // angled segments, mermaid-style
+      'taxi-direction':      'vertical',
+      'taxi-turn':           20,
+      'line-color':          '#22e8ff',
+      'target-arrow-color':  '#22e8ff',
+      'target-arrow-shape':  'triangle',
+      'arrow-scale':         1.2,
+      'label':               'data(label)',
+      'font-family':         'var(--vp-font-family-mono)',
+      'font-size':           13,
+      'font-weight':         600,
+      'color':               '#eef3f7',
+      'text-background-color':   '#0e1525',   // navy edge-label background
+      'text-background-opacity': 1,
+      'text-background-padding': '4px',
+      'text-background-shape':   'round-rectangle',
+      'text-border-color':    '#7a8290',
+      'text-border-width':    1,
+      'text-border-opacity':  0.8,
+      'text-margin-y':       -3,
+      'width':               1.4,
       'transition-property': 'line-color, target-arrow-color, width',
       'transition-duration': 220,
     } },
     { selector: 'edge.dag-traversed', style: {
-      'line-color': '#22e8ff',
+      'line-color':         '#22e8ff',
       'target-arrow-color': '#22e8ff',
-      'width': 3,
-      'color': '#22e8ff',
-      'text-border-color': '#22e8ff',
+      'width':              3,
+      'color':              '#22e8ff',
+      'text-border-color':  '#22e8ff',
     } },
   ];
 }
@@ -453,6 +486,7 @@ function dagStylesheet(): unknown[] {
 <template>
   <DiagramFrame
     title="DAG"
+    :frameless="true"
     :aria-label="ariaLabel ?? 'DAG execution graph'"
     @resize="onFrameResize"
   >
@@ -496,7 +530,11 @@ function dagStylesheet(): unknown[] {
   width: 100%;
   height: 100%;
   min-height: 480px;
-  background: var(--vp-c-bg);
+  /* Match the mermaid frame surface so the two diagrams read as
+     panels of the same family: pearl-black with engraved navy grain. */
+  background-color: var(--dagonizer-surface-bg-deep, var(--dagonizer-pearl, #020306));
+  background-image: var(--dagonizer-surface-grain);
+  background-size: var(--dagonizer-surface-grain-size, 160px 160px);
 }
 
 .dag-loading,

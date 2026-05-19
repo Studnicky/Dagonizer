@@ -1,3 +1,16 @@
+---
+seeAlso:
+  - text: 'DAGBuilder'
+    link: './builder'
+    description: 'register nodes that accept your custom `NodeStateBase` subclass'
+  - text: 'Checkpoint'
+    link: './checkpoint'
+    description: 'override `snapshotData` / `restoreData` to round-trip domain fields'
+  - text: 'Observability'
+    link: './observability'
+    description: 'your subclass also picks up the dispatcher hooks'
+---
+
 # Subclassing State
 
 `NodeStateBase` is the canonical base class for domain-specific state. Extend it to add typed fields that nodes can read and write.
@@ -160,14 +173,7 @@ const { state: s2, dagName, cursor } = Checkpoint.restore(
 const final = await dispatcher.resume(dagName, s2, cursor);
 // final.state.count === 3, final.state.log.length === 3
 ```
-
-## See also
-
-- [DAGBuilder](./builder) — register nodes that accept your custom `NodeStateBase` subclass
-- [Checkpoint](./checkpoint) — override `snapshotData` / `restoreData` to round-trip domain fields
-- [Observability](./observability) — your subclass also picks up the dispatcher hooks
-
 ## Related reference
 
-- [Reference: Lifecycle](../reference/lifecycle)
-- [Reference: Entities — `NodeStateData`](../reference/entities)
+⦿ [Reference: Lifecycle](../reference/lifecycle)
+⦿ [Reference: Entities — `NodeStateData`](../reference/entities)

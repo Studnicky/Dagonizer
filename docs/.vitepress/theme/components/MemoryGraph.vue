@@ -514,7 +514,7 @@ function objectLabel(q: Quad): string {
 </script>
 
 <template>
-  <DiagramFrame title="RDF graph" :aria-label="`RDF triple graph: ${String(store.size)} triples`" @resize="onFrameResize">
+  <DiagramFrame title="RDF graph" :frameless="true" :aria-label="`RDF triple graph: ${String(store.size)} triples`" @resize="onFrameResize">
     <template #meta>
       <span class="mg-count">{{ store.size }} {{ store.size === 1 ? 'triple' : 'triples' }}</span>
     </template>

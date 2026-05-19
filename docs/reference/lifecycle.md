@@ -1,3 +1,11 @@
+---
+seeAlso:
+  - text: 'Reference: Execution'
+    link: './execution'
+  - text: 'Reference: Dagonizer — observability hooks'
+    link: './dagonizer'
+---
+
 # Lifecycle
 
 `@noocodex/dagonizer/lifecycle`
@@ -140,12 +148,6 @@ class CustomState implements NodeStateInterface {
   // ... other mark methods ...
 }
 ```
-
-## See also
-
-- [Reference: Execution](./execution)
-- [Reference: Dagonizer — observability hooks](./dagonizer)
-
 ## Related guides
 
 - [Cancellation](../guide/cancellation)

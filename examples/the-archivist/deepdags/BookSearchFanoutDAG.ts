@@ -137,7 +137,7 @@ export const BookSearchFanoutDAG: DAG = new DAGBuilder('book-search-fanout', '1.
 
   // ── 5. merge-candidates ──────────────────────────────────────────────────
   // Cross-source dedupe via CanonicalId, top-5. Routes 'empty' to
-  // bsf-no-results which collects an error so executeSubDAG routes the
+  // bsf-no-results which collects an error so executeDeepDAG routes the
   // parent to its 'error' branch.
   .node('bsf-merge-candidates', mergeCandidates, {
     'ranked': 'bsf-record-findings',

@@ -1,3 +1,16 @@
+---
+seeAlso:
+  - text: 'Cancellation'
+    link: './cancellation'
+    description: '`onError` fires on abort and deadline-driven failures'
+  - text: 'Subclassing State'
+    link: './subclassing'
+    description: 'your custom dispatcher subclass may also subclass state'
+  - text: 'Services'
+    link: './services'
+    description: 'pass loggers / tracers in via the services bag'
+---
+
 # Observability
 
 `Dagonizer` exposes five protected lifecycle hooks. Subclass the dispatcher and override any or all of them to attach metrics, structured logging, or distributed tracing.
@@ -48,8 +61,8 @@ Class extension is the only extension mechanism. There is no callback API. Multi
 
 | Hook | When called | Arguments |
 |------|-------------|-----------|
-| `onFlowStart` | After `state.markRunning()`, before the first node | `flowName`, `state` |
-| `onFlowEnd` | After the last node (including aborted/failed paths) | `flowName`, `state`, `result` |
+| `onFlowStart` | After `state.markRunning()`, before the first node | `dagName`, `state` |
+| `onFlowEnd` | After the last node (including aborted/failed paths) | `dagName`, `state`, `result` |
 | `onNodeStart` | Before `node.execute()` for each node entry | `nodeName`, `state` |
 | `onNodeEnd` | After each node resolves, before `yield` | `nodeName`, `output \| undefined`, `state` |
 | `onError` | When a signal fires or a node throws | `nodeName`, `error`, `state` |
@@ -137,14 +150,7 @@ class OtelDispatcher<TState> extends Dagonizer<TState> {
   }
 }
 ```
-
-## See also
-
-- [Cancellation](./cancellation) — `onError` fires on abort and deadline-driven failures
-- [Subclassing State](./subclassing) — your custom dispatcher subclass may also subclass state
-- [Services](./services) — pass loggers / tracers in via the services bag
-
 ## Related reference
 
-- [Reference: Dagonizer](../reference/dagonizer)
-- [Reference: Lifecycle](../reference/lifecycle)
+⦿ [Reference: Dagonizer](../reference/dagonizer)
+⦿ [Reference: Lifecycle](../reference/lifecycle)
