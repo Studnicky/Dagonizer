@@ -5,7 +5,7 @@ seeAlso:
     description: 'render anything `build()` returns'
   - text: 'Contract-derived flows'
     link: './derive'
-    description: 'render the DAG `FlowDeriver.derive` produced'
+    description: 'render the DAG `DAGDeriver.derive` produced'
   - text: 'Schema & JSON loading'
     link: './schema'
     description: 'render a DAG loaded from JSON'

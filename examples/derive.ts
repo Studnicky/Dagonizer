@@ -1,23 +1,30 @@
 /**
- * derive — FlowDeriver: contract-derived flows with sub-DAG composition.
+ * derive — DAGDeriver: declarative authoring for agentic flows.
  *
- * Demonstrates the declarative authoring path: each operation declares
- * what it `produces` and `hardRequired`s, plus the output ports it can
- * emit. FlowDeriver matches produces ↔ hardRequired to derive the
- * edge set; every port auto-wires to the next derived stage.
+ * Use this surface when the operation set IS the spec — adding a tool
+ * should auto-rewire the flow. Each operation declares what it needs
+ * (`hardRequired`) and what it produces (`produces`); DAGDeriver
+ * matches produces ↔ hardRequired to derive the topology. Every port
+ * in `outputs` auto-wires to the next derived stage; annotations
+ * override individual ports and swap placement kinds at render time.
  *
- * The `subDAGs` annotation swaps an operation's rendered placement
- * from SingleNode to DeepDAGNode without changing how the topology is
- * derived — the contract still participates in data-graph matching.
+ * This example demonstrates agentic tool dispatch: a parent flow
+ * delegates the actual work to a registered sub-DAG via the `subDAGs`
+ * annotation. Plug in a different child DAG (different "tool") at
+ * registration time without rewriting the parent.
  *
  *   parent: prepare → invoke-plugin (sub-DAG) → finalize
  *   child:  validate → transform
  *
  * Run: npx tsx examples/derive.ts
+ *
+ * Companion: examples/02-builder.ts demonstrates the deterministic /
+ * ETL authoring path via DAGBuilder. Same canonical DAG output — pick
+ * the journey that matches your mental model.
  */
 
 import type { OperationContract } from '../src/contracts/OperationContract.js';
-import { FlowDeriver } from '../src/derive/FlowDeriver.js';
+import { DAGDeriver } from '../src/derive/DAGDeriver.js';
 import {
   Dagonizer,
   NodeStateBase,
@@ -108,7 +115,7 @@ const childContracts: readonly OperationContract[] = [
 
 // Child DAG — simple validate→transform chain. validate's error port
 // is terminated via `terminals`; the validator is a hard gate.
-const childDAG = FlowDeriver.derive({
+const childDAG = DAGDeriver.derive({
   "name":       'plugin:transform',
   "version":    '1.0',
   "entrypoint": 'validate',
@@ -125,7 +132,7 @@ const childDAG = FlowDeriver.derive({
 // to `finalize` (the next derived stage); finalize handles both
 // paths uniformly. Per-port terminal overrides would route the
 // error port elsewhere if needed.
-const parentDAG = FlowDeriver.derive({
+const parentDAG = DAGDeriver.derive({
   "name":       'parent',
   "version":    '1.0',
   "entrypoint": 'prepare',

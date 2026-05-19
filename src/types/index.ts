@@ -104,8 +104,8 @@ export type { Execution } from '../Execution.js';
 export type { DagonizerOptionsInterface } from '../Dagonizer.js';
 export type { ParallelResult, ParallelCombiner } from '../core/ParallelCombiners.js';
 export type { FanInExecution, FanInStrategy } from '../core/FanInStrategies.js';
-export type { FlowDeriverOptions } from '../derive/FlowDeriver.js';
-export type { FlowAnnotations, FlowDeepDAG, FlowFanOut, FlowTerminal } from '../derive/FlowAnnotations.js';
+export type { DAGDeriverOptions } from '../derive/DAGDeriver.js';
+export type { DAGDeriverAnnotations, DAGDeriverSubDAG, DAGDeriverFanOut, DAGDeriverTerminal } from '../derive/DAGDeriverAnnotations.js';
 export type { DagJsonLdDocument, JsonLdGraphEntry } from '../viz/JsonLdRenderer.js';
 export type {
   CytoscapeElement,

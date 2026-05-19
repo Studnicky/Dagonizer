@@ -2,11 +2,11 @@
  * OperationContract — adapter contract for contract-derived flow generation.
  *
  * Each operation declares the field paths it `hardRequired` to run, the
- * field paths it `produces`, and the output ports it emits. `FlowDeriver`
+ * field paths it `produces`, and the output ports it emits. `DAGDeriver`
  * matches `produces ↔ hardRequired` to derive the DAG topology: an edge
  * `A → B` exists iff some path in `A.produces` appears in `B.hardRequired`.
  * Every port in `outputs` auto-wires to the next derived stage unless
- * `FlowAnnotations.terminals[name]` overrides a specific port.
+ * `DAGDeriverAnnotations.terminals[name]` overrides a specific port.
  *
  * Multi-port nodes (e.g. `['success', 'cached', 'skipped', 'error']`)
  * route every port uniformly with one contract field instead of N
@@ -23,7 +23,7 @@ export interface OperationContract {
   /**
    * Output ports the operation can emit. Must match the node's
    * `outputs` declaration at registration. Every port routes to the
-   * next derived stage; `FlowAnnotations.terminals` overrides
+   * next derived stage; `DAGDeriverAnnotations.terminals` overrides
    * individual ports.
    */
   readonly outputs: readonly string[];

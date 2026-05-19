@@ -2,6 +2,28 @@
 
 All notable changes to `@noocodex/dagonizer` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-05-19
+
+### Breaking
+
+⦿ **`FlowDeriver` → `DAGDeriver`**. Class, type vocabulary, and module file renamed to align with the rest of the DAG-prefixed surface (`DAGError`, `DAGSchema`, `DAGBuilder`, etc.). `FlowAnnotations` → `DAGDeriverAnnotations`, `FlowFanOut` → `DAGDeriverFanOut`, `FlowTerminal` → `DAGDeriverTerminal`, `FlowDeepDAG` → `DAGDeriverSubDAG`, `FlowDeriverOptions` → `DAGDeriverOptions`. Source paths `src/derive/FlowDeriver.ts` → `src/derive/DAGDeriver.ts`, `src/derive/FlowAnnotations.ts` → `src/derive/DAGDeriverAnnotations.ts`. The `@noocodex/dagonizer/derive` subpath is unchanged; consumers re-import the renamed identifiers.
+
+⦿ **`DAGDeriverFanOut` is now a discriminated union over `strategy`**. The flat `{ fanInOperation, ... }` shape from v0.7.0 is replaced by three variants — `'custom'` (with `fanInOperation`), `'partition'` (with `partitions: Record<outcome, statePath>`), and `'append'` (with `target: statePath`) — each carrying its strategy-specific required fields. The top-level `node: string` field is required (registered node invoked per item). Existing fan-out annotations fail at `tsc` with "Property 'strategy' is missing" until updated.
+
+### Added
+
+⦿ **`DAGDeriverFanOut.strategy: 'partition' | 'append'`** alongside `'custom'`. DAGDeriver can now emit fan-out placements with any of the three fan-in strategies the engine supports — closes the long-standing "DAGDeriver forces 'custom'" gap. Partition keys are validated against `outcomes` at derive time; out-of-band keys throw `DAGError`.
+
+⦿ **`DAGDeriverAnnotations.parallels`** — explicit `ParallelNode` grouping with chosen combine strategy. Without it, same-topological-depth operations auto-group with `combine: 'collect'` as before. With it, the named group forces members into one `ParallelNode` with `combine: 'all-success' | 'any-success' | 'collect'`. Membership is exclusive across groups; members can't also appear in `fanouts` or `subDAGs`. Validated at derive time.
+
+⦿ **`docs/guide/authoring.md`** — top-level framing doc that establishes the positioning publicly. The DAG JSON-LD object is the API; DAGBuilder and DAGDeriver are two authoring journeys. DAGBuilder is for *deterministic workflows you control end-to-end* (ETL, transformation chains, fixed sequences). DAGDeriver is for *agentic flows where reaching the final state matters more than authoring the order* (tool-driven agents, exploratory pipelines, contract-registries). Includes decision matrix, capability matrix, and explicit documentation of the two patterns that are imperative-only (recursive trampoline, runtime-conditional topology).
+
+### Changed
+
+⦿ `guide/builder.md` and `guide/derive.md` open with the deterministic-vs-agentic positioning and cross-link to `guide/authoring.md`. `examples/02-builder.ts` and `examples/derive.ts` JSDoc headers reframe each as the canonical surface for its respective mental model.
+
+⦿ DAGDeriver capability parity with DAGBuilder at the static-topology level. Both authoring journeys can now express every DAG the schema allows: any placement kind, any fan-in strategy, any combine strategy, multi-port routing, sub-DAG composition, explicit or auto-derived parallel grouping. The two surfaces remain shape-different deliberately — DAGBuilder's chain narrows route types at compile time; DAGDeriver's flat registry derives topology from the data graph. Imperative-only patterns (recursive trampoline via `services.dispatcher.execute`, runtime-conditional topology) live in node bodies regardless of authoring journey.
+
 ## [0.7.0] - 2026-05-19
 
 ### Added
