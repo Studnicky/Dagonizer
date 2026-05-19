@@ -11,6 +11,7 @@ export { FlowDeriver } from './FlowDeriver.js';
 export type { FlowDeriverOptions } from './FlowDeriver.js';
 export type {
   FlowAnnotations,
+  FlowDeepDAG,
   FlowFanOut,
   FlowTerminal,
 } from './FlowAnnotations.js';

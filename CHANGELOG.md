@@ -2,6 +2,27 @@
 
 All notable changes to `@noocodex/dagonizer` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-05-19
+
+### Added
+
+⦿ `FlowAnnotations.subDAGs` — declarative sub-DAG composition for `FlowDeriver`-derived flows. An operation listed in `subDAGs[name]` renders as a `DeepDAGNode` placement instead of `SingleNode`. The contract still declares `produces ↔ hardRequired` so topology derivation is unchanged; the annotation only swaps the rendered placement kind. `FlowDeepDAG` exports from `@noocodex/dagonizer/derive`:
+
+  ```ts
+  interface FlowDeepDAG {
+    readonly dag:           string;
+    readonly stateMapping?: { readonly input?: Readonly<Record<string, string>>;
+                              readonly output?: Readonly<Record<string, string>> };
+    readonly outputs:       readonly string[];
+  }
+  ```
+
+  Closes the last legitimate `DAGBuilder` use-case outside cycle-bounded loops: plugin dispatch, phase composition, and runtime-resolved child flows can now derive cleanly from contracts.
+
+### Changed
+
+⦿ `FlowDeriver.renderNodes` resolves output maps for both `SingleNode` and `DeepDAGNode` placements through one helper. Every port in `subDAG.outputs` auto-wires to the next derived stage; `FlowAnnotations.terminals` overrides individual ports; a terminal whose `outcome` doesn't appear in `subDAG.outputs` throws `DAGError` at derive time with the same fail-fast semantics as `contract.outputs`. An operation appearing in both `fanouts` and `subDAGs` throws — placement kind must be unambiguous.
+
 ## [0.6.0] - 2026-05-19
 
 ### Breaking
