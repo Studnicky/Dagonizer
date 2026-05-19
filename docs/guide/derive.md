@@ -170,6 +170,8 @@ const dag = FlowDeriver.derive({
 ⦿ Deep-DAG placements cannot terminate the run — the parent DAG owns END. The deep-DAG step must route to another parent placement; if every port routes to `null` the engine rejects the DAG at registration.
 ⦿ An operation cannot appear in both `fanouts` and `subDAGs`; the placement kind must be unambiguous.
 
+A complete runnable demonstration ships in [`examples/derive.ts`](https://github.com/Studnicky/Dagonizer/blob/main/examples/derive.ts) — declares parent + child contracts, derives both DAGs, dispatches, prints the rendered placement order. Run with `npm run example:derive` or `npx tsx examples/derive.ts`.
+
 ## Inspecting derived state
 
 `FlowDeriver` also exposes the intermediate computations:
