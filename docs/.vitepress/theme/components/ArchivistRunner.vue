@@ -77,11 +77,11 @@ import PersistenceBadge from './PersistenceBadge.vue';
 import SendForm from './SendForm.vue';
 import TimeoutPane from './TimeoutPane.vue';
 import type { TimeoutSettings } from './TimeoutPane.vue';
+import ToolExplainPanel from './ToolExplainPanel.vue';
 import TraceFeed from './TraceFeed.vue';
 import TripleInspector from './TripleInspector.vue';
 
 import { RunnerMachine } from '../runner/RunnerMachine.ts';
-import { ARCHIVIST_GREETING } from '../../../../examples/the-archivist/providers/prompts.ts';
 
 // ── State ───────────────────────────────────────────────────────────────
 const backends = ref<readonly BackendAvailability[]>([]);
@@ -90,9 +90,7 @@ const noModel = ref(false);
 const apiKey = ref(loadKey());
 const visitorQuery = ref('');
 const isRunning = ref(false);
-const conversation = ref<Array<{ role: 'visitor' | 'archivist'; text: string; ts: number }>>([
-  { 'role': 'archivist', 'text': ARCHIVIST_GREETING, 'ts': Date.now() },
-]);
+const conversation = ref<Array<{ role: 'visitor' | 'archivist'; text: string; ts: number }>>([]);
 const trace = ref<Array<{ node: string; output?: string; ts: number; kind: 'start' | 'end' | 'error' }>>([]);
 const terminalKind = ref<'pending' | 'completed' | 'failed' | 'cancelled' | 'timed_out'>('pending');
 
@@ -282,6 +280,47 @@ const runnerMachine = new RunnerMachine();
 const selectedIri = ref<string | null>(null);
 function onMemorySelect(iri: string | null): void { selectedIri.value = iri; }
 
+// Selected tool/node for the ToolExplainPanel.
+const selectedTool = ref<string | null>(null);
+function onToolSelect(name: string): void { selectedTool.value = name; }
+
+/**
+ * Static context fed to the LLM prompt for each known tool/node.
+ * Keyed by the node name as it appears in the DAG element data.
+ */
+const toolContextMap: Record<string, string> = {
+  'open-library-scout':  'Searches OpenLibrary for books by free-text query and returns normalized Candidate records.',
+  'google-books-scout':  'Searches Google Books API and returns Candidate records with ratings and ratingsCount.',
+  'subject-scout':       'OpenLibrary subjects search — finds books by theme/topic, not title.',
+  'wikipedia-scout':     'Wikipedia page summary — enrichment context for any topic or book.',
+  'recall-context':      'SPARQL queries the persistent memory graph for prior intents and recently-seen books to inform classification.',
+  'classify-intent':     'LLM classifies the visitor message into one of: on-topic, lookup-author, find-reviews, describe-book, recommend-similar, recall-memories, off-topic.',
+  'decide-tools':        'LLM picks which search tools to call based on the classified intent and the visitor query.',
+  'rank-candidates':     'LLM ranks the merged candidate list 0..1 by relevance to the query.',
+  'merge-candidates':    'Dedupes candidates across sources via CanonicalId (ISBN-13 → ISBN-10 → urn:work:<title>::<author>).',
+  'compose-response':    'LLM composes the final visitor reply in the Archivist persona.',
+  'validate-response':   'LLM judges whether the draft response is good enough or needs another attempt.',
+  'record-findings':     'Writes the ranked shortlist into the persistent memory graph as RDF triples.',
+  'recall-past-visits':  'SPARQL queries memory for previously recommended books to seed the similarity prompt.',
+  'recall-memories':     'Assembles a structured digest of books, intents, and counts from the memory graph.',
+  'compose-memory-response': 'LLM composes a warm prose summary of what the Archivist remembers from prior sessions.',
+  'recommend-similar':   'LLM composes a recommend-similar reply anchored on persistent memory facts.',
+  'has-citations-gate':  'Deterministic gate — checks whether the shortlist has at least one citation before composing.',
+  'decline-off-topic':   'Emits a polite in-character refusal for questions outside the book domain.',
+  'decline-empty':       'Emits an in-character acknowledgment when all scouts returned no candidates.',
+  'compose-empty-response': 'LLM composes a graceful not-found response that names what was searched and suggests an alternative.',
+  'extract-query':       'Deterministic node — copies the visitor query into state for the scout phase.',
+  'group-by-year':       'Groups candidates by first-publish year for chronological author-survey display.',
+  'pick-best-match':     'Deterministic node — picks the highest-scored candidate from the ranked list.',
+  'rank-by-rating':      'Sorts candidates by Google Books rating signal (rating × log(ratingsCount)) for the find-reviews branch.',
+  'respond-to-visitor':  'Routes the composed draft into the conversation output and marks the lifecycle as completed.',
+};
+
+/** Live LLM client reference — kept in sync with activeBackend changes. */
+const currentLlm = computed(() =>
+  instantiateProvider(activeBackend.value, { 'apiKey': apiKey.value || undefined })
+);
+
 function clearMemory(): void {
   memoryStore.clear();
   memoryTick.value++;
@@ -398,26 +437,32 @@ function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
   };
 }
 
-// ── Starter query fallback pool ──────────────────────────────────────────
-const STATIC_STARTER_QUERIES: readonly string[] = [
-  'Do you have the complete Dune saga by Frank Herbert?',
-  'What order should I read The Lord of the Rings?',
-  'Which Stephen King novel is the scariest?',
-  'Are all the Harry Potter books in stock?',
-  'What did Agatha Christie write before Hercule Poirot?',
-  'Where should I start with Brandon Sanderson?',
-  'Can you tell me about Neil Gaiman\'s mythology books?',
-  'What are the major themes in Octavia Butler\'s Kindred?',
-  'Is there a reading order for Terry Pratchett\'s Discworld?',
-  'Which Ursula Le Guin novel should I read first?',
-  'What is Murakami\'s most accessible novel for new readers?',
-  'Which Hemingway is a good introduction to his work?',
+// ── Static fallback pools ────────────────────────────────────────────────
+const STATIC_GREETINGS: readonly string[] = [
+  'Welcome to the shop. The shelves remember everything they hold. What brings you in?',
+  'Stay a while. I have a long list of books and a longer one of questions about them.',
+  'A reader, then. Tell me what you are looking for, and I will see what the catalog gives up.',
+  'The door is always open here. Name a title, an author, or a feeling, and I will look.',
+  'Good to see you. The shelves run deep on every subject — where would you like to begin?',
+  'Come in. I keep records on almost everything ever printed. What can I find for you?',
+  'Every visitor arrives with a question worth answering. What is yours?',
+];
+
+const STATIC_VISITOR_REPLIES: readonly string[] = [
+  "I'm looking for something thoughtful about memory — any suggestions?",
+  'What do you have on labyrinths?',
+  'A book that feels like winter.',
+  "Something by Le Guin I might have missed?",
+  'Where should I start with Borges?',
+  'Do you have anything about libraries themselves as a subject?',
+  'I want something quietly unsettling — not horror, just strange.',
 ];
 
 function isFreshSession(): boolean {
-  // A fresh session has exactly one entry — the archivist greeting.
+  // A fresh session has at most one entry — the archivist greeting (or nothing yet).
   // Once the visitor has sent any message the session is no longer fresh.
-  return conversation.value.length === 1 && conversation.value[0]?.role === 'archivist';
+  const turns = conversation.value;
+  return turns.length === 0 || (turns.length === 1 && turns[0]?.role === 'archivist');
 }
 
 // ── Boot ─────────────────────────────────────────────────────────────────
@@ -438,19 +483,34 @@ onMounted(async () => {
     logger.info(`backend: ${picked.displayName}`);
   }
 
-  // Pre-fill the input with an LLM-generated question on a fresh session.
-  // Only runs once per session — once the visitor sends a message the
-  // input is cleared (via ask()) and this condition never fires again.
+  // On a fresh session: generate the Archivist greeting, push it to the
+  // conversation, then generate a contextual visitor reply and pre-fill
+  // the input. Only runs once per session — once the visitor sends a
+  // message the input is cleared (via ask()) and this condition no longer fires.
   if (isFreshSession() && visitorQuery.value.length === 0) {
     const llm = instantiateProvider(activeBackend.value, { 'apiKey': apiKey.value || undefined });
+
+    // Step 1: generate greeting.
+    let greeting = STATIC_GREETINGS[Date.now() % STATIC_GREETINGS.length] as string;
     try {
-      const suggestion = await llm.suggestStarterQuery();
-      if (suggestion.length > 0 && isFreshSession() && visitorQuery.value.length === 0) {
-        visitorQuery.value = suggestion;
+      const generated = await llm.suggestGreeting();
+      if (generated.length > 0) greeting = generated;
+    } catch { /* use static fallback */ }
+
+    if (isFreshSession()) {
+      conversation.value = [{ 'role': 'archivist', 'text': greeting, 'ts': Date.now() }];
+    }
+
+    // Step 2: generate a visitor reply keyed to the greeting.
+    if (isFreshSession() && visitorQuery.value.length === 0) {
+      try {
+        const reply = await llm.suggestVisitorReplyTo(greeting);
+        if (reply.length > 0 && isFreshSession() && visitorQuery.value.length === 0) {
+          visitorQuery.value = reply;
+        }
+      } catch {
+        visitorQuery.value = STATIC_VISITOR_REPLIES[Date.now() % STATIC_VISITOR_REPLIES.length] as string;
       }
-    } catch {
-      // Fallback: deterministic pick from the static pool.
-      visitorQuery.value = STATIC_STARTER_QUERIES[Date.now() % STATIC_STARTER_QUERIES.length] as string;
     }
   }
 });
@@ -561,20 +621,45 @@ async function ask(): Promise<void> {
 }
 
 function reset(): void {
-  conversation.value = [
-    { 'role': 'archivist', 'text': ARCHIVIST_GREETING, 'ts': Date.now() },
-  ];
+  conversation.value = [];
   trace.value = [];
   terminalKind.value = 'pending';
   selectedIri.value = null;
+  selectedTool.value = null;
   checkpointNode.value = null;
   lastResult = null;
+  visitorQuery.value = '';
   // Fire-and-forget: the manual reset button is not starting a new run,
   // so no need to await — the fade plays visually but nothing depends on it.
   void dagGraph.value?.reset();
   memoryTick.value++;
   logger.clear();
   runnerMachine.dispatch({ 'type': 'reset' });
+
+  // Regenerate greeting + visitor reply after reset, same as onMounted.
+  const llm = instantiateProvider(activeBackend.value, { 'apiKey': apiKey.value || undefined });
+  void (async () => {
+    let greeting = STATIC_GREETINGS[Date.now() % STATIC_GREETINGS.length] as string;
+    try {
+      const generated = await llm.suggestGreeting();
+      if (generated.length > 0) greeting = generated;
+    } catch { /* use static fallback */ }
+
+    if (isFreshSession()) {
+      conversation.value = [{ 'role': 'archivist', 'text': greeting, 'ts': Date.now() }];
+    }
+
+    if (isFreshSession() && visitorQuery.value.length === 0) {
+      try {
+        const reply = await llm.suggestVisitorReplyTo(greeting);
+        if (reply.length > 0 && isFreshSession() && visitorQuery.value.length === 0) {
+          visitorQuery.value = reply;
+        }
+      } catch {
+        visitorQuery.value = STATIC_VISITOR_REPLIES[Date.now() % STATIC_VISITOR_REPLIES.length] as string;
+      }
+    }
+  })();
 }
 
 function saveKey(): void {
@@ -695,6 +780,13 @@ function loadKey(): string {
                   ref="dagGraph"
                   :elements="dagElements"
                   aria-label="Archivist DAG live execution"
+                  @node-click="onToolSelect"
+                />
+                <ToolExplainPanel
+                  :selected-tool="selectedTool"
+                  :llm="currentLlm"
+                  :tool-context-map="toolContextMap"
+                  @close="selectedTool = null"
                 />
               </div>
             </template>
@@ -719,7 +811,7 @@ function loadKey(): string {
 
             <!-- Trace tab: merged node lifecycle + logger feed -->
             <template #trace>
-              <TraceFeed :entries="trace" :logger="logger" />
+              <TraceFeed :entries="trace" :logger="logger" @node-click="onToolSelect" />
             </template>
           </PanesTabs>
         </div>
@@ -829,10 +921,13 @@ function loadKey(): string {
 .ar-tabs {
   flex: 1 1 auto;
   min-height: 520px;
+  max-height: min(860px, calc(100vh - 200px));
+  overflow: hidden;
 }
 
 .ar-tabs--right {
-  min-height: 680px;
+  min-height: 520px;
+  max-height: min(860px, calc(100vh - 200px));
 }
 
 /* ── Conversation tab pane ─────────────────────────────────────────────── */

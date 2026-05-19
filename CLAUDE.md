@@ -6,22 +6,22 @@ stack — consumers extend and compose, never patch.
 
 ## Operating principles
 
-- **Class extension is the only extension mechanism.** Zero callbacks.
+⦿ **Class extension is the only extension mechanism.** Zero callbacks.
   Zero function-pass-in. Subclass the class or implement the adapter
   contract.
-- **Domain modules with `noun.verb()` only.** Static classes. No
+⦿ **Domain modules with `noun.verb()` only.** Static classes. No
   freestanding helpers (`makeX`, `buildX`, `fromX`, `parseX`). The
   registered name is the contract; the static method is the API.
-- **Schemas are the source of truth.** Every wire-shape entity has a
+⦿ **Schemas are the source of truth.** Every wire-shape entity has a
   `*Schema` value (JSON Schema 2020-12) and a `FromSchema`-derived
   TypeScript type. No hand-written wire shapes.
-- **Ajv compiled once at module load.** Validators are values, not
+⦿ **Ajv compiled once at module load.** Validators are values, not
   factories. Consumers call `Validator.dag.validate(x)`; they never
   build their own Ajv against the package's schemas.
-- **No `unknown` outside the JSON ingest boundary.** Tight types
+⦿ **No `unknown` outside the JSON ingest boundary.** Tight types
   inside the engine; `unknown` enters once at `Dagonizer.load(json)`
   and is narrowed to the schema-derived type immediately.
-- **Submodule exports are part of the public API.** Every public
+⦿ **Submodule exports are part of the public API.** Every public
   type, interface, schema, and class ships through a documented
   subpath import.
 
@@ -107,15 +107,15 @@ the root barrel.
 
 ## Composition rules
 
-- Consumers extend `Dagonizer` for observability hooks (`onFlowStart`,
+⦿ Consumers extend `Dagonizer` for observability hooks (`onFlowStart`,
   `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`). Multi-observer
   composition is the consumer's responsibility — write it into the
   subclass.
-- Consumers extend `NodeStateBase` for domain-specific state. Override
+⦿ Consumers extend `NodeStateBase` for domain-specific state. Override
   `snapshotData()` and `restoreData()` for checkpointable fields.
-- Consumers implement `NodeInterface<TState, TOutput>` for nodes.
+⦿ Consumers implement `NodeInterface<TState, TOutput>` for nodes.
   Nodes never throw; they route to a named output.
-- Consumers implement `SchedulerProvider` / `ClockProvider` to swap
+⦿ Consumers implement `SchedulerProvider` / `ClockProvider` to swap
   time sources (typically only in tests; `RealTimeScheduler` is the
   production default).
 
@@ -123,9 +123,9 @@ the root barrel.
 
 Every commit lands with:
 
-- `npm run typecheck` clean.
-- `npm run lint --max-warnings 0` clean.
-- `npm run test` clean — every existing test passes.
-- New public surface ships with new tests.
-- CHANGELOG entry under the next `## [unreleased]` section in
+⦿ `npm run typecheck` clean.
+⦿ `npm run lint --max-warnings 0` clean.
+⦿ `npm run test` clean — every existing test passes.
+⦿ New public surface ships with new tests.
+⦿ CHANGELOG entry under the next `## [unreleased]` section in
   present-tense factual form.

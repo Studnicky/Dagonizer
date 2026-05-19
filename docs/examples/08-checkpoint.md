@@ -1,7 +1,23 @@
 ---
 title: 'Phase 08 · Checkpoint + resume'
 description: 'The Archivist mid-conversation: snapshot the state via ArchivistState.snapshotData / restoreData, persist to a CheckpointStore, restore in a later process, and resume from the cursor.'
+seeAlso:
+  - text: 'Running domain: The Archivist'
+    link: './the-archivist'
+  - text: 'Checkpoint guide'
+    link: '../guide/checkpoint'
+  - text: 'Persistence guide'
+    link: '../guide/persistence'
+    description: 'Postgres example for `CheckpointStore`'
+  - text: 'Phase 06 · Cancellation'
+    link: './06-cancellation'
+    description: 'produces the cursor that this phase checkpoints'
+  - text: 'Reference: Checkpoint'
+    link: '../reference/checkpoint'
+  - text: 'Reference: Contracts — `CheckpointStore`'
+    link: '../reference/contracts'
 ---
+
 
 # Phase 08 · Checkpoint + resume
 
@@ -83,19 +99,10 @@ if (recalled !== null) {
 
 ## What it demonstrates
 
-- **`ArchivistState.snapshotData()` / `restoreData()`** — domain-specific serialization. `NodeStateBase` calls `snapshotData` during `Checkpoint.from` and `restoreData` during `Checkpoint.recall`. The lifecycle resets to `pending` on restore; the resumed execution is a fresh lifecycle run on the recovered state data.
-- **`Checkpoint.from(dagName, result)`** — produces a `CheckpointData` record only when `result.cursor !== null` (an in-progress flow). A completed flow produces no cursor.
-- **`CheckpointStore` adapter contract** — `MemoryCheckpointStore` is the test-time implementation. Swap to Postgres / Redis / S3 without touching the dispatcher or state.
-- **`Checkpoint.persist` / `Checkpoint.recall`** — codec + store in one call per side. `Checkpoint.recall` returns `null` when nothing is stored under the key.
-- **`dispatcher.resume(dagName, state, cursor)`** — starts from the recalled cursor instead of the DAG's entrypoint. The compose/validate retry counter (`state.attempts.compose`) survives the round-trip so the loop is still bounded.
+⦿ **`ArchivistState.snapshotData()` / `restoreData()`** — domain-specific serialization. `NodeStateBase` calls `snapshotData` during `Checkpoint.from` and `restoreData` during `Checkpoint.recall`. The lifecycle resets to `pending` on restore; the resumed execution is a fresh lifecycle run on the recovered state data.
+⦿ **`Checkpoint.from(dagName, result)`** — produces a `CheckpointData` record only when `result.cursor !== null` (an in-progress flow). A completed flow produces no cursor.
+⦿ **`CheckpointStore` adapter contract** — `MemoryCheckpointStore` is the test-time implementation. Swap to Postgres / Redis / S3 without touching the dispatcher or state.
+⦿ **`Checkpoint.persist` / `Checkpoint.recall`** — codec + store in one call per side. `Checkpoint.recall` returns `null` when nothing is stored under the key.
+⦿ **`dispatcher.resume(dagName, state, cursor)`** — starts from the recalled cursor instead of the DAG's entrypoint. The compose/validate retry counter (`state.attempts.compose`) survives the round-trip so the loop is still bounded.
 
 See this in action in the [Archivist live demo](./the-archivist).
-
-## See also
-
-- [Running domain: The Archivist](./the-archivist)
-- [Checkpoint guide](../guide/checkpoint)
-- [Persistence guide](../guide/persistence) — Postgres example for `CheckpointStore`
-- [Phase 04 · Cancellation](./04-cancellation) — produces the cursor that this phase checkpoints
-- [Reference: Checkpoint](../reference/checkpoint)
-- [Reference: Contracts — `CheckpointStore`](../reference/contracts)

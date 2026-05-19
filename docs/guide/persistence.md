@@ -1,3 +1,16 @@
+---
+seeAlso:
+  - text: 'Checkpoint'
+    link: './checkpoint'
+    description: 'the codec layer (`Checkpoint.from` / `Checkpoint.restore`)'
+  - text: 'Subclassing State'
+    link: './subclassing'
+    description: 'domain fields survive the round-trip via `snapshotData` / `restoreData`'
+  - text: 'Cancellation'
+    link: './cancellation'
+    description: 'produce a checkpointable result by aborting an in-flight flow'
+---
+
 # Checkpoint persistence
 
 `Checkpoint` handles the codec — turning an `ExecutionResult` into a `CheckpointData` record and back. Persistence is the consumer's responsibility, behind the `CheckpointStore` adapter contract.
@@ -145,15 +158,8 @@ const store = new MemoryCheckpointStore();
 ```
 
 `MemoryCheckpointStore` exposes a read-only `size` getter for assertions about how many entries the store holds.
-
-## See also
-
-- [Checkpoint](./checkpoint) — the codec layer (`Checkpoint.from` / `Checkpoint.restore`)
-- [Subclassing State](./subclassing) — domain fields survive the round-trip via `snapshotData` / `restoreData`
-- [Cancellation](./cancellation) — produce a checkpointable result by aborting an in-flight flow
-
 ## Related reference
 
-- [Reference: Contracts — `CheckpointStore`](../reference/contracts)
-- [Reference: Checkpoint](../reference/checkpoint)
-- [Example: Checkpoint Resume](../examples/08-checkpoint)
+⦿ [Reference: Contracts — `CheckpointStore`](../reference/contracts)
+⦿ [Reference: Checkpoint](../reference/checkpoint)
+⦿ [Example: Checkpoint Resume](../examples/08-checkpoint)

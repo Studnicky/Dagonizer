@@ -53,7 +53,8 @@ defineProps<{
   height: 100%;
   display: flex;
   flex-direction: column;
-  min-height: 220px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .conversation-header {
@@ -86,7 +87,14 @@ defineProps<{
   gap: 0.7rem;
   overflow-y: auto;
   flex: 1 1 auto;
+  min-height: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--vp-c-divider) transparent;
 }
+
+.conversation-list::-webkit-scrollbar { width: 6px; }
+.conversation-list::-webkit-scrollbar-track { background: transparent; }
+.conversation-list::-webkit-scrollbar-thumb { background: var(--vp-c-divider); border-radius: 3px; }
 
 .turn {
   padding: 0.5rem 0.65rem;

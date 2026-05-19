@@ -1,3 +1,15 @@
+---
+seeAlso:
+  - text: 'Architecture'
+    link: './architecture'
+  - text: 'Getting Started'
+    link: './getting-started'
+  - text: 'DAGBuilder'
+    link: './guide/builder'
+  - text: 'Subclassing State'
+    link: './guide/subclassing'
+---
+
 # Dagonizer concepts
 
 The dispatcher observes every node transition from the moment a flow begins to the moment the cursor is null or execution stops.
@@ -8,16 +20,13 @@ A **node** is a vertex in the flow graph. It references one registered node and 
 
 Four node kinds:
 
-**`single`** — a single registered node. The node returns one output name; the dispatcher follows the corresponding route.
-
-**`parallel`** — a set of already-declared single nodes that run concurrently via `Promise.all`. Once all complete, a combine strategy reduces their individual outputs to one aggregate output for routing. Strategies:
-- `all-success` — routes to `success` only when every node returned `success`; otherwise `error`.
-- `any-success` — routes to `success` if at least one node returned `success`; otherwise `error`.
-- `collect` — always routes to `success` and writes a `Record<nodeName, output>` into `state.metadata.parallelOutputs`.
-
-**`fan-out`** — reads an array from a dotted path in state, runs one registered node per item (with configurable concurrency), then merges results back through a fan-in strategy. Aggregate output is `all-success`, `partial`, `all-error`, or `empty`.
-
-**`deep-dag`** — invokes a second registered DAG as a nested call, with optional state mapping for input and output. Errors and warnings from the child DAG bubble up to the parent.
+- **`single`** — a single registered node. The node returns one output name; the dispatcher follows the corresponding route.
+- **`parallel`** — a set of already-declared single nodes that run concurrently via `Promise.all`. Once all complete, a combine strategy reduces their individual outputs to one aggregate output for routing. Strategies:
+  - `all-success` — routes to `success` only when every node returned `success`; otherwise `error`.
+  - `any-success` — routes to `success` if at least one node returned `success`; otherwise `error`.
+  - `collect` — always routes to `success` and writes a `Record<nodeName, output>` into `state.metadata.parallelOutputs`.
+- **`fan-out`** — reads an array from a dotted path in state, runs one registered node per item (with configurable concurrency), then merges results back through a fan-in strategy. Aggregate output is `all-success`, `partial`, `all-error`, or `empty`.
+- **`deep-dag`** — invokes a second registered DAG as a nested call, with optional state mapping for input and output. Errors and warnings from the child DAG bubble up to the parent.
 
 ### When to choose each
 
@@ -35,6 +44,7 @@ Four node kinds:
 Node state is the clipboard that travels through every node in a flow. All mutations happen in-place on the state object.
 
 **`NodeStateInterface`** is the minimum shape the dispatcher requires. It defines:
+
 - `lifecycle` — current lifecycle kind and timestamps
 - `errors` / `warnings` — accumulated from all nodes
 - `metadata` — generic key-value bag for cross-node communication
@@ -58,6 +68,7 @@ To implement `NodeStateInterface` from scratch (without extending `NodeStateBase
 ## Nodes (registered)
 
 A registered node is an object that satisfies `NodeInterface<TState, TOutput>`. It has:
+
 - `name: string` — registry key
 - `outputs: readonly TOutput[]` — declared output ports
 - `execute(state, context): Promise<NodeOutputInterface<TOutput>>` — the work
@@ -82,7 +93,7 @@ const classifyNode: NodeInterface<MyState, 'on_topic' | 'off_topic' | 'error'> =
 };
 ```
 
-**Type-safe `TOutput` generic.** When `TOutput` is narrowed, the node placement's `outputs` must be a `Record<TOutput, string | null>`. If any output is unwired the TypeScript compiler fails the build, and `registerFlow` provides a runtime safety net.
+**Type-safe `TOutput` generic.** When `TOutput` is narrowed, the node placement's `outputs` must be a `Record<TOutput, string | null>`. If any output is unwired the TypeScript compiler fails the build, and `registerDAG` provides a runtime safety net.
 
 **Output types.** `NodeOutputInterface<TOutput>` carries the output name and an optional `errors` array. Errors are collected into node state, not thrown.
 
@@ -97,6 +108,7 @@ const classifyNode: NodeInterface<MyState, 'on_topic' | 'off_topic' | 'error'> =
 Every flow execution has a lifecycle: `pending → running → {completed | failed | cancelled | timed_out}`.
 
 The dispatcher:
+
 - marks `running` when the flow starts
 - marks `completed` when every node routes to `null` without error
 - marks `failed` when a node throws (nodes should not throw, but the dispatcher guards the boundary)
@@ -137,6 +149,7 @@ Each node receives the composed signal in `context.signal`. Nodes should propaga
 When the signal fires between node dispatches, the dispatcher stops without starting the next node. When it fires during a node, the node is responsible for detecting `context.signal.aborted` or propagating the signal to IO.
 
 After early termination:
+
 - `result.cursor` holds the next node that would have run (pass to `dispatcher.resume()` to continue)
 - `result.state.lifecycle.kind` is `cancelled` or `timed_out` depending on which signal fired
 
@@ -167,6 +180,7 @@ fanIn: { strategy: 'custom', customNode: 'mergeFanResults' }
 ```
 
 When to use each:
+
 - `append` when downstream needs a flat list of all items
 - `partition` when downstream needs to distinguish successes from errors
 - `custom` when the merge logic is non-trivial or domain-specific
@@ -223,21 +237,36 @@ The package does not provide a persistence backend. Serialize `CheckpointData` a
 
 ---
 
-## When to choose Dagonizer vs alternatives
+## Composing Dagonizer with other runtimes
 
-**Temporal / Durable Task Frameworks.** Use Temporal when you need durable workflows that survive process crashes, have built-in worker pools, replay history from an event log, or span hours to days. Temporal is a separate infrastructure component. Dagonizer runs in-process with no external dependencies.
+Dagonizer is a one-process DAG dispatcher. It pairs naturally with the runtimes that own the surfaces it deliberately doesn't — durable cross-process state, event-driven UI, distributed work scheduling. The integration points below describe what each pairing shares and where each piece carries its weight.
 
-**XState.** Use XState when modeling interactive state machines with guards, internal events, and complex state hierarchies driven by external input (user interaction, device events). XState is not a DAG executor — it responds to events rather than executing a predetermined graph.
+### Dagonizer + Temporal / durable workflow engines
 
-**BullMQ / job queues.** Use BullMQ when you need a persistent job queue with retry, rate-limiting, prioritization, or worker scaling across processes. Queue workers are independent from each other; Dagonizer nodes are sequential vertices in a named flow.
+Temporal owns the durable boundary: workflow definitions live as replayable event histories, survive crashes, and span hours to days. Dagonizer owns the per-task composition: each Temporal Activity (or batch of activities) can be a Dagonizer flow with typed nodes, retry policies, parallel/fan-out, and deep-DAG composition.
 
-**Dagonizer's niche.** In-process declarative DAGs where you want cancellation, retry, and checkpoint/resume without spinning up additional infrastructure. Flows are plain JSON objects you can store in files, databases, or configuration services. The dispatcher is a single class you instantiate, register flows and nodes on, and `await`. No worker pool, no external state store, no IPC.
+What they share: explicit retry semantics, abort signals, and named output routing.
 
-A Dagonizer flow that needs to call remote workers does so via sub-flow nodes — the local dispatcher composes them into the larger DAG without requiring a new primitive.
+Composition pattern: register Dagonizer DAGs as Temporal Activities, and let Temporal's history replay drive the outer workflow. The Dagonizer dispatcher runs synchronously inside the activity; on activity retry, the dispatcher restarts from the cursor stored in the activity's last heartbeat.
 
-## See also
+### Dagonizer + XState
 
-- [Architecture](./architecture)
-- [Getting Started](./getting-started)
-- [DAGBuilder](./guide/builder)
-- [Subclassing State](./guide/subclassing)
+XState owns interactive, event-driven state machines: user interactions, device events, hierarchical states, guards, and reactive parallel regions. Dagonizer owns the task graph that runs when a transition fires.
+
+What they share: terminal-state semantics, typed events, immutable transitions.
+
+Composition pattern: an XState transition's `actions` invoke `dispatcher.execute()` on a registered Dagonizer DAG; the result's `lifecycle.kind` becomes the next XState event (`COMPLETED`, `FAILED`, `CANCELLED`). XState owns the *when* and *why*; Dagonizer owns the *what runs*.
+
+### Dagonizer + BullMQ / job queues
+
+BullMQ owns the distributed work surface: cross-process scheduling, rate limiting, prioritization, worker scaling, and Redis-backed persistence. Dagonizer owns the per-job graph that each worker executes.
+
+What they share: typed jobs, retry semantics, structured failures.
+
+Composition pattern: a BullMQ job's payload contains the DAG name and initial state; the worker hydrates state and calls `dispatcher.execute(dagName, state)`. On failure, BullMQ schedules retry with backoff and the dispatcher resumes from `result.cursor` if `Checkpoint.from()` persisted it.
+
+### What Dagonizer carries on its own
+
+Some flows don't need a wrapping runtime — Dagonizer runs in-process with no external dependencies. The dispatcher is a single class to instantiate; flows are plain JSON-LD objects you store in files, databases, or configuration services. Cancellation, retry, and checkpoint/resume are first-class without spinning up infrastructure.
+
+A Dagonizer flow that needs to call remote workers does so via deep-DAG placements — the local dispatcher composes them into the larger DAG without requiring a new primitive.

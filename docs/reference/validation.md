@@ -1,3 +1,12 @@
+---
+seeAlso:
+  - text: 'Reference: Entities'
+    link: './entities'
+    description: 'every schema `Validator` exposes'
+  - text: 'Reference: Errors — `ValidationError`'
+    link: './errors'
+---
+
 # Validation
 
 `@noocodex/dagonizer/validation`
@@ -72,26 +81,21 @@ Returns a typed `CheckpointData` or throws `ValidationError`. Called by `Checkpo
 
 ---
 
-## `sharedAjv`
+## `EntityValidator<T>`
 
-The compiled Ajv instance used by all validators in this package.
-
-```ts
-import { sharedAjv } from '@noocodex/dagonizer/validation';
-```
-
-Configured with `allErrors: true`, `strict: false`, and JSON Schema Draft 2020-12. All package schemas are pre-loaded. Expose this to extend with additional schemas while sharing the same compiled validator cache.
+Per-entity validator interface. Every `Validator.<entity>` field is an `EntityValidator`.
 
 ```ts
-sharedAjv.addSchema(myDomainSchema);
-const validate = sharedAjv.getSchema(myDomainSchema.$id);
+import type { EntityValidator } from '@noocodex/dagonizer/validation';
 ```
 
-## See also
-
-- [Reference: Entities](./entities) — every schema `Validator` exposes
-- [Reference: Errors — `ValidationError`](./errors)
-
+```ts
+interface EntityValidator<T> {
+  is(value: unknown): value is T;
+  validate(value: unknown): T;
+  errors(value: unknown): string[] | null;
+}
+```
 ## Related guides
 
 - [Schema & JSON loading](../guide/schema)

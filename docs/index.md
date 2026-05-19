@@ -1,20 +1,54 @@
 ---
 layout: doc
+aside: false
 title: Dagonizer
+hero:
+  name: Dagonizer
+  text: Orchestrate work as a DAG of typed nodes.
+  tagline: A TypeScript framework for directed-acyclic flows with a state machine lifecycle. Compose. Observe. Resume. No external runtime required.
+  image:
+    src: /dagonizer-icon.svg
+    alt: Dagonizer
+  actions:
+    - theme: brand
+      text: Get Started
+      link: /getting-started
+    - theme: alt
+      text: Architecture
+      link: /architecture
+    - theme: alt
+      text: GitHub
+      link: https://github.com/Studnicky/Dagonizer
+
+features:
+  - icon: λ
+    title: Type-Safe Nodes
+    details: Output types narrow the routing map at compile time. An unwired output is a TypeScript error before registerDAG confirms it at runtime.
+  - icon: ⊘
+    title: Abortable Execution
+    details: Pass a caller-controlled AbortSignal or a deadlineMs hard limit. The dispatcher composes them and propagates cancellation through every in-flight operation and deep-DAG nesting level.
+  - icon: ↻
+    title: Deterministic Resume
+    details: Snapshot a paused DAG at its cursor. Serialize to JSON, store anywhere, restore and resume with a new Execution that picks up exactly where it left off.
+  - icon: ⬡
+    title: Deep-DAG Composition
+    details: Invoke a registered DAG as a nested node. State maps in before the child runs and out after it returns. Errors and warnings bubble up automatically.
+  - icon: ⫴
+    title: Parallel & Fan-Out
+    details: Run independent nodes concurrently with parallel groups. Apply one node to every item in a collection with fan-out and configurable concurrency.
+  - icon: ✕
+    title: Retry Policies
+    details: RetryPolicy provides constant, linear, exponential, and decorrelated-jitter strategies. Filter by error type; cooperates with the abort signal so retries stop immediately on cancellation.
+  - icon: ⊨
+    title: JSON-LD Canonical Wire Format
+    details: DAG definitions are validated against DAGSchema (Ajv 2020-12) at the ingest boundary. Dagonizer.load is the single entry point for external JSON — everything inside is fully typed.
+  - icon: ◉
+    title: Observability Hooks
+    details: Subclass Dagonizer and override onFlowStart, onFlowEnd, onNodeStart, onNodeEnd, and onError for structured metrics, tracing, and audit trails.
+  - icon: ⏱
+    title: Deterministic Testing
+    details: VirtualClockProvider and VirtualScheduler replace platform timers in tests. Step through retry delays and deadlines with scheduler.advance(ms).
 ---
-
-<div class="dagonizer-hero">
-  <h1>Dagonizer</h1>
-  <p class="tagline">A TypeScript framework for orchestrating work as a directed acyclic graph of typed nodes, with a state machine lifecycle.</p>
-  <p class="subtitle"><em>Compose. Observe. Resume. No external runtime required.</em></p>
-  <div class="actions">
-    <a href="/getting-started" class="VPButton medium brand">Get Started</a>
-    <a href="/architecture" class="VPButton medium alt">Architecture</a>
-    <a href="https://github.com/Studnicky/Dagonizer" class="VPButton medium ghost">GitHub</a>
-  </div>
-</div>
-
-Dagonizer is a self-contained DAG orchestration framework. Define flows as plain JSON objects or via the fluent `DAGBuilder` API, register typed nodes, and execute. The dispatcher walks the node graph, propagates cancellation signals, retries on failure, and snapshots in-flight state for deterministic resume — with no external broker, queue, or process boundary required.
 
 ## ⦿ What it is
 
@@ -39,51 +73,10 @@ pending ──start──▶ running ──succeed──▶ completed
                       └──timeout──────▶ timed_out
 ```
 
-## ⦿ Key capabilities
-
-<div class="feature-grid">
-  <div class="card">
-    <h3>Type-Safe Nodes</h3>
-    <p>Output types narrow the routing map at compile time. An unwired output is a TypeScript error before <code>registerDAG</code> confirms it at runtime.</p>
-  </div>
-  <div class="card">
-    <h3>Abortable Execution</h3>
-    <p>Pass a caller-controlled <code>AbortSignal</code> or a <code>deadlineMs</code> hard limit. The dispatcher composes them and propagates cancellation through every in-flight operation and deep-DAG nesting level.</p>
-  </div>
-  <div class="card">
-    <h3>Deterministic Resume</h3>
-    <p>Snapshot a paused DAG at its cursor. Serialize to JSON, store anywhere, restore and resume with a new <code>Execution</code> that picks up exactly where it left off.</p>
-  </div>
-  <div class="card">
-    <h3>Deep-DAG Composition</h3>
-    <p>Invoke a registered DAG as a nested node. State maps in before the child runs and out after it returns. Errors and warnings bubble up automatically.</p>
-  </div>
-  <div class="card">
-    <h3>Parallel & Fan-Out</h3>
-    <p>Run independent nodes concurrently with <code>parallel</code> groups. Apply one node to every item in a collection with <code>fan-out</code> and configurable concurrency.</p>
-  </div>
-  <div class="card">
-    <h3>Retry Policies</h3>
-    <p><code>RetryPolicy</code> provides constant, linear, exponential, and decorrelated-jitter strategies. Filter by error type; cooperates with the abort signal so retries stop immediately on cancellation.</p>
-  </div>
-  <div class="card">
-    <h3>JSON-LD Canonical Wire Format</h3>
-    <p>DAG definitions are validated against <code>DAGSchema</code> (Ajv 2020-12) at the ingest boundary. <code>Dagonizer.load</code> is the single entry point for external JSON — everything inside is fully typed.</p>
-  </div>
-  <div class="card">
-    <h3>Observability Hooks</h3>
-    <p>Subclass <code>Dagonizer</code> and override <code>onFlowStart</code>, <code>onFlowEnd</code>, <code>onNodeStart</code>, <code>onNodeEnd</code>, and <code>onError</code> for structured metrics, tracing, and audit trails.</p>
-  </div>
-  <div class="card">
-    <h3>Deterministic Testing</h3>
-    <p><code>VirtualClockProvider</code> and <code>VirtualScheduler</code> replace platform timers in tests. Step through retry delays and deadlines with <code>scheduler.advance(ms)</code>.</p>
-  </div>
-</div>
-
 ## ⦿ No external runtime
 
 Dagonizer runs in-process. No worker pool, no external state store, no IPC. DAG definitions are plain JSON objects — store them in files, databases, or configuration services and load them at runtime via `Dagonizer.load`. The framework is browser-runnable: no Node.js-only primitives in the core engine.
 
-## ⦾ See it in action
+## ⦿ See it in action
 
 [The Archivist](/examples/the-archivist) is an end-to-end in-browser demo built entirely on Dagonizer — a bibliographic-assistant pipeline that exercises linear intake, fan-out, deep-DAG composition, cancellation, retry, checkpoint, and visualization in a single runnable flow.

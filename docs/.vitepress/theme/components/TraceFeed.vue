@@ -33,6 +33,10 @@ const props = defineProps<{
   logger: ConsoleLogger;
 }>();
 
+const emit = defineEmits<{
+  (event: 'node-click', name: string): void;
+}>();
+
 /** Live log events pushed by the subscriber. */
 const logEvents = ref<LogEvent[]>([...props.logger.history()]);
 
@@ -81,7 +85,7 @@ function timeFor(ts: number): string {
         <!-- Node lifecycle event -->
         <template v-if="item.feedKind === 'trace'">
           <span :class="['tf-kind', `tf-kind-${item.entry.kind}`]">{{ item.entry.kind }}</span>
-          <code class="tf-node">{{ item.entry.node }}</code>
+          <code class="tf-node tf-node-clickable" role="button" tabindex="0" @click="emit('node-click', item.entry.node)" @keydown.enter="emit('node-click', item.entry.node)">{{ item.entry.node }}</code>
           <span v-if="item.entry.output !== undefined" class="tf-output">→ {{ item.entry.output }}</span>
         </template>
 
@@ -105,8 +109,9 @@ function timeFor(ts: number): string {
   padding: 0.7rem 0.85rem;
   display: flex;
   flex-direction: column;
-  min-height: 220px;
+  min-height: 0;
   height: 100%;
+  overflow: hidden;
 }
 
 .tf-header {
@@ -137,12 +142,19 @@ function timeFor(ts: number): string {
   margin: 0;
   overflow-y: auto;
   flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 0.14rem;
   font-family: var(--vp-font-family-mono);
   font-size: 0.72rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--vp-c-divider) transparent;
 }
+
+.tf-list::-webkit-scrollbar { width: 6px; }
+.tf-list::-webkit-scrollbar-track { background: transparent; }
+.tf-list::-webkit-scrollbar-thumb { background: var(--vp-c-divider); border-radius: 3px; }
 
 .tf-entry {
   display: grid;
@@ -185,6 +197,12 @@ function timeFor(ts: number): string {
 .tf-kind-error { background: rgba(212, 166, 73, 0.18); color: var(--dagonizer-brand3); }
 
 .tf-node   { color: var(--vp-c-text-1); }
+.tf-node-clickable {
+  cursor: pointer;
+  text-decoration: underline dotted var(--dagonizer-brand2);
+  text-underline-offset: 2px;
+}
+.tf-node-clickable:hover { color: var(--dagonizer-brand2); }
 .tf-output { color: var(--vp-c-text-3); }
 
 /* Log level badges */

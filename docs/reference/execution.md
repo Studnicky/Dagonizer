@@ -1,3 +1,13 @@
+---
+seeAlso:
+  - text: 'Reference: Dagonizer — `execute`, `resume`'
+    link: './dagonizer'
+  - text: 'Reference: Lifecycle'
+    link: './lifecycle'
+  - text: 'Reference: Checkpoint'
+    link: './checkpoint'
+---
+
 # Execution
 
 `Execution<TState>` is the handle returned by `Dagonizer.execute()` and `Dagonizer.resume()`. It is both an `AsyncIterable` (streaming per stage) and a `PromiseLike` (awaitable for the final result). The underlying generator runs exactly once regardless of how it is consumed.
@@ -5,7 +15,7 @@
 ## Class: `Execution<TState>`
 
 ```ts
-import type { Execution } from '@noocodex/dagonizer';
+import { Execution } from '@noocodex/dagonizer';
 ```
 
 Not instantiated directly — returned by the dispatcher.
@@ -92,13 +102,6 @@ console.log(nodes, result.cursor);
 ```
 
 The iterator never throws. Cancellation and operation errors resolve to a final `ExecutionResultInterface` with a non-null `cursor` and the appropriate `lifecycle.kind`.
-
-## See also
-
-- [Reference: Dagonizer — `execute`, `resume`](./dagonizer)
-- [Reference: Lifecycle](./lifecycle)
-- [Reference: Checkpoint](./checkpoint)
-
 ## Related guides
 
 - [Cancellation](../guide/cancellation)

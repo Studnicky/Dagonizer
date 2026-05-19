@@ -1,3 +1,13 @@
+---
+seeAlso:
+  - text: 'Reference: Contracts — `CheckpointStore`'
+    link: './contracts'
+  - text: 'Reference: Entities — `CheckpointData`'
+    link: './entities'
+  - text: 'Reference: Validation — `Validator.checkpoint`'
+    link: './validation'
+---
+
 # Checkpoint
 
 `@noocodex/dagonizer/checkpoint`
@@ -83,6 +93,55 @@ await storage.set('ckpt', json);
 
 ---
 
+### `Checkpoint.persist(store, key, data)`
+
+```ts
+static async persist(store: CheckpointStore, key: string, data: CheckpointData): Promise<void>
+```
+
+Persists `data` to a `CheckpointStore` under `key`. Composes `Checkpoint.toJson` with the store's `save`. Throws when the underlying store throws.
+
+```ts
+const store = new MemoryCheckpointStore();
+await Checkpoint.persist(store, 'ckpt:my-dag', Checkpoint.from('my-dag', result));
+```
+
+---
+
+### `Checkpoint.recall(store, key, restoreState)`
+
+```ts
+static async recall<TState extends NodeStateInterface>(
+  store: CheckpointStore,
+  key: string,
+  restoreState: StateRestoreFnType<TState>,
+): Promise<RecalledCheckpoint<TState> | null>
+```
+
+Recalls a checkpoint from a `CheckpointStore`. Returns `null` when no entry exists under `key`; throws `ValidationError` when the stored JSON fails schema validation. Composes the store's `load` with `JSON.parse` and `Checkpoint.restore`.
+
+```ts
+const recalled = await Checkpoint.recall(store, 'ckpt:my-dag', (snap) => MyState.restore(snap));
+if (recalled !== null) {
+  const { dagName, state, cursor } = recalled;
+  const result = await dispatcher.resume(dagName, state, cursor);
+}
+```
+
+`RecalledCheckpoint<TState>` shape:
+
+```ts
+interface RecalledCheckpoint<TState> {
+  readonly state: TState;
+  readonly dagName: string;
+  readonly cursor: string;
+  readonly executedNodes: readonly string[];
+  readonly skippedNodes: readonly string[];
+}
+```
+
+---
+
 ## Type: `StateRestoreFnType<TState>`
 
 ```ts
@@ -133,14 +192,33 @@ console.log(CheckpointDataSchema.$id);
 // 'https://noocodex.dev/schemas/dagonizer/CheckpointData'
 ```
 
-## See also
+---
 
-- [Reference: Contracts — `CheckpointStore`](./contracts)
-- [Reference: Entities — `CheckpointData`](./entities)
-- [Reference: Validation — `Validator.checkpoint`](./validation)
+## Class: `MemoryCheckpointStore`
+
+In-process `CheckpointStore`. Stores entries in a `Map<string, string>` on the instance. Useful for tests, examples, and ephemeral demo flows. Not for production: the map vanishes when the process exits.
+
+```ts
+import { MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
+```
+
+### Members
+
+| Member | Description |
+|--------|-------------|
+| `save(key, json)` | Store `json` under `key`. Overwrites existing entries. |
+| `load(key)` | Return the JSON string, or `null` when no entry exists. |
+| `delete(key)` | Remove the entry. No-op when missing. |
+| `get size()` | Number of entries currently held. Test-only convenience. |
+
+```ts
+const store = new MemoryCheckpointStore();
+await Checkpoint.persist(store, 'ckpt', Checkpoint.from('my-dag', result));
+const recalled = await Checkpoint.recall(store, 'ckpt', (snap) => MyState.restore(snap));
+```
 
 ## Related guides
 
-- [Checkpoint](../guide/checkpoint)
-- [Persistence](../guide/persistence)
-- [Subclassing State](../guide/subclassing)
+⦿ [Checkpoint](../guide/checkpoint)
+⦿ [Persistence](../guide/persistence)
+⦿ [Subclassing State](../guide/subclassing)

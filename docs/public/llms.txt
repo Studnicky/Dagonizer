@@ -37,19 +37,19 @@ Key features: strict TypeScript (exactOptionalPropertyTypes), JSON-LD canonical 
 ## Examples
 
 - [Phase 01 · Linear intake](https://studnicky.github.io/Dagonizer/examples/01-linear): simplest sequential node chain — the entry point for every Dagonizer learner.
-- [Phase 02 · Fan-out scout](https://studnicky.github.io/Dagonizer/examples/02-fanout): parallel branches from a single node; collect results with fan-in combiners.
-- [Phase 03 · Deep-DAG composition](https://studnicky.github.io/Dagonizer/examples/03-deepflows): compose reusable sub-DAGs inside a parent DAG without copying topology.
-- [Phase 04 · Cancellation](https://studnicky.github.io/Dagonizer/examples/04-cancellation): abort a running flow; observe which nodes see the signal.
-- [Phase 05 · Retry compose](https://studnicky.github.io/Dagonizer/examples/05-retry): wrap a node in a retry loop; configure exponential backoff and max attempts.
-- [Phase 06 · DAGBuilder](https://studnicky.github.io/Dagonizer/examples/06-builder): build a DAG document at runtime with the fluent builder rather than JSON.
-- [Phase 07 · JSON DAG load](https://studnicky.github.io/Dagonizer/examples/07-schema): load a DAG from an external JSON file; validate against the published schema.
+- [Phase 02 · DAGBuilder](https://studnicky.github.io/Dagonizer/examples/02-builder): build a DAG document at runtime with the fluent builder rather than JSON.
+- [Phase 03 · Tool schemas](https://studnicky.github.io/Dagonizer/examples/03-schema): JSON Schema 2020-12 tool input schemas in the Archivist; shape-only examples and CanonicalId deduplication.
+- [Phase 04 · Fan-out scout](https://studnicky.github.io/Dagonizer/examples/04-fanout): parallel branches from a single node; collect results with fan-in combiners.
+- [Phase 05 · Deep-DAG composition](https://studnicky.github.io/Dagonizer/examples/05-deepflows): compose reusable sub-DAGs inside a parent DAG without copying topology.
+- [Phase 06 · Cancellation](https://studnicky.github.io/Dagonizer/examples/06-cancellation): abort a running flow; observe which nodes see the signal.
+- [Phase 07 · Retry](https://studnicky.github.io/Dagonizer/examples/07-retry): wrap a node in a retry loop; configure exponential backoff and max attempts.
 - [Phase 08 · Checkpoint + resume](https://studnicky.github.io/Dagonizer/examples/08-checkpoint): snapshot mid-flow, serialize state, and resume deterministically from the cursor.
 
 ## Reference
 
 - [Dagonizer](https://studnicky.github.io/Dagonizer/reference/dagonizer): the main dispatcher class — execute, hooks, and extension surface.
 - [Execution](https://studnicky.github.io/Dagonizer/reference/execution): ExecutionResult, ExecuteOptions, and the execute() call contract.
-- [Operations](https://studnicky.github.io/Dagonizer/reference/operations): placement types — SingleNode, ParallelNode, FanOutNode, DeepDAGNode.
+- [Nodes](https://studnicky.github.io/Dagonizer/reference/operations): placement types — SingleNode, ParallelNode, FanOutNode, DeepDAGNode.
 - [Lifecycle](https://studnicky.github.io/Dagonizer/reference/lifecycle): DAGLifecycleMachine states and transition guards.
 - [Runtime](https://studnicky.github.io/Dagonizer/reference/runtime): Clock, Scheduler, RetryPolicy, RealTimeScheduler, BackoffStrategy.
 - [Contracts](https://studnicky.github.io/Dagonizer/reference/contracts): NodeInterface, ClockProvider, SchedulerProvider, SchedulerHandle.

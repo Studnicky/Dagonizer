@@ -109,7 +109,11 @@ function onKey(event: KeyboardEvent, idx: number): void {
   padding: 0.25rem 0.25rem 0;
   gap: 0.15rem;
   overflow-x: auto;
+  flex-shrink: 0;
+  scrollbar-width: none;
 }
+
+.tabs-row::-webkit-scrollbar { display: none; }
 
 .tab-btn {
   display: inline-flex;
@@ -191,6 +195,7 @@ function onKey(event: KeyboardEvent, idx: number): void {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: hidden;
 }
 
 .tab-pane[hidden] { display: none; }
@@ -201,6 +206,7 @@ function onKey(event: KeyboardEvent, idx: number): void {
   border-radius: 0;
   background: transparent;
   height: 100%;
+  min-height: 0;
   width: 100%;
   flex: 1 1 auto;
 }

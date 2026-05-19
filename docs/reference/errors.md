@@ -1,3 +1,11 @@
+---
+seeAlso:
+  - text: 'Reference: Validation'
+    link: './validation'
+  - text: 'Reference: Entities — `DAGErrorJSON`'
+    link: './entities'
+---
+
 # Errors
 
 `@noocodex/dagonizer/errors`
@@ -90,7 +98,7 @@ import { NotFoundError } from '@noocodex/dagonizer';
 
 ## Class: `ValidationError`
 
-Thrown when schema validation fails — either `FlowConfigSchema` or `CheckpointDataSchema`.
+Thrown when schema validation fails — e.g. `DAGSchema` or `CheckpointDataSchema`.
 
 ```ts
 import { ValidationError } from '@noocodex/dagonizer';
@@ -102,7 +110,7 @@ The `message` contains every Ajv failure formatted as `<instancePath>: <message>
 
 ```ts
 try {
-  FlowLoader.fromJson('{ "name": "broken" }');
+  Dagonizer.load('{ "name": "broken" }');
 } catch (error) {
   if (error instanceof ValidationError) {
     for (const line of error.message.split('\n')) {
@@ -110,6 +118,31 @@ try {
     }
   }
 }
+```
+
+---
+
+## Class: `NodeTimeoutError`
+
+Thrown when a node's per-node `timeoutMs` budget expires.
+
+```ts
+import { NodeTimeoutError } from '@noocodex/dagonizer';
+```
+
+`code`: `'NODE_TIMEOUT'`
+
+### Additional properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `nodeName` | `string` | Name of the node that timed out |
+| `timeoutMs` | `number` | The budget that elapsed (ms) |
+
+### Constructor
+
+```ts
+new NodeTimeoutError(nodeName: string, timeoutMs: number, options?: ErrorOptions)
 ```
 
 ---
@@ -153,17 +186,12 @@ Error
 └── DAGError              ('DAG_ERROR')
     ├── ConfigurationError ('CONFIGURATION_ERROR')
     ├── ExecutionError     ('EXECUTION_ERROR')
+    ├── NodeTimeoutError   ('NODE_TIMEOUT')
     ├── NotFoundError      ('NOT_FOUND_ERROR')
     └── ValidationError    ('VALIDATION_ERROR')
 ```
 
 All subclasses inherit `toJSON()` and the `context`/`timestamp` properties from `DAGError`.
-
-## See also
-
-- [Reference: Validation](./validation)
-- [Reference: Entities — `DAGErrorJSON`](./entities)
-
 ## Related guides
 
 - [Schema & JSON loading](../guide/schema)

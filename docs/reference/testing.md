@@ -1,3 +1,11 @@
+---
+seeAlso:
+  - text: 'Reference: Runtime — `Clock`, `Scheduler`'
+    link: './runtime'
+  - text: 'Reference: Contracts — `ClockProvider`, `SchedulerProvider`'
+    link: './contracts'
+---
+
 # Testing
 
 `@noocodex/dagonizer/testing`
@@ -185,19 +193,14 @@ Both `VirtualScheduler` and `RealTimeScheduler` implement `SchedulerProvider`:
 
 ```ts
 interface SchedulerProvider {
-  scheduleAt(atMs: number, fire: () => void | Promise<void>): ScheduledTask;
-  scheduleEvery(intervalMs: number, fire: () => void | Promise<void>): ScheduledTask;
+  after(delayMs: number, signal?: AbortSignal): Promise<void>;
+  at(atMs: number, signal?: AbortSignal): Promise<void>;
+  every(intervalMs: number, signal?: AbortSignal): AsyncIterable<void>;
   cancelAll(): void;
 }
 ```
 
 Implement this interface to create a custom test scheduler (e.g. one that records fired tasks for assertions).
-
-## See also
-
-- [Reference: Runtime — `Clock`, `Scheduler`](./runtime)
-- [Reference: Contracts — `ClockProvider`, `SchedulerProvider`](./contracts)
-
 ## Related guides
 
 - [Cancellation](../guide/cancellation)

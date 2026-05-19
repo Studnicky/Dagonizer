@@ -61,6 +61,14 @@
   --vp-c-bg-elv:  var(--dagonizer-bg-elv);
   --vp-c-bg-soft: var(--dagonizer-bg-soft);
 
+  /* The navbar paints in TWO layers: the outer .VPNavBar uses
+     --vp-c-bg-alt, and the inner .content-body uses --vp-nav-bg-color.
+     If they differ, a seam appears wherever .content-body ends short
+     of the right edge. Aligning the two means the whole strip reads
+     as one continuous surface across the viewport — no need for
+     width: 100vw hacks or !important padding overrides. */
+  --vp-nav-bg-color: var(--dagonizer-bg-alt);
+
   /* ── VitePress text cascade ── */
   --vp-c-text-1: var(--dagonizer-text);
   --vp-c-text-2: var(--dagonizer-text2);
@@ -98,7 +106,7 @@
   --mermaid-edge-label-text:  var(--dagonizer-text);
   --mermaid-arrow:            var(--dagonizer-brand);
   --mermaid-state-bg:         var(--dagonizer-bg-elv);
-  --mermaid-state-stroke:     var(--dagonizer-brand2);
+  --mermaid-state-stroke:     var(--dagonizer-brand);
   --mermaid-special:          var(--dagonizer-brand3);
   --mermaid-hex-fill:         var(--dagonizer-bg-elv);
   --mermaid-hex-stroke:       var(--dagonizer-brand2);
