@@ -1,3 +1,13 @@
+---
+seeAlso:
+  - text: 'Reference: Contracts — `NodeInterface`'
+    link: './contracts'
+  - text: 'Reference: Entities — `Node`, `NodeOutput`, `NodeContext`'
+    link: './entities'
+  - text: 'Reference: Core — `ParallelCombiner`, `FanInStrategy`'
+    link: './core'
+---
+
 # Nodes
 
 `@noocodex/dagonizer` / `@noocodex/dagonizer/types`
@@ -25,6 +35,7 @@ const myNode: NodeInterface<MyState, 'success' | 'error'> = {
 |--------|------|----------|-------------|
 | `name` | `string` | yes | Registry key. Must be unique across all registered nodes. |
 | `outputs` | `readonly TOutput[]` | yes | Declared output ports. Every value must appear in the node placement's `outputs` routing map. |
+| `timeoutMs` | `number` | no | Per-node wall-clock budget in milliseconds. When set, the engine derives a child signal and fires `NodeTimeoutError` on expiry. |
 | `execute` | `(state, context) => Promise<NodeOutputInterface<TOutput>>` | yes | The work. Mutates state in-place; returns the output name to route on. |
 | `validate` | `() => ValidationResult` | no | Called once during `registerNode`. Return `{ valid: false, errors }` to reject. |
 | `destroy` | `() => Promise<void>` | no | Called by `dispatcher.destroy()`. Use for resource cleanup. |
@@ -51,19 +62,20 @@ interface NodeOutputInterface<TOutput extends string> {
 
 ---
 
-## Interface: `NodeContextInterface`
+## Interface: `NodeContextInterface<TServices>`
 
 The second argument to `execute()`.
 
 ```ts
-interface NodeContextInterface {
-  signal: AbortSignal;
-  dagName: string;
-  nodeName: string;
+interface NodeContextInterface<TServices = undefined> {
+  readonly signal: AbortSignal;
+  readonly dagName: string;
+  readonly nodeName: string;
+  readonly services: TServices;
 }
 ```
 
-Always propagate `context.signal` to every IO call (fetch, database, sleep in RetryPolicy).
+Always propagate `context.signal` to every IO call (fetch, database, sleep in RetryPolicy). `services` carries the typed services bag the dispatcher was constructed with; `undefined` when no services were supplied.
 
 ---
 
@@ -120,13 +132,6 @@ protected restoreData(snap: JsonObject): void  // restore domain fields
 ```
 
 See [Subclassing State](/guide/subclassing) for examples.
-
-## See also
-
-- [Reference: Contracts — `NodeInterface`](./contracts)
-- [Reference: Entities — `Node`, `NodeOutput`, `NodeContext`](./entities)
-- [Reference: Core — `ParallelCombiner`, `FanInStrategy`](./core)
-
 ## Related guides
 
 - [Subclassing State](../guide/subclassing)

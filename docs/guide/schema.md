@@ -1,3 +1,13 @@
+---
+seeAlso:
+  - text: 'DAGBuilder'
+    link: './builder'
+    description: 'author DAGs in code instead of loading from JSON'
+  - text: 'Contract-derived flows'
+    link: './derive'
+    description: 'generate the DAG topology from contracts; load is unnecessary'
+---
+
 # Schema & JSON Loading
 
 DAG configs are plain JSON objects that are validated against `DAGSchema` (JSON Schema Draft 2020-12, compiled via Ajv) at the ingest boundary.
@@ -94,26 +104,22 @@ try {
 
 Each Ajv failure is formatted as `<instancePath>: <message>` on a separate line.
 
-## `sharedAjv`
+## `Validator` sub-validators
 
-The package exposes the compiled Ajv instance for callers that need to add their own schemas while sharing compiled validators:
+`Validator` exposes one `EntityValidator<T>` per entity schema. Each sub-validator has three methods:
 
 ```ts
-import { sharedAjv } from '@noocodex/dagonizer/validation';
+import { Validator } from '@noocodex/dagonizer/validation';
 
-sharedAjv.addSchema(myCustomSchema);
+Validator.dag.is(x);         // type predicate — returns boolean
+Validator.dag.validate(x);   // returns narrowed DAG or throws ValidationError
+Validator.dag.errors(x);     // returns string[] | null (null = valid)
 ```
 
-`sharedAjv` has `allErrors: true`, `strict: false`, and Draft 2020-12 support pre-configured.
-
-## See also
-
-- [DAGBuilder](./builder) — author DAGs in code instead of loading from JSON
-- [Contract-derived flows](./derive) — generate the DAG topology from contracts; load is unnecessary
-
+Sub-validators are compiled once at module load against the shared Ajv 2020-12 instance (`allErrors: true`, `strict: false`). Every top-level entity schema in `entities/` has a corresponding sub-validator on `Validator`.
 ## Related reference
 
-- [Reference: Validation](../reference/validation)
-- [Reference: Entities](../reference/entities)
-- [Reference: Errors — `ValidationError`](../reference/errors)
-- [Example: Schema Loading](../examples/07-schema)
+⦿ [Reference: Validation](../reference/validation)
+⦿ [Reference: Entities](../reference/entities)
+⦿ [Reference: Errors — `ValidationError`](../reference/errors)
+⦿ [Example: Schema Loading](../examples/03-schema)

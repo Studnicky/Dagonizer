@@ -157,6 +157,26 @@ export interface LlmClient {
    * question under 20 words. No preamble.
    */
   suggestStarterQuery(): Promise<string>;
+  /**
+   * Generate a fresh, in-character Archivist greeting for a new
+   * session. Returns a single sentence under 30 words. Warm, curious,
+   * librarian voice. No negative framing.
+   */
+  suggestGreeting(): Promise<string>;
+  /**
+   * Generate a natural first visitor message that reads as a reply to
+   * the supplied greeting. Returns a single sentence under 30 words
+   * that feels like something a real bookshop visitor would say.
+   */
+  suggestVisitorReplyTo(greeting: string): Promise<string>;
+  /**
+   * Generate a plain-English explanation of a tool or DAG node for the
+   * "explain" side-panel in the live demo. `name` is the tool/node key;
+   * `context` is a one-sentence static description of what it does.
+   * Returns 2–3 sentences covering what it does, why it matters, and
+   * one concrete example. Under 80 words. No preamble.
+   */
+  explainTool(name: string, context: string): Promise<string>;
 }
 
 /**

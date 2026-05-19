@@ -1,3 +1,18 @@
+---
+seeAlso:
+  - text: 'Concepts'
+    link: './concepts'
+    description: 'vocabulary used across the docs'
+  - text: 'Getting Started'
+    link: './getting-started'
+  - text: 'Reference: Dagonizer'
+    link: './reference/dagonizer'
+  - text: 'Reference: Contracts'
+    link: './reference/contracts'
+  - text: 'Reference: Entities'
+    link: './reference/entities'
+---
+
 # Architecture
 
 Dagonizer is a single-class, in-process DAG dispatcher. The core loop is a `while` iterator over a node graph. The dispatcher is the watcher; every node is an eye on the graph.
@@ -193,15 +208,7 @@ Consumers import from the narrowest subpath that gives them what they need. The 
 
 Class extension is the only extension mechanism. Zero callbacks. Zero function-pass-in.
 
-- **Observability** — subclass `Dagonizer`, override the protected hooks (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`). Multi-observer composition is the consumer's responsibility — write it into the subclass.
-- **Domain state** — subclass `NodeStateBase`. Override `snapshotData()` and `restoreData()` for checkpointable fields.
-- **Nodes** — implement `NodeInterface<TState, TOutput>`. Nodes never throw; they route to a named output.
-- **Time / scheduling** — implement `ClockProvider` / `SchedulerProvider`. `Clock.configure()` and `Scheduler.configure()` install the provider. Production runs the default `RealTimeScheduler` and the wrapped `process.hrtime.bigint()`; tests install `VirtualClockProvider` / `VirtualScheduler` for deterministic time.
-
-## See also
-
-- [Concepts](./concepts) — vocabulary used across the docs
-- [Getting Started](./getting-started)
-- [Reference: Dagonizer](./reference/dagonizer)
-- [Reference: Contracts](./reference/contracts)
-- [Reference: Entities](./reference/entities)
+⦿ **Observability** — subclass `Dagonizer`, override the protected hooks (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`). Multi-observer composition is the consumer's responsibility — write it into the subclass.
+⦿ **Domain state** — subclass `NodeStateBase`. Override `snapshotData()` and `restoreData()` for checkpointable fields.
+⦿ **Nodes** — implement `NodeInterface<TState, TOutput>`. Nodes never throw; they route to a named output.
+⦿ **Time / scheduling** — implement `ClockProvider` / `SchedulerProvider`. `Clock.configure()` and `Scheduler.configure()` install the provider. Production runs the default `RealTimeScheduler` and the wrapped `process.hrtime.bigint()`; tests install `VirtualClockProvider` / `VirtualScheduler` for deterministic time.

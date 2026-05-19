@@ -71,38 +71,44 @@ const sidebar = [
     //   7. Checkpoint + persistence — pause and resume
     //   8. Contract-derived flows — generate the topology automatically
     //   9. Visualization — render the result
+    // Order: simple → complex. Author DAGs first (state + builder), then
+    // export/import as JSON-LD, then layer in fan-out, deep-DAG nesting,
+    // cancellation, retry, observability, services, accessors, persistence,
+    // and finally derive + visualization.
     text: 'Usage',
     collapsed: false,
     items: [
-      { text: 'Subclassing State', link: '/guide/subclassing' },
-      { text: 'DAGBuilder', link: '/guide/builder' },
-      { text: 'Schema & JSON loading', link: '/guide/schema' },
-      { text: 'Cancellation', link: '/guide/cancellation' },
-      { text: 'Retry', link: '/guide/retry' },
-      { text: 'Services', link: '/guide/services' },
-      { text: 'Observability', link: '/guide/observability' },
-      { text: 'State accessors', link: '/guide/state-accessor' },
-      { text: 'Checkpoint', link: '/guide/checkpoint' },
-      { text: 'Persistence', link: '/guide/persistence' },
-      { text: 'Contract-derived flows', link: '/guide/derive' },
-      { text: 'Visualization', link: '/guide/visualization' },
+      { text: 'Subclassing State',         link: '/guide/subclassing' },
+      { text: 'DAGBuilder',                 link: '/guide/builder' },
+      { text: 'JSON-LD export and import', link: '/guide/json-ld' },
+      { text: 'Schema & JSON Loading',     link: '/guide/schema' },
+      { text: 'Cancellation',              link: '/guide/cancellation' },
+      { text: 'Retry',                     link: '/guide/retry' },
+      { text: 'Services container',         link: '/guide/services' },
+      { text: 'Observability',             link: '/guide/observability' },
+      { text: 'State accessors',           link: '/guide/state-accessor' },
+      { text: 'Checkpoint & Resume',       link: '/guide/checkpoint' },
+      { text: 'Checkpoint persistence',    link: '/guide/persistence' },
+      { text: 'Contract-derived flows',    link: '/guide/derive' },
+      { text: 'Visualization',             link: '/guide/visualization' },
     ],
   },
   {
-    // Demos: The Archivist is the end-to-end runnable demo of the framework.
-    // Phase examples walk each framework capability step by step.
+    // Demos: The Archivist is the end-to-end runnable demo. Phase examples
+    // walk each capability step by step, ordered simple → complex so the
+    // earlier phase teaches every concept the later phase relies on.
     text: 'Demos',
     collapsed: false,
     items: [
-      { text: 'The Archivist (in-browser demo)', link: '/examples/the-archivist' },
-      { text: 'Phase 01 · Linear intake',          link: '/examples/01-linear' },
-      { text: 'Phase 02 · Fan-out scout',          link: '/examples/02-fanout' },
-      { text: 'Phase 03 · Deep-DAG composition',    link: '/examples/03-deepflows' },
-      { text: 'Phase 04 · Cancellation',           link: '/examples/04-cancellation' },
-      { text: 'Phase 05 · Retry compose',          link: '/examples/05-retry' },
-      { text: 'Phase 06 · DAGBuilder',             link: '/examples/06-builder' },
-      { text: 'Phase 07 · JSON DAG load',          link: '/examples/07-schema' },
-      { text: 'Phase 08 · Checkpoint + resume',    link: '/examples/08-checkpoint' },
+      { text: 'The Archivist (in-browser demo)',     link: '/examples/the-archivist' },
+      { text: 'Phase 01 · Linear intake',            link: '/examples/01-linear' },
+      { text: 'Phase 02 · DAGBuilder',               link: '/examples/02-builder' },
+      { text: 'Phase 03 · Tool schemas',              link: '/examples/03-schema' },
+      { text: 'Phase 04 · Fan-out scout',            link: '/examples/04-fanout' },
+      { text: 'Phase 05 · Deep-DAG composition',     link: '/examples/05-deepflows' },
+      { text: 'Phase 06 · Cancellation',             link: '/examples/06-cancellation' },
+      { text: 'Phase 07 · Retry',                    link: '/examples/07-retry' },
+      { text: 'Phase 08 · Checkpoint + resume',      link: '/examples/08-checkpoint' },
     ],
   },
   {
@@ -111,7 +117,7 @@ const sidebar = [
     items: [
       { text: 'Dagonizer', link: '/reference/dagonizer' },
       { text: 'Execution', link: '/reference/execution' },
-      { text: 'Operations', link: '/reference/operations' },
+      { text: 'Nodes', link: '/reference/operations' },
       { text: 'Lifecycle', link: '/reference/lifecycle' },
       { text: 'Runtime', link: '/reference/runtime' },
       { text: 'Contracts', link: '/reference/contracts' },
@@ -499,12 +505,15 @@ export default withMermaid(defineConfig({
     // first paint already shows the mechanicus chrome (pearl-black node
     // surface, teal accent border, monospace text on the navy panel).
     theme: 'base',
-    // JetBrains Mono is the canonical mono — clean, no-serif, high legibility
-    // for node labels and edge annotations. Falls through the standard UI mono
-    // stack so diagrams stay uniform even before the font loads.
-    fontFamily: '"JetBrains Mono", "SF Mono", Menlo, Consolas, ui-monospace, monospace',
+    // System monospace stack ONLY — no web fonts. Mermaid measures label
+    // widths at SSR time before any web font loads; if measurement uses the
+    // fallback and the render later swaps in a wider web font (JetBrains
+    // Mono), labels overflow their rect. SF Mono / Menlo / Consolas are all
+    // pre-installed on macOS / Windows / Linux respectively, so measurement
+    // and render always use the same metrics.
+    fontFamily: 'SF Mono, ui-monospace, Menlo, Consolas, "Liberation Mono", monospace',
     themeVariables: {
-      fontFamily: '"JetBrains Mono", "SF Mono", Menlo, Consolas, ui-monospace, monospace',
+      fontFamily: 'SF Mono, ui-monospace, Menlo, Consolas, "Liberation Mono", monospace',
       // Fixed font size applied globally so every diagram type (flowchart,
       // state, sequence) renders nodes at the same typographic scale.
       // Complex diagrams that would otherwise explode in size are handled
@@ -538,27 +547,38 @@ export default withMermaid(defineConfig({
       tertiaryTextColor: '#eef3f7',
     },
     flowchart: {
-      // `linear` produces straight angled (hex-style) edge segments —
-      // not the default curved Bezier and not 90° step routes.
       curve: 'linear',
-      // htmlLabels: false so node sizes are computed from SVG text
-      // geometry rather than HTML foreignObject, giving Mermaid a stable
-      // bounding box for every node regardless of diagram complexity.
-      htmlLabels: false,
-      useMaxWidth: true,
-      // Compact, consistent spacing so large graphs don't blow out the
-      // frame. The expand modal handles the wide case via pan/zoom.
-      nodeSpacing: 50,
-      rankSpacing: 60,
-      padding: 8,
-      diagramPadding: 8,
+      // htmlLabels: true renders labels in <foreignObject> so they
+      // wrap on word boundaries instead of overflowing the rect.
+      // wrappingWidth must comfortably hold the longest node label
+      // we ship — "dispatcher.execute" is 18 chars; "Checkpoint.persist"
+      // is 18; 220px at the current 13px monospace fits ~22 chars per
+      // line with room to breathe.
+      htmlLabels: true,
+      wrappingWidth: 220,
+      // useMaxWidth: false renders the SVG at its natural width — the
+      // frame centers and horizontally scrolls when needed. Using
+      // true makes mermaid scale tall TB diagrams uniformly (width +
+      // height proportionally), producing 4000px-tall artifacts in a
+      // 1280px column when the diagram is naturally narrow.
+      useMaxWidth: false,
+      nodeSpacing: 60,
+      rankSpacing: 70,
+      padding: 12,
+      diagramPadding: 12,
     },
     stateDiagram: {
       curve: 'linear',
-      useMaxWidth: true,
+      useMaxWidth: false,
+      // Enable htmlLabels so state labels render inside foreignObject
+      // and the rect grows to fit the content — otherwise mermaid
+      // sizes the rect from a font-measurement that desyncs with the
+      // monospace font we override in CSS and labels clip to 6 chars
+      // ("pending" → "pendin", "running" → "runnin").
+      htmlLabels: true,
     },
     sequence: {
-      useMaxWidth: true,
+      useMaxWidth: false,
       diagramMarginX: 8,
       diagramMarginY: 8,
     },
@@ -573,7 +593,7 @@ export default withMermaid(defineConfig({
       { text: 'Home', link: '/' },
       { text: 'Guide', link: '/getting-started' },
       { text: 'Reference', link: '/reference/dagonizer' },
-      { text: 'Examples', link: '/examples/01-linear' },
+      { text: 'Examples', link: '/examples/the-archivist' },
       { text: 'GitHub', link: 'https://github.com/Studnicky/Dagonizer' },
     ],
     sidebar,

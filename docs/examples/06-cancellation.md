@@ -1,9 +1,24 @@
 ---
-title: 'Phase 04 · Cancellation'
+title: 'Phase 06 · Cancellation'
 description: 'Abort the Archivist mid-scout when the visitor closes the connection, or cap the entire flow with a hard deadline. The signal propagates through RetryPolicy to every node.'
+seeAlso:
+  - text: 'Running domain: The Archivist'
+    link: './the-archivist'
+  - text: 'Cancellation guide'
+    link: '../guide/cancellation'
+  - text: 'Phase 07 · Retry compose'
+    link: './07-retry'
+    description: '`RetryPolicy.run` honors the same signal'
+  - text: 'Phase 08 · Checkpoint + resume'
+    link: './08-checkpoint'
+  - text: 'Reference: Runtime — `SignalComposer`'
+    link: '../reference/runtime'
+  - text: 'Reference: Lifecycle'
+    link: '../reference/lifecycle'
 ---
 
-# Phase 04 · Cancellation
+
+# Phase 06 · Cancellation
 
 [The Archivist](./the-archivist) sometimes talks to slow external APIs. When the visitor closes the page, the dispatcher aborts cleanly — every node that is mid-network call sees the signal flip, skips its work, and the lifecycle records `cancelled` with the abort reason. A `deadlineMs` cap adds a hard ceiling regardless of the signal.
 
@@ -44,18 +59,9 @@ The `#signal-scout` region shows how `openLibraryScout` propagates `context.sign
 
 ## What it demonstrates
 
-- **`signal` + `deadlineMs` composition** — `SignalComposer` combines the caller-supplied `AbortSignal` with the deadline into one internal signal passed to every node via `context.signal`. Neither option is required; both can be used together.
-- **Nodes propagate the signal** — every scout passes `context.signal` as the second argument to `scoutRetry.run(task, signal)`. The retry policy aborts mid-wait when the signal fires, so scouts do not wait through the full backoff window.
-- **Lifecycle records the exact terminal state** — `cancelled` carries the abort `reason` string; `timed_out` carries the deadline-finished timestamp. `completed` means all nodes ran to their terminal outputs.
-- **`result.cursor`** — records the next node that would have run. When non-null, the flow was interrupted. Pair with `Checkpoint.from` (see [Phase 08](./08-checkpoint)) to resume in a later process.
+⦿ **`signal` + `deadlineMs` composition** — `SignalComposer` combines the caller-supplied `AbortSignal` with the deadline into one internal signal passed to every node via `context.signal`. Neither option is required; both can be used together.
+⦿ **Nodes propagate the signal** — every scout passes `context.signal` as the second argument to `scoutRetry.run(task, signal)`. The retry policy aborts mid-wait when the signal fires, so scouts do not wait through the full backoff window.
+⦿ **Lifecycle records the exact terminal state** — `cancelled` carries the abort `reason` string; `timed_out` carries the deadline-finished timestamp. `completed` means all nodes ran to their terminal outputs.
+⦿ **`result.cursor`** — records the next node that would have run. When non-null, the flow was interrupted. Pair with `Checkpoint.from` (see [Phase 08](./08-checkpoint)) to resume in a later process.
 
 See this in action in the [Archivist live demo](./the-archivist) — the cancel button fires the same `AbortController.abort()` path.
-
-## See also
-
-- [Running domain: The Archivist](./the-archivist)
-- [Cancellation guide](../guide/cancellation)
-- [Phase 05 · Retry compose](./05-retry) — `RetryPolicy.run` honors the same signal
-- [Phase 08 · Checkpoint + resume](./08-checkpoint)
-- [Reference: Runtime — `SignalComposer`](../reference/runtime)
-- [Reference: Lifecycle](../reference/lifecycle)

@@ -1,9 +1,36 @@
+---
+nextSteps:
+  - text: 'Architecture'
+    link: '/architecture'
+    description: 'node kinds, lifecycle FSM, execution model'
+  - text: 'Concepts'
+    link: '/concepts'
+    description: 'nodes, node state, fan-in strategies'
+  - text: 'Cancellation'
+    link: '/guide/cancellation'
+    description: 'AbortSignal integration'
+  - text: 'Checkpoint'
+    link: '/guide/checkpoint'
+    description: 'pause, snapshot, resume'
+seeAlso:
+  - text: 'Concepts'
+    link: './concepts'
+    description: 'vocabulary'
+  - text: 'Architecture'
+    link: './architecture'
+    description: 'submodule layout, interface taxonomy'
+  - text: 'DAGBuilder'
+    link: './guide/builder'
+  - text: 'Example 01: Linear DAG'
+    link: './examples/01-linear'
+---
+
 # Getting Started
 
 ## Requirements
 
-- Node.js 24 or later
-- TypeScript 5.6 or later (`strict: true` recommended)
+⦿ Node.js 24 or later
+⦿ TypeScript 5.6 or later (`strict: true` recommended)
 
 ## Installation
 
@@ -16,7 +43,7 @@ npm install @noocodex/dagonizer
 Define a state class, implement one node, register a one-node DAG, and execute it.
 
 ```ts
-import { NodeStateBase, Dagonizer } from '@noocodex/dagonizer';
+import { NodeStateBase, Dagonizer, DAG_CONTEXT } from '@noocodex/dagonizer';
 import type { DAG, NodeInterface } from '@noocodex/dagonizer';
 
 // 1. Node state — carries data across every node in the DAG.
@@ -35,14 +62,21 @@ const transform: NodeInterface<MyState, 'success'> = {
   },
 };
 
-// 3. DAG — describes the node graph as a plain object.
+// 3. DAG — JSON-LD document describing the node graph.
+//    '@context' declares the ontology namespace (import DAG_CONTEXT from the package).
+//    '@id' is the document URN; '@type' must be 'DAG'.
+//    Each node placement uses '@id' (scoped URN) and '@type' as the kind discriminator.
 const dag: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id': 'urn:noocodex:dag:demo',
+  '@type': 'DAG',
   name: 'demo',
   version: '1',
   entrypoint: 'transform',
   nodes: [
     {
-      type: 'single',
+      '@id': 'urn:noocodex:dag:demo/node/transform',
+      '@type': 'SingleNode',
       name: 'transform',
       node: 'transform',
       outputs: { success: null },   // null → terminal (DAG ends here)
@@ -112,17 +146,3 @@ switch (result.state.lifecycle.kind) {
 ```
 
 See [Cancellation](/guide/cancellation) for how to pass `{ signal }` and `{ deadlineMs }`.
-
-## Next steps
-
-- [Architecture](/architecture) — node kinds, lifecycle FSM, execution model
-- [Concepts](/concepts) — nodes, node state, fan-in strategies
-- [Cancellation](/guide/cancellation) — AbortSignal integration
-- [Checkpoint](/guide/checkpoint) — pause, snapshot, resume
-
-## See also
-
-- [Concepts](./concepts) — vocabulary
-- [Architecture](./architecture) — submodule layout, interface taxonomy
-- [DAGBuilder](./guide/builder)
-- [Example 01: Linear DAG](./examples/01-linear)

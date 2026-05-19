@@ -1,3 +1,11 @@
+---
+seeAlso:
+  - text: 'Reference: Contracts — `ClockProvider`, `SchedulerProvider`, `StateAccessor`'
+    link: './contracts'
+  - text: 'Reference: Testing — `VirtualClockProvider`, `VirtualScheduler`'
+    link: './testing'
+---
+
 # Runtime
 
 `@noocodex/dagonizer/runtime`
@@ -28,7 +36,7 @@ Monotonic time in integer milliseconds. Derived from `hrtime()` — not wall-clo
 static hrtime(): bigint
 ```
 
-Raw monotonic high-resolution time in nanoseconds. The underlying provider's `hrtime()` is the only permitted call site for `process.hrtime.bigint()` outside the runtime module.
+Raw monotonic high-resolution time in nanoseconds. Derived from `performance.now()` (available in both Node and browsers). The `Clock` module is the only permitted call site for `performance.now()` in the package.
 
 ### `Clock.configure(provider)`
 
@@ -74,7 +82,7 @@ import { Scheduler } from '@noocodex/dagonizer/runtime';
 static current(): SchedulerHandle
 ```
 
-Returns the active scheduler handle. `RetryPolicy.sleep` calls `Scheduler.current().scheduleAfter(ms, task)`.
+Returns the active scheduler handle. `RetryPolicy` calls `Scheduler.current().after(ms, signal)` for backoff delays.
 
 ### `Scheduler.configure(provider)`
 
@@ -100,40 +108,27 @@ Public scheduling surface returned by `Scheduler.current()`.
 
 ```ts
 interface SchedulerHandle {
-  scheduleAt(atMs: number, fire: () => void | Promise<void>): ScheduledTask;
-  scheduleAfter(delayMs: number, fire: () => void | Promise<void>): ScheduledTask;
-  scheduleEvery(intervalMs: number, fire: () => void | Promise<void>): ScheduledTask;
+  after(delayMs: number, signal?: AbortSignal): Promise<void>;
+  at(atMs: number, signal?: AbortSignal): Promise<void>;
+  every(intervalMs: number, signal?: AbortSignal): AsyncIterable<void>;
   cancelAll(): void;
 }
 ```
 
-`scheduleAfter(delayMs, task)` is the relative-delay form: fires at `Clock.monotonicMs() + delayMs`.
+`after(delayMs, signal?)` is the relative-delay form: resolves after `delayMs` ms. `at(atMs, signal?)` resolves at the given monotonic timestamp. `every(intervalMs, signal?)` yields once per interval until the signal fires. `cancelAll()` cancels all in-flight timers.
 
 ---
 
 ## Interface: `SchedulerProvider`
 
-Low-level backend for `Scheduler`.
+Low-level backend for `Scheduler`. Same shape as `SchedulerHandle`; implement to supply a custom scheduling backend.
 
 ```ts
 interface SchedulerProvider {
-  scheduleAt(atMs: number, fire: () => void | Promise<void>): ScheduledTask;
-  scheduleEvery(intervalMs: number, fire: () => void | Promise<void>): ScheduledTask;
+  after(delayMs: number, signal?: AbortSignal): Promise<void>;
+  at(atMs: number, signal?: AbortSignal): Promise<void>;
+  every(intervalMs: number, signal?: AbortSignal): AsyncIterable<void>;
   cancelAll(): void;
-}
-```
-
----
-
-## Interface: `ScheduledTask`
-
-Handle for a pending task.
-
-```ts
-interface ScheduledTask {
-  readonly id: string;
-  readonly atMs: number;
-  readonly cancel: () => void;  // idempotent
 }
 ```
 
@@ -208,12 +203,6 @@ const BackoffStrategy = {
 ```
 
 Pass as `strategy` in `RetryPolicyOptionsInterface`. See [Retry](/guide/retry) for delay formulas.
-
-## See also
-
-- [Reference: Contracts — `ClockProvider`, `SchedulerProvider`, `StateAccessor`](./contracts)
-- [Reference: Testing — `VirtualClockProvider`, `VirtualScheduler`](./testing)
-
 ## Related guides
 
 - [Cancellation](../guide/cancellation) — `SignalComposer`

@@ -1,7 +1,20 @@
 ---
 title: 'Phase 01 · Linear intake'
 description: 'The Archivist demo end-to-end: dispatcher wiring, molecular deep-DAG registration, and a single execute call. Demonstrates Dagonizer node registration, DAG registration order, and lifecycle output.'
+seeAlso:
+  - text: 'Running domain: The Archivist'
+    link: './the-archivist'
+  - text: 'Phase 04 · Fan-out scout'
+    link: './04-fanout'
+    description: 'the `book-search-fanout` deep-DAG internals'
+  - text: 'DAGBuilder'
+    link: '../guide/builder'
+  - text: 'Reference: Dagonizer'
+    link: '../reference/dagonizer'
+  - text: 'Reference: Entities — `SingleNode`'
+    link: '../reference/entities'
 ---
+
 
 # Phase 01 · Linear intake
 
@@ -35,17 +48,9 @@ The `#linear-run` region covers the dispatcher construction, molecular deep-DAG 
 
 ## What it demonstrates
 
-- **Molecular registration order** — deep-DAG nodes must be registered before their DAG is registered (`registerBookSearchFanoutNodes` → `dispatcher.registerDAG(BookSearchFanoutDAG)`), and both deep-DAGs before the parent `archivistDAG`. The dispatcher validates all node references at registration time.
-- **Single execute call** — `dispatcher.execute('the-archivist', visitor)` drives the entire multi-branch flow. The caller sees one `ExecutionResult<ArchivistState>` containing the final state and lifecycle.
-- **Lifecycle result** — `result.state.lifecycle.kind` is `'completed'`, `'cancelled'`, or `'timed_out'`. Nodes never throw; the dispatcher always returns.
-- **Services bag** — every node receives `context.services` (LLM, search tools, memory, logger). Nodes never construct their own clients.
+⦿ **Molecular registration order** — deep-DAG nodes must be registered before their DAG is registered (`registerBookSearchFanoutNodes` → `dispatcher.registerDAG(BookSearchFanoutDAG)`), and both deep-DAGs before the parent `archivistDAG`. The dispatcher validates all node references at registration time.
+⦿ **Single execute call** — `dispatcher.execute('the-archivist', visitor)` drives the entire multi-branch flow. The caller sees one `ExecutionResult<ArchivistState>` containing the final state and lifecycle.
+⦿ **Lifecycle result** — `result.state.lifecycle.kind` is `'completed'`, `'cancelled'`, or `'timed_out'`. Nodes never throw; the dispatcher always returns.
+⦿ **Services bag** — every node receives `context.services` (LLM, search tools, memory, logger). Nodes never construct their own clients.
 
 See this in action in the [Archivist live demo](./the-archivist).
-
-## See also
-
-- [Running domain: The Archivist](./the-archivist)
-- [Phase 02 · Fan-out scout](./02-fanout) — the `book-search-fanout` deep-DAG internals
-- [DAGBuilder](../guide/builder)
-- [Reference: Dagonizer](../reference/dagonizer)
-- [Reference: Entities — `SingleNode`](../reference/entities)

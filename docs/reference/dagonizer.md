@@ -1,8 +1,21 @@
+---
+seeAlso:
+  - text: 'Reference: Execution'
+    link: './execution'
+    description: 'what `execute` / `resume` return'
+  - text: 'Reference: Contracts — `NodeInterface`, `ExecuteOptionsInterface`'
+    link: './contracts'
+  - text: 'Reference: Core — `ParallelCombiners`, `FanInStrategies`'
+    link: './core'
+  - text: 'Reference: Lifecycle'
+    link: './lifecycle'
+---
+
 # Dagonizer
 
 `@noocodex/dagonizer` — main entry point export.
 
-## Class: `Dagonizer<TState>`
+## Class: `Dagonizer<TState, TServices>`
 
 The DAG dispatcher. Holds the node and DAG registries, validates configurations at registration time, and runs the node-graph iterator.
 
@@ -10,9 +23,28 @@ The DAG dispatcher. Holds the node and DAG registries, validates configurations 
 import { Dagonizer } from '@noocodex/dagonizer';
 
 const dispatcher = new Dagonizer<MyState>();
+// With services:
+const dispatcher = new Dagonizer<MyState, MyServices>({ services: { logger, db } });
 ```
 
-`TState` must satisfy `NodeStateInterface`. In practice, always extend `NodeStateBase`.
+`TState` must satisfy `NodeStateInterface`. In practice, always extend `NodeStateBase`. `TServices` is the optional services bag exposed to every node via `context.services`; defaults to `undefined`.
+
+### Constructor
+
+```ts
+constructor(options?: DagonizerOptionsInterface<TServices>)
+```
+
+`options.accessor` swaps the path resolver for fan-out reads, fan-in writes, and deep-DAG state mapping. Defaults to `DottedPathAccessor`. `options.services` is the typed services bag; defaults to `undefined`.
+
+### `DagonizerOptionsInterface`
+
+```ts
+interface DagonizerOptionsInterface<TServices = undefined> {
+  readonly accessor?: StateAccessor;
+  readonly services?: TServices;
+}
+```
 
 ---
 
@@ -20,13 +52,13 @@ const dispatcher = new Dagonizer<MyState>();
 
 ```ts
 registerNode<TOutput extends string>(
-  node: NodeInterface<TState, TOutput>,
+  node: NodeInterface<TState, TOutput, TServices>,
 ): void
 ```
 
 Registers a node in the dispatcher's node registry. If the node defines an optional `validate()` method, it is called immediately and throws `DAGError` if it returns `{ valid: false }`.
 
-Nodes are stored widened to `NodeInterface<TState, string>`. Narrow `TOutput` → wide `string` is sound covariantly.
+Nodes are stored widened to `NodeInterface<TState, string, TServices>`. Narrow `TOutput` → wide `string` is sound covariantly.
 
 ---
 
@@ -165,18 +197,10 @@ protected onError(nodeName: string, error: Error, state: TState): void
 | `onError` | When the signal fires or a node throws |
 
 See [Observability](/guide/observability) for usage examples.
-
-## See also
-
-- [Reference: Execution](./execution) — what `execute` / `resume` return
-- [Reference: Contracts — `NodeInterface`, `ExecuteOptionsInterface`](./contracts)
-- [Reference: Core — `ParallelCombiners`, `FanInStrategies`](./core)
-- [Reference: Lifecycle](./lifecycle)
-
 ## Related guides
 
-- [DAGBuilder](../guide/builder)
-- [Cancellation](../guide/cancellation)
-- [Services](../guide/services)
-- [State accessors](../guide/state-accessor)
-- [Observability](../guide/observability)
+⦿ [DAGBuilder](../guide/builder)
+⦿ [Cancellation](../guide/cancellation)
+⦿ [Services](../guide/services)
+⦿ [State accessors](../guide/state-accessor)
+⦿ [Observability](../guide/observability)

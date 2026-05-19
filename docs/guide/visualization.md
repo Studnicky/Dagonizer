@@ -1,3 +1,16 @@
+---
+seeAlso:
+  - text: 'DAGBuilder'
+    link: './builder'
+    description: 'render anything `build()` returns'
+  - text: 'Contract-derived flows'
+    link: './derive'
+    description: 'render the DAG `FlowDeriver.derive` produced'
+  - text: 'Schema & JSON loading'
+    link: './schema'
+    description: 'render a DAG loaded from JSON'
+---
+
 # Visualization
 
 `MermaidRenderer.render(dag)` emits Mermaid `flowchart` source for any `DAG`. Embed the output in Markdown, render via the Mermaid CLI, or feed to a Mermaid-aware viewer.
@@ -42,14 +55,7 @@ const sources = dispatcher.listDAGs().map((dag) => ({
 ```
 
 The dispatcher's read accessors (`getDAG`, `listDAGs`, `getNode`, `listNodes`) make documentation generation straightforward — pull every registered DAG, render it, and write the markdown.
-
-## See also
-
-- [DAGBuilder](./builder) — render anything `build()` returns
-- [Contract-derived flows](./derive) — render the DAG `FlowDeriver.derive` produced
-- [Schema & JSON loading](./schema) — render a DAG loaded from JSON
-
 ## Related reference
 
-- [Reference: Viz — `MermaidRenderer`](../reference/viz)
-- [Reference: Dagonizer — read accessors `getDAG` / `listDAGs`](../reference/dagonizer)
+⦿ [Reference: Viz — `MermaidRenderer`](../reference/viz)
+⦿ [Reference: Dagonizer — read accessors `getDAG` / `listDAGs`](../reference/dagonizer)

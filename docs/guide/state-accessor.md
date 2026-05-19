@@ -1,3 +1,13 @@
+---
+seeAlso:
+  - text: 'Subclassing State'
+    link: './subclassing'
+    description: 'the state object the accessor reads from and writes to'
+  - text: 'DAGBuilder'
+    link: './builder'
+    description: 'placements that use `source` / `target` paths run through the accessor'
+---
+
 # State accessors
 
 Fan-out source reads, fan-in writes, and deep-DAG state mapping all walk paths into the live state object. The default `DottedPathAccessor` walks `path.split('.')` and creates intermediate plain objects on write.
@@ -50,10 +60,10 @@ const dispatcher = new Dagonizer<MyState>({ accessor: new JsonPointerAccessor() 
 
 The same accessor flows through every code path that resolves a state path:
 
-- `fanOut.source` — reading the array to fan over.
-- `fanIn.target` (append strategy) — writing the merged results.
-- `fanIn.partitions` (partition strategy) — writing each output bucket.
-- `deepDAG.stateMapping.input` / `output` — copying fields between parent and child state.
+⦿ `fanOut.source` — reading the array to fan over.
+⦿ `fanIn.target` (append strategy) — writing the merged results.
+⦿ `fanIn.partitions` (partition strategy) — writing each output bucket.
+⦿ `deepDAG.stateMapping.input` / `output` — copying fields between parent and child state.
 
 ## Accessor inside fan-in strategies
 
@@ -75,14 +85,8 @@ class AverageFanIn extends FanInStrategy {
 ```
 
 This keeps every state-path read/write going through one resolution strategy.
-
-## See also
-
-- [Subclassing State](./subclassing) — the state object the accessor reads from and writes to
-- [DAGBuilder](./builder) — placements that use `source` / `target` paths run through the accessor
-
 ## Related reference
 
-- [Reference: Contracts — `StateAccessor`](../reference/contracts)
-- [Reference: Runtime — `DottedPathAccessor`](../reference/runtime)
-- [Reference: Core — `FanInExecution.accessor`](../reference/core)
+⦿ [Reference: Contracts — `StateAccessor`](../reference/contracts)
+⦿ [Reference: Runtime — `DottedPathAccessor`](../reference/runtime)
+⦿ [Reference: Core — `FanInExecution.accessor`](../reference/core)

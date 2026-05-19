@@ -1,3 +1,16 @@
+---
+seeAlso:
+  - text: 'Retry'
+    link: './retry'
+    description: '`RetryPolicy.run` honors `context.signal` so retries abort cleanly'
+  - text: 'Checkpoint'
+    link: './checkpoint'
+    description: 'abort + persist the cursor so the next process can resume'
+  - text: 'Observability'
+    link: './observability'
+    description: '`onError` fires when an abort or deadline interrupts a node'
+---
+
 # Cancellation
 
 Cancellation flows through the standard Web `AbortSignal` API. The dispatcher accepts two optional parameters in the `execute()` / `resume()` options object.
@@ -46,7 +59,7 @@ const fetchNode: NodeInterface<NodeStateBase, 'success' | 'error'> = {
 };
 ```
 
-`context` also carries `context.flowName` and `context.nodeName` for logging.
+`context` also carries `context.dagName` and `context.nodeName` for logging.
 
 ## Detecting abort inside a node
 
@@ -64,9 +77,9 @@ async execute(state, context) {
 
 Once the signal fires:
 
-- The iterator stops without starting the next node.
-- `result.cursor` holds the node that would have run next — pass it to `dispatcher.resume()` to continue from that point.
-- `result.state.lifecycle.kind` is `'cancelled'` (caller signal) or `'timed_out'` (deadline).
+⦿ The iterator stops without starting the next node.
+⦿ `result.cursor` holds the node that would have run next — pass it to `dispatcher.resume()` to continue from that point.
+⦿ `result.state.lifecycle.kind` is `'cancelled'` (caller signal) or `'timed_out'` (deadline).
 
 ```ts
 const ctl = new AbortController();
@@ -94,15 +107,8 @@ const result = await dispatcher.execute('flow', state, { signal: combined });
 ```
 
 This is equivalent to passing both as `signal` + `deadlineMs` — choose whichever form fits the call site.
-
-## See also
-
-- [Retry](./retry) — `RetryPolicy.run` honors `context.signal` so retries abort cleanly
-- [Checkpoint](./checkpoint) — abort + persist the cursor so the next process can resume
-- [Observability](./observability) — `onError` fires when an abort or deadline interrupts a node
-
 ## Related reference
 
-- [Reference: Runtime — `SignalComposer`](../reference/runtime)
-- [Reference: Contracts — `ExecuteOptionsInterface`](../reference/contracts)
-- [Example: Cancellation](../examples/04-cancellation)
+⦿ [Reference: Runtime — `SignalComposer`](../reference/runtime)
+⦿ [Reference: Contracts — `ExecuteOptionsInterface`](../reference/contracts)
+⦿ [Example: Cancellation](../examples/06-cancellation)

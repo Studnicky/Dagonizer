@@ -1,3 +1,19 @@
+---
+seeAlso:
+  - text: 'Reference: Core'
+    link: './core'
+    description: '`ParallelCombiner`, `FanInStrategy` extension classes'
+  - text: 'Reference: Derive'
+    link: './derive'
+    description: 'uses `OperationContract`'
+  - text: 'Reference: Runtime'
+    link: './runtime'
+    description: 'default implementations of `ClockProvider`, `SchedulerProvider`, `StateAccessor`'
+  - text: 'Reference: Checkpoint'
+    link: './checkpoint'
+    description: 'uses `CheckpointStore`'
+---
+
 # Contracts
 
 Adapter contracts live at the root of `src/contracts/` and ship through `@noocodex/dagonizer/contracts`. Single source of truth — never re-exported from a sibling module.
@@ -27,6 +43,7 @@ interface NodeInterface<
 > {
   readonly name: string;
   readonly outputs: readonly TOutput[];
+  readonly timeoutMs?: number;
   execute(state: TState, context: NodeContextInterface<TServices>): Promise<NodeOutputInterface<TOutput>>;
   destroy?(): Promise<void>;
   validate?(): ValidationResult;
@@ -34,6 +51,8 @@ interface NodeInterface<
 ```
 
 The contract every consumer node implements. Nodes are stateless; they mutate state and route to a named output. They never throw — caught errors route to `'error'` (or whatever the consumer declared).
+
+`timeoutMs` is an optional per-node wall-clock budget in milliseconds. When set, the engine derives a child `AbortController` from the run's signal and schedules an abort after `timeoutMs`. On expiry, `NodeTimeoutError` is thrown and the run is marked failed.
 
 ## ExecuteOptionsInterface
 
@@ -60,8 +79,15 @@ interface SchedulerProvider {
   cancelAll(): void;
 }
 
-interface SchedulerHandle extends SchedulerProvider {}
+interface SchedulerHandle {
+  after(delayMs: number, signal?: AbortSignal): Promise<void>;
+  at(atMs: number, signal?: AbortSignal): Promise<void>;
+  every(intervalMs: number, signal?: AbortSignal): AsyncIterable<void>;
+  cancelAll(): void;
+}
 ```
+
+`SchedulerProvider` is the backend contract (implement to swap in a custom scheduler). `SchedulerHandle` is the public surface returned by `Scheduler.current()` — same shape, separate type.
 
 Implement these to swap time sources — typically only in tests via `VirtualClockProvider` and `VirtualScheduler` from `@noocodex/dagonizer/testing`.
 
@@ -92,13 +118,14 @@ Persistence backend for checkpoints. `Checkpoint.persist` and `Checkpoint.recall
 
 ```ts
 interface OperationContract {
-  readonly name: string;
+  readonly name:         string;
   readonly hardRequired: readonly string[];
-  readonly produces: readonly string[];
+  readonly produces:     readonly string[];
+  readonly outputs:      readonly string[];
 }
 ```
 
-Per-operation contract consumed by `FlowDeriver.derive` to compute DAG topology automatically. See [contract-derived flows](../guide/derive.md).
+Per-operation contract consumed by `FlowDeriver.derive` to compute DAG topology automatically. `outputs` lists every port the node can emit; every port auto-wires to the next derived stage and `FlowAnnotations.terminals` overrides individual ports. A multi-port node like `['success', 'cached', 'skipped', 'error']` routes uniformly with one contract field instead of N terminal annotations. See [contract-derived flows](../guide/derive.md).
 
 ## RetryPolicyOptionsInterface / ErrorConstructorType
 
@@ -118,18 +145,10 @@ interface RetryPolicyOptionsInterface {
 ```
 
 Construction options for `RetryPolicy`. `retryOn` and `abortOn` are checked via `instanceof` — supply error classes, not error names.
-
-## See also
-
-- [Reference: Core](./core) — `ParallelCombiner`, `FanInStrategy` extension classes
-- [Reference: Derive](./derive) — uses `OperationContract`
-- [Reference: Runtime](./runtime) — default implementations of `ClockProvider`, `SchedulerProvider`, `StateAccessor`
-- [Reference: Checkpoint](./checkpoint) — uses `CheckpointStore`
-
 ## Related guides
 
-- [Cancellation](../guide/cancellation) — `ExecuteOptionsInterface`
-- [Services](../guide/services) — `NodeInterface<TState, TOutput, TServices>`
-- [State accessors](../guide/state-accessor) — `StateAccessor`
-- [Persistence](../guide/persistence) — `CheckpointStore`
-- [Contract-derived flows](../guide/derive) — `OperationContract`
+⦿ [Cancellation](../guide/cancellation) — `ExecuteOptionsInterface`
+⦿ [Services](../guide/services) — `NodeInterface<TState, TOutput, TServices>`
+⦿ [State accessors](../guide/state-accessor) — `StateAccessor`
+⦿ [Persistence](../guide/persistence) — `CheckpointStore`
+⦿ [Contract-derived flows](../guide/derive) — `OperationContract`
