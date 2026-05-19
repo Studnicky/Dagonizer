@@ -1,14 +1,20 @@
 /**
- * 02-builder — DAGBuilder chainable API.
+ * 02-builder — DAGBuilder: deterministic authoring for ETL / control-flow chains.
  *
- * Demonstrates the DAGBuilder as an alternative to writing DAG literals by hand.
- * The builder constructs the same JSON-LD canonical DAG that 01-linear defines
- * manually, but with compile-time exhaustiveness checking: the `routes` argument
- * to `.node()` must cover every key in the node's TOutput union.
+ * Use this surface when you know the sequence of steps end-to-end and want
+ * the TypeScript compiler to verify every route is wired. Each `.node()` call
+ * declares one placement and its routing map; the `routes` argument is narrowed
+ * by the node's TOutput union, so misspelled or missing route keys are
+ * compile errors before the DAG ever runs.
+ *
+ * DAGBuilder is the right tool for: ETL pipelines, transformation chains,
+ * fixed user-onboarding flows, anywhere the order IS the spec. If your flow
+ * is agent-style — operations declare data dependencies and the topology
+ * should fall out — use DAGDeriver (see examples/derive.ts).
  *
  * Watch: DAGBuilder.build() returns a fully-formed DAG including '@context',
- * '@id', and '@type'. Passing that directly to registerDAG() works without any
- * manual shape construction.
+ * '@id', and '@type'. Identical canonical output to 01-linear's hand-written
+ * DAG literal — DAGBuilder is sugar that produces the same wire-format object.
  *
  * Run: npx tsx examples/02-builder.ts
  */

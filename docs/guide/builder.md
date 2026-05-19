@@ -16,7 +16,9 @@ seeAlso:
 
 # DAGBuilder
 
-`DAGBuilder` is a chainable authoring API that produces a `DAG`. It is a thin layer over plain-object DAG configs — `build()` returns the same data structure the dispatcher consumes.
+`DAGBuilder` is a chainable authoring API for **deterministic workflows you control end-to-end** — ETL pipelines, transformation chains, fixed sequences where the order IS the spec. TypeScript narrows the `routes` map at each `.node()` call from the node's `TOutput` union, so misspelled routes are compile errors before the DAG runs.
+
+If your flow is agent-style — operations declare data dependencies and you want the topology to fall out automatically — use [DAGDeriver](./derive) instead. See [Authoring DAGs](./authoring) for the decision matrix. Both surfaces produce the same canonical `DAG` JSON-LD object; pick the one that matches the mental model you use to describe the flow.
 
 ## Basic usage
 

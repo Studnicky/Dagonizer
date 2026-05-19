@@ -4,17 +4,17 @@ import { describe, it } from 'node:test';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import type { OperationContract } from '../../src/contracts/OperationContract.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import { FlowDeriver } from '../../src/derive/FlowDeriver.js';
+import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
-void describe('FlowDeriver.derive', () => {
+void describe('DAGDeriver.derive', () => {
   void it('produces a linear DAG from a chain of contracts', () => {
     const contracts: OperationContract[] = [
       { 'name': 'a', 'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success'] },
       { 'name': 'b', 'hardRequired': ['x'],     'produces': ['y'], 'outputs': ['success'] },
       { 'name': 'c', 'hardRequired': ['y'],     'produces': ['z'], 'outputs': ['success'] },
     ];
-    const dag = FlowDeriver.derive({
+    const dag = DAGDeriver.derive({
       'name': 'chain',
       'version': '1',
       'entrypoint': 'a',
@@ -42,7 +42,7 @@ void describe('FlowDeriver.derive', () => {
       { 'name': 'fan-b', 'hardRequired': ['input'],            'produces': ['b-data'],  'outputs': ['success'] },
       { 'name': 'merge', 'hardRequired': ['a-data', 'b-data'], 'produces': ['merged'],  'outputs': ['success'] },
     ];
-    const dag = FlowDeriver.derive({
+    const dag = DAGDeriver.derive({
       'name': 'fan',
       'version': '1',
       'entrypoint': 'fan-a',
@@ -58,7 +58,7 @@ void describe('FlowDeriver.derive', () => {
       { 'name': 'scout', 'hardRequired': ['tasks'],        'produces': ['scoutResults'], 'outputs': ['success'] },
       { 'name': 'merge', 'hardRequired': ['scoutResults'], 'produces': ['merged'],       'outputs': ['success'] },
     ];
-    const dag = FlowDeriver.derive({
+    const dag = DAGDeriver.derive({
       'name': 'scout-flow',
       'version': '1',
       'entrypoint': 'plan',
@@ -66,11 +66,13 @@ void describe('FlowDeriver.derive', () => {
       'annotations': {
         'fanouts': {
           'scout': {
-            'source': 'tasks',
-            'itemKey': 'currentTask',
-            'concurrency': 3,
+            'source':         'tasks',
+            'itemKey':        'currentTask',
+            'node':           'scout',
+            'concurrency':    3,
+            'strategy':       'custom',
             'fanInOperation': 'merge',
-            'outcomes': ['all-success', 'partial', 'all-error', 'empty'],
+            'outcomes':       ['all-success', 'partial', 'all-error', 'empty'],
           },
         },
       },
@@ -79,9 +81,104 @@ void describe('FlowDeriver.derive', () => {
     assert.ok(fanOut !== undefined);
     if (fanOut !== undefined && fanOut['@type'] === 'FanOutNode') {
       assert.equal(fanOut.fanIn.strategy, 'custom');
-      assert.equal(fanOut.fanIn.customNode, 'merge');
+      if (fanOut.fanIn.strategy === 'custom') {
+        assert.equal(fanOut.fanIn.customNode, 'merge');
+      }
       assert.equal(fanOut.concurrency, 3);
     }
+  });
+
+  void it('renders fan-out with partition strategy', () => {
+    const contracts: OperationContract[] = [
+      { 'name': 'plan',  'hardRequired': ['input'],  'produces': ['tasks'],   'outputs': ['success'] },
+      { 'name': 'scout', 'hardRequired': ['tasks'],  'produces': ['results'], 'outputs': ['success'] },
+    ];
+    const dag = DAGDeriver.derive({
+      'name': 'partition-flow',
+      'version': '1',
+      'entrypoint': 'plan',
+      contracts,
+      'annotations': {
+        'fanouts': {
+          'scout': {
+            'source':   'tasks',
+            'itemKey':  'currentTask',
+            'node':     'scout',
+            'strategy': 'partition',
+            'partitions': { 'success': 'state.passed', 'error': 'state.failed' },
+            'outcomes': ['success', 'error', 'empty'],
+          },
+        },
+      },
+    });
+    const fanOut = dag.nodes.find((node) => node['@type'] === 'FanOutNode');
+    assert.ok(fanOut !== undefined && fanOut['@type'] === 'FanOutNode');
+    if (fanOut !== undefined && fanOut['@type'] === 'FanOutNode') {
+      assert.equal(fanOut.fanIn.strategy, 'partition');
+      if (fanOut.fanIn.strategy === 'partition') {
+        assert.deepEqual(fanOut.fanIn.partitions, { 'success': 'state.passed', 'error': 'state.failed' });
+      }
+    }
+  });
+
+  void it('renders fan-out with append strategy', () => {
+    const contracts: OperationContract[] = [
+      { 'name': 'plan',  'hardRequired': ['input'], 'produces': ['tasks'],   'outputs': ['success'] },
+      { 'name': 'scout', 'hardRequired': ['tasks'], 'produces': ['results'], 'outputs': ['success'] },
+    ];
+    const dag = DAGDeriver.derive({
+      'name': 'append-flow',
+      'version': '1',
+      'entrypoint': 'plan',
+      contracts,
+      'annotations': {
+        'fanouts': {
+          'scout': {
+            'source':   'tasks',
+            'itemKey':  'currentTask',
+            'node':     'scout',
+            'strategy': 'append',
+            'target':   'state.allResults',
+            'outcomes': ['success', 'error'],
+          },
+        },
+      },
+    });
+    const fanOut = dag.nodes.find((node) => node['@type'] === 'FanOutNode');
+    if (fanOut !== undefined && fanOut['@type'] === 'FanOutNode') {
+      assert.equal(fanOut.fanIn.strategy, 'append');
+      if (fanOut.fanIn.strategy === 'append') {
+        assert.equal(fanOut.fanIn.target, 'state.allResults');
+      }
+    }
+  });
+
+  void it('throws when partitions map references an outcome not in outcomes', () => {
+    const contracts: OperationContract[] = [
+      { 'name': 'plan',  'hardRequired': ['input'], 'produces': ['tasks'],   'outputs': ['success'] },
+      { 'name': 'scout', 'hardRequired': ['tasks'], 'produces': ['results'], 'outputs': ['success'] },
+    ];
+    assert.throws(
+      () => DAGDeriver.derive({
+        'name': 'mismatched-partition',
+        'version': '1',
+        'entrypoint': 'plan',
+        contracts,
+        'annotations': {
+          'fanouts': {
+            'scout': {
+              'source':   'tasks',
+              'itemKey':  'currentTask',
+              'node':     'scout',
+              'strategy': 'partition',
+              'partitions': { 'unknown-outcome': 'state.somewhere' },
+              'outcomes': ['success', 'error'],
+            },
+          },
+        },
+      }),
+      /partitions\['unknown-outcome'\] is not listed in outcomes/,
+    );
   });
 
   void it('terminal annotation routes alternate outcomes to null', () => {
@@ -89,7 +186,7 @@ void describe('FlowDeriver.derive', () => {
       { 'name': 'classify', 'hardRequired': ['input'],          'produces': ['classification'], 'outputs': ['success', 'off-topic'] },
       { 'name': 'plan',     'hardRequired': ['classification'], 'produces': ['plan'],           'outputs': ['success'] },
     ];
-    const dag = FlowDeriver.derive({
+    const dag = DAGDeriver.derive({
       'name': 'gated',
       'version': '1',
       'entrypoint': 'classify',
@@ -115,7 +212,7 @@ void describe('FlowDeriver.derive', () => {
       { 'name': 'fetch',     'hardRequired': ['url'],     'produces': ['raw'],    'outputs': ['success', 'cached', 'skipped', 'error', 'unknown'] },
       { 'name': 'normalize', 'hardRequired': ['raw'],     'produces': ['normal'], 'outputs': ['success'] },
     ];
-    const dag = FlowDeriver.derive({
+    const dag = DAGDeriver.derive({
       'name': 'multi-port',
       'version': '1',
       'entrypoint': 'fetch',
@@ -138,7 +235,7 @@ void describe('FlowDeriver.derive', () => {
       { 'name': 'fetch',     'hardRequired': ['url'], 'produces': ['raw'],    'outputs': ['success', 'cached', 'error'] },
       { 'name': 'normalize', 'hardRequired': ['raw'], 'produces': ['normal'], 'outputs': ['success'] },
     ];
-    const dag = FlowDeriver.derive({
+    const dag = DAGDeriver.derive({
       'name': 'partial-override',
       'version': '1',
       'entrypoint': 'fetch',
@@ -162,7 +259,7 @@ void describe('FlowDeriver.derive', () => {
       { 'name': 'fetch', 'hardRequired': ['url'], 'produces': ['raw'], 'outputs': ['success', 'error'] },
     ];
     assert.throws(
-      () => FlowDeriver.derive({
+      () => DAGDeriver.derive({
         'name': 'mismatched',
         'version': '1',
         'entrypoint': 'fetch',
@@ -182,7 +279,7 @@ void describe('FlowDeriver.derive', () => {
       { 'name': 'prepare', 'hardRequired': ['input'],   'produces': ['payload'], 'outputs': ['success'] },
       { 'name': 'invoke',  'hardRequired': ['payload'], 'produces': ['result'],  'outputs': ['success', 'error'] },
     ];
-    const dag = FlowDeriver.derive({
+    const dag = DAGDeriver.derive({
       'name': 'subdag-render',
       'version': '1',
       'entrypoint': 'prepare',
@@ -211,7 +308,7 @@ void describe('FlowDeriver.derive', () => {
     const contracts: OperationContract[] = [
       { 'name': 'invoke', 'hardRequired': ['input'], 'produces': ['result'], 'outputs': ['success'] },
     ];
-    const dag = FlowDeriver.derive({
+    const dag = DAGDeriver.derive({
       'name': 'subdag-mapping',
       'version': '1',
       'entrypoint': 'invoke',
@@ -244,7 +341,7 @@ void describe('FlowDeriver.derive', () => {
       { 'name': 'invoke', 'hardRequired': ['input'],  'produces': ['result'], 'outputs': ['success', 'cached', 'error'] },
       { 'name': 'finish', 'hardRequired': ['result'], 'produces': ['done'],   'outputs': ['success'] },
     ];
-    const dag = FlowDeriver.derive({
+    const dag = DAGDeriver.derive({
       'name': 'subdag-routing',
       'version': '1',
       'entrypoint': 'invoke',
@@ -276,7 +373,7 @@ void describe('FlowDeriver.derive', () => {
       { 'name': 'invoke', 'hardRequired': ['input'], 'produces': ['result'], 'outputs': ['success', 'error'] },
     ];
     assert.throws(
-      () => FlowDeriver.derive({
+      () => DAGDeriver.derive({
         'name': 'subdag-mismatch',
         'version': '1',
         'entrypoint': 'invoke',
@@ -297,6 +394,76 @@ void describe('FlowDeriver.derive', () => {
     );
   });
 
+  void it('parallels annotation renders explicit ParallelNode with chosen combine strategy', () => {
+    const contracts: OperationContract[] = [
+      { 'name': 'a', 'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success'] },
+      { 'name': 'b', 'hardRequired': ['input'], 'produces': ['y'], 'outputs': ['success'] },
+      { 'name': 'c', 'hardRequired': ['x', 'y'], 'produces': ['z'], 'outputs': ['success'] },
+    ];
+    const dag = DAGDeriver.derive({
+      'name': 'explicit-parallel',
+      'version': '1',
+      'entrypoint': 'a',
+      contracts,
+      'annotations': {
+        'parallels': {
+          'fan-stage': {
+            'members': ['a', 'b'],
+            'combine': 'all-success',
+          },
+        },
+      },
+    });
+    const explicit = dag.nodes.find((node) => node.name === 'fan-stage');
+    assert.ok(explicit !== undefined && explicit['@type'] === 'ParallelNode');
+    if (explicit !== undefined && explicit['@type'] === 'ParallelNode') {
+      assert.deepEqual([...explicit.nodes], ['a', 'b']);
+      assert.equal(explicit.combine, 'all-success');
+    }
+    // Auto-grouped placement with the auto name `depth_0` should NOT exist
+    // since both depth-0 members are claimed by the explicit group.
+    const auto = dag.nodes.find((node) => node.name === 'depth_0');
+    assert.equal(auto, undefined, 'no auto-grouped depth_0 when members are in explicit parallels');
+  });
+
+  void it('throws when a parallels group is empty', () => {
+    const contracts: OperationContract[] = [
+      { 'name': 'a', 'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success'] },
+    ];
+    assert.throws(
+      () => DAGDeriver.derive({
+        'name': 'empty-parallel',
+        'version': '1',
+        'entrypoint': 'a',
+        contracts,
+        'annotations': { 'parallels': { 'g': { 'members': [], 'combine': 'collect' } } },
+      }),
+      /parallels\['g'\] declares zero members/,
+    );
+  });
+
+  void it('throws when an operation appears in multiple parallels', () => {
+    const contracts: OperationContract[] = [
+      { 'name': 'a', 'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success'] },
+      { 'name': 'b', 'hardRequired': ['input'], 'produces': ['y'], 'outputs': ['success'] },
+    ];
+    assert.throws(
+      () => DAGDeriver.derive({
+        'name': 'overlapping',
+        'version': '1',
+        'entrypoint': 'a',
+        contracts,
+        'annotations': {
+          'parallels': {
+            'group-1': { 'members': ['a', 'b'], 'combine': 'collect' },
+            'group-2': { 'members': ['b'],      'combine': 'collect' },
+          },
+        },
+      }),
+      /appears in multiple parallels/,
+    );
+  });
+
   void it('throws when an operation appears in both fanouts and subDAGs', () => {
     const contracts: OperationContract[] = [
       { 'name': 'plan',  'hardRequired': ['input'], 'produces': ['tasks'],       'outputs': ['success'] },
@@ -304,7 +471,7 @@ void describe('FlowDeriver.derive', () => {
       { 'name': 'merge', 'hardRequired': ['scoutResult'], 'produces': ['merged'], 'outputs': ['success'] },
     ];
     assert.throws(
-      () => FlowDeriver.derive({
+      () => DAGDeriver.derive({
         'name': 'ambiguous',
         'version': '1',
         'entrypoint': 'plan',
@@ -314,6 +481,8 @@ void describe('FlowDeriver.derive', () => {
             'scout': {
               'source':         'tasks',
               'itemKey':        'currentTask',
+              'node':           'scout',
+              'strategy':       'custom',
               'fanInOperation': 'merge',
               'outcomes':       ['all-success'],
             },
@@ -330,7 +499,7 @@ void describe('FlowDeriver.derive', () => {
     );
   });
 
-  void it('end-to-end: dispatcher executes a DeepDAGNode emitted by FlowDeriver', async () => {
+  void it('end-to-end: dispatcher executes a DeepDAGNode emitted by DAGDeriver', async () => {
     // Parent flow: prepare → invoke-child (deep-DAG) → finalize.
     // Deep-DAG placements cannot terminate the run — the parent DAG
     // owns END — so the deep-DAG step must be followed by another
@@ -340,7 +509,7 @@ void describe('FlowDeriver.derive', () => {
       { 'name': 'invoke-child', 'hardRequired': ['intermediate'], 'produces': ['childResult'],  'outputs': ['success'] },
       { 'name': 'finalize',     'hardRequired': ['childResult'],  'produces': ['final'],        'outputs': ['success'] },
     ];
-    const parentDAG = FlowDeriver.derive({
+    const parentDAG = DAGDeriver.derive({
       'name': 'parent',
       'version': '1',
       'entrypoint': 'prepare',
@@ -354,7 +523,7 @@ void describe('FlowDeriver.derive', () => {
         },
       },
     });
-    const childDAG = FlowDeriver.derive({
+    const childDAG = DAGDeriver.derive({
       'name': 'child',
       'version': '1',
       'entrypoint': 'child-step',
@@ -387,7 +556,7 @@ void describe('FlowDeriver.derive', () => {
       { 'name': 'first',  'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success'] },
       { 'name': 'second', 'hardRequired': ['x'],     'produces': ['y'], 'outputs': ['success'] },
     ];
-    const dag = FlowDeriver.derive({
+    const dag = DAGDeriver.derive({
       'name': 'reg-test',
       'version': '1',
       'entrypoint': 'first',

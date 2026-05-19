@@ -13,7 +13,11 @@ seeAlso:
 
 # Contract-derived flows
 
-`FlowDeriver.derive` builds a `DAG` from a registry of `OperationContract`s by matching `produces ↔ hardRequired`. Each operation declares the field paths it needs and the field paths it produces; an edge `A → B` exists when some path in `A.produces` appears in `B.hardRequired`. The dispatcher executes operations in topological order; same-depth operations become a `parallel` placement.
+`DAGDeriver` is the declarative authoring path for **agentic flows where reaching the final state matters more than authoring the order** — tool-driven agents, exploratory pipelines, workflows where the operation set changes per deployment, systems where adding a capability is one new contract and the topology rewires itself.
+
+If your flow is a deterministic pipeline where you author the sequence end-to-end (ETL, transformation chains), [DAGBuilder](./builder) is the better fit. See [Authoring DAGs](./authoring) for the decision matrix.
+
+`DAGDeriver.derive` builds a `DAG` from a registry of `OperationContract`s by matching `produces ↔ hardRequired`. Each operation declares the field paths it needs and the field paths it produces; an edge `A → B` exists when some path in `A.produces` appears in `B.hardRequired`. Same-topological-depth operations auto-group into a `ParallelNode` with `combine: 'collect'`; use the `parallels` annotation to override the grouping or pick a different combine strategy.
 
 Adding an operation becomes a one-line registration. The flow topology updates automatically.
 
@@ -53,9 +57,9 @@ flowchart TB
 ```
 
 ```ts
-import { FlowDeriver } from '@noocodex/dagonizer/derive';
+import { DAGDeriver } from '@noocodex/dagonizer/derive';
 
-const dag = FlowDeriver.derive({
+const dag = DAGDeriver.derive({
   name: 'pipeline',
   version: '1.0',
   entrypoint: 'classify',
@@ -80,7 +84,7 @@ Two routing patterns the data graph cannot express live in `annotations`:
 When an operation has output ports that should terminate the flow (or route to a non-default target) rather than continue to the next derived stage:
 
 ```ts
-const dag = FlowDeriver.derive({
+const dag = DAGDeriver.derive({
   name: 'gated',
   version: '1.0',
   entrypoint: 'classify',
@@ -103,10 +107,12 @@ Ports declared in `outputs` but absent from `terminals` auto-wire to the next de
 
 ### `fanouts` — fan-out roots
 
-When an operation dispatches one execution per item from a state-array source:
+When an operation dispatches one execution per item from a state-array source, the `fanouts` annotation declares the source path, per-item key, registered node, and fan-in strategy. `DAGDeriverFanOut` is a **discriminated union over the fan-in strategy** — every variant carries its strategy-specific fields and only those.
+
+#### Strategy `'custom'` — registered merge node
 
 ```ts
-const dag = FlowDeriver.derive({
+const dag = DAGDeriver.derive({
   name: 'scout-flow',
   version: '1.0',
   entrypoint: 'plan',
@@ -118,25 +124,85 @@ const dag = FlowDeriver.derive({
   annotations: {
     fanouts: {
       scout: {
-        source:          'tasks',
-        itemKey:         'currentTask',
-        concurrency:     3,
-        fanInOperation:  'merge',
-        outcomes:        ['all-success', 'partial', 'all-error', 'empty'],
+        source:         'tasks',
+        itemKey:        'currentTask',
+        node:           'scout',
+        concurrency:    3,
+        strategy:       'custom',
+        fanInOperation: 'merge',
+        outcomes:       ['all-success', 'partial', 'all-error', 'empty'],
       },
     },
   },
 });
 ```
 
-The fan-in operation is registered with the dispatcher and invoked through the `custom` fan-in strategy. `outcomes` carry the same fan-out outcome names the dispatcher uses (`all-success` / `partial` / `all-error` / `empty`).
+The fan-in operation is registered with the dispatcher and invoked through the `custom` strategy; the dispatcher passes the `Record<outcome, item[]>` map to it via `state.metadata.fanInResults`.
+
+#### Strategy `'partition'` — per-outcome state buckets
+
+```ts
+annotations: {
+  fanouts: {
+    scout: {
+      source:     'tasks',
+      itemKey:    'currentTask',
+      node:       'scout',
+      strategy:   'partition',
+      partitions: { 'success': 'state.passed', 'error': 'state.failed' },
+      outcomes:   ['success', 'error', 'empty'],
+    },
+  },
+}
+```
+
+Every per-outcome item array writes to the declared state path. `partitions` keys must appear in `outcomes` (validated at derive time — out-of-band keys throw `DAGError`).
+
+#### Strategy `'append'` — single flat output
+
+```ts
+annotations: {
+  fanouts: {
+    scout: {
+      source:   'tasks',
+      itemKey:  'currentTask',
+      node:     'scout',
+      strategy: 'append',
+      target:   'state.allResults',
+      outcomes: ['success', 'error'],
+    },
+  },
+}
+```
+
+Every item result (regardless of outcome) is flattened into the array at `target`.
+
+### `parallels` — explicit parallel grouping
+
+By default, DAGDeriver auto-groups same-topological-depth operations into a `ParallelNode` with `combine: 'collect'`. The `parallels` annotation overrides that grouping — declare named groups with the consumer's chosen combine strategy:
+
+```ts
+annotations: {
+  parallels: {
+    'scout-cluster': {
+      members: ['openLibraryScout', 'googleBooksScout', 'subjectScout', 'wikipediaScout'],
+      combine: 'all-success',
+    },
+  },
+}
+```
+
+⦿ Every name in `members` must be a contract in the registry.
+⦿ Membership is exclusive — an operation can't appear in two `parallels` groups.
+⦿ A `parallels` member can't also appear in `fanouts` or `subDAGs` — placement kind must be unambiguous.
+⦿ `combine` is one of `'all-success' | 'any-success' | 'collect'`; the engine routes the parallel's aggregate output through the chosen reduction.
 
 ### `subDAGs` — sub-DAG composition
 
 When an operation delegates execution to a nested registered DAG (plugin dispatch, phase composition, runtime-resolved child flows). The contract still declares `produces ↔ hardRequired` for topology derivation; the annotation only swaps the rendered placement from `SingleNode` to `DeepDAGNode`:
 
 ```ts
-const dag = FlowDeriver.derive({
+const dag = DAGDeriver.derive({
   name: 'page-pipeline',
   version: '1.0',
   entrypoint: 'fetch',
@@ -174,22 +240,22 @@ A complete runnable demonstration ships in [`examples/derive.ts`](https://github
 
 ## Inspecting derived state
 
-`FlowDeriver` also exposes the intermediate computations:
+`DAGDeriver` also exposes the intermediate computations:
 
-⦿ `FlowDeriver.edges(contracts)` — the adjacency map.
-⦿ `FlowDeriver.depthBuckets(contracts, edges)` — operations grouped by topological depth.
+⦿ `DAGDeriver.edges(contracts)` — the adjacency map.
+⦿ `DAGDeriver.depthBuckets(contracts, edges)` — operations grouped by topological depth.
 
 Useful for tooling that wants to visualize or analyze the contract graph before producing a DAG.
 
-## FlowDeriver vs DAGBuilder
+## DAGDeriver vs DAGBuilder
 
 The two share an output type (`DAG`) but differ in how the topology is authored:
 
-⦿ **FlowDeriver** — declarative. Each operation states what it `hardRequired`s and `produces`; the edge set falls out of the data graph. Adding a new operation is one contract; the topology rewires automatically. Multi-port nodes declare every port in `outputs`; all ports auto-wire to the next derived stage with one field. Best when the natural ordering is "X needs the output of Y" and the alternate exits are sparse enough to enumerate in `annotations.terminals`.
+⦿ **DAGDeriver** — declarative. Each operation states what it `hardRequired`s and `produces`; the edge set falls out of the data graph. Adding a new operation is one contract; the topology rewires automatically. Multi-port nodes declare every port in `outputs`; all ports auto-wire to the next derived stage with one field. Best when the natural ordering is "X needs the output of Y" and the alternate exits are sparse enough to enumerate in `annotations.terminals`.
 
 ⦿ **DAGBuilder** — imperative. Each `.node(name, nodeRef, routes)` call wires every port to a specific target by hand. Better when the routing is non-uniform across ports (different ports route to different next-stages), when topology depends on runtime conditions, or when the graph has cycles that the data-flow ordering would reject.
 
-Multi-port nodes work in both: FlowDeriver auto-wires all ports uniformly + terminals for exceptions; DAGBuilder requires every port spelled out in `routes`. The break-even point is roughly: 3+ ports with mostly-uniform routing → FlowDeriver wins; 3+ ports with mostly-divergent routing → DAGBuilder wins.
+Multi-port nodes work in both: DAGDeriver auto-wires all ports uniformly + terminals for exceptions; DAGBuilder requires every port spelled out in `routes`. The break-even point is roughly: 3+ ports with mostly-uniform routing → DAGDeriver wins; 3+ ports with mostly-divergent routing → DAGBuilder wins.
 ## Related reference
 
 ⦿ [Reference: Derive](../reference/derive)
