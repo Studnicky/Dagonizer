@@ -78,8 +78,9 @@ const sidebar = [
     text: 'Usage',
     collapsed: false,
     items: [
+      { text: 'Authoring DAGs',            link: '/guide/authoring' },
       { text: 'Subclassing State',         link: '/guide/subclassing' },
-      { text: 'DAGBuilder',                 link: '/guide/builder' },
+      { text: 'DAGBuilder',                link: '/guide/builder' },
       { text: 'JSON-LD export and import', link: '/guide/json-ld' },
       { text: 'Schema & JSON Loading',     link: '/guide/schema' },
       { text: 'Cancellation',              link: '/guide/cancellation' },

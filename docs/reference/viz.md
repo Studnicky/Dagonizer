@@ -4,7 +4,7 @@ seeAlso:
     link: './dagonizer'
   - text: 'Reference: Entities — `DAG`'
     link: './entities'
-  - text: 'Reference: Derive — `FlowDeriver.derive`'
+  - text: 'Reference: Derive — `DAGDeriver.derive`'
     link: './derive'
 ---
 

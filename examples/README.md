@@ -12,7 +12,7 @@ npx tsx examples/05-deepflows.ts     # nested DAG with state mapping
 npx tsx examples/06-cancellation.ts  # AbortSignal + deadlineMs
 npx tsx examples/07-retry.ts         # RetryPolicy inside an operation
 npx tsx examples/08-checkpoint.ts    # abort → snapshot → restore → resume
-npx tsx examples/derive.ts           # FlowDeriver: contract-derived DAG + subDAGs annotation (DeepDAGNode placement)
+npx tsx examples/derive.ts           # DAGDeriver: contract-derived DAG + subDAGs annotation (DeepDAGNode placement)
 ```
 
-Or via npm scripts: `npm run example:01` … `example:08`, plus `example:derive` for the FlowDeriver showcase.
+Or via npm scripts: `npm run example:01` … `example:08`, plus `example:derive` for the DAGDeriver showcase.
