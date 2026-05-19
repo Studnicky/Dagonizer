@@ -3,16 +3,16 @@
  *
  *   - `OperationContract` — adapter contract describing one operation's
  *     `produces` and `hardRequired` field paths
- *   - `FlowDeriver.derive` — derive a `DAG` from a contract registry plus
- *     declared `FlowAnnotations` for non-derivable routing
+ *   - `DAGDeriver.derive` — derive a `DAG` from a contract registry plus
+ *     declared `DAGDeriverAnnotations` for non-derivable routing
  */
 
-export { FlowDeriver } from './FlowDeriver.js';
-export type { FlowDeriverOptions } from './FlowDeriver.js';
+export { DAGDeriver } from './DAGDeriver.js';
+export type { DAGDeriverOptions } from './DAGDeriver.js';
 export type {
-  FlowAnnotations,
-  FlowDeepDAG,
-  FlowFanOut,
-  FlowTerminal,
-} from './FlowAnnotations.js';
+  DAGDeriverAnnotations,
+  DAGDeriverSubDAG,
+  DAGDeriverFanOut,
+  DAGDeriverTerminal,
+} from './DAGDeriverAnnotations.js';
 export type { OperationContract } from '../contracts/OperationContract.js';

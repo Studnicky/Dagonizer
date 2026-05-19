@@ -14,23 +14,23 @@ seeAlso:
 Contract-derived flow generation. Ships through `@noocodex/dagonizer/derive`.
 
 ```ts
-import { FlowDeriver } from '@noocodex/dagonizer/derive';
+import { DAGDeriver } from '@noocodex/dagonizer/derive';
 import type {
-  FlowAnnotations,
-  FlowFanOut,
-  FlowTerminal,
-  FlowDeriverOptions,
+  DAGDeriverAnnotations,
+  DAGDeriverFanOut,
+  DAGDeriverTerminal,
+  DAGDeriverOptions,
   OperationContract,
 } from '@noocodex/dagonizer/derive';
 ```
 
-## FlowDeriver
+## DAGDeriver
 
 Static class.
 
 ```ts
-class FlowDeriver {
-  static derive(opts: FlowDeriverOptions): DAG;
+class DAGDeriver {
+  static derive(opts: DAGDeriverOptions): DAG;
   static edges(contracts: readonly OperationContract[]): ReadonlyMap<string, ReadonlySet<string>>;
   static depthBuckets(
     contracts: readonly OperationContract[],
@@ -44,12 +44,12 @@ class FlowDeriver {
 Build a `DAG` from a contract registry plus declared annotations.
 
 ```ts
-interface FlowDeriverOptions {
+interface DAGDeriverOptions {
   readonly name: string;
   readonly version: string;
   readonly entrypoint: string;
   readonly contracts: readonly OperationContract[];
-  readonly annotations?: FlowAnnotations;
+  readonly annotations?: DAGDeriverAnnotations;
 }
 ```
 
@@ -65,29 +65,35 @@ Adjacency map. An entry `A → B` exists iff some path in `A.produces` appears i
 
 Topological depth buckets. Operations sharing a depth share a bucket. Same data the renderer uses to decide which placements to wrap in a `parallel`.
 
-## FlowAnnotations
+## DAGDeriverAnnotations
 
 ```ts
-interface FlowAnnotations {
-  readonly terminals?: Readonly<Record<string, readonly FlowTerminal[]>>;
-  readonly fanouts?:   Readonly<Record<string, FlowFanOut>>;
-  readonly subDAGs?:   Readonly<Record<string, FlowDeepDAG>>;
+interface DAGDeriverAnnotations {
+  readonly terminals?: Readonly<Record<string, readonly DAGDeriverTerminal[]>>;
+  readonly fanouts?:   Readonly<Record<string, DAGDeriverFanOut>>;
+  readonly subDAGs?:   Readonly<Record<string, DAGDeriverSubDAG>>;
+  readonly parallels?: Readonly<Record<string, DAGDeriverParallel>>;
 }
 
-interface FlowTerminal {
+interface DAGDeriverTerminal {
   readonly outcome: string;
   readonly target:  string | null;
 }
 
-interface FlowFanOut {
-  readonly source:          string;
-  readonly itemKey:         string;
-  readonly concurrency?:    number;
-  readonly fanInOperation:  string;
-  readonly outcomes:        readonly string[];
-}
+// Fan-out is a discriminated union over the fan-in strategy.
+type DAGDeriverFanOut = {
+  readonly source:       string;
+  readonly itemKey:      string;
+  readonly node:         string;
+  readonly concurrency?: number;
+  readonly outcomes:     readonly string[];
+} & (
+  | { readonly strategy: 'custom';    readonly fanInOperation: string }
+  | { readonly strategy: 'partition'; readonly partitions:    Readonly<Record<string, string>> }
+  | { readonly strategy: 'append';    readonly target:        string }
+);
 
-interface FlowDeepDAG {
+interface DAGDeriverSubDAG {
   readonly dag:           string;
   readonly stateMapping?: {
     readonly input?:  Readonly<Record<string, string>>;
@@ -95,11 +101,18 @@ interface FlowDeepDAG {
   };
   readonly outputs:       readonly string[];
 }
+
+interface DAGDeriverParallel {
+  readonly members:  readonly string[];
+  readonly combine:  'all-success' | 'any-success' | 'collect';
+}
 ```
 
 ⦿ `terminals` — per-operation alternate exits (route to `null` to terminate, or to a named operation).
-⦿ `fanouts` — per-operation fan-out wrapping (`source` is the dotted state-array path; `itemKey` is the metadata key the worker reads; `fanInOperation` is the registered node invoked through the `custom` fan-in strategy; `outcomes` lists the fan-out outcome names — typically `'all-success' | 'partial' | 'all-error' | 'empty'`).
-⦿ `subDAGs` — per-operation sub-DAG composition. Swaps the rendered placement from `SingleNode` to `DeepDAGNode` while preserving the contract's role in topology derivation. `dag` is the registered child DAG name; `outputs` is the port set the deep-DAG can route on (auto-wired to the next derived stage, with `terminals` overriding); `stateMapping` is forwarded verbatim to the rendered placement. An operation cannot appear in both `fanouts` and `subDAGs`.
+⦿ `fanouts` — per-operation fan-out wrapping. `source` is the dotted state-array path; `itemKey` is the metadata key the worker reads; `node` is the per-item registered node; `strategy` discriminates which fan-in shape gets emitted (`custom`+`fanInOperation`, `partition`+`partitions`, or `append`+`target`); `outcomes` lists the fan-out outcome names. Partition keys must appear in `outcomes` — out-of-band keys throw `DAGError` at derive time.
+⦿ `subDAGs` — per-operation sub-DAG composition. Swaps the rendered placement from `SingleNode` to `DeepDAGNode` while preserving the contract's role in topology derivation. `dag` is the registered child DAG name; `outputs` is the port set the deep-DAG can route on (auto-wired to the next derived stage, with `terminals` overriding); `stateMapping` is forwarded verbatim to the rendered placement.
+⦿ `parallels` — explicit `ParallelNode` grouping with chosen combine strategy. Without it, same-topological-depth operations auto-group with `combine: 'collect'`. With it, the named group forces members into one `ParallelNode` with the consumer's chosen combine. Membership is exclusive across groups.
+⦿ An operation cannot appear in more than one of `fanouts` / `subDAGs` / `parallels` — placement kind must be unambiguous.
 
 ## OperationContract
 
@@ -114,7 +127,7 @@ interface OperationContract {
 
 Defined in `@noocodex/dagonizer/contracts`; re-exported from `@noocodex/dagonizer/derive` for convenience.
 
-`outputs` declares every port the node can emit. `FlowDeriver` auto-wires each port to the next derived stage; `FlowAnnotations.terminals[name]` overrides individual ports per-operation. Terminals declaring a port not in the contract's `outputs` throw `DAGError` at derive time.
+`outputs` declares every port the node can emit. `DAGDeriver` auto-wires each port to the next derived stage; `DAGDeriverAnnotations.terminals[name]` overrides individual ports per-operation. Terminals declaring a port not in the contract's `outputs` throw `DAGError` at derive time.
 ## Related guides
 
 ⦿ [Contract-derived flows](../guide/derive)

@@ -125,7 +125,7 @@ interface OperationContract {
 }
 ```
 
-Per-operation contract consumed by `FlowDeriver.derive` to compute DAG topology automatically. `outputs` lists every port the node can emit; every port auto-wires to the next derived stage and `FlowAnnotations.terminals` overrides individual ports. A multi-port node like `['success', 'cached', 'skipped', 'error']` routes uniformly with one contract field instead of N terminal annotations. See [contract-derived flows](../guide/derive.md).
+Per-operation contract consumed by `DAGDeriver.derive` to compute DAG topology automatically. `outputs` lists every port the node can emit; every port auto-wires to the next derived stage and `DAGDeriverAnnotations.terminals` overrides individual ports. A multi-port node like `['success', 'cached', 'skipped', 'error']` routes uniformly with one contract field instead of N terminal annotations. See [contract-derived flows](../guide/derive.md).
 
 ## RetryPolicyOptionsInterface / ErrorConstructorType
 
