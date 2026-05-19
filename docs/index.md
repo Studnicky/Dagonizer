@@ -48,6 +48,9 @@ features:
   - icon: ⏱
     title: Deterministic Testing
     details: VirtualClockProvider and VirtualScheduler replace platform timers in tests. Step through retry delays and deadlines with scheduler.advance(ms).
+  - icon: ⊜
+    title: Contract-derived Flows
+    details: Declare what each operation `produces` and `hardRequired`s; FlowDeriver builds the topology automatically by matching the data graph. Multi-port routing and sub-DAG composition via annotations — adding an operation is one contract, the flow rewires itself.
 ---
 
 ## ⦿ What it is
