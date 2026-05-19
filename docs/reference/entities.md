@@ -1,3 +1,12 @@
+---
+seeAlso:
+  - text: 'Reference: Validation'
+    link: './validation'
+  - text: 'Reference: Contracts'
+    link: './contracts'
+    description: 'interfaces narrow these entities'
+---
+
 # Entities
 
 `@noocodex/dagonizer/entities`
@@ -14,7 +23,7 @@ import { DAGSchema } from '@noocodex/dagonizer/entities';
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/DAG`
 
-Top-level DAG declaration. Required properties: `name`, `version`, `entrypoint`, `nodes`. Each entry in `nodes` is validated against a `oneOf` covering all four node kinds.
+Top-level DAG declaration in JSON-LD 1.1 canonical form. Required properties: `@context`, `@id`, `@type: 'DAG'`, `name`, `version`, `entrypoint`, `nodes`. Each entry in `nodes` is validated against a `oneOf` covering all four node kinds (`SingleNode`, `ParallelNode`, `FanOutNode`, `DeepDAGNode`).
 
 ```ts
 import type { DAG } from '@noocodex/dagonizer/entities';
@@ -26,7 +35,7 @@ import type { DAG } from '@noocodex/dagonizer/entities';
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/SingleNode`
 
-Single-node placement. Required: `type: 'single'`, `name`, `node`, `outputs`.
+Single-node placement. Required: `@id`, `@type: 'SingleNode'`, `name`, `node`, `outputs`.
 
 ```ts
 import { SingleNodeSchema } from '@noocodex/dagonizer/entities';
@@ -41,7 +50,7 @@ import type { SingleNode } from '@noocodex/dagonizer/entities';
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/ParallelNode`
 
-Concurrent node group. Required: `type: 'parallel'`, `name`, `nodes` (non-empty array of node names), `combine` (enum: `all-success` | `any-success` | `collect`), `outputs`.
+Concurrent node group. Required: `@id`, `@type: 'ParallelNode'`, `name`, `nodes` (non-empty array of node names), `combine` (enum: `all-success` | `any-success` | `collect`), `outputs`.
 
 ```ts
 import { ParallelNodeSchema } from '@noocodex/dagonizer/entities';
@@ -54,7 +63,7 @@ import type { ParallelNode } from '@noocodex/dagonizer/entities';
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/FanOutNode`
 
-Fan-out + fan-in node. Required: `type: 'fan-out'`, `name`, `node`, `source`, `fanIn`, `outputs`. Optional: `itemKey` (default `currentItem`), `concurrency` (default = source array length).
+Fan-out + fan-in node. Required: `@id`, `@type: 'FanOutNode'`, `name`, `node`, `source`, `fanIn`, `outputs`. Optional: `itemKey` (default `currentItem`), `concurrency` (default = source array length).
 
 ```ts
 import { FanOutNodeSchema } from '@noocodex/dagonizer/entities';
@@ -88,7 +97,7 @@ import type { FanInConfig } from '@noocodex/dagonizer/entities';
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/DeepDAGNode`
 
-Nested DAG invocation. Required: `type: 'DeepDAGNode'`, `name`, `dag` (registered DAG name), `outputs`. Optional: `stateMapping.input` and `stateMapping.output` (both `Record<string, string>`).
+Nested DAG invocation. Required: `@id`, `@type: 'DeepDAGNode'`, `name`, `dag` (registered DAG name), `outputs`. Optional: `stateMapping.input` and `stateMapping.output` (both `Record<string, string>`).
 
 ```ts
 import { DeepDAGNodeSchema } from '@noocodex/dagonizer/entities';
@@ -139,12 +148,6 @@ import type { JsonValue, JsonObject, JsonArray, JsonPrimitive } from '@noocodex/
 | `JsonArray` | `JsonValue[]` |
 
 Used as the constraint for `snapshotData()` return values and `restoreData()` arguments.
-
-## See also
-
-- [Reference: Validation](./validation)
-- [Reference: Contracts](./contracts) — interfaces narrow these entities
-
 ## Related guides
 
 - [Schema & JSON loading](../guide/schema)

@@ -24,9 +24,9 @@
  *   version: '1.0',
  *   entrypoint: 'classify',
  *   contracts: [
- *     { name: 'classify',  hardRequired: ['input'],     produces: ['classification'] },
- *     { name: 'enrich',    hardRequired: ['classification'], produces: ['enriched'] },
- *     { name: 'finalize',  hardRequired: ['enriched'],  produces: ['result'] },
+ *     { name: 'classify', hardRequired: ['input'],          produces: ['classification'], outputs: ['success'] },
+ *     { name: 'enrich',   hardRequired: ['classification'], produces: ['enriched'],       outputs: ['success', 'cached', 'skipped'] },
+ *     { name: 'finalize', hardRequired: ['enriched'],       produces: ['result'],         outputs: ['success', 'error'] },
  *   ],
  * });
  * dispatcher.registerDAG(dag);
@@ -79,9 +79,12 @@ export class FlowDeriver {
     }
 
     const eligibleContracts = contracts.filter((contract) => !fanInOps.has(contract.name));
+    const contractsByName = new Map<string, OperationContract>();
+    for (const contract of eligibleContracts) contractsByName.set(contract.name, contract);
+
     const edges = FlowDeriver.edges(eligibleContracts);
     const buckets = FlowDeriver.depthBuckets(eligibleContracts, edges);
-    const nodes = FlowDeriver.renderNodes(buckets, edges, annotations, opts.name);
+    const nodes = FlowDeriver.renderNodes(buckets, edges, contractsByName, annotations, opts.name);
 
     return {
       '@context': DAG_CONTEXT,
@@ -164,21 +167,36 @@ export class FlowDeriver {
     return buckets;
   }
 
+  /**
+   * Resolve the `outputs` map for a single-node placement.
+   *
+   * Every port declared on the contract auto-wires to the first derived
+   * successor (`null` if none). Terminal annotations override individual
+   * ports — a terminal whose `outcome` doesn't appear in the contract's
+   * `outputs` is a routing-shape mismatch and throws `DAGError`.
+   */
   private static stageOutputsFor(
-    name: string,
+    contract: OperationContract,
     successors: ReadonlySet<string>,
     annotations: FlowAnnotations,
   ): Record<string, string | null> {
-    const out: Record<string, string | null> = {};
-    const terminals = annotations.terminals?.[name];
-    if (terminals !== undefined) {
-      for (const terminal of terminals) out[terminal.outcome] = terminal.target;
+    const overrides = new Map<string, string | null>();
+    const terminals = annotations.terminals?.[contract.name] ?? [];
+    const declared = new Set(contract.outputs);
+
+    for (const terminal of terminals) {
+      if (!declared.has(terminal.outcome)) {
+        throw new DAGError(
+          `FlowDeriver: terminal for '${contract.name}' references port '${terminal.outcome}' which is not in the contract's outputs [${contract.outputs.join(', ')}]`,
+        );
+      }
+      overrides.set(terminal.outcome, terminal.target);
     }
-    const succList = [...successors];
-    if (succList.length >= 1) {
-      out['success'] = succList[0] ?? null;
-    } else if (terminals === undefined) {
-      out['success'] = null;
+
+    const defaultNext = [...successors][0] ?? null;
+    const out: Record<string, string | null> = {};
+    for (const port of contract.outputs) {
+      out[port] = overrides.has(port) ? overrides.get(port) ?? null : defaultNext;
     }
     return out;
   }
@@ -186,6 +204,7 @@ export class FlowDeriver {
   private static renderNodes(
     buckets: readonly (readonly string[])[],
     edges: ReadonlyMap<string, ReadonlySet<string>>,
+    contracts: ReadonlyMap<string, OperationContract>,
     annotations: FlowAnnotations,
     dagName: string,
   ): DAGNodeEntry[] {
@@ -233,12 +252,16 @@ export class FlowDeriver {
           if (fan.concurrency !== undefined) fanOutNode.concurrency = fan.concurrency;
           nodes.push(fanOutNode);
         } else {
+          const contract = contracts.get(name);
+          if (contract === undefined) {
+            throw new DAGError(`FlowDeriver: contract for '${name}' not found in registry`);
+          }
           const single: SingleNodePlacementInterface = {
             '@id':   nodeId(name),
             '@type': 'SingleNode',
             name,
             'node': name,
-            'outputs': FlowDeriver.stageOutputsFor(name, succs, annotations),
+            'outputs': FlowDeriver.stageOutputsFor(contract, succs, annotations),
           };
           nodes.push(single);
         }

@@ -4,7 +4,9 @@ import { h, defineAsyncComponent } from 'vue'
 import './palette.css'
 import './base.css'
 
-import SidebarToggle from './components/SidebarToggle.vue'
+import TopBar from './components/TopBar.vue'
+import HomeHero from './components/HomeHero.vue'
+import DocFooter from './components/DocFooter.vue'
 import MermaidGate from './components/MermaidGate.vue'
 
 // ArchivistRunner is heavy (cytoscape + fcose + LLM provider matrix);
@@ -20,15 +22,18 @@ export default {
   },
   Layout() {
     return h(DefaultTheme.Layout, null, {
-      // Toggle button mounted into the navbar — collapses / re-opens the
-      // page-tree drawer at every viewport.
-      'nav-bar-content-after': () => h(SidebarToggle),
-      'doc-after': () => h(MermaidGate),
+      // TopBar owns the left navbar zone (sidebar toggle + brand);
+      // the default VPNavBarTitle is hidden in base.css.
+      'nav-bar-content-before': () => h(TopBar),
+      // HomeHero renders the hero + features grid from frontmatter
+      // when present. The home page uses layout: doc so it gets the
+      // canonical sidebar/topbar/footer chrome that every page uses.
+      'doc-before': () => h(HomeHero),
+      // DocFooter renders the seeAlso + nextSteps frontmatter arrays.
+      // MermaidGate enhances diagrams after the page mounts.
+      'doc-after': () => [h(DocFooter), h(MermaidGate)],
       'sidebar-nav-before': () =>
         h('div', { class: 'dagonizer-sidebar-icon' }, [
-          // <img> renders the SVG with native transparency. The src is
-          // base-aware via withBase so it resolves under the configured
-          // VitePress base (e.g. /Dagonizer/dagonizer-icon.svg on GH Pages).
           h('img', {
             src: withBase('/dagonizer-icon.svg'),
             alt: 'Dagonizer',

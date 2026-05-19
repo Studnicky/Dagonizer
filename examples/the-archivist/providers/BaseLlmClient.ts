@@ -192,6 +192,18 @@ export class BaseLlmClient implements LlmClient {
     return (await this.#text(prompts.suggestStarterQuery())).trim();
   }
 
+  async suggestGreeting(): Promise<string> {
+    return (await this.#text(prompts.suggestGreeting())).trim();
+  }
+
+  async suggestVisitorReplyTo(greeting: string): Promise<string> {
+    return (await this.#text(prompts.suggestVisitorReplyTo(greeting))).trim();
+  }
+
+  async explainTool(name: string, context: string): Promise<string> {
+    return (await this.#text(prompts.explainTool(name, context))).trim();
+  }
+
   async #text(prompt: string): Promise<string> {
     const response = await this.adapter.chat({
       'messages':    [{ 'role': 'user', 'content': prompt }],

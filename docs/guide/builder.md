@@ -1,3 +1,19 @@
+---
+seeAlso:
+  - text: 'Subclassing State'
+    link: './subclassing'
+    description: 'define the state class your nodes mutate'
+  - text: 'Schema & JSON loading'
+    link: './schema'
+    description: 'load DAGs from JSON instead of building them in code'
+  - text: 'Contract-derived flows'
+    link: './derive'
+    description: 'generate the same DAG shape from `OperationContract`s'
+  - text: 'Visualization'
+    link: './visualization'
+    description: 'render the built DAG as Mermaid'
+---
+
 # DAGBuilder
 
 `DAGBuilder` is a chainable authoring API that produces a `DAG`. It is a thin layer over plain-object DAG configs — `build()` returns the same data structure the dispatcher consumes.
@@ -108,7 +124,7 @@ const dag = new DAGBuilder('batch', '1')
 
 ```ts
 const dag = new DAGBuilder('parent', '1')
-  .deepDAG('run-child', 'child-dag-name', { success: 'finalize', error: null }, {
+  .deepDAG('run-child', 'child-dag-name', { success: 'finalize', error: 'finalize' }, {
     stateMapping: {
       input:  { childKey: 'parent.value' },
       output: { 'parent.result': 'childResult' },
@@ -135,15 +151,7 @@ new DAGBuilder('dag', '1')
 `build()` materializes the accumulated nodes and returns a `DAG`. It throws an `Error` if no entrypoint has been set (no nodes added and `.entrypoint()` not called).
 
 The returned object is identical to one written by hand — pass it directly to `dispatcher.registerDAG()`.
-
-## See also
-
-- [Subclassing State](./subclassing) — define the state class your nodes mutate
-- [Schema & JSON loading](./schema) — load DAGs from JSON instead of building them in code
-- [Contract-derived flows](./derive) — generate the same DAG shape from `OperationContract`s
-- [Visualization](./visualization) — render the built DAG as Mermaid
-
 ## Related reference
 
-- [Reference: Dagonizer](../reference/dagonizer)
-- [Reference: Entities — `DAG`, `SingleNode`, `ParallelNode`, `FanOutNode`, `DeepDAGNode`](../reference/entities)
+⦿ [Reference: Dagonizer](../reference/dagonizer)
+⦿ [Reference: Entities — `DAG`, `SingleNode`, `ParallelNode`, `FanOutNode`, `DeepDAGNode`](../reference/entities)

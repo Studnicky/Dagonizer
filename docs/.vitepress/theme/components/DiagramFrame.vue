@@ -23,6 +23,8 @@ import { onBeforeUnmount, onMounted, ref } from 'vue';
 defineProps<{
   title: string;
   ariaLabel?: string;
+  /** When true, the title bar is hidden. Use when the hosting tabs already serve as the title. */
+  frameless?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -94,7 +96,7 @@ function onModalKey(event: KeyboardEvent): void {
     :class="['diagram-frame', { 'is-fullscreen': isFullscreen, 'is-expanded': expanded }]"
     :aria-label="ariaLabel ?? title"
   >
-    <header class="frame-header">
+    <header v-if="!frameless" class="frame-header">
       <h4 class="frame-title">{{ title }}</h4>
       <div class="frame-meta">
         <slot name="meta" />

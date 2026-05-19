@@ -18,10 +18,6 @@
 import type { MemoryDigest } from '../ArchivistState.ts';
 import type { Candidate } from '../entities/Book.ts';
 
-// ── Persona greeting (shown as the first turn before the visitor types).
-export const ARCHIVIST_GREETING =
-  'Stay a while and listen! I keep shelves on every subject under the sky — name a book, an author, or a feeling, and I will dig.';
-
 // ── Directive primitives ────────────────────────────────────────────────
 /** Composable directive lines. Keep them positive, terse, and orthogonal. */
 export const directives = {
@@ -366,6 +362,41 @@ export const prompts = {
       'The question must be under 20 words.',
       'Return just the question — no preamble, no quotation marks, no explanation.',
     ].join(' ');
+  },
+
+  suggestGreeting(): string {
+    return [
+      directives.persona,
+      'Write ONE fresh opening greeting for a new visitor walking into the shop.',
+      'The greeting must be warm, curious, and invite a book question.',
+      'Keep it under 30 words.',
+      'Return just the greeting — no preamble, no quotation marks, no explanation.',
+    ].join(' ');
+  },
+
+  suggestVisitorReplyTo(greeting: string): string {
+    return [
+      'A bookshop visitor has just received this greeting from the Archivist:',
+      `"${greeting}"`,
+      'Write ONE natural first message the visitor might send in reply.',
+      'The reply must be a book question or request that follows naturally from the greeting.',
+      'Keep it under 30 words.',
+      'Return just the visitor message — no preamble, no quotation marks, no explanation.',
+    ].join(' ');
+  },
+
+  explainTool(name: string, context: string): string {
+    return [
+      'You are a librarian explaining a backend tool to a curious visitor.',
+      `The tool is called "${name}".`,
+      `Here is what it does: ${context}`,
+      'Explain in 2-3 plain-English sentences:',
+      '1. What the tool does',
+      '2. Why it matters',
+      '3. One concrete example use-case',
+      'Keep it warm and clear. No jargon. Under 80 words.',
+      'Return just the explanation, no preamble.',
+    ].join('\n');
   },
 
   composeMemoryRecall(

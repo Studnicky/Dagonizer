@@ -1,3 +1,13 @@
+---
+seeAlso:
+  - text: 'Cancellation'
+    link: './cancellation'
+    description: '`RetryPolicy.run` cooperates with `context.signal`'
+  - text: 'Observability'
+    link: './observability'
+    description: '`onError` fires when `maxAttempts` is exceeded'
+---
+
 # Retry
 
 `RetryPolicy` is a configurable retry-with-backoff class that integrates with the dispatcher's `AbortSignal`.
@@ -112,14 +122,8 @@ Scheduler.reset();
 ```
 
 See [Testing](/reference/testing) for the full `VirtualScheduler` and `VirtualClockProvider` API.
-
-## See also
-
-- [Cancellation](./cancellation) — `RetryPolicy.run` cooperates with `context.signal`
-- [Observability](./observability) — `onError` fires when `maxAttempts` is exceeded
-
 ## Related reference
 
-- [Reference: Runtime — `RetryPolicy`, `BackoffStrategy`](../reference/runtime)
-- [Reference: Contracts — `RetryPolicyOptionsInterface`](../reference/contracts)
-- [Example: Retry](../examples/05-retry)
+⦿ [Reference: Runtime — `RetryPolicy`, `BackoffStrategy`](../reference/runtime)
+⦿ [Reference: Contracts — `RetryPolicyOptionsInterface`](../reference/contracts)
+⦿ [Example: Retry](../examples/07-retry)
