@@ -70,24 +70,36 @@ Topological depth buckets. Operations sharing a depth share a bucket. Same data 
 ```ts
 interface FlowAnnotations {
   readonly terminals?: Readonly<Record<string, readonly FlowTerminal[]>>;
-  readonly fanouts?: Readonly<Record<string, FlowFanOut>>;
+  readonly fanouts?:   Readonly<Record<string, FlowFanOut>>;
+  readonly subDAGs?:   Readonly<Record<string, FlowDeepDAG>>;
 }
 
 interface FlowTerminal {
   readonly outcome: string;
-  readonly target: string | null;
+  readonly target:  string | null;
 }
 
 interface FlowFanOut {
-  readonly source: string;
-  readonly itemKey: string;
-  readonly concurrency?: number;
-  readonly fanInOperation: string;
-  readonly outcomes: readonly string[];
+  readonly source:          string;
+  readonly itemKey:         string;
+  readonly concurrency?:    number;
+  readonly fanInOperation:  string;
+  readonly outcomes:        readonly string[];
+}
+
+interface FlowDeepDAG {
+  readonly dag:           string;
+  readonly stateMapping?: {
+    readonly input?:  Readonly<Record<string, string>>;
+    readonly output?: Readonly<Record<string, string>>;
+  };
+  readonly outputs:       readonly string[];
 }
 ```
 
-`terminals` declares per-operation alternate exits (route to `null` to terminate, or to a named operation). `fanouts` declares per-operation fan-out wrapping (`source` is the dotted state-array path; `itemKey` is the metadata key the worker reads; `fanInOperation` is the registered node invoked through the `custom` fan-in strategy; `outcomes` lists the fan-out outcome names — typically `'all-success' | 'partial' | 'all-error' | 'empty'`).
+⦿ `terminals` — per-operation alternate exits (route to `null` to terminate, or to a named operation).
+⦿ `fanouts` — per-operation fan-out wrapping (`source` is the dotted state-array path; `itemKey` is the metadata key the worker reads; `fanInOperation` is the registered node invoked through the `custom` fan-in strategy; `outcomes` lists the fan-out outcome names — typically `'all-success' | 'partial' | 'all-error' | 'empty'`).
+⦿ `subDAGs` — per-operation sub-DAG composition. Swaps the rendered placement from `SingleNode` to `DeepDAGNode` while preserving the contract's role in topology derivation. `dag` is the registered child DAG name; `outputs` is the port set the deep-DAG can route on (auto-wired to the next derived stage, with `terminals` overriding); `stateMapping` is forwarded verbatim to the rendered placement. An operation cannot appear in both `fanouts` and `subDAGs`.
 
 ## OperationContract
 

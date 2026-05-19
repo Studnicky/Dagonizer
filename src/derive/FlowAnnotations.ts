@@ -9,6 +9,11 @@
  *               fan-out over a state-array source. Specifies the source
  *               path, the per-item key, the concurrency cap, the
  *               fan-in node, and the fan-out outcome names.
+ *   subDAGs   — operations that delegate execution to a nested
+ *               registered DAG. Renders as a `DeepDAGNode` placement
+ *               with the supplied `dag` name and optional state
+ *               mapping. Every port in `outputs` auto-wires to the
+ *               next derived stage; `terminals` overrides per-port.
  */
 
 /** Per-operation alternate exit. `target: null` ends the flow. */
@@ -32,11 +37,37 @@ export interface FlowFanOut {
 }
 
 /**
- * Annotations consumed by `FlowDeriver.derive`. Both fields are
- * optional; when both are absent every operation runs in topo order
- * with `success` routing to the next derived operation.
+ * Per-operation sub-DAG composition. The operation's contract still
+ * declares `produces ↔ hardRequired` for topology derivation; the
+ * annotation only swaps the rendered placement from `SingleNode` to
+ * `DeepDAGNode`.
+ */
+export interface FlowDeepDAG {
+  /** Registered DAG name to invoke as the deep-DAG. */
+  readonly dag: string;
+  /**
+   * Optional state mapping copied into / out of the child execution.
+   * Mirrors `DeepDAGNode.stateMapping` in the engine.
+   */
+  readonly stateMapping?: {
+    readonly input?:  Readonly<Record<string, string>>;
+    readonly output?: Readonly<Record<string, string>>;
+  };
+  /**
+   * Output ports the deep-DAG can route on. Each port auto-wires to
+   * the next derived stage; `FlowAnnotations.terminals` overrides
+   * individual ports.
+   */
+  readonly outputs: readonly string[];
+}
+
+/**
+ * Annotations consumed by `FlowDeriver.derive`. All fields are
+ * optional; when all are absent every operation renders as a
+ * `SingleNode` with `success` routing to the next derived operation.
  */
 export interface FlowAnnotations {
   readonly terminals?: Readonly<Record<string, readonly FlowTerminal[]>>;
-  readonly fanouts?: Readonly<Record<string, FlowFanOut>>;
+  readonly fanouts?:   Readonly<Record<string, FlowFanOut>>;
+  readonly subDAGs?:   Readonly<Record<string, FlowDeepDAG>>;
 }

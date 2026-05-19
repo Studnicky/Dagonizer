@@ -5,7 +5,7 @@ import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import type { OperationContract } from '../../src/contracts/OperationContract.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { FlowDeriver } from '../../src/derive/FlowDeriver.js';
-import type { NodeStateBase } from '../../src/NodeStateBase.js';
+import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 void describe('FlowDeriver.derive', () => {
   void it('produces a linear DAG from a chain of contracts', () => {
@@ -175,6 +175,211 @@ void describe('FlowDeriver.derive', () => {
       }),
       /port 'cached' which is not in the contract's outputs/,
     );
+  });
+
+  void it('subDAGs annotation renders a DeepDAGNode placement', () => {
+    const contracts: OperationContract[] = [
+      { 'name': 'prepare', 'hardRequired': ['input'],   'produces': ['payload'], 'outputs': ['success'] },
+      { 'name': 'invoke',  'hardRequired': ['payload'], 'produces': ['result'],  'outputs': ['success', 'error'] },
+    ];
+    const dag = FlowDeriver.derive({
+      'name': 'subdag-render',
+      'version': '1',
+      'entrypoint': 'prepare',
+      contracts,
+      'annotations': {
+        'subDAGs': {
+          'invoke': {
+            'dag':    'plugin:parse',
+            'outputs': ['success', 'error'],
+          },
+        },
+      },
+    });
+    const invoke = dag.nodes.find((node) => node.name === 'invoke');
+    assert.ok(invoke !== undefined, 'invoke placement is emitted');
+    if (invoke !== undefined && invoke['@type'] === 'DeepDAGNode') {
+      assert.equal(invoke.dag, 'plugin:parse');
+      assert.equal(invoke.outputs['success'], null);  // no successor
+      assert.equal(invoke.outputs['error'],   null);
+    } else {
+      assert.fail('expected invoke placement to be DeepDAGNode');
+    }
+  });
+
+  void it('subDAGs forwards stateMapping verbatim to the rendered placement', () => {
+    const contracts: OperationContract[] = [
+      { 'name': 'invoke', 'hardRequired': ['input'], 'produces': ['result'], 'outputs': ['success'] },
+    ];
+    const dag = FlowDeriver.derive({
+      'name': 'subdag-mapping',
+      'version': '1',
+      'entrypoint': 'invoke',
+      contracts,
+      'annotations': {
+        'subDAGs': {
+          'invoke': {
+            'dag':     'child-dag',
+            'outputs': ['success'],
+            'stateMapping': {
+              'input':  { 'childInput':  'parent.input' },
+              'output': { 'parent.result': 'childResult' },
+            },
+          },
+        },
+      },
+    });
+    const invoke = dag.nodes.find((node) => node.name === 'invoke');
+    assert.ok(invoke !== undefined && invoke['@type'] === 'DeepDAGNode');
+    if (invoke !== undefined && invoke['@type'] === 'DeepDAGNode') {
+      assert.deepEqual(invoke.stateMapping, {
+        'input':  { 'childInput':  'parent.input' },
+        'output': { 'parent.result': 'childResult' },
+      });
+    }
+  });
+
+  void it('subDAGs auto-wires every declared port and honors terminal overrides', () => {
+    const contracts: OperationContract[] = [
+      { 'name': 'invoke', 'hardRequired': ['input'],  'produces': ['result'], 'outputs': ['success', 'cached', 'error'] },
+      { 'name': 'finish', 'hardRequired': ['result'], 'produces': ['done'],   'outputs': ['success'] },
+    ];
+    const dag = FlowDeriver.derive({
+      'name': 'subdag-routing',
+      'version': '1',
+      'entrypoint': 'invoke',
+      contracts,
+      'annotations': {
+        'subDAGs': {
+          'invoke': {
+            'dag':     'child-dag',
+            'outputs': ['success', 'cached', 'error'],
+          },
+        },
+        'terminals': {
+          'invoke': [{ 'outcome': 'error', 'target': null }],
+        },
+      },
+    });
+    const invoke = dag.nodes.find((node) => node.name === 'invoke');
+    if (invoke !== undefined && invoke['@type'] === 'DeepDAGNode') {
+      assert.equal(invoke.outputs['success'], 'finish');  // auto-wired to next stage
+      assert.equal(invoke.outputs['cached'],  'finish');  // auto-wired to next stage
+      assert.equal(invoke.outputs['error'],   null);      // terminal override
+    } else {
+      assert.fail('expected invoke placement to be DeepDAGNode');
+    }
+  });
+
+  void it('throws when a terminal references a port not in the subDAG outputs', () => {
+    const contracts: OperationContract[] = [
+      { 'name': 'invoke', 'hardRequired': ['input'], 'produces': ['result'], 'outputs': ['success', 'error'] },
+    ];
+    assert.throws(
+      () => FlowDeriver.derive({
+        'name': 'subdag-mismatch',
+        'version': '1',
+        'entrypoint': 'invoke',
+        contracts,
+        'annotations': {
+          'subDAGs': {
+            'invoke': {
+              'dag':     'child-dag',
+              'outputs': ['success', 'error'],
+            },
+          },
+          'terminals': {
+            'invoke': [{ 'outcome': 'cached', 'target': null }],
+          },
+        },
+      }),
+      /port 'cached' which is not in the subDAG 'child-dag' declared outputs/,
+    );
+  });
+
+  void it('throws when an operation appears in both fanouts and subDAGs', () => {
+    const contracts: OperationContract[] = [
+      { 'name': 'plan',  'hardRequired': ['input'], 'produces': ['tasks'],       'outputs': ['success'] },
+      { 'name': 'scout', 'hardRequired': ['tasks'], 'produces': ['scoutResult'], 'outputs': ['success'] },
+      { 'name': 'merge', 'hardRequired': ['scoutResult'], 'produces': ['merged'], 'outputs': ['success'] },
+    ];
+    assert.throws(
+      () => FlowDeriver.derive({
+        'name': 'ambiguous',
+        'version': '1',
+        'entrypoint': 'plan',
+        contracts,
+        'annotations': {
+          'fanouts': {
+            'scout': {
+              'source':         'tasks',
+              'itemKey':        'currentTask',
+              'fanInOperation': 'merge',
+              'outcomes':       ['all-success'],
+            },
+          },
+          'subDAGs': {
+            'scout': {
+              'dag':     'scout-dag',
+              'outputs': ['success'],
+            },
+          },
+        },
+      }),
+      /appears in both annotations.fanouts and annotations.subDAGs/,
+    );
+  });
+
+  void it('end-to-end: dispatcher executes a DeepDAGNode emitted by FlowDeriver', async () => {
+    // Parent flow: prepare → invoke-child (deep-DAG) → finalize.
+    // Deep-DAG placements cannot terminate the run — the parent DAG
+    // owns END — so the deep-DAG step must be followed by another
+    // parent placement that routes to null.
+    const contracts: OperationContract[] = [
+      { 'name': 'prepare',      'hardRequired': ['input'],        'produces': ['intermediate'], 'outputs': ['success'] },
+      { 'name': 'invoke-child', 'hardRequired': ['intermediate'], 'produces': ['childResult'],  'outputs': ['success'] },
+      { 'name': 'finalize',     'hardRequired': ['childResult'],  'produces': ['final'],        'outputs': ['success'] },
+    ];
+    const parentDAG = FlowDeriver.derive({
+      'name': 'parent',
+      'version': '1',
+      'entrypoint': 'prepare',
+      contracts,
+      'annotations': {
+        'subDAGs': {
+          'invoke-child': {
+            'dag':     'child',
+            'outputs': ['success'],
+          },
+        },
+      },
+    });
+    const childDAG = FlowDeriver.derive({
+      'name': 'child',
+      'version': '1',
+      'entrypoint': 'child-step',
+      'contracts': [
+        { 'name': 'child-step', 'hardRequired': ['input'], 'produces': ['final'], 'outputs': ['success'] },
+      ],
+    });
+
+    const dispatcher = new Dagonizer<NodeStateBase>();
+    const make = (name: string): NodeInterface<NodeStateBase, 'success'> => ({
+      name,
+      'outputs': ['success'],
+      async execute() { return { 'output': 'success' }; },
+    });
+    dispatcher.registerNode(make('prepare'));
+    dispatcher.registerNode(make('invoke-child'));
+    dispatcher.registerNode(make('finalize'));
+    dispatcher.registerNode(make('child-step'));
+    dispatcher.registerDAG(childDAG);
+    dispatcher.registerDAG(parentDAG);
+
+    const result = await dispatcher.execute('parent', new NodeStateBase());
+    assert.equal(result.state.lifecycle.kind, 'completed');
+    assert.ok(result.executedNodes.includes('invoke-child'));
+    assert.ok(result.executedNodes.includes('finalize'));
   });
 
   void it('produces a DAG that registers cleanly on a Dagonizer', () => {

@@ -131,6 +131,45 @@ const dag = FlowDeriver.derive({
 
 The fan-in operation is registered with the dispatcher and invoked through the `custom` fan-in strategy. `outcomes` carry the same fan-out outcome names the dispatcher uses (`all-success` / `partial` / `all-error` / `empty`).
 
+### `subDAGs` — sub-DAG composition
+
+When an operation delegates execution to a nested registered DAG (plugin dispatch, phase composition, runtime-resolved child flows). The contract still declares `produces ↔ hardRequired` for topology derivation; the annotation only swaps the rendered placement from `SingleNode` to `DeepDAGNode`:
+
+```ts
+const dag = FlowDeriver.derive({
+  name: 'page-pipeline',
+  version: '1.0',
+  entrypoint: 'fetch',
+  contracts: [
+    { name: 'fetch',    hardRequired: ['url'],     produces: ['html'],   outputs: ['success', 'cached', 'error'] },
+    { name: 'parse',    hardRequired: ['html'],    produces: ['record'], outputs: ['success', 'error'] },
+    { name: 'persist',  hardRequired: ['record'],  produces: ['saved'],  outputs: ['success'] },
+  ],
+  annotations: {
+    subDAGs: {
+      parse: {
+        dag:     'aonprd:parse',         // registered DAG name
+        outputs: ['success', 'error'],   // ports the deep-DAG can route on
+        stateMapping: {
+          input:  { html:   'parent.html' },
+          output: { 'parent.record': 'record' },
+        },
+      },
+    },
+    terminals: {
+      parse: [{ outcome: 'error', target: null }],
+    },
+  },
+});
+```
+
+⦿ The child DAG name (`'aonprd:parse'`) is resolved at `registerDAG` time. The parent must register the child DAG first; the dispatcher's existing cycle check rejects self-referential subDAGs.
+⦿ Every port in `subDAG.outputs` auto-wires to the next derived stage (same semantics as `contract.outputs`). `terminals` overrides individual ports.
+⦿ A terminal whose outcome isn't in `subDAG.outputs` throws `DAGError` at derive time.
+⦿ `stateMapping` is forwarded verbatim to the rendered `DeepDAGNode.stateMapping`; controls what crosses the parent/child state boundary.
+⦿ Deep-DAG placements cannot terminate the run — the parent DAG owns END. The deep-DAG step must route to another parent placement; if every port routes to `null` the engine rejects the DAG at registration.
+⦿ An operation cannot appear in both `fanouts` and `subDAGs`; the placement kind must be unambiguous.
+
 ## Inspecting derived state
 
 `FlowDeriver` also exposes the intermediate computations:
