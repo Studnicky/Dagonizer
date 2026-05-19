@@ -36,6 +36,7 @@
 import type { OperationContract } from '../contracts/OperationContract.js';
 import type { DAG } from '../entities/dag/DAG.js';
 import { DAG_CONTEXT } from '../entities/dag/DAG.js';
+import type { DeepDAGNode } from '../entities/dag/DeepDAGNode.js';
 import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
@@ -43,7 +44,7 @@ import { DAGError } from '../errors/DAGError.js';
 
 import type { FlowAnnotations } from './FlowAnnotations.js';
 
-type DAGNodeEntry = FanOutNode | ParallelNode | SingleNodePlacementInterface;
+type DAGNodeEntry = DeepDAGNode | FanOutNode | ParallelNode | SingleNodePlacementInterface;
 
 export interface FlowDeriverOptions {
   readonly name: string;
@@ -168,26 +169,31 @@ export class FlowDeriver {
   }
 
   /**
-   * Resolve the `outputs` map for a single-node placement.
+   * Resolve the `outputs` map for a placement.
    *
-   * Every port declared on the contract auto-wires to the first derived
-   * successor (`null` if none). Terminal annotations override individual
-   * ports — a terminal whose `outcome` doesn't appear in the contract's
-   * `outputs` is a routing-shape mismatch and throws `DAGError`.
+   * Every port in `declaredOutputs` auto-wires to the first derived
+   * successor (`null` if none). Terminal annotations override
+   * individual ports; a terminal whose `outcome` doesn't appear in
+   * `declaredOutputs` is a routing-shape mismatch and throws
+   * `DAGError`. The same resolver runs for `SingleNode` (contract
+   * outputs) and `DeepDAGNode` (subDAG outputs) so both placements
+   * fail fast on out-of-band terminals with the same error shape.
    */
-  private static stageOutputsFor(
-    contract: OperationContract,
+  private static resolveOutputs(
+    name: string,
+    declaredOutputs: readonly string[],
+    sourceLabel: string,
     successors: ReadonlySet<string>,
     annotations: FlowAnnotations,
   ): Record<string, string | null> {
     const overrides = new Map<string, string | null>();
-    const terminals = annotations.terminals?.[contract.name] ?? [];
-    const declared = new Set(contract.outputs);
+    const terminals = annotations.terminals?.[name] ?? [];
+    const declared = new Set(declaredOutputs);
 
     for (const terminal of terminals) {
       if (!declared.has(terminal.outcome)) {
         throw new DAGError(
-          `FlowDeriver: terminal for '${contract.name}' references port '${terminal.outcome}' which is not in the contract's outputs [${contract.outputs.join(', ')}]`,
+          `FlowDeriver: terminal for '${name}' references port '${terminal.outcome}' which is not in the ${sourceLabel} [${declaredOutputs.join(', ')}]`,
         );
       }
       overrides.set(terminal.outcome, terminal.target);
@@ -195,7 +201,7 @@ export class FlowDeriver {
 
     const defaultNext = [...successors][0] ?? null;
     const out: Record<string, string | null> = {};
-    for (const port of contract.outputs) {
+    for (const port of declaredOutputs) {
       out[port] = overrides.has(port) ? overrides.get(port) ?? null : defaultNext;
     }
     return out;
@@ -232,7 +238,18 @@ export class FlowDeriver {
       }
       for (const name of bucket) {
         const fan = annotations.fanouts?.[name];
+        const subDAG = annotations.subDAGs?.[name];
         const succs = edges.get(name) ?? new Set<string>();
+
+        // Renderer dispatch order: fanouts > subDAGs > single. A contract
+        // listed in both fanouts and subDAGs is a configuration error —
+        // the placement-kind must be unambiguous.
+        if (fan !== undefined && subDAG !== undefined) {
+          throw new DAGError(
+            `FlowDeriver: operation '${name}' appears in both annotations.fanouts and annotations.subDAGs — placement kind must be unambiguous`,
+          );
+        }
+
         if (fan !== undefined) {
           const fanOutOutputs: Record<string, string | null> = {};
           const next0 = [...succs][0] ?? null;
@@ -251,6 +268,24 @@ export class FlowDeriver {
           };
           if (fan.concurrency !== undefined) fanOutNode.concurrency = fan.concurrency;
           nodes.push(fanOutNode);
+        } else if (subDAG !== undefined) {
+          const deepDAGNode: DeepDAGNode = {
+            '@id':   nodeId(name),
+            '@type': 'DeepDAGNode',
+            name,
+            'dag':   subDAG.dag,
+            'outputs': FlowDeriver.resolveOutputs(
+              name,
+              subDAG.outputs,
+              `subDAG '${subDAG.dag}' declared outputs`,
+              succs,
+              annotations,
+            ),
+          };
+          if (subDAG.stateMapping !== undefined) {
+            deepDAGNode.stateMapping = subDAG.stateMapping;
+          }
+          nodes.push(deepDAGNode);
         } else {
           const contract = contracts.get(name);
           if (contract === undefined) {
@@ -261,7 +296,13 @@ export class FlowDeriver {
             '@type': 'SingleNode',
             name,
             'node': name,
-            'outputs': FlowDeriver.stageOutputsFor(contract, succs, annotations),
+            'outputs': FlowDeriver.resolveOutputs(
+              name,
+              contract.outputs,
+              `contract's outputs`,
+              succs,
+              annotations,
+            ),
           };
           nodes.push(single);
         }
