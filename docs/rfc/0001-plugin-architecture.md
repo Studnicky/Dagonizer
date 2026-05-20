@@ -86,48 +86,113 @@ No constructor, no state.
 @noocodex/dagonizer-patterns-flow      (Pure flow primitives — fan-in reducer, dedupe-by-key, gates, group-by, sort, pick)
 ```
 
-**Canonical pattern classes ship; only the domain injection points stay
-in the example.** A pattern is canonical when the *operation* is universal
-(classify-intent, rank-candidates, recall-context, dedupe-by-key). What
-varies is the domain — five injection points only:
+**Canonical pattern classes are organised as a taxonomy.** Each pattern is
+named for what it *is*; classes that share implementation share an
+intermediate base. Five injection points stay in the consumer's
+domain code:
 
 1. The state shape (interface the consumer implements)
-2. The token union (string-literal union the consumer declares)
+2. The choice or token shape (the literal-union or structured type the LLM returns)
 3. The prompt template (string the consumer builds)
 4. The ontology IRIs (URIs the consumer wires into SPARQL queries)
 5. The entity types (the consumer's `Candidate` / `Book` / `Document` shape)
 
-Every other line of code in the pattern (LLM dispatch, retry, response
-parsing, contract field, timeout, port routing) is canonical and ships in
-the plugin.
+Every other line — LLM dispatch, retry, response parsing, contract
+field, timeout, port routing — is canonical and ships in the plugin.
 
-Concrete example using canonical naming — no `Base*` prefix:
+### Taxonomy
 
+```
+AbstractNode<TState, TOutput, TServices>   (root — provides timeout, contract, retry)
+│
+├── DecisionNode<TState, TChoice>          (LLM consults, returns structured choice)
+│   │
+│   ├── ClassifyIntentNode<TState, TIntent>     (TChoice = TIntent ∈ token union)
+│   ├── DecideToolsNode<TState>                 (TChoice = readonly ToolCall[])
+│   ├── ValidateResponseNode<TState>            (TChoice = 'yes' | 'no')
+│   └── RankCandidatesNode<TState, TItem>       (TChoice = readonly Score[])
+│
+├── ComposeNode<TState>                    (LLM produces prose; writes to state.draft)
+│   │
+│   ├── ComposeResponseNode<TState>
+│   ├── ComposeEmptyResponseNode<TState>
+│   ├── ComposeMemoryResponseNode<TState>
+│   └── DeclineNode<TState>                     (composition with refusal slant)
+│
+├── ScoutNode<TState, TItem, TIn, TOut>    (calls a Tool, normalises, writes back)
+│
+├── GraphNode<TState>                      (uses { memory: TripleStore } service)
+│   │
+│   ├── RecallContextNode<TState, TBinding>     (SPARQL select)
+│   ├── RecordFindingsNode<TState, TEntity>     (writes quads)
+│   └── MemoryDigestNode<TState>                (recent-activity digest)
+│
+└── FlowNode<TState>                       (pure — no services)
+    │
+    ├── SelectNode<TState, TItem>               (picks/sorts from list)
+    │   │
+    │   ├── PickByScoreNode<TItem>
+    │   └── SortByNode<TItem>
+    │
+    ├── ReduceNode<TItem>                       (collapses a list)
+    │   │
+    │   ├── DedupeByKeyNode<TItem>
+    │   ├── GroupByFieldNode<TItem, TKey>
+    │   └── FanInReducerNode<TState, TItem>
+    │
+    ├── PredicateGateNode<TState>               (boolean gate)
+    ├── ExtractFieldNode<TState, TValue>        (copy a state field)
+    └── RespondNode<TState>                     (write draft to conversation; mark lifecycle)
+```
+
+### What each tier ships
+
+- **`AbstractNode`** lives on `@noocodex/dagonizer/patterns` (root subpath). Shared by every other pattern across every plugin package.
+- **`DecisionNode`, `ComposeNode`, `ScoutNode`** live in `@noocodex/dagonizer-patterns-rag` (LLM-driven).
+- **`GraphNode`** family lives in `@noocodex/dagonizer-patterns-graph` (triple-store-driven).
+- **`FlowNode`** family lives in `@noocodex/dagonizer-patterns-flow` (pure).
+
+Each intermediate base class (`DecisionNode`, `ComposeNode`, `GraphNode`,
+`FlowNode`, `SelectNode`, `ReduceNode`) provides real shared implementation
+— LLM call loop, service contract, etc. — not just a tag. Leaf classes
+narrow the generics and supply defaults.
+
+### Two extension idioms
+
+Consumers can extend at any level. Two idioms:
+
+**Idiom A — extend a named leaf** (most common, semantic clarity):
 ```ts
-// Ships in @noocodex/dagonizer-patterns-rag — canonical pattern:
-export abstract class ClassifyIntentNode<TState, TIntent extends string>
-  implements NodeInterface<TState, TIntent, RagServices>
-{
-  readonly name = 'classify-intent';
-  abstract readonly outputs: readonly TIntent[];
-  abstract readonly contract: OperationContractFragment;
-  protected abstract buildPrompt(state: TState): string;
-  protected abstract parseToken(content: string): TIntent;
-  async execute(state, ctx) { /* canonical LLM dispatch + retry */ }
-}
-
-// In the Archivist example — extends the canonical class, injects domain:
-export class ArchivistClassifyIntent extends ClassifyIntentNode<ArchivistState, ArchivistIntent> {
+// Archivist's intent classifier:
+class IntentClassifier extends ClassifyIntentNode<ArchivistState, ArchivistIntent> {
   readonly outputs = INTENT_TOKENS;
   readonly contract = { hardRequired: ['query'], produces: ['intent'] };
-  protected buildPrompt(state) { return prompts.classifyIntent(state.query); }
-  protected parseToken(content) { return normaliseIntent(content); }
+  protected buildPrompt(s) { return prompts.classifyIntent(s.query); }
+  protected parseChoice(c) { return normaliseIntent(c); }
+  protected routeFor(intent) { return intent; }
+  protected applyChoice(s, intent) { s.intent = intent; }
 }
 ```
 
-The lib ships shapes; the consumer ships domain. Every Archivist node
-follows this pattern: 10–20 lines that supply the five injection points
-and nothing else.
+**Idiom B — extend `DecisionNode` directly** (novel decision shape):
+```ts
+// A consumer-specific decision: pick a candidate from N alternatives
+// with confidence scores attached.
+class CandidatePicker extends DecisionNode<MyState, {
+  selectedIsbn: string;
+  confidence: number;
+}> {
+  readonly outputs = ['picked', 'low-confidence'];
+  protected buildPrompt(s) { /* … */ }
+  protected parseChoice(c) { /* … */ }
+  protected routeFor(choice) { return choice.confidence > 0.7 ? 'picked' : 'low-confidence'; }
+  protected applyChoice(s, choice) { s.bestMatch = choice.selectedIsbn; }
+}
+```
+
+The taxonomy serves both audiences: read the tree top-down to discover
+the pattern family that fits your problem; extend the leaf for common
+cases, extend the parent for novel ones.
 
 The main `@noocodex/dagonizer` ships the dispatcher, contracts, and three
 new subpaths. Each plugin package depends on `@noocodex/dagonizer` for the
@@ -292,70 +357,53 @@ Update the Archivist example to import each tool from its plugin package.
 
 ### Phase 7 — Extract patterns packages (3)
 
-Most invasive phase — designs the canonical pattern classes. Each pattern
-package exports abstract classes named for what they *are*, not what they're
-a base for (no `Base*` prefix). Consumers extend them and inject the five
-domain points: state shape, token union, prompt template, ontology IRIs,
-entity types.
+Implements the taxonomy. Three packages cover the canonical operations the
+Archivist uses, organised by service contract:
 
-**`@noocodex/dagonizer-patterns-rag`** — LLM-driven canonical nodes:
-- `ClassifyIntentNode<TState, TIntent>` — LLM picks one intent token; consumer overrides `buildPrompt` + `parseToken`.
-- `DecideToolsNode<TState>` — LLM picks which tools to call; consumer overrides `buildPrompt` + `availableTools`.
-- `RankCandidatesNode<TState, TItem>` — LLM ranks a list; consumer overrides `buildPrompt` + `extractScores`.
-- `ComposeResponseNode<TState>` — LLM composes the reply; consumer overrides `buildPrompt`.
-- `ValidateResponseNode<TState>` — LLM judges a draft; consumer overrides `buildPrompt`.
-- `ComposeEmptyResponseNode<TState>` — LLM composes when no data was found; consumer overrides `buildPrompt`.
-- `DeclineNode<TState>` — LLM composes a polite refusal; consumer overrides `buildPrompt`.
-- `RespondNode<TState>` — writes draft to conversation output and marks lifecycle completed; consumer overrides `extractDraft` (default reads `state.draft`).
-- `ScoutNode<TState, TItem, TIn, TOut>` — calls a Tool, normalises results, writes to state; consumer overrides `buildInput` + `normalize` + `writeBack`.
-- Services contract: `RagServices = { llm: LlmClient }`.
+**`@noocodex/dagonizer-patterns-rag`** — LLM-driven (depends on `RagServices = { llm: LlmClient }`):
+- `DecisionNode<TState, TChoice>` + leaves `ClassifyIntentNode`, `DecideToolsNode`, `ValidateResponseNode`, `RankCandidatesNode`.
+- `ComposeNode<TState>` + leaves `ComposeResponseNode`, `ComposeEmptyResponseNode`, `ComposeMemoryResponseNode`, `DeclineNode`.
+- `ScoutNode<TState, TItem, TIn, TOut>` — calls a Tool, normalises, writes back.
 
-**`@noocodex/dagonizer-patterns-graph`** — Triple-store canonical nodes:
-- `RecallContextNode<TState, TBinding>` — SPARQL select against the memory store; consumer overrides `buildQuery` + `mapBindings`.
-- `RecordFindingsNode<TState, TEntity>` — writes entities as quads to the memory store; consumer overrides `toQuads`.
-- `MemoryDigestNode<TState>` — assembles a recent-activity digest from the store; consumer overrides `buildDigest`.
-- Services contract: `GraphServices = { memory: TripleStore }`.
+**`@noocodex/dagonizer-patterns-graph`** — Triple-store-driven (depends on `GraphServices = { memory: TripleStore }`):
+- `GraphNode<TState>` + leaves `RecallContextNode`, `RecordFindingsNode`, `MemoryDigestNode`.
 
-**`@noocodex/dagonizer-patterns-flow`** — Pure flow primitives:
-- `ExtractFieldNode<TState, TValue>` — copies a state field somewhere; consumer overrides `extract` + `apply`.
-- `FanInReducerNode<TState, TItem>` — fan-out reducer; consumer overrides `reduce`.
-- `DedupeByKeyNode<TItem>` — dedupes by computed key; consumer overrides `keyOf`.
-- `PredicateGateNode<TState>` — boolean gate node; consumer overrides `predicate`.
-- `GroupByFieldNode<TItem, TKey>` — groups items by a field; consumer overrides `fieldOf`.
-- `SortByNode<TItem>` — sorts a list; consumer overrides `compare`.
-- `PickByScoreNode<TItem>` — picks one item; consumer overrides `score`.
-- Services contract: none (pure).
+**`@noocodex/dagonizer-patterns-flow`** — Pure (no services):
+- `FlowNode<TState>` + sub-tree `SelectNode` (→ `PickByScoreNode`, `SortByNode`), `ReduceNode` (→ `DedupeByKeyNode`, `GroupByFieldNode`, `FanInReducerNode`), plus standalone `PredicateGateNode`, `ExtractFieldNode`, `RespondNode`.
 
-**Every Archivist node maps to one canonical pattern.** The example becomes
-a worked-out catalogue of the composition pattern. One-to-one mapping:
+The root `AbstractNode<TState, TOutput, TServices>` ships in
+`@noocodex/dagonizer/patterns` (subpath on the main package) so every other
+pattern across every plugin can extend from a single shared root.
 
-| Archivist node | Canonical pattern (extends) | Domain injection |
+**One-to-one Archivist node → canonical leaf mapping:**
+
+| Archivist node | Canonical leaf (extends from) | Domain injection |
 |---|---|---|
-| `classifyIntent` | `ClassifyIntentNode<ArchivistState, ArchivistIntent>` | `INTENT_TOKENS`, prompt |
-| `decideTools` | `DecideToolsNode<ArchivistState>` | tool list, prompt |
-| `rankCandidates` | `RankCandidatesNode<ArchivistState, Candidate>` | prompt, score extractor |
-| `composeResponse` | `ComposeResponseNode<ArchivistState>` | prompt |
-| `validateResponse` | `ValidateResponseNode<ArchivistState>` | prompt |
-| `composeEmptyResponse` | `ComposeEmptyResponseNode<ArchivistState>` | prompt |
-| `composeMemoryResponse` | `ComposeResponseNode<ArchivistState>` | prompt (memory variant) |
-| `declineOffTopic`, `declineEmpty` | `DeclineNode<ArchivistState>` | prompt |
-| `respondToVisitor` | `RespondNode<ArchivistState>` | (default) |
+| `classifyIntent` | `ClassifyIntentNode<ArchivistState, ArchivistIntent>` (← DecisionNode) | `INTENT_TOKENS`, prompt |
+| `decideTools` | `DecideToolsNode<ArchivistState>` (← DecisionNode) | tool list, prompt |
+| `rankCandidates` | `RankCandidatesNode<ArchivistState, Candidate>` (← DecisionNode) | prompt, score extractor |
+| `validateResponse` | `ValidateResponseNode<ArchivistState>` (← DecisionNode) | prompt |
+| `composeResponse` | `ComposeResponseNode<ArchivistState>` (← ComposeNode) | prompt |
+| `composeEmptyResponse` | `ComposeEmptyResponseNode<ArchivistState>` (← ComposeNode) | prompt |
+| `composeMemoryResponse` | `ComposeMemoryResponseNode<ArchivistState>` (← ComposeNode) | prompt |
+| `declineOffTopic`, `declineEmpty` | `DeclineNode<ArchivistState>` (← ComposeNode) | prompt |
+| `recommendSimilar` | `ComposeResponseNode<ArchivistState>` (← ComposeNode) | prompt (similar-to variant) |
 | `openLibraryScout`, `googleBooksScout`, `subjectScout`, `wikipediaScout`, `webSearchScout` | `ScoutNode<ArchivistState, Candidate, …>` | tool + normalize + writeBack |
-| `recallContext` | `RecallContextNode<ArchivistState, ContextBinding>` | `dag:` query + binding map |
-| `recallPastVisits` | `RecallContextNode<ArchivistState, BookBinding>` | `dag:Book` query + binding map |
-| `recallMemories` | `MemoryDigestNode<ArchivistState>` | digest builder |
-| `recordFindings` | `RecordFindingsNode<ArchivistState, Candidate>` | `toQuads(candidate)` |
-| `recommendSimilar` | `ComposeResponseNode<ArchivistState>` | prompt (similar-to variant) |
-| `extractQuery` | `ExtractFieldNode<ArchivistState, string>` | `extract: s=>s.query`, `apply: ...` |
-| `mergeCandidates` | `DedupeByKeyNode<Candidate>` | `keyOf: CanonicalId.of` |
-| `groupByYear` | `GroupByFieldNode<Candidate, number>` | `fieldOf: c=>c.book.firstPublishYear` |
-| `pickBestMatch` | `PickByScoreNode<Candidate>` | `score: c=>c.score` |
-| `rankByRating` | `SortByNode<Candidate>` | `compare: ratingFormula` |
-| `hasCitationsGate` | `PredicateGateNode<ArchivistState>` | `predicate: s=>s.shortlist.length>0` |
+| `recallContext` | `RecallContextNode<ArchivistState, ContextBinding>` (← GraphNode) | `dag:` query + binding map |
+| `recallPastVisits` | `RecallContextNode<ArchivistState, BookBinding>` (← GraphNode) | `dag:Book` query + binding map |
+| `recallMemories` | `MemoryDigestNode<ArchivistState>` (← GraphNode) | digest builder |
+| `recordFindings` | `RecordFindingsNode<ArchivistState, Candidate>` (← GraphNode) | `toQuads(candidate)` |
+| `respondToVisitor` | `RespondNode<ArchivistState>` (← FlowNode) | (default) |
+| `extractQuery` | `ExtractFieldNode<ArchivistState, string>` (← FlowNode) | `extract: s=>s.query` |
+| `mergeCandidates` | `DedupeByKeyNode<Candidate>` (← ReduceNode ← FlowNode) | `keyOf: CanonicalId.of` |
+| `groupByYear` | `GroupByFieldNode<Candidate, number>` (← ReduceNode ← FlowNode) | `fieldOf: c=>c.book.firstPublishYear` |
+| `pickBestMatch` | `PickByScoreNode<Candidate>` (← SelectNode ← FlowNode) | `score: c=>c.score` |
+| `rankByRating` | `SortByNode<Candidate>` (← SelectNode ← FlowNode) | `compare: ratingFormula` |
+| `hasCitationsGate` | `PredicateGateNode<ArchivistState>` (← FlowNode) | `predicate: s=>s.shortlist.length>0` |
 
-22 Archivist nodes, all extensions of canonical patterns. Reading
-`examples/the-archivist/nodes/` becomes the canonical "how to compose
-plugins" reference.
+22 Archivist nodes, every one a leaf in the taxonomy. Reading
+`examples/the-archivist/nodes/` becomes the canonical worked catalogue of
+plugin composition.
 
 ### Phase 8 — Changesets + release pipeline
 
@@ -399,3 +447,5 @@ plugins" reference.
 - **Concrete RAG node packages instead of abstract bases**: would couple prompts and state shape to the plugin, defeating reuse. Patterns ship as abstract classes per project standards.
 - **`Base*` prefix on every pattern class**: muddies the naming. `BaseClassifyIntentNode` reads as "a utility for building your own classify-intent." The class IS classify-intent; the consumer extends it to inject domain. `ClassifyIntentNode` is the right name.
 - **Ship the Archivist's concrete nodes as plugins**: nearly rejected — *the operations* are canonical (every agent classifies intent, ranks candidates, composes a reply) but the *injection points* (prompts, state, IRIs) are domain. The plugin ships the operation; the example ships the injection. One-to-one mapping table in Phase 7 enumerates every Archivist node and the canonical pattern it extends.
+- **Flat list of leaf classes with no intermediate bases**: would lose the shared implementation. The four leaves under `DecisionNode` all run the same LLM-dispatch loop with different `parseChoice` / `routeFor` overrides; the four leaves under `ComposeNode` share the prose-write loop; the `SelectNode` / `ReduceNode` subtrees share collection-traversal semantics. Hierarchy carries implementation, not just naming.
+- **One mega-pattern (`AgentNode`) that subsumes everything**: too abstract — strips the shape information the type system needs to enforce port routing and service injection. Taxonomy preserves both: extend at the leaf for common cases, extend at the parent for novel ones, extend at the root for entirely new tiers.
