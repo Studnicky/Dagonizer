@@ -1,8 +1,11 @@
 ---
 seeAlso:
+  - text: 'Authoring DAGs'
+    link: './authoring'
+    description: 'when to use DAGBuilder vs DAGDeriver vs raw DAG literals'
   - text: 'DAGBuilder'
     link: './builder'
-    description: 'the imperative alternative when contracts don''t fit'
+    description: 'imperative authoring for deterministic / ETL workflows'
   - text: 'Visualization'
     link: './visualization'
     description: 'render the derived DAG as Mermaid'

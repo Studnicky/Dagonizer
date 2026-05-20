@@ -53,9 +53,9 @@ interface DAGDeriverOptions {
 }
 ```
 
-Operations sharing a topological depth are emitted as a `parallel` placement that fires them concurrently. The `success` route on each linear placement targets the first successor at the next depth. Operations named in `annotations.fanouts.<name>.fanInOperation` are emitted as registered single-node placements (so the `custom` fan-in strategy can resolve them).
+Operations sharing a topological depth auto-group into a `ParallelNode` with `combine: 'collect'`; use `annotations.parallels` to override the grouping or pick a different combine strategy. Each port in `contract.outputs` routes to the first successor at the next depth; `annotations.terminals` overrides individual ports. When `annotations.fanouts.<name>.strategy === 'custom'`, the referenced `fanInOperation` is emitted as a registered single-node placement alongside the fan-out so the dispatcher's `custom` fan-in reducer can resolve it.
 
-Throws `DAGError` when `contracts` is empty.
+Throws `DAGError` when `contracts` is empty, when a terminal references a port outside the contract's `outputs`, when a partition outcome isn't in `outcomes`, when a parallel member appears in multiple groups, or when an operation appears in more than one of `fanouts` / `subDAGs` / `parallels`.
 
 ### `edges(contracts)`
 
