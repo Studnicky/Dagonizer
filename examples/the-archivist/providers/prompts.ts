@@ -357,7 +357,8 @@ export const prompts = {
   suggestStarterQuery(): string {
     return [
       directives.persona,
-      'Pick one popular author or series at random from world literature.',
+      'The shop specialises in science fiction and philosophy.',
+      'Pick one acclaimed work or author from science fiction or philosophy at random — examples of the genre frame: Liu Cixin\'s Three Body Problem, William Gibson\'s Neuromancer, Ursula K. Le Guin, Stanisław Lem, Ted Chiang, Jorge Luis Borges, Albert Camus, Michel Foucault, Gilles Deleuze, Ludwig Wittgenstein. Pick something in that vein but vary your selection.',
       'Phrase ONE short curious question a first-time visitor to a bookstore might ask about it.',
       'The question must be under 20 words.',
       'Return just the question — no preamble, no quotation marks, no explanation.',
@@ -367,6 +368,7 @@ export const prompts = {
   suggestGreeting(): string {
     return [
       directives.persona,
+      'The shop specialises in science fiction and philosophy.',
       'Write ONE fresh opening greeting for a new visitor walking into the shop.',
       'The greeting must be warm, curious, and invite a book question.',
       'Keep it under 30 words.',
@@ -378,6 +380,7 @@ export const prompts = {
     return [
       'A bookshop visitor has just received this greeting from the Archivist:',
       `"${greeting}"`,
+      'The visitor is interested in science fiction and philosophy.',
       'Write ONE natural first message the visitor might send in reply.',
       'The reply must be a book question or request that follows naturally from the greeting.',
       'Keep it under 30 words.',

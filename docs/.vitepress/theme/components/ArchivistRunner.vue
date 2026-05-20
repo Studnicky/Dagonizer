@@ -72,8 +72,8 @@ import CheckpointControls from './CheckpointControls.vue';
 import Conversation from './Conversation.vue';
 import DagGraph from './DagGraph.vue';
 import MemoryGraph from './MemoryGraph.vue';
+import type { MemorySelection } from './MemoryGraph.vue';
 import PanesTabs from './PanesTabs.vue';
-import PersistenceBadge from './PersistenceBadge.vue';
 import SendForm from './SendForm.vue';
 import TimeoutPane from './TimeoutPane.vue';
 import type { TimeoutSettings } from './TimeoutPane.vue';
@@ -276,9 +276,9 @@ function togglePersistence(): void {
 // machine's current state instead of independent refs.
 const runnerMachine = new RunnerMachine();
 
-// Selected IRI in the memory graph — TripleInspector reads this.
-const selectedIri = ref<string | null>(null);
-function onMemorySelect(iri: string | null): void { selectedIri.value = iri; }
+// Selected node in the memory graph — TripleInspector reads this.
+const selectedSelection = ref<MemorySelection | null>(null);
+function onMemorySelect(sel: MemorySelection | null): void { selectedSelection.value = sel; }
 
 // Selected tool/node for the ToolExplainPanel.
 const selectedTool = ref<string | null>(null);
@@ -449,13 +449,13 @@ const STATIC_GREETINGS: readonly string[] = [
 ];
 
 const STATIC_VISITOR_REPLIES: readonly string[] = [
-  "I'm looking for something thoughtful about memory — any suggestions?",
-  'What do you have on labyrinths?',
-  'A book that feels like winter.',
-  "Something by Le Guin I might have missed?",
-  'Where should I start with Borges?',
-  'Do you have anything about libraries themselves as a subject?',
-  'I want something quietly unsettling — not horror, just strange.',
+  'Something like Neuromancer but written in the last five years?',
+  'Where should I start with Stanisław Lem?',
+  'A novel about time that doesn\'t lean on time-travel tropes.',
+  'Anything Wittgenstein-adjacent that doesn\'t require a logic background?',
+  'What\'s the best translation of the Three Body Problem trilogy?',
+  'Do you have anything that pairs Ted Chiang with Borges?',
+  'Philosophy for someone who just finished Annihilation.',
 ];
 
 function isFreshSession(): boolean {
@@ -624,7 +624,7 @@ function reset(): void {
   conversation.value = [];
   trace.value = [];
   terminalKind.value = 'pending';
-  selectedIri.value = null;
+  selectedSelection.value = null;
   selectedTool.value = null;
   checkpointNode.value = null;
   lastResult = null;
@@ -632,6 +632,8 @@ function reset(): void {
   // Fire-and-forget: the manual reset button is not starting a new run,
   // so no need to await — the fade plays visually but nothing depends on it.
   void dagGraph.value?.reset();
+  memoryStore.clear();
+  memoryStore.loadOntology(ONTOLOGY_NTRIPLES);
   memoryTick.value++;
   logger.clear();
   runnerMachine.dispatch({ 'type': 'reset' });
@@ -739,15 +741,6 @@ function loadKey(): string {
                 </section>
 
                 <section class="ar-config-section">
-                  <h5 class="ar-config-head">Memory store</h5>
-                  <PersistenceBadge
-                    :triple-count="memoryStore.size"
-                    :is-persisted="isPersisted"
-                    @toggle="togglePersistence"
-                  />
-                </section>
-
-                <section class="ar-config-section">
                   <h5 class="ar-config-head">Checkpoints</h5>
                   <CheckpointControls
                     :checkpoint-node="checkpointNode"
@@ -773,6 +766,14 @@ function loadKey(): string {
             <span class="ar-hint">{{ memoryStore.size }} triples</span>
           </div>
           <PanesTabs :tabs="rightTabs" default-key="dag" class="ar-tabs ar-tabs--right">
+            <template #tab-suffix>
+              <button
+                :class="['persist-toggle', isPersisted ? 'persist-toggle--on' : 'persist-toggle--off']"
+                :title="isPersisted ? 'Persisted to localStorage — click to switch to in-memory' : 'In-memory only — click to enable localStorage persistence'"
+                @click="togglePersistence"
+              >{{ isPersisted ? '⎓ persisted' : '○ in-memory' }}</button>
+            </template>
+
             <!-- DAG tab: live execution graph -->
             <template #dag>
               <div class="graph-pane">
@@ -803,8 +804,8 @@ function loadKey(): string {
                 <TripleInspector
                   :store="memoryStore"
                   :tick="memoryTick"
-                  :selected-iri="selectedIri"
-                  @close="selectedIri = null"
+                  :selection="selectedSelection"
+                  @close="selectedSelection = null"
                 />
               </div>
             </template>
@@ -980,5 +981,37 @@ function loadKey(): string {
 @keyframes dag-pulse {
   0%, 100% { box-shadow: 0 0 0 1px var(--dagonizer-brand), 0 0 28px -8px var(--dagonizer-brand); }
   50%      { box-shadow: 0 0 0 1px var(--dagonizer-brand), 0 0 36px -2px var(--dagonizer-brand); }
+}
+
+/* ── Persistence toggle in tab-suffix ──────────────────────────────────── */
+.persist-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.28rem 0.6rem;
+  background: transparent;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.persist-toggle--on {
+  color: var(--dagonizer-brand2);
+  border-color: var(--dagonizer-brand2);
+}
+
+.persist-toggle--off {
+  color: var(--vp-c-text-3);
+}
+
+.persist-toggle:hover {
+  background: var(--vp-c-bg);
+  border-color: var(--dagonizer-brand);
+  color: var(--dagonizer-brand);
 }
 </style>
