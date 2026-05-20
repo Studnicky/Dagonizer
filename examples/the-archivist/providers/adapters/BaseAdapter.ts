@@ -20,7 +20,7 @@
  */
 
 
-import type { ChatRequest, ChatResponse, LlmAdapter } from './LlmAdapter.ts';
+import type { AdapterCapabilities, ChatRequest, ChatResponse, LlmAdapter } from './LlmAdapter.ts';
 import { Classifications, LlmError, type ErrorClassification } from './LlmError.ts';
 
 import { BackoffStrategy, RetryPolicy } from '@noocodex/dagonizer/runtime';
@@ -30,6 +30,7 @@ const MAX_QUOTA_WAIT_MS = 10_000;
 export interface BaseAdapterOptions {
   readonly id: string;
   readonly displayName: string;
+  readonly capabilities: AdapterCapabilities;
   readonly maxAttempts?: number;
   readonly baseDelayMs?: number;
 }
@@ -37,11 +38,13 @@ export interface BaseAdapterOptions {
 export abstract class BaseAdapter implements LlmAdapter {
   readonly id: string;
   readonly displayName: string;
+  readonly capabilities: AdapterCapabilities;
   readonly #retry: RetryPolicy;
 
   protected constructor(options: BaseAdapterOptions) {
     this.id = options.id;
     this.displayName = options.displayName;
+    this.capabilities = options.capabilities;
     this.#retry = new RetryPolicy({
       'maxAttempts': options.maxAttempts ?? 3,
       'strategy':    BackoffStrategy.EXPONENTIAL,

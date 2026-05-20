@@ -2,6 +2,19 @@
 
 All notable changes to `@noocodex/dagonizer` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.9.2] - 2026-05-20
+
+### Fixed
+
+- `GroqApiAdapter` now sends `max_completion_tokens` instead of `max_tokens` — Groq's API does not support `max_tokens`. Requests previously silently ignored the token cap.
+- `CerebrasApiAdapter` default model corrected to `gpt-oss-120b`; Cerebras's catalog does not include any `llama-3.3-70b` variant, so the previous default returned a model-not-found error on every call. The adapter also now sends `max_completion_tokens` (Cerebras's documented field).
+
+### Added
+
+- `AdapterCapabilities` interface on `LlmAdapter` — every adapter declares `{ toolUse: 'full' | 'partial' | 'none'; structuredOutput: boolean; jsonMode: boolean }`. Lets the host DAG introspect what a backend can do and route accordingly instead of assuming tool calls survive every model.
+- Capability declarations on all eight adapters: Gemini API (full), Gemini Nano (none), WebLLM (partial), Groq (full), Cerebras (partial), Mistral (full), OpenRouter (partial), Stub (full).
+- `examples/the-archivist/__smoke__/adapter-transport.smoke.ts` + `npm run smoke:adapters` — wire-format smoke test that intercepts `fetch` and asserts each cloud adapter's outgoing request body matches the provider's documented schema (endpoint URL, field names, headers, tool shape). No network calls. Runs as part of `npm run ci`.
+
 ## [0.9.1] - 2026-05-20
 
 ### Added

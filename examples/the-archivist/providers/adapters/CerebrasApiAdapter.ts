@@ -17,7 +17,10 @@ import type { ChatMessage, ChatRequest, ChatResponse, ToolCall, ToolChoice, Tool
 import { asNetworkError, classifyHttp, Classifications, LlmError, type ErrorClassification } from './LlmError.ts';
 
 const ENDPOINT = 'https://api.cerebras.ai/v1/chat/completions';
-const DEFAULT_MODEL = 'llama-3.3-70b';
+// `gpt-oss-120b` is a production-tier Cerebras model with reliable tool-call
+// support. Cerebras's catalog as of v0.9.2 is `llama3.1-8b`, `gpt-oss-120b`
+// (production), `qwen-3-235b-a22b-instruct-2507`, `zai-glm-4.7` (preview).
+const DEFAULT_MODEL = 'gpt-oss-120b';
 const TIMEOUT_MS = 60_000;
 
 interface OpenAiToolCall {
@@ -54,7 +57,12 @@ export class CerebrasApiAdapter extends BaseAdapter {
   readonly #model: string;
 
   constructor(options: CerebrasApiAdapterOptions) {
-    super({ 'id': 'cerebras', 'displayName': 'Cerebras (llama-3.3-70b)', 'maxAttempts': options.maxAttempts ?? 3 });
+    super({
+      'id': 'cerebras',
+      'displayName': 'Cerebras (gpt-oss-120b)',
+      'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true },
+      'maxAttempts': options.maxAttempts ?? 3,
+    });
     this.#apiKey = options.apiKey;
     this.#model = options.model ?? DEFAULT_MODEL;
   }
@@ -121,7 +129,7 @@ export class CerebrasApiAdapter extends BaseAdapter {
       'model': this.#model,
       'messages': request.messages.map(toOpenAiMessage),
       'temperature': request.temperature ?? 0.2,
-      'max_tokens': request.maxTokens ?? 512,
+      'max_completion_tokens': request.maxTokens ?? 512,
     };
 
     if (withTools && request.tools !== undefined && request.tools.length > 0) {

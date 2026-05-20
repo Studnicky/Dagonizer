@@ -55,7 +55,12 @@ export class GroqApiAdapter extends BaseAdapter {
   readonly #model: string;
 
   constructor(options: GroqApiAdapterOptions) {
-    super({ 'id': 'groq', 'displayName': 'Groq (llama-3.3-70b)', 'maxAttempts': options.maxAttempts ?? 3 });
+    super({
+      'id': 'groq',
+      'displayName': 'Groq (llama-3.3-70b)',
+      'capabilities': { 'toolUse': 'full', 'structuredOutput': true, 'jsonMode': true },
+      'maxAttempts': options.maxAttempts ?? 3,
+    });
     this.#apiKey = options.apiKey;
     this.#model = options.model ?? DEFAULT_MODEL;
   }
@@ -104,7 +109,7 @@ export class GroqApiAdapter extends BaseAdapter {
       'model': this.#model,
       'messages': request.messages.map(toOpenAiMessage),
       'temperature': request.temperature ?? 0.2,
-      'max_tokens': request.maxTokens ?? 512,
+      'max_completion_tokens': request.maxTokens ?? 512,
     };
 
     if (request.tools !== undefined && request.tools.length > 0) {
