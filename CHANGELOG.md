@@ -2,6 +2,32 @@
 
 All notable changes to `@noocodex/dagonizer` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.9.1] - 2026-05-20
+
+### Added
+
+⦿ `GroqApiAdapter` — OpenAI-compatible REST adapter for Groq (`https://api.groq.com/openai/v1/chat/completions`). Default model `llama-3.3-70b-versatile`. Supports tool-use via `tools` + `tool_choice`, structured output via `response_format: json_object`, 60-second per-request timeout via AbortController.
+⦿ `CerebrasApiAdapter` — OpenAI-compatible REST adapter for Cerebras (`https://api.cerebras.ai/v1/chat/completions`). Default model `llama-3.3-70b`. Tool-use gated with try/catch fallback to plain chat when the model signals tools are unsupported.
+⦿ `MistralApiAdapter` — OpenAI-compatible REST adapter for Mistral AI (`https://api.mistral.ai/v1/chat/completions`). Default model `mistral-small-latest`. Full tool-use and structured-output support.
+⦿ `OpenRouterApiAdapter` — OpenAI-compatible REST adapter for OpenRouter (`https://openrouter.ai/api/v1/chat/completions`). Default model `meta-llama/llama-3.3-70b-instruct:free` (free tier). Includes required `HTTP-Referer` and `X-Title` headers.
+⦿ `MobileDetection` — static class that triangulates mobile device status from three signals (touch points, coarse pointer media query, viewport width). Supports `localStorage`-backed `setOverride`/`readOverride` for user-controlled desktop/mobile mode.
+⦿ Per-provider API key storage in `localStorage` under `dagonizer-api-keys` (JSON blob keyed by `ProviderId`). `loadApiKeys()` and `saveApiKeys()` helpers with automatic migration of the legacy `dagonizer-gemini-key` entry.
+⦿ Mobile banner in `ArchivistRunner` — shown when `MobileDetection.isLikelyMobile()` returns true. Links to Groq key page, explains on-device backend unavailability, and provides a "Treat as desktop" override link.
+⦿ `BackendPicker` per-backend key inputs — each cloud backend gets its own collapsible `<details>` with a password input, reveal toggle, link to the key page, and a set/not-set status chip. Desktop-only chip on `gemini-nano` and `web-llm` rows when `isMobile` is true.
+⦿ Stub adapter is now surfaced on mobile as the zero-setup fallback; the mobile banner makes the canned-vs-real LLM distinction explicit so visitors know what they're seeing until a key is entered.
+⦿ 18-book sci-fi / philosophy seed library (`SeedLibrary`) auto-loaded into `urn:dagonizer:memory` on mount. The Memory tab has content from first paint; stub responses cite real titles from the seed graph; `reset()` restores the seed alongside the ontology TBox.
+
+### Changed
+
+⦿ `ProviderId` union extended: `'groq' | 'cerebras' | 'mistral' | 'openrouter'` added.
+⦿ `BROWSER_VISIBLE` list extended to include the four new cloud providers.
+⦿ `DetectionInputs.apiKeys` replaces the previous single `apiKey?: string`. All callers updated.
+⦿ `pickBestBackend(backends, options?)` gains an optional `{ isMobile: boolean }` second argument. Mobile suppresses `gemini-nano` and `web-llm` from ranking. Priority order: groq → cerebras → gemini-api → mistral → openrouter → gemini-nano → web-llm → stub.
+⦿ `hasNoRunnableModel` forwards `isMobile` option to `pickBestBackend`.
+⦿ `instantiateProvider` extended to construct all four new adapters; throws `LlmError` (AUTH_FAILED) for missing keys, and handles the exhaustive `never` case.
+⦿ `BackendPicker` emits `update:apiKeys` (full map) instead of `update:apiKey` (single string). `ArchivistRunner` updated accordingly.
+⦿ Archivist docs (`docs/examples/the-archivist.md`) Backends section enumerates all eight backends with mobile detection behavior documented.
+
 ## [0.9.0] - 2026-05-20
 
 ### Added
