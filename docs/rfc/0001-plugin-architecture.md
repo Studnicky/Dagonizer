@@ -86,36 +86,48 @@ No constructor, no state.
 @noocodex/dagonizer-patterns-flow      (Pure flow primitives — fan-in reducer, dedupe-by-key, gates, group-by, sort, pick)
 ```
 
-**What ships vs what stays.** A pattern package ships *only* the genuinely
-reusable primitive — the abstract base whose shape is domain-agnostic. The
-Archivist's concrete nodes that are domain-specific (`rankByRating` weights
-Google Books ratings, `recallPastVisits` queries `dag:Book` triples,
-`declineOffTopic` emits Archivist persona text) **stay in the example** and
-extend the appropriate base. The library exists to provide primitives;
-class extension is how consumers compose them into a specific flow.
+**Canonical pattern classes ship; only the domain injection points stay
+in the example.** A pattern is canonical when the *operation* is universal
+(classify-intent, rank-candidates, recall-context, dedupe-by-key). What
+varies is the domain — five injection points only:
 
-Concrete example:
+1. The state shape (interface the consumer implements)
+2. The token union (string-literal union the consumer declares)
+3. The prompt template (string the consumer builds)
+4. The ontology IRIs (URIs the consumer wires into SPARQL queries)
+5. The entity types (the consumer's `Candidate` / `Book` / `Document` shape)
+
+Every other line of code in the pattern (LLM dispatch, retry, response
+parsing, contract field, timeout, port routing) is canonical and ships in
+the plugin.
+
+Concrete example using canonical naming — no `Base*` prefix:
 
 ```ts
-// In the plugin package — primitive only:
-export abstract class BaseClassifyTokenNode<TState, TToken extends string>
-  extends BaseNode<TState, TToken, RagServices>
+// Ships in @noocodex/dagonizer-patterns-rag — canonical pattern:
+export abstract class ClassifyIntentNode<TState, TIntent extends string>
+  implements NodeInterface<TState, TIntent, RagServices>
 {
+  readonly name = 'classify-intent';
+  abstract readonly outputs: readonly TIntent[];
+  abstract readonly contract: OperationContractFragment;
   protected abstract buildPrompt(state: TState): string;
-  protected abstract parseToken(content: string): TToken;
-  async execute(state, ctx) { /* LLM dispatch + retry handled here */ }
+  protected abstract parseToken(content: string): TIntent;
+  async execute(state, ctx) { /* canonical LLM dispatch + retry */ }
 }
 
-// In the Archivist example — domain concrete, extends primitive:
-export class ClassifyIntentNode extends BaseClassifyTokenNode<ArchivistState, ArchivistIntent> {
+// In the Archivist example — extends the canonical class, injects domain:
+export class ArchivistClassifyIntent extends ClassifyIntentNode<ArchivistState, ArchivistIntent> {
   readonly outputs = INTENT_TOKENS;
+  readonly contract = { hardRequired: ['query'], produces: ['intent'] };
   protected buildPrompt(state) { return prompts.classifyIntent(state.query); }
   protected parseToken(content) { return normaliseIntent(content); }
 }
 ```
 
-This is the only sustainable boundary: the lib ships shapes, the consumer
-ships domain.
+The lib ships shapes; the consumer ships domain. Every Archivist node
+follows this pattern: 10–20 lines that supply the five injection points
+and nothing else.
 
 The main `@noocodex/dagonizer` ships the dispatcher, contracts, and three
 new subpaths. Each plugin package depends on `@noocodex/dagonizer` for the
@@ -280,41 +292,70 @@ Update the Archivist example to import each tool from its plugin package.
 
 ### Phase 7 — Extract patterns packages (3)
 
-Most invasive phase — designs the abstract base classes. Each pattern package
-exports abstract classes + service contracts. **Only genuinely reusable
-primitives ship; domain-specific concretes stay in the example and extend
-these bases.**
+Most invasive phase — designs the canonical pattern classes. Each pattern
+package exports abstract classes named for what they *are*, not what they're
+a base for (no `Base*` prefix). Consumers extend them and inject the five
+domain points: state shape, token union, prompt template, ontology IRIs,
+entity types.
 
-**`@noocodex/dagonizer-patterns-rag`**
-- `BaseClassifyTokenNode<TState, TToken>` — LLM picks one of N tokens; consumer overrides `buildPrompt` + `parseToken`.
-- `BaseDecideToolsNode<TState>` — LLM picks tool calls; consumer overrides `buildPrompt` + `availableTools`.
-- `BaseRankItemsNode<TState, TItem>` — LLM ranks a list; consumer overrides `buildPrompt` + `extractScores`.
-- `BaseComposeResponseNode<TState>` — LLM composes a reply; consumer overrides `buildPrompt`.
-- `BaseValidateResponseNode<TState>` — LLM judges draft yes/no; consumer overrides `buildPrompt`.
-- `BaseEmptyResponseNode<TState>` — LLM composes when no data; consumer overrides `buildPrompt`.
-- `BaseScoutNode<TState, TItem, TToolInput, TToolOutput>` — calls a Tool, normalises, writes back; consumer overrides `buildInput` + `normalize` + `writeBack`.
+**`@noocodex/dagonizer-patterns-rag`** — LLM-driven canonical nodes:
+- `ClassifyIntentNode<TState, TIntent>` — LLM picks one intent token; consumer overrides `buildPrompt` + `parseToken`.
+- `DecideToolsNode<TState>` — LLM picks which tools to call; consumer overrides `buildPrompt` + `availableTools`.
+- `RankCandidatesNode<TState, TItem>` — LLM ranks a list; consumer overrides `buildPrompt` + `extractScores`.
+- `ComposeResponseNode<TState>` — LLM composes the reply; consumer overrides `buildPrompt`.
+- `ValidateResponseNode<TState>` — LLM judges a draft; consumer overrides `buildPrompt`.
+- `ComposeEmptyResponseNode<TState>` — LLM composes when no data was found; consumer overrides `buildPrompt`.
+- `DeclineNode<TState>` — LLM composes a polite refusal; consumer overrides `buildPrompt`.
+- `RespondNode<TState>` — writes draft to conversation output and marks lifecycle completed; consumer overrides `extractDraft` (default reads `state.draft`).
+- `ScoutNode<TState, TItem, TIn, TOut>` — calls a Tool, normalises results, writes to state; consumer overrides `buildInput` + `normalize` + `writeBack`.
 - Services contract: `RagServices = { llm: LlmClient }`.
 
-**`@noocodex/dagonizer-patterns-graph`**
-- `BaseRecallContextNode<TState, TBinding>` — SPARQL select; consumer overrides `buildQuery` + `mapBindings`.
-- `BaseRecordFindingsNode<TState, TEntity>` — writes entities as quads; consumer overrides `toQuads`.
-- `BaseMemoryDigestNode<TState>` — assembles a recent-activity digest; consumer overrides `buildDigest`.
+**`@noocodex/dagonizer-patterns-graph`** — Triple-store canonical nodes:
+- `RecallContextNode<TState, TBinding>` — SPARQL select against the memory store; consumer overrides `buildQuery` + `mapBindings`.
+- `RecordFindingsNode<TState, TEntity>` — writes entities as quads to the memory store; consumer overrides `toQuads`.
+- `MemoryDigestNode<TState>` — assembles a recent-activity digest from the store; consumer overrides `buildDigest`.
 - Services contract: `GraphServices = { memory: TripleStore }`.
 
-**`@noocodex/dagonizer-patterns-flow`**
-- `BaseFanInReducerNode<TState, TItem>` — fan-out reducer; consumer overrides `reduce`.
-- `BaseDedupeByKeyNode<TItem>` — dedupes by computed key; consumer overrides `keyOf`.
-- `BasePredicateGateNode<TState>` — boolean gate; consumer overrides `predicate`.
-- `BaseGroupByFieldNode<TItem, TKey>` — groups items by a field; consumer overrides `fieldOf`.
-- `BaseSortByNode<TItem>` — sorts a list; consumer overrides `compare`.
-- `BasePickByNode<TItem>` — picks one item; consumer overrides `score`.
+**`@noocodex/dagonizer-patterns-flow`** — Pure flow primitives:
+- `ExtractFieldNode<TState, TValue>` — copies a state field somewhere; consumer overrides `extract` + `apply`.
+- `FanInReducerNode<TState, TItem>` — fan-out reducer; consumer overrides `reduce`.
+- `DedupeByKeyNode<TItem>` — dedupes by computed key; consumer overrides `keyOf`.
+- `PredicateGateNode<TState>` — boolean gate node; consumer overrides `predicate`.
+- `GroupByFieldNode<TItem, TKey>` — groups items by a field; consumer overrides `fieldOf`.
+- `SortByNode<TItem>` — sorts a list; consumer overrides `compare`.
+- `PickByScoreNode<TItem>` — picks one item; consumer overrides `score`.
 - Services contract: none (pure).
 
-**Stays in example** (Archivist-specific, extends one of the bases above):
-- `ClassifyIntentNode extends BaseClassifyTokenNode<ArchivistState, ArchivistIntent>` — Book domain prompt + intent union.
-- `RankByRatingNode extends BaseSortByNode<Candidate>` — Google Books rating comparator.
-- `RecallContextNode extends BaseRecallContextNode<ArchivistState, BookBinding>` — `dag:Book` SPARQL query.
-- `RecallPastVisitsNode`, `RecommendSimilarNode`, `DeclineOffTopicNode`, `DeclineEmptyNode`, `RespondToVisitorNode`, `ExtractQueryNode`, `MergeCandidatesNode`, `HasCitationsGateNode` — every one is a one-class extension of a base above. The example demonstrates exactly the composition pattern the library is built around.
+**Every Archivist node maps to one canonical pattern.** The example becomes
+a worked-out catalogue of the composition pattern. One-to-one mapping:
+
+| Archivist node | Canonical pattern (extends) | Domain injection |
+|---|---|---|
+| `classifyIntent` | `ClassifyIntentNode<ArchivistState, ArchivistIntent>` | `INTENT_TOKENS`, prompt |
+| `decideTools` | `DecideToolsNode<ArchivistState>` | tool list, prompt |
+| `rankCandidates` | `RankCandidatesNode<ArchivistState, Candidate>` | prompt, score extractor |
+| `composeResponse` | `ComposeResponseNode<ArchivistState>` | prompt |
+| `validateResponse` | `ValidateResponseNode<ArchivistState>` | prompt |
+| `composeEmptyResponse` | `ComposeEmptyResponseNode<ArchivistState>` | prompt |
+| `composeMemoryResponse` | `ComposeResponseNode<ArchivistState>` | prompt (memory variant) |
+| `declineOffTopic`, `declineEmpty` | `DeclineNode<ArchivistState>` | prompt |
+| `respondToVisitor` | `RespondNode<ArchivistState>` | (default) |
+| `openLibraryScout`, `googleBooksScout`, `subjectScout`, `wikipediaScout`, `webSearchScout` | `ScoutNode<ArchivistState, Candidate, …>` | tool + normalize + writeBack |
+| `recallContext` | `RecallContextNode<ArchivistState, ContextBinding>` | `dag:` query + binding map |
+| `recallPastVisits` | `RecallContextNode<ArchivistState, BookBinding>` | `dag:Book` query + binding map |
+| `recallMemories` | `MemoryDigestNode<ArchivistState>` | digest builder |
+| `recordFindings` | `RecordFindingsNode<ArchivistState, Candidate>` | `toQuads(candidate)` |
+| `recommendSimilar` | `ComposeResponseNode<ArchivistState>` | prompt (similar-to variant) |
+| `extractQuery` | `ExtractFieldNode<ArchivistState, string>` | `extract: s=>s.query`, `apply: ...` |
+| `mergeCandidates` | `DedupeByKeyNode<Candidate>` | `keyOf: CanonicalId.of` |
+| `groupByYear` | `GroupByFieldNode<Candidate, number>` | `fieldOf: c=>c.book.firstPublishYear` |
+| `pickBestMatch` | `PickByScoreNode<Candidate>` | `score: c=>c.score` |
+| `rankByRating` | `SortByNode<Candidate>` | `compare: ratingFormula` |
+| `hasCitationsGate` | `PredicateGateNode<ArchivistState>` | `predicate: s=>s.shortlist.length>0` |
+
+22 Archivist nodes, all extensions of canonical patterns. Reading
+`examples/the-archivist/nodes/` becomes the canonical "how to compose
+plugins" reference.
 
 ### Phase 8 — Changesets + release pipeline
 
@@ -356,4 +397,5 @@ these bases.**
 - **Turborepo/Nx**: caching is nice-to-have at 16 packages; revisit if build times become a pain point.
 - **Ship adapters only in v0.10.0, patterns later**: explicitly rejected. Dagonizer's value proposition is the full ecosystem (adapters + tools + patterns). Shipping one tier without the others would tell consumers "you can swap LLMs but everything else is still example code." All three tiers ship together so the v0.10.0 narrative is coherent: install plugins for every layer of your DAG.
 - **Concrete RAG node packages instead of abstract bases**: would couple prompts and state shape to the plugin, defeating reuse. Patterns ship as abstract classes per project standards.
-- **Ship the Archivist's domain-specific nodes as plugins**: explicitly rejected. `RankByRatingNode` weights Google Books ratings — that's an Archivist choice, not a primitive. `DeclineOffTopicNode` emits Archivist persona text. Shipping these as plugins would mean consumers either fork them or live with someone else's domain choices baked in. The library ships primitives; domain concretes stay where the domain lives.
+- **`Base*` prefix on every pattern class**: muddies the naming. `BaseClassifyIntentNode` reads as "a utility for building your own classify-intent." The class IS classify-intent; the consumer extends it to inject domain. `ClassifyIntentNode` is the right name.
+- **Ship the Archivist's concrete nodes as plugins**: nearly rejected — *the operations* are canonical (every agent classifies intent, ranks candidates, composes a reply) but the *injection points* (prompts, state, IRIs) are domain. The plugin ships the operation; the example ships the injection. One-to-one mapping table in Phase 7 enumerates every Archivist node and the canonical pattern it extends.
