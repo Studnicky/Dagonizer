@@ -49,84 +49,6 @@ export interface DagJsonLdDocument {
   readonly '@graph': readonly JsonLdGraphEntry[];
 }
 
-const TYPE_BY_KIND: Readonly<Record<DAGNodeEntry['@type'], string>> = {
-  'SingleNode':  'dag:SingleNode',
-  'ParallelNode': 'dag:ParallelNode',
-  'FanOutNode':  'dag:FanOutNode',
-  'DeepDAGNode': 'dag:DeepDAGNode',
-};
-
-const placementIri = (dagName: string, placementName: string): string =>
-  `urn:dagonizer:${dagName}#${placementName}`;
-
-const dagIri = (dagName: string): string => `urn:dagonizer:${dagName}`;
-
-/** Convert a routing map to JSON-LD route descriptors that reference the
- *  full placement IRIs (so consumers don't have to re-resolve names). */
-const renderRoutes = (
-  dagName: string,
-  outputs: Readonly<Record<string, string | null>>,
-): readonly { readonly 'dag:output': string; readonly 'dag:target': string | null }[] => {
-  const routes: { readonly 'dag:output': string; readonly 'dag:target': string | null }[] = [];
-  for (const [output, target] of Object.entries(outputs)) {
-    routes.push({
-      'dag:output': output,
-      'dag:target': target === null ? null : placementIri(dagName, target),
-    });
-  }
-  return routes;
-};
-
-const renderPlacement = (dagName: string, placement: DAGNodeEntry): JsonLdGraphEntry => {
-  const base = {
-    '@id': placementIri(dagName, placement.name),
-    '@type': TYPE_BY_KIND[placement['@type']],
-    'dag:name': placement.name,
-    'dag:routes': renderRoutes(dagName, placement.outputs),
-  } as const;
-
-  switch (placement['@type']) {
-    case 'SingleNode':
-      return { ...base, 'dag:node': placement.node };
-    case 'ParallelNode':
-      return {
-        ...base,
-        'dag:combine': placement.combine,
-        'dag:children': placement.nodes.map((child: string) => placementIri(dagName, child)),
-      };
-    case 'FanOutNode': {
-      const out: JsonLdGraphEntry & Record<string, unknown> = {
-        ...base,
-        'dag:node':   placement.node,
-        'dag:source': placement.source,
-        'dag:fanIn':  placement.fanIn,
-      };
-      if (placement.itemKey !== undefined)     out['dag:itemKey']     = placement.itemKey;
-      if (placement.concurrency !== undefined) out['dag:concurrency'] = placement.concurrency;
-      return out;
-    }
-    case 'DeepDAGNode': {
-      const out: JsonLdGraphEntry & Record<string, unknown> = {
-        ...base,
-        'dag:dag': dagIri(placement.dag),
-      };
-      if (placement.stateMapping !== undefined) out['dag:stateMapping'] = placement.stateMapping;
-      return out;
-    }
-  }
-};
-
-const renderDagRoot = (dag: DAG): JsonLdGraphEntry => ({
-  '@id':   dagIri(dag.name),
-  '@type': 'dag:DAG',
-  'dag:name':       dag.name,
-  'dag:version':    dag.version,
-  'dag:entrypoint': placementIri(dag.name, dag.entrypoint),
-  'dag:placements': dag.nodes.map((placement) =>
-    placementIri(dag.name, placement.name),
-  ),
-});
-
 /**
  * Render a `DAG` as JSON-LD. The output document has a stable
  * `@context` plus a `@graph` containing the DAG root and every
@@ -135,9 +57,17 @@ const renderDagRoot = (dag: DAG): JsonLdGraphEntry => ({
 export class JsonLdRenderer {
   private constructor() { /* static class */ }
 
+  /** Mapping from JSON-LD placement-discriminator to vocabulary-prefixed `@type`. */
+  private static readonly TYPE_BY_KIND: Readonly<Record<DAGNodeEntry['@type'], string>> = {
+    'SingleNode':  'dag:SingleNode',
+    'ParallelNode': 'dag:ParallelNode',
+    'FanOutNode':  'dag:FanOutNode',
+    'DeepDAGNode': 'dag:DeepDAGNode',
+  };
+
   static render(dag: DAG): DagJsonLdDocument {
     const placements = (dag.nodes as readonly DAGNodeEntry[]).map((placement) =>
-      renderPlacement(dag.name, placement),
+      JsonLdRenderer.renderPlacement(dag.name, placement),
     );
 
     return {
@@ -145,7 +75,90 @@ export class JsonLdRenderer {
         'dag':         DAGONIZER_VOCAB,
         'xsd':         'http://www.w3.org/2001/XMLSchema#',
       },
-      '@graph': [renderDagRoot(dag), ...placements],
+      '@graph': [JsonLdRenderer.renderDagRoot(dag), ...placements],
+    };
+  }
+
+  /** Build the URN identifying one placement inside a DAG. */
+  private static placementIri(dagName: string, placementName: string): string {
+    return `urn:dagonizer:${dagName}#${placementName}`;
+  }
+
+  /** Build the URN identifying a DAG document. */
+  private static dagIri(dagName: string): string {
+    return `urn:dagonizer:${dagName}`;
+  }
+
+  /**
+   * Convert a routing map to JSON-LD route descriptors that reference
+   * the full placement IRIs (so consumers don't have to re-resolve
+   * names).
+   */
+  private static renderRoutes(
+    dagName: string,
+    outputs: Readonly<Record<string, string | null>>,
+  ): readonly { readonly 'dag:output': string; readonly 'dag:target': string | null }[] {
+    const routes: { readonly 'dag:output': string; readonly 'dag:target': string | null }[] = [];
+    for (const [output, target] of Object.entries(outputs)) {
+      routes.push({
+        'dag:output': output,
+        'dag:target': target === null ? null : JsonLdRenderer.placementIri(dagName, target),
+      });
+    }
+    return routes;
+  }
+
+  /** Render one placement as a JSON-LD `@graph` entry. */
+  private static renderPlacement(dagName: string, placement: DAGNodeEntry): JsonLdGraphEntry {
+    const base = {
+      '@id':        JsonLdRenderer.placementIri(dagName, placement.name),
+      '@type':      JsonLdRenderer.TYPE_BY_KIND[placement['@type']],
+      'dag:name':   placement.name,
+      'dag:routes': JsonLdRenderer.renderRoutes(dagName, placement.outputs),
+    } as const;
+
+    switch (placement['@type']) {
+      case 'SingleNode':
+        return { ...base, 'dag:node': placement.node };
+      case 'ParallelNode':
+        return {
+          ...base,
+          'dag:combine':  placement.combine,
+          'dag:children': placement.nodes.map((child: string) => JsonLdRenderer.placementIri(dagName, child)),
+        };
+      case 'FanOutNode': {
+        const out: JsonLdGraphEntry & Record<string, unknown> = {
+          ...base,
+          'dag:node':   placement.node,
+          'dag:source': placement.source,
+          'dag:fanIn':  placement.fanIn,
+        };
+        if (placement.itemKey !== undefined)     out['dag:itemKey']     = placement.itemKey;
+        if (placement.concurrency !== undefined) out['dag:concurrency'] = placement.concurrency;
+        return out;
+      }
+      case 'DeepDAGNode': {
+        const out: JsonLdGraphEntry & Record<string, unknown> = {
+          ...base,
+          'dag:dag': JsonLdRenderer.dagIri(placement.dag),
+        };
+        if (placement.stateMapping !== undefined) out['dag:stateMapping'] = placement.stateMapping;
+        return out;
+      }
+    }
+  }
+
+  /** Render the DAG-level root entry that points at every placement. */
+  private static renderDagRoot(dag: DAG): JsonLdGraphEntry {
+    return {
+      '@id':            JsonLdRenderer.dagIri(dag.name),
+      '@type':          'dag:DAG',
+      'dag:name':       dag.name,
+      'dag:version':    dag.version,
+      'dag:entrypoint': JsonLdRenderer.placementIri(dag.name, dag.entrypoint),
+      'dag:placements': dag.nodes.map((placement) =>
+        JsonLdRenderer.placementIri(dag.name, placement.name),
+      ),
     };
   }
 }

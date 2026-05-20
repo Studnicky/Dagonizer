@@ -82,181 +82,29 @@ export interface RenderOptions {
   readonly maxDepth?: number;
 }
 
-const END_ID = 'END';
-const DEFAULT_MAX_DEPTH = 6;
-
-const PLACEMENT_KIND: Readonly<Record<string, 'single' | 'parallel' | 'fan-out' | 'deep-dag'>> = {
-  'SingleNode':  'single',
-  'ParallelNode': 'parallel',
-  'FanOutNode':  'fan-out',
-  'DeepDAGNode': 'deep-dag',
-};
-
-const placementNode = (placement: DAGNodeEntry, id: string): CytoscapeNodeElement => {
-  const kind = PLACEMENT_KIND[placement['@type']] ?? 'single';
-  const base = {
-    "group": 'nodes' as const,
-    "data": {
-      "id":    id,
-      "label": placement.name,
-      "type":  kind,
-    } as CytoscapeNodeElement['data'],
-    "classes": `dag-${kind}`,
-  };
-
-  switch (placement['@type']) {
-    case 'SingleNode':
-      return { ...base, "data": { ...base.data, "node": placement.node } };
-    case 'ParallelNode':
-      return { ...base, "data": { ...base.data, "combine": placement.combine, "children": [...placement.nodes] } };
-    case 'FanOutNode':
-      return {
-        ...base,
-        "data": {
-          ...base.data,
-          "node":        placement.node,
-          "source":      placement.source,
-          "itemKey":     placement.itemKey,
-          "concurrency": placement.concurrency,
-          "fanIn":       placement.fanIn,
-        },
-      };
-    case 'DeepDAGNode':
-      return {
-        ...base,
-        "data": {
-          ...base.data,
-          "dag":          placement.dag,
-          "stateMapping": placement.stateMapping,
-        },
-      };
-  }
-};
-
-const idIn = (prefix: string, name: string): string =>
-  prefix === '' ? name : `${prefix}/${name}`;
-
 interface RenderState {
   readonly elements: CytoscapeElement[];
   readonly options:  RenderOptions;
   touchesTerminal: boolean;
 }
 
-function renderInto(
-  dag: DAG,
-  /** ID prefix for nodes inside this sub-render. Empty at the top level. */
-  prefix: string,
-  /** Cytoscape `parent` id every node should be wrapped under (compound). */
-  compoundParent: string | undefined,
-  state: RenderState,
-  depth: number,
-  visited: ReadonlySet<string>,
-): void {
-  // Build child→parent map for parallel placements at this level.
-  const childToParent = new Map<string, string>();
-  for (const placement of dag.nodes as readonly DAGNodeEntry[]) {
-    if (placement['@type'] === 'ParallelNode') {
-      for (const child of placement.nodes) childToParent.set(child, placement.name);
-    }
-  }
-
-  for (const placement of dag.nodes as readonly DAGNodeEntry[]) {
-    const myId = idIn(prefix, placement.name);
-    const parallelParent = childToParent.get(placement.name);
-    const myCompoundParent = parallelParent !== undefined
-      ? idIn(prefix, parallelParent)
-      : compoundParent;
-
-    // ── Deep-DAG: if the target DAG is registered, expand inline as a
-    //    compound parent containing the deep-DAG's full flow.
-    const deepDagName = placement['@type'] === 'DeepDAGNode' ? placement.dag : null;
-    const deepDagBody = deepDagName !== null
-      ? state.options.deepDags?.get(deepDagName)
-      : undefined;
-    const shouldExpand = deepDagBody !== undefined
-      && deepDagName !== null
-      && depth < (state.options.maxDepth ?? DEFAULT_MAX_DEPTH)
-      && !visited.has(deepDagName);
-
-    if (shouldExpand && deepDagBody !== undefined && deepDagName !== null) {
-      // Emit the placement as a compound parent (label tells the visitor
-      // which deep-DAG this cluster represents).
-      const parentNode = placementNode(placement, myId);
-      const labelled: CytoscapeNodeElement = {
-        ...parentNode,
-        "data": {
-          ...parentNode.data,
-          "label": `${placement.name}\n[${deepDagName}]`,
-          ...(myCompoundParent !== undefined ? { "parent": myCompoundParent } : {}),
-        },
-      };
-      state.elements.push(labelled);
-
-      // Recurse: render every node of the deep-DAG with `parent: myId`.
-      const innerPrefix = idIn(prefix, placement.name);
-      const innerVisited = new Set(visited);
-      innerVisited.add(deepDagName);
-      renderInto(deepDagBody, innerPrefix, myId, state, depth + 1, innerVisited);
-
-      // External outputs from this placement (after the sub-DAG completes)
-      // — emit them as edges from the COMPOUND PARENT to wherever the
-      // placement routes. Cytoscape will draw them at the cluster boundary.
-      for (const edge of placementEdges(placement, myId, prefix)) {
-        if (edge.data.target === idIn(prefix, END_ID)) state.touchesTerminal = true;
-        state.elements.push(edge);
-      }
-      continue;
-    }
-
-    // ── Regular placement (or unresolved deep-dag): emit as a single node.
-    const node = placementNode(placement, myId);
-    const enriched: CytoscapeNodeElement = myCompoundParent !== undefined
-      ? { ...node, "data": { ...node.data, "parent": myCompoundParent } }
-      : node;
-    state.elements.push(enriched);
-
-    for (const edge of placementEdges(placement, myId, prefix)) {
-      // Suppress synthetic-END routes for children inside a parallel —
-      // the parent placement's own edges carry the collected result.
-      if (parallelParent !== undefined && edge.data.target === idIn(prefix, END_ID)) continue;
-      // Inside an expanded deep-DAG (prefix non-empty), `null` targets
-      // refer to the deep-DAG's terminus, not the parent's END. The
-      // compound parent's own placementEdges carry the real external
-      // routing — drop these internal terminal markers so cytoscape
-      // doesn't try to wire an edge to a non-existent prefixed END.
-      if (prefix !== '' && edge.data.target === idIn(prefix, END_ID)) continue;
-      if (edge.data.target === idIn(prefix, END_ID)) state.touchesTerminal = true;
-      state.elements.push(edge);
-    }
-  }
-}
-
-function placementEdges(
-  placement: DAGNodeEntry,
-  fromId: string,
-  prefix: string,
-): readonly CytoscapeEdgeElement[] {
-  const edges: CytoscapeEdgeElement[] = [];
-  for (const [output, target] of Object.entries(placement.outputs)) {
-    const destId = target === null ? idIn(prefix, END_ID) : idIn(prefix, target);
-    edges.push({
-      "group": 'edges',
-      "data": {
-        "id":     `${fromId}__${output}__${destId}`,
-        "source": fromId,
-        "target": destId,
-        "label":  output,
-        "route":  output,
-      },
-      "classes": `route-${output}${target === null ? ' route-terminal' : ''}`,
-    });
-  }
-  return edges;
-}
-
 /** Render a `DAG` as Cytoscape elements. */
 export class CytoscapeRenderer {
   private constructor() { /* static class */ }
+
+  /** Synthetic terminator node id emitted once per DAG that has any null-route. */
+  private static readonly END_ID = 'END';
+
+  /** Default deep-DAG inline-expansion recursion cap (cycle / accidental-loop guard). */
+  private static readonly DEFAULT_MAX_DEPTH = 6;
+
+  /** Mapping from JSON-LD placement-discriminator to Cytoscape `data.type` value. */
+  private static readonly PLACEMENT_KIND: Readonly<Record<string, 'single' | 'parallel' | 'fan-out' | 'deep-dag'>> = {
+    'SingleNode':  'single',
+    'ParallelNode': 'parallel',
+    'FanOutNode':  'fan-out',
+    'DeepDAGNode': 'deep-dag',
+  };
 
   static render(dag: DAG, options: RenderOptions = {}): readonly CytoscapeElement[] {
     const state: RenderState = {
@@ -264,16 +112,184 @@ export class CytoscapeRenderer {
       "options":         options,
       "touchesTerminal": false,
     };
-    renderInto(dag, '', undefined, state, 0, new Set<string>([dag.name]));
+    CytoscapeRenderer.renderInto(dag, '', undefined, state, 0, new Set<string>([dag.name]));
 
     if (state.touchesTerminal) {
       state.elements.push({
         "group": 'nodes',
-        "data":  { "id": END_ID, "label": 'end', "type": 'terminal' },
+        "data":  { "id": CytoscapeRenderer.END_ID, "label": 'end', "type": 'terminal' },
         "classes": 'dag-terminal',
       });
     }
 
     return state.elements;
+  }
+
+  /** Build a placement-name id, optionally prefixed by an enclosing scope. */
+  private static idIn(prefix: string, name: string): string {
+    return prefix === '' ? name : `${prefix}/${name}`;
+  }
+
+  /** Render one placement as a Cytoscape node element with type-discriminated metadata. */
+  private static placementNode(placement: DAGNodeEntry, id: string): CytoscapeNodeElement {
+    const kind = CytoscapeRenderer.PLACEMENT_KIND[placement['@type']] ?? 'single';
+    const base = {
+      "group": 'nodes' as const,
+      "data": {
+        "id":    id,
+        "label": placement.name,
+        "type":  kind,
+      } as CytoscapeNodeElement['data'],
+      "classes": `dag-${kind}`,
+    };
+
+    switch (placement['@type']) {
+      case 'SingleNode':
+        return { ...base, "data": { ...base.data, "node": placement.node } };
+      case 'ParallelNode':
+        return { ...base, "data": { ...base.data, "combine": placement.combine, "children": [...placement.nodes] } };
+      case 'FanOutNode':
+        return {
+          ...base,
+          "data": {
+            ...base.data,
+            "node":        placement.node,
+            "source":      placement.source,
+            "itemKey":     placement.itemKey,
+            "concurrency": placement.concurrency,
+            "fanIn":       placement.fanIn,
+          },
+        };
+      case 'DeepDAGNode':
+        return {
+          ...base,
+          "data": {
+            ...base.data,
+            "dag":          placement.dag,
+            "stateMapping": placement.stateMapping,
+          },
+        };
+    }
+  }
+
+  /** Render a placement's outbound routes as Cytoscape edge elements. */
+  private static placementEdges(
+    placement: DAGNodeEntry,
+    fromId: string,
+    prefix: string,
+  ): readonly CytoscapeEdgeElement[] {
+    const edges: CytoscapeEdgeElement[] = [];
+    for (const [output, target] of Object.entries(placement.outputs)) {
+      const destId = target === null
+        ? CytoscapeRenderer.idIn(prefix, CytoscapeRenderer.END_ID)
+        : CytoscapeRenderer.idIn(prefix, target);
+      edges.push({
+        "group": 'edges',
+        "data": {
+          "id":     `${fromId}__${output}__${destId}`,
+          "source": fromId,
+          "target": destId,
+          "label":  output,
+          "route":  output,
+        },
+        "classes": `route-${output}${target === null ? ' route-terminal' : ''}`,
+      });
+    }
+    return edges;
+  }
+
+  /**
+   * Render every placement of `dag` into `state.elements`, with optional
+   * compound-parent wrapping (for parallel/deep-DAG expansions). Recurses
+   * into deep-DAGs when their target body is in `state.options.deepDags`.
+   */
+  private static renderInto(
+    dag: DAG,
+    prefix: string,
+    compoundParent: string | undefined,
+    state: RenderState,
+    depth: number,
+    visited: ReadonlySet<string>,
+  ): void {
+    // Build child→parent map for parallel placements at this level.
+    const childToParent = new Map<string, string>();
+    for (const placement of dag.nodes as readonly DAGNodeEntry[]) {
+      if (placement['@type'] === 'ParallelNode') {
+        for (const child of placement.nodes) childToParent.set(child, placement.name);
+      }
+    }
+
+    for (const placement of dag.nodes as readonly DAGNodeEntry[]) {
+      const myId = CytoscapeRenderer.idIn(prefix, placement.name);
+      const parallelParent = childToParent.get(placement.name);
+      const myCompoundParent = parallelParent !== undefined
+        ? CytoscapeRenderer.idIn(prefix, parallelParent)
+        : compoundParent;
+
+      // ── Deep-DAG: if the target DAG is registered, expand inline as a
+      //    compound parent containing the deep-DAG's full flow.
+      const deepDagName = placement['@type'] === 'DeepDAGNode' ? placement.dag : null;
+      const deepDagBody = deepDagName !== null
+        ? state.options.deepDags?.get(deepDagName)
+        : undefined;
+      const shouldExpand = deepDagBody !== undefined
+        && deepDagName !== null
+        && depth < (state.options.maxDepth ?? CytoscapeRenderer.DEFAULT_MAX_DEPTH)
+        && !visited.has(deepDagName);
+
+      if (shouldExpand && deepDagBody !== undefined && deepDagName !== null) {
+        // Emit the placement as a compound parent (label tells the visitor
+        // which deep-DAG this cluster represents).
+        const parentNode = CytoscapeRenderer.placementNode(placement, myId);
+        const labelled: CytoscapeNodeElement = {
+          ...parentNode,
+          "data": {
+            ...parentNode.data,
+            "label": `${placement.name}\n[${deepDagName}]`,
+            ...(myCompoundParent !== undefined ? { "parent": myCompoundParent } : {}),
+          },
+        };
+        state.elements.push(labelled);
+
+        // Recurse: render every node of the deep-DAG with `parent: myId`.
+        const innerPrefix = CytoscapeRenderer.idIn(prefix, placement.name);
+        const innerVisited = new Set(visited);
+        innerVisited.add(deepDagName);
+        CytoscapeRenderer.renderInto(deepDagBody, innerPrefix, myId, state, depth + 1, innerVisited);
+
+        // External outputs from this placement (after the sub-DAG completes)
+        // — emit them as edges from the COMPOUND PARENT to wherever the
+        // placement routes. Cytoscape will draw them at the cluster boundary.
+        for (const edge of CytoscapeRenderer.placementEdges(placement, myId, prefix)) {
+          if (edge.data.target === CytoscapeRenderer.idIn(prefix, CytoscapeRenderer.END_ID)) {
+            state.touchesTerminal = true;
+          }
+          state.elements.push(edge);
+        }
+        continue;
+      }
+
+      // ── Regular placement (or unresolved deep-dag): emit as a single node.
+      const node = CytoscapeRenderer.placementNode(placement, myId);
+      const enriched: CytoscapeNodeElement = myCompoundParent !== undefined
+        ? { ...node, "data": { ...node.data, "parent": myCompoundParent } }
+        : node;
+      state.elements.push(enriched);
+
+      for (const edge of CytoscapeRenderer.placementEdges(placement, myId, prefix)) {
+        const endId = CytoscapeRenderer.idIn(prefix, CytoscapeRenderer.END_ID);
+        // Suppress synthetic-END routes for children inside a parallel —
+        // the parent placement's own edges carry the collected result.
+        if (parallelParent !== undefined && edge.data.target === endId) continue;
+        // Inside an expanded deep-DAG (prefix non-empty), `null` targets
+        // refer to the deep-DAG's terminus, not the parent's END. The
+        // compound parent's own placementEdges carry the real external
+        // routing — drop these internal terminal markers so cytoscape
+        // doesn't try to wire an edge to a non-existent prefixed END.
+        if (prefix !== '' && edge.data.target === endId) continue;
+        if (edge.data.target === endId) state.touchesTerminal = true;
+        state.elements.push(edge);
+      }
+    }
   }
 }
