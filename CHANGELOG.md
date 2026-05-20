@@ -14,6 +14,8 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 ⦿ `Dagonizer.onContractWarning(message)` — new protected observability hook, no-op by default. Fires when `ContractRegistryValidator` detects a dead-write (a node produces a path no downstream node consumes). Subclass and override to surface these warnings.
 ⦿ `Chainable<A, B>` — compile-time type utility exported from `NodeInterface`. Resolves to `true` when `B`'s `hardRequired` set is fully satisfied by `A`'s `produces` set, `never` otherwise. Most useful with `as const` literal-tuple contracts.
 ⦿ Exports: `OperationContractFragment` and `Chainable` added to `@noocodex/dagonizer/contracts`, `@noocodex/dagonizer/types`, and the root barrel. `ContractRegistryValidator` exported from `@noocodex/dagonizer/derive`.
+⦿ `DAGBuilder.build(onContractWarning?)` runs dangling-read / dead-write contract validation when any node placement registered via `.node()` or `.fanOut()` carries a `contract` field on its `NodeInterface`. Dangling reads throw `DAGError`; dead writes call the optional `onContractWarning` callback (no-op when omitted). Matches the validation `DAGDeriver` runs at derive time — drift fails at build time, before the DAG is registered.
+⦿ `DAGBuilder.fromNodes({ name, version, entrypoint, nodes, annotations? })` — static convenience method that delegates to `DAGDeriver.derive({ nodes })` for the linear-topology common case. Produces the same canonical `DAG` document as the equivalent `.node()` chain, without requiring manual placement. Throws `DAGError` when no node carries a `contract` field (matches deriver behavior).
 
 ### Changed
 
