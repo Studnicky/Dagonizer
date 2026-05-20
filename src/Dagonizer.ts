@@ -4,6 +4,7 @@ import type { StateAccessor } from './contracts/StateAccessor.js';
 import { FanInStrategies } from './core/FanInStrategies.js';
 import type { FanInExecution } from './core/FanInStrategies.js';
 import { ParallelCombiners } from './core/ParallelCombiners.js';
+import { ContractRegistryValidator } from './derive/ContractRegistryValidator.js';
 import type { DAG } from './entities/dag/DAG.js';
 import type { DeepDAGNode } from './entities/dag/DeepDAGNode.js';
 import type { FanInConfig } from './entities/dag/FanInConfig.js';
@@ -197,6 +198,16 @@ implements DagonizerInterface<TState, TServices> {
   protected onNodeStart(_nodeName: string, _state: TState): void { /* override */ }
   protected onNodeEnd(_nodeName: string, _output: string | undefined, _state: TState): void { /* override */ }
   protected onError(_nodeName: string, _error: Error, _state: TState): void { /* override */ }
+
+  /**
+   * Called for each non-fatal contract warning surfaced during DAG
+   * registration when the DAG was derived from a node registry. Default
+   * is a no-op. Subclasses can override to log or surface dead-write
+   * warnings to operators.
+   *
+   * @param _message - Human-readable warning from `ContractRegistryValidator`.
+   */
+  protected onContractWarning(_message: string): void { /* override */ }
 
   // ---------------------------------------------------------------------------
 
@@ -1089,6 +1100,28 @@ implements DagonizerInterface<TState, TServices> {
     }
 
     Dagonizer.validateDAGConfig(dag, this.nodes, this.dags);
+
+    // Contract validation: for each SingleNode placement whose registered
+    // node carries a co-located `contract`, run dangling-read / dead-write
+    // checks. Dangling reads throw DAGError; dead writes call onContractWarning.
+    const contractBearingNodes = dag.nodes
+      .filter((placement) => placement['@type'] === 'SingleNode')
+      .map((placement) => this.nodes.get((placement as { node: string }).node))
+      .filter((node): node is NodeInterface<TState, string, TServices> => node?.contract !== undefined);
+
+    if (contractBearingNodes.length > 0) {
+      const contracts = contractBearingNodes.map((node) => {
+        const contract = node.contract;
+        if (contract === undefined) return null;
+        return { 'name': node.name, 'outputs': node.outputs, 'hardRequired': contract.hardRequired, 'produces': contract.produces };
+      }).filter((c): c is Exclude<typeof c, null> => c !== null);
+      try {
+        ContractRegistryValidator.validate(contracts, (msg) => { this.onContractWarning(msg); }, dag.entrypoint);
+      } catch (err) {
+        throw err instanceof Error ? err : new DAGError(String(err));
+      }
+    }
+
     this.dags.set(dag.name, dag);
     for (const node of dag.nodes) {
       this.nodeIndex.set(`${dag.name}:${node.name}`, node);

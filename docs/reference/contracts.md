@@ -52,6 +52,7 @@ interface NodeInterface<
   readonly name: string;
   readonly outputs: readonly TOutput[];
   readonly timeoutMs?: number;
+  readonly contract?: OperationContractFragment;
   execute(state: TState, context: NodeContextInterface<TServices>): Promise<NodeOutputInterface<TOutput>>;
   destroy?(): Promise<void>;
   validate?(): ValidationResult;
@@ -61,6 +62,8 @@ interface NodeInterface<
 The contract every consumer node implements. Nodes are stateless; they mutate state and route to a named output. They never throw — caught errors route to `'error'` (or whatever the consumer declared).
 
 `timeoutMs` is an optional per-node wall-clock budget in milliseconds. When set, the engine derives a child `AbortController` from the run's signal and schedules an abort after `timeoutMs`. On expiry, `NodeTimeoutError` is thrown and the run is marked failed.
+
+`contract` is an optional `OperationContractFragment`. When present, `DAGDeriver.derive({ nodes })` projects the node into a full `OperationContract` using the node's `name` and `outputs`. `Dagonizer.registerDAG` runs `ContractRegistryValidator` against all contract-bearing nodes in the DAG.
 
 ## ExecuteOptionsInterface
 
@@ -122,18 +125,52 @@ interface CheckpointStore {
 
 Persistence backend for checkpoints. `Checkpoint.persist` and `Checkpoint.recall` compose the codec with the store. Reference impl: `MemoryCheckpointStore`. See [persistence](../guide/persistence.md) for a Postgres example.
 
-## OperationContract
+## OperationContractFragment
 
 ```ts
-interface OperationContract {
-  readonly name:         string;
+interface OperationContractFragment {
   readonly hardRequired: readonly string[];
   readonly produces:     readonly string[];
-  readonly outputs:      readonly string[];
 }
 ```
 
-Per-operation contract consumed by `DAGDeriver.derive` to compute DAG topology automatically. `outputs` lists every port the node can emit; every port auto-wires to the next derived stage and `DAGDeriverAnnotations.terminals` overrides individual ports. A multi-port node like `['success', 'cached', 'skipped', 'error']` routes uniformly with one contract field instead of N terminal annotations. See [contract-derived flows](../guide/derive.md).
+The deriver-only fields of an `OperationContract`. Lives on `NodeInterface.contract` so a node carries its own data-flow declaration. The node's `name` and `outputs` fields complete the full `OperationContract` surface — the fragment carries only the fields `DAGDeriver` uses to wire edges.
+
+Use `OperationContractFragment` when co-locating the contract on a node. Use the full `OperationContract` for the standalone `contracts` array passed to `DAGDeriver.derive`.
+
+## OperationContract
+
+```ts
+interface OperationContract extends OperationContractFragment {
+  readonly name:    string;
+  readonly outputs: readonly string[];
+}
+```
+
+Per-operation contract consumed by `DAGDeriver.derive` to compute DAG topology automatically. Extends `OperationContractFragment` with `name` and `outputs`. `outputs` lists every port the node can emit; every port auto-wires to the next derived stage and `DAGDeriverAnnotations.terminals` overrides individual ports. A multi-port node like `['success', 'cached', 'skipped', 'error']` routes uniformly with one contract field instead of N terminal annotations.
+
+**Co-located pattern** — declare the contract directly on the node so the node is the single source of truth:
+
+```ts
+import type { NodeInterface, OperationContractFragment } from '@noocodex/dagonizer/contracts';
+
+const fetchNode: NodeInterface = {
+  name: 'fetch',
+  outputs: ['success', 'cached', 'error'],
+  contract: {
+    hardRequired: ['url'],
+    produces:     ['raw'],
+  } satisfies OperationContractFragment,
+  async execute(state, ctx) {
+    // ...
+    return { output: 'success' };
+  },
+};
+```
+
+Pass the node registry to `DAGDeriver.derive({ nodes })` instead of a separate `contracts` array. See [co-located contracts](../guide/derive.md#co-located-contracts).
+
+See also [contract-derived flows](../guide/derive.md).
 
 ## RetryPolicyOptionsInterface / ErrorConstructorType
 
