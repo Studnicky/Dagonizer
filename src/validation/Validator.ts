@@ -65,44 +65,6 @@ export interface EntityValidator<T> {
   errors(value: unknown): string[] | null;
 }
 
-const formatErrors = (errors: readonly ErrorObject[]): string[] =>
-  errors.map((error) => {
-    const path = error.instancePath.length > 0 ? error.instancePath : '<root>';
-    return `${path}: ${error.message ?? 'invalid'}`;
-  });
-
-const compileEntity = <T>(name: string, schema: { readonly $id?: string }): EntityValidator<T> => {
-  // Schemas embedded in others (e.g. FanInConfigSchema inlined in DAGSchema)
-  // already register their `$id` when the parent compiles. Look the
-  // already-registered validator up first; otherwise compile fresh.
-  const id = schema.$id;
-  let compiled: ValidateFunction | undefined;
-  if (id !== undefined) {
-    compiled = sharedAjv.getSchema(id) as ValidateFunction | undefined;
-  }
-  if (compiled === undefined) {
-    compiled = sharedAjv.compile(schema);
-  }
-  const validator = compiled;
-  return {
-    is(value): value is T {
-      return validator(value) === true;
-    },
-    validate(value): T {
-      if (validator(value) === true) return value as T;
-      const ajvErrors = validator.errors ?? [];
-      throw new ValidationError(
-        `Invalid ${name}:\n  - ${formatErrors(ajvErrors).join('\n  - ')}`,
-        { 'ajvErrors': ajvErrors as unknown as Record<string, unknown> },
-      );
-    },
-    errors(value): string[] | null {
-      if (validator(value) === true) return null;
-      return formatErrors(validator.errors ?? []);
-    },
-  };
-};
-
 /**
  * Unified Ajv-backed validator. Access per-entity sub-validators via
  * static fields. Every top-level entity schema in `entities/` has a
@@ -111,29 +73,77 @@ const compileEntity = <T>(name: string, schema: { readonly $id?: string }): Enti
 export class Validator {
   private constructor() { /* static class */ }
 
+  /**
+   * Format an Ajv error list into human-readable strings keyed by
+   * instance path. Used internally by every per-entity validator's
+   * `validate` / `errors` method.
+   */
+  private static formatErrors(errors: readonly ErrorObject[]): string[] {
+    return errors.map((error) => {
+      const path = error.instancePath.length > 0 ? error.instancePath : '<root>';
+      return `${path}: ${error.message ?? 'invalid'}`;
+    });
+  }
+
+  /**
+   * Compile a schema into a typed `EntityValidator<T>`. Schemas
+   * embedded in others (e.g. `FanInConfigSchema` inlined in
+   * `DAGSchema`) already register their `$id` when the parent
+   * compiles; this method looks the already-registered validator up
+   * before compiling fresh.
+   */
+  private static compile<T>(name: string, schema: { readonly $id?: string }): EntityValidator<T> {
+    const id = schema.$id;
+    let compiled: ValidateFunction | undefined;
+    if (id !== undefined) {
+      compiled = sharedAjv.getSchema(id) as ValidateFunction | undefined;
+    }
+    if (compiled === undefined) {
+      compiled = sharedAjv.compile(schema);
+    }
+    const validator = compiled;
+    return {
+      is(value): value is T {
+        return validator(value) === true;
+      },
+      validate(value): T {
+        if (validator(value) === true) return value as T;
+        const ajvErrors = validator.errors ?? [];
+        throw new ValidationError(
+          `Invalid ${name}:\n  - ${Validator.formatErrors(ajvErrors).join('\n  - ')}`,
+          { 'ajvErrors': ajvErrors as unknown as Record<string, unknown> },
+        );
+      },
+      errors(value): string[] | null {
+        if (validator(value) === true) return null;
+        return Validator.formatErrors(validator.errors ?? []);
+      },
+    };
+  }
+
   // DAG — top-level definition
-  static readonly dag: EntityValidator<DAG> = compileEntity('DAG', DAGSchema);
-  static readonly singleNode: EntityValidator<SingleNode> = compileEntity('SingleNode', SingleNodeSchema);
-  static readonly parallelNode: EntityValidator<ParallelNode> = compileEntity('ParallelNode', ParallelNodeSchema);
-  static readonly fanOutNode: EntityValidator<FanOutNode> = compileEntity('FanOutNode', FanOutNodeSchema);
-  static readonly deepDAGNode: EntityValidator<DeepDAGNode> = compileEntity('DeepDAGNode', DeepDAGNodeSchema);
-  static readonly fanInConfig: EntityValidator<FanInConfig> = compileEntity('FanInConfig', FanInConfigSchema);
+  static readonly dag:         EntityValidator<DAG>          = Validator.compile('DAG',          DAGSchema);
+  static readonly singleNode:  EntityValidator<SingleNode>   = Validator.compile('SingleNode',   SingleNodeSchema);
+  static readonly parallelNode:EntityValidator<ParallelNode> = Validator.compile('ParallelNode', ParallelNodeSchema);
+  static readonly fanOutNode:  EntityValidator<FanOutNode>   = Validator.compile('FanOutNode',   FanOutNodeSchema);
+  static readonly deepDAGNode: EntityValidator<DeepDAGNode>  = Validator.compile('DeepDAGNode',  DeepDAGNodeSchema);
+  static readonly fanInConfig: EntityValidator<FanInConfig>  = Validator.compile('FanInConfig',  FanInConfigSchema);
 
   // Node runtime shapes
-  static readonly node: EntityValidator<Node> = compileEntity('Node', NodeSchema);
-  static readonly nodeContext: EntityValidator<NodeContext> = compileEntity('NodeContext', NodeContextSchema);
-  static readonly nodeOutput: EntityValidator<NodeOutput> = compileEntity('NodeOutput', NodeOutputSchema);
-  static readonly nodeError: EntityValidator<NodeError> = compileEntity('NodeError', NodeErrorSchema);
-  static readonly nodeWarning: EntityValidator<NodeWarning> = compileEntity('NodeWarning', NodeWarningSchema);
-  static readonly nodeResult: EntityValidator<NodeResult> = compileEntity('NodeResult', NodeResultSchema);
-  static readonly nodeStateData: EntityValidator<NodeStateData> = compileEntity('NodeStateData', NodeStateDataSchema);
+  static readonly node:          EntityValidator<Node>          = Validator.compile('Node',          NodeSchema);
+  static readonly nodeContext:   EntityValidator<NodeContext>   = Validator.compile('NodeContext',   NodeContextSchema);
+  static readonly nodeOutput:    EntityValidator<NodeOutput>    = Validator.compile('NodeOutput',    NodeOutputSchema);
+  static readonly nodeError:     EntityValidator<NodeError>     = Validator.compile('NodeError',     NodeErrorSchema);
+  static readonly nodeWarning:   EntityValidator<NodeWarning>   = Validator.compile('NodeWarning',   NodeWarningSchema);
+  static readonly nodeResult:    EntityValidator<NodeResult>    = Validator.compile('NodeResult',    NodeResultSchema);
+  static readonly nodeStateData: EntityValidator<NodeStateData> = Validator.compile('NodeStateData', NodeStateDataSchema);
 
   // Execution + lifecycle wire shapes
-  static readonly executionResult: EntityValidator<ExecutionResult> = compileEntity('ExecutionResult', ExecutionResultSchema);
-  static readonly dagLifecycleState: EntityValidator<DAGLifecycleStateData> = compileEntity('DAGLifecycleState', DAGLifecycleStateSchema);
+  static readonly executionResult:   EntityValidator<ExecutionResult>      = Validator.compile('ExecutionResult',   ExecutionResultSchema);
+  static readonly dagLifecycleState: EntityValidator<DAGLifecycleStateData> = Validator.compile('DAGLifecycleState', DAGLifecycleStateSchema);
 
   // Persistence + reporting
-  static readonly checkpoint: EntityValidator<CheckpointData> = compileEntity('CheckpointData', CheckpointDataSchema);
-  static readonly validationResult: EntityValidator<ValidationResult> = compileEntity('ValidationResult', ValidationResultSchema);
-  static readonly dagErrorJson: EntityValidator<DAGErrorJSON> = compileEntity('DAGErrorJSON', DAGErrorJSONSchema);
+  static readonly checkpoint:       EntityValidator<CheckpointData>    = Validator.compile('CheckpointData',    CheckpointDataSchema);
+  static readonly validationResult: EntityValidator<ValidationResult>  = Validator.compile('ValidationResult',  ValidationResultSchema);
+  static readonly dagErrorJson:     EntityValidator<DAGErrorJSON>      = Validator.compile('DAGErrorJSON',      DAGErrorJSONSchema);
 }
