@@ -22,7 +22,14 @@ export class StubAdapter extends BaseAdapter {
   readonly #memoryStore: MemoryStore;
 
   constructor(opts: StubAdapterOptions) {
-    super({ 'id': 'stub', 'displayName': 'Canned responses (no real LLM)', 'maxAttempts': 1 });
+    super({
+      'id': 'stub',
+      'displayName': 'Canned responses (no real LLM)',
+      // Stub emits deterministic tool calls keyed to query patterns — counts
+      // as full tool support for routing purposes even though output is canned.
+      'capabilities': { 'toolUse': 'full', 'structuredOutput': true, 'jsonMode': true },
+      'maxAttempts': 1,
+    });
     this.#memoryStore = opts.memoryStore;
   }
 

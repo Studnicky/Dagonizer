@@ -60,7 +60,12 @@ export class GeminiApiAdapter extends BaseAdapter {
   readonly #model:  string;
 
   constructor(options: GeminiApiAdapterOptions) {
-    super({ 'id': 'gemini-api', 'displayName': 'Gemini API (your AI Studio key)', 'maxAttempts': options.maxAttempts ?? 3 });
+    super({
+      'id': 'gemini-api',
+      'displayName': 'Gemini API (your AI Studio key)',
+      'capabilities': { 'toolUse': 'full', 'structuredOutput': true, 'jsonMode': true },
+      'maxAttempts': options.maxAttempts ?? 3,
+    });
     this.#apiKey = options.apiKey;
     this.#model  = options.model ?? DEFAULT_MODEL;
   }
