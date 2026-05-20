@@ -53,7 +53,12 @@ export class MistralApiAdapter extends BaseAdapter {
   readonly #model: string;
 
   constructor(options: MistralApiAdapterOptions) {
-    super({ 'id': 'mistral', 'displayName': 'Mistral (mistral-small)', 'maxAttempts': options.maxAttempts ?? 3 });
+    super({
+      'id': 'mistral',
+      'displayName': 'Mistral (mistral-small)',
+      'capabilities': { 'toolUse': 'full', 'structuredOutput': true, 'jsonMode': true },
+      'maxAttempts': options.maxAttempts ?? 3,
+    });
     this.#apiKey = options.apiKey;
     this.#model = options.model ?? DEFAULT_MODEL;
   }

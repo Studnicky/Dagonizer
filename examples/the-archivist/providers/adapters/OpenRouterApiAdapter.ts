@@ -60,7 +60,14 @@ export class OpenRouterApiAdapter extends BaseAdapter {
   readonly #model: string;
 
   constructor(options: OpenRouterApiAdapterOptions) {
-    super({ 'id': 'openrouter', 'displayName': 'OpenRouter (llama-3.3-70b free)', 'maxAttempts': options.maxAttempts ?? 3 });
+    super({
+      'id': 'openrouter',
+      'displayName': 'OpenRouter (llama-3.3-70b free)',
+      // `:free` tier may downgrade to non-tool endpoints; treat as partial
+      // until per-route capability negotiation is in place.
+      'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true },
+      'maxAttempts': options.maxAttempts ?? 3,
+    });
     this.#apiKey = options.apiKey;
     this.#model = options.model ?? DEFAULT_MODEL;
   }

@@ -65,7 +65,12 @@ export async function detectGeminiNano(): Promise<GeminiNanoAvailability> {
 
 export class GeminiNanoAdapter extends BaseAdapter {
   constructor() {
-    super({ 'id': 'gemini-nano', 'displayName': 'Gemini Nano (Chrome on-device)', 'maxAttempts': 2 });
+    super({
+      'id': 'gemini-nano',
+      'displayName': 'Gemini Nano (Chrome on-device)',
+      'capabilities': { 'toolUse': 'none', 'structuredOutput': true, 'jsonMode': false },
+      'maxAttempts': 2,
+    });
   }
 
   protected async performChat(request: ChatRequest): Promise<ChatResponse> {

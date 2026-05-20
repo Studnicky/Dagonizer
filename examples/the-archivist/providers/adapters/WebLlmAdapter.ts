@@ -61,7 +61,14 @@ export class WebLlmAdapter extends BaseAdapter {
   #enginePromise: Promise<WebLlmEngine> | null = null;
 
   constructor(options: WebLlmAdapterOptions = {}) {
-    super({ 'id': 'web-llm', 'displayName': 'WebLLM (Phi-3.5 in-browser)', 'maxAttempts': 2 });
+    super({
+      'id': 'web-llm',
+      'displayName': 'WebLLM (Phi-3.5 in-browser)',
+      // Phi-3.5 supports structured output but tool-call format is
+      // inconsistent across the small in-browser model class.
+      'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true },
+      'maxAttempts': 2,
+    });
     this.#model = options.model ?? DEFAULT_MODEL;
     if (options.onProgress !== undefined) this.#onProgress = options.onProgress;
   }
