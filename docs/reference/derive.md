@@ -131,5 +131,6 @@ Defined in `@noocodex/dagonizer/contracts`; re-exported from `@noocodex/dagonize
 ## Related guides
 
 ⦿ [Contract-derived flows](../guide/derive)
-⦿ [DAGBuilder](../guide/builder) — the imperative alternative
+⦿ [Authoring DAGs](../guide/authoring) — when to use DAGDeriver vs DAGBuilder vs raw DAG literals
+⦿ [DAGBuilder](../guide/builder) — imperative authoring for deterministic / ETL workflows
 ⦿ [Visualization](../guide/visualization)
