@@ -33,6 +33,7 @@
  * ```
  */
 
+import type { NodeInterface } from '../contracts/NodeInterface.js';
 import type { OperationContract } from '../contracts/OperationContract.js';
 import type { DAG } from '../entities/dag/DAG.js';
 import { DAG_CONTEXT } from '../entities/dag/DAG.js';
@@ -42,6 +43,7 @@ import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import { DAGError } from '../errors/DAGError.js';
 
+import { ContractRegistryValidator } from './ContractRegistryValidator.js';
 import type {
   DAGDeriverAnnotations,
   DAGDeriverFanOut,
@@ -54,12 +56,45 @@ export interface DAGDeriverOptions {
   readonly name: string;
   readonly version: string;
   readonly entrypoint: string;
-  readonly contracts: readonly OperationContract[];
+  /**
+   * Standalone contracts (legacy path). Mutually exclusive with `nodes`.
+   */
+  readonly contracts?: readonly OperationContract[];
+  /**
+   * Node registry — every node with a `contract` field participates in
+   * topology derivation. Nodes without a contract are silently skipped
+   * (the dispatcher still registers them, they just don't participate
+   * in derived edges).
+   */
+  readonly nodes?: readonly NodeInterface[];
   readonly annotations?: DAGDeriverAnnotations;
 }
 
 export class DAGDeriver {
   private constructor() { /* static class */ }
+
+  /**
+   * Project contract-bearing nodes from a node registry into `OperationContract`s.
+   * Nodes without a `contract` field are silently skipped.
+   *
+   * The node's own `name` and `outputs` fields complete the full
+   * `OperationContract` surface alongside the fragment's `hardRequired`
+   * and `produces`.
+   */
+  static extractContracts(nodes: readonly NodeInterface[]): OperationContract[] {
+    const result: OperationContract[] = [];
+    for (const node of nodes) {
+      if (node.contract !== undefined) {
+        result.push({
+          "name": node.name,
+          "outputs": node.outputs,
+          "hardRequired": node.contract.hardRequired,
+          "produces": node.contract.produces,
+        });
+      }
+    }
+    return result;
+  }
 
   /**
    * Build a `DAG` from a contract registry plus declared annotations.
@@ -70,10 +105,46 @@ export class DAGDeriver {
    * The returned document is a canonical JSON-LD DAG with `@context`,
    * `@id`, and `@type` at the root; each placement carries `@id` and
    * `@type` as required by `DAGSchema`.
+   *
+   * Accepts either `contracts` (standalone, legacy) or `nodes` (co-located
+   * contract on each node). The two options are mutually exclusive — supply
+   * exactly one.
    */
   static derive(opts: DAGDeriverOptions): DAG {
     const annotations = opts.annotations ?? {};
-    const contracts = opts.contracts;
+
+    const hasContracts = opts.contracts !== undefined;
+    const hasNodes = opts.nodes !== undefined;
+
+    if (hasContracts && hasNodes) {
+      throw new DAGError(
+        'DAGDeriver.derive: supply either `contracts` or `nodes`, not both',
+      );
+    }
+
+    let contracts: readonly OperationContract[];
+
+    if (hasNodes) {
+      const extracted = DAGDeriver.extractContracts(opts.nodes ?? []);
+      if (extracted.length === 0) {
+        throw new DAGError(
+          'DAGDeriver.derive: no node in the registry carries a `contract` field — at least one node must declare a contract for topology derivation',
+        );
+      }
+      // Preflight: same dangling-read / dead-write checks the validator runs
+      // at registration time — surface drift before the DAG is even built.
+      // Pass entrypoint so the entrypoint's hardRequired (external initial state)
+      // are not flagged as dangling reads.
+      ContractRegistryValidator.validate(extracted, (_msg) => { /* warnings surfaced at registerDAG time */ }, opts.entrypoint);
+      contracts = extracted;
+    } else if (hasContracts) {
+      contracts = opts.contracts ?? [];
+    } else {
+      throw new DAGError(
+        'DAGDeriver.derive: supply either `contracts` or `nodes`',
+      );
+    }
+
     if (contracts.length === 0) {
       throw new DAGError('DAGDeriver.derive requires at least one OperationContract');
     }

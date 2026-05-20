@@ -76,12 +76,15 @@ Nodes are stored widened to `NodeInterface<TState, string, TServices>`. Narrow `
 registerDAG(dag: DAG): void
 ```
 
-Registers a DAG after two validation passes:
+Registers a DAG after three validation passes:
 
 1. **Schema pass** — `Validator.dag.validate(dag)` checks structure (required fields, valid `type` and `strategy` enumerations).
 2. **Semantic pass** — verifies entrypoint exists, all node references are resolvable, no circular sub-DAG references, and every registered node output has a routing entry in the placement's `outputs` map.
+3. **Contract pass** — for DAGs derived from a `nodes` registry, `ContractRegistryValidator` checks every non-entrypoint node's `hardRequired` paths against upstream producers. Dangling reads throw `DAGError`; dead writes call `onContractWarning`.
 
 Throws `DAGError` with a multi-line message listing all failures.
+
+See [catching contract drift](../guide/derive.md#catching-contract-drift) for the full validation semantics.
 
 ---
 
@@ -186,7 +189,7 @@ Calls the optional `destroy()` method on every registered node, then clears all 
 
 ### Observability hooks
 
-Five protected no-op methods. Subclass `Dagonizer` and override to attach metrics, logging, or tracing.
+Six protected no-op methods. Subclass `Dagonizer` and override to attach metrics, logging, or tracing.
 
 ```ts
 protected onFlowStart(dagName: string, state: TState): void
@@ -194,6 +197,7 @@ protected onFlowEnd(dagName: string, state: TState, result: ExecutionResultInter
 protected onNodeStart(nodeName: string, state: TState): void
 protected onNodeEnd(nodeName: string, output: string | undefined, state: TState): void
 protected onError(nodeName: string, error: Error, state: TState): void
+protected onContractWarning(message: string): void
 ```
 
 | Hook | Fires |
@@ -203,8 +207,10 @@ protected onError(nodeName: string, error: Error, state: TState): void
 | `onNodeStart` | Before `node.execute()` for each node entry point |
 | `onNodeEnd` | After each node resolves, before the result is yielded |
 | `onError` | When the signal fires or a node throws |
+| `onContractWarning` | When `ContractRegistryValidator` detects a dead-write during `registerDAG` |
 
 See [Observability](/guide/observability) for usage examples.
+See [catching contract drift](../guide/derive.md#catching-contract-drift) for `onContractWarning` usage.
 ## Related guides
 
 - [DAGBuilder](../guide/builder)

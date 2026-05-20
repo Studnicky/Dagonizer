@@ -13,6 +13,9 @@
  */
 
 import type { NodeInterface } from '../contracts/NodeInterface.js';
+import { ContractRegistryValidator } from '../derive/ContractRegistryValidator.js';
+import { DAGDeriver } from '../derive/DAGDeriver.js';
+import type { DAGDeriverAnnotations } from '../derive/DAGDeriverAnnotations.js';
 import type { DAG } from '../entities/dag/DAG.js';
 import { DAG_CONTEXT } from '../entities/dag/DAG.js';
 import type { DeepDAGNode } from '../entities/dag/DeepDAGNode.js';
@@ -67,6 +70,7 @@ export class DAGBuilder {
   readonly #name: string;
   readonly #version: string;
   readonly #nodes: DAGNodeType[] = [];
+  readonly #nodeImpls: Map<string, NodeInterface> = new Map();
   #entrypoint: string | null = null;
 
   constructor(name: string, version: string) {
@@ -101,6 +105,7 @@ export class DAGBuilder {
       'node':    dagNode.name,
       'outputs': routes as Record<string, null | string>,
     });
+    this.#nodeImpls.set(name, dagNode as NodeInterface);
     if (this.#entrypoint === null) this.#entrypoint = name;
     return this;
   }
@@ -145,6 +150,7 @@ export class DAGBuilder {
     if (options.concurrency !== undefined) dagNodeEntry.concurrency = options.concurrency;
     if (options.itemKey !== undefined) dagNodeEntry.itemKey = options.itemKey;
     this.#nodes.push(dagNodeEntry);
+    this.#nodeImpls.set(name, dagNode as NodeInterface);
     if (this.#entrypoint === null) this.#entrypoint = name;
     return this;
   }
@@ -169,12 +175,27 @@ export class DAGBuilder {
     return this;
   }
 
-  /** Materialize the accumulated nodes into a canonical JSON-LD `DAG` document. */
-  build(): DAG {
+  /**
+   * Materialize the accumulated nodes into a canonical JSON-LD `DAG` document.
+   *
+   * When any placement registered via `.node()` or `.fanOut()` carries a
+   * `contract` on its underlying `NodeInterface`, `build()` runs the same
+   * dangling-read / dead-write validation that `DAGDeriver` runs at derive
+   * time. Dangling reads throw `DAGError`; dead writes are routed to
+   * `onContractWarning` (no-op if omitted). Placements added via `.parallel()`
+   * or `.deepDAG()` — which do not receive a `NodeInterface` — are not tracked
+   * in the impl registry and are silently skipped during contract validation;
+   * this prevents false-positive dangling-read errors for node names that are
+   * declared elsewhere.
+   *
+   * @param onContractWarning - Optional callback for dead-write warnings. If
+   *   omitted, dead writes are silently no-oped. Dangling reads always throw.
+   */
+  build(onContractWarning?: (message: string) => void): DAG {
     if (this.#entrypoint === null) {
       throw new Error(`DAGBuilder('${this.#name}'): cannot build DAG without an entrypoint — call .entrypoint() or add at least one node first`);
     }
-    return {
+    const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      `urn:noocodex:dag:${this.#name}`,
       '@type':    'DAG',
@@ -183,5 +204,56 @@ export class DAGBuilder {
       'entrypoint': this.#entrypoint,
       'nodes':      [...this.#nodes],
     };
+
+    // Run contract validation for the subset of placements registered via
+    // .node() / .fanOut() whose underlying NodeInterface carries a contract.
+    // Placements added via .parallel() / .deepDAG() are not in #nodeImpls and
+    // are intentionally skipped — no false-positive dangling-read errors.
+    const contractNodes = [...this.#nodeImpls.values()].filter(
+      (impl) => impl.contract !== undefined,
+    );
+    if (contractNodes.length > 0) {
+      const contracts = DAGDeriver.extractContracts(contractNodes);
+      ContractRegistryValidator.validate(
+        contracts,
+        onContractWarning ?? (() => { /* no-op */ }),
+        this.#entrypoint,
+      );
+    }
+
+    return dag;
+  }
+
+  /**
+   * Construct a DAG directly from a node registry — every node-with-contract
+   * participates in derivation; the linear topology follows
+   * produces ↔ hardRequired matching. Equivalent to calling
+   * `DAGDeriver.derive({ name, version, entrypoint, nodes })` and returning
+   * the resulting DAG. Use when your flow is linear and every node carries
+   * a contract; drop into the fluent `.node()` API when the shape requires
+   * manual placement (fan-out, terminals, deep-DAGs).
+   */
+  static fromNodes(opts: {
+    readonly name: string;
+    readonly version: string;
+    readonly entrypoint: string;
+    readonly nodes: readonly NodeInterface[];
+    readonly annotations?: DAGDeriverAnnotations;
+  }): DAG {
+    const deriveOpts = opts.annotations !== undefined
+      ? {
+          'name':        opts.name,
+          'version':     opts.version,
+          'entrypoint':  opts.entrypoint,
+          'nodes':       opts.nodes,
+          'annotations': opts.annotations,
+        }
+      : {
+          'name':       opts.name,
+          'version':    opts.version,
+          'entrypoint': opts.entrypoint,
+          'nodes':      opts.nodes,
+        };
+    return DAGDeriver.derive(deriveOpts);
   }
 }

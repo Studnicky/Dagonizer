@@ -249,6 +249,127 @@ const dag = DAGDeriver.derive({
 
 A complete runnable demonstration ships in [`examples/derive.ts`](https://github.com/Studnicky/Dagonizer/blob/main/examples/derive.ts) — declares parent + child contracts, derives both DAGs, dispatches, prints the rendered placement order. Run with `npm run example:derive` or `npx tsx examples/derive.ts`.
 
+## Co-located contracts
+
+The standalone `contracts` array requires every operation to be declared twice — once as an `OperationContract` and once as a `NodeInterface` registered with the dispatcher. `name` and `outputs` must match by convention; drift is silent.
+
+The co-located pattern eliminates that duplication. Declare `hardRequired` and `produces` directly on the node via `NodeInterface.contract`; the node's own `name` and `outputs` complete the full contract surface.
+
+**Standalone (legacy)**
+
+```ts
+// Contract declared separately
+const fetchContract: OperationContract = {
+  name:         'fetch',
+  hardRequired: ['url'],
+  produces:     ['raw'],
+  outputs:      ['success', 'cached', 'error'],
+};
+
+// Node declared separately — name and outputs must match by hand
+const fetchNode: NodeInterface<MyState, 'success' | 'cached' | 'error'> = {
+  name:    'fetch',
+  outputs: ['success', 'cached', 'error'],
+  async execute(state, ctx) { /* ... */ return { output: 'success' }; },
+};
+
+const dag = DAGDeriver.derive({
+  name: 'pipeline', version: '1.0', entrypoint: 'fetch',
+  contracts: [fetchContract, /* ... */],
+});
+dispatcher.registerNode(fetchNode);
+```
+
+**Co-located (recommended)**
+
+```ts
+// Contract lives on the node — single source of truth
+const fetchNode = {
+  name:    'fetch',
+  outputs: ['success', 'cached', 'error'] as const,
+  contract: {
+    hardRequired: ['url'] as const,
+    produces:     ['raw'] as const,
+  },
+  async execute(state: MyState, ctx) { /* ... */ return { output: 'success' as const }; },
+} satisfies NodeInterface;
+
+// Pass the node registry — no separate contracts array
+const dag = DAGDeriver.derive({
+  name: 'pipeline', version: '1.0', entrypoint: 'fetch',
+  nodes: [fetchNode, planNode, executeNode],
+});
+dispatcher.registerNode(fetchNode);
+```
+
+`DAGDeriver.derive({ nodes })` and `DAGDeriver.derive({ contracts })` are mutually exclusive — supply exactly one. Nodes without a `contract` field are silently skipped in topology derivation; the dispatcher still registers and executes them.
+
+Use `DAGDeriver.extractContracts(nodes)` to inspect the projected contracts before derivation:
+
+```ts
+const contracts = DAGDeriver.extractContracts([fetchNode, planNode, executeNode]);
+// contracts is OperationContract[] — skips nodes without .contract
+```
+
+## Catching contract drift
+
+Three mechanisms surface drift between what nodes declare they need and what others provide:
+
+### Type-level: `Chainable<A, B>`
+
+`Chainable<A, B>` is a compile-time utility type that resolves to `true` when `B`'s `hardRequired` set is fully satisfied by `A`'s `produces` set, and `never` otherwise. Use it in test helpers or contract authoring to catch drift before running the code.
+
+Most useful when nodes are typed with `as const` literal-tuple contracts:
+
+```ts
+import type { Chainable } from '@noocodex/dagonizer/contracts';
+
+const fetchNode = {
+  name: 'fetch', outputs: ['success'] as const,
+  contract: { hardRequired: ['url'] as const, produces: ['raw'] as const },
+  async execute(state, ctx) { return { output: 'success' as const }; },
+} satisfies NodeInterface;
+
+const parseNode = {
+  name: 'parse', outputs: ['success'] as const,
+  contract: { hardRequired: ['raw'] as const, produces: ['record'] as const },
+  async execute(state, ctx) { return { output: 'success' as const }; },
+} satisfies NodeInterface;
+
+// Compiles: 'raw' in fetchNode.produces satisfies parseNode.hardRequired
+type FetchThenParse = Chainable<typeof fetchNode, typeof parseNode>; // true
+
+// Would not compile: parseNode.produces is ['record'], not ['raw']
+// type BackwardChain = Chainable<typeof parseNode, typeof fetchNode>; // never
+```
+
+### Registration-time: dangling reads
+
+`ContractRegistryValidator` runs automatically during `Dagonizer.registerDAG` for DAGs derived from a `nodes` registry. If any non-entrypoint node `hardRequires` a path that no upstream node `produces`, registration throws a `DAGError`:
+
+```
+DAGError: ContractRegistryValidator: node 'plan' hardRequires 'classification'
+but no upstream-in-DAG node produces it
+```
+
+The same check runs as a preflight inside `DAGDeriver.derive({ nodes })` so contract errors surface before the DAG is built.
+
+The entrypoint node's `hardRequired` paths are treated as external initial state (seeded before execution) and are not checked.
+
+### Registration-time: dead writes
+
+When a node `produces` a path that no downstream node `hardRequires`, `ContractRegistryValidator` calls `Dagonizer.onContractWarning` (a no-op by default). Subclass `Dagonizer` and override `onContractWarning` to surface these warnings:
+
+```ts
+class ObservingDispatcher extends Dagonizer<MyState> {
+  protected override onContractWarning(message: string): void {
+    console.warn('[contract]', message);
+  }
+}
+```
+
+Dead-write warnings are non-fatal — the DAG registers and executes normally. They indicate an operation that writes state no downstream node consumes, which may be intentional (terminal outputs, observability writes) or an authoring oversight.
+
 ## Inspecting derived state
 
 `DAGDeriver` also exposes the intermediate computations:
