@@ -1,20 +1,29 @@
 /**
- * StubAdapter — offline canned-responses adapter.
+ * StubAdapter — offline canned-responses adapter grounded in the seed memory graph.
  *
- * Always available; ships with the demo so it works without any
- * network or API key. Implements `chat()` by routing the request to
- * pattern-matchers — the last user message is inspected and a canned
- * response is returned. Tool calls are emitted when the visitor names
- * a specific title / author / ISBN (regex match against the message),
- * otherwise the adapter returns prose.
+ * Ships with the demo so it works without any network or API key. The
+ * adapter is constructed with a required `MemoryStore` — `performChat`
+ * grounds compose and classify responses in real SeedLibrary titles so
+ * stub citations link to actual nodes in the MemoryGraph the visitor is
+ * looking at.
  */
+
+import { SeedLibrary } from '../../data/SeedLibrary.js';
+import { MemoryStore } from '../../memory/MemoryStore.js';
 
 import { BaseAdapter } from './BaseAdapter.ts';
 import type { ChatRequest, ChatResponse, ToolCall, ToolDefinition } from './LlmAdapter.ts';
 
+export interface StubAdapterOptions {
+  readonly memoryStore: MemoryStore;
+}
+
 export class StubAdapter extends BaseAdapter {
-  constructor() {
-    super({ 'id': 'stub', 'displayName': 'Canned responses (offline stub)', 'maxAttempts': 1 });
+  readonly #memoryStore: MemoryStore;
+
+  constructor(opts: StubAdapterOptions) {
+    super({ 'id': 'stub', 'displayName': 'Canned responses (no real LLM)', 'maxAttempts': 1 });
+    this.#memoryStore = opts.memoryStore;
   }
 
   protected async performChat(request: ChatRequest): Promise<ChatResponse> {
@@ -43,14 +52,127 @@ export class StubAdapter extends BaseAdapter {
     }
 
     if (request.outputSchema !== undefined) {
-      // Hand back a minimal JSON shape that matches the schema for the
-      // tool-decision flow — empty tool_calls array means "no tool".
-      return { 'message': { 'content': JSON.stringify({ 'tool_calls': [] }) }, 'finishReason': 'stop' };
+      return groundedDecideTools(query, request.tools ?? []);
     }
 
-    return { 'message': { 'content': cannedAnswer(query) }, 'finishReason': 'stop' };
+    return { 'message': { 'content': this.#groundedAnswer(query) }, 'finishReason': 'stop' };
+  }
+
+  /**
+   * Count live `?book rdf:type dag:Book` triples in the store — the seed
+   * library plus any books added during the session. Used to personalise
+   * the "memory status" recall response.
+   */
+  #shelfSize(): number {
+    return this.#memoryStore.select({
+      'subject':   '?book',
+      'predicate': MemoryStore.iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'),
+      'object':    MemoryStore.dagIri('Book'),
+      'graph':     '?g',
+    }).length;
+  }
+
+  #groundedAnswer(query: string): string {
+    return groundedAnswer(query, this.#shelfSize());
   }
 }
+
+// ── Grounded response helpers ──────────────────────────────────────────────
+//
+// These run when memoryStore is present. They delegate to SeedLibrary so
+// responses cite actual book IRIs that appear in the MemoryGraph.
+
+function groundedDecideTools(query: string, tools: readonly ToolDefinition[]): ChatResponse {
+  const matches = SeedLibrary.findByKeywords(query, 3);
+  const webSearch = tools.find((t) => t.name === 'web_search_books');
+
+  // If we have seed matches and a web_search tool, name them as candidates.
+  if (matches.length > 0 && webSearch !== undefined) {
+    const visitor = query.split(/visitor question:/iu)[1]?.trim() ?? query.slice(-200);
+    // Emit a tool call so the full DAG flow runs against real candidates.
+    return {
+      'message': {
+        'toolCalls': [{
+          'id':        `stub-${String(Date.now())}`,
+          'name':      webSearch.name,
+          'arguments': { 'query': visitor, 'limit': 5 },
+        }],
+      },
+      'finishReason': 'tool_call',
+    };
+  }
+
+  return { 'message': { 'content': JSON.stringify({ 'tool_calls': [] }) }, 'finishReason': 'stop' };
+}
+
+function groundedAnswer(query: string, shelfSize: number): string {
+  const q = query.toLowerCase();
+
+  if (q.includes('acknowledge which sources were searched')) {
+    const notesMatch = /search notes:\s*([^\n]+)/i.exec(query);
+    const hint = notesMatch !== null ? ` (${(notesMatch[1] ?? '').trim().slice(0, 120)})` : '';
+    return `I keep ${String(shelfSize)} titles on these shelves and none of them matched your description${hint}. Try a single keyword — an author surname, a year, or one strong image from the book — and I will cast a wider net.`;
+  }
+
+  if (q.includes('memory status:')) {
+    if (q.includes('no books have been recorded')) {
+      return `My shelves currently hold ${String(shelfSize)} title${shelfSize === 1 ? '' : 's'} from the seed library. Ask me about science fiction, philosophy, or a specific author and we'll build from there.`;
+    }
+    const bookMatch  = /(\d+) distinct book/.exec(q);
+    const queryMatch = /(\d+) prior (session|sessions)/.exec(q);
+    const titleMatch = /recent titles?: ([^.]+)\./.exec(q);
+    const bookCount  = bookMatch  !== null ? bookMatch[1]  : 'several';
+    const sessions   = queryMatch !== null ? queryMatch[1] : 'several';
+    const titles     = titleMatch !== null ? titleMatch[1] : 'various titles';
+    return `These shelves hold ${String(shelfSize)} title${shelfSize === 1 ? '' : 's'} in total. Of those, ${bookCount} ${Number(bookCount) === 1 ? 'book' : 'books'} came up across ${sessions} prior ${Number(sessions) === 1 ? 'session' : 'sessions'}. The most recent include ${titles}.`;
+  }
+
+  // Extract the visitor's actual query from the full prompt scaffold.
+  const visitorLine = extractVisitorQuery(query);
+  const searchFor = visitorLine.length > 0 ? visitorLine : query;
+  const matches = SeedLibrary.findByKeywords(searchFor, 3);
+
+  if (matches.length === 0) {
+    return "I don't have anything matching that on the shelves — try a title name, an author surname, or a subject keyword and I'll cast a wider net.";
+  }
+
+  const [first, second, third] = matches;
+  if (first === undefined) {
+    return "I don't have anything matching that on the shelves — try a title name, an author surname, or a subject keyword and I'll cast a wider net.";
+  }
+
+  const reason = first.subjects.slice(0, 2).join(', ');
+  let response = `Of what the shelves remember, ${first.title} by ${first.authors[0] ?? 'unknown'} fits closest — ${reason}.`;
+
+  if (second !== undefined) {
+    const reason2 = second.subjects[0] ?? second.summary.split('.')[0] ?? '';
+    response += ` You might also consider ${second.title} by ${second.authors[0] ?? 'unknown'} — ${reason2}.`;
+  }
+
+  if (third !== undefined) {
+    response += ` ${third.title} by ${third.authors[0] ?? 'unknown'} rounds out the shelf on this subject.`;
+  }
+
+  return response;
+}
+
+/** Pull the visitor's question out of a compound LLM prompt. */
+function extractVisitorQuery(prompt: string): string {
+  // Prompts from the classify / compose nodes embed the visitor's message.
+  const patterns = [
+    /visitor(?:'s)? (?:question|message|query)[:\s]+([^\n]+)/iu,
+    /visitor said[:\s]+"([^"]+)"/iu,
+    /"query"[:\s]+"([^"]+)"/u,
+  ];
+  for (const re of patterns) {
+    const m = re.exec(prompt);
+    if (m !== null && m[1] !== undefined && m[1].length > 0) return m[1].trim();
+  }
+  // Last 200 chars as fallback — likely the actual question.
+  return prompt.slice(-200).trim();
+}
+
+// ── Original fully-canned helpers ─────────────────────────────────────────
 
 const STARTER_QUERIES: readonly string[] = [
   'Do you have the complete Dune saga by Frank Herbert?',
@@ -160,37 +282,3 @@ function toolCallFor(query: string, tools: readonly ToolDefinition[]): ToolCall[
   }];
 }
 
-function cannedAnswer(query: string): string {
-  const q = query.toLowerCase();
-
-  // Empty-response branch — detect the ownTheGap directive injected by
-  // prompts.composeEmptyResponse. Extract the search notes if present.
-  if (q.includes('acknowledge which sources were searched')) {
-    const notesMatch = /search notes:\s*([^\n]+)/i.exec(query);
-    const hint = notesMatch !== null ? ` (${notesMatch[1].trim().slice(0, 120)})` : '';
-    return `Stay a while and listen — I searched OpenLibrary, Google Books, the subject index, and Wikipedia, but nothing came back for your description${hint}. The combination may be quite specific. Try a single keyword — the author name alone, or one strong image from the book — and I will cast a wider net.`;
-  }
-
-  // Memory-recall branch — detect the digest marker injected by prompts.composeMemoryRecall.
-  if (q.includes('memory status:')) {
-    if (q.includes('no books have been recorded')) {
-      return "Stay a while and listen! My shelves are fresh for you — nothing recorded yet. Ask me about a title, author, or topic and we'll build up a history together.";
-    }
-    // Extract counts from the digest block for a verifiable stub response.
-    const bookMatch  = /(\d+) distinct book/.exec(q);
-    const queryMatch = /(\d+) prior (session|sessions)/.exec(q);
-    const titleMatch = /recent titles?: ([^.]+)\./.exec(q);
-    const bookCount  = bookMatch  !== null ? bookMatch[1]  : 'several';
-    const sessions   = queryMatch !== null ? queryMatch[1] : 'several';
-    const titles     = titleMatch !== null ? titleMatch[1] : 'various titles';
-    return `Stay a while and listen! I have looked up ${bookCount} book${bookCount === '1' ? '' : 's'} across ${sessions} ${Number(sessions) === 1 ? 'session' : 'sessions'}. The most recent include ${titles}. Ask me about any of them, or let's explore something new.`;
-  }
-
-  if (q.includes('house') || q.includes('library') || q.includes('labyrinth')) {
-    return 'Try "Piranesi" by Susanna Clarke — a quiet, cosmic novel about a man living in an endless House.';
-  }
-  if (q.includes('mystery') || q.includes('detective')) {
-    return 'Consider "The Library at Mount Char" by Scott Hawkins — strange, dark, modern myth-mystery.';
-  }
-  return 'I can help with searches, descriptions, and recommendations — tell me what kind of book you\'re after.';
-}
