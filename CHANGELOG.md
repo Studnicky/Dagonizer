@@ -2,6 +2,13 @@
 
 All notable changes to `@noocodex/dagonizer` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.3] - 2026-05-20
+
+### Fixed
+
+⦿ `docs/guide/subclassing.md` code sample built a `DAG` literal using the pre-v0.6.0 flat shape (`{ type: 'single', ... }`) which would fail validation against `DAGSchema`. Rewrote to canonical JSON-LD with `@context` (`DAG_CONTEXT`), `@id`, `@type: 'DAG'` at the document root, and `'@type': 'SingleNode'` + `@id` on every placement. Import line now includes `DAG_CONTEXT`.
+⦿ `docs/reference/derive.md` "Related guides" called DAGBuilder "the imperative alternative" — pre-v0.8.0 framing that contradicted the deterministic-vs-agentic positioning the rest of the docs adopted. Replaced with a link to `Authoring DAGs` plus a corrected DAGBuilder description ("imperative authoring for deterministic / ETL workflows").
+
 ## [0.8.2] - 2026-05-20
 
 ### Fixed

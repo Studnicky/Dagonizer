@@ -113,7 +113,7 @@ When `restoreData()` is overridden, `restore()` calls `applySnapshot()` which in
 ## Full example
 
 ```ts
-import { NodeStateBase, Dagonizer, Checkpoint } from '@noocodex/dagonizer';
+import { NodeStateBase, Dagonizer, Checkpoint, DAG_CONTEXT } from '@noocodex/dagonizer';
 import type { JsonObject, NodeInterface, DAG } from '@noocodex/dagonizer';
 
 class CountState extends NodeStateBase {
@@ -143,11 +143,14 @@ const tick: NodeInterface<CountState, 'success'> = {
 };
 
 const dag: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id':      'urn:noocodex:dag:count',
+  '@type':    'DAG',
   name: 'count', version: '1', entrypoint: 'a',
   nodes: [
-    { type: 'single', name: 'a', node: 'tick', outputs: { success: 'b' } },
-    { type: 'single', name: 'b', node: 'tick', outputs: { success: 'c' } },
-    { type: 'single', name: 'c', node: 'tick', outputs: { success: null } },
+    { '@id': 'urn:noocodex:dag:count/node/a', '@type': 'SingleNode', name: 'a', node: 'tick', outputs: { success: 'b' } },
+    { '@id': 'urn:noocodex:dag:count/node/b', '@type': 'SingleNode', name: 'b', node: 'tick', outputs: { success: 'c' } },
+    { '@id': 'urn:noocodex:dag:count/node/c', '@type': 'SingleNode', name: 'c', node: 'tick', outputs: { success: null } },
   ],
 };
 
