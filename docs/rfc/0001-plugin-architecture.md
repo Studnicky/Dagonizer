@@ -35,9 +35,9 @@ state shape and intent token union, override `buildPrompt(state)` and
 
 ## Goals
 
-- Three-tier plugin set installable independently from npm.
+- Three-tier plugin set installable independently from npm. Each tier ships *primitives*; consumers compose those primitives via class extension to build their own flows.
 - `@noocodex/dagonizer/adapter`, `@noocodex/dagonizer/patterns`, `@noocodex/dagonizer/tool` are stable public API subpaths governed by semver.
-- The example continues to work and demonstrates the full plugin composition.
+- The example continues to work and demonstrates the full plugin composition — every Archivist node becomes a class that `extends` one of the published bases.
 - Internal contributors get a monorepo workflow: pnpm workspaces, one `pnpm install`, one `pnpm build` builds everything in dependency order.
 - Per-package CHANGELOGs via changesets so a bug-fix to one adapter does not bump the world.
 
@@ -49,7 +49,7 @@ state shape and intent token union, override `buildPrompt(state)` and
 
 ## Package taxonomy
 
-**16 packages total.** Main dagonizer + 8 adapters + 3 tools + 4 patterns.
+**15 packages total.** Main dagonizer + 8 adapters + 3 tools + 3 patterns.
 
 ### Main
 ```
@@ -79,16 +79,43 @@ Each tool exports a static class with `noun.verb()` API per project standards
 — e.g. `OpenLibrarySearchTool.search(query: string): Promise<Candidate[]>`.
 No constructor, no state.
 
-### Patterns (4)
+### Patterns (3)
 ```
-@noocodex/dagonizer-patterns-rag       (LLM-driven RAG nodes — classify, decide, rank, compose)
-@noocodex/dagonizer-patterns-graph     (RDF triple-store recall + record nodes)
-@noocodex/dagonizer-patterns-fanout    (Fan-out scout reducer / dedupe patterns)
-@noocodex/dagonizer-patterns-util      (Pure deterministic helpers — groupBy, dedupeBy, pickMax, gates)
+@noocodex/dagonizer-patterns-rag       (LLM-driven node bases — classify, decide, rank, compose, validate, empty, scout)
+@noocodex/dagonizer-patterns-graph     (Triple-store node bases — recall, record, digest)
+@noocodex/dagonizer-patterns-flow      (Pure flow primitives — fan-in reducer, dedupe-by-key, gates, group-by, sort, pick)
 ```
 
-Each pattern package exports abstract base classes. The Archivist's concrete
-nodes (which are domain-specific) extend these bases.
+**What ships vs what stays.** A pattern package ships *only* the genuinely
+reusable primitive — the abstract base whose shape is domain-agnostic. The
+Archivist's concrete nodes that are domain-specific (`rankByRating` weights
+Google Books ratings, `recallPastVisits` queries `dag:Book` triples,
+`declineOffTopic` emits Archivist persona text) **stay in the example** and
+extend the appropriate base. The library exists to provide primitives;
+class extension is how consumers compose them into a specific flow.
+
+Concrete example:
+
+```ts
+// In the plugin package — primitive only:
+export abstract class BaseClassifyTokenNode<TState, TToken extends string>
+  extends BaseNode<TState, TToken, RagServices>
+{
+  protected abstract buildPrompt(state: TState): string;
+  protected abstract parseToken(content: string): TToken;
+  async execute(state, ctx) { /* LLM dispatch + retry handled here */ }
+}
+
+// In the Archivist example — domain concrete, extends primitive:
+export class ClassifyIntentNode extends BaseClassifyTokenNode<ArchivistState, ArchivistIntent> {
+  readonly outputs = INTENT_TOKENS;
+  protected buildPrompt(state) { return prompts.classifyIntent(state.query); }
+  protected parseToken(content) { return normaliseIntent(content); }
+}
+```
+
+This is the only sustainable boundary: the lib ships shapes, the consumer
+ships domain.
 
 The main `@noocodex/dagonizer` ships the dispatcher, contracts, and three
 new subpaths. Each plugin package depends on `@noocodex/dagonizer` for the
@@ -251,34 +278,43 @@ For each scout, create a package under `packages/dagonizer-tool-<name>/`:
 
 Update the Archivist example to import each tool from its plugin package.
 
-### Phase 7 — Extract patterns packages (4)
+### Phase 7 — Extract patterns packages (3)
 
-Most invasive phase — this is where the abstract base classes get designed. Each pattern package exports abstract classes + service contracts:
+Most invasive phase — designs the abstract base classes. Each pattern package
+exports abstract classes + service contracts. **Only genuinely reusable
+primitives ship; domain-specific concretes stay in the example and extend
+these bases.**
 
 **`@noocodex/dagonizer-patterns-rag`**
-- `BaseClassifyIntentNode<TState, TIntent>`
-- `BaseDecideToolsNode<TState>`
-- `BaseRankCandidatesNode<TState, TItem>`
-- `BaseComposeResponseNode<TState>`
-- Services contract: `RagServices = { llm: LlmClient }`
+- `BaseClassifyTokenNode<TState, TToken>` — LLM picks one of N tokens; consumer overrides `buildPrompt` + `parseToken`.
+- `BaseDecideToolsNode<TState>` — LLM picks tool calls; consumer overrides `buildPrompt` + `availableTools`.
+- `BaseRankItemsNode<TState, TItem>` — LLM ranks a list; consumer overrides `buildPrompt` + `extractScores`.
+- `BaseComposeResponseNode<TState>` — LLM composes a reply; consumer overrides `buildPrompt`.
+- `BaseValidateResponseNode<TState>` — LLM judges draft yes/no; consumer overrides `buildPrompt`.
+- `BaseEmptyResponseNode<TState>` — LLM composes when no data; consumer overrides `buildPrompt`.
+- `BaseScoutNode<TState, TItem, TToolInput, TToolOutput>` — calls a Tool, normalises, writes back; consumer overrides `buildInput` + `normalize` + `writeBack`.
+- Services contract: `RagServices = { llm: LlmClient }`.
 
 **`@noocodex/dagonizer-patterns-graph`**
-- `BaseRecallContextNode<TState>`
-- `BaseRecordFindingsNode<TState, TEntity>`
-- Services contract: `GraphServices = { memory: TripleStore }`
+- `BaseRecallContextNode<TState, TBinding>` — SPARQL select; consumer overrides `buildQuery` + `mapBindings`.
+- `BaseRecordFindingsNode<TState, TEntity>` — writes entities as quads; consumer overrides `toQuads`.
+- `BaseMemoryDigestNode<TState>` — assembles a recent-activity digest; consumer overrides `buildDigest`.
+- Services contract: `GraphServices = { memory: TripleStore }`.
 
-**`@noocodex/dagonizer-patterns-fanout`**
-- `BaseFanInReducerNode<TState, TItem>`
-- `BaseDedupeCandidatesNode<TItem>`
-- Services contract: none (pure)
+**`@noocodex/dagonizer-patterns-flow`**
+- `BaseFanInReducerNode<TState, TItem>` — fan-out reducer; consumer overrides `reduce`.
+- `BaseDedupeByKeyNode<TItem>` — dedupes by computed key; consumer overrides `keyOf`.
+- `BasePredicateGateNode<TState>` — boolean gate; consumer overrides `predicate`.
+- `BaseGroupByFieldNode<TItem, TKey>` — groups items by a field; consumer overrides `fieldOf`.
+- `BaseSortByNode<TItem>` — sorts a list; consumer overrides `compare`.
+- `BasePickByNode<TItem>` — picks one item; consumer overrides `score`.
+- Services contract: none (pure).
 
-**`@noocodex/dagonizer-patterns-util`**
-- `GroupByYear<TState, TItem>` (concrete; takes field name via constructor option)
-- `PickBestMatch<TState, TItem>` (concrete; takes scoring function override)
-- `HasCitationsGate<TState>` (abstract gate; consumer overrides predicate)
-
-Update the Archivist's concrete nodes to extend these bases. Domain logic
-(prompts, state-shape mapping, intent token unions) stays in `examples/`.
+**Stays in example** (Archivist-specific, extends one of the bases above):
+- `ClassifyIntentNode extends BaseClassifyTokenNode<ArchivistState, ArchivistIntent>` — Book domain prompt + intent union.
+- `RankByRatingNode extends BaseSortByNode<Candidate>` — Google Books rating comparator.
+- `RecallContextNode extends BaseRecallContextNode<ArchivistState, BookBinding>` — `dag:Book` SPARQL query.
+- `RecallPastVisitsNode`, `RecommendSimilarNode`, `DeclineOffTopicNode`, `DeclineEmptyNode`, `RespondToVisitorNode`, `ExtractQueryNode`, `MergeCandidatesNode`, `HasCitationsGateNode` — every one is a one-class extension of a base above. The example demonstrates exactly the composition pattern the library is built around.
 
 ### Phase 8 — Changesets + release pipeline
 
@@ -309,7 +345,7 @@ Update the Archivist's concrete nodes to extend these bases. Domain logic
 
 ## Rollout
 
-- v0.10.0 ships the restructure + 15 plugin packages as their first published versions (each plugin `0.1.0`).
+- v0.10.0 ships the restructure + 14 plugin packages as their first published versions (each plugin `0.1.0`).
 - `@noocodex/dagonizer` bumps to `0.10.0` (minor — three new subpaths, no breaking change to the existing public API on `.` , `./contracts`, `./derive` etc.).
 - Old adapter / tool / node file paths under `examples/` removed; consumers must `npm install @noocodex/dagonizer-{adapter,tool,patterns}-*` going forward.
 
@@ -320,3 +356,4 @@ Update the Archivist's concrete nodes to extend these bases. Domain logic
 - **Turborepo/Nx**: caching is nice-to-have at 16 packages; revisit if build times become a pain point.
 - **Ship adapters only in v0.10.0, patterns later**: explicitly rejected. Dagonizer's value proposition is the full ecosystem (adapters + tools + patterns). Shipping one tier without the others would tell consumers "you can swap LLMs but everything else is still example code." All three tiers ship together so the v0.10.0 narrative is coherent: install plugins for every layer of your DAG.
 - **Concrete RAG node packages instead of abstract bases**: would couple prompts and state shape to the plugin, defeating reuse. Patterns ship as abstract classes per project standards.
+- **Ship the Archivist's domain-specific nodes as plugins**: explicitly rejected. `RankByRatingNode` weights Google Books ratings — that's an Archivist choice, not a primitive. `DeclineOffTopicNode` emits Archivist persona text. Shipping these as plugins would mean consumers either fork them or live with someone else's domain choices baked in. The library ships primitives; domain concretes stay where the domain lives.
