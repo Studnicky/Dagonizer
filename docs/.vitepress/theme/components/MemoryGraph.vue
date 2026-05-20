@@ -25,14 +25,14 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { Quad } from 'n3';
 
-import type { MemoryStore } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
+import { MemoryStore } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
 import DiagramFrame from './DiagramFrame.vue';
 import GraphDpad from './graph/GraphDpad.vue';
 import GraphLegend from './graph/GraphLegend.vue';
 import type { LegendEntry, LegendTab } from './graph/GraphLegend.vue';
 
 type GraphHandle = {
-  setPointPositions(arr: Float32Array): void;
+  setPointPositions(arr: Float32Array, dontRescale?: boolean): void;
   setPointColors(arr: Float32Array): void;
   setPointSizes(arr: Float32Array): void;
   setLinks(arr: Float32Array): void;
@@ -56,9 +56,12 @@ const props = defineProps<{
   tick: number;
 }>();
 
+/** Structured selection emitted on node click. */
+export type MemorySelection = { kind: 'iri'; iri: string } | { kind: 'literal'; value: string };
+
 const emit = defineEmits<{
   (event: 'clear'): void;
-  (event: 'select', iri: string | null): void;
+  (event: 'select', selection: MemorySelection | null): void;
 }>();
 
 /** Per-layer visibility toggles — chip filter at top of canvas. */
@@ -70,8 +73,9 @@ const layerVisible = ref<Record<GraphLayer, boolean>>({
   'default': true,
 });
 
-/** Cosmos.gl does not expose a first-class pan API — pan buttons are disabled. */
-const PAN_ENABLED = false;
+/** Pan is implemented by shifting all point positions by a fixed world-unit delta. */
+const PAN_ENABLED = true;
+const PAN_STEP = 250;
 
 /** Layer entries for GraphLegend — reactive so active state reflects layerVisible. */
 const memoryLegendTabs = computed<readonly LegendTab[]>(() => {
@@ -106,7 +110,8 @@ interface PointMeta {
   readonly label: string;
   readonly kind:  'iri' | 'literal';
   readonly layer: GraphLayer;
-  readonly iri:   string;
+  /** IRI string for kind='iri'; raw literal text for kind='literal'. */
+  readonly value: string;
 }
 let labelMeta: PointMeta[] = [];
 let labelRaf: number | null = null;
@@ -199,6 +204,7 @@ function initCosmos(container: HTMLDivElement): void {
       // 5000 settles the layout in ~1s; the graph picks a stable form
       // and stops jittering well before the visitor reads any node.
       'simulationDecay': 5000,
+      'enableDrag': true,
       'onSimulationTick': () => { scheduleLabelPaint(); pollZoom(); },
       'onZoom': () => {
         scheduleLabelPaint();
@@ -214,11 +220,16 @@ function initCosmos(container: HTMLDivElement): void {
         }
       },
       // Cosmos passes the clicked point's index (or undefined for the
-      // background). We map back to the IRI and emit `select`.
+      // background). Map back to the term and emit a structured selection.
       'onClick': (index: number | undefined) => {
         if (index === undefined) { emit('select', null); return; }
         const meta = labelMeta[index];
-        if (meta !== undefined) emit('select', meta.iri);
+        if (meta === undefined) return;
+        if (meta.kind === 'literal') {
+          emit('select', { kind: 'literal', value: meta.value });
+        } else {
+          emit('select', { kind: 'iri', iri: meta.value });
+        }
       },
     });
     resizeLabelCanvas();
@@ -264,6 +275,29 @@ function mgFit(): void {
     }, 350);
   } catch { /* ignore */ }
 }
+
+function mgPanBy(dx: number, dy: number): void {
+  const g = graph.value;
+  if (g === null) return;
+  let flat: readonly number[] = [];
+  try { flat = g.getPointPositions(); } catch { return; }
+  if (flat.length === 0) return;
+  const next = new Float32Array(flat.length);
+  for (let i = 0; i < flat.length; i += 2) {
+    next[i]     = (flat[i]     ?? 0) + dx;
+    next[i + 1] = (flat[i + 1] ?? 0) + dy;
+  }
+  try {
+    g.setPointPositions(next, true);
+    g.render(0);
+    scheduleLabelPaint();
+  } catch { /* ignore */ }
+}
+
+function mgPanUp():    void { mgPanBy(0, -PAN_STEP); }
+function mgPanDown():  void { mgPanBy(0, +PAN_STEP); }
+function mgPanLeft():  void { mgPanBy(+PAN_STEP, 0); }
+function mgPanRight(): void { mgPanBy(-PAN_STEP, 0); }
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect();
@@ -457,12 +491,12 @@ function buildBuffers(
   const sizes:     number[] = [];
   const links:     number[] = [];
 
-  function intern(id: string, label: string, kind: 'iri' | 'literal', layer: GraphLayer, iri: string): number {
+  function intern(id: string, label: string, kind: 'iri' | 'literal', layer: GraphLayer, value: string): number {
     const existing = indexById.get(id);
     if (existing !== undefined) return existing;
     const idx = meta.length;
     indexById.set(id, idx);
-    meta.push({ label, kind, layer, iri });
+    meta.push({ label, kind, layer, value });
     positions.push(
       4096 + (Math.random() - 0.5) * 4000,
       4096 + (Math.random() - 0.5) * 4000,
@@ -476,10 +510,10 @@ function buildBuffers(
 
   for (const q of store.triples()) {
     const layer = graphLayer(q.graph.value);
-    const sIdx = intern(q.subject.value, localPart(q.subject.value), 'iri', layer, q.subject.value);
+    const sIdx = intern(q.subject.value, humanLabel(q.subject, store), 'iri', layer, q.subject.value);
     const oId  = objectKey(q);
     const oKind: 'iri' | 'literal' = q.object.termType === 'Literal' ? 'literal' : 'iri';
-    const oIdx = intern(oId, objectLabel(q), oKind, layer, q.object.value);
+    const oIdx = intern(oId, humanLabel(q.object, store), oKind, layer, q.object.value);
     links.push(sIdx, oIdx);
   }
 
@@ -507,9 +541,45 @@ function objectKey(q: Quad): string {
   return q.object.value;
 }
 
-function objectLabel(q: Quad): string {
-  if (q.object.termType === 'Literal') return q.object.value;
-  return localPart(q.object.value);
+/**
+ * Human-readable label for a graph term.
+ *
+ * Produces short, reader-friendly strings:
+ *   - xsd:dateTime literals → HH:MM:SS (PROV timestamps; date adds no signal)
+ *   - urn:dagonizer:run:… → "Run <first 6 chars of id>"
+ *   - urn:dagonizer:book:… → dag:title lookup; falls back to "Book <last 4>"
+ *   - dag: vocabulary → local name only
+ *   - Other IRIs → hash/slash/colon fragment
+ */
+function humanLabel(term: Quad['subject'] | Quad['object'], store: MemoryStore): string {
+  if (term.termType === 'Literal') {
+    const dt = term.datatype.value;
+    if (dt === 'http://www.w3.org/2001/XMLSchema#dateTime') {
+      const m = term.value.match(/T(\d{2}:\d{2}:\d{2})/);
+      return m === null ? term.value : m[1];
+    }
+    return term.value;
+  }
+  const iri = term.value;
+  if (iri.startsWith('urn:dagonizer:run:')) {
+    const tail = iri.slice('urn:dagonizer:run:'.length);
+    return `Run ${tail.slice(0, 6)}`;
+  }
+  if (iri.startsWith('urn:dagonizer:book:')) {
+    const titleTerm = MemoryStore.dagIri('title');
+    const rows = store.select({ 'subject': MemoryStore.iri(iri), 'predicate': titleTerm, 'object': '?o', 'graph': '?g' });
+    const first = rows[0]?.['o'];
+    if (first !== undefined && first.termType === 'Literal') return first.value;
+    return `Book ${iri.slice(-4)}`;
+  }
+  if (iri.startsWith('https://noocodex.dev/ontology/dagonizer/')) {
+    return iri.slice('https://noocodex.dev/ontology/dagonizer/'.length);
+  }
+  const hashIdx = iri.lastIndexOf('#');
+  if (hashIdx >= 0) return iri.slice(hashIdx + 1);
+  const slashIdx = iri.lastIndexOf('/');
+  if (slashIdx >= 0) return iri.slice(slashIdx + 1);
+  return iri.slice(iri.lastIndexOf(':') + 1);
 }
 </script>
 
@@ -555,10 +625,10 @@ function objectLabel(q: Quad): string {
           @centre="mgFit"
           @fit="mgFit"
           @expand="mgZoomIn"
-          @pan-up="() => {}"
-          @pan-down="() => {}"
-          @pan-left="() => {}"
-          @pan-right="() => {}"
+          @pan-up="mgPanUp"
+          @pan-down="mgPanDown"
+          @pan-left="mgPanLeft"
+          @pan-right="mgPanRight"
         />
       </div>
     </div>

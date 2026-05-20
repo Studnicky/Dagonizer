@@ -1,24 +1,29 @@
 <script setup lang="ts">
 /**
- * TripleInspector — side panel showing every triple in/out of a selected IRI.
+ * TripleInspector — side panel showing every triple in/out of a selected node.
  *
  * The visitor clicks a node on the MemoryGraph cosmos canvas; the
- * runner sets `selectedIri` and this panel resolves the full subject+
+ * runner sets `selection` and this panel resolves the full subject+
  * object triple set from `MemoryStore`, grouped by named graph layer
  * (memory / state / prov / default). Each row shows
  *   subject — predicate → object   [graph chip]
- * so the viewer can see how this IRI participates across layers.
+ * so the viewer can see how this IRI or literal value participates across layers.
+ *
+ * Two selection kinds are supported:
+ *   - 'iri'     — named node; show outbound (subject) and inbound (object) triples.
+ *   - 'literal' — literal value; show only inbound triples (?s ?p <literal>).
  */
 
 import { computed } from 'vue';
 import type { Quad } from 'n3';
 
 import { MemoryStore } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
+import type { MemorySelection } from './MemoryGraph.vue';
 
 const props = defineProps<{
   store: MemoryStore;
   tick: number;
-  selectedIri: string | null;
+  selection: MemorySelection | null;
 }>();
 
 const emit = defineEmits<{
@@ -36,19 +41,30 @@ interface Row {
 
 const rows = computed<readonly Row[]>(() => {
   void props.tick;
-  if (props.selectedIri === null) return [];
+  const sel = props.selection;
+  if (sel === null) return [];
   const out: Row[] = [];
-  // Outbound — IRI is the subject.
-  for (const q of props.store.select({ 'subject': MemoryStore.iri(props.selectedIri), 'predicate': '?p', 'object': '?o', 'graph': '?g' })) {
-    const graph = q['g'];
-    if (graph === undefined) continue;
-    out.push(rowFrom('subject', props.selectedIri, q['p']?.value ?? '?', q['o'] !== undefined ? formatObject(q['o']) : '?', graph.value));
-  }
-  // Inbound — IRI is the object.
-  for (const q of props.store.select({ 'subject': '?s', 'predicate': '?p', 'object': MemoryStore.iri(props.selectedIri), 'graph': '?g' })) {
-    const graph = q['g'];
-    if (graph === undefined) continue;
-    out.push(rowFrom('object', q['s']?.value ?? '?', q['p']?.value ?? '?', props.selectedIri, graph.value));
+
+  if (sel.kind === 'iri') {
+    // Outbound — IRI is the subject.
+    for (const q of props.store.select({ 'subject': MemoryStore.iri(sel.iri), 'predicate': '?p', 'object': '?o', 'graph': '?g' })) {
+      const graph = q['g'];
+      if (graph === undefined) continue;
+      out.push(rowFrom('subject', sel.iri, q['p']?.value ?? '?', q['o'] !== undefined ? formatObject(q['o']) : '?', graph.value));
+    }
+    // Inbound — IRI is the object.
+    for (const q of props.store.select({ 'subject': '?s', 'predicate': '?p', 'object': MemoryStore.iri(sel.iri), 'graph': '?g' })) {
+      const graph = q['g'];
+      if (graph === undefined) continue;
+      out.push(rowFrom('object', q['s']?.value ?? '?', q['p']?.value ?? '?', sel.iri, graph.value));
+    }
+  } else {
+    // Literal — only inbound: ?s ?p <literal>
+    for (const q of props.store.select({ 'subject': '?s', 'predicate': '?p', 'object': MemoryStore.lit.str(sel.value), 'graph': '?g' })) {
+      const graph = q['g'];
+      if (graph === undefined) continue;
+      out.push(rowFrom('object', q['s']?.value ?? '?', q['p']?.value ?? '?', `"${sel.value}"`, graph.value));
+    }
   }
   return out;
 });
@@ -63,9 +79,19 @@ const grouped = computed<readonly { layer: Row['layer']; rows: readonly Row[] }[
   return [...groups.entries()].map(([layer, list]) => ({ layer, 'rows': list }));
 });
 
-const localIri = computed(() =>
-  props.selectedIri === null ? '' : localPart(props.selectedIri),
-);
+const headerText = computed(() => {
+  const sel = props.selection;
+  if (sel === null) return '';
+  if (sel.kind === 'literal') return `"${sel.value.length > 40 ? sel.value.slice(0, 38) + '…' : sel.value}"`;
+  return localPart(sel.iri);
+});
+
+const subText = computed(() => {
+  const sel = props.selection;
+  if (sel === null) return '';
+  if (sel.kind === 'literal') return `Literal value`;
+  return sel.iri;
+});
 
 function rowFrom(direction: 'subject' | 'object', s: string, p: string, o: string, graph: string): Row {
   const layer = graphLayer(graph);
@@ -102,14 +128,14 @@ function graphLayer(graph: string): Row['layer'] {
 </script>
 
 <template>
-  <aside v-if="selectedIri !== null" class="triple-inspector" role="dialog" :aria-label="`Triples for ${localIri}`">
+  <aside v-if="selection !== null" class="triple-inspector" role="dialog" :aria-label="`Triples for ${headerText}`">
     <header class="ti-header">
-      <span class="ti-local">{{ localIri }}</span>
+      <span class="ti-local">{{ headerText }}</span>
       <button class="ti-close" title="Close (Esc)" @click="emit('close')">✕</button>
     </header>
-    <p class="ti-iri" :title="selectedIri ?? ''">{{ selectedIri }}</p>
+    <p class="ti-iri" :title="subText">{{ subText }}</p>
 
-    <p v-if="rows.length === 0" class="ti-empty">No triples mention this IRI.</p>
+    <p v-if="rows.length === 0" class="ti-empty">No triples mention this node.</p>
 
     <section v-for="group in grouped" :key="group.layer" :class="['ti-group', `ti-group-${group.layer}`]">
       <header class="ti-group-header">
