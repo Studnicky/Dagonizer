@@ -2,23 +2,35 @@
 title: 'JSON-LD export and import'
 description: 'Serialize Dagonizer DAGs as JSON-LD 1.1 documents and round-trip them back via Dagonizer.serialize and Dagonizer.load. Every DAG carries `@context`, `@id`, and `@type` so downstream tooling (RDF stores, schema validators, JSON-LD processors) reads the wire shape natively.'
 seeAlso:
+
   - text: 'DAGBuilder'
+
     link: './builder'
     description: 'fluent authoring API; the output of build() is already canonical JSON-LD'
+
   - text: 'Schema & JSON loading'
+
     link: './schema'
     description: 'Ajv validation surface at the ingest boundary'
+
   - text: 'Architecture'
+
     link: '../architecture'
     description: 'JSON-LD canonical wire format in the framework architecture'
+
   - text: 'DAG entities'
+
     link: '../reference/entities'
     description: 'every `@type` and its required field set'
 nextSteps:
+
   - text: 'Checkpoint'
+
     link: './checkpoint'
     description: 'serialize in-flight DAG state alongside the topology'
+
   - text: 'Visualization'
+
     link: './visualization'
     description: 'render a JSON-LD DAG to Mermaid or Cytoscape'
 ---
@@ -51,9 +63,9 @@ A minimal DAG document:
 }
 ```
 
-⦿ `@context` — the canonical Dagonizer JSON-LD context (`DAG_CONTEXT` in `@noocodex/dagonizer`). Identifies the ontology namespace.
-⦿ `@id` — URN identifier for this DAG document. Convention: `urn:noocodex:dag:<name>`.
-⦿ `@type` — RDF class. `"DAG"` for the document; `"SingleNode"` / `"ParallelNode"` / `"FanOutNode"` / `"DeepDAGNode"` for placements.
+- `@context` — the canonical Dagonizer JSON-LD context (`DAG_CONTEXT` in `@noocodex/dagonizer`). Identifies the ontology namespace.
+- `@id` — URN identifier for this DAG document. Convention: `urn:noocodex:dag:<name>`.
+- `@type` — RDF class. `"DAG"` for the document; `"SingleNode"` / `"ParallelNode"` / `"FanOutNode"` / `"DeepDAGNode"` for placements.
 
 Every placement has its own `@id` and `@type`. Placement `@id`s typically nest under the DAG's URN: `urn:noocodex:dag:demo/node/transform`.
 
@@ -95,11 +107,11 @@ const result = await dispatcher.execute(dag.name, new MyState());
 
 `Dagonizer.load` throws `ValidationError` for:
 
-⦿ Malformed JSON (delegates to `JSON.parse`)
-⦿ Schema-noncompliant input (validates against `DAGSchema` via Ajv 2020-12)
-⦿ Missing required fields (`@context`, `@id`, `@type`, `name`, `version`, `entrypoint`, `nodes`)
-⦿ Invalid `@type` discriminator on any placement
-⦿ Unwired output references (compile-time check unavailable at the JSON boundary; the validator catches them at runtime)
+- Malformed JSON (delegates to `JSON.parse`)
+- Schema-noncompliant input (validates against `DAGSchema` via Ajv 2020-12)
+- Missing required fields (`@context`, `@id`, `@type`, `name`, `version`, `entrypoint`, `nodes`)
+- Invalid `@type` discriminator on any placement
+- Unwired output references (compile-time check unavailable at the JSON boundary; the validator catches them at runtime)
 
 For callers that have already decoded their input (e.g. via a database row that returned a parsed object), `Dagonizer.fromValue(value)` skips the JSON parse step and runs only the schema validation.
 

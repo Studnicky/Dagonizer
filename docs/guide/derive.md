@@ -1,15 +1,23 @@
 ---
 seeAlso:
+
   - text: 'Authoring DAGs'
+
     link: './authoring'
     description: 'when to use DAGBuilder vs DAGDeriver vs raw DAG literals'
+
   - text: 'DAGBuilder'
+
     link: './builder'
     description: 'imperative authoring for deterministic / ETL workflows'
+
   - text: 'Visualization'
+
     link: './visualization'
     description: 'render the derived DAG as Mermaid'
+
   - text: 'Schema & JSON loading'
+
     link: './schema'
     description: 'validate the derived DAG before registering'
 ---
@@ -39,10 +47,10 @@ const classify: OperationContract = {
 
 Four fields:
 
-⦿ `name` — matches `NodeInterface.name` used at registration with the dispatcher.
-⦿ `hardRequired` — field paths on state that must be present for the operation to run.
-⦿ `produces` — field paths the operation writes on success.
-⦿ `outputs` — output ports the operation can emit. Every port auto-wires to the next derived stage; `annotations.terminals` overrides individual ports per-operation.
+- `name` — matches `NodeInterface.name` used at registration with the dispatcher.
+- `hardRequired` — field paths on state that must be present for the operation to run.
+- `produces` — field paths the operation writes on success.
+- `outputs` — output ports the operation can emit. Every port auto-wires to the next derived stage; `annotations.terminals` overrides individual ports per-operation.
 
 ## Deriving a DAG
 
@@ -195,10 +203,10 @@ annotations: {
 }
 ```
 
-⦿ Every name in `members` must be a contract in the registry.
-⦿ Membership is exclusive — an operation can't appear in two `parallels` groups.
-⦿ A `parallels` member can't also appear in `fanouts` or `subDAGs` — placement kind must be unambiguous.
-⦿ `combine` is one of `'all-success' | 'any-success' | 'collect'`; the engine routes the parallel's aggregate output through the chosen reduction.
+- Every name in `members` must be a contract in the registry.
+- Membership is exclusive — an operation can't appear in two `parallels` groups.
+- A `parallels` member can't also appear in `fanouts` or `subDAGs` — placement kind must be unambiguous.
+- `combine` is one of `'all-success' | 'any-success' | 'collect'`; the engine routes the parallel's aggregate output through the chosen reduction.
 
 ### `subDAGs` — sub-DAG composition
 
@@ -232,12 +240,12 @@ const dag = DAGDeriver.derive({
 });
 ```
 
-⦿ The child DAG name (`'aonprd:parse'`) is resolved at `registerDAG` time. The parent must register the child DAG first; the dispatcher's existing cycle check rejects self-referential subDAGs.
-⦿ Every port in `subDAG.outputs` auto-wires to the next derived stage (same semantics as `contract.outputs`). `terminals` overrides individual ports.
-⦿ A terminal whose outcome isn't in `subDAG.outputs` throws `DAGError` at derive time.
-⦿ `stateMapping` is forwarded verbatim to the rendered `DeepDAGNode.stateMapping`; controls what crosses the parent/child state boundary.
-⦿ Deep-DAG placements cannot terminate the run — the parent DAG owns END. The deep-DAG step must route to another parent placement; if every port routes to `null` the engine rejects the DAG at registration.
-⦿ An operation cannot appear in both `fanouts` and `subDAGs`; the placement kind must be unambiguous.
+- The child DAG name (`'aonprd:parse'`) is resolved at `registerDAG` time. The parent must register the child DAG first; the dispatcher's existing cycle check rejects self-referential subDAGs.
+- Every port in `subDAG.outputs` auto-wires to the next derived stage (same semantics as `contract.outputs`). `terminals` overrides individual ports.
+- A terminal whose outcome isn't in `subDAG.outputs` throws `DAGError` at derive time.
+- `stateMapping` is forwarded verbatim to the rendered `DeepDAGNode.stateMapping`; controls what crosses the parent/child state boundary.
+- Deep-DAG placements cannot terminate the run — the parent DAG owns END. The deep-DAG step must route to another parent placement; if every port routes to `null` the engine rejects the DAG at registration.
+- An operation cannot appear in both `fanouts` and `subDAGs`; the placement kind must be unambiguous.
 
 A complete runnable demonstration ships in [`examples/derive.ts`](https://github.com/Studnicky/Dagonizer/blob/main/examples/derive.ts) — declares parent + child contracts, derives both DAGs, dispatches, prints the rendered placement order. Run with `npm run example:derive` or `npx tsx examples/derive.ts`.
 
@@ -245,8 +253,8 @@ A complete runnable demonstration ships in [`examples/derive.ts`](https://github
 
 `DAGDeriver` also exposes the intermediate computations:
 
-⦿ `DAGDeriver.edges(contracts)` — the adjacency map.
-⦿ `DAGDeriver.depthBuckets(contracts, edges)` — operations grouped by topological depth.
+- `DAGDeriver.edges(contracts)` — the adjacency map.
+- `DAGDeriver.depthBuckets(contracts, edges)` — operations grouped by topological depth.
 
 Useful for tooling that wants to visualize or analyze the contract graph before producing a DAG.
 
@@ -254,12 +262,12 @@ Useful for tooling that wants to visualize or analyze the contract graph before 
 
 The two share an output type (`DAG`) but differ in how the topology is authored:
 
-⦿ **DAGDeriver** — declarative. Each operation states what it `hardRequired`s and `produces`; the edge set falls out of the data graph. Adding a new operation is one contract; the topology rewires automatically. Multi-port nodes declare every port in `outputs`; all ports auto-wire to the next derived stage with one field. Best when the natural ordering is "X needs the output of Y" and the alternate exits are sparse enough to enumerate in `annotations.terminals`.
+- **DAGDeriver** — declarative. Each operation states what it `hardRequired`s and `produces`; the edge set falls out of the data graph. Adding a new operation is one contract; the topology rewires automatically. Multi-port nodes declare every port in `outputs`; all ports auto-wire to the next derived stage with one field. Best when the natural ordering is "X needs the output of Y" and the alternate exits are sparse enough to enumerate in `annotations.terminals`.
 
-⦿ **DAGBuilder** — imperative. Each `.node(name, nodeRef, routes)` call wires every port to a specific target by hand. Better when the routing is non-uniform across ports (different ports route to different next-stages), when topology depends on runtime conditions, or when the graph has cycles that the data-flow ordering would reject.
+- **DAGBuilder** — imperative. Each `.node(name, nodeRef, routes)` call wires every port to a specific target by hand. Better when the routing is non-uniform across ports (different ports route to different next-stages), when topology depends on runtime conditions, or when the graph has cycles that the data-flow ordering would reject.
 
 Multi-port nodes work in both: DAGDeriver auto-wires all ports uniformly + terminals for exceptions; DAGBuilder requires every port spelled out in `routes`. The break-even point is roughly: 3+ ports with mostly-uniform routing → DAGDeriver wins; 3+ ports with mostly-divergent routing → DAGBuilder wins.
 ## Related reference
 
-⦿ [Reference: Derive](../reference/derive)
-⦿ [Reference: Contracts — `OperationContract`](../reference/contracts)
+- [Reference: Derive](../reference/derive)
+- [Reference: Contracts — `OperationContract`](../reference/contracts)

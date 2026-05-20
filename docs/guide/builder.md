@@ -1,15 +1,23 @@
 ---
 seeAlso:
+
   - text: 'Subclassing State'
+
     link: './subclassing'
     description: 'define the state class your nodes mutate'
+
   - text: 'Schema & JSON loading'
+
     link: './schema'
     description: 'load DAGs from JSON instead of building them in code'
+
   - text: 'Contract-derived flows'
+
     link: './derive'
     description: 'generate the same DAG shape from `OperationContract`s'
+
   - text: 'Visualization'
+
     link: './visualization'
     description: 'render the built DAG as Mermaid'
 ---
@@ -155,5 +163,5 @@ new DAGBuilder('dag', '1')
 The returned object is identical to one written by hand — pass it directly to `dispatcher.registerDAG()`.
 ## Related reference
 
-⦿ [Reference: Dagonizer](../reference/dagonizer)
-⦿ [Reference: Entities — `DAG`, `SingleNode`, `ParallelNode`, `FanOutNode`, `DeepDAGNode`](../reference/entities)
+- [Reference: Dagonizer](../reference/dagonizer)
+- [Reference: Entities — `DAG`, `SingleNode`, `ParallelNode`, `FanOutNode`, `DeepDAGNode`](../reference/entities)

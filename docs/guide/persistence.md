@@ -1,12 +1,18 @@
 ---
 seeAlso:
+
   - text: 'Checkpoint'
+
     link: './checkpoint'
     description: 'the codec layer (`Checkpoint.from` / `Checkpoint.restore`)'
+
   - text: 'Subclassing State'
+
     link: './subclassing'
     description: 'domain fields survive the round-trip via `snapshotData` / `restoreData`'
+
   - text: 'Cancellation'
+
     link: './cancellation'
     description: 'produce a checkpointable result by aborting an in-flight flow'
 ---
@@ -160,6 +166,6 @@ const store = new MemoryCheckpointStore();
 `MemoryCheckpointStore` exposes a read-only `size` getter for assertions about how many entries the store holds.
 ## Related reference
 
-⦿ [Reference: Contracts — `CheckpointStore`](../reference/contracts)
-⦿ [Reference: Checkpoint](../reference/checkpoint)
-⦿ [Example: Checkpoint Resume](../examples/08-checkpoint)
+- [Reference: Contracts — `CheckpointStore`](../reference/contracts)
+- [Reference: Checkpoint](../reference/checkpoint)
+- [Example: Checkpoint Resume](../examples/08-checkpoint)

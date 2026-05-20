@@ -1,15 +1,23 @@
 ---
 seeAlso:
+
   - text: 'Reference: Core'
+
     link: './core'
     description: '`ParallelCombiner`, `FanInStrategy` extension classes'
+
   - text: 'Reference: Derive'
+
     link: './derive'
     description: 'uses `OperationContract`'
+
   - text: 'Reference: Runtime'
+
     link: './runtime'
     description: 'default implementations of `ClockProvider`, `SchedulerProvider`, `StateAccessor`'
+
   - text: 'Reference: Checkpoint'
+
     link: './checkpoint'
     description: 'uses `CheckpointStore`'
 ---
@@ -147,8 +155,8 @@ interface RetryPolicyOptionsInterface {
 Construction options for `RetryPolicy`. `retryOn` and `abortOn` are checked via `instanceof` — supply error classes, not error names.
 ## Related guides
 
-⦿ [Cancellation](../guide/cancellation) — `ExecuteOptionsInterface`
-⦿ [Services](../guide/services) — `NodeInterface<TState, TOutput, TServices>`
-⦿ [State accessors](../guide/state-accessor) — `StateAccessor`
-⦿ [Persistence](../guide/persistence) — `CheckpointStore`
-⦿ [Contract-derived flows](../guide/derive) — `OperationContract`
+- [Cancellation](../guide/cancellation) — `ExecuteOptionsInterface`
+- [Services](../guide/services) — `NodeInterface<TState, TOutput, TServices>`
+- [State accessors](../guide/state-accessor) — `StateAccessor`
+- [Persistence](../guide/persistence) — `CheckpointStore`
+- [Contract-derived flows](../guide/derive) — `OperationContract`

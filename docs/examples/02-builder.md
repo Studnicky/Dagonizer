@@ -2,17 +2,27 @@
 title: 'Phase 02 · DAGBuilder'
 description: 'The Archivist parent DAG authored with the chainable DAGBuilder API. Compile-time route exhaustiveness, deep-DAG placements, parallel nodes, and auto-entrypoint — all in one fluent chain.'
 seeAlso:
+
   - text: 'Running domain: The Archivist'
+
     link: './the-archivist'
+
   - text: 'DAGBuilder guide'
+
     link: '../guide/builder'
+
   - text: 'Phase 03 · JSON-LD schema'
+
     link: './03-schema'
     description: 'the same topology loaded from a JSON file instead'
+
   - text: 'Phase 05 · Deep-DAG composition'
+
     link: './05-deepflows'
     description: 'the deep-DAG internals'
+
   - text: 'Reference: Entities — `DAG`, `SingleNode`, `ParallelNode`'
+
     link: '../reference/entities'
 ---
 
@@ -50,11 +60,11 @@ The complete `archivistDAG` — the parent DAG as a single DAGBuilder chain. The
 
 ## What it demonstrates
 
-⦿ **Chainable authoring** — every `.node()`, `.parallel()`, and `.deepDAG()` returns `this` for fluent composition. The chain calls `build()` once at the end to produce the plain `DAG` object.
-⦿ **Compile-time route exhaustiveness** — the `routes` argument is typed as `Record<TOutput, null | string>`. TypeScript catches missing outputs (forgot `'error'`) and stray outputs (typo in output name) at compile time.
-⦿ **Auto-entrypoint** — the first `.node()` call (`'recall-context'`) sets the DAG entrypoint automatically. Override with `.entrypoint(name)` if needed.
-⦿ **Deep-DAG placements via `.deepDAG()`** — `on-topic-search`, `author-search`, `similar-search`, and `compose-loop` are deep-DAG placements. Each references a registered child DAG by name and declares its `stateMapping.output`.
-⦿ **Parallel nodes via `.parallel()`** — `reviews-fan-out` and `describe-fan-out` run four scouts concurrently per branch (inlined because they use `rankByRating` / `pickBestMatch` instead of the standard `rankCandidates`).
-⦿ **Same output as a literal `DAG`** — `.build()` returns the identical wire shape `Dagonizer.load()` expects. The builder is a convenience layer, not a separate runtime.
+- **Chainable authoring** — every `.node()`, `.parallel()`, and `.deepDAG()` returns `this` for fluent composition. The chain calls `build()` once at the end to produce the plain `DAG` object.
+- **Compile-time route exhaustiveness** — the `routes` argument is typed as `Record<TOutput, null | string>`. TypeScript catches missing outputs (forgot `'error'`) and stray outputs (typo in output name) at compile time.
+- **Auto-entrypoint** — the first `.node()` call (`'recall-context'`) sets the DAG entrypoint automatically. Override with `.entrypoint(name)` if needed.
+- **Deep-DAG placements via `.deepDAG()`** — `on-topic-search`, `author-search`, `similar-search`, and `compose-loop` are deep-DAG placements. Each references a registered child DAG by name and declares its `stateMapping.output`.
+- **Parallel nodes via `.parallel()`** — `reviews-fan-out` and `describe-fan-out` run four scouts concurrently per branch (inlined because they use `rankByRating` / `pickBestMatch` instead of the standard `rankCandidates`).
+- **Same output as a literal `DAG`** — `.build()` returns the identical wire shape `Dagonizer.load()` expects. The builder is a convenience layer, not a separate runtime.
 
 See this in action in the [Archivist live demo](./the-archivist).
