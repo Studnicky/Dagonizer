@@ -13,6 +13,8 @@
 
 import { computed, ref } from 'vue';
 
+import { browserVisibleBackends } from '../../../../examples/the-archivist/providers/index.ts';
+
 interface BackendOption {
   readonly id: string;
   readonly displayName: string;
@@ -77,9 +79,13 @@ const emit = defineEmits<{
 /** Per-backend reveal state for password inputs. */
 const revealMap = ref<Record<string, boolean>>({});
 
-/** Runnable backends first, then alphabetical by displayName. */
+/** Visible backend IDs for the current device context. */
+const visibleIds = computed(() => new Set(browserVisibleBackends(props.isMobile ?? false)));
+
+/** Runnable non-stub backends first, then alphabetical by displayName.
+ *  Stub is excluded from the dropdown — it has its own flat row on mobile. */
 const sortedBackends = computed<readonly BackendOption[]>(() => {
-  const list = [...props.backends];
+  const list = props.backends.filter((b) => visibleIds.value.has(b.id) && b.id !== 'stub');
   list.sort((a, b) => {
     if (a.runnable !== b.runnable) return a.runnable ? -1 : 1;
     return a.displayName.localeCompare(b.displayName);
@@ -87,9 +93,15 @@ const sortedBackends = computed<readonly BackendOption[]>(() => {
   return list;
 });
 
+/** Stub row — only present on mobile. */
+const stubBackend = computed<BackendOption | null>(() => {
+  if (props.isMobile !== true) return null;
+  return props.backends.find((b) => b.id === 'stub') ?? null;
+});
+
 /** Cloud key backends that are currently visible in the picker. */
 const keyBackends = computed(() =>
-  props.backends.filter((b) => KEY_BACKENDS.has(b.id))
+  props.backends.filter((b) => KEY_BACKENDS.has(b.id) && visibleIds.value.has(b.id))
 );
 
 function isDesktopOnly(id: string): boolean {
@@ -179,6 +191,25 @@ function keyFor(id: string): string {
         >{{ revealMap[backend.id] ? '🙈' : '👁' }}</button>
       </div>
     </details>
+
+    <!-- Stub flat row — mobile only, no API-key input, always runnable -->
+    <div
+      v-if="stubBackend !== null"
+      class="stub-row"
+      :class="{ 'stub-row--active': activeId === 'stub' }"
+    >
+      <div class="stub-row-info">
+        <span class="stub-row-name">{{ stubBackend.displayName }}</span>
+        <span class="stub-row-hint">{{ stubBackend.hint }}</span>
+      </div>
+      <button
+        type="button"
+        class="stub-row-btn"
+        :class="{ 'stub-row-btn--active': activeId === 'stub' }"
+        :disabled="disabled === true"
+        @click="emit('update:activeId', 'stub')"
+      >{{ activeId === 'stub' ? 'Active' : 'Use canned responses' }}</button>
+    </div>
   </div>
 </template>
 
@@ -322,5 +353,74 @@ function keyFor(id: string): string {
 .key-toggle:hover {
   border-color: var(--dagonizer-brand);
   color: var(--dagonizer-brand);
+}
+
+/* ── Stub flat row (mobile only) ──────────────────────────────────────── */
+.stub-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  background: var(--vp-c-bg-elv);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.stub-row--active {
+  border-color: var(--dagonizer-brand3);
+  background: rgba(212, 166, 73, 0.06);
+}
+
+.stub-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.stub-row-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dagonizer-brand3);
+}
+
+.stub-row-hint {
+  font-size: 0.78rem;
+  color: var(--vp-c-text-2);
+  line-height: 1.4;
+}
+
+.stub-row-btn {
+  flex-shrink: 0;
+  padding: 0.35rem 0.7rem;
+  background: transparent;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--vp-c-text-2);
+  white-space: nowrap;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+
+.stub-row-btn--active {
+  border-color: var(--dagonizer-brand3);
+  color: var(--dagonizer-brand3);
+}
+
+.stub-row-btn:hover:not(:disabled) {
+  border-color: var(--dagonizer-brand);
+  color: var(--dagonizer-brand);
+}
+
+.stub-row-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>

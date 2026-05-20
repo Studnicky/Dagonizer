@@ -58,8 +58,9 @@ export type ProviderId =
   | 'openrouter'
   | 'stub';
 
-/** Backends visible in the browser picker. Stub is intentionally
- *  excluded — it's CLI-only fallback, not a "model the visitor chose". */
+/** Backends visible in the browser picker. Stub is included so mobile
+ *  callers can surface it as a zero-setup fallback; `browserVisibleBackends`
+ *  filters it out for desktop where on-device options exist. */
 const BROWSER_VISIBLE: readonly ProviderId[] = [
   'gemini-nano',
   'gemini-api',
@@ -68,6 +69,7 @@ const BROWSER_VISIBLE: readonly ProviderId[] = [
   'cerebras',
   'mistral',
   'openrouter',
+  'stub',
 ];
 
 /**
@@ -207,8 +209,16 @@ export async function detectBackends(inputs: DetectionInputs = {}): Promise<read
     'hint': 'Free key at openrouter.ai/keys. Routes to llama-3.3-70b-instruct:free.',
   });
 
-  // Stub is intentionally NOT pushed here — when no real model is
-  // available the runner surfaces a "no model detected" gate.
+  // Stub is always emitted last. The picker uses browserVisibleBackends
+  // to hide it on desktop (where on-device options exist), but on mobile
+  // it is the guaranteed zero-setup fallback.
+  out.push({
+    'id':           'stub',
+    'displayName':  'Canned responses (no real LLM)',
+    'runnable':     true,
+    'needsAction':  null,
+    'hint':         'Pattern-matched offline responses — demonstrates the DAG without an API key. Add a key above for real model output.',
+  });
   return out;
 }
 
@@ -219,7 +229,9 @@ export interface PickBestOptions {
 
 /**
  * Pick the highest-priority runnable backend. Filters desktop-only backends
- * when `options.isMobile` is true. Returns `null` when nothing is runnable.
+ * when `options.isMobile` is true. On mobile, falls back to the stub row
+ * when no cloud backend is runnable so the demo always starts. Returns
+ * `null` only on desktop when nothing is runnable.
  */
 export function pickBestBackend(
   available: readonly BackendAvailability[],
@@ -230,6 +242,8 @@ export function pickBestBackend(
 
   for (const id of PRIORITY_ORDER) {
     if (isMobile && DESKTOP_ONLY.includes(id)) continue;
+    // On desktop, skip stub — visitors have real keyless options via Nano/WebLLM.
+    if (!isMobile && id === 'stub') continue;
     if (!BROWSER_VISIBLE.includes(id)) continue;
     const entry = byId.get(id);
     if (entry !== undefined && entry.runnable) return entry;
@@ -237,12 +251,33 @@ export function pickBestBackend(
   return null;
 }
 
-/** True when no real model is available — visitor must enable one. */
+/**
+ * True when no real model is available and the visitor must enable one.
+ * On mobile this always returns false — stub is the guaranteed fallback,
+ * so mobile visitors never see the no-model gate.
+ */
 export function hasNoRunnableModel(
   available: readonly BackendAvailability[],
   options: PickBestOptions = {},
 ): boolean {
+  // Mobile path: stub is always runnable — bypass the gate entirely.
+  if (options.isMobile === true) return false;
   return pickBestBackend(available, options) === null;
+}
+
+/**
+ * Returns the subset of `BROWSER_VISIBLE` backends appropriate for the
+ * given device context. On mobile, stub is included (zero-setup fallback)
+ * and desktop-only backends are excluded. On desktop, stub is excluded
+ * (on-device options like Gemini Nano and WebLLM are available).
+ */
+export function browserVisibleBackends(isMobile: boolean): readonly ProviderId[] {
+  if (isMobile) {
+    // Stub IS visible on mobile (zero-setup fallback); desktop-only backends hidden.
+    return BROWSER_VISIBLE.filter((id) => !DESKTOP_ONLY.includes(id));
+  }
+  // Desktop: hide stub (visitors have real keyless options via nano/web-llm).
+  return BROWSER_VISIBLE.filter((id) => id !== 'stub');
 }
 
 export interface InstantiateInputs {

@@ -70,11 +70,13 @@ The Archivist runs against a real model in any of these environments — `detect
 | 5 | **OpenRouter** (cloud, free tier) | Free key from [openrouter.ai/keys](https://openrouter.ai/keys). Routes to llama-3.3-70b-instruct:free. Works on any device. |
 | 6 | **Gemini Nano** (Chrome built-in, local) | Chrome 138+ stable, or any Chrome with the flags below. No key, no network, ~2 GB one-shot model download by Chrome. Desktop only. |
 | 7 | **WebLLM** (in-browser, WebGPU) | Browser with `navigator.gpu`. Lazy-loads `@mlc-ai/web-llm` + Phi-3.5 mini (~780 MB) on first use; cached after. Desktop only. |
-| 8 | **Stub** | Always available. Hand-coded canned answers. |
+| 8 | **Stub** | Always available. Hand-coded canned answers. Always available on mobile as a zero-setup fallback; hidden from the desktop picker since on-device options exist. |
 
 ### Mobile detection
 
 `MobileDetection.isLikelyMobile()` triangulates three signals — touch points (`navigator.maxTouchPoints > 1`), coarse pointer media query (`(pointer: coarse)`), and narrow viewport (`innerWidth < 900`). All three must indicate mobile; a single signal is not enough. A "Treat as desktop" link in the mobile banner lets tablet visitors opt out of mobile detection and stores the override in `localStorage` (`dagonizer-device-override`).
+
+If no API key is set on a mobile device, the demo runs with canned stub responses so the DAG still executes. The mobile banner makes the canned-vs-real distinction explicit: it reads "running with canned responses (not real AI)" when stub is active, and "using cloud backend [name]" once a key is entered and a cloud backend takes over. Adding any cloud key causes `pickBestBackend` to re-rank and swap the active backend automatically.
 
 ### Enable Gemini Nano + tool calling in Chrome
 

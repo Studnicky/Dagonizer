@@ -481,14 +481,17 @@ onMounted(async () => {
 
   backends.value = await detectBackends({ 'apiKeys': apiKeys.value });
 
-  // Auto-select: if any cloud key is set, proceed past the gate immediately.
-  const picked = pickBestBackend(backends.value, { 'isMobile': isMobile.value });
+  // On mobile, hasNoRunnableModel always returns false (stub is the floor).
+  // On desktop, it returns true when no real backend is runnable.
   if (hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value })) {
     noModel.value = true;
     logger.warn('no LLM backend detected — visitor must enable one');
     return;
   }
   noModel.value = false;
+
+  // pickBestBackend falls back to stub on mobile when no cloud key is set.
+  const picked = pickBestBackend(backends.value, { 'isMobile': isMobile.value });
   if (picked !== null) {
     activeBackend.value = picked.id;
     logger.info(`backend: ${picked.displayName}`);
@@ -679,16 +682,27 @@ function reset(): void {
 <template>
   <div :class="['archivist-runner', { 'is-running': isRunning }]">
 
-    <!-- Mobile banner — shown when device is detected as mobile -->
-    <div v-if="isMobile" class="mobile-banner" role="note">
+    <!-- Mobile banner — shown when device is detected as mobile.
+         Three states:
+           stub active (no keys set): canned-responses notice.
+           cloud backend active (key set): concise cloud-backend notice.
+           desktop override set: banner is not rendered (isMobile === false). -->
+    <div v-if="isMobile && !noModel" class="mobile-banner" role="note">
       <span class="mobile-banner-text">
-        Mobile detected. On-device backends (Gemini Nano, WebLLM) are not available here — using cloud APIs.
-        Paste a <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">free Groq key</a> below for the fastest demo.
+        <template v-if="activeBackend === 'stub'">
+          Mobile mode — running with canned responses (not real AI). Add an API key below for real model output.
+        </template>
+        <template v-else>
+          Mobile mode — using cloud backend {{ backends.find(b => b.id === activeBackend)?.displayName ?? activeBackend }}.
+        </template>
       </span>
       <button type="button" class="mobile-banner-link" @click="onTreatAsDesktop">Treat as desktop</button>
     </div>
 
-    <!-- No-model gate — shown before a backend is available -->
+    <!-- No-model gate — shown before a backend is available.
+         On mobile this block is unreachable: hasNoRunnableModel returns false
+         because stub is the guaranteed fallback. Desktop path: no keys + no
+         Nano + no WebLLM still triggers this gate. -->
     <section v-if="noModel" class="no-model-gate" role="alert">
       <h3>No LLM backend detected</h3>
 
