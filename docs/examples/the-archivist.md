@@ -57,16 +57,24 @@ Three exit conditions, each carrying a different outcome.
 | **Approved response** | `validateResponse` returns `approved` | `respond-to-visitor` | Normal happy path. |
 | **Retry loop** | `validateResponse` returns `retry` | back to `compose-response` | Bounded by the counter on `state.attempts.compose`. |
 
-## Running it for real
+## Backends
 
-The Archivist runs against a real model in any of these environments — `detectBackends()` probes each and picks the highest-priority runnable backend:
+The Archivist runs against a real model in any of these environments — `detectBackends()` probes each and `pickBestBackend()` selects the highest-priority runnable backend. On mobile devices, Gemini Nano and WebLLM are excluded from auto-selection (both require desktop Chrome or a WebGPU-capable device). Cloud backends work on every device.
 
 | Priority | Backend | What it needs |
 |---|---|---|
-| 1 | **Gemini Nano** (Chrome built-in, local) | Chrome 138+ stable, or any Chrome with the flags below. No key, no network, ~2 GB one-shot model download by Chrome. |
-| 2 | **Gemini API** (Google AI Studio free tier) | `GEMINI_API_KEY` env var (Node) or paste-into-form (browser). Free 15 RPM / 1500 RPD on `gemini-2.0-flash`. CORS open from any origin. |
-| 3 | **WebLLM** (in-browser, WebGPU) | Browser with `navigator.gpu`. Lazy-loads `@mlc-ai/web-llm` + Phi-3.5 mini (~780 MB) on first use; cached after. |
-| 4 | **Stub** | Always available. Hand-coded canned answers. |
+| 1 | **Groq** (cloud, free tier) | Free key from [console.groq.com/keys](https://console.groq.com/keys). Runs llama-3.3-70b-versatile. ~30 RPM on the free tier. Works on any device. |
+| 2 | **Cerebras** (cloud, free tier) | Free key from [cloud.cerebras.ai](https://cloud.cerebras.ai/?utm=arch). Runs llama-3.3-70b on Wafer-Scale Engine. Works on any device. |
+| 3 | **Gemini API** (Google AI Studio free tier) | Paste-into-form (browser). Free 15 RPM / 1500 RPD on `gemini-2.0-flash`. CORS open from any origin. Works on any device. |
+| 4 | **Mistral** (cloud, free tier) | Free key from [console.mistral.ai/api-keys/](https://console.mistral.ai/api-keys/). Runs mistral-small-latest. Works on any device. |
+| 5 | **OpenRouter** (cloud, free tier) | Free key from [openrouter.ai/keys](https://openrouter.ai/keys). Routes to llama-3.3-70b-instruct:free. Works on any device. |
+| 6 | **Gemini Nano** (Chrome built-in, local) | Chrome 138+ stable, or any Chrome with the flags below. No key, no network, ~2 GB one-shot model download by Chrome. Desktop only. |
+| 7 | **WebLLM** (in-browser, WebGPU) | Browser with `navigator.gpu`. Lazy-loads `@mlc-ai/web-llm` + Phi-3.5 mini (~780 MB) on first use; cached after. Desktop only. |
+| 8 | **Stub** | Always available. Hand-coded canned answers. |
+
+### Mobile detection
+
+`MobileDetection.isLikelyMobile()` triangulates three signals — touch points (`navigator.maxTouchPoints > 1`), coarse pointer media query (`(pointer: coarse)`), and narrow viewport (`innerWidth < 900`). All three must indicate mobile; a single signal is not enough. A "Treat as desktop" link in the mobile banner lets tablet visitors opt out of mobile detection and stores the override in `localStorage` (`dagonizer-device-override`).
 
 ### Enable Gemini Nano + tool calling in Chrome
 

@@ -50,7 +50,8 @@ import { composeResponse, validateResponse } from '../../../../examples/the-arch
 import { rankCandidates } from '../../../../examples/the-archivist/nodes/rankCandidates.ts';
 import { composeEmptyResponse, declineEmpty, declineOffTopic, respondToVisitor } from '../../../../examples/the-archivist/nodes/respondToVisitor.ts';
 import { webSearchScout, openLibraryScout, googleBooksScout, subjectScout, wikipediaScout } from '../../../../examples/the-archivist/nodes/scouts.ts';
-import { detectBackends, hasNoRunnableModel, instantiateProvider, pickBestBackend } from '../../../../examples/the-archivist/providers/index.ts';
+import { detectBackends, hasNoRunnableModel, instantiateProvider, loadApiKeys, pickBestBackend, saveApiKeys } from '../../../../examples/the-archivist/providers/index.ts';
+import { MobileDetection } from '../../../../examples/the-archivist/providers/MobileDetection.ts';
 import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
 import type { ArchivistServices } from '../../../../examples/the-archivist/services.ts';
 import { GoogleBooksTool } from '../../../../examples/the-archivist/tools/GoogleBooksTool.ts';
@@ -87,7 +88,8 @@ import { RunnerMachine } from '../runner/RunnerMachine.ts';
 const backends = ref<readonly BackendAvailability[]>([]);
 const activeBackend = ref<ProviderId>('gemini-nano');
 const noModel = ref(false);
-const apiKey = ref(loadKey());
+const isMobile = ref(false);
+const apiKeys = ref<Partial<Record<ProviderId, string>>>(loadApiKeys());
 const visitorQuery = ref('');
 const isRunning = ref(false);
 const conversation = ref<Array<{ role: 'visitor' | 'archivist'; text: string; ts: number }>>([]);
@@ -318,7 +320,7 @@ const toolContextMap: Record<string, string> = {
 
 /** Live LLM client reference — kept in sync with activeBackend changes. */
 const currentLlm = computed(() =>
-  instantiateProvider(activeBackend.value, { 'apiKey': apiKey.value || undefined })
+  instantiateProvider(activeBackend.value, { 'apiKeys': apiKeys.value })
 );
 
 function clearMemory(): void {
@@ -327,11 +329,11 @@ function clearMemory(): void {
   logger.info('memory store cleared');
 }
 
-// Re-detect backend availability when the visitor pastes or types an API key.
-watch(apiKey, async () => {
-  backends.value = await detectBackends({ 'apiKey': apiKey.value || undefined });
-  noModel.value = hasNoRunnableModel(backends.value);
-});
+// Re-detect backend availability when apiKeys change.
+watch(apiKeys, async () => {
+  backends.value = await detectBackends({ 'apiKeys': apiKeys.value });
+  noModel.value = hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
+}, { 'deep': true });
 
 // ── Left-column tabs: Conversation | Config ──────────────────────────────
 const leftTabs = computed(() => [
@@ -374,7 +376,7 @@ function buildServices(): ArchivistServices {
     'subjectSearch':     SubjectSearchTool,
     'wikipediaSummary':  WikipediaSummaryTool,
     'memory':            memoryStore,
-    'llm':               instantiateProvider(activeBackend.value, { 'apiKey': apiKey.value || undefined }),
+    'llm':               instantiateProvider(activeBackend.value, { 'apiKeys': apiKeys.value }),
     'logger':            logger,
   };
 }
@@ -465,19 +467,28 @@ function isFreshSession(): boolean {
   return turns.length === 0 || (turns.length === 1 && turns[0]?.role === 'archivist');
 }
 
+function onTreatAsDesktop(): void {
+  MobileDetection.setOverride('desktop');
+  window.location.reload();
+}
+
 // ── Boot ─────────────────────────────────────────────────────────────────
 onMounted(async () => {
   memoryStore.loadOntology(ONTOLOGY_NTRIPLES);
   memoryTick.value++;
 
-  backends.value = await detectBackends({ 'apiKey': apiKey.value || undefined });
-  if (hasNoRunnableModel(backends.value)) {
+  isMobile.value = MobileDetection.isLikelyMobile();
+
+  backends.value = await detectBackends({ 'apiKeys': apiKeys.value });
+
+  // Auto-select: if any cloud key is set, proceed past the gate immediately.
+  const picked = pickBestBackend(backends.value, { 'isMobile': isMobile.value });
+  if (hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value })) {
     noModel.value = true;
     logger.warn('no LLM backend detected — visitor must enable one');
     return;
   }
   noModel.value = false;
-  const picked = pickBestBackend(backends.value);
   if (picked !== null) {
     activeBackend.value = picked.id;
     logger.info(`backend: ${picked.displayName}`);
@@ -488,7 +499,7 @@ onMounted(async () => {
   // the input. Only runs once per session — once the visitor sends a
   // message the input is cleared (via ask()) and this condition no longer fires.
   if (isFreshSession() && visitorQuery.value.length === 0) {
-    const llm = instantiateProvider(activeBackend.value, { 'apiKey': apiKey.value || undefined });
+    const llm = instantiateProvider(activeBackend.value, { 'apiKeys': apiKeys.value });
 
     // Step 1: generate greeting.
     let greeting = STATIC_GREETINGS[Date.now() % STATIC_GREETINGS.length] as string;
@@ -515,7 +526,7 @@ onMounted(async () => {
   }
 });
 
-watch(apiKey, saveKey);
+watch(apiKeys, () => { saveApiKeys(apiKeys.value); }, { 'deep': true });
 
 // ── Run ──────────────────────────────────────────────────────────────────
 async function ask(): Promise<void> {
@@ -639,7 +650,7 @@ function reset(): void {
   runnerMachine.dispatch({ 'type': 'reset' });
 
   // Regenerate greeting + visitor reply after reset, same as onMounted.
-  const llm = instantiateProvider(activeBackend.value, { 'apiKey': apiKey.value || undefined });
+  const llm = instantiateProvider(activeBackend.value, { 'apiKeys': apiKeys.value });
   void (async () => {
     let greeting = STATIC_GREETINGS[Date.now() % STATIC_GREETINGS.length] as string;
     try {
@@ -663,38 +674,70 @@ function reset(): void {
     }
   })();
 }
-
-function saveKey(): void {
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem('dagonizer-gemini-key', apiKey.value);
-  }
-}
-
-function loadKey(): string {
-  if (typeof localStorage === 'undefined') return '';
-  return localStorage.getItem('dagonizer-gemini-key') ?? '';
-}
 </script>
 
 <template>
   <div :class="['archivist-runner', { 'is-running': isRunning }]">
 
+    <!-- Mobile banner — shown when device is detected as mobile -->
+    <div v-if="isMobile" class="mobile-banner" role="note">
+      <span class="mobile-banner-text">
+        Mobile detected. On-device backends (Gemini Nano, WebLLM) are not available here — using cloud APIs.
+        Paste a <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">free Groq key</a> below for the fastest demo.
+      </span>
+      <button type="button" class="mobile-banner-link" @click="onTreatAsDesktop">Treat as desktop</button>
+    </div>
+
     <!-- No-model gate — shown before a backend is available -->
     <section v-if="noModel" class="no-model-gate" role="alert">
       <h3>No LLM backend detected</h3>
-      <p>The Archivist demo runs against real on-device or web LLMs only — there is no canned fallback in the browser. To watch the DAG execute, enable one of:</p>
-      <ul>
-        <li><strong>Gemini Nano (Chrome on-device)</strong> — toggle <code>chrome://flags/#prompt-api-for-gemini-nano</code> and <code>chrome://flags/#optimization-guide-on-device-model</code>, restart, then visit <code>chrome://components</code> to trigger the model download.</li>
-        <li><strong>Gemini API key</strong> — paste a free <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">AI Studio key</a> below; nothing leaves your browser except the request to Google.</li>
-        <li><strong>WebLLM</strong> — needs WebGPU. Use a recent Chrome / Edge / Brave with hardware acceleration on.</li>
-      </ul>
+
+      <template v-if="isMobile">
+        <p>The Archivist demo runs against real cloud LLMs. On mobile, the fastest option is a free Groq key — no download, no GPU required.</p>
+        <ul>
+          <li>
+            <strong>Groq (fastest)</strong> — paste a free key from
+            <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">console.groq.com/keys</a>.
+            Runs llama-3.3-70b-versatile. ~30 requests/min on the free tier.
+          </li>
+          <li>
+            <strong>Cerebras</strong> — free key at
+            <a href="https://cloud.cerebras.ai/?utm=arch" target="_blank" rel="noreferrer">cloud.cerebras.ai</a>.
+            Ultra-fast Wafer-Scale Engine inference.
+          </li>
+          <li>
+            <strong>Mistral</strong> — free key at
+            <a href="https://console.mistral.ai/api-keys/" target="_blank" rel="noreferrer">console.mistral.ai/api-keys/</a>.
+            mistral-small-latest.
+          </li>
+          <li>
+            <strong>OpenRouter</strong> — free key at
+            <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai/keys</a>.
+            Routes to llama-3.3-70b-instruct:free with no credits needed.
+          </li>
+        </ul>
+      </template>
+      <template v-else>
+        <p>The Archivist demo runs against real on-device or web LLMs only — there is no canned fallback in the browser. To watch the DAG execute, enable one of:</p>
+        <ul>
+          <li><strong>Gemini Nano (Chrome on-device)</strong> — toggle <code>chrome://flags/#prompt-api-for-gemini-nano</code> and <code>chrome://flags/#optimization-guide-on-device-model</code>, restart, then visit <code>chrome://components</code> to trigger the model download.</li>
+          <li><strong>Gemini API key</strong> — paste a free <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">AI Studio key</a> below; nothing leaves your browser except the request to Google.</li>
+          <li><strong>WebLLM</strong> — needs WebGPU. Use a recent Chrome / Edge / Brave with hardware acceleration on.</li>
+          <li><strong>Groq</strong> — free key at <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">console.groq.com/keys</a>. No GPU required.</li>
+          <li><strong>Cerebras</strong> — free key at <a href="https://cloud.cerebras.ai/?utm=arch" target="_blank" rel="noreferrer">cloud.cerebras.ai</a>.</li>
+          <li><strong>Mistral</strong> — free key at <a href="https://console.mistral.ai/api-keys/" target="_blank" rel="noreferrer">console.mistral.ai/api-keys/</a>.</li>
+          <li><strong>OpenRouter</strong> — free key at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai/keys</a>.</li>
+        </ul>
+      </template>
+
       <BackendPicker
         :backends="backends"
         :active-id="activeBackend"
-        :api-key="apiKey"
+        :api-keys="apiKeys"
+        :is-mobile="isMobile"
         :disabled="true"
         @update:active-id="activeBackend = $event as ProviderId"
-        @update:api-key="apiKey = $event"
+        @update:api-keys="apiKeys = $event"
       />
     </section>
 
@@ -733,10 +776,11 @@ function loadKey(): string {
                   <BackendPicker
                     :backends="backends"
                     :active-id="activeBackend"
-                    :api-key="apiKey"
+                    :api-keys="apiKeys"
+                    :is-mobile="isMobile"
                     :disabled="isRunning"
                     @update:active-id="activeBackend = $event as ProviderId"
-                    @update:api-key="apiKey = $event"
+                    @update:api-keys="apiKeys = $event"
                   />
                 </section>
 
@@ -833,6 +877,44 @@ function loadKey(): string {
   background: var(--vp-c-bg-alt);
   font-family: var(--vp-font-family-base);
   width: 100%;
+}
+
+/* ── Mobile banner ─────────────────────────────────────────────────────── */
+.mobile-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  margin-bottom: 0.85rem;
+  padding: 0.6rem 0.85rem;
+  background: rgba(99, 179, 237, 0.1);
+  border: 1px solid rgba(99, 179, 237, 0.35);
+  border-radius: 6px;
+  font-size: 0.83rem;
+  line-height: 1.45;
+  color: var(--vp-c-text-1);
+}
+
+.mobile-banner-text {
+  flex: 1 1 200px;
+}
+
+.mobile-banner-link {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  padding: 0.22rem 0.55rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  color: var(--vp-c-text-2);
+  white-space: nowrap;
+  transition: border-color 0.12s ease, color 0.12s ease;
+}
+
+.mobile-banner-link:hover {
+  border-color: var(--dagonizer-brand);
+  color: var(--dagonizer-brand);
 }
 
 /* ── No-model gate ─────────────────────────────────────────────────────── */
