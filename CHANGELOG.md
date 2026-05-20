@@ -2,6 +2,26 @@
 
 All notable changes to `@noocodex/dagonizer` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.4] - 2026-05-20
+
+### Fixed
+
+⦿ Archivist demo: `reset()` now calls `memoryStore.clear()` followed by `memoryStore.loadOntology(ONTOLOGY_NTRIPLES)` so the TBox schema layer is re-seeded after every reset. Previously the ontology named graph was dropped on reset, leaving the Memory tab layer-chip filter empty.
+⦿ Archivist demo: `TripleInspector` accepts a structured `MemorySelection` prop (`{ kind: 'iri'; iri: string } | { kind: 'literal'; value: string }`) instead of a raw IRI string. Clicking a literal node now queries `?s ?p <literal>` and displays inbound triples rather than showing "No triples mention this IRI."
+
+### Added
+
+⦿ Archivist demo: `PanesTabs` exposes a `#tab-suffix` named slot rendered at the right edge of the tab row with `margin-left: auto`. The right-column `PanesTabs` uses it to host a compact persistence toggle button (replaces the "Memory store" section in the Config tab).
+⦿ Archivist demo: D-pad pan on `MemoryGraph`. The four directional buttons shift all point positions by 250 world-units via `getPointPositions`/`setPointPositions(next, true)` and call `render(0)`, providing manual pan without a native cosmos.gl API.
+⦿ Archivist demo: drag-and-throw physics on `MemoryGraph` via `enableDrag: true` in the cosmos.gl config.
+⦿ Archivist demo: `humanLabel` helper in `MemoryGraph`. Run IRIs render as "Run <6-char prefix>"; book IRIs look up `dag:title` and fall back to "Book <last 4 of isbn>"; `xsd:dateTime` literals render as `HH:MM:SS` only; `dag:` vocabulary terms show only the local name.
+
+### Changed
+
+⦿ Archivist demo: starter-query, greeting, and visitor-reply LLM prompts bias toward science fiction and philosophy (Liu Cixin, Gibson, Le Guin, Lem, Ted Chiang, Borges, Camus, Foucault, Deleuze, Wittgenstein) instead of generic world literature. Static fallback pool updated to match.
+⦿ Archivist demo: `MemoryGraph` emits a structured `MemorySelection` union on node click (`{ kind: 'iri'; iri } | { kind: 'literal'; value }`) instead of a raw IRI string. `ArchivistRunner` tracks `selectedSelection: Ref<MemorySelection | null>` and passes it to `TripleInspector`.
+⦿ `package.json` keywords gain LLM / agent-orchestration and semantic-web terms (`agent-framework`, `llm-orchestration`, `ai-agent`, `tool-use`, `function-calling`, `rag`, `sparql`, `n3`, `ontology`, `owl`, `named-graphs`, `provenance`, `prov-o`, `task-graph`) for npm discoverability. GitHub repository topics seeded with a matching 20-topic subset.
+
 ## [0.8.3] - 2026-05-20
 
 ### Fixed

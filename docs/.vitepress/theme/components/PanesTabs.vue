@@ -74,6 +74,9 @@ function onKey(event: KeyboardEvent, idx: number): void {
           :class="['tab-badge', `tab-badge-${tab.tone ?? 'default'}`]"
         >{{ tab.badge }}</span>
       </button>
+      <div v-if="$slots['tab-suffix']" class="tab-suffix">
+        <slot name="tab-suffix" />
+      </div>
     </div>
 
     <div
@@ -114,6 +117,14 @@ function onKey(event: KeyboardEvent, idx: number): void {
 }
 
 .tabs-row::-webkit-scrollbar { display: none; }
+
+.tab-suffix {
+  margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 0.35rem 0 0.25rem;
+}
 
 .tab-btn {
   display: inline-flex;
