@@ -2,6 +2,28 @@
 
 All notable changes to `@noocodex/dagonizer` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.9.0] - 2026-05-20
+
+### Added
+
+⦿ `OperationContractFragment` — new adapter contract (`src/contracts/OperationContractFragment.ts`) carrying only the deriver-facing fields (`hardRequired`, `produces`). `OperationContract` extends the fragment with `name` and `outputs` for backward compatibility.
+⦿ `NodeInterface.contract?: OperationContractFragment` — optional co-located data-flow declaration on every node. When present, `DAGDeriver.derive({ nodes })` projects the node into a full `OperationContract` using the node's own `name` and `outputs` fields. The node is the single source of truth for its contract.
+⦿ `DAGDeriverOptions.nodes?: readonly NodeInterface[]` — alternative to `contracts`; mutually exclusive. Nodes without a `contract` field are silently skipped in topology derivation.
+⦿ `DAGDeriver.extractContracts(nodes)` — static helper that projects contract-bearing nodes into `OperationContract[]`, skipping contract-less nodes. Exported from `@noocodex/dagonizer/derive`.
+⦿ `ContractRegistryValidator` — new static class (`src/derive/ContractRegistryValidator.ts`) that validates co-located contracts for dangling reads (throws `DAGError`) and dead writes (calls `onContractWarning`). Runs automatically during `Dagonizer.registerDAG` for DAGs derived from a `nodes` registry.
+⦿ `Dagonizer.onContractWarning(message)` — new protected observability hook, no-op by default. Fires when `ContractRegistryValidator` detects a dead-write (a node produces a path no downstream node consumes). Subclass and override to surface these warnings.
+⦿ `Chainable<A, B>` — compile-time type utility exported from `NodeInterface`. Resolves to `true` when `B`'s `hardRequired` set is fully satisfied by `A`'s `produces` set, `never` otherwise. Most useful with `as const` literal-tuple contracts.
+⦿ Exports: `OperationContractFragment` and `Chainable` added to `@noocodex/dagonizer/contracts`, `@noocodex/dagonizer/types`, and the root barrel. `ContractRegistryValidator` exported from `@noocodex/dagonizer/derive`.
+⦿ `DAGBuilder.build(onContractWarning?)` runs dangling-read / dead-write contract validation when any node placement registered via `.node()` or `.fanOut()` carries a `contract` field on its `NodeInterface`. Dangling reads throw `DAGError`; dead writes call the optional `onContractWarning` callback (no-op when omitted). Matches the validation `DAGDeriver` runs at derive time — drift fails at build time, before the DAG is registered.
+⦿ `DAGBuilder.fromNodes({ name, version, entrypoint, nodes, annotations? })` — static convenience method that delegates to `DAGDeriver.derive({ nodes })` for the linear-topology common case. Produces the same canonical `DAG` document as the equivalent `.node()` chain, without requiring manual placement. Throws `DAGError` when no node carries a `contract` field (matches deriver behavior).
+
+### Changed
+
+⦿ `DAGDeriverOptions.contracts` is now optional (was required). The standalone `contracts` path is unchanged and fully backward-compatible.
+⦿ `DAGDeriverOptions`: `contracts` and `nodes` are mutually exclusive — supplying both throws `DAGError`. Supplying neither throws `DAGError`.
+⦿ `Dagonizer.registerDAG` runs a third validation pass (contract validation) after the existing schema and semantic passes, for DAGs whose nodes carry co-located contracts.
+⦿ Docs updated: `docs/reference/contracts.md` introduces `OperationContractFragment` and the co-located pattern; `docs/guide/derive.md` adds "Co-located contracts" and "Catching contract drift" sections; `docs/reference/dagonizer.md` documents the third validation pass and `onContractWarning` hook.
+
 ## [0.8.4] - 2026-05-20
 
 ### Fixed

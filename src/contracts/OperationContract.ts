@@ -12,14 +12,18 @@
  * route every port uniformly with one contract field instead of N
  * terminal annotations. Adding a new operation becomes a one-line
  * registration; the flow updates automatically.
+ *
+ * The `hardRequired` and `produces` fields are defined by `OperationContractFragment`.
+ * The standalone `OperationContract` extends the fragment with `name` and `outputs`
+ * for use with `DAGDeriver.derive({ contracts })`. When co-locating the contract
+ * on a node via `NodeInterface.contract`, use `OperationContractFragment` directly —
+ * the node's own `name` and `outputs` complete the full surface.
  */
-export interface OperationContract {
+import type { OperationContractFragment } from './OperationContractFragment.js';
+
+export interface OperationContract extends OperationContractFragment {
   /** Operation name. Matches `NodeInterface.name` used at registration. */
   readonly name: string;
-  /** Field paths the operation requires to be present on state to run. */
-  readonly hardRequired: readonly string[];
-  /** Field paths the operation writes to state on success. */
-  readonly produces: readonly string[];
   /**
    * Output ports the operation can emit. Must match the node's
    * `outputs` declaration at registration. Every port routes to the

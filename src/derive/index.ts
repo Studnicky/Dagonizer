@@ -16,3 +16,5 @@ export type {
   DAGDeriverTerminal,
 } from './DAGDeriverAnnotations.js';
 export type { OperationContract } from '../contracts/OperationContract.js';
+export type { OperationContractFragment } from '../contracts/OperationContractFragment.js';
+export { ContractRegistryValidator } from './ContractRegistryValidator.js';

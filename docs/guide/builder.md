@@ -93,7 +93,90 @@ When the node declares a narrow `TOutput` union, `.node()` enforces exhaustive r
 })
 ```
 
-## Parallel group
+## ⦿ Contract-aware authoring
+
+When the underlying `NodeInterface` carries a `contract` field (`hardRequired` + `produces`), `build()` runs the same dangling-read / dead-write validation that `DAGDeriver` runs at derive time — drift fails at build time, not run time.
+
+- **Dangling read** — a non-entrypoint node declares `hardRequired: ['foo']` but no upstream node produces `'foo'`. Throws `DAGError`.
+- **Dead write** — a node declares `produces: ['bar']` but no downstream node `hardRequires` `'bar'`. Fires the `onContractWarning` callback (non-fatal).
+
+```ts
+import { DAGBuilder, DAGError } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer';
+import type { NodeStateBase } from '@noocodex/dagonizer';
+
+const fetchNode: NodeInterface<NodeStateBase, 'success'> = {
+  name: 'fetch',
+  outputs: ['success'],
+  contract: { hardRequired: ['url'], produces: ['raw'] },
+  async execute(state) { return { output: 'success' }; },
+};
+
+const parseNode: NodeInterface<NodeStateBase, 'success'> = {
+  name: 'parse',
+  outputs: ['success'],
+  // Deliberate mismatch: hardRequires 'data' but upstream only produces 'raw'
+  contract: { hardRequired: ['data'], produces: ['record'] },
+  async execute(state) { return { output: 'success' }; },
+};
+
+// Throws DAGError: node 'parse' hardRequires 'data' but no upstream node produces it.
+new DAGBuilder('pipeline', '1.0')
+  .node('fetch', fetchNode, { success: 'parse' })
+  .node('parse', parseNode, { success: null })
+  .build();
+```
+
+Pass an `onContractWarning` callback to capture dead writes:
+
+```ts
+const dag = new DAGBuilder('pipeline', '1.0')
+  .node('fetch', fetchNode, { success: 'parse' })
+  .node('parse', parseNode, { success: null })
+  .build((message) => {
+    console.warn('[contract]', message);
+  });
+```
+
+Placements added via `.parallel()` or `.deepDAG()` do not receive a `NodeInterface` and are not tracked in the impl registry — they are silently skipped during contract validation, preventing false-positive dangling-read errors for node names declared elsewhere.
+
+The `onContractWarning` hook on `build()` fires at construction time and is local to the builder call. When you register the resulting DAG with a `Dagonizer` subclass, the dispatcher's `onContractWarning` hook fires again at `registerDAG` time if the nodes carry co-located contracts. See [Contract-derived flows](./derive) and [Reference: contracts](../reference/contracts).
+
+## ⦿ Bypassing the fluent API — `DAGBuilder.fromNodes()`
+
+For the common case where your flow is linear and every node carries a contract, you can skip the fluent chain entirely:
+
+```ts
+import { DAGBuilder } from '@noocodex/dagonizer';
+
+const dag = DAGBuilder.fromNodes({
+  name: 'pipeline',
+  version: '1.0',
+  entrypoint: 'fetch',
+  nodes: [fetchNode, parseNode, saveNode],
+});
+```
+
+This is exactly equivalent to the fluent chain below — both produce the same canonical `DAG` document:
+
+```ts
+// Equivalent fluent form
+const dag = new DAGBuilder('pipeline', '1.0')
+  .node('fetch', fetchNode, { success: 'parse' })
+  .node('parse', parseNode, { success: 'save'  })
+  .node('save',  saveNode,  { success: null     })
+  .build();
+```
+
+`DAGBuilder.fromNodes()` delegates to `DAGDeriver.derive({ nodes })` — the same deriver that powers contract-first topology. Use it when the shape is linear and all nodes carry contracts. Drop into the fluent `.node()` API when you need:
+
+- Fan-out / fan-in placements
+- Terminal routes to `null` mid-flow
+- Deep-DAG (sub-DAG) compositions
+- Explicit entrypoint overrides
+- Non-contract nodes that still appear in the placement list
+
+## ⦿ Parallel group
 
 ```ts
 const dag = new DAGBuilder('enrich', '1')

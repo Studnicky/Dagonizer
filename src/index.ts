@@ -175,7 +175,8 @@ export type { NodeStateInterface } from './NodeStateBase.js';
 // =============================================================================
 
 export type { ExecuteOptionsInterface } from './contracts/ExecuteOptionsInterface.js';
-export type { NodeInterface } from './contracts/NodeInterface.js';
+export type { Chainable, NodeInterface } from './contracts/NodeInterface.js';
+export type { OperationContractFragment } from './contracts/OperationContractFragment.js';
 
 // =============================================================================
 // ENTITY-NARROWING INTERFACES (colocated with entity)
