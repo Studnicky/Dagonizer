@@ -29,41 +29,15 @@ import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js
 
 type AnyPlacement = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode;
 
-const TERMINAL_ID = 'END';
-
-const escapeLabel = (value: string): string => value.replace(/"/gu, '#quot;');
-
-const renderShape = (placement: AnyPlacement): string => {
-  const label = escapeLabel(placement.name);
-  switch (placement['@type']) {
-    case 'SingleNode':
-      return `${placement.name}[${label}]`;
-    case 'FanOutNode':
-      return `${placement.name}{{${label}}}`;
-    case 'DeepDAGNode':
-      return `${placement.name}([${label}])`;
-    case 'ParallelNode':
-      // parallel placements render as subgraphs, not single shapes
-      return placement.name;
-  }
-};
-
-const renderEdges = (placement: AnyPlacement): readonly string[] => {
-  const lines: string[] = [];
-  for (const [outputName, target] of Object.entries(placement.outputs)) {
-    const dest = target ?? TERMINAL_ID;
-    const labelText = escapeLabel(outputName);
-    lines.push(`  ${placement.name} -->|${labelText}| ${dest}`);
-  }
-  return lines;
-};
-
 /**
  * Render a `DAG` as Mermaid `flowchart` source. Output is a complete
  * Mermaid block ready to embed in a Markdown ```mermaid fence.
  */
 export class MermaidRenderer {
   private constructor() { /* static class */ }
+
+  /** Synthetic terminator node ID emitted once per DAG that has any null-route. */
+  private static readonly TERMINAL_ID = 'END';
 
   static render(dag: DAG): string {
     const lines: string[] = [];
@@ -75,24 +49,56 @@ export class MermaidRenderer {
 
     for (const placement of dag.nodes as readonly AnyPlacement[]) {
       if (placement['@type'] === 'ParallelNode') {
-        lines.push(`  subgraph ${placement.name}["${escapeLabel(placement.name)} (parallel)"]`);
+        lines.push(`  subgraph ${placement.name}["${MermaidRenderer.escapeLabel(placement.name)} (parallel)"]`);
         for (const childName of placement.nodes) {
-          lines.push(`    ${childName}[${escapeLabel(childName)}]`);
+          lines.push(`    ${childName}[${MermaidRenderer.escapeLabel(childName)}]`);
         }
         lines.push('  end');
       } else {
-        lines.push(`  ${renderShape(placement)}`);
+        lines.push(`  ${MermaidRenderer.renderShape(placement)}`);
       }
-      for (const edge of renderEdges(placement)) {
-        if (edge.endsWith(TERMINAL_ID)) touchesTerminal = true;
+      for (const edge of MermaidRenderer.renderEdges(placement)) {
+        if (edge.endsWith(MermaidRenderer.TERMINAL_ID)) touchesTerminal = true;
         lines.push(edge);
       }
     }
 
     if (touchesTerminal) {
-      lines.push(`  ${TERMINAL_ID}([end])`);
+      lines.push(`  ${MermaidRenderer.TERMINAL_ID}([end])`);
     }
 
     return lines.join('\n');
+  }
+
+  /** Escape a string for use inside a Mermaid double-quoted label. */
+  private static escapeLabel(value: string): string {
+    return value.replace(/"/gu, '#quot;');
+  }
+
+  /** Render a placement's Mermaid shape syntax (rectangle / hexagon / stadium). */
+  private static renderShape(placement: AnyPlacement): string {
+    const label = MermaidRenderer.escapeLabel(placement.name);
+    switch (placement['@type']) {
+      case 'SingleNode':
+        return `${placement.name}[${label}]`;
+      case 'FanOutNode':
+        return `${placement.name}{{${label}}}`;
+      case 'DeepDAGNode':
+        return `${placement.name}([${label}])`;
+      case 'ParallelNode':
+        // parallel placements render as subgraphs, not single shapes
+        return placement.name;
+    }
+  }
+
+  /** Render a placement's outbound edges as `from -->|label| to` lines. */
+  private static renderEdges(placement: AnyPlacement): readonly string[] {
+    const lines: string[] = [];
+    for (const [outputName, target] of Object.entries(placement.outputs)) {
+      const dest = target ?? MermaidRenderer.TERMINAL_ID;
+      const labelText = MermaidRenderer.escapeLabel(outputName);
+      lines.push(`  ${placement.name} -->|${labelText}| ${dest}`);
+    }
+    return lines;
   }
 }

@@ -2,6 +2,12 @@
 
 All notable changes to `@noocodex/dagonizer` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.1] - 2026-05-19
+
+### Changed
+
+⦿ Strict CLAUDE.md compliance sweep across `src/`. Every previously-module-level helper now lives as a `private static` method on its containing static class — `Validator.formatErrors` / `Validator.compile`, `MermaidRenderer.escapeLabel` / `MermaidRenderer.renderShape` / `MermaidRenderer.renderEdges`, `JsonLdRenderer.placementIri` / `JsonLdRenderer.dagIri` / `JsonLdRenderer.renderRoutes` / `JsonLdRenderer.renderPlacement` / `JsonLdRenderer.renderDagRoot`, `CytoscapeRenderer.idIn` / `CytoscapeRenderer.placementNode` / `CytoscapeRenderer.placementEdges` / `CytoscapeRenderer.renderInto`. Module-level `const`s for shared values became `private static readonly` class fields. No consumer-visible API change — the public surfaces (`Validator.dag.validate`, `MermaidRenderer.render`, `JsonLdRenderer.render`, `CytoscapeRenderer.render`) are unchanged. Repo now satisfies the "Domain modules with `noun.verb()` only. Static classes. No freestanding helpers." invariant at `tsc` enforcement.
+
 ## [0.8.0] - 2026-05-19
 
 ### Breaking
