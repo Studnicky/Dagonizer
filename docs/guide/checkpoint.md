@@ -1,12 +1,18 @@
 ---
 seeAlso:
+
   - text: 'Persistence'
+
     link: './persistence'
     description: 'wire `Checkpoint.persist` / `Checkpoint.recall` to a `CheckpointStore`'
+
   - text: 'Cancellation'
+
     link: './cancellation'
     description: 'abort a flow to produce a non-null cursor worth checkpointing'
+
   - text: 'Subclassing State'
+
     link: './subclassing'
     description: 'override `snapshotData()` / `restoreData()` for domain fields'
 ---
@@ -79,9 +85,9 @@ class PipelineState extends NodeStateBase {
 
 ## `snapshotData` / `restoreData` contract
 
-⦿ `snapshotData()` must return a JSON-serializable `JsonObject`. No `undefined` values, no circular references.
-⦿ `restoreData(snap)` receives the full merged snapshot (base fields plus domain fields). Call `super.applySnapshot(snap)` when overriding `applySnapshot` directly.
-⦿ Lifecycle is intentionally **not** captured — `resume()` starts a fresh lifecycle run from `pending`.
+- `snapshotData()` must return a JSON-serializable `JsonObject`. No `undefined` values, no circular references.
+- `restoreData(snap)` receives the full merged snapshot (base fields plus domain fields). Call `super.applySnapshot(snap)` when overriding `applySnapshot` directly.
+- Lifecycle is intentionally **not** captured — `resume()` starts a fresh lifecycle run from `pending`.
 
 ## CheckpointStore — composing with persistence
 
@@ -156,6 +162,6 @@ console.log(final.state.lifecycle.kind); // 'completed'
 ```
 ## Related reference
 
-⦿ [Reference: Checkpoint](../reference/checkpoint)
-⦿ [Reference: Contracts — `CheckpointStore`](../reference/contracts)
-⦿ [Example: Checkpoint Resume](../examples/08-checkpoint)
+- [Reference: Checkpoint](../reference/checkpoint)
+- [Reference: Contracts — `CheckpointStore`](../reference/contracts)
+- [Example: Checkpoint Resume](../examples/08-checkpoint)

@@ -1,12 +1,18 @@
 ---
 seeAlso:
+
   - text: 'DAGBuilder'
+
     link: './builder'
     description: 'render anything `build()` returns'
+
   - text: 'Contract-derived flows'
+
     link: './derive'
     description: 'render the DAG `DAGDeriver.derive` produced'
+
   - text: 'Schema & JSON loading'
+
     link: './schema'
     description: 'render a DAG loaded from JSON'
 ---
@@ -57,5 +63,5 @@ const sources = dispatcher.listDAGs().map((dag) => ({
 The dispatcher's read accessors (`getDAG`, `listDAGs`, `getNode`, `listNodes`) make documentation generation straightforward — pull every registered DAG, render it, and write the markdown.
 ## Related reference
 
-⦿ [Reference: Viz — `MermaidRenderer`](../reference/viz)
-⦿ [Reference: Dagonizer — read accessors `getDAG` / `listDAGs`](../reference/dagonizer)
+- [Reference: Viz — `MermaidRenderer`](../reference/viz)
+- [Reference: Dagonizer — read accessors `getDAG` / `listDAGs`](../reference/dagonizer)

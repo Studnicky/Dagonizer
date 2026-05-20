@@ -1,10 +1,16 @@
 ---
 seeAlso:
+
   - text: 'Reference: Dagonizer — read accessors'
+
     link: './dagonizer'
+
   - text: 'Reference: Entities — `DAG`'
+
     link: './entities'
+
   - text: 'Reference: Derive — `DAGDeriver.derive`'
+
     link: './derive'
 ---
 
@@ -141,11 +147,11 @@ class CytoscapeRenderer {
 
 Renders a `DAG` as a Cytoscape `elements` array. Pass the result directly to `cytoscape({ elements })`.
 
-⦿ Every placement becomes a node element with a `type` field (`'single'` | `'parallel'` | `'fan-out'` | `'deep-dag'` | `'terminal'`) for per-type stylesheet selectors.
-⦿ Every output route becomes a labeled edge element.
-⦿ Parallel children render with `parent: <parallelPlacementName>` for compound-graph rendering.
-⦿ Deep-DAG placements are expanded inline when their target DAG is supplied via `options.deepDags`, showing the full inner flow as a compound cluster.
-⦿ Routes to `null` become edges to a synthetic `END` terminal node.
+- Every placement becomes a node element with a `type` field (`'single'` | `'parallel'` | `'fan-out'` | `'deep-dag'` | `'terminal'`) for per-type stylesheet selectors.
+- Every output route becomes a labeled edge element.
+- Parallel children render with `parent: <parallelPlacementName>` for compound-graph rendering.
+- Deep-DAG placements are expanded inline when their target DAG is supplied via `options.deepDags`, showing the full inner flow as a compound cluster.
+- Routes to `null` become edges to a synthetic `END` terminal node.
 
 ```ts
 import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';

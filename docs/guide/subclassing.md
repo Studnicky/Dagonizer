@@ -1,12 +1,18 @@
 ---
 seeAlso:
+
   - text: 'DAGBuilder'
+
     link: './builder'
     description: 'register nodes that accept your custom `NodeStateBase` subclass'
+
   - text: 'Checkpoint'
+
     link: './checkpoint'
     description: 'override `snapshotData` / `restoreData` to round-trip domain fields'
+
   - text: 'Observability'
+
     link: './observability'
     description: 'your subclass also picks up the dispatcher hooks'
 ---
@@ -178,5 +184,5 @@ const final = await dispatcher.resume(dagName, s2, cursor);
 ```
 ## Related reference
 
-⦿ [Reference: Lifecycle](../reference/lifecycle)
-⦿ [Reference: Entities — `NodeStateData`](../reference/entities)
+- [Reference: Lifecycle](../reference/lifecycle)
+- [Reference: Entities — `NodeStateData`](../reference/entities)

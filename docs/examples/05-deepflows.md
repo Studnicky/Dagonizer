@@ -2,14 +2,22 @@
 title: 'Phase 05 · Deep-DAG composition'
 description: 'The Archivist parent DAG places the same book-search-fanout deep-DAG three times and the compose-retry-loop deep-DAG once — one definition, multiple placements, with stateMapping to copy fields between parent and child state.'
 seeAlso:
+
   - text: 'Running domain: The Archivist'
+
     link: './the-archivist'
+
   - text: 'Phase 04 · Fan-out scout'
+
     link: './04-fanout'
+
   - text: 'Phase 02 · DAGBuilder'
+
     link: './02-builder'
     description: 'the full parent DAG authored with DAGBuilder'
+
   - text: 'Reference: Entities — `DeepDAGNode`'
+
     link: '../reference/entities'
 ---
 
@@ -18,8 +26,8 @@ seeAlso:
 
 [The Archivist](./the-archivist) uses two packaged deep-DAGs:
 
-⦿ **`book-search-fanout`** — the full 4-source scout cluster (extract query, decide tools, 4 parallel scouts, rank, merge, record, gate, recall). Placed three times in the parent: `on-topic-search`, `author-search`, and `similar-search`.
-⦿ **`compose-retry-loop`** — the compose / validate / retry / respond terminal. Placed once as `compose-loop`; every successful search branch converges on it.
+- **`book-search-fanout`** — the full 4-source scout cluster (extract query, decide tools, 4 parallel scouts, rank, merge, record, gate, recall). Placed three times in the parent: `on-topic-search`, `author-search`, and `similar-search`.
+- **`compose-retry-loop`** — the compose / validate / retry / respond terminal. Placed once as `compose-loop`; every successful search branch converges on it.
 
 The parent DAG references both deep-DAGs by name via `.deepDAG(placementName, dagName, routes, options)`. Each placement has its own `stateMapping.output` that copies the deep-DAG's writes back into the named parent state fields.
 
@@ -59,11 +67,11 @@ The `#deepdag-placements` region covers only the `.deepDAG(...)` calls — the t
 
 ## What it demonstrates
 
-⦿ **`.deepDAG(name, dagName, routes, options)`** — the placement references the deep-DAG by its registered name. The parent and child run in the same dispatcher; the child shares the same node registry.
-⦿ **`stateMapping.output`** — after the deep-DAG completes, the dispatcher copies the listed fields from the child's final state back into the parent state. Fields not listed stay isolated.
-⦿ **One definition, three placements** — `book-search-fanout` is registered once and placed three times with distinct placement names. Each placement routes its `'success'` / `'error'` outputs differently (`compose-loop`, `group-by-year`, or `decline-empty`).
-⦿ **Errors bubble up** — anything the child collects via `state.collectError` reaches the parent's error accumulator automatically. The `executeDeepDAG` router uses child-state errors to decide the `'error'` output.
-⦿ **`registerBookSearchFanoutNodes` / `registerComposeRetryLoopNodes`** — each deep-DAG module exports a helper that registers exactly the nodes it needs. Call both before registering the parent DAG.
+- **`.deepDAG(name, dagName, routes, options)`** — the placement references the deep-DAG by its registered name. The parent and child run in the same dispatcher; the child shares the same node registry.
+- **`stateMapping.output`** — after the deep-DAG completes, the dispatcher copies the listed fields from the child's final state back into the parent state. Fields not listed stay isolated.
+- **One definition, three placements** — `book-search-fanout` is registered once and placed three times with distinct placement names. Each placement routes its `'success'` / `'error'` outputs differently (`compose-loop`, `group-by-year`, or `decline-empty`).
+- **Errors bubble up** — anything the child collects via `state.collectError` reaches the parent's error accumulator automatically. The `executeDeepDAG` router uses child-state errors to decide the `'error'` output.
+- **`registerBookSearchFanoutNodes` / `registerComposeRetryLoopNodes`** — each deep-DAG module exports a helper that registers exactly the nodes it needs. Call both before registering the parent DAG.
 
 See this in action in the [Archivist live demo](./the-archivist).
 
@@ -96,9 +104,9 @@ DAGDeriver.derive({
 });
 ```
 
-⦿ The contract's `produces ↔ hardRequired` still drives topology; the `subDAGs` annotation swaps the rendered placement from `SingleNode` to `DeepDAGNode`.
-⦿ Every port in `subDAG.outputs` auto-wires to the next derived stage. `terminals` overrides individual ports if the error path needs a different target.
-⦿ Sub-DAG references resolve at `registerDAG` time; the dispatcher's existing cycle check rejects self-referential subDAGs.
-⦿ A runnable demonstration ships in [`examples/derive.ts`](https://github.com/Studnicky/Dagonizer/blob/main/examples/derive.ts) (`npm run example:derive`).
+- The contract's `produces ↔ hardRequired` still drives topology; the `subDAGs` annotation swaps the rendered placement from `SingleNode` to `DeepDAGNode`.
+- Every port in `subDAG.outputs` auto-wires to the next derived stage. `terminals` overrides individual ports if the error path needs a different target.
+- Sub-DAG references resolve at `registerDAG` time; the dispatcher's existing cycle check rejects self-referential subDAGs.
+- A runnable demonstration ships in [`examples/derive.ts`](https://github.com/Studnicky/Dagonizer/blob/main/examples/derive.ts) (`npm run example:derive`).
 
 See [Authoring DAGs](../guide/authoring) for the decision matrix between the imperative `.deepDAG()` path and the declarative `subDAGs` annotation.

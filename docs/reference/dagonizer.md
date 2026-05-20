@@ -1,13 +1,21 @@
 ---
 seeAlso:
+
   - text: 'Reference: Execution'
+
     link: './execution'
     description: 'what `execute` / `resume` return'
+
   - text: 'Reference: Contracts — `NodeInterface`, `ExecuteOptionsInterface`'
+
     link: './contracts'
+
   - text: 'Reference: Core — `ParallelCombiners`, `FanInStrategies`'
+
     link: './core'
+
   - text: 'Reference: Lifecycle'
+
     link: './lifecycle'
 ---
 
@@ -199,8 +207,8 @@ protected onError(nodeName: string, error: Error, state: TState): void
 See [Observability](/guide/observability) for usage examples.
 ## Related guides
 
-⦿ [DAGBuilder](../guide/builder)
-⦿ [Cancellation](../guide/cancellation)
-⦿ [Services](../guide/services)
-⦿ [State accessors](../guide/state-accessor)
-⦿ [Observability](../guide/observability)
+- [DAGBuilder](../guide/builder)
+- [Cancellation](../guide/cancellation)
+- [Services](../guide/services)
+- [State accessors](../guide/state-accessor)
+- [Observability](../guide/observability)
