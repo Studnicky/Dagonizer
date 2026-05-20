@@ -1,10 +1,16 @@
 ---
 seeAlso:
+
   - text: 'Reference: Contracts — `OperationContract`'
+
     link: './contracts'
+
   - text: 'Reference: Entities — `DAG`, `ParallelNode`, `FanOutNode`'
+
     link: './entities'
+
   - text: 'Reference: Viz — `MermaidRenderer`'
+
     link: './viz'
     description: 'render the DAG `derive()` returned'
 ---
@@ -108,11 +114,11 @@ interface DAGDeriverParallel {
 }
 ```
 
-⦿ `terminals` — per-operation alternate exits (route to `null` to terminate, or to a named operation).
-⦿ `fanouts` — per-operation fan-out wrapping. `source` is the dotted state-array path; `itemKey` is the metadata key the worker reads; `node` is the per-item registered node; `strategy` discriminates which fan-in shape gets emitted (`custom`+`fanInOperation`, `partition`+`partitions`, or `append`+`target`); `outcomes` lists the fan-out outcome names. Partition keys must appear in `outcomes` — out-of-band keys throw `DAGError` at derive time.
-⦿ `subDAGs` — per-operation sub-DAG composition. Swaps the rendered placement from `SingleNode` to `DeepDAGNode` while preserving the contract's role in topology derivation. `dag` is the registered child DAG name; `outputs` is the port set the deep-DAG can route on (auto-wired to the next derived stage, with `terminals` overriding); `stateMapping` is forwarded verbatim to the rendered placement.
-⦿ `parallels` — explicit `ParallelNode` grouping with chosen combine strategy. Without it, same-topological-depth operations auto-group with `combine: 'collect'`. With it, the named group forces members into one `ParallelNode` with the consumer's chosen combine. Membership is exclusive across groups.
-⦿ An operation cannot appear in more than one of `fanouts` / `subDAGs` / `parallels` — placement kind must be unambiguous.
+- `terminals` — per-operation alternate exits (route to `null` to terminate, or to a named operation).
+- `fanouts` — per-operation fan-out wrapping. `source` is the dotted state-array path; `itemKey` is the metadata key the worker reads; `node` is the per-item registered node; `strategy` discriminates which fan-in shape gets emitted (`custom`+`fanInOperation`, `partition`+`partitions`, or `append`+`target`); `outcomes` lists the fan-out outcome names. Partition keys must appear in `outcomes` — out-of-band keys throw `DAGError` at derive time.
+- `subDAGs` — per-operation sub-DAG composition. Swaps the rendered placement from `SingleNode` to `DeepDAGNode` while preserving the contract's role in topology derivation. `dag` is the registered child DAG name; `outputs` is the port set the deep-DAG can route on (auto-wired to the next derived stage, with `terminals` overriding); `stateMapping` is forwarded verbatim to the rendered placement.
+- `parallels` — explicit `ParallelNode` grouping with chosen combine strategy. Without it, same-topological-depth operations auto-group with `combine: 'collect'`. With it, the named group forces members into one `ParallelNode` with the consumer's chosen combine. Membership is exclusive across groups.
+- An operation cannot appear in more than one of `fanouts` / `subDAGs` / `parallels` — placement kind must be unambiguous.
 
 ## OperationContract
 
@@ -130,7 +136,7 @@ Defined in `@noocodex/dagonizer/contracts`; re-exported from `@noocodex/dagonize
 `outputs` declares every port the node can emit. `DAGDeriver` auto-wires each port to the next derived stage; `DAGDeriverAnnotations.terminals[name]` overrides individual ports per-operation. Terminals declaring a port not in the contract's `outputs` throw `DAGError` at derive time.
 ## Related guides
 
-⦿ [Contract-derived flows](../guide/derive)
-⦿ [Authoring DAGs](../guide/authoring) — when to use DAGDeriver vs DAGBuilder vs raw DAG literals
-⦿ [DAGBuilder](../guide/builder) — imperative authoring for deterministic / ETL workflows
-⦿ [Visualization](../guide/visualization)
+- [Contract-derived flows](../guide/derive)
+- [Authoring DAGs](../guide/authoring) — when to use DAGDeriver vs DAGBuilder vs raw DAG literals
+- [DAGBuilder](../guide/builder) — imperative authoring for deterministic / ETL workflows
+- [Visualization](../guide/visualization)

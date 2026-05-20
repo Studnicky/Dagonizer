@@ -1,12 +1,18 @@
 ---
 seeAlso:
+
   - text: 'Cancellation'
+
     link: './cancellation'
     description: '`onError` fires on abort and deadline-driven failures'
+
   - text: 'Subclassing State'
+
     link: './subclassing'
     description: 'your custom dispatcher subclass may also subclass state'
+
   - text: 'Services'
+
     link: './services'
     description: 'pass loggers / tracers in via the services bag'
 ---
@@ -152,5 +158,5 @@ class OtelDispatcher<TState> extends Dagonizer<TState> {
 ```
 ## Related reference
 
-⦿ [Reference: Dagonizer](../reference/dagonizer)
-⦿ [Reference: Lifecycle](../reference/lifecycle)
+- [Reference: Dagonizer](../reference/dagonizer)
+- [Reference: Lifecycle](../reference/lifecycle)

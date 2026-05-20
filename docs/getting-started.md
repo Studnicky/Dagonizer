@@ -1,27 +1,43 @@
 ---
 nextSteps:
+
   - text: 'Architecture'
+
     link: '/architecture'
     description: 'node kinds, lifecycle FSM, execution model'
+
   - text: 'Concepts'
+
     link: '/concepts'
     description: 'nodes, node state, fan-in strategies'
+
   - text: 'Cancellation'
+
     link: '/guide/cancellation'
     description: 'AbortSignal integration'
+
   - text: 'Checkpoint'
+
     link: '/guide/checkpoint'
     description: 'pause, snapshot, resume'
 seeAlso:
+
   - text: 'Concepts'
+
     link: './concepts'
     description: 'vocabulary'
+
   - text: 'Architecture'
+
     link: './architecture'
     description: 'submodule layout, interface taxonomy'
+
   - text: 'DAGBuilder'
+
     link: './guide/builder'
+
   - text: 'Example 01: Linear DAG'
+
     link: './examples/01-linear'
 ---
 
@@ -29,8 +45,8 @@ seeAlso:
 
 ## Requirements
 
-⦿ Node.js 24 or later
-⦿ TypeScript 5.6 or later (`strict: true` recommended)
+- Node.js 24 or later
+- TypeScript 5.6 or later (`strict: true` recommended)
 
 ## Installation
 

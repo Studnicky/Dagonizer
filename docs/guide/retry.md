@@ -1,9 +1,13 @@
 ---
 seeAlso:
+
   - text: 'Cancellation'
+
     link: './cancellation'
     description: '`RetryPolicy.run` cooperates with `context.signal`'
+
   - text: 'Observability'
+
     link: './observability'
     description: '`onError` fires when `maxAttempts` is exceeded'
 ---
@@ -124,6 +128,6 @@ Scheduler.reset();
 See [Testing](/reference/testing) for the full `VirtualScheduler` and `VirtualClockProvider` API.
 ## Related reference
 
-⦿ [Reference: Runtime — `RetryPolicy`, `BackoffStrategy`](../reference/runtime)
-⦿ [Reference: Contracts — `RetryPolicyOptionsInterface`](../reference/contracts)
-⦿ [Example: Retry](../examples/07-retry)
+- [Reference: Runtime — `RetryPolicy`, `BackoffStrategy`](../reference/runtime)
+- [Reference: Contracts — `RetryPolicyOptionsInterface`](../reference/contracts)
+- [Example: Retry](../examples/07-retry)

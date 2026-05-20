@@ -2,22 +2,34 @@
 title: 'The Archivist'
 description: 'A bookstore help-bot built on Dagonizer — multi-branch DAG with hard and soft gates, parallel scouts, RAG fallback, and a bounded compose/validate retry loop. The running demo every Dagonizer example references.'
 seeAlso:
+
   - text: 'Concepts'
+
     link: '../concepts'
     description: 'Dagonizer vocabulary the Archivist exercises'
+
   - text: 'Architecture'
+
     link: '../architecture'
     description: 'three-tier interface taxonomy'
+
   - text: 'Contract-derived flows'
+
     link: '../guide/derive'
     description: 'generate the Archivist DAG from `OperationContract`s'
+
   - text: 'Visualization'
+
     link: '../guide/visualization'
     description: 'render the Archivist DAG with `MermaidRenderer.render(dag)`'
+
   - text: 'Persistence'
+
     link: '../guide/persistence'
     description: 'wire `Checkpoint.persist` / `Checkpoint.recall` to a `CheckpointStore`'
+
   - text: 'json-tology Bookstore domain'
+
     link: 'https://studnicky.github.io/json-tology/bookstore-domain'
     description: 'the schema vocabulary the Archivist''s `Book` entity mirrors'
 ---
@@ -64,9 +76,11 @@ Chrome's on-device Gemini Nano honours the same plan via the Prompt API's
 `responseConstraint` JSON-schema field, which arrived behind feature flags.
 
 1. **Open `chrome://flags`** and enable each of:
-   ⦿ `#prompt-api-for-gemini-nano` → **Enabled**
-   ⦿ `#prompt-api-for-gemini-nano-multimodal-input` → **Enabled** (newer flag name in some channels)
-   ⦿ `#optimization-guide-on-device-model` → **EnabledBypassPerfRequirement**
+
+   - `#prompt-api-for-gemini-nano` → **Enabled**
+   - `#prompt-api-for-gemini-nano-multimodal-input` → **Enabled** (newer flag name in some channels)
+   - `#optimization-guide-on-device-model` → **EnabledBypassPerfRequirement**
+
 2. **Restart Chrome.**
 3. **Trigger the download.** Visit any page that calls `LanguageModel.create()`
    (this demo will, but you can also paste the snippet below into DevTools):
@@ -138,8 +152,8 @@ Every page starts from the same `ArchivistState` + `services` + node set; only t
 
 The Archivist's DAG is composed of two reusable deep-DAGs that ship as independent components. Each is a `DAG` value any consumer can import, register, and reference as a `.deepDAG(...)` placement in their own DAG.
 
-⦿ **`book-search-fanout`** — extract-query + decide-tools + 4-source parallel scout cluster (OpenLibrary, Google Books, Subject, Wikipedia) + rank-candidates + merge-candidates + record-findings + has-citations-gate + recall-past-visits. Used in three intent branches (`on-topic-search`, `author-search`, `similar-search`); one definition, three placements.
-⦿ **`compose-retry-loop`** — compose-response + validate-response (with bounded retry loop back to compose) + respond-to-visitor. Every successful search branch funnels through this one shared cluster.
+- **`book-search-fanout`** — extract-query + decide-tools + 4-source parallel scout cluster (OpenLibrary, Google Books, Subject, Wikipedia) + rank-candidates + merge-candidates + record-findings + has-citations-gate + recall-past-visits. Used in three intent branches (`on-topic-search`, `author-search`, `similar-search`); one definition, three placements.
+- **`compose-retry-loop`** — compose-response + validate-response (with bounded retry loop back to compose) + respond-to-visitor. Every successful search branch funnels through this one shared cluster.
 
 The renderer expands both deep-DAGs inline in the diagram — compound-graph children render inside the placement box so the full topology is visible. No opaque boxes.
 

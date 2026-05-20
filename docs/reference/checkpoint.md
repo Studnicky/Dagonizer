@@ -1,10 +1,16 @@
 ---
 seeAlso:
+
   - text: 'Reference: Contracts — `CheckpointStore`'
+
     link: './contracts'
+
   - text: 'Reference: Entities — `CheckpointData`'
+
     link: './entities'
+
   - text: 'Reference: Validation — `Validator.checkpoint`'
+
     link: './validation'
 ---
 
@@ -219,6 +225,6 @@ const recalled = await Checkpoint.recall(store, 'ckpt', (snap) => MyState.restor
 
 ## Related guides
 
-⦿ [Checkpoint](../guide/checkpoint)
-⦿ [Persistence](../guide/persistence)
-⦿ [Subclassing State](../guide/subclassing)
+- [Checkpoint](../guide/checkpoint)
+- [Persistence](../guide/persistence)
+- [Subclassing State](../guide/subclassing)

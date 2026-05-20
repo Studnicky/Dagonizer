@@ -1,9 +1,13 @@
 ---
 seeAlso:
+
   - text: 'DAGBuilder'
+
     link: './builder'
     description: 'author DAGs in code instead of loading from JSON'
+
   - text: 'Contract-derived flows'
+
     link: './derive'
     description: 'generate the DAG topology from contracts; load is unnecessary'
 ---
@@ -119,7 +123,7 @@ Validator.dag.errors(x);     // returns string[] | null (null = valid)
 Sub-validators are compiled once at module load against the shared Ajv 2020-12 instance (`allErrors: true`, `strict: false`). Every top-level entity schema in `entities/` has a corresponding sub-validator on `Validator`.
 ## Related reference
 
-⦿ [Reference: Validation](../reference/validation)
-⦿ [Reference: Entities](../reference/entities)
-⦿ [Reference: Errors — `ValidationError`](../reference/errors)
-⦿ [Example: Schema Loading](../examples/03-schema)
+- [Reference: Validation](../reference/validation)
+- [Reference: Entities](../reference/entities)
+- [Reference: Errors — `ValidationError`](../reference/errors)
+- [Example: Schema Loading](../examples/03-schema)

@@ -1,12 +1,18 @@
 ---
 seeAlso:
+
   - text: 'Retry'
+
     link: './retry'
     description: '`RetryPolicy.run` honors `context.signal` so retries abort cleanly'
+
   - text: 'Checkpoint'
+
     link: './checkpoint'
     description: 'abort + persist the cursor so the next process can resume'
+
   - text: 'Observability'
+
     link: './observability'
     description: '`onError` fires when an abort or deadline interrupts a node'
 ---
@@ -77,9 +83,9 @@ async execute(state, context) {
 
 Once the signal fires:
 
-⦿ The iterator stops without starting the next node.
-⦿ `result.cursor` holds the node that would have run next — pass it to `dispatcher.resume()` to continue from that point.
-⦿ `result.state.lifecycle.kind` is `'cancelled'` (caller signal) or `'timed_out'` (deadline).
+- The iterator stops without starting the next node.
+- `result.cursor` holds the node that would have run next — pass it to `dispatcher.resume()` to continue from that point.
+- `result.state.lifecycle.kind` is `'cancelled'` (caller signal) or `'timed_out'` (deadline).
 
 ```ts
 const ctl = new AbortController();
@@ -109,6 +115,6 @@ const result = await dispatcher.execute('flow', state, { signal: combined });
 This is equivalent to passing both as `signal` + `deadlineMs` — choose whichever form fits the call site.
 ## Related reference
 
-⦿ [Reference: Runtime — `SignalComposer`](../reference/runtime)
-⦿ [Reference: Contracts — `ExecuteOptionsInterface`](../reference/contracts)
-⦿ [Example: Cancellation](../examples/06-cancellation)
+- [Reference: Runtime — `SignalComposer`](../reference/runtime)
+- [Reference: Contracts — `ExecuteOptionsInterface`](../reference/contracts)
+- [Example: Cancellation](../examples/06-cancellation)
