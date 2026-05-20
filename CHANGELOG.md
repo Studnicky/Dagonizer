@@ -2,6 +2,14 @@
 
 All notable changes to `@noocodex/dagonizer` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.8.2] - 2026-05-20
+
+### Fixed
+
+⦿ `docs/guide/derive.md` frontmatter `seeAlso` linked to DAGBuilder as "the imperative alternative when contracts don't fit" — old framing that contradicted the v0.8.0 deterministic-vs-agentic positioning. Replaced with a link to `Authoring DAGs` plus a corrected DAGBuilder description.
+⦿ `docs/reference/derive.md` prose described `annotations.fanouts.<name>.fanInOperation` as if it were universally present — pre-dated the v0.8.0 discriminated union. Rewrote to scope to `strategy === 'custom'` and added the full validation invariants the deriver enforces (terminal/partition/parallel-membership/placement-kind mismatch).
+⦿ `docs/examples/05-deepflows.md` only showed the imperative `DAGBuilder.deepDAG(...)` composition path. Added a "Composing the same flow via `DAGDeriver.subDAGs`" section with a worked example and a cross-link to `examples/derive.ts` so the declarative path is discoverable from the deep-DAG composition page.
+
 ## [0.8.1] - 2026-05-19
 
 ### Changed
