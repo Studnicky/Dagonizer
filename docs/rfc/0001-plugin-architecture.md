@@ -5,35 +5,59 @@ Status: **draft** · Target: v0.10.0 · Author: @Studnicky · Date: 2026-05-20
 ## Why
 
 Dagonizer is positioned as an ecosystem of deterministic nodes and tools that
-users compose into workflows. Today every adapter and node lives inside
-`examples/the-archivist/` — the example IS the plugin catalogue. Users can
-read the code but cannot `npm install` a Groq adapter and drop it into their
-own dispatcher.
+users compose into workflows. Today every adapter, every reusable node
+pattern, and every tool lives inside `examples/the-archivist/` — the example
+IS the plugin catalogue. Users can read the code but cannot `npm install`
+the pieces and drop them into their own dispatcher.
 
-The v0.10.0 restructure hoists the adapter set from the example into
-independently-versioned `@noocodex/dagonizer-adapter-*` packages built and
-released from the same monorepo. The example continues to demonstrate the
-full stack but consumes the plugin packages, not inline code.
+The v0.10.0 restructure hoists three tiers of plugins into independently
+versioned packages built and released from the same monorepo. The example
+continues to demonstrate the full stack but consumes the plugin packages,
+not inline code.
+
+## Three plugin tiers
+
+| Tier | Package shape | Why |
+|---|---|---|
+| **Adapters** | Concrete classes, drop-in | LLM transport — provider-neutral contract by construction |
+| **Tools** | Concrete static classes, narrow domain bind | External-service wrappers (HTTP fetch, normalize, return entities) |
+| **Patterns** | **Abstract base classes** with override hooks | Reusable DAG node patterns (RAG, graph-recall, fan-out reduce) |
+
+Patterns are the new tier and warrant explanation. Per project standards
+("Class extension is the only extension mechanism. Zero callbacks."), each
+pattern ships as an abstract base class. Consumers `extends` the base,
+override the protected methods that inject their domain (prompts, state
+fields, service shapes), and get a working node.
+
+Example: `BaseClassifyIntentNode<TState, TIntent>` — consumers supply the
+state shape and intent token union, override `buildPrompt(state)` and
+`parseIntent(content)`. The base handles LLM dispatch, retry, and routing.
 
 ## Goals
 
-- Adapters become independently installable: `npm install @noocodex/dagonizer-adapter-groq`.
-- `LlmAdapter` contract surface lives at `@noocodex/dagonizer/adapter` and is treated as a stable public API governed by semver.
+- Three-tier plugin set installable independently from npm.
+- `@noocodex/dagonizer/adapter`, `@noocodex/dagonizer/patterns`, `@noocodex/dagonizer/tool` are stable public API subpaths governed by semver.
 - The example continues to work and demonstrates the full plugin composition.
 - Internal contributors get a monorepo workflow: pnpm workspaces, one `pnpm install`, one `pnpm build` builds everything in dependency order.
 - Per-package CHANGELOGs via changesets so a bug-fix to one adapter does not bump the world.
 
 ## Non-goals
 
-- Reusable node packages (`@noocodex/dagonizer-nodes-rag` etc.). Defer until the patterns prove out in the example; tracked separately.
-- Tool packages (OpenLibrary / Google Books / Wikipedia scouts). Defer.
-- Migration of the example's domain code (Archivist state, prompts, ontology) out of `examples/`.
+- Migration of the example's *domain* code (Archivist state, prompts, ontology, seed library) out of `examples/`. The example stays the reference consumer.
 - Re-architecting the dispatcher itself. The plugin model is additive to today's `NodeInterface` / `LlmAdapter` contracts; the contracts move location but do not change shape.
+- Publishing patterns for every possible flow shape. The v0.10.0 patterns set is the patterns the Archivist actually uses, generalised. New patterns land as separate packages on demand.
 
 ## Package taxonomy
 
+**16 packages total.** Main dagonizer + 8 adapters + 3 tools + 4 patterns.
+
+### Main
 ```
-@noocodex/dagonizer                   (existing — gains ./adapter subpath)
+@noocodex/dagonizer                   (existing — gains ./adapter, ./patterns, ./tool subpaths)
+```
+
+### Adapters (8)
+```
 @noocodex/dagonizer-adapter-gemini-api
 @noocodex/dagonizer-adapter-gemini-nano
 @noocodex/dagonizer-adapter-web-llm
@@ -44,10 +68,31 @@ full stack but consumes the plugin packages, not inline code.
 @noocodex/dagonizer-adapter-stub
 ```
 
-Nine packages total. The main `@noocodex/dagonizer` ships the dispatcher,
-contracts, and the new `./adapter` subpath; each adapter package depends on
-`@noocodex/dagonizer` for the contract types and `@noocodex/dagonizer/adapter`
-for `BaseAdapter`, `LlmError`, `RetryPolicy`, etc.
+### Tools (3)
+```
+@noocodex/dagonizer-tool-openlibrary   (HTTP scout for OpenLibrary search)
+@noocodex/dagonizer-tool-googlebooks   (HTTP scout for Google Books search)
+@noocodex/dagonizer-tool-wikipedia     (HTTP scout for Wikipedia summaries)
+```
+
+Each tool exports a static class with `noun.verb()` API per project standards
+— e.g. `OpenLibrarySearchTool.search(query: string): Promise<Candidate[]>`.
+No constructor, no state.
+
+### Patterns (4)
+```
+@noocodex/dagonizer-patterns-rag       (LLM-driven RAG nodes — classify, decide, rank, compose)
+@noocodex/dagonizer-patterns-graph     (RDF triple-store recall + record nodes)
+@noocodex/dagonizer-patterns-fanout    (Fan-out scout reducer / dedupe patterns)
+@noocodex/dagonizer-patterns-util      (Pure deterministic helpers — groupBy, dedupeBy, pickMax, gates)
+```
+
+Each pattern package exports abstract base classes. The Archivist's concrete
+nodes (which are domain-specific) extend these bases.
+
+The main `@noocodex/dagonizer` ships the dispatcher, contracts, and three
+new subpaths. Each plugin package depends on `@noocodex/dagonizer` for the
+relevant contract types.
 
 ## Monorepo layout
 
@@ -84,31 +129,48 @@ for `BaseAdapter`, `LlmError`, `RetryPolicy`, etc.
 `docs/` and `examples/` remain at the root; they consume packages but are not
 themselves packages.
 
-## Adapter contract surface
+## Public contract surfaces (subpaths on the main package)
 
-A new subpath export on `@noocodex/dagonizer`:
+Three new subpath exports on `@noocodex/dagonizer`:
 
 ```jsonc
 {
   "exports": {
-    "./adapter": {
-      "default": "./dist/adapter/index.js",
-      "types": "./dist/adapter/index.d.ts"
-    }
+    "./adapter":  { "default": "./dist/adapter/index.js",  "types": "./dist/adapter/index.d.ts" },
+    "./patterns": { "default": "./dist/patterns/index.js", "types": "./dist/patterns/index.d.ts" },
+    "./tool":     { "default": "./dist/tool/index.js",     "types": "./dist/tool/index.d.ts" }
   }
 }
 ```
 
-Contents of `./adapter` (moved from `examples/the-archivist/providers/adapters/`):
+### `./adapter` (moved from `examples/the-archivist/providers/adapters/`)
 
 - `LlmAdapter` interface
 - `AdapterCapabilities` interface
 - `ChatRequest`, `ChatResponse`, `ChatMessage`, `ToolDefinition`, `ToolCall`, `ToolChoice`, `OutputSchema`
-- `BaseAdapter` abstract class (provides retry + classification)
+- `BaseAdapter` abstract class (retry + classification)
 - `LlmError`, `Classifications`, `ErrorClassification`
 
-`BaseLlmClient` (prompt choreography) stays in the Archivist example since
-it's domain-specific. The contract surface is provider-neutral.
+### `./patterns` (new)
+
+Base classes + service contracts every pattern package depends on:
+
+- `BaseNode<TState, TOutput, TServices>` — abstract class implementing `NodeInterface`; subclasses override `execute()`. Provides timeout helpers, abort propagation, and the `contract` field.
+- `LlmClient` interface — what RAG patterns expect on `services.llm`.
+- `TripleStore` interface — what graph patterns expect on `services.memory`. Methods: `assert`, `select`, `clearGraph`, `triples`.
+- `SearchTool<TEntity>` interface — what fan-out scouts expect.
+
+Each pattern *package* (the four listed above) depends on `./patterns` for
+these base classes and contracts.
+
+### `./tool` (new)
+
+- `Tool<TInput, TOutput>` interface — `static run(input): Promise<output>` shape every tool implements.
+- `ToolError` — narrow error class for tool failures (HTTP, parse, rate-limit).
+- `HttpTransport` — shared fetch wrapper with retry + abort propagation.
+
+`BaseLlmClient` (prompt choreography for the Archivist) stays in the example
+— it's domain-specific. The three subpaths are provider-neutral.
 
 ## Versioning
 
@@ -128,15 +190,16 @@ A bug fix to `@noocodex/dagonizer-adapter-groq` bumps that one package by a patc
 
 ## Migration plan
 
-Phased so each phase commits cleanly and the example keeps working:
+Nine phases. Each phase is a single PR; the example keeps working through every phase.
 
 ### Phase 1 — Monorepo skeleton
 
-- Add `pnpm-workspace.yaml` at root.
+- Add `pnpm-workspace.yaml` at root listing `packages/*` and `examples/*`.
 - Move every current root file into `packages/dagonizer/` EXCEPT `docs/`, `examples/`, `.github/`, `.gitignore`, `README.md`, `LICENSE`, `CHANGELOG.md`, `pnpm-workspace.yaml`, root `package.json`.
 - Root `package.json` becomes a workspace-only manifest (`"private": true`, no `main`, no `exports`).
-- All existing npm scripts proxy to the workspace package via `pnpm --filter`.
-- Switch lockfile from npm to pnpm. Verify `pnpm install` + `pnpm build` + `pnpm test` all green.
+- Existing npm scripts proxy to the workspace package via `pnpm --filter`.
+- Switch lockfile from npm to pnpm. Add `preinstall` guard that errors on bare `npm install`.
+- Verify `pnpm install` + `pnpm build` + `pnpm test` + smoke all green.
 
 ### Phase 2 — Adapter subpath
 
@@ -145,35 +208,92 @@ Phased so each phase commits cleanly and the example keeps working:
 - Update the Archivist example to import the contract from `@noocodex/dagonizer/adapter` (was relative).
 - Verify build, tests, smoke, docs all green.
 
-### Phase 3 — Extract adapter packages
+### Phase 3 — Patterns subpath + `BaseNode`
 
-For each of the eight adapters, create a package under `packages/dagonizer-adapter-<name>/`:
+- Inside `packages/dagonizer/src/`, create `patterns/` and ship the base classes + service contracts:
+  - `BaseNode<TState, TOutput, TServices>` abstract class (implements `NodeInterface`, provides timeout helpers and contract-field forwarding).
+  - `LlmClient`, `TripleStore`, `SearchTool<TEntity>` interfaces.
+- Add `./patterns` subpath export.
+- Adapt the Archivist's existing nodes to extend `BaseNode` instead of implementing `NodeInterface` directly (proves the base works against real-world code).
+
+### Phase 4 — Tool subpath
+
+- Inside `packages/dagonizer/src/`, create `tool/`:
+  - `Tool<TInput, TOutput>` interface.
+  - `ToolError` class.
+  - `HttpTransport` static class.
+- Add `./tool` subpath export.
+- No example wiring change yet; just ships the contract.
+
+### Phase 5 — Extract adapter packages (8)
+
+For each adapter, create a package under `packages/dagonizer-adapter-<name>/`:
 
 - `src/<Name>ApiAdapter.ts` (moved from example).
-- `src/index.ts` (re-exports).
+- `src/capabilities.ts` exports the `AdapterCapabilities` constant alongside the class.
+- `src/index.ts` re-exports both.
 - `package.json` with `dependencies: { "@noocodex/dagonizer": "workspace:^" }`.
 - `tsconfig.json` extending the root.
-- Per-package tests covering the wire-format smoke checks we already have.
+- Per-package wire-format smoke test (existing checks split per adapter).
+- `README.md`: install + usage + capability table.
 
-Update the Archivist example to import each adapter from its plugin package
-(`import { GroqApiAdapter } from '@noocodex/dagonizer-adapter-groq'`).
-Workspace resolution handles the in-repo references.
+Update the Archivist example to import each adapter from its plugin package.
 
-Delete the original adapter files from `examples/the-archivist/providers/adapters/`. Keep `BaseLlmClient.ts` and provider-matrix/MobileDetection there — those are domain-specific to the example.
+### Phase 6 — Extract tool packages (3)
 
-### Phase 4 — Changesets + release pipeline
+For each scout, create a package under `packages/dagonizer-tool-<name>/`:
+
+- `src/<Name>SearchTool.ts` (moved from `examples/the-archivist/tools/`).
+- `src/index.ts`.
+- `package.json` depending on `@noocodex/dagonizer/tool`.
+- Per-package tests (HTTP transport mock + normalization).
+- `README.md`.
+
+Update the Archivist example to import each tool from its plugin package.
+
+### Phase 7 — Extract patterns packages (4)
+
+Most invasive phase — this is where the abstract base classes get designed. Each pattern package exports abstract classes + service contracts:
+
+**`@noocodex/dagonizer-patterns-rag`**
+- `BaseClassifyIntentNode<TState, TIntent>`
+- `BaseDecideToolsNode<TState>`
+- `BaseRankCandidatesNode<TState, TItem>`
+- `BaseComposeResponseNode<TState>`
+- Services contract: `RagServices = { llm: LlmClient }`
+
+**`@noocodex/dagonizer-patterns-graph`**
+- `BaseRecallContextNode<TState>`
+- `BaseRecordFindingsNode<TState, TEntity>`
+- Services contract: `GraphServices = { memory: TripleStore }`
+
+**`@noocodex/dagonizer-patterns-fanout`**
+- `BaseFanInReducerNode<TState, TItem>`
+- `BaseDedupeCandidatesNode<TItem>`
+- Services contract: none (pure)
+
+**`@noocodex/dagonizer-patterns-util`**
+- `GroupByYear<TState, TItem>` (concrete; takes field name via constructor option)
+- `PickBestMatch<TState, TItem>` (concrete; takes scoring function override)
+- `HasCitationsGate<TState>` (abstract gate; consumer overrides predicate)
+
+Update the Archivist's concrete nodes to extend these bases. Domain logic
+(prompts, state-shape mapping, intent token unions) stays in `examples/`.
+
+### Phase 8 — Changesets + release pipeline
 
 - Add `@changesets/cli` as a workspace devDependency.
-- `.changeset/config.json` configured for independent versioning.
-- Replace `release.yml` GitHub release workflow with a changesets-based release workflow that creates a "Version Packages" PR.
-- Document the changeset workflow in `CONTRIBUTING.md`.
+- `.changeset/config.json` configured for independent versioning across the 16 packages.
+- Replace `release.yml` with a changesets-based workflow that creates a "Version Packages" PR.
+- Document the changeset workflow in a new `CONTRIBUTING.md`.
 
-### Phase 5 — Docs + README
+### Phase 9 — Docs + README
 
-- New `docs/guide/plugins.md` documenting the plugin model with a worked example: "Write your own adapter in 50 lines."
-- Update `docs/examples/the-archivist.md` to mention each adapter is its own installable package.
-- README links to the new plugin guide.
-- Each adapter package gets its own `README.md` with install + usage + capability table.
+- New `docs/guide/plugins.md`: how to write an adapter, a tool, and a pattern (one worked example each).
+- New `docs/guide/patterns.md`: the four pattern packages, what they ship, the abstract methods to override.
+- Update `docs/examples/the-archivist.md` to mention each piece is its own installable package.
+- Each plugin package gets its own `README.md`.
+- README at the repo root summarises the three-tier model with install snippets.
 
 ## Open questions
 
@@ -189,14 +309,14 @@ Delete the original adapter files from `examples/the-archivist/providers/adapter
 
 ## Rollout
 
-- v0.10.0 ships the restructure + plugin packages as their first published versions (each adapter `0.1.0`).
-- `@noocodex/dagonizer` bumps to `0.10.0` (minor — new subpath, no breaking change to existing public API).
-- Old adapter file paths under `examples/` removed; consumers must `npm install @noocodex/dagonizer-adapter-<name>` going forward.
+- v0.10.0 ships the restructure + 15 plugin packages as their first published versions (each plugin `0.1.0`).
+- `@noocodex/dagonizer` bumps to `0.10.0` (minor — three new subpaths, no breaking change to the existing public API on `.` , `./contracts`, `./derive` etc.).
+- Old adapter / tool / node file paths under `examples/` removed; consumers must `npm install @noocodex/dagonizer-{adapter,tool,patterns}-*` going forward.
 
 ## Rejected alternatives
 
-- **Reusable node packages now**: too early; node patterns are example-specific until proven in a second example.
-- **Tool packages now**: OpenLibrary/Google Books/Wikipedia scouts are demo-specific. Hoisting them would inflate the surface area we maintain for marginal value.
 - **Locked versioning**: simpler but punishes single-adapter fixes.
 - **Dedicated `@noocodex/dagonizer-adapter-contract` package**: extra publishing step for no real benefit; subpath export on the main package is one source of truth.
-- **Turborepo/Nx**: caching is nice-to-have at 9 packages; revisit if build times become a pain point.
+- **Turborepo/Nx**: caching is nice-to-have at 16 packages; revisit if build times become a pain point.
+- **Ship adapters only in v0.10.0, patterns later**: explicitly rejected. Dagonizer's value proposition is the full ecosystem (adapters + tools + patterns). Shipping one tier without the others would tell consumers "you can swap LLMs but everything else is still example code." All three tiers ship together so the v0.10.0 narrative is coherent: install plugins for every layer of your DAG.
+- **Concrete RAG node packages instead of abstract bases**: would couple prompts and state shape to the plugin, defeating reuse. Patterns ship as abstract classes per project standards.
