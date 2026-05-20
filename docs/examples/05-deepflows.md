@@ -66,3 +66,39 @@ The `#deepdag-placements` region covers only the `.deepDAG(...)` calls — the t
 ⦿ **`registerBookSearchFanoutNodes` / `registerComposeRetryLoopNodes`** — each deep-DAG module exports a helper that registers exactly the nodes it needs. Call both before registering the parent DAG.
 
 See this in action in the [Archivist live demo](./the-archivist).
+
+## Composing the same flow via `DAGDeriver.subDAGs`
+
+The DAGBuilder `.deepDAG(...)` path above is the deterministic authoring journey. The same `DeepDAGNode` placement can be produced declaratively via the `DAGDeriver` `subDAGs` annotation when the surrounding flow is agent-style (operations declare dependencies; topology emerges):
+
+```ts
+DAGDeriver.derive({
+  name: 'parent',
+  version: '1',
+  entrypoint: 'prepare',
+  contracts: [
+    { name: 'prepare',       hardRequired: ['input'],         produces: ['intermediate'], outputs: ['success'] },
+    { name: 'invoke-plugin', hardRequired: ['intermediate'],  produces: ['childResult'],  outputs: ['success', 'error'] },
+    { name: 'finalize',      hardRequired: ['childResult'],   produces: ['final'],        outputs: ['success'] },
+  ],
+  annotations: {
+    subDAGs: {
+      'invoke-plugin': {
+        dag:     'plugin:transform',
+        outputs: ['success', 'error'],
+        stateMapping: {
+          input:  { intermediate: 'intermediate' },
+          output: { childResult:  'childResult' },
+        },
+      },
+    },
+  },
+});
+```
+
+⦿ The contract's `produces ↔ hardRequired` still drives topology; the `subDAGs` annotation swaps the rendered placement from `SingleNode` to `DeepDAGNode`.
+⦿ Every port in `subDAG.outputs` auto-wires to the next derived stage. `terminals` overrides individual ports if the error path needs a different target.
+⦿ Sub-DAG references resolve at `registerDAG` time; the dispatcher's existing cycle check rejects self-referential subDAGs.
+⦿ A runnable demonstration ships in [`examples/derive.ts`](https://github.com/Studnicky/Dagonizer/blob/main/examples/derive.ts) (`npm run example:derive`).
+
+See [Authoring DAGs](../guide/authoring) for the decision matrix between the imperative `.deepDAG()` path and the declarative `subDAGs` annotation.
