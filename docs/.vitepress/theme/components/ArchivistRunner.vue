@@ -29,6 +29,7 @@ import { archivistDAG } from '../../../../examples/the-archivist/dag.ts';
 import { ConsoleLogger } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
 import { MemoryStore } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
 import { ONTOLOGY_NTRIPLES } from '../../../../examples/the-archivist/ontology/ArchivistOntology.ts';
+import { SeedLibrary } from '../../../../examples/the-archivist/data/SeedLibrary.ts';
 import { RdfProvObserver } from '../../../../examples/the-archivist/provenance/RdfProvObserver.ts';
 import { StateProjection } from '../../../../examples/the-archivist/state/StateProjection.ts';
 import { NODE_KINDS } from '../../../../examples/the-archivist/nodes/ArchivistNode.ts';
@@ -318,10 +319,13 @@ const toolContextMap: Record<string, string> = {
   'respond-to-visitor':  'Routes the composed draft into the conversation output and marks the lifecycle as completed.',
 };
 
+/** Construct an LLM client for the active backend, always including memoryStore. */
+function makeLlm() {
+  return instantiateProvider(activeBackend.value, { 'apiKeys': apiKeys.value, 'memoryStore': memoryStore });
+}
+
 /** Live LLM client reference — kept in sync with activeBackend changes. */
-const currentLlm = computed(() =>
-  instantiateProvider(activeBackend.value, { 'apiKeys': apiKeys.value })
-);
+const currentLlm = computed(() => makeLlm());
 
 function clearMemory(): void {
   memoryStore.clear();
@@ -376,7 +380,7 @@ function buildServices(): ArchivistServices {
     'subjectSearch':     SubjectSearchTool,
     'wikipediaSummary':  WikipediaSummaryTool,
     'memory':            memoryStore,
-    'llm':               instantiateProvider(activeBackend.value, { 'apiKeys': apiKeys.value }),
+    'llm':               makeLlm(),
     'logger':            logger,
   };
 }
@@ -475,6 +479,7 @@ function onTreatAsDesktop(): void {
 // ── Boot ─────────────────────────────────────────────────────────────────
 onMounted(async () => {
   memoryStore.loadOntology(ONTOLOGY_NTRIPLES);
+  SeedLibrary.loadInto(memoryStore);
   memoryTick.value++;
 
   isMobile.value = MobileDetection.isLikelyMobile();
@@ -502,7 +507,7 @@ onMounted(async () => {
   // the input. Only runs once per session — once the visitor sends a
   // message the input is cleared (via ask()) and this condition no longer fires.
   if (isFreshSession() && visitorQuery.value.length === 0) {
-    const llm = instantiateProvider(activeBackend.value, { 'apiKeys': apiKeys.value });
+    const llm = makeLlm();
 
     // Step 1: generate greeting.
     let greeting = STATIC_GREETINGS[Date.now() % STATIC_GREETINGS.length] as string;
@@ -648,12 +653,13 @@ function reset(): void {
   void dagGraph.value?.reset();
   memoryStore.clear();
   memoryStore.loadOntology(ONTOLOGY_NTRIPLES);
+  SeedLibrary.loadInto(memoryStore);
   memoryTick.value++;
   logger.clear();
   runnerMachine.dispatch({ 'type': 'reset' });
 
   // Regenerate greeting + visitor reply after reset, same as onMounted.
-  const llm = instantiateProvider(activeBackend.value, { 'apiKeys': apiKeys.value });
+  const llm = makeLlm();
   void (async () => {
     let greeting = STATIC_GREETINGS[Date.now() % STATIC_GREETINGS.length] as string;
     try {

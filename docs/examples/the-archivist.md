@@ -72,6 +72,17 @@ The Archivist runs against a real model in any of these environments — `detect
 | 7 | **WebLLM** (in-browser, WebGPU) | Browser with `navigator.gpu`. Lazy-loads `@mlc-ai/web-llm` + Phi-3.5 mini (~780 MB) on first use; cached after. Desktop only. |
 | 8 | **Stub** | Always available. Hand-coded canned answers. Always available on mobile as a zero-setup fallback; hidden from the desktop picker since on-device options exist. |
 
+## Seed library
+
+On mount, 18 sci-fi and philosophy titles are pre-loaded into `urn:dagonizer:memory` so the Memory tab has content from first paint and stub responses cite real books from the visible graph. The seed covers:
+
+- **Science fiction** — Liu Cixin, William Gibson, Ursula K. Le Guin (×2), Stanisław Lem, Ted Chiang, Jeff VanderMeer, Dan Simmons, Vernor Vinge, the Strugatsky brothers.
+- **Philosophy / philosophical literature** — Borges, Wittgenstein, Camus, Foucault, Deleuze, Hofstadter, Marcus Aurelius, Hegel.
+
+`SeedLibrary.loadInto(memoryStore)` clears `urn:dagonizer:memory` and reasserts all 18 books as RDF triples using the same `dag:title`, `dag:author`, `dag:subject`, `dag:firstPublishYear`, `dag:summary`, and `rdf:type dag:Book` predicates that `StateProjection` uses for run candidates. Because the vocabulary is shared, the MemoryGraph renders seed books and run candidates uniformly.
+
+The seed is not stub-specific. Real LLM backends receive the pre-seeded triples through the `recall-memories` node's SPARQL digest — the library is a shared starting point for every backend. `reset()` restores the seed alongside the TBox ontology so a manual reset never leaves the Memory tab empty.
+
 ### Mobile detection
 
 `MobileDetection.isLikelyMobile()` triangulates three signals — touch points (`navigator.maxTouchPoints > 1`), coarse pointer media query (`(pointer: coarse)`), and narrow viewport (`innerWidth < 900`). All three must indicate mobile; a single signal is not enough. A "Treat as desktop" link in the mobile banner lets tablet visitors opt out of mobile detection and stores the override in `localStorage` (`dagonizer-device-override`).

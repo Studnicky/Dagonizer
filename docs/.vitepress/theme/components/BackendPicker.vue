@@ -149,6 +149,19 @@ function keyFor(id: string): string {
       </label>
     </header>
 
+    <!-- Privacy notice — keys are local-only -->
+    <p v-if="keyBackends.length > 0" class="key-privacy-note">
+      Keys are stored in your browser's localStorage and used only to call
+      the provider's API directly from your browser — they never reach any
+      Dagonizer server (there isn't one). See
+      <a
+        href="https://github.com/Studnicky/Dagonizer/blob/main/examples/the-archivist/providers/index.ts"
+        target="_blank"
+        rel="noreferrer"
+      ><code>providers/index.ts</code></a>
+      (functions <code>loadApiKeys</code> / <code>saveApiKeys</code>) for the source.
+    </p>
+
     <!-- Per-backend key inputs — one collapsible <details> each -->
     <details
       v-for="backend in keyBackends"
@@ -282,6 +295,36 @@ function keyFor(id: string): string {
   color: var(--vp-c-text-2);
   font-size: 0.82rem;
   line-height: 1.45;
+}
+
+.key-privacy-note {
+  margin: 0.4rem 0 0.85rem 0;
+  padding: 0.55rem 0.7rem;
+  background: rgba(34, 232, 255, 0.06);
+  border: 1px solid var(--vp-c-divider);
+  border-left: 2px solid var(--dagonizer-brand2);
+  border-radius: 4px;
+  color: var(--vp-c-text-2);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.key-privacy-note code {
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.74rem;
+  padding: 0.05rem 0.3rem;
+  background: var(--vp-c-bg-elv);
+  border-radius: 3px;
+}
+
+.key-privacy-note a {
+  color: var(--dagonizer-brand2);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--dagonizer-brand2);
+}
+
+.key-privacy-note a:hover {
+  border-bottom-style: solid;
 }
 
 .key-status {

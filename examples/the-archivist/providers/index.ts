@@ -29,6 +29,7 @@
  * `saveApiKeys()` to read/write.
  */
 
+import type { MemoryStore } from '../memory/MemoryStore.js';
 import type { LlmClient } from '../services.ts';
 
 import {
@@ -284,6 +285,8 @@ export interface InstantiateInputs {
   readonly apiKeys?: Partial<Record<ProviderId, string>>;
   readonly webLlmModel?: string;
   readonly onWebLlmProgress?: (report: WebLlmInitReport) => void;
+  /** Passed to StubAdapter so canned responses cite real seed-library titles. */
+  readonly memoryStore?: MemoryStore;
 }
 
 export function instantiateProvider(id: ProviderId, inputs: InstantiateInputs = {}): LlmClient {
@@ -332,8 +335,12 @@ export function instantiateProvider(id: ProviderId, inputs: InstantiateInputs = 
       }
       return new BaseLlmClient(new OpenRouterApiAdapter({ 'apiKey': key }));
     }
-    case 'stub':
-      return new BaseLlmClient(new StubAdapter());
+    case 'stub': {
+      if (inputs.memoryStore === undefined) {
+        throw new LlmError('stub requires a memoryStore so canned responses cite real seed-library titles', { 'reason': 'AUTH_FAILED', 'retryable': false });
+      }
+      return new BaseLlmClient(new StubAdapter({ 'memoryStore': inputs.memoryStore }));
+    }
     default: {
       const exhaustive: never = id;
       throw new LlmError(`unknown provider id: ${String(exhaustive)}`, { 'reason': 'UNKNOWN', 'retryable': false });

@@ -15,6 +15,7 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 ⦿ Mobile banner in `ArchivistRunner` — shown when `MobileDetection.isLikelyMobile()` returns true. Links to Groq key page, explains on-device backend unavailability, and provides a "Treat as desktop" override link.
 ⦿ `BackendPicker` per-backend key inputs — each cloud backend gets its own collapsible `<details>` with a password input, reveal toggle, link to the key page, and a set/not-set status chip. Desktop-only chip on `gemini-nano` and `web-llm` rows when `isMobile` is true.
 ⦿ Stub adapter is now surfaced on mobile as the zero-setup fallback; the mobile banner makes the canned-vs-real LLM distinction explicit so visitors know what they're seeing until a key is entered.
+⦿ 18-book sci-fi / philosophy seed library (`SeedLibrary`) auto-loaded into `urn:dagonizer:memory` on mount. The Memory tab has content from first paint; stub responses cite real titles from the seed graph; `reset()` restores the seed alongside the ontology TBox.
 
 ### Changed
 

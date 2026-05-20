@@ -27,7 +27,7 @@
  */
 
 import { DataFactory, Parser, Store, Writer } from 'n3';
-import type { Quad, Term } from 'n3';
+import type { Quad, Quad_Graph, Quad_Object, Quad_Predicate, Quad_Subject, Term } from 'n3';
 
 const { namedNode, literal, quad, defaultGraph } = DataFactory;
 
@@ -139,7 +139,12 @@ export class MemoryStore {
 
   /** Write one quad. `graph` defaults to the default graph. */
   assert(s: Term, p: Term, o: Term, graph?: Term): void {
-    this.#store.addQuad(quad(s, p, o, graph ?? defaultGraph()));
+    this.#store.addQuad(quad(
+      s as Quad_Subject,
+      p as Quad_Predicate,
+      o as Quad_Object,
+      (graph ?? defaultGraph()) as Quad_Graph,
+    ));
     this.#flush();
   }
 
@@ -200,6 +205,26 @@ export class MemoryStore {
   /** Drop every quad in one named graph (useful when a run resets). */
   clearGraph(graph: Term): void {
     this.#store.removeQuads(this.#store.getQuads(null, null, null, graph));
+    this.#flush();
+  }
+
+  /**
+   * Drop every quad in `urn:dagonizer:memory` whose subject is typed as
+   * `dag:Book` (i.e. has a `rdf:type dag:Book` triple). Safe to call
+   * before re-seeding so the library stays idempotent across reloads.
+   */
+  clearBooks(): void {
+    const rdfType = namedNode('http://www.w3.org/1999/02/22-rdf-syntax-ns#type');
+    const dagBook = namedNode(`${DAG_NS}Book`);
+    // Collect all book subject IRIs in GRAPH_MEMORY.
+    const bookSubjects = this.#store
+      .getQuads(null, rdfType, dagBook, GRAPH_MEMORY)
+      .map((q) => q.subject.value);
+    // Remove every quad whose subject is one of those book IRIs.
+    for (const subjectValue of bookSubjects) {
+      const subject = namedNode(subjectValue);
+      this.#store.removeQuads(this.#store.getQuads(subject, null, null, GRAPH_MEMORY));
+    }
     this.#flush();
   }
 
