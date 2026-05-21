@@ -103,7 +103,7 @@ field, timeout, port routing — is canonical and ships in the plugin.
 ### Taxonomy
 
 ```
-AbstractNode<TState, TOutput, TServices>   (root — provides timeout, contract, retry)
+MonadicNode<TState, TOutput, TServices>   (root — provides timeout, contract, retry)
 │
 ├── DecisionNode<TState, TChoice>          (LLM consults, returns structured choice)
 │   │
@@ -147,7 +147,7 @@ AbstractNode<TState, TOutput, TServices>   (root — provides timeout, contract,
 
 ### What each tier ships
 
-- **`AbstractNode`** lives on `@noocodex/dagonizer/patterns` (root subpath). Shared by every other pattern across every plugin package.
+- **`MonadicNode`** lives on `@noocodex/dagonizer/patterns` (root subpath). Shared by every other pattern across every plugin package.
 - **`DecisionNode`, `ComposeNode`, `ScoutNode`** live in `@noocodex/dagonizer-patterns-rag` (LLM-driven).
 - **`GraphNode`** family lives in `@noocodex/dagonizer-patterns-graph` (triple-store-driven).
 - **`FlowNode`** family lives in `@noocodex/dagonizer-patterns-flow` (pure).
@@ -371,7 +371,7 @@ Archivist uses, organised by service contract:
 **`@noocodex/dagonizer-patterns-flow`** — Pure (no services):
 - `FlowNode<TState>` + sub-tree `SelectNode` (→ `PickByScoreNode`, `SortByNode`), `ReduceNode` (→ `DedupeByKeyNode`, `GroupByFieldNode`, `FanInReducerNode`), plus standalone `PredicateGateNode`, `ExtractFieldNode`, `RespondNode`.
 
-The root `AbstractNode<TState, TOutput, TServices>` ships in
+The root `MonadicNode<TState, TOutput, TServices>` ships in
 `@noocodex/dagonizer/patterns` (subpath on the main package) so every other
 pattern across every plugin can extend from a single shared root.
 

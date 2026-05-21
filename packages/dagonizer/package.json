@@ -87,6 +87,10 @@
       "default": "./dist/adapter/index.js",
       "types": "./dist/adapter/index.d.ts"
     },
+    "./patterns": {
+      "default": "./dist/patterns/index.js",
+      "types": "./dist/patterns/index.d.ts"
+    },
     "./errors": {
       "default": "./dist/errors/index.js",
       "types": "./dist/errors/index.d.ts"
