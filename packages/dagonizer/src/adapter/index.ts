@@ -41,6 +41,12 @@ export {
 } from './BaseAdapter.js';
 export type { BaseAdapterOptions, PartialBaseAdapterOptions } from './BaseAdapter.js';
 
+export { OpenAiCompatibleAdapter } from './OpenAiCompatibleAdapter.js';
+export type {
+  OpenAiCompatibleAdapterOptions,
+  OpenAiCompatibleConfig,
+} from './OpenAiCompatibleAdapter.js';
+
 export {
   asNetworkError,
   Classifications,

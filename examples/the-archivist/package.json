@@ -15,6 +15,7 @@
     "@noocodex/dagonizer-adapter-openrouter": "workspace:^",
     "@noocodex/dagonizer-adapter-stub": "workspace:^",
     "@noocodex/dagonizer-adapter-web-llm": "workspace:^",
+    "@noocodex/dagonizer-book-entities": "workspace:^",
     "@noocodex/dagonizer-tool-googlebooks": "workspace:^",
     "@noocodex/dagonizer-tool-openlibrary": "workspace:^",
     "@noocodex/dagonizer-tool-wikipedia": "workspace:^"

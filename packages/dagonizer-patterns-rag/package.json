@@ -13,7 +13,7 @@
     "build":     "tsc -p tsconfig.json",
     "clean":     "rm -rf dist",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test":      "echo 'no unit tests'",
+    "test":      "tsx --test tests/**/*.test.ts",
     "lint":      "echo 'lint via workspace root'",
     "prepack":   "npm run clean && npm run build"
   },

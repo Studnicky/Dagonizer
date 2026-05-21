@@ -19,6 +19,7 @@ import { CerebrasApiAdapter }  from '@noocodex/dagonizer-adapter-cerebras';
 import { GroqApiAdapter }      from '@noocodex/dagonizer-adapter-groq';
 import { MistralApiAdapter }   from '@noocodex/dagonizer-adapter-mistral';
 import { OpenRouterApiAdapter } from '@noocodex/dagonizer-adapter-openrouter';
+import { ChatRequestBuilder }  from '@noocodex/dagonizer/adapter';
 import type { ChatRequest }    from '@noocodex/dagonizer/adapter';
 
 interface CapturedRequest {
@@ -52,8 +53,8 @@ function captureNextFetch(response: unknown): Promise<CapturedRequest> {
   });
 }
 
-const sampleRequest: ChatRequest = {
-  'messages': [{ 'role': 'user', 'content': 'find me a book about labyrinths' }],
+const sampleRequest: ChatRequest = ChatRequestBuilder.from({
+  'messages': [{ 'role': 'user', 'content': 'find me a book about labyrinths', 'toolCallId': '', 'toolName': '' }],
   'tools': [{
     'name': 'web_search_books',
     'description': 'Search the book catalogue.',
@@ -62,9 +63,10 @@ const sampleRequest: ChatRequest = {
       'properties': { 'query': { 'type': 'string' } },
       'required': ['query'],
     },
+    'strict': true,
   }],
   'toolChoice': { 'type': 'auto' },
-};
+});
 
 const openAiSuccessResponse = {
   'id': 'stub',
