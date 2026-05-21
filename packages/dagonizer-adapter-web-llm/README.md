@@ -1,5 +1,7 @@
 # @noocodex/dagonizer-adapter-web-llm
 
+> **Beta — not yet published to npm.** Ships in v0.10.0 as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format compatibility is verified via intercepted-fetch smoke tests. Expect minor adjustments before 1.0.
+
 WebLLM in-browser adapter for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Runs a quantized open model entirely in the browser via [@mlc-ai/web-llm](https://npmjs.com/package/@mlc-ai/web-llm) on WebGPU.
 
 ## Install

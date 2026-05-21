@@ -2,6 +2,80 @@
 
 All notable changes to `@noocodex/dagonizer` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.10.0] - 2026-05-21
+
+**Plugin architecture (RFC 0001).** Workspace restructure into pnpm monorepo;
+17 packages ship as a single ecosystem version locked at 0.10.0.
+
+> **Beta — GitHub-only release. Not yet published to npm.** Wire-format
+> compatibility verified via intercepted-fetch smoke; live-API smoke against
+> each provider is pending. Expect minor adjustments per adapter before 1.0.
+
+### Added — main package gains three stable subpaths
+
+- `@noocodex/dagonizer/adapter` — `LlmAdapter`, `BaseAdapter`, `OpenAiCompatibleAdapter`, `ChatRequestBuilder`, capability metadata, error taxonomy.
+- `@noocodex/dagonizer/patterns` — `MonadicNode` root + service contracts (`LlmClient`, `TripleStore`, `SearchTool`).
+- `@noocodex/dagonizer/tool` — `Tool` interface, `ToolError`, `HttpTransport`.
+
+### Added — 8 cloud / on-device adapter packages
+
+- `@noocodex/dagonizer-adapter-{gemini-api,gemini-nano,web-llm,groq,cerebras,mistral,openrouter,stub}`.
+- All four OpenAI-shaped cloud adapters now extend `OpenAiCompatibleAdapter` — each provider is ~30 LOC of configuration. Removed ~600 LOC of duplication.
+- Cerebras default switched to `gpt-oss-120b` (was `llama-3.3-70b` which doesn't exist in Cerebras's catalog).
+- StubAdapter gains test-fixture primitives: `invocations` snapshot, `enqueueResponse`, `setError`, `clear`. Six unit tests cover the new surface.
+
+### Added — local adapter
+
+- `@noocodex/dagonizer-adapter-ollama` — local-first via Ollama's OpenAI-compatible endpoint. Browser-side picker auto-detects the daemon via a 600 ms ping; model name persists to localStorage.
+
+### Added — 3 tool packages
+
+- `@noocodex/dagonizer-tool-{openlibrary,googlebooks,wikipedia}` — book-domain external searches. `HttpTransport` (in `@noocodex/dagonizer/tool`) consolidates retry + abort + timeout.
+
+### Added — book-entities shared package
+
+- `@noocodex/dagonizer-book-entities` — `Book` / `Candidate` / `Money` types + `CanonicalId` dedupe. Replaces duplicated entity files across the three book-search tools.
+
+### Added — 3 pattern packages
+
+- `@noocodex/dagonizer-patterns-rag` — `LlmDispatchNode` parent + `DecisionNode` (with `ClassifyIntentNode`, `DecideToolsNode`, `ValidateResponseNode`, `RankCandidatesNode` leaves), `ComposeNode` (with `ComposeResponseNode`, `ComposeEmptyResponseNode`, `ComposeMemoryResponseNode`, `DeclineNode` leaves), `ScoutNode`.
+- `@noocodex/dagonizer-patterns-graph` — `GraphNode` + `RecallContextNode`, `RecordFindingsNode`, `MemoryDigestNode`.
+- `@noocodex/dagonizer-patterns-flow` — `FlowNode` + `SelectNode` (→ `PickByScoreNode`, `SortByNode`), `ReduceNode` (→ `DedupeByKeyNode`, `GroupByFieldNode`, `FanInReducerNode`), `PredicateGateNode`, `ExtractFieldNode`, `RespondNode`.
+
+### Changed — adapter contract surface
+
+- `ChatRequest` fields are required (no `?:`). Use `ChatRequestBuilder.from(partial)` to fill defaults (`DEFAULT_TOOL_CHOICE`, `DEFAULT_OUTPUT_SCHEMA`, `DEFAULT_MAX_TOKENS`, `DEFAULT_TEMPERATURE`, never-aborting `AbortSignal`).
+- `ChatResponse.message` is a discriminated union: `{ kind: 'text' | 'tools' | 'mixed' }`. Use `ChatResponseMessage.from(content, toolCalls)`.
+- `OutputSchema` is a discriminated union: `{ kind: 'none' } | { kind: 'schema', schema, id }`.
+- `LlmAdapter.connect` / `disconnect` are required; `BaseAdapter` ships no-op defaults.
+- Operating principle codified in `CLAUDE.md`: required-with-defaults over optional/undefined, with V8 hidden-class rationale.
+
+### Added — Archivist demo UX
+
+- Conversation send button shows a running indicator (pulsing cyan textarea + rotating spinner ring behind ✕).
+- DAG camera auto-follows the active node during execution (480 ms ease).
+- Dagre layout widened (`rankSep` 180→240, `nodeSep` 80→140, `edgeSep` 30→60) — edges no longer overlap.
+- Edge labels anchored at source end with `source-text-margin-y` / `source-text-offset` / autorotate — never overlap downstream nodes.
+- BackendPicker shows all 9 adapter rows (8 plugin + ArchivistStub) + Ollama row with detection chip.
+- Mobile mode auto-defaults to ArchivistStub (with seed library) when no API key is set.
+- Pre-seeded 18-book sci-fi + philosophy library loads into the memory graph on mount.
+
+### Tooling
+
+- pnpm workspaces.
+- Per-package mini-docs (16 plugin READMEs).
+- Per-package isolation tests (210+ across the workspace).
+- Hoisted `tsconfig.base.json` + `tsconfig.package.json` with `${configDir}` substitution.
+- Changesets-driven release pipeline; `release.yml` opens a "Version Packages" PR (npm publish step intentionally skipped for the 0.10.0 GitHub-only ship).
+
+### Notes — known limitations
+
+- Live-API smoke (real provider keys) deferred — checklist in `docs/rfc/0003-v0.10-release-checklist.md`.
+- Cerebras `gpt-oss-120b` tool-call adherence is partial; adapter has fallback.
+- OpenRouter `:free` tier can downgrade tool support per-route; capability declared `'partial'`.
+- Gemini Nano uses `responseConstraint` JSON shim (no native function calling).
+- Pattern packages ship the canonical taxonomy; Archivist nodes are not yet refactored to extend them — incremental adoption path.
+
 ## [0.9.2] - 2026-05-20
 
 ### Fixed

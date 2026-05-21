@@ -1,5 +1,7 @@
 # Plugins
 
+> **Beta — v0.10.0 is GitHub-only.** The plugin packages haven't been published to npm yet. Install via the repo + workspace path while we collect live-API smoke confirmation against each provider. The contracts (`./adapter`, `./tool`, `./patterns`) are stable; minor adjustments are expected on each adapter before 1.0.
+
 Dagonizer ships three tiers of plugins, each installable independently from npm:
 
 | Tier | Packages | Shape |
