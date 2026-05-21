@@ -8,6 +8,7 @@
 "@noocodex/dagonizer-adapter-openrouter": minor
 "@noocodex/dagonizer-adapter-stub": minor
 "@noocodex/dagonizer-adapter-web-llm": minor
+"@noocodex/dagonizer-book-entities": minor
 "@noocodex/dagonizer-tool-googlebooks": minor
 "@noocodex/dagonizer-tool-openlibrary": minor
 "@noocodex/dagonizer-tool-wikipedia": minor
