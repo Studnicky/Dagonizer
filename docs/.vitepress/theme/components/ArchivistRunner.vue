@@ -51,7 +51,7 @@ import { composeResponse, validateResponse } from '../../../../examples/the-arch
 import { rankCandidates } from '../../../../examples/the-archivist/nodes/rankCandidates.ts';
 import { composeEmptyResponse, declineEmpty, declineOffTopic, respondToVisitor } from '../../../../examples/the-archivist/nodes/respondToVisitor.ts';
 import { webSearchScout, openLibraryScout, googleBooksScout, subjectScout, wikipediaScout } from '../../../../examples/the-archivist/nodes/scouts.ts';
-import { detectBackends, hasNoRunnableModel, instantiateProvider, loadApiKeys, pickBestBackend, saveApiKeys } from '../../../../examples/the-archivist/providers/index.ts';
+import { detectBackends, hasNoRunnableModel, instantiateProvider, loadApiKeys, loadOllamaModel, pickBestBackend, saveApiKeys, saveOllamaModel } from '../../../../examples/the-archivist/providers/index.ts';
 import { MobileDetection } from '../../../../examples/the-archivist/providers/MobileDetection.ts';
 import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
 import type { ArchivistServices } from '../../../../examples/the-archivist/services.ts';
@@ -91,6 +91,7 @@ const activeBackend = ref<ProviderId>('gemini-nano');
 const noModel = ref(false);
 const isMobile = ref(false);
 const apiKeys = ref<Partial<Record<ProviderId, string>>>(loadApiKeys());
+const ollamaModel = ref<string>(loadOllamaModel());
 const visitorQuery = ref('');
 const isRunning = ref(false);
 const conversation = ref<Array<{ role: 'visitor' | 'archivist'; text: string; ts: number }>>([]);
@@ -321,7 +322,11 @@ const toolContextMap: Record<string, string> = {
 
 /** Construct an LLM client for the active backend, always including memoryStore. */
 function makeLlm() {
-  return instantiateProvider(activeBackend.value, { 'apiKeys': apiKeys.value, 'memoryStore': memoryStore });
+  return instantiateProvider(activeBackend.value, {
+    'apiKeys':     apiKeys.value,
+    'memoryStore': memoryStore,
+    'ollamaModel': ollamaModel.value,
+  });
 }
 
 /** Live LLM client reference — kept in sync with activeBackend changes. */
@@ -535,6 +540,7 @@ onMounted(async () => {
 });
 
 watch(apiKeys, () => { saveApiKeys(apiKeys.value); }, { 'deep': true });
+watch(ollamaModel, (next) => { saveOllamaModel(next); });
 
 // ── Run ──────────────────────────────────────────────────────────────────
 async function ask(): Promise<void> {
@@ -754,10 +760,12 @@ function reset(): void {
         :backends="backends"
         :active-id="activeBackend"
         :api-keys="apiKeys"
+        :ollama-model="ollamaModel"
         :is-mobile="isMobile"
         :disabled="true"
         @update:active-id="activeBackend = $event as ProviderId"
         @update:api-keys="apiKeys = $event"
+        @update:ollama-model="ollamaModel = $event"
       />
     </section>
 
@@ -797,10 +805,12 @@ function reset(): void {
                     :backends="backends"
                     :active-id="activeBackend"
                     :api-keys="apiKeys"
+                    :ollama-model="ollamaModel"
                     :is-mobile="isMobile"
                     :disabled="isRunning"
                     @update:active-id="activeBackend = $event as ProviderId"
                     @update:api-keys="apiKeys = $event"
+                    @update:ollama-model="ollamaModel = $event"
                   />
                 </section>
 

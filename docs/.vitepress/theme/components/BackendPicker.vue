@@ -67,6 +67,7 @@ const props = defineProps<{
   backends: readonly BackendOption[];
   activeId: string;
   apiKeys: Partial<Record<string, string>>;
+  ollamaModel: string;
   isMobile?: boolean;
   disabled?: boolean;
 }>();
@@ -74,6 +75,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (event: 'update:activeId', value: string): void;
   (event: 'update:apiKeys', value: Partial<Record<string, string>>): void;
+  (event: 'update:ollamaModel', value: string): void;
 }>();
 
 /** Per-backend reveal state for password inputs. */
@@ -103,6 +105,16 @@ const stubBackend = computed<BackendOption | null>(() => {
 const keyBackends = computed(() =>
   props.backends.filter((b) => KEY_BACKENDS.has(b.id) && visibleIds.value.has(b.id))
 );
+
+/** Ollama row — no key, takes a model name instead. Visible when not on mobile. */
+const ollamaBackend = computed<BackendOption | null>(() => {
+  if (props.isMobile === true) return null;
+  return props.backends.find((b) => b.id === 'ollama') ?? null;
+});
+
+function onOllamaModelInput(event: Event): void {
+  emit('update:ollamaModel', (event.target as HTMLInputElement).value);
+}
 
 function isDesktopOnly(id: string): boolean {
   return props.isMobile === true && DESKTOP_ONLY.has(id);
@@ -202,6 +214,42 @@ function keyFor(id: string): string {
           :aria-pressed="revealMap[backend.id] ?? false"
           @click="toggleReveal(backend.id)"
         >{{ revealMap[backend.id] ? '🙈' : '👁' }}</button>
+      </div>
+    </details>
+
+    <!-- Ollama row — no key, takes a model name instead. Desktop only. -->
+    <details
+      v-if="ollamaBackend !== null"
+      class="backend-key"
+      :open="activeId === 'ollama' || ollamaBackend.runnable"
+    >
+      <summary class="backend-key-summary">
+        Ollama (local daemon)
+        <span v-if="ollamaBackend.runnable" class="key-status key-status--set">detected</span>
+        <span v-else class="key-status key-status--missing">not running</span>
+      </summary>
+      <p class="backend-key-help">
+        {{ ollamaBackend.hint }}
+        <a
+          href="https://ollama.com/download"
+          target="_blank"
+          rel="noreferrer"
+        >Install Ollama.</a>
+        Set <code>OLLAMA_ORIGINS</code> to your docs origin
+        (e.g. <code>OLLAMA_ORIGINS=http://localhost:5173</code>) before
+        running <code>ollama serve</code> so the browser can reach the daemon.
+      </p>
+      <div class="key-row">
+        <input
+          class="key-input"
+          type="text"
+          :value="ollamaModel"
+          placeholder="model name, e.g. llama3.2:latest"
+          autocomplete="off"
+          spellcheck="false"
+          :disabled="disabled === true"
+          @input="onOllamaModelInput"
+        />
       </div>
     </details>
 
