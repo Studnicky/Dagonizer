@@ -19,7 +19,7 @@
  * taxonomy.
  */
 
-import { BaseAdapter } from './BaseAdapter.ts';
+import { BaseAdapter } from '@noocodex/dagonizer/adapter';
 import type {
   ChatMessage,
   ChatRequest,
@@ -27,8 +27,8 @@ import type {
   ToolCall,
   ToolChoice,
   ToolDefinition,
-} from './LlmAdapter.ts';
-import { asNetworkError, classifyHttp, Classifications, LlmError, type ErrorClassification } from './LlmError.ts';
+} from '@noocodex/dagonizer/adapter';
+import { asNetworkError, classifyHttp, Classifications, LlmError, type ErrorClassification } from '@noocodex/dagonizer/adapter';
 
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 const DEFAULT_MODEL = 'gemini-2.0-flash';

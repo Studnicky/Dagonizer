@@ -16,9 +16,22 @@
  * Detection: key supplied. Free-tier models available without credits.
  */
 
-import { BaseAdapter } from './BaseAdapter.ts';
-import type { ChatMessage, ChatRequest, ChatResponse, ToolCall, ToolChoice, ToolDefinition } from './LlmAdapter.ts';
-import { asNetworkError, classifyHttp, Classifications, LlmError, type ErrorClassification } from './LlmError.ts';
+import {
+  asNetworkError,
+  BaseAdapter,
+  Classifications,
+  classifyHttp,
+  LlmError,
+} from '@noocodex/dagonizer/adapter';
+import type {
+  ChatMessage,
+  ChatRequest,
+  ChatResponse,
+  ErrorClassification,
+  ToolCall,
+  ToolChoice,
+  ToolDefinition,
+} from '@noocodex/dagonizer/adapter';
 
 const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
 const DEFAULT_MODEL = 'meta-llama/llama-3.3-70b-instruct:free';

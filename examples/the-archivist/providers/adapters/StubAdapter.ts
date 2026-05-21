@@ -11,8 +11,8 @@
 import { SeedLibrary } from '../../data/SeedLibrary.js';
 import { MemoryStore } from '../../memory/MemoryStore.js';
 
-import { BaseAdapter } from './BaseAdapter.ts';
-import type { ChatRequest, ChatResponse, ToolCall, ToolDefinition } from './LlmAdapter.ts';
+import { BaseAdapter } from '@noocodex/dagonizer/adapter';
+import type { ChatRequest, ChatResponse, ToolCall, ToolDefinition } from '@noocodex/dagonizer/adapter';
 
 export interface StubAdapterOptions {
   readonly memoryStore: MemoryStore;

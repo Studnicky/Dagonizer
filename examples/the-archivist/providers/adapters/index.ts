@@ -2,7 +2,10 @@
  * Adapters barrel — every `LlmAdapter` implementation + shared types.
  */
 
+// Contract surface is re-exported from the canonical subpath so the example
+// stays close to how external consumers will import it.
 export type {
+  AdapterCapabilities,
   ChatMessage,
   ChatRequest,
   ChatResponse,
@@ -11,18 +14,16 @@ export type {
   ToolCall,
   ToolChoice,
   ToolDefinition,
-} from './LlmAdapter.ts';
+} from '@noocodex/dagonizer/adapter';
 
 export {
-  Classifications,
-  LlmError,
   asNetworkError,
+  BaseAdapter,
+  Classifications,
   classifyHttp,
-  type ErrorClassification,
-  type LlmErrorReason,
-} from './LlmError.ts';
-
-export { BaseAdapter } from './BaseAdapter.ts';
+  LlmError,
+} from '@noocodex/dagonizer/adapter';
+export type { ErrorClassification } from '@noocodex/dagonizer/adapter';
 
 export { CerebrasApiAdapter, type CerebrasApiAdapterOptions } from './CerebrasApiAdapter.ts';
 export { GeminiApiAdapter, type GeminiApiAdapterOptions } from './GeminiApiAdapter.ts';

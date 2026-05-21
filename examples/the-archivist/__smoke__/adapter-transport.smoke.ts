@@ -17,7 +17,7 @@ import { strict as assert } from 'node:assert';
 
 import { CerebrasApiAdapter } from '../providers/adapters/CerebrasApiAdapter.ts';
 import { GroqApiAdapter } from '../providers/adapters/GroqApiAdapter.ts';
-import type { ChatRequest } from '../providers/adapters/LlmAdapter.ts';
+import type { ChatRequest } from '@noocodex/dagonizer/adapter';
 import { MistralApiAdapter } from '../providers/adapters/MistralApiAdapter.ts';
 import { OpenRouterApiAdapter } from '../providers/adapters/OpenRouterApiAdapter.ts';
 

@@ -11,14 +11,14 @@
  * into `ToolCall[]`.
  */
 
-import { BaseAdapter } from './BaseAdapter.ts';
+import { BaseAdapter } from '@noocodex/dagonizer/adapter';
 import type {
   ChatRequest,
   ChatResponse,
   ToolCall,
   ToolDefinition,
-} from './LlmAdapter.ts';
-import { Classifications, LlmError, type ErrorClassification } from './LlmError.ts';
+} from '@noocodex/dagonizer/adapter';
+import { Classifications, LlmError, type ErrorClassification } from '@noocodex/dagonizer/adapter';
 
 const DEFAULT_MODEL = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
 const WEBLLM_ESM = 'https://esm.run/@mlc-ai/web-llm';

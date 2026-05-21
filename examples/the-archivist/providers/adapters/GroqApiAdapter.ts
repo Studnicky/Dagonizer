@@ -13,9 +13,22 @@
  * Detection is key-presence-only — we trust the key until the first 401.
  */
 
-import { BaseAdapter } from './BaseAdapter.ts';
-import type { ChatMessage, ChatRequest, ChatResponse, ToolCall, ToolChoice, ToolDefinition } from './LlmAdapter.ts';
-import { asNetworkError, classifyHttp, Classifications, LlmError, type ErrorClassification } from './LlmError.ts';
+import {
+  asNetworkError,
+  BaseAdapter,
+  Classifications,
+  classifyHttp,
+  LlmError,
+} from '@noocodex/dagonizer/adapter';
+import type {
+  ChatMessage,
+  ChatRequest,
+  ChatResponse,
+  ErrorClassification,
+  ToolCall,
+  ToolChoice,
+  ToolDefinition,
+} from '@noocodex/dagonizer/adapter';
 
 const ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
 const DEFAULT_MODEL = 'llama-3.3-70b-versatile';

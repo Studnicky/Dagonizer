@@ -20,10 +20,10 @@
  */
 
 
-import type { AdapterCapabilities, ChatRequest, ChatResponse, LlmAdapter } from './LlmAdapter.ts';
-import { Classifications, LlmError, type ErrorClassification } from './LlmError.ts';
+import { BackoffStrategy, RetryPolicy } from '../runtime/index.js';
 
-import { BackoffStrategy, RetryPolicy } from '@noocodex/dagonizer/runtime';
+import type { AdapterCapabilities, ChatRequest, ChatResponse, LlmAdapter } from './LlmAdapter.js';
+import { Classifications, LlmError, type ErrorClassification } from './LlmError.js';
 
 const MAX_QUOTA_WAIT_MS = 10_000;
 

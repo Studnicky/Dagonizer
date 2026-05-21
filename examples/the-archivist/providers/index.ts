@@ -46,7 +46,7 @@ import {
   type GeminiNanoAvailability,
   type WebLlmInitReport,
 } from './adapters/index.ts';
-import { LlmError } from './adapters/LlmError.ts';
+import { LlmError } from '@noocodex/dagonizer/adapter';
 import { BaseLlmClient } from './BaseLlmClient.ts';
 
 export type ProviderId =

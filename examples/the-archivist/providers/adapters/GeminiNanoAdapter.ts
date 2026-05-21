@@ -16,14 +16,14 @@
  * `finally` to release the on-device GPU buffer.
  */
 
-import { BaseAdapter } from './BaseAdapter.ts';
+import { BaseAdapter } from '@noocodex/dagonizer/adapter';
 import type {
   ChatRequest,
   ChatResponse,
   ToolCall,
   ToolDefinition,
-} from './LlmAdapter.ts';
-import { Classifications, LlmError, type ErrorClassification } from './LlmError.ts';
+} from '@noocodex/dagonizer/adapter';
+import { Classifications, LlmError, type ErrorClassification } from '@noocodex/dagonizer/adapter';
 
 export type GeminiNanoAvailability =
   | 'available'
