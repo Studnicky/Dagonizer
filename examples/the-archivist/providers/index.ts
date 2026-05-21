@@ -38,10 +38,12 @@ import {
   GeminiNanoAdapter,
   GroqApiAdapter,
   MistralApiAdapter,
+  OllamaApiAdapter,
   OpenRouterApiAdapter,
   ArchivistStub,
   WebLlmAdapter,
   detectGeminiNano,
+  detectOllama,
   detectWebGpu,
   type GeminiNanoAvailability,
   type WebLlmInitReport,
@@ -57,6 +59,7 @@ export type ProviderId =
   | 'cerebras'
   | 'mistral'
   | 'openrouter'
+  | 'ollama'
   | 'stub';
 
 /** Backends visible in the browser picker. Stub is included so mobile
@@ -70,6 +73,7 @@ const BROWSER_VISIBLE: readonly ProviderId[] = [
   'cerebras',
   'mistral',
   'openrouter',
+  'ollama',
   'stub',
 ];
 
@@ -78,6 +82,7 @@ const BROWSER_VISIBLE: readonly ProviderId[] = [
  * everywhere), then on-device options. Lower index = higher priority.
  */
 const PRIORITY_ORDER: readonly ProviderId[] = [
+  'ollama',         // local daemon — no key, no network, fastest if running
   'groq',
   'cerebras',
   'gemini-api',
@@ -88,8 +93,8 @@ const PRIORITY_ORDER: readonly ProviderId[] = [
   'stub',
 ];
 
-/** On-device backends that require desktop Chrome — excluded on mobile. */
-const DESKTOP_ONLY: readonly ProviderId[] = ['gemini-nano', 'web-llm'];
+/** Backends that need a local/desktop runtime — excluded on mobile. */
+const DESKTOP_ONLY: readonly ProviderId[] = ['gemini-nano', 'web-llm', 'ollama'];
 
 export interface BackendAvailability {
   readonly id: ProviderId;
@@ -210,6 +215,20 @@ export async function detectBackends(inputs: DetectionInputs = {}): Promise<read
     'hint': 'Free key at openrouter.ai/keys. Routes to llama-3.3-70b-instruct:free.',
   });
 
+  // Ollama — local daemon detection. Browser hits 127.0.0.1:11434; if the
+  // daemon is up and CORS-permissive, the version endpoint replies in <50 ms.
+  // No API key required. Model is whatever the user has pulled.
+  const ollamaUp = await detectOllama();
+  out.push({
+    'id': 'ollama',
+    'displayName': 'Ollama (local daemon)',
+    'runnable': ollamaUp,
+    'needsAction': null,
+    'hint': ollamaUp
+      ? 'Local daemon detected. Override model + baseUrl via the adapter constructor.'
+      : 'Start the Ollama daemon at 127.0.0.1:11434 and ensure CORS allows the docs origin (OLLAMA_ORIGINS).',
+  });
+
   // Stub is always emitted last. The picker uses browserVisibleBackends
   // to hide it on desktop (where on-device options exist), but on mobile
   // it is the guaranteed zero-setup fallback.
@@ -285,6 +304,8 @@ export interface InstantiateInputs {
   readonly apiKeys?: Partial<Record<ProviderId, string>>;
   readonly webLlmModel?: string;
   readonly onWebLlmProgress?: (report: WebLlmInitReport) => void;
+  /** Override the Ollama model the consumer has pulled (e.g. 'llama3.2:latest'). */
+  readonly ollamaModel?: string;
   /** Passed to StubAdapter so canned responses cite real seed-library titles. */
   readonly memoryStore?: MemoryStore;
 }
@@ -335,6 +356,13 @@ export function instantiateProvider(id: ProviderId, inputs: InstantiateInputs = 
       }
       return new BaseLlmClient(new OpenRouterApiAdapter({ 'apiKey': key }));
     }
+    case 'ollama': {
+      // No API key required — Ollama's loopback daemon accepts a
+      // placeholder Bearer header. Pass the model the user has pulled.
+      return new BaseLlmClient(new OllamaApiAdapter(
+        inputs.ollamaModel !== undefined ? { 'model': inputs.ollamaModel } : {},
+      ));
+    }
     case 'stub': {
       if (inputs.memoryStore === undefined) {
         throw new LlmError('stub requires a memoryStore so canned responses cite real seed-library titles', { 'reason': 'AUTH_FAILED', 'retryable': false });
@@ -355,10 +383,12 @@ export {
   GeminiNanoAdapter,
   GroqApiAdapter,
   MistralApiAdapter,
+  OllamaApiAdapter,
   OpenRouterApiAdapter,
   ArchivistStub,
   WebLlmAdapter,
   detectGeminiNano,
+  detectOllama,
   detectWebGpu,
 } from './adapters/index.ts';
 export { MobileDetection } from './MobileDetection.ts';

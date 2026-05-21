@@ -19,11 +19,11 @@ ollama pull llama3.2
 
 ```ts
 import { OllamaApiAdapter } from '@noocodex/dagonizer-adapter-ollama';
-import { ChatRequest } from '@noocodex/dagonizer/adapter';
+import { ChatRequestBuilder } from '@noocodex/dagonizer/adapter';
 
 const llm = new OllamaApiAdapter({ model: 'llama3.2:latest' });
 
-const response = await llm.chat(ChatRequest.from({
+const response = await llm.chat(ChatRequestBuilder.from({
   messages: [{ role: 'user', content: 'Hello', toolCallId: '', toolName: '' }],
 }));
 ```
