@@ -32,7 +32,7 @@ export type GeminiNanoAvailability =
   | 'unavailable';
 
 interface PromptOptions {
-  readonly responseConstraint?: Record<string, unknown>;
+  responseConstraint?: Record<string, unknown>;
 }
 
 interface LanguageModelSession {

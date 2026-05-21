@@ -1,39 +1,35 @@
 /**
- * StubAdapter — offline canned-responses adapter grounded in the seed memory graph.
+ * ArchivistStub — Archivist-grounded canned-response adapter.
  *
- * Ships with the demo so it works without any network or API key. The
- * adapter is constructed with a required `MemoryStore` — `performChat`
- * grounds compose and classify responses in real SeedLibrary titles so
- * stub citations link to actual nodes in the MemoryGraph the visitor is
- * looking at.
+ * Extends the plugin-shipped `StubAdapter` with seed-library-aware
+ * behavior: compose responses cite real titles from the visible
+ * MemoryGraph, decideTools emits a tool call when keywords match seed
+ * books, and memory-recall responses report the actual shelf size.
+ *
+ * The plugin stays domain-neutral; this subclass is the canonical
+ * example of how a consumer customises a generic stub for their own
+ * flow.
  */
+
+import { StubAdapter } from '@noocodex/dagonizer-adapter-stub';
+import type { ChatRequest, ChatResponse, ToolCall, ToolDefinition } from '@noocodex/dagonizer/adapter';
 
 import { SeedLibrary } from '../../data/SeedLibrary.js';
 import { MemoryStore } from '../../memory/MemoryStore.js';
 
-import { BaseAdapter } from '@noocodex/dagonizer/adapter';
-import type { ChatRequest, ChatResponse, ToolCall, ToolDefinition } from '@noocodex/dagonizer/adapter';
-
-export interface StubAdapterOptions {
+export interface ArchivistStubOptions {
   readonly memoryStore: MemoryStore;
 }
 
-export class StubAdapter extends BaseAdapter {
+export class ArchivistStub extends StubAdapter {
   readonly #memoryStore: MemoryStore;
 
-  constructor(opts: StubAdapterOptions) {
-    super({
-      'id': 'stub',
-      'displayName': 'Canned responses (no real LLM)',
-      // Stub emits deterministic tool calls keyed to query patterns — counts
-      // as full tool support for routing purposes even though output is canned.
-      'capabilities': { 'toolUse': 'full', 'structuredOutput': true, 'jsonMode': true },
-      'maxAttempts': 1,
-    });
+  constructor(opts: ArchivistStubOptions) {
+    super({ 'maxAttempts': 1 });
     this.#memoryStore = opts.memoryStore;
   }
 
-  protected async performChat(request: ChatRequest): Promise<ChatResponse> {
+  protected override async performChat(request: ChatRequest): Promise<ChatResponse> {
     const lastUser = [...request.messages].reverse().find((m) => m.role === 'user');
     const query = lastUser?.content ?? '';
 
@@ -59,17 +55,13 @@ export class StubAdapter extends BaseAdapter {
     }
 
     if (request.outputSchema !== undefined) {
-      return groundedDecideTools(query, request.tools ?? []);
+      return Promise.resolve(groundedDecideTools(query, request.tools ?? []));
     }
 
-    return { 'message': { 'content': this.#groundedAnswer(query) }, 'finishReason': 'stop' };
+    return { 'message': { 'content': groundedAnswer(query, this.#shelfSize()) }, 'finishReason': 'stop' };
   }
 
-  /**
-   * Count live `?book rdf:type dag:Book` triples in the store — the seed
-   * library plus any books added during the session. Used to personalise
-   * the "memory status" recall response.
-   */
+  /** Count live `?book rdf:type dag:Book` triples in the store. */
   #shelfSize(): number {
     return this.#memoryStore.select({
       'subject':   '?book',
@@ -78,25 +70,16 @@ export class StubAdapter extends BaseAdapter {
       'graph':     '?g',
     }).length;
   }
-
-  #groundedAnswer(query: string): string {
-    return groundedAnswer(query, this.#shelfSize());
-  }
 }
 
 // ── Grounded response helpers ──────────────────────────────────────────────
-//
-// These run when memoryStore is present. They delegate to SeedLibrary so
-// responses cite actual book IRIs that appear in the MemoryGraph.
 
 function groundedDecideTools(query: string, tools: readonly ToolDefinition[]): ChatResponse {
   const matches = SeedLibrary.findByKeywords(query, 3);
   const webSearch = tools.find((t) => t.name === 'web_search_books');
 
-  // If we have seed matches and a web_search tool, name them as candidates.
   if (matches.length > 0 && webSearch !== undefined) {
     const visitor = query.split(/visitor question:/iu)[1]?.trim() ?? query.slice(-200);
-    // Emit a tool call so the full DAG flow runs against real candidates.
     return {
       'message': {
         'toolCalls': [{
@@ -134,7 +117,6 @@ function groundedAnswer(query: string, shelfSize: number): string {
     return `These shelves hold ${String(shelfSize)} title${shelfSize === 1 ? '' : 's'} in total. Of those, ${bookCount} ${Number(bookCount) === 1 ? 'book' : 'books'} came up across ${sessions} prior ${Number(sessions) === 1 ? 'session' : 'sessions'}. The most recent include ${titles}.`;
   }
 
-  // Extract the visitor's actual query from the full prompt scaffold.
   const visitorLine = extractVisitorQuery(query);
   const searchFor = visitorLine.length > 0 ? visitorLine : query;
   const matches = SeedLibrary.findByKeywords(searchFor, 3);
@@ -163,9 +145,7 @@ function groundedAnswer(query: string, shelfSize: number): string {
   return response;
 }
 
-/** Pull the visitor's question out of a compound LLM prompt. */
 function extractVisitorQuery(prompt: string): string {
-  // Prompts from the classify / compose nodes embed the visitor's message.
   const patterns = [
     /visitor(?:'s)? (?:question|message|query)[:\s]+([^\n]+)/iu,
     /visitor said[:\s]+"([^"]+)"/iu,
@@ -175,11 +155,8 @@ function extractVisitorQuery(prompt: string): string {
     const m = re.exec(prompt);
     if (m !== null && m[1] !== undefined && m[1].length > 0) return m[1].trim();
   }
-  // Last 200 chars as fallback — likely the actual question.
   return prompt.slice(-200).trim();
 }
-
-// ── Original fully-canned helpers ─────────────────────────────────────────
 
 const STARTER_QUERIES: readonly string[] = [
   'Do you have the complete Dune saga by Frank Herbert?',
@@ -188,11 +165,11 @@ const STARTER_QUERIES: readonly string[] = [
   'Are all the Harry Potter books in stock?',
   'What did Agatha Christie write before Hercule Poirot?',
   'Where should I start with Brandon Sanderson?',
-  'Can you tell me about Neil Gaiman\'s mythology books?',
-  'What are the major themes in Octavia Butler\'s Kindred?',
-  'Is there a reading order for Terry Pratchett\'s Discworld?',
+  "Can you tell me about Neil Gaiman's mythology books?",
+  "What are the major themes in Octavia Butler's Kindred?",
+  "Is there a reading order for Terry Pratchett's Discworld?",
   'Which Ursula Le Guin novel should I read first?',
-  'What is Murakami\'s most accessible novel for new readers?',
+  "What is Murakami's most accessible novel for new readers?",
   'Which Hemingway is a good introduction to his work?',
 ];
 
@@ -210,7 +187,7 @@ const STUB_VISITOR_REPLIES: readonly string[] = [
   "I'm looking for something thoughtful about memory — any suggestions?",
   'What do you have on labyrinths?',
   'A book that feels like winter.',
-  "Something by Le Guin I might have missed?",
+  'Something by Le Guin I might have missed?',
   'Where should I start with Borges?',
   'Do you have anything about libraries themselves as a subject?',
   'I want something quietly unsettling — not horror, just strange.',
@@ -268,7 +245,6 @@ function stubVisitorReply(): string {
 }
 
 function shouldInvokeWebSearch(query: string): boolean {
-  // ISBN-13 / ISBN-10 patterns, quoted titles, or "by <author>" hints.
   return (
     /\b97[89]\d{10}\b/u.test(query)
     || /"([^"]{3,})"/u.test(query)
@@ -280,7 +256,6 @@ function shouldInvokeWebSearch(query: string): boolean {
 function toolCallFor(query: string, tools: readonly ToolDefinition[]): ToolCall[] {
   const webSearch = tools.find((t) => t.name === 'web_search_books');
   if (webSearch === undefined) return [];
-  // Strip the prompt scaffolding to extract just the visitor question.
   const visitor = query.split(/visitor question:/iu)[1]?.trim() ?? query.slice(-200);
   return [{
     'id':   `stub-${String(Date.now())}`,
@@ -288,4 +263,3 @@ function toolCallFor(query: string, tools: readonly ToolDefinition[]): ToolCall[
     'arguments': { 'query': visitor, 'limit': 5 },
   }];
 }
-

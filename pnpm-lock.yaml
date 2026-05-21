@@ -20,6 +20,30 @@ importers:
       '@noocodex/dagonizer':
         specifier: workspace:^
         version: link:../../packages/dagonizer
+      '@noocodex/dagonizer-adapter-cerebras':
+        specifier: workspace:^
+        version: link:../../packages/dagonizer-adapter-cerebras
+      '@noocodex/dagonizer-adapter-gemini-api':
+        specifier: workspace:^
+        version: link:../../packages/dagonizer-adapter-gemini-api
+      '@noocodex/dagonizer-adapter-gemini-nano':
+        specifier: workspace:^
+        version: link:../../packages/dagonizer-adapter-gemini-nano
+      '@noocodex/dagonizer-adapter-groq':
+        specifier: workspace:^
+        version: link:../../packages/dagonizer-adapter-groq
+      '@noocodex/dagonizer-adapter-mistral':
+        specifier: workspace:^
+        version: link:../../packages/dagonizer-adapter-mistral
+      '@noocodex/dagonizer-adapter-openrouter':
+        specifier: workspace:^
+        version: link:../../packages/dagonizer-adapter-openrouter
+      '@noocodex/dagonizer-adapter-stub':
+        specifier: workspace:^
+        version: link:../../packages/dagonizer-adapter-stub
+      '@noocodex/dagonizer-adapter-web-llm':
+        specifier: workspace:^
+        version: link:../../packages/dagonizer-adapter-web-llm
     devDependencies:
       n3:
         specifier: ^2.0.3
@@ -88,6 +112,54 @@ importers:
       vitepress-plugin-mermaid:
         specifier: ^2.0.17
         version: 2.0.17(mermaid@11.15.0)(vitepress@1.6.4(@algolia/client-search@5.52.1)(@types/node@25.9.1)(postcss@8.5.15)(search-insights@2.17.3)(typescript@5.9.3))
+
+  packages/dagonizer-adapter-cerebras:
+    dependencies:
+      '@noocodex/dagonizer':
+        specifier: workspace:^
+        version: link:../dagonizer
+
+  packages/dagonizer-adapter-gemini-api:
+    dependencies:
+      '@noocodex/dagonizer':
+        specifier: workspace:^
+        version: link:../dagonizer
+
+  packages/dagonizer-adapter-gemini-nano:
+    dependencies:
+      '@noocodex/dagonizer':
+        specifier: workspace:^
+        version: link:../dagonizer
+
+  packages/dagonizer-adapter-groq:
+    dependencies:
+      '@noocodex/dagonizer':
+        specifier: workspace:^
+        version: link:../dagonizer
+
+  packages/dagonizer-adapter-mistral:
+    dependencies:
+      '@noocodex/dagonizer':
+        specifier: workspace:^
+        version: link:../dagonizer
+
+  packages/dagonizer-adapter-openrouter:
+    dependencies:
+      '@noocodex/dagonizer':
+        specifier: workspace:^
+        version: link:../dagonizer
+
+  packages/dagonizer-adapter-stub:
+    dependencies:
+      '@noocodex/dagonizer':
+        specifier: workspace:^
+        version: link:../dagonizer
+
+  packages/dagonizer-adapter-web-llm:
+    dependencies:
+      '@noocodex/dagonizer':
+        specifier: workspace:^
+        version: link:../dagonizer
 
 packages:
 

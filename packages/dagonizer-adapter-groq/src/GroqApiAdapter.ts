@@ -1,19 +1,16 @@
 /**
- * OpenRouterApiAdapter — OpenRouter REST adapter (OpenAI-chat-completions shape).
+ * GroqApiAdapter — Groq REST adapter (OpenAI-chat-completions shape).
  *
- * Maps the shared `ChatRequest` to the OpenAI-compatible body OpenRouter expects.
- * Includes the required OpenRouter-specific headers:
+ * Maps the shared `ChatRequest` to the OpenAI-compatible body Groq expects:
  *
- *   HTTP-Referer: https://studnicky.github.io/Dagonizer/
- *   X-Title: Dagonizer Archivist
+ *   { model, messages, tools?, tool_choice?, response_format?, … }
  *
- * Default model: `meta-llama/llama-3.3-70b-instruct:free` (the `:free` suffix
- * selects the free-tier routing, so no billing for demo use).
+ * Response shape is standard OpenAI `chat.completion` — adapter translates
+ * `choices[0].message.tool_calls` back to `ChatResponse.message.toolCalls`
+ * so callers never see the wire format.
  *
- * Tool-use via `tools` + `tool_choice`. Structured output via
- * `response_format: { type: 'json_object' }`.
- *
- * Detection: key supplied. Free-tier models available without credits.
+ * Free tier: ~30 RPM on llama-3.3-70b-versatile. Detection: key supplied.
+ * Detection is key-presence-only — we trust the key until the first 401.
  */
 
 import {
@@ -33,10 +30,8 @@ import type {
   ToolDefinition,
 } from '@noocodex/dagonizer/adapter';
 
-const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_MODEL = 'meta-llama/llama-3.3-70b-instruct:free';
-const SITE_URL = 'https://studnicky.github.io/Dagonizer/';
-const SITE_TITLE = 'Dagonizer Archivist';
+const ENDPOINT = 'https://api.groq.com/openai/v1/chat/completions';
+const DEFAULT_MODEL = 'llama-3.3-70b-versatile';
 const TIMEOUT_MS = 60_000;
 
 interface OpenAiToolCall {
@@ -62,23 +57,21 @@ interface OpenAiResponseBody {
   };
 }
 
-export interface OpenRouterApiAdapterOptions {
+export interface GroqApiAdapterOptions {
   readonly apiKey: string;
   readonly model?: string;
   readonly maxAttempts?: number;
 }
 
-export class OpenRouterApiAdapter extends BaseAdapter {
+export class GroqApiAdapter extends BaseAdapter {
   readonly #apiKey: string;
   readonly #model: string;
 
-  constructor(options: OpenRouterApiAdapterOptions) {
+  constructor(options: GroqApiAdapterOptions) {
     super({
-      'id': 'openrouter',
-      'displayName': 'OpenRouter (llama-3.3-70b free)',
-      // `:free` tier may downgrade to non-tool endpoints; treat as partial
-      // until per-route capability negotiation is in place.
-      'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true },
+      'id': 'groq',
+      'displayName': 'Groq (llama-3.3-70b)',
+      'capabilities': { 'toolUse': 'full', 'structuredOutput': true, 'jsonMode': true },
       'maxAttempts': options.maxAttempts ?? 3,
     });
     this.#apiKey = options.apiKey;
@@ -87,7 +80,7 @@ export class OpenRouterApiAdapter extends BaseAdapter {
 
   protected async performChat(request: ChatRequest): Promise<ChatResponse> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => { controller.abort(new Error('openrouter request timeout')); }, TIMEOUT_MS);
+    const timeoutId = setTimeout(() => { controller.abort(new Error('groq request timeout')); }, TIMEOUT_MS);
     const signal = request.signal !== undefined
       ? AbortSignal.any([request.signal, controller.signal])
       : controller.signal;
@@ -99,8 +92,6 @@ export class OpenRouterApiAdapter extends BaseAdapter {
         'headers': {
           'content-type': 'application/json',
           'authorization': `Bearer ${this.#apiKey}`,
-          'HTTP-Referer': SITE_URL,
-          'X-Title': SITE_TITLE,
         },
         'body': JSON.stringify(this.#buildBody(request)),
         signal,
@@ -113,7 +104,7 @@ export class OpenRouterApiAdapter extends BaseAdapter {
 
     if (!res.ok) {
       const text = await res.text();
-      throw new LlmError(`OpenRouter REST ${String(res.status)}: ${text}`, classifyHttp(res.status, text));
+      throw new LlmError(`Groq REST ${String(res.status)}: ${text}`, classifyHttp(res.status, text));
     }
 
     const payload = (await res.json()) as OpenAiResponseBody;
@@ -131,7 +122,7 @@ export class OpenRouterApiAdapter extends BaseAdapter {
       'model': this.#model,
       'messages': request.messages.map(toOpenAiMessage),
       'temperature': request.temperature ?? 0.2,
-      'max_tokens': request.maxTokens ?? 512,
+      'max_completion_tokens': request.maxTokens ?? 512,
     };
 
     if (request.tools !== undefined && request.tools.length > 0) {
@@ -194,7 +185,7 @@ function parseOpenAiResponse(payload: OpenAiResponseBody): ChatResponse {
     : choice?.finish_reason === 'length' ? 'length' : 'stop';
   return {
     'message': toolCalls.length > 0
-      ? { 'toolCalls': toolCalls, 'content': text.length === 0 ? undefined : text }
+      ? text.length === 0 ? { 'toolCalls': toolCalls } : { 'toolCalls': toolCalls, 'content': text }
       : { 'content': text },
     'finishReason': finishReason,
     ...(payload.usage !== undefined ? {

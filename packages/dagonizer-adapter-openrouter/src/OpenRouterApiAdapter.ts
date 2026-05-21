@@ -1,15 +1,19 @@
 /**
- * CerebrasApiAdapter — Cerebras REST adapter (OpenAI-chat-completions shape).
+ * OpenRouterApiAdapter — OpenRouter REST adapter (OpenAI-chat-completions shape).
  *
- * Maps the shared `ChatRequest` to the OpenAI-compatible body Cerebras expects:
+ * Maps the shared `ChatRequest` to the OpenAI-compatible body OpenRouter expects.
+ * Includes the required OpenRouter-specific headers:
  *
- *   { model, messages, tools?, tool_choice?, response_format?, … }
+ *   HTTP-Referer: https://studnicky.github.io/Dagonizer/
+ *   X-Title: Dagonizer Archivist
  *
- * Tool-use is gated behind a try/catch — when the model returns a structured
- * error indicating tools are unsupported the adapter retries as plain chat.
- * Structured output via `response_format: { type: 'json_object' }`.
+ * Default model: `meta-llama/llama-3.3-70b-instruct:free` (the `:free` suffix
+ * selects the free-tier routing, so no billing for demo use).
  *
- * Free tier available. Detection: key supplied.
+ * Tool-use via `tools` + `tool_choice`. Structured output via
+ * `response_format: { type: 'json_object' }`.
+ *
+ * Detection: key supplied. Free-tier models available without credits.
  */
 
 import {
@@ -29,11 +33,10 @@ import type {
   ToolDefinition,
 } from '@noocodex/dagonizer/adapter';
 
-const ENDPOINT = 'https://api.cerebras.ai/v1/chat/completions';
-// `gpt-oss-120b` is a production-tier Cerebras model with reliable tool-call
-// support. Cerebras's catalog as of v0.9.2 is `llama3.1-8b`, `gpt-oss-120b`
-// (production), `qwen-3-235b-a22b-instruct-2507`, `zai-glm-4.7` (preview).
-const DEFAULT_MODEL = 'gpt-oss-120b';
+const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
+const DEFAULT_MODEL = 'meta-llama/llama-3.3-70b-instruct:free';
+const SITE_URL = 'https://studnicky.github.io/Dagonizer/';
+const SITE_TITLE = 'Dagonizer Archivist';
 const TIMEOUT_MS = 60_000;
 
 interface OpenAiToolCall {
@@ -59,20 +62,22 @@ interface OpenAiResponseBody {
   };
 }
 
-export interface CerebrasApiAdapterOptions {
+export interface OpenRouterApiAdapterOptions {
   readonly apiKey: string;
   readonly model?: string;
   readonly maxAttempts?: number;
 }
 
-export class CerebrasApiAdapter extends BaseAdapter {
+export class OpenRouterApiAdapter extends BaseAdapter {
   readonly #apiKey: string;
   readonly #model: string;
 
-  constructor(options: CerebrasApiAdapterOptions) {
+  constructor(options: OpenRouterApiAdapterOptions) {
     super({
-      'id': 'cerebras',
-      'displayName': 'Cerebras (gpt-oss-120b)',
+      'id': 'openrouter',
+      'displayName': 'OpenRouter (llama-3.3-70b free)',
+      // `:free` tier may downgrade to non-tool endpoints; treat as partial
+      // until per-route capability negotiation is in place.
       'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true },
       'maxAttempts': options.maxAttempts ?? 3,
     });
@@ -81,32 +86,8 @@ export class CerebrasApiAdapter extends BaseAdapter {
   }
 
   protected async performChat(request: ChatRequest): Promise<ChatResponse> {
-    // When tools are requested, attempt tool-enabled call first; fall back
-    // to plain chat if the model/endpoint signals tools are unsupported.
-    if (request.tools !== undefined && request.tools.length > 0) {
-      try {
-        return await this.#doFetch(request, true);
-      } catch (err) {
-        // If the error indicates tools are not supported by this model,
-        // silently retry without tools as a degraded plain-text call.
-        if (isToolsUnsupported(err)) {
-          return await this.#doFetch(request, false);
-        }
-        throw err;
-      }
-    }
-    return this.#doFetch(request, false);
-  }
-
-  protected override classify(error: unknown): ErrorClassification {
-    if (error instanceof LlmError) return error.classification;
-    if (error instanceof Error && /aborted|timeout/iu.test(error.message)) return Classifications['TIMEOUT'];
-    return Classifications['UNKNOWN'];
-  }
-
-  async #doFetch(request: ChatRequest, withTools: boolean): Promise<ChatResponse> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => { controller.abort(new Error('cerebras request timeout')); }, TIMEOUT_MS);
+    const timeoutId = setTimeout(() => { controller.abort(new Error('openrouter request timeout')); }, TIMEOUT_MS);
     const signal = request.signal !== undefined
       ? AbortSignal.any([request.signal, controller.signal])
       : controller.signal;
@@ -118,8 +99,10 @@ export class CerebrasApiAdapter extends BaseAdapter {
         'headers': {
           'content-type': 'application/json',
           'authorization': `Bearer ${this.#apiKey}`,
+          'HTTP-Referer': SITE_URL,
+          'X-Title': SITE_TITLE,
         },
-        'body': JSON.stringify(this.#buildBody(request, withTools)),
+        'body': JSON.stringify(this.#buildBody(request)),
         signal,
       });
     } catch (err) {
@@ -130,22 +113,28 @@ export class CerebrasApiAdapter extends BaseAdapter {
 
     if (!res.ok) {
       const text = await res.text();
-      throw new LlmError(`Cerebras REST ${String(res.status)}: ${text}`, classifyHttp(res.status, text));
+      throw new LlmError(`OpenRouter REST ${String(res.status)}: ${text}`, classifyHttp(res.status, text));
     }
 
     const payload = (await res.json()) as OpenAiResponseBody;
     return parseOpenAiResponse(payload);
   }
 
-  #buildBody(request: ChatRequest, withTools: boolean): Record<string, unknown> {
+  protected override classify(error: unknown): ErrorClassification {
+    if (error instanceof LlmError) return error.classification;
+    if (error instanceof Error && /aborted|timeout/iu.test(error.message)) return Classifications['TIMEOUT'];
+    return Classifications['UNKNOWN'];
+  }
+
+  #buildBody(request: ChatRequest): Record<string, unknown> {
     const body: Record<string, unknown> = {
       'model': this.#model,
       'messages': request.messages.map(toOpenAiMessage),
       'temperature': request.temperature ?? 0.2,
-      'max_completion_tokens': request.maxTokens ?? 512,
+      'max_tokens': request.maxTokens ?? 512,
     };
 
-    if (withTools && request.tools !== undefined && request.tools.length > 0) {
+    if (request.tools !== undefined && request.tools.length > 0) {
       body['tools'] = request.tools.map(toOpenAiTool);
       if (request.toolChoice !== undefined) {
         body['tool_choice'] = toOpenAiToolChoice(request.toolChoice);
@@ -156,12 +145,6 @@ export class CerebrasApiAdapter extends BaseAdapter {
 
     return body;
   }
-}
-
-function isToolsUnsupported(err: unknown): boolean {
-  if (!(err instanceof LlmError)) return false;
-  const msg = err.message.toLowerCase();
-  return msg.includes('tool') && (msg.includes('not supported') || msg.includes('unsupported'));
 }
 
 function toOpenAiMessage(message: ChatMessage): Record<string, unknown> {
@@ -211,7 +194,7 @@ function parseOpenAiResponse(payload: OpenAiResponseBody): ChatResponse {
     : choice?.finish_reason === 'length' ? 'length' : 'stop';
   return {
     'message': toolCalls.length > 0
-      ? { 'toolCalls': toolCalls, 'content': text.length === 0 ? undefined : text }
+      ? text.length === 0 ? { 'toolCalls': toolCalls } : { 'toolCalls': toolCalls, 'content': text }
       : { 'content': text },
     'finishReason': finishReason,
     ...(payload.usage !== undefined ? {

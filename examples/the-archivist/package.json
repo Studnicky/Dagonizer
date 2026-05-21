@@ -6,7 +6,15 @@
   "license": "MIT",
   "type": "module",
   "dependencies": {
-    "@noocodex/dagonizer": "workspace:^"
+    "@noocodex/dagonizer": "workspace:^",
+    "@noocodex/dagonizer-adapter-cerebras": "workspace:^",
+    "@noocodex/dagonizer-adapter-gemini-api": "workspace:^",
+    "@noocodex/dagonizer-adapter-gemini-nano": "workspace:^",
+    "@noocodex/dagonizer-adapter-groq": "workspace:^",
+    "@noocodex/dagonizer-adapter-mistral": "workspace:^",
+    "@noocodex/dagonizer-adapter-openrouter": "workspace:^",
+    "@noocodex/dagonizer-adapter-stub": "workspace:^",
+    "@noocodex/dagonizer-adapter-web-llm": "workspace:^"
   },
   "devDependencies": {
     "n3": "^2.0.3"

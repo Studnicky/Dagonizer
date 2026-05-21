@@ -151,7 +151,7 @@ export class GeminiApiAdapter extends BaseAdapter {
       : candidate?.finishReason === 'MAX_TOKENS' ? 'length' : 'stop';
     return {
       'message': toolCalls.length > 0
-        ? { 'toolCalls': toolCalls, 'content': text === '' ? undefined : text }
+        ? text === '' ? { 'toolCalls': toolCalls } : { 'toolCalls': toolCalls, 'content': text }
         : { 'content': text },
       'finishReason': finishReason,
       ...(payload.usageMetadata !== undefined ? {

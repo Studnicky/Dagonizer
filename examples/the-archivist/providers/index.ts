@@ -39,7 +39,7 @@ import {
   GroqApiAdapter,
   MistralApiAdapter,
   OpenRouterApiAdapter,
-  StubAdapter,
+  ArchivistStub,
   WebLlmAdapter,
   detectGeminiNano,
   detectWebGpu,
@@ -339,7 +339,7 @@ export function instantiateProvider(id: ProviderId, inputs: InstantiateInputs = 
       if (inputs.memoryStore === undefined) {
         throw new LlmError('stub requires a memoryStore so canned responses cite real seed-library titles', { 'reason': 'AUTH_FAILED', 'retryable': false });
       }
-      return new BaseLlmClient(new StubAdapter({ 'memoryStore': inputs.memoryStore }));
+      return new BaseLlmClient(new ArchivistStub({ 'memoryStore': inputs.memoryStore }));
     }
     default: {
       const exhaustive: never = id;
@@ -356,7 +356,7 @@ export {
   GroqApiAdapter,
   MistralApiAdapter,
   OpenRouterApiAdapter,
-  StubAdapter,
+  ArchivistStub,
   WebLlmAdapter,
   detectGeminiNano,
   detectWebGpu,

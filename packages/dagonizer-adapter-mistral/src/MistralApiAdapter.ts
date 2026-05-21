@@ -183,7 +183,7 @@ function parseOpenAiResponse(payload: OpenAiResponseBody): ChatResponse {
     : choice?.finish_reason === 'length' ? 'length' : 'stop';
   return {
     'message': toolCalls.length > 0
-      ? { 'toolCalls': toolCalls, 'content': text.length === 0 ? undefined : text }
+      ? text.length === 0 ? { 'toolCalls': toolCalls } : { 'toolCalls': toolCalls, 'content': text }
       : { 'content': text },
     'finishReason': finishReason,
     ...(payload.usage !== undefined ? {
