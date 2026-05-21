@@ -11,7 +11,7 @@
  * into `ToolCall[]`.
  */
 
-import { BaseAdapter } from '@noocodex/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder as ChatResponseMessage, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
 import type {
   ChatRequest,
   ChatResponse,
@@ -79,8 +79,8 @@ export class WebLlmAdapter extends BaseAdapter {
     // Tool-calling via JSON-coerce: inject a system message with the
     // tool-plan schema then ask for json_object.
     const messages = this.#buildMessages(request);
-    const wantsJson = (request.tools !== undefined && request.tools.length > 0)
-      || request.outputSchema !== undefined;
+    const wantsJson = (request.tools.length > 0)
+      || request.outputSchema.kind === 'schema';
 
     let result;
     try {
@@ -94,13 +94,13 @@ export class WebLlmAdapter extends BaseAdapter {
     }
 
     const raw = result.choices[0]?.message.content ?? '';
-
-    if (request.tools !== undefined && request.tools.length > 0) {
-      const calls = decodeToolCalls(raw);
-      if (calls.length > 0) return { 'message': { 'toolCalls': calls }, 'finishReason': 'tool_call' };
-    }
-
-    return { 'message': { 'content': raw.trim() }, 'finishReason': 'stop' };
+    const text = raw.trim();
+    const toolCalls = request.tools.length > 0 ? decodeToolCalls(raw) : [];
+    return {
+      'message': ChatResponseMessage.from(text, toolCalls),
+      'finishReason': toolCalls.length > 0 ? 'tool_call' : 'stop',
+      'usage': ZERO_TOKEN_USAGE,
+    };
   }
 
   protected override classify(error: unknown): ErrorClassification {
@@ -123,12 +123,12 @@ export class WebLlmAdapter extends BaseAdapter {
       }
     }
 
-    if (request.tools !== undefined && request.tools.length > 0) {
+    if (request.tools.length > 0) {
       messages.push({
         'role': 'system',
         'content': `You must respond with a JSON object of the form { "tool_calls": [{ "name": "...", "arguments": { ... } }] } using only these tool names: ${request.tools.map(quote).join(', ')}. Emit an empty array when no tool helps.`,
       });
-    } else if (request.outputSchema !== undefined) {
+    } else if (request.outputSchema.kind === 'schema') {
       messages.push({
         'role': 'system',
         'content': `You must respond with a JSON object that satisfies this JSON Schema: ${JSON.stringify(request.outputSchema.schema)}`,

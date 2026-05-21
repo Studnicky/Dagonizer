@@ -15,6 +15,8 @@
 import {
   asNetworkError,
   BaseAdapter,
+  ChatResponseMessageBuilder as ChatResponseMessage,
+  ZERO_TOKEN_USAGE,
   Classifications,
   classifyHttp,
   LlmError,
@@ -83,7 +85,7 @@ export class CerebrasApiAdapter extends BaseAdapter {
   protected async performChat(request: ChatRequest): Promise<ChatResponse> {
     // When tools are requested, attempt tool-enabled call first; fall back
     // to plain chat if the model/endpoint signals tools are unsupported.
-    if (request.tools !== undefined && request.tools.length > 0) {
+    if (request.tools.length > 0) {
       try {
         return await this.#doFetch(request, true);
       } catch (err) {
@@ -145,12 +147,12 @@ export class CerebrasApiAdapter extends BaseAdapter {
       'max_completion_tokens': request.maxTokens ?? 512,
     };
 
-    if (withTools && request.tools !== undefined && request.tools.length > 0) {
+    if (withTools && request.tools.length > 0) {
       body['tools'] = request.tools.map(toOpenAiTool);
       if (request.toolChoice !== undefined) {
         body['tool_choice'] = toOpenAiToolChoice(request.toolChoice);
       }
-    } else if (request.outputSchema !== undefined) {
+    } else if (request.outputSchema.kind === 'schema') {
       body['response_format'] = { 'type': 'json_object' };
     }
 
@@ -210,16 +212,11 @@ function parseOpenAiResponse(payload: OpenAiResponseBody): ChatResponse {
     ? 'tool_call'
     : choice?.finish_reason === 'length' ? 'length' : 'stop';
   return {
-    'message': toolCalls.length > 0
-      ? text.length === 0 ? { 'toolCalls': toolCalls } : { 'toolCalls': toolCalls, 'content': text }
-      : { 'content': text },
+    'message': ChatResponseMessage.from(text, toolCalls),
     'finishReason': finishReason,
-    ...(payload.usage !== undefined ? {
-      'usage': {
-        'promptTokens': payload.usage.prompt_tokens,
-        'completionTokens': payload.usage.completion_tokens,
-      } as { promptTokens?: number; completionTokens?: number },
-    } : {}),
+    'usage': payload.usage !== undefined
+      ? { 'promptTokens': payload.usage.prompt_tokens ?? 0, 'completionTokens': payload.usage.completion_tokens ?? 0 }
+      : ZERO_TOKEN_USAGE,
   };
 }
 

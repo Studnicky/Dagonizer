@@ -9,9 +9,10 @@
  * them to its native wire format (Gemini's `functionDeclarations`,
  * Nano's `responseConstraint`, WebLLM's `response_format`).
  *
- * Adapters are stateless from the caller's perspective: `chat()` is
- * the only entry point; `connect()` / `disconnect()` are optional
- * for adapters that need to spin up a session (Nano, WebLLM).
+ * Every field on `ChatRequest` / `ChatResponse` is required; module-level
+ * defaults fill the absent cases. This keeps V8 hidden classes
+ * monomorphic and removes the null-check tax from every call site.
+ * Construct requests via `ChatRequest.from(partial)` to fill defaults.
  *
  *   ┌──────────────────────────────────────────────────────────────┐
  *   │ Why an adapter and not just LlmClient methods?                │
@@ -27,10 +28,10 @@
 export interface ChatMessage {
   readonly role: 'system' | 'user' | 'assistant' | 'tool';
   readonly content: string;
-  /** When `role === 'tool'`, the id of the tool call this is responding to. */
-  readonly toolCallId?: string;
-  /** When `role === 'tool'`, the name of the tool that produced this content. */
-  readonly toolName?: string;
+  /** Empty string for non-tool messages. Tool messages carry the call id. */
+  readonly toolCallId: string;
+  /** Empty string for non-tool messages. Tool messages carry the tool name. */
+  readonly toolName: string;
 }
 
 /** Tool definition the model can choose to invoke. */
@@ -39,7 +40,7 @@ export interface ToolDefinition {
   readonly description: string;
   /** JSON Schema 2020-12 — sent to the provider verbatim. */
   readonly inputSchema: Record<string, unknown>;
-  readonly strict?: boolean;
+  readonly strict: boolean;
 }
 
 /** Tool invocation emitted by the model. */
@@ -56,15 +57,64 @@ export type ToolChoice =
   | { readonly type: 'none' }
   | { readonly type: 'tool';  readonly name: string };
 
-/** Optional JSON-schema constraint on the model's text response. */
-export interface OutputSchema {
-  readonly schema: Record<string, unknown>;
-  /** Stable id for the schema — providers may key caches off this. */
-  readonly id?: string;
+/**
+ * JSON-schema constraint on the model's text response. `kind: 'none'`
+ * means "no constraint" — keeps the union shape monomorphic instead of
+ * `OutputSchema | undefined`.
+ */
+export type OutputSchema =
+  | { readonly kind: 'none' }
+  | { readonly kind: 'schema'; readonly schema: Record<string, unknown>; readonly id: string };
+
+// ── Defaults ─────────────────────────────────────────────────────────────
+//
+// Module-level constants own the defaults. Producers fill them; consumers
+// see complete values and never have to coalesce `??`.
+
+export const DEFAULT_TOOL_CHOICE: ToolChoice = { 'type': 'auto' };
+export const DEFAULT_OUTPUT_SCHEMA: OutputSchema = { 'kind': 'none' };
+export const DEFAULT_MAX_TOKENS = 512;
+export const DEFAULT_TEMPERATURE = 0.2;
+
+/** A signal that never aborts — used when callers don't supply one. */
+const NEVER_ABORTING_SIGNAL: AbortSignal = new AbortController().signal;
+
+/** One adapter call — every field always present. */
+export interface ChatRequest {
+  readonly messages: readonly ChatMessage[];
+  readonly tools: readonly ToolDefinition[];
+  readonly toolChoice: ToolChoice;
+  readonly outputSchema: OutputSchema;
+  readonly maxTokens: number;
+  readonly temperature: number;
+  readonly signal: AbortSignal;
 }
 
-/** One adapter call. */
-export interface ChatRequest {
+/**
+ * ChatRequest builder. Fills defaults so callers can pass a partial
+ * literal and still get a complete, V8-monomorphic value.
+ *
+ *   const req = ChatRequest.from({ messages: [...] });
+ *
+ * `messages` is the only field with no sensible default — passing an
+ * empty array satisfies the type but produces no model output.
+ */
+export const ChatRequest = {
+  from(partial: PartialChatRequest): ChatRequest {
+    return {
+      'messages':     partial.messages,
+      'tools':        partial.tools        ?? [],
+      'toolChoice':   partial.toolChoice   ?? DEFAULT_TOOL_CHOICE,
+      'outputSchema': partial.outputSchema ?? DEFAULT_OUTPUT_SCHEMA,
+      'maxTokens':    partial.maxTokens    ?? DEFAULT_MAX_TOKENS,
+      'temperature':  partial.temperature  ?? DEFAULT_TEMPERATURE,
+      'signal':       partial.signal       ?? NEVER_ABORTING_SIGNAL,
+    };
+  },
+} as const;
+
+/** Loose-input shape for `ChatRequest.from`. Only `messages` is required. */
+export interface PartialChatRequest {
   readonly messages: readonly ChatMessage[];
   readonly tools?: readonly ToolDefinition[];
   readonly toolChoice?: ToolChoice;
@@ -74,17 +124,45 @@ export interface ChatRequest {
   readonly signal?: AbortSignal;
 }
 
-/** What the adapter returns. */
+/**
+ * The model's response, expressed as a discriminated union so every
+ * shape is monomorphic.
+ *
+ *   text  — pure prose. `content` is the message body, no tools called.
+ *   tools — model emitted one or more tool calls; no prose with them.
+ *   mixed — model emitted both prose and tool calls.
+ */
+export type ChatResponseMessage =
+  | { readonly kind: 'text';  readonly content: string }
+  | { readonly kind: 'tools'; readonly toolCalls: readonly ToolCall[] }
+  | { readonly kind: 'mixed'; readonly content: string; readonly toolCalls: readonly ToolCall[] };
+
+/**
+ * Construct a `ChatResponseMessage` from the parts an adapter has after
+ * parsing the provider response. Centralises the text/tools/mixed
+ * dispatch so every adapter calls one function.
+ */
+export const ChatResponseMessage = {
+  from(content: string, toolCalls: readonly ToolCall[]): ChatResponseMessage {
+    if (toolCalls.length === 0) return { 'kind': 'text', content };
+    if (content.length === 0) return { 'kind': 'tools', toolCalls };
+    return { 'kind': 'mixed', content, toolCalls };
+  },
+} as const;
+
+/** Token usage. Always present; zero when the provider doesn't report. */
+export interface TokenUsage {
+  readonly promptTokens: number;
+  readonly completionTokens: number;
+}
+
+export const ZERO_TOKEN_USAGE: TokenUsage = { 'promptTokens': 0, 'completionTokens': 0 };
+
+/** What the adapter returns — every field always present. */
 export interface ChatResponse {
-  readonly message: {
-    readonly content?: string;
-    readonly toolCalls?: readonly ToolCall[];
-  };
+  readonly message: ChatResponseMessage;
   readonly finishReason: 'stop' | 'length' | 'tool_call' | 'error';
-  readonly usage?: {
-    readonly promptTokens?: number;
-    readonly completionTokens?: number;
-  };
+  readonly usage: TokenUsage;
 }
 
 /**
@@ -102,8 +180,8 @@ export interface ChatResponse {
  *                 the data the tools would have fetched.
  *
  *   structuredOutput:
- *     true  — `outputSchema` is honored via native `response_format` /
- *             `responseConstraint` / Nano `outputSchema` etc.
+ *     true  — `outputSchema.kind === 'schema'` is honoured via native
+ *             `response_format` / `responseConstraint` / Nano `outputSchema`.
  *     false — schema is best-effort prose; downstream parsing must tolerate
  *             prose answers.
  *
@@ -123,7 +201,13 @@ export interface LlmAdapter {
   readonly displayName: string;
   readonly capabilities: AdapterCapabilities;
   chat(request: ChatRequest): Promise<ChatResponse>;
-  /** Optional — adapters that need a session (Nano, WebLLM) implement these. */
-  connect?(): Promise<void>;
-  disconnect?(): Promise<void>;
+  /**
+   * Bring up any per-session state (model download, websocket handshake).
+   * Adapters that don't need a session implement a no-op — `BaseAdapter`
+   * provides a default empty implementation so consumers don't branch
+   * on `connect` vs `undefined`.
+   */
+  connect(): Promise<void>;
+  /** Tear down any per-session state. No-op default on `BaseAdapter`. */
+  disconnect(): Promise<void>;
 }

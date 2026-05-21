@@ -13,7 +13,7 @@
  * `examples/the-archivist/providers/adapters/ArchivistStub.ts`.
  */
 
-import { BaseAdapter } from '@noocodex/dagonizer/adapter';
+import { BaseAdapter, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
 import type { ChatRequest, ChatResponse } from '@noocodex/dagonizer/adapter';
 
 export interface StubAdapterOptions {
@@ -41,8 +41,9 @@ export class StubAdapter extends BaseAdapter {
 
   protected async performChat(_request: ChatRequest): Promise<ChatResponse> {
     return Promise.resolve({
-      'message': { 'content': this.respond(_request) },
+      'message': { 'kind': 'text', 'content': this.respond(_request) },
       'finishReason': 'stop',
+      'usage': ZERO_TOKEN_USAGE,
     });
   }
 

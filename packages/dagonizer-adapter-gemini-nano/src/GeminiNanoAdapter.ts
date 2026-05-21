@@ -16,7 +16,7 @@
  * `finally` to release the on-device GPU buffer.
  */
 
-import { BaseAdapter } from '@noocodex/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder as ChatResponseMessage } from '@noocodex/dagonizer/adapter';
 import type {
   ChatRequest,
   ChatResponse,
@@ -89,9 +89,9 @@ export class GeminiNanoAdapter extends BaseAdapter {
     const session = await lm.create(initialPrompts === undefined ? undefined : { initialPrompts });
     try {
       const options: PromptOptions = {};
-      if (request.tools !== undefined && request.tools.length > 0) {
+      if (request.tools.length > 0) {
         options.responseConstraint = toolPlanSchema(request.tools);
-      } else if (request.outputSchema !== undefined) {
+      } else if (request.outputSchema.kind === 'schema') {
         options.responseConstraint = request.outputSchema.schema;
       }
 
@@ -102,14 +102,13 @@ export class GeminiNanoAdapter extends BaseAdapter {
         throw classifyNanoError(err);
       }
 
-      if (request.tools !== undefined && request.tools.length > 0) {
-        const calls = decodeToolCalls(raw);
-        if (calls.length > 0) {
-          return { 'message': { 'toolCalls': calls }, 'finishReason': 'tool_call' };
-        }
-      }
-
-      return { 'message': { 'content': raw.trim() }, 'finishReason': 'stop' };
+      const text = raw.trim();
+      const toolCalls: readonly ToolCall[] = request.tools.length > 0 ? decodeToolCalls(raw) : [];
+      return {
+        'message': ChatResponseMessage.from(text, toolCalls),
+        'finishReason': toolCalls.length > 0 ? 'tool_call' : 'stop',
+        'usage': { 'promptTokens': 0, 'completionTokens': 0 },
+      };
     } finally {
       session.destroy();
     }
@@ -131,7 +130,7 @@ function collapseUserMessages(request: ChatRequest): string {
   return request.messages
     .filter((m) => m.role !== 'system')
     .map((m) => {
-      if (m.role === 'tool') return `[tool ${m.toolName ?? 'unknown'}: ${m.content}]`;
+      if (m.role === 'tool') return `[tool ${m.toolName.length > 0 ? m.toolName : 'unknown'}: ${m.content}]`;
       return m.content;
     })
     .join('\n\n');

@@ -27,7 +27,19 @@ import { Classifications, LlmError, type ErrorClassification } from './LlmError.
 
 const MAX_QUOTA_WAIT_MS = 10_000;
 
+export const DEFAULT_MAX_ATTEMPTS = 3;
+export const DEFAULT_BASE_DELAY_MS = 400;
+
 export interface BaseAdapterOptions {
+  readonly id: string;
+  readonly displayName: string;
+  readonly capabilities: AdapterCapabilities;
+  readonly maxAttempts: number;
+  readonly baseDelayMs: number;
+}
+
+/** Loose-input shape for BaseAdapter — only id/displayName/capabilities required. */
+export interface PartialBaseAdapterOptions {
   readonly id: string;
   readonly displayName: string;
   readonly capabilities: AdapterCapabilities;
@@ -41,15 +53,25 @@ export abstract class BaseAdapter implements LlmAdapter {
   readonly capabilities: AdapterCapabilities;
   readonly #retry: RetryPolicy;
 
-  protected constructor(options: BaseAdapterOptions) {
+  protected constructor(options: PartialBaseAdapterOptions) {
     this.id = options.id;
     this.displayName = options.displayName;
     this.capabilities = options.capabilities;
     this.#retry = new RetryPolicy({
-      'maxAttempts': options.maxAttempts ?? 3,
+      'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
       'strategy':    BackoffStrategy.EXPONENTIAL,
-      'baseDelay':   options.baseDelayMs ?? 400,
+      'baseDelay':   options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS,
     });
+  }
+
+  /** No-op default. Subclasses with a session lifecycle override. */
+  async connect(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  /** No-op default. Subclasses with a session lifecycle override. */
+  async disconnect(): Promise<void> {
+    return Promise.resolve();
   }
 
   async chat(request: ChatRequest): Promise<ChatResponse> {

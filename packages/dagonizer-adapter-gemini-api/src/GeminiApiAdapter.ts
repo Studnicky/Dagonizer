@@ -19,7 +19,7 @@
  * taxonomy.
  */
 
-import { BaseAdapter } from '@noocodex/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder as ChatResponseMessage, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
 import type {
   ChatMessage,
   ChatRequest,
@@ -114,12 +114,12 @@ export class GeminiApiAdapter extends BaseAdapter {
     // the canonical wire format — we forward the JSON Schema as
     // `parameters`. When `tools` is set, the model decides whether to
     // emit `parts[].functionCall` based on the prompt + tool description.
-    if (request.tools !== undefined && request.tools.length > 0) {
+    if (request.tools.length > 0) {
       body['tools'] = [{ 'functionDeclarations': request.tools.map(toFunctionDeclaration) }];
       if (request.toolChoice !== undefined) {
         body['toolConfig'] = { 'functionCallingConfig': toGeminiToolConfig(request.toolChoice) };
       }
-    } else if (request.outputSchema !== undefined) {
+    } else if (request.outputSchema.kind === 'schema') {
       // Structured-output path — JSON Schema constrains the response
       // body to the requested shape. (Gemini honours `responseSchema` on
       // text models since v1beta.)
@@ -150,16 +150,14 @@ export class GeminiApiAdapter extends BaseAdapter {
       ? 'tool_call'
       : candidate?.finishReason === 'MAX_TOKENS' ? 'length' : 'stop';
     return {
-      'message': toolCalls.length > 0
-        ? text === '' ? { 'toolCalls': toolCalls } : { 'toolCalls': toolCalls, 'content': text }
-        : { 'content': text },
+      'message': ChatResponseMessage.from(text, toolCalls),
       'finishReason': finishReason,
-      ...(payload.usageMetadata !== undefined ? {
-        'usage': {
-          'promptTokens':     payload.usageMetadata.promptTokenCount,
-          'completionTokens': payload.usageMetadata.candidatesTokenCount,
-        } as { promptTokens?: number; completionTokens?: number },
-      } : {}),
+      'usage': payload.usageMetadata !== undefined
+        ? {
+          'promptTokens':     payload.usageMetadata.promptTokenCount ?? 0,
+          'completionTokens': payload.usageMetadata.candidatesTokenCount ?? 0,
+        }
+        : ZERO_TOKEN_USAGE,
     };
   }
 }

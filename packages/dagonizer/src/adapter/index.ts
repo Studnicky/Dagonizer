@@ -14,15 +14,32 @@ export type {
   ChatMessage,
   ChatRequest,
   ChatResponse,
+  ChatResponseMessage,
   LlmAdapter,
   OutputSchema,
+  PartialChatRequest,
+  TokenUsage,
   ToolCall,
   ToolChoice,
   ToolDefinition,
 } from './LlmAdapter.js';
 
-export { BaseAdapter } from './BaseAdapter.js';
-export type { BaseAdapterOptions } from './BaseAdapter.js';
+export {
+  ChatRequest as ChatRequestBuilder,
+  ChatResponseMessage as ChatResponseMessageBuilder,
+  DEFAULT_MAX_TOKENS,
+  DEFAULT_OUTPUT_SCHEMA,
+  DEFAULT_TEMPERATURE,
+  DEFAULT_TOOL_CHOICE,
+  ZERO_TOKEN_USAGE,
+} from './LlmAdapter.js';
+
+export {
+  BaseAdapter,
+  DEFAULT_BASE_DELAY_MS,
+  DEFAULT_MAX_ATTEMPTS,
+} from './BaseAdapter.js';
+export type { BaseAdapterOptions, PartialBaseAdapterOptions } from './BaseAdapter.js';
 
 export {
   asNetworkError,
