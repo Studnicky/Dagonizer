@@ -1,6 +1,6 @@
 # @noocodex/dagonizer-adapter-gemini-nano
 
-Chrome on-device Gemini Nano adapter for @noocodex/dagonizer.
+Chrome on-device Gemini Nano adapter for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Uses the [Chrome Prompt API](https://developer.chrome.com/docs/ai/prompt-api) (`window.LanguageModel`).
 
 ## Install
 
@@ -10,7 +10,34 @@ npm install @noocodex/dagonizer @noocodex/dagonizer-adapter-gemini-nano
 
 ## Usage
 
-See the [plugins guide](https://studnicky.github.io/Dagonizer/guide/plugins) and the [Archivist example](https://studnicky.github.io/Dagonizer/examples/the-archivist) for end-to-end composition.
+```ts
+import { GeminiNanoAdapter, detectGeminiNano } from '@noocodex/dagonizer-adapter-gemini-nano';
+
+const status = await detectGeminiNano(); // 'available' | 'downloadable' | 'downloading' | 'unavailable'
+if (status !== 'available') {
+  throw new Error(`Gemini Nano not ready: ${status}`);
+}
+
+const llm = new GeminiNanoAdapter();
+```
+
+## Browser requirements
+
+- Chrome 138+ stable (or earlier with `chrome://flags/#prompt-api-for-gemini-nano` enabled)
+- The ~2 GB on-device model — visit `chrome://components` to trigger the download
+- Desktop only — no mobile browser exposes the Prompt API
+
+## Capabilities
+
+```ts
+{ toolUse: 'none', structuredOutput: true, jsonMode: false }
+```
+
+Nano lacks a native function-calling channel. The adapter uses `responseConstraint` (JSON Schema constraint on the output) to emulate tool calls: it encodes the tool list as a `{ tool_calls: [...] }` schema and decodes the JSON response back into `ToolCall[]`. This works but is less reliable than native tool calling — `toolUse` is declared `'none'` to signal that pattern bases should prefer a different route when available.
+
+## Performance
+
+On-device inference; no network round-trip. Latency is ~100–500 ms for short prompts on Apple Silicon / modern Intel hardware. The model is small (~2 GB quantized) so context and reasoning depth are limited.
 
 ## License
 
