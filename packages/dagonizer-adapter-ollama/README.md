@@ -1,0 +1,58 @@
+# @noocodex/dagonizer-adapter-ollama
+
+Local-first Ollama adapter for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Targets the [Ollama daemon](https://ollama.com/) on the loopback by default; any model pulled to the host is selectable by name.
+
+## Install
+
+```bash
+npm install @noocodex/dagonizer @noocodex/dagonizer-adapter-ollama
+```
+
+Pull a model on the host:
+
+```bash
+ollama pull llama3.2
+# or any model you prefer — mistral, qwen2, gemma, codellama, etc.
+```
+
+## Usage
+
+```ts
+import { OllamaApiAdapter } from '@noocodex/dagonizer-adapter-ollama';
+import { ChatRequest } from '@noocodex/dagonizer/adapter';
+
+const llm = new OllamaApiAdapter({ model: 'llama3.2:latest' });
+
+const response = await llm.chat(ChatRequest.from({
+  messages: [{ role: 'user', content: 'Hello', toolCallId: '', toolName: '' }],
+}));
+```
+
+## Options
+
+| Option | Default | Notes |
+|---|---|---|
+| `model` | `llama3.2:latest` | Any model pulled on the host (`ollama list`) |
+| `baseUrl` | `http://127.0.0.1:11434` | Override for remote Ollama or proxy |
+| `apiKey` | `ollama` (placeholder) | Override only when proxying behind a gateway that enforces auth |
+| `maxAttempts` | 3 | Retry budget for transient failures |
+
+## Capabilities
+
+```ts
+{ toolUse: 'partial', structuredOutput: true, jsonMode: true }
+```
+
+Tool-call adherence varies sharply by model. Llama 3.2 and 3.3 produce well-formed `tool_calls` most of the time; older or smaller models (qwen2 7B, gemma 2B) may emit malformed calls or refuse silently. Validate `tool_calls.arguments` against the declared `inputSchema` aggressively, or set `toolChoice: { type: 'none' }` to bypass tool routing when the model is unreliable.
+
+## Wire format
+
+- Endpoint: `POST <baseUrl>/v1/chat/completions` (Ollama's OpenAI-compatible surface)
+- Token cap field: `max_tokens`
+- Headers: `Authorization: Bearer <apiKey>` (placeholder by default), `Content-Type: application/json`
+
+Ollama-native options that the OpenAI surface doesn't expose (`keep_alive`, `num_ctx`, `num_predict`) are configured at the daemon or model layer rather than per-request.
+
+## License
+
+MIT

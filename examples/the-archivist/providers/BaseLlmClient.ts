@@ -14,7 +14,9 @@ import type { MemoryDigest } from '../ArchivistState.ts';
 import type { Candidate } from '../entities/Book.ts';
 import type { ClassifiedIntent, LlmClient, ScoredCandidate } from '../services.ts';
 
-import type { ChatRequest, LlmAdapter, ToolDefinition } from '@noocodex/dagonizer/adapter';
+import type { LlmAdapter, ToolDefinition } from '@noocodex/dagonizer/adapter';
+import { ChatRequestBuilder } from '@noocodex/dagonizer/adapter';
+import type { ChatResponseMessage } from '@noocodex/dagonizer/adapter';
 import { prompts, schemas } from './prompts.ts';
 
 // Order matters: longer / more-specific labels appear BEFORE their
@@ -65,27 +67,27 @@ export class BaseLlmClient implements LlmClient {
     available: readonly { name: string; description: string; inputSchema: Record<string, unknown> }[],
   ): Promise<readonly { name: string; arguments: Record<string, unknown> }[]> {
     if (available.length === 0) return [];
-    const request: ChatRequest = {
-      'messages': [{ 'role': 'user', 'content': prompts.decideTools(query) }],
+    const request = ChatRequestBuilder.from({
+      'messages': [{ 'role': 'user', 'content': prompts.decideTools(query), 'toolCallId': '', 'toolName': '' }],
       'tools':      available as readonly ToolDefinition[],
       'toolChoice': { 'type': 'auto' },
       'temperature': 0.1,
       'maxTokens':   512,
-    };
+    });
     const response = await this.adapter.chat(request);
-    return (response.message.toolCalls ?? []).map((c) => ({ 'name': c.name, 'arguments': c.arguments }));
+    return toolCallsOf(response.message).map((c) => ({ 'name': c.name, 'arguments': c.arguments }));
   }
 
   async rankCandidates(query: string, candidates: readonly Candidate[]): Promise<readonly ScoredCandidate[]> {
     if (candidates.length === 0) return [];
-    const request: ChatRequest = {
-      'messages':     [{ 'role': 'user', 'content': prompts.rankCandidates(query, candidates) }],
-      'outputSchema': { 'schema': schemas.rankCandidates, 'id': 'archivist-rank-v1' },
+    const request = ChatRequestBuilder.from({
+      'messages':     [{ 'role': 'user', 'content': prompts.rankCandidates(query, candidates), 'toolCallId': '', 'toolName': '' }],
+      'outputSchema': { 'kind': 'schema', 'schema': schemas.rankCandidates, 'id': 'archivist-rank-v1' },
       'temperature':  0.1,
       'maxTokens':    1024,
-    };
+    });
     const response = await this.adapter.chat(request);
-    const raw = response.message.content ?? '';
+    const raw = contentOf(response.message);
     type Ranking = { isbn?: string; score?: number; reason?: string } & Record<string, unknown>;
     let rankings: readonly Ranking[] = [];
     try {
@@ -205,11 +207,20 @@ export class BaseLlmClient implements LlmClient {
   }
 
   async #text(prompt: string): Promise<string> {
-    const response = await this.adapter.chat({
-      'messages':    [{ 'role': 'user', 'content': prompt }],
+    const response = await this.adapter.chat(ChatRequestBuilder.from({
+      'messages':    [{ 'role': 'user', 'content': prompt, 'toolCallId': '', 'toolName': '' }],
       'temperature': 0.2,
       'maxTokens':   512,
-    });
-    return response.message.content ?? '';
+    }));
+    return contentOf(response.message);
   }
+}
+
+/** Discriminated-union accessors for the new ChatResponse.message shape. */
+function contentOf(msg: ChatResponseMessage): string {
+  return msg.kind === 'tools' ? '' : msg.content;
+}
+
+function toolCallsOf(msg: ChatResponseMessage): readonly { name: string; arguments: Record<string, unknown> }[] {
+  return msg.kind === 'text' ? [] : msg.toolCalls;
 }
