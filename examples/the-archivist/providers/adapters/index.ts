@@ -1,8 +1,14 @@
 /**
- * Adapters barrel — every `LlmAdapter` implementation + shared types.
+ * Adapters barrel — re-exports each adapter from its plugin package
+ * plus the Archivist-grounded stub subclass that lives in the example.
+ *
+ * Contract types (LlmAdapter, ChatRequest, etc.) and BaseAdapter come
+ * from `@noocodex/dagonizer/adapter`. Concrete provider adapters live
+ * in their own `@noocodex/dagonizer-adapter-*` packages.
  */
 
 export type {
+  AdapterCapabilities,
   ChatMessage,
   ChatRequest,
   ChatResponse,
@@ -11,28 +17,35 @@ export type {
   ToolCall,
   ToolChoice,
   ToolDefinition,
-} from './LlmAdapter.ts';
+} from '@noocodex/dagonizer/adapter';
 
 export {
-  Classifications,
-  LlmError,
   asNetworkError,
+  BaseAdapter,
+  Classifications,
   classifyHttp,
-  type ErrorClassification,
-  type LlmErrorReason,
-} from './LlmError.ts';
+  LlmError,
+} from '@noocodex/dagonizer/adapter';
+export type { ErrorClassification } from '@noocodex/dagonizer/adapter';
 
-export { BaseAdapter } from './BaseAdapter.ts';
+export { CerebrasApiAdapter }       from '@noocodex/dagonizer-adapter-cerebras';
+export type { CerebrasApiAdapterOptions } from '@noocodex/dagonizer-adapter-cerebras';
+export { GeminiApiAdapter }         from '@noocodex/dagonizer-adapter-gemini-api';
+export type { GeminiApiAdapterOptions } from '@noocodex/dagonizer-adapter-gemini-api';
+export { GeminiNanoAdapter, detectGeminiNano } from '@noocodex/dagonizer-adapter-gemini-nano';
+export type { GeminiNanoAvailability } from '@noocodex/dagonizer-adapter-gemini-nano';
+export { GroqApiAdapter }           from '@noocodex/dagonizer-adapter-groq';
+export type { GroqApiAdapterOptions } from '@noocodex/dagonizer-adapter-groq';
+export { MistralApiAdapter }        from '@noocodex/dagonizer-adapter-mistral';
+export type { MistralApiAdapterOptions } from '@noocodex/dagonizer-adapter-mistral';
+export { OpenRouterApiAdapter }     from '@noocodex/dagonizer-adapter-openrouter';
+export type { OpenRouterApiAdapterOptions } from '@noocodex/dagonizer-adapter-openrouter';
+export { StubAdapter }              from '@noocodex/dagonizer-adapter-stub';
+export type { StubAdapterOptions }  from '@noocodex/dagonizer-adapter-stub';
+export { WebLlmAdapter, detectWebGpu } from '@noocodex/dagonizer-adapter-web-llm';
+export type { WebLlmAdapterOptions, WebLlmInitReport } from '@noocodex/dagonizer-adapter-web-llm';
 
-export { CerebrasApiAdapter, type CerebrasApiAdapterOptions } from './CerebrasApiAdapter.ts';
-export { GeminiApiAdapter, type GeminiApiAdapterOptions } from './GeminiApiAdapter.ts';
-export {
-  GeminiNanoAdapter,
-  detectGeminiNano,
-  type GeminiNanoAvailability,
-} from './GeminiNanoAdapter.ts';
-export { GroqApiAdapter, type GroqApiAdapterOptions } from './GroqApiAdapter.ts';
-export { MistralApiAdapter, type MistralApiAdapterOptions } from './MistralApiAdapter.ts';
-export { OpenRouterApiAdapter, type OpenRouterApiAdapterOptions } from './OpenRouterApiAdapter.ts';
-export { StubAdapter } from './StubAdapter.ts';
-export { WebLlmAdapter, detectWebGpu, type WebLlmAdapterOptions, type WebLlmInitReport } from './WebLlmAdapter.ts';
+// Archivist-grounded stub subclass — stays in the example since it depends
+// on the Archivist's SeedLibrary + MemoryStore.
+export { ArchivistStub } from './ArchivistStub.js';
+export type { ArchivistStubOptions } from './ArchivistStub.js';

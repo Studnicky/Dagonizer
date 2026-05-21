@@ -17,7 +17,7 @@
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
-import { CanonicalId } from '../tools/CanonicalId.ts';
+import { CanonicalId } from '@noocodex/dagonizer-tool-openlibrary';
 
 import type { NodeInterface } from '@noocodex/dagonizer';
 

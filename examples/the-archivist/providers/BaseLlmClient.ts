@@ -14,7 +14,7 @@ import type { MemoryDigest } from '../ArchivistState.ts';
 import type { Candidate } from '../entities/Book.ts';
 import type { ClassifiedIntent, LlmClient, ScoredCandidate } from '../services.ts';
 
-import type { ChatRequest, LlmAdapter, ToolDefinition } from './adapters/LlmAdapter.ts';
+import type { ChatRequest, LlmAdapter, ToolDefinition } from '@noocodex/dagonizer/adapter';
 import { prompts, schemas } from './prompts.ts';
 
 // Order matters: longer / more-specific labels appear BEFORE their
