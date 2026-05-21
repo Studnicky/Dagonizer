@@ -30,10 +30,11 @@
  *     (e.g. `lang`, `first_publish_year`) without a schema change.
  */
 
-import type { Candidate } from '../entities/Book.ts';
+import type { Candidate } from './entities.js';
 
-import { CanonicalId } from './CanonicalId.ts';
-import type { Tool, ToolDefinition } from './ToolDefinition.ts';
+import { CanonicalId } from './CanonicalId.js';
+import type { Tool } from '@noocodex/dagonizer/tool';
+import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
 
 interface OpenLibraryDoc {
   readonly title?: string;
@@ -119,7 +120,7 @@ export const SubjectSearchTool: Tool<SubjectSearchInput, readonly Candidate[]> =
       const canonical = CanonicalId.pick({
         'isbns':   isbns,
         'title':   doc.title,
-        'authors': doc.author_name,
+        ...(doc.author_name !== undefined ? { 'authors': doc.author_name } : {}),
       });
       const summary = pickDescription(doc);
       const subjects = doc.subject?.slice(0, 8);

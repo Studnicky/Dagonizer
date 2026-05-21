@@ -56,10 +56,10 @@ import {
 } from './providers/adapters/index.ts';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
 import type { ArchivistServices, LlmClient } from './services.ts';
-import { GoogleBooksTool } from './tools/GoogleBooksTool.ts';
-import { OpenLibrarySearchTool } from './tools/OpenLibrarySearchTool.ts';
-import { SubjectSearchTool } from './tools/SubjectSearchTool.ts';
-import { WikipediaSummaryTool } from './tools/WikipediaSummaryTool.ts';
+import { GoogleBooksTool } from '@noocodex/dagonizer-tool-googlebooks';
+import { OpenLibrarySearchTool } from '@noocodex/dagonizer-tool-openlibrary';
+import { SubjectSearchTool } from '@noocodex/dagonizer-tool-openlibrary';
+import { WikipediaSummaryTool } from '@noocodex/dagonizer-tool-wikipedia';
 
 import { Dagonizer } from '@noocodex/dagonizer';
 

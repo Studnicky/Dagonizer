@@ -31,9 +31,9 @@
  * the same query text so the fan-out actually fans out.
  */
 
-import { GoogleBooksTool } from '../tools/GoogleBooksTool.ts';
-import { OpenLibrarySearchTool } from '../tools/OpenLibrarySearchTool.ts';
-import { SubjectSearchTool } from '../tools/SubjectSearchTool.ts';
+import { GoogleBooksTool } from '@noocodex/dagonizer-tool-googlebooks';
+import { OpenLibrarySearchTool } from '@noocodex/dagonizer-tool-openlibrary';
+import { SubjectSearchTool } from '@noocodex/dagonizer-tool-openlibrary';
 
 import type { ArchivistNode } from './ArchivistNode.ts';
 

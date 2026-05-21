@@ -1,16 +1,15 @@
 /**
- * Tools barrel — every Archivist collection tool + the shared contract.
- *
- * Tools are pure data-acquisition adapters. Every tool returns
- * `readonly Candidate[]` with a normalized `book.isbn` canonical id so
- * `CanonicalId.dedupe` (or the merge node) can collapse cross-source
- * duplicates into one richer candidate carrying multiple `sources[]`.
+ * Tools barrel — every Archivist collection tool is now a plugin package.
+ * Kept as a re-export so existing example imports continue to work.
  */
 
-export type { Tool, ToolCall, ToolDefinition, ToolOutcome } from './ToolDefinition.ts';
+export type { Tool } from '@noocodex/dagonizer/tool';
+export type { ToolCall, ToolDefinition } from '@noocodex/dagonizer/adapter';
 
-export { CanonicalId } from './CanonicalId.ts';
-export { OpenLibrarySearchTool } from './OpenLibrarySearchTool.ts';
-export { GoogleBooksTool }       from './GoogleBooksTool.ts';
-export { SubjectSearchTool }     from './SubjectSearchTool.ts';
-export { WikipediaSummaryTool }  from './WikipediaSummaryTool.ts';
+export {
+  CanonicalId,
+  OpenLibrarySearchTool,
+  SubjectSearchTool,
+} from '@noocodex/dagonizer-tool-openlibrary';
+export { GoogleBooksTool }      from '@noocodex/dagonizer-tool-googlebooks';
+export { WikipediaSummaryTool } from '@noocodex/dagonizer-tool-wikipedia';

@@ -18,7 +18,7 @@
  * list, and the union of `sources[]` and `notes`.
  */
 
-import type { Candidate } from '../entities/Book.ts';
+import type { Candidate } from './entities.js';
 
 export class CanonicalId {
   /** Pick the best id from an array of possible ISBNs. */

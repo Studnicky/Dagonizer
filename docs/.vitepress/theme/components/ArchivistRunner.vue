@@ -55,10 +55,10 @@ import { detectBackends, hasNoRunnableModel, instantiateProvider, loadApiKeys, p
 import { MobileDetection } from '../../../../examples/the-archivist/providers/MobileDetection.ts';
 import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
 import type { ArchivistServices } from '../../../../examples/the-archivist/services.ts';
-import { GoogleBooksTool } from '../../../../examples/the-archivist/tools/GoogleBooksTool.ts';
-import { OpenLibrarySearchTool } from '../../../../examples/the-archivist/tools/OpenLibrarySearchTool.ts';
-import { SubjectSearchTool } from '../../../../examples/the-archivist/tools/SubjectSearchTool.ts';
-import { WikipediaSummaryTool } from '../../../../examples/the-archivist/tools/WikipediaSummaryTool.ts';
+import { GoogleBooksTool } from '@noocodex/dagonizer-tool-googlebooks';
+import { OpenLibrarySearchTool } from '@noocodex/dagonizer-tool-openlibrary';
+import { SubjectSearchTool } from '@noocodex/dagonizer-tool-openlibrary';
+import { WikipediaSummaryTool } from '@noocodex/dagonizer-tool-wikipedia';
 import {
   BookSearchFanoutDAG,
   registerBookSearchFanoutNodes,

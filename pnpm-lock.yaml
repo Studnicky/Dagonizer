@@ -8,6 +8,42 @@ importers:
 
   .:
     devDependencies:
+      '@noocodex/dagonizer':
+        specifier: workspace:^
+        version: link:packages/dagonizer
+      '@noocodex/dagonizer-adapter-cerebras':
+        specifier: workspace:^
+        version: link:packages/dagonizer-adapter-cerebras
+      '@noocodex/dagonizer-adapter-gemini-api':
+        specifier: workspace:^
+        version: link:packages/dagonizer-adapter-gemini-api
+      '@noocodex/dagonizer-adapter-gemini-nano':
+        specifier: workspace:^
+        version: link:packages/dagonizer-adapter-gemini-nano
+      '@noocodex/dagonizer-adapter-groq':
+        specifier: workspace:^
+        version: link:packages/dagonizer-adapter-groq
+      '@noocodex/dagonizer-adapter-mistral':
+        specifier: workspace:^
+        version: link:packages/dagonizer-adapter-mistral
+      '@noocodex/dagonizer-adapter-openrouter':
+        specifier: workspace:^
+        version: link:packages/dagonizer-adapter-openrouter
+      '@noocodex/dagonizer-adapter-stub':
+        specifier: workspace:^
+        version: link:packages/dagonizer-adapter-stub
+      '@noocodex/dagonizer-adapter-web-llm':
+        specifier: workspace:^
+        version: link:packages/dagonizer-adapter-web-llm
+      '@noocodex/dagonizer-tool-googlebooks':
+        specifier: workspace:^
+        version: link:packages/dagonizer-tool-googlebooks
+      '@noocodex/dagonizer-tool-openlibrary':
+        specifier: workspace:^
+        version: link:packages/dagonizer-tool-openlibrary
+      '@noocodex/dagonizer-tool-wikipedia':
+        specifier: workspace:^
+        version: link:packages/dagonizer-tool-wikipedia
       tsx:
         specifier: ^4.20.0
         version: 4.22.3
@@ -44,6 +80,15 @@ importers:
       '@noocodex/dagonizer-adapter-web-llm':
         specifier: workspace:^
         version: link:../../packages/dagonizer-adapter-web-llm
+      '@noocodex/dagonizer-tool-googlebooks':
+        specifier: workspace:^
+        version: link:../../packages/dagonizer-tool-googlebooks
+      '@noocodex/dagonizer-tool-openlibrary':
+        specifier: workspace:^
+        version: link:../../packages/dagonizer-tool-openlibrary
+      '@noocodex/dagonizer-tool-wikipedia':
+        specifier: workspace:^
+        version: link:../../packages/dagonizer-tool-wikipedia
     devDependencies:
       n3:
         specifier: ^2.0.3
@@ -156,6 +201,24 @@ importers:
         version: link:../dagonizer
 
   packages/dagonizer-adapter-web-llm:
+    dependencies:
+      '@noocodex/dagonizer':
+        specifier: workspace:^
+        version: link:../dagonizer
+
+  packages/dagonizer-tool-googlebooks:
+    dependencies:
+      '@noocodex/dagonizer':
+        specifier: workspace:^
+        version: link:../dagonizer
+
+  packages/dagonizer-tool-openlibrary:
+    dependencies:
+      '@noocodex/dagonizer':
+        specifier: workspace:^
+        version: link:../dagonizer
+
+  packages/dagonizer-tool-wikipedia:
     dependencies:
       '@noocodex/dagonizer':
         specifier: workspace:^

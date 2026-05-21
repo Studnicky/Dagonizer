@@ -24,9 +24,10 @@
  * cite in its prose response.
  */
 
-import type { Candidate } from '../entities/Book.ts';
+import type { Candidate } from './entities.js';
 
-import type { Tool, ToolDefinition } from './ToolDefinition.ts';
+import type { Tool } from '@noocodex/dagonizer/tool';
+import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
 
 interface OpenLibraryDoc {
   readonly title?: string;

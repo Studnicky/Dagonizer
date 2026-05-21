@@ -34,6 +34,18 @@
     "example:derive": "tsx examples/derive.ts"
   },
   "devDependencies": {
+    "@noocodex/dagonizer": "workspace:^",
+    "@noocodex/dagonizer-adapter-cerebras": "workspace:^",
+    "@noocodex/dagonizer-adapter-gemini-api": "workspace:^",
+    "@noocodex/dagonizer-adapter-gemini-nano": "workspace:^",
+    "@noocodex/dagonizer-adapter-groq": "workspace:^",
+    "@noocodex/dagonizer-adapter-mistral": "workspace:^",
+    "@noocodex/dagonizer-adapter-openrouter": "workspace:^",
+    "@noocodex/dagonizer-adapter-stub": "workspace:^",
+    "@noocodex/dagonizer-adapter-web-llm": "workspace:^",
+    "@noocodex/dagonizer-tool-googlebooks": "workspace:^",
+    "@noocodex/dagonizer-tool-openlibrary": "workspace:^",
+    "@noocodex/dagonizer-tool-wikipedia": "workspace:^",
     "tsx": "^4.20.0",
     "vitepress": "^1.6.4"
   },

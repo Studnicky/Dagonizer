@@ -14,10 +14,11 @@
  * could poison the model's output).
  */
 
-import type { Candidate } from '../entities/Book.ts';
+import type { Candidate } from './entities.js';
 
-import { CanonicalId } from './CanonicalId.ts';
-import type { Tool, ToolDefinition } from './ToolDefinition.ts';
+import { CanonicalId } from './CanonicalId.js';
+import type { Tool } from '@noocodex/dagonizer/tool';
+import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
 
 interface VolumeInfo {
   readonly title?:           string;
@@ -110,7 +111,7 @@ export const GoogleBooksTool: Tool<GoogleBooksInput, readonly Candidate[]> = {
       const canonical = CanonicalId.pick({
         'isbns': isbns,
         'title': info.title,
-        'authors': info.authors,
+        ...(info.authors !== undefined ? { 'authors': info.authors } : {}),
       });
       const year = pickYear(info.publishedDate);
       const notes: Record<string, unknown> = { '_sources': ['google-books'] };

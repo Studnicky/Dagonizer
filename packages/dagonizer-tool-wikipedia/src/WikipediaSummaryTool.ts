@@ -13,10 +13,11 @@
  * if other tools already returned a book with the same canonical id.
  */
 
-import type { Candidate } from '../entities/Book.ts';
+import type { Candidate } from './entities.js';
 
-import { CanonicalId } from './CanonicalId.ts';
-import type { Tool, ToolDefinition } from './ToolDefinition.ts';
+import { CanonicalId } from './CanonicalId.js';
+import type { Tool } from '@noocodex/dagonizer/tool';
+import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
 
 interface WikiSummary {
   readonly title?:           string;
