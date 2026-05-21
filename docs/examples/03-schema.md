@@ -61,7 +61,7 @@ The `#tool-schema` region covers the `definition` constant — the tool name, de
 
 Every tool produces `Candidate[]` with a `book.isbn` field set by `CanonicalId.pick`. The same work indexed by OpenLibrary key, Google Books volumeId, and Wikipedia title still deduplicates because `CanonicalId` normalises all three to one stable identifier:
 
-<<< ../../packages/dagonizer-tool-openlibrary/src/CanonicalId.ts
+<<< ../../packages/dagonizer-book-entities/src/CanonicalId.ts
 
 ## What it demonstrates
 
