@@ -18,3 +18,16 @@ export { ComposeNode } from './ComposeNode.js';
 
 export { ScoutNode } from './ScoutNode.js';
 export type { ScoutServices } from './ScoutNode.js';
+
+// Named leaves — narrow TChoice / output port for the common cases.
+export {
+  ClassifyIntentNode,
+  ComposeEmptyResponseNode,
+  ComposeMemoryResponseNode,
+  ComposeResponseNode,
+  DecideToolsNode,
+  DeclineNode,
+  RankCandidatesNode,
+  ValidateResponseNode,
+} from './leaves.js';
+export type { Score } from './leaves.js';
