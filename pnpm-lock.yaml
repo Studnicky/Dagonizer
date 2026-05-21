@@ -29,6 +29,9 @@ importers:
       '@noocodex/dagonizer-adapter-mistral':
         specifier: workspace:^
         version: link:packages/dagonizer-adapter-mistral
+      '@noocodex/dagonizer-adapter-ollama':
+        specifier: workspace:^
+        version: link:packages/dagonizer-adapter-ollama
       '@noocodex/dagonizer-adapter-openrouter':
         specifier: workspace:^
         version: link:packages/dagonizer-adapter-openrouter
@@ -86,6 +89,9 @@ importers:
       '@noocodex/dagonizer-adapter-mistral':
         specifier: workspace:^
         version: link:../../packages/dagonizer-adapter-mistral
+      '@noocodex/dagonizer-adapter-ollama':
+        specifier: workspace:^
+        version: link:../../packages/dagonizer-adapter-ollama
       '@noocodex/dagonizer-adapter-openrouter':
         specifier: workspace:^
         version: link:../../packages/dagonizer-adapter-openrouter
@@ -217,6 +223,16 @@ importers:
         version: 25.9.1
 
   packages/dagonizer-adapter-mistral:
+    dependencies:
+      '@noocodex/dagonizer':
+        specifier: workspace:^
+        version: link:../dagonizer
+    devDependencies:
+      '@types/node':
+        specifier: ^25.2.0
+        version: 25.9.1
+
+  packages/dagonizer-adapter-ollama:
     dependencies:
       '@noocodex/dagonizer':
         specifier: workspace:^
