@@ -91,6 +91,10 @@
       "default": "./dist/patterns/index.js",
       "types": "./dist/patterns/index.d.ts"
     },
+    "./tool": {
+      "default": "./dist/tool/index.js",
+      "types": "./dist/tool/index.d.ts"
+    },
     "./errors": {
       "default": "./dist/errors/index.js",
       "types": "./dist/errors/index.d.ts"

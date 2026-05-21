@@ -1,0 +1,45 @@
+/**
+ * ToolError — narrow error class for tool-execution failures.
+ *
+ * Tools throw `ToolError` so the dispatcher can route to the
+ * appropriate output port without losing the failure classification.
+ * The `reason` field mirrors the LLM-side classification taxonomy in
+ * `@noocodex/dagonizer/adapter`'s `LlmError` so downstream observability
+ * sees a consistent vocabulary regardless of whether the failure was
+ * model-side or tool-side.
+ */
+
+export type ToolErrorReason =
+  | 'NETWORK'
+  | 'HTTP_4XX'
+  | 'HTTP_5XX'
+  | 'RATE_LIMIT'
+  | 'TIMEOUT'
+  | 'PARSE_ERROR'
+  | 'INVALID_INPUT'
+  | 'UNKNOWN';
+
+export interface ToolErrorOptions {
+  readonly reason: ToolErrorReason;
+  readonly retryable: boolean;
+  /** HTTP status code when applicable. */
+  readonly status?: number;
+  /** Cause chain — original error if wrapped. */
+  readonly cause?: unknown;
+}
+
+export class ToolError extends Error {
+  readonly reason: ToolErrorReason;
+  readonly retryable: boolean;
+  readonly status?: number;
+
+  constructor(message: string, options: ToolErrorOptions) {
+    const opts: ErrorOptions = {};
+    if (options.cause !== undefined) opts.cause = options.cause;
+    super(message, opts);
+    this.name = 'ToolError';
+    this.reason = options.reason;
+    this.retryable = options.retryable;
+    if (options.status !== undefined) this.status = options.status;
+  }
+}
