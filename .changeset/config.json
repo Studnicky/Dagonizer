@@ -8,7 +8,6 @@
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "ignore": [
-    "@noocodex/the-archivist-example",
-    "@noocodex/dagonizer-workspace"
+    "@noocodex/the-archivist-example"
   ]
 }
