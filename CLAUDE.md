@@ -24,6 +24,33 @@ stack — consumers extend and compose, never patch.
 ⦿ **Submodule exports are part of the public API.** Every public
   type, interface, schema, and class ships through a documented
   subpath import.
+⦿ **Required-with-defaults over optional/undefined.** Optional fields
+  (`T | undefined`, `field?:`, `arg?:`) are a tax: every consumer pays
+  it forever in null-checks, every type narrowing has to handle the
+  absent case, and the absent case is usually just a default the
+  producer forgot to fill in. Prefer one of:
+    1. Required field + module-level default constant. The producer
+       fills the default; the consumer never sees absence.
+    2. Static `noun.from(partial)` factory that materialises a complete
+       value from a partial input. Defaults live in one place.
+    3. Discriminated union when "absent" really means "different shape"
+       (e.g. text response vs tool-call response).
+  Optional is acceptable only at genuine system boundaries (JSON input
+  the dispatcher hasn't narrowed yet, explicit `null` for "no value
+  exists" sentinels). Inside the engine, `T` not `T | undefined`.
+  This dovetails with `exactOptionalPropertyTypes: true` in the base
+  tsconfig — both rules push toward "if the property is declared, it's
+  there with a real value."
+⦿ **V8 shape stability.** Object shape (key set, key order, property
+  types) is part of the contract. Initialise every property in the
+  constructor in declaration order; never add or delete properties
+  after construction; never assign a value of a different type to a
+  property. Optional/undefined breaks shape consistency — every
+  instance with the property has one hidden class, every instance
+  without has another, and V8 falls back to dictionary mode. The
+  required-with-defaults rule above is the primary lever; classes for
+  hot-path entities, consistent constructor order, and avoiding `as
+  any` casts close the rest of the gap.
 
 ## Three-tier interface taxonomy
 

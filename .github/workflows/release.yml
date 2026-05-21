@@ -1,92 +1,67 @@
-name: Publish GitHub release
+name: Release
 
-# Fires when a version tag is pushed. Reads the matching CHANGELOG section
-# and the per-tag dagonizer-node.svg, composes a release body, and creates or
-# updates the GitHub release. The SVG URL uses the tag ref so each release
-# page renders the version that was stamped at tag time.
+# Two-stage flow per RFC 0001 Phase 8:
+#
+#   1. On push to main: open or update a "Version Packages" PR via
+#      changesets. The PR aggregates every accumulated changeset,
+#      bumps each affected package's version, regenerates per-package
+#      CHANGELOGs, and refreshes the lockfile.
+#   2. When that PR merges: each package whose version differs from
+#      the npm registry gets published. Tags are pushed for each
+#      released package (e.g. `@noocodex/dagonizer-adapter-groq@0.1.1`).
+#
+# Independent versioning: a bug fix to one adapter bumps that package
+# only; other packages stay where they are.
 
 on:
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag to (re)publish a release for (e.g. v0.4.1)'
-        required: true
+    branches: [main]
+  workflow_dispatch: {}
 
 permissions:
   contents: write
+  pull-requests: write
+  id-token: write
 
 jobs:
-  publish:
+  release:
+    name: Version + Publish
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Resolve tag
-        id: tag
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG='${{ inputs.tag }}'
-          else
-            TAG="${GITHUB_REF#refs/tags/}"
-          fi
-          VERSION="${TAG#v}"
-          echo "tag=$TAG"         >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
 
-      - name: Verify stamped SVG matches tag version
-        run: |
-          STAMPED=$(grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' docs/public/dagonizer-node.svg | head -1 || true)
-          EXPECTED='${{ steps.tag.outputs.tag }}'
-          if [ "$STAMPED" != "$EXPECTED" ]; then
-            echo "::error::dagonizer-node.svg carries '$STAMPED' but the tag is '$EXPECTED'. Run 'npm run stamp-version' before tagging."
-            exit 1
-          fi
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'pnpm'
 
-      - name: Extract CHANGELOG section
-        id: changelog
-        run: |
-          VERSION='${{ steps.tag.outputs.version }}'
-          # Capture lines between "## [<version>]" and the next "## [" header.
-          awk -v v="$VERSION" '
-            $0 ~ "^## \\[" v "\\]" { capture = 1; next }
-            capture && /^## \[/    { exit }
-            capture                { print }
-          ' CHANGELOG.md > /tmp/section.md
-          if [ ! -s /tmp/section.md ]; then
-            echo "::error::No CHANGELOG section found for [$VERSION]"
-            exit 1
-          fi
+      - name: Install
+        run: pnpm install --frozen-lockfile
 
-      - name: Compose release body
-        id: body
-        run: |
-          TAG='${{ steps.tag.outputs.tag }}'
-          REPO='${{ github.repository }}'
-          SVG_URL="https://raw.githubusercontent.com/${REPO}/${TAG}/docs/public/dagonizer-node.svg"
-          {
-            echo "<p align=\"center\"><img src=\"${SVG_URL}\" alt=\"Dagonizer ${TAG}\" width=\"200\" /></p>"
-            echo
-            cat /tmp/section.md
-          } > /tmp/body.md
-          echo "path=/tmp/body.md" >> "$GITHUB_OUTPUT"
+      - name: Build
+        run: pnpm run build
 
-      - name: Create or update release
+      - name: CI gate (typecheck + lint + tests + adapter smoke)
+        run: pnpm run ci
+
+      - name: Create Release Pull Request or Publish
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          version: pnpm run version-packages
+          publish: pnpm run release
+          commit: "chore(release): version packages"
+          title: "chore(release): version packages"
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG='${{ steps.tag.outputs.tag }}'
-          if gh release view "$TAG" --repo '${{ github.repository }}' >/dev/null 2>&1; then
-            gh release edit "$TAG" \
-              --repo '${{ github.repository }}' \
-              --title "$TAG" \
-              --notes-file '${{ steps.body.outputs.path }}'
-          else
-            gh release create "$TAG" \
-              --repo '${{ github.repository }}' \
-              --title "$TAG" \
-              --notes-file '${{ steps.body.outputs.path }}'
-          fi
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

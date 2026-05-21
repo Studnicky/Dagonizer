@@ -55,13 +55,13 @@ flowchart TB
 
 The `#tool-schema` region covers the `definition` constant — the tool name, description, and `inputSchema`. Note the `examples` fields: they are intentionally generic placeholders, not real titles or ISBNs. Some models quote schema examples verbatim into responses; shape-only examples prevent that:
 
-<<< ../../examples/the-archivist/tools/SubjectSearchTool.ts#tool-schema
+<<< ../../packages/dagonizer-tool-openlibrary/src/SubjectSearchTool.ts#tool-schema
 
 ### CanonicalId: cross-source deduplication
 
 Every tool produces `Candidate[]` with a `book.isbn` field set by `CanonicalId.pick`. The same work indexed by OpenLibrary key, Google Books volumeId, and Wikipedia title still deduplicates because `CanonicalId` normalises all three to one stable identifier:
 
-<<< ../../examples/the-archivist/tools/CanonicalId.ts
+<<< ../../packages/dagonizer-tool-openlibrary/src/CanonicalId.ts
 
 ## What it demonstrates
 

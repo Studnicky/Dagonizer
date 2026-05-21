@@ -22,10 +22,24 @@ The full documentation is published at **https://studnicky.github.io/Dagonizer/*
 
 Node.js >= 24 (matches `engines.node` in `package.json`).
 
+## Plugin ecosystem (v0.10.0+)
+
+Dagonizer ships as a workspace of independently versioned plugins:
+
+| Tier | Packages |
+|---|---|
+| **Adapters** (concrete) | `@noocodex/dagonizer-adapter-{gemini-api,gemini-nano,web-llm,groq,cerebras,mistral,openrouter,stub}` |
+| **Tools** (concrete) | `@noocodex/dagonizer-tool-{openlibrary,googlebooks,wikipedia}` |
+| **Patterns** (abstract bases consumers extend) | `@noocodex/dagonizer-patterns-{rag,graph,flow}` |
+
+Install only what you use. The main `@noocodex/dagonizer` package exposes three stable contract subpaths every plugin builds on: `./adapter`, `./patterns`, `./tool`. See the [plugins guide](https://studnicky.github.io/Dagonizer/guide/plugins) for the full story.
+
 ## Install
 
 ```bash
 npm install @noocodex/dagonizer
+# plus any plugins you want — for example:
+npm install @noocodex/dagonizer-adapter-groq @noocodex/dagonizer-patterns-rag
 ```
 
 The package is also mirrored to GitHub Packages as `@noocodex/dagonizer`:

@@ -20,7 +20,7 @@
 import type { MemoryDigest } from './ArchivistState.ts';
 import type { Candidate } from './entities/Book.ts';
 import type { MemoryStore } from './memory/MemoryStore.ts';
-import type { Tool } from './tools/ToolDefinition.ts';
+import type { Tool } from '@noocodex/dagonizer/tool';
 
 /**
  * WebSearchTool — adapter contract for the live-web book search.
