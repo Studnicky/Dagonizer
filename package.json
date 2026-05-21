@@ -17,6 +17,9 @@
     "lint": "pnpm -r --filter \"./packages/*\" run lint",
     "ci": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run smoke:adapters",
     "smoke:adapters": "tsx examples/the-archivist/__smoke__/adapter-transport.smoke.ts",
+    "changeset": "changeset",
+    "version-packages": "changeset version && pnpm install --lockfile-only",
+    "release": "pnpm run ci && changeset publish",
     "docs:dev": "vitepress dev docs",
     "docs:build": "pnpm run stamp-version && vitepress build docs",
     "docs:preview": "vitepress preview docs",
@@ -34,6 +37,7 @@
     "example:derive": "tsx examples/derive.ts"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.31.0",
     "@noocodex/dagonizer": "workspace:^",
     "@noocodex/dagonizer-adapter-cerebras": "workspace:^",
     "@noocodex/dagonizer-adapter-gemini-api": "workspace:^",
