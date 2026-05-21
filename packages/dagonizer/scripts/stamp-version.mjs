@@ -18,9 +18,12 @@ import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT       = join(dirname(fileURLToPath(import.meta.url)), '..');
-const PKG_PATH   = join(ROOT, 'package.json');
-const PUBLIC_DIR = join(ROOT, 'docs/public');
+// Script lives at packages/dagonizer/scripts/. Walk up twice to reach the workspace root,
+// where docs/public lives.
+const PKG_ROOT       = join(dirname(fileURLToPath(import.meta.url)), '..');
+const WORKSPACE_ROOT = join(PKG_ROOT, '..', '..');
+const PKG_PATH       = join(PKG_ROOT, 'package.json');
+const PUBLIC_DIR     = join(WORKSPACE_ROOT, 'docs/public');
 
 const pkg     = JSON.parse(readFileSync(PKG_PATH, 'utf8'));
 const version = pkg.version;

@@ -22,7 +22,7 @@ import type { ElementDefinition } from 'cytoscape';
 import { Checkpoint } from '@noocodex/dagonizer/checkpoint';
 import type { ExecutionResultInterface } from '@noocodex/dagonizer';
 
-import { CytoscapeRenderer } from '../../../../src/viz/CytoscapeRenderer.ts';
+import { CytoscapeRenderer } from '../../../../packages/dagonizer/src/viz/CytoscapeRenderer.ts';
 
 import { ArchivistState } from '../../../../examples/the-archivist/ArchivistState.ts';
 import { archivistDAG } from '../../../../examples/the-archivist/dag.ts';
