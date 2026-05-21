@@ -156,7 +156,29 @@ function dispatch(event: DagVizEvent): void {
   machine.value?.dispatch(event);
 }
 
-function setActive(node: string):     void { dispatch({ type: 'NODE_START', node }); }
+function setActive(node: string):     void {
+  dispatch({ type: 'NODE_START', node });
+  followActive(node);
+}
+
+/**
+ * Smoothly pan + zoom the camera to the newly active node so the
+ * visitor's eye follows the execution. Keeps the current zoom level
+ * but recentres on the node with a short ease.
+ */
+function followActive(nodeId: string): void {
+  const core = cy.value;
+  if (core === null) return;
+  const node = core.$id(nodeId);
+  if (node.length === 0) return;
+  void core.animate(
+    {
+      'center': { 'eles': node },
+      'zoom':   Math.max(core.zoom(), Math.min(core.zoom() * 1.05, core.maxZoom())),
+    },
+    { 'duration': 480, 'easing': 'ease-in-out-cubic' },
+  );
+}
 function setCompleted(node: string):  void { dispatch({ type: 'NODE_END',   node }); }
 function setErrored(node: string):    void { dispatch({ type: 'NODE_ERROR', node }); }
 function markEdgeTraversed(source: string, route: string): void {
@@ -299,23 +321,22 @@ function makeEdgeAdapter(cy: Core | null, source: string, route: string): EdgeVi
 
 function dagLayout(): Record<string, unknown> {
   // dagre — hierarchical top-down layout with native compound-graph support.
-  // Compound parents are laid out as their own subgraphs recursively, which
-  // structurally GUARANTEES no two compound clusters overlap. Replaced fcose
-  // (force-directed) which produced overlapping clusters for the Archivist
-  // deep-DAG topology (5 compound parents × ~10 children each).
+  // Separations widened so edges have horizontal/vertical room to route
+  // without overlapping each other. The taxi curve style angles edges in
+  // 90° segments through the gaps these separations create.
   return {
     name: 'dagre',
     rankDir: 'TB',
     ranker: 'network-simplex',
-    rankSep: 180,
-    nodeSep: 80,
-    edgeSep: 30,
+    rankSep: 240,                 // ↑ from 180 — more vertical room between ranks
+    nodeSep: 140,                 // ↑ from 80  — more horizontal room within rank
+    edgeSep: 60,                  // ↑ from 30  — keeps parallel edges apart
     align: 'UL',
     acyclicer: 'greedy',
     nodeDimensionsIncludeLabels: true,
     fit: true,
     animate: false,
-    padding: 40,
+    padding: 60,
   };
 }
 
@@ -445,30 +466,39 @@ function dagStylesheet(): unknown[] {
     { selector: 'node:selected', style: { 'border-color': '#22e8ff', 'border-width': 4 } },
 
     // Edges — straight angled lines (matches mermaid curve: linear),
-    // teal stroke and arrowheads, labels on the navy panel surface
-    // for pop. Same chrome as the mermaid SVG edges.
+    // teal stroke and arrowheads. Labels anchor near the source end
+    // and ride along the first horizontal segment of the taxi curve —
+    // this keeps them well clear of downstream nodes (the old
+    // mid-segment placement collided with target nodes when the taxi
+    // turn happened close to one).
     { selector: 'edge', style: {
       'curve-style':         'taxi',          // angled segments, mermaid-style
       'taxi-direction':      'vertical',
-      'taxi-turn':           20,
+      'taxi-turn':           28,              // ↑ slightly so first horizontal seg has room for the label
       'line-color':          '#22e8ff',
       'target-arrow-color':  '#22e8ff',
       'target-arrow-shape':  'triangle',
       'arrow-scale':         1.2,
-      'label':               'data(label)',
+      // Label anchored at the source end of the edge, offset so it
+      // sits in clear space below the source node and far away from
+      // the target.
+      'source-label':            'data(label)',
+      'source-text-margin-y':    16,
+      'source-text-offset':      28,          // ride along the edge a bit from source
+      'source-text-rotation':    'autorotate',
       'font-family':         'var(--vp-font-family-mono)',
       'font-size':           13,
       'font-weight':         600,
       'color':               '#eef3f7',
-      'text-background-color':   '#0e1525',   // navy edge-label background
+      'text-background-color':   '#0e1525',
       'text-background-opacity': 1,
-      'text-background-padding': '4px',
+      'text-background-padding': '6px',       // more breathing room
       'text-background-shape':   'round-rectangle',
       'text-border-color':    '#7a8290',
       'text-border-width':    1,
       'text-border-opacity':  0.8,
-      'text-margin-y':       -3,
       'width':               1.4,
+      'z-index':             1,               // labels above lines, below selected outlines
       'transition-property': 'line-color, target-arrow-color, width',
       'transition-duration': 220,
     } },

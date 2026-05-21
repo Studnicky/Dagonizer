@@ -65,12 +65,13 @@ function onActionClick(): void {
         @keydown="onKey"
       />
       <button
-        :class="['send-btn', { 'send-btn-cancel': running }]"
+        :class="['send-btn', { 'send-btn-cancel': running, 'send-btn-running': running }]"
         :disabled="!running && query.trim().length === 0"
         :title="running ? 'Cancel the current run (Esc / Enter)' : 'Ask the Archivist (Enter)'"
         :aria-label="running ? 'Cancel' : 'Ask the Archivist'"
         @click="onActionClick"
       >
+        <span v-if="running" class="send-spinner" aria-hidden="true"></span>
         <span class="send-glyph" aria-hidden="true">{{ running ? '✕' : '▶' }}</span>
       </button>
     </div>
@@ -128,6 +129,19 @@ function onActionClick(): void {
 
 .send-input:disabled { opacity: 0.7; cursor: progress; }
 
+/* Running state — pulsing cyan glow around the textarea so it's clearly
+   active rather than just disabled. */
+.send-form:has(.send-btn-running) .send-input {
+  border-color: var(--dagonizer-brand);
+  box-shadow: 0 0 0 2px rgba(34, 232, 255, 0.18), 0 0 16px -4px rgba(34, 232, 255, 0.45);
+  animation: send-input-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes send-input-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(34, 232, 255, 0.18), 0 0 16px -4px rgba(34, 232, 255, 0.35); }
+  50%      { box-shadow: 0 0 0 2px rgba(34, 232, 255, 0.32), 0 0 28px -2px rgba(34, 232, 255, 0.65); }
+}
+
 .send-btn {
   width: 64px;
   display: inline-flex;
@@ -147,6 +161,32 @@ function onActionClick(): void {
 /* Cancel state — red accent so the visitor clearly understands the action. */
 .send-btn-cancel {
   background: #c0392b;
+}
+
+/* Running state — a rotating ring sits behind the ✕ glyph so the
+   button reads as "actively working" rather than just "click to cancel". */
+.send-btn-running {
+  position: relative;
+  overflow: hidden;
+}
+
+.send-spinner {
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.9);
+  animation: send-spin 0.9s linear infinite;
+  pointer-events: none;
+}
+
+.send-btn-running .send-glyph {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes send-spin {
+  to { transform: rotate(360deg); }
 }
 
 .send-btn:hover:not([disabled]) { filter: brightness(1.12); transform: translateX(1px); }
