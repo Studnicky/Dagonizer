@@ -140,6 +140,25 @@ export function saveApiKeys(keys: Partial<Record<ProviderId, string>>): void {
   localStorage.setItem('dagonizer-api-keys', JSON.stringify(keys));
 }
 
+const OLLAMA_MODEL_KEY = 'dagonizer-ollama-model';
+const DEFAULT_OLLAMA_MODEL = 'llama3.2:latest';
+
+/** Load the user's chosen Ollama model name from localStorage. */
+export function loadOllamaModel(): string {
+  if (typeof localStorage === 'undefined') return DEFAULT_OLLAMA_MODEL;
+  return localStorage.getItem(OLLAMA_MODEL_KEY) ?? DEFAULT_OLLAMA_MODEL;
+}
+
+/** Persist the Ollama model name. */
+export function saveOllamaModel(model: string): void {
+  if (typeof localStorage === 'undefined') return;
+  if (model.trim().length === 0) {
+    localStorage.removeItem(OLLAMA_MODEL_KEY);
+    return;
+  }
+  localStorage.setItem(OLLAMA_MODEL_KEY, model.trim());
+}
+
 export async function detectBackends(inputs: DetectionInputs = {}): Promise<readonly BackendAvailability[]> {
   const keys = inputs.apiKeys ?? {};
   const out: BackendAvailability[] = [];
