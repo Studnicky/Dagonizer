@@ -11,8 +11,10 @@
  * tool reference, write-back behavior.
  */
 
+export { LlmDispatchNode } from './LlmDispatchNode.js';
+export type { RagServices } from './LlmDispatchNode.js';
+
 export { DecisionNode } from './DecisionNode.js';
-export type { RagServices } from './DecisionNode.js';
 
 export { ComposeNode } from './ComposeNode.js';
 

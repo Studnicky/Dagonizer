@@ -38,6 +38,9 @@ importers:
       '@noocodex/dagonizer-adapter-web-llm':
         specifier: workspace:^
         version: link:packages/dagonizer-adapter-web-llm
+      '@noocodex/dagonizer-book-entities':
+        specifier: workspace:^
+        version: link:packages/dagonizer-book-entities
       '@noocodex/dagonizer-patterns-flow':
         specifier: workspace:^
         version: link:packages/dagonizer-patterns-flow
@@ -92,6 +95,9 @@ importers:
       '@noocodex/dagonizer-adapter-web-llm':
         specifier: workspace:^
         version: link:../../packages/dagonizer-adapter-web-llm
+      '@noocodex/dagonizer-book-entities':
+        specifier: workspace:^
+        version: link:../../packages/dagonizer-book-entities
       '@noocodex/dagonizer-tool-googlebooks':
         specifier: workspace:^
         version: link:../../packages/dagonizer-tool-googlebooks
@@ -250,6 +256,12 @@ importers:
         specifier: ^25.2.0
         version: 25.9.1
 
+  packages/dagonizer-book-entities:
+    devDependencies:
+      '@types/node':
+        specifier: ^25.2.0
+        version: 25.9.1
+
   packages/dagonizer-patterns-flow:
     dependencies:
       '@noocodex/dagonizer':
@@ -285,6 +297,9 @@ importers:
       '@noocodex/dagonizer':
         specifier: workspace:^
         version: link:../dagonizer
+      '@noocodex/dagonizer-book-entities':
+        specifier: workspace:^
+        version: link:../dagonizer-book-entities
     devDependencies:
       '@types/node':
         specifier: ^25.2.0
@@ -295,6 +310,9 @@ importers:
       '@noocodex/dagonizer':
         specifier: workspace:^
         version: link:../dagonizer
+      '@noocodex/dagonizer-book-entities':
+        specifier: workspace:^
+        version: link:../dagonizer-book-entities
     devDependencies:
       '@types/node':
         specifier: ^25.2.0
@@ -305,6 +323,9 @@ importers:
       '@noocodex/dagonizer':
         specifier: workspace:^
         version: link:../dagonizer
+      '@noocodex/dagonizer-book-entities':
+        specifier: workspace:^
+        version: link:../dagonizer-book-entities
     devDependencies:
       '@types/node':
         specifier: ^25.2.0

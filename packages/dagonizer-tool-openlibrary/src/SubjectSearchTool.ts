@@ -30,9 +30,9 @@
  *     (e.g. `lang`, `first_publish_year`) without a schema change.
  */
 
-import type { Candidate } from './entities.js';
+import type { Candidate } from '@noocodex/dagonizer-book-entities';
 
-import { CanonicalId } from './CanonicalId.js';
+import { CanonicalId } from '@noocodex/dagonizer-book-entities';
 import type { Tool } from '@noocodex/dagonizer/tool';
 import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
 

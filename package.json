@@ -50,6 +50,7 @@
     "@noocodex/dagonizer-patterns-flow": "workspace:^",
     "@noocodex/dagonizer-patterns-graph": "workspace:^",
     "@noocodex/dagonizer-patterns-rag": "workspace:^",
+    "@noocodex/dagonizer-book-entities": "workspace:^",
     "@noocodex/dagonizer-tool-googlebooks": "workspace:^",
     "@noocodex/dagonizer-tool-openlibrary": "workspace:^",
     "@noocodex/dagonizer-tool-wikipedia": "workspace:^",
