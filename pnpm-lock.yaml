@@ -35,6 +35,15 @@ importers:
       '@noocodex/dagonizer-adapter-web-llm':
         specifier: workspace:^
         version: link:packages/dagonizer-adapter-web-llm
+      '@noocodex/dagonizer-patterns-flow':
+        specifier: workspace:^
+        version: link:packages/dagonizer-patterns-flow
+      '@noocodex/dagonizer-patterns-graph':
+        specifier: workspace:^
+        version: link:packages/dagonizer-patterns-graph
+      '@noocodex/dagonizer-patterns-rag':
+        specifier: workspace:^
+        version: link:packages/dagonizer-patterns-rag
       '@noocodex/dagonizer-tool-googlebooks':
         specifier: workspace:^
         version: link:packages/dagonizer-tool-googlebooks
@@ -201,6 +210,24 @@ importers:
         version: link:../dagonizer
 
   packages/dagonizer-adapter-web-llm:
+    dependencies:
+      '@noocodex/dagonizer':
+        specifier: workspace:^
+        version: link:../dagonizer
+
+  packages/dagonizer-patterns-flow:
+    dependencies:
+      '@noocodex/dagonizer':
+        specifier: workspace:^
+        version: link:../dagonizer
+
+  packages/dagonizer-patterns-graph:
+    dependencies:
+      '@noocodex/dagonizer':
+        specifier: workspace:^
+        version: link:../dagonizer
+
+  packages/dagonizer-patterns-rag:
     dependencies:
       '@noocodex/dagonizer':
         specifier: workspace:^
