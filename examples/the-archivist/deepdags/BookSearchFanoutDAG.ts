@@ -14,17 +14,18 @@
  *     └─ bsf-rank-candidates
  *     └─ bsf-merge-candidates
  *          ├─ ranked ──► bsf-record-findings
- *          └─ empty  ──► bsf-no-results (collects error → deep-DAG exits error)
+ *          └─ empty  ──► bsf-no-results (TerminalNode(failed) → deep-DAG exits error)
  *     └─ bsf-record-findings
  *     └─ bsf-has-citations-gate
  *          ├─ pass ──► bsf-recall-past-visits ──► END (success)
- *          └─ fail ──► bsf-no-results (collects error → deep-DAG exits error)
+ *          └─ fail ──► bsf-no-results (TerminalNode(failed) → deep-DAG exits error)
  *
  * Outputs:
  *   success — query extracted, candidates found, ranked, recorded, and recalled
  *   error   — no candidates after merge, or citations gate failed;
- *             signalled via collectError on childState so executeDeepDAG
- *             routes the parent to its 'error' branch
+ *             signalled by the bsf-no-results TerminalNode(failed) placement so
+ *             executeDeepDAG routes the parent to its 'error' branch via
+ *             innerTerminalOutcome propagation
  *
  * Molecular import pattern:
  *   import { BookSearchFanoutDAG, registerBookSearchFanoutNodes } from './deepdags/BookSearchFanoutDAG.ts';
@@ -62,38 +63,9 @@ import {
 } from '../nodes/scouts.ts';
 import type { ArchivistServices } from '../services.ts';
 
-import type { NodeInterface, Dagonizer  } from '@noocodex/dagonizer';
+import type { Dagonizer  } from '@noocodex/dagonizer';
 import { DAGBuilder } from '@noocodex/dagonizer/builder';
 import type { DAG } from '@noocodex/dagonizer/entities';
-
-/**
- * Internal terminal node that collects a recoverable error and exits.
- *
- * Used when the fan-out cluster finds no usable candidates — either
- * because merge produced an empty shortlist, or because the citations
- * gate found nothing written in the state graph. Collecting the error
- * causes `executeDeepDAG` to route the parent placement to its `error`
- * branch so the parent can dispatch to its own empty-result handling.
- */
-const bsfNoResults: NodeInterface<ArchivistState, 'no-results', ArchivistServices> = {
-  'name':    'bsf-no-results',
-  'outputs': ['no-results'],
-  async execute(state, context) {
-    context.services.logger.warn('book-search-fanout: no candidates found — routing error to parent');
-    if (state.failureCause.trim().length === 0) {
-      // No cause was accumulated by scouts — synthesise a generic one.
-      state.failureCause = 'No candidates found after searching all available sources. ';
-    }
-    state.collectError({
-      'code':        'NO_CANDIDATES',
-      'message':     'book-search-fanout found no usable candidates after merge and gate',
-      'operation':   'bsf-no-results',
-      'recoverable': true,
-      'timestamp':   new Date().toISOString(),
-    });
-    return { 'output': 'no-results' };
-  },
-};
 
 /**
  * The `book-search-fanout` DAG — one packaged unit that any parent DAG
@@ -137,8 +109,8 @@ export const BookSearchFanoutDAG: DAG = new DAGBuilder('book-search-fanout', '1.
 
   // ── 5. merge-candidates ──────────────────────────────────────────────────
   // Cross-source dedupe via CanonicalId, top-5. Routes 'empty' to
-  // bsf-no-results which collects an error so executeDeepDAG routes the
-  // parent to its 'error' branch.
+  // bsf-no-results (TerminalNode(failed)) so executeDeepDAG routes the
+  // parent to its 'error' branch via innerTerminalOutcome propagation.
   .node('bsf-merge-candidates', mergeCandidates, {
     'ranked': 'bsf-record-findings',
     'empty':  'bsf-no-results',
@@ -152,7 +124,8 @@ export const BookSearchFanoutDAG: DAG = new DAGBuilder('book-search-fanout', '1.
 
   // ── 7. has-citations-gate ────────────────────────────────────────────────
   // SPARQL ASK over the per-run state graph. Symbolic fence for the LLM.
-  // 'fail' routes to bsf-no-results so the parent receives 'error'.
+  // 'fail' routes to bsf-no-results (TerminalNode(failed)) so the parent
+  // receives 'error' via innerTerminalOutcome propagation.
   .node('bsf-has-citations-gate', hasCitationsGate, {
     'pass': 'bsf-recall-past-visits',
     'fail': 'bsf-no-results',
@@ -166,11 +139,10 @@ export const BookSearchFanoutDAG: DAG = new DAGBuilder('book-search-fanout', '1.
   })
 
   // ── 9. bsf-no-results ────────────────────────────────────────────────────
-  // Internal error-signal node. Collects a recoverable error so
-  // executeDeepDAG routes the parent placement to its 'error' branch.
-  .node('bsf-no-results', bsfNoResults, {
-    'no-results': null,
-  })
+  // TerminalNode(failed) — executeDeepDAG reads innerTerminalOutcome and
+  // routes the parent placement to its 'error' branch. No backing node or
+  // collectError call required.
+  .terminal('bsf-no-results', 'failed')
 
   .build();
 
@@ -202,7 +174,6 @@ export function registerBookSearchFanoutNodes(
     recordFindings,
     hasCitationsGate,
     recallPastVisits,
-    bsfNoResults,
   ]) {
     dispatcher.registerNode(node);
   }

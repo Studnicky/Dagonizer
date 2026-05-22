@@ -65,6 +65,25 @@ The `#deepdag-placements` region covers only the `.deepDAG(...)` calls — the t
 
 <<< ../../examples/the-archivist/dag.ts#deepdag-placements
 
+## DeepDAG output routing: null and named terminals
+
+A `DeepDAGNode` placement's outputs map accepts two target forms:
+
+- **`null`** — the branch ends with `outcome: completed`. This is identical to any other null route: sugar for an implicit completed terminal. Use it when the parent flow has a single clean termination path and the lifecycle outcome is always `completed`.
+- **Named `TerminalNode` placement** — target an explicit terminal declared via `.terminal(name, outcome?)`. This is the idiomatic form when the `error` output should mark the parent flow as `failed`, or when the diagram should show the endpoint as a discrete node.
+
+```ts
+// null route: both success and error end with outcome=completed
+.deepDAG('invoke', 'child', { success: null, error: null })
+
+// named terminals: error path marks the parent flow as failed
+.deepDAG('invoke', 'child', { success: 'end-ok', error: 'end-fail' })
+.terminal('end-ok')
+.terminal('end-fail', 'failed')
+```
+
+See [Phase 09 · Terminal placements](./09-terminals) for the full pattern with runnable examples.
+
 ## What it demonstrates
 
 - **`.deepDAG(name, dagName, routes, options)`** — the placement references the deep-DAG by its registered name. The parent and child run in the same dispatcher; the child shares the same node registry.

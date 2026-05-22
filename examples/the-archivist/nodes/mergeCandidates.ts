@@ -36,6 +36,9 @@ export const mergeCandidates: NodeInterface<ArchivistState, 'ranked' | 'empty', 
 
     state.shortlist = ranked;
     context.services.logger.info(`shortlist=${String(ranked.length)} (from ${String(state.candidates.length)} candidates, ${String(deduped.length)} after dedupe)`);
+    if (ranked.length === 0 && state.failureCause.trim().length === 0) {
+      state.failureCause = 'No candidates found after searching all available sources. ';
+    }
     return { "output": ranked.length > 0 ? 'ranked' : 'empty' };
   },
 };

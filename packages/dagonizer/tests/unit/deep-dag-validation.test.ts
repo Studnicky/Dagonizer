@@ -5,8 +5,7 @@ import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
-import { DAGError } from '../../src/errors/index.js';
-import type { NodeStateBase } from '../../src/NodeStateBase.js';
+import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 
 const makeNode = (
@@ -37,99 +36,94 @@ const helperDAG: DAG = {
   ],
 };
 
-void describe('registerDAG — deep-DAG terminal output invariant', () => {
-  void it('throws DAGError when a deep-DAG placement routes any output to null', () => {
+void describe('registerDAG — deep-DAG null-route acceptance', () => {
+  void it('accepts deep-DAG placement with success → null (sugar for terminate-completed)', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('step', ['done']));
     dispatcher.registerNode(makeNode('entry', ['next']));
     dispatcher.registerDAG(helperDAG);
 
-    // Parent DAG where the deep-dag routes 'success' → null (forbidden)
-    const parentWithBadDeepDag: DAG = {
+    // Parent DAG where the deep-dag routes 'success' → null (terminate-completed)
+    const parentWithNullDeepDag: DAG = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:bad-parent',
+      '@id':      'urn:noocodex:dag:null-parent',
       '@type':    'DAG',
-      'name':       'bad-parent',
+      'name':       'null-parent',
       'version':    '1',
       'entrypoint': 'entry',
       'nodes': [
         {
-          '@id':   'urn:noocodex:dag:bad-parent/node/entry',
+          '@id':   'urn:noocodex:dag:null-parent/node/entry',
           '@type': 'SingleNode',
           'name':  'entry',
           'node':  'entry',
           'outputs': { 'next': 'run-helper' },
         },
         {
-          '@id':   'urn:noocodex:dag:bad-parent/node/run-helper',
+          '@id':   'urn:noocodex:dag:null-parent/node/run-helper',
           '@type': 'DeepDAGNode',
           'name':  'run-helper',
           'dag':   'helper',
-          'outputs': { 'success': null },   // ← violation: deep-dag routes to END
+          'outputs': { 'success': null, 'error': null },
         },
       ],
     };
 
-    assert.throws(() => dispatcher.registerDAG(parentWithBadDeepDag), DAGError);
+    assert.doesNotThrow(() => dispatcher.registerDAG(parentWithNullDeepDag));
 
-    let thrown: DAGError | undefined;
-    try { dispatcher.registerDAG(parentWithBadDeepDag); } catch (e) { thrown = e as DAGError; }
-    assert.ok(thrown !== undefined);
-    assert.ok(thrown.message.includes('run-helper'), 'error includes placement name');
-    assert.ok(thrown.message.includes('success'),    'error includes offending route name');
-    assert.ok(thrown.message.includes('bad-parent'), 'error includes DAG name');
+    const state = new NodeStateBase();
+    const result = await dispatcher.execute('null-parent', state);
+    assert.equal(result.state.lifecycle.kind, 'completed', 'flow completes cleanly');
   });
 
-  void it('throws when any output on a multi-output deep-DAG placement routes to null', () => {
+  void it('accepts deep-DAG with mixed null and explicit-target routes', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('step', ['done']));
     dispatcher.registerNode(makeNode('entry', ['next']));
-    dispatcher.registerNode(makeNode('terminal', ['done']));
+    dispatcher.registerNode(makeNode('after', ['done']));
 
     dispatcher.registerDAG(helperDAG);
 
-    const parentWithPartialNull: DAG = {
+    const parentWithMixedRoutes: DAG = {
       '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:partial-null-parent',
+      '@id':      'urn:noocodex:dag:mixed-parent',
       '@type':    'DAG',
-      'name':       'partial-null-parent',
+      'name':       'mixed-parent',
       'version':    '1',
       'entrypoint': 'entry',
       'nodes': [
         {
-          '@id':   'urn:noocodex:dag:partial-null-parent/node/entry',
+          '@id':   'urn:noocodex:dag:mixed-parent/node/entry',
           '@type': 'SingleNode',
           'name':  'entry',
           'node':  'entry',
           'outputs': { 'next': 'run-helper' },
         },
         {
-          '@id':   'urn:noocodex:dag:partial-null-parent/node/terminal',
+          '@id':   'urn:noocodex:dag:mixed-parent/node/after',
           '@type': 'SingleNode',
-          'name':  'terminal',
-          'node':  'terminal',
+          'name':  'after',
+          'node':  'after',
           'outputs': { 'done': null },
         },
         {
-          '@id':   'urn:noocodex:dag:partial-null-parent/node/run-helper',
+          '@id':   'urn:noocodex:dag:mixed-parent/node/run-helper',
           '@type': 'DeepDAGNode',
           'name':  'run-helper',
           'dag':   'helper',
           'outputs': {
-            'error':   'terminal',  // valid
-            'success': null,        // ← violation
+            'error':   'after',  // routes to a parent placement
+            'success': null,     // terminate-completed
           },
         },
       ],
     };
 
-    assert.throws(() => dispatcher.registerDAG(parentWithPartialNull), DAGError);
+    assert.doesNotThrow(() => dispatcher.registerDAG(parentWithMixedRoutes));
 
-    let thrown: DAGError | undefined;
-    try { dispatcher.registerDAG(parentWithPartialNull); } catch (e) { thrown = e as DAGError; }
-    assert.ok(thrown !== undefined);
-    assert.ok(thrown.message.includes('run-helper'));
-    assert.ok(thrown.message.includes('success'));
+    const state = new NodeStateBase();
+    const result = await dispatcher.execute('mixed-parent', state);
+    assert.equal(result.state.lifecycle.kind, 'completed', 'flow completes cleanly');
   });
 
   void it('accepts valid deep-DAG placements where all outputs route to parent placements', () => {

@@ -23,7 +23,7 @@ import { DAGSchema } from '@noocodex/dagonizer/entities';
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/DAG`
 
-Top-level DAG declaration in JSON-LD 1.1 canonical form. Required properties: `@context`, `@id`, `@type: 'DAG'`, `name`, `version`, `entrypoint`, `nodes`. Each entry in `nodes` is validated against a `oneOf` covering all four node kinds (`SingleNode`, `ParallelNode`, `FanOutNode`, `DeepDAGNode`).
+Top-level DAG declaration in JSON-LD 1.1 canonical form. Required properties: `@context`, `@id`, `@type: 'DAG'`, `name`, `version`, `entrypoint`, `nodes`. Each entry in `nodes` is validated against a `oneOf` covering all five node kinds (`SingleNode`, `ParallelNode`, `FanOutNode`, `DeepDAGNode`, `TerminalNode`).
 
 ```ts
 import type { DAG } from '@noocodex/dagonizer/entities';
@@ -105,6 +105,21 @@ import type { DeepDAGNode } from '@noocodex/dagonizer/entities';
 ```
 
 `outputs` keys are `success` and `error`.
+
+---
+
+## `TerminalNodeSchema`
+
+`$id`: `https://noocodex.dev/schemas/dagonizer/TerminalNode`
+
+Explicit terminal placement. Required: `@id`, `@type: 'TerminalNode'`, `name`, `outcome` (enum: `completed` | `failed`). No `outputs` field — TerminalNodes are leaves.
+
+```ts
+import { TerminalNodeSchema } from '@noocodex/dagonizer/entities';
+import type { TerminalNode } from '@noocodex/dagonizer/entities';
+```
+
+When the engine reaches a `TerminalNode`, the flow ends with the declared `outcome`. `outcome: 'completed'` resolves the state cleanly; `outcome: 'failed'` marks the state as failed before resolving. See [`DAGBuilder.terminal()`](../guide/builder#terminal-name-outcome) for the authoring API and [Phase 09 · Terminal placements](../examples/09-terminals) for runnable examples.
 
 ---
 

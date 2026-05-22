@@ -576,3 +576,218 @@ void describe('DAGDeriver.derive', () => {
     assert.equal(dispatcher.getDAG('reg-test'), dag);
   });
 });
+
+void describe('DAGDeriver — terminals with emit variant', () => {
+  // Helper: make a node that always returns its first output.
+  const make = <TOut extends string>(
+    name: string,
+    outputs: readonly [TOut, ...TOut[]],
+  ): NodeInterface<NodeStateBase, TOut> => ({
+    name,
+    outputs,
+    async execute() { return { 'output': outputs[0] }; },
+  });
+
+  // Helper: make a node that always returns a specific output.
+  const makeWith = <TOut extends string>(
+    name: string,
+    outputs: readonly [TOut, ...TOut[]],
+    output: TOut,
+  ): NodeInterface<NodeStateBase, TOut> => ({
+    name,
+    outputs,
+    async execute() { return { 'output': output }; },
+  });
+
+  void it('basic emit: synthesizes a TerminalNode placement and routes the output port to it', () => {
+    const contracts: OperationContract[] = [
+      { 'name': 'classify', 'hardRequired': ['input'], 'produces': ['classification'], 'outputs': ['success', 'fail'] },
+      { 'name': 'plan',     'hardRequired': ['classification'], 'produces': ['plan'],   'outputs': ['success'] },
+    ];
+    const dag = DAGDeriver.derive({
+      'name': 'emit-basic',
+      'version': '1',
+      'entrypoint': 'classify',
+      contracts,
+      'annotations': {
+        'terminals': {
+          'classify': [
+            { 'outcome': 'fail', 'emit': { 'name': 'end-fail', 'outcome': 'failed' } },
+          ],
+        },
+      },
+    });
+
+    // A TerminalNode placement named 'end-fail' with outcome 'failed' is present.
+    const terminal = dag.nodes.find((n) => n.name === 'end-fail');
+    assert.ok(terminal !== undefined, 'end-fail placement is emitted');
+    assert.equal(terminal['@type'], 'TerminalNode');
+    if (terminal['@type'] === 'TerminalNode') {
+      assert.equal(terminal.outcome, 'failed');
+      assert.ok(terminal['@id'].endsWith('/node/end-fail'));
+    }
+
+    // The classify placement routes 'fail' to 'end-fail'.
+    const classify = dag.nodes.find((n) => n.name === 'classify');
+    assert.ok(classify !== undefined && classify['@type'] === 'SingleNode');
+    if (classify !== undefined && classify['@type'] === 'SingleNode') {
+      assert.equal(classify.outputs['fail'], 'end-fail');
+      assert.equal(classify.outputs['success'], 'plan');
+    }
+  });
+
+  void it('shared terminal: two operations with same emit name produce exactly one TerminalNode', () => {
+    const contracts: OperationContract[] = [
+      { 'name': 'step-a', 'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success', 'fail'] },
+      { 'name': 'step-b', 'hardRequired': ['x'],     'produces': ['y'], 'outputs': ['success', 'fail'] },
+    ];
+    const dag = DAGDeriver.derive({
+      'name': 'emit-shared',
+      'version': '1',
+      'entrypoint': 'step-a',
+      contracts,
+      'annotations': {
+        'terminals': {
+          'step-a': [{ 'outcome': 'fail', 'emit': { 'name': 'end-fail', 'outcome': 'failed' } }],
+          'step-b': [{ 'outcome': 'fail', 'emit': { 'name': 'end-fail', 'outcome': 'failed' } }],
+        },
+      },
+    });
+
+    const terminals = dag.nodes.filter((n) => n.name === 'end-fail');
+    assert.equal(terminals.length, 1, 'exactly one end-fail TerminalNode in the DAG');
+
+    const nodeA = dag.nodes.find((n) => n.name === 'step-a');
+    const nodeB = dag.nodes.find((n) => n.name === 'step-b');
+    assert.ok(nodeA !== undefined && nodeA['@type'] === 'SingleNode');
+    assert.ok(nodeB !== undefined && nodeB['@type'] === 'SingleNode');
+    if (nodeA !== undefined && nodeA['@type'] === 'SingleNode') {
+      assert.equal(nodeA.outputs['fail'], 'end-fail');
+    }
+    if (nodeB !== undefined && nodeB['@type'] === 'SingleNode') {
+      assert.equal(nodeB.outputs['fail'], 'end-fail');
+    }
+  });
+
+  void it('outcome conflict: two emit entries with same name but different outcomes throw DAGError', () => {
+    const contracts: OperationContract[] = [
+      { 'name': 'step-a', 'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success', 'fail'] },
+      { 'name': 'step-b', 'hardRequired': ['x'],     'produces': ['y'], 'outputs': ['success', 'fail'] },
+    ];
+    assert.throws(
+      () => DAGDeriver.derive({
+        'name': 'emit-conflict',
+        'version': '1',
+        'entrypoint': 'step-a',
+        contracts,
+        'annotations': {
+          'terminals': {
+            'step-a': [{ 'outcome': 'fail', 'emit': { 'name': 'end-end', 'outcome': 'completed' } }],
+            'step-b': [{ 'outcome': 'fail', 'emit': { 'name': 'end-end', 'outcome': 'failed' } }],
+          },
+        },
+      }),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes('end-end'), `message includes placement name: ${err.message}`);
+        assert.ok(
+          err.message.includes('completed') && err.message.includes('failed'),
+          `message includes both conflicting outcomes: ${err.message}`,
+        );
+        return true;
+      },
+    );
+  });
+
+  void it('name collision with operation: emit name matching an existing operation throws DAGError', () => {
+    const contracts: OperationContract[] = [
+      { 'name': 'classify', 'hardRequired': ['input'],          'produces': ['classification'], 'outputs': ['success', 'fail'] },
+      { 'name': 'cleanup',  'hardRequired': ['classification'], 'produces': ['done'],           'outputs': ['success'] },
+    ];
+    assert.throws(
+      () => DAGDeriver.derive({
+        'name': 'emit-collision',
+        'version': '1',
+        'entrypoint': 'classify',
+        contracts,
+        'annotations': {
+          'terminals': {
+            'classify': [{ 'outcome': 'fail', 'emit': { 'name': 'cleanup', 'outcome': 'failed' } }],
+          },
+        },
+      }),
+      (err: unknown) => {
+        assert.ok(err instanceof Error);
+        assert.ok(err.message.includes('cleanup'), `message identifies collision name: ${err.message}`);
+        return true;
+      },
+    );
+  });
+
+  void it('execution: triggering the failing path marks state.lifecycle.kind as failed', async () => {
+    const contracts: OperationContract[] = [
+      { 'name': 'classify', 'hardRequired': ['input'], 'produces': ['classification'], 'outputs': ['success', 'fail'] },
+      { 'name': 'plan',     'hardRequired': ['classification'], 'produces': ['plan'],  'outputs': ['success'] },
+    ];
+    const dag = DAGDeriver.derive({
+      'name': 'emit-exec',
+      'version': '1',
+      'entrypoint': 'classify',
+      contracts,
+      'annotations': {
+        'terminals': {
+          'classify': [{ 'outcome': 'fail', 'emit': { 'name': 'end-fail', 'outcome': 'failed' } }],
+        },
+      },
+    });
+
+    const dispatcher = new Dagonizer<NodeStateBase>();
+    // classify always routes 'fail' output → TerminalNode(failed)
+    dispatcher.registerNode(makeWith('classify', ['success', 'fail'], 'fail'));
+    dispatcher.registerNode(make('plan', ['success']));
+    dispatcher.registerDAG(dag);
+
+    const result = await dispatcher.execute('emit-exec', new NodeStateBase());
+    assert.equal(result.state.lifecycle.kind, 'failed');
+    assert.ok(result.executedNodes.includes('end-fail'));
+    assert.ok(!result.executedNodes.includes('plan'));
+  });
+
+  void it('mixing variants: target and emit coexist on the same operation without conflict', () => {
+    const contracts: OperationContract[] = [
+      { 'name': 'classify', 'hardRequired': ['input'], 'produces': ['classification'], 'outputs': ['success', 'fail', 'retry'] },
+      { 'name': 'plan',     'hardRequired': ['classification'], 'produces': ['plan'],  'outputs': ['success'] },
+    ];
+    const dag = DAGDeriver.derive({
+      'name': 'emit-mix',
+      'version': '1',
+      'entrypoint': 'classify',
+      contracts,
+      'annotations': {
+        'terminals': {
+          'classify': [
+            { 'outcome': 'fail',  'target': null },
+            { 'outcome': 'retry', 'emit': { 'name': 'end-retry-exhausted', 'outcome': 'failed' } },
+          ],
+        },
+      },
+    });
+
+    // target variant: 'fail' routes to null
+    const classify = dag.nodes.find((n) => n.name === 'classify');
+    assert.ok(classify !== undefined && classify['@type'] === 'SingleNode');
+    if (classify !== undefined && classify['@type'] === 'SingleNode') {
+      assert.equal(classify.outputs['fail'],  null);
+      assert.equal(classify.outputs['retry'], 'end-retry-exhausted');
+      assert.equal(classify.outputs['success'], 'plan');
+    }
+
+    // emit variant: TerminalNode placement synthesized for retry exhaustion
+    const terminal = dag.nodes.find((n) => n.name === 'end-retry-exhausted');
+    assert.ok(terminal !== undefined, 'end-retry-exhausted placement is emitted');
+    assert.equal(terminal['@type'], 'TerminalNode');
+    if (terminal['@type'] === 'TerminalNode') {
+      assert.equal(terminal.outcome, 'failed');
+    }
+  });
+});

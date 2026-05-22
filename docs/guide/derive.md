@@ -92,7 +92,11 @@ Two routing patterns the data graph cannot express live in `annotations`:
 
 ### `terminals` — alternate exits
 
-When an operation has output ports that should terminate the flow (or route to a non-default target) rather than continue to the next derived stage:
+When an operation has output ports that should terminate the flow (or route to a non-default target) rather than continue to the next derived stage, use `terminals`. Each entry is one of two variants:
+
+#### `target` variant (legacy form)
+
+`target: null` ends the flow with an implicit `completed` outcome. `target: string` routes the output port to the named existing placement.
 
 ```ts
 const dag = DAGDeriver.derive({
@@ -114,7 +118,56 @@ const dag = DAGDeriver.derive({
 });
 ```
 
-Ports declared in `outputs` but absent from `terminals` auto-wire to the next derived stage (`success` → `plan` above). Terminals override individual ports per-operation. A terminal whose outcome doesn't appear in the contract's `outputs` throws `DAGError` at derive time — routing-shape mismatches fail fast.
+#### `emit` variant — inline TerminalNode synthesis
+
+Use `emit` when you need the flow to end with an **explicit** `failed` (or `completed`) lifecycle outcome rather than the implicit `completed` that `target: null` produces. The deriver materializes a [`TerminalNode`](../examples/09-terminals) placement and routes the operation's output port to it.
+
+```ts
+const dag = DAGDeriver.derive({
+  name: 'gated',
+  version: '1.0',
+  entrypoint: 'classify',
+  contracts: [
+    { name: 'classify', hardRequired: ['input'],          produces: ['classification'], outputs: ['success', 'fail', 'error'] },
+    { name: 'plan',     hardRequired: ['classification'], produces: ['plan'],           outputs: ['success'] },
+  ],
+  annotations: {
+    terminals: {
+      classify: [
+        { outcome: 'fail',  emit: { name: 'end-fail',  outcome: 'failed' } },
+        { outcome: 'error', emit: { name: 'end-error', outcome: 'failed' } },
+      ],
+    },
+  },
+});
+```
+
+The deriver adds two `TerminalNode` placements (`end-fail` and `end-error`) to `dag.nodes`. When the dispatcher reaches either placement it calls `state.markFailed(...)` and the run ends with `state.lifecycle.kind === 'failed'`.
+
+**Deduplication and conflict detection:**
+
+Multiple operations may declare `emit` entries sharing the same `name` — the deriver deduplicates and emits a single `TerminalNode`. If two `emit` entries share a name but disagree on `outcome`, `DAGDeriver.derive` throws `DAGError` identifying both the placement name and the conflicting outcomes.
+
+**Name collision detection:**
+
+An `emit.name` that matches an existing operation name throws `DAGError` at derive time.
+
+**Mixing variants:**
+
+Both variants can coexist on the same operation:
+
+```ts
+terminals: {
+  classify: [
+    { outcome: 'fail',  target: null },                                       // target: implicit completed
+    { outcome: 'retry', emit: { name: 'end-retry-exhausted', outcome: 'failed' } }, // emit: explicit failed
+  ],
+},
+```
+
+Cross-link: [Builder `.terminal()`](./builder.md#terminal) for the imperative authoring equivalent; [09-terminals example](../examples/09-terminals).
+
+Ports declared in `outputs` but absent from `terminals` auto-wire to the next derived stage. A terminal whose outcome doesn't appear in the contract's `outputs` throws `DAGError` at derive time — routing-shape mismatches fail fast.
 
 ### `fanouts` — fan-out roots
 

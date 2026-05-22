@@ -71,12 +71,16 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   // deep-dag properties
   'stateMapping': { '@id': `${NS}stateMapping` },
 
+  // terminal properties
+  'outcome': { '@id': `${NS}outcome` },
+
   // ── classes ───────────────────────────────────────────────────────────────
-  'DAG':         { '@id': `${NS}DAG` },
-  'Placement':   { '@id': `${NS}Placement` },
-  'SingleNode':  { '@id': `${NS}SingleNode` },
-  'FanOutNode':  { '@id': `${NS}FanOutNode` },
-  'DeepDAGNode': { '@id': `${NS}DeepDAGNode` },
+  'DAG':          { '@id': `${NS}DAG` },
+  'Placement':    { '@id': `${NS}Placement` },
+  'SingleNode':   { '@id': `${NS}SingleNode` },
+  'FanOutNode':   { '@id': `${NS}FanOutNode` },
+  'DeepDAGNode':  { '@id': `${NS}DeepDAGNode` },
+  'TerminalNode': { '@id': `${NS}TerminalNode` },
 
   // ParallelNode carries a type-scoped context: within any object typed
   // ParallelNode, `nodes` maps to `dag/parallelNodes` (child name strings)
@@ -168,6 +172,17 @@ const DAGNodeEntrySchema = {
           },
           'additionalProperties': false,
         },
+      },
+      'additionalProperties': false,
+    },
+    {
+      'type': 'object',
+      'required': ['@id', '@type', 'name', 'outcome'],
+      'properties': {
+        '@id':     { 'type': 'string', 'minLength': 1 },
+        '@type':   { 'type': 'string', 'const': 'TerminalNode' },
+        'name':    { 'type': 'string', 'minLength': 1 },
+        'outcome': { 'type': 'string', 'enum': ['completed', 'failed'] },
       },
       'additionalProperties': false,
     },
