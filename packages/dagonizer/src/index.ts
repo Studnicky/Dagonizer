@@ -71,6 +71,7 @@ export {
   ParallelNodeSchema,
   SingleNodeSchema,
   DeepDAGNodeSchema,
+  TerminalNodeSchema,
   NodeSchema,
   NodeContextSchema,
   NodeErrorSchema,
@@ -98,6 +99,7 @@ export type {
   ParallelNode,
   SingleNode,
   DeepDAGNode,
+  TerminalNode,
   Node,
   NodeContext,
   NodeError,
@@ -188,3 +190,4 @@ export type { NodeOutputInterface } from './entities/node/NodeOutput.js';
 export type { NodeResultInterface } from './entities/node/NodeResult.js';
 export type { ExecutionResultInterface } from './entities/execution/ExecutionResult.js';
 export type { SingleNodePlacementInterface } from './entities/dag/SingleNode.js';
+export type { TerminalNodePlacementInterface } from './entities/dag/TerminalNode.js';

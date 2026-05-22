@@ -23,13 +23,13 @@
  * the journey that matches your mental model.
  */
 
-import type { OperationContract } from '../src/contracts/OperationContract.js';
-import { DAGDeriver } from '../src/derive/DAGDeriver.js';
+import { DAGDeriver } from '@noocodex/dagonizer/derive';
+import type { OperationContract } from '@noocodex/dagonizer/derive';
 import {
   Dagonizer,
   NodeStateBase,
-} from '../src/index.js';
-import type { NodeInterface } from '../src/index.js';
+} from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State

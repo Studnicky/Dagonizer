@@ -10,9 +10,15 @@
  *   });
  *
  * Every placement becomes a node element carrying its `type` (single /
- * parallel / fan-out / deep-dag) so consumers can style per-type via
- * Cytoscape's `style({ selector: 'node[type="fan-out"]', ... })`. Every
- * output route becomes an edge labeled with the route's name.
+ * parallel / fan-out / deep-dag / terminal) so consumers can style
+ * per-type via Cytoscape's `style({ selector: 'node[type="fan-out"]', ... })`.
+ * Every output route becomes an edge labeled with the route's name.
+ *
+ * TerminalNode placements render with `data.type === 'terminal'` and carry
+ * `data.outcome` ('completed' | 'failed') so stylesheets can color them
+ * differently. The synthetic `END` node (emitted when any null route exists)
+ * also uses `data.type === 'terminal'` but is distinguished by
+ * `data.synthetic === true`.
  *
  * Compound rendering:
  *   • Parallel children render with `parent: <parallel placement name>`
@@ -36,8 +42,9 @@ import type { DeepDAGNode } from '../entities/dag/DeepDAGNode.js';
 import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
+import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 
-type DAGNodeEntry = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode;
+type DAGNodeEntry = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode | TerminalNodePlacementInterface;
 
 /** A Cytoscape node element. */
 export interface CytoscapeNodeElement {
@@ -99,11 +106,12 @@ export class CytoscapeRenderer {
   private static readonly DEFAULT_MAX_DEPTH = 6;
 
   /** Mapping from JSON-LD placement-discriminator to Cytoscape `data.type` value. */
-  private static readonly PLACEMENT_KIND: Readonly<Record<string, 'single' | 'parallel' | 'fan-out' | 'deep-dag'>> = {
-    'SingleNode':  'single',
+  private static readonly PLACEMENT_KIND: Readonly<Record<string, 'single' | 'parallel' | 'fan-out' | 'deep-dag' | 'terminal'>> = {
+    'SingleNode':   'single',
     'ParallelNode': 'parallel',
-    'FanOutNode':  'fan-out',
-    'DeepDAGNode': 'deep-dag',
+    'FanOutNode':   'fan-out',
+    'DeepDAGNode':  'deep-dag',
+    'TerminalNode': 'terminal',
   };
 
   static render(dag: DAG, options: RenderOptions = {}): readonly CytoscapeElement[] {
@@ -117,7 +125,7 @@ export class CytoscapeRenderer {
     if (state.touchesTerminal) {
       state.elements.push({
         "group": 'nodes',
-        "data":  { "id": CytoscapeRenderer.END_ID, "label": 'end', "type": 'terminal' },
+        "data":  { "id": CytoscapeRenderer.END_ID, "label": 'end', "type": 'terminal', "synthetic": true },
         "classes": 'dag-terminal',
       });
     }
@@ -169,6 +177,14 @@ export class CytoscapeRenderer {
             "stateMapping": placement.stateMapping,
           },
         };
+      case 'TerminalNode':
+        return {
+          ...base,
+          "data": {
+            ...base.data,
+            "outcome": placement.outcome,
+          },
+        };
     }
   }
 
@@ -178,6 +194,8 @@ export class CytoscapeRenderer {
     fromId: string,
     prefix: string,
   ): readonly CytoscapeEdgeElement[] {
+    // TerminalNode placements are leaf placements — they have no outputs field.
+    if (!('outputs' in placement)) return [];
     const edges: CytoscapeEdgeElement[] = [];
     for (const [output, target] of Object.entries(placement.outputs)) {
       const destId = target === null

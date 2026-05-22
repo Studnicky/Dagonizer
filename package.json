@@ -34,6 +34,7 @@
     "example:06": "tsx examples/06-cancellation.ts",
     "example:07": "tsx examples/07-retry.ts",
     "example:08": "tsx examples/08-checkpoint.ts",
+    "example:09": "tsx examples/09-terminals.ts",
     "example:derive": "tsx examples/derive.ts"
   },
   "devDependencies": {

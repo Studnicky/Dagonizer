@@ -148,6 +148,7 @@ All three authoring journeys can produce any DAG the schema allows. The differen
 | Fan-in strategy (`custom`/`partition`/`append`) | ✓ | ✓ | ✓ via `DAGDeriverFanOut.strategy` |
 | Fan-out item kind (`node` or `dag`) | ✓ | ✓ via `.fanOut()` / `.deepDAG()` | ✓ via `DAGDeriverFanOut.node \| dag` |
 | `DeepDAGNode` placement | ✓ | ✓ | ✓ via `DAGDeriverAnnotations.subDAGs` |
+| `TerminalNode` placement | ✓ | ✓ via `.terminal()` | (not a target — use DAGBuilder) |
 | `stateMapping` | ✓ | ✓ | ✓ |
 | Multi-port routing | ✓ | ✓ via `routes` map | ✓ via `contract.outputs` + `terminals` |
 | Compile-time route narrowing | | ✓ from `NodeInterface` `TOutput` | (n/a — declarative) |
@@ -156,6 +157,41 @@ All three authoring journeys can produce any DAG the schema allows. The differen
 | Recursive / trampoline flows | ✓ node dispatches sub-DAG via `services.dispatcher.execute` | ✓ same pattern in node body | not a declarative target — use DAGBuilder |
 
 The bottom two rows are genuinely imperative patterns. A node that recursively dispatches a sub-DAG via `services.dispatcher.execute(name, state.clone())` is a trampoline; it lives in node logic regardless of which authoring journey produced the DAG. DAGDeriver doesn't try to absorb these patterns into annotations.
+
+## ⦿ Terminal placements
+
+Every DAG branch must end somewhere. Two forms exist:
+
+**Null route (implicit terminal)** — route an output to `null`:
+
+```ts
+.node('finalize', finalizeNode, { success: null })
+```
+
+A null route is sugar for "this branch ends with `outcome: completed`." No explicit placement is emitted. Use this when the endpoint has no semantic meaning beyond "done."
+
+**Named terminal (`TerminalNode`)** — declare an explicit placement:
+
+```ts
+.node('check', checkNode, { pass: 'end-ok', fail: 'end-fail' })
+.terminal('end-ok')
+.terminal('end-fail', 'failed')
+```
+
+`.terminal(name, outcome?)` emits a `TerminalNode` placement. When the engine reaches it, the flow ends with the declared `outcome` (`'completed'` by default, `'failed'` when specified). Named terminals serve two purposes:
+
+1. **Diagram legibility** — the placement appears as a named terminus in the Mermaid output, which matters when the endpoint name is semantically meaningful (`end-ok`, `response-sent`, `workflow-failed`).
+2. **Explicit failed outcome** — null routes always mean `completed`. To mark a branch as `failed`, declare a named terminal with `outcome: 'failed'`. There is no null-route shorthand for a failed outcome.
+
+A `DeepDAGNode` placement may target a named terminal directly. This is the idiomatic way to surface a child DAG's error as a `failed` lifecycle in the parent:
+
+```ts
+.deepDAG('run-child', 'child-dag', { success: 'end-ok', error: 'end-fail' })
+.terminal('end-ok')
+.terminal('end-fail', 'failed')
+```
+
+See [DAGBuilder — `.terminal()`](./builder#terminal-name-outcome) and [Phase 09 · Terminal placements](../examples/09-terminals) for runnable examples.
 
 ## ⦿ Switching journeys mid-project
 

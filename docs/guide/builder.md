@@ -227,6 +227,59 @@ const dag = new DAGBuilder('parent', '1')
   .build();
 ```
 
+## `.terminal(name, outcome?)`
+
+```ts
+.terminal(name: string, outcome: 'completed' | 'failed' = 'completed'): this
+```
+
+Appends a `TerminalNode` placement. When the engine reaches it, the flow ends with the declared `outcome`. The default is `'completed'` — the flow resolves cleanly. Passing `'failed'` marks the state as failed before resolving.
+
+TerminalNodes carry no `outputs` map. They are placement-only constructs with no backing `NodeInterface`.
+
+### When to use an explicit terminal vs a null route
+
+A null route (`{ ok: null }`) is the shortest form and is sufficient when the endpoint has no semantic meaning beyond "done." It is sugar for an implicit `completed` terminal.
+
+Use `.terminal(name)` when:
+
+- The endpoint name carries meaning (`end-ok`, `response-sent`) and you want it visible in the Mermaid diagram.
+- The outcome is `'failed'` — null routes always mean `completed`; there is no null-route shorthand for a failed outcome.
+- Multiple branches converge at named endpoints and legibility matters.
+
+### Routing `deepDAG` outputs to a terminal placement
+
+A `DeepDAGNode` placement may target a named terminal directly:
+
+```ts
+const dag = new DAGBuilder('parent', '1')
+  .deepDAG('run-child', 'child-dag', {
+    success: 'end-ok',
+    error:   'end-fail',
+  })
+  .terminal('end-ok')
+  .terminal('end-fail', 'failed')
+  .build();
+```
+
+When the child DAG accumulates errors, the engine routes the deep-DAG placement to its `error` output, which arrives at `end-fail`, which marks the parent flow `failed`. Without a named terminal, the author would need a dedicated SingleNode just to call `state.markFailed()`. The terminal collapses that to one `.terminal(name, 'failed')` call.
+
+### Example — two explicit terminals
+
+```ts
+import { DAGBuilder } from '@noocodex/dagonizer/builder';
+
+class S extends NodeStateBase { shouldPass = true; }
+
+const dag = new DAGBuilder('demo', '1')
+  .node('check', checkNode, { pass: 'end-ok', fail: 'end-fail' })
+  .terminal('end-ok')
+  .terminal('end-fail', 'failed')
+  .build();
+```
+
+Running with `state.shouldPass = true` produces `lifecycle.kind = 'completed'`; running with `false` produces `'failed'`.
+
 ## `.entrypoint()`
 
 By default the first added node is the entrypoint. Override explicitly:

@@ -29,6 +29,8 @@ import { ParallelNodeSchema } from '../entities/dag/ParallelNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import { SingleNodeSchema } from '../entities/dag/SingleNode.js';
 import type { SingleNode } from '../entities/dag/SingleNode.js';
+import { TerminalNodeSchema } from '../entities/dag/TerminalNode.js';
+import type { TerminalNode } from '../entities/dag/TerminalNode.js';
 import { DAGErrorJSONSchema } from '../entities/errors/DAGErrorJSON.js';
 import type { DAGErrorJSON } from '../entities/errors/DAGErrorJSON.js';
 import { ExecutionResultSchema } from '../entities/execution/ExecutionResult.js';
@@ -126,8 +128,9 @@ export class Validator {
   static readonly singleNode:  EntityValidator<SingleNode>   = Validator.compile('SingleNode',   SingleNodeSchema);
   static readonly parallelNode:EntityValidator<ParallelNode> = Validator.compile('ParallelNode', ParallelNodeSchema);
   static readonly fanOutNode:  EntityValidator<FanOutNode>   = Validator.compile('FanOutNode',   FanOutNodeSchema);
-  static readonly deepDAGNode: EntityValidator<DeepDAGNode>  = Validator.compile('DeepDAGNode',  DeepDAGNodeSchema);
-  static readonly fanInConfig: EntityValidator<FanInConfig>  = Validator.compile('FanInConfig',  FanInConfigSchema);
+  static readonly deepDAGNode:  EntityValidator<DeepDAGNode>   = Validator.compile('DeepDAGNode',  DeepDAGNodeSchema);
+  static readonly terminalNode: EntityValidator<TerminalNode>  = Validator.compile('TerminalNode', TerminalNodeSchema);
+  static readonly fanInConfig:  EntityValidator<FanInConfig>   = Validator.compile('FanInConfig',  FanInConfigSchema);
 
   // Node runtime shapes
   static readonly node:          EntityValidator<Node>          = Validator.compile('Node',          NodeSchema);
