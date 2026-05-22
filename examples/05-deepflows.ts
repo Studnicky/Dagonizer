@@ -22,8 +22,8 @@ import {
   DAG_CONTEXT,
   Dagonizer,
   NodeStateBase,
-} from '../src/index.js';
-import type { DAG, NodeInterface } from '../src/index.js';
+} from '@noocodex/dagonizer';
+import type { DAG, NodeInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State — fields live on the same class; mapping controls which ones cross

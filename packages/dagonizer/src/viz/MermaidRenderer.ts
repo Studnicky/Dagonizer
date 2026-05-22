@@ -5,13 +5,17 @@
  * per placement and one edge per output route. Node-shape hints encode
  * the placement type:
  *
- *   single    → rectangle:    `nodeName[name]`
+ *   single    → rectangle:       `nodeName[name]`
  *   parallel  → subgraph wrapping its child node names
- *   fan-out   → hexagon:      `nodeName{{name}}`
- *   deep-dag  → stadium:      `nodeName([name])`
+ *   fan-out   → hexagon:         `nodeName{{name}}`
+ *   deep-dag  → stadium:         `nodeName([name])`
+ *   terminal (completed) → double-circle: `nodeName(((name\n(completed))))`
+ *   terminal (failed)    → asymmetric flag: `nodeName>name\n(failed)]`
  *
  * Output routes render as labeled edges. Routes targeting `null` render
- * as edges to a synthetic `END` terminator (one per DAG).
+ * as edges to a synthetic `END` terminator (one per DAG). Explicit
+ * `TerminalNode` placements render as their own distinct shapes and do
+ * not emit edges (they are leaf placements — they end the flow).
  *
  * @example
  * ```ts
@@ -26,8 +30,9 @@ import type { DeepDAGNode } from '../entities/dag/DeepDAGNode.js';
 import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
+import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 
-type AnyPlacement = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode;
+type AnyPlacement = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode | TerminalNodePlacementInterface;
 
 /**
  * Render a `DAG` as Mermaid `flowchart` source. Output is a complete
@@ -75,7 +80,7 @@ export class MermaidRenderer {
     return value.replace(/"/gu, '#quot;');
   }
 
-  /** Render a placement's Mermaid shape syntax (rectangle / hexagon / stadium). */
+  /** Render a placement's Mermaid shape syntax (rectangle / hexagon / stadium / double-circle / flag). */
   private static renderShape(placement: AnyPlacement): string {
     const label = MermaidRenderer.escapeLabel(placement.name);
     switch (placement['@type']) {
@@ -88,11 +93,22 @@ export class MermaidRenderer {
       case 'ParallelNode':
         // parallel placements render as subgraphs, not single shapes
         return placement.name;
+      case 'TerminalNode': {
+        const outcomeLabel = MermaidRenderer.escapeLabel(`${placement.name}\\n(${placement.outcome})`);
+        if (placement.outcome === 'completed') {
+          // double-circle — connotes "final state" in Mermaid
+          return `${placement.name}(((${outcomeLabel})))`;
+        }
+        // asymmetric / flag shape for failed terminals
+        return `${placement.name}>${outcomeLabel}]`;
+      }
     }
   }
 
   /** Render a placement's outbound edges as `from -->|label| to` lines. */
   private static renderEdges(placement: AnyPlacement): readonly string[] {
+    // TerminalNode placements are leaf placements — they have no outputs field.
+    if (!('outputs' in placement)) return [];
     const lines: string[] = [];
     for (const [outputName, target] of Object.entries(placement.outputs)) {
       const dest = target ?? MermaidRenderer.TERMINAL_ID;

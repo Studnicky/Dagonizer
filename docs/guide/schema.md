@@ -58,7 +58,15 @@ console.log(DAGSchema.$id);
 // 'https://noocodex.dev/schemas/dagonizer/DAG'
 ```
 
-The schema covers: `name`, `version`, `entrypoint`, and `nodes`. Each node variant (`single`, `parallel`, `fan-out`, `deep-dag`) has its own sub-schema enforcing required fields and valid enumerations for `type`, `combine`, fan-in `strategy`, and node-output values.
+The schema covers: `name`, `version`, `entrypoint`, and `nodes`. Each node variant has its own sub-schema enforcing required fields and valid enumerations for `@type`, `combine`, fan-in `strategy`, and node-output values.
+
+| `@type` | Required fields | Notes |
+|---------|----------------|-------|
+| `SingleNode` | `@id`, `@type`, `name`, `node`, `outputs` | `outputs` is `Record<string, string \| null>` |
+| `ParallelNode` | `@id`, `@type`, `name`, `nodes`, `combine`, `outputs` | `nodes` is a non-empty string array |
+| `FanOutNode` | `@id`, `@type`, `name`, `node`, `source`, `fanIn`, `outputs` | optional `concurrency`, `itemKey` |
+| `DeepDAGNode` | `@id`, `@type`, `name`, `dag`, `outputs` | optional `stateMapping.input` / `output` |
+| `TerminalNode` | `@id`, `@type`, `name`, `outcome` | no `outputs` field; `outcome` is `'completed' \| 'failed'` |
 
 ## `Validator.dag`
 
@@ -120,7 +128,15 @@ Validator.dag.validate(x);   // returns narrowed DAG or throws ValidationError
 Validator.dag.errors(x);     // returns string[] | null (null = valid)
 ```
 
-Sub-validators are compiled once at module load against the shared Ajv 2020-12 instance (`allErrors: true`, `strict: false`). Every top-level entity schema in `entities/` has a corresponding sub-validator on `Validator`.
+Sub-validators are compiled once at module load against the shared Ajv 2020-12 instance (`allErrors: true`, `strict: false`). Every top-level entity schema in `entities/` has a corresponding sub-validator on `Validator`, including `Validator.terminalNode` for `TerminalNodeSchema`:
+
+```ts
+import { Validator } from '@noocodex/dagonizer/validation';
+
+Validator.terminalNode.is(x);       // type predicate
+Validator.terminalNode.validate(x); // returns TerminalNode or throws ValidationError
+Validator.terminalNode.errors(x);   // returns string[] | null
+```
 ## Related reference
 
 - [Reference: Validation](../reference/validation)

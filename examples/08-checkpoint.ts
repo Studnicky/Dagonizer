@@ -19,14 +19,14 @@
  * Run: npx tsx examples/08-checkpoint.ts
  */
 
-import type { JsonObject } from '../src/entities/json.js';
+import type { JsonObject } from '@noocodex/dagonizer/entities';
 import {
   Checkpoint,
   DAG_CONTEXT,
   Dagonizer,
   NodeStateBase,
-} from '../src/index.js';
-import type { DAG, NodeInterface } from '../src/index.js';
+} from '@noocodex/dagonizer';
+import type { DAG, NodeInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State — overrides snapshot/restore to persist domain fields

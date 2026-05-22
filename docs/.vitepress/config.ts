@@ -110,6 +110,7 @@ const sidebar = [
       { text: 'Phase 06 · Cancellation',             link: '/examples/06-cancellation' },
       { text: 'Phase 07 · Retry',                    link: '/examples/07-retry' },
       { text: 'Phase 08 · Checkpoint + resume',      link: '/examples/08-checkpoint' },
+      { text: 'Phase 09 · Terminal placements',      link: '/examples/09-terminals' },
     ],
   },
   {

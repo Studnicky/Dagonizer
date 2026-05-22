@@ -19,8 +19,8 @@ import {
   Dagonizer,
   NodeStateBase,
   RetryPolicy,
-} from '../src/index.js';
-import type { DAG, NodeInterface } from '../src/index.js';
+} from '@noocodex/dagonizer';
+import type { DAG, NodeInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Simulated flaky downstream — throws twice, succeeds on third attempt

@@ -11,6 +11,7 @@ export { DAGDeriver } from './DAGDeriver.js';
 export type { DAGDeriverOptions } from './DAGDeriver.js';
 export type {
   DAGDeriverAnnotations,
+  DAGDeriverEmitTerminal,
   DAGDeriverSubDAG,
   DAGDeriverFanOut,
   DAGDeriverTerminal,

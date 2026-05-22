@@ -21,11 +21,39 @@
  *               operations auto-group with `combine: 'collect'`.
  */
 
-/** Per-operation alternate exit. `target: null` ends the flow. */
-export interface DAGDeriverTerminal {
-  readonly outcome: string;
-  readonly target:  string | null;
+/**
+ * Inline TerminalNode placement the deriver synthesizes when the consuming
+ * operation hits the named outcome. The deriver materialises a `TerminalNode`
+ * entry in the DAG's `nodes` array and routes the operation's matching output
+ * port to it.
+ */
+export interface DAGDeriverEmitTerminal {
+  /** Placement name for the synthesized TerminalNode. */
+  readonly name: string;
+  /** Lifecycle outcome the terminal triggers on the parent run. */
+  readonly outcome: 'completed' | 'failed';
 }
+
+/**
+ * Per-operation alternate exit. Two variants:
+ *
+ *   - **target variant** (legacy form): `target: null` ends the flow with an
+ *     implicit `completed` outcome; `target: string` routes the output port to
+ *     the named existing placement.
+ *   - **emit variant**: declares an inline `TerminalNode` that the deriver
+ *     synthesizes and adds to the DAG. The operation's output port routes to
+ *     `emit.name`; the `TerminalNode` carries `emit.outcome` so the engine
+ *     marks the run `completed` or `failed` when it is reached. Useful for
+ *     marking the parent flow `failed` explicitly on a particular operation
+ *     outcome (e.g. `fail` → `TerminalNode{outcome:'failed'}`).
+ *
+ * Multiple operations may declare `emit` annotations with the same `name` —
+ * the deriver deduplicates by name. If two `emit` entries share a name but
+ * disagree on `outcome`, `DAGDeriver.derive` throws `DAGError`.
+ */
+export type DAGDeriverTerminal =
+  | { readonly outcome: string; readonly target: string | null }
+  | { readonly outcome: string; readonly emit: DAGDeriverEmitTerminal };
 
 /**
  * Common fields every fan-out annotation carries regardless of

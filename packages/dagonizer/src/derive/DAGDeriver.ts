@@ -41,16 +41,18 @@ import type { DeepDAGNode } from '../entities/dag/DeepDAGNode.js';
 import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
+import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 import { DAGError } from '../errors/DAGError.js';
 
 import { ContractRegistryValidator } from './ContractRegistryValidator.js';
 import type {
   DAGDeriverAnnotations,
+  DAGDeriverEmitTerminal,
   DAGDeriverFanOut,
   DAGDeriverSubDAG,
 } from './DAGDeriverAnnotations.js';
 
-type DAGNodeEntry = DeepDAGNode | FanOutNode | ParallelNode | SingleNodePlacementInterface;
+type DAGNodeEntry = DeepDAGNode | FanOutNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface;
 
 export interface DAGDeriverOptions {
   readonly name: string;
@@ -339,6 +341,7 @@ export class DAGDeriver {
     sourceLabel: string,
     successors: ReadonlySet<string>,
     annotations: DAGDeriverAnnotations,
+    emitCollector: Map<string, DAGDeriverEmitTerminal>,
   ): Record<string, string | null> {
     const overrides = new Map<string, string | null>();
     const terminals = annotations.terminals?.[name] ?? [];
@@ -350,7 +353,12 @@ export class DAGDeriver {
           `DAGDeriver: terminal for '${name}' references port '${terminal.outcome}' which is not in the ${sourceLabel} [${declaredOutputs.join(', ')}]`,
         );
       }
-      overrides.set(terminal.outcome, terminal.target);
+      if ('emit' in terminal) {
+        DAGDeriver.collectEmit(terminal.emit, emitCollector);
+        overrides.set(terminal.outcome, terminal.emit.name);
+      } else {
+        overrides.set(terminal.outcome, terminal.target);
+      }
     }
 
     const defaultNext = [...successors][0] ?? null;
@@ -359,6 +367,27 @@ export class DAGDeriver {
       out[port] = overrides.has(port) ? overrides.get(port) ?? null : defaultNext;
     }
     return out;
+  }
+
+  /**
+   * Accumulate an `emit` annotation into the collector map. Deduplicates by
+   * name; throws `DAGError` when two `emit` entries share a name but disagree
+   * on `outcome`.
+   */
+  private static collectEmit(
+    emit: DAGDeriverEmitTerminal,
+    collector: Map<string, DAGDeriverEmitTerminal>,
+  ): void {
+    const existing = collector.get(emit.name);
+    if (existing === undefined) {
+      collector.set(emit.name, emit);
+      return;
+    }
+    if (existing.outcome !== emit.outcome) {
+      throw new DAGError(
+        `DAGDeriver: emit terminal name '${emit.name}' is declared with conflicting outcomes: '${existing.outcome}' vs '${emit.outcome}'`,
+      );
+    }
   }
 
   private static renderNodes(
@@ -371,6 +400,15 @@ export class DAGDeriver {
     const nodes: DAGNodeEntry[] = [];
     const nodeId = (placementName: string): string =>
       `urn:noocodex:dag:${dagName}/node/${placementName}`;
+
+    // Collect all synthesized TerminalNode placements from `emit` annotations.
+    // Keyed by placement name; populated incrementally as each operation is
+    // rendered and its terminals are resolved.
+    const emitCollector = new Map<string, DAGDeriverEmitTerminal>();
+
+    // All operation names that will be placed as SingleNode/FanOutNode/etc.
+    // Used to detect name collisions with emit terminal names.
+    const operationNames = new Set<string>(contracts.keys());
 
     // Member → group lookup so we render explicit parallels exactly once
     // (when the first member is encountered in topological order).
@@ -442,9 +480,9 @@ export class DAGDeriver {
         }
 
         if (fan !== undefined) {
-          nodes.push(DAGDeriver.renderFanOutNode(name, fan, succs, annotations, nodeId));
+          nodes.push(DAGDeriver.renderFanOutNode(name, fan, succs, annotations, nodeId, emitCollector));
         } else if (subDAG !== undefined) {
-          nodes.push(DAGDeriver.renderDeepDAGNode(name, subDAG, succs, annotations, nodeId));
+          nodes.push(DAGDeriver.renderDeepDAGNode(name, subDAG, succs, annotations, nodeId, emitCollector));
         } else {
           const contract = contracts.get(name);
           if (contract === undefined) {
@@ -461,12 +499,31 @@ export class DAGDeriver {
               `contract's outputs`,
               succs,
               annotations,
+              emitCollector,
             ),
           };
           nodes.push(single);
         }
       }
     });
+
+    // Validate emit terminal names do not collide with operation placements,
+    // then synthesize and append TerminalNode placements.
+    for (const [emitName, emit] of emitCollector) {
+      if (operationNames.has(emitName)) {
+        throw new DAGError(
+          `DAGDeriver: emit terminal name '${emitName}' collides with an existing operation placement — choose a distinct name`,
+        );
+      }
+      const terminalNode: TerminalNodePlacementInterface = {
+        '@id':     nodeId(emitName),
+        '@type':   'TerminalNode',
+        'name':    emitName,
+        'outcome': emit.outcome,
+      };
+      nodes.push(terminalNode);
+    }
+
     return nodes;
   }
 
@@ -481,6 +538,7 @@ export class DAGDeriver {
     successors: ReadonlySet<string>,
     annotations: DAGDeriverAnnotations,
     nodeId: (n: string) => string,
+    emitCollector: Map<string, DAGDeriverEmitTerminal>,
   ): FanOutNode {
     const next0 = [...successors][0] ?? null;
     const outcomeOverrides = new Map<string, string | null>();
@@ -490,7 +548,12 @@ export class DAGDeriver {
           `DAGDeriver: terminal for fan-out '${name}' references outcome '${terminal.outcome}' which is not in outcomes [${fan.outcomes.join(', ')}]`,
         );
       }
-      outcomeOverrides.set(terminal.outcome, terminal.target);
+      if ('emit' in terminal) {
+        DAGDeriver.collectEmit(terminal.emit, emitCollector);
+        outcomeOverrides.set(terminal.outcome, terminal.emit.name);
+      } else {
+        outcomeOverrides.set(terminal.outcome, terminal.target);
+      }
     }
     const fanOutOutputs: Record<string, string | null> = {};
     for (const outcome of fan.outcomes) {
@@ -529,6 +592,7 @@ export class DAGDeriver {
     successors: ReadonlySet<string>,
     annotations: DAGDeriverAnnotations,
     nodeId: (n: string) => string,
+    emitCollector: Map<string, DAGDeriverEmitTerminal>,
   ): DeepDAGNode {
     const deepDAGNode: DeepDAGNode = {
       '@id':   nodeId(name),
@@ -541,6 +605,7 @@ export class DAGDeriver {
         `subDAG '${subDAG.dag}' declared outputs`,
         successors,
         annotations,
+        emitCollector,
       ),
     };
     if (subDAG.stateMapping !== undefined) {

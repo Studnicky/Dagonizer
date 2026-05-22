@@ -38,6 +38,9 @@ export type { FanOutNode } from './dag/FanOutNode.js';
 export { DeepDAGNodeSchema } from './dag/DeepDAGNode.js';
 export type { DeepDAGNode } from './dag/DeepDAGNode.js';
 
+export { TerminalNodeSchema } from './dag/TerminalNode.js';
+export type { TerminalNode } from './dag/TerminalNode.js';
+
 export { DAGSchema, DAG_CONTEXT } from './dag/DAG.js';
 export type { DAG } from './dag/DAG.js';
 

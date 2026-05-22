@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { TerminalNodePlacementInterface } from '../../src/entities/dag/TerminalNode.js';
 import type { DAG } from '../../src/entities/index.js';
 import { DAG_CONTEXT } from '../../src/entities/index.js';
 import { CytoscapeRenderer } from '../../src/viz/CytoscapeRenderer.js';
@@ -126,5 +127,138 @@ void describe('CytoscapeRenderer.render', () => {
       .filter((entry) => entry.group === 'edges')
       .map((entry) => entry.data.id);
     assert.deepEqual([...ids].sort(), ['a__error__END', 'a__success__END']);
+  });
+});
+
+void describe('CytoscapeRenderer.render — TerminalNode', () => {
+  void it('renders a completed TerminalNode with type=terminal and outcome=completed', () => {
+    const terminal: TerminalNodePlacementInterface = {
+      '@id':     'urn:noocodex:dag:ct/node/done',
+      '@type':   'TerminalNode',
+      'name':    'done',
+      'outcome': 'completed',
+    };
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:ct',
+      '@type':    'DAG',
+      'name':       'ct',
+      'version':    '1',
+      'entrypoint': 'step',
+      'nodes': [
+        {
+          '@id':    'urn:noocodex:dag:ct/node/step',
+          '@type':  'SingleNode',
+          'name':   'step',
+          'node':   'step',
+          'outputs': { 'success': 'done' },
+        },
+        terminal,
+      ],
+    };
+    const elements = CytoscapeRenderer.render(dag);
+    const doneNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'done');
+    assert.ok(doneNode !== undefined, 'done node should exist');
+    assert.equal(doneNode.data.type, 'terminal');
+    assert.equal(doneNode.data['outcome'], 'completed');
+    // no edges originate from the terminal node
+    const edgesFromDone = elements.filter((el) => el.group === 'edges' && el.data.source === 'done');
+    assert.equal(edgesFromDone.length, 0);
+    // no synthetic END (no null routes)
+    const endNode = elements.find((el) => isNode(el) && el.data.id === 'END');
+    assert.ok(endNode === undefined, 'synthetic END should not be emitted when no null routes exist');
+  });
+
+  void it('renders a failed TerminalNode with outcome=failed', () => {
+    const terminal: TerminalNodePlacementInterface = {
+      '@id':     'urn:noocodex:dag:ct2/node/abort',
+      '@type':   'TerminalNode',
+      'name':    'abort',
+      'outcome': 'failed',
+    };
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:ct2',
+      '@type':    'DAG',
+      'name':       'ct2',
+      'version':    '1',
+      'entrypoint': 'step',
+      'nodes': [
+        {
+          '@id':    'urn:noocodex:dag:ct2/node/step',
+          '@type':  'SingleNode',
+          'name':   'step',
+          'node':   'step',
+          'outputs': { 'error': 'abort' },
+        },
+        terminal,
+      ],
+    };
+    const elements = CytoscapeRenderer.render(dag);
+    const abortNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'abort');
+    assert.ok(abortNode !== undefined);
+    assert.equal(abortNode.data.type, 'terminal');
+    assert.equal(abortNode.data['outcome'], 'failed');
+  });
+
+  void it('synthetic END carries synthetic=true to distinguish from user-declared TerminalNode', () => {
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:ct3',
+      '@type':    'DAG',
+      'name':       'ct3',
+      'version':    '1',
+      'entrypoint': 'step',
+      'nodes': [{
+        '@id':    'urn:noocodex:dag:ct3/node/step',
+        '@type':  'SingleNode',
+        'name':   'step',
+        'node':   'step',
+        'outputs': { 'success': null },
+      }],
+    };
+    const elements = CytoscapeRenderer.render(dag);
+    const endNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'END');
+    assert.ok(endNode !== undefined);
+    assert.equal(endNode.data['synthetic'], true);
+  });
+
+  void it('coexists: null route produces synthetic END, explicit TerminalNode is a separate element', () => {
+    const terminal: TerminalNodePlacementInterface = {
+      '@id':     'urn:noocodex:dag:ct4/node/done',
+      '@type':   'TerminalNode',
+      'name':    'done',
+      'outcome': 'completed',
+    };
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:ct4',
+      '@type':    'DAG',
+      'name':       'ct4',
+      'version':    '1',
+      'entrypoint': 'step',
+      'nodes': [
+        {
+          '@id':    'urn:noocodex:dag:ct4/node/step',
+          '@type':  'SingleNode',
+          'name':   'step',
+          'node':   'step',
+          'outputs': { 'success': 'done', 'error': null },
+        },
+        terminal,
+      ],
+    };
+    const elements = CytoscapeRenderer.render(dag);
+    // explicit TerminalNode exists with outcome
+    const doneNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'done');
+    assert.ok(doneNode !== undefined);
+    assert.equal(doneNode.data['outcome'], 'completed');
+    assert.equal(doneNode.data['synthetic'], undefined);
+    // synthetic END also exists for the null route
+    const endNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'END');
+    assert.ok(endNode !== undefined);
+    assert.equal(endNode.data['synthetic'], true);
+    // they are distinct elements
+    assert.notEqual(doneNode.data.id, endNode.data.id);
   });
 });

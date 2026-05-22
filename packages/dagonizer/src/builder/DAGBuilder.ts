@@ -23,9 +23,10 @@ import type { FanInConfig } from '../entities/dag/FanInConfig.js';
 import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
+import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-type DAGNodeType = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode;
+type DAGNodeType = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode | TerminalNodePlacementInterface;
 
 /** Optional configuration for a fan-out node added via `DAGBuilder.fanOut`. */
 export interface FanOutOptionsInterface {
@@ -171,6 +172,26 @@ export class DAGBuilder {
     };
     if (options.stateMapping !== undefined) dagNode.stateMapping = options.stateMapping;
     this.#nodes.push(dagNode);
+    if (this.#entrypoint === null) this.#entrypoint = name;
+    return this;
+  }
+
+  /**
+   * Append a terminal node. When reached, the flow ends with the given
+   * `outcome`. `'completed'` is the default — the flow resolves cleanly.
+   * `'failed'` marks the state as failed before resolving.
+   *
+   * TerminalNodes have no routing (`outputs` map). They are placement-only
+   * constructs with no backing `NodeInterface`.
+   */
+  terminal(name: string, outcome: 'completed' | 'failed' = 'completed'): this {
+    const placement: TerminalNodePlacementInterface = {
+      '@id':   this.#nodeId(name),
+      '@type': 'TerminalNode',
+      name,
+      outcome,
+    };
+    this.#nodes.push(placement);
     if (this.#entrypoint === null) this.#entrypoint = name;
     return this;
   }

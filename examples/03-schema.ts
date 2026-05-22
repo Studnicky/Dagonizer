@@ -20,8 +20,8 @@ import {
   Dagonizer,
   NodeStateBase,
   ValidationError,
-} from '../src/index.js';
-import type { NodeInterface } from '../src/index.js';
+} from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Node
