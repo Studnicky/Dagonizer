@@ -31,6 +31,36 @@ export const CheckpointDataSchema = {
     'state': { 'type': 'object' },
     'executedNodes': { 'type': 'array', 'items': { 'type': 'string' } },
     'skippedNodes': { 'type': 'array', 'items': { 'type': 'string' } },
+    /**
+     * Optional named-store snapshots. Absent in v0.10 checkpoints; present in
+     * v0.11+ when `Checkpoint.capture(dagName, result, { stores })` is used.
+     * Keyed by the same store names passed to `capture`. Absent keys restore
+     * as empty (forward-compatible).
+     */
+    'stores': {
+      'type': 'object',
+      'additionalProperties': {
+        'type': 'object',
+        'required': ['version', 'type', 'entries'],
+        'properties': {
+          'version': { 'type': 'integer' },
+          'type':    { 'type': 'string' },
+          'entries': {
+            'type': 'array',
+            'items': {
+              'type': 'object',
+              'required': ['key', 'value'],
+              'properties': {
+                'key':   { 'type': 'string' },
+                'value': {},
+              },
+              'additionalProperties': false,
+            },
+          },
+        },
+        'additionalProperties': false,
+      },
+    },
   },
   'additionalProperties': false,
 } as const;

@@ -104,7 +104,7 @@ export interface DagonizerInterface<
 
   /**
    * Resume a DAG from a given node name. The caller is responsible for
-   * rehydrating `state` before the call (typically via `Checkpoint.restore`).
+   * rehydrating `state` before the call (typically via `Checkpoint.load(raw).restoreState(fn)`).
    */
   resume(
     dagName: string,
@@ -296,7 +296,7 @@ implements DagonizerInterface<TState, TServices> {
    * Resume a flow from `fromStage`. Same generator as `execute()` but
    * begins at the given cursor instead of the flow's entrypoint. Caller
    * is responsible for rehydrating `state` (typically via
-   * `Checkpoint.restore`) before calling.
+   * `Checkpoint.load(raw).restoreState(fn)`) before calling.
    */
   resume(
     dagName: string,

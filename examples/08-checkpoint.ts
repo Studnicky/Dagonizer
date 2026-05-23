@@ -3,7 +3,7 @@
  *
  * Demonstrates the full checkpoint lifecycle:
  *   1. Execute a multi-node DAG but abort mid-way.
- *   2. Capture the partial result as a JSON checkpoint.
+ *   2. Capture the partial result as a Checkpoint instance.
  *   3. Persist it (here: serialise to a string as a stand-in for a DB write).
  *   4. Parse it back and restore state via a custom restore function.
  *   5. Resume from the cursor — only the remaining nodes run.
@@ -38,7 +38,7 @@ class CountingState extends NodeStateBase {
 
   /**
    * Serialize domain fields into a plain JSON-serialisable object.
-   * Called by Checkpoint.from() to capture state at the abort point.
+   * Called by Checkpoint.capture() to capture state at the abort point.
    */
   protected override snapshotData(): JsonObject {
     return { "count": this.count, "log": [...this.log] };
@@ -132,22 +132,25 @@ process.stdout.write(`  partial: count=${partial.state.count} cursor="${partial.
 // cursor = 'b': the next node that would run if we resume
 
 // ---------------------------------------------------------------------------
-// Step 2: persist the checkpoint as JSON
+// Step 2: capture and persist the checkpoint as JSON
 // ---------------------------------------------------------------------------
 
-const checkpoint = Checkpoint.from('count', partial);  // capture state + cursor
-const persisted  = Checkpoint.toJson(checkpoint);       // → JSON string (store in DB, file, etc.)
+// Checkpoint.capture() returns a Checkpoint instance.
+// cursor !== null here because we aborted mid-run.
+const checkpoint = await Checkpoint.capture('count', partial);
+const persisted  = checkpoint.toJson();  // → JSON string (store in DB, file, etc.)
 
 // ---------------------------------------------------------------------------
 // Step 3: restore + resume (simulating a process restart)
 // ---------------------------------------------------------------------------
 
-// Parse the persisted JSON back to an unknown value, then restore.
-// The second arg is a state factory — consumers supply their own restore fn
-// so the checkpoint module never imports domain state classes.
-const parsed = JSON.parse(persisted) as unknown;
-const { state, dagName, cursor } = Checkpoint.restore(
-  parsed,
+// Parse the persisted JSON back to an unknown value, then load into a Checkpoint.
+const ckpt = Checkpoint.load(JSON.parse(persisted) as unknown);
+
+// restoreState maps the snapshot back to a typed CountingState instance.
+// Consumers supply their own restore fn so the checkpoint module never
+// imports domain state classes.
+const { state, dagName, cursor } = ckpt.restoreState(
   (snap) => CountingState.restore(snap),  // rehydrates domain fields via restoreData()
 );
 

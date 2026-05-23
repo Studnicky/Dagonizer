@@ -168,10 +168,11 @@ resume(
 ): Execution<TState>
 ```
 
-Identical to `execute()` but begins at `fromStage` instead of the DAG's entrypoint. The caller is responsible for rehydrating `state` (typically via `Checkpoint.restore`) before calling.
+Identical to `execute()` but begins at `fromStage` instead of the DAG's entrypoint. The caller is responsible for rehydrating `state` (typically via `Checkpoint.load(raw).restoreState(fn)`) before calling.
 
 ```ts
-const { dagName, state, cursor } = Checkpoint.restore(raw, (snap) => MyState.restore(snap));
+const ckpt = Checkpoint.load(raw);
+const { dagName, state, cursor } = ckpt.restoreState((snap) => MyState.restore(snap));
 const result = await dispatcher.resume(dagName, state, cursor);
 ```
 

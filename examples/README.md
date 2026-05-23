@@ -13,7 +13,8 @@ npx tsx examples/06-cancellation.ts  # AbortSignal + deadlineMs
 npx tsx examples/07-retry.ts         # RetryPolicy inside an operation
 npx tsx examples/08-checkpoint.ts    # abort → snapshot → restore → resume
 npx tsx examples/09-terminals.ts     # TerminalNode: explicit completed/failed endpoints, deepDAG routing
+npx tsx examples/10-shared-state.ts  # MemoryStore on the services bag + checkpoint round-trip
 npx tsx examples/derive.ts           # DAGDeriver: contract-derived DAG + subDAGs annotation (DeepDAGNode placement)
 ```
 
-Or via npm scripts: `npm run example:01` … `example:09`, plus `example:derive` for the DAGDeriver showcase.
+Or via npm scripts: `npm run example:01` … `example:10`, plus `example:derive` for the DAGDeriver showcase.

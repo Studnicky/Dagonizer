@@ -74,6 +74,6 @@ The `#signal-scout` region shows how `openLibraryScout` propagates `context.sign
 - **`signal` + `deadlineMs` composition** — `SignalComposer` combines the caller-supplied `AbortSignal` with the deadline into one internal signal passed to every node via `context.signal`. Neither option is required; both can be used together.
 - **Nodes propagate the signal** — every scout passes `context.signal` as the second argument to `scoutRetry.run(task, signal)`. The retry policy aborts mid-wait when the signal fires, so scouts do not wait through the full backoff window.
 - **Lifecycle records the exact terminal state** — `cancelled` carries the abort `reason` string; `timed_out` carries the deadline-finished timestamp. `completed` means all nodes ran to their terminal outputs.
-- **`result.cursor`** — records the next node that would have run. When non-null, the flow was interrupted. Pair with `Checkpoint.from` (see [Phase 08](./08-checkpoint)) to resume in a later process.
+- **`result.cursor`** — records the next node that would have run. When non-null, the flow was interrupted. Pair with `Checkpoint.capture` (see [Phase 08](./08-checkpoint)) to resume in a later process.
 
 See this in action in the [Archivist live demo](./the-archivist) — the cancel button fires the same `AbortController.abort()` path.

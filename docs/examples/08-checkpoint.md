@@ -35,7 +35,7 @@ seeAlso:
 
 The compose / validate loop in [The Archivist](./the-archivist) is the most expensive segment — multiple LLM calls per attempt. If the visitor's session times out mid-loop, the dispatcher records the cursor (`crl-compose-response` or `crl-validate-response`), the partial draft, and the attempt counter. A later process recalls the checkpoint and finishes the response without paying for the upstream scouts again.
 
-The `ArchivistState` makes this possible by overriding `snapshotData()` and `restoreData()` — the two methods `NodeStateBase` calls during `Checkpoint.from` and `Checkpoint.recall`.
+The `ArchivistState` makes this possible by overriding `snapshotData()` and `restoreData()` — the two methods `NodeStateBase` calls during `Checkpoint.capture` and the resume path.
 
 ## Flow
 
@@ -45,7 +45,7 @@ flowchart TB
   scouts[book-search-fanout]
   compose[crl-compose-response]
   validate[crl-validate-response]
-  ckpt([Checkpoint.from + persist])
+  ckpt([Checkpoint.capture + ckpt.persist])
   store[(CheckpointStore)]
   recall([Checkpoint.recall])
   resume([dispatcher.resume])
@@ -87,22 +87,21 @@ const store = new MemoryCheckpointStore();
 
 // After a cancelled/timed-out execute call:
 if (result.cursor !== null) {
-  const data = Checkpoint.from('the-archivist', result);
-  await Checkpoint.persist(store, `archivist:${result.state.query}`, data);
+  const ckpt = await Checkpoint.capture('the-archivist', result);
+  await ckpt.persist(store, `archivist:${result.state.query}`);
 }
 
 // In a later process:
-const recalled = await Checkpoint.recall(
-  store,
-  `archivist:${visitor.query}`,
-  (snap) => ArchivistState.restore(snap),  // rehydrates via restoreData()
-);
+const recalled = await Checkpoint.recall(store, `archivist:${visitor.query}`);
 
 if (recalled !== null) {
+  const { dagName, state, cursor } = recalled.restoreState(
+    (snap) => ArchivistState.restore(snap),  // rehydrates via restoreData()
+  );
   const final = await dispatcher.resume(
-    recalled.dagName,
-    recalled.state,
-    recalled.cursor,                       // 'crl-validate-response'
+    dagName,
+    state,
+    cursor,                       // 'crl-validate-response'
   );
   console.log(final.state.draft);          // validated response
   console.log(final.state.lifecycle.kind); // 'completed'
@@ -111,10 +110,10 @@ if (recalled !== null) {
 
 ## What it demonstrates
 
-- **`ArchivistState.snapshotData()` / `restoreData()`** — domain-specific serialization. `NodeStateBase` calls `snapshotData` during `Checkpoint.from` and `restoreData` during `Checkpoint.recall`. The lifecycle resets to `pending` on restore; the resumed execution is a fresh lifecycle run on the recovered state data.
-- **`Checkpoint.from(dagName, result)`** — produces a `CheckpointData` record only when `result.cursor !== null` (an in-progress flow). A completed flow produces no cursor.
+- **`ArchivistState.snapshotData()` / `restoreData()`** — domain-specific serialization. `NodeStateBase` calls `snapshotData` during `Checkpoint.capture` and `restoreData` during `ckpt.restoreState(fn)`. The lifecycle resets to `pending` on restore; the resumed execution is a fresh lifecycle run on the recovered state data.
+- **`Checkpoint.capture(dagName, result)`** — produces a `Checkpoint` instance only when `result.cursor !== null` (an in-progress flow). A completed flow produces no cursor.
 - **`CheckpointStore` adapter contract** — `MemoryCheckpointStore` is the test-time implementation. Swap to Postgres / Redis / S3 without touching the dispatcher or state.
-- **`Checkpoint.persist` / `Checkpoint.recall`** — codec + store in one call per side. `Checkpoint.recall` returns `null` when nothing is stored under the key.
+- **`ckpt.persist(store, key)` / `Checkpoint.recall(store, key)`** — codec + store in one call per side. `Checkpoint.recall` returns `null` when nothing is stored under the key.
 - **`dispatcher.resume(dagName, state, cursor)`** — starts from the recalled cursor instead of the DAG's entrypoint. The compose/validate retry counter (`state.attempts.compose`) survives the round-trip so the loop is still bounded.
 
 See this in action in the [Archivist live demo](./the-archivist).

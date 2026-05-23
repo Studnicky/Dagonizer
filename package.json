@@ -35,6 +35,7 @@
     "example:07": "tsx examples/07-retry.ts",
     "example:08": "tsx examples/08-checkpoint.ts",
     "example:09": "tsx examples/09-terminals.ts",
+    "example:10": "tsx examples/10-shared-state.ts",
     "example:derive": "tsx examples/derive.ts"
   },
   "devDependencies": {

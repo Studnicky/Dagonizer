@@ -9,3 +9,4 @@ export type { RetryPolicyOptionsInterface } from './RetryPolicyOptionsInterface.
 export type { SchedulerHandle } from './SchedulerHandle.js';
 export type { SchedulerProvider } from './SchedulerProvider.js';
 export type { StateAccessor } from './StateAccessor.js';
+export type { Store, StoreSnapshot, StoreSnapshotEntry } from './Store.js';

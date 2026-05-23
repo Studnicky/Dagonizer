@@ -94,6 +94,38 @@ See [Phase 09 · Terminal placements](./09-terminals) for the full pattern with 
 
 See this in action in the [Archivist live demo](./the-archivist).
 
+## Typed `inputs` / `outputs` and growing shared state
+
+The `.deepDAG()` call accepts a generic `TChildState` parameter that narrows
+the left side of `inputs` to keys declared on the child state at compile time:
+
+```ts
+class ChildState extends NodeStateBase {
+  query = '';
+  results: string[] = [];
+}
+
+builder.deepDAG<ChildState>('search', 'book-search-fanout',
+  { success: 'compose-loop', error: 'decline-empty' },
+  {
+    inputs:  { query: 'userQuery' },          // 'query' must be a key of ChildState
+    outputs: { 'searchResults': 'results' },
+  },
+);
+```
+
+A misspelled child-state key is a compile error. Parent-side path narrowing
+(`Path<TParentState>`) is a v0.12 follow-up; `outputs` stays `Record<string, string>`.
+
+`stateMapping` (`inputs` / `outputs`) is the right tool when the relationship
+between parent and child is a pure field transfer at a single boundary. When
+multiple sub-DAGs accumulate to a single growing structure — agent memory, a
+ranked-results list, an audit log — thread a `Store` through the services bag
+instead. The store lives outside the DAG topology; every placement reads and
+writes to the same instance without threading values through stateMapping at
+every hop. See [Shared state](../guide/shared-state) for the decision matrix,
+the concurrency contract, and checkpoint integration.
+
 ## Composing the same flow via `DAGDeriver.subDAGs`
 
 The DAGBuilder `.deepDAG(...)` path above is the deterministic authoring journey. The same `DeepDAGNode` placement can be produced declaratively via the `DAGDeriver` `subDAGs` annotation when the surrounding flow is agent-style (operations declare dependencies; topology emerges):

@@ -26,7 +26,7 @@ seeAlso:
   - text: 'Persistence'
 
     link: '../guide/persistence'
-    description: 'wire `Checkpoint.persist` / `Checkpoint.recall` to a `CheckpointStore`'
+    description: 'wire `ckpt.persist` / `Checkpoint.recall` to a `CheckpointStore`'
 
   - text: 'json-tology Bookstore domain'
 

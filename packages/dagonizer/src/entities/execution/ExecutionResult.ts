@@ -54,7 +54,7 @@ export type ExecutionResult = FromSchema<typeof ExecutionResultSchema>;
  * `cursor` carries the name of the next node to run when execution
  * terminated before completing the flow (signal aborted, deadline expired,
  * node threw). It is `null` when the flow ran to completion. Use it
- * with `Checkpoint.from()` to persist a resumable snapshot.
+ * with `Checkpoint.capture()` to persist a resumable snapshot.
  *
  * `terminalOutcome` is the outcome declared by the `TerminalNode` placement
  * the flow exited through, or `null` when no terminal was hit (null route,

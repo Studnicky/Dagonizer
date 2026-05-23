@@ -129,15 +129,13 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
     'success': 'compose-loop',
     'error':   'compose-empty',
   }, {
-    'stateMapping': {
-      'output': {
-        'terms':         'terms',
-        'toolPlan':      'toolPlan',
-        'candidates':    'candidates',
-        'shortlist':     'shortlist',
-        'priorContext':  'priorContext',
-        'failureCause':  'failureCause',
-      },
+    'outputs': {
+      'terms':         'terms',
+      'toolPlan':      'toolPlan',
+      'candidates':    'candidates',
+      'shortlist':     'shortlist',
+      'priorContext':  'priorContext',
+      'failureCause':  'failureCause',
     },
   })
 
@@ -149,15 +147,13 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
     'success': 'group-by-year',
     'error':   'compose-empty',
   }, {
-    'stateMapping': {
-      'output': {
-        'terms':         'terms',
-        'toolPlan':      'toolPlan',
-        'candidates':    'candidates',
-        'shortlist':     'shortlist',
-        'priorContext':  'priorContext',
-        'failureCause':  'failureCause',
-      },
+    'outputs': {
+      'terms':         'terms',
+      'toolPlan':      'toolPlan',
+      'candidates':    'candidates',
+      'shortlist':     'shortlist',
+      'priorContext':  'priorContext',
+      'failureCause':  'failureCause',
     },
   })
   // group-by-year is author-branch-specific: sorts shortlist chronologically.
@@ -224,15 +220,13 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
     'success': 'compose-loop',
     'error':   'compose-empty',
   }, {
-    'stateMapping': {
-      'output': {
-        'terms':         'terms',
-        'toolPlan':      'toolPlan',
-        'candidates':    'candidates',
-        'shortlist':     'shortlist',
-        'priorContext':  'priorContext',
-        'failureCause':  'failureCause',
-      },
+    'outputs': {
+      'terms':         'terms',
+      'toolPlan':      'toolPlan',
+      'candidates':    'candidates',
+      'shortlist':     'shortlist',
+      'priorContext':  'priorContext',
+      'failureCause':  'failureCause',
     },
   })
 
@@ -251,12 +245,10 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
     'success': 'respond-to-visitor',
     'error':   'compose-empty',
   }, {
-    'stateMapping': {
-      'output': {
-        'draft':    'draft',
-        'approved': 'approved',
-        'attempts': 'attempts',
-      },
+    'outputs': {
+      'draft':    'draft',
+      'approved': 'approved',
+      'attempts': 'attempts',
     },
   })
   // #endregion deepdag-placements

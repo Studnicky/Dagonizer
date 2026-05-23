@@ -163,7 +163,14 @@ export type { FanInExecution } from './core/FanInStrategies.js';
 // =============================================================================
 
 export { Checkpoint, MemoryCheckpointStore } from './checkpoint/index.js';
-export type { RecalledCheckpoint, StateRestoreFnType } from './checkpoint/index.js';
+export type { CaptureOptionsInterface, RecalledCheckpoint, StateRestoreFnType } from './checkpoint/index.js';
+
+// =============================================================================
+// STORE
+// =============================================================================
+
+export { BaseStore, MemoryStore, StoreError } from './store/index.js';
+export type { BaseStoreOptions, StoreErrorClassification } from './store/index.js';
 
 // =============================================================================
 // CLASS-SHAPE INTERFACES (colocated with their class)
@@ -179,6 +186,7 @@ export type { NodeStateInterface } from './NodeStateBase.js';
 export type { ExecuteOptionsInterface } from './contracts/ExecuteOptionsInterface.js';
 export type { Chainable, NodeInterface } from './contracts/NodeInterface.js';
 export type { OperationContractFragment } from './contracts/OperationContractFragment.js';
+export type { Store, StoreSnapshot, StoreSnapshotEntry } from './contracts/Store.js';
 
 // =============================================================================
 // ENTITY-NARROWING INTERFACES (colocated with entity)

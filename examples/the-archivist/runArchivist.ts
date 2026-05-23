@@ -173,7 +173,7 @@ switch (lc.kind) {
 }
 
 // result.cursor is the next node that would have run — pass it to
-// Checkpoint.from to persist and resume in a later process.
+// Checkpoint.capture to persist and resume in a later process.
 if (cancelResult.cursor !== null) {
   logger.result(`stopped at ${cancelResult.cursor} — resumable`);
 }

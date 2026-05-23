@@ -69,7 +69,7 @@ Returns formatted `path: message` error strings, or `null` if valid.
 
 Type: `EntityValidator<CheckpointData>`
 
-Validates raw values against `CheckpointDataSchema`. Used by `Checkpoint.restore`.
+Validates raw values against `CheckpointDataSchema`. Used by `Checkpoint.load`.
 
 #### `Validator.checkpoint.validate(value)`
 
@@ -77,7 +77,7 @@ Validates raw values against `CheckpointDataSchema`. Used by `Checkpoint.restore
 Validator.checkpoint.validate(value: unknown): CheckpointData
 ```
 
-Returns a typed `CheckpointData` or throws `ValidationError`. Called by `Checkpoint.restore` before any field access.
+Returns a typed `CheckpointData` or throws `ValidationError`. Called by `Checkpoint.load` before any field access.
 
 ---
 

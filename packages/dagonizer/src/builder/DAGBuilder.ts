@@ -51,6 +51,45 @@ export interface DeepDAGOptionsInterface {
 }
 
 /**
+ * Typed deep-DAG options. The `TChildState` generic narrows the LEFT side of
+ * `inputs` to keys that actually exist on the child state, producing a
+ * compile-time error if an unknown key is passed.
+ *
+ * `outputs` stays as `Record<string, string>` for v0.11 — parent-side
+ * `Path<TParentState>` narrowing is a follow-up (see plan D1 / non-scope).
+ *
+ * @example
+ * ```ts
+ * class ChildState extends NodeStateBase {
+ *   payload = '';
+ *   result  = 0;
+ * }
+ *
+ * builder.deepDAG<ChildState>('invoke', 'child-dag', routes, {
+ *   inputs:  { payload: 'parent.seed' },   // 'payload' must be a key of ChildState
+ *   outputs: { 'parent.result': 'result' },
+ * });
+ * ```
+ */
+export interface TypedDeepDAGOptionsInterface<TChildState extends NodeStateInterface = NodeStateInterface> {
+  /**
+   * Input mapping: child-state key → parent-state dotted path.
+   * Child key is narrowed to `keyof TChildState & string`; parent path stays `string`.
+   * Before the deep-DAG runs, each listed parent field is copied into the
+   * corresponding child field.
+   */
+  readonly 'inputs'?:  Partial<Record<keyof TChildState & string, string>>;
+
+  /**
+   * Output mapping: parent-state dotted path → child-state dotted path.
+   * Both sides stay `string` in v0.11; parent-key narrowing is a follow-up.
+   * After the deep-DAG completes, each listed child field is copied back into
+   * the corresponding parent field.
+   */
+  readonly 'outputs'?: Record<string, string>;
+}
+
+/**
  * Chainable authoring API that builds a `DAG` in JSON-LD canonical form.
  *
  * Each node placement is assigned:
@@ -156,12 +195,26 @@ export class DAGBuilder {
     return this;
   }
 
-  /** Append a deep-DAG node. `routes` covers `success | error`. */
-  deepDAG(
+  /**
+   * Append a deep-DAG node. `routes` covers `success | error`.
+   *
+   * Supply `TChildState` to narrow the LEFT side of `inputs` to keys that
+   * actually exist on the child state at compile time. `outputs` stays
+   * `Record<string, string>` — parent-key narrowing is a v0.12 follow-up.
+   *
+   * @example
+   * ```ts
+   * builder.deepDAG<ChildState>('invoke', 'child-dag',
+   *   { success: 'next', error: null },
+   *   { inputs: { payload: 'seed' }, outputs: { 'result': 'childResult' } },
+   * );
+   * ```
+   */
+  deepDAG<TChildState extends NodeStateInterface = NodeStateInterface>(
     name: string,
     dagName: string,
     routes: Record<'success' | 'error', null | string>,
-    options: DeepDAGOptionsInterface = {},
+    options: TypedDeepDAGOptionsInterface<TChildState> = {},
   ): this {
     const dagNode: DeepDAGNode = {
       '@id':   this.#nodeId(name),
@@ -170,7 +223,12 @@ export class DAGBuilder {
       'dag':   dagName,
       'outputs': routes,
     };
-    if (options.stateMapping !== undefined) dagNode.stateMapping = options.stateMapping;
+    if (options.inputs !== undefined || options.outputs !== undefined) {
+      const stateMapping: DeepDAGNode['stateMapping'] = {};
+      if (options.inputs  !== undefined) stateMapping.input  = options.inputs as Record<string, string>;
+      if (options.outputs !== undefined) stateMapping.output = options.outputs;
+      dagNode.stateMapping = stateMapping;
+    }
     this.#nodes.push(dagNode);
     if (this.#entrypoint === null) this.#entrypoint = name;
     return this;
