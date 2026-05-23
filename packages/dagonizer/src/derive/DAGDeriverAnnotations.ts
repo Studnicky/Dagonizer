@@ -1,3 +1,5 @@
+import type { NodeStateInterface } from '../NodeStateBase.js';
+
 /**
  * DAGDeriverAnnotations — declarative hooks for routing the contract-derived
  * flow cannot express by data-graph alone.
@@ -104,21 +106,76 @@ export type DAGDeriverFanOut = DAGDeriverFanOutBase & (
 );
 
 /**
+ * Resolves to `keyof T & string` when `T` is a concrete subtype of
+ * `NodeStateInterface` (i.e. the caller passed an explicit `TChildState`);
+ * resolves to `string` when `T = NodeStateInterface` (the default). This
+ * keeps existing call sites backward-compatible — the child key stays `string`
+ * so arbitrary strings continue to typecheck — while enabling narrow checking
+ * when a concrete state type is supplied.
+ *
+ * The check `NodeStateInterface extends T` is true only when `T` is
+ * `NodeStateInterface` itself (or a supertype), not when `T` is a concrete
+ * subclass that declares extra properties.
+ */
+type ChildKey<T extends NodeStateInterface> =
+  NodeStateInterface extends T ? string : keyof T & string;
+
+/**
  * Per-operation sub-DAG composition. The operation's contract still
  * declares `produces ↔ hardRequired` for topology derivation; the
  * annotation only swaps the rendered placement from `SingleNode` to
  * `DeepDAGNode`.
+ *
+ * Supply `TChildState` to narrow `stateMapping.input` keys and
+ * `stateMapping.output` values to names that actually exist on the child
+ * state at compile time. Omitting `TChildState` (or passing the default
+ * `NodeStateInterface`) preserves backward compatibility — any string is
+ * accepted on both sides.
+ *
+ * @example
+ * ```ts
+ * class ChildState extends NodeStateBase {
+ *   payload = '';
+ *   result  = 0;
+ * }
+ *
+ * annotations: {
+ *   subDAGs: {
+ *     invoke: {
+ *       dag:     'child-dag',
+ *       outputs: ['success', 'error'],
+ *       stateMapping: {
+ *         input:  { payload: 'parent.seed' },   // 'payload' must be a key of ChildState
+ *         output: { 'parent.result': 'result' },
+ *       },
+ *     } satisfies DAGDeriverSubDAG<ChildState>,
+ *   },
+ * }
+ * ```
  */
-export interface DAGDeriverSubDAG {
+export interface DAGDeriverSubDAG<TChildState extends NodeStateInterface = NodeStateInterface> {
   /** Registered DAG name to invoke as the deep-DAG. */
   readonly dag: string;
   /**
    * Optional state mapping copied into / out of the child execution.
    * Mirrors `DeepDAGNode.stateMapping` in the engine.
+   *
+   * When `TChildState` is a concrete subtype:
+   *   - `input` keys are narrowed to `keyof TChildState & string` — a
+   *     compile-time error is raised for unknown child-state keys.
+   *   - `output` values are narrowed to `keyof TChildState & string`.
+   *
+   * When `TChildState` is the default `NodeStateInterface`, both sides
+   * accept any `string` — preserving backward compatibility.
+   *
+   * The wire shape written to the rendered `DeepDAGNode` is always
+   * `Record<string, string>` — the generic is for authoring ergonomics only.
    */
   readonly stateMapping?: {
-    readonly input?:  Readonly<Record<string, string>>;
-    readonly output?: Readonly<Record<string, string>>;
+    /** Child-state key → parent dotted path. */
+    readonly input?:  Readonly<Partial<Record<ChildKey<TChildState>, string>>>;
+    /** Parent dotted path → child-state key. */
+    readonly output?: Readonly<Partial<Record<string, ChildKey<TChildState>>>>;
   };
   /**
    * Output ports the deep-DAG can route on. Each port auto-wires to

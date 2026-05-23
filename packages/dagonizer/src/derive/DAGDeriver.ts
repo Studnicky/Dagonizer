@@ -609,7 +609,9 @@ export class DAGDeriver {
       ),
     };
     if (subDAG.stateMapping !== undefined) {
-      deepDAGNode.stateMapping = subDAG.stateMapping;
+      // Cast at the consumption boundary: DAGDeriverSubDAG<TChildState> narrows
+      // keys for authoring ergonomics; the wire shape is always Record<string, string>.
+      deepDAGNode.stateMapping = subDAG.stateMapping as NonNullable<DeepDAGNode['stateMapping']>;
     }
     return deepDAGNode;
   }

@@ -21,6 +21,22 @@ export type StoreErrorClassification =
   | {
       readonly reason: 'BACKING_ERROR';
       readonly cause:  Error;
+    }
+  | {
+      readonly reason:   'LEASE_DENIED';
+      readonly subject:  string;
+      /** Identifier of current lease holder — opaque; store-defined format. */
+      readonly holder:   string;
+    }
+  | {
+      readonly reason:  'LEASE_EXPIRED';
+      readonly subject: string;
+      readonly token:   string;
+    }
+  | {
+      readonly reason:    'UNREACHABLE';
+      readonly endpoint:  string;
+      readonly cause:     Error;
     };
 
 export class StoreError extends Error {

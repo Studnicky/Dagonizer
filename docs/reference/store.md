@@ -269,8 +269,23 @@ type StoreErrorClassification =
       readonly key:    string;
     }
   | {
-      readonly reason:  'BACKING_ERROR';
-      readonly cause: Error;
+      readonly reason: 'BACKING_ERROR';
+      readonly cause:  Error;
+    }
+  | {
+      readonly reason:  'LEASE_DENIED';
+      readonly subject: string;
+      readonly holder:  string;
+    }
+  | {
+      readonly reason:  'LEASE_EXPIRED';
+      readonly subject: string;
+      readonly token:   string;
+    }
+  | {
+      readonly reason:    'UNREACHABLE';
+      readonly endpoint:  string;
+      readonly cause:     Error;
     };
 ```
 
@@ -278,11 +293,189 @@ type StoreErrorClassification =
 |--------|------|-------------|
 | `INCOMPATIBLE_SNAPSHOT` | `restore()` called with wrong `type` or `version` | `expectedType`, `actualType`, `expectedVersion`, `actualVersion` |
 | `KEY_NOT_FOUND` | Plugin author throws when a required key is absent | `key` |
-| `BACKING_ERROR` | Plugin author wraps a backing-level failure | `cause` (optional) |
+| `BACKING_ERROR` | Plugin author wraps a backing-level failure | `cause` |
+| `LEASE_DENIED` | `acquireLease` finds an active holder and `maxWaitMs` expires before it releases | `subject`, `holder` |
+| `LEASE_EXPIRED` | A write or release is attempted with a token that has already expired | `subject`, `token` |
+| `UNREACHABLE` | Transport failure — endpoint does not respond within the health budget | `endpoint`, `cause` |
 
 `BaseStore` throws `INCOMPATIBLE_SNAPSHOT` automatically on type/version
 mismatch. `KEY_NOT_FOUND` and `BACKING_ERROR` are available for plugin authors
-to classify errors from their backing stores.
+to classify errors from their backing stores. `LEASE_DENIED`, `LEASE_EXPIRED`,
+and `UNREACHABLE` are for `RemoteStore` implementations.
+
+---
+
+## Interface: `RemoteStore`
+
+`@noocodex/dagonizer/contracts`
+
+Extension of `Store` for distributed or network-backed implementations.
+Plugins that talk over HTTP, gRPC, or WebSocket — or that replicate state
+across processes — implement `RemoteStore` rather than `Store` directly.
+Single-process and single-node-durable stores implement `Store` directly.
+
+```ts
+import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '@noocodex/dagonizer/contracts';
+```
+
+```ts
+interface RemoteStore extends Store {
+  readonly endpoint: RemoteStoreEndpoint;
+  acquireLease(subject: string, ttlMs: number, maxWaitMs: number): Promise<RemoteStoreLease>;
+  releaseLease(lease: RemoteStoreLease): Promise<void>;
+  health(timeoutMs: number): Promise<boolean>;
+}
+```
+
+The engine consumes a `RemoteStore` through the `Store` surface. The extra
+methods are observability and coordination primitives the dispatcher uses when
+distributed execution is wired in.
+
+### Interface: `RemoteStoreEndpoint`
+
+```ts
+interface RemoteStoreEndpoint {
+  readonly url:    string;
+  readonly region: string;
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `url` | Stable identifier for the remote endpoint (URL, gRPC target, etc.). |
+| `region` | Region/zone hint for placement decisions. Default at construction: `''` (no region constraint). |
+
+`region` is required — implementations that have no region concept supply `''`.
+
+### Interface: `RemoteStoreLease`
+
+```ts
+interface RemoteStoreLease {
+  readonly token:     string;
+  readonly expiresAt: number;
+  readonly subject:   string;
+}
+```
+
+Opaque lease token returned by `acquireLease`. Consumers treat `token` as
+opaque — the store validates it on `releaseLease` and on writes when
+leasing is enforced.
+
+| Field | Description |
+|-------|-------------|
+| `token` | Opaque string the store recognises on `releaseLease` and write checks. |
+| `expiresAt` | Monotonic ms timestamp the lease expires at (exclusive). |
+| `subject` | Scope of the lease (e.g. a key namespace or DAG run id). |
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `endpoint` | `RemoteStoreEndpoint` | Endpoint descriptor; surfaces in observability and placement decisions. |
+| `acquireLease(subject, ttlMs, maxWaitMs)` | `Promise<RemoteStoreLease>` | Acquire exclusive write authority for `subject` with a lifetime of `ttlMs` ms. Waits up to `maxWaitMs` for an active holder to release before throwing `StoreError(LEASE_DENIED)`. |
+| `releaseLease(lease)` | `Promise<void>` | Release a previously-acquired lease. Idempotent — releasing an already-expired lease is a no-op. |
+| `health(timeoutMs)` | `Promise<boolean>` | Health probe. Returns `true` when the endpoint is reachable and the backing responds within `timeoutMs`. Implementations must not throw on transport failure — return `false` so the dispatcher can route around an unhealthy store. |
+
+### Implementing `RemoteStore`
+
+Extend `BaseStore` and implement the three additional methods plus the
+`endpoint` property:
+
+```ts
+import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '@noocodex/dagonizer/contracts';
+import { BaseStore, type BaseStoreOptions } from '@noocodex/dagonizer/store';
+
+export class HttpStore extends BaseStore implements RemoteStore {
+  readonly endpoint: RemoteStoreEndpoint;
+
+  constructor(url: string, region: string, options: BaseStoreOptions = {}) {
+    super(options);
+    this.endpoint = { url, region };
+  }
+
+  async acquireLease(subject: string, ttlMs: number, maxWaitMs: number): Promise<RemoteStoreLease> {
+    // Call remote lease endpoint, wait up to maxWaitMs, throw StoreError(LEASE_DENIED) if blocked.
+    // ...
+  }
+
+  async releaseLease(lease: RemoteStoreLease): Promise<void> {
+    // Call remote release endpoint. No-op when lease has already expired.
+    // ...
+  }
+
+  async health(timeoutMs: number): Promise<boolean> {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      const res = await fetch(`${this.endpoint.url}/health`, { signal: ctrl.signal });
+      clearTimeout(timer);
+      return res.ok;
+    } catch {
+      return false;   // never throw — dispatcher routes around false
+    }
+  }
+
+  // ... BaseStore abstract hooks ...
+}
+```
+
+---
+
+## Class: `TypedStore<Schema>`
+
+`@noocodex/dagonizer/store`
+
+Schema-narrowed wrapper over any `Store`. Constrains keys to the declared
+`Schema` and infers the value type from `Schema[K]` — callers never specify
+`<T>` at the call site.
+
+`TypedStore` does not implement the `Store` contract (its `set` signature is
+narrower). Use `.inner` to access the underlying `Store` when you need the
+wider, heterogeneous contract.
+
+```ts
+import { MemoryStore, TypedStore } from '@noocodex/dagonizer/store';
+
+interface AppSchema {
+  users: User[];
+  count: number;
+}
+
+const inner = new MemoryStore();
+const typed = new TypedStore<AppSchema>(inner);
+
+await typed.set('count', 42);            // ok — value type inferred as number
+const n = await typed.get('count');      // n: number | undefined
+await typed.set('count', 'wrong');       // TS error — expected number
+await typed.set('missing', 'x');         // TS error — key not in AppSchema
+```
+
+### Constructor
+
+```ts
+new TypedStore<Schema extends Record<string, JsonValue>>(inner: Store)
+```
+
+`Schema` must be a `Record<string, JsonValue>` — every value type must be JSON-serializable.
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `get(key)` | `Promise<Schema[K] \| undefined>` | Return the value at `key`, type inferred from `Schema[K]`. |
+| `set(key, value)` | `Promise<void>` | Write `value` at `key`. `value` must be `Schema[K]`. |
+| `has(key)` | `Promise<boolean>` | Return `true` when the key exists. |
+| `delete(key)` | `Promise<boolean>` | Remove the key. Returns `true` when the key existed. |
+| `update(key, fn)` | `Promise<Schema[K]>` | Atomic read-modify-write. `fn` receives `Schema[K] \| undefined`, returns `Schema[K]`. |
+| `snapshot()` | `Promise<StoreSnapshot>` | Pass-through to the underlying Store. |
+| `restore(snapshot)` | `Promise<void>` | Pass-through to the underlying Store. |
+| `connect()` | `Promise<void>` | Pass-through to the underlying Store. |
+| `disconnect()` | `Promise<void>` | Pass-through to the underlying Store. |
+| `.inner` | `Store` | The underlying Store instance for un-narrowed operations. |
+
+All key parameters are constrained to `keyof Schema & string` — TypeScript
+rejects keys absent from the schema and values of the wrong type at compile
+time.
 
 ---
 

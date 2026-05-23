@@ -14,5 +14,7 @@ export { MemoryStore } from './MemoryStore.js';
 export { StoreError } from './StoreError.js';
 export type { StoreErrorClassification } from './StoreError.js';
 
+export { TypedStore } from './TypedStore.js';
+
 // Re-export the contract from /contracts for ergonomic single-import:
 export type { Store, StoreSnapshot, StoreSnapshotEntry } from '../contracts/Store.js';

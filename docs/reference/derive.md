@@ -105,11 +105,19 @@ type DAGDeriverFanOut = {
   | { readonly strategy: 'append';    readonly target:        string }
 );
 
-interface DAGDeriverSubDAG {
+interface DAGDeriverSubDAG<TChildState extends NodeStateInterface = NodeStateInterface> {
   readonly dag:           string;
+  /**
+   * When `TChildState` is a concrete subclass: `input` keys are narrowed to
+   * `keyof TChildState & string` and `output` values are narrowed to
+   * `keyof TChildState & string`. Omitting the generic (default) accepts any
+   * string on both sides, preserving backward compatibility.
+   */
   readonly stateMapping?: {
-    readonly input?:  Readonly<Record<string, string>>;
-    readonly output?: Readonly<Record<string, string>>;
+    /** Child-state key → parent dotted path. */
+    readonly input?:  Readonly<Partial<Record<keyof TChildState & string, string>>>;
+    /** Parent dotted path → child-state key. */
+    readonly output?: Readonly<Partial<Record<string, keyof TChildState & string>>>;
   };
   readonly outputs:       readonly string[];
 }
@@ -122,7 +130,7 @@ interface DAGDeriverParallel {
 
 - `terminals` — per-operation alternate exits. Two variants: the **target variant** (`target: null` to terminate with implicit `completed`, or `target: string` to route to a named placement); the **emit variant** (`emit: { name, outcome }` to synthesize a `TerminalNode` placement and route the port to it, ending the run with the declared `outcome`). Multiple operations may declare the same `emit.name` — the deriver deduplicates. Conflicting `outcome` values for the same `emit.name` throw `DAGError`. An `emit.name` colliding with an existing operation name throws `DAGError`.
 - `fanouts` — per-operation fan-out wrapping. `source` is the dotted state-array path; `itemKey` is the metadata key the worker reads; `node` is the per-item registered node; `strategy` discriminates which fan-in shape gets emitted (`custom`+`fanInOperation`, `partition`+`partitions`, or `append`+`target`); `outcomes` lists the fan-out outcome names. Partition keys must appear in `outcomes` — out-of-band keys throw `DAGError` at derive time.
-- `subDAGs` — per-operation sub-DAG composition. Swaps the rendered placement from `SingleNode` to `DeepDAGNode` while preserving the contract's role in topology derivation. `dag` is the registered child DAG name; `outputs` is the port set the deep-DAG can route on (auto-wired to the next derived stage, with `terminals` overriding); `stateMapping` is forwarded verbatim to the rendered placement.
+- `subDAGs` — per-operation sub-DAG composition. Swaps the rendered placement from `SingleNode` to `DeepDAGNode` while preserving the contract's role in topology derivation. `dag` is the registered child DAG name; `outputs` is the port set the deep-DAG can route on (auto-wired to the next derived stage, with `terminals` overriding); `stateMapping` is forwarded verbatim to the rendered placement. Supply `TChildState` on the `DAGDeriverSubDAG<TChildState>` generic to narrow `stateMapping.input` keys and `stateMapping.output` values to keys that exist on the child state at compile time; omitting the generic accepts any string (backward compatible).
 - `parallels` — explicit `ParallelNode` grouping with chosen combine strategy. Without it, same-topological-depth operations auto-group with `combine: 'collect'`. With it, the named group forces members into one `ParallelNode` with the consumer's chosen combine. Membership is exclusive across groups.
 - An operation cannot appear in more than one of `fanouts` / `subDAGs` / `parallels` — placement kind must be unambiguous.
 

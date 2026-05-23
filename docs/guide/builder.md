@@ -220,56 +220,84 @@ const dag = new DAGBuilder('batch', '1')
 
 ## Sub-DAG
 
-`.deepDAG()` places a named deep-DAG in the parent flow. The optional generic
-parameter `TChildState` narrows the left side of `inputs` to keys that exist
-on the child state at compile time:
+`.deepDAG()` places a named deep-DAG in the parent flow. Two optional generic
+parameters narrow the state-mapping paths at compile time:
+
+- `TChildState` — narrows the LEFT side of `inputs` (child key) and the RIGHT side of `outputs` (child path) to paths that exist on the child state.
+- `TParentState` — narrows the RIGHT side of `inputs` (parent path) and the LEFT side of `outputs` (parent path) to dotted paths that exist on the parent state.
+
+Both default to `NodeStateInterface`, so existing call sites with no generics continue to typecheck unchanged.
 
 ```ts
+class ParentState extends NodeStateBase {
+  user = { name: '', age: 0 };
+}
+
 class ChildState extends NodeStateBase {
   payload = '';
   result  = 0;
 }
 
 const dag = new DAGBuilder('parent', '1')
-  .deepDAG<ChildState>('run-child', 'child-dag',
+  .deepDAG<ChildState, ParentState>('run-child', 'child-dag',
     { success: 'finalize', error: 'finalize' },
     {
-      inputs:  { payload: 'parent.seed' },   // 'payload' must be a key of ChildState
-      outputs: { 'parent.result': 'result' },
+      inputs:  { payload: 'user.name' },   // 'payload' ∈ ChildState; 'user.name' ∈ Path<ParentState>
+      outputs: { 'user.age': 'result' },   // 'user.age' ∈ Path<ParentState>; 'result' ∈ Path<ChildState>
     },
   )
   .node('finalize', finalizeNode, { success: null })
   .build();
 ```
 
+Misspelled paths are compile errors:
+
+```ts
+// TypeScript error: 'user.notReal' does not exist on Path<ParentState>
+.deepDAG<ChildState, ParentState>('run-child', 'child-dag', routes, {
+  inputs: { payload: 'user.notReal' },
+})
+```
+
 The full signature:
 
 ```ts
-deepDAG<TChildState extends NodeStateInterface = NodeStateInterface>(
+deepDAG<
+  TChildState extends NodeStateInterface = NodeStateInterface,
+  TParentState extends NodeStateInterface = NodeStateInterface,
+>(
   name: string,
   dagName: string,
   routes: Record<'success' | 'error', null | string>,
-  options?: TypedDeepDAGOptionsInterface<TChildState>,
+  options?: TypedDeepDAGOptionsInterface<TChildState, TParentState>,
 ): this
 ```
 
-`TypedDeepDAGOptionsInterface<TChildState>`:
+`TypedDeepDAGOptionsInterface<TChildState, TParentState>`:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `inputs?` | `Partial<Record<keyof TChildState & string, string>>` | Child-state key (narrowed) → parent-state dotted path. Copied into child state before the sub-DAG runs. |
-| `outputs?` | `Record<string, string>` | Parent-state dotted path → child-state dotted path. Copied back into parent state after the sub-DAG completes. |
+| Field | Key type | Value type | Description |
+|-------|----------|------------|-------------|
+| `inputs?` | `keyof TChildState & string` | `Path<TParentState>` | Child-state key → parent-state dotted path. Copied into child state before the sub-DAG runs. |
+| `outputs?` | `Path<TParentState>` | `Path<TChildState>` | Parent-state dotted path → child-state dotted path. Copied back into parent state after the sub-DAG completes. |
 
-`inputs` is narrowed to `keyof TChildState & string` — a misspelled child key
-is a TypeScript compile error. `outputs` stays `Record<string, string>` in
-v0.11; parent-side key narrowing (`Path<TParentState>`) is a follow-up.
+When either generic uses the default `NodeStateInterface`, the corresponding
+path side falls back to `string` — preserving backward compatibility at
+call sites that pass only `TChildState` or neither generic.
+
+`Path<T>` enumerates valid dotted-path strings over a state shape recursively:
+
+```ts
+// Path<{ user: { name: string; age: number } }>
+//   = 'user' | 'user.name' | 'user.age'
+```
+
+Arrays contribute `${number}` and `${number}.${ElementPath}` paths. The depth cap is
+8 levels; deeper nesting falls back to `string`. The type is exported from the
+`@noocodex/dagonizer/builder` subpath.
 
 The builder translates `inputs` and `outputs` into the JSON-LD wire format
 (`stateMapping: { input, output }`) at build time. Loaded DAGs (e.g. from JSON)
 use the wire format directly. The narrowing is a builder-only concern.
-
-Omitting the generic defaults to `NodeStateInterface`, preserving every
-existing `.deepDAG()` call site without a type error.
 
 For patterns where nodes across multiple sub-DAGs accumulate to shared
 mutable state (agent memory, audit log), see [Shared state](./shared-state).

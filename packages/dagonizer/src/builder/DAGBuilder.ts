@@ -26,6 +26,8 @@ import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
+import type { Path } from './Path.js';
+
 type DAGNodeType = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode | TerminalNodePlacementInterface;
 
 /** Optional configuration for a fan-out node added via `DAGBuilder.fanOut`. */
@@ -51,42 +53,70 @@ export interface DeepDAGOptionsInterface {
 }
 
 /**
- * Typed deep-DAG options. The `TChildState` generic narrows the LEFT side of
- * `inputs` to keys that actually exist on the child state, producing a
- * compile-time error if an unknown key is passed.
+ * Typed deep-DAG options. Both generics narrow path strings at compile time:
+ * `TChildState` narrows the LEFT side of `inputs` and the RIGHT side of
+ * `outputs` to keys / dotted paths that exist on the child state. `TParentState`
+ * narrows the RIGHT side of `inputs` and BOTH sides of `outputs` to dotted
+ * paths that exist on the parent state.
  *
- * `outputs` stays as `Record<string, string>` for v0.11 — parent-side
- * `Path<TParentState>` narrowing is a follow-up (see plan D1 / non-scope).
+ * Defaults to `NodeStateInterface` for both generics so existing call sites
+ * that pass neither generic continue to typecheck.
  *
  * @example
  * ```ts
+ * class ParentState extends NodeStateBase {
+ *   user = { name: '', age: 0 };
+ * }
  * class ChildState extends NodeStateBase {
  *   payload = '';
  *   result  = 0;
  * }
  *
- * builder.deepDAG<ChildState>('invoke', 'child-dag', routes, {
- *   inputs:  { payload: 'parent.seed' },   // 'payload' must be a key of ChildState
- *   outputs: { 'parent.result': 'result' },
+ * builder.deepDAG<ChildState, ParentState>('invoke', 'child-dag', routes, {
+ *   inputs:  { payload: 'user.name' },     // 'payload' ∈ ChildState; 'user.name' ∈ Path<ParentState>
+ *   outputs: { 'user.age': 'result' },     // 'user.age' ∈ Path<ParentState>; 'result' ∈ Path<ChildState>
  * });
  * ```
  */
-export interface TypedDeepDAGOptionsInterface<TChildState extends NodeStateInterface = NodeStateInterface> {
+/**
+ * Resolves to `Path<T>` when `T` is a concrete subtype of `NodeStateInterface`
+ * (i.e. the caller passed an explicit `TParentState`); resolves to `string`
+ * when `T = NodeStateInterface` (the default). This keeps existing call sites
+ * that pass only `TChildState` backward-compatible — the parent path stays
+ * `string` so arbitrary dotted strings continue to typecheck.
+ *
+ * The check `NodeStateInterface extends T` is true only when `T` is
+ * `NodeStateInterface` itself (or a supertype), not when `T` is a concrete
+ * subclass. A concrete subclass has extra properties, so
+ * `NodeStateInterface extends ConcreteState` is false.
+ */
+type ParentPath<T extends NodeStateInterface> =
+  NodeStateInterface extends T ? string : Path<T>;
+
+export interface TypedDeepDAGOptionsInterface<
+  TChildState extends NodeStateInterface = NodeStateInterface,
+  TParentState extends NodeStateInterface = NodeStateInterface,
+> {
   /**
    * Input mapping: child-state key → parent-state dotted path.
-   * Child key is narrowed to `keyof TChildState & string`; parent path stays `string`.
+   * Child key is narrowed to `keyof TChildState & string`.
+   * Parent path is narrowed to `Path<TParentState>` when `TParentState` is
+   * a concrete subtype; falls back to `string` when using the default
+   * `NodeStateInterface` (preserving backward compatibility).
    * Before the deep-DAG runs, each listed parent field is copied into the
    * corresponding child field.
    */
-  readonly 'inputs'?:  Partial<Record<keyof TChildState & string, string>>;
+  readonly 'inputs'?:  Partial<Record<keyof TChildState & string, ParentPath<TParentState>>>;
 
   /**
    * Output mapping: parent-state dotted path → child-state dotted path.
-   * Both sides stay `string` in v0.11; parent-key narrowing is a follow-up.
+   * Parent key is narrowed to `Path<TParentState>` (falls back to `string`
+   * when using the default); child path is narrowed to `Path<TChildState>`
+   * (falls back to `string` when using the default).
    * After the deep-DAG completes, each listed child field is copied back into
    * the corresponding parent field.
    */
-  readonly 'outputs'?: Record<string, string>;
+  readonly 'outputs'?: Partial<Record<ParentPath<TParentState>, ParentPath<TChildState>>>;
 }
 
 /**
@@ -198,23 +228,30 @@ export class DAGBuilder {
   /**
    * Append a deep-DAG node. `routes` covers `success | error`.
    *
-   * Supply `TChildState` to narrow the LEFT side of `inputs` to keys that
-   * actually exist on the child state at compile time. `outputs` stays
-   * `Record<string, string>` — parent-key narrowing is a v0.12 follow-up.
+   * Supply `TChildState` to narrow the LEFT side of `inputs` and the RIGHT
+   * side of `outputs` to keys / dotted paths that exist on the child state.
+   * Supply `TParentState` to narrow the RIGHT side of `inputs` and BOTH sides
+   * of `outputs` to dotted paths that exist on the parent state.
+   *
+   * Both generics default to `NodeStateInterface`, so existing call sites
+   * that pass neither generic continue to typecheck unchanged.
    *
    * @example
    * ```ts
-   * builder.deepDAG<ChildState>('invoke', 'child-dag',
+   * builder.deepDAG<ChildState, ParentState>('invoke', 'child-dag',
    *   { success: 'next', error: null },
-   *   { inputs: { payload: 'seed' }, outputs: { 'result': 'childResult' } },
+   *   { inputs: { payload: 'user.name' }, outputs: { 'user.age': 'result' } },
    * );
    * ```
    */
-  deepDAG<TChildState extends NodeStateInterface = NodeStateInterface>(
+  deepDAG<
+    TChildState extends NodeStateInterface = NodeStateInterface,
+    TParentState extends NodeStateInterface = NodeStateInterface,
+  >(
     name: string,
     dagName: string,
     routes: Record<'success' | 'error', null | string>,
-    options: TypedDeepDAGOptionsInterface<TChildState> = {},
+    options: TypedDeepDAGOptionsInterface<TChildState, TParentState> = {},
   ): this {
     const dagNode: DeepDAGNode = {
       '@id':   this.#nodeId(name),
@@ -225,8 +262,8 @@ export class DAGBuilder {
     };
     if (options.inputs !== undefined || options.outputs !== undefined) {
       const stateMapping: DeepDAGNode['stateMapping'] = {};
-      if (options.inputs  !== undefined) stateMapping.input  = options.inputs as Record<string, string>;
-      if (options.outputs !== undefined) stateMapping.output = options.outputs;
+      if (options.inputs  !== undefined) stateMapping.input  = options.inputs  as Record<string, string>;
+      if (options.outputs !== undefined) stateMapping.output = options.outputs as Record<string, string>;
       dagNode.stateMapping = stateMapping;
     }
     this.#nodes.push(dagNode);
