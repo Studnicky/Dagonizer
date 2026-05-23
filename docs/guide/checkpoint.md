@@ -4,7 +4,7 @@ seeAlso:
   - text: 'Persistence'
 
     link: './persistence'
-    description: 'wire `Checkpoint.persist` / `Checkpoint.recall` to a `CheckpointStore`'
+    description: 'wire `ckpt.persist` / `Checkpoint.recall` to a `CheckpointStore`'
 
   - text: 'Cancellation'
 
@@ -23,9 +23,9 @@ Checkpoint persists an in-flight DAG at its current cursor so execution can cont
 
 ## How it works
 
-When a DAG stops early — via cancellation, timeout, or an error — `result.cursor` holds the name of the next node that would have run. Pass that cursor to `Checkpoint.from()` to record a `CheckpointData` value, then serialize and store it.
+When a DAG stops early — via cancellation, timeout, or an error — `result.cursor` holds the name of the next node that would have run. Pass that cursor to `Checkpoint.capture()` to build a `Checkpoint` instance, then serialize and store it with `ckpt.toJson()`.
 
-On resume, parse the stored JSON, call `Checkpoint.restore()` to rehydrate the state and cursor, then pass them to `dispatcher.resume()`.
+On resume, parse the stored JSON, call `Checkpoint.load(raw)` to get a `Checkpoint` instance, then call `ckpt.restoreState(fn)` to rehydrate the state and cursor, and pass them to `dispatcher.resume()`.
 
 ## Cursor and state snapshot
 
@@ -35,26 +35,25 @@ const result = await dispatcher.execute('my-dag', state, { signal: ctl.signal })
 
 if (result.cursor !== null) {
   // DAG did not complete — checkpoint it.
-  const checkpoint = Checkpoint.from('my-dag', result);
-  const json = Checkpoint.toJson(checkpoint);
-  await db.set('current-checkpoint', json);
+  const ckpt = await Checkpoint.capture('my-dag', result);
+  await db.set('current-checkpoint', ckpt.toJson());
 }
 ```
 
-`Checkpoint.from()` throws `DAGError` when `result.cursor === null` (the DAG completed — nothing to resume).
+`Checkpoint.capture()` throws `DAGError` when `result.cursor === null` (the DAG completed — nothing to resume).
 
 ## Restoring and resuming
 
 ```ts
 const raw = JSON.parse(await db.get('current-checkpoint')) as unknown;
-const { dagName, state: restored, cursor } = Checkpoint.restore(
-  raw,
+const ckpt = Checkpoint.load(raw);
+const { dagName, state: restored, cursor } = ckpt.restoreState(
   (snap) => MyState.restore(snap),
 );
 const result = await dispatcher.resume(dagName, restored, cursor);
 ```
 
-The second argument to `Checkpoint.restore()` is a factory function that maps the snapshot `JsonObject` to a `TState` instance. This is how domain-specific state is rehydrated.
+The argument to `restoreState()` is a factory function that maps the snapshot `JsonObject` to a `TState` instance. This is how domain-specific state is rehydrated.
 
 ## `NodeStateBase.snapshot()` and `snapshotData()`
 
@@ -91,36 +90,40 @@ class PipelineState extends NodeStateBase {
 
 ## CheckpointStore — composing with persistence
 
-`CheckpointStore` is the adapter contract for persistence backends. `Checkpoint.persist` and `Checkpoint.recall` compose the codec with a store so save/resume becomes a single call per side.
+`CheckpointStore` is the adapter contract for persistence backends. `ckpt.persist(store, key)` and `Checkpoint.recall(store, key)` compose the codec with a store so save/resume becomes a single call per side.
 
 ```ts
 import { Checkpoint, MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
 
 const store = new MemoryCheckpointStore();
 
-await Checkpoint.persist(store, 'ckpt:my-dag', Checkpoint.from('my-dag', result));
+const ckpt = await Checkpoint.capture('my-dag', result);
+await ckpt.persist(store, 'ckpt:my-dag');
 
-const recalled = await Checkpoint.recall(store, 'ckpt:my-dag', (snap) => MyState.restore(snap));
+const recalled = await Checkpoint.recall(store, 'ckpt:my-dag');
 if (recalled !== null) {
-  await dispatcher.resume(recalled.dagName, recalled.state, recalled.cursor);
+  const { dagName, state, cursor } = recalled.restoreState((snap) => MyState.restore(snap));
+  await dispatcher.resume(dagName, state, cursor);
 }
 ```
 
 `MemoryCheckpointStore` is for tests and demos. Production deployments implement `CheckpointStore` against a database, object store, or filesystem — see [persistence](./persistence.md) for a Postgres reference implementation.
 
-## `Checkpoint.toJson` and `JSON.parse`
+## `toJson` and `Checkpoint.load`
 
 ```ts
 // Write
-const json = Checkpoint.toJson(checkpoint); // JSON.stringify(checkpoint, null, 2)
+const ckpt = await Checkpoint.capture('my-dag', result);
+const json = ckpt.toJson(); // JSON.stringify(ckpt.data, null, 2)
 await fs.writeFile('checkpoint.json', json);
 
 // Read
 const raw = JSON.parse(await fs.readFile('checkpoint.json', 'utf8')) as unknown;
-const { dagName, state, cursor } = Checkpoint.restore(raw, (snap) => MyState.restore(snap));
+const ckpt2 = Checkpoint.load(raw);
+const { dagName, state, cursor } = ckpt2.restoreState((snap) => MyState.restore(snap));
 ```
 
-`Checkpoint.restore()` validates the raw value against `CheckpointDataSchema` (Ajv 2020-12) before touching any fields. An invalid or stale payload throws `ValidationError`.
+`Checkpoint.load()` validates the raw value against `CheckpointDataSchema` (Ajv 2020-12) before touching any fields. An invalid or stale payload throws `ValidationError`.
 
 ## Full cycle
 
@@ -151,11 +154,12 @@ for await (const node of exec) {
 const partial = await exec;
 
 // --- Persist ---
-const stored = Checkpoint.toJson(Checkpoint.from('count-dag', partial));
+const ckpt = await Checkpoint.capture('count-dag', partial);
+const stored = ckpt.toJson();
 
 // --- Resume (later, new process) ---
-const parsed = JSON.parse(stored) as unknown;
-const { dagName, state: s2, cursor } = Checkpoint.restore(parsed, (snap) => S.restore(snap));
+const ckpt2 = Checkpoint.load(JSON.parse(stored) as unknown);
+const { dagName, state: s2, cursor } = ckpt2.restoreState((snap) => S.restore(snap));
 const final = await dispatcher.resume(dagName, s2, cursor);
 console.log(final.state.count);       // count from before + count from after
 console.log(final.state.lifecycle.kind); // 'completed'

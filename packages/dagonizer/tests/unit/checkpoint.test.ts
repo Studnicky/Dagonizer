@@ -117,7 +117,7 @@ void describe('cursor on ExecutionResultInterface', () => {
 void describe('Checkpoint round-trip', () => {
   afterEach(() => { Scheduler.reset(); Clock.reset(); });
 
-  void it('from + restore yields a state that resume()s to the same final state', async () => {
+  void it('capture + restoreState yields a state that resume()s to the same final state', async () => {
     Clock.configure(new VirtualClockProvider(0n));
     Scheduler.configure(new VirtualScheduler(0));
 
@@ -166,11 +166,12 @@ void describe('Checkpoint round-trip', () => {
     assert.equal(partial.cursor, 'b');
     assert.equal(partial.state.count, 1);
 
-    // Checkpoint → restore → resume.
-    const data = Checkpoint.from('count', partial);
-    const round = Checkpoint.toJson(data);
+    // Checkpoint → persist → load → restoreState → resume.
+    const ckpt = await Checkpoint.capture('count', partial);
+    const round = ckpt.toJson();
     const parsed = JSON.parse(round) as unknown;
-    const { state, dagName, cursor } = Checkpoint.restore(parsed, (snap) => CountingState.restore(snap));
+    const ckpt2 = Checkpoint.load(parsed);
+    const { state, dagName, cursor } = ckpt2.restoreState((snap) => CountingState.restore(snap));
     assert.equal(state.count, 1);
     assert.equal(cursor, 'b');
     const resumed = await dispatcher.resume(dagName, state, cursor);
@@ -198,18 +199,19 @@ void describe('Checkpoint round-trip', () => {
       }],
     });
     const result = await dispatcher.execute('done', new NodeStateBase());
-    assert.throws(() => Checkpoint.from('done', result), DAGError);
+    await assert.rejects(() => Checkpoint.capture('done', result), DAGError);
   });
 
-  void it('rejects malformed CheckpointData on restore', () => {
-    assert.throws(() => Checkpoint.restore({ 'version': '1' }, (snap) => NodeStateBase.restore(snap)), ValidationError);
+  void it('load rejects malformed CheckpointData', () => {
+    assert.throws(() => Checkpoint.load({ 'version': '1' }), ValidationError);
   });
 
-  void it('rejects checkpoint with null cursor on restore', () => {
+  void it('restoreState throws ValidationError on null cursor', async () => {
     const data = {
       'version': '1', 'dagName': 'x', 'cursor': null,
       'state': {}, 'executedNodes': [], 'skippedNodes': [],
     };
-    assert.throws(() => Checkpoint.restore(data, (snap) => NodeStateBase.restore(snap)), ValidationError);
+    const ckpt = Checkpoint.load(data);
+    assert.throws(() => ckpt.restoreState((snap) => NodeStateBase.restore(snap)), ValidationError);
   });
 });

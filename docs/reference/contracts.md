@@ -20,6 +20,11 @@ seeAlso:
 
     link: './checkpoint'
     description: 'uses `CheckpointStore`'
+
+  - text: 'Reference: Store'
+
+    link: './store'
+    description: '`Store`, `BaseStore`, `MemoryStore`, `StoreError`'
 ---
 
 # Contracts
@@ -38,6 +43,9 @@ import type {
   SchedulerHandle,
   SchedulerProvider,
   StateAccessor,
+  Store,
+  StoreSnapshot,
+  StoreSnapshotEntry,
 } from '@noocodex/dagonizer/contracts';
 ```
 
@@ -123,7 +131,7 @@ interface CheckpointStore {
 }
 ```
 
-Persistence backend for checkpoints. `Checkpoint.persist` and `Checkpoint.recall` compose the codec with the store. Reference impl: `MemoryCheckpointStore`. See [persistence](../guide/persistence.md) for a Postgres example.
+Persistence backend for checkpoints. `ckpt.persist(store, key)` and `Checkpoint.recall(store, key)` compose the codec with the store. Reference impl: `MemoryCheckpointStore`. See [persistence](../guide/persistence.md) for a Postgres example.
 
 ## OperationContractFragment
 
@@ -190,6 +198,19 @@ interface RetryPolicyOptionsInterface {
 ```
 
 Construction options for `RetryPolicy`. `retryOn` and `abortOn` are checked via `instanceof` — supply error classes, not error names.
+## Store / StoreSnapshot / StoreSnapshotEntry
+
+The store contracts ship through `@noocodex/dagonizer/contracts` alongside the
+other adapter interfaces. Full documentation — including concurrency contract,
+`BaseStore` authoring guide, and `StoreErrorClassification` taxonomy — lives in
+[Reference: Store](./store).
+
+```ts
+import type { Store, StoreSnapshot, StoreSnapshotEntry } from '@noocodex/dagonizer/contracts';
+```
+
+See [Shared state](../guide/shared-state) for the decision matrix and usage patterns.
+
 ## Related guides
 
 - [Cancellation](../guide/cancellation) — `ExecuteOptionsInterface`
@@ -197,3 +218,4 @@ Construction options for `RetryPolicy`. `retryOn` and `abortOn` are checked via 
 - [State accessors](../guide/state-accessor) — `StateAccessor`
 - [Persistence](../guide/persistence) — `CheckpointStore`
 - [Contract-derived flows](../guide/derive) — `OperationContract`
+- [Shared state](../guide/shared-state) — `Store`

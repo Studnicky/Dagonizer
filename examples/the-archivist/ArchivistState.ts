@@ -4,7 +4,7 @@
  * Carries the visitor's question, the parsed intent, scout candidates,
  * the merged shortlist, the draft response, and per-execution counters.
  * Extends `NodeStateBase` so the dispatcher owns the lifecycle FSM and
- * `snapshot()` round-trips for `Checkpoint.from` / `Checkpoint.restore`.
+ * `snapshot()` round-trips for `Checkpoint.capture` / `ckpt.restoreState`.
  */
 
 import type { Candidate } from './entities/Book.ts';

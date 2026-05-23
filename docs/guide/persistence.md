@@ -4,7 +4,7 @@ seeAlso:
   - text: 'Checkpoint'
 
     link: './checkpoint'
-    description: 'the codec layer (`Checkpoint.from` / `Checkpoint.restore`)'
+    description: 'the codec layer (`Checkpoint.capture` / `Checkpoint.load`)'
 
   - text: 'Subclassing State'
 
@@ -43,20 +43,22 @@ Three methods. `load` returns `null` when no entry exists. Implementations handl
 flowchart TB
   exec([dispatcher.execute])
   result([ExecutionResult\ncursor != null])
-  from[Checkpoint.from]
-  persist[Checkpoint.persist]
+  capture[Checkpoint.capture]
+  persist[ckpt.persist]
   store[(CheckpointStore)]
   recall[Checkpoint.recall]
+  restore[ckpt.restoreState]
   resume([dispatcher.resume])
   exec --> result
-  result --> from
-  from --> persist
+  result --> capture
+  capture --> persist
   persist --> store
   store --> recall
-  recall --> resume
+  recall --> restore
+  restore --> resume
 ```
 
-`Checkpoint.persist` and `Checkpoint.recall` compose the codec with a store:
+`ckpt.persist(store, key)` and `Checkpoint.recall(store, key)` compose the codec with a store:
 
 ```ts
 import { Checkpoint, MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
@@ -66,22 +68,19 @@ const store = new MemoryCheckpointStore();
 // Save
 const result = await dispatcher.execute('process', new MyState(), { signal });
 if (result.cursor !== null) {
-  const data = Checkpoint.from('process', result);
-  await Checkpoint.persist(store, 'ckpt:process', data);
+  const ckpt = await Checkpoint.capture('process', result);
+  await ckpt.persist(store, 'ckpt:process');
 }
 
 // Recall
-const recalled = await Checkpoint.recall(
-  store,
-  'ckpt:process',
-  (snap) => MyState.restore(snap),
-);
+const recalled = await Checkpoint.recall(store, 'ckpt:process');
 if (recalled !== null) {
-  await dispatcher.resume(recalled.dagName, recalled.state, recalled.cursor);
+  const { dagName, state, cursor } = recalled.restoreState((snap) => MyState.restore(snap));
+  await dispatcher.resume(dagName, state, cursor);
 }
 ```
 
-`Checkpoint.recall` returns `null` when no entry exists under the key, or a `RecalledCheckpoint<TState>` carrying the rehydrated state, the dag name, the resume cursor, and the executed/skipped node histories.
+`Checkpoint.recall` returns `null` when no entry exists under the key, or a `Checkpoint` instance whose `restoreState` yields the rehydrated state, the dag name, the resume cursor, and the executed/skipped node histories.
 
 ## Implementing a custom store
 
@@ -127,7 +126,7 @@ The same pattern works for Redis, S3, file system, etcd, or any other key/value 
 
 ## Snapshot round-trip
 
-`Checkpoint.from` calls `state.snapshot()` and packages the result with the cursor and execution history. State subclasses that carry domain-specific fields override `snapshotData()` and `restoreData()`:
+`Checkpoint.capture` calls `state.snapshot()` and packages the result with the cursor and execution history. State subclasses that carry domain-specific fields override `snapshotData()` and `restoreData()`:
 
 ```ts
 class PipelineState extends NodeStateBase {
@@ -152,7 +151,7 @@ Lifecycle resets to `pending` on restore. Resume starts a fresh lifecycle run on
 
 ## Schema validation on recall
 
-`Checkpoint.recall` runs the JSON through `Validator.checkpoint.validate(parsed)` before rehydrating. Tampered or version-mismatched payloads throw `ValidationError`. The same goes for `Checkpoint.restore` (which `recall` composes with).
+`Checkpoint.recall` runs the JSON through `Validator.checkpoint.validate(parsed)` before wrapping it. Tampered or version-mismatched payloads throw `ValidationError`. The same goes for `Checkpoint.load` (which `recall` composes with).
 
 ## Testing with `MemoryCheckpointStore`
 

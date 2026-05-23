@@ -147,6 +147,10 @@
       "default": "./dist/viz/index.js",
       "types": "./dist/viz/index.d.ts"
     },
+    "./store": {
+      "default": "./dist/store/index.js",
+      "types": "./dist/store/index.d.ts"
+    },
     "./types": {
       "default": "./dist/types/index.js",
       "types": "./dist/types/index.d.ts"

@@ -227,13 +227,13 @@ Checkpoint records the position and state of an in-flight flow so it can be resu
 
 **State snapshot** — `NodeStateBase.snapshot()` returns a `JsonObject` containing metadata, errors, and warnings. Domain-specific fields are captured by overriding `snapshotData()`.
 
-**Resume is a new execution.** `dispatcher.resume(dagName, state, cursor)` starts a new lifecycle run from `pending`, identical to `execute()` except it begins at `cursor` instead of the entrypoint. The checkpoint's `executedNodes` and `skippedNodes` are available from `Checkpoint.restore()` for inspection but are not replayed.
+**Resume is a new execution.** `dispatcher.resume(dagName, state, cursor)` starts a new lifecycle run from `pending`, identical to `execute()` except it begins at `cursor` instead of the entrypoint. The checkpoint's `executedNodes` and `skippedNodes` are available from `ckpt.restoreState(fn)` for inspection but are not replayed.
 
-**`Checkpoint.from(dagName, result)`** builds a `CheckpointData` from an execution result. Throws if `result.cursor` is `null`.
+**`Checkpoint.capture(dagName, result)`** builds a `Checkpoint` instance from an execution result. Throws if `result.cursor` is `null`.
 
-**`Checkpoint.restore(data, factory)`** validates the persisted data against `CheckpointDataSchema` and rehydrates a state instance via the factory function. The factory receives the snapshot `JsonObject` and must return a `TState`.
+**`Checkpoint.load(raw).restoreState(factory)`** validates the persisted data against `CheckpointDataSchema` and rehydrates a state instance via the factory function. The factory receives the snapshot `JsonObject` and must return a `TState`.
 
-The package does not provide a persistence backend. Serialize `CheckpointData` as JSON (`Checkpoint.toJson`) and store it wherever your infrastructure requires (file, KV, database row, message envelope, etc.).
+The package does not provide a persistence backend. Serialize the checkpoint as JSON (`ckpt.toJson()`) and store it wherever your infrastructure requires (file, KV, database row, message envelope, etc.).
 
 ---
 
@@ -263,7 +263,7 @@ BullMQ owns the distributed work surface: cross-process scheduling, rate limitin
 
 What they share: typed jobs, retry semantics, structured failures.
 
-Composition pattern: a BullMQ job's payload contains the DAG name and initial state; the worker hydrates state and calls `dispatcher.execute(dagName, state)`. On failure, BullMQ schedules retry with backoff and the dispatcher resumes from `result.cursor` if `Checkpoint.from()` persisted it.
+Composition pattern: a BullMQ job's payload contains the DAG name and initial state; the worker hydrates state and calls `dispatcher.execute(dagName, state)`. On failure, BullMQ schedules retry with backoff and the dispatcher resumes from `result.cursor` if `Checkpoint.capture()` persisted it.
 
 ### What Dagonizer carries on its own
 

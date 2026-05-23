@@ -88,6 +88,7 @@ const sidebar = [
       { text: 'Services container',         link: '/guide/services' },
       { text: 'Observability',             link: '/guide/observability' },
       { text: 'State accessors',           link: '/guide/state-accessor' },
+      { text: 'Shared state',              link: '/guide/shared-state' },
       { text: 'Checkpoint & Resume',       link: '/guide/checkpoint' },
       { text: 'Checkpoint persistence',    link: '/guide/persistence' },
       { text: 'Contract-derived flows',    link: '/guide/derive' },
@@ -128,6 +129,7 @@ const sidebar = [
       { text: 'Viz', link: '/reference/viz' },
       { text: 'Validation', link: '/reference/validation' },
       { text: 'Checkpoint', link: '/reference/checkpoint' },
+      { text: 'Store', link: '/reference/store' },
       { text: 'Entities', link: '/reference/entities' },
       { text: 'Testing', link: '/reference/testing' },
       { text: 'Errors', link: '/reference/errors' },
@@ -553,7 +555,7 @@ export default withMermaid(defineConfig({
       // htmlLabels: true renders labels in <foreignObject> so they
       // wrap on word boundaries instead of overflowing the rect.
       // wrappingWidth must comfortably hold the longest node label
-      // we ship — "dispatcher.execute" is 18 chars; "Checkpoint.persist"
+      // we ship — "dispatcher.execute" is 18 chars; "Checkpoint.capture"
       // is 18; 220px at the current 13px monospace fits ~22 chars per
       // line with room to breathe.
       htmlLabels: true,

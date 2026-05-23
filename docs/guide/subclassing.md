@@ -174,9 +174,9 @@ for await (const node of exec) {
 const partial = await exec;
 // partial.state.count === 1, partial.cursor === 'b'
 
-const persisted = Checkpoint.toJson(Checkpoint.from('count', partial));
-const { state: s2, dagName, cursor } = Checkpoint.restore(
-  JSON.parse(persisted) as unknown,
+const ckpt = await Checkpoint.capture('count', partial);
+const ckpt2 = Checkpoint.load(JSON.parse(ckpt.toJson()) as unknown);
+const { state: s2, dagName, cursor } = ckpt2.restoreState(
   (snap) => CountState.restore(snap),
 );
 const final = await dispatcher.resume(dagName, s2, cursor);

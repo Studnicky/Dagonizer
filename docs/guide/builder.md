@@ -6,6 +6,11 @@ seeAlso:
     link: './subclassing'
     description: 'define the state class your nodes mutate'
 
+  - text: 'Shared state'
+
+    link: './shared-state'
+    description: 'decision matrix for `stateMapping` vs stores; custom-store authoring; checkpoint integration'
+
   - text: 'Schema & JSON loading'
 
     link: './schema'
@@ -215,17 +220,59 @@ const dag = new DAGBuilder('batch', '1')
 
 ## Sub-DAG
 
+`.deepDAG()` places a named deep-DAG in the parent flow. The optional generic
+parameter `TChildState` narrows the left side of `inputs` to keys that exist
+on the child state at compile time:
+
 ```ts
+class ChildState extends NodeStateBase {
+  payload = '';
+  result  = 0;
+}
+
 const dag = new DAGBuilder('parent', '1')
-  .deepDAG('run-child', 'child-dag-name', { success: 'finalize', error: 'finalize' }, {
-    stateMapping: {
-      input:  { childKey: 'parent.value' },
-      output: { 'parent.result': 'childResult' },
+  .deepDAG<ChildState>('run-child', 'child-dag',
+    { success: 'finalize', error: 'finalize' },
+    {
+      inputs:  { payload: 'parent.seed' },   // 'payload' must be a key of ChildState
+      outputs: { 'parent.result': 'result' },
     },
-  })
+  )
   .node('finalize', finalizeNode, { success: null })
   .build();
 ```
+
+The full signature:
+
+```ts
+deepDAG<TChildState extends NodeStateInterface = NodeStateInterface>(
+  name: string,
+  dagName: string,
+  routes: Record<'success' | 'error', null | string>,
+  options?: TypedDeepDAGOptionsInterface<TChildState>,
+): this
+```
+
+`TypedDeepDAGOptionsInterface<TChildState>`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `inputs?` | `Partial<Record<keyof TChildState & string, string>>` | Child-state key (narrowed) → parent-state dotted path. Copied into child state before the sub-DAG runs. |
+| `outputs?` | `Record<string, string>` | Parent-state dotted path → child-state dotted path. Copied back into parent state after the sub-DAG completes. |
+
+`inputs` is narrowed to `keyof TChildState & string` — a misspelled child key
+is a TypeScript compile error. `outputs` stays `Record<string, string>` in
+v0.11; parent-side key narrowing (`Path<TParentState>`) is a follow-up.
+
+The builder translates `inputs` and `outputs` into the JSON-LD wire format
+(`stateMapping: { input, output }`) at build time. Loaded DAGs (e.g. from JSON)
+use the wire format directly. The narrowing is a builder-only concern.
+
+Omitting the generic defaults to `NodeStateInterface`, preserving every
+existing `.deepDAG()` call site without a type error.
+
+For patterns where nodes across multiple sub-DAGs accumulate to shared
+mutable state (agent memory, audit log), see [Shared state](./shared-state).
 
 ## `.terminal(name, outcome?)`
 
