@@ -69,6 +69,51 @@ class RecallActivity extends MemoryDigestNode<MyState, MyDigest> {
 }
 ```
 
+## RdfStore
+
+`RdfStore` is an in-process quad store that implements **both** the `Store` contract (key-value via RDF reification) and the `TripleStore` contract (native quad operations). It ships in this package so plugin authors that already depend on `@noocodex/dagonizer-patterns-graph` for the graph node patterns get a concrete, zero-dependency store to back those patterns.
+
+```ts
+import { RdfStore } from '@noocodex/dagonizer-patterns-graph';
+
+const store = new RdfStore();
+
+// Store contract — reifies key-value as a triple.
+await store.set('tokenBudget', 4096);
+const budget = await store.get<number>('tokenBudget'); // 4096
+
+// TripleStore contract — native quad operations.
+store.assert(
+  { termType: 'NamedNode', value: 'urn:doc:1' },
+  { termType: 'NamedNode', value: 'urn:pred:author' },
+  { termType: 'Literal',   value: 'Alice' },
+);
+
+const rows = store.select({ predicate: { termType: 'NamedNode', value: 'urn:pred:author' }, subject: '?doc' });
+// rows[0]['doc'].value === 'urn:doc:1'
+```
+
+The backing is a plain `Quad[]` — no external dependencies. Use it directly with the existing `RecallContextNode`, `RecordFindingsNode`, and `MemoryDigestNode` patterns via `services.memory`.
+
+### Reification scheme
+
+`set(key, value)` serialises `value` as JSON and writes a single quad:
+
+```
+<urn:dagonizer:store:{key}> <urn:dagonizer:store:value> "{json}" .
+```
+
+The subject prefix and value predicate are configurable via `RdfStoreOptions`.
+
+### Snapshot contract
+
+`snapshot()` captures only the Store-reified quads. User-asserted quads on
+other predicates are considered ephemeral graph data and are excluded.
+`restore()` replaces the entire backing array — both reified and user-asserted
+quads are cleared, then the snapshot entries are reseeded. Plugin authors that
+need to preserve non-reified quads across restore should subclass `RdfStore`
+and override `performRestoreEntries`.
+
 ## License
 
 MIT

@@ -5,6 +5,7 @@ import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import type { OperationContract } from '../../src/contracts/OperationContract.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
+import type { DAGDeriverSubDAG } from '../../src/derive/DAGDeriverAnnotations.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 void describe('DAGDeriver.derive', () => {
@@ -305,6 +306,12 @@ void describe('DAGDeriver.derive', () => {
   });
 
   void it('subDAGs forwards stateMapping verbatim to the rendered placement', () => {
+    // Child state with the fields referenced in the stateMapping below.
+    class SubDagChildState extends NodeStateBase {
+      childInput  = '';
+      childResult = '';
+    }
+
     const contracts: OperationContract[] = [
       { 'name': 'invoke', 'hardRequired': ['input'], 'produces': ['result'], 'outputs': ['success'] },
     ];
@@ -322,7 +329,7 @@ void describe('DAGDeriver.derive', () => {
               'input':  { 'childInput':  'parent.input' },
               'output': { 'parent.result': 'childResult' },
             },
-          },
+          } satisfies DAGDeriverSubDAG<SubDagChildState>,
         },
       },
     });
@@ -789,5 +796,84 @@ void describe('DAGDeriver — terminals with emit variant', () => {
     if (terminal['@type'] === 'TerminalNode') {
       assert.equal(terminal.outcome, 'failed');
     }
+  });
+});
+
+void describe('DAGDeriverSubDAG<TChildState> — typed stateMapping', () => {
+  /** Concrete child state with known domain fields. */
+  class MyChildState extends NodeStateBase {
+    payload: string = '';
+    result:  number = 0;
+  }
+
+  void it('positive: typed subDAG annotation compiles and produces correct DeepDAGNode stateMapping', () => {
+    const contracts: OperationContract[] = [
+      { 'name': 'invoke', 'hardRequired': ['input'], 'produces': ['result'], 'outputs': ['success', 'error'] },
+    ];
+
+    // Typed annotation: 'payload' and 'result' must be keys of MyChildState.
+    const typedSubDAG: DAGDeriverSubDAG<MyChildState> = {
+      'dag':     'child-dag',
+      'outputs': ['success', 'error'],
+      'stateMapping': {
+        'input':  { 'payload': 'parent.seed' },
+        'output': { 'parent.result': 'result' },
+      },
+    };
+
+    const dag = DAGDeriver.derive({
+      'name':       'typed-subdag',
+      'version':    '1',
+      'entrypoint': 'invoke',
+      contracts,
+      'annotations': { 'subDAGs': { 'invoke': typedSubDAG } },
+    });
+
+    const invoke = dag.nodes.find((n) => n.name === 'invoke');
+    assert.ok(invoke !== undefined && invoke['@type'] === 'DeepDAGNode');
+    if (invoke !== undefined && invoke['@type'] === 'DeepDAGNode') {
+      assert.deepEqual(invoke.stateMapping, {
+        'input':  { 'payload': 'parent.seed' },
+        'output': { 'parent.result': 'result' },
+      });
+    }
+  });
+
+  void it('backward compat: omitting generic still typechecks (defaults to NodeStateInterface)', () => {
+    // DAGDeriverSubDAG without a generic — same as the pre-existing usage.
+    const contracts: OperationContract[] = [
+      { 'name': 'invoke', 'hardRequired': ['input'], 'produces': ['result'], 'outputs': ['success'] },
+    ];
+
+    const annotation: DAGDeriverSubDAG = {
+      'dag':     'any-child-dag',
+      'outputs': ['success'],
+      'stateMapping': {
+        'input':  { 'anyKey': 'parent.path' },
+        'output': { 'parent.result': 'anyKey' },
+      },
+    };
+
+    const dag = DAGDeriver.derive({
+      'name':       'compat-subdag',
+      'version':    '1',
+      'entrypoint': 'invoke',
+      contracts,
+      'annotations': { 'subDAGs': { 'invoke': annotation } },
+    });
+
+    const invoke = dag.nodes.find((n) => n.name === 'invoke');
+    assert.ok(invoke !== undefined && invoke['@type'] === 'DeepDAGNode');
+    if (invoke !== undefined && invoke['@type'] === 'DeepDAGNode') {
+      assert.deepEqual(invoke.stateMapping?.['input'], { 'anyKey': 'parent.path' });
+    }
+  });
+
+  void it('@ts-expect-error: wrong child-state key in input mapping produces a compile-time error', () => {
+    // The typed annotation catches unknown child-state keys at compile time.
+    // Assign to the stateMapping type directly so @ts-expect-error targets the erroring line.
+    // @ts-expect-error — 'nonExistentKey' is not a key of MyChildState
+    const _bad: DAGDeriverSubDAG<MyChildState>['stateMapping'] = { 'input': { 'nonExistentKey': 'parent.seed' } };
+    void _bad;
   });
 });

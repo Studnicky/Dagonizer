@@ -39,6 +39,9 @@ import type {
   ExecuteOptionsInterface,
   NodeInterface,
   OperationContract,
+  RemoteStore,
+  RemoteStoreEndpoint,
+  RemoteStoreLease,
   RetryPolicyOptionsInterface,
   SchedulerHandle,
   SchedulerProvider,
@@ -210,6 +213,19 @@ import type { Store, StoreSnapshot, StoreSnapshotEntry } from '@noocodex/dagoniz
 ```
 
 See [Shared state](../guide/shared-state) for the decision matrix and usage patterns.
+
+## RemoteStore / RemoteStoreEndpoint / RemoteStoreLease
+
+Extension of `Store` for network-backed or replicated store plugins. Implements
+the same `Store` surface plus `endpoint`, `acquireLease`, `releaseLease`, and
+`health` for distributed coordination.
+
+```ts
+import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '@noocodex/dagonizer/contracts';
+```
+
+See [Reference: Store — `RemoteStore`](./store#interface-remotestore) for the full interface and
+[Shared state — Distributed execution](../guide/shared-state#distributed-execution--remotestore) for the authoring guide.
 
 ## Related guides
 

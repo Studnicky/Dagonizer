@@ -169,7 +169,7 @@ export type { CaptureOptionsInterface, RecalledCheckpoint, StateRestoreFnType } 
 // STORE
 // =============================================================================
 
-export { BaseStore, MemoryStore, StoreError } from './store/index.js';
+export { BaseStore, MemoryStore, StoreError, TypedStore } from './store/index.js';
 export type { BaseStoreOptions, StoreErrorClassification } from './store/index.js';
 
 // =============================================================================
@@ -186,6 +186,7 @@ export type { NodeStateInterface } from './NodeStateBase.js';
 export type { ExecuteOptionsInterface } from './contracts/ExecuteOptionsInterface.js';
 export type { Chainable, NodeInterface } from './contracts/NodeInterface.js';
 export type { OperationContractFragment } from './contracts/OperationContractFragment.js';
+export type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from './contracts/RemoteStore.js';
 export type { Store, StoreSnapshot, StoreSnapshotEntry } from './contracts/Store.js';
 
 // =============================================================================

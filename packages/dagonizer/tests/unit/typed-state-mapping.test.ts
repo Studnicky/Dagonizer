@@ -6,6 +6,9 @@
  *   2. Runtime: omitting inputs/outputs produces no stateMapping on the node.
  *   3. Compile-time: wrong child-state keys fail to typecheck (@ts-expect-error).
  *   4. Runtime execute: typed input/output mappings propagate state correctly.
+ *   5. Path<TParentState>: positive compile-time check for valid nested parent paths.
+ *   6. Path<TParentState>: negative compile-time check rejects invalid parent paths.
+ *   7. Path<TParentState>: runtime smoke — two-generic form builds correct wire shape.
  */
 
 import assert from 'node:assert/strict';
@@ -23,6 +26,19 @@ import { NodeStateBase } from '../../src/NodeStateBase.js';
 class ChildState extends NodeStateBase {
   payload = '';
   result  = 0;
+}
+
+// ── Domain parent state (nested shape for Path<T> tests) ──────────────────────
+
+class ParentState extends NodeStateBase {
+  user = { 'name': '', 'age': 0 };
+  count = 0;
+}
+
+// ── Domain child state for Path<T> tests ─────────────────────────────────────
+
+class ChildAge extends NodeStateBase {
+  childAge = 0;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -60,7 +76,7 @@ void describe('DAGBuilder.deepDAG — wire shape', () => {
         { 'success': 'end', 'error': 'end' },
         {
           'inputs':  { 'payload': 'seed' },
-          'outputs': { 'result': 'childResult' },
+          'outputs': { 'result': 'result' },
         },
       )
       .node('end', terminal, { 'success': null })
@@ -70,7 +86,7 @@ void describe('DAGBuilder.deepDAG — wire shape', () => {
     assert.equal(deepNode['@type'], 'DeepDAGNode');
     assert.deepEqual(deepNode.stateMapping, {
       'input':  { 'payload': 'seed' },
-      'output': { 'result': 'childResult' },
+      'output': { 'result': 'result' },
     });
   });
 
@@ -194,5 +210,51 @@ void describe('DAGBuilder.deepDAG — runtime execute with typed mapping', () =>
 
     const result = await dispatcher.execute('compat-parent', new NodeStateBase());
     assert.equal(result.state.lifecycle.kind, 'completed');
+  });
+});
+
+void describe('DAGBuilder.deepDAG — Path<TParentState> narrowing', () => {
+  void it('positive compile: two-generic form accepts valid nested parent paths in inputs and outputs', () => {
+    // ParentState has user.name and user.age — both are valid Path<ParentState> values.
+    // ChildAge has childAge — a valid key for the child side.
+    const opts: TypedDeepDAGOptionsInterface<ChildAge, ParentState> = {
+      'inputs':  { 'childAge': 'user.age' },
+      'outputs': { 'user.age': 'childAge' },
+    };
+    assert.deepEqual(opts.inputs,  { 'childAge': 'user.age' });
+    assert.deepEqual(opts.outputs, { 'user.age': 'childAge' });
+  });
+
+  void it('negative compile: two-generic form rejects invalid parent paths in inputs — @ts-expect-error guard', () => {
+    // 'user.notReal' is not a valid Path<ParentState> — TypeScript must reject this.
+    // @ts-expect-error — 'user.notReal' does not exist on Path<ParentState>
+    const _bad: TypedDeepDAGOptionsInterface<ChildAge, ParentState> = { 'inputs': { 'childAge': 'user.notReal' } };
+    void _bad;
+  });
+
+  void it('negative compile: two-generic form rejects invalid parent paths in outputs — @ts-expect-error guard', () => {
+    // 'user.notReal' is not a valid Path<ParentState> as an output key.
+    // @ts-expect-error — 'user.notReal' does not exist on Path<ParentState>
+    const _bad: TypedDeepDAGOptionsInterface<ChildAge, ParentState> = { 'outputs': { 'user.notReal': 'childAge' } };
+    void _bad;
+  });
+
+  void it('runtime smoke: two-generic deepDAG builds the correct wire-shape stateMapping', () => {
+    const dag = new DAGBuilder('path-test', '1')
+      .deepDAG<ChildAge, ParentState>('invoke', 'child-dag',
+        { 'success': null, 'error': null },
+        {
+          'inputs':  { 'childAge': 'user.age' },
+          'outputs': { 'user.age': 'childAge' },
+        },
+      )
+      .build();
+
+    const deepNode = dag.nodes[0] as DeepDAGNode;
+    assert.equal(deepNode['@type'], 'DeepDAGNode');
+    assert.deepEqual(deepNode.stateMapping, {
+      'input':  { 'childAge': 'user.age' },
+      'output': { 'user.age': 'childAge' },
+    });
   });
 });

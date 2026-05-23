@@ -34,6 +34,8 @@ right choice depends on the data-flow shape.
 | Sub-DAG produces a value the parent consumes once | `inputs` / `outputs` on `.deepDAG()` | Single-direction, isolated, checkpoint-friendly without extra wiring |
 | Sub-DAG needs a parent field as starting input | `inputs` on `.deepDAG()` | Parent field copied into child state before the sub-DAG runs |
 | Multiple nodes accumulate growing shared state (agent memory, RAG context, audit log) | `MemoryStore` (or another `Store`) on the services bag | Cross-node and cross-deep-DAG; survives execution boundaries within a run |
+| RDF graph patterns (`RecallContextNode`, `RecordFindingsNode`, etc.) need a Store that is also a `TripleStore` | `RdfStore` from `@noocodex/dagonizer-patterns-graph` | Implements both contracts — key-value side reifies as triples; quad side exposes native RDF operations |
+| Known, fixed key set — compile-time safety without explicit `<T>` at every call | `TypedStore<Schema>` wrapping any `Store` | Keys and value types are inferred from the schema; TypeScript rejects wrong keys and wrong types at the call site |
 | Long-running flow that survives restart | `MemoryStore.snapshot()` via `Checkpoint.capture({ stores })` | Resume captures shared state alongside parent state; stores round-trip through the same checkpoint record |
 | Mid-flight introspection by an external observer | `Store` instance held outside the dispatcher | The same instance lives outside the DAG topology; read it concurrently without touching execution |
 
@@ -45,6 +47,91 @@ A `Store` is a live, shared, mutable map. Use it when multiple placements
 accumulate to the same structure — a message list, a token budget, an event
 log — and that accumulation must persist across sub-DAG boundaries without
 threading every value through state-mapping at every hop.
+
+## RdfStore — RDF-backed shared state for graph patterns
+
+`RdfStore` from `@noocodex/dagonizer-patterns-graph` implements both `Store`
+and `TripleStore`. Plugin authors using the graph node patterns
+(`RecallContextNode`, `RecordFindingsNode`, `MemoryDigestNode`) pass an
+`RdfStore` directly as `services.memory` — it satisfies both the pattern's
+`TripleStore` requirement and the engine's `Store` contract for snapshot/restore.
+
+```ts
+import { RdfStore } from '@noocodex/dagonizer-patterns-graph';
+
+const store = new RdfStore();
+
+// Use as a Store — set/get/has/delete/update/snapshot/restore.
+await store.set('tokenBudget', 4096);
+await store.update<number>('tokenBudget', (n) => (n ?? 0) - 100);
+
+// Use as a TripleStore — assert, ask, select, count, clearGraph, triples.
+store.assert(
+  { termType: 'NamedNode', value: 'urn:doc:1' },
+  { termType: 'NamedNode', value: 'urn:schema:author' },
+  { termType: 'Literal',   value: 'Alice' },
+);
+const rows = store.select({
+  predicate: { termType: 'NamedNode', value: 'urn:schema:author' },
+  subject: '?doc',
+});
+
+// Pass to graph node patterns as services.memory.
+const ctx = { services: { memory: store }, signal: ctl.signal };
+await myRecallNode.execute(state, ctx);
+```
+
+The Store-side `set(key, value)` reifies as a single triple under
+`urn:dagonizer:store:{key}`. The subject prefix and value predicate are
+configurable via `RdfStoreOptions`. No external dependencies — the backing
+is a plain `Quad[]`.
+
+See `@noocodex/dagonizer-patterns-graph` for `RdfStoreOptions`, subclassing
+guidance, and the snapshot trade-off documentation.
+
+## TypedStore — ergonomic narrowing for known key sets
+
+`TypedStore<Schema>` wraps any `Store` and constrains the key and value
+types to a declared schema. Consumers with a fixed, known key set use
+`TypedStore` to get inferred types at every call site without specifying
+`<T>` explicitly. Consumers with dynamic or open-ended keys keep using
+`Store` directly.
+
+```ts
+import { MemoryStore, TypedStore } from '@noocodex/dagonizer/store';
+
+interface PipelineSchema {
+  tokenBudget:  number;
+  messages:     string[];
+  lastNodeName: string;
+}
+
+const inner = new MemoryStore();
+const typed = new TypedStore<PipelineSchema>(inner);
+
+// Value types are inferred from PipelineSchema — no <T> at the call site.
+await typed.set('tokenBudget', 4096);
+const budget = await typed.get('tokenBudget');   // number | undefined
+await typed.update('messages', (msgs) => [...(msgs ?? []), 'hello']);
+
+// TypeScript rejects wrong keys and wrong value types at compile time.
+// await typed.set('unknown', 'x');              // TS error — key not in schema
+// await typed.set('tokenBudget', 'not a num');  // TS error — expected number
+```
+
+`TypedStore` passes `snapshot()`, `restore()`, `connect()`, and `disconnect()`
+through to the underlying `Store`. Use `.inner` to access the full `Store`
+interface for operations that need the wider, heterogeneous contract.
+
+```ts
+// Access the underlying MemoryStore for operations TypedStore doesn't cover.
+const raw: Store = typed.inner;
+await raw.set<boolean>('someFlag', true);
+```
+
+`TypedStore` is a wrapper, not a subclass of `BaseStore`. It does not satisfy
+the `Store` interface (its `set` signature is narrower). Pass `typed.inner`
+anywhere a `Store` is expected.
 
 ## Concurrency contract for Stores
 
@@ -287,6 +374,95 @@ await dispatcher.resume(dagName, restored, cursor);
 Old checkpoints (from v0.10, before stores support) load cleanly.
 `CheckpointData.stores` is optional in the schema; `restoreStores` is a no-op
 when the field is absent.
+## Distributed execution — `RemoteStore`
+
+`RemoteStore` extends `Store` with three coordination primitives for plugins
+whose backing lives over the network or is replicated across processes. Local
+`MemoryStore` and single-node-durable stores implement `Store` directly;
+plugins that talk over HTTP, gRPC, or WebSocket implement `RemoteStore`.
+
+```ts
+import type { RemoteStore } from '@noocodex/dagonizer/contracts';
+```
+
+The engine consumes a `RemoteStore` through the `Store` surface — the
+extra methods are optional coordination hooks available to the dispatcher
+when distributed execution is active.
+
+### Additional surface
+
+| Method / Property | Description |
+|-------------------|-------------|
+| `endpoint` | `RemoteStoreEndpoint` with `url` (stable target identifier) and `region` (placement hint; `''` when no region applies). |
+| `acquireLease(subject, ttlMs, maxWaitMs)` | Acquire exclusive write authority for `subject` scoped to `ttlMs` ms. Waits up to `maxWaitMs` for an existing holder before throwing `StoreError(LEASE_DENIED)`. |
+| `releaseLease(lease)` | Release a previously-acquired lease. Idempotent — releasing an expired lease is a no-op. |
+| `health(timeoutMs)` | Health probe. Returns `true` when reachable within `timeoutMs`. Returns `false` — never throws — on transport failure, so the dispatcher can route around an unhealthy store. |
+
+### Authoring a remote store
+
+Extend `BaseStore` and implement `RemoteStore`:
+
+```ts
+import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '@noocodex/dagonizer/contracts';
+import { BaseStore, type BaseStoreOptions } from '@noocodex/dagonizer/store';
+
+export class GrpcStore extends BaseStore implements RemoteStore {
+  readonly endpoint: RemoteStoreEndpoint;
+
+  constructor(url: string, region: string, options: BaseStoreOptions = {}) {
+    super(options);
+    this.endpoint = { url, region };
+  }
+
+  async acquireLease(subject: string, ttlMs: number, _maxWaitMs: number): Promise<RemoteStoreLease> {
+    // Delegate to remote lease service. Throw StoreError(LEASE_DENIED) when blocked.
+    return { token: 'opaque-token', expiresAt: Date.now() + ttlMs, subject };
+  }
+
+  async releaseLease(_lease: RemoteStoreLease): Promise<void> {
+    // Delegate to remote release endpoint. No-op when lease already expired.
+  }
+
+  async health(timeoutMs: number): Promise<boolean> {
+    // Transport check — return false, never throw.
+    return this.#ping(timeoutMs).then(() => true).catch(() => false);
+  }
+
+  // ... BaseStore abstract hooks (performGet, performSet, etc.) ...
+}
+```
+
+`region` is required. Stores without a region constraint set it to `''` at
+construction. All `RemoteStore` fields are concrete types — no `undefined`,
+no optional properties in the lease or endpoint shapes.
+
+### Error taxonomy for remote failures
+
+Three `StoreErrorClassification` reasons cover remote-specific failure modes:
+
+| Reason | When |
+|--------|------|
+| `LEASE_DENIED` | `acquireLease` finds an active holder and `maxWaitMs` expires before release. Fields: `subject`, `holder`. |
+| `LEASE_EXPIRED` | A write or release is attempted with an already-expired token. Fields: `subject`, `token`. |
+| `UNREACHABLE` | Transport failure — endpoint does not respond within the health budget. Fields: `endpoint`, `cause`. |
+
+Discriminate by `reason`:
+
+```ts
+import { StoreError } from '@noocodex/dagonizer/store';
+
+try {
+  await store.acquireLease('run-abc', 5_000, 1_000);
+} catch (err) {
+  if (err instanceof StoreError && err.classification.reason === 'LEASE_DENIED') {
+    const { subject, holder } = err.classification;
+    console.error(`lease for ${subject} held by ${holder}`);
+  }
+}
+```
+
+See [Reference: Store — `RemoteStore`](../reference/store#interface-remotestore) for the full interface.
+
 ## Related reference
 
 - [Reference: Store](../reference/store)

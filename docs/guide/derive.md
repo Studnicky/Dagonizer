@@ -300,6 +300,32 @@ const dag = DAGDeriver.derive({
 - Deep-DAG placements cannot terminate the run — the parent DAG owns END. The deep-DAG step must route to another parent placement; if every port routes to `null` the engine rejects the DAG at registration.
 - An operation cannot appear in both `fanouts` and `subDAGs`; the placement kind must be unambiguous.
 
+#### Typed `stateMapping` via `DAGDeriverSubDAG<TChildState>`
+
+Supply `TChildState` to narrow `stateMapping.input` keys to names that actually exist on the child state at compile time. The wire shape emitted to the rendered `DeepDAGNode` is always `Record<string, string>`; the generic is for authoring ergonomics only.
+
+```ts
+class ParseChildState extends NodeStateBase {
+  html   = '';
+  record = '';
+}
+
+annotations: {
+  subDAGs: {
+    parse: {
+      dag:     'aonprd:parse',
+      outputs: ['success', 'error'],
+      stateMapping: {
+        input:  { html:   'parent.html' },   // 'html' must be a key of ParseChildState
+        output: { 'parent.record': 'record' }, // 'record' must be a key of ParseChildState
+      },
+    } satisfies DAGDeriverSubDAG<ParseChildState>,
+  },
+}
+```
+
+Omitting `TChildState` (using bare `DAGDeriverSubDAG`) preserves backward compatibility — the default accepts any string on both sides of the mapping.
+
 A complete runnable demonstration ships in [`examples/derive.ts`](https://github.com/Studnicky/Dagonizer/blob/main/examples/derive.ts) — declares parent + child contracts, derives both DAGs, dispatches, prints the rendered placement order. Run with `npm run example:derive` or `npx tsx examples/derive.ts`.
 
 ## Co-located contracts
