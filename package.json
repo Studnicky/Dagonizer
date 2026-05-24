@@ -1,6 +1,6 @@
 {
   "name": "@noocodex/dagonizer-workspace",
-  "version": "0.0.0",
+  "version": "0.11.0",
   "private": true,
   "description": "Workspace root for the @noocodex/dagonizer monorepo.",
   "license": "MIT",
