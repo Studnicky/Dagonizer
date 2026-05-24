@@ -95,7 +95,12 @@ const ollamaModel = ref<string>(loadOllamaModel());
 const visitorQuery = ref('');
 const isRunning = ref(false);
 const conversation = ref<Array<{ role: 'visitor' | 'archivist'; text: string; ts: number }>>([]);
-const trace = ref<Array<{ node: string; output?: string; ts: number; kind: 'start' | 'end' | 'error' }>>([]);
+type TraceEvent =
+  | { readonly kind: 'start'; readonly node: string; readonly ts: number }
+  | { readonly kind: 'end';   readonly node: string; readonly ts: number; readonly output: string | undefined }
+  | { readonly kind: 'error'; readonly node: string; readonly ts: number; readonly message: string };
+
+const trace = ref<TraceEvent[]>([]);
 const terminalKind = ref<'pending' | 'completed' | 'failed' | 'cancelled' | 'timed_out'>('pending');
 
 const dagGraph = ref<InstanceType<typeof DagGraph> | null>(null);
@@ -420,7 +425,7 @@ function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
         : { 'type': 'nodeEnd', 'node': nodeName, 'output': output });
     },
     onError(nodeName: string, error: Error) {
-      trace.value = [...trace.value, { 'node': nodeName, 'ts': Date.now(), 'kind': 'error' }];
+      trace.value = [...trace.value, { 'node': nodeName, 'ts': Date.now(), 'kind': 'error', 'message': error.message !== '' ? error.message : String(error) }];
       dagGraph.value?.setErrored(nodeName);
       prov.recordError(nodeName, error);
       runnerMachine.pulse({ 'type': 'nodeError', 'node': nodeName, 'error': error });
