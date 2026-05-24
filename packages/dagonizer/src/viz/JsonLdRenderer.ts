@@ -26,7 +26,7 @@
  */
 
 import type { DAG } from '../entities/dag/DAG.js';
-import type { DeepDAGNode } from '../entities/dag/DeepDAGNode.js';
+import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
@@ -35,7 +35,7 @@ import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNod
 /** Stable JSON-LD vocabulary URI for the Dagonizer DAG vocabulary. */
 export const DAGONIZER_VOCAB = 'https://noocodex.dev/ontology/dagonizer/';
 
-type DAGNodeEntry = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode | TerminalNodePlacementInterface;
+type DAGNodeEntry = FanOutNode | ParallelNode | SingleNodePlacementInterface | EmbeddedDAGNode | TerminalNodePlacementInterface;
 
 /** A single node entry in the rendered `@graph`. */
 export interface JsonLdGraphEntry {
@@ -63,7 +63,7 @@ export class JsonLdRenderer {
     'SingleNode':   'dag:SingleNode',
     'ParallelNode': 'dag:ParallelNode',
     'FanOutNode':   'dag:FanOutNode',
-    'DeepDAGNode':  'dag:DeepDAGNode',
+    'EmbeddedDAGNode':  'dag:EmbeddedDAGNode',
     'TerminalNode': 'dag:TerminalNode',
   };
 
@@ -144,7 +144,7 @@ export class JsonLdRenderer {
         if (placement.concurrency !== undefined) out['dag:concurrency'] = placement.concurrency;
         return out;
       }
-      case 'DeepDAGNode': {
+      case 'EmbeddedDAGNode': {
         const out: JsonLdGraphEntry & Record<string, unknown> = {
           ...base,
           'dag:routes': JsonLdRenderer.renderRoutes(dagName, placement.outputs),

@@ -1,9 +1,11 @@
 ---
 seeAlso:
-  - text: 'Reference: Runtime — `Clock`, `Scheduler`'
+  - text: 'Reference: Runtime'
     link: './runtime'
-  - text: 'Reference: Contracts — `ClockProvider`, `SchedulerProvider`'
+    description: '`Clock`, `Scheduler`'
+  - text: 'Reference: Contracts'
     link: './contracts'
+    description: '`ClockProvider`, `SchedulerProvider`'
 ---
 
 # Testing

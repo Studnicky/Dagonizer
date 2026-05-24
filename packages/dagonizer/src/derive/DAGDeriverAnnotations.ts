@@ -10,11 +10,11 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  *   fanouts   — operations whose data-graph successor is reached by
  *               fan-out over a state-array source. Specifies the source
  *               path, the per-item key, the concurrency cap, the
- *               per-item kind (node or sub-DAG), the fan-in strategy
+ *               per-item kind (node or embedded-DAG), the fan-in strategy
  *               with its strategy-specific fields, and the fan-out
  *               outcome names.
- *   subDAGs   — operations that delegate execution to a nested
- *               registered DAG. Renders as a `DeepDAGNode` placement
+ *   embeddedDAGs   — operations that delegate execution to a nested
+ *               registered DAG. Renders as a `EmbeddedDAGNode` placement
  *               with the supplied `dag` name and optional state
  *               mapping. Every port in `outputs` auto-wires to the
  *               next derived stage; `terminals` overrides per-port.
@@ -60,7 +60,7 @@ export type DAGDeriverTerminal =
 /**
  * Common fields every fan-out annotation carries regardless of
  * strategy. The per-item kind is a registered node — fan-out over
- * a registered sub-DAG would require an engine FanOutNode schema
+ * a registered embedded-DAG would require an engine FanOutNode schema
  * extension and isn't supported in this release.
  */
 interface DAGDeriverFanOutBase {
@@ -121,10 +121,10 @@ type ChildKey<T extends NodeStateInterface> =
   NodeStateInterface extends T ? string : keyof T & string;
 
 /**
- * Per-operation sub-DAG composition. The operation's contract still
+ * Per-operation embedded-DAG composition. The operation's contract still
  * declares `produces ↔ hardRequired` for topology derivation; the
  * annotation only swaps the rendered placement from `SingleNode` to
- * `DeepDAGNode`.
+ * `EmbeddedDAGNode`.
  *
  * Supply `TChildState` to narrow `stateMapping.input` keys and
  * `stateMapping.output` values to names that actually exist on the child
@@ -140,7 +140,7 @@ type ChildKey<T extends NodeStateInterface> =
  * }
  *
  * annotations: {
- *   subDAGs: {
+ *   embeddedDAGs: {
  *     invoke: {
  *       dag:     'child-dag',
  *       outputs: ['success', 'error'],
@@ -148,17 +148,17 @@ type ChildKey<T extends NodeStateInterface> =
  *         input:  { payload: 'parent.seed' },   // 'payload' must be a key of ChildState
  *         output: { 'parent.result': 'result' },
  *       },
- *     } satisfies DAGDeriverSubDAG<ChildState>,
+ *     } satisfies DAGDeriverEmbeddedDAG<ChildState>,
  *   },
  * }
  * ```
  */
-export interface DAGDeriverSubDAG<TChildState extends NodeStateInterface = NodeStateInterface> {
-  /** Registered DAG name to invoke as the deep-DAG. */
+export interface DAGDeriverEmbeddedDAG<TChildState extends NodeStateInterface = NodeStateInterface> {
+  /** Registered DAG name to invoke as the embedded-DAG. */
   readonly dag: string;
   /**
    * Optional state mapping copied into / out of the child execution.
-   * Mirrors `DeepDAGNode.stateMapping` in the engine.
+   * Mirrors `EmbeddedDAGNode.stateMapping` in the engine.
    *
    * When `TChildState` is a concrete subtype:
    *   - `input` keys are narrowed to `keyof TChildState & string` — a
@@ -168,7 +168,7 @@ export interface DAGDeriverSubDAG<TChildState extends NodeStateInterface = NodeS
    * When `TChildState` is the default `NodeStateInterface`, both sides
    * accept any `string` — preserving backward compatibility.
    *
-   * The wire shape written to the rendered `DeepDAGNode` is always
+   * The wire shape written to the rendered `EmbeddedDAGNode` is always
    * `Record<string, string>` — the generic is for authoring ergonomics only.
    */
   readonly stateMapping?: {
@@ -178,7 +178,7 @@ export interface DAGDeriverSubDAG<TChildState extends NodeStateInterface = NodeS
     readonly output?: Readonly<Partial<Record<string, ChildKey<TChildState>>>>;
   };
   /**
-   * Output ports the deep-DAG can route on. Each port auto-wires to
+   * Output ports the embedded-DAG can route on. Each port auto-wires to
    * the next derived stage; `DAGDeriverAnnotations.terminals` overrides
    * individual ports.
    */
@@ -215,6 +215,6 @@ export interface DAGDeriverParallel {
 export interface DAGDeriverAnnotations {
   readonly terminals?: Readonly<Record<string, readonly DAGDeriverTerminal[]>>;
   readonly fanouts?:   Readonly<Record<string, DAGDeriverFanOut>>;
-  readonly subDAGs?:   Readonly<Record<string, DAGDeriverSubDAG>>;
+  readonly embeddedDAGs?:   Readonly<Record<string, DAGDeriverEmbeddedDAG>>;
   readonly parallels?: Readonly<Record<string, DAGDeriverParallel>>;
 }

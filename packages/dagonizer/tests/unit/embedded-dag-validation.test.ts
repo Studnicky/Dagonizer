@@ -17,7 +17,7 @@ const makeNode = (
   async execute() { return { 'output': outputs[0] as string }; },
 });
 
-// ── DeepDAG used as a reusable component ─────────────────────────────────
+// ── Embedded-DAG used as a reusable component ─────────────────────────────────
 const helperDAG: DAG = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:helper',
@@ -36,15 +36,15 @@ const helperDAG: DAG = {
   ],
 };
 
-void describe('registerDAG — deep-DAG null-route acceptance', () => {
-  void it('accepts deep-DAG placement with success → null (sugar for terminate-completed)', async () => {
+void describe('registerDAG — embedded-DAG null-route acceptance', () => {
+  void it('accepts embedded-DAG placement with success → null (sugar for terminate-completed)', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('step', ['done']));
     dispatcher.registerNode(makeNode('entry', ['next']));
     dispatcher.registerDAG(helperDAG);
 
-    // Parent DAG where the deep-dag routes 'success' → null (terminate-completed)
-    const parentWithNullDeepDag: DAG = {
+    // Parent DAG where the embedded-dag routes 'success' → null (terminate-completed)
+    const parentWithNullEmbeddedDAG: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:null-parent',
       '@type':    'DAG',
@@ -61,7 +61,7 @@ void describe('registerDAG — deep-DAG null-route acceptance', () => {
         },
         {
           '@id':   'urn:noocodex:dag:null-parent/node/run-helper',
-          '@type': 'DeepDAGNode',
+          '@type': 'EmbeddedDAGNode',
           'name':  'run-helper',
           'dag':   'helper',
           'outputs': { 'success': null, 'error': null },
@@ -69,14 +69,14 @@ void describe('registerDAG — deep-DAG null-route acceptance', () => {
       ],
     };
 
-    assert.doesNotThrow(() => dispatcher.registerDAG(parentWithNullDeepDag));
+    assert.doesNotThrow(() => dispatcher.registerDAG(parentWithNullEmbeddedDAG));
 
     const state = new NodeStateBase();
     const result = await dispatcher.execute('null-parent', state);
     assert.equal(result.state.lifecycle.kind, 'completed', 'flow completes cleanly');
   });
 
-  void it('accepts deep-DAG with mixed null and explicit-target routes', async () => {
+  void it('accepts embedded-DAG with mixed null and explicit-target routes', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('step', ['done']));
     dispatcher.registerNode(makeNode('entry', ['next']));
@@ -108,7 +108,7 @@ void describe('registerDAG — deep-DAG null-route acceptance', () => {
         },
         {
           '@id':   'urn:noocodex:dag:mixed-parent/node/run-helper',
-          '@type': 'DeepDAGNode',
+          '@type': 'EmbeddedDAGNode',
           'name':  'run-helper',
           'dag':   'helper',
           'outputs': {
@@ -126,14 +126,14 @@ void describe('registerDAG — deep-DAG null-route acceptance', () => {
     assert.equal(result.state.lifecycle.kind, 'completed', 'flow completes cleanly');
   });
 
-  void it('accepts valid deep-DAG placements where all outputs route to parent placements', () => {
+  void it('accepts valid embedded-DAG placements where all outputs route to parent placements', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('step', ['done']));
     dispatcher.registerNode(makeNode('entry', ['next']));
     dispatcher.registerNode(makeNode('terminal', ['done']));
     dispatcher.registerDAG(helperDAG);
 
-    // All deep-dag outputs route to a real parent placement — no nulls
+    // All embedded-dag outputs route to a real parent placement — no nulls
     const validParent: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:valid-parent',
@@ -158,7 +158,7 @@ void describe('registerDAG — deep-DAG null-route acceptance', () => {
         },
         {
           '@id':   'urn:noocodex:dag:valid-parent/node/run-helper',
-          '@type': 'DeepDAGNode',
+          '@type': 'EmbeddedDAGNode',
           'name':  'run-helper',
           'dag':   'helper',
           'outputs': {
@@ -185,14 +185,14 @@ void describe('registerDAG — deep-DAG null-route acceptance', () => {
     assert.throws(() => Validator.dag.validate(flatDag));
   });
 
-  void it('rejects a node placement using the old deep-dag discriminator string', () => {
-    // Placements must use @type: 'DeepDAGNode', not the old flat type: 'deep-dag'
+  void it('rejects a node placement using the old embedded-dag discriminator string', () => {
+    // Placements must use @type: 'EmbeddedDAGNode', not the old flat type: 'embedded-dag'
     const oldStylePlacement = {
-      'type': 'deep-dag',
+      'type': 'embedded-dag',
       'name': 'run-helper',
       'dag':  'helper',
       'outputs': { 'success': 'next', 'error': 'next' },
     };
-    assert.equal(Validator.deepDAGNode.is(oldStylePlacement), false);
+    assert.equal(Validator.embeddedDAGNode.is(oldStylePlacement), false);
   });
 });

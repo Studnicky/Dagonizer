@@ -1,27 +1,32 @@
 ---
+title: 'Observability'
+description: 'Subclass Dagonizer for protected on* hooks; install Instrumentation for composable plugin observers.'
 seeAlso:
-
   - text: 'Cancellation'
-
     link: './cancellation'
     description: '`onError` fires on abort and deadline-driven failures'
-
   - text: 'Subclassing State'
-
     link: './subclassing'
-    description: 'your custom dispatcher subclass may also subclass state'
-
+    description: 'a dispatcher subclass may also subclass state'
   - text: 'Services'
-
     link: './services'
-    description: 'pass loggers / tracers in via the services bag'
+    description: 'pass loggers or tracers in via the services bag'
 ---
 
 # Observability
 
-`Dagonizer` exposes five protected lifecycle hooks. Subclass the dispatcher and override any or all of them to attach metrics, structured logging, or distributed tracing.
+Two surfaces fire at every execution boundary: the protected `on*` hooks on `Dagonizer` (subclass to observe) and the `Instrumentation` contract (instance passed to the constructor). The dispatcher invokes both, so plugin-supplied tracing and subclass-local metrics coexist without a hand-rolled multiplexer.
 
-## The five hooks
+## API surface
+
+| Symbol | Source | Role |
+|--------|--------|------|
+| `Dagonizer.on*` | `@noocodex/dagonizer` | Protected hooks: `onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError` |
+| `Instrumentation<TState>` | `@noocodex/dagonizer/contracts` | Vendor-neutral hook surface |
+| `NoopInstrumentation<TState>` | `@noocodex/dagonizer` | No-op base for selective override |
+| `DagonizerOptionsInterface.instrumentation` | `@noocodex/dagonizer` | Constructor slot for the contract |
+
+## The five subclass hooks
 
 ```ts
 import { Dagonizer } from '@noocodex/dagonizer';
@@ -37,8 +42,7 @@ class ObservableDispatcher<TState> extends Dagonizer<TState> {
     state: TState,
     result: ExecutionResultInterface<TState>,
   ): void {
-    const lc = (state as any).lifecycle;
-    console.log(`[flow:end] ${dagName} kind=${lc?.kind} cursor=${result.cursor}`);
+    console.log(`[flow:end] ${dagName} cursor=${result.cursor}`);
   }
 
   protected override onNodeStart(nodeName: string, state: TState): void {
@@ -59,29 +63,26 @@ class ObservableDispatcher<TState> extends Dagonizer<TState> {
 }
 ```
 
-All five default to no-ops. Override only what you need — the base class provides no behavior.
-
-Class extension is the only extension mechanism. There is no callback API. Multi-observer composition (logger + tracer + metrics) is a subclass concern — write it into your subclass.
+All five default to no-ops. Override only the hooks you need. Class extension is the only extension mechanism; the dispatcher exposes no callback API. Multi-observer composition (logger plus tracer plus metrics) is a subclass concern: write it into the subclass body.
 
 ## Hook contracts
 
 | Hook | When called | Arguments |
 |------|-------------|-----------|
 | `onFlowStart` | After `state.markRunning()`, before the first node | `dagName`, `state` |
-| `onFlowEnd` | After the last node (including aborted/failed paths) | `dagName`, `state`, `result` |
+| `onFlowEnd` | After the last node (including aborted or failed paths) | `dagName`, `state`, `result` |
 | `onNodeStart` | Before `node.execute()` for each node entry | `nodeName`, `state` |
 | `onNodeEnd` | After each node resolves, before `yield` | `nodeName`, `output \| undefined`, `state` |
 | `onError` | When a signal fires or a node throws | `nodeName`, `error`, `state` |
 
-`onFlowEnd` is always called — even when the flow fails or is cancelled. `onError` may fire before `onFlowEnd` in the same execution.
+`onFlowEnd` is always called, even when the flow fails or is cancelled. `onError` may fire before `onFlowEnd` in the same execution.
 
-For parallel and fan-out nodes, `onNodeStart` / `onNodeEnd` fire once for the group entry (the containing `parallel` or `fan-out` node), not once per constituent node.
+For parallel and fan-out nodes, `onNodeStart` and `onNodeEnd` fire once for the group entry (the containing `parallel` or `fan-out` node), not once per constituent node.
 
-## Structured logging example
+## Structured logging
 
 ```ts
 import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-import type { ExecutionResultInterface } from '@noocodex/dagonizer';
 
 interface Span {
   name: string;
@@ -105,10 +106,6 @@ class TracingDispatcher<TState extends NodeStateBase> extends Dagonizer<TState> 
     }
   }
 }
-
-const dispatcher = new TracingDispatcher<MyState>();
-// ...register and execute...
-console.table(dispatcher.spans);
 ```
 
 ## OpenTelemetry sketch
@@ -116,7 +113,6 @@ console.table(dispatcher.spans);
 ```ts
 import { trace, SpanStatusCode } from '@opentelemetry/api';
 import { Dagonizer } from '@noocodex/dagonizer';
-import type { ExecutionResultInterface } from '@noocodex/dagonizer';
 
 const tracer = trace.getTracer('dagonizer');
 
@@ -124,8 +120,7 @@ class OtelDispatcher<TState> extends Dagonizer<TState> {
   #spans = new Map<string, ReturnType<typeof tracer.startSpan>>();
 
   protected override onFlowStart(dagName: string): void {
-    const span = tracer.startSpan(`flow.${dagName}`);
-    this.#spans.set(dagName, span);
+    this.#spans.set(dagName, tracer.startSpan(`flow.${dagName}`));
   }
 
   protected override onFlowEnd(dagName: string): void {
@@ -134,8 +129,7 @@ class OtelDispatcher<TState> extends Dagonizer<TState> {
   }
 
   protected override onNodeStart(nodeName: string): void {
-    const span = tracer.startSpan(`node.${nodeName}`);
-    this.#spans.set(nodeName, span);
+    this.#spans.set(nodeName, tracer.startSpan(`node.${nodeName}`));
   }
 
   protected override onNodeEnd(nodeName: string, output?: string): void {
@@ -156,21 +150,17 @@ class OtelDispatcher<TState> extends Dagonizer<TState> {
   }
 }
 ```
-## Composable observability — the `Instrumentation` contract
 
-The subclass-hook pattern above is the right tool when one consumer owns the dispatcher. It does not compose: you cannot drop in vendor-supplied tracing alongside your own metrics without writing a hand-rolled multiplexer in your subclass.
+## Composable observers: the `Instrumentation` contract
 
-For multi-observer scenarios, install an `Instrumentation` implementation via the dispatcher's `instrumentation` constructor option. The dispatcher fires both surfaces at every execution boundary — your subclass `on*` hooks AND the instrumentation method — so a single dispatcher can mix subclass-local observability with plugin-supplied tracing, metrics, or audit collectors.
+The subclass-hook pattern fits when one consumer owns the dispatcher. It does not compose: dropping in vendor-supplied tracing alongside in-house metrics requires a hand-rolled multiplexer.
+
+For multi-observer scenarios, install an `Instrumentation` implementation via `DagonizerOptionsInterface.instrumentation`. The dispatcher fires both surfaces at every execution boundary, so a single dispatcher mixes subclass-local observability with plugin-supplied tracing, metrics, or audit collectors.
 
 ```ts
 import { Dagonizer, NoopInstrumentation } from '@noocodex/dagonizer';
-import type {
-  ExecutionResultInterface,
-  Instrumentation,
-  NodeStateInterface,
-} from '@noocodex/dagonizer';
+import type { NodeStateInterface } from '@noocodex/dagonizer';
 
-// Extend NoopInstrumentation — override only the hooks you need.
 class CountingInstrumentation<TState extends NodeStateInterface>
 extends NoopInstrumentation<TState> {
   nodeStarts = 0;
@@ -187,11 +177,9 @@ extends NoopInstrumentation<TState> {
 
 const counter = new CountingInstrumentation();
 const dispatcher = new Dagonizer({ instrumentation: counter });
-// ...register and execute...
-console.log(counter.nodeStarts, counter.nodeEnds);
 ```
 
-### The hook surface
+### Hook surface
 
 | Hook | When called | Arguments |
 |------|-------------|-----------|
@@ -204,11 +192,11 @@ console.log(counter.nodeStarts, counter.nodeEnds);
 | `contractWarning` | Non-fatal dangling-write warning at `registerDAG` | `message` |
 | `error` | Any thrown error the dispatcher catches | `dagName`, `nodeName`, `error`, `state` |
 
-`phaseEnter` / `phaseExit` are declared in the contract for forward compatibility with lifecycle-attached phase placements. The current dispatcher does not invoke them yet — they fire from the lifecycle-phases code landing in a sibling release.
+The `phaseEnter` and `phaseExit` hooks are declared on the contract (see `packages/dagonizer/src/contracts/Instrumentation.ts`). They fire from the lifecycle-phases path described in [Lifecycle phases](../guide/lifecycle-phases).
 
-### Hooks MUST NOT throw
+### Hooks must not throw
 
-The dispatcher does not wrap instrumentation calls in `try/catch`. A hook that throws aborts the surrounding flow. Wrap any I/O (HTTP exporters, file writes) inside your implementation so external failures stay external.
+The dispatcher does not wrap instrumentation calls in `try/catch`. A hook that throws aborts the surrounding flow. Wrap any I/O (HTTP exporters, file writes) inside the implementation so external failures stay external.
 
 ### When to use which surface
 
@@ -216,12 +204,13 @@ The dispatcher does not wrap instrumentation calls in `try/catch`. A hook that t
 |----------|---------|
 | One consumer, simple metrics or logging | Subclass `Dagonizer` and override `on*` hooks |
 | Plugin-supplied tracing (`@noocodex/dagonizer-tracing-otel`) | `Instrumentation` |
-| Multiple observers (tracing + metrics + audit) | One `Instrumentation` per concern, composed in a multiplexer that itself implements `Instrumentation` |
+| Multiple observers (tracing plus metrics plus audit) | One `Instrumentation` per concern, composed in a multiplexer that itself implements `Instrumentation` |
 | Vendor-neutral observability surface for third-party packages | `Instrumentation` |
 
-Both surfaces remain available even when you use one — the dispatcher fires the subclass `on*` hooks and the `instrumentation.*` methods at the same boundaries.
+Both surfaces remain available even when only one is in use; the dispatcher fires the subclass `on*` hooks and the `instrumentation.*` methods at the same boundaries.
 
 ## Related reference
 
 - [Reference: Dagonizer](../reference/dagonizer)
+- [Reference: Contracts](../reference/contracts)
 - [Reference: Lifecycle](../reference/lifecycle)

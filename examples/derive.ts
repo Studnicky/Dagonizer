@@ -9,11 +9,11 @@
  * override individual ports and swap placement kinds at render time.
  *
  * This example demonstrates agentic tool dispatch: a parent flow
- * delegates the actual work to a registered sub-DAG via the `subDAGs`
+ * delegates the actual work to a registered embedded-DAG via the `embeddedDAGs`
  * annotation. Plug in a different child DAG (different "tool") at
  * registration time without rewriting the parent.
  *
- *   parent: prepare → invoke-plugin (sub-DAG) → finalize
+ *   parent: prepare → invoke-plugin (embedded-DAG) → finalize
  *   child:  validate → transform
  *
  * Run: npx tsx examples/derive.ts
@@ -74,10 +74,10 @@ const transform: NodeInterface<S, 'success'> = {
 };
 
 const invokePlugin: NodeInterface<S, 'success' | 'error'> = {
-  // The deep-DAG step itself just delegates — the dispatcher routes
+  // The embedded-DAG step itself just delegates — the dispatcher routes
   // through the registered child DAG. This node's `execute` runs as
   // the "wrapper" that the engine invokes; its outputs match the
-  // declared subDAG.outputs.
+  // declared embeddedDAG.outputs.
   "name": 'invoke-plugin',
   "outputs": ['success', 'error'],
   async execute() {
@@ -98,6 +98,7 @@ const finalize: NodeInterface<S, 'success'> = {
 // Contracts — produces ↔ hardRequired derives the topology
 // ---------------------------------------------------------------------------
 
+// #region contracts
 const parentContracts: readonly OperationContract[] = [
   { "name": 'prepare',       "hardRequired": ['input'],        "produces": ['intermediate'], "outputs": ['success'] },
   { "name": 'invoke-plugin', "hardRequired": ['intermediate'], "produces": ['childResult'],  "outputs": ['success', 'error'] },
@@ -108,11 +109,13 @@ const childContracts: readonly OperationContract[] = [
   { "name": 'validate',  "hardRequired": ['intermediate'], "produces": ['validated'],   "outputs": ['success', 'error'] },
   { "name": 'transform', "hardRequired": ['validated'],    "produces": ['childResult'], "outputs": ['success'] },
 ];
+// #endregion contracts
 
 // ---------------------------------------------------------------------------
 // Derive the DAGs
 // ---------------------------------------------------------------------------
 
+// #region derive
 // Child DAG — simple validate→transform chain. validate's error port
 // is terminated via `terminals`; the validator is a hard gate.
 const childDAG = DAGDeriver.derive({
@@ -127,8 +130,8 @@ const childDAG = DAGDeriver.derive({
   },
 });
 
-// Parent DAG — invoke-plugin runs the child DAG as a DeepDAGNode via
-// the subDAGs annotation. Both `success` and `error` ports auto-wire
+// Parent DAG — invoke-plugin runs the child DAG as a EmbeddedDAGNode via
+// the embeddedDAGs annotation. Both `success` and `error` ports auto-wire
 // to `finalize` (the next derived stage); finalize handles both
 // paths uniformly. Per-port terminal overrides would route the
 // error port elsewhere if needed.
@@ -137,8 +140,9 @@ const parentDAG = DAGDeriver.derive({
   "version":    '1.0',
   "entrypoint": 'prepare',
   "contracts":  parentContracts,
+  // #region annotations
   "annotations": {
-    "subDAGs": {
+    "embeddedDAGs": {
       "invoke-plugin": {
         "dag":     'plugin:transform',
         "outputs": ['success', 'error'],
@@ -149,7 +153,9 @@ const parentDAG = DAGDeriver.derive({
       },
     },
   },
+  // #endregion annotations
 });
+// #endregion derive
 
 // ---------------------------------------------------------------------------
 // Dispatch

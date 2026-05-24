@@ -1,31 +1,25 @@
 ---
 seeAlso:
-
   - text: 'Reference: Execution'
-
     link: './execution'
-    description: 'what `execute` / `resume` return'
-
-  - text: 'Reference: Contracts — `NodeInterface`, `ExecuteOptionsInterface`'
-
+    description: 'what `execute` and `resume` return'
+  - text: 'Reference: Contracts'
     link: './contracts'
-
-  - text: 'Reference: Core — `ParallelCombiners`, `FanInStrategies`'
-
+    description: '`NodeInterface`, `ExecuteOptionsInterface`'
+  - text: 'Reference: Core'
     link: './core'
-
+    description: '`ParallelCombiners`, `FanInStrategies`'
   - text: 'Reference: Lifecycle'
-
     link: './lifecycle'
 ---
 
 # Dagonizer
 
-`@noocodex/dagonizer` — main entry point export.
+`@noocodex/dagonizer` root export.
 
 ## Class: `Dagonizer<TState, TServices>`
 
-The DAG dispatcher. Holds the node and DAG registries, validates configurations at registration time, and runs the node-graph iterator.
+The DAG dispatcher. Holds node and DAG registries, validates configurations at registration time, and runs the node-graph iterator.
 
 ```ts
 import { Dagonizer } from '@noocodex/dagonizer';
@@ -43,7 +37,7 @@ const dispatcher = new Dagonizer<MyState, MyServices>({ services: { logger, db }
 constructor(options?: DagonizerOptionsInterface<TServices>)
 ```
 
-`options.accessor` swaps the path resolver for fan-out reads, fan-in writes, and deep-DAG state mapping. Defaults to `DottedPathAccessor`. `options.services` is the typed services bag; defaults to `undefined`.
+`options.accessor` swaps the path resolver for fan-out reads, fan-in writes, and embedded-DAG state mapping. Defaults to `DottedPathAccessor`. `options.services` is the typed services bag; defaults to `undefined`.
 
 ### `DagonizerOptionsInterface`
 
@@ -51,8 +45,11 @@ constructor(options?: DagonizerOptionsInterface<TServices>)
 interface DagonizerOptionsInterface<TServices = undefined> {
   readonly accessor?: StateAccessor;
   readonly services?: TServices;
+  readonly instrumentation?: Instrumentation;
 }
 ```
+
+`instrumentation` is the plugin-supplied observability surface. Defaults to a `NoopInstrumentation` (every hook is a no-op when not overridden). Plugins extend `NoopInstrumentation` and pass the instance through this option. The dispatcher fires both the protected `on*` subclass hooks and the equivalent `instrumentation.*` methods at every execution boundary.
 
 ---
 
@@ -66,7 +63,36 @@ registerNode<TOutput extends string>(
 
 Registers a node in the dispatcher's node registry. If the node defines an optional `validate()` method, it is called immediately and throws `DAGError` if it returns `{ valid: false }`.
 
-Nodes are stored widened to `NodeInterface<TState, string, TServices>`. Narrow `TOutput` → wide `string` is sound covariantly.
+Nodes are stored widened to `NodeInterface<TState, string, TServices>`. Narrow `TOutput` to wide `string` is sound covariantly.
+
+---
+
+### `registerBundle(bundle)`
+
+```ts
+registerBundle(bundle: DispatcherBundle<TState, TServices>): void
+```
+
+Register every node, then every DAG, in the supplied bundle. Order is fixed: nodes first so the semantic-pass DAG validator can resolve every node reference. Throws as soon as any individual registration throws (validation failure, duplicate name, etc.); registrations that ran before the failing one remain installed.
+
+```ts
+interface DispatcherBundle<TState extends NodeStateInterface, TServices = undefined> {
+  readonly nodes: readonly NodeInterface<TState, string, TServices>[];
+  readonly dags:  readonly DAG[];
+}
+```
+
+Both arrays are required. Either may be empty (a node-only bundle uses `dags: []`; a DAG-only bundle uses `nodes: []`).
+
+```ts
+import type { DispatcherBundle } from '@noocodex/dagonizer';
+
+const bundle: DispatcherBundle<MyState> = {
+  nodes: [fetchNode, parseNode, persistNode],
+  dags:  [pipelineDag],
+};
+dispatcher.registerBundle(bundle);
+```
 
 ---
 
@@ -78,13 +104,47 @@ registerDAG(dag: DAG): void
 
 Registers a DAG after three validation passes:
 
-1. **Schema pass** — `Validator.dag.validate(dag)` checks structure (required fields, valid `type` and `strategy` enumerations).
-2. **Semantic pass** — verifies entrypoint exists, all node references are resolvable, no circular sub-DAG references, and every registered node output has a routing entry in the placement's `outputs` map.
-3. **Contract pass** — for DAGs derived from a `nodes` registry, `ContractRegistryValidator` checks every non-entrypoint node's `hardRequired` paths against upstream producers. Dangling reads throw `DAGError`; dead writes call `onContractWarning`.
+1. **Schema pass.** `Validator.dag.validate(dag)` checks structure (required fields, valid `type` and `strategy` enumerations).
+2. **Semantic pass.** Verifies entrypoint exists, all node references are resolvable, no circular embedded-DAG references, and every registered node output has a routing entry in the placement's `outputs` map.
+3. **Contract pass.** For DAGs derived from a `nodes` registry, `ContractRegistryValidator` checks every non-entrypoint node's `hardRequired` paths against upstream producers. Dangling reads throw `DAGError`; dead writes call `onContractWarning`.
 
 Throws `DAGError` with a multi-line message listing all failures.
 
 See [catching contract drift](../guide/derive.md#catching-contract-drift) for the full validation semantics.
+
+---
+
+### `getDAG(name)`
+
+```ts
+getDAG(name: string): DAG | undefined
+```
+
+Look up a registered DAG by name. Returns `undefined` when the DAG has not been registered.
+
+### `getNode(name)`
+
+```ts
+getNode(name: string): NodeInterface<TState, string, TServices> | undefined
+```
+
+Look up a registered node by name. Returns `undefined` when the node has not been registered.
+
+### `listDAGs()`
+
+```ts
+listDAGs(): readonly DAG[]
+```
+
+Snapshot of every registered DAG. The returned array is a fresh shallow copy; mutating it does not affect the registry.
+
+### `listNodes()`
+
+```ts
+listNodes(): readonly NodeInterface<TState, string, TServices>[]
+```
+
+Snapshot of every registered node. The returned array is a fresh shallow copy; mutating it does not affect the registry.
 
 ---
 
@@ -139,11 +199,11 @@ Serialize a DAG to compact JSON (no whitespace).
 execute(
   dagName: string,
   initialState: TState,
-  options?: { signal?: AbortSignal; deadlineMs?: number },
+  options?: ExecuteOptionsInterface,
 ): Execution<TState>
 ```
 
-Returns an `Execution<TState>` starting at the DAG's entrypoint. The execution is lazy — the generator does not run until the caller awaits or iterates.
+Returns an `Execution<TState>` starting at the DAG's entrypoint. The execution is lazy: the generator does not run until the caller awaits or iterates.
 
 ```ts
 // Await (one-shot)
@@ -155,6 +215,8 @@ for await (const node of dispatcher.execute('my-dag', state)) {
 }
 ```
 
+`ExecuteOptionsInterface` has two fields: `signal?: AbortSignal` and `deadlineMs?: number`.
+
 ---
 
 ### `resume(dagName, state, fromStage, options?)`
@@ -164,7 +226,7 @@ resume(
   dagName: string,
   state: TState,
   fromStage: string,
-  options?: { signal?: AbortSignal; deadlineMs?: number },
+  options?: ExecuteOptionsInterface,
 ): Execution<TState>
 ```
 
@@ -204,14 +266,48 @@ protected onContractWarning(message: string): void
 | Hook | Fires |
 |------|-------|
 | `onFlowStart` | After `state.markRunning()`, before the first node |
-| `onFlowEnd` | After the final node (all paths — normal, cancelled, failed) |
+| `onFlowEnd` | After the final node (all paths: normal, cancelled, failed) |
 | `onNodeStart` | Before `node.execute()` for each node entry point |
 | `onNodeEnd` | After each node resolves, before the result is yielded |
 | `onError` | When the signal fires or a node throws |
 | `onContractWarning` | When `ContractRegistryValidator` detects a dead-write during `registerDAG` |
 
-See [Observability](/guide/observability) for usage examples.
-See [catching contract drift](../guide/derive.md#catching-contract-drift) for `onContractWarning` usage.
+See [Observability](/guide/observability) for usage examples. See [catching contract drift](../guide/derive.md#catching-contract-drift) for `onContractWarning` usage.
+
+---
+
+## Interface: `DispatcherBundle`
+
+```ts
+interface DispatcherBundle<TState extends NodeStateInterface, TServices = undefined> {
+  readonly nodes: readonly NodeInterface<TState, string, TServices>[];
+  readonly dags:  readonly DAG[];
+}
+```
+
+A coherent unit of nodes and DAGs registered together. Plugin packages and feature modules export a `DispatcherBundle` so consumers register the whole unit in one call.
+
+---
+
+## Const: `FAN_OUT_PROGRESS_KEY`
+
+```ts
+const FAN_OUT_PROGRESS_KEY: '__dagonizer_fan_out_progress__'
+```
+
+Reserved metadata key used by the fan-out executor to persist per-item resume bookkeeping. Consumer nodes must not write to this key. The stored value is a `StoredFanOutProgress` map keyed by the fan-out placement's `name`.
+
+```ts
+interface FanOutProgress {
+  readonly placementName:    string;
+  readonly completedIndices: readonly number[];
+  readonly itemResults:      readonly { readonly index: number; readonly output: string }[];
+}
+type StoredFanOutProgress = Readonly<Record<string, FanOutProgress>>;
+```
+
+---
+
 ## Related guides
 
 - [DAGBuilder](../guide/builder)

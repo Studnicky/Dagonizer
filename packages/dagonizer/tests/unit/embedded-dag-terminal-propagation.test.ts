@@ -1,9 +1,9 @@
 /**
- * Deep-DAG terminal-outcome propagation.
+ * Embedded-DAG terminal-outcome propagation.
  *
  * When an inner DAG exits via a `TerminalNode` placement, the inner
  * generator's `ExecutionResult.terminalOutcome` carries the outcome the
- * terminal declared. `executeDeepDAG` reads that and uses it (in
+ * terminal declared. `executeEmbeddedDAG` reads that and uses it (in
  * addition to `childState.errors.length`) to decide whether the parent
  * placement's `success` or `error` output fires.
  *
@@ -27,7 +27,7 @@ const passNode: NodeInterface<NodeStateBase> = {
   async execute() { return { 'output': 'ok' }; },
 };
 
-void describe('deep-DAG terminal-outcome propagation', () => {
+void describe('embedded-DAG terminal-outcome propagation', () => {
   void it('inner TerminalNode(failed) routes parent to error without collectError', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(passNode);
@@ -39,9 +39,9 @@ void describe('deep-DAG terminal-outcome propagation', () => {
       .build();
     dispatcher.registerDAG(innerDag);
 
-    // Parent DAG: deepDAG with success/error routing to distinct terminals.
+    // Parent DAG: embeddedDAG with success/error routing to distinct terminals.
     const parentDag = new DAGBuilder('parent', '1')
-      .deepDAG('run-inner', 'inner-fail', { 'success': 'end-ok', 'error': 'end-bad' })
+      .embeddedDAG('run-inner', 'inner-fail', { 'success': 'end-ok', 'error': 'end-bad' })
       .terminal('end-ok', 'completed')
       .terminal('end-bad', 'failed')
       .build();
@@ -67,7 +67,7 @@ void describe('deep-DAG terminal-outcome propagation', () => {
     dispatcher.registerDAG(innerDag);
 
     const parentDag = new DAGBuilder('parent-ok', '1')
-      .deepDAG('run-inner', 'inner-ok', { 'success': 'end-ok', 'error': 'end-bad' })
+      .embeddedDAG('run-inner', 'inner-ok', { 'success': 'end-ok', 'error': 'end-bad' })
       .terminal('end-ok', 'completed')
       .terminal('end-bad', 'failed')
       .build();
@@ -92,7 +92,7 @@ void describe('deep-DAG terminal-outcome propagation', () => {
     dispatcher.registerDAG(innerDag);
 
     const parentDag = new DAGBuilder('parent-null', '1')
-      .deepDAG('run-inner', 'inner-null', { 'success': 'end-ok', 'error': 'end-bad' })
+      .embeddedDAG('run-inner', 'inner-null', { 'success': 'end-ok', 'error': 'end-bad' })
       .terminal('end-ok', 'completed')
       .terminal('end-bad', 'failed')
       .build();

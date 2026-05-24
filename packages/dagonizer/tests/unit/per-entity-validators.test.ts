@@ -73,11 +73,11 @@ void describe('Validator per-entity sub-validators', () => {
     );
   });
 
-  void it('Validator.deepDAGNode accepts a deep-dag placement', () => {
+  void it('Validator.embeddedDAGNode accepts a embedded-dag placement', () => {
     assert.equal(
-      Validator.deepDAGNode.is({
+      Validator.embeddedDAGNode.is({
         '@id':   'urn:noocodex:dag:pipeline/node/enrich',
-        '@type': 'DeepDAGNode',
+        '@type': 'EmbeddedDAGNode',
         'name':  'enrich',
         'dag':   'enrichment',
         'outputs': { 'success': null, 'error': null },

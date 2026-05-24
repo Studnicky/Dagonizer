@@ -1,7 +1,7 @@
 {
   "name": "Dagonizer: type-safe DAG dispatcher",
   "short_name": "Dagonizer",
-  "description": "Type-safe DAG dispatcher with deterministic resume, sub-DAG composition, and JSON-LD canonical wire format.",
+  "description": "Type-safe DAG dispatcher with deterministic resume, embedded-DAG composition, and JSON-LD canonical wire format.",
   "id": "/Dagonizer/",
   "start_url": "/Dagonizer/",
   "scope": "/Dagonizer/",

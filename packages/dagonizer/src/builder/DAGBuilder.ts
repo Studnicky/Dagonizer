@@ -18,7 +18,7 @@ import { DAGDeriver } from '../derive/DAGDeriver.js';
 import type { DAGDeriverAnnotations } from '../derive/DAGDeriverAnnotations.js';
 import type { DAG } from '../entities/dag/DAG.js';
 import { DAG_CONTEXT } from '../entities/dag/DAG.js';
-import type { DeepDAGNode } from '../entities/dag/DeepDAGNode.js';
+import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import type { FanInConfig } from '../entities/dag/FanInConfig.js';
 import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
@@ -29,7 +29,7 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { Path } from './Path.js';
 
-type DAGNodeType = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
+type DAGNodeType = FanOutNode | ParallelNode | SingleNodePlacementInterface | EmbeddedDAGNode | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
 
 /** Optional configuration for a fan-out node added via `DAGBuilder.fanOut`. */
 export interface FanOutOptionsInterface {
@@ -39,11 +39,11 @@ export interface FanOutOptionsInterface {
   'itemKey'?: string;
 }
 
-/** Optional configuration for a deep-DAG node added via `DAGBuilder.deepDAG`. */
-export interface DeepDAGOptionsInterface {
+/** Optional configuration for a embedded-DAG node added via `DAGBuilder.embeddedDAG`. */
+export interface EmbeddedDAGOptionsInterface {
   /**
    * State mapping between parent and child DAGs. `input` copies fields from the
-   * parent node state into the child node state before the deep-DAG runs;
+   * parent node state into the child node state before the embedded-DAG runs;
    * `output` copies fields from the child node state back into the parent after
    * it completes.
    */
@@ -54,7 +54,7 @@ export interface DeepDAGOptionsInterface {
 }
 
 /**
- * Typed deep-DAG options. Both generics narrow path strings at compile time:
+ * Typed embedded-DAG options. Both generics narrow path strings at compile time:
  * `TChildState` narrows the LEFT side of `inputs` and the RIGHT side of
  * `outputs` to keys / dotted paths that exist on the child state. `TParentState`
  * narrows the RIGHT side of `inputs` and BOTH sides of `outputs` to dotted
@@ -73,7 +73,7 @@ export interface DeepDAGOptionsInterface {
  *   result  = 0;
  * }
  *
- * builder.deepDAG<ChildState, ParentState>('invoke', 'child-dag', routes, {
+ * builder.embeddedDAG<ChildState, ParentState>('invoke', 'child-dag', routes, {
  *   inputs:  { payload: 'user.name' },     // 'payload' ∈ ChildState; 'user.name' ∈ Path<ParentState>
  *   outputs: { 'user.age': 'result' },     // 'user.age' ∈ Path<ParentState>; 'result' ∈ Path<ChildState>
  * });
@@ -94,7 +94,7 @@ export interface DeepDAGOptionsInterface {
 type ParentPath<T extends NodeStateInterface> =
   NodeStateInterface extends T ? string : Path<T>;
 
-export interface TypedDeepDAGOptionsInterface<
+export interface TypedEmbeddedDAGOptionsInterface<
   TChildState extends NodeStateInterface = NodeStateInterface,
   TParentState extends NodeStateInterface = NodeStateInterface,
 > {
@@ -104,7 +104,7 @@ export interface TypedDeepDAGOptionsInterface<
    * Parent path is narrowed to `Path<TParentState>` when `TParentState` is
    * a concrete subtype; falls back to `string` when using the default
    * `NodeStateInterface` (preserving backward compatibility).
-   * Before the deep-DAG runs, each listed parent field is copied into the
+   * Before the embedded-DAG runs, each listed parent field is copied into the
    * corresponding child field.
    */
   readonly 'inputs'?:  Partial<Record<keyof TChildState & string, ParentPath<TParentState>>>;
@@ -114,7 +114,7 @@ export interface TypedDeepDAGOptionsInterface<
    * Parent key is narrowed to `Path<TParentState>` (falls back to `string`
    * when using the default); child path is narrowed to `Path<TChildState>`
    * (falls back to `string` when using the default).
-   * After the deep-DAG completes, each listed child field is copied back into
+   * After the embedded-DAG completes, each listed child field is copied back into
    * the corresponding parent field.
    */
   readonly 'outputs'?: Partial<Record<ParentPath<TParentState>, ParentPath<TChildState>>>;
@@ -227,7 +227,7 @@ export class DAGBuilder {
   }
 
   /**
-   * Append a deep-DAG node. `routes` covers `success | error`.
+   * Append a embedded-DAG node. `routes` covers `success | error`.
    *
    * Supply `TChildState` to narrow the LEFT side of `inputs` and the RIGHT
    * side of `outputs` to keys / dotted paths that exist on the child state.
@@ -239,30 +239,30 @@ export class DAGBuilder {
    *
    * @example
    * ```ts
-   * builder.deepDAG<ChildState, ParentState>('invoke', 'child-dag',
+   * builder.embeddedDAG<ChildState, ParentState>('invoke', 'child-dag',
    *   { success: 'next', error: null },
    *   { inputs: { payload: 'user.name' }, outputs: { 'user.age': 'result' } },
    * );
    * ```
    */
-  deepDAG<
+  embeddedDAG<
     TChildState extends NodeStateInterface = NodeStateInterface,
     TParentState extends NodeStateInterface = NodeStateInterface,
   >(
     name: string,
     dagName: string,
     routes: Record<'success' | 'error', null | string>,
-    options: TypedDeepDAGOptionsInterface<TChildState, TParentState> = {},
+    options: TypedEmbeddedDAGOptionsInterface<TChildState, TParentState> = {},
   ): this {
-    const dagNode: DeepDAGNode = {
+    const dagNode: EmbeddedDAGNode = {
       '@id':   this.#nodeId(name),
-      '@type': 'DeepDAGNode',
+      '@type': 'EmbeddedDAGNode',
       name,
       'dag':   dagName,
       'outputs': routes,
     };
     if (options.inputs !== undefined || options.outputs !== undefined) {
-      const stateMapping: DeepDAGNode['stateMapping'] = {};
+      const stateMapping: EmbeddedDAGNode['stateMapping'] = {};
       if (options.inputs  !== undefined) stateMapping.input  = options.inputs  as Record<string, string>;
       if (options.outputs !== undefined) stateMapping.output = options.outputs as Record<string, string>;
       dagNode.stateMapping = stateMapping;
@@ -330,7 +330,7 @@ export class DAGBuilder {
    * dangling-read / dead-write validation that `DAGDeriver` runs at derive
    * time. Dangling reads throw `DAGError`; dead writes are routed to
    * `onContractWarning` (no-op if omitted). Placements added via `.parallel()`
-   * or `.deepDAG()` — which do not receive a `NodeInterface` — are not tracked
+   * or `.embeddedDAG()` — which do not receive a `NodeInterface` — are not tracked
    * in the impl registry and are silently skipped during contract validation;
    * this prevents false-positive dangling-read errors for node names that are
    * declared elsewhere.
@@ -354,7 +354,7 @@ export class DAGBuilder {
 
     // Run contract validation for the subset of placements registered via
     // .node() / .fanOut() whose underlying NodeInterface carries a contract.
-    // Placements added via .parallel() / .deepDAG() are not in #nodeImpls and
+    // Placements added via .parallel() / .embeddedDAG() are not in #nodeImpls and
     // are intentionally skipped — no false-positive dangling-read errors.
     const contractNodes = [...this.#nodeImpls.values()].filter(
       (impl) => impl.contract !== undefined,
@@ -378,7 +378,7 @@ export class DAGBuilder {
    * `DAGDeriver.derive({ name, version, entrypoint, nodes })` and returning
    * the resulting DAG. Use when your flow is linear and every node carries
    * a contract; drop into the fluent `.node()` API when the shape requires
-   * manual placement (fan-out, terminals, deep-DAGs).
+   * manual placement (fan-out, terminals, embedded-DAGs).
    */
   static fromNodes(opts: {
     readonly name: string;

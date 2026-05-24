@@ -35,8 +35,8 @@ export type { ParallelNode } from './dag/ParallelNode.js';
 export { FanOutNodeSchema } from './dag/FanOutNode.js';
 export type { FanOutNode } from './dag/FanOutNode.js';
 
-export { DeepDAGNodeSchema } from './dag/DeepDAGNode.js';
-export type { DeepDAGNode } from './dag/DeepDAGNode.js';
+export { EmbeddedDAGNodeSchema } from './dag/EmbeddedDAGNode.js';
+export type { EmbeddedDAGNode } from './dag/EmbeddedDAGNode.js';
 
 export { TerminalNodeSchema } from './dag/TerminalNode.js';
 export type { TerminalNode } from './dag/TerminalNode.js';

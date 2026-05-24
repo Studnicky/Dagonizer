@@ -723,7 +723,7 @@ html::-webkit-scrollbar-corner {
   fill: var(--mermaid-hex-fill) !important;
   stroke: var(--mermaid-hex-stroke) !important;
 }
-/* Stadium nodes (deep-dag and END terminator — Mermaid `([name])`) */
+/* Stadium nodes (embedded-dag and END terminator — Mermaid `([name])`) */
 .vp-doc .mermaid svg g.node:has(rect.label-container) ~ rect,
 .vp-doc .mermaid svg .node.stadium rect {
   fill: var(--mermaid-stadium-fill) !important;

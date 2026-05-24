@@ -5,12 +5,12 @@
  *
  *   const cy = cytoscape({
  *     container: document.getElementById('graph'),
- *     elements:  CytoscapeRenderer.render(dag, { deepDags }),
+ *     elements:  CytoscapeRenderer.render(dag, { embeddedDAGs }),
  *     // ...stylesheet, layout...
  *   });
  *
  * Every placement becomes a node element carrying its `type` (single /
- * parallel / fan-out / deep-dag / terminal) so consumers can style
+ * parallel / fan-out / embedded-dag / terminal) so consumers can style
  * per-type via Cytoscape's `style({ selector: 'node[type="fan-out"]', ... })`.
  * Every output route becomes an edge labeled with the route's name.
  *
@@ -23,14 +23,14 @@
  * Compound rendering:
  *   • Parallel children render with `parent: <parallel placement name>`
  *     so cytoscape draws them inside the parallel placement's box.
- *   • Deep-DAG placements, when their target DAG is supplied via the
- *     `deepDags` registry, expand RECURSIVELY: every inner node renders
+ *   • Embedded-DAG placements, when their target DAG is supplied via the
+ *     `embeddedDAGs` registry, expand RECURSIVELY: every inner node renders
  *     with the placement as `parent`, so the user sees the actual flow
  *     inside the cluster — no shortcuts, no opaque boxes.
  *
  * Routes targeting `null` become edges to a synthetic `END` node so
  * the live runner can highlight termination explicitly. END edges
- * inside a parallel or deep-DAG cluster are suppressed (the parent
+ * inside a parallel or embedded-DAG cluster are suppressed (the parent
  * placement's own edges carry the collected/terminal route out).
  *
  * Static class. The renderer does not invoke Cytoscape; it returns a
@@ -38,13 +38,13 @@
  */
 
 import type { DAG } from '../entities/dag/DAG.js';
-import type { DeepDAGNode } from '../entities/dag/DeepDAGNode.js';
+import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 
-type DAGNodeEntry = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode | TerminalNodePlacementInterface;
+type DAGNodeEntry = FanOutNode | ParallelNode | SingleNodePlacementInterface | EmbeddedDAGNode | TerminalNodePlacementInterface;
 
 /** A Cytoscape node element. */
 export interface CytoscapeNodeElement {
@@ -53,7 +53,7 @@ export interface CytoscapeNodeElement {
     readonly id: string;
     readonly label: string;
     /** Placement kind — selector use: `node[type="fan-out"]`. */
-    readonly type: 'single' | 'parallel' | 'fan-out' | 'deep-dag' | 'terminal';
+    readonly type: 'single' | 'parallel' | 'fan-out' | 'embedded-dag' | 'terminal';
     /** Free-form metadata consumers can read in stylesheets. */
     readonly [key: string]: unknown;
   };
@@ -78,14 +78,14 @@ export type CytoscapeElement = CytoscapeNodeElement | CytoscapeEdgeElement;
 /** Optional inputs the renderer reads. */
 export interface RenderOptions {
   /**
-   * Registry of deep-DAGs by name. Any `deep-dag` placement whose
+   * Registry of embedded-DAGs by name. Any `embedded-dag` placement whose
    * `placement.dag` matches a key here is expanded inline — its
    * internal nodes/edges render as compound-graph children of the
    * placement, so the diagram shows the full inner flow instead of
    * a single opaque box.
    */
-  readonly deepDags?: ReadonlyMap<string, DAG>;
-  /** Max recursion depth — guards against accidental sub-DAG cycles. */
+  readonly embeddedDAGs?: ReadonlyMap<string, DAG>;
+  /** Max recursion depth — guards against accidental embedded-DAG cycles. */
   readonly maxDepth?: number;
 }
 
@@ -102,15 +102,15 @@ export class CytoscapeRenderer {
   /** Synthetic terminator node id emitted once per DAG that has any null-route. */
   private static readonly END_ID = 'END';
 
-  /** Default deep-DAG inline-expansion recursion cap (cycle / accidental-loop guard). */
+  /** Default embedded-DAG inline-expansion recursion cap (cycle / accidental-loop guard). */
   private static readonly DEFAULT_MAX_DEPTH = 6;
 
   /** Mapping from JSON-LD placement-discriminator to Cytoscape `data.type` value. */
-  private static readonly PLACEMENT_KIND: Readonly<Record<string, 'single' | 'parallel' | 'fan-out' | 'deep-dag' | 'terminal'>> = {
+  private static readonly PLACEMENT_KIND: Readonly<Record<string, 'single' | 'parallel' | 'fan-out' | 'embedded-dag' | 'terminal'>> = {
     'SingleNode':   'single',
     'ParallelNode': 'parallel',
     'FanOutNode':   'fan-out',
-    'DeepDAGNode':  'deep-dag',
+    'EmbeddedDAGNode':  'embedded-dag',
     'TerminalNode': 'terminal',
   };
 
@@ -168,7 +168,7 @@ export class CytoscapeRenderer {
             "fanIn":       placement.fanIn,
           },
         };
-      case 'DeepDAGNode':
+      case 'EmbeddedDAGNode':
         return {
           ...base,
           "data": {
@@ -218,8 +218,8 @@ export class CytoscapeRenderer {
 
   /**
    * Render every placement of `dag` into `state.elements`, with optional
-   * compound-parent wrapping (for parallel/deep-DAG expansions). Recurses
-   * into deep-DAGs when their target body is in `state.options.deepDags`.
+   * compound-parent wrapping (for parallel/embedded-DAG expansions). Recurses
+   * into embedded-DAGs when their target body is in `state.options.embeddedDAGs`.
    */
   private static renderInto(
     dag: DAG,
@@ -244,38 +244,38 @@ export class CytoscapeRenderer {
         ? CytoscapeRenderer.idIn(prefix, parallelParent)
         : compoundParent;
 
-      // ── Deep-DAG: if the target DAG is registered, expand inline as a
-      //    compound parent containing the deep-DAG's full flow.
-      const deepDagName = placement['@type'] === 'DeepDAGNode' ? placement.dag : null;
-      const deepDagBody = deepDagName !== null
-        ? state.options.deepDags?.get(deepDagName)
+      // ── Embedded-DAG: if the target DAG is registered, expand inline as a
+      //    compound parent containing the embedded-DAG's full flow.
+      const embeddedDagName = placement['@type'] === 'EmbeddedDAGNode' ? placement.dag : null;
+      const embeddedDagBody = embeddedDagName !== null
+        ? state.options.embeddedDAGs?.get(embeddedDagName)
         : undefined;
-      const shouldExpand = deepDagBody !== undefined
-        && deepDagName !== null
+      const shouldExpand = embeddedDagBody !== undefined
+        && embeddedDagName !== null
         && depth < (state.options.maxDepth ?? CytoscapeRenderer.DEFAULT_MAX_DEPTH)
-        && !visited.has(deepDagName);
+        && !visited.has(embeddedDagName);
 
-      if (shouldExpand && deepDagBody !== undefined && deepDagName !== null) {
+      if (shouldExpand && embeddedDagBody !== undefined && embeddedDagName !== null) {
         // Emit the placement as a compound parent (label tells the visitor
-        // which deep-DAG this cluster represents).
+        // which embedded-DAG this cluster represents).
         const parentNode = CytoscapeRenderer.placementNode(placement, myId);
         const labelled: CytoscapeNodeElement = {
           ...parentNode,
           "data": {
             ...parentNode.data,
-            "label": `${placement.name}\n[${deepDagName}]`,
+            "label": `${placement.name}\n[${embeddedDagName}]`,
             ...(myCompoundParent !== undefined ? { "parent": myCompoundParent } : {}),
           },
         };
         state.elements.push(labelled);
 
-        // Recurse: render every node of the deep-DAG with `parent: myId`.
+        // Recurse: render every node of the embedded-DAG with `parent: myId`.
         const innerPrefix = CytoscapeRenderer.idIn(prefix, placement.name);
         const innerVisited = new Set(visited);
-        innerVisited.add(deepDagName);
-        CytoscapeRenderer.renderInto(deepDagBody, innerPrefix, myId, state, depth + 1, innerVisited);
+        innerVisited.add(embeddedDagName);
+        CytoscapeRenderer.renderInto(embeddedDagBody, innerPrefix, myId, state, depth + 1, innerVisited);
 
-        // External outputs from this placement (after the sub-DAG completes)
+        // External outputs from this placement (after the embedded-DAG completes)
         // — emit them as edges from the COMPOUND PARENT to wherever the
         // placement routes. Cytoscape will draw them at the cluster boundary.
         for (const edge of CytoscapeRenderer.placementEdges(placement, myId, prefix)) {
@@ -287,7 +287,7 @@ export class CytoscapeRenderer {
         continue;
       }
 
-      // ── Regular placement (or unresolved deep-dag): emit as a single node.
+      // ── Regular placement (or unresolved embedded-dag): emit as a single node.
       const node = CytoscapeRenderer.placementNode(placement, myId);
       const enriched: CytoscapeNodeElement = myCompoundParent !== undefined
         ? { ...node, "data": { ...node.data, "parent": myCompoundParent } }
@@ -299,8 +299,8 @@ export class CytoscapeRenderer {
         // Suppress synthetic-END routes for children inside a parallel —
         // the parent placement's own edges carry the collected result.
         if (parallelParent !== undefined && edge.data.target === endId) continue;
-        // Inside an expanded deep-DAG (prefix non-empty), `null` targets
-        // refer to the deep-DAG's terminus, not the parent's END. The
+        // Inside an expanded embedded-DAG (prefix non-empty), `null` targets
+        // refer to the embedded-DAG's terminus, not the parent's END. The
         // compound parent's own placementEdges carry the real external
         // routing — drop these internal terminal markers so cytoscape
         // doesn't try to wire an edge to a non-existent prefixed END.

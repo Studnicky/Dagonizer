@@ -7,7 +7,7 @@
  *
  * Inlines its node-entry sub-shapes via `oneOf` so a single validator covers
  * the whole document; the standalone `SingleNodeSchema` / `ParallelNodeSchema`
- * / `FanOutNodeSchema` / `DeepDAGNodeSchema` exports remain available for
+ * / `FanOutNodeSchema` / `EmbeddedDAGNodeSchema` exports remain available for
  * per-shape validation.
  *
  * Key mapping strategy — type-scoped contexts (JSON-LD 1.1):
@@ -43,7 +43,7 @@ const NS = 'https://noocodex.dev/ontology/dag/';
  *                   a nested type-scoped `@context` that remaps the `nodes`
  *                   key to `dag/parallelNodes` within ParallelNode objects.
  *   FanOutNode    — fan-out placement (`@type: 'FanOutNode'`)
- *   DeepDAGNode   — nested-DAG placement (`@type: 'DeepDAGNode'`)
+ *   EmbeddedDAGNode   — nested-DAG placement (`@type: 'EmbeddedDAGNode'`)
  *
  * Properties follow the DAG schema field names exactly — no wire-level renames.
  */
@@ -68,7 +68,7 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   'concurrency': { '@id': `${NS}concurrency` },
   'fanIn':       { '@id': `${NS}fanIn` },
 
-  // deep-dag properties
+  // embedded-dag properties
   'stateMapping': { '@id': `${NS}stateMapping` },
 
   // terminal properties
@@ -82,7 +82,7 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   'Placement':    { '@id': `${NS}Placement` },
   'SingleNode':   { '@id': `${NS}SingleNode` },
   'FanOutNode':   { '@id': `${NS}FanOutNode` },
-  'DeepDAGNode':  { '@id': `${NS}DeepDAGNode` },
+  'EmbeddedDAGNode':  { '@id': `${NS}EmbeddedDAGNode` },
   'TerminalNode': { '@id': `${NS}TerminalNode` },
   'PhaseNode':    { '@id': `${NS}PhaseNode` },
 
@@ -161,7 +161,7 @@ const DAGNodeEntrySchema = {
       'required': ['@id', '@type', 'name', 'dag', 'outputs'],
       'properties': {
         '@id':   { 'type': 'string', 'minLength': 1 },
-        '@type': { 'type': 'string', 'const': 'DeepDAGNode' },
+        '@type': { 'type': 'string', 'const': 'EmbeddedDAGNode' },
         'name':  { 'type': 'string', 'minLength': 1 },
         'dag':   { 'type': 'string', 'minLength': 1 },
         'outputs': {

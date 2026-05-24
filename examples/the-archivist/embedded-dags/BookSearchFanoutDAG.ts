@@ -14,25 +14,25 @@
  *     └─ bsf-rank-candidates
  *     └─ bsf-merge-candidates
  *          ├─ ranked ──► bsf-record-findings
- *          └─ empty  ──► bsf-no-results (TerminalNode(failed) → deep-DAG exits error)
+ *          └─ empty  ──► bsf-no-results (TerminalNode(failed) → embedded-DAG exits error)
  *     └─ bsf-record-findings
  *     └─ bsf-has-citations-gate
  *          ├─ pass ──► bsf-recall-past-visits ──► END (success)
- *          └─ fail ──► bsf-no-results (TerminalNode(failed) → deep-DAG exits error)
+ *          └─ fail ──► bsf-no-results (TerminalNode(failed) → embedded-DAG exits error)
  *
  * Outputs:
  *   success — query extracted, candidates found, ranked, recorded, and recalled
  *   error   — no candidates after merge, or citations gate failed;
  *             signalled by the bsf-no-results TerminalNode(failed) placement so
- *             executeDeepDAG routes the parent to its 'error' branch via
+ *             executeEmbeddedDAG routes the parent to its 'error' branch via
  *             innerTerminalOutcome propagation
  *
  * Molecular import pattern:
- *   import { BookSearchFanoutDAG, registerBookSearchFanoutNodes } from './deepdags/BookSearchFanoutDAG.ts';
+ *   import { BookSearchFanoutDAG, registerBookSearchFanoutNodes } from './embedded-dags/BookSearchFanoutDAG.ts';
  *   registerBookSearchFanoutNodes(dispatcher);
  *   dispatcher.registerDAG(BookSearchFanoutDAG);
  *
- * The deep-DAG operates on the parent's state directly (no stateMapping
+ * The embedded-DAG operates on the parent's state directly (no stateMapping
  * needed) — it reads `state.query` and writes `state.terms`, `state.toolPlan`,
  * `state.candidates`, `state.shortlist`, and `state.priorContext`, which are
  * the same fields every intent branch in the parent DAG expects.
@@ -69,7 +69,7 @@ import type { DAG } from '@noocodex/dagonizer/entities';
 
 /**
  * The `book-search-fanout` DAG — one packaged unit that any parent DAG
- * can reference via `.deepDAG('placement-name', 'book-search-fanout', routes)`.
+ * can reference via `.embeddedDAG('placement-name', 'book-search-fanout', routes)`.
  */
 export const BookSearchFanoutDAG: DAG = new DAGBuilder('book-search-fanout', '1.0')
 
@@ -109,7 +109,7 @@ export const BookSearchFanoutDAG: DAG = new DAGBuilder('book-search-fanout', '1.
 
   // ── 5. merge-candidates ──────────────────────────────────────────────────
   // Cross-source dedupe via CanonicalId, top-5. Routes 'empty' to
-  // bsf-no-results (TerminalNode(failed)) so executeDeepDAG routes the
+  // bsf-no-results (TerminalNode(failed)) so executeEmbeddedDAG routes the
   // parent to its 'error' branch via innerTerminalOutcome propagation.
   .node('bsf-merge-candidates', mergeCandidates, {
     'ranked': 'bsf-record-findings',
@@ -133,13 +133,13 @@ export const BookSearchFanoutDAG: DAG = new DAGBuilder('book-search-fanout', '1.
 
   // ── 8. recall-past-visits ────────────────────────────────────────────────
   // Injects prior-session context (prior queries + shortlisted titles) into
-  // state.priorContext. Terminal node — deep-DAG exits cleanly → 'success'.
+  // state.priorContext. Terminal node — embedded-DAG exits cleanly → 'success'.
   .node('bsf-recall-past-visits', recallPastVisits, {
     'recalled': null,
   })
 
   // ── 9. bsf-no-results ────────────────────────────────────────────────────
-  // TerminalNode(failed) — executeDeepDAG reads innerTerminalOutcome and
+  // TerminalNode(failed) — executeEmbeddedDAG reads innerTerminalOutcome and
   // routes the parent placement to its 'error' branch. No backing node or
   // collectError call required.
   .terminal('bsf-no-results', 'failed')

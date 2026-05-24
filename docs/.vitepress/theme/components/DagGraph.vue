@@ -396,13 +396,13 @@ function dagStylesheet(): unknown[] {
       'font-weight':      600,
       'color':            '#eef3f7',
     } },
-    { selector: 'node[type="deep-dag"]', style: { 'shape': 'cut-rectangle' } },
+    { selector: 'node[type="embedded-dag"]', style: { 'shape': 'cut-rectangle' } },
     { selector: 'node[type="terminal"]', style: {
       'shape':            'round-rectangle',
       'background-color': '#020306',
       'border-color':     '#d4a649',           // gold accent for terminals
     } },
-    // Compound parent (deep-dag / parallel wrapper) — calm steel
+    // Compound parent (embedded-dag / parallel wrapper) — calm steel
     // border on the deepest navy so the cluster reads as a frame,
     // not a focal point.
     { selector: 'node:parent', style: {

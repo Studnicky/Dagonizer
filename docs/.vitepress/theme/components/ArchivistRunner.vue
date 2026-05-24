@@ -62,11 +62,11 @@ import { WikipediaSummaryTool } from '@noocodex/dagonizer-tool-wikipedia';
 import {
   BookSearchFanoutDAG,
   registerBookSearchFanoutNodes,
-} from '../../../../examples/the-archivist/deepdags/BookSearchFanoutDAG.ts';
+} from '../../../../examples/the-archivist/embedded-dags/BookSearchFanoutDAG.ts';
 import {
   ComposeRetryLoopDAG,
   registerComposeRetryLoopNodes,
-} from '../../../../examples/the-archivist/deepdags/ComposeRetryLoopDAG.ts';
+} from '../../../../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.ts';
 
 import { ObservedDagonizer } from './ObservedDagonizer.ts';
 import BackendPicker from './BackendPicker.vue';
@@ -218,7 +218,7 @@ async function resumeFromCheckpoint(): Promise<void> {
     'observer': buildObserver(restored.cursor, prov),
   });
 
-  // Register deep-DAGs (molecular pattern)
+  // Register embedded-DAGs (molecular pattern)
   registerBookSearchFanoutNodes(dispatcher);
   dispatcher.registerDAG(BookSearchFanoutDAG);
   registerComposeRetryLoopNodes(dispatcher);
@@ -361,14 +361,14 @@ const rightTabs = computed(() => {
 });
 
 const dagElements = computed<ElementDefinition[]>(() => {
-  // Deep-DAG registry: placements whose dag name appears here are expanded
+  // Embedded-DAG registry: placements whose dag name appears here are expanded
   // inline in the Cytoscape diagram — full compound-graph children visible,
   // no opaque boxes. This is the renderer-side of molecular composition.
-  const deepDagRegistry = new Map([
+  const embeddedDagRegistry = new Map([
     ['book-search-fanout', BookSearchFanoutDAG],
     ['compose-retry-loop', ComposeRetryLoopDAG],
   ]);
-  const raw = CytoscapeRenderer.render(archivistDAG, { 'deepDags': deepDagRegistry }) as ElementDefinition[];
+  const raw = CytoscapeRenderer.render(archivistDAG, { 'embeddedDAGs': embeddedDagRegistry }) as ElementDefinition[];
   return raw.map((el) => {
     const data = el.data as { id?: string; node?: string };
     const nodeName = data.node ?? data.id;
@@ -582,8 +582,8 @@ async function ask(): Promise<void> {
 
   const { composeMs, webSearchMs, rankMs } = timeoutSettings.value;
 
-  // Register deep-DAGs first (molecular pattern) — each helper registers the
-  // base nodes needed by that deep-DAG. Then re-register timeout-overridden
+  // Register embedded-DAGs first (molecular pattern) — each helper registers the
+  // base nodes needed by that embedded-DAG. Then re-register timeout-overridden
   // versions which overwrite the base entries in the node map.
   registerBookSearchFanoutNodes(dispatcher);
   dispatcher.registerDAG(BookSearchFanoutDAG);
@@ -746,7 +746,7 @@ function reset(): void {
       <template v-else>
         <p>The Archivist demo runs against real on-device or web LLMs only — there is no canned fallback in the browser. To watch the DAG execute, enable one of:</p>
         <ul>
-          <li><strong>Gemini Nano (Chrome on-device)</strong> — toggle <code>chrome://flags/#prompt-api-for-gemini-nano</code> and <code>chrome://flags/#optimization-guide-on-device-model</code>, restart, then visit <code>chrome://components</code> to trigger the model download.</li>
+          <li><strong>Browser built-in LanguageModel (on-device)</strong> — toggle <code>chrome://flags/#prompt-api-for-gemini-nano</code> and <code>chrome://flags/#optimization-guide-on-device-model</code>, restart, then visit <code>chrome://components</code> to trigger the model download. Implemented by Chrome 138+ and Edge.</li>
           <li><strong>Gemini API key</strong> — paste a free <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">AI Studio key</a> below; nothing leaves your browser except the request to Google.</li>
           <li><strong>WebLLM</strong> — needs WebGPU. Use a recent Chrome / Edge / Brave with hardware acceleration on.</li>
           <li><strong>Groq</strong> — free key at <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">console.groq.com/keys</a>. No GPU required.</li>

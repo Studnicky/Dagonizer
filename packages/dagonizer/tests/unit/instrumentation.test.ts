@@ -139,7 +139,7 @@ void describe('Instrumentation contract', () => {
     }
   });
 
-  void it('flowStart and flowEnd fire exactly once per top-level execute() — no deep-DAG re-entry', async () => {
+  void it('flowStart and flowEnd fire exactly once per top-level execute() — no embedded-DAG re-entry', async () => {
     const instrumentation = new RecordingInstrumentation();
     const dispatcher = new Dagonizer<NodeStateBase>({ instrumentation });
 
@@ -157,7 +157,7 @@ void describe('Instrumentation contract', () => {
       ],
     };
 
-    // Parent DAG with a deep-DAG placement -------------------------------
+    // Parent DAG with a embedded-DAG placement -------------------------------
     const parentDAG: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:inst-parent',
@@ -168,7 +168,7 @@ void describe('Instrumentation contract', () => {
       'nodes': [
         { '@id': 'urn:noocodex:dag:inst-parent/node/parent-entry', '@type': 'SingleNode',
           'name': 'parent-entry', 'node': 'parent-entry', 'outputs': { 'success': 'run-child' } },
-        { '@id': 'urn:noocodex:dag:inst-parent/node/run-child', '@type': 'DeepDAGNode',
+        { '@id': 'urn:noocodex:dag:inst-parent/node/run-child', '@type': 'EmbeddedDAGNode',
           'name': 'run-child', 'dag': 'inst-child',
           'outputs': { 'success': null, 'error': null } },
       ],

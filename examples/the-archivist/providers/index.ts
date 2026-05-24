@@ -1,7 +1,7 @@
 /**
  * Browser LLM provider matrix for the Archivist demo.
  *
- *   gemini-nano  →  Chrome built-in Prompt API (LanguageModel global)
+ *   gemini-nano  →  browser built-in Prompt API (LanguageModel global)
  *   gemini-api   →  Google AI Studio REST with a user-supplied key
  *   web-llm      →  fully in-browser inference via WebGPU + @mlc-ai/web-llm
  *   groq         →  Groq REST (llama-3.3-70b-versatile, ~30 RPM free tier)
@@ -22,7 +22,7 @@
  * `pickBestBackend(backends, { isMobile })` excludes on-device backends
  * when `isMobile` is true, then ranks remaining runnable entries by
  * priority: groq → cerebras → gemini-api → mistral → openrouter →
- * gemini-nano → web-llm → stub.
+ * gemini-nano (browser built-in) → web-llm → stub.
  *
  * API keys are stored as a JSON blob in `dagonizer-api-keys` in
  * localStorage, keyed by `ProviderId`. Use `loadApiKeys()` /
@@ -166,15 +166,15 @@ export async function detectBackends(inputs: DetectionInputs = {}): Promise<read
   const nanoStatus: GeminiNanoAvailability = await detectGeminiNano();
   out.push({
     'id': 'gemini-nano',
-    'displayName': 'Gemini Nano (Chrome on-device)',
+    'displayName': 'Browser built-in LanguageModel (on-device)',
     'runnable': nanoStatus === 'available',
     'needsAction': nanoStatus === 'downloadable' || nanoStatus === 'downloading' ? 'download' : null,
     'hint': nanoStatus === 'unavailable'
-      ? 'Requires Chrome 138+ or the Prompt API origin trial.'
+      ? 'Requires Chrome 138+ or Edge with the Prompt API enabled.'
       : nanoStatus === 'downloadable'
-        ? 'Chrome will download the model (~2 GB) on first use.'
+        ? 'The browser will download the model (~2 GB) on first use.'
         : nanoStatus === 'downloading'
-          ? 'Chrome is currently downloading the model — try again shortly.'
+          ? 'The browser is currently downloading the model — try again shortly.'
           : 'Ready.',
   });
 
@@ -308,7 +308,7 @@ export function hasNoRunnableModel(
  * Returns the subset of `BROWSER_VISIBLE` backends appropriate for the
  * given device context. On mobile, stub is included (zero-setup fallback)
  * and desktop-only backends are excluded. On desktop, stub is excluded
- * (on-device options like Gemini Nano and WebLLM are available).
+ * (on-device options like Browser built-in LanguageModel and WebLLM are available).
  */
 export function browserVisibleBackends(isMobile: boolean): readonly ProviderId[] {
   if (isMobile) {

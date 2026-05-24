@@ -12,27 +12,32 @@
  * Run: npx tsx examples/01-linear.ts
  */
 
+// #region imports
 import {
   DAG_CONTEXT,
   Dagonizer,
   NodeStateBase,
 } from '@noocodex/dagonizer';
 import type { DAG, NodeInterface } from '@noocodex/dagonizer';
+// #endregion imports
 
 // ---------------------------------------------------------------------------
 // State — the shared data bag passed through every node in this DAG
 // ---------------------------------------------------------------------------
 
+// #region state
 class ChatState extends NodeStateBase {
   input  = '';
   reply  = '';
   topic: 'on_topic' | 'off_topic' = 'on_topic';
 }
+// #endregion state
 
 // ---------------------------------------------------------------------------
 // Nodes — registered units of work; each returns a named output
 // ---------------------------------------------------------------------------
 
+// #region node
 const classify: NodeInterface<ChatState, 'on_topic' | 'off_topic'> = {
   "name": 'classify',
   "outputs": ['on_topic', 'off_topic'],
@@ -56,11 +61,13 @@ const respond: NodeInterface<ChatState, 'success'> = {
     return { "output": 'success' };
   },
 };
+// #endregion node
 
 // ---------------------------------------------------------------------------
 // DAG — JSON-LD canonical form; '@type' is the RDF class discriminator
 // ---------------------------------------------------------------------------
 
+// #region dag
 const dag: DAG = {
   '@context':   DAG_CONTEXT,                         // JSON-LD 1.1 ontology context
   '@id':        'urn:noocodex:dag:chat',             // globally unique URN for this DAG
@@ -85,11 +92,13 @@ const dag: DAG = {
     },
   ],
 };
+// #endregion dag
 
 // ---------------------------------------------------------------------------
 // Run
 // ---------------------------------------------------------------------------
 
+// #region run
 const dispatcher = new Dagonizer<ChatState>();
 dispatcher.registerNode(classify);
 dispatcher.registerNode(respond);
@@ -110,3 +119,4 @@ process.stdout.write(`  on_topic  → "${onTopic.reply}"\n`);
 process.stdout.write(`  off_topic → "${offTopic.reply}"\n`);
 process.stdout.write('\nLesson: both outputs of classify route to the same placement;\n');
 process.stdout.write('        null in outputs marks the end of the flow.\n');
+// #endregion run

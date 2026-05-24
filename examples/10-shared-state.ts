@@ -3,7 +3,7 @@
  *
  * Demonstrates:
  *   1. A MemoryStore threaded through the services bag.
- *   2. Two nodes and a sub-DAG that accumulate entries to the same store.
+ *   2. Two nodes and a embedded-DAG that accumulate entries to the same store.
  *   3. Checkpoint.capture() snapshots the store alongside parent state.
  *   4. Checkpoint.load() + restoreStores() recovers the store on resume.
  *
@@ -24,9 +24,11 @@ import type { Store } from '@noocodex/dagonizer/contracts';
 // Services bag type
 // ---------------------------------------------------------------------------
 
+// #region services
 interface Services {
   log: Store;
 }
+// #endregion services
 
 // ---------------------------------------------------------------------------
 // Nodes — each appends its own name to the store's 'entries' key
@@ -54,23 +56,30 @@ const childStep = makeStep('child-step');
 // DAGs — child DAG placed inside the parent
 // ---------------------------------------------------------------------------
 
+// #region child-dag
 const childDag = new DAGBuilder('sub-flow', '1')
   .node('child-step', childStep, { "done": null })
   .build();
+// #endregion child-dag
 
+// #region parent-dag
 const parentDag = new DAGBuilder('main-flow', '1')
   .node('step-a', stepA, { "done": 'run-child' })
-  .deepDAG('run-child', 'sub-flow', { "success": 'step-b', "error": 'step-b' })
+  .embeddedDAG('run-child', 'sub-flow', { "success": 'step-b', "error": 'step-b' })
   .node('step-b', stepB, { "done": null })
   .build();
+// #endregion parent-dag
 
 // ---------------------------------------------------------------------------
 // Part 1 — Normal run (all three steps accumulate to the store)
 // ---------------------------------------------------------------------------
 
+// #region run
 {
+  // #region store-init
   const logStore = new MemoryStore();
   const dispatcher = new Dagonizer<NodeStateBase, Services>({ "services": { "log": logStore } });
+  // #endregion store-init
 
   dispatcher.registerNode(stepA);
   dispatcher.registerNode(stepB);
@@ -147,3 +156,4 @@ const parentDag = new DAGBuilder('main-flow', '1')
     // → "step-a,child-step,step-b"  (all three present, none duplicated)
   }
 }
+// #endregion run

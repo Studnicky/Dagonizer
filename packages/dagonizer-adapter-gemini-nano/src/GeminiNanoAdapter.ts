@@ -1,8 +1,9 @@
 /**
- * GeminiNanoAdapter — Chrome's built-in `window.LanguageModel`.
+ * GeminiNanoAdapter — the browser's built-in `window.LanguageModel`.
  *
- * Chrome (138+ stable / behind `chrome://flags/#prompt-api-for-gemini-nano`
- * earlier) ships an on-device Gemini Nano model. The Prompt API exposes
+ * Chrome 138+ and Edge expose an on-device LanguageModel via
+ * `window.LanguageModel` (behind `chrome://flags/#prompt-api-for-gemini-nano`
+ * on earlier versions). The Prompt API exposes
  * `responseConstraint` for JSON-schema-constrained outputs — we use it
  * to enforce the tool-plan shape, since Nano does not yet have a
  * native function-calling channel like the REST API does.
@@ -67,14 +68,14 @@ export class GeminiNanoAdapter extends BaseAdapter {
   constructor() {
     super(
       'gemini-nano',
-      'Gemini Nano (Chrome on-device)',
+      'Browser built-in LanguageModel (on-device)',
       { 'toolUse': 'none', 'structuredOutput': true, 'jsonMode': false },
       { 'maxAttempts': 2 },
     );
   }
 
   /**
-   * Probe true only when Chrome's `window.LanguageModel` is present
+   * Probe true only when the browser's `window.LanguageModel` is present
    * AND `availability()` reports `'available'`. `'downloadable'` and
    * `'downloading'` resolve as false — the model isn't ready to serve
    * a chat call immediately, and a cascade should pick a different

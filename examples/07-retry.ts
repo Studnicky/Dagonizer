@@ -47,10 +47,12 @@ class S extends NodeStateBase {
 // Node — constructs RetryPolicy and passes context.signal through
 // ---------------------------------------------------------------------------
 
-const fetchNode: NodeInterface<S, 'success' | 'error'> = {
+// #region retry-node
+export const fetchNode: NodeInterface<S, 'success' | 'error'> = {
   'name': 'fetch',
   'outputs': ['success', 'error'],
   async execute(state, context) {
+    // #region policy-config
     const policy = new RetryPolicy({
       'maxAttempts':  5,
       'strategy':     BackoffStrategy.EXPONENTIAL,  // 50ms → 100ms → 200ms → …
@@ -58,6 +60,7 @@ const fetchNode: NodeInterface<S, 'success' | 'error'> = {
       'jitterFactor': 0,                            // deterministic delays for testing
       'retryOn':      [TransientError],             // only retry on this error class
     });
+    // #endregion policy-config
     try {
       // policy.run() re-invokes flakyDownstream until it succeeds or
       // maxAttempts is reached. It passes context.signal so an abort
@@ -69,12 +72,13 @@ const fetchNode: NodeInterface<S, 'success' | 'error'> = {
     }
   },
 };
+// #endregion retry-node
 
 // ---------------------------------------------------------------------------
 // DAG
 // ---------------------------------------------------------------------------
 
-const dag: DAG = {
+export const dag: DAG = {
   '@context':   DAG_CONTEXT,
   '@id':        'urn:noocodex:dag:retry-dag',
   '@type':      'DAG',
@@ -96,6 +100,7 @@ const dag: DAG = {
 // Run
 // ---------------------------------------------------------------------------
 
+// #region runtime
 const dispatcher = new Dagonizer<S>();
 dispatcher.registerNode(fetchNode);
 dispatcher.registerDAG(dag);
@@ -108,3 +113,4 @@ process.stdout.write(`  attempts=${flakyAttempts}  result="${state.result}"\n`);
 process.stdout.write(`  (threw ${flakyAttempts - 1} time(s) before succeeding)\n`);
 process.stdout.write('\nLesson: RetryPolicy.run(fn, signal) retries on declared error classes;\n');
 process.stdout.write('        passing context.signal ensures abort short-circuits the delay.\n');
+// #endregion runtime

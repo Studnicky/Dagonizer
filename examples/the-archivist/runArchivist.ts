@@ -2,16 +2,16 @@
  * runArchivist — end-to-end demo runner (CLI).
  *
  * Wires the registered nodes onto a `Dagonizer<ArchivistState, ArchivistServices>`,
- * registers the canonical DAG (and its deep-DAG components), and runs one
+ * registers the canonical DAG (and its embedded-DAG components), and runs one
  * visitor question through.
  *
- * Molecular deep-DAG registration order:
+ * Molecular embedded-DAG registration order:
  *   1. registerBookSearchFanoutNodes(dispatcher) — registers all nodes used by
- *      the book-search-fanout deep-DAG (extract, decide, scouts, rank, merge, ...)
- *   2. dispatcher.registerDAG(BookSearchFanoutDAG) — registers the deep-DAG itself
+ *      the book-search-fanout embedded-DAG (extract, decide, scouts, rank, merge, ...)
+ *   2. dispatcher.registerDAG(BookSearchFanoutDAG) — registers the embedded-DAG itself
  *   3. registerComposeRetryLoopNodes(dispatcher) — compose, validate, respond
- *   4. dispatcher.registerDAG(ComposeRetryLoopDAG) — registers the compose deep-DAG
- *   5. dispatcher.registerDAG(archivistDAG) — registers the parent (references deep-DAGs by name)
+ *   4. dispatcher.registerDAG(ComposeRetryLoopDAG) — registers the compose embedded-DAG
+ *   5. dispatcher.registerDAG(archivistDAG) — registers the parent (references embedded-DAGs by name)
  *
  * LLM resolved via `LlmAdapterCascade` over a registry of providers that
  * have credentials / local services available. Order of preference:
@@ -35,11 +35,11 @@ import { archivistDAG } from './dag.ts';
 import {
   BookSearchFanoutDAG,
   registerBookSearchFanoutNodes,
-} from './deepdags/BookSearchFanoutDAG.ts';
+} from './embedded-dags/BookSearchFanoutDAG.ts';
 import {
   ComposeRetryLoopDAG,
   registerComposeRetryLoopNodes,
-} from './deepdags/ComposeRetryLoopDAG.ts';
+} from './embedded-dags/ComposeRetryLoopDAG.ts';
 import { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { classifyIntent } from './nodes/classifyIntent.ts';
@@ -84,6 +84,7 @@ import {
   LlmError,
 } from '@noocodex/dagonizer';
 import type { AdapterCapabilities } from '@noocodex/dagonizer/adapter';
+import { Checkpoint, MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
 
 const logger = new ConsoleLogger();
 
@@ -221,8 +222,8 @@ const services: ArchivistServices = {
 // ── Dispatcher ───────────────────────────────────────────────────────────
 const dispatcher = new Dagonizer<ArchivistState, ArchivistServices>({ services });
 
-// ── Deep-DAG node registration (molecular pattern) ───────────────────────
-// Each deep-DAG module exports a registerXxxNodes helper that registers
+// ── Embedded-DAG node registration (molecular pattern) ───────────────────────
+// Each embedded-DAG module exports a registerXxxNodes helper that registers
 // the nodes it needs. Call it before registerDAG so the validator can
 // resolve all node references when the DAG is registered.
 registerBookSearchFanoutNodes(dispatcher);
@@ -231,11 +232,11 @@ dispatcher.registerDAG(BookSearchFanoutDAG);
 registerComposeRetryLoopNodes(dispatcher);
 dispatcher.registerDAG(ComposeRetryLoopDAG);
 
-// ── Parent-DAG-only nodes (not used by deep-DAGs) ────────────────────────
+// ── Parent-DAG-only nodes (not used by embedded-DAGs) ────────────────────────
 for (const node of [
   recallContext,
   classifyIntent,
-  // Inlined branch nodes (reviews + describe) — not in the deep-DAGs
+  // Inlined branch nodes (reviews + describe) — not in the embedded-DAGs
   extractQuery,
   decideTools,
   webSearchScout,
@@ -311,3 +312,23 @@ if (cancelResult.cursor !== null) {
   logger.result(`stopped at ${cancelResult.cursor} — resumable`);
 }
 // #endregion cancellation-run
+
+// #region resume-run
+if (cancelResult.cursor !== null) {
+  const store = new MemoryCheckpointStore();
+  const ckpt = await Checkpoint.capture('the-archivist', cancelResult);
+  await ckpt.persist(store, `archivist:${cancelVisitor.query}`);
+
+  const recalled = await Checkpoint.recall(store, `archivist:${cancelVisitor.query}`);
+  if (recalled !== null) {
+    const { dagName, state, cursor } = recalled.restoreState(
+      (snap) => ArchivistState.restore(snap),
+    );
+    const resumeResult = await dispatcher.resume(dagName, state, cursor);
+    logger.result(`resumed draft=${resumeResult.state.draft}`);
+    logger.result(`resumed lifecycle=${resumeResult.state.lifecycle.kind}`);
+  }
+} else {
+  logger.result('cancellation-run completed before cursor — no checkpoint needed');
+}
+// #endregion resume-run

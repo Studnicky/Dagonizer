@@ -8,7 +8,7 @@
  *   single    → rectangle:       `nodeName[name]`
  *   parallel  → subgraph wrapping its child node names
  *   fan-out   → hexagon:         `nodeName{{name}}`
- *   deep-dag  → stadium:         `nodeName([name])`
+ *   embedded-dag  → stadium:         `nodeName([name])`
  *   terminal (completed) → double-circle: `nodeName(((name\n(completed))))`
  *   terminal (failed)    → asymmetric flag: `nodeName>name\n(failed)]`
  *
@@ -26,13 +26,13 @@
  */
 
 import type { DAG } from '../entities/dag/DAG.js';
-import type { DeepDAGNode } from '../entities/dag/DeepDAGNode.js';
+import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 
-type AnyPlacement = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode | TerminalNodePlacementInterface;
+type AnyPlacement = FanOutNode | ParallelNode | SingleNodePlacementInterface | EmbeddedDAGNode | TerminalNodePlacementInterface;
 
 /**
  * Render a `DAG` as Mermaid `flowchart` source. Output is a complete
@@ -88,7 +88,7 @@ export class MermaidRenderer {
         return `${placement.name}[${label}]`;
       case 'FanOutNode':
         return `${placement.name}{{${label}}}`;
-      case 'DeepDAGNode':
+      case 'EmbeddedDAGNode':
         return `${placement.name}([${label}])`;
       case 'ParallelNode':
         // parallel placements render as subgraphs, not single shapes

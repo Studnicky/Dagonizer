@@ -1,32 +1,52 @@
 ---
 seeAlso:
+  - text: 'The Archivist demo'
+    link: './examples/the-archivist'
+    description: 'these concepts in a running flow'
   - text: 'Architecture'
     link: './architecture'
+    description: 'internals and submodule layout'
   - text: 'Getting Started'
     link: './getting-started'
+    description: 'install and run a one-node DAG'
   - text: 'DAGBuilder'
     link: './guide/builder'
-  - text: 'Subclassing State'
+    description: 'fluent authoring API'
+  - text: 'Subclassing state'
     link: './guide/subclassing'
+    description: 'domain state classes'
 ---
 
-# Dagonizer concepts
+# Concepts
 
-The dispatcher observes every node transition from the moment a flow begins to the moment the cursor is null or execution stops.
+Vocabulary that the rest of the docs assume. Read this after running [The Archivist](/examples/the-archivist) so each term has a concrete referent.
 
-## Nodes
+## Node
 
-A **node** is a vertex in the flow graph. It references one registered node and declares output routing: a map from each output name to the next node name (or `null` to terminate that path).
+A **node** is a stateless unit of work that implements `NodeInterface<TState, TOutput>`. It receives shared state and a context (which carries the `AbortSignal`), mutates state in place, and returns a named output. The classify-intent node in the Archivist is a typical example: it reads the user query, writes a classification to state, and returns one of `'discover' | 'identify' | 'recall' | 'rejected'`.
 
-Four node kinds:
+Nodes are registered with the dispatcher under a string name. The same registered node can appear in many DAGs and in many placements.
 
-- **`single`** — a single registered node. The node returns one output name; the dispatcher follows the corresponding route.
-- **`parallel`** — a set of already-declared single nodes that run concurrently via `Promise.all`. Once all complete, a combine strategy reduces their individual outputs to one aggregate output for routing. Strategies:
-  - `all-success` — routes to `success` only when every node returned `success`; otherwise `error`.
-  - `any-success` — routes to `success` if at least one node returned `success`; otherwise `error`.
-  - `collect` — always routes to `success` and writes a `Record<nodeName, output>` into `state.metadata.parallelOutputs`.
-- **`fan-out`** — reads an array from a dotted path in state, runs one registered node per item (with configurable concurrency), then merges results back through a fan-in strategy. Aggregate output is `all-success`, `partial`, `all-error`, or `empty`.
-- **`deep-dag`** — invokes a second registered DAG as a nested call, with optional state mapping for input and output. Errors and warnings from the child DAG bubble up to the parent.
+A node never throws. It catches its own errors and routes through a named `error` output. The dispatcher guards the boundary with a try/catch, but a throwing node is a bug.
+
+## DAG
+
+A **DAG** is a JSON-LD document that declares an entrypoint and a list of node placements with their routing. It is plain data: store it in a file, a database row, or a configuration service, and load it through `Dagonizer.load(json)`. Validation against `DAGSchema` happens at the ingest boundary; everything downstream is typed.
+
+The Archivist DAG has roughly ten placements covering classify, scout fan-out, compose retry loop, and persist. Its `@context` and `@type` discriminator make it both a runtime artifact and a Linked Data document.
+
+## Placement
+
+A **placement** is one vertex in the DAG. Each placement has a name, a `@type` discriminator that selects the kind, and an `outputs` map that routes named outputs to the next placement (or `null` to end the path).
+
+Six kinds:
+
+- **`single`**: one registered node. The node returns one output name; the dispatcher follows the corresponding route.
+- **`parallel`**: a set of previously declared single placements that run concurrently via `Promise.all`. A combine strategy (`all-success`, `any-success`, `collect`) reduces individual outputs to one aggregate output.
+- **`fan-out`**: reads an array from a dotted path in state, runs one registered node per item with configurable concurrency, then merges results through a fan-in strategy. The book-scout fan-out in the Archivist runs one scout call per source.
+- **`embedded-dag`**: invokes a second registered DAG as a nested call. Optional `stateMapping` copies fields in before and out after. The Archivist embeds `book-search-fanout` and `compose-retry-loop` as named sub-flows.
+- **`terminal`**: named end state for explicit completion or failure. Use when a flow has more than one "done" semantics (for example, `accepted` versus `rejected`).
+- **`phase`**: groups a sequence of placements under a named phase. Instrumentation receives `phaseEnter` / `phaseExit` events; useful for telemetry and progress bars.
 
 ### When to choose each
 
@@ -35,89 +55,40 @@ Four node kinds:
 | Sequential steps with conditional branching | `single` |
 | Multiple independent fetches that must all finish before proceeding | `parallel` |
 | Process every item in a collection, then aggregate | `fan-out` |
-| Reuse a DAG across multiple parent DAGs | `deep-dag` |
+| Reuse a DAG across multiple parent DAGs | `embedded-dag` |
+| Distinguish multiple terminal semantics | `terminal` |
+| Tag a stretch of nodes for telemetry | `phase` |
 
----
+## State
 
-## Node state
+**State** is the shared data bag that travels through every node. It implements `NodeStateInterface` and typically extends `NodeStateBase`. The Archivist's `ArchivistState` carries the user query, classification, retrieved candidates, scout results, composed answer, and persistence metadata.
 
-Node state is the clipboard that travels through every node in a flow. All mutations happen in-place on the state object.
+All mutations happen in place on the state object. The dispatcher returns the same reference it received.
 
-**`NodeStateInterface`** is the minimum shape the dispatcher requires. It defines:
+`NodeStateBase` provides:
 
-- `lifecycle` — current lifecycle kind and timestamps
-- `errors` / `warnings` — accumulated from all nodes
-- `metadata` — generic key-value bag for cross-node communication
-- Mutation methods: `collectError`, `collectWarning`, `setMetadata`, and the lifecycle mark methods
+- `lifecycle`: discriminated union of the current lifecycle kind plus timestamps
+- `errors` and `warnings`: arrays collected from every node
+- `metadata`: generic key-value bag for cross-node messages
+- `collectError`, `collectWarning`, `setMetadata`, lifecycle mark methods
 
-**`NodeStateBase`** is the concrete base class. Extend it for domain-specific state:
+`clone()` is called by the dispatcher before fan-out items and embedded-DAG calls. The clone carries a copy of `metadata` but resets `lifecycle` to `pending` and clears `errors` and `warnings`. Each child execution is a fresh run.
 
-```ts
-class PipelineState extends NodeStateBase {
-  items: Item[] = [];
-  processedIds = new Set<string>();
-}
-```
-
-`NodeStateBase.clone()` is called by the dispatcher before fan-out items and deep-DAG calls. The clone carries a copy of `metadata` but resets `lifecycle` to `pending` and clears `errors` and `warnings` — each child execution is a fresh run that accumulates its own results.
-
-To implement `NodeStateInterface` from scratch (without extending `NodeStateBase`), provide your own lifecycle FSM and `clone()`. This is uncommon; most consumers subclass `NodeStateBase`.
-
----
-
-## Nodes (registered)
-
-A registered node is an object that satisfies `NodeInterface<TState, TOutput>`. It has:
-
-- `name: string` — registry key
-- `outputs: readonly TOutput[]` — declared output ports
-- `execute(state, context): Promise<NodeOutputInterface<TOutput>>` — the work
-
-Nodes are stateless. All durable state goes through the `TState` argument. A node that needs configuration takes it through its constructor.
-
-**Never-throws contract.** Nodes catch their own errors and express them as output choices:
-
-```ts
-const classifyNode: NodeInterface<MyState, 'on_topic' | 'off_topic' | 'error'> = {
-  name: 'classify',
-  outputs: ['on_topic', 'off_topic', 'error'],
-  async execute(state, context) {
-    try {
-      const result = await classify(state.text, { signal: context.signal });
-      state.classification = result;
-      return { output: result.label === 'relevant' ? 'on_topic' : 'off_topic' };
-    } catch {
-      return { output: 'error' };
-    }
-  },
-};
-```
-
-**Type-safe `TOutput` generic.** When `TOutput` is narrowed, the node placement's `outputs` must be a `Record<TOutput, string | null>`. If any output is unwired the TypeScript compiler fails the build, and `registerDAG` provides a runtime safety net.
-
-**Output types.** `NodeOutputInterface<TOutput>` carries the output name and an optional `errors` array. Errors are collected into node state, not thrown.
-
-**Optional `validate()`.** Called during `registerNode` if present. Return `{ valid: false, errors: string[] }` to reject the node at registration time.
-
-**Optional `destroy()`.** Called by `dispatcher.destroy()`. Use for resource cleanup (connection pools, etc.).
-
----
+Override `snapshotData()` and `restoreData()` to make domain fields checkpointable.
 
 ## Lifecycle
 
-Every flow execution has a lifecycle: `pending → running → {completed | failed | cancelled | timed_out}`.
+A **lifecycle** is the FSM behind each DAG execution: `pending → running → completed | failed | cancelled | timed_out`. `DAGLifecycleMachine` is the pure reducer; `NodeStateBase` owns the instance.
 
-The dispatcher:
+- The dispatcher marks `running` when the flow starts.
+- It marks `completed` when every output routes to `null` without error.
+- It marks `failed` when a node throws (which should not happen, but the dispatcher guards the boundary).
+- It marks `cancelled` when the composed `AbortSignal` fires before a deadline.
+- It marks `timed_out` when the `deadlineMs` timer fires.
 
-- marks `running` when the flow starts
-- marks `completed` when every node routes to `null` without error
-- marks `failed` when a node throws (nodes should not throw, but the dispatcher guards the boundary)
-- marks `cancelled` when the composed `AbortSignal` fires before a deadline
-- marks `timed_out` when the `deadlineMs` timer fires
+Terminal states are sticky. Once a flow is `completed`, `failed`, `cancelled`, or `timed_out`, further lifecycle events are ignored.
 
-**Terminal stickiness.** Once `completed`, `failed`, `cancelled`, or `timed_out` is reached, the state ignores all further lifecycle events. Illegal transitions throw `DAGError`.
-
-**`lifecycle` is canonical.** There is no `state.status` accessor. Inspect `state.lifecycle.kind` directly. The discriminated union carries timestamps appropriate to each terminal state:
+The discriminated union carries timestamps appropriate to each state:
 
 ```ts
 | { kind: 'pending';   startedAt: null;   finishedAt: null;   error: null;  reason: null }
@@ -128,70 +99,72 @@ The dispatcher:
 | { kind: 'timed_out'; startedAt: number; finishedAt: number; error: null;  reason: null }
 ```
 
-Timestamps are monotonic milliseconds from `Clock.monotonicMs()` — not wall-clock. Use them for duration math, not for display to end-users.
+Timestamps are monotonic milliseconds from `Clock.monotonicMs()`, not wall-clock. Use them for duration math, not for display.
 
-**`DAGLifecycleMachine`** is the pure reducer behind `NodeStateBase`. It is exported for callers that implement their own state class.
+## Dispatcher
 
----
+The **dispatcher** is the `Dagonizer<TState>` instance. It holds the node and DAG registries, owns the execution loop, and exposes the observability hooks (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`). Consumers extend `Dagonizer` to compose multi-observer behavior into one subclass.
+
+Production code instantiates one dispatcher per process. Tests instantiate per case for isolation.
+
+## Execution
+
+An **execution** is one run of a DAG. `dispatcher.execute(dagName, state, options)` returns an `Execution<TState>` that is both `PromiseLike` (await it for the final result) and `AsyncIterable` (iterate it for one event per node). Both modes share a single internal generator; the flow body runs once.
+
+`ExecutionResultInterface` carries:
+
+- `state`: the final state (same reference as the input)
+- `cursor`: the next node that would have run, or `null` if the flow completed
+- `executedNodes`: nodes that ran
+- `skippedNodes`: nodes skipped (for example, an empty fan-out)
+
+When `cursor` is non-null, the execution stopped early. Pass it to `dispatcher.resume()` to continue.
+
+## Route
+
+A **route** is the directed edge in the DAG: an output name on one placement mapped to the name of the next placement (or `null`). The Archivist's classify-intent placement has four routes, one per output. The TypeScript compiler verifies that every declared output in the node's `TOutput` union appears in the placement's `outputs` map; an unwired output is a build error before `registerDAG` runs the same check at runtime.
 
 ## Cancellation
 
-Cancellation flows through `AbortSignal`. Pass `{ signal }` and/or `{ deadlineMs }` to `execute()` or `resume()`.
-
-The dispatcher composes multiple signals:
+Cancellation flows through `AbortSignal`. Pass `{ signal }` or `{ deadlineMs }` to `execute()` or `resume()`. The dispatcher composes them:
 
 ```ts
-// caller signal + deadline → AbortSignal.any([callerSignal, AbortSignal.timeout(deadlineMs)])
+AbortSignal.any([callerSignal, AbortSignal.timeout(deadlineMs)])
 ```
 
-Each node receives the composed signal in `context.signal`. Nodes should propagate it to every awaitable IO call (fetch, database, subprocess). When the signal fires during a backoff wait in `RetryPolicy.run()`, the wait resolves early and the abort propagates up.
+Each node receives the composed signal as `context.signal`. Nodes propagate it to every awaitable IO call. `RetryPolicy.run()` resolves its backoff sleep early when the signal fires.
 
-When the signal fires between node dispatches, the dispatcher stops without starting the next node. When it fires during a node, the node is responsible for detecting `context.signal.aborted` or propagating the signal to IO.
+When the signal fires between nodes, the dispatcher stops without starting the next one. When it fires during a node, the node is responsible for detecting `context.signal.aborted` or threading the signal through its IO.
 
-After early termination:
-
-- `result.cursor` holds the next node that would have run (pass to `dispatcher.resume()` to continue)
-- `result.state.lifecycle.kind` is `cancelled` or `timed_out` depending on which signal fired
-
-A caller-controlled `AbortController` cancels the flow; `AbortSignal.timeout(ms)` (wrapped in `deadlineMs`) triggers `timed_out`. Both are composed through `AbortSignal.any()`.
-
----
+After early termination: `result.cursor` holds the next node that would have run, and `result.state.lifecycle.kind` is `cancelled` or `timed_out`.
 
 ## Fan-in strategies
 
-Fan-in runs after all fan-out items have been processed. It writes results back into parent state before the aggregate output (`all-success`, `partial`, `all-error`, `empty`) determines the next node.
+Fan-in runs after all fan-out items finish. It writes results back into parent state before the aggregate output (`all-success`, `partial`, `all-error`, `empty`) determines the next route.
 
-**`append`** — requires `target: string` (dotted path). All item results, regardless of their output, are flattened into an array at that path.
+**`append`** requires `target: string` (dotted path). All item results, regardless of their output, flatten into an array at that path.
 
 ```ts
 fanIn: { strategy: 'append', target: 'results' }
 ```
 
-**`partition`** — requires `partitions: Record<outputName, targetPath>`. Items are grouped by their output name and written to separate paths.
+**`partition`** requires `partitions: Record<outputName, targetPath>`. Items group by their output name and write to separate paths.
 
 ```ts
 fanIn: { strategy: 'partition', partitions: { success: 'passed', error: 'failed' } }
 ```
 
-**`custom`** — requires `customNode: string`. The dispatcher sets `state.metadata.fanInResults` to a `Record<outputName, item[]>` map and invokes the named registered node. The node reads the map and writes aggregated data into state however it chooses.
+**`custom`** requires `customNode: string`. The dispatcher sets `state.metadata.fanInResults` to a `Record<outputName, item[]>` map and invokes the named registered node. The node reads the map and writes aggregated data into state however it chooses. The Archivist's `mergeCandidates` node uses `custom` to deduplicate scout results by canonical book id.
 
 ```ts
-fanIn: { strategy: 'custom', customNode: 'mergeFanResults' }
+fanIn: { strategy: 'custom', customNode: 'mergeCandidates' }
 ```
 
-When to use each:
+## Embedded-DAG state mapping
 
-- `append` when downstream needs a flat list of all items
-- `partition` when downstream needs to distinguish successes from errors
-- `custom` when the merge logic is non-trivial or domain-specific
+Embedded DAGs run in a cloned child state. State mapping controls what crosses the parent/child boundary.
 
----
-
-## Deep-DAG state mapping
-
-Deep-DAGs run in a cloned child state. State mapping controls what crosses the parent/child boundary.
-
-**`input` mapping** — `stateMapping.input` copies fields from the parent node state into the child node state before the deep-DAG runs.
+`stateMapping.input` copies fields from the parent into the child before the child runs:
 
 ```ts
 stateMapping: {
@@ -201,7 +174,7 @@ stateMapping: {
 
 Reads `parentState['parent']['nested']['key']` and writes it to `childState['childKey']`.
 
-**`output` mapping** — `stateMapping.output` copies fields from the child node state back into the parent after the deep-DAG returns.
+`stateMapping.output` copies fields from the child back into the parent after the child returns:
 
 ```ts
 stateMapping: {
@@ -211,62 +184,55 @@ stateMapping: {
 
 Reads `childState['childResult']` and writes it to `parentState['parent']['result']`.
 
-`errors` and `warnings` from the child are always bubbled up — state mapping does not affect error/warning propagation.
+`errors` and `warnings` from the child always bubble up; state mapping does not affect that.
 
-If no `stateMapping` is provided, the child starts with a clone of the parent's metadata, and no output values are copied back.
+Without `stateMapping`, the child starts with a clone of the parent's metadata, and no output values copy back.
 
+## Checkpoint and resume
 
+A **checkpoint** records the position and state of an in-flight flow so it can resume later.
 
----
+- **Cursor**: the name of the next node to run. Set on `ExecutionResultInterface.cursor` when execution stops early. `null` means the flow ran to completion.
+- **State snapshot**: `NodeStateBase.snapshot()` returns a `JsonObject` containing metadata, errors, and warnings. Domain-specific fields are captured by overriding `snapshotData()`.
 
-## Checkpoint / resume
+Resume is a new execution. `dispatcher.resume(dagName, state, cursor)` starts a new lifecycle run from `pending`, identical to `execute()` except it begins at `cursor` instead of the entrypoint. The checkpoint's `executedNodes` and `skippedNodes` are available from `ckpt.restoreState(fn)` for inspection; they are not replayed.
 
-Checkpoint records the position and state of an in-flight flow so it can be resumed later.
+`Checkpoint.capture(dagName, result)` builds a `Checkpoint` instance from an execution result. It throws if `result.cursor` is `null`.
 
-**Cursor** — the name of the next node to run. Set on `ExecutionResultInterface.cursor` when execution stops early. `null` means the flow ran to completion (no resume needed).
+`Checkpoint.load(raw).restoreState(factory)` validates the persisted data against `CheckpointDataSchema` and rehydrates a state instance via the factory function.
 
-**State snapshot** — `NodeStateBase.snapshot()` returns a `JsonObject` containing metadata, errors, and warnings. Domain-specific fields are captured by overriding `snapshotData()`.
-
-**Resume is a new execution.** `dispatcher.resume(dagName, state, cursor)` starts a new lifecycle run from `pending`, identical to `execute()` except it begins at `cursor` instead of the entrypoint. The checkpoint's `executedNodes` and `skippedNodes` are available from `ckpt.restoreState(fn)` for inspection but are not replayed.
-
-**`Checkpoint.capture(dagName, result)`** builds a `Checkpoint` instance from an execution result. Throws if `result.cursor` is `null`.
-
-**`Checkpoint.load(raw).restoreState(factory)`** validates the persisted data against `CheckpointDataSchema` and rehydrates a state instance via the factory function. The factory receives the snapshot `JsonObject` and must return a `TState`.
-
-The package does not provide a persistence backend. Serialize the checkpoint as JSON (`ckpt.toJson()`) and store it wherever your infrastructure requires (file, KV, database row, message envelope, etc.).
-
----
+The package does not provide a persistence backend. Serialize the checkpoint as JSON (`ckpt.toJson()`) and store it wherever your infrastructure requires.
 
 ## Composing Dagonizer with other runtimes
 
-Dagonizer is a one-process DAG dispatcher. It pairs naturally with the runtimes that own the surfaces it deliberately doesn't — durable cross-process state, event-driven UI, distributed work scheduling. The integration points below describe what each pairing shares and where each piece carries its weight.
+Dagonizer is a one-process DAG dispatcher. It pairs naturally with runtimes that own the surfaces it deliberately does not: durable cross-process state, event-driven UI, distributed work scheduling.
 
-### Dagonizer + Temporal / durable workflow engines
+### Dagonizer plus Temporal or durable workflow engines
 
-Temporal owns the durable boundary: workflow definitions live as replayable event histories, survive crashes, and span hours to days. Dagonizer owns the per-task composition: each Temporal Activity (or batch of activities) can be a Dagonizer flow with typed nodes, retry policies, parallel/fan-out, and deep-DAG composition.
+Temporal owns the durable boundary: workflow definitions live as replayable event histories, survive crashes, and span hours to days. Dagonizer owns the per-task composition: each Temporal Activity (or batch of activities) can be a Dagonizer flow with typed nodes, retry policies, parallel and fan-out, and embedded-DAG composition.
 
-What they share: explicit retry semantics, abort signals, and named output routing.
+Shared: explicit retry semantics, abort signals, named output routing.
 
-Composition pattern: register Dagonizer DAGs as Temporal Activities, and let Temporal's history replay drive the outer workflow. The Dagonizer dispatcher runs synchronously inside the activity; on activity retry, the dispatcher restarts from the cursor stored in the activity's last heartbeat.
+Pattern: register Dagonizer DAGs as Temporal Activities; let Temporal's history replay drive the outer workflow. The dispatcher runs synchronously inside the activity. On activity retry the dispatcher restarts from the cursor stored in the activity's last heartbeat.
 
-### Dagonizer + XState
+### Dagonizer plus XState
 
-XState owns interactive, event-driven state machines: user interactions, device events, hierarchical states, guards, and reactive parallel regions. Dagonizer owns the task graph that runs when a transition fires.
+XState owns interactive, event-driven state machines: user interactions, device events, hierarchical states, guards, reactive parallel regions. Dagonizer owns the task graph that runs when a transition fires.
 
-What they share: terminal-state semantics, typed events, immutable transitions.
+Shared: terminal-state semantics, typed events, immutable transitions.
 
-Composition pattern: an XState transition's `actions` invoke `dispatcher.execute()` on a registered Dagonizer DAG; the result's `lifecycle.kind` becomes the next XState event (`COMPLETED`, `FAILED`, `CANCELLED`). XState owns the *when* and *why*; Dagonizer owns the *what runs*.
+Pattern: an XState transition's `actions` invoke `dispatcher.execute()` on a registered Dagonizer DAG; the result's `lifecycle.kind` becomes the next XState event (`COMPLETED`, `FAILED`, `CANCELLED`). XState owns the *when* and *why*; Dagonizer owns the *what runs*.
 
-### Dagonizer + BullMQ / job queues
+### Dagonizer plus BullMQ or job queues
 
-BullMQ owns the distributed work surface: cross-process scheduling, rate limiting, prioritization, worker scaling, and Redis-backed persistence. Dagonizer owns the per-job graph that each worker executes.
+BullMQ owns the distributed work surface: cross-process scheduling, rate limiting, prioritization, worker scaling, Redis-backed persistence. Dagonizer owns the per-job graph that each worker executes.
 
-What they share: typed jobs, retry semantics, structured failures.
+Shared: typed jobs, retry semantics, structured failures.
 
-Composition pattern: a BullMQ job's payload contains the DAG name and initial state; the worker hydrates state and calls `dispatcher.execute(dagName, state)`. On failure, BullMQ schedules retry with backoff and the dispatcher resumes from `result.cursor` if `Checkpoint.capture()` persisted it.
+Pattern: a BullMQ job's payload contains the DAG name and initial state; the worker hydrates state and calls `dispatcher.execute(dagName, state)`. On failure, BullMQ schedules retry with backoff and the dispatcher resumes from `result.cursor` when `Checkpoint.capture()` persisted it.
 
 ### What Dagonizer carries on its own
 
-Some flows don't need a wrapping runtime — Dagonizer runs in-process with no external dependencies. The dispatcher is a single class to instantiate; flows are plain JSON-LD objects you store in files, databases, or configuration services. Cancellation, retry, and checkpoint/resume are first-class without spinning up infrastructure.
+Some flows do not need a wrapping runtime. Dagonizer runs in-process with no external dependencies. The dispatcher is a single class to instantiate; flows are plain JSON-LD objects you store in files, databases, or configuration services. Cancellation, retry, and checkpoint/resume are first-class without spinning up infrastructure.
 
-A Dagonizer flow that needs to call remote workers does so via deep-DAG placements — the local dispatcher composes them into the larger DAG without requiring a new primitive.
+A Dagonizer flow that needs to call remote workers does so via embedded-DAG placements; the local dispatcher composes them into the larger DAG without requiring a new primitive.

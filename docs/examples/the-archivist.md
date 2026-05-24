@@ -1,12 +1,13 @@
 ---
 title: 'The Archivist'
-description: 'A bookstore help-bot built on Dagonizer — multi-branch DAG with hard and soft gates, parallel scouts, RAG fallback, and a bounded compose/validate retry loop. The running demo every Dagonizer example references.'
+description: 'A bookstore help-bot built on Dagonizer: multi-branch DAG with hard and soft gates, parallel scouts, RAG fallback, and a bounded compose/validate retry loop. The running demo every Dagonizer example references.'
 seeAlso:
 
   - text: 'Concepts'
 
     link: '../concepts'
     description: 'Dagonizer vocabulary the Archivist exercises'
+
 
   - text: 'Architecture'
 
@@ -37,13 +38,13 @@ seeAlso:
 
 # The Archivist
 
-The Archivist is the running demo every Dagonizer example refers to. It is a bookstore help-bot — a visitor describes a book or asks for a recommendation, and the Archivist composes a response by classifying the question, fanning out across the shop's local catalog and an external RAG provider, merging the candidates, and composing + validating a draft response in a bounded retry loop.
+The Archivist is the running demo every Dagonizer example refers to. It is a bookstore help-bot: a visitor describes a book or asks for a recommendation, and the Archivist composes a response by classifying the question, fanning out across the shop's local catalog and an external RAG provider, merging the candidates, and composing plus validating a draft response in a bounded retry loop.
 
-Try it live below — the demo runs in your browser. The runner detects the best LLM backend available (Chrome's built-in Gemini Nano, your Gemini AI Studio key, or the offline stub) and surfaces which one is answering.
+Try it live below; the demo runs in your browser. The runner uses an `LlmAdapterCascade` over the providers below and surfaces which one is answering. Cloud-first when keys are present (Groq, Cerebras, Gemini API, Mistral, OpenRouter), local-first when reachable (Ollama on desktop), then on-device fallbacks (Gemini Nano, WebLLM), with the offline stub as the last resort. Intent classification runs through a parallel `EmbedderCascade` (Ollama, Gemini API, Mistral) when an embedder is reachable; otherwise the LLM classifies directly.
 
 <ArchivistRunner />
 
-Watch the **DAG** pane: each node lights cyan while executing, then settles to "completed" with the taken edge highlighted. The **Memory** pane mirrors `state.intent`, `state.terms`, `state.shortlist`, `state.attempts.compose` as the dispatcher mutates them. Everything is driven by the dispatcher's `onFlowStart` / `onNodeStart` / `onNodeEnd` / `onError` / `onFlowEnd` hooks — there is no timer-based animation, the runner is a pure observer of the state machine.
+Watch the **DAG** pane: each node lights cyan while executing, then settles to "completed" with the taken edge highlighted. The **Memory** pane mirrors `state.intent`, `state.terms`, `state.shortlist`, `state.attempts.compose` as the dispatcher mutates them. Everything is driven by the dispatcher's `onFlowStart`, `onNodeStart`, `onNodeEnd`, `onError`, `onFlowEnd` hooks; there is no timer-based animation, the runner is a pure observer of the state machine.
 
 ## Branches and gates
 
@@ -53,13 +54,13 @@ Three exit conditions, each carrying a different outcome.
 |------|---------|---------------|--------------|
 | **Off-topic hard gate** | `classifyIntent` returns `off-topic` | `decline-off-topic` | Politely redirects the visitor to a book-related question. |
 | **Empty soft gate** | `mergeCandidates` produces zero candidates | `decline-empty` | Asks the visitor for more detail; collects a `EMPTY_SHORTLIST` warning. |
-| **Best-effort response** | `validateResponse` exhausts `MAX_COMPOSE_ATTEMPTS` | `respond-to-visitor` | Sends the last draft anyway — the dispatcher never throws. |
+| **Best-effort response** | `validateResponse` exhausts `MAX_COMPOSE_ATTEMPTS` | `respond-to-visitor` | Sends the last draft anyway; the dispatcher never throws. |
 | **Approved response** | `validateResponse` returns `approved` | `respond-to-visitor` | Normal happy path. |
 | **Retry loop** | `validateResponse` returns `retry` | back to `compose-response` | Bounded by the counter on `state.attempts.compose`. |
 
 ## Backends
 
-The Archivist runs against a real model in any of these environments — `detectBackends()` probes each and `pickBestBackend()` selects the highest-priority runnable backend. On mobile devices, Gemini Nano and WebLLM are excluded from auto-selection (both require desktop Chrome or a WebGPU-capable device). Cloud backends work on every device.
+The Archivist runs against a real model in any of these environments. `detectBackends()` probes each and `pickBestBackend()` selects the highest-priority runnable backend. On mobile devices, Gemini Nano and WebLLM are excluded from auto-selection (both require desktop Chrome or a WebGPU-capable device). Cloud backends work on every device.
 
 | Priority | Backend | What it needs |
 |---|---|---|
@@ -68,7 +69,7 @@ The Archivist runs against a real model in any of these environments — `detect
 | 3 | **Gemini API** (Google AI Studio free tier) | Paste-into-form (browser). Free 15 RPM / 1500 RPD on `gemini-2.0-flash`. CORS open from any origin. Works on any device. |
 | 4 | **Mistral** (cloud, free tier) | Free key from [console.mistral.ai/api-keys/](https://console.mistral.ai/api-keys/). Runs mistral-small-latest. Works on any device. |
 | 5 | **OpenRouter** (cloud, free tier) | Free key from [openrouter.ai/keys](https://openrouter.ai/keys). Routes to llama-3.3-70b-instruct:free. Works on any device. |
-| 6 | **Gemini Nano** (Chrome built-in, local) | Chrome 138+ stable, or any Chrome with the flags below. No key, no network, ~2 GB one-shot model download by Chrome. Desktop only. |
+| 6 | **Browser built-in model** (local, via `window.LanguageModel`) | Chrome 138+ or Edge. No key, no network, ~2 GB one-shot model download. Desktop only. |
 | 7 | **WebLLM** (in-browser, WebGPU) | Browser with `navigator.gpu`. Lazy-loads `@mlc-ai/web-llm` + Phi-3.5 mini (~780 MB) on first use; cached after. Desktop only. |
 | 8 | **Stub** | Always available. Hand-coded canned answers. Always available on mobile as a zero-setup fallback; hidden from the desktop picker since on-device options exist. |
 
@@ -76,24 +77,36 @@ The Archivist runs against a real model in any of these environments — `detect
 
 On mount, 18 sci-fi and philosophy titles are pre-loaded into `urn:dagonizer:memory` so the Memory tab has content from first paint and stub responses cite real books from the visible graph. The seed covers:
 
-- **Science fiction** — Liu Cixin, William Gibson, Ursula K. Le Guin (×2), Stanisław Lem, Ted Chiang, Jeff VanderMeer, Dan Simmons, Vernor Vinge, the Strugatsky brothers.
-- **Philosophy / philosophical literature** — Borges, Wittgenstein, Camus, Foucault, Deleuze, Hofstadter, Marcus Aurelius, Hegel.
+- **Science fiction**: Liu Cixin, William Gibson, Ursula K. Le Guin (×2), Stanisław Lem, Ted Chiang, Jeff VanderMeer, Dan Simmons, Vernor Vinge, the Strugatsky brothers.
+- **Philosophy and philosophical literature**: Borges, Wittgenstein, Camus, Foucault, Deleuze, Hofstadter, Marcus Aurelius, Hegel.
 
 `SeedLibrary.loadInto(memoryStore)` clears `urn:dagonizer:memory` and reasserts all 18 books as RDF triples using the same `dag:title`, `dag:author`, `dag:subject`, `dag:firstPublishYear`, `dag:summary`, and `rdf:type dag:Book` predicates that `StateProjection` uses for run candidates. Because the vocabulary is shared, the MemoryGraph renders seed books and run candidates uniformly.
 
-The seed is not stub-specific. Real LLM backends receive the pre-seeded triples through the `recall-memories` node's SPARQL digest — the library is a shared starting point for every backend. `reset()` restores the seed alongside the TBox ontology so a manual reset never leaves the Memory tab empty.
+The seed is not stub-specific. Real LLM backends receive the pre-seeded triples through the `recall-memories` node's SPARQL digest; the library is a shared starting point for every backend. `reset()` restores the seed alongside the TBox ontology so a manual reset never leaves the Memory tab empty.
+
+### Intent classification (vector-similarity)
+
+The runner builds an `EmbedderCascade` alongside the LLM cascade: `Ollama` (loopback) → `Gemini API` → `Mistral`. When one probes available, `IntentClassifier.create(embedder)` precomputes label embeddings; `classifyIntent` then routes by cosine similarity against the visitor's query in O(labels). When no embedder is reachable in the browser the cascade falls through and the node delegates to the LLM classifier (same routing, slower path).
+
+### Visitor language
+
+`UserLanguage.detect()` reads the device locale (`navigator.language` in the browser, `LANG` / `LC_ALL` env vars on the CLI), normalises it to an IETF tag, and threads it into the system prompt. The composer drafts the response in the visitor's language without an explicit toggle.
+
+### Conversational composition
+
+Drafts ship as conversational prose. The composer prompt forbids markdown headings, bullet lists, and structured layout: the response reads like a knowledgeable shop assistant talking out loud, not a search result page. The validator rejects drafts that leak markup back into the conversation.
 
 ### Mobile detection
 
-`MobileDetection.isLikelyMobile()` triangulates three signals — touch points (`navigator.maxTouchPoints > 1`), coarse pointer media query (`(pointer: coarse)`), and narrow viewport (`innerWidth < 900`). All three must indicate mobile; a single signal is not enough. A "Treat as desktop" link in the mobile banner lets tablet visitors opt out of mobile detection and stores the override in `localStorage` (`dagonizer-device-override`).
+`MobileDetection.isLikelyMobile()` triangulates three signals: touch points (`navigator.maxTouchPoints > 1`), coarse pointer media query (`(pointer: coarse)`), and narrow viewport (`innerWidth < 900`). All three must indicate mobile; a single signal is not enough. A "Treat as desktop" link in the mobile banner lets tablet visitors opt out of mobile detection and stores the override in `localStorage` (`dagonizer-device-override`).
 
 If no API key is set on a mobile device, the demo runs with canned stub responses so the DAG still executes. The mobile banner makes the canned-vs-real distinction explicit: it reads "running with canned responses (not real AI)" when stub is active, and "using cloud backend [name]" once a key is entered and a cloud backend takes over. Adding any cloud key causes `pickBestBackend` to re-rank and swap the active backend automatically.
 
-### Enable Gemini Nano + tool calling in Chrome
+### Enable the browser built-in model + tool calling
 
 The Archivist asks the LLM to **invoke tools** (currently `web_search_books`,
 backed by openlibrary.org). Gemini API uses native `functionDeclarations`;
-Chrome's on-device Gemini Nano honours the same plan via the Prompt API's
+the browser built-in model honours the same plan via the Prompt API's
 `responseConstraint` JSON-schema field, which arrived behind feature flags.
 
 1. **Open `chrome://flags`** and enable each of:
@@ -108,15 +121,15 @@ Chrome's on-device Gemini Nano honours the same plan via the Prompt API's
    ```js
    await LanguageModel.create();
    ```
-   Chrome downloads ~2 GB. Status is visible at `chrome://components` — look for
+   Chrome downloads ~2 GB. Status is visible at `chrome://components`; look for
    *Optimization Guide On Device Model*. The widget on this page also surfaces
    `availability()` as **"downloading…"** until ready.
-4. **Reload this page** — the backend banner should now read
-   *Gemini Nano (Chrome on-device)*.
+4. **Reload this page**. The backend banner should now read
+   *Browser built-in LanguageModel (on-device)*.
 
 If the model is still `downloadable` rather than `available` after the steps
-above, leave Chrome open for a few minutes — the download runs in the
-background and is gated by Chrome's network-condition heuristics.
+above, leave Chrome open for a few minutes; the download runs in the
+background and is gated by the browser's network-condition heuristics.
 
 ### Bring-your-own Gemini API key
 
@@ -125,7 +138,7 @@ free tier**:
 
 1. Go to [aistudio.google.com/apikey](https://aistudio.google.com/apikey) and
    click *Create API key*. The free tier covers 15 requests/min and
-   1500 requests/day on `gemini-2.0-flash` — plenty for the demo.
+   1500 requests/day on `gemini-2.0-flash`. Plenty for the demo.
 2. Paste the key into the *Bring your own Gemini API key* drawer below the
    backend picker. It's stored in `localStorage` only; the request itself
    goes straight from your browser to Google.
@@ -136,11 +149,11 @@ or any other static host without a proxy.
 
 ### Use the offline stub
 
-If you just want to watch the DAG animate without an LLM, pick
+To watch the DAG animate without an LLM, pick
 *Canned responses (offline stub)* from the backend dropdown. The stub adapter
 pattern-matches the visitor's query and emits a `web_search_books` tool call
-when it sees ISBN-like patterns or quoted titles — exercising the same
-tool-calling path the real models take, just without the GPU.
+when it sees ISBN-like patterns or quoted titles, exercising the same
+tool-calling path the real models take, without the GPU.
 
 ---
 
@@ -162,39 +175,39 @@ The eight per-phase example pages each isolate one Dagonizer feature against thi
 | 02 | DAGBuilder authoring | [Phase 02 · DAGBuilder](./02-builder) |
 | 03 | Tool schema design (JSON Schema 2020-12 inputSchema) | [Phase 03 · Tool schemas](./03-schema) |
 | 04 | Fan-out scout with partition fan-in | [Phase 04 · Fan-out scout](./04-fanout) |
-| 05 | Deep-DAG composition | [Phase 05 · Deep-DAG composition](./05-deepflows) |
+| 05 | Embedded-DAG composition | [Phase 05 · Embedded-DAG composition](./05-embedded-dags) |
 | 06 | Abortable visitor request | [Phase 06 · Cancellation](./06-cancellation) |
 | 07 | RetryPolicy against the LLM composer | [Phase 07 · Retry](./07-retry) |
 | 08 | Checkpoint mid-draft and resume | [Phase 08 · Checkpoint + resume](./08-checkpoint) |
 
 Every page starts from the same `ArchivistState` + `services` + node set; only the DAG variation and the registered subset change.
 
-## Compositional deep-DAGs
+## Compositional embedded-DAGs
 
-The Archivist's DAG is composed of two reusable deep-DAGs that ship as independent components. Each is a `DAG` value any consumer can import, register, and reference as a `.deepDAG(...)` placement in their own DAG.
+The Archivist's DAG is composed of two reusable embedded-DAGs that ship as independent components. Each is a `DAG` value any consumer can import, register, and reference as a `.embeddedDAG(...)` placement in their own DAG.
 
-- **`book-search-fanout`** — extract-query + decide-tools + 4-source parallel scout cluster (OpenLibrary, Google Books, Subject, Wikipedia) + rank-candidates + merge-candidates + record-findings + has-citations-gate + recall-past-visits. Used in three intent branches (`on-topic-search`, `author-search`, `similar-search`); one definition, three placements.
-- **`compose-retry-loop`** — compose-response + validate-response (with bounded retry loop back to compose) + respond-to-visitor. Every successful search branch funnels through this one shared cluster.
+- **`book-search-fanout`**: extract-query, decide-tools, 4-source parallel scout cluster (OpenLibrary, Google Books, Subject, Wikipedia), rank-candidates, merge-candidates, record-findings, has-citations-gate, recall-past-visits. Used in three intent branches (`on-topic-search`, `author-search`, `similar-search`); one definition, three placements.
+- **`compose-retry-loop`**: compose-response, validate-response (with bounded retry loop back to compose), respond-to-visitor. Every successful search branch funnels through this one shared cluster.
 
-The renderer expands both deep-DAGs inline in the diagram — compound-graph children render inside the placement box so the full topology is visible. No opaque boxes.
+The renderer expands both embedded-DAGs inline in the diagram. Compound-graph children render inside the placement box so the full topology is visible. No opaque boxes.
 
-Reviews and describe branches are inlined in the parent DAG because they substitute `rankByRating` and `pickBestMatch` for `rankCandidates` respectively — the structural variation is explicit rather than hidden behind a deep-DAG parameter.
+Reviews and describe branches are inlined in the parent DAG because they substitute `rankByRating` and `pickBestMatch` for `rankCandidates` respectively; the structural variation is explicit rather than hidden behind an embedded-DAG parameter.
 
 ### BookSearchFanoutDAG
 
-<<< ../../examples/the-archivist/deepdags/BookSearchFanoutDAG.ts
+<<< ../../examples/the-archivist/embedded-dags/BookSearchFanoutDAG.ts
 
 ### ComposeRetryLoopDAG
 
-<<< ../../examples/the-archivist/deepdags/ComposeRetryLoopDAG.ts
+<<< ../../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.ts
 
 ## Source
 
 ### JSON-LD as the canonical DAG format
 
-The DAG is JSON-LD natively. `DAGBuilder.build()` returns a plain JavaScript object whose wire shape is JSON-LD 1.1 — every placement carries a typed IRI under `@type`. `Dagonizer.serialize(dag)` produces the JSON string; `Dagonizer.load(json)` parses and validates it back to an equivalent typed `DAG`.
+The DAG is JSON-LD natively. `DAGBuilder.build()` returns a plain JavaScript object whose wire shape is JSON-LD 1.1; every placement carries a typed IRI under `@type`. `Dagonizer.serialize(dag)` produces the JSON string; `Dagonizer.load(json)` parses and validates it back to an equivalent typed `DAG`.
 
-There is no separate projection layer or dual configuration. The object `DAGBuilder.build()` returns is the same object the engine consumes and the same object that serializes to JSON-LD. Load a DAG from JSON, register it, execute it — one surface throughout.
+There is no separate projection layer or dual configuration. The object `DAGBuilder.build()` returns is the same object the engine consumes and the same object that serializes to JSON-LD. Load a DAG from JSON, register it, execute it: one surface throughout.
 
 ```ts
 import { Dagonizer } from '@noocodex/dagonizer';
@@ -207,11 +220,11 @@ const dag = Dagonizer.load(json);
 dispatcher.registerDAG(dag);
 ```
 
-Deep-DAG placements in the JSON-LD output look like:
+Embedded-DAG placements in the JSON-LD output look like:
 
 ```json
 {
-  "@type": "DeepDAGNode",
+  "@type": "EmbeddedDAGNode",
   "name": "on-topic-search",
   "dag": "book-search-fanout",
   "outputs": { "success": "compose-loop", "error": "decline-empty" }

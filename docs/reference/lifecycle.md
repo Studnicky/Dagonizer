@@ -2,8 +2,9 @@
 seeAlso:
   - text: 'Reference: Execution'
     link: './execution'
-  - text: 'Reference: Dagonizer — observability hooks'
+  - text: 'Reference: Dagonizer'
     link: './dagonizer'
+    description: 'observability hooks'
 ---
 
 # Lifecycle
@@ -64,7 +65,7 @@ type DAGLifecycleEvent =
   | { type: 'timeout'; at?: number };
 ```
 
-The optional `at` field overrides `Clock.monotonicMs()` for deterministic tests. In production, omit it — the machine reads the clock automatically.
+The optional `at` field overrides `Clock.monotonicMs()` for deterministic tests. In production, omit it; the machine reads the clock automatically.
 
 ---
 
@@ -96,7 +97,7 @@ static transition(
 
 Pure reducer. Returns a new state for legal transitions, returns the input state **by reference** for illegal transitions (which `NodeStateBase.dispatch` detects and converts to `DAGError`).
 
-Terminal states (`completed`, `failed`, `cancelled`, `timed_out`) return themselves unchanged for all events — terminal stickiness.
+Terminal states (`completed`, `failed`, `cancelled`, `timed_out`) return themselves unchanged for all events. Terminal stickiness.
 
 Valid transitions:
 
