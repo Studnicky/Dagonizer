@@ -53,6 +53,14 @@ void test('StubAdapter.setError makes next chat() throw and clears after one use
   if (r.message.kind === 'text') assert.equal(r.message.content, 'ok');
 });
 
+void test('StubAdapter.probe always returns false (opt-in only, never wins a cascade)', async () => {
+  const a = new StubAdapter();
+  assert.equal(await a.probe(), false);
+  // Re-arming queue + default response must not influence probe.
+  a.enqueueResponse('queued');
+  assert.equal(await a.probe(), false);
+});
+
 void test('StubAdapter.clear resets invocations, queue, and pending error', async () => {
   const a = new StubAdapter({ 'responses': ['first'], 'defaultResponse': 'fresh' });
   await a.chat(sampleRequest());

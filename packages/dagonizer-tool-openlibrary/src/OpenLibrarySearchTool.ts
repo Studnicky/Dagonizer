@@ -42,6 +42,8 @@ interface OpenLibraryDoc {
   readonly first_sentence?: readonly string[];
   /** Some search responses include a description; many don't. */
   readonly description?: string | { value?: string };
+  /** ISO 639-2 (alpha-3) language codes the work is published in. */
+  readonly language?: readonly string[];
 }
 
 interface OpenLibraryResponse {
@@ -150,6 +152,7 @@ export const OpenLibrarySearchTool: Tool<WebSearchInput, readonly Candidate[]> =
           ...(doc.first_publish_year !== undefined ? { 'firstPublishYear': doc.first_publish_year } : {}),
           ...(subjects !== undefined ? { 'subjects': subjects } : {}),
           ...(doc.publisher !== undefined ? { 'publishers': doc.publisher.slice(0, 4) } : {}),
+          ...(doc.language !== undefined && doc.language.length > 0 ? { 'languages': doc.language } : {}),
         },
         'score':  0,                  // tool does not score; rank-candidates is the ranker.
         'source': 'web-search',

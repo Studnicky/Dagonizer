@@ -81,7 +81,6 @@ export const declineEmpty: NodeInterface<ArchivistState, 'success', ArchivistSer
  */
 export const composeEmptyResponse: NodeInterface<ArchivistState, 'drafted', ArchivistServices> = {
   "name":      'compose-empty',
-  "kind":      'non-deterministic',
   "outputs":   ['drafted'],
   "timeoutMs": 60_000,
   async execute(state, context) {

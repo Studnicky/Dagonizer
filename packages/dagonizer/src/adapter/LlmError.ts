@@ -16,6 +16,8 @@ export type LlmErrorReason =
   | 'TIMEOUT'
   | 'SCHEMA_VIOLATION'
   | 'NETWORK'
+  | 'CONFIGURATION'
+  | 'NO_ADAPTER_AVAILABLE'
   | 'UNKNOWN';
 
 export interface ErrorClassification {
@@ -44,8 +46,10 @@ export const Classifications: Readonly<Record<LlmErrorReason, ErrorClassificatio
   'CREDIT_EXHAUSTED':  { 'reason': 'CREDIT_EXHAUSTED',  'retryable': false },
   'TIMEOUT':           { 'reason': 'TIMEOUT',           'retryable': true  },
   'SCHEMA_VIOLATION':  { 'reason': 'SCHEMA_VIOLATION',  'retryable': true  },
-  'NETWORK':           { 'reason': 'NETWORK',           'retryable': true  },
-  'UNKNOWN':           { 'reason': 'UNKNOWN',           'retryable': false },
+  'NETWORK':              { 'reason': 'NETWORK',              'retryable': true  },
+  'CONFIGURATION':        { 'reason': 'CONFIGURATION',        'retryable': false },
+  'NO_ADAPTER_AVAILABLE': { 'reason': 'NO_ADAPTER_AVAILABLE', 'retryable': false },
+  'UNKNOWN':              { 'reason': 'UNKNOWN',              'retryable': false },
 };
 
 /**

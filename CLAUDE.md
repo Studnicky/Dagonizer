@@ -51,6 +51,26 @@ stack — consumers extend and compose, never patch.
   required-with-defaults rule above is the primary lever; classes for
   hot-path entities, consistent constructor order, and avoiding `as
   any` casts close the rest of the gap.
+⦿ **Canonical names only — no aliasing imports or exports.** Every
+  symbol has one canonical name, used everywhere. Forbidden:
+    ⊥ `import { Foo as Bar }`
+    ⊥ `export { Foo as Bar }`
+    ⊥ `export type { Tool as SearchTool }` re-aliases
+  When the type and the value would collide on one identifier (a
+  pattern that surfaces with `*Builder` static factories), rename the
+  value to its real role: type is `ChatResponseMessage`, factory is
+  `ChatResponseMessageBuilder` (a static class). Two distinct names,
+  no alias at any import site. Readers see exactly what was authored.
+⦿ **Function signatures: required positional, optional config object.**
+  Required arguments are positional in their natural order. Optional
+  arguments, overrides, and ergonomic flags live in a single trailing
+  config object (`options: { … } = {}`). One canonical shape for every
+  method or factory in the codebase:
+    `.method(requiredA, requiredB, options?)` — never
+    `.method({ requiredA, requiredB, optional })` (when args are
+    required) and never `.method(a, b, c, d)` with optional positional
+    tail. The trailing config object's own fields follow the same
+    required-with-defaults rule as the rest of the engine.
 
 ## Three-tier interface taxonomy
 

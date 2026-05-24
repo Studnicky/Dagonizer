@@ -20,8 +20,6 @@ import { BaseStore } from '@noocodex/dagonizer/store';
 import type { BaseStoreOptions } from '@noocodex/dagonizer/store';
 
 export interface SqliteStoreOptions extends BaseStoreOptions {
-  /** Path to the SQLite database file, or ':memory:' for an in-process DB. */
-  readonly path: string;
   /** SQLite DatabaseSync options (e.g. readOnly). */
   readonly database?: DatabaseSyncOptions;
   /** Table name for the key-value store. Default: 'dagonizer_kv'. */
@@ -38,11 +36,11 @@ export class SqliteStore extends BaseStore {
   readonly #db: DatabaseSync;
   readonly #tableName: string;
 
-  constructor(options: SqliteStoreOptions) {
+  constructor(path: string, options: SqliteStoreOptions = {}) {
     super({ 'namespace': options.namespace ?? '' });
     this.#db = options.database !== undefined
-      ? new DatabaseSync(options.path, options.database)
-      : new DatabaseSync(options.path);
+      ? new DatabaseSync(path, options.database)
+      : new DatabaseSync(path);
     this.#tableName = options.tableName ?? 'dagonizer_kv';
     this.#db.exec(`
       CREATE TABLE IF NOT EXISTS ${this.#tableName} (

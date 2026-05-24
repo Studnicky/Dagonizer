@@ -13,11 +13,19 @@
  *   4. dispatcher.registerDAG(ComposeRetryLoopDAG) — registers the compose deep-DAG
  *   5. dispatcher.registerDAG(archivistDAG) — registers the parent (references deep-DAGs by name)
  *
- * LLM resolved by the provider matrix: Gemini Nano (only in a browser),
- * Gemini REST (free tier, `GEMINI_API_KEY` env), WebLLM (only in a
- * browser), Stub (CLI fallback so this script always runs). The
- * browser runner refuses to start without a real model; the CLI keeps
- * the stub so tooling / smoke tests work offline.
+ * LLM resolved via `LlmAdapterCascade` over a registry of providers that
+ * have credentials / local services available. Order of preference:
+ *
+ *   Ollama (localhost)  →  Gemini API  →  Cerebras  →  Groq
+ *                       →  Mistral     →  OpenRouter
+ *
+ * Recommended local setup: `ollama pull llama3.2:latest` then
+ * `ollama serve` — the cascade probe will hit `/api/tags` and route
+ * the run through the local daemon with no API keys required.
+ *
+ * If no adapter is reachable the cascade throws
+ * `LlmError(NO_ADAPTER_AVAILABLE)` — that's the design. There is no
+ * stub fallback in the CLI; the stub exists only for tests.
  *
  * Run:  npx tsx examples/the-archivist/runArchivist.ts
  */
@@ -50,10 +58,12 @@ import { recommendSimilar } from './nodes/recommendSimilar.ts';
 import { recordFindings } from './nodes/recordFindings.ts';
 import { composeEmptyResponse, declineEmpty, declineOffTopic, respondToVisitor } from './nodes/respondToVisitor.ts';
 import { openLibraryScout, googleBooksScout, subjectScout, wikipediaScout, webSearchScout } from './nodes/scouts.ts';
-import {
-  GeminiApiAdapter,
-  StubAdapter,
-} from './providers/adapters/index.ts';
+import { CerebrasApiAdapter }   from '@noocodex/dagonizer-adapter-cerebras';
+import { GeminiApiAdapter }     from '@noocodex/dagonizer-adapter-gemini-api';
+import { GroqApiAdapter }       from '@noocodex/dagonizer-adapter-groq';
+import { MistralApiAdapter }    from '@noocodex/dagonizer-adapter-mistral';
+import { OllamaApiAdapter }     from '@noocodex/dagonizer-adapter-ollama';
+import { OpenRouterApiAdapter } from '@noocodex/dagonizer-adapter-openrouter';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
 import type { ArchivistServices, LlmClient } from './services.ts';
 import { GoogleBooksTool } from '@noocodex/dagonizer-tool-googlebooks';
@@ -61,18 +71,85 @@ import { OpenLibrarySearchTool } from '@noocodex/dagonizer-tool-openlibrary';
 import { SubjectSearchTool } from '@noocodex/dagonizer-tool-openlibrary';
 import { WikipediaSummaryTool } from '@noocodex/dagonizer-tool-wikipedia';
 
-import { Dagonizer } from '@noocodex/dagonizer';
+import { Dagonizer, LlmAdapterCascade, LlmAdapterRegistry } from '@noocodex/dagonizer';
+import type { AdapterCapabilities } from '@noocodex/dagonizer/adapter';
 
 const logger = new ConsoleLogger();
 
-// ── Backend: Gemini REST when a key is set, stub otherwise. The browser
-//    runner refuses to start without a real model; the CLI keeps the
-//    stub so smoke tests + dry runs work offline.
-const apiKey = typeof process !== 'undefined' ? process.env['GEMINI_API_KEY'] : undefined;
-const llm: LlmClient = apiKey !== undefined && apiKey.length > 0
-  ? new BaseLlmClient(new GeminiApiAdapter({ 'apiKey': apiKey }))
-  : new BaseLlmClient(new StubAdapter());
-logger.info(`backend: ${apiKey !== undefined && apiKey.length > 0 ? 'Gemini REST' : 'Stub (CLI)'}`);
+// ── Backend: cascade over the registered adapters. The first probe that
+//    resolves true wins; if none resolves, `cascade.select()` throws
+//    `LlmError(NO_ADAPTER_AVAILABLE)` and the script fails loud.
+function envVar(key: string): string {
+  if (typeof process === 'undefined') return '';
+  const raw = process.env[key];
+  return typeof raw === 'string' ? raw : '';
+}
+
+const OLLAMA_BASE_URL = envVar('OLLAMA_BASE_URL') || 'http://127.0.0.1:11434';
+const OLLAMA_MODEL    = envVar('OLLAMA_MODEL')    || 'llama3.2:latest';
+
+// Capability shapes mirror each adapter's own declaration so the
+// registry descriptor stays faithful to runtime behaviour. The
+// registry doesn't enforce the value, but consumers reading
+// `registry.list()` see the real shape.
+const CAPS_FULL_TOOLS:    AdapterCapabilities = { 'toolUse': 'full',    'structuredOutput': true, 'jsonMode': true };
+const CAPS_PARTIAL_TOOLS: AdapterCapabilities = { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true };
+
+const registry = new LlmAdapterRegistry();
+
+// Local-first — Ollama runs on the loopback by default and needs no
+// credentials. Probe hits `/api/tags`; if it answers 2xx we're in.
+registry.register(
+  { 'provider': 'ollama', 'model': OLLAMA_MODEL, 'capabilities': CAPS_PARTIAL_TOOLS },
+  () => new OllamaApiAdapter({ 'baseUrl': OLLAMA_BASE_URL, 'model': OLLAMA_MODEL }),
+);
+
+// Keyed providers — skip registration when the key is missing so the
+// `NO_ADAPTER_AVAILABLE` message lists only the providers the user
+// actually configured.
+if (envVar('GEMINI_API_KEY').length > 0) {
+  registry.register(
+    { 'provider': 'gemini-api', 'model': 'gemini-2.0-flash', 'capabilities': CAPS_FULL_TOOLS },
+    () => new GeminiApiAdapter(envVar('GEMINI_API_KEY'), { 'model': 'gemini-2.0-flash' }),
+  );
+}
+if (envVar('CEREBRAS_API_KEY').length > 0) {
+  registry.register(
+    { 'provider': 'cerebras', 'model': 'gpt-oss-120b', 'capabilities': CAPS_PARTIAL_TOOLS },
+    () => new CerebrasApiAdapter(envVar('CEREBRAS_API_KEY'), { 'model': 'gpt-oss-120b' }),
+  );
+}
+if (envVar('GROQ_API_KEY').length > 0) {
+  registry.register(
+    { 'provider': 'groq', 'model': 'llama-3.3-70b-versatile', 'capabilities': CAPS_PARTIAL_TOOLS },
+    () => new GroqApiAdapter(envVar('GROQ_API_KEY'), { 'model': 'llama-3.3-70b-versatile' }),
+  );
+}
+if (envVar('MISTRAL_API_KEY').length > 0) {
+  registry.register(
+    { 'provider': 'mistral', 'model': 'mistral-small-latest', 'capabilities': CAPS_PARTIAL_TOOLS },
+    () => new MistralApiAdapter(envVar('MISTRAL_API_KEY'), { 'model': 'mistral-small-latest' }),
+  );
+}
+if (envVar('OPENROUTER_API_KEY').length > 0) {
+  registry.register(
+    { 'provider': 'openrouter', 'model': 'meta-llama/llama-3.3-70b-instruct:free', 'capabilities': CAPS_PARTIAL_TOOLS },
+    () => new OpenRouterApiAdapter(envVar('OPENROUTER_API_KEY'), { 'model': 'meta-llama/llama-3.3-70b-instruct:free' }),
+  );
+}
+
+const cascade = new LlmAdapterCascade(registry, [
+  { 'provider': 'ollama',     'model': OLLAMA_MODEL },
+  { 'provider': 'gemini-api', 'model': 'gemini-2.0-flash' },
+  { 'provider': 'cerebras',   'model': 'gpt-oss-120b' },
+  { 'provider': 'groq',       'model': 'llama-3.3-70b-versatile' },
+  { 'provider': 'mistral',    'model': 'mistral-small-latest' },
+  { 'provider': 'openrouter', 'model': 'meta-llama/llama-3.3-70b-instruct:free' },
+]);
+
+const adapter = await cascade.select();
+const llm: LlmClient = new BaseLlmClient(adapter);
+logger.info(`backend: ${adapter.id} (${adapter.displayName})`);
 
 const services: ArchivistServices = {
   "webSearch":         OpenLibrarySearchTool,

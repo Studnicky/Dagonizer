@@ -16,8 +16,9 @@ import type { OpenAiCompatibleAdapterOptions } from '@noocodex/dagonizer/adapter
 export interface CerebrasApiAdapterOptions extends OpenAiCompatibleAdapterOptions {}
 
 export class CerebrasApiAdapter extends OpenAiCompatibleAdapter {
-  constructor(options: CerebrasApiAdapterOptions) {
+  constructor(apiKey: string, options: CerebrasApiAdapterOptions = {}) {
     super(
+      apiKey,
       {
         'id':            'cerebras',
         'displayName':   'Cerebras (gpt-oss-120b)',

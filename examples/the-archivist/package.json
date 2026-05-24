@@ -5,6 +5,12 @@
   "description": "In-browser Archivist demo for @noocodex/dagonizer — consumes the lib + plugin packages.",
   "license": "MIT",
   "type": "module",
+  "scripts": {
+    "dev":       "vite",
+    "build":     "vite build",
+    "preview":   "vite preview --port 5174 --strictPort",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
   "dependencies": {
     "@noocodex/dagonizer": "workspace:^",
     "@noocodex/dagonizer-adapter-cerebras": "workspace:^",
@@ -22,6 +28,7 @@
     "@noocodex/dagonizer-tool-wikipedia": "workspace:^"
   },
   "devDependencies": {
-    "n3": "^2.0.3"
+    "n3": "^2.0.3",
+    "vite": "5.4.21"
   }
 }
