@@ -16,12 +16,10 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import type { ConsoleLogger, LogEvent } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
 
-interface TraceEntry {
-  readonly node: string;
-  readonly output?: string;
-  readonly ts: number;
-  readonly kind: 'start' | 'end' | 'error';
-}
+type TraceEntry =
+  | { readonly kind: 'start'; readonly node: string; readonly ts: number }
+  | { readonly kind: 'end';   readonly node: string; readonly ts: number; readonly output: string | undefined }
+  | { readonly kind: 'error'; readonly node: string; readonly ts: number; readonly message: string };
 
 /** Discriminated union for the merged feed. */
 type FeedItem =
@@ -86,7 +84,9 @@ function timeFor(ts: number): string {
         <template v-if="item.feedKind === 'trace'">
           <span :class="['tf-kind', `tf-kind-${item.entry.kind}`]">{{ item.entry.kind }}</span>
           <code class="tf-node tf-node-clickable" role="button" tabindex="0" @click="emit('node-click', item.entry.node)" @keydown.enter="emit('node-click', item.entry.node)">{{ item.entry.node }}</code>
-          <span v-if="item.entry.output !== undefined" class="tf-output">→ {{ item.entry.output }}</span>
+          <span v-if="item.entry.kind === 'end' && item.entry.output !== undefined" class="tf-output">→ {{ item.entry.output }}</span>
+          <span v-else-if="item.entry.kind === 'error'" class="tf-error-message">{{ item.entry.message }}</span>
+          <span v-else class="tf-output"></span>
         </template>
 
         <!-- Logger line -->
@@ -196,7 +196,13 @@ function timeFor(ts: number): string {
 .tf-kind-end   { background: rgba(155, 81, 224, 0.14); color: var(--dagonizer-brand2); }
 .tf-kind-error { background: rgba(212, 166, 73, 0.18); color: var(--dagonizer-brand3); }
 
-.tf-node   { color: var(--vp-c-text-1); }
+.tf-node    { color: var(--vp-c-text-1); }
+.tf-error-message {
+  color: var(--vp-c-text-3);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-style: italic;
+}
 .tf-node-clickable {
   cursor: pointer;
   text-decoration: underline dotted var(--dagonizer-brand2);
