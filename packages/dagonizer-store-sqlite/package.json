@@ -1,6 +1,6 @@
 {
   "name": "@noocodex/dagonizer-store-sqlite",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "SQLite-backed Store for @noocodex/dagonizer using Node's built-in node:sqlite.",
   "private": false,
   "license": "MIT",
@@ -32,7 +32,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@noocodex/dagonizer": "workspace:^"
+    "@noocodex/dagonizer": "workspace:>=0.11.0 <1.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
