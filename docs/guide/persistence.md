@@ -1,27 +1,30 @@
 ---
+title: 'Checkpoint persistence'
+description: 'CheckpointStore is the three-method adapter for persisting checkpoint JSON; MemoryCheckpointStore is the reference impl; ckpt.persist and Checkpoint.recall compose codec + store.'
 seeAlso:
-
   - text: 'Checkpoint'
-
     link: './checkpoint'
-    description: 'the codec layer (`Checkpoint.from` / `Checkpoint.restore`)'
-
+    description: 'the codec layer (`Checkpoint.capture` and `Checkpoint.load`)'
   - text: 'Subclassing State'
-
     link: './subclassing'
-    description: 'domain fields survive the round-trip via `snapshotData` / `restoreData`'
-
+    description: 'domain fields survive the round-trip via `snapshotData` and `restoreData`'
   - text: 'Cancellation'
-
     link: './cancellation'
     description: 'produce a checkpointable result by aborting an in-flight flow'
 ---
 
 # Checkpoint persistence
 
-`Checkpoint` handles the codec — turning an `ExecutionResult` into a `CheckpointData` record and back. Persistence is the consumer's responsibility, behind the `CheckpointStore` adapter contract.
+`CheckpointStore` is the three-method adapter contract for persistence backends. `Checkpoint` handles the codec (turning an `ExecutionResult` into a `CheckpointData` record and back); persistence is the consumer's responsibility behind this contract.
 
-`Dagonizer` ships one reference implementation, `MemoryCheckpointStore`, suitable for tests and ephemeral demos. Production deployments implement `CheckpointStore` against their database/object store of choice.
+## API surface
+
+| Symbol | Source | Role |
+|--------|--------|------|
+| `CheckpointStore` | `@noocodex/dagonizer/contracts` | Adapter contract: `save`, `load`, `delete` |
+| `MemoryCheckpointStore` | `@noocodex/dagonizer/checkpoint` | In-memory reference implementation (tests, demos) |
+| `ckpt.persist(store, key)` | instance method | Serializes and writes via the store |
+| `Checkpoint.recall(store, key)` | `@noocodex/dagonizer/checkpoint` | Reads, parses, validates, wraps |
 
 ## The contract
 
@@ -35,57 +38,46 @@ interface CheckpointStore {
 }
 ```
 
-Three methods. `load` returns `null` when no entry exists. Implementations handle their own concurrency, retries, and serialization details.
+`load` returns `null` when no entry exists. Implementations handle their own concurrency, retries, and serialization details.
 
-## Persist + recall
+## Persist + recall lifecycle
 
 ```mermaid
 flowchart TB
   exec([dispatcher.execute])
   result([ExecutionResult\ncursor != null])
-  from[Checkpoint.from]
-  persist[Checkpoint.persist]
+  capture[Checkpoint.capture]
+  persist[ckpt.persist]
   store[(CheckpointStore)]
   recall[Checkpoint.recall]
+  restore[ckpt.restoreState]
   resume([dispatcher.resume])
   exec --> result
-  result --> from
-  from --> persist
+  result --> capture
+  capture --> persist
   persist --> store
   store --> recall
-  recall --> resume
+  recall --> restore
+  restore --> resume
 ```
 
-`Checkpoint.persist` and `Checkpoint.recall` compose the codec with a store:
+The diagram traces method invocations across the save and resume halves. It is not a Dagonizer DAG; it is a sequence over the codec API.
 
-```ts
-import { Checkpoint, MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
+## Persist with `ckpt.persist`
 
-const store = new MemoryCheckpointStore();
+<<< @/../examples/08-checkpoint.ts#persist
 
-// Save
-const result = await dispatcher.execute('process', new MyState(), { signal });
-if (result.cursor !== null) {
-  const data = Checkpoint.from('process', result);
-  await Checkpoint.persist(store, 'ckpt:process', data);
-}
+`ckpt.persist(store, key)` calls `store.save(key, ckpt.toJson())`. One call covers serialization plus storage.
 
-// Recall
-const recalled = await Checkpoint.recall(
-  store,
-  'ckpt:process',
-  (snap) => MyState.restore(snap),
-);
-if (recalled !== null) {
-  await dispatcher.resume(recalled.dagName, recalled.state, recalled.cursor);
-}
-```
+## Recall with `Checkpoint.recall`
 
-`Checkpoint.recall` returns `null` when no entry exists under the key, or a `RecalledCheckpoint<TState>` carrying the rehydrated state, the dag name, the resume cursor, and the executed/skipped node histories.
+<<< @/../examples/08-checkpoint.ts#recall
+
+`Checkpoint.recall` returns `null` when the key is absent, or a `Checkpoint` instance whose `restoreState` yields the rehydrated state, the dag name, the resume cursor, and the executed/skipped node histories.
 
 ## Implementing a custom store
 
-Implement the three methods against your backend.
+Implement the three methods against the backend.
 
 ```ts
 import type { CheckpointStore } from '@noocodex/dagonizer/contracts';
@@ -127,7 +119,7 @@ The same pattern works for Redis, S3, file system, etcd, or any other key/value 
 
 ## Snapshot round-trip
 
-`Checkpoint.from` calls `state.snapshot()` and packages the result with the cursor and execution history. State subclasses that carry domain-specific fields override `snapshotData()` and `restoreData()`:
+`Checkpoint.capture` calls `state.snapshot()` and packages the result with the cursor and execution history. State subclasses that carry domain-specific fields override `snapshotData()` and `restoreData()`:
 
 ```ts
 class PipelineState extends NodeStateBase {
@@ -152,7 +144,7 @@ Lifecycle resets to `pending` on restore. Resume starts a fresh lifecycle run on
 
 ## Schema validation on recall
 
-`Checkpoint.recall` runs the JSON through `Validator.checkpoint.validate(parsed)` before rehydrating. Tampered or version-mismatched payloads throw `ValidationError`. The same goes for `Checkpoint.restore` (which `recall` composes with).
+`Checkpoint.recall` runs the JSON through `Validator.checkpoint.validate(parsed)` before wrapping it. Tampered or version-mismatched payloads throw `ValidationError`. The same goes for `Checkpoint.load` (which `recall` composes with).
 
 ## Testing with `MemoryCheckpointStore`
 
@@ -160,12 +152,25 @@ Lifecycle resets to `pending` on restore. Resume starts a fresh lifecycle run on
 import { MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
 
 const store = new MemoryCheckpointStore();
-// drive your test against `store` exactly as production code would
+// drive the test against `store` exactly as production code would
 ```
 
 `MemoryCheckpointStore` exposes a read-only `size` getter for assertions about how many entries the store holds.
+
+## Fan-out resume artefacts
+
+Fan-out placements persist per-item progress under a reserved metadata key (`FAN_OUT_PROGRESS_KEY === '__dagonizer_fan_out_progress__'`). When a checkpoint captures a state mid-fan-out, this key carries the indices of already-completed items so the resumed run can skip them instead of re-issuing every external call from scratch.
+
+Three persistence-side implications:
+
+1. **The key counts toward checkpoint payload size.** A 200-item fan-out interrupted at item 150 stores 150 numeric indices plus their output tags. Plan capacity in the `CheckpointStore` with this in mind; the payload still serialises as a single JSON document.
+2. **Per-batch write cadence.** The dispatcher writes the progress entry once per fan-out batch (not once per item). The persisted metadata is consistent with the batch boundary that was last `await`-ed; a crash during a batch leaves the previously-completed batch persisted and the in-flight batch unreported.
+3. **Indices are array positions in the source at resume time.** If the `CheckpointStore` is read across processes that may rebuild state with a different source array, the resumed fan-out skips by position, not by item identity. Treat the source as immutable while a fan-out checkpoint is live, or clear the progress entry before calling `dispatcher.resume()` when the source has changed.
+
+The reserved key piggybacks on `NodeStateBase.metadata`, so any `CheckpointStore` that already round-trips the `JsonObject` snapshot supports fan-out resume with no additional adapter changes. See [Checkpoint and Resume](./checkpoint#fan-out-resume-per-item-progress) for the executable contract and index-semantics worked example.
+
 ## Related reference
 
-- [Reference: Contracts — `CheckpointStore`](../reference/contracts)
+- [Reference: Contracts](../reference/contracts)
 - [Reference: Checkpoint](../reference/checkpoint)
-- [Example: Checkpoint Resume](../examples/08-checkpoint)
+- [Demo: Phase 08 Checkpoint resume](../examples/08-checkpoint)

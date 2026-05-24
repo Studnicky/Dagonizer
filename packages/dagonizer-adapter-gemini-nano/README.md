@@ -2,7 +2,7 @@
 
 > **Beta — not yet published to npm.** Ships in v0.10.0 as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format compatibility is verified via intercepted-fetch smoke tests. Expect minor adjustments before 1.0.
 
-Chrome on-device Gemini Nano adapter for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Uses the [Chrome Prompt API](https://developer.chrome.com/docs/ai/prompt-api) (`window.LanguageModel`).
+Browser built-in LanguageModel adapter for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Uses the [Prompt API](https://developer.chrome.com/docs/ai/prompt-api) (`window.LanguageModel`) implemented by Chrome 138+ and Edge.
 
 ## Install
 
@@ -17,7 +17,7 @@ import { GeminiNanoAdapter, detectGeminiNano } from '@noocodex/dagonizer-adapter
 
 const status = await detectGeminiNano(); // 'available' | 'downloadable' | 'downloading' | 'unavailable'
 if (status !== 'available') {
-  throw new Error(`Gemini Nano not ready: ${status}`);
+  throw new Error(`Browser built-in LanguageModel not ready: ${status}`);
 }
 
 const llm = new GeminiNanoAdapter();
@@ -25,7 +25,7 @@ const llm = new GeminiNanoAdapter();
 
 ## Browser requirements
 
-- Chrome 138+ stable (or earlier with `chrome://flags/#prompt-api-for-gemini-nano` enabled)
+- Chrome 138+ or Edge (or earlier Chrome with `chrome://flags/#prompt-api-for-gemini-nano` enabled)
 - The ~2 GB on-device model — visit `chrome://components` to trigger the download
 - Desktop only — no mobile browser exposes the Prompt API
 

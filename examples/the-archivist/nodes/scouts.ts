@@ -35,10 +35,31 @@
  */
 
 import type { ArchivistState } from '../ArchivistState.ts';
+import type { Candidate } from '../entities/Book.ts';
+import { UserLanguage } from '../language/UserLanguage.ts';
 import type { ArchivistServices } from '../services.ts';
 
 import type { NodeInterface } from '@noocodex/dagonizer';
 import { BackoffStrategy, RetryPolicy } from '@noocodex/dagonizer/runtime';
+
+/**
+ * Filter scout-returned candidates down to those in the visitor's
+ * language. Candidates with no language metadata pass through (the
+ * source did not report a language — degrade gracefully). Candidates
+ * whose reported language array does NOT contain the target ISO 639-2
+ * code are dropped.
+ */
+function filterByLanguage(
+  candidates: readonly Candidate[],
+  userLanguage: string,
+): readonly Candidate[] {
+  const target = UserLanguage.toIso6392(userLanguage);
+  return candidates.filter((c) => {
+    const langs = c.book.languages;
+    if (langs === undefined || langs.length === 0) return true;
+    return langs.includes(target);
+  });
+}
 
 // #region scout-retry
 const scoutRetry = new RetryPolicy({
@@ -90,13 +111,15 @@ export const webSearchScout: NodeInterface<ArchivistState, 'success' | 'empty', 
     if (query.length === 0) return { "output": 'empty' };
     try {
       const tool = context.services.webSearch;
-      context.services.logger.info(`web search: "${query}" (limit ${String(args.limit ?? 8)})`);
-      const candidates = await scoutRetry.run(
-        () => tool.execute({ query, "limit": args.limit ?? 8 }, context.signal),
+      const lang = UserLanguage.toIso6392(state.userLanguage);
+      context.services.logger.info(`web search: "${query}" (limit ${String(args.limit ?? 8)}, lang ${lang})`);
+      const rawCandidates = await scoutRetry.run(
+        () => tool.execute({ query, "limit": args.limit ?? 8, "lang": lang }, context.signal),
         context.signal,
       );
+      const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
-      context.services.logger.info(`web search: ${String(candidates.length)} hits`);
+      context.services.logger.info(`web search: ${String(candidates.length)} hits (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
       if (candidates.length === 0) {
         state.failureCause += `OpenLibrary: 0 hits for "${query}". `;
       }
@@ -137,13 +160,15 @@ export const openLibraryScout: NodeInterface<ArchivistState, 'success' | 'empty'
     if (query.length === 0) return { "output": 'empty' };
     try {
       const tool = context.services.webSearch;
-      context.services.logger.info(`openlibrary: "${query}" (limit ${String(args.limit ?? 8)})`);
-      const candidates = await scoutRetry.run(
-        () => tool.execute({ query, "limit": args.limit ?? 8 }, context.signal),
+      const lang = UserLanguage.toIso6392(state.userLanguage);
+      context.services.logger.info(`openlibrary: "${query}" (limit ${String(args.limit ?? 8)}, lang ${lang})`);
+      const rawCandidates = await scoutRetry.run(
+        () => tool.execute({ query, "limit": args.limit ?? 8, "lang": lang }, context.signal),
         context.signal,
       );
+      const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
-      context.services.logger.info(`openlibrary: ${String(candidates.length)} hits`);
+      context.services.logger.info(`openlibrary: ${String(candidates.length)} hits (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
       if (candidates.length === 0) {
         state.failureCause += `OpenLibrary: 0 hits for "${query}". `;
       }
@@ -184,13 +209,15 @@ export const googleBooksScout: NodeInterface<ArchivistState, 'success' | 'empty'
     if (query.length === 0) return { "output": 'empty' };
     try {
       const tool = context.services.googleBooks;
-      context.services.logger.info(`google-books: "${query}" (max ${String(args.maxResults ?? 8)})`);
-      const candidates = await scoutRetry.run(
-        () => tool.execute({ query, "maxResults": args.maxResults ?? 8 }, context.signal),
+      const langRestrict = UserLanguage.normalize(state.userLanguage);
+      context.services.logger.info(`google-books: "${query}" (max ${String(args.maxResults ?? 8)}, langRestrict ${langRestrict})`);
+      const rawCandidates = await scoutRetry.run(
+        () => tool.execute({ query, "maxResults": args.maxResults ?? 8, "langRestrict": langRestrict }, context.signal),
         context.signal,
       );
+      const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
-      context.services.logger.info(`google-books: ${String(candidates.length)} hits`);
+      context.services.logger.info(`google-books: ${String(candidates.length)} hits (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
       if (candidates.length === 0) {
         state.failureCause += `Google Books: 0 hits for "${query}". `;
       }
@@ -217,7 +244,6 @@ export const googleBooksScout: NodeInterface<ArchivistState, 'success' | 'empty'
 
 export const subjectScout: NodeInterface<ArchivistState, 'success' | 'empty', ArchivistServices> = {
   "name":      'subject-scout',
-  "kind":      'non-deterministic',
   "outputs":   ['success', 'empty'],
   "timeoutMs": 60_000,
   async execute(state, context) {
@@ -231,13 +257,15 @@ export const subjectScout: NodeInterface<ArchivistState, 'success' | 'empty', Ar
     if (subject.length === 0) return { "output": 'empty' };
     try {
       const tool = context.services.subjectSearch;
-      context.services.logger.info(`subject-search: "${subject}" (limit ${String(args.limit ?? 8)})`);
-      const candidates = await scoutRetry.run(
-        () => tool.execute({ subject, "limit": args.limit ?? 8 }, context.signal),
+      const lang = UserLanguage.toIso6392(state.userLanguage);
+      context.services.logger.info(`subject-search: "${subject}" (limit ${String(args.limit ?? 8)}, lang ${lang})`);
+      const rawCandidates = await scoutRetry.run(
+        () => tool.execute({ subject, "limit": args.limit ?? 8, "lang": lang }, context.signal),
         context.signal,
       );
+      const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
-      context.services.logger.info(`subject-search: ${String(candidates.length)} hits`);
+      context.services.logger.info(`subject-search: ${String(candidates.length)} hits (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
       if (candidates.length === 0) {
         state.failureCause += `Subject search: 0 hits for "${subject}". `;
       }
@@ -271,13 +299,15 @@ export const wikipediaScout: NodeInterface<ArchivistState, 'success' | 'empty', 
     if (query.length === 0) return { "output": 'empty' };
     try {
       const tool = context.services.wikipediaSummary;
-      context.services.logger.info(`wikipedia: "${query}"`);
-      const candidates = await scoutRetry.run(
-        () => tool.execute({ query }, context.signal),
+      const lang = UserLanguage.normalize(state.userLanguage);
+      context.services.logger.info(`wikipedia: "${query}" (lang ${lang})`);
+      const rawCandidates = await scoutRetry.run(
+        () => tool.execute({ query, "lang": lang }, context.signal),
         context.signal,
       );
+      const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
-      context.services.logger.info(`wikipedia: ${String(candidates.length)} hits`);
+      context.services.logger.info(`wikipedia: ${String(candidates.length)} hits (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
       if (candidates.length === 0) {
         state.failureCause += `Wikipedia: 0 hits for "${query}". `;
       }

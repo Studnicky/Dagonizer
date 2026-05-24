@@ -44,15 +44,15 @@ export class StubAdapter extends BaseAdapter {
   #error: Error | undefined;
 
   constructor(opts: StubAdapterOptions = {}) {
-    super({
-      'id': 'stub',
-      'displayName': 'Canned responses (no real LLM)',
+    super(
+      'stub',
+      'Canned responses (no real LLM)',
       // The default declares 'none' so consumers know there's no real
       // intelligence behind the responses. Subclasses that emit
       // structured tool calls or JSON re-declare via their super() call.
-      'capabilities': { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false },
-      'maxAttempts': opts.maxAttempts ?? 1,
-    });
+      { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false },
+      { 'maxAttempts': opts.maxAttempts ?? 1 },
+    );
     this.#defaultResponse = opts.defaultResponse ?? '(stub adapter — no model attached)';
     this.#queue = opts.responses === undefined ? [] : [...opts.responses];
     this.#error = opts.error;
@@ -82,6 +82,16 @@ export class StubAdapter extends BaseAdapter {
     this.#invocations.length = 0;
     this.#queue.length = 0;
     this.#error = undefined;
+  }
+
+  /**
+   * Stub adapter never wins a cascade. Probe always returns false so
+   * the stub is opt-in only — consumers must construct and inject it
+   * explicitly. A cascade with nothing else available fails loud
+   * rather than silently degrading to canned responses.
+   */
+  override async probe(): Promise<boolean> {
+    return Promise.resolve(false);
   }
 
   override async chat(request: ChatRequest): Promise<ChatResponse> {

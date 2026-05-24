@@ -1,0 +1,32 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module":           "esnext",
+    "moduleResolution": "bundler",
+    "noEmit":           true,
+    "target":           "es2022",
+    "allowImportingTsExtensions": true,
+    "types":            ["vite/client", "node"],
+    "lib":              ["ES2024", "DOM", "DOM.Iterable"]
+  },
+  "include": [
+    "main.ts",
+    "runArchivist.ts",
+    "vite.config.ts",
+    "ArchivistState.ts",
+    "dag.ts",
+    "services.ts",
+    "embedded-dags/**/*.ts",
+    "entities/**/*.ts",
+    "logger/**/*.ts",
+    "memory/**/*.ts",
+    "nodes/**/*.ts",
+    "ontology/**/*.ts",
+    "providers/**/*.ts",
+    "provenance/**/*.ts",
+    "state/**/*.ts",
+    "tools/**/*.ts",
+    "data/**/*.ts",
+    "tests/**/*.ts"
+  ]
+}

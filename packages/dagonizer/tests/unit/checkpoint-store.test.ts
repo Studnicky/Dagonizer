@@ -46,38 +46,35 @@ void describe('MemoryCheckpointStore', () => {
   });
 });
 
-void describe('Checkpoint.persist + Checkpoint.recall', () => {
+void describe('ckpt.persist + Checkpoint.recall', () => {
   void it('round-trips a checkpoint through a CheckpointStore', async () => {
-    const store = new MemoryCheckpointStore();
-    await Checkpoint.persist(store, 'demo:1', SAMPLE_CHECKPOINT);
+    const cpStore = new MemoryCheckpointStore();
+    const ckpt = Checkpoint.load(SAMPLE_CHECKPOINT);
+    await ckpt.persist(cpStore, 'demo:1');
 
-    const recalled = await Checkpoint.recall<StoreState>(
-      store,
-      'demo:1',
+    const recalled = await Checkpoint.recall(cpStore, 'demo:1');
+    assert.ok(recalled !== null);
+
+    const { dagName, cursor, state, executedNodes } = recalled.restoreState<StoreState>(
       (snap) => StoreState.restore(snap),
     );
-    assert.ok(recalled !== null);
-    assert.equal(recalled.dagName, 'demo');
-    assert.equal(recalled.cursor, 'next-node');
-    assert.equal(recalled.state.value, 7);
-    assert.deepEqual([...recalled.executedNodes], ['first']);
+    assert.equal(dagName, 'demo');
+    assert.equal(cursor, 'next-node');
+    assert.equal(state.value, 7);
+    assert.deepEqual([...executedNodes], ['first']);
   });
 
   void it('recall returns null when no entry exists', async () => {
-    const store = new MemoryCheckpointStore();
-    const recalled = await Checkpoint.recall<StoreState>(
-      store,
-      'missing',
-      (snap) => StoreState.restore(snap),
-    );
+    const cpStore = new MemoryCheckpointStore();
+    const recalled = await Checkpoint.recall(cpStore, 'missing');
     assert.equal(recalled, null);
   });
 
   void it('recall throws ValidationError on malformed JSON', async () => {
-    const store = new MemoryCheckpointStore();
-    await store.save('bad', '{not json');
+    const cpStore = new MemoryCheckpointStore();
+    await cpStore.save('bad', '{not json');
     await assert.rejects(
-      Checkpoint.recall<StoreState>(store, 'bad', (snap) => StoreState.restore(snap)),
+      Checkpoint.recall(cpStore, 'bad'),
       ValidationError,
     );
   });

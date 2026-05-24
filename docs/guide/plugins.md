@@ -1,32 +1,47 @@
+---
+title: 'Plugins'
+description: 'Three plugin tiers: adapters (LLM transports), tools (external services), patterns (abstract DAG-node base classes). Each tier consumes a stable subpath: ./adapter, ./tool, ./patterns.'
+seeAlso:
+  - text: 'Architecture'
+    link: '../architecture'
+    description: 'how the dispatcher, contracts, and plugins interlock'
+  - text: 'The Archivist'
+    link: '../examples/the-archivist'
+    description: 'in-browser demo wiring adapters, tools, and patterns together'
+---
+
 # Plugins
 
-> **Beta — v0.10.0 is GitHub-only.** The plugin packages haven't been published to npm yet. Install via the repo + workspace path while we collect live-API smoke confirmation against each provider. The contracts (`./adapter`, `./tool`, `./patterns`) are stable; minor adjustments are expected on each adapter before 1.0.
+Dagonizer ships three tiers of plugins, each installable independently. Every tier consumes a stable subpath surface on the main `@noocodex/dagonizer` package; the surface stays narrow so an adapter package does not pull in pattern code, a tool package does not pull in adapter internals, and so on.
 
-Dagonizer ships three tiers of plugins, each installable independently from npm:
+::: warning Beta
+v0.10.0 is GitHub-only. The plugin packages have not been published to npm yet. Install via the repo + workspace path while live-API smoke confirmation lands against each provider. The contracts (`./adapter`, `./tool`, `./patterns`) are stable; minor adjustments are expected on each adapter before 1.0.
+:::
 
-| Tier | Packages | Shape |
-|---|---|---|
-| **Adapters** | `@noocodex/dagonizer-adapter-*` (8) | Concrete drop-in classes |
-| **Tools** | `@noocodex/dagonizer-tool-*` (3) | Concrete static classes |
-| **Patterns** | `@noocodex/dagonizer-patterns-*` (3) | Abstract base classes consumers extend |
+## Plugin tiers
 
-Every plugin builds on a stable subpath surface exposed by the main `@noocodex/dagonizer` package:
+| Tier | Subpath consumed | Packages | Shape |
+|------|------------------|----------|-------|
+| **Adapters** | `@noocodex/dagonizer/adapter` | `@noocodex/dagonizer-adapter-*` (8) | Concrete drop-in classes |
+| **Tools** | `@noocodex/dagonizer/tool` (+ `/adapter`) | `@noocodex/dagonizer-tool-*` (3) | Concrete static classes |
+| **Patterns** | `@noocodex/dagonizer/patterns` (+ `/adapter`, `/tool`) | `@noocodex/dagonizer-patterns-*` (3) | Abstract base classes consumers extend |
 
-- `@noocodex/dagonizer/adapter` — `LlmAdapter`, `BaseAdapter`, `ChatRequest`/`Response`, `AdapterCapabilities`, error taxonomy
-- `@noocodex/dagonizer/tool` — `Tool` interface, `ToolError`, `HttpTransport`
-- `@noocodex/dagonizer/patterns` — `MonadicNode` root, service contracts (`LlmClient`, `TripleStore`, `SearchTool`)
+## `@noocodex/dagonizer/adapter`
 
-## Adapters
+The adapter subpath exposes everything an LLM-provider adapter needs:
 
-An adapter wraps one LLM provider's transport. The contract is provider-neutral by construction — every adapter takes a `ChatRequest` and returns a `ChatResponse`.
+| Symbol | Role |
+|--------|------|
+| `LlmAdapter` | The contract every adapter implements (`chat(ChatRequest): Promise<ChatResponse>`) |
+| `BaseAdapter` | Abstract base with retry, error classification, request normalization |
+| `OpenAiCompatibleAdapter` | Concrete base for OpenAI-shaped HTTP backends |
+| `LlmAdapterCascade`, `LlmAdapterRegistry`, `AdapterDescriptor` | Multi-adapter routing |
+| `EmbedderCascade`, `EmbedderRegistry`, `BaseEmbedder` | Embedding model cascade |
+| `ChatRequest`, `ChatResponse`, `ChatRequestBuilder`, `ChatResponseMessageBuilder` | Wire types and value factories |
+| `LlmError`, `Classifications`, `classifyHttp`, `asNetworkError` | Error taxonomy |
+| `AdapterCapabilities`, `ToolCall`, `ToolChoice`, `ToolDefinition`, `TokenUsage` | Capability metadata |
 
-Install:
-
-```bash
-npm install @noocodex/dagonizer @noocodex/dagonizer-adapter-groq
-```
-
-Use:
+### Using an adapter
 
 ```ts
 import { GroqApiAdapter } from '@noocodex/dagonizer-adapter-groq';
@@ -39,7 +54,9 @@ const response = await adapter.chat(ChatRequestBuilder.from({
 console.log(response.message);
 ```
 
-Write your own adapter by extending `BaseAdapter` and implementing `performChat`:
+### Writing an adapter
+
+Extend `BaseAdapter` and implement `performChat`:
 
 ```ts
 import { BaseAdapter, ChatResponseMessageBuilder, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
@@ -55,7 +72,7 @@ export class MyAdapter extends BaseAdapter {
   }
 
   protected async performChat(request: ChatRequest): Promise<ChatResponse> {
-    // Hit your provider, parse response.
+    // Hit the provider, parse response.
     return {
       message: ChatResponseMessageBuilder.from('hello back', []),
       finishReason: 'stop',
@@ -65,9 +82,17 @@ export class MyAdapter extends BaseAdapter {
 }
 ```
 
-## Tools
+## `@noocodex/dagonizer/tool`
 
-Tools wrap external services (HTTP APIs, databases, file systems). Every tool ships a `ToolDefinition` (the JSON-Schema surface the LLM sees) plus an `execute()` the dispatcher invokes.
+The tool subpath exposes a small surface for external-service wrappers:
+
+| Symbol | Role |
+|--------|------|
+| `Tool<TInput, TOutput>` | Contract: `definition` (the JSON-Schema LLM-facing surface) + `execute(input, signal)` |
+| `ToolError` | Error type with `classification.reason` |
+| `HttpTransport` | Built-in retry, timeout, abort propagation, JSON parsing for HTTP-backed tools |
+
+### Using a tool
 
 ```ts
 import { OpenLibrarySearchTool } from '@noocodex/dagonizer-tool-openlibrary';
@@ -75,7 +100,7 @@ import { OpenLibrarySearchTool } from '@noocodex/dagonizer-tool-openlibrary';
 const candidates = await OpenLibrarySearchTool.execute({ query: 'labyrinths' });
 ```
 
-Write your own tool by implementing `Tool<TInput, TOutput>`:
+### Writing a tool
 
 ```ts
 import type { Tool } from '@noocodex/dagonizer/tool';
@@ -98,16 +123,24 @@ export const MyTool: Tool<{ q: string }, readonly string[]> = {
 };
 ```
 
-`HttpTransport` handles retry on 429/5xx/network, abort propagation, JSON parsing, and timeout — every tool gets it for free.
+`HttpTransport` handles retry on 429/5xx/network, abort propagation, JSON parsing, and timeout; every tool gets it for free.
 
-## Patterns
+## `@noocodex/dagonizer/patterns`
 
-Patterns are abstract base classes for the recurring shapes a DAG node takes (decide, compose, scout, recall, dedupe, gate, etc.). Each pattern owns the dispatch loop; the consumer injects the domain-specific pieces via abstract methods.
+The patterns subpath exposes the abstract `MonadicNode` root plus the service contracts pattern packages depend on:
 
-The taxonomy:
+| Symbol | Role |
+|--------|------|
+| `MonadicNode<TState, TOutput, TServices>` | Abstract base class. Owns the dispatch loop; subclasses inject domain pieces via abstract methods |
+| `LlmClient` | Service contract: `chat(ChatRequest): Promise<ChatResponse>` (subset of `LlmAdapter`) |
+| `TripleStore` | Service contract: `assert`, `ask`, `select`, `count`, `clearGraph`, `triples` |
+| `SearchTool` | Service contract: tool-like search returning `readonly Candidate[]` |
+| `Binding`, `Quad`, `SlotPattern`, `Term` | RDF value types used by `TripleStore` |
+
+### Pattern taxonomy
 
 ```
-MonadicNode<TState, TOutput, TServices>            (root — main package)
+MonadicNode<TState, TOutput, TServices>            (root: main package)
 │
 ├── DecisionNode<TState, TChoice>                  [patterns-rag]
 ├── ComposeNode<TState>                            [patterns-rag]
@@ -124,7 +157,7 @@ MonadicNode<TState, TOutput, TServices>            (root — main package)
     └── RespondNode
 ```
 
-Example — classify visitor intent into one of four tokens:
+### Example: classifying intent
 
 ```ts
 import { DecisionNode } from '@noocodex/dagonizer-patterns-rag';
@@ -162,13 +195,14 @@ The pattern handles LLM dispatch, retry, abort propagation, contract field forwa
 
 Each contract subpath is independently consumable:
 
-- An **adapter package** depends on `@noocodex/dagonizer/adapter` only — never pulls in the pattern surface.
-- A **tool package** depends on `@noocodex/dagonizer/tool` + `/adapter` (for `ToolDefinition`) — never pulls in patterns.
+- An **adapter package** depends on `@noocodex/dagonizer/adapter` only; never pulls in the pattern surface.
+- A **tool package** depends on `@noocodex/dagonizer/tool` + `/adapter` (for `ToolDefinition`); never pulls in patterns.
 - A **pattern package** depends on `@noocodex/dagonizer/patterns` (root) + occasionally `/adapter` (RAG patterns need LLM types) + `/tool` (ScoutNode references `Tool`).
 
-You install only what you use. The dependency graph stays acyclic.
+Consumers install only what they use. The dependency graph stays acyclic.
 
-## See also
+## Related reference
 
-- [Architecture](../architecture) — how the dispatcher, contracts, and plugins interlock
-- [The Archivist](../examples/the-archivist) — full working consumer of every tier
+- [Architecture](../architecture)
+- [Demo: The Archivist](../examples/the-archivist)
+- [Reference: Contracts](../reference/contracts)

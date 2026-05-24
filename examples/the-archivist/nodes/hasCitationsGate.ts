@@ -35,7 +35,12 @@ export const hasCitationsGate: ArchivistNode<'pass' | 'fail'> = {
       'object':    MemoryStore.lit.bool(true),
       'graph':     graph,
     });
-    if (shortlisted.length === 0) return { 'output': 'fail' };
+    if (shortlisted.length === 0) {
+      if (state.failureCause.trim().length === 0) {
+        state.failureCause = 'No candidates found after searching all available sources. ';
+      }
+      return { 'output': 'fail' };
+    }
     for (const row of shortlisted) {
       const book = row['book'];
       if (book === undefined) continue;
@@ -50,6 +55,9 @@ export const hasCitationsGate: ArchivistNode<'pass' | 'fail'> = {
         );
         return { 'output': 'pass' };
       }
+    }
+    if (state.failureCause.trim().length === 0) {
+      state.failureCause = 'No candidates found after searching all available sources. ';
     }
     return { 'output': 'fail' };
   },

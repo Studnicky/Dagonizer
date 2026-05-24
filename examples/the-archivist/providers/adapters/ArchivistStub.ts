@@ -12,6 +12,7 @@
  */
 
 import { StubAdapter } from '@noocodex/dagonizer-adapter-stub';
+import { ChatResponseMessageBuilder, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
 import type { ChatRequest, ChatResponse, ToolCall, ToolDefinition } from '@noocodex/dagonizer/adapter';
 
 import { SeedLibrary } from '../../data/SeedLibrary.js';
@@ -34,31 +35,31 @@ export class ArchivistStub extends StubAdapter {
     const query = lastUser?.content ?? '';
 
     if (isExplainToolPrompt(query)) {
-      return { 'message': { 'content': cannedToolExplanation(query) }, 'finishReason': 'stop' };
+      return { 'message': ChatResponseMessageBuilder.from(cannedToolExplanation(query), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
     }
 
     if (isStarterQueryPrompt(query)) {
-      return { 'message': { 'content': starterQuery() }, 'finishReason': 'stop' };
+      return { 'message': ChatResponseMessageBuilder.from(starterQuery(), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
     }
 
     if (isGreetingPrompt(query)) {
-      return { 'message': { 'content': stubGreeting() }, 'finishReason': 'stop' };
+      return { 'message': ChatResponseMessageBuilder.from(stubGreeting(), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
     }
 
     if (isVisitorReplyPrompt(query)) {
-      return { 'message': { 'content': stubVisitorReply() }, 'finishReason': 'stop' };
+      return { 'message': ChatResponseMessageBuilder.from(stubVisitorReply(), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
     }
 
     if (request.tools !== undefined && request.tools.length > 0 && shouldInvokeWebSearch(query)) {
       const calls = toolCallFor(query, request.tools);
-      return { 'message': { 'toolCalls': calls }, 'finishReason': 'tool_call' };
+      return { 'message': ChatResponseMessageBuilder.from('', calls), 'finishReason': 'tool_call', 'usage': ZERO_TOKEN_USAGE };
     }
 
     if (request.outputSchema !== undefined) {
       return Promise.resolve(groundedDecideTools(query, request.tools ?? []));
     }
 
-    return { 'message': { 'content': groundedAnswer(query, this.#shelfSize()) }, 'finishReason': 'stop' };
+    return { 'message': ChatResponseMessageBuilder.from(groundedAnswer(query, this.#shelfSize()), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
   }
 
   /** Count live `?book rdf:type dag:Book` triples in the store. */
@@ -80,19 +81,19 @@ function groundedDecideTools(query: string, tools: readonly ToolDefinition[]): C
 
   if (matches.length > 0 && webSearch !== undefined) {
     const visitor = query.split(/visitor question:/iu)[1]?.trim() ?? query.slice(-200);
+    const calls: readonly ToolCall[] = [{
+      'id':        `stub-${String(Date.now())}`,
+      'name':      webSearch.name,
+      'arguments': { 'query': visitor, 'limit': 5 },
+    }];
     return {
-      'message': {
-        'toolCalls': [{
-          'id':        `stub-${String(Date.now())}`,
-          'name':      webSearch.name,
-          'arguments': { 'query': visitor, 'limit': 5 },
-        }],
-      },
+      'message': ChatResponseMessageBuilder.from('', calls),
       'finishReason': 'tool_call',
+      'usage': ZERO_TOKEN_USAGE,
     };
   }
 
-  return { 'message': { 'content': JSON.stringify({ 'tool_calls': [] }) }, 'finishReason': 'stop' };
+  return { 'message': ChatResponseMessageBuilder.from(JSON.stringify({ 'tool_calls': [] }), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
 }
 
 function groundedAnswer(query: string, shelfSize: number): string {

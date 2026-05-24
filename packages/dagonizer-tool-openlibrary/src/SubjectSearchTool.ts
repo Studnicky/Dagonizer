@@ -49,6 +49,8 @@ interface OpenLibraryDoc {
   readonly first_sentence?: readonly string[];
   /** Some search responses include a description; many don't. */
   readonly description?: string | { value?: string };
+  /** ISO 639-2 (alpha-3) language codes the work is published in. */
+  readonly language?: readonly string[];
 }
 
 interface OpenLibraryResponse {
@@ -59,6 +61,7 @@ interface OpenLibraryResponse {
 interface SubjectSearchInput extends Record<string, unknown> {
   readonly subject: string;
   readonly limit?: number;
+  readonly lang?: string;
 }
 
 const ENDPOINT = 'https://openlibrary.org/search.json';
@@ -87,6 +90,10 @@ const definition: ToolDefinition = {
         'description': 'Maximum number of results to return.',
         'examples':    [8],
       },
+      'lang': {
+        'type':        'string',
+        'description': 'Optional ISO 639-2 language code (e.g. eng, fre, jpn) to restrict results to that language.',
+      },
     },
     'required': ['subject'],
   },
@@ -102,6 +109,9 @@ export const SubjectSearchTool: Tool<SubjectSearchInput, readonly Candidate[]> =
       'subject': input.subject,
       'limit':   String(limit),
     });
+    if (input.lang !== undefined && input.lang.length > 0) {
+      params.set('lang', input.lang);
+    }
 
     const initOptions: RequestInit & { signal?: AbortSignal } = { 'method': 'GET' };
     if (signal !== undefined) initOptions.signal = signal;
@@ -136,6 +146,7 @@ export const SubjectSearchTool: Tool<SubjectSearchInput, readonly Candidate[]> =
           ...(doc.first_publish_year !== undefined ? { 'firstPublishYear': doc.first_publish_year } : {}),
           ...(subjects !== undefined ? { 'subjects': subjects } : {}),
           ...(doc.publisher !== undefined ? { 'publishers': doc.publisher.slice(0, 4) } : {}),
+          ...(doc.language !== undefined && doc.language.length > 0 ? { 'languages': doc.language } : {}),
         },
         'score':  0,
         'source': 'subject-search',

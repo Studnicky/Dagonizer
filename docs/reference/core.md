@@ -55,9 +55,9 @@ The dispatcher resolves a combiner by `name` (the placement's `combine` field) a
 
 ### Defaults
 
-- `all-success` — returns `'success'` iff every node reported `'success'`, else `'error'`.
-- `any-success` — returns `'success'` iff any node reported `'success'`, else `'error'`.
-- `collect` — writes `Record<nodeName, output>` to `state.metadata.parallelOutputs` and returns `'success'`.
+- `all-success`. Returns `'success'` iff every node reported `'success'`, else `'error'`.
+- `any-success`. Returns `'success'` iff any node reported `'success'`, else `'error'`.
+- `collect`. Writes `Record<nodeName, output>` to `state.metadata.parallelOutputs` and returns `'success'`.
 
 ## ParallelCombiners
 
@@ -106,9 +106,9 @@ Per-invocation context handed to the strategy. `state` is the live node state; `
 
 ### Defaults
 
-- `append` — flatten every result bucket and append to the path at `config.target`. Throws `DAGError` if `target` is missing.
-- `partition` — for each `[output, path]` in `config.partitions`, append the matching bucket to that path.
-- `custom` — sets `state.metadata.fanInResults` to `Object.fromEntries(execution.results)` and invokes the registered node at `config.customNode` via `execution.invokeNode`.
+- `append`. Flatten every result bucket and append to the path at `config.target`. Throws `DAGError` when `target` is missing.
+- `partition`. For each `[output, path]` in `config.partitions`, append the matching bucket to that path.
+- `custom`. Sets `state.metadata.fanInResults` to `Object.fromEntries(execution.results)` and invokes the registered node at `config.customNode` via `execution.invokeNode`.
 
 ## FanInStrategies
 
@@ -125,5 +125,5 @@ class FanInStrategies {
 Same semantics as `ParallelCombiners`.
 ## Related guides
 
-- [DAGBuilder](../guide/builder) — placements that use `combine` and `fanIn.strategy`
-- [State accessors](../guide/state-accessor) — strategies receive the dispatcher's `accessor`
+- [DAGBuilder](../guide/builder): placements that use `combine` and `fanIn.strategy`
+- [State accessors](../guide/state-accessor): strategies receive the dispatcher's `accessor`

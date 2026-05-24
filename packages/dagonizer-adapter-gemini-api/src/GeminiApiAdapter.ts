@@ -19,7 +19,7 @@
  * taxonomy.
  */
 
-import { BaseAdapter, ChatResponseMessageBuilder as ChatResponseMessage, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
 import type {
   ChatMessage,
   ChatRequest,
@@ -50,7 +50,6 @@ interface GeminiResponseBody {
 }
 
 export interface GeminiApiAdapterOptions {
-  readonly apiKey: string;
   readonly model?: string;
   readonly maxAttempts?: number;
 }
@@ -59,15 +58,26 @@ export class GeminiApiAdapter extends BaseAdapter {
   readonly #apiKey: string;
   readonly #model:  string;
 
-  constructor(options: GeminiApiAdapterOptions) {
-    super({
-      'id': 'gemini-api',
-      'displayName': 'Gemini API (your AI Studio key)',
-      'capabilities': { 'toolUse': 'full', 'structuredOutput': true, 'jsonMode': true },
-      'maxAttempts': options.maxAttempts ?? 3,
-    });
-    this.#apiKey = options.apiKey;
+  constructor(apiKey: string, options: GeminiApiAdapterOptions = {}) {
+    super(
+      'gemini-api',
+      'Gemini API (your AI Studio key)',
+      { 'toolUse': 'full', 'structuredOutput': true, 'jsonMode': true },
+      { 'maxAttempts': options.maxAttempts ?? 3 },
+    );
+    this.#apiKey = apiKey;
     this.#model  = options.model ?? DEFAULT_MODEL;
+  }
+
+  /**
+   * Probe true when a non-empty API key was supplied. Gemini's REST
+   * surface gates every call on the `key` query parameter; an empty
+   * key is a deterministic 400/403 with no useful retry path, so a
+   * missing key surfaces here as "unavailable" and the cascade
+   * routes elsewhere. Never throws.
+   */
+  override async probe(): Promise<boolean> {
+    return Promise.resolve(this.#apiKey.length > 0);
   }
 
   protected async performChat(request: ChatRequest): Promise<ChatResponse> {
@@ -150,7 +160,7 @@ export class GeminiApiAdapter extends BaseAdapter {
       ? 'tool_call'
       : candidate?.finishReason === 'MAX_TOKENS' ? 'length' : 'stop';
     return {
-      'message': ChatResponseMessage.from(text, toolCalls),
+      'message': ChatResponseMessageBuilder.from(text, toolCalls),
       'finishReason': finishReason,
       'usage': payload.usageMetadata !== undefined
         ? {

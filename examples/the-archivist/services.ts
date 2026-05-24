@@ -47,7 +47,7 @@ export interface ScoredCandidate {
  * (`search` / `describe` / `recommend` / `off-topic`) drive the original
  * pipeline; the four newer intents (`lookup-author` / `find-reviews` /
  * `describe-book` / `recommend-similar`) each route to a dedicated
- * sub-DAG branch. `recall-memories` is the meta-query intent — the
+ * embedded-DAG branch. `recall-memories` is the meta-query intent — the
  * visitor asked what the agent has seen/remembered across sessions.
  */
 export type ClassifiedIntent =
@@ -205,6 +205,7 @@ export type WikipediaSummaryToolContract = Tool<{ query: string } & Record<strin
  */
 export type SubjectSearchToolContract = Tool<{ subject: string; limit?: number } & Record<string, unknown>, readonly Candidate[]>;
 
+// #region services-shape
 export interface ArchivistServices {
   readonly webSearch: WebSearchTool;
   readonly googleBooks: GoogleBooksToolContract;
@@ -219,3 +220,4 @@ export interface ArchivistServices {
   readonly memory: MemoryStore;
   readonly logger: { info(message: string): void; warn(message: string): void };
 }
+// #endregion services-shape

@@ -3,9 +3,9 @@
  *
  * Dagonizer ships no production persistence backend. Consumers implement
  * this interface to put checkpoints in their store of choice (file, kv,
- * postgres, redis, s3). `Checkpoint.persist` and `Checkpoint.recall`
- * compose the store with the codec so a typical save/resume cycle is
- * one method call per side.
+ * postgres, redis, s3). `ckpt.persist(store, key)` and
+ * `Checkpoint.recall(store, key)` compose the store with the codec so
+ * a typical save/resume cycle is one method call per side.
  *
  * Implementations are responsible for their own concurrency and retry
  * policy; the contract is intentionally minimal.

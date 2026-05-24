@@ -2,8 +2,8 @@
  * The Archivist — canonical DAG, built with DAGBuilder. Version 6.0.
  *
  * Molecular composition: the parent DAG is composed of two reusable
- * deep-DAGs that ship as independent components and are imported as
- * `.deepDAG(...)` placements. The deep-DAGs are registered separately
+ * embedded-DAGs that ship as independent components and are imported as
+ * `.embeddedDAG(...)` placements. The embedded-DAGs are registered separately
  * and referenced by name — the parent DAG never knows their internals.
  *
  *   recall-context
@@ -37,11 +37,11 @@
  *
  * Fan-in policy (v6.0): all response-producing branches converge into ONE
  * shared `respond-to-visitor` terminal at this (parent) level. The
- * compose-retry-loop deep-DAG exits with `success` after producing state.draft
+ * compose-retry-loop embedded-DAG exits with `success` after producing state.draft
  * and does NOT contain respondToVisitor internally. This ensures exactly one
  * terminal node fires per run with the full converged state.draft.
  *
- * Deep-DAGs (molecular components):
+ * Embedded-DAGs (molecular components):
  *   book-search-fanout  — extract-query + decide-tools + 4-source parallel scouts
  *                         (OpenLibrary, Google Books, Subject, Wikipedia) + rankCandidates
  *                         + mergeCandidates + recordFindings + hasCitationsGate +
@@ -58,7 +58,7 @@
  *   top-3 title-similar candidates before merge. Both are structurally identical to
  *   book-search-fanout except for the post-scout ranking step — keeping them inline
  *   makes the intentional distinction explicit rather than hiding it behind a
- *   deep-DAG parameter.
+ *   embedded-DAG parameter.
  *
  * Empty-result handling (v5.2):
  *   `decline-empty` (canned response) is replaced by `compose-empty` →
@@ -103,8 +103,9 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
     'recalled': 'classify-intent',
   })
 
+  // #region intent-routes
   // ── 1. classify-intent ───────────────────────────────────────────────────
-  // Wide output union routes to six branches. Sub-DAG placements and inline
+  // Wide output union routes to six branches. Embedded-DAG placements and inline
   // branches share the same shared terminal: compose-loop and compose-empty.
   // recall-memories routes directly to memory-recall → compose-memory-recall
   // → memory-respond (no search fanout needed; the memory store is the source).
@@ -117,47 +118,44 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
     'on-topic':          'on-topic-search',
     'off-topic':         'decline-off-topic',
   })
+  // #endregion intent-routes
 
-  // #region deepdag-placements
+  // #region embedded-dag-placements
   // ── on-topic branch ──────────────────────────────────────────────────────
-  // Deep-DAG placement: book-search-fanout handles extract-query, decide-tools,
+  // Embedded-DAG placement: book-search-fanout handles extract-query, decide-tools,
   // all four scouts, rank-candidates, merge, record, gate, and recall.
-  // One packaged cluster — first of three placements of the same deep-DAG.
-  // stateMapping.output copies the fields the deep-DAG writes back to the
+  // One packaged cluster — first of three placements of the same embedded-DAG.
+  // stateMapping.output copies the fields the embedded-DAG writes back to the
   // parent state so compose-loop and group-by-year can read them.
-  .deepDAG('on-topic-search', 'book-search-fanout', {
+  .embeddedDAG('on-topic-search', 'book-search-fanout', {
     'success': 'compose-loop',
     'error':   'compose-empty',
   }, {
-    'stateMapping': {
-      'output': {
-        'terms':         'terms',
-        'toolPlan':      'toolPlan',
-        'candidates':    'candidates',
-        'shortlist':     'shortlist',
-        'priorContext':  'priorContext',
-        'failureCause':  'failureCause',
-      },
+    'outputs': {
+      'terms':         'terms',
+      'toolPlan':      'toolPlan',
+      'candidates':    'candidates',
+      'shortlist':     'shortlist',
+      'priorContext':  'priorContext',
+      'failureCause':  'failureCause',
     },
   })
 
   // ── lookup-author branch ─────────────────────────────────────────────────
-  // Deep-DAG placement: same book-search-fanout cluster, second placement.
+  // Embedded-DAG placement: same book-search-fanout cluster, second placement.
   // After success, group-by-year sorts results chronologically before the
   // compose loop — author surveys read better in publication-timeline order.
-  .deepDAG('author-search', 'book-search-fanout', {
+  .embeddedDAG('author-search', 'book-search-fanout', {
     'success': 'group-by-year',
     'error':   'compose-empty',
   }, {
-    'stateMapping': {
-      'output': {
-        'terms':         'terms',
-        'toolPlan':      'toolPlan',
-        'candidates':    'candidates',
-        'shortlist':     'shortlist',
-        'priorContext':  'priorContext',
-        'failureCause':  'failureCause',
-      },
+    'outputs': {
+      'terms':         'terms',
+      'toolPlan':      'toolPlan',
+      'candidates':    'candidates',
+      'shortlist':     'shortlist',
+      'priorContext':  'priorContext',
+      'failureCause':  'failureCause',
     },
   })
   // group-by-year is author-branch-specific: sorts shortlist chronologically.
@@ -212,54 +210,50 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
 
   // ── recommend-similar branch ─────────────────────────────────────────────
   // recommendSimilar seeds state.terms from prior-run shortlist memory.
-  // 'seeded' routes to the book-search-fanout deep-DAG — third placement of
+  // 'seeded' routes to the book-search-fanout embedded-DAG — third placement of
   // the same packaged cluster. 'empty' routes to the decline terminal.
   .node('recommend-similar', recommendSimilar, {
     'seeded': 'similar-search',
     'empty':  'compose-empty',
   })
 
-  // Deep-DAG placement: same book-search-fanout, third and final placement.
-  .deepDAG('similar-search', 'book-search-fanout', {
+  // Embedded-DAG placement: same book-search-fanout, third and final placement.
+  .embeddedDAG('similar-search', 'book-search-fanout', {
     'success': 'compose-loop',
     'error':   'compose-empty',
   }, {
-    'stateMapping': {
-      'output': {
-        'terms':         'terms',
-        'toolPlan':      'toolPlan',
-        'candidates':    'candidates',
-        'shortlist':     'shortlist',
-        'priorContext':  'priorContext',
-        'failureCause':  'failureCause',
-      },
+    'outputs': {
+      'terms':         'terms',
+      'toolPlan':      'toolPlan',
+      'candidates':    'candidates',
+      'shortlist':     'shortlist',
+      'priorContext':  'priorContext',
+      'failureCause':  'failureCause',
     },
   })
 
-  // ── compose-loop — shared compose/validate deep-DAG ─────────────────────
+  // ── compose-loop — shared compose/validate embedded-DAG ─────────────────────
   // All branches that successfully find candidates converge here.
   // composeResponse → validateResponse (retry loop, bounded by state.attempts.compose).
-  // One deep-DAG definition serves all four convergent branches.
+  // One embedded-DAG definition serves all four convergent branches.
   // stateMapping.output copies the compose loop's writes back to the parent.
   //
   // Fan-in policy: 'success' routes to the shared respond-to-visitor terminal
-  // at the parent level — the deep-DAG produces state.draft and exits cleanly;
+  // at the parent level — the embedded-DAG produces state.draft and exits cleanly;
   // exactly ONE respond-to-visitor fires per run regardless of branch count.
   // 'error' (retry budget exhausted) falls through to compose-empty so the
   // visitor always receives an in-character response rather than a silent drop.
-  .deepDAG('compose-loop', 'compose-retry-loop', {
+  .embeddedDAG('compose-loop', 'compose-retry-loop', {
     'success': 'respond-to-visitor',
     'error':   'compose-empty',
   }, {
-    'stateMapping': {
-      'output': {
-        'draft':    'draft',
-        'approved': 'approved',
-        'attempts': 'attempts',
-      },
+    'outputs': {
+      'draft':    'draft',
+      'approved': 'approved',
+      'attempts': 'attempts',
     },
   })
-  // #endregion deepdag-placements
+  // #endregion embedded-dag-placements
 
   // ── respond-to-visitor — single shared happy-path terminal ───────────────
   // Every branch that successfully composes a response converges here.
@@ -274,11 +268,13 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
   .node('memory-recall',          recallMemories,       { 'recalled': 'compose-memory-recall' })
   .node('compose-memory-recall',  composeMemoryResponse, { 'drafted':  'respond-to-visitor' })
 
+  // #region terminal-placements
   // ── Terminal nodes ───────────────────────────────────────────────────────
   .node('decline-off-topic', declineOffTopic, { 'success': null })
   // decline-empty kept for checkpoint backward compatibility — new flows use
   // compose-empty → respond-to-visitor for in-character failure responses.
   .node('decline-empty',     declineEmpty,          { 'success': null })
   .node('compose-empty',     composeEmptyResponse,  { 'drafted': 'respond-to-visitor' })
+  // #endregion terminal-placements
 
   .build();

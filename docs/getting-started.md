@@ -1,164 +1,89 @@
 ---
 nextSteps:
-
+  - text: 'The Archivist demo'
+    link: '/examples/the-archivist'
+    description: 'end-to-end DAG running in the browser'
+  - text: 'Concepts'
+    link: '/concepts'
+    description: 'vocabulary for nodes, placements, lifecycle'
   - text: 'Architecture'
-
     link: '/architecture'
     description: 'node kinds, lifecycle FSM, execution model'
-
-  - text: 'Concepts'
-
-    link: '/concepts'
-    description: 'nodes, node state, fan-in strategies'
-
-  - text: 'Cancellation'
-
-    link: '/guide/cancellation'
-    description: 'AbortSignal integration'
-
-  - text: 'Checkpoint'
-
-    link: '/guide/checkpoint'
-    description: 'pause, snapshot, resume'
 seeAlso:
-
+  - text: 'The Archivist demo'
+    link: './examples/the-archivist'
+    description: 'live in-browser DAG'
   - text: 'Concepts'
-
     link: './concepts'
     description: 'vocabulary'
-
-  - text: 'Architecture'
-
-    link: './architecture'
-    description: 'submodule layout, interface taxonomy'
-
   - text: 'DAGBuilder'
-
     link: './guide/builder'
-
+    description: 'fluent authoring API'
   - text: 'Example 01: Linear DAG'
-
     link: './examples/01-linear'
+    description: 'the source file used below'
 ---
 
 # Getting Started
 
-## Requirements
+From zero to a running DAG in three steps.
 
-- Node.js 24 or later
-- TypeScript 5.6 or later (`strict: true` recommended)
-
-## Installation
+## Install
 
 ```bash
 npm install @noocodex/dagonizer
 ```
 
-## Minimal example
+Requires Node.js 24 or later and TypeScript 5.6 or later with `strict: true`.
 
-Define a state class, implement one node, register a one-node DAG, and execute it.
+## Smallest DAG that runs
 
-```ts
-import { NodeStateBase, Dagonizer, DAG_CONTEXT } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface } from '@noocodex/dagonizer';
+A two-node chain that picks a route at the first node and ends at the second. The source ships in the repo as `examples/01-linear.ts`.
 
-// 1. Node state — carries data across every node in the DAG.
-class MyState extends NodeStateBase {
-  input = '';
-  output = '';
-}
+State and nodes:
 
-// 2. Node — stateless unit of work. Mutates state; returns an output name.
-const transform: NodeInterface<MyState, 'success'> = {
-  name: 'transform',
-  outputs: ['success'],
-  async execute(state) {
-    state.output = state.input.toUpperCase();
-    return { output: 'success' };
-  },
-};
+<<< @/../examples/01-linear.ts#state
 
-// 3. DAG — JSON-LD document describing the node graph.
-//    '@context' declares the ontology namespace (import DAG_CONTEXT from the package).
-//    '@id' is the document URN; '@type' must be 'DAG'.
-//    Each node placement uses '@id' (scoped URN) and '@type' as the kind discriminator.
-const dag: DAG = {
-  '@context': DAG_CONTEXT,
-  '@id': 'urn:noocodex:dag:demo',
-  '@type': 'DAG',
-  name: 'demo',
-  version: '1',
-  entrypoint: 'transform',
-  nodes: [
-    {
-      '@id': 'urn:noocodex:dag:demo/node/transform',
-      '@type': 'SingleNode',
-      name: 'transform',
-      node: 'transform',
-      outputs: { success: null },   // null → terminal (DAG ends here)
-    },
-  ],
-};
+<<< @/../examples/01-linear.ts#node
 
-// 4. Dispatcher — register once, execute many times.
-const dispatcher = new Dagonizer<MyState>();
-dispatcher.registerNode(transform);
-dispatcher.registerDAG(dag);
+The DAG definition (JSON-LD canonical form):
 
-// 5. Execute — await for the final result.
-const state = new MyState();
-state.input = 'hello';
-const result = await dispatcher.execute('demo', state);
+<<< @/../examples/01-linear.ts#dag
 
-console.log(result.state.output);         // 'HELLO'
-console.log(result.cursor);               // null (completed)
-console.log(result.state.lifecycle.kind); // 'completed'
+Register, then execute:
+
+<<< @/../examples/01-linear.ts#run
+
+Run it directly:
+
+```bash
+npx tsx examples/01-linear.ts
 ```
 
 ## What `execute` returns
 
-`dispatcher.execute()` returns an `Execution<TState>`, which is both awaitable and async-iterable.
+`dispatcher.execute()` returns an `Execution<TState>` that is both awaitable and async-iterable.
 
-**Awaitable** (one-shot result):
+Awaitable form:
 
 ```ts
-const result = await dispatcher.execute('demo', state);
-// result.state        — the final state
-// result.cursor       — null if completed; a node name if interrupted
-// result.executedNodes — nodes that ran
-// result.skippedNodes  — nodes skipped (e.g. empty fan-out)
+const result = await dispatcher.execute('chat', state);
+// result.state         the final state
+// result.cursor        null if completed; a node name if interrupted
+// result.executedNodes nodes that ran
+// result.skippedNodes  nodes skipped (for example, empty fan-out)
 ```
 
-**Async-iterable** (streaming per node):
+Async-iterable form, one event per node:
 
 ```ts
-const execution = dispatcher.execute('demo', state);
+const execution = dispatcher.execute('chat', state);
 for await (const node of execution) {
   console.log(node.nodeName, node.output);
 }
-const result = await execution; // cached — generator ran once
+const result = await execution; // cached; the generator runs once
 ```
 
-## Inspecting lifecycle
+## Next destination
 
-```ts
-const state = new MyState();
-const result = await dispatcher.execute('demo', state);
-
-switch (result.state.lifecycle.kind) {
-  case 'completed':
-    // finished normally
-    break;
-  case 'failed':
-    // state.lifecycle.error holds the Error
-    break;
-  case 'cancelled':
-    // state.lifecycle.reason holds the cancellation reason
-    break;
-  case 'timed_out':
-    // dispatcher.execute was called with deadlineMs and it expired
-    break;
-}
-```
-
-See [Cancellation](/guide/cancellation) for how to pass `{ signal }` and `{ deadlineMs }`.
+See [The Archivist](/examples/the-archivist). It runs a multi-stage bibliographic DAG in the browser and exercises fan-out, embedded-DAG composition, retry, cancellation, and checkpoint resume in a single flow.

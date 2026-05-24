@@ -11,7 +11,7 @@
  * into `ToolCall[]`.
  */
 
-import { BaseAdapter, ChatResponseMessageBuilder as ChatResponseMessage, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
 import type {
   ChatRequest,
   ChatResponse,
@@ -61,16 +61,41 @@ export class WebLlmAdapter extends BaseAdapter {
   #enginePromise: Promise<WebLlmEngine> | null = null;
 
   constructor(options: WebLlmAdapterOptions = {}) {
-    super({
-      'id': 'web-llm',
-      'displayName': 'WebLLM (Phi-3.5 in-browser)',
+    super(
+      'web-llm',
+      'WebLLM (Phi-3.5 in-browser)',
       // Phi-3.5 supports structured output but tool-call format is
       // inconsistent across the small in-browser model class.
-      'capabilities': { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true },
-      'maxAttempts': 2,
-    });
+      { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true },
+      { 'maxAttempts': 2 },
+    );
     this.#model = options.model ?? DEFAULT_MODEL;
     if (options.onProgress !== undefined) this.#onProgress = options.onProgress;
+  }
+
+  /**
+   * Probe true when WebGPU is reachable AND `requestAdapter()` yields a
+   * real hardware adapter. `navigator.gpu` presence alone is not
+   * enough — some Chromium variants expose the API surface but fail to
+   * acquire a backing device (no discrete GPU, missing driver, blocked
+   * by enterprise policy). Bounded by a short timeout so a stuck
+   * driver call cannot delay cascade selection. Never throws.
+   */
+  override async probe(): Promise<boolean> {
+    // Cast at a foreign-API boundary: standard lib `Navigator`
+    // typings predate WebGPU shipping.
+    const nav = (globalThis as { navigator?: { gpu?: { requestAdapter: () => Promise<unknown | null> } } }).navigator;
+    if (nav === undefined || nav.gpu === undefined) return false;
+    const gpu = nav.gpu;
+    try {
+      const adapter = await Promise.race<unknown>([
+        gpu.requestAdapter(),
+        new Promise((resolve) => setTimeout(() => { resolve(null); }, 1_500)),
+      ]);
+      return adapter !== null;
+    } catch {
+      return false;
+    }
   }
 
   protected async performChat(request: ChatRequest): Promise<ChatResponse> {
@@ -97,7 +122,7 @@ export class WebLlmAdapter extends BaseAdapter {
     const text = raw.trim();
     const toolCalls = request.tools.length > 0 ? decodeToolCalls(raw) : [];
     return {
-      'message': ChatResponseMessage.from(text, toolCalls),
+      'message': ChatResponseMessageBuilder.from(text, toolCalls),
       'finishReason': toolCalls.length > 0 ? 'tool_call' : 'stop',
       'usage': ZERO_TOKEN_USAGE,
     };

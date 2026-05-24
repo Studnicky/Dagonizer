@@ -1,30 +1,34 @@
 ---
 seeAlso:
-
-  - text: 'Reference: Contracts — `CheckpointStore`'
-
+  - text: 'Reference: Contracts'
     link: './contracts'
-
-  - text: 'Reference: Entities — `CheckpointData`'
-
+    description: '`CheckpointStore`'
+  - text: 'Reference: Entities'
     link: './entities'
-
-  - text: 'Reference: Validation — `Validator.checkpoint`'
-
+    description: '`CheckpointData`'
+  - text: 'Reference: Store'
+    link: './store'
+    description: '`Store`, `BaseStore`, `MemoryStore`, `StoreError`'
+  - text: 'Reference: Validation'
     link: './validation'
+    description: '`Validator.checkpoint`'
 ---
 
 # Checkpoint
 
 `@noocodex/dagonizer/checkpoint`
 
-The checkpoint module provides the static utility class for persisting and restoring in-flight DAG executions.
+The checkpoint module persists and restores in-flight DAG executions. `Checkpoint.capture()` is the canonical way to build a checkpoint; `Checkpoint.load()` parses a persisted record back into a `Checkpoint` instance. Both work whether or not the run uses named stores.
 
 ---
 
 ## Class: `Checkpoint`
 
-Static class; never instantiated. All methods are static.
+`Checkpoint` instances are obtained via `Checkpoint.capture()` (when saving) or `Checkpoint.load()` / `Checkpoint.recall()` (when recalling). Instance methods `toJson`, `persist`, `restoreState`, and `restoreStores` cover the full lifecycle.
+
+```ts
+import { Checkpoint } from '@noocodex/dagonizer/checkpoint';
+```
 
 ```ts
 import { Checkpoint } from '@noocodex/dagonizer';
@@ -32,107 +36,122 @@ import { Checkpoint } from '@noocodex/dagonizer';
 
 ---
 
-### `Checkpoint.from(dagName, result)`
+### `Checkpoint.capture(dagName, result, options?)`
 
 ```ts
-static from<TState extends NodeStateInterface & NodeStateBase>(
+static async capture<TState extends NodeStateInterface & NodeStateBase>(
   dagName: string,
   result: ExecutionResultInterface<TState>,
-): CheckpointData
+  options?: CaptureOptionsInterface,
+): Promise<Checkpoint>
 ```
 
-Builds a `CheckpointData` record from a DAG name and an execution result. Throws `DAGError` when `result.cursor === null` (the DAG completed — nothing to resume).
+Async factory. Builds a `Checkpoint` instance from a flow name, execution result, and optional named stores. Snapshots all stores in parallel (via `store.snapshot()`). The instance exposes `.data` (the `CheckpointData` record) and instance methods for the resume side.
+
+Throws `DAGError` when `result.cursor === null` (the DAG completed; nothing to resume).
 
 ```ts
-const result = await dispatcher.execute('my-dag', state, { signal });
+import { Checkpoint } from '@noocodex/dagonizer/checkpoint';
+import { MemoryStore } from '@noocodex/dagonizer/store';
+
+const memory = new MemoryStore();
+// ... nodes write to memory during the run ...
+const result = await dispatcher.execute('my-dag', state, { signal: ctl.signal });
+
 if (result.cursor !== null) {
-  const data = Checkpoint.from('my-dag', result);
+  const ckpt = await Checkpoint.capture('my-dag', result, { stores: { memory } });
+  await storage.set(runId, ckpt.toJson());
 }
 ```
 
-Internally calls `result.state.snapshot()` to capture the state. Domain-specific fields are included if the state class overrides `snapshotData()`.
+Calling `Checkpoint.capture` without a `stores` option (or with an empty map) captures state only.
 
 ---
 
-### `Checkpoint.restore(data, restoreState)`
+### `Checkpoint.load(raw)`
 
 ```ts
-static restore<TState extends NodeStateInterface>(
-  data: unknown,
-  restoreState: StateRestoreFnType<TState>,
-): {
-  state: TState;
-  dagName: string;
-  cursor: string;
-  executedNodes: string[];
-  skippedNodes: string[];
+static load(raw: unknown): Checkpoint
+```
+
+Parse and validate a raw `CheckpointData` object (e.g. from `JSON.parse`) and wrap it in a `Checkpoint` instance. Throws `ValidationError` when the raw value fails schema validation.
+
+```ts
+const raw = JSON.parse(await storage.get(runId)) as unknown;
+const ckpt = Checkpoint.load(raw);
+```
+
+---
+
+### `Checkpoint.recall(store, key)`
+
+```ts
+static async recall(store: CheckpointStore, key: string): Promise<Checkpoint | null>
+```
+
+Load a checkpoint from a `CheckpointStore` by key. Returns `null` when the store has no entry for the key. Composes `store.load` + `JSON.parse` + `Checkpoint.load`. Throws `ValidationError` when the stored JSON fails schema validation.
+
+```ts
+const ckpt = await Checkpoint.recall(store, 'ckpt:my-dag');
+if (ckpt !== null) {
+  const { dagName, state, cursor } = ckpt.restoreState((snap) => MyState.restore(snap));
+  await dispatcher.resume(dagName, state, cursor);
 }
 ```
 
-Validates `data` against `CheckpointDataSchema`, then calls `restoreState(data.state)` to rehydrate the state instance. Returns an object ready to pass to `dispatcher.resume`.
+---
+
+### `ckpt.toJson()`
 
 ```ts
-const parsed = JSON.parse(persisted) as unknown;
-const { dagName, state, cursor } = Checkpoint.restore(
-  parsed,
+toJson(): string
+```
+
+Serialize this checkpoint's data to a pretty-printed JSON string. Symmetric counterpart to `JSON.parse` + `Checkpoint.load`.
+
+```ts
+const ckpt = await Checkpoint.capture('my-dag', result);
+await storage.set('ckpt', ckpt.toJson());
+```
+
+---
+
+### `ckpt.persist(store, key)`
+
+```ts
+async persist(store: CheckpointStore, key: string): Promise<void>
+```
+
+Persist this checkpoint to a `CheckpointStore` under `key`. Composes `toJson` + `store.save`. Throws when the underlying store throws.
+
+```ts
+const store = new MemoryCheckpointStore();
+const ckpt = await Checkpoint.capture('my-dag', result);
+await ckpt.persist(store, 'ckpt:my-dag');
+```
+
+---
+
+### `ckpt.restoreState(restoreFn)`
+
+```ts
+restoreState<TState extends NodeStateInterface>(
+  restoreFn: StateRestoreFnType<TState>,
+): RecalledCheckpoint<TState>
+```
+
+Rehydrate the state from this checkpoint via the supplied factory. Returns the rehydrated state, dag name, cursor, and execution history. Pass the result to `dispatcher.resume`.
+
+```ts
+const raw = JSON.parse(await storage.get(runId)) as unknown;
+const ckpt = Checkpoint.load(raw);
+const { dagName, state, cursor } = ckpt.restoreState(
   (snap) => MyState.restore(snap),
 );
 const result = await dispatcher.resume(dagName, state, cursor);
 ```
 
-Throws `ValidationError` if the raw value does not match `CheckpointDataSchema`.
-
----
-
-### `Checkpoint.toJson(checkpoint)`
-
-```ts
-static toJson(checkpoint: CheckpointData): string
-```
-
-Serializes `checkpoint` to a pretty-printed JSON string. Symmetric counterpart to `JSON.parse` + `Checkpoint.restore`.
-
-```ts
-const json = Checkpoint.toJson(Checkpoint.from('my-dag', result));
-await storage.set('ckpt', json);
-```
-
----
-
-### `Checkpoint.persist(store, key, data)`
-
-```ts
-static async persist(store: CheckpointStore, key: string, data: CheckpointData): Promise<void>
-```
-
-Persists `data` to a `CheckpointStore` under `key`. Composes `Checkpoint.toJson` with the store's `save`. Throws when the underlying store throws.
-
-```ts
-const store = new MemoryCheckpointStore();
-await Checkpoint.persist(store, 'ckpt:my-dag', Checkpoint.from('my-dag', result));
-```
-
----
-
-### `Checkpoint.recall(store, key, restoreState)`
-
-```ts
-static async recall<TState extends NodeStateInterface>(
-  store: CheckpointStore,
-  key: string,
-  restoreState: StateRestoreFnType<TState>,
-): Promise<RecalledCheckpoint<TState> | null>
-```
-
-Recalls a checkpoint from a `CheckpointStore`. Returns `null` when no entry exists under `key`; throws `ValidationError` when the stored JSON fails schema validation. Composes the store's `load` with `JSON.parse` and `Checkpoint.restore`.
-
-```ts
-const recalled = await Checkpoint.recall(store, 'ckpt:my-dag', (snap) => MyState.restore(snap));
-if (recalled !== null) {
-  const { dagName, state, cursor } = recalled;
-  const result = await dispatcher.resume(dagName, state, cursor);
-}
-```
+Throws `ValidationError` when `ckpt.data.cursor === null`.
 
 `RecalledCheckpoint<TState>` shape:
 
@@ -148,6 +167,37 @@ interface RecalledCheckpoint<TState> {
 
 ---
 
+### `ckpt.restoreStores(stores)`
+
+```ts
+async restoreStores(stores: Readonly<Record<string, Store>>): Promise<void>
+```
+
+Populate each named store from the snapshots in this checkpoint. The keys in `stores` must match the names used when calling `Checkpoint.capture`.
+
+```ts
+const freshMemory = new MemoryStore();
+await ckpt.restoreStores({ memory: freshMemory });
+// freshMemory now contains the state captured at checkpoint time.
+```
+
+**Rules:**
+- Name in checkpoint but absent from the map → throws `DAGError` naming the missing stores.
+- Name in the map but absent from the checkpoint → no-op (the store is not restored).
+- Matched pairs → `store.restore(snapshot)` in parallel; `BaseStore.restore` throws `StoreError(INCOMPATIBLE_SNAPSHOT)` on type/version mismatch.
+
+---
+
+### `ckpt.data`
+
+```ts
+readonly data: CheckpointData
+```
+
+The parsed and validated checkpoint record. Serialize with `ckpt.toJson()`.
+
+---
+
 ## Type: `StateRestoreFnType<TState>`
 
 ```ts
@@ -156,6 +206,34 @@ type StateRestoreFnType<TState extends NodeStateInterface> =
 ```
 
 Any function that maps a snapshot `JsonObject` to a `TState` instance. The typical form is `(snap) => MyState.restore(snap)`, where `MyState.restore` is inherited from `NodeStateBase`.
+
+---
+
+## Interface: `CaptureOptionsInterface`
+
+```ts
+interface CaptureOptionsInterface {
+  readonly stores?: Readonly<Record<string, Store>>;
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `stores` | Named stores to snapshot alongside the state. Keys become the names in `CheckpointData.stores`; the same keys must be passed to `restoreStores()` on resume. Omit or leave empty for a state-only checkpoint. |
+
+---
+
+## Interface: `RecalledCheckpoint<TState>`
+
+```ts
+interface RecalledCheckpoint<TState extends NodeStateInterface> {
+  readonly state: TState;
+  readonly dagName: string;
+  readonly cursor: string;
+  readonly executedNodes: readonly string[];
+  readonly skippedNodes: readonly string[];
+}
+```
 
 ---
 
@@ -171,8 +249,11 @@ interface CheckpointData {
   state: Record<string, unknown>;
   executedNodes: string[];
   skippedNodes: string[];
+  stores?: Record<string, StoreSnapshot>; // present when named stores were captured
 }
 ```
+
+The `stores` field is absent on checkpoints captured without a `stores` option. `restoreStores` treats an absent or empty `stores` field as a no-op, so state-only checkpoints load and resume cleanly.
 
 The `version` field tracks the wire format, independent of the DAG's own version. Increment `CHECKPOINT_DATA_VERSION` when the shape changes incompatibly.
 
@@ -184,7 +265,7 @@ The `version` field tracks the wire format, independent of the DAG's own version
 const CHECKPOINT_DATA_VERSION = '1' as const;
 ```
 
-Current wire-format version for `CheckpointData`. Written into every checkpoint record and checked during `Checkpoint.restore` validation.
+Current wire-format version for `CheckpointData`. Written into every checkpoint record and checked during `Checkpoint.load` validation.
 
 ---
 
@@ -219,12 +300,19 @@ import { MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
 
 ```ts
 const store = new MemoryCheckpointStore();
-await Checkpoint.persist(store, 'ckpt', Checkpoint.from('my-dag', result));
-const recalled = await Checkpoint.recall(store, 'ckpt', (snap) => MyState.restore(snap));
+const ckpt = await Checkpoint.capture('my-dag', result);
+await ckpt.persist(store, 'ckpt');
+const recalled = await Checkpoint.recall(store, 'ckpt');
+if (recalled !== null) {
+  const { dagName, state, cursor } = recalled.restoreState((snap) => MyState.restore(snap));
+}
 ```
+
+---
 
 ## Related guides
 
 - [Checkpoint](../guide/checkpoint)
 - [Persistence](../guide/persistence)
+- [Shared state](../guide/shared-state)
 - [Subclassing State](../guide/subclassing)

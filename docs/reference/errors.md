@@ -2,8 +2,9 @@
 seeAlso:
   - text: 'Reference: Validation'
     link: './validation'
-  - text: 'Reference: Entities — `DAGErrorJSON`'
+  - text: 'Reference: Entities'
     link: './entities'
+    description: '`DAGErrorJSON`'
 ---
 
 # Errors
@@ -98,7 +99,7 @@ import { NotFoundError } from '@noocodex/dagonizer';
 
 ## Class: `ValidationError`
 
-Thrown when schema validation fails — e.g. `DAGSchema` or `CheckpointDataSchema`.
+Thrown when schema validation fails (e.g. `DAGSchema` or `CheckpointDataSchema`).
 
 ```ts
 import { ValidationError } from '@noocodex/dagonizer';

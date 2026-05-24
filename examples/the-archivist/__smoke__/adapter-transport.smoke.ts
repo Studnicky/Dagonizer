@@ -93,7 +93,7 @@ async function check(name: string, fn: () => Promise<void>): Promise<void> {
 }
 
 await check('Groq — POSTs to api.groq.com with max_completion_tokens and OpenAI tools', async () => {
-  const adapter = new GroqApiAdapter({ 'apiKey': 'sk-test' });
+  const adapter = new GroqApiAdapter('sk-test');
   const captured = captureNextFetch(openAiSuccessResponse);
   await adapter.chat(sampleRequest);
   const c = await captured;
@@ -108,7 +108,7 @@ await check('Groq — POSTs to api.groq.com with max_completion_tokens and OpenA
 });
 
 await check('Cerebras — POSTs to api.cerebras.ai with gpt-oss-120b default and max_completion_tokens', async () => {
-  const adapter = new CerebrasApiAdapter({ 'apiKey': 'sk-test' });
+  const adapter = new CerebrasApiAdapter('sk-test');
   const captured = captureNextFetch(openAiSuccessResponse);
   await adapter.chat(sampleRequest);
   const c = await captured;
@@ -119,7 +119,7 @@ await check('Cerebras — POSTs to api.cerebras.ai with gpt-oss-120b default and
 });
 
 await check('Mistral — POSTs to api.mistral.ai with max_tokens and OpenAI tools', async () => {
-  const adapter = new MistralApiAdapter({ 'apiKey': 'sk-test' });
+  const adapter = new MistralApiAdapter('sk-test');
   const captured = captureNextFetch(openAiSuccessResponse);
   await adapter.chat(sampleRequest);
   const c = await captured;
@@ -130,7 +130,7 @@ await check('Mistral — POSTs to api.mistral.ai with max_tokens and OpenAI tool
 });
 
 await check('OpenRouter — POSTs with HTTP-Referer + X-Title headers and OpenAI tools', async () => {
-  const adapter = new OpenRouterApiAdapter({ 'apiKey': 'sk-test' });
+  const adapter = new OpenRouterApiAdapter('sk-test');
   const captured = captureNextFetch(openAiSuccessResponse);
   await adapter.chat(sampleRequest);
   const c = await captured;
@@ -141,10 +141,10 @@ await check('OpenRouter — POSTs with HTTP-Referer + X-Title headers and OpenAI
 });
 
 await check('Adapters expose capabilities metadata', async () => {
-  const groq = new GroqApiAdapter({ 'apiKey': 'sk-test' });
-  const cerebras = new CerebrasApiAdapter({ 'apiKey': 'sk-test' });
-  const mistral = new MistralApiAdapter({ 'apiKey': 'sk-test' });
-  const openrouter = new OpenRouterApiAdapter({ 'apiKey': 'sk-test' });
+  const groq = new GroqApiAdapter('sk-test');
+  const cerebras = new CerebrasApiAdapter('sk-test');
+  const mistral = new MistralApiAdapter('sk-test');
+  const openrouter = new OpenRouterApiAdapter('sk-test');
   assert.equal(groq.capabilities.toolUse, 'full');
   assert.equal(cerebras.capabilities.toolUse, 'partial');
   assert.equal(mistral.capabilities.toolUse, 'full');

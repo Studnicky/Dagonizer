@@ -32,6 +32,8 @@ interface VolumeInfo {
   readonly ratingsCount?:    number;
   readonly industryIdentifiers?: readonly { type?: string; identifier?: string }[];
   readonly imageLinks?:      { thumbnail?: string };
+  /** ISO 639-1 language code Google Books reports for this volume (e.g. 'en'). */
+  readonly language?:        string;
 }
 
 interface Volume {
@@ -48,6 +50,7 @@ interface GoogleBooksInput extends Record<string, unknown> {
   readonly query:     string;
   readonly maxResults?: number;
   readonly orderBy?:  'relevance' | 'newest';
+  readonly langRestrict?: string;
 }
 
 const ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
@@ -79,6 +82,10 @@ const definition: ToolDefinition = {
         'default':     'relevance',
         'description': 'Result ordering.',
       },
+      'langRestrict': {
+        'type':        'string',
+        'description': 'Optional ISO 639-1 language code (e.g. en, ja, fr) to restrict results.',
+      },
     },
     'required': ['query'],
   },
@@ -91,6 +98,9 @@ export const GoogleBooksTool: Tool<GoogleBooksInput, readonly Candidate[]> = {
     const max = Math.max(1, Math.min(40, input.maxResults ?? 8));
     const params = new URLSearchParams({ 'q': input.query, 'maxResults': String(max) });
     if (input.orderBy !== undefined) params.set('orderBy', input.orderBy);
+    if (input.langRestrict !== undefined && input.langRestrict.length > 0) {
+      params.set('langRestrict', input.langRestrict);
+    }
 
     const initOptions: RequestInit & { signal?: AbortSignal } = { 'method': 'GET' };
     if (signal !== undefined) initOptions.signal = signal;
@@ -119,6 +129,9 @@ export const GoogleBooksTool: Tool<GoogleBooksInput, readonly Candidate[]> = {
       if (info.ratingsCount !== undefined)  notes['ratingsCount'] = info.ratingsCount;
       if (vol.id !== undefined)             notes['googleVolumeId'] = vol.id;
       if (info.imageLinks?.thumbnail !== undefined) notes['thumbnail'] = info.imageLinks.thumbnail;
+      const languages = info.language !== undefined && info.language.length > 0
+        ? [toIso6392(info.language)]
+        : undefined;
       candidates.push({
         'book': {
           'isbn':    canonical,
@@ -129,6 +142,7 @@ export const GoogleBooksTool: Tool<GoogleBooksInput, readonly Candidate[]> = {
           ...(year !== undefined ? { 'firstPublishYear': year } : {}),
           ...(info.categories !== undefined ? { 'subjects': info.categories.slice(0, 8) } : {}),
           ...(info.publisher !== undefined ? { 'publishers': [info.publisher] } : {}),
+          ...(languages !== undefined ? { 'languages': languages } : {}),
         },
         'score':  0,
         'source': 'google-books',
@@ -138,6 +152,26 @@ export const GoogleBooksTool: Tool<GoogleBooksInput, readonly Candidate[]> = {
     return candidates;
   },
 };
+
+// Map the Google Books ISO 639-1 language code into ISO 639-2 (alpha-3)
+// so candidates expose the same code shape every scout writes
+// (OpenLibrary already returns 639-2). Unknown codes pass through
+// unchanged so the consumer can still match exact-string when the
+// mapping is incomplete.
+const ISO_639_1_TO_2: Readonly<Record<string, string>> = Object.freeze({
+  'en': 'eng', 'es': 'spa', 'fr': 'fre', 'de': 'ger', 'it': 'ita',
+  'pt': 'por', 'nl': 'dut', 'sv': 'swe', 'no': 'nor', 'da': 'dan',
+  'fi': 'fin', 'pl': 'pol', 'cs': 'cze', 'ru': 'rus', 'uk': 'ukr',
+  'ja': 'jpn', 'zh': 'chi', 'ko': 'kor', 'ar': 'ara', 'he': 'heb',
+  'hi': 'hin', 'tr': 'tur', 'el': 'gre', 'th': 'tha', 'vi': 'vie',
+});
+
+function toIso6392(code: string): string {
+  const head = code.toLowerCase().split(/[-_]/u)[0];
+  if (head === undefined || head.length === 0) return code;
+  const mapped = ISO_639_1_TO_2[head];
+  return mapped !== undefined ? mapped : head;
+}
 
 function pickYear(date: string | undefined): number | undefined {
   if (date === undefined) return undefined;

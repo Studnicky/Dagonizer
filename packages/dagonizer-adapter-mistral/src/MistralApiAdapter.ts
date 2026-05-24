@@ -11,8 +11,9 @@ import type { OpenAiCompatibleAdapterOptions } from '@noocodex/dagonizer/adapter
 export interface MistralApiAdapterOptions extends OpenAiCompatibleAdapterOptions {}
 
 export class MistralApiAdapter extends OpenAiCompatibleAdapter {
-  constructor(options: MistralApiAdapterOptions) {
+  constructor(apiKey: string, options: MistralApiAdapterOptions = {}) {
     super(
+      apiKey,
       {
         'id':            'mistral',
         'displayName':   'Mistral (mistral-small)',

@@ -1,20 +1,26 @@
 ---
+title: 'State accessors'
+description: 'StateAccessor contract; DottedPathAccessor walks dotted paths and auto-vivifies on write.'
 seeAlso:
-
   - text: 'Subclassing State'
-
     link: './subclassing'
     description: 'the state object the accessor reads from and writes to'
-
   - text: 'DAGBuilder'
-
     link: './builder'
-    description: 'placements that use `source` / `target` paths run through the accessor'
+    description: 'placements that use `source` and `target` paths run through the accessor'
 ---
 
 # State accessors
 
-Fan-out source reads, fan-in writes, and deep-DAG state mapping all walk paths into the live state object. The default `DottedPathAccessor` walks `path.split('.')` and creates intermediate plain objects on write.
+Fan-out source reads, fan-in writes, and embedded-DAG state mapping all walk paths into the live state object. The `StateAccessor` contract defines that walk; `DottedPathAccessor` is the default implementation.
+
+## API surface
+
+| Symbol | Source | Role |
+|--------|--------|------|
+| `StateAccessor` | `@noocodex/dagonizer/contracts` | The contract, `get(state, path)` and `set(state, path, value)` |
+| `DottedPathAccessor` | `@noocodex/dagonizer/runtime` | Default impl: `path.split('.')` walks, writes auto-vivify intermediate objects |
+| `DagonizerOptionsInterface.accessor` | `@noocodex/dagonizer` | Constructor slot for a custom accessor |
 
 ## The contract
 
@@ -27,7 +33,7 @@ interface StateAccessor {
 }
 ```
 
-Implementations are stateless. The same instance is shared across every fan-out, fan-in, and deep-DAG step.
+Implementations are stateless. The same instance is shared across every fan-out, fan-in, and embedded-DAG step.
 
 ## Default behavior
 
@@ -37,7 +43,7 @@ Implementations are stateless. The same instance is shared across every fan-out,
 import { DottedPathAccessor } from '@noocodex/dagonizer/runtime';
 
 const accessor = new DottedPathAccessor();
-accessor.get({ a: { b: 1 } }, 'a.b');  // → 1
+accessor.get({ a: { b: 1 } }, 'a.b');  // 1
 accessor.set({}, 'a.b.c', 'value');    // mutates in place to { a: { b: { c: 'value' } } }
 ```
 
@@ -64,10 +70,10 @@ const dispatcher = new Dagonizer<MyState>({ accessor: new JsonPointerAccessor() 
 
 The same accessor flows through every code path that resolves a state path:
 
-- `fanOut.source` — reading the array to fan over.
-- `fanIn.target` (append strategy) — writing the merged results.
-- `fanIn.partitions` (partition strategy) — writing each output bucket.
-- `deepDAG.stateMapping.input` / `output` — copying fields between parent and child state.
+- `fanOut.source`: reading the array to fan over.
+- `fanIn.target` (append strategy): writing the merged results.
+- `fanIn.partitions` (partition strategy): writing each output bucket.
+- `embeddedDAG.stateMapping.input` and `.output`: copying fields between parent and child state.
 
 ## Accessor inside fan-in strategies
 
@@ -88,9 +94,10 @@ class AverageFanIn extends FanInStrategy {
 }
 ```
 
-This keeps every state-path read/write going through one resolution strategy.
+Every state-path read and write goes through one resolution strategy.
+
 ## Related reference
 
-- [Reference: Contracts — `StateAccessor`](../reference/contracts)
-- [Reference: Runtime — `DottedPathAccessor`](../reference/runtime)
-- [Reference: Core — `FanInExecution.accessor`](../reference/core)
+- [Reference: Contracts](../reference/contracts)
+- [Reference: Runtime](../reference/runtime)
+- [Reference: Core](../reference/core)

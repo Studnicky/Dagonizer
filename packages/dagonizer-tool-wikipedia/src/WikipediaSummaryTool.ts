@@ -30,9 +30,37 @@ interface WikiSummary {
 
 interface WikipediaInput extends Record<string, unknown> {
   readonly query: string;
+  readonly lang?: string;
 }
 
-const ENDPOINT = 'https://en.wikipedia.org/api/rest_v1/page/summary/';
+const DEFAULT_LANG = 'en';
+
+function endpointFor(lang: string): string {
+  return `https://${lang}.wikipedia.org/api/rest_v1/page/summary/`;
+}
+
+// ISO 639-1 → ISO 639-2 (alpha-3) so the candidate exposes the same
+// language-code shape every scout writes. Unknown codes pass through
+// unchanged so the merge filter can still match string-equal when the
+// mapping is incomplete.
+const ISO_639_1_TO_2: Readonly<Record<string, string>> = Object.freeze({
+  'en': 'eng', 'es': 'spa', 'fr': 'fre', 'de': 'ger', 'it': 'ita',
+  'pt': 'por', 'nl': 'dut', 'sv': 'swe', 'no': 'nor', 'da': 'dan',
+  'fi': 'fin', 'pl': 'pol', 'cs': 'cze', 'ru': 'rus', 'uk': 'ukr',
+  'ja': 'jpn', 'zh': 'chi', 'ko': 'kor', 'ar': 'ara', 'he': 'heb',
+  'hi': 'hin', 'tr': 'tur', 'el': 'gre', 'th': 'tha', 'vi': 'vie',
+});
+
+function normalizeLang(input: string): string {
+  const head = input.toLowerCase().split(/[-_]/u)[0];
+  return head !== undefined && head.length > 0 ? head : DEFAULT_LANG;
+}
+
+function toIso6392(code: string): string {
+  const head = normalizeLang(code);
+  const mapped = ISO_639_1_TO_2[head];
+  return mapped !== undefined ? mapped : head;
+}
 
 const definition: ToolDefinition = {
   'name': 'wikipedia_summary',
@@ -48,6 +76,10 @@ const definition: ToolDefinition = {
         'description': 'Exact Wikipedia article title or a near-match the redirect handler resolves.',
         'examples':    ['<book-title>', '<author-name>', '<topic-name>'],
       },
+      'lang': {
+        'type':        'string',
+        'description': 'Optional ISO 639-1 language code; selects the corresponding Wikipedia (defaults to en).',
+      },
     },
     'required': ['query'],
   },
@@ -57,13 +89,17 @@ const definition: ToolDefinition = {
 export const WikipediaSummaryTool: Tool<WikipediaInput, readonly Candidate[]> = {
   definition,
   async execute(input, signal) {
+    const lang = input.lang !== undefined && input.lang.length > 0
+      ? normalizeLang(input.lang)
+      : DEFAULT_LANG;
+    const endpoint = endpointFor(lang);
     const title = encodeURIComponent(input.query.trim().replace(/\s+/gu, '_'));
     const initOptions: RequestInit & { signal?: AbortSignal } = {
       'method': 'GET',
       'headers': { 'accept': 'application/json' },
     };
     if (signal !== undefined) initOptions.signal = signal;
-    const response = await fetch(`${ENDPOINT}${title}`, initOptions);
+    const response = await fetch(`${endpoint}${title}`, initOptions);
     if (response.status === 404) return [];
     if (!response.ok) {
       throw new Error(`wikipedia ${String(response.status)} ${response.statusText}`);
@@ -91,11 +127,12 @@ export const WikipediaSummaryTool: Tool<WikipediaInput, readonly Candidate[]> = 
 
     return [{
       'book': {
-        'isbn':    canonical,
-        'title':   payload.title,
-        'authors': [],
-        'price':   { 'amount': 0, 'currency': 'USD' },
-        'summary': payload.extract,
+        'isbn':      canonical,
+        'title':     payload.title,
+        'authors':   [],
+        'price':     { 'amount': 0, 'currency': 'USD' },
+        'summary':   payload.extract,
+        'languages': [toIso6392(lang)],
       },
       'score':  0,
       'source': 'wikipedia',

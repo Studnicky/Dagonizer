@@ -47,7 +47,7 @@ export type {
 export { DAGBuilder } from './builder/index.js';
 export type {
   FanOutOptionsInterface,
-  DeepDAGOptionsInterface,
+  EmbeddedDAGOptionsInterface,
 } from './builder/index.js';
 
 // =============================================================================
@@ -70,7 +70,9 @@ export {
   DAGLifecycleStateSchema,
   ParallelNodeSchema,
   SingleNodeSchema,
-  DeepDAGNodeSchema,
+  EmbeddedDAGNodeSchema,
+  TerminalNodeSchema,
+  PhaseNodeSchema,
   NodeSchema,
   NodeContextSchema,
   NodeErrorSchema,
@@ -97,7 +99,9 @@ export type {
   DAGLifecycleStateData,
   ParallelNode,
   SingleNode,
-  DeepDAGNode,
+  EmbeddedDAGNode,
+  TerminalNode,
+  PhaseNode,
   Node,
   NodeContext,
   NodeError,
@@ -106,6 +110,7 @@ export type {
   NodeResult,
   NodeStateData,
   ExecutionResult,
+  InterruptionInfo,
   ValidationResult,
   DAGErrorJSON,
   JsonSchema,
@@ -120,6 +125,7 @@ export type {
 export {
   BackoffStrategy,
   Clock,
+  NoopInstrumentation,
   RealTimeScheduler,
   RetryPolicy,
   Scheduler,
@@ -137,8 +143,8 @@ export type {
 // FUNCTIONS
 // =============================================================================
 
-export { Dagonizer } from './Dagonizer.js';
-export type { DagonizerOptionsInterface } from './Dagonizer.js';
+export { Dagonizer, FAN_OUT_PROGRESS_KEY } from './Dagonizer.js';
+export type { DagonizerOptionsInterface, FanOutProgress, StoredFanOutProgress } from './Dagonizer.js';
 export { Execution } from './Execution.js';
 
 // =============================================================================
@@ -161,13 +167,20 @@ export type { FanInExecution } from './core/FanInStrategies.js';
 // =============================================================================
 
 export { Checkpoint, MemoryCheckpointStore } from './checkpoint/index.js';
-export type { RecalledCheckpoint, StateRestoreFnType } from './checkpoint/index.js';
+export type { CaptureOptionsInterface, RecalledCheckpoint, StateRestoreFnType } from './checkpoint/index.js';
+
+// =============================================================================
+// STORE
+// =============================================================================
+
+export { BaseStore, MemoryStore, StoreError, TypedStore } from './store/index.js';
+export type { BaseStoreOptions, StoreErrorClassification } from './store/index.js';
 
 // =============================================================================
 // CLASS-SHAPE INTERFACES (colocated with their class)
 // =============================================================================
 
-export type { DagonizerInterface } from './Dagonizer.js';
+export type { DagonizerInterface, DispatcherBundle } from './Dagonizer.js';
 export type { NodeStateInterface } from './NodeStateBase.js';
 
 // =============================================================================
@@ -175,8 +188,37 @@ export type { NodeStateInterface } from './NodeStateBase.js';
 // =============================================================================
 
 export type { ExecuteOptionsInterface } from './contracts/ExecuteOptionsInterface.js';
+export type { Instrumentation } from './contracts/Instrumentation.js';
 export type { Chainable, NodeInterface } from './contracts/NodeInterface.js';
 export type { OperationContractFragment } from './contracts/OperationContractFragment.js';
+export type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from './contracts/RemoteStore.js';
+export type { Store, StoreSnapshot, StoreSnapshotEntry } from './contracts/Store.js';
+
+// =============================================================================
+// ADAPTER — LLM adapter contract, registry, and cascade selector
+// =============================================================================
+
+export {
+  AdapterDescriptor,
+  BaseEmbedder,
+  Classifications,
+  EmbedderCascade,
+  EmbedderRegistry,
+  LlmAdapterCascade,
+  LlmAdapterRegistry,
+  LlmError,
+} from './adapter/index.js';
+export type {
+  AdapterDescriptorShape,
+  AdapterFactory,
+  BaseEmbedderOptions,
+  CascadePreference,
+  Embedder,
+  EmbedderCascadePreference,
+  EmbedderFactory,
+  ErrorClassification,
+  LlmErrorReason,
+} from './adapter/index.js';
 
 // =============================================================================
 // ENTITY-NARROWING INTERFACES (colocated with entity)
@@ -188,3 +230,5 @@ export type { NodeOutputInterface } from './entities/node/NodeOutput.js';
 export type { NodeResultInterface } from './entities/node/NodeResult.js';
 export type { ExecutionResultInterface } from './entities/execution/ExecutionResult.js';
 export type { SingleNodePlacementInterface } from './entities/dag/SingleNode.js';
+export type { TerminalNodePlacementInterface } from './entities/dag/TerminalNode.js';
+export type { PhaseNodePlacementInterface } from './entities/dag/PhaseNode.js';
