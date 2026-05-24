@@ -26,6 +26,13 @@ export interface Book {
   /** Publishers, when known. */
   readonly publishers?: readonly string[];
   readonly inStock?: boolean;
+  /**
+   * ISO 639-2 (alpha-3) language codes attributed to this book by its
+   * source (e.g. `['eng']`, `['jpn']`). Empty / undefined when the
+   * source did not report a language — downstream language filters
+   * treat unknown as "do not exclude" so legacy records pass through.
+   */
+  readonly languages?: readonly string[];
 }
 
 /** A book ranked against the user's query. */

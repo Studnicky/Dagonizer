@@ -69,6 +69,14 @@ export type ArchivistIntent =
 export class ArchivistState extends NodeStateBase {
   /** Raw question the visitor submitted. */
   query = '';
+  /**
+   * Visitor's device language as an ISO 639-1 code (e.g. `'en'`,
+   * `'ja'`). Drives every LLM prompt's response-language directive
+   * and the language filter scouts apply to upstream results. Set by
+   * the entrypoint from `UserLanguage.detect()` (or a URL override);
+   * defaulted to `'en'` so existing call sites stay correct.
+   */
+  userLanguage: string = 'en';
   /** Parsed intent — set by `classifyIntent`. */
   intent: ArchivistIntent = 'search';
   /** Structured query terms — set by `extractQuery`. */
@@ -134,8 +142,9 @@ export class ArchivistState extends NodeStateBase {
 
   override clone(): ArchivistState {
     const copy = new ArchivistState();
-    copy.query      = this.query;
-    copy.intent     = this.intent;
+    copy.query        = this.query;
+    copy.userLanguage = this.userLanguage;
+    copy.intent       = this.intent;
     copy.terms      = [...this.terms];
     copy.candidates = [...this.candidates];
     copy.shortlist  = [...this.shortlist];
@@ -165,8 +174,9 @@ export class ArchivistState extends NodeStateBase {
   // #region snapshot-restore
   protected override snapshotData(): JsonObject {
     return {
-      "query":      this.query,
-      "intent":     this.intent,
+      "query":        this.query,
+      "userLanguage": this.userLanguage,
+      "intent":       this.intent,
       "terms":      [...this.terms],
       "candidates": this.candidates.map((candidate) => ({
         "book":   { ...candidate.book, "authors": [...candidate.book.authors] },
@@ -203,8 +213,9 @@ export class ArchivistState extends NodeStateBase {
   }
 
   protected override restoreData(snap: JsonObject): void {
-    if (typeof snap['query']  === 'string')  this.query  = snap['query'];
-    if (typeof snap['intent'] === 'string')  this.intent = snap['intent'] as ArchivistIntent;
+    if (typeof snap['query']        === 'string') this.query        = snap['query'];
+    if (typeof snap['userLanguage'] === 'string') this.userLanguage = snap['userLanguage'];
+    if (typeof snap['intent']       === 'string') this.intent       = snap['intent'] as ArchivistIntent;
     if (typeof snap['draft']        === 'string')  this.draft  = snap['draft'];
     if (typeof snap['approved']    === 'boolean') this.approved = snap['approved'];
     if (typeof snap['failureCause'] === 'string') this.failureCause = snap['failureCause'];

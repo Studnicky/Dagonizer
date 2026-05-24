@@ -20,7 +20,7 @@
 
 import { BaseAdapter } from './BaseAdapter.js';
 import {
-  ChatResponseMessage as ChatResponseMessageBuilder,
+  ChatResponseMessageBuilder,
   ZERO_TOKEN_USAGE,
 } from './LlmAdapter.js';
 import type {
@@ -65,7 +65,6 @@ export interface OpenAiCompatibleConfig {
 
 /** Per-consumer options every OpenAI-compatible adapter accepts. */
 export interface OpenAiCompatibleAdapterOptions {
-  readonly apiKey: string;
   readonly model?: string;
   readonly maxAttempts?: number;
 }
@@ -95,14 +94,18 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
   readonly #model: string;
   readonly #config: OpenAiCompatibleConfig;
 
-  protected constructor(config: OpenAiCompatibleConfig, options: OpenAiCompatibleAdapterOptions) {
-    super({
-      'id': config.id,
-      'displayName': config.displayName,
-      'capabilities': config.capabilities,
-      'maxAttempts': options.maxAttempts ?? config.maxAttempts ?? 3,
-    });
-    this.#apiKey = options.apiKey;
+  protected constructor(
+    apiKey: string,
+    config: OpenAiCompatibleConfig,
+    options: OpenAiCompatibleAdapterOptions = {},
+  ) {
+    super(
+      config.id,
+      config.displayName,
+      config.capabilities,
+      { 'maxAttempts': options.maxAttempts ?? config.maxAttempts ?? 3 },
+    );
+    this.#apiKey = apiKey;
     this.#model = options.model ?? config.defaultModel;
     this.#config = config;
   }
@@ -117,6 +120,19 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
       }
       throw err;
     }
+  }
+
+  /**
+   * Default availability probe — true when a non-empty API key was
+   * supplied. Every OpenAI-compatible provider this base targets
+   * (Cerebras, Groq, Mistral, OpenRouter, …) gates access on a bearer
+   * token; a missing key is a definitive "unavailable" signal that
+   * lets a cascade route around the adapter without ever hitting the
+   * wire. Subclasses with non-key availability constraints (Ollama
+   * runs locally with no auth) override.
+   */
+  override async probe(): Promise<boolean> {
+    return Promise.resolve(this.#apiKey.length > 0);
   }
 
   protected override classify(error: unknown): ErrorClassification {

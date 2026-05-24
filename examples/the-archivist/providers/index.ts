@@ -339,7 +339,7 @@ export function instantiateProvider(id: ProviderId, inputs: InstantiateInputs = 
       if (typeof key !== 'string' || key.length === 0) {
         throw new LlmError('gemini-api requires an AI Studio API key', { 'reason': 'AUTH_FAILED', 'retryable': false });
       }
-      return new BaseLlmClient(new GeminiApiAdapter({ 'apiKey': key }));
+      return new BaseLlmClient(new GeminiApiAdapter(key));
     }
     case 'web-llm': {
       const options: { model?: string; onProgress?: (report: WebLlmInitReport) => void } = {};
@@ -352,28 +352,28 @@ export function instantiateProvider(id: ProviderId, inputs: InstantiateInputs = 
       if (typeof key !== 'string' || key.length === 0) {
         throw new LlmError('groq requires an API key', { 'reason': 'AUTH_FAILED', 'retryable': false });
       }
-      return new BaseLlmClient(new GroqApiAdapter({ 'apiKey': key }));
+      return new BaseLlmClient(new GroqApiAdapter(key));
     }
     case 'cerebras': {
       const key = keys['cerebras'];
       if (typeof key !== 'string' || key.length === 0) {
         throw new LlmError('cerebras requires an API key', { 'reason': 'AUTH_FAILED', 'retryable': false });
       }
-      return new BaseLlmClient(new CerebrasApiAdapter({ 'apiKey': key }));
+      return new BaseLlmClient(new CerebrasApiAdapter(key));
     }
     case 'mistral': {
       const key = keys['mistral'];
       if (typeof key !== 'string' || key.length === 0) {
         throw new LlmError('mistral requires an API key', { 'reason': 'AUTH_FAILED', 'retryable': false });
       }
-      return new BaseLlmClient(new MistralApiAdapter({ 'apiKey': key }));
+      return new BaseLlmClient(new MistralApiAdapter(key));
     }
     case 'openrouter': {
       const key = keys['openrouter'];
       if (typeof key !== 'string' || key.length === 0) {
         throw new LlmError('openrouter requires an API key', { 'reason': 'AUTH_FAILED', 'retryable': false });
       }
-      return new BaseLlmClient(new OpenRouterApiAdapter({ 'apiKey': key }));
+      return new BaseLlmClient(new OpenRouterApiAdapter(key));
     }
     case 'ollama': {
       // No API key required — Ollama's loopback daemon accepts a

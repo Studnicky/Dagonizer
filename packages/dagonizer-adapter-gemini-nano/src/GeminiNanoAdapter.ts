@@ -16,7 +16,7 @@
  * `finally` to release the on-device GPU buffer.
  */
 
-import { BaseAdapter, ChatResponseMessageBuilder as ChatResponseMessage } from '@noocodex/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder } from '@noocodex/dagonizer/adapter';
 import type {
   ChatRequest,
   ChatResponse,
@@ -65,12 +65,30 @@ export async function detectGeminiNano(): Promise<GeminiNanoAvailability> {
 
 export class GeminiNanoAdapter extends BaseAdapter {
   constructor() {
-    super({
-      'id': 'gemini-nano',
-      'displayName': 'Gemini Nano (Chrome on-device)',
-      'capabilities': { 'toolUse': 'none', 'structuredOutput': true, 'jsonMode': false },
-      'maxAttempts': 2,
-    });
+    super(
+      'gemini-nano',
+      'Gemini Nano (Chrome on-device)',
+      { 'toolUse': 'none', 'structuredOutput': true, 'jsonMode': false },
+      { 'maxAttempts': 2 },
+    );
+  }
+
+  /**
+   * Probe true only when Chrome's `window.LanguageModel` is present
+   * AND `availability()` reports `'available'`. `'downloadable'` and
+   * `'downloading'` resolve as false — the model isn't ready to serve
+   * a chat call immediately, and a cascade should pick a different
+   * adapter while the on-device weights warm up. Never throws.
+   */
+  override async probe(): Promise<boolean> {
+    const lm = getLanguageModel();
+    if (lm === undefined) return false;
+    try {
+      const status = await lm.availability();
+      return status === 'available';
+    } catch {
+      return false;
+    }
   }
 
   protected async performChat(request: ChatRequest): Promise<ChatResponse> {
@@ -105,7 +123,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
       const text = raw.trim();
       const toolCalls: readonly ToolCall[] = request.tools.length > 0 ? decodeToolCalls(raw) : [];
       return {
-        'message': ChatResponseMessage.from(text, toolCalls),
+        'message': ChatResponseMessageBuilder.from(text, toolCalls),
         'finishReason': toolCalls.length > 0 ? 'tool_call' : 'stop',
         'usage': { 'promptTokens': 0, 'completionTokens': 0 },
       };

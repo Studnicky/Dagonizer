@@ -17,6 +17,7 @@
 
 import type { MemoryDigest } from '../ArchivistState.ts';
 import type { Candidate } from '../entities/Book.ts';
+import { UserLanguage } from '../language/UserLanguage.ts';
 
 // ── Directive primitives ────────────────────────────────────────────────
 /** Composable directive lines. Keep them positive, terse, and orthogonal. */
@@ -98,17 +99,42 @@ export const schemas = {
   } as Record<string, unknown>,
 };
 
+// ── Language preamble — top-of-prompt directive ────────────────────────
+/**
+ * Prepend a single language directive to every prompt body. Single
+ * source of truth for the language instruction so we can evolve the
+ * exact phrasing in one place.
+ *
+ * The directive instructs the model to:
+ *   • respond in the user's device language;
+ *   • use that language for every natural-language field in any JSON
+ *     output (descriptions, ranking reasons, draft responses);
+ *   • not echo translations of the input — respond directly in the
+ *     target language.
+ */
+function withLanguagePreamble(language: string, body: string): string {
+  const code = UserLanguage.normalize(language);
+  const name = UserLanguage.displayName(code);
+  const preamble = [
+    `You communicate in ${name} (${code}). Every word you output, including`,
+    'JSON field values that contain natural language (book descriptions, ranking',
+    `reasons, draft responses), MUST be in ${name}. Do not output translations`,
+    `or transliterations of the user's input — respond directly in ${name}.`,
+  ].join('\n');
+  return `${preamble}\n\n${body}`;
+}
+
 // ── Prompt builders ────────────────────────────────────────────────────
 /** Helpers expose only the builders; nodes never assemble prose themselves. */
 export const prompts = {
-  classifyIntent(query: string, recalledSummary?: string): string {
+  classifyIntent(language: string, query: string, recalledSummary?: string): string {
     const contextBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
       : [
           '',
           `Recent context: ${recalledSummary} ${directives.continuityHint}`,
         ].join('\n');
-    return [
+    const body = [
       SYSTEM,
       '',
       'Classify the visitor question as exactly one of the following intents:',
@@ -126,10 +152,11 @@ export const prompts = {
       '',
       `Visitor question: ${query}`,
     ].join('\n');
+    return withLanguagePreamble(language, body);
   },
 
-  extractTerms(query: string): string {
-    return [
+  extractTerms(language: string, query: string): string {
+    const body = [
       SYSTEM,
       '',
       'Extract 3–6 short search terms (1–3 words each) from the visitor question.',
@@ -137,13 +164,14 @@ export const prompts = {
       '',
       `Visitor question: ${query}`,
     ].join('\n');
+    return withLanguagePreamble(language, body);
   },
 
-  decideTools(query: string): string {
+  decideTools(language: string, query: string): string {
     // Tool descriptions / schemas flow through the adapter's native
     // tools channel (Gemini's `functionDeclarations`, Nano's
     // `responseConstraint`). The prompt itself stays lean.
-    return [
+    const body = [
       SYSTEM,
       directives.pickTerseQuery,
       'For any visitor question that names an author or describes a book to find, call ALL of the available tools — do not omit any source.',
@@ -151,11 +179,12 @@ export const prompts = {
       '',
       `Visitor question: ${query}`,
     ].join('\n');
+    return withLanguagePreamble(language, body);
   },
 
-  rankCandidates(query: string, candidates: readonly Candidate[]): string {
+  rankCandidates(language: string, query: string, candidates: readonly Candidate[]): string {
     const rows = candidates.map((c, i) => formatCandidateRow(i + 1, c)).join('\n');
-    return [
+    const body = [
       SYSTEM,
       directives.emitJsonOnly,
       '',
@@ -164,9 +193,11 @@ export const prompts = {
       'Candidates:',
       rows,
     ].join('\n');
+    return withLanguagePreamble(language, body);
   },
 
   compose(
+    language: string,
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
@@ -183,7 +214,7 @@ export const prompts = {
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
       : `\nConversation context: ${recalledSummary}`;
-    return [
+    const body = [
       SYSTEM,
       directives.beTerse,
       directives.citeShortlist,
@@ -195,9 +226,11 @@ export const prompts = {
       'Shortlist (ranked, top first):',
       rows,
     ].join('\n');
+    return withLanguagePreamble(language, body);
   },
 
   composeAuthor(
+    language: string,
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
@@ -214,7 +247,7 @@ export const prompts = {
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
       : `\nConversation context: ${recalledSummary}`;
-    return [
+    const body = [
       SYSTEM,
       directives.beTerse,
       directives.citeShortlist,
@@ -228,9 +261,11 @@ export const prompts = {
       'Shortlist (chronological, oldest first):',
       rows,
     ].join('\n');
+    return withLanguagePreamble(language, body);
   },
 
   composeReviews(
+    language: string,
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
@@ -247,7 +282,7 @@ export const prompts = {
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
       : `\nConversation context: ${recalledSummary}`;
-    return [
+    const body = [
       SYSTEM,
       directives.beTerse,
       directives.citeShortlist,
@@ -261,9 +296,11 @@ export const prompts = {
       'Shortlist (ranked by rating signal):',
       rows,
     ].join('\n');
+    return withLanguagePreamble(language, body);
   },
 
   describeBook(
+    language: string,
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
@@ -280,7 +317,7 @@ export const prompts = {
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
       : `\nConversation context: ${recalledSummary}`;
-    return [
+    const body = [
       SYSTEM,
       directives.describeOnly,
       directives.citeShortlist,
@@ -293,9 +330,11 @@ export const prompts = {
       'Matched book(s):',
       rows,
     ].join('\n');
+    return withLanguagePreamble(language, body);
   },
 
   composeSimilar(
+    language: string,
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
@@ -312,7 +351,7 @@ export const prompts = {
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
       : `\nConversation context: ${recalledSummary}`;
-    return [
+    const body = [
       SYSTEM,
       directives.beTerse,
       directives.citeShortlist,
@@ -325,13 +364,14 @@ export const prompts = {
       'Shortlist (ranked, top first):',
       rows,
     ].join('\n');
+    return withLanguagePreamble(language, body);
   },
 
-  composeEmptyResponse(query: string, failureCause: string): string {
+  composeEmptyResponse(language: string, query: string, failureCause: string): string {
     const causeBlock = failureCause.trim().length > 0
       ? `\nSearch notes: ${failureCause.trim()}`
       : '';
-    return [
+    const body = [
       SYSTEM,
       directives.ownTheGap,
       directives.beTerse,
@@ -339,11 +379,12 @@ export const prompts = {
       `Visitor question: ${query}`,
       causeBlock,
     ].join('\n');
+    return withLanguagePreamble(language, body);
   },
 
-  validate(draft: string, shortlist: readonly Candidate[]): string {
+  validate(language: string, draft: string, shortlist: readonly Candidate[]): string {
     const titles = shortlist.map((c) => c.book.title).join(' | ');
-    return [
+    const body = [
       SYSTEM,
       'Approve if the draft (a) mentions a shortlisted title and (b) reads as a polite on-topic reply.',
       'Reply with the single token "yes" or "no".',
@@ -352,10 +393,11 @@ export const prompts = {
       '',
       `Draft: ${draft}`,
     ].join('\n');
+    return withLanguagePreamble(language, body);
   },
 
-  suggestStarterQuery(): string {
-    return [
+  suggestStarterQuery(language: string): string {
+    const body = [
       directives.persona,
       'The shop specialises in science fiction and philosophy.',
       'Pick one acclaimed work or author from science fiction or philosophy at random — examples of the genre frame: Liu Cixin\'s Three Body Problem, William Gibson\'s Neuromancer, Ursula K. Le Guin, Stanisław Lem, Ted Chiang, Jorge Luis Borges, Albert Camus, Michel Foucault, Gilles Deleuze, Ludwig Wittgenstein. Pick something in that vein but vary your selection.',
@@ -363,10 +405,11 @@ export const prompts = {
       'The question must be under 20 words.',
       'Return just the question — no preamble, no quotation marks, no explanation.',
     ].join(' ');
+    return withLanguagePreamble(language, body);
   },
 
-  suggestGreeting(): string {
-    return [
+  suggestGreeting(language: string): string {
+    const body = [
       directives.persona,
       'The shop specialises in science fiction and philosophy.',
       'Write ONE fresh opening greeting for a new visitor walking into the shop.',
@@ -374,10 +417,11 @@ export const prompts = {
       'Keep it under 30 words.',
       'Return just the greeting — no preamble, no quotation marks, no explanation.',
     ].join(' ');
+    return withLanguagePreamble(language, body);
   },
 
-  suggestVisitorReplyTo(greeting: string): string {
-    return [
+  suggestVisitorReplyTo(language: string, greeting: string): string {
+    const body = [
       'A bookshop visitor has just received this greeting from the Archivist:',
       `"${greeting}"`,
       'The visitor is interested in science fiction and philosophy.',
@@ -386,10 +430,11 @@ export const prompts = {
       'Keep it under 30 words.',
       'Return just the visitor message — no preamble, no quotation marks, no explanation.',
     ].join(' ');
+    return withLanguagePreamble(language, body);
   },
 
-  explainTool(name: string, context: string): string {
-    return [
+  explainTool(language: string, name: string, context: string): string {
+    const body = [
       'You are a librarian explaining a backend tool to a curious visitor.',
       `The tool is called "${name}".`,
       `Here is what it does: ${context}`,
@@ -400,9 +445,11 @@ export const prompts = {
       'Keep it warm and clear. No jargon. Under 80 words.',
       'Return just the explanation, no preamble.',
     ].join('\n');
+    return withLanguagePreamble(language, body);
   },
 
   composeMemoryRecall(
+    language: string,
     query: string,
     digest: MemoryDigest,
     recalledSummary?: string,
@@ -423,7 +470,7 @@ export const prompts = {
             : '',
         ].filter(Boolean).join(' ');
 
-    return [
+    const body = [
       SYSTEM,
       directives.recallMemories,
       directives.beTerse,
@@ -433,6 +480,7 @@ export const prompts = {
       '',
       digestBlock,
     ].join('\n');
+    return withLanguagePreamble(language, body);
   },
 };
 

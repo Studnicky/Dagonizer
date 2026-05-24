@@ -11,8 +11,9 @@ import type { OpenAiCompatibleAdapterOptions } from '@noocodex/dagonizer/adapter
 export interface GroqApiAdapterOptions extends OpenAiCompatibleAdapterOptions {}
 
 export class GroqApiAdapter extends OpenAiCompatibleAdapter {
-  constructor(options: GroqApiAdapterOptions) {
+  constructor(apiKey: string, options: GroqApiAdapterOptions = {}) {
     super(
+      apiKey,
       {
         'id':            'groq',
         'displayName':   'Groq (llama-3.3-70b)',

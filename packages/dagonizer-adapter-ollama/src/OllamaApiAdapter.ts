@@ -22,9 +22,6 @@
  */
 
 import { OpenAiCompatibleAdapter } from '@noocodex/dagonizer/adapter';
-import type {
-  OpenAiCompatibleAdapterOptions
-} from '@noocodex/dagonizer/adapter';
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = 'llama3.2:latest';
@@ -48,16 +45,15 @@ export interface OllamaApiAdapterOptions {
   readonly maxAttempts?: number;
 }
 
+const PROBE_TIMEOUT_MS = 500;
+
 export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
+  readonly #baseUrl: string;
+
   public constructor(options: OllamaApiAdapterOptions = {}) {
     const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
-    const merged: OpenAiCompatibleAdapterOptions = {
-      'apiKey': options.apiKey ?? 'ollama',
-      'model': options.model ?? DEFAULT_MODEL,
-      ...(options.maxAttempts !== undefined ? { 'maxAttempts': options.maxAttempts } : {})
-    };
-
     super(
+      options.apiKey ?? 'ollama',
       {
         'id': 'ollama',
         'displayName': 'Ollama (local)',
@@ -71,7 +67,34 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
         'tokenField': 'max_tokens',
         'extraHeaders': {}
       },
-      merged
+      {
+        'model': options.model ?? DEFAULT_MODEL,
+        ...(options.maxAttempts !== undefined ? { 'maxAttempts': options.maxAttempts } : {})
+      }
     );
+    this.#baseUrl = baseUrl;
+  }
+
+  /**
+   * Probe true when the Ollama daemon answers a GET against
+   * `/api/tags` (the native model-list endpoint) with 2xx inside a
+   * short timeout. Replaces the inherited key-presence probe — Ollama
+   * uses a placeholder bearer and gates availability on the daemon
+   * being reachable, not on credentials. Never throws.
+   */
+  override async probe(): Promise<boolean> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => { controller.abort(); }, PROBE_TIMEOUT_MS);
+    try {
+      const res = await fetch(`${this.#baseUrl}/api/tags`, {
+        'method': 'GET',
+        'signal': controller.signal
+      });
+      return res.ok;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }

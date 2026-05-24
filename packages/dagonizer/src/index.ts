@@ -190,6 +190,21 @@ export type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from './contr
 export type { Store, StoreSnapshot, StoreSnapshotEntry } from './contracts/Store.js';
 
 // =============================================================================
+// ADAPTER — LLM adapter contract, registry, and cascade selector
+// =============================================================================
+
+export {
+  AdapterDescriptor,
+  LlmAdapterCascade,
+  LlmAdapterRegistry,
+} from './adapter/index.js';
+export type {
+  AdapterDescriptorShape,
+  AdapterFactory,
+  CascadePreference,
+} from './adapter/index.js';
+
+// =============================================================================
 // ENTITY-NARROWING INTERFACES (colocated with entity)
 // =============================================================================
 

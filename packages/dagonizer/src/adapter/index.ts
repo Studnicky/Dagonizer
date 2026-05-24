@@ -25,8 +25,8 @@ export type {
 } from './LlmAdapter.js';
 
 export {
-  ChatRequest as ChatRequestBuilder,
-  ChatResponseMessage as ChatResponseMessageBuilder,
+  ChatRequestBuilder,
+  ChatResponseMessageBuilder,
   DEFAULT_MAX_TOKENS,
   DEFAULT_OUTPUT_SCHEMA,
   DEFAULT_TEMPERATURE,
@@ -39,7 +39,7 @@ export {
   DEFAULT_BASE_DELAY_MS,
   DEFAULT_MAX_ATTEMPTS,
 } from './BaseAdapter.js';
-export type { BaseAdapterOptions, PartialBaseAdapterOptions } from './BaseAdapter.js';
+export type { BaseAdapterOptions } from './BaseAdapter.js';
 
 export { OpenAiCompatibleAdapter } from './OpenAiCompatibleAdapter.js';
 export type {
@@ -53,4 +53,13 @@ export {
   classifyHttp,
   LlmError,
 } from './LlmError.js';
-export type { ErrorClassification } from './LlmError.js';
+export type { ErrorClassification, LlmErrorReason } from './LlmError.js';
+
+export { AdapterDescriptor } from './AdapterDescriptor.js';
+export type { AdapterDescriptorShape } from './AdapterDescriptor.js';
+
+export { LlmAdapterRegistry } from './LlmAdapterRegistry.js';
+export type { AdapterFactory } from './LlmAdapterRegistry.js';
+
+export { LlmAdapterCascade } from './LlmAdapterCascade.js';
+export type { CascadePreference } from './LlmAdapterCascade.js';
