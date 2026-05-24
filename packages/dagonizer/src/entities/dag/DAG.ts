@@ -74,6 +74,9 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   // terminal properties
   'outcome': { '@id': `${NS}outcome` },
 
+  // phase properties
+  'phase': { '@id': `${NS}phase` },
+
   // ── classes ───────────────────────────────────────────────────────────────
   'DAG':          { '@id': `${NS}DAG` },
   'Placement':    { '@id': `${NS}Placement` },
@@ -81,6 +84,7 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   'FanOutNode':   { '@id': `${NS}FanOutNode` },
   'DeepDAGNode':  { '@id': `${NS}DeepDAGNode` },
   'TerminalNode': { '@id': `${NS}TerminalNode` },
+  'PhaseNode':    { '@id': `${NS}PhaseNode` },
 
   // ParallelNode carries a type-scoped context: within any object typed
   // ParallelNode, `nodes` maps to `dag/parallelNodes` (child name strings)
@@ -183,6 +187,18 @@ const DAGNodeEntrySchema = {
         '@type':   { 'type': 'string', 'const': 'TerminalNode' },
         'name':    { 'type': 'string', 'minLength': 1 },
         'outcome': { 'type': 'string', 'enum': ['completed', 'failed'] },
+      },
+      'additionalProperties': false,
+    },
+    {
+      'type': 'object',
+      'required': ['@id', '@type', 'name', 'node', 'phase'],
+      'properties': {
+        '@id':   { 'type': 'string', 'minLength': 1 },
+        '@type': { 'type': 'string', 'const': 'PhaseNode' },
+        'name':  { 'type': 'string', 'minLength': 1 },
+        'node':  { 'type': 'string', 'minLength': 1 },
+        'phase': { 'type': 'string', 'enum': ['pre', 'post'] },
       },
       'additionalProperties': false,
     },

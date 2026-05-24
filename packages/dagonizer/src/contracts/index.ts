@@ -1,7 +1,9 @@
 export type { CheckpointStore } from './CheckpointStore.js';
+export type { Embedder } from './Embedder.js';
 export type { ClockProvider } from './ClockProvider.js';
 export type { ErrorConstructorType } from './ErrorConstructorType.js';
 export type { ExecuteOptionsInterface } from './ExecuteOptionsInterface.js';
+export type { Instrumentation } from './Instrumentation.js';
 export type { NodeInterface } from './NodeInterface.js';
 export type { OperationContract } from './OperationContract.js';
 export type { OperationContractFragment } from './OperationContractFragment.js';

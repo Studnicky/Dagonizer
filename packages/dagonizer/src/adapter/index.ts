@@ -63,3 +63,19 @@ export type { AdapterFactory } from './LlmAdapterRegistry.js';
 
 export { LlmAdapterCascade } from './LlmAdapterCascade.js';
 export type { CascadePreference } from './LlmAdapterCascade.js';
+
+// ── Embedder surface (parallel to LlmAdapter) ──────────────────────────────
+export type { Embedder } from '../contracts/Embedder.js';
+
+export {
+  BaseEmbedder,
+  DEFAULT_EMBEDDER_BASE_DELAY_MS,
+  DEFAULT_EMBEDDER_MAX_ATTEMPTS,
+} from './BaseEmbedder.js';
+export type { BaseEmbedderOptions } from './BaseEmbedder.js';
+
+export { EmbedderRegistry } from './EmbedderRegistry.js';
+export type { EmbedderFactory } from './EmbedderRegistry.js';
+
+export { EmbedderCascade } from './EmbedderCascade.js';
+export type { EmbedderCascadePreference } from './EmbedderCascade.js';

@@ -153,3 +153,91 @@ void describe('Dagonizer.getDAG / listDAGs / getNode / listNodes', () => {
 
   afterEach(() => { /* no shared state to clean */ });
 });
+
+const makeSingleNodeDAG = (dagName: string, nodeName: string): DAG => ({
+  '@context': DAG_CONTEXT,
+  '@id':      `urn:noocodex:dag:${dagName}`,
+  '@type':    'DAG',
+  'name':       dagName,
+  'version':    '1',
+  'entrypoint': nodeName,
+  'nodes': [{
+    '@id':     `urn:noocodex:dag:${dagName}/node/${nodeName}`,
+    '@type':   'SingleNode',
+    'name':    nodeName,
+    'node':    nodeName,
+    'outputs': { 'done': null },
+  }],
+});
+
+void describe('Dagonizer.registerBundle', () => {
+  void it('registers every node then every DAG from the bundle', () => {
+    const dispatcher = new Dagonizer<NodeStateBase>();
+    const nodeA = makeNode('a', ['done'], () => 'done');
+    const nodeB = makeNode('b', ['done'], () => 'done');
+    const dagA = makeSingleNodeDAG('flowA', 'a');
+    const dagB = makeSingleNodeDAG('flowB', 'b');
+
+    dispatcher.registerBundle({ 'nodes': [nodeA, nodeB], 'dags': [dagA, dagB] });
+
+    assert.equal(dispatcher.getNode('a'), nodeA);
+    assert.equal(dispatcher.getNode('b'), nodeB);
+    assert.equal(dispatcher.getDAG('flowA'), dagA);
+    assert.equal(dispatcher.getDAG('flowB'), dagB);
+    assert.equal(dispatcher.listNodes().length, 2);
+    assert.equal(dispatcher.listDAGs().length, 2);
+  });
+
+  void it('accepts an empty nodes array when DAGs reference already-registered nodes', () => {
+    const dispatcher = new Dagonizer<NodeStateBase>();
+    const nodeA = makeNode('a', ['done'], () => 'done');
+    dispatcher.registerNode(nodeA);
+    const dagA = makeSingleNodeDAG('flowA', 'a');
+
+    dispatcher.registerBundle({ 'nodes': [], 'dags': [dagA] });
+
+    assert.equal(dispatcher.getDAG('flowA'), dagA);
+    assert.equal(dispatcher.listNodes().length, 1);
+    assert.equal(dispatcher.listDAGs().length, 1);
+  });
+
+  void it('accepts an empty dags array and registers nodes only', () => {
+    const dispatcher = new Dagonizer<NodeStateBase>();
+    const nodeA = makeNode('a', ['done'], () => 'done');
+    const nodeB = makeNode('b', ['done'], () => 'done');
+
+    dispatcher.registerBundle({ 'nodes': [nodeA, nodeB], 'dags': [] });
+
+    assert.equal(dispatcher.getNode('a'), nodeA);
+    assert.equal(dispatcher.getNode('b'), nodeB);
+    assert.deepEqual(dispatcher.listDAGs(), []);
+  });
+
+  void it('throws on a DAG referencing an unregistered node, with earlier nodes still registered', () => {
+    const dispatcher = new Dagonizer<NodeStateBase>();
+    const nodeA = makeNode('a', ['done'], () => 'done');
+    const danglingDAG = makeSingleNodeDAG('dangling', 'missing');
+
+    assert.throws(
+      () => dispatcher.registerBundle({ 'nodes': [nodeA], 'dags': [danglingDAG] }),
+      /unknown registered node: missing/,
+    );
+
+    // Node registered before the failing DAG is still installed.
+    assert.equal(dispatcher.getNode('a'), nodeA);
+    assert.equal(dispatcher.getDAG('dangling'), undefined);
+  });
+
+  void it('resolves DAG references to nodes defined in the same bundle (nodes register first)', () => {
+    const dispatcher = new Dagonizer<NodeStateBase>();
+    const nodeA = makeNode('a', ['done'], () => 'done');
+    const dagA = makeSingleNodeDAG('flowA', 'a');
+
+    // Order in the bundle's `dags` array references a node that only exists
+    // in the same bundle's `nodes` array — succeeds because nodes register first.
+    dispatcher.registerBundle({ 'nodes': [nodeA], 'dags': [dagA] });
+
+    assert.equal(dispatcher.getNode('a'), nodeA);
+    assert.equal(dispatcher.getDAG('flowA'), dagA);
+  });
+});

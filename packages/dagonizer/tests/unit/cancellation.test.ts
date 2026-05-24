@@ -41,6 +41,59 @@ void describe('Dagonizer AbortSignal cancellation', () => {
     const result = await dispatcher.execute('cancel', state, { 'signal': controller.signal });
     assert.equal(state.lifecycle.kind, 'cancelled');
     assert.equal(result.cursor, 'slow');
+    assert.deepEqual(result.interruptedAt, { 'nodeName': 'slow', 'reason': 'abort' });
+  });
+
+  void it('records interruptedAt when caller aborts mid-flow at a downstream node', async () => {
+    const dispatcher = new Dagonizer<NodeStateBase>();
+    const controller = new AbortController();
+    const firstNode: NodeInterface<NodeStateBase, 'success'> = {
+      'name': 'first',
+      'outputs': ['success'],
+      async execute() { return { 'output': 'success' }; },
+    };
+    const secondNode: NodeInterface<NodeStateBase, 'success'> = {
+      'name': 'second',
+      'outputs': ['success'],
+      async execute() {
+        // Trip the controller before this node returns so the next iteration
+        // observes `signal.aborted` BEFORE running the downstream stage.
+        controller.abort(new Error('mid-flow cancel'));
+        return { 'output': 'success' };
+      },
+    };
+    const thirdNode: NodeInterface<NodeStateBase, 'success'> = {
+      'name': 'third',
+      'outputs': ['success'],
+      async execute() { return { 'output': 'success' }; },
+    };
+    dispatcher.registerNode(firstNode);
+    dispatcher.registerNode(secondNode);
+    dispatcher.registerNode(thirdNode);
+    dispatcher.registerDAG({
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:mid-cancel',
+      '@type':    'DAG',
+      'name':       'mid-cancel',
+      'version':    '1',
+      'entrypoint': 'a',
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:mid-cancel/node/a', '@type': 'SingleNode',
+          'name': 'a', 'node': 'first', 'outputs': { 'success': 'b' } },
+        { '@id': 'urn:noocodex:dag:mid-cancel/node/b', '@type': 'SingleNode',
+          'name': 'b', 'node': 'second', 'outputs': { 'success': 'c' } },
+        { '@id': 'urn:noocodex:dag:mid-cancel/node/c', '@type': 'SingleNode',
+          'name': 'c', 'node': 'third', 'outputs': { 'success': null } },
+      ],
+    });
+
+    const state = new NodeStateBase();
+    const result = await dispatcher.execute('mid-cancel', state, { 'signal': controller.signal });
+    assert.equal(state.lifecycle.kind, 'cancelled');
+    // The loop checks `signal.aborted` before running 'c', so the cursor and
+    // interruptedAt.nodeName point at the node that would have run next.
+    assert.equal(result.cursor, 'c');
+    assert.deepEqual(result.interruptedAt, { 'nodeName': 'c', 'reason': 'abort' });
   });
 
   void it('marks state timed_out when deadlineMs elapses', async () => {
@@ -75,6 +128,7 @@ void describe('Dagonizer AbortSignal cancellation', () => {
     const result = await dispatcher.execute('t', state, { 'deadlineMs': 25 });
     assert.equal(state.lifecycle.kind, 'timed_out');
     assert.equal(result.cursor, 'slow');
+    assert.deepEqual(result.interruptedAt, { 'nodeName': 'slow', 'reason': 'timeout' });
   });
 
   void it('passes dagName/nodeName through NodeContext', async () => {
@@ -103,9 +157,10 @@ void describe('Dagonizer AbortSignal cancellation', () => {
         'name':  's1', 'node': 'inspect', 'outputs': { 'success': null },
       }],
     });
-    await dispatcher.execute('inspect-dag', new NodeStateBase());
+    const result = await dispatcher.execute('inspect-dag', new NodeStateBase());
     assert.equal(seen.dag, 'inspect-dag');
     assert.equal(seen.node, 's1');
+    assert.equal(result.interruptedAt, null);
   });
 });
 
@@ -192,6 +247,9 @@ void describe('Dagonizer extension hooks', () => {
     const result = await dispatcher.execute('err', new NodeStateBase());
     assert.equal(result.cursor, 's');
     assert.equal(result.state.lifecycle.kind, 'failed');
+    // Node throws without abort signal — lifecycle is `failed`, not a
+    // cancellation. interruptedAt MUST be null.
+    assert.equal(result.interruptedAt, null);
     assert.equal(seen.length, 1);
     assert.equal(seen[0]?.stage, 's');
     assert.equal(seen[0]?.message, 'kaboom');

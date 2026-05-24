@@ -1,4 +1,5 @@
 import type { ExecuteOptionsInterface } from './contracts/ExecuteOptionsInterface.js';
+import type { Instrumentation } from './contracts/Instrumentation.js';
 import type { NodeInterface } from './contracts/NodeInterface.js';
 import type { StateAccessor } from './contracts/StateAccessor.js';
 import { FanInStrategies } from './core/FanInStrategies.js';
@@ -10,9 +11,10 @@ import type { DeepDAGNode } from './entities/dag/DeepDAGNode.js';
 import type { FanInConfig } from './entities/dag/FanInConfig.js';
 import type { FanOutNode } from './entities/dag/FanOutNode.js';
 import type { ParallelNode } from './entities/dag/ParallelNode.js';
+import type { PhaseNodePlacementInterface } from './entities/dag/PhaseNode.js';
 import type { SingleNodePlacementInterface } from './entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from './entities/dag/TerminalNode.js';
-import type { ExecutionResultInterface } from './entities/execution/ExecutionResult.js';
+import type { ExecutionResultInterface, InterruptionInfo } from './entities/execution/ExecutionResult.js';
 import type { NodeContextInterface } from './entities/node/NodeContext.js';
 import type { NodeResultInterface } from './entities/node/NodeResult.js';
 import { DAGError, NodeTimeoutError, ValidationError } from './errors/index.js';
@@ -20,12 +22,49 @@ import { Execution } from './Execution.js';
 import { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
 import { DottedPathAccessor } from './runtime/DottedPathAccessor.js';
+import { NoopInstrumentation } from './runtime/NoopInstrumentation.js';
 import { Scheduler } from './runtime/Scheduler.js';
 import { SignalComposer } from './runtime/SignalComposer.js';
 import { Validator } from './validation/Validator.js';
 
 /** Default state accessor — installed when the dispatcher is constructed without one. */
 const DEFAULT_STATE_ACCESSOR: StateAccessor = new DottedPathAccessor();
+
+/**
+ * Reserved metadata key used by `executeFanOut` to persist per-item
+ * resume bookkeeping. **Consumer nodes must not write to this key** —
+ * it is engine-internal and may be overwritten or cleared between batch
+ * boundaries.
+ *
+ * The stored value is a `StoredFanOutProgress` map keyed by the
+ * fan-out's placement `name` so multiple fan-outs in one flow keep
+ * independent entries.
+ */
+export const FAN_OUT_PROGRESS_KEY = '__dagonizer_fan_out_progress__';
+
+/**
+ * Per-placement fan-out progress entry. Keyed by `placementName` inside
+ * the metadata's `StoredFanOutProgress` map.
+ *
+ * `completedIndices` are the positions in the source array whose
+ * `node.execute` call returned successfully and contributed to the
+ * fan-out's aggregate result. `itemResults` stores the per-item output
+ * tag (`'success'`, `'error'`, etc.) alongside its source-array index
+ * so a resumed run can reconstruct the `resultsByOutput` buckets
+ * without re-executing earlier items.
+ */
+export interface FanOutProgress {
+  readonly placementName: string;
+  readonly completedIndices: readonly number[];
+  readonly itemResults: readonly { readonly index: number; readonly output: string }[];
+}
+
+/**
+ * The actual stored shape under `metadata[FAN_OUT_PROGRESS_KEY]`. Keyed
+ * by `FanOutNode.name` so multiple fan-out placements in the same flow
+ * do not collide.
+ */
+export type StoredFanOutProgress = Readonly<Record<string, FanOutProgress>>;
 
 /**
  * Constructor options for `Dagonizer`.
@@ -48,11 +87,39 @@ export interface DagonizerOptionsInterface<TServices = undefined> {
    * call.
    */
   readonly services?: TServices;
+  /**
+   * Instrumentation hooks invoked at execution boundaries. Defaults
+   * to a `NoopInstrumentation` — every method is a no-op when not
+   * overridden. Plugins extend `NoopInstrumentation` and override the
+   * hooks they care about, then pass the instance through this option.
+   *
+   * The dispatcher's protected `on*` subclass hooks continue to fire
+   * alongside this surface; both surfaces coexist so a single consumer
+   * can mix subclass observability with plugin-supplied instrumentation.
+   */
+  readonly instrumentation?: Instrumentation;
 }
 
 
-type DAGNodeType = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode | TerminalNodePlacementInterface;
+type DAGNodeType = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
 type DAGNodeAtType = DAGNodeType['@type'];
+
+/**
+ * A coherent bundle of nodes + DAGs that register together.
+ *
+ * Plugin packages (or feature modules) export a `DispatcherBundle` so
+ * consumers register the whole unit in one call instead of iterating
+ * `registerNode` / `registerDAG` themselves. Nodes register first so
+ * every DAG's references resolve when the DAG's semantic validator
+ * runs.
+ *
+ * Both arrays are required; either may be empty (a node-only bundle
+ * uses `dags: []`; a DAG-only bundle uses `nodes: []`).
+ */
+export interface DispatcherBundle<TState extends NodeStateInterface, TServices = undefined> {
+  readonly nodes: readonly NodeInterface<TState, string, TServices>[];
+  readonly dags:  readonly DAG[];
+}
 
 /**
  * Interface for Dagonizer. One execution path — `execute()` and `resume()`
@@ -124,6 +191,11 @@ export interface DagonizerInterface<
   registerNode<TOutput extends string>(
     node: NodeInterface<TState, TOutput, TServices>,
   ): void;
+
+  /**
+   * Register every node, then every DAG, in the supplied bundle.
+   */
+  registerBundle(bundle: DispatcherBundle<TState, TServices>): void;
 }
 
 interface InternalNodeResultInterface<TState extends NodeStateInterface> {
@@ -137,6 +209,12 @@ interface InternalNodeResultInterface<TState extends NodeStateInterface> {
  *
  * Subclass to attach observability — override `onFlowStart`, `onFlowEnd`,
  * `onNodeStart`, `onNodeEnd`, `onError`. Default implementations are no-ops.
+ *
+ * For composable observability (multiple observers, plugin-supplied
+ * tracing/metrics), pass an `Instrumentation` implementation through the
+ * `instrumentation` constructor option. The dispatcher fires both the
+ * subclass `on*` hooks and the equivalent `instrumentation.*` methods at
+ * every execution boundary, so subclass and plugin observers coexist.
  *
  * Cancellation: pass `{ signal }` (and/or `{ deadlineMs }`) to `execute()`.
  * The dispatcher composes them via `AbortSignal.any()` and marks state
@@ -172,6 +250,7 @@ implements DagonizerInterface<TState, TServices> {
   private readonly nodeIndex = new Map<string, DAGNodeType>();
   private readonly accessor: StateAccessor;
   private readonly services: TServices;
+  private readonly instrumentation: Instrumentation;
 
   /**
    * Construct a dispatcher. Subclass and override the protected hooks
@@ -188,6 +267,7 @@ implements DagonizerInterface<TState, TServices> {
   constructor(options: DagonizerOptionsInterface<TServices> = {}) {
     this.accessor = options.accessor ?? DEFAULT_STATE_ACCESSOR;
     this.services = options.services as TServices;
+    this.instrumentation = options.instrumentation ?? new NoopInstrumentation();
   }
 
   // ---------------------------------------------------------------------------
@@ -335,13 +415,18 @@ implements DagonizerInterface<TState, TServices> {
       // running. The cursor is null because there is no DAG to resume.
       const error = new DAGError(`Unknown DAG: ${dagName}`);
       this.onError('<unknown>', error, state);
+      this.instrumentation.error(dagName, '<unknown>', error, state);
       if (!isDeepDag) {
         try { state.markFailed(error); } catch { /* state may already be terminal */ }
       }
       const result: ExecutionResultInterface<TState> = {
         'cursor': null, 'executedNodes': [], 'skippedNodes': [], state, 'terminalOutcome': null,
+        'interruptedAt': null,
       };
-      if (!isDeepDag) this.onFlowEnd(dagName, state, result);
+      if (!isDeepDag) {
+        this.onFlowEnd(dagName, state, result);
+        this.instrumentation.flowEnd(dagName, state, result);
+      }
       return result;
     }
 
@@ -350,23 +435,67 @@ implements DagonizerInterface<TState, TServices> {
     if (!isDeepDag) {
       state.markRunning();
       this.onFlowStart(dagName, state);
+      this.instrumentation.flowStart(dagName, state);
     }
 
     const executedNodes: string[] = [];
     const skippedNodes: string[] = [];
+
+    // --- Pre-phase placements --------------------------------------------------
+    // Run before the entrypoint, in DAG declaration order. Suppressed when this
+    // is a deep-DAG re-entry — pre/post phases are top-level concerns owned by
+    // the consumer's `execute()` / `resume()` call.
+    if (!isDeepDag) {
+      const prePhases = dag.nodes.filter(
+        (n): n is PhaseNodePlacementInterface =>
+          n['@type'] === 'PhaseNode' && n.phase === 'pre',
+      );
+      for (const phase of prePhases) {
+        this.instrumentation.phaseEnter(dagName, 'pre', phase.name, state);
+        try {
+          await this.executePhasePlacement(phase, state, dagName, signal);
+          executedNodes.push(phase.name);
+        } catch (err) {
+          const error = err instanceof Error ? err : new Error(String(err));
+          this.onError(phase.name, error, state);
+          this.instrumentation.error(dagName, phase.name, error, state);
+          try { state.markFailed(error); } catch { /* already terminal */ }
+          this.instrumentation.phaseExit(dagName, 'pre', phase.name, state);
+          const result = this.buildResult(null, executedNodes, skippedNodes, null, null, state);
+          await this.runPostPhasesAndFinalize(dag, dagName, state, result, isDeepDag);
+          return result;
+        }
+        this.instrumentation.phaseExit(dagName, 'pre', phase.name, state);
+      }
+    }
+
     let currentNodeName: null | string = fromStage ?? dag.entrypoint;
     let cursor: null | string = currentNodeName;
     let terminalOutcome: 'completed' | 'failed' | null = null;
 
-    while (currentNodeName !== null) {
+    // Skip phase placements in the main loop — they are out-of-band and
+    // never the entrypoint. If the consumer's fromStage / entrypoint happens
+    // to name a phase placement, treat it as if the main loop is empty.
+    const isPhaseEntry = (name: string): boolean => {
+      const entry = this.nodeIndex.get(`${dagName}:${name}`);
+      return entry?.['@type'] === 'PhaseNode';
+    };
+    if (currentNodeName !== null && isPhaseEntry(currentNodeName)) {
+      currentNodeName = null;
+      cursor = null;
+    }
+
+    mainLoop: while (currentNodeName !== null) {
       if (signal?.aborted) {
-        this.handleAbort(state, signal);
-        const reason = signal.reason instanceof Error ? signal.reason : new Error(String(signal.reason ?? 'aborted'));
-        this.onError(currentNodeName, reason, state);
-        const result: ExecutionResultInterface<TState> = {
-          cursor, executedNodes, skippedNodes, state, terminalOutcome,
+        const abortInfo = this.handleAbort(state, signal);
+        this.onError(currentNodeName, abortInfo.error, state);
+        this.instrumentation.error(dagName, currentNodeName, abortInfo.error, state);
+        const interruptedAt: InterruptionInfo = {
+          'nodeName': currentNodeName,
+          'reason':   abortInfo.reason,
         };
-        if (!isDeepDag) this.onFlowEnd(dagName, state, result);
+        const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
+        await this.runPostPhasesAndFinalize(dag, dagName, state, result, isDeepDag);
         return result;
       }
 
@@ -375,17 +504,17 @@ implements DagonizerInterface<TState, TServices> {
       if (!node) {
         const error = new DAGError(`Unknown node: ${currentNodeName} in DAG ${dagName}`);
         this.onError(currentNodeName, error, state);
+        this.instrumentation.error(dagName, currentNodeName, error, state);
         if (!isDeepDag) {
           try { state.markFailed(error); } catch { /* already terminal */ }
         }
-        const result: ExecutionResultInterface<TState> = {
-          cursor, executedNodes, skippedNodes, state, terminalOutcome,
-        };
-        if (!isDeepDag) this.onFlowEnd(dagName, state, result);
+        const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, null, state);
+        await this.runPostPhasesAndFinalize(dag, dagName, state, result, isDeepDag);
         return result;
       }
 
       this.onNodeStart(node.name, state);
+      this.instrumentation.nodeStart(dagName, node.name, state);
 
       // TerminalNode is a no-op execution — capture outcome, synthesize result,
       // fire onNodeEnd, and break the loop. No call to executeDAGNode needed.
@@ -400,8 +529,9 @@ implements DagonizerInterface<TState, TServices> {
           state,
         };
         this.onNodeEnd(terminal.name, terminal.outcome, state);
+        this.instrumentation.nodeEnd(dagName, terminal.name, terminal.outcome, state);
         yield terminalResult;
-        break;
+        break mainLoop;
       }
 
       let nodeOutcome: InternalNodeResultInterface<TState>;
@@ -410,17 +540,37 @@ implements DagonizerInterface<TState, TServices> {
       } catch (caughtError) {
         const error = caughtError instanceof Error ? caughtError : new Error(String(caughtError));
         this.onError(currentNodeName, error, state);
-        if (!isDeepDag) {
-          if (signal?.aborted) {
-            this.handleAbort(state, signal);
-          } else if (!DAGLifecycleMachine.isTerminal(state.lifecycle)) {
+        this.instrumentation.error(dagName, currentNodeName, error, state);
+        let interruptedAt: InterruptionInfo | null = null;
+        if (signal?.aborted) {
+          // Run-level signal aborted: classify abort vs timeout via handleAbort.
+          // handleAbort inspects signal.reason for TimeoutError, which
+          // covers the run-level deadline TimeoutError. The per-node
+          // `NodeTimeoutError` does NOT abort the parent signal — that
+          // case is handled below.
+          if (!isDeepDag) {
+            const abortInfo = this.handleAbort(state, signal);
+            interruptedAt = { 'nodeName': currentNodeName, 'reason': abortInfo.reason };
+          } else {
+            // Deep-DAG: do not flip lifecycle, but still classify reason.
+            const isTimeout = signal.reason instanceof Error && signal.reason.name === 'TimeoutError';
+            interruptedAt = { 'nodeName': currentNodeName, 'reason': isTimeout ? 'timeout' : 'abort' };
+          }
+        } else if (error instanceof NodeTimeoutError) {
+          // Per-node `timeoutMs` expired. The parent signal isn't aborted
+          // (the deadline is scoped to a child controller), but the node
+          // was interrupted by a timeout. Lifecycle becomes `failed` per
+          // existing per-node-timeout semantics; record the cancellation
+          // telemetry alongside.
+          interruptedAt = { 'nodeName': currentNodeName, 'reason': 'timeout' };
+          if (!isDeepDag && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
             try { state.markFailed(error); } catch { /* already terminal */ }
           }
+        } else if (!isDeepDag && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
+          try { state.markFailed(error); } catch { /* already terminal */ }
         }
-        const result: ExecutionResultInterface<TState> = {
-          cursor, executedNodes, skippedNodes, state, terminalOutcome,
-        };
-        if (!isDeepDag) this.onFlowEnd(dagName, state, result);
+        const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
+        await this.runPostPhasesAndFinalize(dag, dagName, state, result, isDeepDag);
         return result;
       }
 
@@ -441,6 +591,7 @@ implements DagonizerInterface<TState, TServices> {
       }
 
       this.onNodeEnd(node.name, nodeResult.output, state);
+      this.instrumentation.nodeEnd(dagName, node.name, nodeResult.output, state);
 
       yield nodeResult;
 
@@ -458,11 +609,109 @@ implements DagonizerInterface<TState, TServices> {
         try { state.markCompleted(); } catch { /* state may already be terminal */ }
       }
     }
-    const result: ExecutionResultInterface<TState> = {
-      'cursor': null, executedNodes, skippedNodes, state, terminalOutcome,
-    };
-    if (!isDeepDag) this.onFlowEnd(dagName, state, result);
+    const result = this.buildResult(null, executedNodes, skippedNodes, terminalOutcome, null, state);
+    await this.runPostPhasesAndFinalize(dag, dagName, state, result, isDeepDag);
     return result;
+  }
+
+  /**
+   * Shared result-object constructor. Centralises the
+   * `ExecutionResultInterface<TState>` shape so every exit branch in
+   * `runNodes` returns an identically-shaped object — same key order, same
+   * field set — keeping V8 hidden classes stable across success and error
+   * paths.
+   */
+  private buildResult(
+    cursor: string | null,
+    executedNodes: string[],
+    skippedNodes: string[],
+    terminalOutcome: 'completed' | 'failed' | null,
+    interruptedAt: InterruptionInfo | null,
+    state: TState,
+  ): ExecutionResultInterface<TState> {
+    return {
+      cursor,
+      executedNodes,
+      skippedNodes,
+      state,
+      terminalOutcome,
+      interruptedAt,
+    };
+  }
+
+  /**
+   * Run every `phase: 'post'` placement in DAG declaration order, then
+   * fire `onFlowEnd` + `instrumentation.flowEnd`. Suppressed when
+   * `isDeepDag` is true — phase placements are top-level concerns owned
+   * by the consumer's `execute()` / `resume()` call.
+   *
+   * Errors thrown by a post-phase placement are collected as warnings on
+   * `state` (code `POST_PHASE_FAILED`) and do NOT change the already-set
+   * lifecycle. Each post-phase that completes successfully is appended to
+   * `result.executedNodes` (the array reference shared with the result).
+   */
+  private async runPostPhasesAndFinalize(
+    dag: DAG,
+    dagName: string,
+    state: TState,
+    result: ExecutionResultInterface<TState>,
+    isDeepDag: boolean,
+  ): Promise<void> {
+    if (isDeepDag) {
+      return;
+    }
+
+    const postPhases = dag.nodes.filter(
+      (n): n is PhaseNodePlacementInterface =>
+        n['@type'] === 'PhaseNode' && n.phase === 'post',
+    );
+    for (const phase of postPhases) {
+      this.instrumentation.phaseEnter(dagName, 'post', phase.name, state);
+      try {
+        await this.executePhasePlacement(phase, state, dagName, null);
+        result.executedNodes.push(phase.name);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        state.collectWarning({
+          'code':      'POST_PHASE_FAILED',
+          'message':   `post-phase '${phase.name}' threw: ${message}`,
+          'operation': phase.name,
+          'timestamp': new Date().toISOString(),
+        });
+      }
+      this.instrumentation.phaseExit(dagName, 'post', phase.name, state);
+    }
+    this.onFlowEnd(dagName, state, result);
+    this.instrumentation.flowEnd(dagName, state, result);
+  }
+
+  /**
+   * Execute a single PhaseNode placement. Looks up the registered node by
+   * `phase.node`, builds a node context, and invokes `node.execute(state,
+   * ctx)` through `withNodeTimeout` so per-node timeouts apply uniformly.
+   * Errors collected by the node are forwarded to `state` via
+   * `state.collectError`. Throws when the registered node is not found or
+   * when the node throws / times out.
+   */
+  private async executePhasePlacement(
+    phase: PhaseNodePlacementInterface,
+    state: TState,
+    dagName: string,
+    signal: AbortSignal | null,
+  ): Promise<void> {
+    const node = this.nodes.get(phase.node);
+    if (node === undefined) {
+      throw new DAGError(
+        `PhaseNode '${phase.name}' references unknown registered node: ${phase.node}`,
+      );
+    }
+    const result = await this.withNodeTimeout(node, signal, (nodeSignal) => {
+      const context = this.buildContext(dagName, phase.name, nodeSignal);
+      return node.execute(state, context);
+    });
+    if (result.errors !== undefined) {
+      for (const err of result.errors) state.collectError(err);
+    }
   }
 
   /**
@@ -485,22 +734,98 @@ implements DagonizerInterface<TState, TServices> {
 
   /**
    * Inspect a triggered abort and mark the lifecycle terminal accordingly.
-   * Returns the error to surface on the dispatcher boundary.
+   * Returns the error to surface on the dispatcher boundary and the
+   * `InterruptionInfo.reason` discriminant ('abort' vs 'timeout') so the
+   * caller can populate `ExecutionResultInterface.interruptedAt`.
    */
-  private handleAbort(state: TState, signal: AbortSignal): Error {
+  private handleAbort(state: TState, signal: AbortSignal): { 'error': Error; 'reason': 'abort' | 'timeout' } {
     const reason = signal.reason;
     const isTimeout = reason instanceof Error && reason.name === 'TimeoutError';
     if (isTimeout) {
       try { state.markTimedOut(); } catch { /* lifecycle already terminal */ }
-      return reason;
+      return { 'error': reason, 'reason': 'timeout' };
     }
     const message = reason instanceof Error
       ? reason.message
       : (typeof reason === 'string' ? reason : 'aborted');
     try { state.markCancelled(message); } catch { /* lifecycle already terminal */ }
-    return reason instanceof Error ? reason : new Error(message);
+    return {
+      'error':  reason instanceof Error ? reason : new Error(message),
+      'reason': 'abort',
+    };
   }
 
+  /**
+   * Persist this batch's accumulated fan-out progress to metadata. One
+   * write per batch (not per item) — the call sits outside `Promise.all`
+   * so concurrent item resolutions never race on `setMetadata`.
+   */
+  private writeFanOutProgress(
+    state: TState,
+    placementName: string,
+    completed: ReadonlySet<number>,
+    itemOutputs: ReadonlyMap<number, string>,
+  ): void {
+    const stored = state.getMetadata<StoredFanOutProgress>(FAN_OUT_PROGRESS_KEY) ?? {};
+    const completedIndices = [...completed].sort((a, b) => a - b);
+    const itemResults = completedIndices.map((index) => ({
+      index,
+      'output': itemOutputs.get(index) ?? '',
+    }));
+    const next: Record<string, FanOutProgress> = { ...stored };
+    next[placementName] = { placementName, completedIndices, itemResults };
+    state.setMetadata(FAN_OUT_PROGRESS_KEY, next);
+  }
+
+  /**
+   * Remove this placement's progress entry. Called after the fan-out's
+   * main loop drains so a subsequent re-run starts clean and so the
+   * fan-in strategy never sees stale bookkeeping. When the resulting
+   * map is empty, the reserved metadata key is removed entirely so a
+   * clean snapshot omits it.
+   */
+  private clearFanOutProgress(state: TState, placementName: string): void {
+    const stored = state.getMetadata<StoredFanOutProgress>(FAN_OUT_PROGRESS_KEY);
+    if (stored === undefined) return;
+    if (!(placementName in stored)) return;
+    const next: Record<string, FanOutProgress> = { ...stored };
+    delete next[placementName];
+    if (Object.keys(next).length === 0) {
+      // The metadata getter returns the live underlying record; the
+      // readonly is a view-only constraint, not a runtime guarantee.
+      // Strip via cast and `delete` so the snapshot omits the key.
+      const live = state.metadata as Record<string, unknown>;
+      delete live[FAN_OUT_PROGRESS_KEY];
+    } else {
+      state.setMetadata(FAN_OUT_PROGRESS_KEY, next);
+    }
+  }
+
+  /**
+   * Execute a fan-out placement with per-item resume bookkeeping.
+   *
+   * Progress is persisted in `state.metadata` under the reserved key
+   * {@link FAN_OUT_PROGRESS_KEY} (`__dagonizer_fan_out_progress__`). The
+   * stored value is a `Record<placementName, FanOutProgress>` so multiple
+   * fan-outs in one DAG each keep an independent entry scoped by
+   * `fanOut.name`. **Consumer nodes must not write to this metadata key**
+   * — it is reserved for engine-internal use.
+   *
+   * On entry, the bookkeeping for `fanOut.name` (if any) is read; items
+   * whose indices appear in `completedIndices` are skipped and their
+   * outputs are restored from `itemResults`. Per-batch progress writes
+   * (NOT per-item) keep the write set serialised across the batch's
+   * concurrent `Promise.all`. After the main loop drains, the placement's
+   * progress entry is cleared BEFORE fan-in so a subsequent re-run of
+   * the same fan-out (e.g. inside a loop) starts from a clean slate.
+   *
+   * **Index semantics on resume.** Indices refer to positions in the
+   * source array AT THE TIME OF RESUME. If the consumer rewrites the
+   * source array between checkpoint and resume, the resumed fan-out
+   * trusts the persisted indices verbatim — items 0 and 1 are skipped
+   * even if the array has been re-sliced. Treat the source array as
+   * immutable while a fan-out checkpoint is live.
+   */
   private async executeFanOut(
     fanOut: FanOutNode,
     state: TState,
@@ -532,17 +857,37 @@ implements DagonizerInterface<TState, TServices> {
     const itemKey = fanOut.itemKey ?? 'currentItem';
     const concurrency = fanOut.concurrency ?? sourceArray.length;
 
+    // --- Resume bookkeeping -------------------------------------------------
+    // Seed in-memory progress from any persisted entry under this placement
+    // name. `itemOutputs[index]` carries the output recorded for that item;
+    // `completed` is the set lookup used by the per-item skip check.
+    const storedProgress = state.getMetadata<StoredFanOutProgress>(FAN_OUT_PROGRESS_KEY) ?? {};
+    const priorEntry = storedProgress[fanOut.name];
+    const completed = new Set<number>(priorEntry?.completedIndices ?? []);
+    const itemOutputs = new Map<number, string>();
+    if (priorEntry) {
+      for (const entry of priorEntry.itemResults) {
+        itemOutputs.set(entry.index, entry.output);
+      }
+    }
+    // ------------------------------------------------------------------------
+
     const resultsByOutput = new Map<string, unknown[]>();
-    const itemResults: Array<{ 'item': unknown;
-      'output': string }> = [];
 
     for (let i = 0; i < sourceArray.length; i += concurrency) {
       const batch = sourceArray.slice(i, i + concurrency);
       const batchPromises = batch.map(async (item, batchIndex) => {
+        const itemIndex = i + batchIndex;
+        if (completed.has(itemIndex)) {
+          // Skip already-executed item; output is rehydrated from
+          // bookkeeping for the aggregate calculation below.
+          return null;
+        }
+
         const itemState = state.clone() as TState;
 
         itemState.setMetadata(itemKey, item);
-        itemState.setMetadata('itemIndex', i + batchIndex);
+        itemState.setMetadata('itemIndex', itemIndex);
 
         const context = this.buildContext(dagName, fanOut.name, signal);
         const opResult = await node.execute(itemState, context);
@@ -554,19 +899,29 @@ implements DagonizerInterface<TState, TServices> {
         }
 
         return {
-          item,
-          'output': opResult.output
+          'index': itemIndex,
+          'output': opResult.output,
         };
       });
 
       const batchResults = await Promise.all(batchPromises);
 
-      itemResults.push(...batchResults);
+      // Serialised metadata write — one update per batch, not per item.
+      // Concurrent per-item writes would race on `setMetadata`.
+      for (const entry of batchResults) {
+        if (entry === null) continue;
+        completed.add(entry.index);
+        itemOutputs.set(entry.index, entry.output);
+      }
+
+      this.writeFanOutProgress(state, fanOut.name, completed, itemOutputs);
     }
 
-    for (const {
-      item, output
-    } of itemResults) {
+    // Materialise the per-output buckets from the merged `itemOutputs` map.
+    // This restores prior-run items alongside the freshly executed ones so
+    // fan-in sees the full set on a resumed run.
+    for (const [index, output] of itemOutputs) {
+      const item = sourceArray[index];
       const outputArray = resultsByOutput.get(output);
 
       if (outputArray) {
@@ -576,10 +931,15 @@ implements DagonizerInterface<TState, TServices> {
       }
     }
 
+    // Clear this placement's progress BEFORE fan-in so a subsequent re-run
+    // of the same fan-out (e.g. in a loop) starts clean.
+    this.clearFanOutProgress(state, fanOut.name);
+
     await this.fanIn(state, fanOut.fanIn, resultsByOutput, dagName, signal);
 
+    const totalCount = itemOutputs.size;
     const successCount = resultsByOutput.get('success')?.length ?? 0;
-    const errorCount = itemResults.length - successCount;
+    const errorCount = totalCount - successCount;
     let aggregateOutput: string;
 
     if (errorCount === 0) {
@@ -816,6 +1176,20 @@ implements DagonizerInterface<TState, TServices> {
         };
         return Promise.resolve({ 'nextStage': null, result });
       },
+      'PhaseNode': () => {
+        // PhaseNode placements run outside the main loop via
+        // executePhasePlacement; this branch is unreachable in normal
+        // operation (runNodes skips them before dispatch) but satisfies
+        // the exhaustive dispatch table.
+        const phase = entry as PhaseNodePlacementInterface;
+        const result: NodeResultInterface<TState> = {
+          'output': phase.phase,
+          'skipped': true,
+          'nodeName': phase.name,
+          state,
+        };
+        return Promise.resolve({ 'nextStage': null, result });
+      },
     };
     const handler = dispatch[entry['@type']];
     if (handler === undefined) {
@@ -996,8 +1370,19 @@ implements DagonizerInterface<TState, TServices> {
       'SingleNode':   () => Dagonizer.validateSingleNode(entry as SingleNodePlacementInterface, nodes, nodeNames, errors),
       'DeepDAGNode':  () => Dagonizer.validateDeepDAGNode(entry as DeepDAGNode, dags, nodeNames, errors),
       'TerminalNode': () => { /* TerminalNode has no outputs to validate; schema pass is sufficient */ },
+      'PhaseNode':    () => Dagonizer.validatePhaseNode(entry as PhaseNodePlacementInterface, nodes, errors),
     };
     validators[entry['@type']]?.();
+  }
+
+  private static validatePhaseNode<TState extends NodeStateInterface, TServices>(
+    phase: PhaseNodePlacementInterface,
+    nodes: Map<string, NodeInterface<TState, string, TServices>>,
+    errors: string[]
+  ): void {
+    if (!nodes.has(phase.node)) {
+      errors.push(`PhaseNode '${phase.name}' references unknown registered node: ${phase.node}`);
+    }
   }
 
   private static validateSingleNode<TState extends NodeStateInterface, TServices>(
@@ -1155,7 +1540,10 @@ implements DagonizerInterface<TState, TServices> {
         return { 'name': node.name, 'outputs': node.outputs, 'hardRequired': contract.hardRequired, 'produces': contract.produces };
       }).filter((c): c is Exclude<typeof c, null> => c !== null);
       try {
-        ContractRegistryValidator.validate(contracts, (msg) => { this.onContractWarning(msg); }, dag.entrypoint);
+        ContractRegistryValidator.validate(contracts, (msg) => {
+          this.onContractWarning(msg);
+          this.instrumentation.contractWarning(msg);
+        }, dag.entrypoint);
       } catch (err) {
         throw err instanceof Error ? err : new DAGError(String(err));
       }
@@ -1219,5 +1607,21 @@ implements DagonizerInterface<TState, TServices> {
       }
     }
     this.nodes.set(node.name, node as NodeInterface<TState, string, TServices>);
+  }
+
+  /**
+   * Register every node, then every DAG, in the supplied bundle. Order
+   * is fixed — nodes first so the semantic-pass DAG validator can
+   * resolve every node reference. Throws as soon as any individual
+   * registration throws (validation failure, duplicate name, etc.);
+   * registrations that ran before the failing one remain installed.
+   */
+  registerBundle(bundle: DispatcherBundle<TState, TServices>): void {
+    for (const node of bundle.nodes) {
+      this.registerNode(node);
+    }
+    for (const dag of bundle.dags) {
+      this.registerDAG(dag);
+    }
   }
 }

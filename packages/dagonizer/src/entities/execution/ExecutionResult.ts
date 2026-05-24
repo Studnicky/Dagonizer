@@ -25,7 +25,7 @@ export const ExecutionResultSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/ExecutionResult',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['cursor', 'executedNodes', 'skippedNodes', 'state'],
+  'required': ['cursor', 'executedNodes', 'skippedNodes', 'state', 'interruptedAt'],
   'properties': {
     'cursor': { 'type': ['string', 'null'] },
     'executedNodes': { 'type': 'array', 'items': { 'type': 'string' } },
@@ -37,9 +37,34 @@ export const ExecutionResultSchema = {
         { 'type': 'null' },
       ],
     },
+    'interruptedAt': {
+      'oneOf': [
+        { 'type': 'null' },
+        {
+          'type': 'object',
+          'required': ['nodeName', 'reason'],
+          'properties': {
+            'nodeName': { 'type': 'string', 'minLength': 1 },
+            'reason':   { 'type': 'string', 'enum': ['abort', 'timeout'] },
+          },
+          'additionalProperties': false,
+        },
+      ],
+    },
   },
   'additionalProperties': false,
 } as const;
+
+/**
+ * Structured cancellation telemetry. When a flow exits via abort or
+ * timeout, `InterruptionInfo` records the node that was current when
+ * the signal fired and the reason discriminant. Clean exits (completed,
+ * terminal, configuration error, node throw) carry `interruptedAt: null`.
+ */
+export interface InterruptionInfo {
+  readonly nodeName: string;
+  readonly reason:   'abort' | 'timeout';
+}
 
 /** TypeScript type derived from `ExecutionResultSchema` via `json-schema-to-ts`. */
 export type ExecutionResult = FromSchema<typeof ExecutionResultSchema>;
@@ -61,7 +86,8 @@ export type ExecutionResult = FromSchema<typeof ExecutionResultSchema>;
  * error, or abort path).
  */
 export interface ExecutionResultInterface<TState extends NodeStateInterface>
-  extends Omit<ExecutionResult, 'state' | 'terminalOutcome'> {
+  extends Omit<ExecutionResult, 'state' | 'terminalOutcome' | 'interruptedAt'> {
   'state': TState;
   'terminalOutcome': 'completed' | 'failed' | null;
+  'interruptedAt':   InterruptionInfo | null;
 }
