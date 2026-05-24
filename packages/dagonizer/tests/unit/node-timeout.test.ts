@@ -128,6 +128,8 @@ void describe('per-node timeoutMs', () => {
     assert.equal(result.state.lifecycle.kind, 'failed');
     // Cursor points back at the timed-out stage.
     assert.equal(result.cursor, 'stage');
+    // Cancellation telemetry records the node + reason.
+    assert.deepEqual(result.interruptedAt, { 'nodeName': 'stage', 'reason': 'timeout' });
   });
 
   void it('fires onError with NodeTimeoutError when the node times out', async () => {
@@ -203,6 +205,7 @@ void describe('per-node timeoutMs', () => {
 
     assert.equal(result.state.lifecycle.kind, 'completed');
     assert.equal(result.cursor, null);
+    assert.equal(result.interruptedAt, null);
   });
 
   void it('run-level signal abort still cancels a node with timeoutMs', async () => {
@@ -238,5 +241,6 @@ void describe('per-node timeoutMs', () => {
     await advancer;
 
     assert.equal(result.state.lifecycle.kind, 'cancelled');
+    assert.deepEqual(result.interruptedAt, { 'nodeName': 'stage', 'reason': 'abort' });
   });
 });

@@ -26,15 +26,16 @@
  */
 
 import type { DAG } from '../entities/dag/DAG.js';
-import type { DeepDAGNode } from '../entities/dag/DeepDAGNode.js';
+import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
+import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 
 /** Stable JSON-LD vocabulary URI for the Dagonizer DAG vocabulary. */
 export const DAGONIZER_VOCAB = 'https://noocodex.dev/ontology/dagonizer/';
 
-type DAGNodeEntry = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode;
+type DAGNodeEntry = FanOutNode | ParallelNode | SingleNodePlacementInterface | EmbeddedDAGNode | TerminalNodePlacementInterface;
 
 /** A single node entry in the rendered `@graph`. */
 export interface JsonLdGraphEntry {
@@ -59,10 +60,11 @@ export class JsonLdRenderer {
 
   /** Mapping from JSON-LD placement-discriminator to vocabulary-prefixed `@type`. */
   private static readonly TYPE_BY_KIND: Readonly<Record<DAGNodeEntry['@type'], string>> = {
-    'SingleNode':  'dag:SingleNode',
+    'SingleNode':   'dag:SingleNode',
     'ParallelNode': 'dag:ParallelNode',
-    'FanOutNode':  'dag:FanOutNode',
-    'DeepDAGNode': 'dag:DeepDAGNode',
+    'FanOutNode':   'dag:FanOutNode',
+    'EmbeddedDAGNode':  'dag:EmbeddedDAGNode',
+    'TerminalNode': 'dag:TerminalNode',
   };
 
   static render(dag: DAG): DagJsonLdDocument {
@@ -111,24 +113,29 @@ export class JsonLdRenderer {
   /** Render one placement as a JSON-LD `@graph` entry. */
   private static renderPlacement(dagName: string, placement: DAGNodeEntry): JsonLdGraphEntry {
     const base = {
-      '@id':        JsonLdRenderer.placementIri(dagName, placement.name),
-      '@type':      JsonLdRenderer.TYPE_BY_KIND[placement['@type']],
-      'dag:name':   placement.name,
-      'dag:routes': JsonLdRenderer.renderRoutes(dagName, placement.outputs),
+      '@id':      JsonLdRenderer.placementIri(dagName, placement.name),
+      '@type':    JsonLdRenderer.TYPE_BY_KIND[placement['@type']],
+      'dag:name': placement.name,
     } as const;
 
     switch (placement['@type']) {
       case 'SingleNode':
-        return { ...base, 'dag:node': placement.node };
+        return {
+          ...base,
+          'dag:routes': JsonLdRenderer.renderRoutes(dagName, placement.outputs),
+          'dag:node':   placement.node,
+        };
       case 'ParallelNode':
         return {
           ...base,
+          'dag:routes':   JsonLdRenderer.renderRoutes(dagName, placement.outputs),
           'dag:combine':  placement.combine,
           'dag:children': placement.nodes.map((child: string) => JsonLdRenderer.placementIri(dagName, child)),
         };
       case 'FanOutNode': {
         const out: JsonLdGraphEntry & Record<string, unknown> = {
           ...base,
+          'dag:routes': JsonLdRenderer.renderRoutes(dagName, placement.outputs),
           'dag:node':   placement.node,
           'dag:source': placement.source,
           'dag:fanIn':  placement.fanIn,
@@ -137,14 +144,21 @@ export class JsonLdRenderer {
         if (placement.concurrency !== undefined) out['dag:concurrency'] = placement.concurrency;
         return out;
       }
-      case 'DeepDAGNode': {
+      case 'EmbeddedDAGNode': {
         const out: JsonLdGraphEntry & Record<string, unknown> = {
           ...base,
-          'dag:dag': JsonLdRenderer.dagIri(placement.dag),
+          'dag:routes': JsonLdRenderer.renderRoutes(dagName, placement.outputs),
+          'dag:dag':    JsonLdRenderer.dagIri(placement.dag),
         };
         if (placement.stateMapping !== undefined) out['dag:stateMapping'] = placement.stateMapping;
         return out;
       }
+      case 'TerminalNode':
+        // TerminalNode placements end the flow — no routing, no dag:routes field.
+        return {
+          ...base,
+          'dag:outcome': placement.outcome,
+        };
     }
   }
 

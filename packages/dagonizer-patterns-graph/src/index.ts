@@ -12,3 +12,6 @@ export type { GraphServices } from './GraphNode.js';
 export { RecallContextNode } from './RecallContextNode.js';
 export { RecordFindingsNode } from './RecordFindingsNode.js';
 export { MemoryDigestNode } from './MemoryDigestNode.js';
+
+export { RdfStore } from './RdfStore.js';
+export type { RdfStoreOptions } from './RdfStore.js';

@@ -18,14 +18,18 @@ import { DAGDeriver } from '../derive/DAGDeriver.js';
 import type { DAGDeriverAnnotations } from '../derive/DAGDeriverAnnotations.js';
 import type { DAG } from '../entities/dag/DAG.js';
 import { DAG_CONTEXT } from '../entities/dag/DAG.js';
-import type { DeepDAGNode } from '../entities/dag/DeepDAGNode.js';
+import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import type { FanInConfig } from '../entities/dag/FanInConfig.js';
 import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
+import type { PhaseNodePlacementInterface } from '../entities/dag/PhaseNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
+import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-type DAGNodeType = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode;
+import type { Path } from './Path.js';
+
+type DAGNodeType = FanOutNode | ParallelNode | SingleNodePlacementInterface | EmbeddedDAGNode | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
 
 /** Optional configuration for a fan-out node added via `DAGBuilder.fanOut`. */
 export interface FanOutOptionsInterface {
@@ -35,11 +39,11 @@ export interface FanOutOptionsInterface {
   'itemKey'?: string;
 }
 
-/** Optional configuration for a deep-DAG node added via `DAGBuilder.deepDAG`. */
-export interface DeepDAGOptionsInterface {
+/** Optional configuration for a embedded-DAG node added via `DAGBuilder.embeddedDAG`. */
+export interface EmbeddedDAGOptionsInterface {
   /**
    * State mapping between parent and child DAGs. `input` copies fields from the
-   * parent node state into the child node state before the deep-DAG runs;
+   * parent node state into the child node state before the embedded-DAG runs;
    * `output` copies fields from the child node state back into the parent after
    * it completes.
    */
@@ -47,6 +51,73 @@ export interface DeepDAGOptionsInterface {
     'input'?: Record<string, string>;
     'output'?: Record<string, string>;
   };
+}
+
+/**
+ * Typed embedded-DAG options. Both generics narrow path strings at compile time:
+ * `TChildState` narrows the LEFT side of `inputs` and the RIGHT side of
+ * `outputs` to keys / dotted paths that exist on the child state. `TParentState`
+ * narrows the RIGHT side of `inputs` and BOTH sides of `outputs` to dotted
+ * paths that exist on the parent state.
+ *
+ * Defaults to `NodeStateInterface` for both generics so existing call sites
+ * that pass neither generic continue to typecheck.
+ *
+ * @example
+ * ```ts
+ * class ParentState extends NodeStateBase {
+ *   user = { name: '', age: 0 };
+ * }
+ * class ChildState extends NodeStateBase {
+ *   payload = '';
+ *   result  = 0;
+ * }
+ *
+ * builder.embeddedDAG<ChildState, ParentState>('invoke', 'child-dag', routes, {
+ *   inputs:  { payload: 'user.name' },     // 'payload' ∈ ChildState; 'user.name' ∈ Path<ParentState>
+ *   outputs: { 'user.age': 'result' },     // 'user.age' ∈ Path<ParentState>; 'result' ∈ Path<ChildState>
+ * });
+ * ```
+ */
+/**
+ * Resolves to `Path<T>` when `T` is a concrete subtype of `NodeStateInterface`
+ * (i.e. the caller passed an explicit `TParentState`); resolves to `string`
+ * when `T = NodeStateInterface` (the default). This keeps existing call sites
+ * that pass only `TChildState` backward-compatible — the parent path stays
+ * `string` so arbitrary dotted strings continue to typecheck.
+ *
+ * The check `NodeStateInterface extends T` is true only when `T` is
+ * `NodeStateInterface` itself (or a supertype), not when `T` is a concrete
+ * subclass. A concrete subclass has extra properties, so
+ * `NodeStateInterface extends ConcreteState` is false.
+ */
+type ParentPath<T extends NodeStateInterface> =
+  NodeStateInterface extends T ? string : Path<T>;
+
+export interface TypedEmbeddedDAGOptionsInterface<
+  TChildState extends NodeStateInterface = NodeStateInterface,
+  TParentState extends NodeStateInterface = NodeStateInterface,
+> {
+  /**
+   * Input mapping: child-state key → parent-state dotted path.
+   * Child key is narrowed to `keyof TChildState & string`.
+   * Parent path is narrowed to `Path<TParentState>` when `TParentState` is
+   * a concrete subtype; falls back to `string` when using the default
+   * `NodeStateInterface` (preserving backward compatibility).
+   * Before the embedded-DAG runs, each listed parent field is copied into the
+   * corresponding child field.
+   */
+  readonly 'inputs'?:  Partial<Record<keyof TChildState & string, ParentPath<TParentState>>>;
+
+  /**
+   * Output mapping: parent-state dotted path → child-state dotted path.
+   * Parent key is narrowed to `Path<TParentState>` (falls back to `string`
+   * when using the default); child path is narrowed to `Path<TChildState>`
+   * (falls back to `string` when using the default).
+   * After the embedded-DAG completes, each listed child field is copied back into
+   * the corresponding parent field.
+   */
+  readonly 'outputs'?: Partial<Record<ParentPath<TParentState>, ParentPath<TChildState>>>;
 }
 
 /**
@@ -155,23 +226,99 @@ export class DAGBuilder {
     return this;
   }
 
-  /** Append a deep-DAG node. `routes` covers `success | error`. */
-  deepDAG(
+  /**
+   * Append a embedded-DAG node. `routes` covers `success | error`.
+   *
+   * Supply `TChildState` to narrow the LEFT side of `inputs` and the RIGHT
+   * side of `outputs` to keys / dotted paths that exist on the child state.
+   * Supply `TParentState` to narrow the RIGHT side of `inputs` and BOTH sides
+   * of `outputs` to dotted paths that exist on the parent state.
+   *
+   * Both generics default to `NodeStateInterface`, so existing call sites
+   * that pass neither generic continue to typecheck unchanged.
+   *
+   * @example
+   * ```ts
+   * builder.embeddedDAG<ChildState, ParentState>('invoke', 'child-dag',
+   *   { success: 'next', error: null },
+   *   { inputs: { payload: 'user.name' }, outputs: { 'user.age': 'result' } },
+   * );
+   * ```
+   */
+  embeddedDAG<
+    TChildState extends NodeStateInterface = NodeStateInterface,
+    TParentState extends NodeStateInterface = NodeStateInterface,
+  >(
     name: string,
     dagName: string,
     routes: Record<'success' | 'error', null | string>,
-    options: DeepDAGOptionsInterface = {},
+    options: TypedEmbeddedDAGOptionsInterface<TChildState, TParentState> = {},
   ): this {
-    const dagNode: DeepDAGNode = {
+    const dagNode: EmbeddedDAGNode = {
       '@id':   this.#nodeId(name),
-      '@type': 'DeepDAGNode',
+      '@type': 'EmbeddedDAGNode',
       name,
       'dag':   dagName,
       'outputs': routes,
     };
-    if (options.stateMapping !== undefined) dagNode.stateMapping = options.stateMapping;
+    if (options.inputs !== undefined || options.outputs !== undefined) {
+      const stateMapping: EmbeddedDAGNode['stateMapping'] = {};
+      if (options.inputs  !== undefined) stateMapping.input  = options.inputs  as Record<string, string>;
+      if (options.outputs !== undefined) stateMapping.output = options.outputs as Record<string, string>;
+      dagNode.stateMapping = stateMapping;
+    }
     this.#nodes.push(dagNode);
     if (this.#entrypoint === null) this.#entrypoint = name;
+    return this;
+  }
+
+  /**
+   * Append a terminal node. When reached, the flow ends with the given
+   * `outcome`. `'completed'` is the default — the flow resolves cleanly.
+   * `'failed'` marks the state as failed before resolving.
+   *
+   * TerminalNodes have no routing (`outputs` map). They are placement-only
+   * constructs with no backing `NodeInterface`.
+   */
+  terminal(name: string, outcome: 'completed' | 'failed' = 'completed'): this {
+    const placement: TerminalNodePlacementInterface = {
+      '@id':   this.#nodeId(name),
+      '@type': 'TerminalNode',
+      name,
+      outcome,
+    };
+    this.#nodes.push(placement);
+    if (this.#entrypoint === null) this.#entrypoint = name;
+    return this;
+  }
+
+  /**
+   * Append a lifecycle-attached phase placement. `phase: 'pre'` runs before
+   * the entrypoint in DAG declaration order; an error aborts the run.
+   * `phase: 'post'` runs after the main loop drains on every exit path
+   * (completion, abort, timeout, terminal-failed, node throw); errors are
+   * collected as warnings on state and do not change the already-set
+   * lifecycle.
+   *
+   * Phase placements are out-of-band — they have no `outputs`, never the
+   * main-loop entrypoint, and never route to other placements.
+   */
+  phase<TState extends NodeStateInterface, TOutput extends string, TServices = undefined>(
+    name: string,
+    phase: 'pre' | 'post',
+    dagNode: NodeInterface<TState, TOutput, TServices>,
+  ): this {
+    const placement: PhaseNodePlacementInterface = {
+      '@id':   this.#nodeId(name),
+      '@type': 'PhaseNode',
+      name,
+      'node':  dagNode.name,
+      phase,
+    };
+    this.#nodes.push(placement);
+    this.#nodeImpls.set(name, dagNode as NodeInterface);
+    // Intentionally does NOT set entrypoint — phase placements are
+    // out-of-band and never the main-loop entry.
     return this;
   }
 
@@ -183,7 +330,7 @@ export class DAGBuilder {
    * dangling-read / dead-write validation that `DAGDeriver` runs at derive
    * time. Dangling reads throw `DAGError`; dead writes are routed to
    * `onContractWarning` (no-op if omitted). Placements added via `.parallel()`
-   * or `.deepDAG()` — which do not receive a `NodeInterface` — are not tracked
+   * or `.embeddedDAG()` — which do not receive a `NodeInterface` — are not tracked
    * in the impl registry and are silently skipped during contract validation;
    * this prevents false-positive dangling-read errors for node names that are
    * declared elsewhere.
@@ -207,7 +354,7 @@ export class DAGBuilder {
 
     // Run contract validation for the subset of placements registered via
     // .node() / .fanOut() whose underlying NodeInterface carries a contract.
-    // Placements added via .parallel() / .deepDAG() are not in #nodeImpls and
+    // Placements added via .parallel() / .embeddedDAG() are not in #nodeImpls and
     // are intentionally skipped — no false-positive dangling-read errors.
     const contractNodes = [...this.#nodeImpls.values()].filter(
       (impl) => impl.contract !== undefined,
@@ -231,7 +378,7 @@ export class DAGBuilder {
    * `DAGDeriver.derive({ name, version, entrypoint, nodes })` and returning
    * the resulting DAG. Use when your flow is linear and every node carries
    * a contract; drop into the fluent `.node()` API when the shape requires
-   * manual placement (fan-out, terminals, deep-DAGs).
+   * manual placement (fan-out, terminals, embedded-DAGs).
    */
   static fromNodes(opts: {
     readonly name: string;

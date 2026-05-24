@@ -15,10 +15,17 @@ const ArchivistRunner = defineAsyncComponent(() =>
   import('./components/ArchivistRunner.vue'),
 )
 
+// DagGraph renders any Dagonizer DAG via cytoscape. Lazy-load: only doc
+// pages with a <DagGraph :elements="..." /> block pull the bundle.
+const DagGraph = defineAsyncComponent(() =>
+  import('./components/DagGraph.vue'),
+)
+
 export default {
   extends: DefaultTheme,
   enhanceApp({ app }) {
     app.component('ArchivistRunner', ArchivistRunner)
+    app.component('DagGraph', DagGraph)
   },
   Layout() {
     return h(DefaultTheme.Layout, null, {

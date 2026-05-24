@@ -17,6 +17,7 @@ import type { ClassifiedIntent, LlmClient, ScoredCandidate } from '../services.t
 import type { LlmAdapter, ToolDefinition } from '@noocodex/dagonizer/adapter';
 import { ChatRequestBuilder } from '@noocodex/dagonizer/adapter';
 import type { ChatResponseMessage } from '@noocodex/dagonizer/adapter';
+import type { IntentClassifier } from './IntentClassifier.ts';
 import { prompts, schemas } from './prompts.ts';
 
 // Order matters: longer / more-specific labels appear BEFORE their
@@ -35,24 +36,54 @@ const VALID_INTENTS: readonly ClassifiedIntent[] = [
   'search',
 ] as const;
 
+/**
+ * Construction options for `BaseLlmClient`. `language` is the visitor's
+ * device language (ISO 639-1) — threaded into every prompt builder so
+ * the model responds in the user's language. Defaulted to `'en'` when
+ * absent so existing callers stay correct.
+ *
+ * `intentClassifier` is the optional vector-similarity classifier. When
+ * supplied, `classifyIntent` tries the vector path first; only when the
+ * top-scoring intent falls below the classifier's confidence floor does
+ * it fall through to the LLM. Pass `undefined` (or omit) to keep the
+ * legacy LLM-only behaviour — typically the right default in browser
+ * environments where no embedder is reachable.
+ */
+export interface BaseLlmClientOptions {
+  readonly language?: string;
+  readonly intentClassifier?: IntentClassifier;
+}
+
 export class BaseLlmClient implements LlmClient {
   readonly adapter: LlmAdapter;
+  /** Visitor device language; passed to every prompt builder. */
+  readonly language: string;
+  /** Optional vector-similarity classifier; null when not configured. */
+  readonly intentClassifier: IntentClassifier | null;
 
   get id():          string { return this.adapter.id; }
   get displayName(): string { return this.adapter.displayName; }
 
-  constructor(adapter: LlmAdapter) {
-    this.adapter = adapter;
+  constructor(adapter: LlmAdapter, options: BaseLlmClientOptions = {}) {
+    this.adapter  = adapter;
+    this.language = options.language !== undefined && options.language.length > 0
+      ? options.language
+      : 'en';
+    this.intentClassifier = options.intentClassifier ?? null;
   }
 
   async classifyIntent(query: string, recalledSummary?: string): Promise<ClassifiedIntent> {
-    const raw = (await this.#text(prompts.classifyIntent(query, recalledSummary))).toLowerCase();
+    if (this.intentClassifier !== null) {
+      const fromVector = await this.intentClassifier.classify(query);
+      if (fromVector !== null) return fromVector.intent;
+    }
+    const raw = (await this.#text(prompts.classifyIntent(this.language, query, recalledSummary))).toLowerCase();
     const found = VALID_INTENTS.find((intent) => raw.includes(intent));
     return found ?? 'search';
   }
 
   async extractTerms(query: string): Promise<readonly string[]> {
-    const raw = (await this.#text(prompts.extractTerms(query))).trim();
+    const raw = (await this.#text(prompts.extractTerms(this.language, query))).trim();
     try {
       const arr: unknown = JSON.parse(raw.slice(raw.indexOf('['), raw.lastIndexOf(']') + 1));
       if (Array.isArray(arr)) {
@@ -68,7 +99,7 @@ export class BaseLlmClient implements LlmClient {
   ): Promise<readonly { name: string; arguments: Record<string, unknown> }[]> {
     if (available.length === 0) return [];
     const request = ChatRequestBuilder.from({
-      'messages': [{ 'role': 'user', 'content': prompts.decideTools(query), 'toolCallId': '', 'toolName': '' }],
+      'messages': [{ 'role': 'user', 'content': prompts.decideTools(this.language, query), 'toolCallId': '', 'toolName': '' }],
       'tools':      available as readonly ToolDefinition[],
       'toolChoice': { 'type': 'auto' },
       'temperature': 0.1,
@@ -81,7 +112,7 @@ export class BaseLlmClient implements LlmClient {
   async rankCandidates(query: string, candidates: readonly Candidate[]): Promise<readonly ScoredCandidate[]> {
     if (candidates.length === 0) return [];
     const request = ChatRequestBuilder.from({
-      'messages':     [{ 'role': 'user', 'content': prompts.rankCandidates(query, candidates), 'toolCallId': '', 'toolName': '' }],
+      'messages':     [{ 'role': 'user', 'content': prompts.rankCandidates(this.language, query, candidates), 'toolCallId': '', 'toolName': '' }],
       'outputSchema': { 'kind': 'schema', 'schema': schemas.rankCandidates, 'id': 'archivist-rank-v1' },
       'temperature':  0.1,
       'maxTokens':    1024,
@@ -134,7 +165,7 @@ export class BaseLlmClient implements LlmClient {
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
   ): Promise<string> {
-    return (await this.#text(prompts.compose(query, shortlist, priorContext, recalledSummary))).trim();
+    return (await this.#text(prompts.compose(this.language, query, shortlist, priorContext, recalledSummary))).trim();
   }
 
   async composeAuthor(
@@ -143,7 +174,7 @@ export class BaseLlmClient implements LlmClient {
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
   ): Promise<string> {
-    return (await this.#text(prompts.composeAuthor(query, shortlist, priorContext, recalledSummary))).trim();
+    return (await this.#text(prompts.composeAuthor(this.language, query, shortlist, priorContext, recalledSummary))).trim();
   }
 
   async composeReviews(
@@ -152,7 +183,7 @@ export class BaseLlmClient implements LlmClient {
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
   ): Promise<string> {
-    return (await this.#text(prompts.composeReviews(query, shortlist, priorContext, recalledSummary))).trim();
+    return (await this.#text(prompts.composeReviews(this.language, query, shortlist, priorContext, recalledSummary))).trim();
   }
 
   async describeBook(
@@ -161,7 +192,7 @@ export class BaseLlmClient implements LlmClient {
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
   ): Promise<string> {
-    return (await this.#text(prompts.describeBook(query, shortlist, priorContext, recalledSummary))).trim();
+    return (await this.#text(prompts.describeBook(this.language, query, shortlist, priorContext, recalledSummary))).trim();
   }
 
   async composeSimilar(
@@ -170,11 +201,11 @@ export class BaseLlmClient implements LlmClient {
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
   ): Promise<string> {
-    return (await this.#text(prompts.composeSimilar(query, shortlist, priorContext, recalledSummary))).trim();
+    return (await this.#text(prompts.composeSimilar(this.language, query, shortlist, priorContext, recalledSummary))).trim();
   }
 
   async validate(draft: string, shortlist: readonly Candidate[]): Promise<boolean> {
-    const raw = (await this.#text(prompts.validate(draft, shortlist))).trim().toLowerCase();
+    const raw = (await this.#text(prompts.validate(this.language, draft, shortlist))).trim().toLowerCase();
     return raw.startsWith('yes');
   }
 
@@ -183,27 +214,27 @@ export class BaseLlmClient implements LlmClient {
     digest: MemoryDigest,
     recalledSummary?: string,
   ): Promise<string> {
-    return (await this.#text(prompts.composeMemoryRecall(query, digest, recalledSummary))).trim();
+    return (await this.#text(prompts.composeMemoryRecall(this.language, query, digest, recalledSummary))).trim();
   }
 
   async composeEmptyResponse(query: string, failureCause: string): Promise<string> {
-    return (await this.#text(prompts.composeEmptyResponse(query, failureCause))).trim();
+    return (await this.#text(prompts.composeEmptyResponse(this.language, query, failureCause))).trim();
   }
 
   async suggestStarterQuery(): Promise<string> {
-    return (await this.#text(prompts.suggestStarterQuery())).trim();
+    return (await this.#text(prompts.suggestStarterQuery(this.language))).trim();
   }
 
   async suggestGreeting(): Promise<string> {
-    return (await this.#text(prompts.suggestGreeting())).trim();
+    return (await this.#text(prompts.suggestGreeting(this.language))).trim();
   }
 
   async suggestVisitorReplyTo(greeting: string): Promise<string> {
-    return (await this.#text(prompts.suggestVisitorReplyTo(greeting))).trim();
+    return (await this.#text(prompts.suggestVisitorReplyTo(this.language, greeting))).trim();
   }
 
   async explainTool(name: string, context: string): Promise<string> {
-    return (await this.#text(prompts.explainTool(name, context))).trim();
+    return (await this.#text(prompts.explainTool(this.language, name, context))).trim();
   }
 
   async #text(prompt: string): Promise<string> {

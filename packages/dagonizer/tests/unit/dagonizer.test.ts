@@ -225,7 +225,7 @@ void describe('Dagonizer fan-out', () => {
   });
 });
 
-void describe('Dagonizer deep-DAGs', () => {
+void describe('Dagonizer embedded-DAGs', () => {
   void it('maps node state into and out of nested DAG', async () => {
     interface NestState extends NodeStateBase {
       parentValue: number;
@@ -256,8 +256,8 @@ void describe('Dagonizer deep-DAGs', () => {
           'name': 'inc', 'node': 'inc', 'outputs': { 'success': null } },
       ],
     };
-    // Parent DAG: deep-dag placement routes to a parent-owned terminal node.
-    // Deep-DAGs are reusable components — only the parent DAG owns END (null).
+    // Parent DAG: embedded-dag placement routes to a parent-owned terminal node.
+    // Embedded-DAGs are reusable components — only the parent DAG owns END (null).
     const parent: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:parent',
@@ -266,7 +266,7 @@ void describe('Dagonizer deep-DAGs', () => {
       'version': '1',
       'entrypoint': 'invoke',
       'nodes': [
-        { '@id': 'urn:noocodex:dag:parent/node/invoke', '@type': 'DeepDAGNode',
+        { '@id': 'urn:noocodex:dag:parent/node/invoke', '@type': 'EmbeddedDAGNode',
           'name': 'invoke', 'dag': 'child',
           'stateMapping': {
             'input':  { 'childValue': 'parentValue' },
@@ -286,7 +286,7 @@ void describe('Dagonizer deep-DAGs', () => {
     assert.equal(state.parentValue, 42);
   });
 
-  void it('rejects deep-DAG referencing an unregistered DAG', () => {
+  void it('rejects embedded-DAG referencing an unregistered DAG', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('done', ['success'], () => 'success'));
     const dag: DAG = {
@@ -297,10 +297,10 @@ void describe('Dagonizer deep-DAGs', () => {
       'version': '1',
       'entrypoint': 's',
       'nodes': [
-        // Deep-dag outputs route to a parent placement (not null) so the
+        // Embedded-dag outputs route to a parent placement (not null) so the
         // terminal-output invariant passes; registration still fails because
         // 'ghost' is not a registered DAG.
-        { '@id': 'urn:noocodex:dag:orphan/node/s', '@type': 'DeepDAGNode',
+        { '@id': 'urn:noocodex:dag:orphan/node/s', '@type': 'EmbeddedDAGNode',
           'name': 's', 'dag': 'ghost', 'outputs': { 'success': 'done', 'error': 'done' } },
         { '@id': 'urn:noocodex:dag:orphan/node/done', '@type': 'SingleNode',
           'name': 'done', 'node': 'done', 'outputs': { 'success': null } },

@@ -17,23 +17,26 @@ import {
   DAG_CONTEXT,
   Dagonizer,
   NodeStateBase,
-} from '../src/index.js';
-import type { DAG, NodeInterface } from '../src/index.js';
+} from '@noocodex/dagonizer';
+import type { DAG, NodeInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
+// #region state
 class ScrapeState extends NodeStateBase {
   urls:      string[] = [];  // source array — FanOutNode reads this by field name
   succeeded: string[] = [];  // partition target for 'ok' output
   failed:    string[] = [];  // partition target for 'fail' output
 }
+// #endregion state
 
 // ---------------------------------------------------------------------------
 // Nodes
 // ---------------------------------------------------------------------------
 
+// #region worker-node
 const probe: NodeInterface<ScrapeState, 'ok' | 'fail'> = {
   "name": 'probe',
   "outputs": ['ok', 'fail'],
@@ -44,11 +47,13 @@ const probe: NodeInterface<ScrapeState, 'ok' | 'fail'> = {
     return { "output": url.length % 2 === 0 ? 'ok' : 'fail' };
   },
 };
+// #endregion worker-node
 
 // ---------------------------------------------------------------------------
 // DAG
 // ---------------------------------------------------------------------------
 
+// #region fanout-placement
 const dag: DAG = {
   '@context':   DAG_CONTEXT,
   '@id':        'urn:noocodex:dag:scrape',
@@ -78,11 +83,13 @@ const dag: DAG = {
     },
   ],
 };
+// #endregion fanout-placement
 
 // ---------------------------------------------------------------------------
 // Run
 // ---------------------------------------------------------------------------
 
+// #region run
 const dispatcher = new Dagonizer<ScrapeState>();
 dispatcher.registerNode(probe);
 dispatcher.registerDAG(dag);
@@ -102,3 +109,4 @@ process.stdout.write(`  succeeded: ${JSON.stringify(state.succeeded)}\n`);
 process.stdout.write(`  failed:    ${JSON.stringify(state.failed)}\n`);
 process.stdout.write('\nLesson: FanOutNode iterates state.urls, writes each item under\n');
 process.stdout.write('        itemKey "url", then partitions results into state arrays.\n');
+// #endregion run

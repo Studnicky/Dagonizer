@@ -3,7 +3,7 @@
  *
  * Demonstrates the full checkpoint lifecycle:
  *   1. Execute a multi-node DAG but abort mid-way.
- *   2. Capture the partial result as a JSON checkpoint.
+ *   2. Capture the partial result as a Checkpoint instance.
  *   3. Persist it (here: serialise to a string as a stand-in for a DB write).
  *   4. Parse it back and restore state via a custom restore function.
  *   5. Resume from the cursor — only the remaining nodes run.
@@ -19,14 +19,14 @@
  * Run: npx tsx examples/08-checkpoint.ts
  */
 
-import type { JsonObject } from '../src/entities/json.js';
+import type { JsonObject } from '@noocodex/dagonizer/entities';
 import {
   Checkpoint,
   DAG_CONTEXT,
   Dagonizer,
   NodeStateBase,
-} from '../src/index.js';
-import type { DAG, NodeInterface } from '../src/index.js';
+} from '@noocodex/dagonizer';
+import type { DAG, NodeInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State — overrides snapshot/restore to persist domain fields
@@ -38,7 +38,7 @@ class CountingState extends NodeStateBase {
 
   /**
    * Serialize domain fields into a plain JSON-serialisable object.
-   * Called by Checkpoint.from() to capture state at the abort point.
+   * Called by Checkpoint.capture() to capture state at the abort point.
    */
   protected override snapshotData(): JsonObject {
     return { "count": this.count, "log": [...this.log] };
@@ -110,6 +110,7 @@ const dag: DAG = {
 // Step 1: partial run — abort after the first node completes
 // ---------------------------------------------------------------------------
 
+// #region capture
 const dispatcher = new Dagonizer<CountingState>();
 dispatcher.registerNode(inc);
 dispatcher.registerDAG(dag);
@@ -130,29 +131,38 @@ const partial = await execution;
 process.stdout.write('\nCheckpoint lifecycle — abort → snapshot → restore → resume\n');
 process.stdout.write(`  partial: count=${partial.state.count} cursor="${partial.cursor}"\n`);
 // cursor = 'b': the next node that would run if we resume
+// #endregion capture
 
 // ---------------------------------------------------------------------------
-// Step 2: persist the checkpoint as JSON
+// Step 2: capture and persist the checkpoint as JSON
 // ---------------------------------------------------------------------------
 
-const checkpoint = Checkpoint.from('count', partial);  // capture state + cursor
-const persisted  = Checkpoint.toJson(checkpoint);       // → JSON string (store in DB, file, etc.)
+// #region persist
+// Checkpoint.capture() returns a Checkpoint instance.
+// cursor !== null here because we aborted mid-run.
+const checkpoint = await Checkpoint.capture('count', partial);
+const persisted  = checkpoint.toJson();  // → JSON string (store in DB, file, etc.)
+// #endregion persist
 
 // ---------------------------------------------------------------------------
 // Step 3: restore + resume (simulating a process restart)
 // ---------------------------------------------------------------------------
 
-// Parse the persisted JSON back to an unknown value, then restore.
-// The second arg is a state factory — consumers supply their own restore fn
-// so the checkpoint module never imports domain state classes.
-const parsed = JSON.parse(persisted) as unknown;
-const { state, dagName, cursor } = Checkpoint.restore(
-  parsed,
+// #region recall
+// Parse the persisted JSON back to an unknown value, then load into a Checkpoint.
+const ckpt = Checkpoint.load(JSON.parse(persisted) as unknown);
+
+// restoreState maps the snapshot back to a typed CountingState instance.
+// Consumers supply their own restore fn so the checkpoint module never
+// imports domain state classes.
+const { state, dagName, cursor } = ckpt.restoreState(
   (snap) => CountingState.restore(snap),  // rehydrates domain fields via restoreData()
 );
 
 process.stdout.write(`  restored: count=${state.count} cursor="${cursor}"\n`);
+// #endregion recall
 
+// #region resume
 // Resume from cursor 'b' — only nodes b and c execute.
 const resumed = await dispatcher.resume(dagName, state, cursor);
 
@@ -160,3 +170,4 @@ process.stdout.write(`  resumed: count=${resumed.state.count} log=${JSON.stringi
 process.stdout.write('\nLesson: cursor marks where to resume; snapshotData/restoreData\n');
 process.stdout.write('        persist domain fields across the serialisation boundary.\n');
 process.stdout.write('        Final count=3 and log length=3: identical to a full run.\n');
+// #endregion resume

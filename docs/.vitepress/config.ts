@@ -54,97 +54,102 @@ const sidebar = [
   {
     text: 'Introduction',
     items: [
-      { text: 'Home', link: '/' },
+      { text: 'Home',            link: '/' },
       { text: 'Getting Started', link: '/getting-started' },
-      { text: 'Architecture', link: '/architecture' },
-      { text: 'Concepts', link: '/concepts' },
     ],
   },
   {
-    // Order: what a consumer needs to know first → progressively deeper.
-    //   1. State + builder — author the things you want to run
-    //   2. Schema & JSON loading — load DAGs from outside
-    //   3. Cancellation + retry — make running flows survive
-    //   4. Services — wire dependencies into nodes
-    //   5. Observability — see what's happening
-    //   6. State accessors — swap path resolution
-    //   7. Checkpoint + persistence — pause and resume
-    //   8. Contract-derived flows — generate the topology automatically
-    //   9. Visualization — render the result
-    // Order: simple → complex. Author DAGs first (state + builder), then
-    // export/import as JSON-LD, then layer in fan-out, deep-DAG nesting,
-    // cancellation, retry, observability, services, accessors, persistence,
-    // and finally derive + visualization.
-    text: 'Usage',
+    // Live demo first, then phase walk-throughs in dependency order.
+    text: 'Demos',
+    collapsed: false,
+    items: [
+      { text: 'The Archivist (in-browser demo)',    link: '/examples/the-archivist' },
+      { text: 'Phase 01: Linear intake',            link: '/examples/01-linear' },
+      { text: 'Phase 02: DAGBuilder',               link: '/examples/02-builder' },
+      { text: 'Phase 03: Tool schemas',             link: '/examples/03-schema' },
+      { text: 'Phase 04: Fan-out scout',            link: '/examples/04-fanout' },
+      { text: 'Phase 05: Embedded-DAG composition', link: '/examples/05-embedded-dags' },
+      { text: 'Phase 06: Cancellation',             link: '/examples/06-cancellation' },
+      { text: 'Phase 07: Retry',                    link: '/examples/07-retry' },
+      { text: 'Phase 08: Checkpoint + resume',      link: '/examples/08-checkpoint' },
+      { text: 'Phase 09: Terminal placements',      link: '/examples/09-terminals' },
+      { text: 'Phase 10: Shared state',             link: '/examples/10-shared-state' },
+    ],
+  },
+  {
+    // Vocabulary and theory: read after the demo.
+    text: 'Concepts',
+    collapsed: false,
+    items: [
+      { text: 'Concepts',         link: '/concepts' },
+      { text: 'Architecture',     link: '/architecture' },
+      { text: 'Lifecycle phases', link: '/guide/lifecycle-phases' },
+    ],
+  },
+  {
+    // Dependency order: author, export, runtime, wiring, persistence, derive, viz.
+    text: 'Guide',
     collapsed: false,
     items: [
       { text: 'Authoring DAGs',            link: '/guide/authoring' },
-      { text: 'Subclassing State',         link: '/guide/subclassing' },
+      { text: 'Subclassing state',         link: '/guide/subclassing' },
       { text: 'DAGBuilder',                link: '/guide/builder' },
       { text: 'JSON-LD export and import', link: '/guide/json-ld' },
-      { text: 'Schema & JSON Loading',     link: '/guide/schema' },
+      { text: 'Schema and JSON loading',   link: '/guide/schema' },
       { text: 'Cancellation',              link: '/guide/cancellation' },
       { text: 'Retry',                     link: '/guide/retry' },
-      { text: 'Services container',         link: '/guide/services' },
+      { text: 'Services container',        link: '/guide/services' },
       { text: 'Observability',             link: '/guide/observability' },
       { text: 'State accessors',           link: '/guide/state-accessor' },
-      { text: 'Checkpoint & Resume',       link: '/guide/checkpoint' },
+      { text: 'Shared state',              link: '/guide/shared-state' },
+      { text: 'Checkpoint and resume',     link: '/guide/checkpoint' },
       { text: 'Checkpoint persistence',    link: '/guide/persistence' },
       { text: 'Contract-derived flows',    link: '/guide/derive' },
       { text: 'Visualization',             link: '/guide/visualization' },
     ],
   },
   {
-    // Demos: The Archivist is the end-to-end runnable demo. Phase examples
-    // walk each capability step by step, ordered simple → complex so the
-    // earlier phase teaches every concept the later phase relies on.
-    text: 'Demos',
+    // Promoted to its own tier; per-plugin pages land here as the registry grows.
+    text: 'Plugins',
     collapsed: false,
     items: [
-      { text: 'The Archivist (in-browser demo)',     link: '/examples/the-archivist' },
-      { text: 'Phase 01 · Linear intake',            link: '/examples/01-linear' },
-      { text: 'Phase 02 · DAGBuilder',               link: '/examples/02-builder' },
-      { text: 'Phase 03 · Tool schemas',              link: '/examples/03-schema' },
-      { text: 'Phase 04 · Fan-out scout',            link: '/examples/04-fanout' },
-      { text: 'Phase 05 · Deep-DAG composition',     link: '/examples/05-deepflows' },
-      { text: 'Phase 06 · Cancellation',             link: '/examples/06-cancellation' },
-      { text: 'Phase 07 · Retry',                    link: '/examples/07-retry' },
-      { text: 'Phase 08 · Checkpoint + resume',      link: '/examples/08-checkpoint' },
+      { text: 'Plugins overview', link: '/guide/plugins' },
     ],
   },
   {
     text: 'Reference',
     collapsed: false,
     items: [
-      { text: 'Dagonizer', link: '/reference/dagonizer' },
-      { text: 'Execution', link: '/reference/execution' },
-      { text: 'Nodes', link: '/reference/operations' },
-      { text: 'Lifecycle', link: '/reference/lifecycle' },
-      { text: 'Runtime', link: '/reference/runtime' },
-      { text: 'Contracts', link: '/reference/contracts' },
-      { text: 'Core', link: '/reference/core' },
-      { text: 'Derive', link: '/reference/derive' },
-      { text: 'Viz', link: '/reference/viz' },
+      { text: 'Dagonizer',  link: '/reference/dagonizer' },
+      { text: 'Execution',  link: '/reference/execution' },
+      { text: 'Nodes',      link: '/reference/nodes' },
+      { text: 'Lifecycle',  link: '/reference/lifecycle' },
+      { text: 'Runtime',    link: '/reference/runtime' },
+      { text: 'Contracts',  link: '/reference/contracts' },
+      { text: 'Core',       link: '/reference/core' },
+      { text: 'Derive',     link: '/reference/derive' },
+      { text: 'Viz',        link: '/reference/viz' },
       { text: 'Validation', link: '/reference/validation' },
       { text: 'Checkpoint', link: '/reference/checkpoint' },
-      { text: 'Entities', link: '/reference/entities' },
-      { text: 'Testing', link: '/reference/testing' },
-      { text: 'Errors', link: '/reference/errors' },
+      { text: 'Store',      link: '/reference/store' },
+      { text: 'Entities',   link: '/reference/entities' },
+      { text: 'Testing',    link: '/reference/testing' },
+      { text: 'Errors',     link: '/reference/errors' },
     ],
   },
 ];
 
-// ── Site identity — single source of truth for SEO, OG, JSON-LD ─────────
+// Site identity: single source of truth for SEO, OG, JSON-LD.
 const SITE_TITLE = 'Dagonizer';
 const SITE_TAGLINE = 'TypeScript framework for orchestrating work as a DAG of typed nodes with a state machine lifecycle';
-const SITE_DESCRIPTION = 'Dagonizer is a TypeScript framework for orchestrating work as a directed acyclic graph of typed nodes — type-safe routing, abortable execution, deterministic resume, deep-DAG composition, per-node retry policies, JSON-LD canonical wire format, FSM-driven lifecycle, and pluggable visualization. No external runtime required.';
-const SITE_DESCRIPTION_SHORT = 'TypeScript DAG orchestration framework. Type-safe nodes, abortable execution, deterministic resume, deep-DAG composition, FSM lifecycle, no external runtime.';
+const SITE_DESCRIPTION = 'Dagonizer orchestrates work as a directed acyclic graph of typed TypeScript nodes. Features: type-safe routing, abortable execution, deterministic resume, embedded-DAG composition, retry policies, JSON-LD wire format, FSM lifecycle, pluggable visualization. No external runtime.';
+const SITE_DESCRIPTION_SHORT = 'TypeScript DAG orchestration framework. Type-safe nodes, abortable execution, deterministic resume, embedded-DAG composition, FSM lifecycle, no external runtime.';
 const SITE_BASE = '/Dagonizer/';
 const SITE_URL = `https://studnicky.github.io${SITE_BASE}`;
 const SITE_ICON = `${SITE_URL}dagonizer-icon.svg`;
 const SITE_OG_IMAGE = `${SITE_URL}og-image.png`;
 const SITE_THEME_COLOR = '#22e8ff';
-const SITE_KEYWORDS = 'dagonizer, dag, workflow, orchestration, dispatcher, node.js, typescript, flow, pipeline, state-machine, fan-out, fan-in, deep-dag, parallel, checkpoint, abortable, deterministic resume, mermaid visualization, json schema, retry policy, cancellation, async-iterable, contract-derived flow';
+const SITE_KEYWORDS = 'dagonizer, dag, workflow, orchestration, dispatcher, node.js, typescript, flow, pipeline, state-machine, fan-out, fan-in, embedded-dag, parallel, checkpoint, abortable, deterministic resume, mermaid visualization, json schema, retry policy, cancellation, async-iterable, contract-derived flow';
 const SITE_AUTHOR_NAME = 'Andrew Studnicky';
 const SITE_AUTHOR_URL = 'https://github.com/Studnicky';
 const SITE_REPO       = 'https://github.com/Studnicky/Dagonizer';
@@ -243,21 +248,21 @@ export default withMermaid(defineConfig({
        overridden via `transformPageData` below; these are the defaults. */
     ['meta', { 'property': 'og:type',             'content': 'website' }],
     ['meta', { 'property': 'og:site_name',        'content': SITE_TITLE }],
-    ['meta', { 'property': 'og:title',            'content': `${SITE_TITLE} — ${SITE_TAGLINE}` }],
+    ['meta', { 'property': 'og:title',            'content': `${SITE_TITLE}: ${SITE_TAGLINE}` }],
     ['meta', { 'property': 'og:description',      'content': SITE_DESCRIPTION }],
     ['meta', { 'property': 'og:url',              'content': SITE_URL }],
     ['meta', { 'property': 'og:image',            'content': SITE_OG_IMAGE }],
     ['meta', { 'property': 'og:image:secure_url', 'content': SITE_OG_IMAGE }],
     ['meta', { 'property': 'og:image:type',       'content': 'image/png' }],
-    ['meta', { 'property': 'og:image:alt',        'content': `${SITE_TITLE} — ${SITE_TAGLINE}` }],
+    ['meta', { 'property': 'og:image:alt',        'content': `${SITE_TITLE}: ${SITE_TAGLINE}` }],
     ['meta', { 'property': 'og:image:width',      'content': '1200' }],
     ['meta', { 'property': 'og:image:height',     'content': '630' }],
     ['meta', { 'property': 'og:locale',           'content': 'en_US' }],
     ['meta', { 'name':     'twitter:card',        'content': 'summary_large_image' }],
-    ['meta', { 'name':     'twitter:title',       'content': `${SITE_TITLE} — ${SITE_TAGLINE}` }],
+    ['meta', { 'name':     'twitter:title',       'content': `${SITE_TITLE}: ${SITE_TAGLINE}` }],
     ['meta', { 'name':     'twitter:description', 'content': SITE_DESCRIPTION_SHORT }],
     ['meta', { 'name':     'twitter:image',       'content': SITE_OG_IMAGE }],
-    ['meta', { 'name':     'twitter:image:alt',   'content': `${SITE_TITLE} — ${SITE_TAGLINE}` }],
+    ['meta', { 'name':     'twitter:image:alt',   'content': `${SITE_TITLE}: ${SITE_TAGLINE}` }],
     ...(SITE_TWITTER_HANDLE !== '' ? [
       ['meta', { 'name': 'twitter:site',    'content': SITE_TWITTER_HANDLE }] as const,
       ['meta', { 'name': 'twitter:creator', 'content': SITE_TWITTER_HANDLE }] as const,
@@ -491,7 +496,7 @@ export default withMermaid(defineConfig({
   // Syntax highlighting uses VitePress's bundled Shiki themes. `night-owl`
   // is a dark navy-grounded theme that harmonizes with the navy / pearl
   // chrome and the teal / violet / yellow brand orbs used throughout the
-  // page. We do NOT ship a custom Shiki theme — the code-block CHROME
+  // page. We do NOT ship a custom Shiki theme; the code-block CHROME
   // (background, border, font, padding) is themed via CSS using our
   // palette tokens; the syntax token colors come from a well-tested
   // pre-built theme that already meets contrast guarantees.
@@ -501,12 +506,12 @@ export default withMermaid(defineConfig({
   mermaid: {
     // Theme colors are owned by base.css overrides on the rendered SVG so
     // mode switching is instant and consistent across the site. The
-    // `themeVariables` here are SSR-time placeholders — the runtime CSS
+    // `themeVariables` here are SSR-time placeholders; the runtime CSS
     // wins. Values mirror the palette tokens from iridis.palette.css so
     // first paint already shows the mechanicus chrome (pearl-black node
     // surface, teal accent border, monospace text on the navy panel).
     theme: 'base',
-    // System monospace stack ONLY — no web fonts. Mermaid measures label
+    // System monospace stack ONLY, no web fonts. Mermaid measures label
     // widths at SSR time before any web font loads; if measurement uses the
     // fallback and the render later swaps in a wider web font (JetBrains
     // Mono), labels overflow their rect. SF Mono / Menlo / Consolas are all
@@ -525,7 +530,7 @@ export default withMermaid(defineConfig({
       primaryColor: '#020306',
       // Teal brand accent for default node borders.
       primaryBorderColor: '#22e8ff',
-      // Pearl text on pearl-black — high contrast for AAA.
+      // Pearl text on pearl-black, high contrast for AAA.
       primaryTextColor: '#eef3f7',
       // Edges use the same teal accent as default node borders.
       lineColor: '#22e8ff',
@@ -552,12 +557,12 @@ export default withMermaid(defineConfig({
       // htmlLabels: true renders labels in <foreignObject> so they
       // wrap on word boundaries instead of overflowing the rect.
       // wrappingWidth must comfortably hold the longest node label
-      // we ship — "dispatcher.execute" is 18 chars; "Checkpoint.persist"
+      // we ship: "dispatcher.execute" is 18 chars; "Checkpoint.capture"
       // is 18; 220px at the current 13px monospace fits ~22 chars per
       // line with room to breathe.
       htmlLabels: true,
       wrappingWidth: 220,
-      // useMaxWidth: false renders the SVG at its natural width — the
+      // useMaxWidth: false renders the SVG at its natural width; the
       // frame centers and horizontally scrolls when needed. Using
       // true makes mermaid scale tall TB diagrams uniformly (width +
       // height proportionally), producing 4000px-tall artifacts in a
@@ -572,7 +577,7 @@ export default withMermaid(defineConfig({
       curve: 'linear',
       useMaxWidth: false,
       // Enable htmlLabels so state labels render inside foreignObject
-      // and the rect grows to fit the content — otherwise mermaid
+      // and the rect grows to fit the content; otherwise mermaid
       // sizes the rect from a font-measurement that desyncs with the
       // monospace font we override in CSS and labels clip to 6 chars
       // ("pending" → "pendin", "running" → "runnin").
@@ -586,7 +591,7 @@ export default withMermaid(defineConfig({
   },
   mermaidPlugin: { class: 'mermaid dagonizer-mermaid' },
   themeConfig: {
-    // No logo in the top nav — the icon lives in the sidebar and on the
+    // No logo in the top nav; the icon lives in the sidebar and on the
     // favicon only. Title text alone in the nav keeps it minimal.
     siteTitle: 'Dagonizer',
     search: { provider: 'local' },

@@ -12,8 +12,9 @@ import type { OpenAiCompatibleAdapterOptions } from '@noocodex/dagonizer/adapter
 export interface OpenRouterApiAdapterOptions extends OpenAiCompatibleAdapterOptions {}
 
 export class OpenRouterApiAdapter extends OpenAiCompatibleAdapter {
-  constructor(options: OpenRouterApiAdapterOptions) {
+  constructor(apiKey: string, options: OpenRouterApiAdapterOptions = {}) {
     super(
+      apiKey,
       {
         'id':            'openrouter',
         'displayName':   'OpenRouter (llama-3.3-70b free)',

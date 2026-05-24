@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The Archivist — Dagonizer demo</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg:      #0e1116;
+        --panel:   #161b22;
+        --border:  #30363d;
+        --fg:      #e6edf3;
+        --muted:   #8b949e;
+        --accent:  #58a6ff;
+        --warn:    #f0883e;
+        --result:  #56d364;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        min-height: 100vh;
+      }
+      header h1 { margin: 0 0 4px 0; font-size: 20px; }
+      header p  { margin: 0; color: var(--muted); font-size: 13px; }
+      form { display: flex; gap: 8px; }
+      input[type="text"] {
+        flex: 1;
+        padding: 8px 12px;
+        background: var(--panel);
+        color: var(--fg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-size: 14px;
+      }
+      button {
+        padding: 8px 16px;
+        background: var(--accent);
+        color: #0d1117;
+        border: 0;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      #archivist-log {
+        flex: 1;
+        margin: 0;
+        padding: 12px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+        font-size: 12px;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        overflow-y: auto;
+        max-height: 70vh;
+      }
+      #archivist-log .info   { color: var(--fg); }
+      #archivist-log .warn   { color: var(--warn); }
+      #archivist-log .result { color: var(--result); font-weight: 600; }
+      #archivist-log .error  { color: #f85149; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>The Archivist</h1>
+      <p>Ask the archivist about a book. The DAG decides intent, runs scouts, ranks, and composes a response.</p>
+    </header>
+    <form id="ask-form">
+      <input id="ask-input" type="text" placeholder="I'm looking for a book about a strange house and a library" autocomplete="off" />
+      <button id="ask-button" type="submit">Ask</button>
+    </form>
+    <pre id="archivist-log" aria-live="polite"></pre>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

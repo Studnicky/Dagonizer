@@ -2,6 +2,99 @@
 
 All notable changes to `@noocodex/dagonizer` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+### Changed
+
+### Fixed
+
+## [0.11.0] - 2026-05-24
+
+**EmbeddedDAG boundary + engine hardening.** Deep-DAG authoring is renamed
+`EmbeddedDAG` throughout the codebase, promoting embedded sub-flows to a
+first-class concept with typed state mappings, structured lifecycle phases,
+resumable fan-out, and a plugin-accessible instrumentation contract.
+Checkpoint API gains named-store capture/recall. LLM adapter cascade,
+user-language threading, and an Embedder pipeline ship alongside the engine
+changes.
+
+### Added — EmbeddedDAG authoring
+
+- `TypedDeepDAGOptionsInterface<TChildState, TParentState>` narrows both sides of `inputs` and `outputs` at compile time via the new `Path<T>` recursive dotted-path type.
+- `Path<T>` utility type resolves `'a' | 'a.b' | 'a.b.c'` strings from a state shape (depth cap 8; array indices included).
+- `DAGBuilder.deepDAG<TChildState, TParentState>()` — both generics default to `NodeStateInterface`; existing call sites typecheck unchanged.
+- `examples/05-embedded-dags.ts` (renamed from `05-deepflows.ts`) illustrates the typed mapping API.
+
+### Added — PhaseNode placements
+
+- `PhaseNodePlacementInterface` — `'pre'` and `'post'` phase nodes run before the entrypoint and after flow completion respectively, outside the main node loop.
+- `DAGBuilder.phase(name, kind, nodeClass, routes)` registers a phase placement.
+- Pre-phases abort the flow on error; post-phases run unconditionally after the main loop (including on abort/failure). Both are suppressed when the dispatcher is invoked as a deep-DAG re-entry.
+- `Instrumentation.phaseEnter` / `phaseExit` hooks fire around every phase execution.
+
+### Added — Instrumentation contract
+
+- `Instrumentation` adapter contract (in `./contracts`) — `flowStart`, `flowEnd`, `nodeStart`, `nodeEnd`, `phaseEnter`, `phaseExit`, `error` hooks for plugin-supplied tracing and metrics.
+- `NoopInstrumentation` default — every method is a no-op; consumers extend and override the hooks they care about.
+- `DagonizerOptionsInterface.instrumentation` — pass an `Instrumentation` instance at construction; fires alongside the existing protected `on*` subclass hooks so both surfaces coexist.
+
+### Added — Bundle registration
+
+- `DispatcherBundle<TState, TServices>` — cohesive unit of `nodes` + `dags` exported by plugin packages.
+- `Dagonizer.registerBundle(bundle)` — registers all nodes first, then all DAGs, in a single call.
+
+### Added — Resumable fan-out
+
+- Fan-out nodes persist per-item progress in `state.metadata` under `FAN_OUT_PROGRESS_KEY`.
+- `executeFanOut` resumes from the last completed item index on `dispatcher.resume`, skipping already-finished items and reconstructing `resultsByOutput` buckets.
+- `FanOutProgress` and `StoredFanOutProgress` types exported from the root barrel.
+
+### Added — Checkpoint named-store API
+
+- `Checkpoint.capture(dagName, result, options?)` — builds and optionally persists a checkpoint to named `StoreProvider` instances in one call.
+- `Checkpoint.recall(store, runId)` — loads a raw checkpoint from a `CheckpointStore` by run ID; returns `null` when not found.
+- `Checkpoint.load(raw).restoreState(fn)` — replaces the previous `Checkpoint.restore()` static. Parses the raw JSON, then restores state via caller-supplied factory.
+- `Checkpoint.restoreStores(map)` — rehydrates named stores from snapshot data before resuming.
+- `examples/08-checkpoint.ts` and `examples/the-archivist/runArchivist.ts` demonstrate the full `capture → persist → recall → restoreState → resume` round-trip against `MemoryCheckpointStore`.
+
+### Added — LLM adapter cascade and Embedder pipeline
+
+- `LlmAdapter.probe()` on the adapter contract — returns a liveness signal; `BaseAdapter` default returns `true`.
+- `LlmAdapterCascade` — tries adapters in priority order, falling back on `probe()` failure or error. Ships in `@noocodex/dagonizer/adapter`.
+- `EmbedderAdapter` contract + `EmbedderRegistry` + `EmbedderCascade` — plugin-supplied embedding backends with cosine-similarity cascade fallback.
+- Three embedder plugin packages: `@noocodex/dagonizer-embedder-ollama`, `@noocodex/dagonizer-embedder-gemini-rest`, `@noocodex/dagonizer-embedder-mistral`.
+- `IntentClassifier` — cosine-similarity intent classification with LLM fallback when similarity scores are below threshold.
+
+### Added — User-language threading
+
+- `LlmAdapter.language` property — resolves from `navigator.language`, persisted per session.
+- Adapter cascade threads ISO 639-2 language code through scout tool calls (`langRestrict`, `lang`, Wikipedia subdomain) so responses match the user's device language.
+
+### Added — RemoteStore contract
+
+- `RemoteStore extends Store` — distributed shared-state contract with `endpoint`, `acquireLease`, `releaseLease`, and `health` primitives. Ships in `./contracts`.
+
+### Changed — Execution result
+
+- `ExecutionResultInterface.interruptedAt` — `InterruptionInfo | null` records the node name and abort reason when a run is cancelled or timed out; `null` on clean completion.
+- `Dagonizer.handleAbort` returns structured `{ error, reason }` rather than throwing; the dispatcher uses this to populate `interruptedAt` and fire instrumentation hooks.
+
+### Changed — Canonical naming and signatures
+
+- `ChatRequestBuilder` (static class) replaces the previous `ChatRequest` const export; `ChatResponseMessageBuilder` replaces `ChatResponseMessage`. All import sites de-aliased — no re-aliasing at any import boundary.
+- Adapter constructors lift `apiKey`, `id`, `displayName`, and `capabilities` to required positional parameters; options interfaces are fully optional. `PartialBaseAdapterOptions` removed.
+- `gemini-nano` adapter `displayName` rephrased to "Browser built-in LanguageModel" — package name and `id` unchanged, non-breaking (#24).
+
+### Docs
+
+- All guide, reference, and example pages under `docs/` rewritten in present tense to match the v0.11 surface.
+- `docs/examples/05-embedded-dags.md` replaces `05-deepflows.md`; `docs/reference/nodes.md` replaces `operations.md`.
+- `docs/examples/10-shared-state.md` — new example covering the shared-state pattern.
+- Obsolete RFCs (`0001-plugin-architecture.md`, `0002-v0.10-review-findings.md`, `0003-v0.10-release-checklist.md`) removed — superseded by shipped v0.10 and v0.11.
+- Composable prompt primitives documented in the Archivist example — every static directive is a named constant; builder bodies compose by reference.
+
 ## [0.10.0] - 2026-05-21
 
 **Plugin architecture (RFC 0001).** Workspace restructure into pnpm monorepo;
@@ -507,3 +600,5 @@ The schema bodies and `$id`s are stable. Type derivation can be migrated to a fu
 ⦿ `DAGError` hierarchy: `ConfigurationError`, `ExecutionError`, `NotFoundError`, `ValidationError`.
 ⦿ Public exports under `@noocodex/dagonizer`, `/types`, `/errors`, `/constants`, `/lifecycle`.
 ⦿ Constants: `FanInStrategy`, `FanOutOutput`, `MetadataKey`, `Output`, `ParallelCombine`, `NodeType`.
+
+[0.11.0]: https://github.com/Studnicky/Dagonizer/compare/v0.10.0...v0.11.0

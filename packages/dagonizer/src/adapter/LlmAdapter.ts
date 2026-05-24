@@ -12,7 +12,7 @@
  * Every field on `ChatRequest` / `ChatResponse` is required; module-level
  * defaults fill the absent cases. This keeps V8 hidden classes
  * monomorphic and removes the null-check tax from every call site.
- * Construct requests via `ChatRequest.from(partial)` to fill defaults.
+ * Construct requests via `ChatRequestBuilder.from(partial)` to fill defaults.
  *
  *   ┌──────────────────────────────────────────────────────────────┐
  *   │ Why an adapter and not just LlmClient methods?                │
@@ -94,13 +94,17 @@ export interface ChatRequest {
  * ChatRequest builder. Fills defaults so callers can pass a partial
  * literal and still get a complete, V8-monomorphic value.
  *
- *   const req = ChatRequest.from({ messages: [...] });
+ *   const req = ChatRequestBuilder.from({ messages: [...] });
  *
  * `messages` is the only field with no sensible default — passing an
  * empty array satisfies the type but produces no model output.
  */
-export const ChatRequest = {
-  from(partial: PartialChatRequest): ChatRequest {
+export class ChatRequestBuilder {
+  private constructor() { /* static */ }
+
+  /** Materialise a complete `ChatRequest` from a partial input by
+   *  filling every absent field with its canonical default. */
+  static from(partial: PartialChatRequest): ChatRequest {
     return {
       'messages':     partial.messages,
       'tools':        partial.tools        ?? [],
@@ -110,10 +114,10 @@ export const ChatRequest = {
       'temperature':  partial.temperature  ?? DEFAULT_TEMPERATURE,
       'signal':       partial.signal       ?? NEVER_ABORTING_SIGNAL,
     };
-  },
-} as const;
+  }
+}
 
-/** Loose-input shape for `ChatRequest.from`. Only `messages` is required. */
+/** Loose-input shape for `ChatRequestBuilder.from`. Only `messages` is required. */
 export interface PartialChatRequest {
   readonly messages: readonly ChatMessage[];
   readonly tools?: readonly ToolDefinition[];
@@ -138,17 +142,21 @@ export type ChatResponseMessage =
   | { readonly kind: 'mixed'; readonly content: string; readonly toolCalls: readonly ToolCall[] };
 
 /**
- * Construct a `ChatResponseMessage` from the parts an adapter has after
- * parsing the provider response. Centralises the text/tools/mixed
- * dispatch so every adapter calls one function.
+ * ChatResponseMessageBuilder — static factory for `ChatResponseMessage`
+ * variants. Centralises the text/tools/mixed dispatch so every adapter
+ * calls one canonical entry point. Distinct name from the type so the
+ * value and type identifiers never collide at import sites.
  */
-export const ChatResponseMessage = {
-  from(content: string, toolCalls: readonly ToolCall[]): ChatResponseMessage {
+export class ChatResponseMessageBuilder {
+  private constructor() { /* static */ }
+
+  /** Build the right discriminated variant from content + tool calls. */
+  static from(content: string, toolCalls: readonly ToolCall[]): ChatResponseMessage {
     if (toolCalls.length === 0) return { 'kind': 'text', content };
     if (content.length === 0) return { 'kind': 'tools', toolCalls };
     return { 'kind': 'mixed', content, toolCalls };
-  },
-} as const;
+  }
+}
 
 /** Token usage. Always present; zero when the provider doesn't report. */
 export interface TokenUsage {
@@ -210,4 +218,16 @@ export interface LlmAdapter {
   connect(): Promise<void>;
   /** Tear down any per-session state. No-op default on `BaseAdapter`. */
   disconnect(): Promise<void>;
+  /**
+   * Quick availability check. Returns true when this adapter can plausibly
+   * serve a chat call right now (credentials present, runtime backend
+   * reachable, model available). Implementations MUST NOT throw on
+   * transport failure — return false so a cascade can route around the
+   * adapter and try the next preference.
+   *
+   * `BaseAdapter` ships a default that returns true; concrete adapters
+   * override with a real probe (e.g. credential check, HEAD request,
+   * `navigator.ml` feature detect).
+   */
+  probe(): Promise<boolean>;
 }

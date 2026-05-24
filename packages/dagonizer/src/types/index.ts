@@ -50,7 +50,7 @@ export type { NodeContextInterface } from '../entities/node/NodeContext.js';
 export type { NodeErrorInterface } from '../entities/node/NodeError.js';
 export type { NodeOutputInterface } from '../entities/node/NodeOutput.js';
 export type { NodeResultInterface } from '../entities/node/NodeResult.js';
-export type { ExecutionResultInterface } from '../entities/execution/ExecutionResult.js';
+export type { ExecutionResultInterface, InterruptionInfo } from '../entities/execution/ExecutionResult.js';
 export type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 
 // ---------------------------------------------------------------------------
@@ -62,7 +62,7 @@ export type { FanInConfig } from '../entities/dag/FanInConfig.js';
 export type { FanOutNode } from '../entities/dag/FanOutNode.js';
 export type { ParallelNode } from '../entities/dag/ParallelNode.js';
 export type { SingleNode } from '../entities/dag/SingleNode.js';
-export type { DeepDAGNode } from '../entities/dag/DeepDAGNode.js';
+export type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 
 export type { Node } from '../entities/node/Node.js';
 export type { NodeContext } from '../entities/node/NodeContext.js';
@@ -94,7 +94,7 @@ export type {
 
 export type {
   FanOutOptionsInterface,
-  DeepDAGOptionsInterface,
+  EmbeddedDAGOptionsInterface,
 } from '../builder/DAGBuilder.js';
 
 // ---------------------------------------------------------------------------
@@ -106,7 +106,7 @@ export type { DagonizerOptionsInterface } from '../Dagonizer.js';
 export type { ParallelResult, ParallelCombiner } from '../core/ParallelCombiners.js';
 export type { FanInExecution, FanInStrategy } from '../core/FanInStrategies.js';
 export type { DAGDeriverOptions } from '../derive/DAGDeriver.js';
-export type { DAGDeriverAnnotations, DAGDeriverSubDAG, DAGDeriverFanOut, DAGDeriverTerminal } from '../derive/DAGDeriverAnnotations.js';
+export type { DAGDeriverAnnotations, DAGDeriverEmbeddedDAG, DAGDeriverFanOut, DAGDeriverTerminal } from '../derive/DAGDeriverAnnotations.js';
 export type { DagJsonLdDocument, JsonLdGraphEntry } from '../viz/JsonLdRenderer.js';
 export type {
   CytoscapeElement,

@@ -20,8 +20,8 @@ import {
   Dagonizer,
   NodeStateBase,
   ValidationError,
-} from '../src/index.js';
-import type { NodeInterface } from '../src/index.js';
+} from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Node
@@ -48,6 +48,7 @@ const echo: NodeInterface<NodeStateBase, 'success'> = {
 // key. '@id' on each node is a scoped URN: <dagId>/node/<placementName>.
 // ---------------------------------------------------------------------------
 
+// #region dag-literal
 const dagJson = JSON.stringify({
   '@context': {
     '@version': 1.1,
@@ -68,7 +69,7 @@ const dagJson = JSON.stringify({
     'Placement':   { '@id': 'https://noocodex.dev/ontology/dag/Placement' },
     'SingleNode':  { '@id': 'https://noocodex.dev/ontology/dag/SingleNode' },
     'FanOutNode':  { '@id': 'https://noocodex.dev/ontology/dag/FanOutNode' },
-    'DeepDAGNode': { '@id': 'https://noocodex.dev/ontology/dag/DeepDAGNode' },
+    'EmbeddedDAGNode': { '@id': 'https://noocodex.dev/ontology/dag/EmbeddedDAGNode' },
     'ParallelNode': {
       '@id': 'https://noocodex.dev/ontology/dag/ParallelNode',
       '@context': { 'nodes': { '@id': 'https://noocodex.dev/ontology/dag/parallelNodes', '@container': '@list' } },
@@ -89,14 +90,17 @@ const dagJson = JSON.stringify({
     },
   ],
 });
+// #endregion dag-literal
 
 // ---------------------------------------------------------------------------
 // Load + validate — Dagonizer.load() is the only valid ingest path
 // ---------------------------------------------------------------------------
 
+// #region load
 // Dagonizer.load() throws ValidationError if JSON is malformed or schema fails.
 const dag = Dagonizer.load(dagJson);
 process.stdout.write(`\nLoaded:  ${dag.name} v${dag.version} (${dag.nodes.length} node(s))\n`);
+// #endregion load
 
 // ---------------------------------------------------------------------------
 // Execute
@@ -125,6 +129,7 @@ process.stdout.write(`Round-trip equal: ${String(isEqual)}\n`);
 // ValidationError — schema rejects any document missing required JSON-LD fields
 // ---------------------------------------------------------------------------
 
+// #region validate
 try {
   // Missing '@context', '@id', '@type', 'entrypoint', 'nodes' — schema rejects it.
   Dagonizer.load(JSON.stringify({ "name": 'broken', "version": '1' }));
@@ -134,6 +139,7 @@ try {
     process.stdout.write(`ValidationError (first failure): ${firstLine}\n`);
   }
 }
+// #endregion validate
 
 process.stdout.write('\nLesson: Dagonizer.load() is the single ingest boundary;\n');
 process.stdout.write('        serialize() + load() is a lossless round-trip.\n');

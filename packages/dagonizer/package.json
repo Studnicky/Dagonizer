@@ -1,7 +1,7 @@
 {
   "name": "@noocodex/dagonizer",
   "version": "0.10.0",
-  "description": "DAG + FSM architecture framework for TypeScript. Type-safe nodes, abortable execution, deterministic resume, deep-DAG composition, JSON-LD canonical wire format.",
+  "description": "DAG + FSM architecture framework for TypeScript. Type-safe nodes, abortable execution, deterministic resume, embedded-DAG composition, JSON-LD canonical wire format.",
   "private": false,
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
@@ -14,7 +14,7 @@
     "dispatcher",
     "pipeline",
     "graph",
-    "deep-dag",
+    "embedded-dag",
     "directed-acyclic-graph",
     "framework",
     "typescript",
@@ -146,6 +146,10 @@
     "./viz": {
       "default": "./dist/viz/index.js",
       "types": "./dist/viz/index.d.ts"
+    },
+    "./store": {
+      "default": "./dist/store/index.js",
+      "types": "./dist/store/index.d.ts"
     },
     "./types": {
       "default": "./dist/types/index.js",

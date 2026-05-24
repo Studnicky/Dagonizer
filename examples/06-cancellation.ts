@@ -18,14 +18,15 @@ import {
   DAG_CONTEXT,
   Dagonizer,
   NodeStateBase,
-} from '../src/index.js';
-import type { DAG, NodeInterface } from '../src/index.js';
+} from '@noocodex/dagonizer';
+import type { DAG, NodeInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Node — simulates a slow downstream; must honour context.signal to cancel
 // ---------------------------------------------------------------------------
 
-const slow: NodeInterface<NodeStateBase, 'success'> = {
+// #region node-cancellation-aware
+export const slow: NodeInterface<NodeStateBase, 'success'> = {
   "name": 'slow',
   "outputs": ['success'],
   async execute(_state, context) {
@@ -43,12 +44,13 @@ const slow: NodeInterface<NodeStateBase, 'success'> = {
     return { "output": 'success' };
   },
 };
+// #endregion node-cancellation-aware
 
 // ---------------------------------------------------------------------------
 // DAG
 // ---------------------------------------------------------------------------
 
-const dag: DAG = {
+export const dag: DAG = {
   '@context':  DAG_CONTEXT,
   '@id':       'urn:noocodex:dag:slow-dag',
   '@type':     'DAG',
@@ -74,15 +76,19 @@ const dispatcher = new Dagonizer<NodeStateBase>();
 dispatcher.registerNode(slow);
 dispatcher.registerDAG(dag);
 
+// #region abort-signal
 // (a) Caller-controlled abort — fires after 25 ms
 const ctl    = new AbortController();
 const aState = new NodeStateBase();
 setTimeout(() => ctl.abort(new Error('user pressed cancel')), 25);
 const aResult = await dispatcher.execute('slow-dag', aState, { "signal": ctl.signal });
+// #endregion abort-signal
 
+// #region deadline
 // (b) Dispatcher deadline — fires after 25 ms automatically
 const bState  = new NodeStateBase();
 const bResult = await dispatcher.execute('slow-dag', bState, { "deadlineMs": 25 });
+// #endregion deadline
 
 process.stdout.write('\nCancellation shapes — AbortSignal vs deadlineMs\n');
 process.stdout.write(`  (a) AbortController: lifecycle=${aState.lifecycle.kind} cursor="${aResult.cursor}"\n`);
