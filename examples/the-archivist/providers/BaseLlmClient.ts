@@ -17,6 +17,7 @@ import type { ClassifiedIntent, LlmClient, ScoredCandidate } from '../services.t
 import type { LlmAdapter, ToolDefinition } from '@noocodex/dagonizer/adapter';
 import { ChatRequestBuilder } from '@noocodex/dagonizer/adapter';
 import type { ChatResponseMessage } from '@noocodex/dagonizer/adapter';
+import type { IntentClassifier } from './IntentClassifier.ts';
 import { prompts, schemas } from './prompts.ts';
 
 // Order matters: longer / more-specific labels appear BEFORE their
@@ -40,15 +41,25 @@ const VALID_INTENTS: readonly ClassifiedIntent[] = [
  * device language (ISO 639-1) — threaded into every prompt builder so
  * the model responds in the user's language. Defaulted to `'en'` when
  * absent so existing callers stay correct.
+ *
+ * `intentClassifier` is the optional vector-similarity classifier. When
+ * supplied, `classifyIntent` tries the vector path first; only when the
+ * top-scoring intent falls below the classifier's confidence floor does
+ * it fall through to the LLM. Pass `undefined` (or omit) to keep the
+ * legacy LLM-only behaviour — typically the right default in browser
+ * environments where no embedder is reachable.
  */
 export interface BaseLlmClientOptions {
   readonly language?: string;
+  readonly intentClassifier?: IntentClassifier;
 }
 
 export class BaseLlmClient implements LlmClient {
   readonly adapter: LlmAdapter;
   /** Visitor device language; passed to every prompt builder. */
   readonly language: string;
+  /** Optional vector-similarity classifier; null when not configured. */
+  readonly intentClassifier: IntentClassifier | null;
 
   get id():          string { return this.adapter.id; }
   get displayName(): string { return this.adapter.displayName; }
@@ -58,9 +69,14 @@ export class BaseLlmClient implements LlmClient {
     this.language = options.language !== undefined && options.language.length > 0
       ? options.language
       : 'en';
+    this.intentClassifier = options.intentClassifier ?? null;
   }
 
   async classifyIntent(query: string, recalledSummary?: string): Promise<ClassifiedIntent> {
+    if (this.intentClassifier !== null) {
+      const fromVector = await this.intentClassifier.classify(query);
+      if (fromVector !== null) return fromVector.intent;
+    }
     const raw = (await this.#text(prompts.classifyIntent(this.language, query, recalledSummary))).toLowerCase();
     const found = VALID_INTENTS.find((intent) => raw.includes(intent));
     return found ?? 'search';

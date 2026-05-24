@@ -50,7 +50,7 @@ export type { NodeContextInterface } from '../entities/node/NodeContext.js';
 export type { NodeErrorInterface } from '../entities/node/NodeError.js';
 export type { NodeOutputInterface } from '../entities/node/NodeOutput.js';
 export type { NodeResultInterface } from '../entities/node/NodeResult.js';
-export type { ExecutionResultInterface } from '../entities/execution/ExecutionResult.js';
+export type { ExecutionResultInterface, InterruptionInfo } from '../entities/execution/ExecutionResult.js';
 export type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 
 // ---------------------------------------------------------------------------

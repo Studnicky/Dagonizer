@@ -355,6 +355,48 @@ const dag = new DAGBuilder('demo', '1')
 
 Running with `state.shouldPass = true` produces `lifecycle.kind = 'completed'`; running with `false` produces `'failed'`.
 
+## `.phase(name, phase, node)`
+
+```ts
+.phase<TState, TOutput, TServices>(
+  name: string,
+  phase: 'pre' | 'post',
+  dagNode: NodeInterface<TState, TOutput, TServices>,
+): this
+```
+
+Appends a `PhaseNode` placement — a lifecycle-attached task that runs around the main DAG loop rather than inside it. `phase: 'pre'` placements run before the entrypoint in DAG declaration order. `phase: 'post'` placements run after the main loop drains, in DAG declaration order, on every exit path (completion, abort, timeout, terminal-failed, node throw).
+
+PhaseNodes carry no `outputs` — they never route to other placements. They are not the main-loop entrypoint either; `.phase()` deliberately does not set `entrypoint`.
+
+### Pre-phase semantics
+
+Pre-phase placements run before the entrypoint. They can mutate state and the entrypoint observes those mutations. If a pre-phase throws, the run aborts: lifecycle becomes `failed`, the main loop never executes, and post-phases still run (so cleanup work attached to `post` still gets a chance).
+
+### Post-phase semantics
+
+Post-phase placements run after the main loop drains. They run on every exit path. If a post-phase throws, the engine collects a warning on state (`code: 'POST_PHASE_FAILED'`) and continues to the next post-phase — the lifecycle is not changed.
+
+### `ExecutionResult.executedNodes` ordering
+
+Pre-phase names appear at the start of `executedNodes`; post-phase names appear at the end (only when the placement completed successfully). Main-loop nodes appear in between.
+
+### Instrumentation
+
+The dispatcher invokes `Instrumentation.phaseEnter(dagName, 'pre' | 'post', placementName, state)` immediately before each phase placement runs and `phaseExit(...)` immediately after. See [observability](./observability).
+
+### Example
+
+```ts
+import { DAGBuilder } from '@noocodex/dagonizer/builder';
+
+const dag = new DAGBuilder('with-phases', '1')
+  .node('process', processNode, { success: null })
+  .phase('warm-cache', 'pre',  warmCacheNode)
+  .phase('flush-logs', 'post', flushLogsNode)
+  .build();
+```
+
 ## `.entrypoint()`
 
 By default the first added node is the entrypoint. Override explicitly:

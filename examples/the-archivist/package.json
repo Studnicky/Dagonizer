@@ -23,6 +23,9 @@
     "@noocodex/dagonizer-adapter-stub": "workspace:^",
     "@noocodex/dagonizer-adapter-web-llm": "workspace:^",
     "@noocodex/dagonizer-book-entities": "workspace:^",
+    "@noocodex/dagonizer-embedder-gemini-api": "workspace:^",
+    "@noocodex/dagonizer-embedder-mistral": "workspace:^",
+    "@noocodex/dagonizer-embedder-ollama": "workspace:^",
     "@noocodex/dagonizer-tool-googlebooks": "workspace:^",
     "@noocodex/dagonizer-tool-openlibrary": "workspace:^",
     "@noocodex/dagonizer-tool-wikipedia": "workspace:^"

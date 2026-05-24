@@ -142,6 +142,11 @@ const cascade = new LlmAdapterCascade(registry, [
 let llm: LlmClient;
 try {
   const adapter = await cascade.select();
+  // Browser: no native embedder is wired today (Gemini Nano doesn't
+  // expose embeddings, WebLLM embedding models would balloon the
+  // download budget). LLM-only intent classification is the path here;
+  // log once so the omission is visible in the demo log panel.
+  logger.info('embedder: unavailable in browser — intent classification via LLM only');
   llm = new BaseLlmClient(adapter, { 'language': userLanguage });
   logger.info(`backend: ${adapter.id} (${adapter.displayName})`);
 } catch (err) {

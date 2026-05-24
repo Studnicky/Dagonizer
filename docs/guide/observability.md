@@ -156,6 +156,71 @@ class OtelDispatcher<TState> extends Dagonizer<TState> {
   }
 }
 ```
+## Composable observability — the `Instrumentation` contract
+
+The subclass-hook pattern above is the right tool when one consumer owns the dispatcher. It does not compose: you cannot drop in vendor-supplied tracing alongside your own metrics without writing a hand-rolled multiplexer in your subclass.
+
+For multi-observer scenarios, install an `Instrumentation` implementation via the dispatcher's `instrumentation` constructor option. The dispatcher fires both surfaces at every execution boundary — your subclass `on*` hooks AND the instrumentation method — so a single dispatcher can mix subclass-local observability with plugin-supplied tracing, metrics, or audit collectors.
+
+```ts
+import { Dagonizer, NoopInstrumentation } from '@noocodex/dagonizer';
+import type {
+  ExecutionResultInterface,
+  Instrumentation,
+  NodeStateInterface,
+} from '@noocodex/dagonizer';
+
+// Extend NoopInstrumentation — override only the hooks you need.
+class CountingInstrumentation<TState extends NodeStateInterface>
+extends NoopInstrumentation<TState> {
+  nodeStarts = 0;
+  nodeEnds   = 0;
+
+  override nodeStart(_dagName: string, _nodeName: string, _state: TState): void {
+    this.nodeStarts++;
+  }
+
+  override nodeEnd(_dagName: string, _nodeName: string, _output: string | undefined, _state: TState): void {
+    this.nodeEnds++;
+  }
+}
+
+const counter = new CountingInstrumentation();
+const dispatcher = new Dagonizer({ instrumentation: counter });
+// ...register and execute...
+console.log(counter.nodeStarts, counter.nodeEnds);
+```
+
+### The hook surface
+
+| Hook | When called | Arguments |
+|------|-------------|-----------|
+| `flowStart` | Before the entrypoint node runs | `dagName`, `state` |
+| `flowEnd` | After the loop drains (terminal or interrupted) | `dagName`, `state`, `result` |
+| `nodeStart` | Before each node's `execute()` | `dagName`, `nodeName`, `state` |
+| `nodeEnd` | After the node's result is recorded | `dagName`, `nodeName`, `output \| undefined`, `state` |
+| `phaseEnter` | Before a pre/post phase placement runs | `dagName`, `phase`, `placementName`, `state` |
+| `phaseExit` | After a pre/post phase placement runs | `dagName`, `phase`, `placementName`, `state` |
+| `contractWarning` | Non-fatal dangling-write warning at `registerDAG` | `message` |
+| `error` | Any thrown error the dispatcher catches | `dagName`, `nodeName`, `error`, `state` |
+
+`phaseEnter` / `phaseExit` are declared in the contract for forward compatibility with lifecycle-attached phase placements. The current dispatcher does not invoke them yet — they fire from the lifecycle-phases code landing in a sibling release.
+
+### Hooks MUST NOT throw
+
+The dispatcher does not wrap instrumentation calls in `try/catch`. A hook that throws aborts the surrounding flow. Wrap any I/O (HTTP exporters, file writes) inside your implementation so external failures stay external.
+
+### When to use which surface
+
+| Use case | Surface |
+|----------|---------|
+| One consumer, simple metrics or logging | Subclass `Dagonizer` and override `on*` hooks |
+| Plugin-supplied tracing (`@noocodex/dagonizer-tracing-otel`) | `Instrumentation` |
+| Multiple observers (tracing + metrics + audit) | One `Instrumentation` per concern, composed in a multiplexer that itself implements `Instrumentation` |
+| Vendor-neutral observability surface for third-party packages | `Instrumentation` |
+
+Both surfaces remain available even when you use one — the dispatcher fires the subclass `on*` hooks and the `instrumentation.*` methods at the same boundaries.
+
 ## Related reference
 
 - [Reference: Dagonizer](../reference/dagonizer)

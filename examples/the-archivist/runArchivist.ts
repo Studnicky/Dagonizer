@@ -64,14 +64,25 @@ import { GroqApiAdapter }       from '@noocodex/dagonizer-adapter-groq';
 import { MistralApiAdapter }    from '@noocodex/dagonizer-adapter-mistral';
 import { OllamaApiAdapter }     from '@noocodex/dagonizer-adapter-ollama';
 import { OpenRouterApiAdapter } from '@noocodex/dagonizer-adapter-openrouter';
+import { GeminiApiEmbedder }    from '@noocodex/dagonizer-embedder-gemini-api';
+import { MistralEmbedder }      from '@noocodex/dagonizer-embedder-mistral';
+import { OllamaEmbedder }       from '@noocodex/dagonizer-embedder-ollama';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
+import { IntentClassifier } from './providers/IntentClassifier.ts';
 import type { ArchivistServices, LlmClient } from './services.ts';
 import { GoogleBooksTool } from '@noocodex/dagonizer-tool-googlebooks';
 import { OpenLibrarySearchTool } from '@noocodex/dagonizer-tool-openlibrary';
 import { SubjectSearchTool } from '@noocodex/dagonizer-tool-openlibrary';
 import { WikipediaSummaryTool } from '@noocodex/dagonizer-tool-wikipedia';
 
-import { Dagonizer, LlmAdapterCascade, LlmAdapterRegistry } from '@noocodex/dagonizer';
+import {
+  Dagonizer,
+  EmbedderCascade,
+  EmbedderRegistry,
+  LlmAdapterCascade,
+  LlmAdapterRegistry,
+  LlmError,
+} from '@noocodex/dagonizer';
 import type { AdapterCapabilities } from '@noocodex/dagonizer/adapter';
 
 const logger = new ConsoleLogger();
@@ -148,8 +159,53 @@ const cascade = new LlmAdapterCascade(registry, [
 ]);
 
 const adapter = await cascade.select();
-const llm: LlmClient = new BaseLlmClient(adapter);
 logger.info(`backend: ${adapter.id} (${adapter.displayName})`);
+
+// ── Embedder cascade — vector intent classification when reachable.
+//    Order of preference mirrors the LLM cascade for symmetric local-first
+//    behaviour: Ollama (loopback, no key) → Gemini REST → Mistral. When
+//    nothing probes true the cascade throws; we catch and continue with
+//    LLM-only classification.
+const OLLAMA_EMBED_MODEL = envVar('OLLAMA_EMBED_MODEL') || 'nomic-embed-text';
+
+const embedderRegistry = new EmbedderRegistry();
+embedderRegistry.register(
+  { 'provider': 'ollama', 'model': OLLAMA_EMBED_MODEL, 'capabilities': CAPS_PARTIAL_TOOLS },
+  () => new OllamaEmbedder(OLLAMA_EMBED_MODEL, { 'baseUrl': OLLAMA_BASE_URL }),
+);
+if (envVar('GEMINI_API_KEY').length > 0) {
+  embedderRegistry.register(
+    { 'provider': 'gemini-api', 'model': 'text-embedding-004', 'capabilities': CAPS_FULL_TOOLS },
+    () => new GeminiApiEmbedder(envVar('GEMINI_API_KEY')),
+  );
+}
+if (envVar('MISTRAL_API_KEY').length > 0) {
+  embedderRegistry.register(
+    { 'provider': 'mistral', 'model': 'mistral-embed', 'capabilities': CAPS_PARTIAL_TOOLS },
+    () => new MistralEmbedder(envVar('MISTRAL_API_KEY')),
+  );
+}
+
+const embedderCascade = new EmbedderCascade(embedderRegistry, [
+  { 'provider': 'ollama',     'model': OLLAMA_EMBED_MODEL },
+  { 'provider': 'gemini-api', 'model': 'text-embedding-004' },
+  { 'provider': 'mistral',    'model': 'mistral-embed' },
+]);
+
+let intentClassifier: IntentClassifier | undefined;
+try {
+  const embedder = await embedderCascade.select();
+  intentClassifier = await IntentClassifier.create(embedder);
+  logger.info(`embedder: ${embedder.id} (${embedder.displayName})`);
+} catch (err) {
+  if (err instanceof LlmError && err.classification.reason === 'NO_ADAPTER_AVAILABLE') {
+    logger.info('embedder: none reachable — intent classification via LLM only');
+  } else {
+    throw err;
+  }
+}
+
+const llm: LlmClient = new BaseLlmClient(adapter, intentClassifier !== undefined ? { intentClassifier } : {});
 
 const services: ArchivistServices = {
   "webSearch":         OpenLibrarySearchTool,

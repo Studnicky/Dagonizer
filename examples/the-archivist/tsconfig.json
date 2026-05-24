@@ -26,6 +26,7 @@
     "provenance/**/*.ts",
     "state/**/*.ts",
     "tools/**/*.ts",
-    "data/**/*.ts"
+    "data/**/*.ts",
+    "tests/**/*.ts"
   ]
 }

@@ -22,13 +22,14 @@ import type { DeepDAGNode } from '../entities/dag/DeepDAGNode.js';
 import type { FanInConfig } from '../entities/dag/FanInConfig.js';
 import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
+import type { PhaseNodePlacementInterface } from '../entities/dag/PhaseNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { Path } from './Path.js';
 
-type DAGNodeType = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode | TerminalNodePlacementInterface;
+type DAGNodeType = FanOutNode | ParallelNode | SingleNodePlacementInterface | DeepDAGNode | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
 
 /** Optional configuration for a fan-out node added via `DAGBuilder.fanOut`. */
 export interface FanOutOptionsInterface {
@@ -288,6 +289,36 @@ export class DAGBuilder {
     };
     this.#nodes.push(placement);
     if (this.#entrypoint === null) this.#entrypoint = name;
+    return this;
+  }
+
+  /**
+   * Append a lifecycle-attached phase placement. `phase: 'pre'` runs before
+   * the entrypoint in DAG declaration order; an error aborts the run.
+   * `phase: 'post'` runs after the main loop drains on every exit path
+   * (completion, abort, timeout, terminal-failed, node throw); errors are
+   * collected as warnings on state and do not change the already-set
+   * lifecycle.
+   *
+   * Phase placements are out-of-band — they have no `outputs`, never the
+   * main-loop entrypoint, and never route to other placements.
+   */
+  phase<TState extends NodeStateInterface, TOutput extends string, TServices = undefined>(
+    name: string,
+    phase: 'pre' | 'post',
+    dagNode: NodeInterface<TState, TOutput, TServices>,
+  ): this {
+    const placement: PhaseNodePlacementInterface = {
+      '@id':   this.#nodeId(name),
+      '@type': 'PhaseNode',
+      name,
+      'node':  dagNode.name,
+      phase,
+    };
+    this.#nodes.push(placement);
+    this.#nodeImpls.set(name, dagNode as NodeInterface);
+    // Intentionally does NOT set entrypoint — phase placements are
+    // out-of-band and never the main-loop entry.
     return this;
   }
 

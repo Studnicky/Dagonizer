@@ -163,6 +163,18 @@ const store = new MemoryCheckpointStore();
 ```
 
 `MemoryCheckpointStore` exposes a read-only `size` getter for assertions about how many entries the store holds.
+## Fan-out resume artefacts
+
+Fan-out placements persist per-item progress under a reserved metadata key (`FAN_OUT_PROGRESS_KEY === '__dagonizer_fan_out_progress__'`). When a checkpoint captures a state mid-fan-out, this key carries the indices of already-completed items so the resumed run can skip them instead of re-issuing every external call from scratch.
+
+Three persistence-side implications:
+
+1. **The key counts toward checkpoint payload size.** A 200-item fan-out interrupted at item 150 stores 150 numeric indices plus their output tags. Plan capacity in your `CheckpointStore` with this in mind — the payload still serialises as a single JSON document.
+2. **Per-batch write cadence.** The dispatcher writes the progress entry once per fan-out batch (not once per item). The persisted metadata is therefore consistent with the batch boundary that was last `await`-ed — a crash during a batch leaves the previously-completed batch persisted and the in-flight batch unreported.
+3. **Indices are array positions in the source at resume time.** If your `CheckpointStore` is read across processes that may rebuild state with a different source array, the resumed fan-out skips by position, not by item identity. Treat the source as immutable while a fan-out checkpoint is live, or clear the progress entry before calling `dispatcher.resume()` when the source has changed.
+
+The reserved key piggybacks on `NodeStateBase.metadata`, so any `CheckpointStore` that already round-trips the `JsonObject` snapshot supports fan-out resume with no additional adapter changes. See [Checkpoint & Resume](./checkpoint#fan-out-resume-per-item-progress-bookkeeping) for the executable contract and index-semantics worked example.
+
 ## Related reference
 
 - [Reference: Contracts — `CheckpointStore`](../reference/contracts)

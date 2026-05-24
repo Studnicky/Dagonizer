@@ -27,6 +27,8 @@ import { FanOutNodeSchema } from '../entities/dag/FanOutNode.js';
 import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import { ParallelNodeSchema } from '../entities/dag/ParallelNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
+import { PhaseNodeSchema } from '../entities/dag/PhaseNode.js';
+import type { PhaseNode } from '../entities/dag/PhaseNode.js';
 import { SingleNodeSchema } from '../entities/dag/SingleNode.js';
 import type { SingleNode } from '../entities/dag/SingleNode.js';
 import { TerminalNodeSchema } from '../entities/dag/TerminalNode.js';
@@ -130,6 +132,7 @@ export class Validator {
   static readonly fanOutNode:  EntityValidator<FanOutNode>   = Validator.compile('FanOutNode',   FanOutNodeSchema);
   static readonly deepDAGNode:  EntityValidator<DeepDAGNode>   = Validator.compile('DeepDAGNode',  DeepDAGNodeSchema);
   static readonly terminalNode: EntityValidator<TerminalNode>  = Validator.compile('TerminalNode', TerminalNodeSchema);
+  static readonly phaseNode:    EntityValidator<PhaseNode>     = Validator.compile('PhaseNode',    PhaseNodeSchema);
   static readonly fanInConfig:  EntityValidator<FanInConfig>   = Validator.compile('FanInConfig',  FanInConfigSchema);
 
   // Node runtime shapes
