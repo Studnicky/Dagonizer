@@ -1,5 +1,66 @@
 # @noocodex/dagonizer
 
+## 0.11.0
+
+### Minor Changes
+
+- 7dc830c: **BREAKING:** The `Checkpoint` API consolidates around `Checkpoint.capture()`,
+  `Checkpoint.load()`, `Checkpoint.recall()`, and instance methods. The legacy
+  static helpers are removed.
+
+  Migration table:
+
+  | Old                                                                           | New                                                                          |
+  | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+  | `const data = Checkpoint.from('dag', result); save(Checkpoint.toJson(data));` | `const ckpt = await Checkpoint.capture('dag', result); save(ckpt.toJson());` |
+  | `Checkpoint.restore(raw, fn)`                                                 | `Checkpoint.load(raw).restoreState(fn)`                                      |
+  | `await Checkpoint.persist(store, key, data)`                                  | `await ckpt.persist(store, key)`                                             |
+  | `await Checkpoint.recall(store, key, fn)`                                     | `const ckpt = await Checkpoint.recall(store, key); ckpt?.restoreState(fn)`   |
+
+  Removed methods:
+
+  - `Checkpoint.from(dagName, result)` — replaced by `Checkpoint.capture` (returns a `Checkpoint` instance with `.data`).
+  - `Checkpoint.restore(data, fn)` — replaced by `Checkpoint.load(raw).restoreState(fn)`.
+  - `Checkpoint.toJson(data)` (static) — replaced by instance `ckpt.toJson()`.
+  - `Checkpoint.persist(store, key, data)` (static, three-arg) — replaced by instance `ckpt.persist(store, key)`.
+  - `Checkpoint.recall(store, key, fn)` (three-arg with restore factory) — replaced by `Checkpoint.recall(store, key)` returning `Promise<Checkpoint | null>`.
+
+  (Bump remains minor since the project is pre-1.0; semver allows breaking changes in 0.x minors.)
+
+- 540876f: Promote the DAG terminal endpoint to a first-class placement.
+
+  `TerminalNode` is a new placement kind with `@type: 'TerminalNode'`, a `name`, and `outcome: 'completed' | 'failed'`. The placement ends the flow when reached; the engine reads `outcome` and dispatches `markCompleted()` or `markFailed(...)` on the top-level run.
+
+  `DAGBuilder.terminal(name, outcome?)` is the authoring surface. Default outcome is `'completed'`. Routes may target a terminal placement by name from `.node()`, `.parallel()`, `.fanOut()`, or `.deepDAG()` uniformly.
+
+  Deep-DAG placements may now route any output to `null` (sugar for terminate-completed) or to a named `TerminalNode`. The registration-time null-route ban for deep-DAGs is removed. The `isDeepDag` flag in `runNodes` continues to own lifecycle scoping for nested execution.
+
+  `ExecutionResultInterface` gains `terminalOutcome: 'completed' | 'failed' | null`. The engine sets it when a flow exits through a TerminalNode; it is `null` for null-route exits, error paths, and aborts. The deep-DAG executor reads it from the inner DAG's result to route the parent placement — an inner `TerminalNode(failed)` propagates as `error` on the parent regardless of whether the inner DAG collected NodeError records.
+
+  `DAGDeriverTerminal` becomes a discriminated union. The legacy `{ outcome, target: string | null }` variant is preserved; a new `{ outcome, emit: { name, outcome } }` variant directs the deriver to synthesize a `TerminalNode` placement (deduplicated by name; outcome conflicts and operation-name collisions throw at derive time).
+
+  `MermaidRenderer`, `CytoscapeRenderer`, and `JsonLdRenderer` render TerminalNode placements as discrete graph entities. Mermaid uses a double-circle shape for `outcome: 'completed'` and an asymmetric flag for `'failed'`. Cytoscape emits `data.type === 'terminal'` with `data.outcome` and marks the synthetic END node with `data.synthetic: true`. JSON-LD output uses `@type: 'dag:TerminalNode'` with `dag:outcome`.
+
+- 20ab46d: DeepDAG boundary v0.11. Cross-cutting changes to how data crosses the sub-DAG boundary, plus the foundational `Store` surface for shared mutable state.
+
+  **Typed `stateMapping` on `DAGBuilder.deepDAG`.** New signature `deepDAG<TChildState, TParentState>(name, dagName, routes, options?)`. Options take `inputs` (child key → parent dotted path) and `outputs` (parent dotted path → child dotted path). The `Path<T>` recursive type validates dotted paths against the state shape, with a depth cap of 8 and a fallback to `string` for the default `NodeStateInterface` generic to preserve backward compatibility.
+
+  **`Path<T>` exported from `@noocodex/dagonizer/builder`** — reusable recursive dotted-path type for any state shape.
+
+  **`Store` contract + `BaseStore` abstract class + `MemoryStore` reference impl** in `@noocodex/dagonizer/store`. Modeled on `BaseAdapter`. Methods take `<T extends JsonValue>` with no defaults — callers must specify the value type at every call site; no `unknown` in the API surface. Concurrency contract: `update(key, fn)` is atomic within a single store instance; subclasses must override to satisfy the contract. `MemoryStore` provides a `Map<string, JsonValue>` backing with a synchronous override of `update`.
+
+  **`TypedStore<Schema>` wrapper** for compile-time key-and-value narrowing on known key sets. Wraps any `Store`; keys constrained to `keyof Schema`, value types inferred from `Schema[K]`. Passes snapshot/restore/connect/disconnect through to the underlying store; `.inner` provides access to the wider `Store` contract when needed.
+
+  **`RemoteStore` contract** in `@noocodex/dagonizer/contracts`. Extends `Store` with `endpoint`, `acquireLease`, `releaseLease`, and `health` for distributed execution. No reference implementation yet; the contract is the deliverable. `StoreError` taxonomy extended with `LEASE_DENIED`, `LEASE_EXPIRED`, `UNREACHABLE`.
+
+  **Typed `DAGDeriverSubDAG<TChildState>`.** Mirrors the typed `stateMapping` shape on the contract-derive side. `subDAGs[name]` annotations narrow child-state keys at compile time via a `ChildKey<T>` helper that falls back to `string` for the default generic.
+
+  **Checkpoint integration with named stores.** `Checkpoint.capture(dagName, result, { stores })` snapshots stores in parallel alongside parent state. `Checkpoint.load(raw)` and `Checkpoint.recall(store, key)` return `Checkpoint` instances. `checkpoint.restoreStores({ name: store })` repopulates named stores. `CheckpointDataSchema.stores` is an optional additive field — old checkpoints load with no store data.
+
+  **Subpath exports** added to the package: `./store` (Store classes and the contract for ergonomic single-import).
+
+  **Examples**: `examples/09-terminals.ts` (from prior release) and `examples/10-shared-state.ts` demonstrate the new APIs end-to-end. Both are workspace examples that compile and run via `npm run example:NN`.
+
 ## [unreleased]
 
 ### Changed
@@ -71,7 +132,7 @@
   field. When omitted, the dispatcher installs a `NoopInstrumentation`.
 - Resumable fan-out — `FanOutNode` records per-item progress under a
   reserved metadata key (`FAN_OUT_PROGRESS_KEY ===
-  '__dagonizer_fan_out_progress__'`) keyed by placement `name`. On resume,
+'__dagonizer_fan_out_progress__'`) keyed by placement `name`. On resume,
   items whose indices appear in `completedIndices` are skipped; their
   outputs are rehydrated from the persisted `itemResults` for the
   aggregate-output and fan-in stages. Progress writes happen once per

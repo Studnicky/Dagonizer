@@ -1,6 +1,6 @@
 {
   "name": "@noocodex/dagonizer-store-eventlog",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Append-only event-log Store implementation for @noocodex/dagonizer. Every set appends an event; get returns the latest value by walking the log in reverse. Optional file persistence via node:fs/promises.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
@@ -13,20 +13,25 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
-    "build":     "tsc -p tsconfig.json",
-    "clean":     "rm -rf dist",
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test":      "tsx --test tests/**/*.test.ts",
-    "lint":      "echo 'lint via workspace root'",
-    "prepack":   "npm run clean && npm run build"
+    "test": "tsx --test tests/**/*.test.ts",
+    "lint": "echo 'lint via workspace root'",
+    "prepack": "npm run clean && npm run build"
   },
   "publishConfig": {
     "access": "public",
     "provenance": true
   },
-  "devDependencies": { "@types/node": "^25.2.0" },
+  "devDependencies": {
+    "@types/node": "^25.2.0"
+  },
   "peerDependencies": {
     "@noocodex/dagonizer": "workspace:^"
   },
