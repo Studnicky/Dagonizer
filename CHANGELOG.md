@@ -4,6 +4,14 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Fixed
+
+## [0.11.0] - 2026-05-24
+
 **EmbeddedDAG boundary + engine hardening.** Deep-DAG authoring is renamed
 `EmbeddedDAG` throughout the codebase, promoting embedded sub-flows to a
 first-class concept with typed state mappings, structured lifecycle phases,
@@ -592,3 +600,5 @@ The schema bodies and `$id`s are stable. Type derivation can be migrated to a fu
 ⦿ `DAGError` hierarchy: `ConfigurationError`, `ExecutionError`, `NotFoundError`, `ValidationError`.
 ⦿ Public exports under `@noocodex/dagonizer`, `/types`, `/errors`, `/constants`, `/lifecycle`.
 ⦿ Constants: `FanInStrategy`, `FanOutOutput`, `MetadataKey`, `Output`, `ParallelCombine`, `NodeType`.
+
+[0.11.0]: https://github.com/Studnicky/Dagonizer/compare/v0.10.0...v0.11.0
