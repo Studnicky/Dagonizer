@@ -54,15 +54,19 @@ jobs:
       - name: CI gate (typecheck + lint + tests + adapter smoke)
         run: pnpm run ci
 
-      # v0.10.0 ships GitHub-only — npm publish is intentionally skipped
-      # until live-API smoke testing covers every adapter. Re-enable by
-      # adding `publish: pnpm run release` and `NPM_TOKEN` to the env.
-      - name: Create Release Pull Request
+      # Beta publish — every package ships under the `beta` npm tag so
+      # `npm install <pkg>` does NOT pull these by default. Consumers
+      # must opt in via `npm install <pkg>@beta` or pin a specific
+      # 0.x.y version. The `latest` tag stays unset until the deliberate
+      # 1.0 milestone.
+      - name: Create Release Pull Request or Publish
         id: changesets
         uses: changesets/action@v1
         with:
           version: pnpm run version-packages
+          publish: pnpm run release
           commit: "chore(release): version packages"
           title: "chore(release): version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
