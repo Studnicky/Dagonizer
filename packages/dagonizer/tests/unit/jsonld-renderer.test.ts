@@ -105,7 +105,7 @@ void describe('JsonLdRenderer.render', () => {
     assert.deepEqual(group?.['dag:children'], ['urn:dagonizer:par#a', 'urn:dagonizer:par#b']);
   });
 
-  void it('renders deep-dag with cross-DAG reference', () => {
+  void it('renders embedded-dag with cross-DAG reference', () => {
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:parent',
@@ -115,7 +115,7 @@ void describe('JsonLdRenderer.render', () => {
       'entrypoint': 'invoke',
       'nodes': [{
         '@id':    'urn:noocodex:dag:parent/node/invoke',
-        '@type':  'DeepDAGNode',
+        '@type':  'EmbeddedDAGNode',
         'name':   'invoke',
         'dag':    'child',
         'stateMapping': { 'input': { 'a': 'x' }, 'output': { 'y': 'b' } },
@@ -123,7 +123,7 @@ void describe('JsonLdRenderer.render', () => {
       }],
     };
     const doc = JsonLdRenderer.render(dag);
-    const sub = doc['@graph'].find((entry) => entry['@type'] === 'dag:DeepDAGNode');
+    const sub = doc['@graph'].find((entry) => entry['@type'] === 'dag:EmbeddedDAGNode');
     assert.equal(sub?.['dag:dag'], 'urn:dagonizer:child');
     assert.deepEqual(sub?.['dag:stateMapping'], { 'input': { 'a': 'x' }, 'output': { 'y': 'b' } });
   });

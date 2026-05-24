@@ -11,10 +11,11 @@
  *   off-topic          → `decline-off-topic`
  *
  * Demonstrates: a wide narrowly-typed output union and dispatch into
- * sub-DAG branches based on classifier output.
+ * embedded-DAG branches based on classifier output.
  */
 
 
+// #region node-class
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
@@ -50,3 +51,4 @@ export const classifyIntent: NodeInterface<ArchivistState, IntentOutput, Archivi
     }
   },
 };
+// #endregion node-class

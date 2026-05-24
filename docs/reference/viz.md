@@ -1,17 +1,14 @@
 ---
 seeAlso:
-
-  - text: 'Reference: Dagonizer — read accessors'
-
+  - text: 'Reference: Dagonizer'
     link: './dagonizer'
-
-  - text: 'Reference: Entities — `DAG`'
-
+    description: 'read accessors'
+  - text: 'Reference: Entities'
     link: './entities'
-
-  - text: 'Reference: Derive — `DAGDeriver.derive`'
-
+    description: '`DAG`'
+  - text: 'Reference: Derive'
     link: './derive'
+    description: 'render the DAG `derive()` returned'
 ---
 
 # Viz
@@ -52,7 +49,7 @@ Render a `DAG` as Mermaid `flowchart` source. The output is a complete Mermaid b
 |-----------|---------------|----------------|
 | `single`  | rectangle     | `greet[greet]` |
 | `fan-out` | hexagon       | `scout{{scout}}` |
-| `deep-dag` | stadium       | `enrich([enrich])` |
+| `embedded-dag` | stadium       | `enrich([enrich])` |
 | `parallel`| subgraph      | `subgraph group["group (parallel)"]` … `end` |
 
 Every output route renders as a labeled directed edge: `from -->|outcome| to`. Routes targeting `null` route to a synthetic `END` terminator (one per DAG, rendered as `END([end])`).
@@ -147,17 +144,17 @@ class CytoscapeRenderer {
 
 Renders a `DAG` as a Cytoscape `elements` array. Pass the result directly to `cytoscape({ elements })`.
 
-- Every placement becomes a node element with a `type` field (`'single'` | `'parallel'` | `'fan-out'` | `'deep-dag'` | `'terminal'`) for per-type stylesheet selectors.
+- Every placement becomes a node element with a `type` field (`'single'` | `'parallel'` | `'fan-out'` | `'embedded-dag'` | `'terminal'`) for per-type stylesheet selectors.
 - Every output route becomes a labeled edge element.
 - Parallel children render with `parent: <parallelPlacementName>` for compound-graph rendering.
-- Deep-DAG placements are expanded inline when their target DAG is supplied via `options.deepDags`, showing the full inner flow as a compound cluster.
+- Embedded-DAG placements are expanded inline when their target DAG is supplied via `options.embeddedDAGs`, showing the full inner flow as a compound cluster.
 - Routes to `null` become edges to a synthetic `END` terminal node.
 
 ```ts
 import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
 
 const elements = CytoscapeRenderer.render(dag, {
-  deepDags: new Map([['inner-dag', innerDag]]),
+  embeddedDAGs: new Map([['inner-dag', innerDag]]),
   maxDepth: 4,
 });
 ```
@@ -166,7 +163,7 @@ const elements = CytoscapeRenderer.render(dag, {
 
 ```ts
 interface RenderOptions {
-  readonly deepDags?: ReadonlyMap<string, DAG>;
+  readonly embeddedDAGs?: ReadonlyMap<string, DAG>;
   readonly maxDepth?: number;   // default 6
 }
 ```
@@ -181,7 +178,7 @@ interface CytoscapeNodeElement {
   readonly data: {
     readonly id: string;
     readonly label: string;
-    readonly type: 'single' | 'parallel' | 'fan-out' | 'deep-dag' | 'terminal';
+    readonly type: 'single' | 'parallel' | 'fan-out' | 'embedded-dag' | 'terminal';
     readonly [key: string]: unknown;
   };
   readonly classes?: string;

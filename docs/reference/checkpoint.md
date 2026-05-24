@@ -1,22 +1,17 @@
 ---
 seeAlso:
-
-  - text: 'Reference: Contracts — `CheckpointStore`'
-
+  - text: 'Reference: Contracts'
     link: './contracts'
-
-  - text: 'Reference: Entities — `CheckpointData`'
-
+    description: '`CheckpointStore`'
+  - text: 'Reference: Entities'
     link: './entities'
-
+    description: '`CheckpointData`'
   - text: 'Reference: Store'
-
     link: './store'
     description: '`Store`, `BaseStore`, `MemoryStore`, `StoreError`'
-
-  - text: 'Reference: Validation — `Validator.checkpoint`'
-
+  - text: 'Reference: Validation'
     link: './validation'
+    description: '`Validator.checkpoint`'
 ---
 
 # Checkpoint
@@ -53,7 +48,7 @@ static async capture<TState extends NodeStateInterface & NodeStateBase>(
 
 Async factory. Builds a `Checkpoint` instance from a flow name, execution result, and optional named stores. Snapshots all stores in parallel (via `store.snapshot()`). The instance exposes `.data` (the `CheckpointData` record) and instance methods for the resume side.
 
-Throws `DAGError` when `result.cursor === null` (the DAG completed — nothing to resume).
+Throws `DAGError` when `result.cursor === null` (the DAG completed; nothing to resume).
 
 ```ts
 import { Checkpoint } from '@noocodex/dagonizer/checkpoint';

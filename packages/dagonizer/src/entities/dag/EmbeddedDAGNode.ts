@@ -1,21 +1,21 @@
 /**
- * DeepDAGNode — invoke a nested DAG with optional state mapping,
+ * EmbeddedDAGNode — invoke a nested DAG with optional state mapping,
  * in JSON-LD canonical form.
  *
- * Uses `@type: 'DeepDAGNode'` as the discriminator. `@id` is the placement
+ * Uses `@type: 'EmbeddedDAGNode'` as the discriminator. `@id` is the placement
  * URN: `urn:noocodex:dag:<dagName>/node/<name>`.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
 
-export const DeepDAGNodeSchema = {
-  '$id': 'https://noocodex.dev/schemas/dagonizer/DeepDAGNode',
+export const EmbeddedDAGNodeSchema = {
+  '$id': 'https://noocodex.dev/schemas/dagonizer/EmbeddedDAGNode',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['@id', '@type', 'name', 'dag', 'outputs'],
   'properties': {
     '@id':   { 'type': 'string', 'minLength': 1 },
-    '@type': { 'type': 'string', 'const': 'DeepDAGNode' },
+    '@type': { 'type': 'string', 'const': 'EmbeddedDAGNode' },
     'name':  { 'type': 'string', 'minLength': 1 },
     'dag':   { 'type': 'string', 'minLength': 1 },
     'outputs': {
@@ -34,13 +34,13 @@ export const DeepDAGNodeSchema = {
   'additionalProperties': false,
 } as const;
 
-/** TypeScript type derived from `DeepDAGNodeSchema` via `json-schema-to-ts`. */
-export type DeepDAGNode = FromSchema<typeof DeepDAGNodeSchema>;
+/** TypeScript type derived from `EmbeddedDAGNodeSchema` via `json-schema-to-ts`. */
+export type EmbeddedDAGNode = FromSchema<typeof EmbeddedDAGNodeSchema>;
 
-/** TypeScript interface for `DeepDAGNode`. */
-export interface DeepDAGNodeInterface {
+/** TypeScript interface for `EmbeddedDAGNode`. */
+export interface EmbeddedDAGNodeInterface {
   readonly '@id': string;
-  readonly '@type': 'DeepDAGNode';
+  readonly '@type': 'EmbeddedDAGNode';
   readonly name: string;
   readonly dag: string;
   readonly outputs: Record<string, string | null>;

@@ -1,59 +1,89 @@
 ---
+title: 'Checkpoint and Resume'
+description: 'Checkpoint.capture snapshots an interrupted execution; toJson serializes it; Checkpoint.load + restoreState rehydrates parent state; dispatcher.resume continues from the cursor.'
 seeAlso:
-
   - text: 'Persistence'
-
     link: './persistence'
-    description: 'wire `ckpt.persist` / `Checkpoint.recall` to a `CheckpointStore`'
-
+    description: 'wire `ckpt.persist` and `Checkpoint.recall` to a `CheckpointStore`'
   - text: 'Cancellation'
-
     link: './cancellation'
     description: 'abort a flow to produce a non-null cursor worth checkpointing'
-
   - text: 'Subclassing State'
-
     link: './subclassing'
-    description: 'override `snapshotData()` / `restoreData()` for domain fields'
+    description: 'override `snapshotData()` and `restoreData()` for domain fields'
 ---
 
-# Checkpoint & Resume
+<script setup lang="ts">
+import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
+import type { ElementDefinition } from 'cytoscape';
+import { DAG_CONTEXT } from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
 
-Checkpoint persists an in-flight DAG at its current cursor so execution can continue in a later process or after a restart.
+const dag: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id': 'urn:noocodex:dag:count',
+  '@type': 'DAG',
+  name: 'count',
+  version: '1',
+  entrypoint: 'a',
+  nodes: [
+    { '@id': 'urn:noocodex:dag:count/node/a', '@type': 'SingleNode', name: 'a', node: 'inc', outputs: { success: 'b' } },
+    { '@id': 'urn:noocodex:dag:count/node/b', '@type': 'SingleNode', name: 'b', node: 'inc', outputs: { success: 'c' } },
+    { '@id': 'urn:noocodex:dag:count/node/c', '@type': 'SingleNode', name: 'c', node: 'inc', outputs: { success: null } },
+  ],
+};
 
-## How it works
+const elements = CytoscapeRenderer.render(dag) as ElementDefinition[];
+</script>
 
-When a DAG stops early — via cancellation, timeout, or an error — `result.cursor` holds the name of the next node that would have run. Pass that cursor to `Checkpoint.capture()` to build a `Checkpoint` instance, then serialize and store it with `ckpt.toJson()`.
+# Checkpoint and Resume
 
-On resume, parse the stored JSON, call `Checkpoint.load(raw)` to get a `Checkpoint` instance, then call `ckpt.restoreState(fn)` to rehydrate the state and cursor, and pass them to `dispatcher.resume()`.
+`Checkpoint` is the codec: it turns an interrupted `ExecutionResult` into a portable record and back. `dispatcher.resume(dagName, state, cursor)` picks the execution up from the restored cursor. Persistence is the consumer's concern (see [persistence](./persistence)).
 
-## Cursor and state snapshot
+## API surface
 
-```ts
-const ctl = new AbortController();
-const result = await dispatcher.execute('my-dag', state, { signal: ctl.signal });
+| Symbol | Source | Role |
+|--------|--------|------|
+| `Checkpoint.capture(dagName, result, options?)` | `@noocodex/dagonizer/checkpoint` | Async factory: turns a paused execution into a `Checkpoint` |
+| `Checkpoint.load(raw)` | `@noocodex/dagonizer/checkpoint` | Schema-validates an unknown value into a `Checkpoint` |
+| `Checkpoint.recall(store, key)` | `@noocodex/dagonizer/checkpoint` | Reads + parses + validates from a `CheckpointStore` |
+| `ckpt.toJson()` | instance method | Serializes to a JSON string |
+| `ckpt.persist(store, key)` | instance method | Writes via a `CheckpointStore` |
+| `ckpt.restoreState(fn)` | instance method | Rehydrates `{ dagName, state, cursor }` |
+| `ckpt.restoreStores(map)` | instance method | Restores named stores from the envelope |
+| `dispatcher.resume(dagName, state, cursor)` | `@noocodex/dagonizer` | Resumes the flow at `cursor` |
 
-if (result.cursor !== null) {
-  // DAG did not complete — checkpoint it.
-  const ckpt = await Checkpoint.capture('my-dag', result);
-  await db.set('current-checkpoint', ckpt.toJson());
-}
-```
+## DAG that drives the example
 
-`Checkpoint.capture()` throws `DAGError` when `result.cursor === null` (the DAG completed — nothing to resume).
+A three-node linear DAG. An abort after node `a` leaves `cursor === 'b'`; the resumed run executes `b` and `c` only:
 
-## Restoring and resuming
+<DagGraph :elements="elements" aria-label="Three-node linear count DAG; abort after a; resume from b." />
 
-```ts
-const raw = JSON.parse(await db.get('current-checkpoint')) as unknown;
-const ckpt = Checkpoint.load(raw);
-const { dagName, state: restored, cursor } = ckpt.restoreState(
-  (snap) => MyState.restore(snap),
-);
-const result = await dispatcher.resume(dagName, restored, cursor);
-```
+## Capturing a partial run
 
-The argument to `restoreState()` is a factory function that maps the snapshot `JsonObject` to a `TState` instance. This is how domain-specific state is rehydrated.
+When a DAG stops early (cancellation, timeout, error), `result.cursor` holds the name of the next node that would have run. Pass that to `Checkpoint.capture()`:
+
+<<< @/../examples/08-checkpoint.ts#capture
+
+`Checkpoint.capture()` throws `DAGError` when `result.cursor === null` (the DAG completed, nothing to resume).
+
+## Serializing the checkpoint
+
+<<< @/../examples/08-checkpoint.ts#persist
+
+`ckpt.toJson()` is `JSON.stringify(ckpt.data, null, 2)`. The output is a stable JSON document; persist it however the system stores other JSON: file, database column, object store, etc.
+
+## Loading and rehydrating state
+
+<<< @/../examples/08-checkpoint.ts#recall
+
+`Checkpoint.load(raw)` validates the unknown value against `CheckpointDataSchema` (Ajv 2020-12) before touching any fields. An invalid or stale payload throws `ValidationError`. `ckpt.restoreState(fn)` receives a factory that maps the snapshot `JsonObject` to a `TState` instance; that is the boundary where domain state classes plug in.
+
+## Resuming execution
+
+<<< @/../examples/08-checkpoint.ts#resume
+
+`dispatcher.resume` continues the flow at the cursor and runs the remaining nodes. The dispatcher does not re-execute completed nodes; the recorded `executedNodes` and `skippedNodes` survive the round-trip.
 
 ## `NodeStateBase.snapshot()` and `snapshotData()`
 
@@ -82,15 +112,15 @@ class PipelineState extends NodeStateBase {
 
 `restoreData` is called by `NodeStateBase.restore(snap)`. The static `restore` method is typed with `this`-polymorphism so subclasses return the correct instance type.
 
-## `snapshotData` / `restoreData` contract
+## `snapshotData` and `restoreData` contract
 
-- `snapshotData()` must return a JSON-serializable `JsonObject`. No `undefined` values, no circular references.
+- `snapshotData()` returns a JSON-serializable `JsonObject`. No `undefined` values, no circular references.
 - `restoreData(snap)` receives the full merged snapshot (base fields plus domain fields). Call `super.applySnapshot(snap)` when overriding `applySnapshot` directly.
-- Lifecycle is intentionally **not** captured — `resume()` starts a fresh lifecycle run from `pending`.
+- Lifecycle is intentionally not captured. `resume()` starts a fresh lifecycle run from `pending`.
 
-## CheckpointStore — composing with persistence
+## CheckpointStore: composing with persistence
 
-`CheckpointStore` is the adapter contract for persistence backends. `ckpt.persist(store, key)` and `Checkpoint.recall(store, key)` compose the codec with a store so save/resume becomes a single call per side.
+`CheckpointStore` is the adapter contract for persistence backends. `ckpt.persist(store, key)` and `Checkpoint.recall(store, key)` compose the codec with a store so save and resume become a single call per side.
 
 ```ts
 import { Checkpoint, MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
@@ -107,64 +137,9 @@ if (recalled !== null) {
 }
 ```
 
-`MemoryCheckpointStore` is for tests and demos. Production deployments implement `CheckpointStore` against a database, object store, or filesystem — see [persistence](./persistence.md) for a Postgres reference implementation.
+`MemoryCheckpointStore` is for tests and demos. Production deployments implement `CheckpointStore` against a database, object store, or filesystem (see [persistence](./persistence)).
 
-## `toJson` and `Checkpoint.load`
-
-```ts
-// Write
-const ckpt = await Checkpoint.capture('my-dag', result);
-const json = ckpt.toJson(); // JSON.stringify(ckpt.data, null, 2)
-await fs.writeFile('checkpoint.json', json);
-
-// Read
-const raw = JSON.parse(await fs.readFile('checkpoint.json', 'utf8')) as unknown;
-const ckpt2 = Checkpoint.load(raw);
-const { dagName, state, cursor } = ckpt2.restoreState((snap) => MyState.restore(snap));
-```
-
-`Checkpoint.load()` validates the raw value against `CheckpointDataSchema` (Ajv 2020-12) before touching any fields. An invalid or stale payload throws `ValidationError`.
-
-## Full cycle
-
-```ts
-import { Checkpoint, Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-import type { JsonObject } from '@noocodex/dagonizer';
-
-class S extends NodeStateBase {
-  count = 0;
-
-  protected override snapshotData(): JsonObject {
-    return { count: this.count };
-  }
-
-  protected override restoreData(snap: JsonObject): void {
-    const c = snap['count'];
-    if (typeof c === 'number') this.count = c;
-  }
-}
-
-// --- First run (interrupted) ---
-const ctl = new AbortController();
-const s1 = new S();
-const exec = dispatcher.execute('count-dag', s1, { signal: ctl.signal });
-for await (const node of exec) {
-  if (node.nodeName === 'b') ctl.abort(new Error('pause'));
-}
-const partial = await exec;
-
-// --- Persist ---
-const ckpt = await Checkpoint.capture('count-dag', partial);
-const stored = ckpt.toJson();
-
-// --- Resume (later, new process) ---
-const ckpt2 = Checkpoint.load(JSON.parse(stored) as unknown);
-const { dagName, state: s2, cursor } = ckpt2.restoreState((snap) => S.restore(snap));
-const final = await dispatcher.resume(dagName, s2, cursor);
-console.log(final.state.count);       // count from before + count from after
-console.log(final.state.lifecycle.kind); // 'completed'
-```
-## Fan-out resume — per-item progress bookkeeping
+## Fan-out resume: per-item progress
 
 A `FanOutNode` records per-item progress on `state.metadata` so a checkpointed run does not re-execute already-completed items on resume. This matters most for long fan-outs whose items hit external APIs or LLMs: re-running a 200-item batch from the top after a restart would burn quota and waste hours.
 
@@ -175,7 +150,7 @@ import { FAN_OUT_PROGRESS_KEY } from '@noocodex/dagonizer';
 // FAN_OUT_PROGRESS_KEY === '__dagonizer_fan_out_progress__'
 ```
 
-**Consumer nodes must not write to this key.** It is engine-internal and may be overwritten or cleared between batch boundaries by `executeFanOut`.
+Consumer nodes must not write to this key. It is engine-internal and may be overwritten or cleared between batch boundaries by `executeFanOut`.
 
 The stored shape is a record keyed by the fan-out's placement `name`, so multiple `FanOutNode` placements in one DAG keep independent progress entries:
 
@@ -191,22 +166,22 @@ type StoredFanOutProgress = Readonly<Record<string, FanOutProgress>>;
 
 ### Lifecycle
 
-1. **On entry** — `executeFanOut` reads `state.metadata[FAN_OUT_PROGRESS_KEY]?.[fanOut.name]`. Items whose indices appear in `completedIndices` are skipped; their recorded outputs rehydrate the per-output buckets used by fan-in.
-2. **Per-batch write** — after each `Promise.all(batchPromises)` resolves, the dispatcher updates the placement's entry with the batch's completed indices. Writes happen once per batch (not per item) to keep the metadata update serialised across concurrent item promises.
-3. **Pre-fan-in clear** — once every batch drains, the placement's entry is removed before the fan-in strategy runs. Fan-in always starts from a clean slate; subsequent re-runs of the same `FanOutNode` (e.g. inside a loop) do not see stale bookkeeping.
+1. **On entry**: `executeFanOut` reads `state.metadata[FAN_OUT_PROGRESS_KEY]?.[fanOut.name]`. Items whose indices appear in `completedIndices` are skipped; their recorded outputs rehydrate the per-output buckets used by fan-in.
+2. **Per-batch write**: after each `Promise.all(batchPromises)` resolves, the dispatcher updates the placement's entry with the batch's completed indices. Writes happen once per batch (not per item) to keep the metadata update serialised across concurrent item promises.
+3. **Pre-fan-in clear**: once every batch drains, the placement's entry is removed before the fan-in strategy runs. Fan-in always starts from a clean slate; subsequent re-runs of the same `FanOutNode` (such as inside a loop) do not see stale bookkeeping.
 
 ### Index semantics on resume
 
-Indices refer to positions in the source array **at the time of resume**, not the array as it stood when the checkpoint was captured. If the consumer rewrites the source array between checkpoint and resume, the resumed fan-out trusts the persisted indices verbatim — items 0 and 1 are skipped even when the array has been re-sliced or reordered.
+Indices refer to positions in the source array at the time of resume, not the array as it stood when the checkpoint was captured. If the consumer rewrites the source array between checkpoint and resume, the resumed fan-out trusts the persisted indices verbatim; items 0 and 1 are skipped even when the array has been re-sliced or reordered.
 
 Treat the fan-out's source array as immutable while a fan-out checkpoint is live. If the source must change between runs, clear the entry under `FAN_OUT_PROGRESS_KEY[fanOut.name]` before calling `dispatcher.resume()` so the fan-out re-executes every item against the new source.
 
 ### Snapshot round-trip
 
-The reserved key rides along with the rest of `state.metadata` through `NodeStateBase.snapshot()` / `restore()`. No extra plumbing in consumer state classes — `snapshotData()` overrides do not need to touch the progress key. `Checkpoint.capture()` and `Checkpoint.load()` both preserve it intact.
+The reserved key rides along with the rest of `state.metadata` through `NodeStateBase.snapshot()` and `restore()`. No extra plumbing in consumer state classes; `snapshotData()` overrides do not need to touch the progress key. `Checkpoint.capture()` and `Checkpoint.load()` both preserve it intact.
 
 ## Related reference
 
 - [Reference: Checkpoint](../reference/checkpoint)
-- [Reference: Contracts — `CheckpointStore`](../reference/contracts)
-- [Example: Checkpoint Resume](../examples/08-checkpoint)
+- [Reference: Contracts](../reference/contracts)
+- [Demo: Phase 08 Checkpoint resume](../examples/08-checkpoint)

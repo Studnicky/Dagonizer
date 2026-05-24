@@ -3,8 +3,9 @@ seeAlso:
   - text: 'Reference: Entities'
     link: './entities'
     description: 'every schema `Validator` exposes'
-  - text: 'Reference: Errors — `ValidationError`'
+  - text: 'Reference: Errors'
     link: './errors'
+    description: '`ValidationError`'
 ---
 
 # Validation
@@ -71,13 +72,42 @@ Type: `EntityValidator<CheckpointData>`
 
 Validates raw values against `CheckpointDataSchema`. Used by `Checkpoint.load`.
 
-#### `Validator.checkpoint.validate(value)`
-
 ```ts
 Validator.checkpoint.validate(value: unknown): CheckpointData
 ```
 
 Returns a typed `CheckpointData` or throws `ValidationError`. Called by `Checkpoint.load` before any field access.
+
+---
+
+### Other validators
+
+Every JSON Schema in `@noocodex/dagonizer/entities` has a matching static `EntityValidator` on `Validator`. Names use camelCase derived from the schema name.
+
+| Field | Entity | Schema |
+|---|---|---|
+| `Validator.dag` | `DAG` | `DAGSchema` |
+| `Validator.singleNode` | `SingleNode` | `SingleNodeSchema` |
+| `Validator.parallelNode` | `ParallelNode` | `ParallelNodeSchema` |
+| `Validator.fanOutNode` | `FanOutNode` | `FanOutNodeSchema` |
+| `Validator.embeddedDAGNode` | `EmbeddedDAGNode` | `EmbeddedDAGNodeSchema` |
+| `Validator.terminalNode` | `TerminalNode` | `TerminalNodeSchema` |
+| `Validator.phaseNode` | `PhaseNode` | `PhaseNodeSchema` |
+| `Validator.fanInConfig` | `FanInConfig` | `FanInConfigSchema` |
+| `Validator.node` | `Node` | `NodeSchema` |
+| `Validator.nodeContext` | `NodeContext` | `NodeContextSchema` |
+| `Validator.nodeOutput` | `NodeOutput` | `NodeOutputSchema` |
+| `Validator.nodeError` | `NodeError` | `NodeErrorSchema` |
+| `Validator.nodeWarning` | `NodeWarning` | `NodeWarningSchema` |
+| `Validator.nodeResult` | `NodeResult` | `NodeResultSchema` |
+| `Validator.nodeStateData` | `NodeStateData` | `NodeStateDataSchema` |
+| `Validator.executionResult` | `ExecutionResult` | `ExecutionResultSchema` |
+| `Validator.dagLifecycleState` | `DAGLifecycleStateData` | `DAGLifecycleStateSchema` |
+| `Validator.checkpoint` | `CheckpointData` | `CheckpointDataSchema` |
+| `Validator.validationResult` | `ValidationResult` | `ValidationResultSchema` |
+| `Validator.dagErrorJson` | `DAGErrorJSON` | `DAGErrorJSONSchema` |
+
+Every entry exposes the same `EntityValidator<T>` surface: `is(value)`, `validate(value)`, `errors(value)`.
 
 ---
 
@@ -99,4 +129,4 @@ interface EntityValidator<T> {
 ## Related guides
 
 - [Schema & JSON loading](../guide/schema)
-- [Persistence](../guide/persistence) — `Validator.checkpoint` runs inside `Checkpoint.recall`
+- [Persistence](../guide/persistence): `Validator.checkpoint` runs inside `Checkpoint.recall`

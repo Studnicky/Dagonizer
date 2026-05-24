@@ -77,7 +77,7 @@ void describe('MermaidRenderer.render', () => {
     assert.match(out, /end/u);
   });
 
-  void it('renders deep-dag as stadium shape', () => {
+  void it('renders embedded-dag as stadium shape', () => {
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:deep',
@@ -87,7 +87,7 @@ void describe('MermaidRenderer.render', () => {
       'entrypoint': 'enrich',
       'nodes': [{
         '@id':    'urn:noocodex:dag:deep/node/enrich',
-        '@type':  'DeepDAGNode',
+        '@type':  'EmbeddedDAGNode',
         'name':   'enrich',
         'dag':    'inner',
         'outputs': { 'success': 'next', 'error': 'next' },

@@ -203,9 +203,9 @@ void describe('TerminalNode — execution with outcome=failed', () => {
   });
 });
 
-// ── 5. DeepDAG routing to null is now legal ───────────────────────────────
+// ── 5. Embedded-DAG routing to null is now legal ───────────────────────────────
 
-void describe('TerminalNode — deep-DAG routing to null is legal', () => {
+void describe('TerminalNode — embedded-DAG routing to null is legal', () => {
   const childDAG: DAG = {
     '@context': DAG_CONTEXT,
     '@id':      'urn:noocodex:dag:child-tn',
@@ -247,7 +247,7 @@ void describe('TerminalNode — deep-DAG routing to null is legal', () => {
         },
         {
           '@id':   'urn:noocodex:dag:parent-tn/node/run-child',
-          '@type': 'DeepDAGNode',
+          '@type': 'EmbeddedDAGNode',
           'name':  'run-child',
           'dag':   'child-tn',
           'outputs': { 'success': null, 'error': null },
@@ -266,9 +266,9 @@ void describe('TerminalNode — deep-DAG routing to null is legal', () => {
   });
 });
 
-// ── 6. DeepDAG routing to a TerminalNode ─────────────────────────────────
+// ── 6. Embedded-DAG routing to a TerminalNode ─────────────────────────────────
 
-void describe('TerminalNode — deep-DAG routes to explicit TerminalNode placements', () => {
+void describe('TerminalNode — embedded-DAG routes to explicit TerminalNode placements', () => {
   const makeChildDAG = (emitError: boolean): DAG => ({
     '@context': DAG_CONTEXT,
     '@id':      'urn:noocodex:dag:child-explicit',
@@ -297,7 +297,7 @@ void describe('TerminalNode — deep-DAG routes to explicit TerminalNode placeme
     'nodes': [
       {
         '@id':   'urn:noocodex:dag:parent-explicit/node/run-child',
-        '@type': 'DeepDAGNode',
+        '@type': 'EmbeddedDAGNode',
         'name':  'run-child',
         'dag':   'child-explicit',
         'outputs': { 'success': 'end-ok', 'error': 'end-fail' },

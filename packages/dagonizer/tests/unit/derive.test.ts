@@ -5,7 +5,7 @@ import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import type { OperationContract } from '../../src/contracts/OperationContract.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
-import type { DAGDeriverSubDAG } from '../../src/derive/DAGDeriverAnnotations.js';
+import type { DAGDeriverEmbeddedDAG } from '../../src/derive/DAGDeriverAnnotations.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 void describe('DAGDeriver.derive', () => {
@@ -275,18 +275,18 @@ void describe('DAGDeriver.derive', () => {
     );
   });
 
-  void it('subDAGs annotation renders a DeepDAGNode placement', () => {
+  void it('embeddedDAGs annotation renders a EmbeddedDAGNode placement', () => {
     const contracts: OperationContract[] = [
       { 'name': 'prepare', 'hardRequired': ['input'],   'produces': ['payload'], 'outputs': ['success'] },
       { 'name': 'invoke',  'hardRequired': ['payload'], 'produces': ['result'],  'outputs': ['success', 'error'] },
     ];
     const dag = DAGDeriver.derive({
-      'name': 'subdag-render',
+      'name': 'embeddeddag-render',
       'version': '1',
       'entrypoint': 'prepare',
       contracts,
       'annotations': {
-        'subDAGs': {
+        'embeddedDAGs': {
           'invoke': {
             'dag':    'plugin:parse',
             'outputs': ['success', 'error'],
@@ -296,18 +296,18 @@ void describe('DAGDeriver.derive', () => {
     });
     const invoke = dag.nodes.find((node) => node.name === 'invoke');
     assert.ok(invoke !== undefined, 'invoke placement is emitted');
-    if (invoke !== undefined && invoke['@type'] === 'DeepDAGNode') {
+    if (invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode') {
       assert.equal(invoke.dag, 'plugin:parse');
       assert.equal(invoke.outputs['success'], null);  // no successor
       assert.equal(invoke.outputs['error'],   null);
     } else {
-      assert.fail('expected invoke placement to be DeepDAGNode');
+      assert.fail('expected invoke placement to be EmbeddedDAGNode');
     }
   });
 
-  void it('subDAGs forwards stateMapping verbatim to the rendered placement', () => {
+  void it('embeddedDAGs forwards stateMapping verbatim to the rendered placement', () => {
     // Child state with the fields referenced in the stateMapping below.
-    class SubDagChildState extends NodeStateBase {
+    class EmbeddedDAGChildState extends NodeStateBase {
       childInput  = '';
       childResult = '';
     }
@@ -316,12 +316,12 @@ void describe('DAGDeriver.derive', () => {
       { 'name': 'invoke', 'hardRequired': ['input'], 'produces': ['result'], 'outputs': ['success'] },
     ];
     const dag = DAGDeriver.derive({
-      'name': 'subdag-mapping',
+      'name': 'embeddeddag-mapping',
       'version': '1',
       'entrypoint': 'invoke',
       contracts,
       'annotations': {
-        'subDAGs': {
+        'embeddedDAGs': {
           'invoke': {
             'dag':     'child-dag',
             'outputs': ['success'],
@@ -329,13 +329,13 @@ void describe('DAGDeriver.derive', () => {
               'input':  { 'childInput':  'parent.input' },
               'output': { 'parent.result': 'childResult' },
             },
-          } satisfies DAGDeriverSubDAG<SubDagChildState>,
+          } satisfies DAGDeriverEmbeddedDAG<EmbeddedDAGChildState>,
         },
       },
     });
     const invoke = dag.nodes.find((node) => node.name === 'invoke');
-    assert.ok(invoke !== undefined && invoke['@type'] === 'DeepDAGNode');
-    if (invoke !== undefined && invoke['@type'] === 'DeepDAGNode') {
+    assert.ok(invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode');
+    if (invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode') {
       assert.deepEqual(invoke.stateMapping, {
         'input':  { 'childInput':  'parent.input' },
         'output': { 'parent.result': 'childResult' },
@@ -343,18 +343,18 @@ void describe('DAGDeriver.derive', () => {
     }
   });
 
-  void it('subDAGs auto-wires every declared port and honors terminal overrides', () => {
+  void it('embeddedDAGs auto-wires every declared port and honors terminal overrides', () => {
     const contracts: OperationContract[] = [
       { 'name': 'invoke', 'hardRequired': ['input'],  'produces': ['result'], 'outputs': ['success', 'cached', 'error'] },
       { 'name': 'finish', 'hardRequired': ['result'], 'produces': ['done'],   'outputs': ['success'] },
     ];
     const dag = DAGDeriver.derive({
-      'name': 'subdag-routing',
+      'name': 'embeddeddag-routing',
       'version': '1',
       'entrypoint': 'invoke',
       contracts,
       'annotations': {
-        'subDAGs': {
+        'embeddedDAGs': {
           'invoke': {
             'dag':     'child-dag',
             'outputs': ['success', 'cached', 'error'],
@@ -366,27 +366,27 @@ void describe('DAGDeriver.derive', () => {
       },
     });
     const invoke = dag.nodes.find((node) => node.name === 'invoke');
-    if (invoke !== undefined && invoke['@type'] === 'DeepDAGNode') {
+    if (invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode') {
       assert.equal(invoke.outputs['success'], 'finish');  // auto-wired to next stage
       assert.equal(invoke.outputs['cached'],  'finish');  // auto-wired to next stage
       assert.equal(invoke.outputs['error'],   null);      // terminal override
     } else {
-      assert.fail('expected invoke placement to be DeepDAGNode');
+      assert.fail('expected invoke placement to be EmbeddedDAGNode');
     }
   });
 
-  void it('throws when a terminal references a port not in the subDAG outputs', () => {
+  void it('throws when a terminal references a port not in the embeddedDAG outputs', () => {
     const contracts: OperationContract[] = [
       { 'name': 'invoke', 'hardRequired': ['input'], 'produces': ['result'], 'outputs': ['success', 'error'] },
     ];
     assert.throws(
       () => DAGDeriver.derive({
-        'name': 'subdag-mismatch',
+        'name': 'embeddeddag-mismatch',
         'version': '1',
         'entrypoint': 'invoke',
         contracts,
         'annotations': {
-          'subDAGs': {
+          'embeddedDAGs': {
             'invoke': {
               'dag':     'child-dag',
               'outputs': ['success', 'error'],
@@ -397,7 +397,7 @@ void describe('DAGDeriver.derive', () => {
           },
         },
       }),
-      /port 'cached' which is not in the subDAG 'child-dag' declared outputs/,
+      /port 'cached' which is not in the embeddedDAG 'child-dag' declared outputs/,
     );
   });
 
@@ -471,7 +471,7 @@ void describe('DAGDeriver.derive', () => {
     );
   });
 
-  void it('throws when an operation appears in both fanouts and subDAGs', () => {
+  void it('throws when an operation appears in both fanouts and embeddedDAGs', () => {
     const contracts: OperationContract[] = [
       { 'name': 'plan',  'hardRequired': ['input'], 'produces': ['tasks'],       'outputs': ['success'] },
       { 'name': 'scout', 'hardRequired': ['tasks'], 'produces': ['scoutResult'], 'outputs': ['success'] },
@@ -494,7 +494,7 @@ void describe('DAGDeriver.derive', () => {
               'outcomes':       ['all-success'],
             },
           },
-          'subDAGs': {
+          'embeddedDAGs': {
             'scout': {
               'dag':     'scout-dag',
               'outputs': ['success'],
@@ -502,14 +502,14 @@ void describe('DAGDeriver.derive', () => {
           },
         },
       }),
-      /appears in both annotations.fanouts and annotations.subDAGs/,
+      /appears in both annotations.fanouts and annotations.embeddedDAGs/,
     );
   });
 
-  void it('end-to-end: dispatcher executes a DeepDAGNode emitted by DAGDeriver', async () => {
-    // Parent flow: prepare → invoke-child (deep-DAG) → finalize.
-    // Deep-DAG placements cannot terminate the run — the parent DAG
-    // owns END — so the deep-DAG step must be followed by another
+  void it('end-to-end: dispatcher executes a EmbeddedDAGNode emitted by DAGDeriver', async () => {
+    // Parent flow: prepare → invoke-child (embedded-DAG) → finalize.
+    // Embedded-DAG placements cannot terminate the run — the parent DAG
+    // owns END — so the embedded-DAG step must be followed by another
     // parent placement that routes to null.
     const contracts: OperationContract[] = [
       { 'name': 'prepare',      'hardRequired': ['input'],        'produces': ['intermediate'], 'outputs': ['success'] },
@@ -522,7 +522,7 @@ void describe('DAGDeriver.derive', () => {
       'entrypoint': 'prepare',
       contracts,
       'annotations': {
-        'subDAGs': {
+        'embeddedDAGs': {
           'invoke-child': {
             'dag':     'child',
             'outputs': ['success'],
@@ -799,20 +799,20 @@ void describe('DAGDeriver — terminals with emit variant', () => {
   });
 });
 
-void describe('DAGDeriverSubDAG<TChildState> — typed stateMapping', () => {
+void describe('DAGDeriverEmbeddedDAG<TChildState> — typed stateMapping', () => {
   /** Concrete child state with known domain fields. */
   class MyChildState extends NodeStateBase {
     payload: string = '';
     result:  number = 0;
   }
 
-  void it('positive: typed subDAG annotation compiles and produces correct DeepDAGNode stateMapping', () => {
+  void it('positive: typed embeddedDAG annotation compiles and produces correct EmbeddedDAGNode stateMapping', () => {
     const contracts: OperationContract[] = [
       { 'name': 'invoke', 'hardRequired': ['input'], 'produces': ['result'], 'outputs': ['success', 'error'] },
     ];
 
     // Typed annotation: 'payload' and 'result' must be keys of MyChildState.
-    const typedSubDAG: DAGDeriverSubDAG<MyChildState> = {
+    const typedEmbeddedDAG: DAGDeriverEmbeddedDAG<MyChildState> = {
       'dag':     'child-dag',
       'outputs': ['success', 'error'],
       'stateMapping': {
@@ -822,16 +822,16 @@ void describe('DAGDeriverSubDAG<TChildState> — typed stateMapping', () => {
     };
 
     const dag = DAGDeriver.derive({
-      'name':       'typed-subdag',
+      'name':       'typed-embeddeddag',
       'version':    '1',
       'entrypoint': 'invoke',
       contracts,
-      'annotations': { 'subDAGs': { 'invoke': typedSubDAG } },
+      'annotations': { 'embeddedDAGs': { 'invoke': typedEmbeddedDAG } },
     });
 
     const invoke = dag.nodes.find((n) => n.name === 'invoke');
-    assert.ok(invoke !== undefined && invoke['@type'] === 'DeepDAGNode');
-    if (invoke !== undefined && invoke['@type'] === 'DeepDAGNode') {
+    assert.ok(invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode');
+    if (invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode') {
       assert.deepEqual(invoke.stateMapping, {
         'input':  { 'payload': 'parent.seed' },
         'output': { 'parent.result': 'result' },
@@ -840,12 +840,12 @@ void describe('DAGDeriverSubDAG<TChildState> — typed stateMapping', () => {
   });
 
   void it('backward compat: omitting generic still typechecks (defaults to NodeStateInterface)', () => {
-    // DAGDeriverSubDAG without a generic — same as the pre-existing usage.
+    // DAGDeriverEmbeddedDAG without a generic — same as the pre-existing usage.
     const contracts: OperationContract[] = [
       { 'name': 'invoke', 'hardRequired': ['input'], 'produces': ['result'], 'outputs': ['success'] },
     ];
 
-    const annotation: DAGDeriverSubDAG = {
+    const annotation: DAGDeriverEmbeddedDAG = {
       'dag':     'any-child-dag',
       'outputs': ['success'],
       'stateMapping': {
@@ -855,16 +855,16 @@ void describe('DAGDeriverSubDAG<TChildState> — typed stateMapping', () => {
     };
 
     const dag = DAGDeriver.derive({
-      'name':       'compat-subdag',
+      'name':       'compat-embeddeddag',
       'version':    '1',
       'entrypoint': 'invoke',
       contracts,
-      'annotations': { 'subDAGs': { 'invoke': annotation } },
+      'annotations': { 'embeddedDAGs': { 'invoke': annotation } },
     });
 
     const invoke = dag.nodes.find((n) => n.name === 'invoke');
-    assert.ok(invoke !== undefined && invoke['@type'] === 'DeepDAGNode');
-    if (invoke !== undefined && invoke['@type'] === 'DeepDAGNode') {
+    assert.ok(invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode');
+    if (invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode') {
       assert.deepEqual(invoke.stateMapping?.['input'], { 'anyKey': 'parent.path' });
     }
   });
@@ -873,7 +873,7 @@ void describe('DAGDeriverSubDAG<TChildState> — typed stateMapping', () => {
     // The typed annotation catches unknown child-state keys at compile time.
     // Assign to the stateMapping type directly so @ts-expect-error targets the erroring line.
     // @ts-expect-error — 'nonExistentKey' is not a key of MyChildState
-    const _bad: DAGDeriverSubDAG<MyChildState>['stateMapping'] = { 'input': { 'nonExistentKey': 'parent.seed' } };
+    const _bad: DAGDeriverEmbeddedDAG<MyChildState>['stateMapping'] = { 'input': { 'nonExistentKey': 'parent.seed' } };
     void _bad;
   });
 });

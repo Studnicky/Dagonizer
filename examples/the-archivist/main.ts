@@ -4,7 +4,7 @@
  * Mirrors `runArchivist.ts`'s setup but composes a browser-runnable
  * cascade and streams the logger to the DOM. Default preference:
  *
- *   Gemini Nano (Chrome on-device, flag-gated)
+ *   Browser built-in LanguageModel (flag-gated on older Chrome/Edge)
  *     →  WebLLM      (any WebGPU browser; ~700 MB model download on first use)
  *     →  Gemini API  (REST; key supplied via `?apiKey=…` URL param)
  *     →  Ollama      (only when running locally with CORS enabled — see below)
@@ -25,11 +25,11 @@ import { UserLanguage } from './language/UserLanguage.ts';
 import {
   BookSearchFanoutDAG,
   registerBookSearchFanoutNodes,
-} from './deepdags/BookSearchFanoutDAG.ts';
+} from './embedded-dags/BookSearchFanoutDAG.ts';
 import {
   ComposeRetryLoopDAG,
   registerComposeRetryLoopNodes,
-} from './deepdags/ComposeRetryLoopDAG.ts';
+} from './embedded-dags/ComposeRetryLoopDAG.ts';
 import { ConsoleLogger, type LogEvent } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { classifyIntent } from './nodes/classifyIntent.ts';
@@ -142,8 +142,8 @@ const cascade = new LlmAdapterCascade(registry, [
 let llm: LlmClient;
 try {
   const adapter = await cascade.select();
-  // Browser: no native embedder is wired today (Gemini Nano doesn't
-  // expose embeddings, WebLLM embedding models would balloon the
+  // Browser: no native embedder is wired today (the browser built-in
+  // LanguageModel doesn't expose embeddings, WebLLM embedding models would balloon the
   // download budget). LLM-only intent classification is the path here;
   // log once so the omission is visible in the demo log panel.
   logger.info('embedder: unavailable in browser — intent classification via LLM only');
@@ -157,6 +157,7 @@ try {
   throw err;
 }
 
+// #region wire-services
 // ── Dispatcher + DAG registration (mirrors runArchivist.ts). ─────────────
 const services: ArchivistServices = {
   'webSearch':        OpenLibrarySearchTool,
@@ -169,7 +170,9 @@ const services: ArchivistServices = {
 };
 
 const dispatcher = new Dagonizer<ArchivistState, ArchivistServices>({ services });
+// #endregion wire-services
 
+// #region register-bundle
 registerBookSearchFanoutNodes(dispatcher);
 dispatcher.registerDAG(BookSearchFanoutDAG);
 
@@ -205,7 +208,9 @@ for (const node of [
 }
 
 dispatcher.registerDAG(archivistDAG);
+// #endregion register-bundle
 
+// #region run-loop
 // ── Submit handler — fresh state per ask. ─────────────────────────────────
 async function ask(query: string): Promise<void> {
   const visitor = new ArchivistState();
@@ -235,3 +240,4 @@ form.addEventListener('submit', (event) => {
 const SEED_QUERY = "I'm looking for a book about a strange house and a library";
 input.value = SEED_QUERY;
 void ask(SEED_QUERY);
+// #endregion run-loop

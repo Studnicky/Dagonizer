@@ -15,7 +15,7 @@ Open <http://localhost:5174>. The page runs the seed question on load.
 
 Default cascade:
 
-1. **Gemini Nano** — Chrome with the on-device Prompt API enabled
+1. **Browser built-in LanguageModel** — Chrome 138+ or Edge with the on-device Prompt API enabled
    (`chrome://flags/#prompt-api-for-gemini-nano`).
 2. **WebLLM** — any WebGPU-capable browser. Lazy-downloads a ~700 MB
    quantized model on first use; subsequent runs reuse it.

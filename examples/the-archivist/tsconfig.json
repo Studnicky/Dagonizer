@@ -16,7 +16,7 @@
     "ArchivistState.ts",
     "dag.ts",
     "services.ts",
-    "deepdags/**/*.ts",
+    "embedded-dags/**/*.ts",
     "entities/**/*.ts",
     "logger/**/*.ts",
     "memory/**/*.ts",

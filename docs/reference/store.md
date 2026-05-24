@@ -1,17 +1,12 @@
 ---
 seeAlso:
-
-  - text: 'Reference: Contracts — `Store`, `StoreSnapshot`, `StoreSnapshotEntry`'
-
+  - text: 'Reference: Contracts'
     link: './contracts'
-
+    description: '`Store`, `StoreSnapshot`, `StoreSnapshotEntry`'
   - text: 'Reference: Checkpoint'
-
     link: './checkpoint'
     description: '`Checkpoint.capture` and `restoreStores` for store snapshots'
-
   - text: 'Guide: Shared state'
-
     link: '../guide/shared-state'
     description: 'decision matrix, concurrency contract, custom-store authoring'
 ---
@@ -21,7 +16,7 @@ seeAlso:
 `@noocodex/dagonizer/store`
 
 The store module provides the shared key-value store contract and its
-implementations. Stores live in the services bag and survive deep-DAG
+implementations. Stores live in the services bag and survive embedded-DAG
 boundaries within a run. Checkpoint integration snapshots named stores
 alongside parent state for deterministic resume.
 
@@ -37,9 +32,9 @@ import type { Store, StoreSnapshot, StoreSnapshotEntry } from '@noocodex/dagoniz
 `@noocodex/dagonizer/contracts`
 
 Shared key-value store contract. Every method returns a `Promise`. There is no
-sync variant — always `await` store calls.
+sync variant; always `await` store calls.
 
-Values are typed per-call via the method's `<T>` parameter — there is no
+Values are typed per-call via the method's `<T>` parameter. There is no
 class-level value generic. A `Store` instance can hold heterogeneous values
 under different keys; type narrowing happens at the call site.
 
@@ -70,7 +65,7 @@ interface Store {
 | `disconnect()` | `Promise<void>` | Optional lifecycle hook for stores that hold a connection. |
 
 **Concurrency:** `update(key, fn)` is atomic within a single store instance.
-Implementations are responsible for delivering this — see the `update` note on
+Implementations are responsible for delivering this. See the `update` note on
 `BaseStore` for the requirement. `set + get` is not atomic.
 
 ---
@@ -112,8 +107,8 @@ interface StoreSnapshotEntry {
 ```
 
 Keys in the snapshot carry the namespace prefix when a namespace is configured.
-Restore feeds entries directly back through `performRestoreEntries` — no prefix
-stripping is applied; restore into a store with the same namespace used at
+Restore feeds entries directly back through `performRestoreEntries`; no prefix
+stripping is applied. Restore into a store with the same namespace used at
 capture time.
 
 ---
@@ -157,7 +152,7 @@ All public methods delegate to the `perform*` hooks after qualifying the key.
 | `set(key, value)` | Delegates to `performSet(qualifiedKey, value)`. |
 | `has(key)` | Delegates to `performHas(qualifiedKey)`. |
 | `delete(key)` | Delegates to `performDelete(qualifiedKey)`. |
-| `update(key, fn)` | Default: `performGet` → `fn(current)` → `performSet`. Two `await` points — not atomic on its own. Subclasses **must** override when backing supports a single-step RMW (in-memory direct access, SQL transactions, Redis WATCH/MULTI, etc.). The default is a fallback that is only safe when no concurrent calls touch the same key. |
+| `update(key, fn)` | Default: `performGet` → `fn(current)` → `performSet`. Two `await` points, not atomic on its own. Subclasses **must** override when backing supports a single-step RMW (in-memory direct access, SQL transactions, Redis WATCH/MULTI, etc.). The default is a fallback that is only safe when no concurrent calls touch the same key. |
 | `snapshot()` | Calls `performSnapshotEntries()`, then wraps in `{ version: snapshotVersion, type: snapshotType, entries }`. |
 | `restore(snapshot)` | Validates `snapshot.type` and `snapshot.version`; throws `StoreError(INCOMPATIBLE_SNAPSHOT)` on mismatch. On match, calls `performRestoreEntries(entries)`. |
 | `connect()` | No-op default. Override for connection lifecycle. |
@@ -220,7 +215,7 @@ Accepts the same `BaseStoreOptions` as `BaseStore` (namespace prefix).
 
 `MemoryStore` overrides `update` to access `#data` directly without any
 intermediate `await`. Because the body contains no yield point, no concurrent
-microtask can interleave between the read and the write — the
+microtask can interleave between the read and the write; the
 read-modify-write is atomic within the store instance.
 
 ```ts
@@ -296,7 +291,7 @@ type StoreErrorClassification =
 | `BACKING_ERROR` | Plugin author wraps a backing-level failure | `cause` |
 | `LEASE_DENIED` | `acquireLease` finds an active holder and `maxWaitMs` expires before it releases | `subject`, `holder` |
 | `LEASE_EXPIRED` | A write or release is attempted with a token that has already expired | `subject`, `token` |
-| `UNREACHABLE` | Transport failure — endpoint does not respond within the health budget | `endpoint`, `cause` |
+| `UNREACHABLE` | Transport failure (endpoint does not respond within the health budget) | `endpoint`, `cause` |
 
 `BaseStore` throws `INCOMPATIBLE_SNAPSHOT` automatically on type/version
 mismatch. `KEY_NOT_FOUND` and `BACKING_ERROR` are available for plugin authors
@@ -310,8 +305,8 @@ and `UNREACHABLE` are for `RemoteStore` implementations.
 `@noocodex/dagonizer/contracts`
 
 Extension of `Store` for distributed or network-backed implementations.
-Plugins that talk over HTTP, gRPC, or WebSocket — or that replicate state
-across processes — implement `RemoteStore` rather than `Store` directly.
+Plugins that talk over HTTP, gRPC, or WebSocket, or that replicate state
+across processes, implement `RemoteStore` rather than `Store` directly.
 Single-process and single-node-durable stores implement `Store` directly.
 
 ```ts
@@ -345,7 +340,7 @@ interface RemoteStoreEndpoint {
 | `url` | Stable identifier for the remote endpoint (URL, gRPC target, etc.). |
 | `region` | Region/zone hint for placement decisions. Default at construction: `''` (no region constraint). |
 
-`region` is required — implementations that have no region concept supply `''`.
+`region` is required. Implementations that have no region concept supply `''`.
 
 ### Interface: `RemoteStoreLease`
 
@@ -358,7 +353,7 @@ interface RemoteStoreLease {
 ```
 
 Opaque lease token returned by `acquireLease`. Consumers treat `token` as
-opaque — the store validates it on `releaseLease` and on writes when
+opaque; the store validates it on `releaseLease` and on writes when
 leasing is enforced.
 
 | Field | Description |
@@ -373,8 +368,8 @@ leasing is enforced.
 |--------|---------|-------------|
 | `endpoint` | `RemoteStoreEndpoint` | Endpoint descriptor; surfaces in observability and placement decisions. |
 | `acquireLease(subject, ttlMs, maxWaitMs)` | `Promise<RemoteStoreLease>` | Acquire exclusive write authority for `subject` with a lifetime of `ttlMs` ms. Waits up to `maxWaitMs` for an active holder to release before throwing `StoreError(LEASE_DENIED)`. |
-| `releaseLease(lease)` | `Promise<void>` | Release a previously-acquired lease. Idempotent — releasing an already-expired lease is a no-op. |
-| `health(timeoutMs)` | `Promise<boolean>` | Health probe. Returns `true` when the endpoint is reachable and the backing responds within `timeoutMs`. Implementations must not throw on transport failure — return `false` so the dispatcher can route around an unhealthy store. |
+| `releaseLease(lease)` | `Promise<void>` | Release a previously-acquired lease. Idempotent: releasing an already-expired lease is a no-op. |
+| `health(timeoutMs)` | `Promise<boolean>` | Health probe. Returns `true` when the endpoint is reachable and the backing responds within `timeoutMs`. Implementations must not throw on transport failure: return `false` so the dispatcher can route around an unhealthy store. |
 
 ### Implementing `RemoteStore`
 
@@ -411,7 +406,7 @@ export class HttpStore extends BaseStore implements RemoteStore {
       clearTimeout(timer);
       return res.ok;
     } catch {
-      return false;   // never throw — dispatcher routes around false
+      return false;   // never throw; dispatcher routes around false
     }
   }
 
@@ -426,7 +421,7 @@ export class HttpStore extends BaseStore implements RemoteStore {
 `@noocodex/dagonizer/store`
 
 Schema-narrowed wrapper over any `Store`. Constrains keys to the declared
-`Schema` and infers the value type from `Schema[K]` — callers never specify
+`Schema` and infers the value type from `Schema[K]`. Callers never specify
 `<T>` at the call site.
 
 `TypedStore` does not implement the `Store` contract (its `set` signature is
@@ -444,10 +439,10 @@ interface AppSchema {
 const inner = new MemoryStore();
 const typed = new TypedStore<AppSchema>(inner);
 
-await typed.set('count', 42);            // ok — value type inferred as number
+await typed.set('count', 42);            // ok, value type inferred as number
 const n = await typed.get('count');      // n: number | undefined
-await typed.set('count', 'wrong');       // TS error — expected number
-await typed.set('missing', 'x');         // TS error — key not in AppSchema
+await typed.set('count', 'wrong');       // TS error: expected number
+await typed.set('missing', 'x');         // TS error: key not in AppSchema
 ```
 
 ### Constructor
@@ -456,7 +451,7 @@ await typed.set('missing', 'x');         // TS error — key not in AppSchema
 new TypedStore<Schema extends Record<string, JsonValue>>(inner: Store)
 ```
 
-`Schema` must be a `Record<string, JsonValue>` — every value type must be JSON-serializable.
+`Schema` must be a `Record<string, JsonValue>`: every value type must be JSON-serializable.
 
 ### Methods
 
@@ -473,7 +468,7 @@ new TypedStore<Schema extends Record<string, JsonValue>>(inner: Store)
 | `disconnect()` | `Promise<void>` | Pass-through to the underlying Store. |
 | `.inner` | `Store` | The underlying Store instance for un-narrowed operations. |
 
-All key parameters are constrained to `keyof Schema & string` — TypeScript
+All key parameters are constrained to `keyof Schema & string`. TypeScript
 rejects keys absent from the schema and values of the wrong type at compile
 time.
 
@@ -482,4 +477,4 @@ time.
 ## Related guides
 
 - [Guide: Shared state](../guide/shared-state)
-- [Reference: Checkpoint — `Checkpoint.capture`, `restoreStores`](./checkpoint)
+- [Reference: Checkpoint](./checkpoint): `Checkpoint.capture`, `restoreStores`

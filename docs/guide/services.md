@@ -1,36 +1,55 @@
 ---
+title: 'Services container'
+description: 'Typed services bag wired into the dispatcher; every node reads it via context.services.'
 seeAlso:
-
   - text: 'Subclassing State'
-
     link: './subclassing'
     description: 'services are dispatcher-scoped; per-execution data lives on state'
-
   - text: 'Observability'
-
     link: './observability'
-    description: 'pass loggers / tracers through the services bag'
-
+    description: 'pass loggers or tracers through the services bag'
   - text: 'State accessors'
-
     link: './state-accessor'
     description: 'accessor + services together customize what nodes see'
 ---
 
 # Services container
 
-Nodes often need shared dependencies — loggers, database clients, registries, retry pools. The dispatcher accepts a typed services bag at construction; the same reference flows through every node's `context.services`.
+`DagonizerOptionsInterface.services` accepts a typed bag of dependencies. The same reference flows through every node as `context.services`. Nodes never construct their own clients; they read from `context.services`.
+
+## API surface
+
+| Symbol | Source | Role |
+|--------|--------|------|
+| `Dagonizer<TState, TServices>` | `@noocodex/dagonizer` | Carries the services type as a generic parameter |
+| `DagonizerOptionsInterface.services` | `@noocodex/dagonizer` | The bag passed at construction |
+| `NodeInterface<TState, TOutput, TServices>` | `@noocodex/dagonizer` | Propagates `TServices` to `context.services` |
+| `NodeContextInterface.services` | `@noocodex/dagonizer/entities` | The per-call view of the bag |
+
+`TServices` defaults to `undefined`. Dispatchers that need nothing typed through services work as `new Dagonizer<S>()`.
 
 ## Defining the bag
 
-The services bag is a plain interface defined by the consumer. There is no DI container, no provider scope, no factory step.
+Consumers declare a plain interface. There is no DI container, no provider scope, no factory step.
+
+<<< @/../examples/the-archivist/services.ts#services-shape
+
+## Constructing the dispatcher
 
 ```ts
-interface AppServices {
-  readonly logger: Logger;
-  readonly db: Database;
-  readonly cache: Cache;
+import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+
+class S extends NodeStateBase {
+  out: unknown = null;
 }
+
+const dispatcher = new Dagonizer<S, AppServices>({
+  services: {
+    logger,
+    db,
+    cache,
+  },
+});
 ```
 
 ## How services flow
@@ -49,27 +68,7 @@ flowchart TB
   classDef svc fill:transparent,stroke:var(--mermaid-state-stroke,#b18cff),stroke-dasharray:3 3
 ```
 
-## Constructing the dispatcher
-
-`Dagonizer<TState, TServices>` carries the services type as a generic parameter:
-
-```ts
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-
-class S extends NodeStateBase {
-  out: unknown = null;
-}
-
-const dispatcher = new Dagonizer<S, AppServices>({
-  services: {
-    logger,
-    db,
-    cache,
-  },
-});
-```
-
-`TServices` defaults to `undefined` — dispatchers that don't need services work unchanged with `new Dagonizer<S>()`.
+The diagram captures the wiring, not a DAG. The bag is constructor-scoped; the dispatcher hands the same reference to every node in every execution.
 
 ## Receiving services in a node
 
@@ -100,23 +99,25 @@ const fetchNode: NodeInterface<S, 'success' | 'error', AppServices> = {
 };
 ```
 
-The generic parameter ensures `context.services` is fully typed inside the node body.
+The generic parameter narrows `context.services` inside the node body.
 
 ## Mixing services-aware and services-free nodes
 
 Nodes without a services parameter (`NodeInterface<S, 'success'>`, default `TServices = undefined`) cannot register on a dispatcher with non-`undefined` services because the registration signature requires the same `TServices`. Either:
 
 - Always declare the bag (most consistent).
-- Or split into two dispatchers — one with services, one without — when nodes truly cannot share a bag.
+- Or split into two dispatchers, one with services and one without, when nodes truly cannot share a bag.
 
 In practice the bag is wide enough to cover everything a flow needs, and every node accepts the same parameter.
 
 ## Lifetime
 
-Services live on the dispatcher instance. There is no per-execution scope; the same bag is handed to every node in every execution, including sub-DAG nested calls and fan-out items.
+Services live on the dispatcher instance. There is no per-execution scope; the same bag is handed to every node in every execution, including embedded-DAG nested calls and fan-out items.
 
-If a service needs per-execution state (e.g. a request ID), put the per-execution data in `state` instead. The bag is for things that outlive any one execution.
+If a service needs per-execution state (such as a request ID), put the per-execution data in `state` instead. The bag is for things that outlive any one execution.
+
 ## Related reference
 
 - [Reference: Dagonizer](../reference/dagonizer)
-- [Reference: Contracts — `NodeInterface`](../reference/contracts)
+- [Reference: Contracts](../reference/contracts)
+- [Demo: The Archivist](../examples/the-archivist) wires a real services bag

@@ -1,5 +1,5 @@
 /**
- * Store — shared key-value store contract for cross-deep-DAG state.
+ * Store — shared key-value store contract for cross-embedded-DAG state.
  *
  * Every method returns a Promise. This is the only call shape — there is
  * no sync variant. Durable backings (SQLite, network, RDF) await real work;
@@ -40,7 +40,7 @@ export interface StoreSnapshot {
 }
 
 /**
- * Shared key-value store for cross-deep-DAG state.
+ * Shared key-value store for cross-embedded-DAG state.
  *
  * Plugin authors implement this interface (typically by extending
  * `BaseStore`) to swap the backing without touching DAG topology.

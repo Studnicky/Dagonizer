@@ -7,7 +7,7 @@
  *
  * `terminalOutcome` carries the outcome a TerminalNode placement declared
  * when the flow exited through one. `null` when the flow exited via a
- * `null` route, an error path, or an abort. The deep-DAG executor reads
+ * `null` route, an error path, or an abort. The embedded-DAG executor reads
  * this off the inner DAG's result to route the parent placement's
  * `success` / `error` ports — a TerminalNode(failed) inside an inner DAG
  * surfaces as `error` on the parent.

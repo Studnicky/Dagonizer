@@ -1,27 +1,65 @@
 ---
 seeAlso:
-
   - text: 'Concepts'
-
     link: './concepts'
     description: 'vocabulary used across the docs'
-
   - text: 'Getting Started'
-
     link: './getting-started'
-
+    description: 'install and run a one-node DAG'
   - text: 'Reference: Dagonizer'
-
     link: './reference/dagonizer'
-
+    description: 'dispatcher class API'
   - text: 'Reference: Contracts'
-
     link: './reference/contracts'
-
+    description: 'adapter interfaces'
   - text: 'Reference: Entities'
-
     link: './reference/entities'
+    description: 'schemas and derived types'
 ---
+
+<script setup lang="ts">
+import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
+import { DAG_CONTEXT } from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
+import type { ElementDefinition } from 'cytoscape';
+import DagGraph from './.vitepress/theme/components/DagGraph.vue';
+
+// Sample three-node DAG used to illustrate output routing.
+// validate → enrich (parallel) → save, with explicit terminal routes.
+const sampleDAG: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id': 'urn:noocodex:dag:sample',
+  '@type': 'DAG',
+  name: 'sample',
+  version: '1',
+  entrypoint: 'validate',
+  nodes: [
+    {
+      '@id': 'urn:noocodex:dag:sample/node/validate',
+      '@type': 'SingleNode',
+      name: 'validate',
+      node: 'validate',
+      outputs: { valid: 'enrich', invalid: null },
+    },
+    {
+      '@id': 'urn:noocodex:dag:sample/node/enrich',
+      '@type': 'SingleNode',
+      name: 'enrich',
+      node: 'enrich',
+      outputs: { success: 'save', error: null },
+    },
+    {
+      '@id': 'urn:noocodex:dag:sample/node/save',
+      '@type': 'SingleNode',
+      name: 'save',
+      node: 'save',
+      outputs: { success: null, error: null },
+    },
+  ],
+};
+
+const sampleElements = CytoscapeRenderer.render(sampleDAG) as ElementDefinition[];
+</script>
 
 # Architecture
 
@@ -32,10 +70,10 @@ Dagonizer is a single-class, in-process DAG dispatcher. The core loop is a `whil
 | Object | Role |
 |--------|------|
 | `Dagonizer<TState>` | Dispatcher. Holds the node and DAG registries. Executes DAGs. |
-| `DAG` | Plain-object graph definition: nodes + entrypoint. |
-| `NodeInterface<TState, TOutput>` | Stateless unit of work. Receives node state + context; returns an output name. |
-| `NodeStateInterface` | Lifecycle + error/warning accumulation surface. Travels through every node. |
-| `Execution<TState>` | Handle returned by `execute()` / `resume()`. AsyncIterable + PromiseLike. |
+| `DAG` | Plain-object graph definition: nodes plus entrypoint. |
+| `NodeInterface<TState, TOutput>` | Stateless unit of work. Receives node state and context; returns an output name. |
+| `NodeStateInterface` | Lifecycle and error/warning accumulation surface. Travels through every node. |
+| `Execution<TState>` | Handle returned by `execute()` and `resume()`. AsyncIterable and PromiseLike. |
 
 ## Node kinds
 
@@ -44,32 +82,25 @@ flowchart TB
   subgraph kinds["Node kinds"]
     direction TB
     A[single] --> B[one registered node, output-routed]
-    C[parallel] --> D[concurrent nodes, combine → route]
-    E[fan-out] --> F[one node per item, fan-in → aggregate route]
-    G[deep-dag] --> H[nested registered DAG, state mapped]
+    C[parallel] --> D[concurrent nodes, combine then route]
+    E[fan-out] --> F[one node per item, fan-in then aggregate route]
+    G[embedded-dag] --> H[nested registered DAG, state mapped]
   end
 ```
 
-**`single`** — the fundamental unit. One registered node; output name selects the next node (or `null` to terminate).
+**`single`**, the fundamental unit. One registered node; output name selects the next node (or `null` to terminate).
 
-**`parallel`** — a named group of previously-declared `single` entries. The dispatcher runs them with `Promise.all`, then applies a combine strategy (`all-success`, `any-success`, or `collect`) to produce a single routing output.
+**`parallel`**, a named group of previously declared `single` entries. The dispatcher runs them with `Promise.all`, then applies a combine strategy (`all-success`, `any-success`, or `collect`) to produce a single routing output.
 
-**`fan-out`** — reads an array from a dotted state path, runs one registered node per item (with configurable concurrency), then merges results through a fan-in strategy (`append`, `partition`, or `custom`). Aggregate output is one of `all-success`, `partial`, `all-error`, or `empty`.
+**`fan-out`** reads an array from a dotted state path, runs one registered node per item with configurable concurrency, then merges results through a fan-in strategy (`append`, `partition`, or `custom`). Aggregate output is one of `all-success`, `partial`, `all-error`, or `empty`.
 
-**`deep-dag`** — invokes another registered DAG as a nested call. The child runs in a cloned node state; optional `stateMapping` copies keys in before the deep-DAG and copies keys out after. Errors and warnings from the child always bubble up to the parent.
+**`embedded-dag`** invokes another registered DAG as a nested call. The child runs in a cloned node state; optional `stateMapping` copies keys in before the embedded-DAG and out after. Errors and warnings from the child always bubble up.
 
 ## Sample three-node DAG
 
-```mermaid
-flowchart TB
-  A([start]) --> B[validate\nsingle]
-  B -->|valid| C[enrich-group\nparallel]
-  B -->|invalid| Z([end])
-  C -->|all-success| D[save\nsingle]
-  C -->|error| Z
-  D -->|success| Z
-  D -->|error| Z
-```
+A validate node routes to an enrich step on `valid`; enrich routes to save on `success`. Each placement declares both its happy-path output and its terminal exit.
+
+<DagGraph :elements="sampleElements" aria-label="Sample three-node DAG: validate, enrich, save" />
 
 ## Lifecycle FSM
 
@@ -110,14 +141,14 @@ Timestamps are monotonic milliseconds from `Clock.monotonicMs()`. Use them for d
 `Dagonizer.execute()` wraps an async generator in an `Execution<TState>` instance. The generator:
 
 1. Resolves the DAG from the registry.
-2. Composes `signal` + `deadlineMs` into a single `AbortSignal` via `AbortSignal.any()`.
+2. Composes `signal` and `deadlineMs` into one `AbortSignal` via `AbortSignal.any()`.
 3. Marks state `running`.
 4. Iterates the node graph: look up the current node, call `executeDAGNode`, yield the result, follow the routing to the next node name.
-5. Stops when the routing produces `null` (normal completion) or when the signal fires (abort / timeout).
+5. Stops when routing produces `null` (normal completion) or when the signal fires (abort or timeout).
 6. Marks state `completed`, `cancelled`, or `timed_out` accordingly.
 7. Returns `ExecutionResultInterface` with `cursor` (next node name or `null`), `executedNodes`, `skippedNodes`, and final `state`.
 
-`Execution` is both `PromiseLike` (awaitable) and `AsyncIterable` (iterable per node). Both modes share a single internal generator — the flow body runs exactly once.
+`Execution` is both `PromiseLike` (awaitable) and `AsyncIterable` (iterable per node). Both modes share a single internal generator. The flow body runs exactly once.
 
 ## Signal propagation
 
@@ -134,7 +165,7 @@ node.execute(state, { signal: composedSignal, dagName, nodeName })
 context.signal propagated to IO (fetch, db, sleep in RetryPolicy)
 ```
 
-Deep-DAGs receive the composed signal from the parent — cancellation propagates through the full nesting depth.
+Embedded-DAGs receive the composed signal from the parent. Cancellation propagates through the full nesting depth.
 
 ## State flow
 
@@ -146,13 +177,13 @@ initialState travels through each node's execute(state, context)
     │  (nodes mutate state in place)
     ▼
 fan-out items get a clone of state (metadata copied, lifecycle reset)
-deep-DAGs get a clone of state (optional key mapping in/out)
+embedded-DAGs get a clone of state (optional key mapping in/out)
     │
     ▼
 result.state === initialState  // same reference
 ```
 
-`NodeStateBase.clone()` is called for fan-out items and deep-DAGs. The clone carries metadata but resets lifecycle to `pending` and clears errors/warnings — each child execution is a fresh lifecycle run.
+`NodeStateBase.clone()` is called for fan-out items and embedded-DAGs. The clone carries metadata but resets lifecycle to `pending` and clears errors and warnings. Each child execution is a fresh lifecycle run.
 
 ## Interface taxonomy
 
@@ -172,15 +203,15 @@ Consumers extend these classes; the interface is what their subclasses implement
 
 ### Adapter contracts
 
-What consumers implement to swap a backend or contribute behavior. Live at the root of `src/contracts/`. **Single source of truth** — never re-exported from sibling modules.
+What consumers implement to swap a backend or contribute behavior. Live at the root of `src/contracts/`. **Single source of truth**; never re-exported from sibling modules.
 
 Examples: `ClockProvider`, `SchedulerProvider`, `SchedulerHandle`, `NodeInterface`, `ExecuteOptionsInterface`, `RetryPolicyOptionsInterface`, `ErrorConstructorType`.
 
-A `runtime/` barrel re-exports an adapter contract for ergonomic co-import with the engine class — the source of the type stays in `contracts/`.
+A `runtime/` barrel re-exports an adapter contract for ergonomic co-import with the engine class. The source of the type stays in `contracts/`.
 
 ### Entity-narrowing interfaces
 
-Pair with a JSON Schema-derived entity. Narrow the wire shape with runtime-only fields (e.g. `signal: AbortSignal`) or with a generic parameter the schema cannot express. Live in the same file as the entity at `src/entities/<group>/<Entity>.ts`.
+Pair with a JSON Schema-derived entity. Narrow the wire shape with runtime-only fields (for example, `signal: AbortSignal`) or with a generic parameter the schema cannot express. Live in the same file as the entity at `src/entities/<group>/<Entity>.ts`.
 
 | Interface | Entity | File |
 |-----------|--------|------|
@@ -195,16 +226,16 @@ The schema, the `FromSchema`-derived type, and the narrowing interface live toge
 
 ## Submodule exports
 
-Every public surface ships through a `package.json` `exports` entry:
+Every public surface ships through a `package.json` `exports` entry.
 
 | Subpath | Contents |
 |---------|----------|
-| `.` | Root barrel — classes, constants, errors, schemas, types |
+| `.` | Root barrel: classes, constants, errors, schemas, types |
 | `./types` | Every public type and interface (no runtime classes) |
 | `./contracts` | Every adapter contract |
 | `./entities` | Every JSON Schema and derived type |
 | `./errors` | `DAGError` and subclasses, `DAGErrorInterface` |
-| `./constants` | Constant value+type pairs (`FanInStrategy`, etc.) |
+| `./constants` | Constant value plus type pairs (`FanInStrategy`, etc.) |
 | `./lifecycle` | `DAGLifecycleMachine`, lifecycle types |
 | `./runtime` | `Clock`, `Scheduler`, `RetryPolicy`, `RealTimeScheduler`, `BackoffStrategy` |
 | `./builder` | `DAGBuilder` and its option interfaces |
@@ -218,7 +249,7 @@ Consumers import from the narrowest subpath that gives them what they need. The 
 
 Class extension is the only extension mechanism. Zero callbacks. Zero function-pass-in.
 
-- **Observability** — subclass `Dagonizer`, override the protected hooks (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`). Multi-observer composition is the consumer's responsibility — write it into the subclass.
-- **Domain state** — subclass `NodeStateBase`. Override `snapshotData()` and `restoreData()` for checkpointable fields.
-- **Nodes** — implement `NodeInterface<TState, TOutput>`. Nodes never throw; they route to a named output.
-- **Time / scheduling** — implement `ClockProvider` / `SchedulerProvider`. `Clock.configure()` and `Scheduler.configure()` install the provider. Production runs the default `RealTimeScheduler` and the wrapped `process.hrtime.bigint()`; tests install `VirtualClockProvider` / `VirtualScheduler` for deterministic time.
+- **Observability**: subclass `Dagonizer`, override the protected hooks (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`). Multi-observer composition is the consumer's responsibility; write it into the subclass.
+- **Domain state**: subclass `NodeStateBase`. Override `snapshotData()` and `restoreData()` for checkpointable fields.
+- **Nodes**: implement `NodeInterface<TState, TOutput>`. Nodes never throw; they route to a named output.
+- **Time and scheduling**: implement `ClockProvider` and `SchedulerProvider`. `Clock.configure()` and `Scheduler.configure()` install the provider. Production runs the default `RealTimeScheduler` and the wrapped `process.hrtime.bigint()`; tests install `VirtualClockProvider` and `VirtualScheduler` for deterministic time.

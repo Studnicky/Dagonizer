@@ -3,7 +3,7 @@
  * (if any) to invoke for this query.
  *
  * The LLM receives the tool definitions via the adapter's native
- * channel — Gemini API's `functionDeclarations`, Gemini Nano's
+ * channel — Gemini API's `functionDeclarations`, the browser built-in model's
  * `responseConstraint`, WebLLM's `response_format`. There is no
  * tool-listing in the prompt itself; the API enforces the shape.
  *

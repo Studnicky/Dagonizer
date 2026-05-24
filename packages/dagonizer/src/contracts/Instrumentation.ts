@@ -16,7 +16,7 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  *   flowStart        — before the entrypoint node runs
  *   flowEnd          — after the loop drains (terminal or interrupted)
  *   nodeStart        — before each node's execute() call (including
- *                      placements inside parallel / fan-out / deep-DAG)
+ *                      placements inside parallel / fan-out / embedded-DAG)
  *   nodeEnd          — after the node's result is recorded
  *   phaseEnter       — before a pre/post phase placement runs
  *   phaseExit        — after a pre/post phase placement runs

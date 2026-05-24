@@ -2,6 +2,34 @@
 
 ## [unreleased]
 
+### Changed
+
+- docs: full site audit and rewrite. Reorders sidebar (Demos before Guide,
+  Plugins as its own tier). Replaces Mermaid blocks that depict DAGs with
+  `<DagGraph>` driven by `CytoscapeRenderer.render(dag)`; loads code samples
+  from `examples/` via VitePress region imports so the source files are
+  the documentation source of truth. Renames `reference/operations.md` to
+  `reference/nodes.md`. Adds `Phase 10: Shared state` example page.
+  Surfaces previously-orphaned `Lifecycle phases` and `Plugins` pages
+  in the sidebar. Registers `DagGraph` globally in the theme. Scrubs
+  em-dashes and AI-isms across every sidebar-linked page.
+- **BREAKING:** Renamed `DeepDAGNode` placement kind to `EmbeddedDAGNode`. The
+  JSON-LD discriminator `@type` value changes from `'DeepDAGNode'` to
+  `'EmbeddedDAGNode'`. Schema `$id` updates from
+  `https://noocodex.dev/schemas/dagonizer/DeepDAGNode` to
+  `https://noocodex.dev/schemas/dagonizer/EmbeddedDAGNode`. The
+  `DAG_CONTEXT` IRI entry renames to `${NS}EmbeddedDAGNode`. The builder
+  method `DAGBuilder.deepDAG()` becomes `DAGBuilder.embeddedDAG()`. All
+  `Deep*` / `Sub*` identifiers in the public surface — `DeepDAGOptionsInterface`,
+  `TypedDeepDAGOptionsInterface`, `DeepDAGNodeInterface`, `DeepDAGNodeSchema`,
+  `DAGDeriverSubDAG`, `DAGDeriverAnnotations.subDAGs` — rename to the
+  corresponding `Embedded*` / `embeddedDAGs` form. `Validator.deepDAGNode`
+  becomes `Validator.embeddedDAGNode`. The `CytoscapeRenderer` option
+  `deepDags` renames to `embeddedDAGs`. Existing DAG JSON loaded via
+  `Dagonizer.load(json)` must rewrite the `@type` value before it will
+  validate. The terminology "deep-DAG" / "sub-DAG" is replaced by
+  "embedded-DAG" throughout the prose, JSDoc, and documentation.
+
 ### Added
 
 - `PhaseNode` placement — lifecycle-attached pre/post tasks that run

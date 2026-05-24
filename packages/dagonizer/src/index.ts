@@ -47,7 +47,7 @@ export type {
 export { DAGBuilder } from './builder/index.js';
 export type {
   FanOutOptionsInterface,
-  DeepDAGOptionsInterface,
+  EmbeddedDAGOptionsInterface,
 } from './builder/index.js';
 
 // =============================================================================
@@ -70,7 +70,7 @@ export {
   DAGLifecycleStateSchema,
   ParallelNodeSchema,
   SingleNodeSchema,
-  DeepDAGNodeSchema,
+  EmbeddedDAGNodeSchema,
   TerminalNodeSchema,
   PhaseNodeSchema,
   NodeSchema,
@@ -99,7 +99,7 @@ export type {
   DAGLifecycleStateData,
   ParallelNode,
   SingleNode,
-  DeepDAGNode,
+  EmbeddedDAGNode,
   TerminalNode,
   PhaseNode,
   Node,

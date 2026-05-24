@@ -12,7 +12,7 @@ export type { DAGDeriverOptions } from './DAGDeriver.js';
 export type {
   DAGDeriverAnnotations,
   DAGDeriverEmitTerminal,
-  DAGDeriverSubDAG,
+  DAGDeriverEmbeddedDAG,
   DAGDeriverFanOut,
   DAGDeriverTerminal,
 } from './DAGDeriverAnnotations.js';
