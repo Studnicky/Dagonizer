@@ -78,19 +78,20 @@ const BROWSER_VISIBLE: readonly ProviderId[] = [
 ];
 
 /**
- * Priority order for `pickBestBackend`. Cloud-first (no download, works
- * everywhere), then on-device options. Lower index = higher priority.
+ * Priority order for `pickBestBackend`. Cloud APIs first (no download,
+ * works everywhere with a free key), then local daemon, then on-device
+ * inference. Lower index = higher priority.
  */
 const PRIORITY_ORDER: readonly ProviderId[] = [
-  'ollama',         // local daemon — no key, no network, fastest if running
-  'groq',
-  'cerebras',
-  'gemini-api',
-  'mistral',
-  'openrouter',
-  'gemini-nano',
-  'web-llm',
-  'stub',
+  'groq',          // cloud, fast, reliable structured output
+  'cerebras',      // cloud, very fast
+  'gemini-api',    // cloud, strong tool-use
+  'mistral',       // cloud
+  'openrouter',    // cloud, broad model access
+  'ollama',        // local daemon (needs model pulled)
+  'gemini-nano',   // browser built-in LanguageModel
+  'web-llm',       // browser WASM
+  'stub',          // last-resort fallback
 ];
 
 /** Backends that need a local/desktop runtime — excluded on mobile. */

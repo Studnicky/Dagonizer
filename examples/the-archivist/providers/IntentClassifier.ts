@@ -51,12 +51,12 @@ export const INTENT_DESCRIPTIONS: Readonly<Record<ClassifiedIntent, string>> = {
   'lookup-author':     'visitor named an author and wants their complete body of work or bibliography',
   'find-reviews':      'visitor wants opinions reviews ratings or what readers think about a book',
   'describe-book':     'visitor named a specific book title and wants a summary or description of it',
-  'recommend-similar': 'visitor wants a book similar to one they already read or mentioned',
+  'recommend-similar': 'visitor wants a book similar to a named title or book they already read or mentioned, like saying something similar to Dune or like the book I just described',
   'recall-memories':   'visitor asks about your own memory history past conversations what books you have seen',
-  'search':            'visitor describes a topic theme genre subject or asks if a book exists about something',
+  'search':            'visitor describes a topic theme genre subject or asks if a book exists about something, or explicitly asks to use web search tools lookups or external sources to find books',
   'describe':          'visitor described a book without naming it asking what book that might be',
   'recommend':         'visitor asks for a generic book recommendation without specifying a topic or prior read',
-  'off-topic':         'question has no plausible connection to books or libraries or reading',
+  'off-topic':         'question is clearly unrelated to books reading or libraries, such as asking about the weather sports scores jokes cooking recipes or current news events',
 };
 
 /** Default confidence floor — below this, the classifier returns null. */
