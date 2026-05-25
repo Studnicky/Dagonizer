@@ -23,7 +23,8 @@
  *   SPARQL ASK gate can rely on the store as ground truth.
  */
 
-import { GRAPH_MEMORY, MemoryStore } from '../memory/MemoryStore.ts';
+import { GRAPH_MEMORY, MemoryStore, provGraphIri } from '../memory/MemoryStore.ts';
+import { PROV, ProvIris } from '../provenance/PROV.ts';
 
 import type { ArchivistNode } from './ArchivistNode.ts';
 
@@ -40,6 +41,10 @@ const dagRunTimestamp      = MemoryStore.dagIri('runTimestamp');
 const dagShortlistedTitle  = MemoryStore.dagIri('shortlistedTitle');
 const dagEmbedding         = MemoryStore.dagIri('embedding');
 const dagQueryEmbedding    = MemoryStore.dagIri('queryEmbedding');
+// Dispatcher agent IRI — must mirror RdfProvObserver's constructor so
+// the prov-graph agent we write to matches what the observer already
+// asserted as type prov:SoftwareAgent.
+const ARCHIVIST_AGENT      = ProvIris.agent('archivist-software');
 
 export const recordFindings: ArchivistNode<'recorded'> = {
   "name": 'record-findings',
@@ -74,6 +79,25 @@ export const recordFindings: ArchivistNode<'recorded'> = {
         // is the literal convenience predicate kept for SPARQL compatibility.
         memory.assert(run, dagShortlisted,     book,                                           GRAPH_MEMORY);
         memory.assert(run, dagShortlistedTitle, MemoryStore.lit.str(candidate.book.title),     GRAPH_MEMORY);
+      }
+
+      // ── PROV-O bridge: connect every shortlisted Book (memory layer)
+      //    to the Run Activity (prov layer) via prov:wasGeneratedBy +
+      //    prov:wasAttributedTo. Without this bridge the visualiser
+      //    shows two disconnected clusters (books + activities). The
+      //    triples live in the run's prov-graph so the visualiser
+      //    pulls the Book nodes into the prov layer's adjacency too —
+      //    one connected graph, traversable via standard PROV-O
+      //    predicates by recall / SPARQL.
+      const provGraph    = provGraphIri(state.runId);
+      const runActivity  = ProvIris.activity(state.runId, 'run', 0);
+      memory.assert(runActivity, MemoryStore.dagIri('searchedFor'), MemoryStore.lit.str(state.query), provGraph);
+      for (const candidate of state.shortlist) {
+        const book = MemoryStore.bookIri(candidate.book.isbn);
+        memory.assert(book,         PROV.wasGeneratedBy,   runActivity,      provGraph);
+        memory.assert(book,         PROV.wasAttributedTo,  ARCHIVIST_AGENT,  provGraph);
+        memory.assert(runActivity,  PROV.generated,        book,             provGraph);
+        memory.assert(book,         dagSource,             MemoryStore.lit.str(candidate.source), provGraph);
       }
     }
 

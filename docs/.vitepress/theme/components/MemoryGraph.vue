@@ -426,14 +426,34 @@ function paintLabels(): void {
     const x = sx + 8;
     const y = sy - pillH / 2;
 
-    ctx.fillStyle = meta.kind === 'iri' ? 'rgba(8, 22, 32, 0.92)' : 'rgba(28, 12, 36, 0.88)';
+    // Pill background: literals tinted slightly violet to keep visual
+    // continuity with the prior styling; everything else is dark navy.
+    ctx.fillStyle = meta.kind === 'literal' ? 'rgba(28, 12, 36, 0.92)' : 'rgba(8, 22, 32, 0.92)';
     roundRect(ctx, x, y, pillW, pillH, 4);
     ctx.fill();
 
-    ctx.fillStyle = meta.kind === 'iri' ? '#22e8ff' : '#c89bff';
+    // Label colour matches the node's LAYER color so the eye can scan
+    // by colour-band (green = ontology, cyan = memory, gold = state,
+    // violet = prov). Literals use the violet "value" tone regardless
+    // of layer since they're leaf values, not first-class entities.
+    ctx.fillStyle = meta.kind === 'literal'
+      ? '#c89bff'
+      : (LAYER_LABEL_HEX[meta.layer] ?? '#eaf6ff');
     ctx.fillText(text, x + PAD_X, y + pillH / 2);
   }
 }
+
+// Layer → label colour (hex). Mirrors the legend swatches in
+// `memoryLegendTabs` so labels and legend agree. Kept separate from the
+// RGB `LAYER_COLOR` (used for the cosmos.gl shader) which deals in
+// floats, not CSS colour strings.
+const LAYER_LABEL_HEX: Readonly<Record<GraphLayer, string>> = {
+  'ontology': '#21ee99',
+  'memory':   '#22e8ff',
+  'state':    '#d4a649',
+  'prov':     '#9b51e0',
+  'default':  '#eaf6ff',
+};
 
 function roundRect(
   ctx: CanvasRenderingContext2D,
