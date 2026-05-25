@@ -1276,7 +1276,17 @@ implements DagonizerInterface<TState, TServices> {
     // even when the child collected no NodeError. This is how an inner
     // DAG signals failure to the parent without the producing node
     // needing to call state.collectError().
-    const childOutput = (innerTerminalOutcome === 'failed' || childState.errors.length > 0)
+    //
+    // Recoverable errors (the `recoverable: true` field on NodeError) are
+    // INFORMATIONAL — a scout 429'd, a soft-gate fired, a single source
+    // came up empty. They are NOT failures of the embedded-DAG as a
+    // whole. Only unrecoverable errors poison the outcome alongside an
+    // explicit TerminalNode(failed). Without this distinction, a single
+    // 429 from one of four parallel scouts would route the entire
+    // search subgraph to 'error' even when the surviving scouts populated
+    // a real shortlist.
+    const hasUnrecoverableError = childState.errors.some((e) => e.recoverable === false);
+    const childOutput = (innerTerminalOutcome === 'failed' || hasUnrecoverableError)
       ? 'error'
       : 'success';
     const nextStage = embeddedDAG.outputs[childOutput] ?? null;

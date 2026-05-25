@@ -52,7 +52,8 @@ interface OpenLibraryResponse {
 }
 
 interface WebSearchInput extends Record<string, unknown> {
-  readonly query: string;
+  readonly query?: string;
+  readonly isbn?: string;
   readonly limit?: number;
   readonly subject?: string;
   readonly author?: string;
@@ -83,8 +84,13 @@ const definition: ToolDefinition = {
         'type':        'string',
         'minLength':   2,
         'maxLength':   80,
-        'description': 'Terse search terms drawn from the visitor question — keywords, an author name, a title, or an ISBN. AND-matched on OpenLibrary; do not pad with descriptive filler ("book about", "description of") or it drops hits.',
-        'examples':    ['<title-words>', '<author-name>', '<ISBN-13>'],
+        'description': 'Terse search terms drawn from the visitor question — keywords, an author name, or a title. AND-matched on OpenLibrary; do not pad with descriptive filler ("book about", "description of") or it drops hits. Omit when using isbn, author, or subject directly.',
+        'examples':    ['<title-words>', '<author-name>'],
+      },
+      'isbn': {
+        'type':        'string',
+        'description': 'ISBN-10 or ISBN-13 (with or without hyphens). When supplied, the tool performs a direct ISBN lookup via OpenLibrary\'s ?q= param and ignores the query field.',
+        'examples':    ['9780765377067', '0-7653-7706-7'],
       },
       'limit': {
         'type':        'integer',
@@ -112,7 +118,7 @@ const definition: ToolDefinition = {
         'description': 'Optional ISO 639-2 language code (e.g. eng, fre, jpn).',
       },
     },
-    'required': ['query'],
+    'required': [],
   },
   'strict': true,
 };
@@ -121,11 +127,40 @@ export const OpenLibrarySearchTool: Tool<WebSearchInput, readonly Candidate[]> =
   definition,
   async execute(input, signal) {
     const limit = Math.max(1, Math.min(20, input.limit ?? 8));
-    const params = new URLSearchParams({ 'q': input.query, 'limit': String(limit) });
-    if (input.subject !== undefined)            params.set('subject',  String(input.subject));
-    if (input.author !== undefined)             params.set('author',   String(input.author));
+
+    // ISBN path: route directly through ?q=<isbn>. OpenLibrary's q= field
+    // handles both ISBN-10 and ISBN-13 (with or without hyphens) as a
+    // high-priority identifier lookup.
+    if (input.isbn !== undefined && input.isbn.length > 0) {
+      const isbnParams = new URLSearchParams({ 'q': input.isbn, 'limit': String(limit) });
+      if (input.lang !== undefined) isbnParams.set('lang', String(input.lang));
+      const isbnOptions: RequestInit & { signal?: AbortSignal } = { 'method': 'GET' };
+      if (signal !== undefined) isbnOptions.signal = signal;
+      const isbnResponse = await fetch(`${ENDPOINT}?${isbnParams.toString()}`, isbnOptions);
+      if (!isbnResponse.ok) {
+        throw new Error(`openlibrary isbn search ${String(isbnResponse.status)} ${isbnResponse.statusText}`);
+      }
+      const isbnPayload = (await isbnResponse.json()) as OpenLibraryResponse;
+      return buildCandidates(isbnPayload.docs ?? []);
+    }
+
+    // Author path: use dedicated ?author= param for ranked author search.
+    // Subject path: the subject= param is a separate OpenLibrary facet.
+    // General path: keyword query via ?q=.
+    const q = input.author !== undefined
+      ? undefined
+      : (typeof input.query === 'string' && input.query.length > 0 ? input.query : undefined);
+
+    const params = new URLSearchParams({ 'limit': String(limit) });
+    if (q !== undefined)                        params.set('q',       q);
+    if (input.author !== undefined)             params.set('author',  String(input.author));
+    if (input.subject !== undefined)            params.set('subject', String(input.subject));
     if (input.first_publish_year !== undefined) params.set('first_publish_year', String(input.first_publish_year));
-    if (input.lang !== undefined)               params.set('lang',     String(input.lang));
+    if (input.lang !== undefined)               params.set('lang',    String(input.lang));
+    if (!params.has('q') && !params.has('author') && !params.has('subject')) {
+      // Nothing to search on — return empty rather than hitting the root endpoint.
+      return [];
+    }
 
     const initOptions: RequestInit & { signal?: AbortSignal } = { 'method': 'GET' };
     if (signal !== undefined) initOptions.signal = signal;
@@ -135,32 +170,35 @@ export const OpenLibrarySearchTool: Tool<WebSearchInput, readonly Candidate[]> =
     }
 
     const payload = (await response.json()) as OpenLibraryResponse;
-    const docs = payload.docs ?? [];
-    const candidates: Candidate[] = [];
-    for (const doc of docs) {
-      if (doc.title === undefined) continue;
-      const id = pickIsbn(doc.isbn) ?? doc.key ?? `urn:openlibrary:${doc.title}`;
-      const summary = pickDescription(doc);
-      const subjects = doc.subject?.slice(0, 8);
-      candidates.push({
-        'book': {
-          'isbn':    id,
-          'title':   doc.title,
-          'authors': doc.author_name ?? [],
-          'price':   { 'amount': 0, 'currency': 'USD' },
-          ...(summary !== undefined ? { 'summary': summary } : {}),
-          ...(doc.first_publish_year !== undefined ? { 'firstPublishYear': doc.first_publish_year } : {}),
-          ...(subjects !== undefined ? { 'subjects': subjects } : {}),
-          ...(doc.publisher !== undefined ? { 'publishers': doc.publisher.slice(0, 4) } : {}),
-          ...(doc.language !== undefined && doc.language.length > 0 ? { 'languages': doc.language } : {}),
-        },
-        'score':  0,                  // tool does not score; rank-candidates is the ranker.
-        'source': 'web-search',
-      });
-    }
-    return candidates;
+    return buildCandidates(payload.docs ?? []);
   },
 };
+
+function buildCandidates(docs: readonly OpenLibraryDoc[]): Candidate[] {
+  const candidates: Candidate[] = [];
+  for (const doc of docs) {
+    if (doc.title === undefined) continue;
+    const id = pickIsbn(doc.isbn) ?? doc.key ?? `urn:openlibrary:${doc.title}`;
+    const summary = pickDescription(doc);
+    const subjects = doc.subject?.slice(0, 8);
+    candidates.push({
+      'book': {
+        'isbn':    id,
+        'title':   doc.title,
+        'authors': doc.author_name ?? [],
+        'price':   { 'amount': 0, 'currency': 'USD' },
+        ...(summary !== undefined ? { 'summary': summary } : {}),
+        ...(doc.first_publish_year !== undefined ? { 'firstPublishYear': doc.first_publish_year } : {}),
+        ...(subjects !== undefined ? { 'subjects': subjects } : {}),
+        ...(doc.publisher !== undefined ? { 'publishers': doc.publisher.slice(0, 4) } : {}),
+        ...(doc.language !== undefined && doc.language.length > 0 ? { 'languages': doc.language } : {}),
+      },
+      'score':  0,                  // tool does not score; rank-candidates is the ranker.
+      'source': 'web-search',
+    });
+  }
+  return candidates;
+}
 
 function pickIsbn(list: readonly string[] | undefined): string | null {
   if (list === undefined || list.length === 0) return null;

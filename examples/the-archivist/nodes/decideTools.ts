@@ -92,10 +92,13 @@ interface ShortcutMatch {
 
 const SHORTCUT_LIMIT = 8;
 
+// ISBN-10 / ISBN-13 detection. Both formats (with or without hyphens).
+// OpenLibrary's ?q= field handles both as a high-priority identifier lookup.
+const ISBN_RE         = /\b(97[89]-?\d-?\d{2,5}-?\d{2,7}-?\d|\d{9}[\dXx]|97[89]\d{10})\b/u;
 const AUTHOR_HINT_RE  = /\b(?:by|author|wrote|written\s+by)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/iu;
-const QUOTED_TITLE_RE = /^\s*['"“‘]([^'"”’]+)['"”’]\s*$/u;
+const QUOTED_TITLE_RE = /^\s*['""']([^'""']+)['""']\s*$/u;
 const PROPER_NOUN_RE  = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/u;
-const TOPIC_RE        = /^(?:books?|works|literature|stories|novels)\s+(?:about|on)\s+/iu;
+const TOPIC_RE        = /^(?:books?|works|literature|stories|novels)\s+(?:about|on)\s+(.+)$/iu;
 const BROWSING_RE     = /^(?:do\s+you\s+have|what\s+(?:do\s+you\s+have|titles\s+do\s+you\s+have)|show\s+me|recommend)/iu;
 
 const FULL_FANOUT: readonly ToolCall[] = [
@@ -111,20 +114,48 @@ const FULL_FANOUT: readonly ToolCall[] = [
  * fires; otherwise `null`. The LLM call is bypassed only when this
  * returns non-null.
  *
- *   - author-lookup        → full 4-scout fan-out
+ *   - isbn-lookup          → direct OpenLibrary ISBN lookup
+ *   - author-lookup        → full 4-scout fan-out with typed author arg
  *   - quoted-single-title  → wikipedia first then web_search_books
- *   - topic-or-subject     → subject_search + web_search_books
+ *   - topic-or-subject     → subject_search + web_search_books with typed subject arg
  *   - catalog-browsing     → full 4-scout fan-out
  */
 function matchShortcut(query: string, intent: string): ShortcutMatch | null {
   const trimmed = query.trim();
   if (trimmed.length === 0) return null;
 
+  // 0. ISBN-10 / ISBN-13 detection. Both formats (with or without hyphens).
+  //    OpenLibrary's ?q= field handles both as a high-priority identifier lookup.
+  const isbnMatch = trimmed.match(ISBN_RE);
+  if (isbnMatch !== null) {
+    const isbn = isbnMatch[1] ?? isbnMatch[0];
+    return {
+      'pattern': 'isbn-lookup',
+      'calls': [
+        { 'name': 'web_search_books', 'arguments': { 'isbn': isbn, 'limit': 1 } },
+      ],
+    };
+  }
+
   // 1. Author lookup — either an explicit "by X Y" pattern OR
   //    lookup-author intent with a multi-word capitalised proper noun.
-  if (AUTHOR_HINT_RE.test(trimmed) ||
+  //    Carry the captured author name as a typed arg so the scout uses
+  //    OpenLibrary's ?author= axis instead of falling back to keyword query.
+  const authorMatch = trimmed.match(AUTHOR_HINT_RE);
+  if (authorMatch !== null ||
       (intent === 'lookup-author' && PROPER_NOUN_RE.test(trimmed))) {
-    return { 'pattern': 'author-lookup', 'calls': FULL_FANOUT };
+    const authorName = authorMatch !== null
+      ? (authorMatch[1] ?? '')
+      : (trimmed.match(PROPER_NOUN_RE)?.[1] ?? trimmed);
+    return {
+      'pattern': 'author-lookup',
+      'calls': [
+        { 'name': 'web_search_books',    'arguments': { 'author': authorName, 'limit': SHORTCUT_LIMIT } },
+        { 'name': 'google_books_search', 'arguments': { 'author': authorName, 'maxResults': SHORTCUT_LIMIT } },
+        { 'name': 'subject_search',      'arguments': { 'limit': SHORTCUT_LIMIT } },
+        { 'name': 'wikipedia_summary',   'arguments': { 'query': authorName } },
+      ],
+    };
   }
 
   // 2. Quoted single title — "X Y Z" style; route to wikipedia first.
@@ -153,12 +184,16 @@ function matchShortcut(query: string, intent: string): ShortcutMatch | null {
   }
 
   // 3. Topic / subject — "books about X" etc.
-  if (TOPIC_RE.test(trimmed)) {
+  //    Capture the topic term and pass it as a typed subject arg so scouts
+  //    use OpenLibrary's ?subject= axis and the subject facet directly.
+  const topicMatch = trimmed.match(TOPIC_RE);
+  if (topicMatch !== null) {
+    const topicTerm = (topicMatch[1] ?? '').trim();
     return {
       'pattern': 'topic-or-subject',
       'calls': [
-        { 'name': 'subject_search',      'arguments': { 'limit': SHORTCUT_LIMIT } },
-        { 'name': 'web_search_books',    'arguments': { 'limit': SHORTCUT_LIMIT } },
+        { 'name': 'subject_search',   'arguments': { 'subject': topicTerm, 'limit': SHORTCUT_LIMIT } },
+        { 'name': 'web_search_books', 'arguments': { 'subject': topicTerm, 'limit': SHORTCUT_LIMIT } },
       ],
     };
   }

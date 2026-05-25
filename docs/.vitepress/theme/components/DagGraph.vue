@@ -135,13 +135,21 @@ onMounted(async () => {
     if (typeof name === 'string' && name.length > 0) emit('node-click', name);
   });
 
+  // User-gesture detection: any drag (pan), wheel (zoom), or node-grab
+  // hands the camera over to the visitor. The auto-follow stays paused
+  // until they press Fit or Center on the D-pad — those buttons
+  // explicitly hand control back to auto-follow.
+  cy.value.on('mousedown', markUserGesture);
+  cy.value.on('wheel',     markUserGesture);
+  cy.value.on('drag',      'node', markUserGesture);
+
   cy.value.on('zoom', () => { pollZoom(); });
   cy.value.one('layoutstop', () => {
     cy.value?.fit(undefined, 40);
     requestAnimationFrame(() => {
       const fitZoom = cy.value?.zoom() ?? 1;
       cy.value?.minZoom(fitZoom);
-      cy.value?.maxZoom(fitZoom * 4);
+      cy.value?.maxZoom(fitZoom * 8);
       pollZoom();
     });
   });
@@ -169,39 +177,88 @@ function dispatch(event: DagVizEvent): void {
   machine.value?.dispatch(event);
 }
 
-function setActive(node: string):     void {
-  dispatch({ type: 'NODE_START', node });
-  followActive(node);
-}
+/**
+ * Active-node tracking for smooth multi-node viewport following.
+ *
+ * Single-node follow caused jitter when nodes fired faster than the
+ * 480 ms animation duration: each new follow interrupted the prior
+ * animation, producing visible jumps. Worse, parallel fan-outs (four
+ * scouts firing at once) made the camera bounce between them.
+ *
+ * Strategy: track the SET of currently-active node ids. On any
+ * NODE_START / NODE_END / NODE_ERROR, debounce by 120 ms and animate
+ * the viewport ONCE to fit the bounding box of the entire active set.
+ * Parallel starts coalesce into one zoom-out. Sequential starts ride
+ * smoothly because the prior animation completes before the next
+ * fires.
+ */
+const activeNodeIds = new Set<string>();
+let pendingFitTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
- * Smoothly pan + zoom the camera to the newly active node so the
- * visitor's eye follows the execution. Keeps the current zoom level
- * but recentres on the node with a short ease.
+ * User-gesture latch. When true, the auto-follow does not move the
+ * camera — the visitor is driving. Released only when they press the
+ * D-pad's Fit or Center button. Pan/zoom buttons count as gestures
+ * (they're explicit camera control), so those buttons ALSO set the
+ * latch; only Fit/Center clear it.
  */
-function followActive(nodeId: string): void {
+const userInteracted = ref(false);
+function markUserGesture(): void { userInteracted.value = true; }
+
+function resolveNode(id: string): ReturnType<NonNullable<typeof cy.value>['$id']> | null {
   const core = cy.value;
-  if (core === null) return;
-  // Runner passes the full `placementPath/nodeName` id; `$id` matches
-  // exactly in the common path. Suffix fallback (with warn-once) is a
-  // migration safety net for consumers still sending bare names — see
-  // makeNodeAdapter for the same pattern.
-  let node = core.$id(nodeId);
-  if (node.length === 0) {
-    suffixFallbackWarn(nodeId);
-    node = core.nodes().filter((n) => n.id().endsWith(`/${nodeId}`));
-  }
-  if (node.length === 0) return;
-  void core.animate(
-    {
-      'center': { 'eles': node },
-      'zoom':   Math.max(core.zoom(), Math.min(core.zoom() * 1.05, core.maxZoom())),
-    },
-    { 'duration': 480, 'easing': 'ease-in-out-cubic' },
-  );
+  if (core === null) return null;
+  const exact = core.$id(id);
+  if (exact.length > 0) return exact;
+  suffixFallbackWarn(id);
+  return core.nodes().filter((n) => n.id().endsWith(`/${id}`));
 }
-function setCompleted(node: string):  void { dispatch({ type: 'NODE_END',   node }); }
-function setErrored(node: string):    void { dispatch({ type: 'NODE_ERROR', node }); }
+
+function followActiveSet(): void {
+  if (pendingFitTimer !== null) clearTimeout(pendingFitTimer);
+  pendingFitTimer = setTimeout(() => {
+    pendingFitTimer = null;
+    // Respect the user-gesture latch. If the visitor has grabbed the
+    // camera (pan / zoom / drag-node), the active-node SET still
+    // updates (so state classes still highlight), but we do not
+    // move the camera. The latch is cleared only when they press
+    // Fit or Center on the D-pad.
+    if (userInteracted.value) return;
+    const core = cy.value;
+    if (core === null || activeNodeIds.size === 0) return;
+    let nodes = core.collection();
+    for (const id of activeNodeIds) {
+      const found = resolveNode(id);
+      if (found !== null && found.length > 0) nodes = nodes.union(found);
+    }
+    if (nodes.length === 0) return;
+    // Synchronous fit. Cytoscape's `cy.animate({ fit: ... })` is silently
+    // a no-op in this build, so we fit directly. The 120 ms debounce
+    // above coalesces parallel starts into one snap, which reads as
+    // "the camera lifts out to show the parallel branch" rather than
+    // bouncing across each node. Sequential single-node starts get one
+    // snap per node — smooth at the cadence the DAG actually runs.
+    core.fit(nodes, 80);
+    pollZoom();
+  }, 120);
+}
+
+function setActive(node: string):     void {
+  dispatch({ type: 'NODE_START', node });
+  activeNodeIds.add(node);
+  followActiveSet();
+}
+
+function setCompleted(node: string):  void {
+  dispatch({ type: 'NODE_END',   node });
+  activeNodeIds.delete(node);
+  if (activeNodeIds.size > 0) followActiveSet();
+}
+function setErrored(node: string):    void {
+  dispatch({ type: 'NODE_ERROR', node });
+  activeNodeIds.delete(node);
+  if (activeNodeIds.size > 0) followActiveSet();
+}
 function markEdgeTraversed(source: string, route: string): void {
   dispatch({ type: 'EDGE_TRAVERSE', source, route });
 }
@@ -213,23 +270,45 @@ function markEdgeTraversed(source: string, route: string): void {
  * emitting NODE_START events to ensure the fade completes first.
  */
 async function reset(): Promise<void> {
+  // Halt any in-flight viewport animation and pending follow-fit
+  // timer FIRST. Otherwise an inbound RESET racing with a previous
+  // run's tail-end pan/zoom leaves the camera mid-flight and visibly
+  // jitters after the fade.
+  cy.value?.stop(true, false);
+  if (pendingFitTimer !== null) { clearTimeout(pendingFitTimer); pendingFitTimer = null; }
+  activeNodeIds.clear();
+
   const stateEls = cy.value?.elements('.dag-active, .dag-completed, .dag-errored, .dag-traversed');
   if (stateEls !== undefined && stateEls.length > 0) {
     stateEls.addClass('dag-resetting');
     await new Promise<void>((resolve) => { setTimeout(resolve, 280); });
   }
   dispatch({ type: 'RESET' });
+  // Snap the camera back to the fitted view so the next run starts
+  // from a known frame instead of wherever the previous run left off.
+  applyFit();
 }
 
 /**
- * Fit the graph to the viewport and re-clamp minZoom to the resulting
- * zoom level, so the visitor can never zoom out past the fitted view.
+ * Fit the graph to the current viewport from CURRENT state (container
+ * dimensions, elements bounding box, whatever the layout's already
+ * applied). Cytoscape's `cy.fit()` re-measures both on every call —
+ * the result is never cached. Also re-clamps minZoom (so the visitor
+ * can't zoom out past the fit) and maxZoom (8× the fit, generous
+ * enough to read individual node labels).
+ *
+ * Calling `applyFit` releases the user-gesture latch — auto-follow
+ * resumes from the next node-start event. This is the "hand control
+ * back to the camera" semantic the visitor expects from the Fit and
+ * Center buttons.
  */
 function applyFit(): void {
+  userInteracted.value = false;
   cy.value?.fit(undefined, 40);
   requestAnimationFrame(() => {
     const fitZoom = cy.value?.zoom() ?? 1;
     cy.value?.minZoom(fitZoom);
+    cy.value?.maxZoom(fitZoom * 8);
     pollZoom();
   });
 }
@@ -253,6 +332,7 @@ function pollZoom(): void {
 }
 
 function zoomIn(): void {
+  markUserGesture();
   const next = (cy.value?.zoom() ?? 1) * 1.25;
   cy.value?.zoom({
     level: Math.min(next, cy.value.maxZoom()),
@@ -261,6 +341,7 @@ function zoomIn(): void {
 }
 
 function zoomOut(): void {
+  markUserGesture();
   const next = (cy.value?.zoom() ?? 1) / 1.25;
   cy.value?.zoom({
     level: Math.max(next, cy.value.minZoom()),
@@ -268,14 +349,18 @@ function zoomOut(): void {
   });
 }
 
-function panUp():    void { cy.value?.panBy({ x: 0,   y: 80 }); }
-function panDown():  void { cy.value?.panBy({ x: 0,   y: -80 }); }
-function panLeft():  void { cy.value?.panBy({ x: 80,  y: 0 }); }
-function panRight(): void { cy.value?.panBy({ x: -80, y: 0 }); }
+function panUp():    void { markUserGesture(); cy.value?.panBy({ x: 0,   y: 80 }); }
+function panDown():  void { markUserGesture(); cy.value?.panBy({ x: 0,   y: -80 }); }
+function panLeft():  void { markUserGesture(); cy.value?.panBy({ x: 80,  y: 0 }); }
+function panRight(): void { markUserGesture(); cy.value?.panBy({ x: -80, y: 0 }); }
 
-function centerView(): void { cy.value?.center(); }
+// D-pad center button — re-fit pan + zoom to the full graph after the
+// user has dragged or zoomed manually. Bare `cy.center()` only re-pans;
+// the visitor expects "snap back to fitted view" semantics.
+function centerView(): void { applyFit(); }
 
 function expandZoom(): void {
+  markUserGesture();
   const next = (cy.value?.zoom() ?? 1) * 1.6;
   cy.value?.zoom({
     level: Math.min(next, cy.value?.maxZoom() ?? next),
@@ -506,32 +591,36 @@ function dagStylesheet(): unknown[] {
     { selector: 'edge', style: {
       'curve-style':         'round-taxi',    // angled segments with rounded corners
       'taxi-direction':      'vertical',
-      'taxi-turn':           28,              // first horizontal seg has room for the label
-      'taxi-radius':         12,              // rounded corner radius for round-taxi
+      'taxi-turn':           '50%',           // turn at midpoint between source and target ranks — label sits in the middle vertical channel
+      'taxi-radius':         16,              // rounded corner radius for round-taxi
       'line-color':          '#22e8ff',
       'target-arrow-color':  '#22e8ff',
       'target-arrow-shape':  'vee',           // sharper 6-sided wedge — matches hex motif
       'arrow-scale':         1.4,
       'source-endpoint':     'outside-to-node-or-label',
       'target-endpoint':     'outside-to-node-or-label',
-      // Label anchored at the source end of the edge, offset so it
-      // sits in clear space below the source node and far away from
-      // the target.
-      'source-label':            'data(label)',
-      'source-text-margin-y':    16,
-      'source-text-offset':      28,          // ride along the edge a bit from source
-      'source-text-rotation':    'autorotate',
+      // Edge route name (success / error / ranked / …) rendered as a pill
+      // mid-edge. Horizontal text (no autorotate) so labels are uniformly
+      // readable regardless of which segment of the taxi curve they ride.
+      // `mid-source` text-margin slides the pill toward the source end so
+      // labels for incoming-to-the-same-target edges don't stack on top
+      // of each other (different sources offset → distinct positions).
+      'label':                       'data(label)',
+      'text-rotation':               'none',
+      'text-margin-y':               -8,        // sit just above the edge line
+      'edge-text-rotation':          'none',
+      'text-events':                 'no',
       'font-family':         'var(--vp-font-family-mono)',
-      'font-size':           13,
+      'font-size':           12,
       'font-weight':         600,
       'color':               '#eef3f7',
       'text-background-color':   '#0e1525',
       'text-background-opacity': 1,
-      'text-background-padding': '6px',       // more breathing room
+      'text-background-padding': '6px',
       'text-background-shape':   'round-rectangle',
       'text-border-color':    '#7a8290',
       'text-border-width':    1,
-      'text-border-opacity':  0.8,
+      'text-border-opacity':  0.85,
       'width':               1.4,
       'z-index':             1,               // labels above lines, below selected outlines
       'transition-property': 'line-color, target-arrow-color, width',
