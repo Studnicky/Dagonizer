@@ -36,7 +36,7 @@
 
 import type { RecalledContext } from '../ArchivistState.ts';
 import type { Candidate } from '../entities/Book.ts';
-import { MemoryStore, STATE_GRAPH_PREFIX, stateGraphIri } from '../memory/MemoryStore.ts';
+import { BOOK_NS, GRAPH_MEMORY, MemoryStore, STATE_GRAPH_PREFIX, stateGraphIri } from '../memory/MemoryStore.ts';
 
 import type { ArchivistNode } from './ArchivistNode.ts';
 
@@ -51,6 +51,8 @@ const dagAuthor       = MemoryStore.dagIri('author');
 
 const MAX_PRIOR_INTENTS = 5;
 const MAX_RECENT_CANDIDATES = 6;
+const MAX_PRIOR_CANDIDATES_CONTEXT = 5;
+const JACCARD_THRESHOLD_CONTEXT = 0.35;
 
 /** Return a set of lowercase tokens from a query string. */
 function tokenise(text: string): Set<string> {
@@ -255,8 +257,72 @@ export const recallContext: ArchivistNode<'recalled'> = {
       'summary':             summary,
     };
 
+    // ── Seed priorCandidates from high-similarity prior runs ──────────────
+    // Collect shortlisted books from runs with Jaccard >= 0.35 (same threshold
+    // as recallCandidates). Capped at 5 — recallCandidates inside the embedded-
+    // DAG overwrites with a richer cap-10 set when the fanout fires.
+    const highSimilarGraphs = priorRaw
+      .filter((p) => p.jaccard >= JACCARD_THRESHOLD_CONTEXT)
+      .map((p) => p.graphIri);
+
+    const priorCandidatesFromContext: import('../entities/Book.ts').Candidate[] = [];
+    const seenContextIsbns = new Set<string>();
+
+    const dagShortlisted = MemoryStore.dagIri('shortlisted');
+
+    for (const graphIri of highSimilarGraphs) {
+      if (priorCandidatesFromContext.length >= MAX_PRIOR_CANDIDATES_CONTEXT) break;
+
+      // Derive the run IRI from the state graph IRI.
+      const runId  = graphIri.replace(STATE_GRAPH_PREFIX, '');
+      const runTerm = MemoryStore.iri(`urn:dagonizer:run:${runId}`);
+
+      const shortlistedRows = memory.select({
+        'subject':   runTerm,
+        'predicate': dagShortlisted,
+        'object':    '?book',
+        'graph':     GRAPH_MEMORY,
+      });
+
+      for (const sRow of shortlistedRows) {
+        if (priorCandidatesFromContext.length >= MAX_PRIOR_CANDIDATES_CONTEXT) break;
+        const bookTerm = sRow['book'];
+        if (bookTerm === undefined) continue;
+
+        const isbn = bookTerm.value.replace(BOOK_NS, '');
+        if (seenContextIsbns.has(isbn)) continue;
+        seenContextIsbns.add(isbn);
+
+        const titleRows  = memory.select({ 'subject': bookTerm, 'predicate': dagTitle,  'object': '?v', 'graph': GRAPH_MEMORY });
+        const sourceRows = memory.select({ 'subject': bookTerm, 'predicate': dagSource, 'object': '?v', 'graph': GRAPH_MEMORY });
+        const authorRows = memory.select({ 'subject': bookTerm, 'predicate': dagAuthor, 'object': '?v', 'graph': GRAPH_MEMORY });
+
+        const title   = titleRows[0]?.['v']?.value ?? isbn;
+        const source  = sourceRows[0]?.['v']?.value ?? 'memory';
+        const authors = authorRows.map((r) => r['v']?.value ?? '').filter(Boolean);
+
+        priorCandidatesFromContext.push({
+          'book': {
+            'isbn':    isbn,
+            'title':   title,
+            'authors': authors,
+            'price':   { 'amount': 0, 'currency': 'USD' },
+          },
+          'score':  0.5,
+          'source': source,
+          'notes':  { 'fromPriorMemory': true },
+        });
+      }
+    }
+
+    if (priorCandidatesFromContext.length > 0) {
+      state.priorCandidates = priorCandidatesFromContext;
+    }
+
     if (summary.length > 0) {
-      context.services.logger.info(`recall-context: ${String(priorIntents.length)} prior intents, ${String(recentCandidates.length)} recent candidates, ${String(similarPriorQueries.length)} similar queries`);
+      context.services.logger.info(
+        `recall-context: ${String(priorIntents.length)} prior intents, ${String(recentCandidates.length)} recent candidates, ${String(similarPriorQueries.length)} similar queries (loaded ${String(priorCandidatesFromContext.length)} into priorCandidates)`,
+      );
     } else {
       context.services.logger.info('recall-context: no prior context found');
     }

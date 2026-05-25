@@ -28,7 +28,7 @@ const elements = CytoscapeRenderer.render(ComposeRetryLoopDAG) as ElementDefinit
 
 # Phase 08: Checkpoint + resume
 
-The compose / validate loop in [The Archivist](./the-archivist) is the most expensive segment: multiple LLM calls per attempt. If the visitor's session times out mid-loop, the dispatcher records the cursor (`crl-compose-response` or `crl-validate-response`), the partial draft, and the attempt counter. A later process recalls the checkpoint and finishes the response without paying for the upstream scouts again.
+The compose / validate loop in [The Archivist](./the-archivist) is the most expensive segment: multiple LLM calls per attempt. If the visitor's session times out mid-loop, the dispatcher records the cursor (`compose-response` or `validate-response`), the partial draft, and the attempt counter. A later process recalls the checkpoint and finishes the response without paying for the upstream scouts again.
 
 The `ArchivistState` makes this possible by overriding `snapshotData()` and `restoreData()`, the two methods `NodeStateBase` calls during `Checkpoint.capture` and the resume path.
 

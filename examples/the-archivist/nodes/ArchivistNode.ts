@@ -36,6 +36,7 @@ export const NODE_KINDS: Readonly<Record<string, NodeKind>> = {
   'compose-memory-response': 'non-deterministic',
   // Deterministic
   'extract-query':         'deterministic',
+  'recall-candidates':     'deterministic',
   'merge-candidates':      'deterministic',
   'record-findings':       'deterministic',
   'has-citations-gate':    'deterministic',
