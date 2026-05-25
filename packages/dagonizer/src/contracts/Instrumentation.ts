@@ -26,14 +26,24 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  * Implementations MUST NOT throw — exceptions surfacing through the
  * hook will abort the flow. Wrap any I/O (HTTP exporters, file writes)
  * in try/catch internally.
+ *
+ * **`placementPath`** is the ordered array of parent embedded-DAG
+ * placement names that led to the current node. It disambiguates same-
+ * named inner placements across multiple embedded-DAG instances:
+ *   - Top-level node in the root DAG: `[]`
+ *   - Inner node inside an `EmbeddedDAGNode` placement `on-topic-search`:
+ *     `['on-topic-search']`
+ *   - Doubly-nested: `['on-topic-search', 'inner-placement']`
+ * The full cytoscape-style id of the current node is
+ * `[...placementPath, nodeName].join('/')`.
  */
 export interface Instrumentation<TState extends NodeStateInterface = NodeStateInterface> {
   flowStart(dagName: string, state: TState): void;
   flowEnd(dagName: string, state: TState, result: ExecutionResultInterface<TState>): void;
-  nodeStart(dagName: string, nodeName: string, state: TState): void;
-  nodeEnd(dagName: string, nodeName: string, output: string | undefined, state: TState): void;
-  phaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState): void;
-  phaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState): void;
+  nodeStart(dagName: string, nodeName: string, state: TState, placementPath: readonly string[]): void;
+  nodeEnd(dagName: string, nodeName: string, output: string | undefined, state: TState, placementPath: readonly string[]): void;
+  phaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
+  phaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
   contractWarning(message: string): void;
-  error(dagName: string, nodeName: string, error: Error, state: TState): void;
+  error(dagName: string, nodeName: string, error: Error, state: TState, placementPath: readonly string[]): void;
 }

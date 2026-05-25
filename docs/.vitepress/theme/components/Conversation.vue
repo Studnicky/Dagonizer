@@ -4,7 +4,16 @@
  *
  * Pure presentational. Renders the chronological transcript; styling
  * differentiates the visitor (gold-ochre) from the Archivist (teal).
+ *
+ * Auto-scroll: when a new turn arrives, the list scrolls its newest row
+ * into view. We watch `turns.length` (cheap signal) rather than the
+ * array contents, and we only auto-scroll when the visitor was already
+ * looking at the bottom (or close to it). If they have scrolled UP to
+ * re-read an earlier turn, we respect that and leave the camera alone —
+ * the same "user gesture" principle that pauses the DAG auto-follow.
  */
+
+import { nextTick, ref, watch } from 'vue';
 
 interface Turn {
   readonly role: 'visitor' | 'archivist';
@@ -12,10 +21,29 @@ interface Turn {
   readonly ts: number;
 }
 
-defineProps<{
+const props = defineProps<{
   turns: readonly Turn[];
   emptyHint?: string;
 }>();
+
+const listRef = ref<HTMLOListElement | null>(null);
+/** Pixels from the bottom within which we consider the user "at the bottom". */
+const STICK_THRESHOLD_PX = 80;
+
+watch(
+  () => props.turns.length,
+  async () => {
+    const el = listRef.value;
+    if (el === null) return;
+    // Was the user near the bottom before the new turn rendered? If so,
+    // stick to the bottom. Otherwise leave them where they are.
+    const wasAtBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < STICK_THRESHOLD_PX;
+    await nextTick();
+    if (wasAtBottom) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    }
+  },
+);
 </script>
 
 <template>
@@ -27,7 +55,7 @@ defineProps<{
       </span>
     </header>
 
-    <ol v-if="turns.length > 0" class="conversation-list">
+    <ol v-if="turns.length > 0" ref="listRef" class="conversation-list">
       <li
         v-for="turn in turns"
         :key="turn.ts"

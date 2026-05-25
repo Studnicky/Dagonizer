@@ -84,6 +84,7 @@ import {
   LlmError,
 } from '@noocodex/dagonizer';
 import type { AdapterCapabilities } from '@noocodex/dagonizer/adapter';
+import type { Embedder } from '@noocodex/dagonizer/contracts';
 import { Checkpoint, MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
 
 const logger = new ConsoleLogger();
@@ -194,13 +195,14 @@ const embedderCascade = new EmbedderCascade(embedderRegistry, [
 ]);
 
 let intentClassifier: IntentClassifier | undefined;
+let resolvedEmbedder: Embedder | null = null;
 try {
-  const embedder = await embedderCascade.select();
-  intentClassifier = await IntentClassifier.create(embedder);
-  logger.info(`embedder: ${embedder.id} (${embedder.displayName})`);
+  resolvedEmbedder = await embedderCascade.select();
+  intentClassifier = await IntentClassifier.create(resolvedEmbedder);
+  logger.info(`embedder: ${resolvedEmbedder.id} (${resolvedEmbedder.displayName})`);
 } catch (err) {
   if (err instanceof LlmError && err.classification.reason === 'NO_ADAPTER_AVAILABLE') {
-    logger.info('embedder: none reachable — intent classification via LLM only');
+    logger.info('embedder: none reachable — intent classification via LLM only, recall falls back to Jaccard');
   } else {
     throw err;
   }
@@ -215,6 +217,7 @@ const services: ArchivistServices = {
   "wikipediaSummary":  WikipediaSummaryTool,
   "memory":            new MemoryStore(),
   "llm":               llm,
+  "embedder":          resolvedEmbedder,
   "logger":            logger,
 };
 
