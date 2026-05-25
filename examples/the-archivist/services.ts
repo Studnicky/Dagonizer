@@ -20,6 +20,7 @@
 import type { ConversationTurn, MemoryDigest } from './ArchivistState.ts';
 import type { Candidate } from './entities/Book.ts';
 import type { MemoryStore } from './memory/MemoryStore.ts';
+import type { Embedder } from '@noocodex/dagonizer/contracts';
 import type { Tool } from '@noocodex/dagonizer/tool';
 
 /**
@@ -236,6 +237,15 @@ export interface ArchivistServices {
    * mirrors the triples so the visitor can watch the graph grow.
    */
   readonly memory: MemoryStore;
+  /**
+   * Optional embedder service for cosine-similarity recall and hybrid
+   * ranking. Resolved at runtime via `EmbedderCascade.select()`. Set to
+   * `null` when no embedder is reachable (browser without Ollama, no
+   * API keys, etc.) — every consumer is required to handle this
+   * gracefully and fall back to deterministic Jaccard / heuristics.
+   * Explicit-null sentinel (not optional) keeps V8 hidden-class stability.
+   */
+  readonly embedder: Embedder | null;
   readonly logger: { info(message: string): void; warn(message: string): void };
 }
 // #endregion services-shape

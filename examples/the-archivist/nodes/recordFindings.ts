@@ -23,7 +23,8 @@
  *   SPARQL ASK gate can rely on the store as ground truth.
  */
 
-import { GRAPH_MEMORY, MemoryStore } from '../memory/MemoryStore.ts';
+import { GRAPH_MEMORY, MemoryStore, provGraphIri } from '../memory/MemoryStore.ts';
+import { PROV, ProvIris } from '../provenance/PROV.ts';
 
 import type { ArchivistNode } from './ArchivistNode.ts';
 
@@ -38,6 +39,12 @@ const dagShortlisted       = MemoryStore.dagIri('shortlisted');
 const dagVisitorQuery      = MemoryStore.dagIri('visitorQuery');
 const dagRunTimestamp      = MemoryStore.dagIri('runTimestamp');
 const dagShortlistedTitle  = MemoryStore.dagIri('shortlistedTitle');
+const dagEmbedding         = MemoryStore.dagIri('embedding');
+const dagQueryEmbedding    = MemoryStore.dagIri('queryEmbedding');
+// Dispatcher agent IRI — must mirror RdfProvObserver's constructor so
+// the prov-graph agent we write to matches what the observer already
+// asserted as type prov:SoftwareAgent.
+const ARCHIVIST_AGENT      = ProvIris.agent('archivist-software');
 
 export const recordFindings: ArchivistNode<'recorded'> = {
   "name": 'record-findings',
@@ -45,6 +52,7 @@ export const recordFindings: ArchivistNode<'recorded'> = {
   "outputs": ['recorded'],
   async execute(state, context) {
     const memory = context.services.memory;
+    const embedder = context.services.embedder;
     const shortlistIsbns = new Set(state.shortlist.map((c) => c.book.isbn));
     for (const candidate of state.candidates) {
       const book = MemoryStore.bookIri(candidate.book.isbn);
@@ -72,6 +80,64 @@ export const recordFindings: ArchivistNode<'recorded'> = {
         memory.assert(run, dagShortlisted,     book,                                           GRAPH_MEMORY);
         memory.assert(run, dagShortlistedTitle, MemoryStore.lit.str(candidate.book.title),     GRAPH_MEMORY);
       }
+
+      // ── PROV-O bridge: connect every shortlisted Book (memory layer)
+      //    to the Run Activity (prov layer) via prov:wasGeneratedBy +
+      //    prov:wasAttributedTo. Without this bridge the visualiser
+      //    shows two disconnected clusters (books + activities). The
+      //    triples live in the run's prov-graph so the visualiser
+      //    pulls the Book nodes into the prov layer's adjacency too —
+      //    one connected graph, traversable via standard PROV-O
+      //    predicates by recall / SPARQL.
+      const provGraph    = provGraphIri(state.runId);
+      const runActivity  = ProvIris.activity(state.runId, 'run', 0);
+      memory.assert(runActivity, MemoryStore.dagIri('searchedFor'), MemoryStore.lit.str(state.query), provGraph);
+      for (const candidate of state.shortlist) {
+        const book = MemoryStore.bookIri(candidate.book.isbn);
+        memory.assert(book,         PROV.wasGeneratedBy,   runActivity,      provGraph);
+        memory.assert(book,         PROV.wasAttributedTo,  ARCHIVIST_AGENT,  provGraph);
+        memory.assert(runActivity,  PROV.generated,        book,             provGraph);
+        memory.assert(book,         dagSource,             MemoryStore.lit.str(candidate.source), provGraph);
+      }
+    }
+
+    // ── Embedding writes (best-effort) ────────────────────────────────────
+    // When the embedder service is wired and reachable, embed each
+    // shortlisted candidate's "title + description" and the visitor's
+    // query, and write them as JSON-encoded float-array literals onto the
+    // book and run subjects. Cosine-based recallCandidates reads them back.
+    //
+    // Failure mode: any throw from embedder.embed() (rate limit, network
+    // error, NO_ADAPTER_AVAILABLE drift, OOM on Ollama) is swallowed with
+    // a single warn log — the embedding is opaque to the rest of the engine
+    // so the absence of these triples is invisible to downstream nodes
+    // that don't explicitly use embeddings.
+    if (embedder !== null) {
+      try {
+        for (const candidate of state.shortlist) {
+          const description = typeof candidate.notes?.['description'] === 'string'
+            ? String(candidate.notes['description'])
+            : '';
+          const text = `${candidate.book.title} ${description}`.trim();
+          if (text.length === 0) continue;
+          const vec = await embedder.embed(text);
+          const book = MemoryStore.bookIri(candidate.book.isbn);
+          memory.assert(book, dagEmbedding, MemoryStore.lit.str(JSON.stringify([...vec])), GRAPH_MEMORY);
+        }
+        if (state.runId !== '' && state.query.length > 0) {
+          const queryVec = await embedder.embed(state.query);
+          const run = MemoryStore.runIri(state.runId);
+          memory.assert(run, dagQueryEmbedding, MemoryStore.lit.str(JSON.stringify([...queryVec])), GRAPH_MEMORY);
+        }
+        context.services.logger.info(
+          `record-findings: wrote ${String(state.shortlist.length)} book embeddings + run query embedding (dim=${String(embedder.dimensions)})`,
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        context.services.logger.warn(`record-findings: embedder unreachable, skipping embedding writes (fallback to Jaccard recall): ${message}`);
+      }
+    } else {
+      context.services.logger.info('record-findings: embedder unreachable, skipping embedding writes (fallback to Jaccard recall)');
     }
 
     return { "output": 'recorded' };

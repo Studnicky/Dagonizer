@@ -276,9 +276,28 @@ implements DagonizerInterface<TState, TServices> {
 
   protected onFlowStart(_dagName: string, _state: TState): void { /* override */ }
   protected onFlowEnd(_dagName: string, _state: TState, _result: ExecutionResultInterface<TState>): void { /* override */ }
-  protected onNodeStart(_nodeName: string, _state: TState): void { /* override */ }
-  protected onNodeEnd(_nodeName: string, _output: string | undefined, _state: TState): void { /* override */ }
-  protected onError(_nodeName: string, _error: Error, _state: TState): void { /* override */ }
+  /**
+   * Fires before a node begins executing. `placementPath` is the ordered
+   * list of parent embedded-DAG placement names that led to this node —
+   * empty for top-level placements, `['on-topic-search']` for one level
+   * of embedded-DAG nesting, and so on. Use it to disambiguate same-
+   * named inner placements across multiple embedded-DAG instances.
+   *
+   * The argument defaults to `[]` for backward compatibility — existing
+   * subclasses that declared a two-argument override still type-check.
+   */
+  protected onNodeStart(_nodeName: string, _state: TState, _placementPath: readonly string[] = []): void { /* override */ }
+  /**
+   * Fires after a node completes successfully. See {@link onNodeStart}
+   * for `placementPath` semantics; defaulted for backward compatibility.
+   */
+  protected onNodeEnd(_nodeName: string, _output: string | undefined, _state: TState, _placementPath: readonly string[] = []): void { /* override */ }
+  /**
+   * Fires when the dispatcher catches an error from a node (or from the
+   * abort/timeout machinery). See {@link onNodeStart} for `placementPath`
+   * semantics; defaulted for backward compatibility.
+   */
+  protected onError(_nodeName: string, _error: Error, _state: TState, _placementPath: readonly string[] = []): void { /* override */ }
 
   /**
    * Called for each non-fatal contract warning surfaced during DAG
@@ -406,6 +425,7 @@ implements DagonizerInterface<TState, TServices> {
     fromStage: string | null,
     options: ExecuteOptionsInterface,
     isEmbeddedDAG: boolean = false,
+    placementPath: readonly string[] = [],
   ): AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void> {
     const dag = this.dags.get(dagName);
 
@@ -414,8 +434,8 @@ implements DagonizerInterface<TState, TServices> {
       // lifecycle. `state` may not have been touched yet, so don't mark
       // running. The cursor is null because there is no DAG to resume.
       const error = new DAGError(`Unknown DAG: ${dagName}`);
-      this.onError('<unknown>', error, state);
-      this.instrumentation.error(dagName, '<unknown>', error, state);
+      this.onError('<unknown>', error, state, placementPath);
+      this.instrumentation.error(dagName, '<unknown>', error, state, placementPath);
       if (!isEmbeddedDAG) {
         try { state.markFailed(error); } catch { /* state may already be terminal */ }
       }
@@ -451,21 +471,21 @@ implements DagonizerInterface<TState, TServices> {
           n['@type'] === 'PhaseNode' && n.phase === 'pre',
       );
       for (const phase of prePhases) {
-        this.instrumentation.phaseEnter(dagName, 'pre', phase.name, state);
+        this.instrumentation.phaseEnter(dagName, 'pre', phase.name, state, placementPath);
         try {
           await this.executePhasePlacement(phase, state, dagName, signal);
           executedNodes.push(phase.name);
         } catch (err) {
           const error = err instanceof Error ? err : new Error(String(err));
-          this.onError(phase.name, error, state);
-          this.instrumentation.error(dagName, phase.name, error, state);
+          this.onError(phase.name, error, state, placementPath);
+          this.instrumentation.error(dagName, phase.name, error, state, placementPath);
           try { state.markFailed(error); } catch { /* already terminal */ }
-          this.instrumentation.phaseExit(dagName, 'pre', phase.name, state);
+          this.instrumentation.phaseExit(dagName, 'pre', phase.name, state, placementPath);
           const result = this.buildResult(null, executedNodes, skippedNodes, null, null, state);
-          await this.runPostPhasesAndFinalize(dag, dagName, state, result, isEmbeddedDAG);
+          await this.runPostPhasesAndFinalize(dag, dagName, state, result, isEmbeddedDAG, placementPath);
           return result;
         }
-        this.instrumentation.phaseExit(dagName, 'pre', phase.name, state);
+        this.instrumentation.phaseExit(dagName, 'pre', phase.name, state, placementPath);
       }
     }
 
@@ -488,14 +508,14 @@ implements DagonizerInterface<TState, TServices> {
     mainLoop: while (currentNodeName !== null) {
       if (signal?.aborted) {
         const abortInfo = this.handleAbort(state, signal);
-        this.onError(currentNodeName, abortInfo.error, state);
-        this.instrumentation.error(dagName, currentNodeName, abortInfo.error, state);
+        this.onError(currentNodeName, abortInfo.error, state, placementPath);
+        this.instrumentation.error(dagName, currentNodeName, abortInfo.error, state, placementPath);
         const interruptedAt: InterruptionInfo = {
           'nodeName': currentNodeName,
           'reason':   abortInfo.reason,
         };
         const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
-        await this.runPostPhasesAndFinalize(dag, dagName, state, result, isEmbeddedDAG);
+        await this.runPostPhasesAndFinalize(dag, dagName, state, result, isEmbeddedDAG, placementPath);
         return result;
       }
 
@@ -503,18 +523,18 @@ implements DagonizerInterface<TState, TServices> {
 
       if (!node) {
         const error = new DAGError(`Unknown node: ${currentNodeName} in DAG ${dagName}`);
-        this.onError(currentNodeName, error, state);
-        this.instrumentation.error(dagName, currentNodeName, error, state);
+        this.onError(currentNodeName, error, state, placementPath);
+        this.instrumentation.error(dagName, currentNodeName, error, state, placementPath);
         if (!isEmbeddedDAG) {
           try { state.markFailed(error); } catch { /* already terminal */ }
         }
         const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, null, state);
-        await this.runPostPhasesAndFinalize(dag, dagName, state, result, isEmbeddedDAG);
+        await this.runPostPhasesAndFinalize(dag, dagName, state, result, isEmbeddedDAG, placementPath);
         return result;
       }
 
-      this.onNodeStart(node.name, state);
-      this.instrumentation.nodeStart(dagName, node.name, state);
+      this.onNodeStart(node.name, state, placementPath);
+      this.instrumentation.nodeStart(dagName, node.name, state, placementPath);
 
       // TerminalNode is a no-op execution — capture outcome, synthesize result,
       // fire onNodeEnd, and break the loop. No call to executeDAGNode needed.
@@ -528,19 +548,19 @@ implements DagonizerInterface<TState, TServices> {
           'nodeName': terminal.name,
           state,
         };
-        this.onNodeEnd(terminal.name, terminal.outcome, state);
-        this.instrumentation.nodeEnd(dagName, terminal.name, terminal.outcome, state);
+        this.onNodeEnd(terminal.name, terminal.outcome, state, placementPath);
+        this.instrumentation.nodeEnd(dagName, terminal.name, terminal.outcome, state, placementPath);
         yield terminalResult;
         break mainLoop;
       }
 
       let nodeOutcome: InternalNodeResultInterface<TState>;
       try {
-        nodeOutcome = await this.executeDAGNode(node, state, dagName, signal);
+        nodeOutcome = await this.executeDAGNode(node, state, dagName, signal, placementPath);
       } catch (caughtError) {
         const error = caughtError instanceof Error ? caughtError : new Error(String(caughtError));
-        this.onError(currentNodeName, error, state);
-        this.instrumentation.error(dagName, currentNodeName, error, state);
+        this.onError(currentNodeName, error, state, placementPath);
+        this.instrumentation.error(dagName, currentNodeName, error, state, placementPath);
         let interruptedAt: InterruptionInfo | null = null;
         if (signal?.aborted) {
           // Run-level signal aborted: classify abort vs timeout via handleAbort.
@@ -570,7 +590,7 @@ implements DagonizerInterface<TState, TServices> {
           try { state.markFailed(error); } catch { /* already terminal */ }
         }
         const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
-        await this.runPostPhasesAndFinalize(dag, dagName, state, result, isEmbeddedDAG);
+        await this.runPostPhasesAndFinalize(dag, dagName, state, result, isEmbeddedDAG, placementPath);
         return result;
       }
 
@@ -590,8 +610,8 @@ implements DagonizerInterface<TState, TServices> {
         executedNodes.push(nodeResult.nodeName);
       }
 
-      this.onNodeEnd(node.name, nodeResult.output, state);
-      this.instrumentation.nodeEnd(dagName, node.name, nodeResult.output, state);
+      this.onNodeEnd(node.name, nodeResult.output, state, placementPath);
+      this.instrumentation.nodeEnd(dagName, node.name, nodeResult.output, state, placementPath);
 
       yield nodeResult;
 
@@ -610,7 +630,7 @@ implements DagonizerInterface<TState, TServices> {
       }
     }
     const result = this.buildResult(null, executedNodes, skippedNodes, terminalOutcome, null, state);
-    await this.runPostPhasesAndFinalize(dag, dagName, state, result, isEmbeddedDAG);
+    await this.runPostPhasesAndFinalize(dag, dagName, state, result, isEmbeddedDAG, placementPath);
     return result;
   }
 
@@ -656,6 +676,7 @@ implements DagonizerInterface<TState, TServices> {
     state: TState,
     result: ExecutionResultInterface<TState>,
     isEmbeddedDAG: boolean,
+    placementPath: readonly string[] = [],
   ): Promise<void> {
     if (isEmbeddedDAG) {
       return;
@@ -666,7 +687,7 @@ implements DagonizerInterface<TState, TServices> {
         n['@type'] === 'PhaseNode' && n.phase === 'post',
     );
     for (const phase of postPhases) {
-      this.instrumentation.phaseEnter(dagName, 'post', phase.name, state);
+      this.instrumentation.phaseEnter(dagName, 'post', phase.name, state, placementPath);
       try {
         await this.executePhasePlacement(phase, state, dagName, null);
         result.executedNodes.push(phase.name);
@@ -679,7 +700,7 @@ implements DagonizerInterface<TState, TServices> {
           'timestamp': new Date().toISOString(),
         });
       }
-      this.instrumentation.phaseExit(dagName, 'post', phase.name, state);
+      this.instrumentation.phaseExit(dagName, 'post', phase.name, state, placementPath);
     }
     this.onFlowEnd(dagName, state, result);
     this.instrumentation.flowEnd(dagName, state, result);
@@ -1157,12 +1178,13 @@ implements DagonizerInterface<TState, TServices> {
     state: TState,
     dagName: string,
     signal: AbortSignal | null,
+    placementPath: readonly string[],
   ): Promise<InternalNodeResultInterface<TState>> {
     const dispatch: Readonly<Record<DAGNodeAtType, () => Promise<InternalNodeResultInterface<TState>>>> = {
       'FanOutNode':   () => this.executeFanOut(entry as FanOutNode, state, dagName, signal),
       'ParallelNode': () => this.executeParallelGroup(entry as ParallelNode, state, dagName, signal),
       'SingleNode':   () => this.executeSingleNode(entry as SingleNodePlacementInterface, state, dagName, signal),
-      'EmbeddedDAGNode':  () => this.executeEmbeddedDAG(entry as EmbeddedDAGNode, state, signal),
+      'EmbeddedDAGNode':  () => this.executeEmbeddedDAG(entry as EmbeddedDAGNode, state, signal, placementPath),
       'TerminalNode': () => {
         // TerminalNode is handled before executeDAGNode in runNodes; this
         // branch is unreachable in normal operation but satisfies the
@@ -1202,6 +1224,7 @@ implements DagonizerInterface<TState, TServices> {
     embeddedDAG: EmbeddedDAGNode,
     state: TState,
     signal: AbortSignal | null,
+    placementPath: readonly string[],
   ): Promise<InternalNodeResultInterface<TState>> {
     const childState = this.createChildState(state, embeddedDAG.stateMapping?.input);
 
@@ -1211,10 +1234,16 @@ implements DagonizerInterface<TState, TServices> {
     // observe cancellation/timeouts.
     const childOptions: ExecuteOptionsInterface = signal ? { 'signal': signal } : {};
 
+    // Extend the placement path with this embedded-DAG placement's name
+    // so inner-node lifecycle events carry the full ancestry. Consumers
+    // join with '/' to form cytoscape-style ids that disambiguate same-
+    // named inner placements across multiple embedded-DAG instances.
+    const innerPath: readonly string[] = [...placementPath, embeddedDAG.name];
+
     // Iterate manually so we can capture the inner generator's return
     // value (which carries `terminalOutcome`). `for await` only sees
     // yields; the final return is lost without explicit `.next()` calls.
-    const iter = this.runNodes(embeddedDAG.dag, childState, null, childOptions, true);
+    const iter = this.runNodes(embeddedDAG.dag, childState, null, childOptions, true, innerPath);
     let innerTerminalOutcome: 'completed' | 'failed' | null;
     while (true) {
       const step = await iter.next();
@@ -1247,7 +1276,17 @@ implements DagonizerInterface<TState, TServices> {
     // even when the child collected no NodeError. This is how an inner
     // DAG signals failure to the parent without the producing node
     // needing to call state.collectError().
-    const childOutput = (innerTerminalOutcome === 'failed' || childState.errors.length > 0)
+    //
+    // Recoverable errors (the `recoverable: true` field on NodeError) are
+    // INFORMATIONAL — a scout 429'd, a soft-gate fired, a single source
+    // came up empty. They are NOT failures of the embedded-DAG as a
+    // whole. Only unrecoverable errors poison the outcome alongside an
+    // explicit TerminalNode(failed). Without this distinction, a single
+    // 429 from one of four parallel scouts would route the entire
+    // search subgraph to 'error' even when the surviving scouts populated
+    // a real shortlist.
+    const hasUnrecoverableError = childState.errors.some((e) => e.recoverable === false);
+    const childOutput = (innerTerminalOutcome === 'failed' || hasUnrecoverableError)
       ? 'error'
       : 'success';
     const nextStage = embeddedDAG.outputs[childOutput] ?? null;

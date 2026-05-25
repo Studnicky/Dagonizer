@@ -166,6 +166,11 @@ const services: ArchivistServices = {
   'wikipediaSummary': WikipediaSummaryTool,
   'memory':           new MemoryStore(),
   'llm':              llm,
+  // Browser entry has no native embedder wired today — Browser built-in LanguageModel does
+  // not expose embeddings and WebLLM embedding models would balloon the
+  // download budget. Cosine recall and hybrid ranking fall back to
+  // Jaccard / heuristics when embedder is null.
+  'embedder':         null,
   'logger':           logger,
 };
 
