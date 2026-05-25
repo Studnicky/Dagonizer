@@ -1,5 +1,11 @@
 # @noocodex/dagonizer
 
+## 0.11.4
+
+### Patch Changes
+
+- a3528ad: `CytoscapeRenderer` emits `data.label` as Title Case (kebab → Title Case with `/` separators preserved). Machine identifiers stay kebab-case; only the rendered display label changes. Archivist example DAG placements renamed to drop `bsf-` / `crl-` namespace prefixes — the embedded-DAG containment already provides the visual namespace.
+
 ## 0.11.3
 
 ### Patch Changes
