@@ -190,25 +190,53 @@ export const openLibraryScout: NodeInterface<ArchivistState, 'success' | 'empty'
   async execute(state, context) {
     const planned = state.toolPlan.find((call) => call.name === 'web_search_books');
     if (planned === undefined) return { "output": 'empty' };
-    const args = planned.arguments as { query?: string; limit?: number };
-    const rawQuery = typeof args.query === 'string' && args.query.length > 0
-      ? args.query
-      : state.terms.join(' ');
-    const query = unquote(rawQuery);
-    if (query.length === 0) return { "output": 'empty' };
+    const args = planned.arguments as {
+      query?: string;
+      isbn?: string;
+      author?: string;
+      subject?: string;
+      limit?: number;
+    };
+
+    const limit = args.limit ?? 8;
+    const lang = UserLanguage.toIso6392(state.userLanguage);
+    const tool = context.services.webSearch;
+
+    // Determine which OpenLibrary search axis to use and build the log label.
+    // Priority: isbn > author > subject > keyword query.
+    let toolInput: Record<string, unknown>;
+    let logDimension: string;
+
+    if (typeof args.isbn === 'string' && args.isbn.length > 0) {
+      toolInput = { "isbn": args.isbn, limit, lang };
+      logDimension = `isbn=${args.isbn}`;
+    } else if (typeof args.author === 'string' && args.author.length > 0) {
+      toolInput = { "author": args.author, limit, lang };
+      logDimension = `author="${args.author}"`;
+    } else if (typeof args.subject === 'string' && args.subject.length > 0) {
+      toolInput = { "subject": args.subject, limit, lang };
+      logDimension = `subject=${args.subject}`;
+    } else {
+      const rawQuery = typeof args.query === 'string' && args.query.length > 0
+        ? args.query
+        : state.terms.join(' ');
+      const query = unquote(rawQuery);
+      if (query.length === 0) return { "output": 'empty' };
+      toolInput = { "query": query, limit, lang };
+      logDimension = `q=${encodeURIComponent(query)}`;
+    }
+
     try {
-      const tool = context.services.webSearch;
-      const lang = UserLanguage.toIso6392(state.userLanguage);
       const rawCandidates = await scoutRetry.run(
-        () => tool.execute({ query, "limit": args.limit ?? 8, "lang": lang }, context.signal),
+        () => tool.execute(toolInput as Parameters<typeof tool.execute>[0], context.signal),
         context.signal,
       );
       const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
       const firstTitle = rawCandidates[0]?.book.title ?? '—';
-      context.services.logger.info(`openlibrary GET https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=${String(args.limit ?? 8)} → ${String(rawCandidates.length)} hits, first: "${firstTitle}" (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
+      context.services.logger.info(`openlibrary GET https://openlibrary.org/search.json?${logDimension}&limit=${String(limit)} → ${String(rawCandidates.length)} hits, first: "${firstTitle}" (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
       if (candidates.length === 0) {
-        state.failureCause += `OpenLibrary: 0 hits for "${query}". `;
+        state.failureCause += `OpenLibrary: 0 hits for (${logDimension}). `;
       }
       return { "output": candidates.length > 0 ? 'success' : 'empty' };
     } catch (error) {

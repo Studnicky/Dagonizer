@@ -10,6 +10,31 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 ### Fixed
 
+## [0.13.0] - 2026-05-25
+
+**Archivist live-demo polish: PROV-O bridge, positive-imperative persona, smooth viewport + user-gesture latch, edge labels, conversation auto-scroll.**
+
+### Added
+
+- **PROV-O bridge** — `recordFindings` now writes the W3C PROV-O relations that connect shortlisted Books (memory layer) to their producing Run Activity (prov layer): `<book> prov:wasGeneratedBy <run-activity>`, `<book> prov:wasAttributedTo <archivist-software-agent>`, `<run-activity> prov:generated <book>`. Plus `<book> dag:source` is mirrored into the prov graph so the source scout becomes a connecting literal. Without this bridge the MemoryGraph visualisation showed two disconnected clusters (books on the left, activities on the right). They are now one connected graph, traversable via standard PROV-O paths in SPARQL.
+- **Conversation auto-scroll** — `Conversation.vue` watches `turns.length` and, when a new turn arrives, smooth-scrolls the list to the bottom IF the visitor was already within 80 px of the bottom. If they had scrolled up to re-read an earlier turn, their position is respected. Same user-gesture-pauses-auto principle as the DAG follow latch.
+- **User-gesture latch on the DAG viewport** — any user pan / zoom / node-drag (or the D-pad's pan/zoom buttons) pauses the auto-follow. The latch is released ONLY by pressing Fit or Center on the D-pad. Auto-follow then resumes from the next node-start event.
+
+### Changed
+
+- **Archivist persona rewritten as positive imperatives.** The role is now "a research librarian with global catalog access through OpenLibrary, Google Books, and Wikipedia" rather than "a librarian at a small independent bookstore". Eliminates the inventory framing that made the model say "we don't have it in stock" / "not in our catalog". The composed directives describe what the Archivist DOES (look up, describe, summarise, weave catalog metadata into prose) rather than what to avoid — attractors bind tighter than repulsors. Engineer-jargon "shortlist" is gone from every user-facing string; "catalog records returned" is the new framing.
+- **OpenLibrary scout reads typed `author` / `subject` / `isbn` args.** The tool's `WebSearchInput` already declared them; the scout was ignoring them in favour of the keyword-query path. Now the scout dispatches by axis priority (isbn → author → subject → keyword) and the log line names which axis fired. Coupled with `decideTools` deterministic shortcuts (ISBN-10/13 detection, author lookup, subject lookup), an ISBN query hits OpenLibrary's `?q=<isbn>` directly; an author lookup hits `?author=<name>`; a subject lookup hits `?subject=<term>`.
+- **Embedded-DAG outcome routing tolerates recoverable errors.** Previously a single recoverable error logged via `state.collectError(... recoverable: true)` (e.g. a Google Books 429 from one of four parallel scouts) caused the embedded-DAG to route the parent placement to `error` even when the surviving scouts populated a real shortlist and the citations-gate passed. The routing now only switches to `error` when an inner `TerminalNode(outcome: 'failed')` fires OR an unrecoverable error (`recoverable: false`) was collected.
+- **DagGraph viewport follow** — replaced per-node `cy.animate({ fit: ... })` (silently no-op on this cytoscape build) with synchronous `cy.fit(...)`, debounced 120 ms. Parallel node starts coalesce into a single zoom-out fit of the active branch. Reset cancels the in-flight animation, clears the pending follow timer, hard-clears active node ids, and snaps back to the fitted view. `maxZoom` raised from 4× to 8× the initial fit zoom so the visitor can read individual node labels.
+- **DagGraph edge labels** — route names render as horizontal pills with `text-rotation: 'none'` (was `autorotate`, which made labels crooked along taxi corners). `taxi-turn: '50%'` and `taxi-radius: 16` place the bend at the midpoint between source and target rank so the pill sits in the vertical channel, not on a horizontal segment.
+- **CompositeLayout separations widened** — `rankSep 80→160`, `nodeSep 60→120`, `nodeWidth 180→220`, `nodeHeight 50→60`, `MARGIN 40→60` so cytoscape's round-taxi edges have room to route without colliding with sibling nodes.
+- **MemoryGraph label colours match node layer colours.** Previously every IRI label rendered cyan and every literal violet, independent of layer. Now ontology IRIs render green, memory IRIs cyan, state IRIs gold, prov IRIs violet — matching the legend swatches so the eye can scan by colour band.
+
+### Fixed
+
+- **Inner DAG placements light up during execution.** The runner uses the new `placementPath` argument (introduced in 0.12.0) to build the full cytoscape id (`[...placementPath, nodeName].join('/')`) for every `setActive` / `setCompleted` / `setErrored` / `markEdgeTraversed` call. Only the placement currently executing highlights — no more three-placement bleed from same-named inner nodes across `on-topic-search` / `author-search` / `similar-search`.
+- The `decideTools` safety-net paths (sparse plan / empty plan / catch) no longer thread the raw visitor sentence as the scout's `query` arg — they now omit `query`/`subject` entirely so each scout falls back to `state.terms.join(' ')` (the extracted keywords). OpenLibrary, Google Books, and Subject Search receive catalog-searchable keywords instead of prose questions.
+
 ## [0.12.0] - 2026-05-25
 
 **Smart Archivist: embedder-based recall, anti-hallucination validator, deterministic decide-tools, hybrid rank-candidates.**
@@ -24,7 +49,7 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 ### Changed
 
-- `decideTools` pattern-matches four common query shapes (author lookup, single-quoted title, "books about X", catalog browsing) and bypasses the LLM for unambiguous tool selection. Saves one LLM call per turn on Nano. Existing safety-nets still apply when no pattern matches.
+- `decideTools` deterministic shortcuts now route ISBN queries (ISBN-10 / ISBN-13) to a direct OpenLibrary lookup via `?q=<isbn>`, author lookups via `?author=<name>`, and subject/topic queries via `?subject=<term>`. The OpenLibrary scout reads typed `author`/`subject`/`isbn` args alongside the existing `query` arg, so the four-scout cascade exploits OpenLibrary's actual search axes instead of always falling back to a keyword query. Pattern-matches five common query shapes (isbn-lookup, author lookup, single-quoted title, "books about X", catalog browsing) and bypasses the LLM for unambiguous tool selection. Saves one LLM call per turn on Nano. Existing safety-nets still apply when no pattern matches.
 - `rankCandidates` hybrid pipeline: deterministic composite score (cosine 50%, token overlap 25%, source priority 15%, recency 10%, prior-memory bonus 5%) sorts all candidates; LLM tiebreaks ONLY the top-3 when their scores are within 0.10. Reduces LLM calls per turn from N to at most 1, with better-grounded ordering. Title embeddings cached on `notes.titleEmbedding` for reuse across nodes.
 
 ## [0.11.5] - 2026-05-25

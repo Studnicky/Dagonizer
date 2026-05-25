@@ -102,11 +102,16 @@ interface Resolved {
 export class CompositeLayout {
   private constructor() { /* static class */ }
 
-  private static readonly DEFAULT_RANK_SEP = 80;
-  private static readonly DEFAULT_NODE_SEP = 60;
-  private static readonly DEFAULT_NODE_WIDTH = 180;
-  private static readonly DEFAULT_NODE_HEIGHT = 50;
-  private static readonly MARGIN = 40;
+  // Separation tuned so cytoscape's round-taxi edges have room to route
+  // orthogonally without colliding with sibling nodes, AND so edge labels
+  // (route names as mid-edge pills) don't overlap node bodies. rankSep
+  // 160 / nodeSep 120 leaves a generous channel for label + arrowhead +
+  // corner-radius on the round-taxi turns.
+  private static readonly DEFAULT_RANK_SEP = 160;
+  private static readonly DEFAULT_NODE_SEP = 120;
+  private static readonly DEFAULT_NODE_WIDTH = 220;
+  private static readonly DEFAULT_NODE_HEIGHT = 60;
+  private static readonly MARGIN = 60;
 
   /**
    * Compute positions for every node in `dag`, expanding embedded-DAGs
