@@ -1,5 +1,11 @@
 # @noocodex/dagonizer
 
+## 0.11.3
+
+### Patch Changes
+
+- 22491f7: Archivist demo: in-node 30s timeouts + salvage paths on every LLM-calling node so the DAG always completes (no more hangs on slow on-device backends). `rankCandidates` and `decideTools` LLM schemas refactored to emit integer indices into pre-numbered lists instead of full records — token-economy fix delivering ~10–25× speedup on Gemini Nano. Slow-backend warning banner added to the demo when the browser built-in backend is selected without cloud keys.
+
 ## 0.11.2
 
 ### Patch Changes
