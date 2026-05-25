@@ -233,6 +233,21 @@ export const recallContext: ArchivistNode<'recalled'> = {
       summary = parts.join(' ');
     }
 
+    // ── Boost summary with in-turn conversation context ───────────────────
+    // When the current query is a short pronoun-acceptance ("yes", "that",
+    // "let's do that") and the last archivist turn proposed something, append
+    // it so the classifier and compose nodes can resolve the reference.
+    const conv = state.conversation;
+    if (conv.length >= 2) {
+      const lastArchivist = [...conv].reverse().find((t) => t.role === 'archivist');
+      const lastVisitor   = conv[conv.length - 1];
+      const isPronouns    = lastVisitor !== undefined && /^(yes|sure|ok|okay|let.s|that|it|do it|go ahead|sounds good)/iu.test(lastVisitor.text.trim());
+      if (isPronouns && lastArchivist !== undefined) {
+        const boost = `The visitor appears to be accepting the previous Archivist suggestion: "${lastArchivist.text.slice(0, 120)}".`;
+        summary = summary.length > 0 ? `${summary} ${boost}` : boost;
+      }
+    }
+
     state.recalledContext = {
       'priorIntents':        priorIntents,
       'recentCandidates':    recentCandidates,

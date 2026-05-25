@@ -10,7 +10,7 @@
  * primitives so the persona stays consistent across calls.
  */
 
-import type { MemoryDigest } from '../ArchivistState.ts';
+import type { ConversationTurn, MemoryDigest } from '../ArchivistState.ts';
 import type { Candidate } from '../entities/Book.ts';
 import type { ClassifiedIntent, LlmClient, ScoredCandidate } from '../services.ts';
 
@@ -72,12 +72,12 @@ export class BaseLlmClient implements LlmClient {
     this.intentClassifier = options.intentClassifier ?? null;
   }
 
-  async classifyIntent(query: string, recalledSummary?: string): Promise<ClassifiedIntent> {
+  async classifyIntent(query: string, recalledSummary?: string, conversation: readonly ConversationTurn[] = []): Promise<ClassifiedIntent> {
     if (this.intentClassifier !== null) {
       const fromVector = await this.intentClassifier.classify(query);
       if (fromVector !== null) return fromVector.intent;
     }
-    const raw = (await this.#text(prompts.classifyIntent(this.language, query, recalledSummary))).toLowerCase();
+    const raw = (await this.#text(prompts.classifyIntent(this.language, query, recalledSummary, conversation))).toLowerCase();
     const found = VALID_INTENTS.find((intent) => raw.includes(intent));
     return found ?? 'search';
   }
@@ -164,8 +164,9 @@ export class BaseLlmClient implements LlmClient {
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
+    conversation: readonly ConversationTurn[] = [],
   ): Promise<string> {
-    return (await this.#text(prompts.compose(this.language, query, shortlist, priorContext, recalledSummary))).trim();
+    return (await this.#text(prompts.compose(this.language, query, shortlist, priorContext, recalledSummary, conversation))).trim();
   }
 
   async composeAuthor(
@@ -173,8 +174,9 @@ export class BaseLlmClient implements LlmClient {
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
+    conversation: readonly ConversationTurn[] = [],
   ): Promise<string> {
-    return (await this.#text(prompts.composeAuthor(this.language, query, shortlist, priorContext, recalledSummary))).trim();
+    return (await this.#text(prompts.composeAuthor(this.language, query, shortlist, priorContext, recalledSummary, conversation))).trim();
   }
 
   async composeReviews(
@@ -182,8 +184,9 @@ export class BaseLlmClient implements LlmClient {
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
+    conversation: readonly ConversationTurn[] = [],
   ): Promise<string> {
-    return (await this.#text(prompts.composeReviews(this.language, query, shortlist, priorContext, recalledSummary))).trim();
+    return (await this.#text(prompts.composeReviews(this.language, query, shortlist, priorContext, recalledSummary, conversation))).trim();
   }
 
   async describeBook(
@@ -191,8 +194,9 @@ export class BaseLlmClient implements LlmClient {
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
+    conversation: readonly ConversationTurn[] = [],
   ): Promise<string> {
-    return (await this.#text(prompts.describeBook(this.language, query, shortlist, priorContext, recalledSummary))).trim();
+    return (await this.#text(prompts.describeBook(this.language, query, shortlist, priorContext, recalledSummary, conversation))).trim();
   }
 
   async composeSimilar(
@@ -200,8 +204,9 @@ export class BaseLlmClient implements LlmClient {
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
+    conversation: readonly ConversationTurn[] = [],
   ): Promise<string> {
-    return (await this.#text(prompts.composeSimilar(this.language, query, shortlist, priorContext, recalledSummary))).trim();
+    return (await this.#text(prompts.composeSimilar(this.language, query, shortlist, priorContext, recalledSummary, conversation))).trim();
   }
 
   async validate(draft: string, shortlist: readonly Candidate[]): Promise<boolean> {
@@ -213,12 +218,13 @@ export class BaseLlmClient implements LlmClient {
     query: string,
     digest: MemoryDigest,
     recalledSummary?: string,
+    conversation: readonly ConversationTurn[] = [],
   ): Promise<string> {
-    return (await this.#text(prompts.composeMemoryRecall(this.language, query, digest, recalledSummary))).trim();
+    return (await this.#text(prompts.composeMemoryRecall(this.language, query, digest, recalledSummary, conversation))).trim();
   }
 
-  async composeEmptyResponse(query: string, failureCause: string): Promise<string> {
-    return (await this.#text(prompts.composeEmptyResponse(this.language, query, failureCause))).trim();
+  async composeEmptyResponse(query: string, failureCause: string, conversation: readonly ConversationTurn[] = []): Promise<string> {
+    return (await this.#text(prompts.composeEmptyResponse(this.language, query, failureCause, conversation))).trim();
   }
 
   async suggestStarterQuery(): Promise<string> {
