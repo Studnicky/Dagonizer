@@ -11,10 +11,10 @@ export class NoopInstrumentation<TState extends NodeStateInterface = NodeStateIn
 implements Instrumentation<TState> {
   flowStart(_dagName: string, _state: TState): void { /* no-op */ }
   flowEnd(_dagName: string, _state: TState, _result: ExecutionResultInterface<TState>): void { /* no-op */ }
-  nodeStart(_dagName: string, _nodeName: string, _state: TState): void { /* no-op */ }
-  nodeEnd(_dagName: string, _nodeName: string, _output: string | undefined, _state: TState): void { /* no-op */ }
-  phaseEnter(_dagName: string, _phase: 'pre' | 'post', _placementName: string, _state: TState): void { /* no-op */ }
-  phaseExit(_dagName: string, _phase: 'pre' | 'post', _placementName: string, _state: TState): void { /* no-op */ }
+  nodeStart(_dagName: string, _nodeName: string, _state: TState, _placementPath: readonly string[]): void { /* no-op */ }
+  nodeEnd(_dagName: string, _nodeName: string, _output: string | undefined, _state: TState, _placementPath: readonly string[]): void { /* no-op */ }
+  phaseEnter(_dagName: string, _phase: 'pre' | 'post', _placementName: string, _state: TState, _placementPath: readonly string[]): void { /* no-op */ }
+  phaseExit(_dagName: string, _phase: 'pre' | 'post', _placementName: string, _state: TState, _placementPath: readonly string[]): void { /* no-op */ }
   contractWarning(_message: string): void { /* no-op */ }
-  error(_dagName: string, _nodeName: string, _error: Error, _state: TState): void { /* no-op */ }
+  error(_dagName: string, _nodeName: string, _error: Error, _state: TState, _placementPath: readonly string[]): void { /* no-op */ }
 }

@@ -80,11 +80,115 @@ function enforceFullCatalog(
 /** Per-node timeout — generous for Gemini Nano's constrained-output path (20–60 s typical). */
 const NODE_TIMEOUT_MS = 30_000;
 
+/**
+ * Result of a deterministic-shortcut pattern match. `null` when no
+ * pattern fires; the LLM path runs as usual. Otherwise carries the
+ * pre-populated tool plan and the named pattern for the log.
+ */
+interface ShortcutMatch {
+  readonly pattern: string;
+  readonly calls:   readonly ToolCall[];
+}
+
+const SHORTCUT_LIMIT = 8;
+
+const AUTHOR_HINT_RE  = /\b(?:by|author|wrote|written\s+by)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/iu;
+const QUOTED_TITLE_RE = /^\s*['"“‘]([^'"”’]+)['"”’]\s*$/u;
+const PROPER_NOUN_RE  = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/u;
+const TOPIC_RE        = /^(?:books?|works|literature|stories|novels)\s+(?:about|on)\s+/iu;
+const BROWSING_RE     = /^(?:do\s+you\s+have|what\s+(?:do\s+you\s+have|titles\s+do\s+you\s+have)|show\s+me|recommend)/iu;
+
+const FULL_FANOUT: readonly ToolCall[] = [
+  { 'name': 'web_search_books',    'arguments': { 'limit': SHORTCUT_LIMIT } },
+  { 'name': 'google_books_search', 'arguments': { 'maxResults': SHORTCUT_LIMIT } },
+  { 'name': 'subject_search',      'arguments': { 'limit': SHORTCUT_LIMIT } },
+  { 'name': 'wikipedia_summary',   'arguments': {} },
+];
+
+/**
+ * Detect whether the visitor query matches one of the deterministic
+ * shortcut patterns. Returns the populated tool plan when a pattern
+ * fires; otherwise `null`. The LLM call is bypassed only when this
+ * returns non-null.
+ *
+ *   - author-lookup        → full 4-scout fan-out
+ *   - quoted-single-title  → wikipedia first then web_search_books
+ *   - topic-or-subject     → subject_search + web_search_books
+ *   - catalog-browsing     → full 4-scout fan-out
+ */
+function matchShortcut(query: string, intent: string): ShortcutMatch | null {
+  const trimmed = query.trim();
+  if (trimmed.length === 0) return null;
+
+  // 1. Author lookup — either an explicit "by X Y" pattern OR
+  //    lookup-author intent with a multi-word capitalised proper noun.
+  if (AUTHOR_HINT_RE.test(trimmed) ||
+      (intent === 'lookup-author' && PROPER_NOUN_RE.test(trimmed))) {
+    return { 'pattern': 'author-lookup', 'calls': FULL_FANOUT };
+  }
+
+  // 2. Quoted single title — "X Y Z" style; route to wikipedia first.
+  if (QUOTED_TITLE_RE.test(trimmed)) {
+    return {
+      'pattern': 'quoted-single-title',
+      'calls': [
+        { 'name': 'wikipedia_summary',  'arguments': {} },
+        { 'name': 'web_search_books',   'arguments': { 'limit': SHORTCUT_LIMIT } },
+      ],
+    };
+  }
+
+  // 2b. describe-book intent with exactly one capitalised multi-word phrase.
+  if (intent === 'describe-book') {
+    const matches = trimmed.match(new RegExp(PROPER_NOUN_RE.source, 'gu'));
+    if (matches !== null && matches.length === 1) {
+      return {
+        'pattern': 'single-title-describe',
+        'calls': [
+          { 'name': 'wikipedia_summary',  'arguments': {} },
+          { 'name': 'web_search_books',   'arguments': { 'limit': SHORTCUT_LIMIT } },
+        ],
+      };
+    }
+  }
+
+  // 3. Topic / subject — "books about X" etc.
+  if (TOPIC_RE.test(trimmed)) {
+    return {
+      'pattern': 'topic-or-subject',
+      'calls': [
+        { 'name': 'subject_search',      'arguments': { 'limit': SHORTCUT_LIMIT } },
+        { 'name': 'web_search_books',    'arguments': { 'limit': SHORTCUT_LIMIT } },
+      ],
+    };
+  }
+
+  // 4. Catalog browsing — "do you have…", "show me…", "recommend…"
+  if (BROWSING_RE.test(trimmed)) {
+    return { 'pattern': 'catalog-browsing', 'calls': FULL_FANOUT };
+  }
+
+  return null;
+}
+
 export const decideTools: ArchivistNode<'tools' | 'no-tools'> = {
   'name': 'decide-tools',
   'kind': 'non-deterministic',
   'outputs': ['tools', 'no-tools'],
   async execute(state, context) {
+    // ── Deterministic shortcut prelude ────────────────────────────────────
+    // Pattern-match common query shapes (author lookup, single quoted title,
+    // "books about X", catalog browsing). When a pattern fires, populate
+    // state.toolPlan directly and skip the LLM round-trip. The existing
+    // safety nets only fire on LLM-path output, so shortcuts don't need them.
+    const shortcut = matchShortcut(state.query, state.intent);
+    if (shortcut !== null) {
+      state.toolPlan = shortcut.calls;
+      context.services.logger.info(`decide-tools: deterministic shortcut "${shortcut.pattern}"`);
+      context.services.logger.info(`tool plan: ${shortcut.calls.map((c) => c.name).join(', ')}`);
+      return { 'output': 'tools' };
+    }
+
     const isFullCatalog = FULL_CATALOG_INTENTS.has(state.intent);
     const available = isFullCatalog
       ? [OpenLibrarySearchTool.definition, GoogleBooksTool.definition, SubjectSearchTool.definition]
@@ -158,3 +262,8 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools'> = {
 
 // Export tool names list for tests / documentation.
 export { FULL_CATALOG_TOOL_NAMES };
+
+// Export the shortcut matcher for unit tests — algorithmic guarantee, no
+// runtime services needed to exercise the pattern set.
+export { matchShortcut };
+export type { ShortcutMatch };
