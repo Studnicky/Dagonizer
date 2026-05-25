@@ -98,6 +98,28 @@ const noModel = ref(false);
 const isMobile = ref(false);
 const apiKeys = ref<Partial<Record<ProviderId, string>>>(loadApiKeys());
 const ollamaModel = ref<string>(loadOllamaModel());
+
+// Slow-backend banner — shown when the active backend is the browser
+// built-in `LanguageModel` or WebLLM AND no cloud key is configured.
+// Dismissable; preference persisted under `archivist:dismiss-slow-banner`.
+const SLOW_BANNER_KEY = 'archivist:dismiss-slow-banner';
+const slowBannerDismissed = ref<boolean>(
+  typeof localStorage !== 'undefined' && localStorage.getItem(SLOW_BANNER_KEY) === '1',
+);
+const CLOUD_KEY_IDS: readonly ProviderId[] = ['gemini-api', 'groq', 'cerebras', 'mistral', 'openrouter'];
+const showSlowBanner = computed(() => {
+  if (slowBannerDismissed.value) return false;
+  if (activeBackend.value !== 'gemini-nano' && activeBackend.value !== 'web-llm') return false;
+  const hasCloudKey = CLOUD_KEY_IDS.some((id) => {
+    const k = apiKeys.value[id];
+    return typeof k === 'string' && k.length > 0;
+  });
+  return !hasCloudKey;
+});
+function dismissSlowBanner(): void {
+  slowBannerDismissed.value = true;
+  if (typeof localStorage !== 'undefined') localStorage.setItem(SLOW_BANNER_KEY, '1');
+}
 const visitorQuery = ref('');
 const isRunning = ref(false);
 const conversation = ref<Array<{ role: 'visitor' | 'archivist'; text: string; ts: number }>>([]);
@@ -817,6 +839,21 @@ function reset(): void {
             <!-- Conversation tab: the visual-first surface -->
             <template #conversation>
               <div class="ar-left-pane">
+                <!-- Slow-backend warning — browser built-in LanguageModel / WebLLM with no cloud key. -->
+                <div v-if="showSlowBanner" class="slow-banner" role="note">
+                  <span class="slow-banner-text">
+                    <strong>Slow backend.</strong> You&rsquo;re using the browser&rsquo;s built-in
+                    <code>LanguageModel</code>. Structured-output steps (tool selection,
+                    candidate ranking) take 5&ndash;20s each on this backend. For 1&ndash;2s
+                    responses, add a free Groq, Cerebras, Gemini API, Mistral, or
+                    OpenRouter API key in the Config tab.
+                  </span>
+                  <button
+                    type="button"
+                    class="slow-banner-dismiss"
+                    aria-label="Dismiss"
+                    @click="dismissSlowBanner">&times;</button>
+                </div>
                 <Conversation :turns="conversation" />
                 <SendForm
                   :query="visitorQuery"
@@ -982,6 +1019,47 @@ function reset(): void {
 
 .mobile-banner-link:hover {
   border-color: var(--dagonizer-brand);
+  color: var(--dagonizer-brand);
+}
+
+/* ── Slow-backend banner — gold-warning palette ───────────────────────── */
+.slow-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #d4a649;
+  border-radius: 6px;
+  background: rgba(212, 166, 73, 0.10);
+  color: var(--vp-c-text-1);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.slow-banner-text {
+  flex: 1 1 auto;
+}
+
+.slow-banner-text code {
+  background: var(--vp-c-bg-elv);
+  padding: 0.04rem 0.3rem;
+  border-radius: 3px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.78rem;
+}
+
+.slow-banner-dismiss {
+  flex: 0 0 auto;
+  background: transparent;
+  border: none;
+  color: #d4a649;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.25rem;
+}
+
+.slow-banner-dismiss:hover {
   color: var(--dagonizer-brand);
 }
 
