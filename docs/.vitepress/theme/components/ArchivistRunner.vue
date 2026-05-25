@@ -433,6 +433,9 @@ function buildServices(): ArchivistServices {
     'wikipediaSummary':  WikipediaSummaryTool,
     'memory':            memoryStore,
     'llm':               makeLlm(),
+    // Docs runtime: no embedder wired (browser-only). Cosine recall and
+    // hybrid ranking fall back to Jaccard / heuristics when embedder is null.
+    'embedder':          null,
     'logger':            logger,
   };
 }
@@ -449,16 +452,24 @@ function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
       if (fromCursor !== null) dagGraph.value?.setActive(fromCursor);
       prov.recordFlowStart(dagName);
     },
-    onNodeStart(nodeName: string) {
-      trace.value = [...trace.value, { 'node': nodeName, 'ts': Date.now(), 'kind': 'start' }];
-      dagGraph.value?.setActive(nodeName);
+    onNodeStart(nodeName: string, _state: ArchivistState, placementPath: readonly string[] = []) {
+      // `placementPath` is the ordered list of parent embedded-DAG
+      // placement names that led to this node. Join with the node name
+      // to form the cytoscape id used by `DagGraph` — this is what
+      // disambiguates same-named inner placements (e.g. `extract-query`
+      // inside `on-topic-search` vs `author-search` vs `similar-search`)
+      // so only the placement currently executing lights up.
+      const fullId = [...placementPath, nodeName].join('/');
+      trace.value = [...trace.value, { 'node': fullId, 'ts': Date.now(), 'kind': 'start' }];
+      dagGraph.value?.setActive(fullId);
       prov.recordNodeStart(nodeName);
       runnerMachine.pulse({ 'type': 'nodeStart', 'node': nodeName });
     },
-    onNodeEnd(nodeName: string, output: string | undefined, state: ArchivistState) {
-      trace.value = [...trace.value, { 'node': nodeName, output, 'ts': Date.now(), 'kind': 'end' }];
-      dagGraph.value?.setCompleted(nodeName);
-      if (output !== undefined) dagGraph.value?.markEdgeTraversed(nodeName, output);
+    onNodeEnd(nodeName: string, output: string | undefined, state: ArchivistState, placementPath: readonly string[] = []) {
+      const fullId = [...placementPath, nodeName].join('/');
+      trace.value = [...trace.value, { 'node': fullId, output, 'ts': Date.now(), 'kind': 'end' }];
+      dagGraph.value?.setCompleted(fullId);
+      if (output !== undefined) dagGraph.value?.markEdgeTraversed(fullId, output);
       StateProjection.project(state, memoryStore);
       prov.recordNodeEnd(nodeName, output);
       memoryTick.value++;
@@ -466,9 +477,10 @@ function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
         ? { 'type': 'nodeEnd', 'node': nodeName }
         : { 'type': 'nodeEnd', 'node': nodeName, 'output': output });
     },
-    onError(nodeName: string, error: Error) {
-      trace.value = [...trace.value, { 'node': nodeName, 'ts': Date.now(), 'kind': 'error', 'message': error.message !== '' ? error.message : String(error) }];
-      dagGraph.value?.setErrored(nodeName);
+    onError(nodeName: string, error: Error, _state: ArchivistState, placementPath: readonly string[] = []) {
+      const fullId = [...placementPath, nodeName].join('/');
+      trace.value = [...trace.value, { 'node': fullId, 'ts': Date.now(), 'kind': 'error', 'message': error.message !== '' ? error.message : String(error) }];
+      dagGraph.value?.setErrored(fullId);
       prov.recordError(nodeName, error);
       runnerMachine.pulse({ 'type': 'nodeError', 'node': nodeName, 'error': error });
     },

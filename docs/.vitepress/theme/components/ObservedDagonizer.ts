@@ -23,9 +23,9 @@ import type {
 export interface DispatcherObserver<TState extends NodeStateInterface> {
   readonly onFlowStart?:  (dagName: string, state: TState) => void;
   readonly onFlowEnd?:    (dagName: string, state: TState, result: ExecutionResultInterface<TState>) => void;
-  readonly onNodeStart?:  (nodeName: string, state: TState) => void;
-  readonly onNodeEnd?:    (nodeName: string, output: string | undefined, state: TState) => void;
-  readonly onError?:      (nodeName: string, error: Error, state: TState) => void;
+  readonly onNodeStart?:  (nodeName: string, state: TState, placementPath: readonly string[]) => void;
+  readonly onNodeEnd?:    (nodeName: string, output: string | undefined, state: TState, placementPath: readonly string[]) => void;
+  readonly onError?:      (nodeName: string, error: Error, state: TState, placementPath: readonly string[]) => void;
 }
 
 export interface ObservedDagonizerOptions<TServices> extends DagonizerOptionsInterface<TServices> {
@@ -57,15 +57,15 @@ export class ObservedDagonizer<
     this.#observer.onFlowEnd?.(dagName, state, result);
   }
 
-  protected override onNodeStart(nodeName: string, state: TState): void {
-    this.#observer.onNodeStart?.(nodeName, state);
+  protected override onNodeStart(nodeName: string, state: TState, placementPath: readonly string[] = []): void {
+    this.#observer.onNodeStart?.(nodeName, state, placementPath);
   }
 
-  protected override onNodeEnd(nodeName: string, output: string | undefined, state: TState): void {
-    this.#observer.onNodeEnd?.(nodeName, output, state);
+  protected override onNodeEnd(nodeName: string, output: string | undefined, state: TState, placementPath: readonly string[] = []): void {
+    this.#observer.onNodeEnd?.(nodeName, output, state, placementPath);
   }
 
-  protected override onError(nodeName: string, error: Error, state: TState): void {
-    this.#observer.onError?.(nodeName, error, state);
+  protected override onError(nodeName: string, error: Error, state: TState, placementPath: readonly string[] = []): void {
+    this.#observer.onError?.(nodeName, error, state, placementPath);
   }
 }

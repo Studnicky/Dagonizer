@@ -20,7 +20,7 @@
  */
 
 import { Dagonizer } from '@noocodex/dagonizer';
-import { dag, ChatState, classify, respond } from './02-builder.topology.ts';
+import { dag, ChatState, classify, respond } from './02-builder.topology.js';
 
 // ---------------------------------------------------------------------------
 // Run
