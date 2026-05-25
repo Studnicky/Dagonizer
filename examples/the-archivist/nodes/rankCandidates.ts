@@ -37,7 +37,7 @@ const rankRetry = new RetryPolicy({
 // #endregion rank-retry
 
 /**
- * Wall-clock reference for ranking latency budgets (ms).
+ * Per-node timeout for ranking — generous for Gemini Nano's batch-scoring path.
  *
  * NOTE: This constant is NOT used as a per-node `timeoutMs` on the node
  * placement. The dispatcher implements `timeoutMs` as an external
@@ -46,14 +46,14 @@ const rankRetry = new RetryPolicy({
  * the catch, ranked candidates from a slow on-device LLM (Gemini Nano,
  * WebLLM) are lost even when the response arrived just after the timer.
  *
- * Instead: `context.signal` is forwarded all the way to the adapter's
- * `fetch` call via `ChatRequest.signal`. The RetryPolicy also receives
- * the signal. When the *parent* run exceeds the flow's overall deadline
- * the signal is aborted, the fetch is cancelled, and the catch block
- * below salvages whatever `state.candidates` the scouts already wrote —
- * the user sees real (unranked) books instead of an empty response.
+ * Instead: a local `AbortController` is merged with `context.signal` via
+ * `AbortSignal.any` and forwarded through `ChatRequest.signal` to the
+ * adapter's `fetch` / `LanguageModelSession.prompt`. The RetryPolicy also
+ * receives the merged signal. On timeout or parent-flow abort, the fetch is
+ * cancelled and the catch block salvages whatever `state.candidates` the
+ * scouts already wrote — the user sees real (unranked) books.
  */
-export const RANK_TIMEOUT_MS = 90_000;
+export const RANK_TIMEOUT_MS = 30_000;
 
 export const rankCandidates: ArchivistNode<'ranked'> = {
   'name':    'rank-candidates',
@@ -64,10 +64,15 @@ export const rankCandidates: ArchivistNode<'ranked'> = {
       context.services.logger.info('rank-candidates: no candidates to rank');
       return { 'output': 'ranked' };
     }
+
+    const controller = new AbortController();
+    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), RANK_TIMEOUT_MS);
+    const signal = AbortSignal.any([context.signal, controller.signal]);
+
     try {
       const scored = await rankRetry.run(
-        () => context.services.llm.rankCandidates(state.query, state.candidates, context.signal),
-        context.signal,
+        () => context.services.llm.rankCandidates(state.query, state.candidates, signal),
+        signal,
       );
       // Sort descending by score; re-emit as Candidate[] preserving
       // the LLM's reason + additionalProperties notes on each candidate.
@@ -114,6 +119,8 @@ export const rankCandidates: ArchivistNode<'ranked'> = {
         });
         context.services.logger.warn(`rank-candidates failed: ${String(err)}`);
       }
+    } finally {
+      clearTimeout(handle);
     }
     return { 'output': 'ranked' };
   },

@@ -155,46 +155,46 @@ const SYSTEM = [
 ].join(' ');
 
 // ── Output schemas (the data contract — paired with prompts) ───────────
+//
+// Index-pointer schemas: the LLM emits flat integer arrays that point at
+// items in the pre-numbered prompt lists. Deterministic code in
+// `BaseLlmClient` materialises the full records from those pointers.
+//
+// This shape is dramatically faster for slow constrained-output backends
+// (Gemini Nano, WebLLM) because `responseConstraint` only validates a
+// short int array instead of every field of every record.
 export const schemas = {
   "rankCandidates": {
-    'type':                  'object',
-    'description':           'Per-candidate ranking — score each ISBN against the visitor question.',
-    'additionalProperties':  false,
+    'type':                 'object',
+    'description':          'Order candidates best-to-worst by 1-based index into the candidate list.',
+    'additionalProperties': false,
     'properties': {
-      'rankings': {
+      'order': {
         'type':        'array',
-        'description': 'One entry per candidate. Use the exact `isbn` shown in the input. Score in [0, 1].',
+        'description': 'Indices (1-based) into the candidate list above, in best-to-worst order. Each value 1 <= n <= N. No duplicates.',
         'items': {
-          'type':                  'object',
-          'description':           'Required fields establish the contract; optional fields enrich it; additional key/value notes are welcome (vibe, themes, era, confidence).',
-          'additionalProperties':  true,
-          'properties': {
-            'isbn': {
-              'type':        'string',
-              'description': 'Exact ISBN (or stable id) from the input candidate list.',
-            },
-            'score': {
-              'type':        'number',
-              'minimum':     0,
-              'maximum':     1,
-              'description': 'Relevance to the visitor question (1 = perfect, 0 = irrelevant).',
-            },
-            'reason': {
-              'type':        'string',
-              'description': 'One-sentence justification the Archivist may cite when composing.',
-            },
-            'confidence': {
-              'type':        'number',
-              'minimum':     0,
-              'maximum':     1,
-              'description': 'Confidence in the score itself; low when metadata is sparse.',
-            },
-          },
-          'required': ['isbn', 'score'],
+          'type':    'integer',
+          'minimum': 1,
         },
       },
     },
-    'required': ['rankings'],
+    'required': ['order'],
+  } as Record<string, unknown>,
+  "decideTools": {
+    'type':                 'object',
+    'description':          'Pick tools by 1-based index into the numbered tool list.',
+    'additionalProperties': false,
+    'properties': {
+      'tools': {
+        'type':        'array',
+        'description': 'Indices (1-based) into the numbered tool list above, in any order. Empty array means no tools.',
+        'items': {
+          'type':    'integer',
+          'minimum': 1,
+        },
+      },
+    },
+    'required': ['tools'],
   } as Record<string, unknown>,
 };
 
@@ -265,15 +265,28 @@ export const prompts = {
     return withLanguagePreamble(language, body);
   },
 
-  decideTools(language: string, query: string): string {
-    // Tool descriptions / schemas flow through the adapter's native
-    // tools channel (Gemini's `functionDeclarations`, Nano's
-    // `responseConstraint`). The prompt itself stays lean.
+  decideTools(
+    language: string,
+    query: string,
+    available: readonly { name: string; description: string }[],
+  ): string {
+    // Index-pointer schema: the LLM picks tools by 1-based index into a
+    // numbered list rendered in the prompt. Tool arguments are
+    // synthesised deterministically by `BaseLlmClient.decideTools` from
+    // `state.query` and `state.userLanguage` — the model never touches
+    // arguments. Massive token savings vs the per-call adapter tools
+    // channel on Nano / WebLLM.
+    const toolList = available
+      .map((t, i) => `  ${String(i + 1)}. ${t.name} — ${t.description}`)
+      .join('\n');
     const body = [
       SYSTEM,
-      directives.pickTerseQuery,
-      directives.callAllToolsForAuthor,
-      directives.shortKeywordQuery,
+      directives.emitJsonOnly,
+      '',
+      'Available tools:',
+      toolList,
+      '',
+      `Reply with {"tools": [n, n, ...]} where each n is a tool number from the list above. Include every tool you want to call (use all that apply). Use [] for no tools.`,
       '',
       `${directives.visitorQuestionLabel} ${query}`,
     ].join('\n');
@@ -290,6 +303,8 @@ export const prompts = {
       '',
       directives.candidatesPlainHeader,
       rows,
+      '',
+      `Reply with {"order": [n, n, n, ...]} where each n is a candidate number from the list above, ordered best to worst. No duplicates, no other fields.`,
     ].join('\n');
     return withLanguagePreamble(language, body);
   },
