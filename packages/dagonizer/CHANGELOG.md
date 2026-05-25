@@ -1,5 +1,11 @@
 # @noocodex/dagonizer
 
+## 0.11.1
+
+### Patch Changes
+
+- 40f8abf: Archivist demo: `rank-candidates` no longer aborts the whole embedded-DAG when its LLM call exceeds the per-node timeout. Signal is propagated through `llm.rankCandidates` so the LLM call is actually cancelled, the default timeout is raised to 90s for on-device backends, and any abort/timeout leaves `state.candidates` intact (with their original scout-supplied scores) so the compose step sees real books instead of an empty shortlist.
+
 ## [unreleased]
 
 ### Changed
@@ -71,7 +77,7 @@
   field. When omitted, the dispatcher installs a `NoopInstrumentation`.
 - Resumable fan-out — `FanOutNode` records per-item progress under a
   reserved metadata key (`FAN_OUT_PROGRESS_KEY ===
-  '__dagonizer_fan_out_progress__'`) keyed by placement `name`. On resume,
+'__dagonizer_fan_out_progress__'`) keyed by placement `name`. On resume,
   items whose indices appear in `completedIndices` are skipped; their
   outputs are rehydrated from the persisted `itemResults` for the
   aggregate-output and fan-in stages. Progress writes happen once per
