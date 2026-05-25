@@ -1,25 +1,46 @@
 {
   "name": "@noocodex/dagonizer-patterns-flow",
-  "version": "0.11.0",
+  "version": "1.0.0",
   "description": "Pattern plugin for @noocodex/dagonizer — Pure flow node patterns.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": { ".": { "default": "./dist/index.js", "types": "./dist/index.d.ts" } },
-  "files": ["dist", "README.md"],
-  "scripts": {
-    "build":     "tsc -p tsconfig.json",
-    "clean":     "rm -rf dist",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test":      "tsx --test tests/**/*.test.ts",
-    "lint":      "echo 'lint via workspace root'",
-    "prepack":   "npm run clean && npm run build"
+  "exports": {
+    ".": {
+      "default": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
   },
-  "publishConfig": { "access": "public", "provenance": true },
-  "devDependencies": { "@types/node": "^25.2.0" },
-  "peerDependencies": { "@noocodex/dagonizer": "workspace:>=0.11.0 <1.0.0" },
-  "engines": { "node": ">=24" },
-  "repository": { "type": "git", "url": "git+https://github.com/Studnicky/Dagonizer.git", "directory": "packages/dagonizer-patterns-flow" }
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test tests/**/*.test.ts",
+    "lint": "echo 'lint via workspace root'",
+    "prepack": "npm run clean && npm run build"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.0"
+  },
+  "peerDependencies": {
+    "@noocodex/dagonizer": "workspace:>=0.12.0"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Studnicky/Dagonizer.git",
+    "directory": "packages/dagonizer-patterns-flow"
+  }
 }
