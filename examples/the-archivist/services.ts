@@ -67,18 +67,26 @@ export interface LlmClient {
    * The optional `recalledSummary` is a 1–2 sentence hint from the
    * recallContext node — injected into the prompt when non-empty so the
    * classifier benefits from prior-session continuity.
+   * The optional `signal` is forwarded to the adapter so the underlying
+   * fetch / `LanguageModelSession.prompt` is cancelled on timeout or abort.
    */
-  classifyIntent(query: string, recalledSummary?: string, conversation?: readonly ConversationTurn[]): Promise<ClassifiedIntent>;
-  /** Extract structured search terms from a free-text question. */
-  extractTerms(query: string): Promise<readonly string[]>;
+  classifyIntent(query: string, recalledSummary?: string, conversation?: readonly ConversationTurn[], signal?: AbortSignal): Promise<ClassifiedIntent>;
+  /**
+   * Extract structured search terms from a free-text question.
+   * The optional `signal` is forwarded to the adapter.
+   */
+  extractTerms(query: string, signal?: AbortSignal): Promise<readonly string[]>;
   /**
    * Decide which tools (if any) to invoke for this query — driven
    * through the adapter's native tool channel (Gemini's
    * `functionDeclarations`, Nano's `responseConstraint`, etc.).
+   * The optional `signal` is forwarded to the adapter so Nano's
+   * `responseConstraint` invocation is cancelled on timeout.
    */
   decideTools(
     query: string,
     available: readonly { name: string; description: string; inputSchema: Record<string, unknown> }[],
+    signal?: AbortSignal,
   ): Promise<readonly { name: string; arguments: Record<string, unknown> }[]>;
   /**
    * Rank candidates by relevance to the query. The LLM assigns each

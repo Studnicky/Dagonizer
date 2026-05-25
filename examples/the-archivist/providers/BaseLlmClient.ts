@@ -14,7 +14,7 @@ import type { ConversationTurn, MemoryDigest } from '../ArchivistState.ts';
 import type { Candidate } from '../entities/Book.ts';
 import type { ClassifiedIntent, LlmClient, ScoredCandidate } from '../services.ts';
 
-import type { LlmAdapter, ToolDefinition } from '@noocodex/dagonizer/adapter';
+import type { LlmAdapter } from '@noocodex/dagonizer/adapter';
 import { ChatRequestBuilder } from '@noocodex/dagonizer/adapter';
 import type { ChatResponseMessage } from '@noocodex/dagonizer/adapter';
 import type { IntentClassifier } from './IntentClassifier.ts';
@@ -72,18 +72,18 @@ export class BaseLlmClient implements LlmClient {
     this.intentClassifier = options.intentClassifier ?? null;
   }
 
-  async classifyIntent(query: string, recalledSummary?: string, conversation: readonly ConversationTurn[] = []): Promise<ClassifiedIntent> {
+  async classifyIntent(query: string, recalledSummary?: string, conversation: readonly ConversationTurn[] = [], signal?: AbortSignal): Promise<ClassifiedIntent> {
     if (this.intentClassifier !== null) {
       const fromVector = await this.intentClassifier.classify(query);
       if (fromVector !== null) return fromVector.intent;
     }
-    const raw = (await this.#text(prompts.classifyIntent(this.language, query, recalledSummary, conversation))).toLowerCase();
+    const raw = (await this.#text(prompts.classifyIntent(this.language, query, recalledSummary, conversation), signal)).toLowerCase();
     const found = VALID_INTENTS.find((intent) => raw.includes(intent));
     return found ?? 'search';
   }
 
-  async extractTerms(query: string): Promise<readonly string[]> {
-    const raw = (await this.#text(prompts.extractTerms(this.language, query))).trim();
+  async extractTerms(query: string, signal?: AbortSignal): Promise<readonly string[]> {
+    const raw = (await this.#text(prompts.extractTerms(this.language, query), signal)).trim();
     try {
       const arr: unknown = JSON.parse(raw.slice(raw.indexOf('['), raw.lastIndexOf(']') + 1));
       if (Array.isArray(arr)) {
@@ -96,17 +96,42 @@ export class BaseLlmClient implements LlmClient {
   async decideTools(
     query: string,
     available: readonly { name: string; description: string; inputSchema: Record<string, unknown> }[],
+    signal?: AbortSignal,
   ): Promise<readonly { name: string; arguments: Record<string, unknown> }[]> {
     if (available.length === 0) return [];
+    // Index-pointer schema — the LLM emits `{tools: [1, 3, ...]}` only.
+    // Token-economy win for slow constrained-output backends (Nano, WebLLM).
     const request = ChatRequestBuilder.from({
-      'messages': [{ 'role': 'user', 'content': prompts.decideTools(this.language, query), 'toolCallId': '', 'toolName': '' }],
-      'tools':      available as readonly ToolDefinition[],
-      'toolChoice': { 'type': 'auto' },
-      'temperature': 0.1,
-      'maxTokens':   512,
+      'messages':     [{ 'role': 'user', 'content': prompts.decideTools(this.language, query, available), 'toolCallId': '', 'toolName': '' }],
+      'outputSchema': { 'kind': 'schema', 'schema': schemas.decideTools, 'id': 'archivist-decide-tools-v1' },
+      'temperature':  0.1,
+      'maxTokens':    256,
+      ...(signal !== undefined ? { 'signal': signal } : {}),
     });
     const response = await this.adapter.chat(request);
-    return toolCallsOf(response.message).map((c) => ({ 'name': c.name, 'arguments': c.arguments }));
+    const raw = contentOf(response.message);
+    let indices: readonly number[] = [];
+    try {
+      const start = raw.indexOf('{');
+      const end   = raw.lastIndexOf('}');
+      if (start >= 0 && end >= 0) {
+        const parsed = JSON.parse(raw.slice(start, end + 1)) as { tools?: readonly unknown[] };
+        if (Array.isArray(parsed.tools)) {
+          indices = parsed.tools.filter((n): n is number => typeof n === 'number' && Number.isInteger(n));
+        }
+      }
+    } catch { /* fall through with empty indices */ }
+    // Dedupe + bounds-check; materialise arguments deterministically.
+    const seen = new Set<number>();
+    const calls: { name: string; arguments: Record<string, unknown> }[] = [];
+    for (const n of indices) {
+      if (n < 1 || n > available.length || seen.has(n)) continue;
+      seen.add(n);
+      const tool = available[n - 1];
+      if (tool === undefined) continue;
+      calls.push({ 'name': tool.name, 'arguments': defaultToolArguments(tool.name, query, this.language) });
+    }
+    return calls;
   }
 
   async rankCandidates(query: string, candidates: readonly Candidate[], signal?: AbortSignal): Promise<readonly ScoredCandidate[]> {
@@ -115,48 +140,41 @@ export class BaseLlmClient implements LlmClient {
       'messages':     [{ 'role': 'user', 'content': prompts.rankCandidates(this.language, query, candidates), 'toolCallId': '', 'toolName': '' }],
       'outputSchema': { 'kind': 'schema', 'schema': schemas.rankCandidates, 'id': 'archivist-rank-v1' },
       'temperature':  0.1,
-      'maxTokens':    1024,
-      'signal':       signal,
+      'maxTokens':    256,
+      ...(signal !== undefined ? { 'signal': signal } : {}),
     });
     const response = await this.adapter.chat(request);
     const raw = contentOf(response.message);
-    type Ranking = { isbn?: string; score?: number; reason?: string } & Record<string, unknown>;
-    let rankings: readonly Ranking[] = [];
+    let order: readonly number[] = [];
     try {
       const start = raw.indexOf('{');
       const end   = raw.lastIndexOf('}');
       if (start >= 0 && end >= 0) {
-        const parsed = JSON.parse(raw.slice(start, end + 1)) as { rankings?: readonly Ranking[] };
-        rankings = parsed.rankings ?? [];
+        const parsed = JSON.parse(raw.slice(start, end + 1)) as { order?: readonly unknown[] };
+        if (Array.isArray(parsed.order)) {
+          order = parsed.order.filter((n): n is number => typeof n === 'number' && Number.isInteger(n));
+        }
       }
-    } catch { /* zero-score fallback */ }
-    interface Entry { readonly score: number; readonly reason?: string; readonly notes?: Record<string, unknown> }
-    const byIsbn = new Map<string, Entry>();
-    for (const r of rankings) {
-      if (typeof r.isbn !== 'string' || typeof r.score !== 'number') continue;
-      const score = Math.min(1, Math.max(0, r.score));
-      // additionalProperties land as freeform `notes` (vibe / themes / confidence / etc).
-      const notes: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(r)) {
-        if (k === 'isbn' || k === 'score' || k === 'reason') continue;
-        notes[k] = v;
-      }
-      const entry: Entry = {
-        score,
-        ...(typeof r.reason === 'string' ? { 'reason': r.reason } : {}),
-        ...(Object.keys(notes).length > 0 ? { notes } : {}),
-      };
-      byIsbn.set(r.isbn, entry);
+    } catch { /* fall through with empty order */ }
+    // Walk the order: assign synthetic linear-decay scores.
+    // 1 - (rank/N) → top item gets ~1.0, last gets ~0.
+    const total = candidates.length;
+    const seen = new Set<number>();
+    const scored = new Map<number, number>(); // candidate index → score
+    let rank = 0;
+    for (const n of order) {
+      if (n < 1 || n > total || seen.has(n)) continue;
+      seen.add(n);
+      const score = total > 1 ? 1 - (rank / (total - 1)) : 1;
+      scored.set(n - 1, score);
+      rank += 1;
     }
-    return candidates.map<ScoredCandidate>((candidate) => {
-      const found = byIsbn.get(candidate.book.isbn);
-      if (found === undefined) return { candidate, 'score': 0 };
-      return {
-        candidate,
-        'score': found.score,
-        ...(found.reason !== undefined ? { 'reason': found.reason } : {}),
-        ...(found.notes  !== undefined ? { 'notes':  found.notes  } : {}),
-      };
+    // Build the ScoredCandidate[] in the original candidates order; the
+    // node sorts the list descending so unmentioned items (score 0)
+    // sink to the bottom.
+    return candidates.map<ScoredCandidate>((candidate, idx) => {
+      const score = scored.get(idx) ?? 0;
+      return { candidate, score };
     });
   }
 
@@ -244,11 +262,12 @@ export class BaseLlmClient implements LlmClient {
     return (await this.#text(prompts.explainTool(this.language, name, context))).trim();
   }
 
-  async #text(prompt: string): Promise<string> {
+  async #text(prompt: string, signal?: AbortSignal): Promise<string> {
     const response = await this.adapter.chat(ChatRequestBuilder.from({
       'messages':    [{ 'role': 'user', 'content': prompt, 'toolCallId': '', 'toolName': '' }],
       'temperature': 0.2,
       'maxTokens':   512,
+      ...(signal !== undefined ? { 'signal': signal } : {}),
     }));
     return contentOf(response.message);
   }
@@ -259,6 +278,23 @@ function contentOf(msg: ChatResponseMessage): string {
   return msg.kind === 'tools' ? '' : msg.content;
 }
 
-function toolCallsOf(msg: ChatResponseMessage): readonly { name: string; arguments: Record<string, unknown> }[] {
-  return msg.kind === 'text' ? [] : msg.toolCalls;
+/**
+ * Deterministic argument defaults for known scout tool names.
+ * `decideTools` only emits indices now; argument generation lives here.
+ * The visitor's question IS the query — a more sophisticated rewrite
+ * would belong in a separate query-rewrite node.
+ */
+function defaultToolArguments(name: string, query: string, language: string): Record<string, unknown> {
+  switch (name) {
+    case 'web_search_books':
+      return { 'query': query, 'limit': 8, 'lang': language };
+    case 'google_books_search':
+      return { 'query': query, 'maxResults': 8, 'langRestrict': language };
+    case 'subject_search':
+      return { 'subject': query, 'limit': 8, 'lang': language };
+    case 'wikipedia_summary':
+      return { 'query': query, 'lang': language };
+    default:
+      return { 'query': query };
+  }
 }

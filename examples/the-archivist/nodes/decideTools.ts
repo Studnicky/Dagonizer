@@ -77,6 +77,9 @@ function enforceFullCatalog(
   return additions.length > 0 ? [...calls, ...additions] : calls;
 }
 
+/** Per-node timeout — generous for Gemini Nano's constrained-output path (20–60 s typical). */
+const NODE_TIMEOUT_MS = 30_000;
+
 export const decideTools: ArchivistNode<'tools' | 'no-tools'> = {
   'name': 'decide-tools',
   'kind': 'non-deterministic',
@@ -86,8 +89,13 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools'> = {
     const available = isFullCatalog
       ? [OpenLibrarySearchTool.definition, GoogleBooksTool.definition, SubjectSearchTool.definition]
       : [OpenLibrarySearchTool.definition, SubjectSearchTool.definition];
+
+    const controller = new AbortController();
+    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), NODE_TIMEOUT_MS);
+    const signal = AbortSignal.any([context.signal, controller.signal]);
+
     try {
-      let calls = await context.services.llm.decideTools(state.query, available);
+      let calls = await context.services.llm.decideTools(state.query, available, signal);
 
       // Safety net (Option B): if the LLM returned fewer than all three
       // catalog tools for a full-catalog intent, add the missing ones so
@@ -105,7 +113,7 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools'> = {
       // four-scout set. WebLLM and Gemini Nano have unreliable structured output
       // so the LLM may under-propose tools; the scouts run in parallel so the
       // cost of running all four is bounded.
-      if (!isFullCatalog && state.intent === 'on-topic' && calls.length < 2) {
+      if (!isFullCatalog && state.intent === 'search' && calls.length < 2) {
         const fallbackQuery = calls.find((c) => typeof c.arguments['query'] === 'string')?.arguments['query'] as string | undefined ?? state.query;
         calls = [
           { 'name': 'web_search_books',    'arguments': { 'query': fallbackQuery, 'limit': 8 } },
@@ -132,18 +140,13 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools'> = {
       state.failureCause += 'Tool plan: no tools selected. ';
       return { 'output': 'no-tools' };
     } catch (err) {
-      // Tool decision is best-effort — collect the failure and fall
-      // through to the local catalog so the run still completes.
-      state.collectError({
-        'code':        'DECIDE_TOOLS_FAILED',
-        'message':     err instanceof Error ? err.message : String(err),
-        'operation':   'decide-tools',
-        'recoverable': true,
-        'timestamp':   new Date().toISOString(),
-      });
-      context.services.logger.warn(`decideTools failed: ${String(err)}`);
-      state.failureCause += `Tool decision failed: ${err instanceof Error ? err.message.slice(0, 80) : 'unknown error'}. `;
-      return { 'output': 'no-tools' };
+      // Salvage path: timeout or any error — fall through with a minimal
+      // raw-query plan so the book-search fan-out still runs.
+      context.services.logger.warn(`decideTools: timeout/error — falling through with defaults: ${err instanceof Error ? err.message : String(err)}`);
+      state.toolPlan = [{ 'name': 'web_search_books', 'arguments': { 'query': state.query } }];
+      return { 'output': 'tools' };
+    } finally {
+      clearTimeout(handle);
     }
   },
 };
