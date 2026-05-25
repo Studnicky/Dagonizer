@@ -1,5 +1,12 @@
 # @noocodex/dagonizer
 
+## 0.12.0
+
+### Minor Changes
+
+- 7c0e38a: Archivist demo: embedder cascade exposed as `ArchivistServices.embedder` and used across `recordFindings` (writes embedding triples), `recallCandidates` (cosine-similarity prior-candidate recall with Jaccard fallback), and `rankCandidates` (hybrid composite score with LLM tiebreak on top-3). New anti-hallucination validator runs deterministically before the LLM validator in `compose-retry-loop`, cross-referencing draft named entities against the shortlist. `decideTools` pattern-matches common query shapes and bypasses the LLM for unambiguous tool selection.
+- 3286d07: Archivist live-demo polish: PROV-O bridge connects books to run activities (`prov:wasGeneratedBy`, `prov:wasAttributedTo`, `prov:generated`) so the MemoryGraph reads as one connected graph instead of two clusters. Persona rewritten as positive imperatives ("research librarian with global catalog" instead of "small independent bookstore" — eliminates "in stock" inventory framing); all engineer-jargon "shortlist" references replaced with "catalog records" in user-facing strings. DagGraph viewport: smooth synchronous fit with 120ms debounce, parallel nodes coalesce to one zoom-out, user-gesture latch pauses auto-follow until Fit/Center released, reset cancels in-flight animation, horizontal edge labels with taxi-turn 50%, CompositeLayout separations widened. OpenLibrary scout reads typed `author`/`subject`/`isbn` args; `decideTools` deterministic shortcuts detect ISBN-13/10. Embedded-DAG outcome routing tolerates recoverable errors so one rate-limited source doesn't poison the whole subgraph. MemoryGraph label colours match node layer colours. Conversation auto-scrolls when new turns arrive (respects user scroll-up).
+
 ## 0.11.4
 
 ### Patch Changes
