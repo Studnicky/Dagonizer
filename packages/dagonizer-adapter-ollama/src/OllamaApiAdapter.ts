@@ -21,7 +21,8 @@
  * adapter plugins (`'mistral'`, `'groq'`, `'cerebras'`).
  */
 
-import { OpenAiCompatibleAdapter } from '@noocodex/dagonizer/adapter';
+import { LlmError, Classifications, OpenAiCompatibleAdapter } from '@noocodex/dagonizer/adapter';
+import type { ChatRequest, ChatResponse } from '@noocodex/dagonizer/adapter';
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = 'llama3.2:latest';
@@ -49,9 +50,11 @@ const PROBE_TIMEOUT_MS = 500;
 
 export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
   readonly #baseUrl: string;
+  readonly #currentModel: string;
 
   public constructor(options: OllamaApiAdapterOptions = {}) {
     const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
+    const model = options.model ?? DEFAULT_MODEL;
     super(
       options.apiKey ?? 'ollama',
       {
@@ -68,11 +71,38 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
         'extraHeaders': {}
       },
       {
-        'model': options.model ?? DEFAULT_MODEL,
+        'model': model,
         ...(options.maxAttempts !== undefined ? { 'maxAttempts': options.maxAttempts } : {})
       }
     );
     this.#baseUrl = baseUrl;
+    this.#currentModel = model;
+  }
+
+  /**
+   * Intercept HTTP 404 responses from Ollama's `/v1/chat/completions`
+   * endpoint. A 404 means the model has not been pulled yet. Re-throw
+   * with a hint so the error surfaces actionably to the visitor.
+   */
+  protected override async performChat(request: ChatRequest): Promise<ChatResponse> {
+    try {
+      return await super.performChat(request);
+    } catch (err) {
+      if (
+        err instanceof LlmError &&
+        err.classification.reason === 'MODEL_NOT_FOUND'
+      ) {
+        // Extract the model name from the raw error message when available.
+        const modelMatch = /model ['"]?([^'"]+)['"]? not found/iu.exec(err.message);
+        const modelName = modelMatch?.[1] ?? this.#currentModel;
+        throw new LlmError(
+          `Ollama model '${modelName}' is not installed. Run: ollama pull ${modelName}`,
+          Classifications['MODEL_NOT_FOUND'],
+          err,
+        );
+      }
+      throw err;
+    }
   }
 
   /**

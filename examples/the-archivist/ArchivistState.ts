@@ -12,6 +12,17 @@ import type { Candidate } from './entities/Book.ts';
 import { NodeStateBase } from '@noocodex/dagonizer';
 import type { JsonObject } from '@noocodex/dagonizer/types';
 
+/**
+ * A single turn in the visitor–archivist conversation.
+ * Stored on `ArchivistState.conversation` and injected into LLM prompts
+ * so the model can resolve pronouns and follow-ups across turns.
+ */
+export interface ConversationTurn {
+  readonly role: 'visitor' | 'archivist';
+  readonly text: string;
+  readonly ts: number;
+}
+
 
 /**
  * A roll-up of everything the Archivist has accumulated in its memory
@@ -129,6 +140,14 @@ export class ArchivistState extends NodeStateBase {
     'summary':             '',
   };
   /**
+   * The N most recent turns of the conversation (visitor + archivist),
+   * sliced from the runner's display buffer and injected here before each
+   * run. The runner controls the window size; nodes read this to thread
+   * prior context into LLM prompts for pronoun resolution and continuity.
+   * Always initialised to `[]`; never undefined (V8 shape stability).
+   */
+  conversation: readonly ConversationTurn[] = [];
+  /**
    * Memory roll-up produced by `recallMemories` for the `recall-memories`
    * intent. Empty/zero-valued when the intent is not `recall-memories`.
    */
@@ -161,6 +180,7 @@ export class ArchivistState extends NodeStateBase {
       'similarPriorQueries': [...this.recalledContext.similarPriorQueries],
       'summary':             this.recalledContext.summary,
     };
+    copy.conversation = [...this.conversation];
     copy.memoryDigest = {
       'bookCount':       this.memoryDigest.bookCount,
       'queryCount':      this.memoryDigest.queryCount,
@@ -202,6 +222,7 @@ export class ArchivistState extends NodeStateBase {
         "similarPriorQueries": this.recalledContext.similarPriorQueries as unknown as JsonObject[],
         "summary":             this.recalledContext.summary,
       },
+      "conversation": this.conversation as unknown as JsonObject[],
       "memoryDigest": {
         "bookCount":       this.memoryDigest.bookCount,
         "queryCount":      this.memoryDigest.queryCount,
@@ -234,6 +255,9 @@ export class ArchivistState extends NodeStateBase {
         'similarPriorQueries': Array.isArray(rcObj['similarPriorQueries']) ? rcObj['similarPriorQueries'] as RecalledContext['similarPriorQueries'] : [],
         'summary':             typeof rcObj['summary'] === 'string'        ? rcObj['summary']  : '',
       };
+    }
+    if (Array.isArray(snap['conversation'])) {
+      this.conversation = snap['conversation'] as unknown as ConversationTurn[];
     }
     const md = snap['memoryDigest'];
     if (md !== null && md !== undefined && typeof md === 'object' && !Array.isArray(md)) {

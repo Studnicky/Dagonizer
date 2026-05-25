@@ -150,7 +150,20 @@ export const recallMemories: ArchivistNode<'recalled'> = {
       .map(([intent, count]) => ({ intent, count }));
 
     // ── Build LLM-ready summary ───────────────────────────────────────────
-    const summary = buildSummary(bookTitles, queryCount, recentBooks, intentBreakdown);
+    let summary = buildSummary(bookTitles, queryCount, recentBooks, intentBreakdown);
+
+    // If the visitor's current query is a short pronoun-acceptance and the
+    // last archivist turn mentioned a book, boost the summary so the compose
+    // node can resolve the reference against memory.
+    const conv = state.conversation;
+    if (conv.length >= 2) {
+      const lastArchivist = [...conv].reverse().find((t) => t.role === 'archivist');
+      const lastVisitor   = conv[conv.length - 1];
+      const isPronouns    = lastVisitor !== undefined && /^(yes|sure|ok|okay|let.s|that|it|do it|go ahead|sounds good)/iu.test(lastVisitor.text.trim());
+      if (isPronouns && lastArchivist !== undefined) {
+        summary = `${summary} The visitor appears to be following up on: "${lastArchivist.text.slice(0, 120)}".`;
+      }
+    }
 
     state.memoryDigest = {
       'bookCount':       bookTitles.size,

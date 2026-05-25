@@ -18,7 +18,7 @@
  *     citation when the visitor explicitly references their past.
  */
 
-import type { MemoryDigest } from '../ArchivistState.ts';
+import type { ConversationTurn, MemoryDigest } from '../ArchivistState.ts';
 import type { Candidate } from '../entities/Book.ts';
 import { UserLanguage } from '../language/UserLanguage.ts';
 
@@ -77,14 +77,18 @@ export const directives = {
   "intentExamples": [
     '  "do you have anything exploring the ethics of AI, maybe with a sci-fi bent?" → search',
     '  "what should I read after Project Hail Mary?" → recommend-similar',
+    '  "recommend something similar to Dune" → recommend-similar',
     '  "tell me about The Sun Also Rises" → describe-book',
     '  "what did Murakami write?" → lookup-author',
     '  "anything good in cosy fantasy?" → recommend',
     '  "what was that book I asked about last week?" → recall-memories',
+    '  "use the web search tools to find me a book" → search',
+    '  "search the web for books about stoicism" → search',
     '  "what time is it?" → off-topic',
+    '  "what is the weather like?" → off-topic',
     '  "try again" / "another one" / "different" / "no" → REUSE THE PRIOR INTENT from recent context if any, otherwise default to `search`',
   ].join('\n'),
-  "intentRules":          'Rules: prefer the most specific intent. Treat short follow-up phrases ("try again", "next", "no", "different") as continuations of the previous intent — never classify them as off-topic. Off-topic is ONLY for questions with no plausible connection to books or your memory.',
+  "intentRules":          'Rules: prefer the most specific intent. Treat short follow-up phrases ("try again", "next", "no", "different") as continuations of the previous intent — never classify them as off-topic. If the visitor explicitly asks for tools, web search, lookups, or external sources, classify as `search`, NEVER `off-topic`. Off-topic is ONLY for queries clearly unrelated to books or reading (weather, sports scores, jokes, recipes, news). Anything book-adjacent, tool-related, or meta about the assistant is on-topic.',
   "intentResponseFormat": 'Respond with the single token only.',
 
   // ── Term extraction ──────────────────────────────────────────────────
@@ -222,13 +226,14 @@ function withLanguagePreamble(language: string, body: string): string {
 // ── Prompt builders ────────────────────────────────────────────────────
 /** Helpers expose only the builders; nodes never assemble prose themselves. */
 export const prompts = {
-  classifyIntent(language: string, query: string, recalledSummary?: string): string {
+  classifyIntent(language: string, query: string, recalledSummary?: string, conversation: readonly ConversationTurn[] = []): string {
     const contextBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
       : [
           '',
           `${directives.recentContextLabel} ${recalledSummary} ${directives.continuityHint}`,
         ].join('\n');
+    const conversationBlock = formatConversationBlock(conversation);
     const body = [
       SYSTEM,
       '',
@@ -241,6 +246,7 @@ export const prompts = {
       directives.intentRules,
       directives.intentResponseFormat,
       contextBlock,
+      conversationBlock,
       '',
       `${directives.visitorQuestionLabel} ${query}`,
     ].join('\n');
@@ -294,6 +300,7 @@ export const prompts = {
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
+    conversation: readonly ConversationTurn[] = [],
   ): string {
     const rows = shortlist.map((c, i) => formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
@@ -306,6 +313,7 @@ export const prompts = {
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
+    const conversationBlock = formatConversationBlock(conversation);
     const body = [
       SYSTEM,
       directives.beTerse,
@@ -313,6 +321,7 @@ export const prompts = {
       '',
       `${directives.visitorQuestionLabel} ${query}`,
       continuityBlock,
+      conversationBlock,
       contextBlock,
       '',
       directives.candidatesHeader,
@@ -327,6 +336,7 @@ export const prompts = {
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
+    conversation: readonly ConversationTurn[] = [],
   ): string {
     const rows = shortlist.map((c, i) => formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
@@ -339,6 +349,7 @@ export const prompts = {
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
+    const conversationBlock = formatConversationBlock(conversation);
     const body = [
       SYSTEM,
       directives.beTerse,
@@ -348,6 +359,7 @@ export const prompts = {
       '',
       `${directives.visitorQuestionLabel} ${query}`,
       continuityBlock,
+      conversationBlock,
       contextBlock,
       '',
       directives.candidatesHeaderChronological,
@@ -362,6 +374,7 @@ export const prompts = {
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
+    conversation: readonly ConversationTurn[] = [],
   ): string {
     const rows = shortlist.map((c, i) => formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
@@ -374,6 +387,7 @@ export const prompts = {
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
+    const conversationBlock = formatConversationBlock(conversation);
     const body = [
       SYSTEM,
       directives.beTerse,
@@ -383,6 +397,7 @@ export const prompts = {
       '',
       `${directives.visitorQuestionLabel} ${query}`,
       continuityBlock,
+      conversationBlock,
       contextBlock,
       '',
       directives.candidatesHeaderRated,
@@ -397,6 +412,7 @@ export const prompts = {
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
+    conversation: readonly ConversationTurn[] = [],
   ): string {
     const rows = shortlist.map((c, i) => formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
@@ -409,6 +425,7 @@ export const prompts = {
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
+    const conversationBlock = formatConversationBlock(conversation);
     const body = [
       SYSTEM,
       directives.describeOnly,
@@ -417,6 +434,7 @@ export const prompts = {
       '',
       `${directives.visitorQuestionLabel} ${query}`,
       continuityBlock,
+      conversationBlock,
       contextBlock,
       '',
       directives.matchedBooksHeader,
@@ -431,6 +449,7 @@ export const prompts = {
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
+    conversation: readonly ConversationTurn[] = [],
   ): string {
     const rows = shortlist.map((c, i) => formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
@@ -443,6 +462,7 @@ export const prompts = {
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
+    const conversationBlock = formatConversationBlock(conversation);
     const body = [
       SYSTEM,
       directives.beTerse,
@@ -451,6 +471,7 @@ export const prompts = {
       '',
       `${directives.visitorQuestionLabel} ${query}`,
       continuityBlock,
+      conversationBlock,
       contextBlock,
       '',
       directives.candidatesHeader,
@@ -459,16 +480,18 @@ export const prompts = {
     return withLanguagePreamble(language, body);
   },
 
-  composeEmptyResponse(language: string, query: string, failureCause: string): string {
+  composeEmptyResponse(language: string, query: string, failureCause: string, conversation: readonly ConversationTurn[] = []): string {
     const causeBlock = failureCause.trim().length > 0
       ? `\n${directives.searchNotesLabel} ${failureCause.trim()}`
       : '';
+    const conversationBlock = formatConversationBlock(conversation);
     const body = [
       SYSTEM,
       directives.ownTheGap,
       directives.beTerse,
       '',
       `${directives.visitorQuestionLabel} ${query}`,
+      conversationBlock,
       causeBlock,
     ].join('\n');
     return withLanguagePreamble(language, body);
@@ -545,10 +568,12 @@ export const prompts = {
     query: string,
     digest: MemoryDigest,
     recalledSummary?: string,
+    conversation: readonly ConversationTurn[] = [],
   ): string {
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
+    const conversationBlock = formatConversationBlock(conversation);
 
     const digestBlock = digest.bookCount === 0
       ? directives.memoryEmptyStatus
@@ -569,6 +594,7 @@ export const prompts = {
       '',
       `${directives.visitorQuestionLabel} ${query}`,
       continuityBlock,
+      conversationBlock,
       '',
       digestBlock,
     ].join('\n');
@@ -577,6 +603,13 @@ export const prompts = {
 };
 
 // ── Internals ──────────────────────────────────────────────────────────
+/** Format prior conversation turns as a terse "Conversation so far" block. */
+function formatConversationBlock(turns: readonly ConversationTurn[]): string {
+  if (turns.length === 0) return '';
+  const lines = turns.map((t) => `  ${t.role}: ${t.text}`).join('\n');
+  return `\nConversation so far (most recent last):\n${lines}`;
+}
+
 function formatCandidateRow(n: number, c: Candidate): string {
   const parts: string[] = [];
   parts.push(`${String(n)}. isbn=${c.book.isbn}`);
