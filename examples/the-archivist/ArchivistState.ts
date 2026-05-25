@@ -148,6 +148,14 @@ export class ArchivistState extends NodeStateBase {
    */
   conversation: readonly ConversationTurn[] = [];
   /**
+   * Prior shortlisted candidates loaded from memory by `recallContext`
+   * (cap 5, low Jaccard) and overridden by `recallCandidates` inside the
+   * `book-search-fanout` embedded-DAG (cap 10, Jaccard >= 0.35).
+   * `mergeCandidates` falls back to this pool when live scouts return zero.
+   * Always initialized; never undefined (V8 shape stability).
+   */
+  priorCandidates: readonly Candidate[] = [];
+  /**
    * Memory roll-up produced by `recallMemories` for the `recall-memories`
    * intent. Empty/zero-valued when the intent is not `recall-memories`.
    */
@@ -180,7 +188,8 @@ export class ArchivistState extends NodeStateBase {
       'similarPriorQueries': [...this.recalledContext.similarPriorQueries],
       'summary':             this.recalledContext.summary,
     };
-    copy.conversation = [...this.conversation];
+    copy.conversation      = [...this.conversation];
+    copy.priorCandidates   = [...this.priorCandidates];
     copy.memoryDigest = {
       'bookCount':       this.memoryDigest.bookCount,
       'queryCount':      this.memoryDigest.queryCount,
@@ -222,6 +231,12 @@ export class ArchivistState extends NodeStateBase {
         "similarPriorQueries": this.recalledContext.similarPriorQueries as unknown as JsonObject[],
         "summary":             this.recalledContext.summary,
       },
+      "priorCandidates": this.priorCandidates.map((candidate) => ({
+        "book":   { ...candidate.book, "authors": [...candidate.book.authors] },
+        "score":  candidate.score,
+        "source": candidate.source,
+        "notes":  candidate.notes ?? {},
+      })) as unknown as JsonObject[],
       "conversation": this.conversation as unknown as JsonObject[],
       "memoryDigest": {
         "bookCount":       this.memoryDigest.bookCount,
@@ -255,6 +270,9 @@ export class ArchivistState extends NodeStateBase {
         'similarPriorQueries': Array.isArray(rcObj['similarPriorQueries']) ? rcObj['similarPriorQueries'] as RecalledContext['similarPriorQueries'] : [],
         'summary':             typeof rcObj['summary'] === 'string'        ? rcObj['summary']  : '',
       };
+    }
+    if (Array.isArray(snap['priorCandidates'])) {
+      this.priorCandidates = snap['priorCandidates'] as unknown as Candidate[];
     }
     if (Array.isArray(snap['conversation'])) {
       this.conversation = snap['conversation'] as unknown as ConversationTurn[];

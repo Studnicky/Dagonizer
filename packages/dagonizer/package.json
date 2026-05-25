@@ -184,6 +184,7 @@
   },
   "devDependencies": {
     "@cosmos.gl/graph": "^2.6.4",
+    "@dagrejs/dagre": "^3.0.0",
     "@eslint/js": "^10.0.1",
     "@types/cytoscape": "^3.21.9",
     "@types/cytoscape-dagre": "^2.3.4",
@@ -191,6 +192,7 @@
     "@types/node": "^25.2.0",
     "cytoscape": "^3.33.3",
     "cytoscape-dagre": "^3.0.0",
+    "cytoscape-elk": "^2.3.0",
     "cytoscape-fcose": "^2.2.0",
     "eslint": "^10.3.0",
     "eslint-plugin-import-x": "^4.16.2",

@@ -94,6 +94,44 @@ function unquote(s: string): string {
   return t;
 }
 
+// ── Query shaping per scout ─────────────────────────────────────────────────
+//
+// Each scout operates on a different index / search engine, so the query form
+// that performs best differs per backend. All shaping is deterministic (no LLM
+// involvement) and applied to `state.terms` after the extract-query node has
+// already distilled the visitor's prose into catalog keywords.
+//
+// OpenLibrary (keyword search, `q=`): join all terms — keyword AND-match works
+//   well with multiple short terms. No transformation needed.
+//
+// Google Books (`q=`): same join — full-text keyword search, identical behaviour
+//   to OpenLibrary keyword path. No transformation needed.
+//
+// Subject Search (OpenLibrary `subject=`): the subject facet is indexed from
+//   Library of Congress Subject Headings (LCSH), which are single-concept
+//   headings. Long concatenations ("existentialism science fiction") almost
+//   never match an LCSH heading. Strategy: pick the LONGEST term from
+//   `state.terms` (heuristic: more letters = more specific) and use it alone.
+//   Falls back to `state.terms[0]` when all terms are the same length.
+//
+// Wikipedia (page/summary title): the REST endpoint resolves exact article
+//   titles and common redirects. Proper nouns (author names, book titles)
+//   surface the right article. Strategy: if any term starts with an uppercase
+//   letter (likely a proper noun — "Neuromancer", "Philip K. Dick"), use the
+//   first such term alone. Otherwise join all terms as a best-effort phrase.
+
+/** Pick the most-specific (longest) term for LCSH subject search. */
+function pickSubjectTerm(terms: readonly string[]): string {
+  if (terms.length === 0) return '';
+  return terms.reduce((best, t) => (t.length > best.length ? t : best), terms[0] ?? '');
+}
+
+/** Pick the first capitalised term for Wikipedia proper-noun lookup. */
+function pickWikipediaQuery(terms: readonly string[]): string {
+  const properNoun = terms.find((t) => /^\p{Lu}/u.test(t));
+  return properNoun ?? terms.join(' ');
+}
+
 // ── Legacy scout (kept for backward-compat; new branches use the four below) ─
 
 export const webSearchScout: NodeInterface<ArchivistState, 'success' | 'empty', ArchivistServices> = {
@@ -112,14 +150,14 @@ export const webSearchScout: NodeInterface<ArchivistState, 'success' | 'empty', 
     try {
       const tool = context.services.webSearch;
       const lang = UserLanguage.toIso6392(state.userLanguage);
-      context.services.logger.info(`web search: "${query}" (limit ${String(args.limit ?? 8)}, lang ${lang})`);
       const rawCandidates = await scoutRetry.run(
         () => tool.execute({ query, "limit": args.limit ?? 8, "lang": lang }, context.signal),
         context.signal,
       );
       const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
-      context.services.logger.info(`web search: ${String(candidates.length)} hits (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
+      const firstWsTitle = rawCandidates[0]?.book.title ?? '—';
+      context.services.logger.info(`web-search GET https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=${String(args.limit ?? 8)} → ${String(rawCandidates.length)} hits, first: "${firstWsTitle}" (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
       if (candidates.length === 0) {
         state.failureCause += `OpenLibrary: 0 hits for "${query}". `;
       }
@@ -161,14 +199,14 @@ export const openLibraryScout: NodeInterface<ArchivistState, 'success' | 'empty'
     try {
       const tool = context.services.webSearch;
       const lang = UserLanguage.toIso6392(state.userLanguage);
-      context.services.logger.info(`openlibrary: "${query}" (limit ${String(args.limit ?? 8)}, lang ${lang})`);
       const rawCandidates = await scoutRetry.run(
         () => tool.execute({ query, "limit": args.limit ?? 8, "lang": lang }, context.signal),
         context.signal,
       );
       const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
-      context.services.logger.info(`openlibrary: ${String(candidates.length)} hits (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
+      const firstTitle = rawCandidates[0]?.book.title ?? '—';
+      context.services.logger.info(`openlibrary GET https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=${String(args.limit ?? 8)} → ${String(rawCandidates.length)} hits, first: "${firstTitle}" (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
       if (candidates.length === 0) {
         state.failureCause += `OpenLibrary: 0 hits for "${query}". `;
       }
@@ -210,14 +248,14 @@ export const googleBooksScout: NodeInterface<ArchivistState, 'success' | 'empty'
     try {
       const tool = context.services.googleBooks;
       const langRestrict = UserLanguage.normalize(state.userLanguage);
-      context.services.logger.info(`google-books: "${query}" (max ${String(args.maxResults ?? 8)}, langRestrict ${langRestrict})`);
       const rawCandidates = await scoutRetry.run(
         () => tool.execute({ query, "maxResults": args.maxResults ?? 8, "langRestrict": langRestrict }, context.signal),
         context.signal,
       );
       const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
-      context.services.logger.info(`google-books: ${String(candidates.length)} hits (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
+      const firstGbTitle = rawCandidates[0]?.book.title ?? '—';
+      context.services.logger.info(`google-books GET https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=${String(args.maxResults ?? 8)} → ${String(rawCandidates.length)} hits, first: "${firstGbTitle}" (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
       if (candidates.length === 0) {
         state.failureCause += `Google Books: 0 hits for "${query}". `;
       }
@@ -250,22 +288,25 @@ export const subjectScout: NodeInterface<ArchivistState, 'success' | 'empty', Ar
     const planned = state.toolPlan.find((call) => call.name === 'subject_search');
     if (planned === undefined) return { "output": 'empty' };
     const args = planned.arguments as { subject?: string; limit?: number };
+    // Subject shaping: LCSH subject facet performs best with a single focused
+    // term. Pick the longest term from state.terms (most-specific heuristic).
+    // Falls back to args.subject if the LLM supplied one (already focused).
     const rawSubject = typeof args.subject === 'string' && args.subject.length > 0
       ? args.subject
-      : state.terms.join(' ');
+      : pickSubjectTerm(state.terms);
     const subject = unquote(rawSubject);
     if (subject.length === 0) return { "output": 'empty' };
     try {
       const tool = context.services.subjectSearch;
       const lang = UserLanguage.toIso6392(state.userLanguage);
-      context.services.logger.info(`subject-search: "${subject}" (limit ${String(args.limit ?? 8)}, lang ${lang})`);
       const rawCandidates = await scoutRetry.run(
         () => tool.execute({ subject, "limit": args.limit ?? 8, "lang": lang }, context.signal),
         context.signal,
       );
       const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
-      context.services.logger.info(`subject-search: ${String(candidates.length)} hits (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
+      const firstSubjectTitle = rawCandidates[0]?.book.title ?? '—';
+      context.services.logger.info(`subject-search GET https://openlibrary.org/search.json?subject=${encodeURIComponent(subject)}&limit=${String(args.limit ?? 8)} → ${String(rawCandidates.length)} hits, first: "${firstSubjectTitle}" (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
       if (candidates.length === 0) {
         state.failureCause += `Subject search: 0 hits for "${subject}". `;
       }
@@ -295,19 +336,23 @@ export const wikipediaScout: NodeInterface<ArchivistState, 'success' | 'empty', 
   "outputs":   ['success', 'empty'],
   "timeoutMs": 60_000,
   async execute(state, context) {
-    const query = state.terms.join(' ').trim();
+    // Wikipedia shaping: the REST summary endpoint resolves exact article
+    // titles best. Prefer the first capitalised term (proper noun heuristic
+    // — "Neuromancer", "Philip K. Dick"). Fall back to joining all terms.
+    const query = pickWikipediaQuery(state.terms).trim();
     if (query.length === 0) return { "output": 'empty' };
     try {
       const tool = context.services.wikipediaSummary;
       const lang = UserLanguage.normalize(state.userLanguage);
-      context.services.logger.info(`wikipedia: "${query}" (lang ${lang})`);
+      const wikiTitle = encodeURIComponent(query.replace(/\s+/gu, '_'));
       const rawCandidates = await scoutRetry.run(
         () => tool.execute({ query, "lang": lang }, context.signal),
         context.signal,
       );
       const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
-      context.services.logger.info(`wikipedia: ${String(candidates.length)} hits (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
+      const firstWikiTitle = rawCandidates[0]?.book.title ?? '—';
+      context.services.logger.info(`wikipedia GET https://${lang}.wikipedia.org/api/rest_v1/page/summary/${wikiTitle} → ${String(rawCandidates.length)} hits, first: "${firstWikiTitle}" (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
       if (candidates.length === 0) {
         state.failureCause += `Wikipedia: 0 hits for "${query}". `;
       }

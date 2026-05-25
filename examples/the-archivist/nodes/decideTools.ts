@@ -113,19 +113,23 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools'> = {
       // four-scout set. WebLLM and Gemini Nano have unreliable structured output
       // so the LLM may under-propose tools; the scouts run in parallel so the
       // cost of running all four is bounded.
+      //
+      // Arguments intentionally omit `query` / `subject`. Each scout falls back
+      // to `state.terms.join(' ')` (the keywords produced by `extract-query`)
+      // when its query arg is missing. Passing `state.query` here would make
+      // OpenLibrary search for the literal visitor sentence — 0 hits.
       if (!isFullCatalog && state.intent === 'search' && calls.length < 2) {
-        const fallbackQuery = calls.find((c) => typeof c.arguments['query'] === 'string')?.arguments['query'] as string | undefined ?? state.query;
         calls = [
-          { 'name': 'web_search_books',    'arguments': { 'query': fallbackQuery, 'limit': 8 } },
-          { 'name': 'google_books_search', 'arguments': { 'query': fallbackQuery, 'maxResults': 8 } },
-          { 'name': 'subject_search',      'arguments': { 'subject': fallbackQuery, 'limit': 8 } },
-          { 'name': 'wikipedia_summary',   'arguments': { 'query': fallbackQuery } },
+          { 'name': 'web_search_books',    'arguments': { 'limit': 8 } },
+          { 'name': 'google_books_search', 'arguments': { 'maxResults': 8 } },
+          { 'name': 'subject_search',      'arguments': { 'limit': 8 } },
+          { 'name': 'wikipedia_summary',   'arguments': {} },
         ];
         context.services.logger.info('decideTools safety-net: forced all four scouts for sparse on-topic plan');
       } else if (!isFullCatalog && calls.length === 0) {
         // Minimal safety net for other non-full-catalog intents: ensure at least
         // web_search_books is in the plan so openLibraryScout runs.
-        calls = [{ 'name': 'web_search_books', 'arguments': { 'query': state.query, 'limit': 8 } }];
+        calls = [{ 'name': 'web_search_books', 'arguments': { 'limit': 8 } }];
         context.services.logger.info('decideTools safety-net: added web_search_books (LLM emitted empty plan)');
       }
 
@@ -141,9 +145,10 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools'> = {
       return { 'output': 'no-tools' };
     } catch (err) {
       // Salvage path: timeout or any error — fall through with a minimal
-      // raw-query plan so the book-search fan-out still runs.
+      // plan so the book-search fan-out still runs. No `query` arg —
+      // openLibraryScout falls back to `state.terms.join(' ')`.
       context.services.logger.warn(`decideTools: timeout/error — falling through with defaults: ${err instanceof Error ? err.message : String(err)}`);
-      state.toolPlan = [{ 'name': 'web_search_books', 'arguments': { 'query': state.query } }];
+      state.toolPlan = [{ 'name': 'web_search_books', 'arguments': {} }];
       return { 'output': 'tools' };
     } finally {
       clearTimeout(handle);
