@@ -84,8 +84,12 @@ export interface LlmClient {
    * Rank candidates by relevance to the query. The LLM assigns each
    * candidate a score in [0, 1] — there are no hand-crafted score
    * floors; the model is the ranker.
+   *
+   * `signal` is optional and forwarded to the adapter's `ChatRequest`.
+   * When the node's `context.signal` is already aborted the adapter
+   * short-circuits via `AbortSignal.any` before making the network call.
    */
-  rankCandidates(query: string, candidates: readonly Candidate[]): Promise<readonly ScoredCandidate[]>;
+  rankCandidates(query: string, candidates: readonly Candidate[], signal?: AbortSignal): Promise<readonly ScoredCandidate[]>;
   /**
    * Compose a prose response from a shortlist of candidates. The
    * optional `priorContext` carries facts the agent should reference
