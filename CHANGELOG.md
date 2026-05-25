@@ -10,6 +10,16 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 ### Fixed
 
+## [0.11.3] - 2026-05-25
+
+**DagGraph hex motif + dagre tuning.**
+
+### Changed
+
+- Compound subgraphs (`embedded-dag`, `parallel`, every `node:parent` container) render as `round-hexagon`. Fan-out placements render as `concave-hexagon`. Leaf nodes stay rectangular — the hex motif now reads as "container" at every level.
+- Edges render with `curve-style: round-taxi` (rounded 90° segments, 12px corner radius) and a `vee` arrowhead (sharper 6-sided wedge — fits the hex motif). `source-endpoint` / `target-endpoint` set to `outside-to-node-or-label` so arrows never sit inside node padding.
+- Dagre layout: `ranker: 'tight-tree'` (packs DAGs whose branches reconverge, like the Archivist's fan-out → merge pattern); `align` removed so each rank centers under its predecessor; `marginx: 40` / `marginy: 40` added so outermost nodes have wrap-around room.
+
 ## [0.11.2] - 2026-05-25
 
 **Archivist `rank-candidates`: signal propagation, timeout budget, and unranked-candidate salvage.**
