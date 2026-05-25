@@ -321,22 +321,25 @@ function makeEdgeAdapter(cy: Core | null, source: string, route: string): EdgeVi
 
 function dagLayout(): Record<string, unknown> {
   // dagre — hierarchical top-down layout with native compound-graph support.
-  // Separations widened so edges have horizontal/vertical room to route
-  // without overlapping each other. The taxi curve style angles edges in
-  // 90° segments through the gaps these separations create.
+  // ranker:tight-tree packs DAGs whose branches reconverge (fan-out → merge
+  // patterns common in the Archivist demo). No align so dagre centers nodes
+  // within each rank — looks cleaner with mixed node widths. marginx/marginy
+  // keep outermost nodes clear of the container frame so edges have
+  // wrap-around room.
   return {
     name: 'dagre',
     rankDir: 'TB',
-    ranker: 'network-simplex',
-    rankSep: 240,                 // ↑ from 180 — more vertical room between ranks
-    nodeSep: 140,                 // ↑ from 80  — more horizontal room within rank
-    edgeSep: 60,                  // ↑ from 30  — keeps parallel edges apart
-    align: 'UL',
+    ranker: 'tight-tree',
+    rankSep: 240,
+    nodeSep: 140,
+    edgeSep: 60,
     acyclicer: 'greedy',
     nodeDimensionsIncludeLabels: true,
     fit: true,
     animate: false,
     padding: 60,
+    marginx: 40,
+    marginy: 40,
   };
 }
 
@@ -379,9 +382,9 @@ function dagStylesheet(): unknown[] {
       'transition-property': 'border-color, border-width, background-color, color, opacity',
       'transition-duration': 220,
     } },
-    { selector: 'node[type="fan-out"]',  style: { 'shape': 'hexagon' } },
+    { selector: 'node[type="fan-out"]',  style: { 'shape': 'concave-hexagon' } },
     { selector: 'node[type="parallel"]', style: {
-      'shape':            'round-rectangle',
+      'shape':            'round-hexagon',
       'background-color': '#04060a',           // --mermaid-cluster-fill (deepest navy)
       'background-opacity': 1,
       'border-color':     '#7a8290',           // --mermaid-cluster-stroke (steel)
@@ -396,7 +399,7 @@ function dagStylesheet(): unknown[] {
       'font-weight':      600,
       'color':            '#eef3f7',
     } },
-    { selector: 'node[type="embedded-dag"]', style: { 'shape': 'cut-rectangle' } },
+    { selector: 'node[type="embedded-dag"]', style: { 'shape': 'round-hexagon' } },
     { selector: 'node[type="terminal"]', style: {
       'shape':            'round-rectangle',
       'background-color': '#020306',
@@ -406,7 +409,7 @@ function dagStylesheet(): unknown[] {
     // border on the deepest navy so the cluster reads as a frame,
     // not a focal point.
     { selector: 'node:parent', style: {
-      'shape':            'round-rectangle',
+      'shape':            'round-hexagon',
       'background-color': '#04060a',
       'border-color':     '#7a8290',
       'border-style':     'dashed',
@@ -472,13 +475,16 @@ function dagStylesheet(): unknown[] {
     // mid-segment placement collided with target nodes when the taxi
     // turn happened close to one).
     { selector: 'edge', style: {
-      'curve-style':         'taxi',          // angled segments, mermaid-style
+      'curve-style':         'round-taxi',    // angled segments with rounded corners
       'taxi-direction':      'vertical',
-      'taxi-turn':           28,              // ↑ slightly so first horizontal seg has room for the label
+      'taxi-turn':           28,              // first horizontal seg has room for the label
+      'taxi-radius':         12,              // rounded corner radius for round-taxi
       'line-color':          '#22e8ff',
       'target-arrow-color':  '#22e8ff',
-      'target-arrow-shape':  'triangle',
-      'arrow-scale':         1.2,
+      'target-arrow-shape':  'vee',           // sharper 6-sided wedge — matches hex motif
+      'arrow-scale':         1.4,
+      'source-endpoint':     'outside-to-node-or-label',
+      'target-endpoint':     'outside-to-node-or-label',
       // Label anchored at the source end of the edge, offset so it
       // sits in clear space below the source node and far away from
       // the target.
