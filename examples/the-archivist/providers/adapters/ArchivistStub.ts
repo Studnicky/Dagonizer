@@ -13,7 +13,7 @@
 
 import { StubAdapter } from '@noocodex/dagonizer-adapter-stub';
 import { ChatResponseMessageBuilder, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
-import type { ChatRequest, ChatResponse, ToolCall, ToolDefinition } from '@noocodex/dagonizer/adapter';
+import type { ChatRequest, ChatResponse } from '@noocodex/dagonizer/adapter';
 
 import { SeedLibrary } from '../../data/SeedLibrary.js';
 import { MemoryStore } from '../../memory/MemoryStore.js';
@@ -50,13 +50,16 @@ export class ArchivistStub extends StubAdapter {
       return { 'message': ChatResponseMessageBuilder.from(stubVisitorReply(), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
     }
 
-    if (request.tools !== undefined && request.tools.length > 0 && shouldInvokeWebSearch(query)) {
-      const calls = toolCallFor(query, request.tools);
-      return { 'message': ChatResponseMessageBuilder.from('', calls), 'finishReason': 'tool_call', 'usage': ZERO_TOKEN_USAGE };
-    }
-
-    if (request.outputSchema !== undefined) {
-      return Promise.resolve(groundedDecideTools(query, request.tools ?? []));
+    if (request.outputSchema.kind === 'schema') {
+      const id = request.outputSchema.id;
+      if (id === 'archivist-decide-tools-v1') {
+        return { 'message': ChatResponseMessageBuilder.from(groundedDecideToolsJson(query), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
+      }
+      if (id === 'archivist-rank-v1') {
+        return { 'message': ChatResponseMessageBuilder.from(groundedRankJson(query), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
+      }
+      // Unknown schema: emit empty JSON object.
+      return { 'message': ChatResponseMessageBuilder.from('{}', []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
     }
 
     return { 'message': ChatResponseMessageBuilder.from(groundedAnswer(query, this.#shelfSize()), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
@@ -75,25 +78,44 @@ export class ArchivistStub extends StubAdapter {
 
 // ── Grounded response helpers ──────────────────────────────────────────────
 
-function groundedDecideTools(query: string, tools: readonly ToolDefinition[]): ChatResponse {
-  const matches = SeedLibrary.findByKeywords(query, 3);
-  const webSearch = tools.find((t) => t.name === 'web_search_books');
-
-  if (matches.length > 0 && webSearch !== undefined) {
-    const visitor = query.split(/visitor question:/iu)[1]?.trim() ?? query.slice(-200);
-    const calls: readonly ToolCall[] = [{
-      'id':        `stub-${String(Date.now())}`,
-      'name':      webSearch.name,
-      'arguments': { 'query': visitor, 'limit': 5 },
-    }];
-    return {
-      'message': ChatResponseMessageBuilder.from('', calls),
-      'finishReason': 'tool_call',
-      'usage': ZERO_TOKEN_USAGE,
-    };
+/**
+ * Index-pointer stub for `decideTools`. Counts the numbered tool list
+ * in the prompt and returns indices 1..N — call every tool so the
+ * downstream fan-out actually fans out. When no numbered list is
+ * found in the prompt (degenerate case), returns `{tools: []}`.
+ */
+function groundedDecideToolsJson(prompt: string): string {
+  const lines = prompt.split('\n');
+  // Count "  N. <name> — <desc>" lines under the `Available tools:` header.
+  let count = 0;
+  let inList = false;
+  for (const line of lines) {
+    if (/^Available tools:/.test(line)) { inList = true; continue; }
+    if (inList) {
+      if (/^\s+\d+\.\s/.test(line)) count += 1;
+      else if (line.trim().length === 0) break;
+    }
   }
+  if (count === 0) return JSON.stringify({ 'tools': [] });
+  const tools = Array.from({ length: count }, (_v, i) => i + 1);
+  return JSON.stringify({ 'tools': tools });
+}
 
-  return { 'message': ChatResponseMessageBuilder.from(JSON.stringify({ 'tool_calls': [] }), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
+/**
+ * Index-pointer stub for `rankCandidates`. Counts numbered candidate
+ * rows in the prompt and returns a `{order: [...]}` shuffle. The
+ * SeedLibrary lookup is used only for shelf-resonance flavour — the
+ * stub doesn't try to actually re-rank; it returns the identity order.
+ */
+function groundedRankJson(prompt: string): string {
+  const lines = prompt.split('\n');
+  let count = 0;
+  for (const line of lines) {
+    if (/^\d+\.\s+isbn=/.test(line)) count += 1;
+  }
+  if (count === 0) return JSON.stringify({ 'order': [] });
+  const order = Array.from({ length: count }, (_v, i) => i + 1);
+  return JSON.stringify({ 'order': order });
 }
 
 function groundedAnswer(query: string, shelfSize: number): string {
@@ -245,22 +267,3 @@ function stubVisitorReply(): string {
   return STUB_VISITOR_REPLIES[Date.now() % STUB_VISITOR_REPLIES.length] as string;
 }
 
-function shouldInvokeWebSearch(query: string): boolean {
-  return (
-    /\b97[89]\d{10}\b/u.test(query)
-    || /"([^"]{3,})"/u.test(query)
-    || /\bby\s+[A-Z][a-z]+/u.test(query)
-    || /\bauthor\b|\bisbn\b|\btitle\b/iu.test(query)
-  );
-}
-
-function toolCallFor(query: string, tools: readonly ToolDefinition[]): ToolCall[] {
-  const webSearch = tools.find((t) => t.name === 'web_search_books');
-  if (webSearch === undefined) return [];
-  const visitor = query.split(/visitor question:/iu)[1]?.trim() ?? query.slice(-200);
-  return [{
-    'id':   `stub-${String(Date.now())}`,
-    'name': webSearch.name,
-    'arguments': { 'query': visitor, 'limit': 5 },
-  }];
-}
