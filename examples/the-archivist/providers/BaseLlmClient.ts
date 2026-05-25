@@ -109,13 +109,14 @@ export class BaseLlmClient implements LlmClient {
     return toolCallsOf(response.message).map((c) => ({ 'name': c.name, 'arguments': c.arguments }));
   }
 
-  async rankCandidates(query: string, candidates: readonly Candidate[]): Promise<readonly ScoredCandidate[]> {
+  async rankCandidates(query: string, candidates: readonly Candidate[], signal?: AbortSignal): Promise<readonly ScoredCandidate[]> {
     if (candidates.length === 0) return [];
     const request = ChatRequestBuilder.from({
       'messages':     [{ 'role': 'user', 'content': prompts.rankCandidates(this.language, query, candidates), 'toolCallId': '', 'toolName': '' }],
       'outputSchema': { 'kind': 'schema', 'schema': schemas.rankCandidates, 'id': 'archivist-rank-v1' },
       'temperature':  0.1,
       'maxTokens':    1024,
+      'signal':       signal,
     });
     const response = await this.adapter.chat(request);
     const raw = contentOf(response.message);

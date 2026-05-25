@@ -36,14 +36,29 @@ const rankRetry = new RetryPolicy({
 });
 // #endregion rank-retry
 
-/** Default wall-clock budget for the rank phase (ms). Overridden at runtime by the runner. */
-export const RANK_TIMEOUT_MS = 30_000;
+/**
+ * Wall-clock reference for ranking latency budgets (ms).
+ *
+ * NOTE: This constant is NOT used as a per-node `timeoutMs` on the node
+ * placement. The dispatcher implements `timeoutMs` as an external
+ * `Promise.race` — when the deadline wins, the node's execute promise is
+ * discarded silently and the try/catch salvage block never runs. Without
+ * the catch, ranked candidates from a slow on-device LLM (Gemini Nano,
+ * WebLLM) are lost even when the response arrived just after the timer.
+ *
+ * Instead: `context.signal` is forwarded all the way to the adapter's
+ * `fetch` call via `ChatRequest.signal`. The RetryPolicy also receives
+ * the signal. When the *parent* run exceeds the flow's overall deadline
+ * the signal is aborted, the fetch is cancelled, and the catch block
+ * below salvages whatever `state.candidates` the scouts already wrote —
+ * the user sees real (unranked) books instead of an empty response.
+ */
+export const RANK_TIMEOUT_MS = 90_000;
 
 export const rankCandidates: ArchivistNode<'ranked'> = {
   'name':    'rank-candidates',
   'kind':    'non-deterministic',
   'outputs': ['ranked'],
-  'timeoutMs': RANK_TIMEOUT_MS,
   async execute(state, context) {
     if (state.candidates.length === 0) {
       context.services.logger.info('rank-candidates: no candidates to rank');
@@ -51,7 +66,7 @@ export const rankCandidates: ArchivistNode<'ranked'> = {
     }
     try {
       const scored = await rankRetry.run(
-        () => context.services.llm.rankCandidates(state.query, state.candidates),
+        () => context.services.llm.rankCandidates(state.query, state.candidates, context.signal),
         context.signal,
       );
       // Sort descending by score; re-emit as Candidate[] preserving
@@ -72,16 +87,33 @@ export const rankCandidates: ArchivistNode<'ranked'> = {
           : ''}`,
       );
     } catch (err) {
-      // Ranking is best-effort. If the LLM cannot rank, leave the
-      // candidates unscored (score:0) and let merge soft-gate.
-      state.collectError({
-        'code':        'RANK_FAILED',
-        'message':     err instanceof Error ? err.message : String(err),
-        'operation':   'rank-candidates',
-        'recoverable': true,
-        'timestamp':   new Date().toISOString(),
-      });
-      context.services.logger.warn(`rank-candidates failed: ${String(err)}`);
+      // Detect abort / signal cancellation — treat as a soft timeout, not a
+      // hard LLM error. `context.signal` may be aborted by the parent flow's
+      // deadline; the adapter raises a DOMException(name='AbortError') or an
+      // Error matching /aborted|timeout/ when the underlying fetch is cancelled.
+      const isAbort =
+        (err instanceof DOMException && err.name === 'AbortError') ||
+        (err instanceof Error && /aborted|timeout/iu.test(err.message));
+
+      if (isAbort) {
+        // Salvage path: leave state.candidates exactly as the scouts wrote them
+        // (each already has a scout-supplied score). The user sees real books
+        // rather than an empty "couldn't find anything" response.
+        context.services.logger.info(
+          `rank-candidates: timed out, falling through with ${String(state.candidates.length)} unranked candidates`,
+        );
+      } else {
+        // Ranking is best-effort. If the LLM cannot rank, leave the
+        // candidates unscored (score:0) and let merge soft-gate.
+        state.collectError({
+          'code':        'RANK_FAILED',
+          'message':     err instanceof Error ? err.message : String(err),
+          'operation':   'rank-candidates',
+          'recoverable': true,
+          'timestamp':   new Date().toISOString(),
+        });
+        context.services.logger.warn(`rank-candidates failed: ${String(err)}`);
+      }
     }
     return { 'output': 'ranked' };
   },
