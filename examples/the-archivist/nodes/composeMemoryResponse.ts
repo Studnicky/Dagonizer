@@ -22,10 +22,12 @@ export const composeMemoryResponse: ArchivistNode<'drafted'> = {
     const recalledSummary = state.recalledContext.summary.length > 0
       ? state.recalledContext.summary
       : undefined;
+    const conversation = state.conversation.length > 0 ? state.conversation : undefined;
     state.draft = await context.services.llm.composeMemoryRecall(
       state.query,
       state.memoryDigest,
       recalledSummary,
+      conversation,
     );
     context.services.logger.info(
       `compose-memory-response: draft length=${String(state.draft.length)}`,

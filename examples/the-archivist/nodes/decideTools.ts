@@ -101,9 +101,22 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools'> = {
         }
       }
 
-      // Minimal safety net for non-full-catalog intents: ensure at least
-      // web_search_books is in the plan so openLibraryScout runs.
-      if (!isFullCatalog && calls.length === 0) {
+      // Safety net for on-topic intent with a sparse tool plan: force the full
+      // four-scout set. WebLLM and Gemini Nano have unreliable structured output
+      // so the LLM may under-propose tools; the scouts run in parallel so the
+      // cost of running all four is bounded.
+      if (!isFullCatalog && state.intent === 'on-topic' && calls.length < 2) {
+        const fallbackQuery = calls.find((c) => typeof c.arguments['query'] === 'string')?.arguments['query'] as string | undefined ?? state.query;
+        calls = [
+          { 'name': 'web_search_books',    'arguments': { 'query': fallbackQuery, 'limit': 8 } },
+          { 'name': 'google_books_search', 'arguments': { 'query': fallbackQuery, 'maxResults': 8 } },
+          { 'name': 'subject_search',      'arguments': { 'subject': fallbackQuery, 'limit': 8 } },
+          { 'name': 'wikipedia_summary',   'arguments': { 'query': fallbackQuery } },
+        ];
+        context.services.logger.info('decideTools safety-net: forced all four scouts for sparse on-topic plan');
+      } else if (!isFullCatalog && calls.length === 0) {
+        // Minimal safety net for other non-full-catalog intents: ensure at least
+        // web_search_books is in the plan so openLibraryScout runs.
         calls = [{ 'name': 'web_search_books', 'arguments': { 'query': state.query, 'limit': 8 } }];
         context.services.logger.info('decideTools safety-net: added web_search_books (LLM emitted empty plan)');
       }

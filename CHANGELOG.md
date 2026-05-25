@@ -10,6 +10,30 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 ### Fixed
 
+## [0.11.1] - 2026-05-24
+
+**Archivist intent routing fixes, conversation context threading, and Ollama error UX.**
+
+### Added
+
+- `ConversationTurn` interface exported from `ArchivistState.ts`. Carries `role`, `text`, and `ts` for a single visitor or archivist turn.
+- `ArchivistState.conversation` field (`readonly ConversationTurn[] = []`) — stores the N most-recent turns sliced from the runner's display buffer before each DAG execution. Round-trips through `snapshotData()` / `restoreData()` for checkpoint support. V8 shape stability: always initialised to `[]`, never undefined.
+- `ConversationContextPane.vue` — new Config tab slider ("Conversation context window", default 6 turns, range 0–20). Setting to 0 disables history threading entirely. Persisted to `localStorage`. Mirrors the `TimeoutPane` styling.
+- Archivist demo threads the last N conversation turns into every LLM compose call and the `classifyIntent` prompt. Prior turns are formatted as a "Conversation so far" block so the model resolves pronouns ("that", "it", "yes let's do that") against context. Fixes a bug where pronoun-resolution queries were treated as cold starts.
+- `recallContext` and `recallMemories` nodes boost their LLM-ready summary when the current query is a short pronoun-acceptance ("yes", "sure", "let's do that") and the last archivist turn proposed an action — so the classifier can resolve the reference before SPARQL memory data is available.
+
+### Changed
+
+- Backend cascade reordered: cloud APIs (Groq, Cerebras, Gemini API, Mistral, OpenRouter) take priority over local daemon (Ollama) and on-device models (Gemini Nano, WebLLM). The highest-priority reachable backend is now auto-selected at mount time; saved user preference still wins on reload.
+- `IntentClassifier` anchor phrases sharpened: `recommend-similar` now covers "similar to Dune" patterns; `search` anchor explicitly covers tool-use and web-lookup requests; `off-topic` is restricted to queries clearly unrelated to books (weather, sports, jokes).
+- `classifyIntent` LLM prompt updated: explicit rule that tool-related and web-search queries must route to `search`, never `off-topic`; `off-topic` definition tightened; two new examples added.
+- `decideTools` safety net extended: when `intent === 'on-topic'` and the LLM proposes fewer than two tools, all four scouts (`web_search_books`, `google_books_search`, `subject_search`, `wikipedia_summary`) are pre-populated so the fan-out runs in full.
+- `LlmClient` interface (`services.ts`) — `classifyIntent`, `compose`, `composeAuthor`, `composeReviews`, `describeBook`, `composeSimilar`, `composeMemoryRecall`, and `composeEmptyResponse` accept an optional trailing `conversation?: readonly ConversationTurn[]` parameter. Existing call sites pass `undefined` and are unaffected.
+
+### Fixed
+
+- Ollama adapter now intercepts HTTP 404 responses and re-throws with the message `Ollama model 'X' is not installed. Run: ollama pull X` instead of a generic error.
+
 ## [0.11.0] - 2026-05-24
 
 **EmbeddedDAG boundary + engine hardening.** Deep-DAG authoring is renamed

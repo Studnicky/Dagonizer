@@ -77,6 +77,7 @@ import MemoryGraph from './MemoryGraph.vue';
 import type { MemorySelection } from './MemoryGraph.vue';
 import PanesTabs from './PanesTabs.vue';
 import SendForm from './SendForm.vue';
+import ConversationContextPane from './ConversationContextPane.vue';
 import TimeoutPane from './TimeoutPane.vue';
 import type { TimeoutSettings } from './TimeoutPane.vue';
 import ToolExplainPanel from './ToolExplainPanel.vue';
@@ -87,7 +88,12 @@ import { RunnerMachine } from '../runner/RunnerMachine.ts';
 
 // ── State ───────────────────────────────────────────────────────────────
 const backends = ref<readonly BackendAvailability[]>([]);
-const activeBackend = ref<ProviderId>('gemini-nano');
+// Prefer a saved override; fall back to the highest-priority reachable
+// backend at mount time (resolved in onMounted once detectBackends completes).
+const savedBackend = typeof localStorage !== 'undefined'
+  ? (localStorage.getItem('dagonizer-active-backend') as ProviderId | null)
+  : null;
+const activeBackend = ref<ProviderId>(savedBackend ?? 'stub');
 const noModel = ref(false);
 const isMobile = ref(false);
 const apiKeys = ref<Partial<Record<ProviderId, string>>>(loadApiKeys());
@@ -109,6 +115,13 @@ memoryStore.enablePersistence();
 const memoryTick = ref(0); // bumped after each write so MemoryGraph re-renders
 const isPersisted = ref(memoryStore.isPersisted);
 const logger = new ConsoleLogger();
+
+// ── Conversation context window ───────────────────────────────────────────
+const conversationContextWindow = ref(6);
+
+function onConversationWindowUpdate(size: number): void {
+  conversationContextWindow.value = size;
+}
 
 // ── Timeout settings ─────────────────────────────────────────────────────
 const timeoutSettings = ref<TimeoutSettings>({
@@ -349,6 +362,13 @@ watch(apiKeys, async () => {
   noModel.value = hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
 }, { 'deep': true });
 
+// Persist the visitor's backend selection so it survives page reloads.
+watch(activeBackend, (id) => {
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem('dagonizer-active-backend', id);
+  }
+});
+
 // ── Left-column tabs: Conversation | Config ──────────────────────────────
 const leftTabs = computed(() => [
   { 'key': 'conversation', 'label': 'Conversation', 'badge': '', 'tone': 'default' as const },
@@ -505,11 +525,16 @@ onMounted(async () => {
   }
   noModel.value = false;
 
+  // Auto-pick the best backend only when no saved user preference exists.
   // pickBestBackend falls back to stub on mobile when no cloud key is set.
-  const picked = pickBestBackend(backends.value, { 'isMobile': isMobile.value });
-  if (picked !== null) {
-    activeBackend.value = picked.id;
-    logger.info(`backend: ${picked.displayName}`);
+  if (savedBackend === null) {
+    const picked = pickBestBackend(backends.value, { 'isMobile': isMobile.value });
+    if (picked !== null) {
+      activeBackend.value = picked.id;
+      logger.info(`backend auto-selected: ${picked.displayName}`);
+    }
+  } else {
+    logger.info(`backend from saved preference: ${savedBackend}`);
   }
 
   // On a fresh session: generate the Archivist greeting, push it to the
@@ -627,6 +652,10 @@ async function ask(): Promise<void> {
   const visitor = new ArchivistState();
   visitor.query = queryText;
   visitor.runId = runId;
+  // Slice the display conversation to the configured window and assign to state
+  // so every LLM prompt receives prior-turn context for pronoun resolution.
+  const recentTurns = conversation.value.slice(-conversationContextWindow.value);
+  visitor.conversation = recentTurns.map((t) => ({ 'role': t.role, 'text': t.text, 'ts': t.ts }));
 
   activeAbortController = new AbortController();
   const deadlineMs = overallDeadlineMs();
@@ -828,6 +857,10 @@ function reset(): void {
                     @save="saveCheckpoint"
                     @resume="resumeFromCheckpoint"
                   />
+                </section>
+
+                <section class="ar-config-section">
+                  <ConversationContextPane @update:window-size="onConversationWindowUpdate" />
                 </section>
 
                 <section class="ar-config-section">
