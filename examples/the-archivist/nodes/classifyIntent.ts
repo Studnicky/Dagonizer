@@ -37,7 +37,8 @@ export const classifyIntent: NodeInterface<ArchivistState, IntentOutput, Archivi
     const summary = state.recalledContext.summary.length > 0
       ? state.recalledContext.summary
       : undefined;
-    const intent = await context.services.llm.classifyIntent(state.query, summary);
+    const conversation = state.conversation.length > 0 ? state.conversation : undefined;
+    const intent = await context.services.llm.classifyIntent(state.query, summary, conversation);
     state.intent = intent;
     context.services.logger.info(`intent=${intent}`);
     switch (intent) {

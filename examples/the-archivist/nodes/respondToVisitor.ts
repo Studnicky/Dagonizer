@@ -91,8 +91,9 @@ export const composeEmptyResponse: NodeInterface<ArchivistState, 'drafted', Arch
       "timestamp": new Date().toISOString(),
     });
     try {
+      const conversation = state.conversation.length > 0 ? state.conversation : undefined;
       state.draft = await emptyRetry.run(
-        () => context.services.llm.composeEmptyResponse(state.query, state.failureCause),
+        () => context.services.llm.composeEmptyResponse(state.query, state.failureCause, conversation),
         context.signal,
       );
       context.services.logger.info('compose-empty: LLM response composed');
