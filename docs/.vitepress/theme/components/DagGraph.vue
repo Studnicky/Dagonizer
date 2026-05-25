@@ -70,13 +70,8 @@ const dagLegendTabs: readonly LegendTab[] = [
 onMounted(async () => {
   let cytoscape: typeof import('cytoscape').default;
   try {
-    const [coreMod, dagreMod] = await Promise.all([
-      import('cytoscape'),
-      // cytoscape-dagre ships CommonJS; cast through unknown so tsc is happy.
-      import('cytoscape-dagre') as Promise<unknown>,
-    ]);
+    const coreMod = await import('cytoscape');
     cytoscape = coreMod.default;
-    cytoscape.use((dagreMod as { default: Parameters<typeof cytoscape.use>[0] }).default);
   } catch (err) {
     loadError.value = err instanceof Error ? err.message : String(err);
     loading.value = false;
@@ -320,26 +315,16 @@ function makeEdgeAdapter(cy: Core | null, source: string, route: string): EdgeVi
 // ── Layout + stylesheet ──────────────────────────────────────────────────
 
 function dagLayout(): Record<string, unknown> {
-  // dagre — hierarchical top-down layout with native compound-graph support.
-  // ranker:tight-tree packs DAGs whose branches reconverge (fan-out → merge
-  // patterns common in the Archivist demo). No align so dagre centers nodes
-  // within each rank — looks cleaner with mixed node widths. marginx/marginy
-  // keep outermost nodes clear of the container frame so edges have
-  // wrap-around room.
+  // Use cytoscape's built-in `preset` layout, which places each node at its
+  // `position` field. Positions are pre-computed by CompositeLayout inside
+  // CytoscapeRenderer.render() using @dagrejs/dagre in a bottom-up recursive
+  // pass — this correctly handles embedded-DAG compounds without the ordering
+  // and overlap bugs that cytoscape-dagre exhibits on compound graphs.
   return {
-    name: 'dagre',
-    rankDir: 'TB',
-    ranker: 'tight-tree',
-    rankSep: 240,
-    nodeSep: 140,
-    edgeSep: 60,
-    acyclicer: 'greedy',
-    nodeDimensionsIncludeLabels: true,
+    name: 'preset',
     fit: true,
-    animate: false,
     padding: 60,
-    marginx: 40,
-    marginy: 40,
+    animate: false,
   };
 }
 

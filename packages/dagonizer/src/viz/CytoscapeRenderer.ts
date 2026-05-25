@@ -44,6 +44,9 @@ import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 
+import { CompositeLayout } from './CompositeLayout.js';
+import type { CompositeLayoutOptions } from './CompositeLayout.js';
+
 type DAGNodeEntry = FanOutNode | ParallelNode | SingleNodePlacementInterface | EmbeddedDAGNode | TerminalNodePlacementInterface;
 
 /** A Cytoscape node element. */
@@ -58,6 +61,13 @@ export interface CytoscapeNodeElement {
     readonly [key: string]: unknown;
   };
   readonly classes?: string;
+  /**
+   * Pre-computed position from `CompositeLayout`. When present, callers should
+   * use cytoscape's `preset` layout (which reads `position` from each element)
+   * instead of a computed layout plugin. Cytoscape will draw compound
+   * containers around children automatically given their absolute positions.
+   */
+  readonly position?: { readonly x: number; readonly y: number };
 }
 
 /** A Cytoscape edge element. */
@@ -87,6 +97,17 @@ export interface RenderOptions {
   readonly embeddedDAGs?: ReadonlyMap<string, DAG>;
   /** Max recursion depth — guards against accidental embedded-DAG cycles. */
   readonly maxDepth?: number;
+  /**
+   * When `true` (default), run `CompositeLayout.compute` after building
+   * elements and attach `position: { x, y }` to each node element.
+   * Callers should then use cytoscape's built-in `preset` layout.
+   *
+   * Set to `false` to skip position computation (useful in tests or when
+   * the caller will apply its own layout).
+   */
+  readonly computeLayout?: boolean;
+  /** Layout tuning options forwarded to `CompositeLayout.compute`. */
+  readonly layoutOptions?: CompositeLayoutOptions;
 }
 
 interface RenderState {
@@ -104,6 +125,25 @@ export class CytoscapeRenderer {
 
   /** Default embedded-DAG inline-expansion recursion cap (cycle / accidental-loop guard). */
   private static readonly DEFAULT_MAX_DEPTH = 6;
+
+  /**
+   * Convert a kebab-case placement name to Title Case for display.
+   * Path segments separated by `/` are each title-cased and joined with ` / `.
+   *
+   * @example
+   *   titleCase('extract-query')                       // 'Extract Query'
+   *   titleCase('book-search-fanout/openlibrary-scout') // 'Book Search Fanout / Openlibrary Scout'
+   *   titleCase('no-results')                          // 'No Results'
+   */
+  static titleCase(name: string): string {
+    return name
+      .split('/')
+      .map((seg) => seg
+        .split('-')
+        .map((w) => w.length === 0 ? w : w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' '))
+      .join(' / ');
+  }
 
   /** Mapping from JSON-LD placement-discriminator to Cytoscape `data.type` value. */
   private static readonly PLACEMENT_KIND: Readonly<Record<string, 'single' | 'parallel' | 'fan-out' | 'embedded-dag' | 'terminal'>> = {
@@ -125,9 +165,26 @@ export class CytoscapeRenderer {
     if (state.touchesTerminal) {
       state.elements.push({
         "group": 'nodes',
-        "data":  { "id": CytoscapeRenderer.END_ID, "label": 'end', "type": 'terminal', "synthetic": true },
+        "data":  { "id": CytoscapeRenderer.END_ID, "label": 'End', "type": 'terminal', "synthetic": true },
         "classes": 'dag-terminal',
       });
+    }
+
+    // Attach pre-computed positions via CompositeLayout so the caller can use
+    // cytoscape's built-in `preset` layout instead of cytoscape-dagre.
+    // Skipped when `computeLayout === false` (tests, headless consumers).
+    if (options.computeLayout !== false) {
+      const embeddedDAGs = options.embeddedDAGs ?? new Map<string, DAG>();
+      const layoutResult = CompositeLayout.compute(dag, embeddedDAGs, options.layoutOptions ?? {});
+
+      const withPositions: CytoscapeElement[] = state.elements.map((el) => {
+        if (el.group !== 'nodes') return el;
+        const pos = layoutResult.positions.get(el.data.id);
+        if (pos === undefined) return el;
+        return { ...el, "position": { "x": pos.x, "y": pos.y } } as CytoscapeNodeElement;
+      });
+
+      return withPositions;
     }
 
     return state.elements;
@@ -145,7 +202,7 @@ export class CytoscapeRenderer {
       "group": 'nodes' as const,
       "data": {
         "id":    id,
-        "label": placement.name,
+        "label": CytoscapeRenderer.titleCase(placement.name),
         "type":  kind,
       } as CytoscapeNodeElement['data'],
       "classes": `dag-${kind}`,
@@ -237,6 +294,29 @@ export class CytoscapeRenderer {
       }
     }
 
+    // Build an embedded-DAG entrypoint-rewrite map for THIS level: when an
+    // edge at this level targets an embedded-DAG placement that will be
+    // expanded (its body is registered), rewrite the target to the
+    // embedded-DAG's entrypoint child so dagre gets a real rank
+    // constraint between the predecessor and the FIRST child of the
+    // compound — not the compound's geometric center. Without this,
+    // dagre treats the compound as a rank-opaque slot whose internal
+    // layout is decided only by intra-compound edges, often producing
+    // an inverted child order and a compound positioned above its own
+    // predecessor.
+    const embeddedEntryRewrite = new Map<string, string>();
+    const maxDepth = state.options.maxDepth ?? CytoscapeRenderer.DEFAULT_MAX_DEPTH;
+    for (const placement of dag.nodes as readonly DAGNodeEntry[]) {
+      if (placement['@type'] !== 'EmbeddedDAGNode') continue;
+      const body = state.options.embeddedDAGs?.get(placement.dag);
+      if (body === undefined) continue;
+      if (depth >= maxDepth) continue;
+      if (visited.has(placement.dag)) continue;
+      const placementId = CytoscapeRenderer.idIn(prefix, placement.name);
+      const entryChildId = CytoscapeRenderer.idIn(placementId, body.entrypoint);
+      embeddedEntryRewrite.set(placement.name, entryChildId);
+    }
+
     for (const placement of dag.nodes as readonly DAGNodeEntry[]) {
       const myId = CytoscapeRenderer.idIn(prefix, placement.name);
       const parallelParent = childToParent.get(placement.name);
@@ -263,7 +343,7 @@ export class CytoscapeRenderer {
           ...parentNode,
           "data": {
             ...parentNode.data,
-            "label": `${placement.name}\n[${embeddedDagName}]`,
+            "label": `${CytoscapeRenderer.titleCase(placement.name)}\n[${embeddedDagName}]`,
             ...(myCompoundParent !== undefined ? { "parent": myCompoundParent } : {}),
           },
         };
@@ -276,13 +356,33 @@ export class CytoscapeRenderer {
         CytoscapeRenderer.renderInto(embeddedDagBody, innerPrefix, myId, state, depth + 1, innerVisited);
 
         // External outputs from this placement (after the embedded-DAG completes)
-        // — emit them as edges from the COMPOUND PARENT to wherever the
-        // placement routes. Cytoscape will draw them at the cluster boundary.
+        // — rewrite the SOURCE from the compound to the matching inner
+        // terminal/leaf child(ren) so dagre ranks the exits at the bottom
+        // of the compound rather than aggregating from the compound's
+        // geometric center. Mapping:
+        //   • output named 'error' | 'failed' → inner TerminalNode(failed)
+        //     placements
+        //   • all other outputs → inner TerminalNode(completed) placements
+        //     AND null-route leaves (those exit via the natural-end path)
+        // If no matching inner leaf is found for an output, fall through
+        // to the compound source (original behavior).
+        const innerLeaves = CytoscapeRenderer.collectExitLeaves(embeddedDagBody, innerPrefix);
         for (const edge of CytoscapeRenderer.placementEdges(placement, myId, prefix)) {
           if (edge.data.target === CytoscapeRenderer.idIn(prefix, CytoscapeRenderer.END_ID)) {
             state.touchesTerminal = true;
           }
-          state.elements.push(edge);
+          const isErrorRoute = edge.data.route === 'error' || edge.data.route === 'failed';
+          const candidateSources = isErrorRoute ? innerLeaves.failed : innerLeaves.completed;
+          if (candidateSources.length > 0) {
+            for (const sourceId of candidateSources) {
+              state.elements.push({
+                ...edge,
+                "data": { ...edge.data, "source": sourceId, "id": `${sourceId}__${edge.data.route}__${edge.data.target}` },
+              });
+            }
+          } else {
+            state.elements.push(edge);
+          }
         }
         continue;
       }
@@ -306,8 +406,85 @@ export class CytoscapeRenderer {
         // doesn't try to wire an edge to a non-existent prefixed END.
         if (prefix !== '' && edge.data.target === endId) continue;
         if (edge.data.target === endId) state.touchesTerminal = true;
-        state.elements.push(edge);
+        // Entry-point rewrite: if this edge targets an embedded-DAG
+        // placement at this level, retarget to that placement's
+        // entrypoint child so dagre lays the compound out top-down
+        // with the entry visually at the top.
+        const rewrittenTarget = CytoscapeRenderer.rewriteToEmbeddedEntry(edge.data.target, prefix, embeddedEntryRewrite);
+        if (rewrittenTarget !== edge.data.target) {
+          state.elements.push({
+            ...edge,
+            "data": { ...edge.data, "target": rewrittenTarget, "id": `${edge.data.source}__${edge.data.route}__${rewrittenTarget}` },
+          });
+        } else {
+          state.elements.push(edge);
+        }
       }
     }
+  }
+
+  /**
+   * If `targetId` (an already-prefixed placement id) matches one of the
+   * embedded-DAG placements at this level (per `entryMap` keyed by
+   * un-prefixed placement names), return the entrypoint child id;
+   * otherwise return `targetId` unchanged.
+   */
+  private static rewriteToEmbeddedEntry(
+    targetId: string,
+    prefix: string,
+    entryMap: ReadonlyMap<string, string>,
+  ): string {
+    for (const [placementName, entryChildId] of entryMap) {
+      const placementId = CytoscapeRenderer.idIn(prefix, placementName);
+      if (targetId === placementId) return entryChildId;
+    }
+    return targetId;
+  }
+
+  /**
+   * Enumerate the inner exit-points of an embedded-DAG body so the renderer
+   * can rewrite the parent placement's outgoing edges to originate from
+   * them. Two categories:
+   *   • `failed`    — TerminalNode placements with outcome 'failed'
+   *   • `completed` — TerminalNode placements with outcome 'completed' PLUS
+   *                   placements with at least one `null` route (natural
+   *                   end-of-flow; counts as completed in v0.11 semantics)
+   * Each id is returned prefixed with the parent placement path.
+   */
+  private static collectExitLeaves(
+    body: DAG,
+    innerPrefix: string,
+  ): { readonly completed: readonly string[]; readonly failed: readonly string[] } {
+    // Children of a parallel placement use `null` routes to signal
+    // "collected back to the parallel parent" — they are NOT exit
+    // leaves of the embedded-DAG. Build a set of parallel-children
+    // names so we can skip them.
+    const parallelChildren = new Set<string>();
+    for (const placement of body.nodes as readonly DAGNodeEntry[]) {
+      if (placement['@type'] === 'ParallelNode') {
+        for (const child of placement.nodes) parallelChildren.add(child);
+      }
+    }
+
+    const completed: string[] = [];
+    const failed: string[] = [];
+    for (const placement of body.nodes as readonly DAGNodeEntry[]) {
+      if (parallelChildren.has(placement.name)) continue;
+      const placementId = CytoscapeRenderer.idIn(innerPrefix, placement.name);
+      if (placement['@type'] === 'TerminalNode') {
+        if (placement.outcome === 'failed') failed.push(placementId);
+        else completed.push(placementId);
+        continue;
+      }
+      if ('outputs' in placement) {
+        for (const target of Object.values(placement.outputs)) {
+          if (target === null) {
+            completed.push(placementId);
+            break;
+          }
+        }
+      }
+    }
+    return { completed, failed };
   }
 }

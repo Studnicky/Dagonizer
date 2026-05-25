@@ -3,10 +3,10 @@
  *
  * Internal flow:
  *
- *   crl-compose-response
- *     └─ drafted ──► crl-validate-response
+ *   compose-response
+ *     └─ drafted ──► validate-response
  *          ├─ approved  ──► END (success) ─► parent: respond-to-visitor
- *          ├─ retry     ──► crl-compose-response   (bounded by state.attempts.compose)
+ *          ├─ retry     ──► compose-response   (bounded by state.attempts.compose)
  *          └─ exhausted ──► END (success) ─► parent: respond-to-visitor
  *
  * Outputs:
@@ -55,8 +55,8 @@ export const ComposeRetryLoopDAG: DAG = new DAGBuilder('compose-retry-loop', '1.
   // LLM call wrapped with RetryPolicy for transient failures. Writes
   // state.draft. Intent-specific compose methods dispatched inside the node
   // via state.intent switch.
-  .node('crl-compose-response', composeResponse, {
-    'drafted': 'crl-validate-response',
+  .node('compose-response', composeResponse, {
+    'drafted': 'validate-response',
   })
 
   // ── 2. validate-response ─────────────────────────────────────────────────
@@ -64,9 +64,9 @@ export const ComposeRetryLoopDAG: DAG = new DAGBuilder('compose-retry-loop', '1.
   // compose (bounded by MAX_COMPOSE_ATTEMPTS on state.attempts.compose).
   // 'approved' and 'exhausted' both exit the embedded-DAG cleanly (null terminal)
   // so the parent receives output 'success' and routes to respond-to-visitor.
-  .node('crl-validate-response', validateResponse, {
+  .node('validate-response', validateResponse, {
     'approved':  null,
-    'retry':     'crl-compose-response',
+    'retry':     'compose-response',
     'exhausted': null,
   })
 

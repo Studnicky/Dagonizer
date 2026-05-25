@@ -10,6 +10,29 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 ### Fixed
 
+## [0.11.5] - 2026-05-25
+
+**Archivist DAG node rename + CytoscapeRenderer Title-Case label formatter + search-quality fixes + prior-memory candidate salvage.**
+
+### Added
+
+- `recallCandidates` node — runs before `book-search-fanout` scouts and pre-loads `state.priorCandidates` from memory: prior shortlisted books for runs whose visitor query has Jaccard >= 0.35 overlap with the current query. Cap 10. When live scouts return zero or a source fails (e.g. Google Books 429), the fan-out merges in these prior candidates so the composer always has material to ground a response.
+- `ArchivistState.priorCandidates` — `readonly Candidate[]`, always initialized. Round-trips through checkpoint snapshot/restore and clone().
+- Compose prompts gain a `priorMemoryHint` directive that fires when any candidate carries `notes.fromPriorMemory: true`, so the archivist phrases recalls as "I recall from earlier" instead of "I just searched". Wired into `compose`, `composeAuthor`, `composeReviews`, `describeBook`, and `composeSimilar`.
+- `recallContext` seeds `state.priorCandidates` (cap 5) from high-Jaccard prior runs so intents that skip the `book-search-fanout` embedded-DAG (e.g. `describe-book`, `recall-memories`) still have access to prior candidates.
+
+### Fixed
+
+- Scouts now run their searches against the keywords produced by `extract-query` instead of the raw visitor sentence. `defaultToolArguments` no longer threads `state.query` through as the `query`/`subject` arg — that override was bypassing each scout's `state.terms.join(' ')` fallback. OpenLibrary, Google Books, and Subject Search receive proper catalog-searchable keywords; Wikipedia continues to use `state.terms` directly.
+- `extract-query` prompt rewritten with concrete examples teaching the LLM to distill prose into 2-4 catalog-searchable domain keywords (strip fillers, normalize abbreviations, keep proper nouns). Eliminates the prior failure mode where "sci-fi novels existential questions" got 0 OpenLibrary hits because "novels" and "questions" are noise tokens.
+- Per-scout query shaping: `subject_search` picks the most-specific term from `state.terms` (Library of Congress subject indexes prefer single subjects); `wikipedia_summary` prefers the first capitalised term when one is present (proper-noun title heuristic).
+- Scout logs now include the raw upstream hit count and the first-result title, so debugging 0-hit responses doesn't require devtools.
+
+### Changed
+
+- Every Archivist DAG placement renamed to drop the `bsf-` (book-search-fanout) and `crl-` (compose-retry-loop) namespace prefixes. The embedded-DAG containment already provides the visual namespace in the cytoscape view, so the prefix on each leaf placement was redundant. Affects every reference site: parent `dag.ts` routes, embedded-DAG builders, node-registration order, trace-feed display, prompts that pinned placement names, and any test fixtures that snapshotted the old names.
+- `CytoscapeRenderer` now emits `data.label` formatted as Title Case (kebab-case → Title Case, with `/` path separators preserved). Machine identifiers (placement `name`, route keys, trace node fields) remain kebab-case. So `book-search-fanout/extract-query` renders as "Book Search Fanout / Extract Query".
+
 ## [0.11.4] - 2026-05-25
 
 **In-node timeouts and salvage paths on every LLM-calling Archivist node; index-pointer schemas for rank-candidates and decide-tools; slow-backend warning banner.**

@@ -176,6 +176,9 @@ importers:
       cytoscape-dagre:
         specifier: ^3.0.0
         version: 3.0.0(cytoscape@3.33.4)
+      cytoscape-elk:
+        specifier: ^2.3.0
+        version: 2.3.0(cytoscape@3.33.4)
       cytoscape-fcose:
         specifier: ^2.2.0
         version: 2.2.0(cytoscape@3.33.4)
@@ -1769,6 +1772,11 @@ packages:
     peerDependencies:
       cytoscape: ^3.2.22
 
+  cytoscape-elk@2.3.0:
+    resolution: {integrity: sha512-1h2ZmPOy5HD2+mrfF3P2ICxfnDyPCWg/xLVs7fIjTOzdQu51ydrMtm6Sb7KnhFwLBzhGIVYI2Gbns0njggBarQ==}
+    peerDependencies:
+      cytoscape: ^3.2.0
+
   cytoscape-fcose@2.2.0:
     resolution: {integrity: sha512-ki1/VuRIHFCzxWNrsshHYPs6L7TvLu3DL+TyIGEsRcvVERmxokbf5Gdk7mFxZnTdiGtnA4cfSmjZJMviqSuZrQ==}
     peerDependencies:
@@ -1955,6 +1963,9 @@ packages:
 
   dompurify@3.4.5:
     resolution: {integrity: sha512-OrwIBKsdNSVEeubdJ1HBv/wNENRM9ytAVCv7YXt//A3vPdVMNuACRqK9mXCGCBW2ln7BT/A4X0jXHo2Gu89miA==}
+
+  elkjs@0.9.3:
+    resolution: {integrity: sha512-f/ZeWvW/BCXbhGEf1Ujp29EASo/lk1FDnETgNKwJrsVvGZhUWCZyg3xLJjAsxfOmt8KjswHmI5EwCQcPMpOYhQ==}
 
   emoji-regex-xs@1.0.0:
     resolution: {integrity: sha512-LRlerrMYoIDrT6jgpeZ2YYl/L8EulRTt5hQcYjy5AInh7HWXKimpqx68aknBFpGL2+/IcogTcaydJEgaTmOpDg==}
@@ -4102,6 +4113,11 @@ snapshots:
       '@dagrejs/dagre': 3.0.0
       cytoscape: 3.33.4
 
+  cytoscape-elk@2.3.0(cytoscape@3.33.4):
+    dependencies:
+      cytoscape: 3.33.4
+      elkjs: 0.9.3
+
   cytoscape-fcose@2.2.0(cytoscape@3.33.4):
     dependencies:
       cose-base: 2.2.0
@@ -4308,6 +4324,8 @@ snapshots:
   dompurify@3.4.5:
     optionalDependencies:
       '@types/trusted-types': 2.0.7
+
+  elkjs@0.9.3: {}
 
   emoji-regex-xs@1.0.0: {}
 

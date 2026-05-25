@@ -36,10 +36,10 @@ The complete `BookSearchFanoutDAG`, the embedded-DAG the Archivist places three 
 
 ## What it demonstrates
 
-- **`parallel` placement.** `.parallel('book-search-fan-out', ['bsf-ol', 'bsf-gb', 'bsf-subject', 'bsf-wiki'], 'collect', routes)` runs all four scout nodes concurrently. `combine: 'collect'` waits for every branch and merges their state mutations before routing forward.
+- **`parallel` placement.** `.parallel('book-search-fanout', ['openlibrary-scout', 'google-books-scout', 'subject-scout', 'wikipedia-scout'], 'collect', routes)` runs all four scout nodes concurrently. `combine: 'collect'` waits for every branch and merges their state mutations before routing forward.
 - **Scout gating via `state.toolPlan`.** Each scout checks `state.toolPlan` before making a network call. `decideTools` (an LLM call) populates the plan; scouts that find no matching plan entry return `'empty'` immediately. `wikipediaScout` is the exception; it runs on terms alone, always.
 - **`scoutRetry` pass-through.** Every scout calls `scoutRetry.run(() => tool.execute(..., context.signal), context.signal)`. The signal propagates from the dispatcher through the retry policy: if the parent flow is cancelled, retries abort mid-backoff.
-- **Aggregate routing.** The `parallel` node reports `'success'`, `'error'`, or a partial aggregate once all branches settle. Both `'success'` and `'error'` route to `bsf-rank-candidates` here; the cluster always attempts ranking regardless of partial failures.
+- **Aggregate routing.** The `parallel` node reports `'success'`, `'error'`, or a partial aggregate once all branches settle. Both `'success'` and `'error'` route to `rank-candidates` here; the cluster always attempts ranking regardless of partial failures.
 - **Molecular `registerBookSearchFanoutNodes`.** The exported helper registers the exact node set the embedded-DAG needs. Call it before `dispatcher.registerDAG(BookSearchFanoutDAG)`.
 
 See this in action in the [Archivist live demo](./the-archivist).
