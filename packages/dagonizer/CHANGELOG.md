@@ -1,5 +1,11 @@
 # @noocodex/dagonizer
 
+## 0.11.2
+
+### Patch Changes
+
+- 0789762: `DagGraph` cytoscape stylesheet: compound subgraphs (embedded-DAGs, parallel containers, every `node:parent`) render as `round-hexagon`; fan-out placements render as `concave-hexagon`; edges switch to `round-taxi` with `vee` arrowheads and 12px corner radius. Dagre layout uses `ranker: 'tight-tree'` with centered ranks (no fixed `align`) and `marginx/marginy: 40` so outermost nodes have wrap-around room.
+
 ## 0.11.1
 
 ### Patch Changes
