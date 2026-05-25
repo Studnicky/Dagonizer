@@ -10,6 +10,24 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 ### Fixed
 
+## [0.11.4] - 2026-05-25
+
+**In-node timeouts and salvage paths on every LLM-calling Archivist node; index-pointer schemas for rank-candidates and decide-tools; slow-backend warning banner.**
+
+### Fixed
+
+- The Archivist demo no longer hangs when the on-device backend (Gemini Nano, WebLLM) stalls on a constrained-output call. `decideTools`, `classifyIntent`, `extractQuery`, and `rankCandidates` wrap their LLM call in an in-node 30s `AbortController` timer merged with `context.signal` via `AbortSignal.any`. Cancellation is real — the underlying `fetch` / `LanguageModelSession.prompt` aborts. Salvage paths fall through with sensible defaults (raw-query tool plan, `on-topic` intent, whitespace-split terms, unranked scout candidates), so the DAG always completes.
+
+### Changed
+
+- `rankCandidates` LLM schema simplified to `{order: number[]}` — integer indices into the pre-numbered candidate list. Deterministic code materializes the ranked list; LLM stops generating per-candidate isbn/title/score/reason fields. Expected speedup on Nano: 10–25×.
+- `decideTools` LLM schema simplified to `{tools: number[]}` — integer indices into the numbered tool list. Tool arguments default to `{query: state.query, limit: 8, lang: state.userLanguage}` and are no longer LLM-generated. Adapter's tools channel (`functionDeclarations` / `responseConstraint`) is no longer used here — `outputSchema` instead. Expected speedup on Nano: ~10×.
+- `LlmClient.decideTools`, `classifyIntent`, and `extractTerms` accept an optional trailing `signal?: AbortSignal` parameter, propagated through `ChatRequestBuilder`.
+
+### Added
+
+- Browser-built-in slow-backend warning banner on the Archivist demo. Shown when the active backend is `gemini-nano` or `web-llm` AND no cloud API key is configured. Dismissable; preference persisted in `localStorage` under `archivist:dismiss-slow-banner`.
+
 ## [0.11.3] - 2026-05-25
 
 **DagGraph hex motif + dagre tuning.**
