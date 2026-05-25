@@ -1,0 +1,7 @@
+# @noocodex/dagonizer-adapter-ollama
+
+## 0.11.1
+
+### Patch Changes
+
+- 01014fe: The Archivist demo: backend cascade now prioritizes cloud APIs (Groq, Cerebras, Gemini API, Mistral, OpenRouter) over local daemons (Ollama) and on-device models (Gemini Nano, WebLLM). BackendPicker auto-selects the highest-priority reachable backend at mount time instead of hardcoding `gemini-nano`. IntentClassifier and the `classifyIntent` prompt are sharpened so tool-related queries do not misroute to `off-topic`; the scout safety net in `decideTools` now forces all four web search scouts when the LLM-proposed tool plan is sparse on `on-topic` intents. Ollama adapter surfaces `model 'X' not found` 404 responses with a `Run: ollama pull X` hint.
