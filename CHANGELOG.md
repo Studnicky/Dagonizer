@@ -10,6 +10,23 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 ### Fixed
 
+## [0.12.0] - 2026-05-25
+
+**Smart Archivist: embedder-based recall, anti-hallucination validator, deterministic decide-tools, hybrid rank-candidates.**
+
+### Added
+
+- `Instrumentation` contract gains a `placementPath: readonly string[]` argument on `nodeStart`, `nodeEnd`, and `error` hooks. `Dagonizer.onNodeStart`, `onNodeEnd`, and `onError` subclass hooks accept the same argument (defaulted to `[]` for back-compat). The path holds the ordered embedded-DAG placement names that led to the current node — empty for top-level dispatches, `['on-topic-search']` for one-deep, longer for nested. Enables consumers (like the in-browser Archivist demo) to disambiguate same-named inner nodes across multiple embedded-DAG instances and highlight only the placement currently executing.
+- `ArchivistServices.embedder` — `Embedder | null` exposed as a first-class service. Wired in the CLI runtime (`runArchivist.ts`) from the existing `EmbedderCascade` and set to `null` in the browser runtimes (`main.ts`, `ArchivistRunner.vue`) where no native embedder is available. Every consumer handles `null` gracefully via deterministic fallback.
+- `recordFindings` writes a `dag:embedding` literal per shortlisted candidate (computed from title + description) and a `dag:queryEmbedding` per run, computed via the embedder when reachable. Skipped gracefully on any embedder failure — the absence of these triples is invisible to nodes that don't explicitly use embeddings.
+- `recallCandidates` uses cosine similarity (threshold 0.70) against prior `dag:queryEmbedding` triples when the embedder is reachable; falls back to Jaccard (threshold 0.35) otherwise. Each recalled candidate carries `notes.cosineSimilarity` so downstream nodes can see the match strength. Captures semantic equivalents like "morality in post-scarcity" ↔ "ethics under abundance".
+- Anti-hallucination validator runs deterministically before the LLM validator in `compose-retry-loop`. Tokenises capitalised multi-word entity spans and italicised titles in the draft, cross-references against `state.shortlist` + `state.priorCandidates`, and forces a retry when the draft names books not in either pool. Also bias-checks: when the shortlist is non-empty but the draft cites no shortlist title, the retry loop fires. Eliminates the "Utopia / Iron Heel" class of hallucination at zero LLM cost.
+
+### Changed
+
+- `decideTools` pattern-matches four common query shapes (author lookup, single-quoted title, "books about X", catalog browsing) and bypasses the LLM for unambiguous tool selection. Saves one LLM call per turn on Nano. Existing safety-nets still apply when no pattern matches.
+- `rankCandidates` hybrid pipeline: deterministic composite score (cosine 50%, token overlap 25%, source priority 15%, recency 10%, prior-memory bonus 5%) sorts all candidates; LLM tiebreaks ONLY the top-3 when their scores are within 0.10. Reduces LLM calls per turn from N to at most 1, with better-grounded ordering. Title embeddings cached on `notes.titleEmbedding` for reuse across nodes.
+
 ## [0.11.5] - 2026-05-25
 
 **Archivist DAG node rename + CytoscapeRenderer Title-Case label formatter + search-quality fixes + prior-memory candidate salvage.**

@@ -53,17 +53,17 @@ class RecordingInstrumentation extends NoopInstrumentation<NodeStateBase> {
   override flowEnd(dagName: string, state: NodeStateBase, result: ExecutionResultInterface<NodeStateBase>): void {
     this.calls.push({ 'hook': 'flowEnd', 'args': [dagName, state, result] });
   }
-  override nodeStart(dagName: string, nodeName: string, state: NodeStateBase): void {
-    this.calls.push({ 'hook': 'nodeStart', 'args': [dagName, nodeName, state] });
+  override nodeStart(dagName: string, nodeName: string, state: NodeStateBase, placementPath: readonly string[]): void {
+    this.calls.push({ 'hook': 'nodeStart', 'args': [dagName, nodeName, state, placementPath] });
   }
-  override nodeEnd(dagName: string, nodeName: string, output: string | undefined, state: NodeStateBase): void {
-    this.calls.push({ 'hook': 'nodeEnd', 'args': [dagName, nodeName, output, state] });
+  override nodeEnd(dagName: string, nodeName: string, output: string | undefined, state: NodeStateBase, placementPath: readonly string[]): void {
+    this.calls.push({ 'hook': 'nodeEnd', 'args': [dagName, nodeName, output, state, placementPath] });
   }
   override contractWarning(message: string): void {
     this.calls.push({ 'hook': 'contractWarning', 'args': [message] });
   }
-  override error(dagName: string, nodeName: string, error: Error, state: NodeStateBase): void {
-    this.calls.push({ 'hook': 'error', 'args': [dagName, nodeName, error, state] });
+  override error(dagName: string, nodeName: string, error: Error, state: NodeStateBase, placementPath: readonly string[]): void {
+    this.calls.push({ 'hook': 'error', 'args': [dagName, nodeName, error, state, placementPath] });
   }
 
   hooksOfType(hookName: string): Call[] {
@@ -256,7 +256,7 @@ void describe('Instrumentation contract', () => {
     // future "swallow plugin errors" change is an explicit decision rather
     // than a silent regression.
     class ThrowingInstrumentation extends NoopInstrumentation<NodeStateBase> {
-      override nodeStart(_dagName: string, nodeName: string, _state: NodeStateBase): void {
+      override nodeStart(_dagName: string, nodeName: string, _state: NodeStateBase, _placementPath: readonly string[]): void {
         throw new Error(`hook exploded on ${nodeName}`);
       }
     }

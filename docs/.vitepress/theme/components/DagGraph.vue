@@ -56,6 +56,24 @@ const loadError = ref<string | null>(null);
 const zoomLevel = ref<number>(1);
 let resizeObserver: ResizeObserver | null = null;
 
+/**
+ * Component-scoped warn-once set for the suffix-match migration safety net.
+ * The runner now passes a full `placementPath/nodeName` id; the fallback
+ * triggers only when a consumer still sends bare names. Warn once per id
+ * so the gap is discoverable without flooding the console.
+ */
+const suffixFallbackWarned = new Set<string>();
+function suffixFallbackWarn(id: string): void {
+  if (suffixFallbackWarned.has(id)) return;
+  suffixFallbackWarned.add(id);
+  if (typeof console !== 'undefined') {
+    // eslint-disable-next-line no-console
+    console.debug(
+      `[DagGraph] node name "${id}" resolved via suffix fallback — runner did not pass full placement path`,
+    );
+  }
+}
+
 const dagLegendTabs: readonly LegendTab[] = [
   {
     key: 'kinds',
@@ -164,7 +182,15 @@ function setActive(node: string):     void {
 function followActive(nodeId: string): void {
   const core = cy.value;
   if (core === null) return;
-  const node = core.$id(nodeId);
+  // Runner passes the full `placementPath/nodeName` id; `$id` matches
+  // exactly in the common path. Suffix fallback (with warn-once) is a
+  // migration safety net for consumers still sending bare names — see
+  // makeNodeAdapter for the same pattern.
+  let node = core.$id(nodeId);
+  if (node.length === 0) {
+    suffixFallbackWarn(nodeId);
+    node = core.nodes().filter((n) => n.id().endsWith(`/${nodeId}`));
+  }
   if (node.length === 0) return;
   void core.animate(
     {
@@ -262,14 +288,31 @@ function fitScreen(): void { applyFit(); }
 // ── Adapters — the only place that touches cytoscape from the FSM. ───────
 
 function makeNodeAdapter(cy: Core | null, id: string): NodeVizAdapter {
+  // Resolve the dispatcher's id to a cytoscape element. The runner now
+  // passes a full cytoscape-style id (`[...placementPath, nodeName].join('/')`)
+  // so `cy.$id(id)` matches exactly in the common path — including inner
+  // placements inside an embedded-DAG, which disambiguates same-named
+  // nodes across multiple embedded-DAG instances.
+  //
+  // The suffix fallback remains as a migration safety net for consumers
+  // that have not yet threaded the placement path through to `setActive`
+  // etc. It warns once per missing id so the gap is discoverable instead
+  // of silently lighting up every same-named placement at once.
+  const target = () => {
+    if (cy === null) return undefined;
+    const exact = cy.$id(id);
+    if (exact.length > 0) return exact;
+    suffixFallbackWarn(id);
+    return cy.nodes().filter((n) => n.id().endsWith(`/${id}`));
+  };
   return {
-    addClass(name)    { cy?.$id(id).addClass(name); },
-    removeClass(name) { cy?.$id(id).removeClass(name); },
-    stop()            { cy?.$id(id).stop(true, true); },
+    addClass(name)    { target()?.addClass(name); },
+    removeClass(name) { target()?.removeClass(name); },
+    stop()            { target()?.stop(true, true); },
     pulse() {
-      const node = cy?.$id(id) as NodeSingular | undefined;
-      if (node === undefined || node.length === 0) return;
-      void node.animate(
+      const nodes = target();
+      if (nodes === undefined || nodes.length === 0) return;
+      void nodes.animate(
         { style: { 'overlay-color': '#22e8ff', 'overlay-opacity': 0.55, 'overlay-padding': 18 } },
         { duration: 280 },
       ).animate(
@@ -278,10 +321,11 @@ function makeNodeAdapter(cy: Core | null, id: string): NodeVizAdapter {
       );
     },
     shake() {
-      const node = cy?.$id(id) as NodeSingular | undefined;
-      if (node === undefined || node.length === 0) return;
-      const pos = node.position();
-      void node
+      const nodes = target();
+      if (nodes === undefined || nodes.length === 0) return;
+      const first = nodes[0] as NodeSingular;
+      const pos = first.position();
+      void nodes
         .animate({ position: { x: pos.x - 7, y: pos.y } }, { duration: 70 })
         .animate({ position: { x: pos.x + 7, y: pos.y } }, { duration: 70 })
         .animate({ position: { x: pos.x - 4, y: pos.y } }, { duration: 60 })

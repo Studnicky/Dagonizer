@@ -53,11 +53,11 @@ interface Call {
 class RecordingInstrumentation extends NoopInstrumentation<TrackingState> {
   readonly calls: Call[] = [];
 
-  override phaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TrackingState): void {
-    this.calls.push({ 'hook': 'phaseEnter', 'args': [dagName, phase, placementName, state] });
+  override phaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TrackingState, placementPath: readonly string[]): void {
+    this.calls.push({ 'hook': 'phaseEnter', 'args': [dagName, phase, placementName, state, placementPath] });
   }
-  override phaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TrackingState): void {
-    this.calls.push({ 'hook': 'phaseExit', 'args': [dagName, phase, placementName, state] });
+  override phaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TrackingState, placementPath: readonly string[]): void {
+    this.calls.push({ 'hook': 'phaseExit', 'args': [dagName, phase, placementName, state, placementPath] });
   }
   override flowStart(dagName: string, state: TrackingState): void {
     this.calls.push({ 'hook': 'flowStart', 'args': [dagName, state] });
