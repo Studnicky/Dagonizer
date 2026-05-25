@@ -10,6 +10,17 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 ### Fixed
 
+## [0.11.2] - 2026-05-25
+
+**Archivist `rank-candidates`: signal propagation, timeout budget, and unranked-candidate salvage.**
+
+### Fixed
+
+- `rank-candidates` no longer loses scout-found candidates when the LLM is slow. `context.signal` is now forwarded through `LlmClient.rankCandidates` all the way to the adapter's `fetch` call via `ChatRequest.signal`. When the parent flow's deadline aborts the signal, the underlying fetch is cancelled immediately rather than running to completion and having its result silently discarded.
+- The per-node `timeoutMs` field is removed from the `rank-candidates` placement. The dispatcher implements `timeoutMs` as an external `Promise.race`: when the deadline wins, the execute promise is discarded and the node's try/catch salvage block never runs. With `timeoutMs` absent, abort/timeout errors surface inside `execute` where the catch block can handle them.
+- On abort or timeout, the catch block logs `rank-candidates: timed out, falling through with N unranked candidates` and routes `'ranked'` with `state.candidates` intact (scout-supplied scores preserved). The merge and compose steps proceed with real books instead of an empty shortlist.
+- `RANK_TIMEOUT_MS` raised to 90,000 ms for documentation purposes. On-device models (Gemini Nano, WebLLM) take 60–90 s to batch-score 8 candidates; cloud APIs respond in 1–3 s and are unaffected by the larger budget.
+
 ## [0.11.1] - 2026-05-24
 
 **Archivist intent routing fixes, conversation context threading, and Ollama error UX.**
