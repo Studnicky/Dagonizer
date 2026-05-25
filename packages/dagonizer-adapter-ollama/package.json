@@ -1,6 +1,6 @@
 {
   "name": "@noocodex/dagonizer-adapter-ollama",
-  "version": "0.11.1",
+  "version": "1.0.0",
   "description": "LLM adapter plugin for @noocodex/dagonizer — OllamaApiAdapter (local-first via Ollama's OpenAI-compatible endpoint).",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
@@ -33,7 +33,7 @@
     "@types/node": "^25.2.0"
   },
   "peerDependencies": {
-    "@noocodex/dagonizer": "workspace:>=0.11.0 <1.0.0"
+    "@noocodex/dagonizer": "workspace:>=0.12.0"
   },
   "engines": {
     "node": ">=24"
