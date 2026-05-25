@@ -262,3 +262,28 @@ void describe('CytoscapeRenderer.render — TerminalNode', () => {
     assert.notEqual(doneNode.data.id, endNode.data.id);
   });
 });
+
+void describe('CytoscapeRenderer.titleCase', () => {
+  void it("converts 'extract-query' to 'Extract Query'", () => {
+    assert.equal(CytoscapeRenderer.titleCase('extract-query'), 'Extract Query');
+  });
+
+  void it("converts 'book-search-fanout/openlibrary-scout' to 'Book Search Fanout / Openlibrary Scout'", () => {
+    assert.equal(
+      CytoscapeRenderer.titleCase('book-search-fanout/openlibrary-scout'),
+      'Book Search Fanout / Openlibrary Scout',
+    );
+  });
+
+  void it("converts 'no-results' to 'No Results'", () => {
+    assert.equal(CytoscapeRenderer.titleCase('no-results'), 'No Results');
+  });
+
+  void it('returns empty string unchanged', () => {
+    assert.equal(CytoscapeRenderer.titleCase(''), '');
+  });
+
+  void it('capitalises a single word with no hyphens', () => {
+    assert.equal(CytoscapeRenderer.titleCase('greet'), 'Greet');
+  });
+});

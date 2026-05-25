@@ -3,27 +3,29 @@
  *
  * Internal flow:
  *
- *   bsf-extract-query
- *     └─ success ──► bsf-decide-tools
- *   bsf-decide-tools
- *     └─ (tools | no-tools) ──► book-search-fan-out (parallel, combine: collect)
- *          ├─ bsf-ol       (OpenLibrary)
- *          ├─ bsf-gb       (Google Books)
- *          ├─ bsf-subject  (Subject search)
- *          └─ bsf-wiki     (Wikipedia enrichment)
- *     └─ bsf-rank-candidates
- *     └─ bsf-merge-candidates
- *          ├─ ranked ──► bsf-record-findings
- *          └─ empty  ──► bsf-no-results (TerminalNode(failed) → embedded-DAG exits error)
- *     └─ bsf-record-findings
- *     └─ bsf-has-citations-gate
- *          ├─ pass ──► bsf-recall-past-visits ──► END (success)
- *          └─ fail ──► bsf-no-results (TerminalNode(failed) → embedded-DAG exits error)
+ *   extract-query
+ *     └─ success ──► decide-tools
+ *   decide-tools
+ *     └─ (tools | no-tools) ──► recall-candidates
+ *   recall-candidates
+ *     └─ recalled ──► book-search-fanout (parallel, combine: collect)
+ *          ├─ openlibrary-scout  (OpenLibrary)
+ *          ├─ google-books-scout (Google Books)
+ *          ├─ subject-scout      (Subject search)
+ *          └─ wikipedia-scout    (Wikipedia enrichment)
+ *     └─ rank-candidates
+ *     └─ merge-candidates
+ *          ├─ ranked ──► record-findings
+ *          └─ empty  ──► no-results (TerminalNode(failed) → embedded-DAG exits error)
+ *     └─ record-findings
+ *     └─ has-citations-gate
+ *          ├─ pass ──► recall-past-visits ──► END (success)
+ *          └─ fail ──► no-results (TerminalNode(failed) → embedded-DAG exits error)
  *
  * Outputs:
  *   success — query extracted, candidates found, ranked, recorded, and recalled
  *   error   — no candidates after merge, or citations gate failed;
- *             signalled by the bsf-no-results TerminalNode(failed) placement so
+ *             signalled by the no-results TerminalNode(failed) placement so
  *             executeEmbeddedDAG routes the parent to its 'error' branch via
  *             innerTerminalOutcome propagation
  *
@@ -48,13 +50,14 @@
  */
 
 import type { ArchivistState }    from '../ArchivistState.ts';
-import { decideTools }       from '../nodes/decideTools.ts';
-import { extractQuery }      from '../nodes/extractQuery.ts';
-import { hasCitationsGate }  from '../nodes/hasCitationsGate.ts';
-import { mergeCandidates }   from '../nodes/mergeCandidates.ts';
-import { rankCandidates }    from '../nodes/rankCandidates.ts';
-import { recallPastVisits }  from '../nodes/recallPastVisits.ts';
-import { recordFindings }    from '../nodes/recordFindings.ts';
+import { decideTools }        from '../nodes/decideTools.ts';
+import { extractQuery }       from '../nodes/extractQuery.ts';
+import { hasCitationsGate }   from '../nodes/hasCitationsGate.ts';
+import { mergeCandidates }    from '../nodes/mergeCandidates.ts';
+import { rankCandidates }     from '../nodes/rankCandidates.ts';
+import { recallCandidates }   from '../nodes/recallCandidates.ts';
+import { recallPastVisits }   from '../nodes/recallPastVisits.ts';
+import { recordFindings }     from '../nodes/recordFindings.ts';
 import {
   openLibraryScout,
   googleBooksScout,
@@ -76,73 +79,81 @@ export const BookSearchFanoutDAG: DAG = new DAGBuilder('book-search-fanout', '1.
   // ── 1. extract-query ─────────────────────────────────────────────────────
   // LLM parses the raw visitor question into structured search terms.
   // Writes state.terms for the scouts and decide-tools to consume.
-  .node('bsf-extract-query', extractQuery, {
-    'success': 'bsf-decide-tools',
+  .node('extract-query', extractQuery, {
+    'success': 'decide-tools',
   })
 
   // ── 2. decide-tools ──────────────────────────────────────────────────────
   // LLM decides which external sources to invoke. Both outputs route into
-  // the parallel fan-out — each scout gates internally on state.toolPlan.
-  .node('bsf-decide-tools', decideTools, {
-    'tools':    'book-search-fan-out',
-    'no-tools': 'book-search-fan-out',
+  // recall-candidates so prior memory is loaded before scouts fire.
+  .node('decide-tools', decideTools, {
+    'tools':    'recall-candidates',
+    'no-tools': 'recall-candidates',
   })
 
-  // ── 3. book-search-fan-out ───────────────────────────────────────────────
+  // ── 2b. recall-candidates ────────────────────────────────────────────────
+  // Pre-loads state.priorCandidates from memory: shortlisted books from prior
+  // runs whose visitor query has Jaccard >= 0.35 overlap with the current
+  // query. Cap 10. Always routes 'recalled' — even when no prior runs match.
+  .node('recall-candidates', recallCandidates, {
+    'recalled': 'book-search-fanout',
+  })
+
+  // ── 3. book-search-fanout ────────────────────────────────────────────────
   // All four scouts run concurrently. combine:'collect' waits for all four
   // and merges their state mutations. Each scout writes to state.candidates.
-  .parallel('book-search-fan-out', ['bsf-ol', 'bsf-gb', 'bsf-subject', 'bsf-wiki'], 'collect', {
-    'success': 'bsf-rank-candidates',
-    'error':   'bsf-rank-candidates',
+  .parallel('book-search-fanout', ['openlibrary-scout', 'google-books-scout', 'subject-scout', 'wikipedia-scout'], 'collect', {
+    'success': 'rank-candidates',
+    'error':   'rank-candidates',
   })
-  .node('bsf-ol',      openLibraryScout, { 'success': null, 'empty': null })
-  .node('bsf-gb',      googleBooksScout, { 'success': null, 'empty': null })
-  .node('bsf-subject', subjectScout,     { 'success': null, 'empty': null })
-  .node('bsf-wiki',    wikipediaScout,   { 'success': null, 'empty': null })
+  .node('openlibrary-scout',  openLibraryScout, { 'success': null, 'empty': null })
+  .node('google-books-scout', googleBooksScout, { 'success': null, 'empty': null })
+  .node('subject-scout',      subjectScout,     { 'success': null, 'empty': null })
+  .node('wikipedia-scout',    wikipediaScout,   { 'success': null, 'empty': null })
 
   // ── 4. rank-candidates ───────────────────────────────────────────────────
   // LLM-driven relevance scoring. Always routes 'ranked' — even an empty
   // set — so merge can soft-gate on zero candidates.
-  .node('bsf-rank-candidates', rankCandidates, {
-    'ranked': 'bsf-merge-candidates',
+  .node('rank-candidates', rankCandidates, {
+    'ranked': 'merge-candidates',
   })
 
   // ── 5. merge-candidates ──────────────────────────────────────────────────
   // Cross-source dedupe via CanonicalId, top-5. Routes 'empty' to
-  // bsf-no-results (TerminalNode(failed)) so executeEmbeddedDAG routes the
+  // no-results (TerminalNode(failed)) so executeEmbeddedDAG routes the
   // parent to its 'error' branch via innerTerminalOutcome propagation.
-  .node('bsf-merge-candidates', mergeCandidates, {
-    'ranked': 'bsf-record-findings',
-    'empty':  'bsf-no-results',
+  .node('merge-candidates', mergeCandidates, {
+    'ranked': 'record-findings',
+    'empty':  'no-results',
   })
 
   // ── 6. record-findings ───────────────────────────────────────────────────
   // Deterministic RDF write — same input always produces the same triples.
-  .node('bsf-record-findings', recordFindings, {
-    'recorded': 'bsf-has-citations-gate',
+  .node('record-findings', recordFindings, {
+    'recorded': 'has-citations-gate',
   })
 
   // ── 7. has-citations-gate ────────────────────────────────────────────────
   // SPARQL ASK over the per-run state graph. Symbolic fence for the LLM.
-  // 'fail' routes to bsf-no-results (TerminalNode(failed)) so the parent
+  // 'fail' routes to no-results (TerminalNode(failed)) so the parent
   // receives 'error' via innerTerminalOutcome propagation.
-  .node('bsf-has-citations-gate', hasCitationsGate, {
-    'pass': 'bsf-recall-past-visits',
-    'fail': 'bsf-no-results',
+  .node('has-citations-gate', hasCitationsGate, {
+    'pass': 'recall-past-visits',
+    'fail': 'no-results',
   })
 
   // ── 8. recall-past-visits ────────────────────────────────────────────────
   // Injects prior-session context (prior queries + shortlisted titles) into
   // state.priorContext. Terminal node — embedded-DAG exits cleanly → 'success'.
-  .node('bsf-recall-past-visits', recallPastVisits, {
+  .node('recall-past-visits', recallPastVisits, {
     'recalled': null,
   })
 
-  // ── 9. bsf-no-results ────────────────────────────────────────────────────
+  // ── 9. no-results ────────────────────────────────────────────────────────
   // TerminalNode(failed) — executeEmbeddedDAG reads innerTerminalOutcome and
   // routes the parent placement to its 'error' branch. No backing node or
   // collectError call required.
-  .terminal('bsf-no-results', 'failed')
+  .terminal('no-results', 'failed')
 
   .build();
 
@@ -165,6 +176,7 @@ export function registerBookSearchFanoutNodes(
   for (const node of [
     extractQuery,
     decideTools,
+    recallCandidates,
     openLibraryScout,
     googleBooksScout,
     subjectScout,

@@ -20,3 +20,9 @@ export type {
   CytoscapeNodeElement,
   CytoscapeEdgeElement,
 } from './CytoscapeRenderer.js';
+export { CompositeLayout } from './CompositeLayout.js';
+export type {
+  NodePosition,
+  LayoutResult,
+  CompositeLayoutOptions,
+} from './CompositeLayout.js';
