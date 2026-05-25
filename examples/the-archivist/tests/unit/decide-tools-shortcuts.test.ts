@@ -1,7 +1,8 @@
 /**
  * decideTools deterministic shortcuts — unit tests.
  *
- * Exercises the four pattern shortcuts in `matchShortcut`:
+ * Exercises the five pattern shortcuts in `matchShortcut`:
+ *   • isbn-lookup         — ISBN-10 / ISBN-13 (with or without hyphens)
  *   • author-lookup       — "by X Y" or lookup-author intent + proper noun
  *   • quoted-single-title — '"X Y"' style
  *   • topic-or-subject    — "books about X" etc.
@@ -26,6 +27,16 @@ void test('matchShortcut: "lookup-author" intent + multi-word proper noun → au
   const m = matchShortcut('Margaret Atwood', 'lookup-author');
   assert.notEqual(m, null);
   assert.equal(m?.pattern, 'author-lookup');
+});
+
+void test('matchShortcut: "books by Ursula K. Le Guin" → author-lookup carries author arg', () => {
+  // Le Guin is Title-Case so AUTHOR_HINT_RE captures it.
+  const m = matchShortcut('books by Ursula Le Guin', 'search');
+  assert.notEqual(m, null);
+  assert.equal(m?.pattern, 'author-lookup');
+  const olCall = (m?.calls ?? []).find((c) => c.name === 'web_search_books');
+  assert.ok(olCall !== undefined, 'web_search_books call present');
+  assert.equal(olCall.arguments['author'], 'Ursula Le Guin');
 });
 
 void test('matchShortcut: quoted single title routes wikipedia first', () => {
@@ -58,6 +69,18 @@ void test('matchShortcut: "books about labyrinths" → topic-or-subject', () => 
   assert.deepEqual(names, ['subject_search', 'web_search_books']);
 });
 
+void test('matchShortcut: "books about consciousness" → topic-or-subject carries subject arg', () => {
+  const m = matchShortcut('books about consciousness', 'search');
+  assert.notEqual(m, null);
+  assert.equal(m?.pattern, 'topic-or-subject');
+  const olCall = (m?.calls ?? []).find((c) => c.name === 'web_search_books');
+  assert.ok(olCall !== undefined, 'web_search_books call present');
+  assert.equal(olCall.arguments['subject'], 'consciousness');
+  const subjectCall = (m?.calls ?? []).find((c) => c.name === 'subject_search');
+  assert.ok(subjectCall !== undefined, 'subject_search call present');
+  assert.equal(subjectCall.arguments['subject'], 'consciousness');
+});
+
 void test('matchShortcut: "literature on grief" → topic-or-subject', () => {
   const m = matchShortcut('literature on grief', 'search');
   assert.notEqual(m, null);
@@ -85,4 +108,29 @@ void test('matchShortcut: generic ambiguous query → null (LLM path)', () => {
 void test('matchShortcut: empty query → null', () => {
   const m = matchShortcut('   ', 'search');
   assert.equal(m, null);
+});
+
+// ── ISBN shortcut tests ──────────────────────────────────────────────────────
+
+void test('matchShortcut: ISBN-13 → isbn-lookup shortcut with isbn arg', () => {
+  const m = matchShortcut('9780765377067', 'search');
+  assert.notEqual(m, null);
+  assert.equal(m?.pattern, 'isbn-lookup');
+  assert.equal(m?.calls.length, 1);
+  const call = m?.calls[0];
+  assert.equal(call?.name, 'web_search_books');
+  assert.equal(call?.arguments['isbn'], '9780765377067');
+  assert.equal(call?.arguments['limit'], 1);
+});
+
+void test('matchShortcut: ISBN-10 without hyphens → isbn-lookup', () => {
+  // The regex matches consecutive-digit ISBN-10 (9 digits + check digit or X).
+  // Hyphenated ISBN-10 (0-7653-7706-7) does not match — hyphens break digit groups;
+  // those fall through to the LLM path which handles them via query keywords.
+  const m = matchShortcut('0765377067', 'search');
+  assert.notEqual(m, null);
+  assert.equal(m?.pattern, 'isbn-lookup');
+  const call = m?.calls[0];
+  assert.equal(call?.name, 'web_search_books');
+  assert.ok(typeof call?.arguments['isbn'] === 'string', 'isbn arg is a string');
 });
