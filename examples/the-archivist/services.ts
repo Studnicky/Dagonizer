@@ -17,7 +17,7 @@
  *   logger     — Node stdout + browser observable stream.
  */
 
-import type { MemoryDigest } from './ArchivistState.ts';
+import type { ConversationTurn, MemoryDigest } from './ArchivistState.ts';
 import type { Candidate } from './entities/Book.ts';
 import type { MemoryStore } from './memory/MemoryStore.ts';
 import type { Tool } from '@noocodex/dagonizer/tool';
@@ -68,7 +68,7 @@ export interface LlmClient {
    * recallContext node — injected into the prompt when non-empty so the
    * classifier benefits from prior-session continuity.
    */
-  classifyIntent(query: string, recalledSummary?: string): Promise<ClassifiedIntent>;
+  classifyIntent(query: string, recalledSummary?: string, conversation?: readonly ConversationTurn[]): Promise<ClassifiedIntent>;
   /** Extract structured search terms from a free-text question. */
   extractTerms(query: string): Promise<readonly string[]>;
   /**
@@ -100,6 +100,7 @@ export interface LlmClient {
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
+    conversation?: readonly ConversationTurn[],
   ): Promise<string>;
   /** Author-survey compose — chronological body-of-work prose. */
   composeAuthor(
@@ -107,6 +108,7 @@ export interface LlmClient {
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
+    conversation?: readonly ConversationTurn[],
   ): Promise<string>;
   /** Reviews compose — weight ratings (notes.rating / notes.ratingsCount). */
   composeReviews(
@@ -114,6 +116,7 @@ export interface LlmClient {
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
+    conversation?: readonly ConversationTurn[],
   ): Promise<string>;
   /** Describe a single title — no recommendations. */
   describeBook(
@@ -121,6 +124,7 @@ export interface LlmClient {
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
+    conversation?: readonly ConversationTurn[],
   ): Promise<string>;
   /** Recommend similar — anchored on persistent memory. */
   composeSimilar(
@@ -128,6 +132,7 @@ export interface LlmClient {
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
+    conversation?: readonly ConversationTurn[],
   ): Promise<string>;
   /** Validate a draft against quality rules (length, citations, tone). */
   validate(draft: string, shortlist: readonly Candidate[]): Promise<boolean>;
@@ -142,6 +147,7 @@ export interface LlmClient {
     query: string,
     digest: MemoryDigest,
     recalledSummary?: string,
+    conversation?: readonly ConversationTurn[],
   ): Promise<string>;
   /**
    * Compose an in-character failure response when all scouts returned
@@ -149,7 +155,7 @@ export interface LlmClient {
    * by the scouts. The response acknowledges what was searched, explains
    * the gap, and offers one concrete next step — never silent-fails.
    */
-  composeEmptyResponse(query: string, failureCause: string): Promise<string>;
+  composeEmptyResponse(query: string, failureCause: string, conversation?: readonly ConversationTurn[]): Promise<string>;
   /**
    * Generate a short, curious visitor-style question about a popular
    * book, author, or series — used to pre-fill the input on a fresh
