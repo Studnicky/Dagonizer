@@ -92,7 +92,25 @@ export const directives = {
   "intentResponseFormat": 'Respond with the single token only.',
 
   // ── Term extraction ──────────────────────────────────────────────────
-  "extractTermsTask": 'Extract 3–6 short search terms (1–3 words each) from the visitor question.',
+  "extractTermsTask": [
+    'Distill the visitor question into 2-4 catalog-searchable domain keywords.',
+    'Strip filler words (do, you, have, any, tell, me, about, like, want, looking, for, please, thanks).',
+    'Strip generic nouns like "book(s)", "novel(s)", "title(s)", "question(s)" — those don\'t narrow a catalog search.',
+    'Normalize abbreviations: "sci-fi" → "science fiction", "AI" → "artificial intelligence".',
+    'Keep proper nouns intact (author names, book titles).',
+    '',
+    'Examples:',
+    '  "Do you have any sci-fi novels that grapple with existential questions?"',
+    '    → ["existentialism", "science fiction"]',
+    '  "I like robots and singularity"',
+    '    → ["robots", "singularity"]',
+    '  "Yea tell me about Neuromancer"',
+    '    → ["Neuromancer"]',
+    '  "Recommend a book by Ursula K. Le Guin about morality"',
+    '    → ["Ursula K. Le Guin", "morality"]',
+    '  "What books did Philip K. Dick write about androids?"',
+    '    → ["Philip K. Dick", "androids"]',
+  ].join('\n'),
   "jsonArrayOnly":    'Return ONLY a JSON array of strings.',
 
   // ── Tool decision ────────────────────────────────────────────────────
@@ -139,6 +157,14 @@ export const directives = {
 
   // ── Memory recall ────────────────────────────────────────────────────
   "memoryEmptyStatus": 'Memory status: my shelves are fresh — no books have been recorded yet this session.',
+
+  // ── Prior memory hint ────────────────────────────────────────────────
+  /**
+   * Injected when any candidate in the shortlist carries
+   * `notes.fromPriorMemory: true`. Instructs the model to phrase those
+   * recalls as "I recall from earlier" rather than "I just searched".
+   */
+  "priorMemoryHint": 'Some of these books come from prior sessions where you discussed similar queries — phrase them as "I recall" or "from earlier we found" rather than "I just searched".',
 } as const;
 
 // ── Shared system message — composed from persona directives ───────────
@@ -329,10 +355,12 @@ export const prompts = {
       ? ''
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
     const conversationBlock = formatConversationBlock(conversation);
+    const memoryHint = priorMemoryHintLine(shortlist);
     const body = [
       SYSTEM,
       directives.beTerse,
       directives.citeShortlist,
+      ...(memoryHint.length > 0 ? [memoryHint] : []),
       '',
       `${directives.visitorQuestionLabel} ${query}`,
       continuityBlock,
@@ -365,12 +393,14 @@ export const prompts = {
       ? ''
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
     const conversationBlock = formatConversationBlock(conversation);
+    const memoryHintAuthor = priorMemoryHintLine(shortlist);
     const body = [
       SYSTEM,
       directives.beTerse,
       directives.citeShortlist,
       directives.chronological,
       directives.authorSurvey,
+      ...(memoryHintAuthor.length > 0 ? [memoryHintAuthor] : []),
       '',
       `${directives.visitorQuestionLabel} ${query}`,
       continuityBlock,
@@ -403,12 +433,14 @@ export const prompts = {
       ? ''
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
     const conversationBlock = formatConversationBlock(conversation);
+    const memoryHintReviews = priorMemoryHintLine(shortlist);
     const body = [
       SYSTEM,
       directives.beTerse,
       directives.citeShortlist,
       directives.weightRatings,
       directives.weighOpinions,
+      ...(memoryHintReviews.length > 0 ? [memoryHintReviews] : []),
       '',
       `${directives.visitorQuestionLabel} ${query}`,
       continuityBlock,
@@ -441,11 +473,13 @@ export const prompts = {
       ? ''
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
     const conversationBlock = formatConversationBlock(conversation);
+    const memoryHintDescribe = priorMemoryHintLine(shortlist);
     const body = [
       SYSTEM,
       directives.describeOnly,
       directives.citeShortlist,
       directives.groundInShortlist,
+      ...(memoryHintDescribe.length > 0 ? [memoryHintDescribe] : []),
       '',
       `${directives.visitorQuestionLabel} ${query}`,
       continuityBlock,
@@ -478,11 +512,13 @@ export const prompts = {
       ? ''
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
     const conversationBlock = formatConversationBlock(conversation);
+    const memoryHintSimilar = priorMemoryHintLine(shortlist);
     const body = [
       SYSTEM,
       directives.beTerse,
       directives.citeShortlist,
       directives.similarToPrior,
+      ...(memoryHintSimilar.length > 0 ? [memoryHintSimilar] : []),
       '',
       `${directives.visitorQuestionLabel} ${query}`,
       continuityBlock,
@@ -618,6 +654,16 @@ export const prompts = {
 };
 
 // ── Internals ──────────────────────────────────────────────────────────
+/**
+ * Returns the `priorMemoryHint` directive line when any candidate in the
+ * shortlist carries `notes.fromPriorMemory: true`. Returns empty string
+ * otherwise so callers can splice it directly into the prompt body array.
+ */
+function priorMemoryHintLine(shortlist: readonly Candidate[]): string {
+  const hasPriorMemory = shortlist.some((c) => c.notes?.['fromPriorMemory'] === true);
+  return hasPriorMemory ? directives.priorMemoryHint : '';
+}
+
 /** Format prior conversation turns as a terse "Conversation so far" block. */
 function formatConversationBlock(turns: readonly ConversationTurn[]): string {
   if (turns.length === 0) return '';

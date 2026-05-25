@@ -281,20 +281,26 @@ function contentOf(msg: ChatResponseMessage): string {
 /**
  * Deterministic argument defaults for known scout tool names.
  * `decideTools` only emits indices now; argument generation lives here.
- * The visitor's question IS the query — a more sophisticated rewrite
- * would belong in a separate query-rewrite node.
+ *
+ * The `query` / `subject` field is intentionally omitted: every scout
+ * already falls back to `state.terms.join(' ')` when its query arg is
+ * missing, and `state.terms` is the keyword set produced by the
+ * `extract-query` node (which ran before `decide-tools` in the DAG).
+ * Letting scouts use the extracted terms instead of the raw visitor
+ * sentence means OpenLibrary / Google Books / Subject Search receive
+ * proper keyword queries, not prose questions.
  */
-function defaultToolArguments(name: string, query: string, language: string): Record<string, unknown> {
+function defaultToolArguments(name: string, _query: string, language: string): Record<string, unknown> {
   switch (name) {
     case 'web_search_books':
-      return { 'query': query, 'limit': 8, 'lang': language };
+      return { 'limit': 8, 'lang': language };
     case 'google_books_search':
-      return { 'query': query, 'maxResults': 8, 'langRestrict': language };
+      return { 'maxResults': 8, 'langRestrict': language };
     case 'subject_search':
-      return { 'subject': query, 'limit': 8, 'lang': language };
+      return { 'limit': 8, 'lang': language };
     case 'wikipedia_summary':
-      return { 'query': query, 'lang': language };
+      return { 'lang': language };
     default:
-      return { 'query': query };
+      return {};
   }
 }
