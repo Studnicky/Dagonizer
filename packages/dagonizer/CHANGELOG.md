@@ -1,5 +1,11 @@
 # @noocodex/dagonizer
 
+## 0.13.2
+
+### Patch Changes
+
+- 238a94d: Hotfix: align every package in the workspace to 0.13.1 and lockstep them via the new `fixed:` group in `.changeset/config.json`. Eliminates the v0.13.0 release artifact where peer-dep range churn caused most packages to jump to 1.0.0 while the engine itself sat at 0.12.0 — the tag `v0.13.0` was correct but the per-package version numbers disagreed. All packages in the `@noocodex/dagonizer*` group now move together; peer ranges restored to `workspace:^0.13.1` across the workspace.
+
 ## 0.12.0
 
 ### Minor Changes
