@@ -10,6 +10,15 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 ### Fixed
 
+## [0.13.1] - 2026-05-26
+
+**Hotfix: per-package version alignment + Changesets lockstep group.**
+
+### Changed
+
+- Every `@noocodex/dagonizer*` package now versions in lockstep via `.changeset/config.json` `fixed:` group. A single minor/major bump on any package in the group applies to all of them. Eliminates the v0.13.0 release artifact where peer-dependency range churn caused most packages to jump to 1.0.0 while the engine itself sat at 0.12.0 — the tag `v0.13.0` was correct, but the per-package version numbers disagreed.
+- Peer- and regular-dependency ranges restored to `workspace:^0.13.1` across every adapter / embedder / tool / pattern / store / book-entities package. With the `fixed:` group bumping all packages together on every release, this range is always satisfied without forcing dependent major bumps on minor engine releases.
+
 ## [0.13.0] - 2026-05-25
 
 **Archivist live-demo polish: PROV-O bridge, positive-imperative persona, smooth viewport + user-gesture latch, edge labels, conversation auto-scroll.**
