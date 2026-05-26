@@ -1,6 +1,10 @@
 {
   "name": "@noocodex/dagonizer-store-sqlite",
+<<<<<<< HEAD
   "version": "0.13.1",
+=======
+  "version": "0.13.2",
+>>>>>>> origin/main
   "description": "SQLite-backed Store for @noocodex/dagonizer using Node's built-in node:sqlite.",
   "private": false,
   "license": "MIT",
@@ -14,15 +18,18 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": ["dist", "README.md"],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
-    "build":     "tsc -p tsconfig.json",
-    "clean":     "rm -rf dist dist-test",
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist dist-test",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "pretest":   "rm -rf dist-test && tsc -p tsconfig.test.json",
-    "test":      "node --test 'dist-test/tests/**/*.test.js'",
-    "lint":      "eslint . --max-warnings 0",
-    "prepack":   "npm run clean && npm run build"
+    "pretest": "rm -rf dist-test && tsc -p tsconfig.test.json",
+    "test": "node --test 'dist-test/tests/**/*.test.js'",
+    "lint": "eslint . --max-warnings 0",
+    "prepack": "npm run clean && npm run build"
   },
   "publishConfig": {
     "access": "public",
@@ -32,7 +39,11 @@
     "node": ">=24"
   },
   "dependencies": {
+<<<<<<< HEAD
     "@noocodex/dagonizer": "workspace:^0.13.1"
+=======
+    "@noocodex/dagonizer": "workspace:^0.13.2"
+>>>>>>> origin/main
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
