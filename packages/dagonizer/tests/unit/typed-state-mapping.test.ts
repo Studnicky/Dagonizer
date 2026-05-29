@@ -1,24 +1,25 @@
 /**
- * Tests for TypedEmbeddedDAGOptionsInterface and the generic embeddedDAG() builder method.
+ * Tests for ScatterOptionsInterface typed path narrowing and the generic
+ * scatter() builder method.
  *
  * Covers:
- *   1. Runtime: inputs/outputs build the correct wire-shape stateMapping.
- *   2. Runtime: omitting inputs/outputs produces no stateMapping on the node.
- *   3. Compile-time: wrong child-state keys fail to typecheck (@ts-expect-error).
- *   4. Runtime execute: typed input/output mappings propagate state correctly.
- *   5. Path<TParentState>: positive compile-time check for valid nested parent paths.
- *   6. Path<TParentState>: negative compile-time check rejects invalid parent paths.
- *   7. Path<TParentState>: runtime smoke — two-generic form builds correct wire shape.
+ *   1. Runtime: projection + gather.mapping build the correct wire shape.
+ *   2. Runtime: omitting options produces no projection/gather on the node.
+ *   3. Compile-time: invalid projection values fail to typecheck (@ts-expect-error).
+ *   4. Runtime execute: typed projection + gather mappings propagate state correctly.
+ *   5. Path<TState>: positive compile-time check for valid nested paths in projection values.
+ *   6. Path<TState>: negative compile-time check rejects invalid paths in projection values.
+ *   7. Path<TState>: runtime smoke — typed generic form builds correct wire shape.
  */
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { TypedEmbeddedDAGOptionsInterface } from '../../src/builder/DAGBuilder.js';
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
+import type { ScatterOptionsInterface } from '../../src/builder/DAGBuilder.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import type { EmbeddedDAGNode } from '../../src/entities/dag/EmbeddedDAGNode.js';
+import type { ScatterNode } from '../../src/entities/dag/ScatterNode.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 // ── Domain child state ────────────────────────────────────────────────────────
@@ -35,12 +36,6 @@ class ParentState extends NodeStateBase {
   count = 0;
 }
 
-// ── Domain child state for Path<T> tests ─────────────────────────────────────
-
-class ChildAge extends NodeStateBase {
-  childAge = 0;
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const terminal: NodeInterface<NodeStateBase, 'success'> = {
@@ -51,98 +46,97 @@ const terminal: NodeInterface<NodeStateBase, 'success'> = {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-void describe('TypedEmbeddedDAGOptionsInterface — compile-time shape', () => {
-  void it('accepts valid TChildState keys in inputs', () => {
-    // Both 'payload' and 'result' are declared keys of ChildState — should typecheck.
-    const opts: TypedEmbeddedDAGOptionsInterface<ChildState> = {
-      'inputs':  { 'payload': 'parent.seed' },
-      'outputs': { 'parent.result': 'result' },
+void describe('ScatterOptionsInterface<TState> — compile-time shape', () => {
+  void it('accepts valid TState paths in projection values', () => {
+    // projection values are parent paths narrowed to Path<TState> when TState is concrete.
+    // 'payload' and 'result' are valid paths on ChildState.
+    const opts: ScatterOptionsInterface<ChildState> = {
+      'projection': { 'cloneField': 'payload' },
+      'gather': { 'strategy': 'map', 'mapping': { 'result': 'result' } },
     };
-    assert.deepEqual(opts.inputs,  { 'payload': 'parent.seed' });
-    assert.deepEqual(opts.outputs, { 'parent.result': 'result' });
+    assert.deepEqual(opts.projection, { 'cloneField': 'payload' });
+    assert.deepEqual(opts.gather, { 'strategy': 'map', 'mapping': { 'result': 'result' } });
   });
 
-  void it('rejects unknown child-state keys in inputs — @ts-expect-error guard', () => {
-    // @ts-expect-error — 'unknownKey' is not a key of ChildState; TypeScript must reject this
-    const _bad: TypedEmbeddedDAGOptionsInterface<ChildState> = { 'inputs': { 'unknownKey': 'parent.foo' } };
+  void it('rejects invalid TState paths in projection values — @ts-expect-error guard', () => {
+    // @ts-expect-error — 'unknownParentPath' is not a Path<ChildState>; TypeScript must reject this
+    const _bad: ScatterOptionsInterface<ChildState> = { 'projection': { 'cloneField': 'unknownParentPath' } };
     void _bad;
   });
 });
 
-void describe('DAGBuilder.embeddedDAG — wire shape', () => {
-  void it('inputs + outputs build the correct stateMapping wire shape', () => {
+void describe('DAGBuilder.scatter — wire shape', () => {
+  void it('projection + gather.mapping build the correct scatter wire shape', () => {
     const dag = new DAGBuilder('test', '1')
-      .embeddedDAG<ChildState>('invoke', 'child-dag',
+      .scatter<ChildState, string, undefined>('invoke', { 'dag': 'child-dag' },
         { 'success': 'end', 'error': 'end' },
         {
-          'inputs':  { 'payload': 'seed' },
-          'outputs': { 'result': 'result' },
+          'projection': { 'payload': 'payload' },
+          'gather': { 'strategy': 'map', 'mapping': { 'result': 'result' } },
         },
       )
       .node('end', terminal, { 'success': null })
       .build();
 
-    const deepNode = dag.nodes[0] as EmbeddedDAGNode;
-    assert.equal(deepNode['@type'], 'EmbeddedDAGNode');
-    assert.deepEqual(deepNode.stateMapping, {
-      'input':  { 'payload': 'seed' },
-      'output': { 'result': 'result' },
-    });
+    const scatterPlacement = dag.nodes[0] as ScatterNode;
+    assert.equal(scatterPlacement['@type'], 'ScatterNode');
+    assert.deepEqual(scatterPlacement.projection, { 'payload': 'payload' });
+    assert.deepEqual(scatterPlacement.gather, { 'strategy': 'map', 'mapping': { 'result': 'result' } });
   });
 
-  void it('inputs-only produces stateMapping with only input key', () => {
-    const dag = new DAGBuilder('test-inputs', '1')
-      .embeddedDAG<ChildState>('invoke', 'child-dag',
+  void it('projection-only produces scatter node with projection and no gather', () => {
+    const dag = new DAGBuilder('test-projection', '1')
+      .scatter<ChildState, string, undefined>('invoke', { 'dag': 'child-dag' },
         { 'success': null, 'error': null },
-        { 'inputs': { 'result': 'parent.value' } },
+        { 'projection': { 'result': 'result' } },
       )
       .build();
 
-    const deepNode = dag.nodes[0] as EmbeddedDAGNode;
-    assert.deepEqual(deepNode.stateMapping, {
-      'input': { 'result': 'parent.value' },
-    });
+    const scatterPlacement = dag.nodes[0] as ScatterNode;
+    assert.deepEqual(scatterPlacement.projection, { 'result': 'result' });
+    assert.equal(scatterPlacement.gather, undefined);
   });
 
-  void it('outputs-only produces stateMapping with only output key', () => {
-    const dag = new DAGBuilder('test-outputs', '1')
-      .embeddedDAG<ChildState>('invoke', 'child-dag',
+  void it('gather-only produces scatter node with gather and no projection', () => {
+    const dag = new DAGBuilder('test-gather', '1')
+      .scatter<ChildState, string, undefined>('invoke', { 'dag': 'child-dag' },
         { 'success': null, 'error': null },
-        { 'outputs': { 'parent.result': 'result' } },
+        { 'gather': { 'strategy': 'map', 'mapping': { 'result': 'result' } } },
       )
       .build();
 
-    const deepNode = dag.nodes[0] as EmbeddedDAGNode;
-    assert.deepEqual(deepNode.stateMapping, {
-      'output': { 'parent.result': 'result' },
-    });
+    const scatterPlacement = dag.nodes[0] as ScatterNode;
+    assert.equal(scatterPlacement.projection, undefined);
+    assert.deepEqual(scatterPlacement.gather, { 'strategy': 'map', 'mapping': { 'result': 'result' } });
   });
 
-  void it('omitting options produces no stateMapping on the node', () => {
+  void it('omitting options produces no projection or gather on the node', () => {
     const dag = new DAGBuilder('test-no-mapping', '1')
-      .embeddedDAG('invoke', 'child-dag', { 'success': null, 'error': null })
+      .scatter('invoke', { 'dag': 'child-dag' }, { 'success': null, 'error': null })
       .build();
 
-    const deepNode = dag.nodes[0] as EmbeddedDAGNode;
-    assert.equal(deepNode.stateMapping, undefined);
+    const scatterPlacement = dag.nodes[0] as ScatterNode;
+    assert.equal(scatterPlacement.projection, undefined);
+    assert.equal(scatterPlacement.gather, undefined);
   });
 
-  void it('empty options object produces no stateMapping', () => {
+  void it('empty options object produces no projection or gather', () => {
     const dag = new DAGBuilder('test-empty-opts', '1')
-      .embeddedDAG<ChildState>('invoke', 'child-dag',
+      .scatter<ChildState, string, undefined>('invoke', { 'dag': 'child-dag' },
         { 'success': null, 'error': null },
         {},
       )
       .build();
 
-    const deepNode = dag.nodes[0] as EmbeddedDAGNode;
-    assert.equal(deepNode.stateMapping, undefined);
+    const scatterPlacement = dag.nodes[0] as ScatterNode;
+    assert.equal(scatterPlacement.projection, undefined);
+    assert.equal(scatterPlacement.gather, undefined);
   });
 });
 
-void describe('DAGBuilder.embeddedDAG — runtime execute with typed mapping', () => {
-  void it('input+output mappings propagate state correctly across the embedded-DAG boundary', async () => {
-    // Child node reads childState.payload and writes childState.result.
+void describe('DAGBuilder.scatter — runtime execute with typed mapping', () => {
+  void it('projection + gather mappings propagate state correctly across the scatter boundary', async () => {
+    // Child node reads cloneState.payload and writes cloneState.result.
     const childNode: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'child-node',
       'outputs': ['success'],
@@ -165,31 +159,41 @@ void describe('DAGBuilder.embeddedDAG — runtime execute with typed mapping', (
     dispatcher.registerDAG(childDag);
 
     // Parent DAG:
-    //   inputs:  { payload: 'seed' }   → child.payload ← parent.seed
-    //   outputs: { count: 'result' }   → parent.count  ← child.result
+    //   projection: { payload: 'payload' }  → clone.payload ← parent.payload
+    //   gather.mapping: { result: 'result' } → parent.result ← clone.result
+    // We cast parentState to carry 'payload' and 'result' fields via metadata.
     const parentDag = new DAGBuilder('parent', '1')
-      .embeddedDAG<ChildState>('invoke', 'child',
+      .scatter<ChildState, string, undefined>('invoke', { 'dag': 'child' },
         { 'success': 'end', 'error': 'end' },
         {
-          'inputs':  { 'payload': 'seed' },
-          'outputs': { 'count': 'result' },
+          'projection': { 'payload': 'payload' },
+          'gather': { 'strategy': 'map', 'mapping': { 'result': 'result' } },
         },
       )
       .node('end', terminal, { 'success': null })
       .build();
     dispatcher.registerDAG(parentDag);
 
-    // Parent state: seed = 'hello' (5 chars) → expect count = 5 after execution.
-    const parentState = new NodeStateBase() as NodeStateBase & { seed: string; count: number };
-    parentState.seed  = 'hello';
-    (parentState as unknown as { count: number }).count = 0;
+    // Use a state subclass that declares the fields we need.
+    class WorkState extends NodeStateBase {
+      payload = 'hello';
+      result  = 0;
+    }
 
-    const result = await dispatcher.execute('parent', parentState);
+    const workState = new WorkState();
+    const dispatcher2 = new Dagonizer<WorkState>();
+    dispatcher2.registerNode(childNode as NodeInterface<WorkState, 'success'>);
+    dispatcher2.registerNode(terminal as NodeInterface<WorkState, 'success'>);
+    dispatcher2.registerDAG(childDag);
+    dispatcher2.registerDAG(parentDag);
+
+    const result = await dispatcher2.execute('parent', workState);
     assert.equal(result.state.lifecycle.kind, 'completed');
-    assert.equal((parentState as unknown as { count: number }).count, 5);
+    // payload = 'hello' (5 chars), so result = 5 after scatter
+    assert.equal(workState.result, 5);
   });
 
-  void it('untyped embeddedDAG (no generic) remains backward-compatible', async () => {
+  void it('untyped scatter (no generic) remains backward-compatible', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(terminal);
 
@@ -200,9 +204,9 @@ void describe('DAGBuilder.embeddedDAG — runtime execute with typed mapping', (
 
     // No generic — defaults to NodeStateInterface; call site still typechecks.
     const parentDag = new DAGBuilder('compat-parent', '1')
-      .embeddedDAG('run', 'compat-child',
+      .scatter('run', { 'dag': 'compat-child' },
         { 'success': 'end', 'error': 'end' },
-        { 'outputs': { 'dest': 'src' } },
+        { 'gather': { 'strategy': 'map', 'mapping': { 'dest': 'src' } } },
       )
       .node('end', terminal, { 'success': null })
       .build();
@@ -213,48 +217,36 @@ void describe('DAGBuilder.embeddedDAG — runtime execute with typed mapping', (
   });
 });
 
-void describe('DAGBuilder.embeddedDAG — Path<TParentState> narrowing', () => {
-  void it('positive compile: two-generic form accepts valid nested parent paths in inputs and outputs', () => {
-    // ParentState has user.name and user.age — both are valid Path<ParentState> values.
-    // ChildAge has childAge — a valid key for the child side.
-    const opts: TypedEmbeddedDAGOptionsInterface<ChildAge, ParentState> = {
-      'inputs':  { 'childAge': 'user.age' },
-      'outputs': { 'user.age': 'childAge' },
+void describe('DAGBuilder.scatter — Path<TState> narrowing', () => {
+  void it('positive compile: typed form accepts valid nested parent paths in projection values', () => {
+    // ParentState has user.name, user.age, count — all valid Path<ParentState> values.
+    const opts: ScatterOptionsInterface<ParentState> = {
+      'projection': { 'cloneAge': 'user.age' },
     };
-    assert.deepEqual(opts.inputs,  { 'childAge': 'user.age' });
-    assert.deepEqual(opts.outputs, { 'user.age': 'childAge' });
+    assert.deepEqual(opts.projection, { 'cloneAge': 'user.age' });
   });
 
-  void it('negative compile: two-generic form rejects invalid parent paths in inputs — @ts-expect-error guard', () => {
+  void it('negative compile: typed form rejects invalid parent paths in projection values — @ts-expect-error guard', () => {
     // 'user.notReal' is not a valid Path<ParentState> — TypeScript must reject this.
     // @ts-expect-error — 'user.notReal' does not exist on Path<ParentState>
-    const _bad: TypedEmbeddedDAGOptionsInterface<ChildAge, ParentState> = { 'inputs': { 'childAge': 'user.notReal' } };
+    const _bad: ScatterOptionsInterface<ParentState> = { 'projection': { 'cloneField': 'user.notReal' } };
     void _bad;
   });
 
-  void it('negative compile: two-generic form rejects invalid parent paths in outputs — @ts-expect-error guard', () => {
-    // 'user.notReal' is not a valid Path<ParentState> as an output key.
-    // @ts-expect-error — 'user.notReal' does not exist on Path<ParentState>
-    const _bad: TypedEmbeddedDAGOptionsInterface<ChildAge, ParentState> = { 'outputs': { 'user.notReal': 'childAge' } };
-    void _bad;
-  });
-
-  void it('runtime smoke: two-generic embeddedDAG builds the correct wire-shape stateMapping', () => {
+  void it('runtime smoke: typed generic scatter builds the correct wire-shape node', () => {
     const dag = new DAGBuilder('path-test', '1')
-      .embeddedDAG<ChildAge, ParentState>('invoke', 'child-dag',
+      .scatter<ParentState, string, undefined>('invoke', { 'dag': 'child-dag' },
         { 'success': null, 'error': null },
         {
-          'inputs':  { 'childAge': 'user.age' },
-          'outputs': { 'user.age': 'childAge' },
+          'projection': { 'cloneAge': 'user.age' },
+          'gather': { 'strategy': 'map', 'mapping': { 'age': 'user.age' } },
         },
       )
       .build();
 
-    const deepNode = dag.nodes[0] as EmbeddedDAGNode;
-    assert.equal(deepNode['@type'], 'EmbeddedDAGNode');
-    assert.deepEqual(deepNode.stateMapping, {
-      'input':  { 'childAge': 'user.age' },
-      'output': { 'user.age': 'childAge' },
-    });
+    const scatterPlacement = dag.nodes[0] as ScatterNode;
+    assert.equal(scatterPlacement['@type'], 'ScatterNode');
+    assert.deepEqual(scatterPlacement.projection, { 'cloneAge': 'user.age' });
+    assert.deepEqual(scatterPlacement.gather, { 'strategy': 'map', 'mapping': { 'age': 'user.age' } });
   });
 });

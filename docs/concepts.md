@@ -33,7 +33,7 @@ A node never throws. It catches its own errors and routes through a named `error
 
 A **DAG** is a JSON-LD document that declares an entrypoint and a list of node placements with their routing. It is plain data: store it in a file, a database row, or a configuration service, and load it through `Dagonizer.load(json)`. Validation against `DAGSchema` happens at the ingest boundary; everything downstream is typed.
 
-The Archivist DAG has roughly ten placements covering classify, scout fan-out, compose retry loop, and persist. Its `@context` and `@type` discriminator make it both a runtime artifact and a Linked Data document.
+The Archivist DAG has roughly ten placements covering classify, scout scatter, compose retry loop, and persist. Its `@context` and `@type` discriminator make it both a runtime artifact and a Linked Data document.
 
 ## Placement
 
@@ -43,8 +43,7 @@ Six kinds:
 
 - **`single`**: one registered node. The node returns one output name; the dispatcher follows the corresponding route.
 - **`parallel`**: a set of previously declared single placements that run concurrently via `Promise.all`. A combine strategy (`all-success`, `any-success`, `collect`) reduces individual outputs to one aggregate output.
-- **`fan-out`**: reads an array from a dotted path in state, runs one registered node per item with configurable concurrency, then merges results through a fan-in strategy. The book-scout fan-out in the Archivist runs one scout call per source.
-- **`embedded-dag`**: invokes a second registered DAG as a nested call. Optional `stateMapping` copies fields in before and out after. The Archivist embeds `book-search-fanout` and `compose-retry-loop` as named sub-flows.
+- **`scatter`**: isolates a state clone, runs a `body` (a registered node or a registered sub-DAG) in it, merges the clone back into the parent, and routes on the aggregate outcome. When `source` is absent, exactly one clone runs — the singleton pattern used for sub-DAG composition. When `source` is present, one clone runs per array item — the generate-collect pattern. An optional `gather` config controls how produced clone state merges back; an optional `reducer` picks the outcome routing strategy. The Archivist's scout scatter runs and its sub-DAG compositions are all `scatter` placements.
 - **`terminal`**: named end state for explicit completion or failure. Use when a flow has more than one "done" semantics (for example, `accepted` versus `rejected`).
 - **`phase`**: groups a sequence of placements under a named phase. Instrumentation receives `phaseEnter` / `phaseExit` events; useful for telemetry and progress bars.
 
@@ -54,8 +53,8 @@ Six kinds:
 |------|------|
 | Sequential steps with conditional branching | `single` |
 | Multiple independent fetches that must all finish before proceeding | `parallel` |
-| Process every item in a collection, then aggregate | `fan-out` |
-| Reuse a DAG across multiple parent DAGs | `embedded-dag` |
+| Process every item in a collection, then aggregate | `scatter` with `source` |
+| Run a sub-DAG in an isolated clone, then merge results | `scatter` without `source` |
 | Distinguish multiple terminal semantics | `terminal` |
 | Tag a stretch of nodes for telemetry | `phase` |
 
@@ -72,7 +71,7 @@ All mutations happen in place on the state object. The dispatcher returns the sa
 - `metadata`: generic key-value bag for cross-node messages
 - `collectError`, `collectWarning`, `setMetadata`, lifecycle mark methods
 
-`clone()` is called by the dispatcher before fan-out items and embedded-DAG calls. The clone carries a copy of `metadata` but resets `lifecycle` to `pending` and clears `errors` and `warnings`. Each child execution is a fresh run.
+`clone()` is called by the dispatcher before scatter clones. The clone carries a copy of `metadata` but resets `lifecycle` to `pending` and clears `errors` and `warnings`. Each child execution is a fresh run.
 
 Override `snapshotData()` and `restoreData()` to make domain fields checkpointable.
 
@@ -116,7 +115,7 @@ An **execution** is one run of a DAG. `dispatcher.execute(dagName, state, option
 - `state`: the final state (same reference as the input)
 - `cursor`: the next node that would have run, or `null` if the flow completed
 - `executedNodes`: nodes that ran
-- `skippedNodes`: nodes skipped (for example, an empty fan-out)
+- `skippedNodes`: nodes skipped (for example, an empty scatter)
 
 When `cursor` is non-null, the execution stopped early. Pass it to `dispatcher.resume()` to continue.
 
@@ -138,55 +137,51 @@ When the signal fires between nodes, the dispatcher stops without starting the n
 
 After early termination: `result.cursor` holds the next node that would have run, and `result.state.lifecycle.kind` is `cancelled` or `timed_out`.
 
-## Fan-in strategies
+## Scatter gather strategies
 
-Fan-in runs after all fan-out items finish. It writes results back into parent state before the aggregate output (`all-success`, `partial`, `all-error`, `empty`) determines the next route.
+After all clones finish, a gather strategy merges clone state back into the parent. The strategy is declared in `GatherConfig.strategy`.
 
-**`append`** requires `target: string` (dotted path). All item results, regardless of their output, flatten into an array at that path.
-
-```ts
-fanIn: { strategy: 'append', target: 'results' }
-```
-
-**`partition`** requires `partitions: Record<outputName, targetPath>`. Items group by their output name and write to separate paths.
+**`map`** copies fields from each clone into the parent. One clone writes a scalar; N clones produce an index-ordered array append. This is the generate-collect pattern: each clone writes a produced artifact and all artifacts land in one parent array.
 
 ```ts
-fanIn: { strategy: 'partition', partitions: { success: 'passed', error: 'failed' } }
+gather: { strategy: 'map', mapping: { 'candidate': 'candidates' } }
 ```
 
-**`custom`** requires `customNode: string`. The dispatcher sets `state.metadata.fanInResults` to a `Record<outputName, item[]>` map and invokes the named registered node. The node reads the map and writes aggregated data into state however it chooses. The Archivist's `mergeCandidates` node uses `custom` to deduplicate scout results by canonical book id.
+**`append`** requires `target` (dotted path). Flattens the clone's `field` (or the source item when `field` is absent) across all clones into the target array.
 
 ```ts
-fanIn: { strategy: 'custom', customNode: 'mergeCandidates' }
+gather: { strategy: 'append', target: 'results' }
 ```
 
-## Embedded-DAG state mapping
-
-Embedded DAGs run in a cloned child state. State mapping controls what crosses the parent/child boundary.
-
-`stateMapping.input` copies fields from the parent into the child before the child runs:
+**`partition`** requires `partitions: Record<outputToken, targetPath>`. Buckets clones by their output token and writes each group to its declared path.
 
 ```ts
-stateMapping: {
-  input: { 'childKey': 'parent.nested.key' }
-}
+gather: { strategy: 'partition', partitions: { success: 'passed', error: 'failed' } }
 ```
 
-Reads `parentState['parent']['nested']['key']` and writes it to `childState['childKey']`.
-
-`stateMapping.output` copies fields from the child back into the parent after the child returns:
+**`custom`** requires `customNode: string`. The dispatcher stages the per-clone records under `state.metadata.gatherResults` and dispatches the named registered node. The Archivist's `mergeCandidates` node uses `custom` to deduplicate scout results by canonical book id.
 
 ```ts
-stateMapping: {
-  output: { 'parent.result': 'childResult' }
-}
+gather: { strategy: 'custom', customNode: 'mergeCandidates' }
 ```
 
-Reads `childState['childResult']` and writes it to `parentState['parent']['result']`.
+## Scatter outcome reducers
 
-`errors` and `warnings` from the child always bubble up; state mapping does not affect that.
+After gather, an outcome reducer maps the set of per-clone records to one routing output for the scatter placement. The reducer name comes from `ScatterNode.reducer`.
 
-Without `stateMapping`, the child starts with a clone of the parent's metadata, and no output values copy back.
+**`aggregate`** (default when `source` is present) counts records where `output === 'success'`. Returns `all-success`, `partial`, `all-error`, or `empty`.
+
+**`terminal`** (default when `source` is absent) routes `error` when the single clone's body failed (`terminalOutcome === 'failed'` for a DAG body or `output === 'error'` for a node body), otherwise routes `success`.
+
+## Scatter projection
+
+`projection` seeds the clone before the body runs. Keys are dotted paths on the clone; values are dotted paths on the parent. The copy runs once per clone, before the body starts.
+
+```ts
+projection: { 'query': 'request.query' }
+```
+
+Without `projection`, the clone starts with the parent's metadata and no domain-field seeds beyond what `clone()` copies.
 
 ## Checkpoint and resume
 
@@ -209,7 +204,7 @@ Dagonizer is a one-process DAG dispatcher. It pairs naturally with runtimes that
 
 ### Dagonizer plus Temporal or durable workflow engines
 
-Temporal owns the durable boundary: workflow definitions live as replayable event histories, survive crashes, and span hours to days. Dagonizer owns the per-task composition: each Temporal Activity (or batch of activities) can be a Dagonizer flow with typed nodes, retry policies, parallel and fan-out, and embedded-DAG composition.
+Temporal owns the durable boundary: workflow definitions live as replayable event histories, survive crashes, and span hours to days. Dagonizer owns the per-task composition: each Temporal Activity (or batch of activities) can be a Dagonizer flow with typed nodes, retry policies, parallel and scatter, and scatter sub-DAG composition.
 
 Shared: explicit retry semantics, abort signals, named output routing.
 
@@ -235,4 +230,4 @@ Pattern: a BullMQ job's payload contains the DAG name and initial state; the wor
 
 Some flows do not need a wrapping runtime. Dagonizer runs in-process with no external dependencies. The dispatcher is a single class to instantiate; flows are plain JSON-LD objects you store in files, databases, or configuration services. Cancellation, retry, and checkpoint/resume are first-class without spinning up infrastructure.
 
-A Dagonizer flow that needs to call remote workers does so via embedded-DAG placements; the local dispatcher composes them into the larger DAG without requiring a new primitive.
+A Dagonizer flow that needs to call remote workers does so via scatter placements with a `dag` body; the local dispatcher composes them into the larger DAG without requiring a new primitive.

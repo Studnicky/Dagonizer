@@ -2,7 +2,7 @@
 seeAlso:
   - text: 'Reference: Core'
     link: './core'
-    description: '`ParallelCombiner`, `FanInStrategy` extension classes'
+    description: '`ParallelCombiner`, `GatherStrategy`, `OutcomeReducer` extension classes'
   - text: 'Reference: Derive'
     link: './derive'
     description: 'uses `OperationContract`'
@@ -121,7 +121,7 @@ interface StateAccessor {
 }
 ```
 
-Path resolver used for fan-out source reads, fan-in writes, and embedded-DAG state mapping. Default implementation: `DottedPathAccessor` in `runtime/`. Pass a custom implementation via `new Dagonizer({ accessor })`.
+Path resolver used for scatter source reads, projection copies, and gather writes. Default implementation: `DottedPathAccessor` in `runtime/`. Pass a custom implementation via `new Dagonizer({ accessor })`.
 
 ## Instrumentation
 
@@ -144,7 +144,7 @@ Hook surface the dispatcher invokes at execution boundaries. Plugins (`@noocodex
 |---|---|
 | `flowStart` | Before the entrypoint node runs |
 | `flowEnd` | After the loop drains (terminal or interrupted) |
-| `nodeStart` | Before each node's `execute()` call, including placements inside parallel, fan-out, and embedded-DAG |
+| `nodeStart` | Before each node's `execute()` call, including placements inside parallel and scatter clones |
 | `nodeEnd` | After the node's result is recorded |
 | `phaseEnter` | Before a pre or post phase placement runs |
 | `phaseExit` | After a pre or post phase placement runs |

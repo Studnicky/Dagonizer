@@ -38,16 +38,15 @@
  */
 
 import type { DAG } from '../entities/dag/DAG.js';
-import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
+import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 
 import { CompositeLayout } from './CompositeLayout.js';
 import type { CompositeLayoutOptions } from './CompositeLayout.js';
 
-type DAGNodeEntry = FanOutNode | ParallelNode | SingleNodePlacementInterface | EmbeddedDAGNode | TerminalNodePlacementInterface;
+type DAGNodeEntry = ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface;
 
 /** A Cytoscape node element. */
 export interface CytoscapeNodeElement {
@@ -55,8 +54,8 @@ export interface CytoscapeNodeElement {
   readonly data: {
     readonly id: string;
     readonly label: string;
-    /** Placement kind — selector use: `node[type="fan-out"]`. */
-    readonly type: 'single' | 'parallel' | 'fan-out' | 'embedded-dag' | 'terminal';
+    /** Placement kind — selector use: `node[type="scatter"]`. */
+    readonly type: 'single' | 'parallel' | 'scatter' | 'terminal';
     /** Free-form metadata consumers can read in stylesheets. */
     readonly [key: string]: unknown;
   };
@@ -146,11 +145,10 @@ export class CytoscapeRenderer {
   }
 
   /** Mapping from JSON-LD placement-discriminator to Cytoscape `data.type` value. */
-  private static readonly PLACEMENT_KIND: Readonly<Record<string, 'single' | 'parallel' | 'fan-out' | 'embedded-dag' | 'terminal'>> = {
+  private static readonly PLACEMENT_KIND: Readonly<Record<string, 'single' | 'parallel' | 'scatter' | 'terminal'>> = {
     'SingleNode':   'single',
     'ParallelNode': 'parallel',
-    'FanOutNode':   'fan-out',
-    'EmbeddedDAGNode':  'embedded-dag',
+    'ScatterNode':  'scatter',
     'TerminalNode': 'terminal',
   };
 
@@ -213,27 +211,19 @@ export class CytoscapeRenderer {
         return { ...base, "data": { ...base.data, "node": placement.node } };
       case 'ParallelNode':
         return { ...base, "data": { ...base.data, "combine": placement.combine, "children": [...placement.nodes] } };
-      case 'FanOutNode':
+      case 'ScatterNode': {
+        const bodyRef = 'node' in placement.body ? placement.body.node : placement.body.dag;
         return {
           ...base,
           "data": {
             ...base.data,
-            "node":        placement.node,
+            "body":        bodyRef,
             "source":      placement.source,
-            "itemKey":     placement.itemKey,
-            "concurrency": placement.concurrency,
-            "fanIn":       placement.fanIn,
+            "gather":      placement.gather,
+            "reducer":     placement.reducer,
           },
         };
-      case 'EmbeddedDAGNode':
-        return {
-          ...base,
-          "data": {
-            ...base.data,
-            "dag":          placement.dag,
-            "stateMapping": placement.stateMapping,
-          },
-        };
+      }
       case 'TerminalNode':
         return {
           ...base,
@@ -307,11 +297,13 @@ export class CytoscapeRenderer {
     const embeddedEntryRewrite = new Map<string, string>();
     const maxDepth = state.options.maxDepth ?? CytoscapeRenderer.DEFAULT_MAX_DEPTH;
     for (const placement of dag.nodes as readonly DAGNodeEntry[]) {
-      if (placement['@type'] !== 'EmbeddedDAGNode') continue;
-      const body = state.options.embeddedDAGs?.get(placement.dag);
+      if (placement['@type'] !== 'ScatterNode') continue;
+      if (!('dag' in placement.body)) continue;
+      const dagName = placement.body.dag;
+      const body = state.options.embeddedDAGs?.get(dagName);
       if (body === undefined) continue;
       if (depth >= maxDepth) continue;
-      if (visited.has(placement.dag)) continue;
+      if (visited.has(dagName)) continue;
       const placementId = CytoscapeRenderer.idIn(prefix, placement.name);
       const entryChildId = CytoscapeRenderer.idIn(placementId, body.entrypoint);
       embeddedEntryRewrite.set(placement.name, entryChildId);
@@ -324,9 +316,11 @@ export class CytoscapeRenderer {
         ? CytoscapeRenderer.idIn(prefix, parallelParent)
         : compoundParent;
 
-      // ── Embedded-DAG: if the target DAG is registered, expand inline as a
-      //    compound parent containing the embedded-DAG's full flow.
-      const embeddedDagName = placement['@type'] === 'EmbeddedDAGNode' ? placement.dag : null;
+      // ── ScatterNode with body.dag: if the target DAG is registered, expand
+      //    inline as a compound parent containing the sub-DAG's full flow.
+      const embeddedDagName = placement['@type'] === 'ScatterNode' && 'dag' in placement.body
+        ? placement.body.dag
+        : null;
       const embeddedDagBody = embeddedDagName !== null
         ? state.options.embeddedDAGs?.get(embeddedDagName)
         : undefined;

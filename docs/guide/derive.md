@@ -87,9 +87,9 @@ const elements = CytoscapeRenderer.render(parentDAG, {
 
 ## The derived topology
 
-The example below derives a parent DAG with one embedded-DAG placement. `prepare` produces `intermediate`; `invoke-plugin` requires it and produces `childResult`; `finalize` requires `childResult`. The annotation swaps `invoke-plugin` from `SingleNode` to `EmbeddedDAGNode`:
+The example below derives a parent DAG with one scatter-over-sub-DAG placement. `prepare` produces `intermediate`; `invoke-plugin` requires it and produces `childResult`; `finalize` requires `childResult`. The annotation swaps `invoke-plugin` from `SingleNode` to a `ScatterNode` with `body: { dag }`:
 
-<DagGraph :elements="elements" aria-label="Derived parent DAG: prepare → invoke-plugin (embedded-DAG) → finalize, with child DAG validate → transform expanded inline." />
+<DagGraph :elements="elements" aria-label="Derived parent DAG: prepare → invoke-plugin (scatter/sub-dag) → finalize, with child DAG validate → transform expanded inline." />
 
 ## OperationContract
 
@@ -202,11 +202,11 @@ Cross-link: [Builder `.terminal()`](./builder#terminal) for the imperative equiv
 
 Ports declared in `outputs` but absent from `terminals` auto-wire to the next derived stage. A terminal whose outcome does not appear in the contract's `outputs` throws `DAGError` at derive time; routing-shape mismatches fail fast.
 
-### `fanouts`: fan-out roots
+### `fanouts`: scatter roots
 
-When an operation dispatches one execution per item from a state-array source, the `fanouts` annotation declares the source path, per-item key, registered node, and fan-in strategy. `DAGDeriverFanOut` is a discriminated union over the fan-in strategy; every variant carries its strategy-specific fields and only those.
+When an operation dispatches one execution per item from a state-array source, the `fanouts` annotation declares the source path, per-item key, registered node, and gather strategy. `DAGDeriverFanOut` is a discriminated union over the gather strategy; every variant carries its strategy-specific fields and only those.
 
-#### Strategy `'custom'`: registered merge node
+#### Strategy `'custom'`: registered gather node
 
 ```ts
 const dag = DAGDeriver.derive({
@@ -234,7 +234,7 @@ const dag = DAGDeriver.derive({
 });
 ```
 
-The fan-in operation is registered with the dispatcher and invoked through the `custom` strategy; the dispatcher passes the `Record<outcome, item[]>` map to it via `state.metadata.fanInResults`.
+The gather operation is registered with the dispatcher and invoked through the `custom` strategy; the dispatcher stages the per-clone records under `state.metadata.gatherResults`.
 
 #### Strategy `'partition'`: per-outcome state buckets
 
@@ -294,9 +294,9 @@ annotations: {
 - A `parallels` member cannot also appear in `fanouts` or `embeddedDAGs`; placement kind must be unambiguous.
 - `combine` is one of `'all-success' | 'any-success' | 'collect'`; the engine routes the parallel's aggregate output through the chosen reduction.
 
-### `embeddedDAGs`: embedded-DAG composition
+### `embeddedDAGs`: sub-DAG body scatter composition
 
-When an operation delegates execution to a nested registered DAG (plugin dispatch, phase composition, runtime-resolved child flows). The contract still declares `produces ↔ hardRequired` for topology derivation; the annotation swaps the rendered placement from `SingleNode` to `EmbeddedDAGNode`:
+When an operation delegates execution to a nested registered DAG (plugin dispatch, phase composition, runtime-resolved child flows). The contract still declares `produces ↔ hardRequired` for topology derivation; the annotation swaps the rendered placement from `SingleNode` to a `ScatterNode` with `body: { dag }`. The `stateMapping.input` translates to `projection` (parent → clone seed) and `stateMapping.output` translates to a `map` gather (clone → parent).
 
 ```ts
 const dag = DAGDeriver.derive({
@@ -312,10 +312,10 @@ const dag = DAGDeriver.derive({
     embeddedDAGs: {
       parse: {
         dag:     'aonprd:parse',         // registered DAG name
-        outputs: ['success', 'error'],   // ports the embedded-DAG can route on
+        outputs: ['success', 'error'],   // ports the scatter placement routes on
         stateMapping: {
-          input:  { html:   'parent.html' },
-          output: { 'parent.record': 'record' },
+          input:  { html:   'parent.html' },     // projection: 'html' clone key ← 'parent.html' parent path
+          output: { 'parent.record': 'record' }, // map gather: 'parent.record' parent path ← 'record' clone path
         },
       },
     },
@@ -326,16 +326,15 @@ const dag = DAGDeriver.derive({
 });
 ```
 
-- The child DAG name (`'aonprd:parse'`) is resolved at `registerDAG` time. The parent must register the child DAG first; the dispatcher's existing cycle check rejects self-referential embeddedDAGs.
+- The child DAG name (`'aonprd:parse'`) is resolved at `registerDAG` time. The parent must register the child DAG first; the dispatcher's existing cycle check rejects self-referential scatter bodies.
 - Every port in `embeddedDAG.outputs` auto-wires to the next derived stage (same semantics as `contract.outputs`). `terminals` overrides individual ports.
 - A terminal whose outcome is not in `embeddedDAG.outputs` throws `DAGError` at derive time.
-- `stateMapping` is forwarded verbatim to the rendered `EmbeddedDAGNode.stateMapping`; it controls what crosses the parent/child state boundary.
-- Embedded-DAG placements cannot terminate the run; the parent DAG owns END. The embedded-DAG step must route to another parent placement; if every port routes to `null` the engine rejects the DAG at registration.
+- The scatter placement cannot terminate the run; the parent DAG owns END. The scatter step must route to another parent placement; if every port routes to `null` the engine rejects the DAG at registration.
 - An operation cannot appear in both `fanouts` and `embeddedDAGs`; the placement kind must be unambiguous.
 
 #### Typed `stateMapping` via `DAGDeriverEmbeddedDAG<TChildState>`
 
-Supply `TChildState` to narrow `stateMapping.input` keys to names that actually exist on the child state at compile time. The wire shape emitted to the rendered `EmbeddedDAGNode` is always `Record<string, string>`; the generic is for authoring ergonomics only.
+Supply `TChildState` to narrow `stateMapping.input` keys to names that actually exist on the child state at compile time. The wire shape emitted to the rendered `ScatterNode` (as `projection` and `gather`) is always `Record<string, string>`; the generic is for authoring ergonomics only.
 
 ```ts
 class ParseChildState extends NodeStateBase {

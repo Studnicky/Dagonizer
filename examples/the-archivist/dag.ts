@@ -2,9 +2,10 @@
  * The Archivist — canonical DAG, built with DAGBuilder. Version 6.0.
  *
  * Molecular composition: the parent DAG is composed of two reusable
- * embedded-DAGs that ship as independent components and are imported as
- * `.embeddedDAG(...)` placements. The embedded-DAGs are registered separately
- * and referenced by name — the parent DAG never knows their internals.
+ * sub-DAGs that ship as independent components and are imported as
+ * `.scatter(name, { dag }, routes, ...)` singleton placements. The sub-DAGs are
+ * registered separately and referenced by name — the parent DAG never knows
+ * their internals.
  *
  *   recall-context
  *     └─ recalled ──► classify-intent
@@ -120,42 +121,48 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
   })
   // #endregion intent-routes
 
-  // #region embedded-dag-placements
+  // #region scatter-placements
   // ── on-topic branch ──────────────────────────────────────────────────────
-  // Embedded-DAG placement: book-search-fanout handles extract-query, decide-tools,
+  // ScatterNode singleton: book-search-fanout handles extract-query, decide-tools,
   // all four scouts, rank-candidates, merge, record, gate, and recall.
-  // One packaged cluster — first of three placements of the same embedded-DAG.
-  // stateMapping.output copies the fields the embedded-DAG writes back to the
-  // parent state so compose-loop and group-by-year can read them.
-  .embeddedDAG('on-topic-search', 'book-search-fanout', {
+  // One packaged cluster — first of three placements of the same sub-DAG.
+  // gather.map copies the fields the sub-DAG writes back to the parent state
+  // so compose-loop and group-by-year can read them.
+  .scatter('on-topic-search', { dag: 'book-search-fanout' }, {
     'success': 'compose-loop',
     'error':   'compose-empty',
   }, {
-    'outputs': {
-      'terms':         'terms',
-      'toolPlan':      'toolPlan',
-      'candidates':    'candidates',
-      'shortlist':     'shortlist',
-      'priorContext':  'priorContext',
-      'failureCause':  'failureCause',
+    'gather': {
+      'strategy': 'map',
+      'mapping': {
+        'terms':         'terms',
+        'toolPlan':      'toolPlan',
+        'candidates':    'candidates',
+        'shortlist':     'shortlist',
+        'priorContext':  'priorContext',
+        'failureCause':  'failureCause',
+      },
     },
   })
 
   // ── lookup-author branch ─────────────────────────────────────────────────
-  // Embedded-DAG placement: same book-search-fanout cluster, second placement.
+  // ScatterNode singleton: same book-search-fanout cluster, second placement.
   // After success, group-by-year sorts results chronologically before the
   // compose loop — author surveys read better in publication-timeline order.
-  .embeddedDAG('author-search', 'book-search-fanout', {
+  .scatter('author-search', { dag: 'book-search-fanout' }, {
     'success': 'group-by-year',
     'error':   'compose-empty',
   }, {
-    'outputs': {
-      'terms':         'terms',
-      'toolPlan':      'toolPlan',
-      'candidates':    'candidates',
-      'shortlist':     'shortlist',
-      'priorContext':  'priorContext',
-      'failureCause':  'failureCause',
+    'gather': {
+      'strategy': 'map',
+      'mapping': {
+        'terms':         'terms',
+        'toolPlan':      'toolPlan',
+        'candidates':    'candidates',
+        'shortlist':     'shortlist',
+        'priorContext':  'priorContext',
+        'failureCause':  'failureCause',
+      },
     },
   })
   // group-by-year is author-branch-specific: sorts shortlist chronologically.
@@ -210,50 +217,56 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
 
   // ── recommend-similar branch ─────────────────────────────────────────────
   // recommendSimilar seeds state.terms from prior-run shortlist memory.
-  // 'seeded' routes to the book-search-fanout embedded-DAG — third placement of
+  // 'seeded' routes to the book-search-fanout sub-DAG — third placement of
   // the same packaged cluster. 'empty' routes to the decline terminal.
   .node('recommend-similar', recommendSimilar, {
     'seeded': 'similar-search',
     'empty':  'compose-empty',
   })
 
-  // Embedded-DAG placement: same book-search-fanout, third and final placement.
-  .embeddedDAG('similar-search', 'book-search-fanout', {
+  // ScatterNode singleton: same book-search-fanout, third and final placement.
+  .scatter('similar-search', { dag: 'book-search-fanout' }, {
     'success': 'compose-loop',
     'error':   'compose-empty',
   }, {
-    'outputs': {
-      'terms':         'terms',
-      'toolPlan':      'toolPlan',
-      'candidates':    'candidates',
-      'shortlist':     'shortlist',
-      'priorContext':  'priorContext',
-      'failureCause':  'failureCause',
+    'gather': {
+      'strategy': 'map',
+      'mapping': {
+        'terms':         'terms',
+        'toolPlan':      'toolPlan',
+        'candidates':    'candidates',
+        'shortlist':     'shortlist',
+        'priorContext':  'priorContext',
+        'failureCause':  'failureCause',
+      },
     },
   })
 
-  // ── compose-loop — shared compose/validate embedded-DAG ─────────────────────
+  // ── compose-loop — shared compose/validate sub-DAG ──────────────────────────
   // All branches that successfully find candidates converge here.
   // composeResponse → validateResponse (retry loop, bounded by state.attempts.compose).
-  // One embedded-DAG definition serves all four convergent branches.
-  // stateMapping.output copies the compose loop's writes back to the parent.
+  // One sub-DAG definition serves all four convergent branches.
+  // gather.map copies the compose loop's writes back to the parent.
   //
   // Fan-in policy: 'success' routes to the shared respond-to-visitor terminal
-  // at the parent level — the embedded-DAG produces state.draft and exits cleanly;
+  // at the parent level — the sub-DAG produces state.draft and exits cleanly;
   // exactly ONE respond-to-visitor fires per run regardless of branch count.
   // 'error' (retry budget exhausted) falls through to compose-empty so the
   // visitor always receives an in-character response rather than a silent drop.
-  .embeddedDAG('compose-loop', 'compose-retry-loop', {
+  .scatter('compose-loop', { dag: 'compose-retry-loop' }, {
     'success': 'respond-to-visitor',
     'error':   'compose-empty',
   }, {
-    'outputs': {
-      'draft':    'draft',
-      'approved': 'approved',
-      'attempts': 'attempts',
+    'gather': {
+      'strategy': 'map',
+      'mapping': {
+        'draft':    'draft',
+        'approved': 'approved',
+        'attempts': 'attempts',
+      },
     },
   })
-  // #endregion embedded-dag-placements
+  // #endregion scatter-placements
 
   // ── respond-to-visitor — single shared happy-path terminal ───────────────
   // Every branch that successfully composes a response converges here.

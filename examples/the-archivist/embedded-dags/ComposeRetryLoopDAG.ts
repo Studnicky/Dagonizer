@@ -12,9 +12,10 @@
  * Outputs:
  *   success — draft composed (approved or best-effort); parent routes to
  *             the shared respond-to-visitor terminal.
- *   error   — child-state errors accumulated (propagated by executeEmbeddedDAG)
+ *   error   — clone-state errors accumulated (propagated by the parent
+ *             ScatterNode to the parent's 'error' branch)
  *
- * Fan-in policy: this embedded-DAG does NOT contain respondToVisitor. It is a
+ * Fan-in policy: this sub-DAG does NOT contain respondToVisitor. It is a
  * pure compose/validate unit that produces state.draft and exits. The
  * single shared respond-to-visitor placement lives at the parent DAG level
  * so that every converging branch strikes exactly one terminal node per run.
@@ -24,7 +25,7 @@
  *   registerComposeRetryLoopNodes(dispatcher);
  *   dispatcher.registerDAG(ComposeRetryLoopDAG);
  *
- * The embedded-DAG operates on the parent's state directly (no stateMapping
+ * The sub-DAG operates on the parent's state directly (no projection / gather
  * needed) — it reads `state.shortlist` / `state.intent` / `state.priorContext`
  * and writes `state.draft` / `state.approved`, which the parent DAG already
  * manages. Every intent branch funnels through this one composed loop rather
@@ -42,12 +43,13 @@ import type { DAG } from '@noocodex/dagonizer/entities';
 
 /**
  * The `compose-retry-loop` DAG — one packaged compose/validate unit that every
- * intent branch references via `.embeddedDAG('compose-loop', 'compose-retry-loop', routes)`.
+ * intent branch references via
+ * `.scatter('compose-loop', { dag: 'compose-retry-loop' }, routes)`.
  *
  * Exits with `success` when the draft is approved or attempts are exhausted.
  * The parent DAG routes `compose-loop → success → respond-to-visitor` so
  * exactly ONE respond-to-visitor fires per run regardless of how many branches
- * converge into this embedded-DAG.
+ * converge into this sub-DAG.
  */
 export const ComposeRetryLoopDAG: DAG = new DAGBuilder('compose-retry-loop', '1.1')
 
@@ -62,7 +64,7 @@ export const ComposeRetryLoopDAG: DAG = new DAGBuilder('compose-retry-loop', '1.
   // ── 2. validate-response ─────────────────────────────────────────────────
   // Quality gate: length, citations, tone. On 'retry', routes back to
   // compose (bounded by MAX_COMPOSE_ATTEMPTS on state.attempts.compose).
-  // 'approved' and 'exhausted' both exit the embedded-DAG cleanly (null terminal)
+  // 'approved' and 'exhausted' both exit the sub-DAG cleanly (null terminal)
   // so the parent receives output 'success' and routes to respond-to-visitor.
   .node('validate-response', validateResponse, {
     'approved':  null,

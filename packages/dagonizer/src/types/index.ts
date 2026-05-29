@@ -58,11 +58,11 @@ export type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js
 // ---------------------------------------------------------------------------
 
 export type { DAG } from '../entities/dag/DAG.js';
-export type { FanInConfig } from '../entities/dag/FanInConfig.js';
-export type { FanOutNode } from '../entities/dag/FanOutNode.js';
+export type { GatherConfig } from '../entities/dag/GatherConfig.js';
+export type { ScatterNode } from '../entities/dag/ScatterNode.js';
 export type { ParallelNode } from '../entities/dag/ParallelNode.js';
 export type { SingleNode } from '../entities/dag/SingleNode.js';
-export type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
+
 
 export type { Node } from '../entities/node/Node.js';
 export type { NodeContext } from '../entities/node/NodeContext.js';
@@ -92,10 +92,7 @@ export type {
 // Builder option interfaces
 // ---------------------------------------------------------------------------
 
-export type {
-  FanOutOptionsInterface,
-  EmbeddedDAGOptionsInterface,
-} from '../builder/DAGBuilder.js';
+export type { ScatterOptionsInterface } from '../builder/DAGBuilder.js';
 
 // ---------------------------------------------------------------------------
 // Core dispatcher option types
@@ -104,7 +101,8 @@ export type {
 export type { Execution } from '../Execution.js';
 export type { DagonizerOptionsInterface } from '../Dagonizer.js';
 export type { ParallelResult, ParallelCombiner } from '../core/ParallelCombiners.js';
-export type { FanInExecution, FanInStrategy } from '../core/FanInStrategies.js';
+export type { GatherExecution, GatherStrategy } from '../core/GatherStrategies.js';
+export type { OutcomeReducer } from '../core/OutcomeReducers.js';
 export type { DAGDeriverOptions } from '../derive/DAGDeriver.js';
 export type { DAGDeriverAnnotations, DAGDeriverEmbeddedDAG, DAGDeriverFanOut, DAGDeriverTerminal } from '../derive/DAGDeriverAnnotations.js';
 export type { DagJsonLdDocument, JsonLdGraphEntry } from '../viz/JsonLdRenderer.js';

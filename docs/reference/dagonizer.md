@@ -8,7 +8,7 @@ seeAlso:
     description: '`NodeInterface`, `ExecuteOptionsInterface`'
   - text: 'Reference: Core'
     link: './core'
-    description: '`ParallelCombiners`, `FanInStrategies`'
+    description: '`ParallelCombiners`, `GatherStrategies`, `OutcomeReducers`'
   - text: 'Reference: Lifecycle'
     link: './lifecycle'
 ---
@@ -37,7 +37,7 @@ const dispatcher = new Dagonizer<MyState, MyServices>({ services: { logger, db }
 constructor(options?: DagonizerOptionsInterface<TServices>)
 ```
 
-`options.accessor` swaps the path resolver for fan-out reads, fan-in writes, and embedded-DAG state mapping. Defaults to `DottedPathAccessor`. `options.services` is the typed services bag; defaults to `undefined`.
+`options.accessor` swaps the path resolver for scatter source reads, projection copies, and gather writes. Defaults to `DottedPathAccessor`. `options.services` is the typed services bag; defaults to `undefined`.
 
 ### `DagonizerOptionsInterface`
 
@@ -105,7 +105,7 @@ registerDAG(dag: DAG): void
 Registers a DAG after three validation passes:
 
 1. **Schema pass.** `Validator.dag.validate(dag)` checks structure (required fields, valid `type` and `strategy` enumerations).
-2. **Semantic pass.** Verifies entrypoint exists, all node references are resolvable, no circular embedded-DAG references, and every registered node output has a routing entry in the placement's `outputs` map.
+2. **Semantic pass.** Verifies entrypoint exists, all node references are resolvable, no circular scatter body references, and every registered node output has a routing entry in the placement's `outputs` map.
 3. **Contract pass.** For DAGs derived from a `nodes` registry, `ContractRegistryValidator` checks every non-entrypoint node's `hardRequired` paths against upstream producers. Dangling reads throw `DAGError`; dead writes call `onContractWarning`.
 
 Throws `DAGError` with a multi-line message listing all failures.
@@ -289,21 +289,21 @@ A coherent unit of nodes and DAGs registered together. Plugin packages and featu
 
 ---
 
-## Const: `FAN_OUT_PROGRESS_KEY`
+## Const: `SCATTER_PROGRESS_KEY`
 
 ```ts
-const FAN_OUT_PROGRESS_KEY: '__dagonizer_fan_out_progress__'
+const SCATTER_PROGRESS_KEY: '__dagonizer_scatter_progress__'
 ```
 
-Reserved metadata key used by the fan-out executor to persist per-item resume bookkeeping. Consumer nodes must not write to this key. The stored value is a `StoredFanOutProgress` map keyed by the fan-out placement's `name`.
+Reserved metadata key used by the scatter executor to persist per-item resume bookkeeping. Consumer nodes must not write to this key. The stored value is a `StoredScatterProgress` map keyed by the scatter placement's `name`.
 
 ```ts
-interface FanOutProgress {
+interface ScatterProgress {
   readonly placementName:    string;
   readonly completedIndices: readonly number[];
   readonly itemResults:      readonly { readonly index: number; readonly output: string }[];
 }
-type StoredFanOutProgress = Readonly<Record<string, FanOutProgress>>;
+type StoredScatterProgress = Readonly<Record<string, ScatterProgress>>;
 ```
 
 ---

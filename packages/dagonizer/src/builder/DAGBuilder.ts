@@ -18,106 +18,51 @@ import { DAGDeriver } from '../derive/DAGDeriver.js';
 import type { DAGDeriverAnnotations } from '../derive/DAGDeriverAnnotations.js';
 import type { DAG } from '../entities/dag/DAG.js';
 import { DAG_CONTEXT } from '../entities/dag/DAG.js';
-import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-import type { FanInConfig } from '../entities/dag/FanInConfig.js';
-import type { FanOutNode } from '../entities/dag/FanOutNode.js';
+import type { GatherConfig } from '../entities/dag/GatherConfig.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { PhaseNodePlacementInterface } from '../entities/dag/PhaseNode.js';
+import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { Path } from './Path.js';
 
-type DAGNodeType = FanOutNode | ParallelNode | SingleNodePlacementInterface | EmbeddedDAGNode | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
+type DAGNodeType = ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
 
-/** Optional configuration for a fan-out node added via `DAGBuilder.fanOut`. */
-export interface FanOutOptionsInterface {
-  /** Maximum number of items processed concurrently. Defaults to the full source array length. */
-  'concurrency'?: number;
-  /** Metadata key under which each item is written for the node to read. Defaults to `currentItem`. */
-  'itemKey'?: string;
-}
-
-/** Optional configuration for a embedded-DAG node added via `DAGBuilder.embeddedDAG`. */
-export interface EmbeddedDAGOptionsInterface {
-  /**
-   * State mapping between parent and child DAGs. `input` copies fields from the
-   * parent node state into the child node state before the embedded-DAG runs;
-   * `output` copies fields from the child node state back into the parent after
-   * it completes.
-   */
-  'stateMapping'?: {
-    'input'?: Record<string, string>;
-    'output'?: Record<string, string>;
-  };
-}
-
-/**
- * Typed embedded-DAG options. Both generics narrow path strings at compile time:
- * `TChildState` narrows the LEFT side of `inputs` and the RIGHT side of
- * `outputs` to keys / dotted paths that exist on the child state. `TParentState`
- * narrows the RIGHT side of `inputs` and BOTH sides of `outputs` to dotted
- * paths that exist on the parent state.
- *
- * Defaults to `NodeStateInterface` for both generics so existing call sites
- * that pass neither generic continue to typecheck.
- *
- * @example
- * ```ts
- * class ParentState extends NodeStateBase {
- *   user = { name: '', age: 0 };
- * }
- * class ChildState extends NodeStateBase {
- *   payload = '';
- *   result  = 0;
- * }
- *
- * builder.embeddedDAG<ChildState, ParentState>('invoke', 'child-dag', routes, {
- *   inputs:  { payload: 'user.name' },     // 'payload' ∈ ChildState; 'user.name' ∈ Path<ParentState>
- *   outputs: { 'user.age': 'result' },     // 'user.age' ∈ Path<ParentState>; 'result' ∈ Path<ChildState>
- * });
- * ```
- */
 /**
  * Resolves to `Path<T>` when `T` is a concrete subtype of `NodeStateInterface`
- * (i.e. the caller passed an explicit `TParentState`); resolves to `string`
+ * (i.e. the caller passed an explicit `TState`); resolves to `string`
  * when `T = NodeStateInterface` (the default). This keeps existing call sites
- * that pass only `TChildState` backward-compatible — the parent path stays
- * `string` so arbitrary dotted strings continue to typecheck.
- *
- * The check `NodeStateInterface extends T` is true only when `T` is
- * `NodeStateInterface` itself (or a supertype), not when `T` is a concrete
- * subclass. A concrete subclass has extra properties, so
- * `NodeStateInterface extends ConcreteState` is false.
+ * backward-compatible — the parent path stays `string` so arbitrary dotted
+ * strings continue to typecheck.
  */
 type ParentPath<T extends NodeStateInterface> =
   NodeStateInterface extends T ? string : Path<T>;
 
-export interface TypedEmbeddedDAGOptionsInterface<
-  TChildState extends NodeStateInterface = NodeStateInterface,
-  TParentState extends NodeStateInterface = NodeStateInterface,
-> {
+/**
+ * Optional configuration for a scatter node added via `DAGBuilder.scatter`.
+ *
+ * `TState` narrows `projection` values and `gather.mapping` values to dotted
+ * paths that exist on the state when a concrete subtype is passed.
+ */
+export interface ScatterOptionsInterface<TState extends NodeStateInterface = NodeStateInterface> {
+  /** State-array path to fan out over. Absent ⇒ one clone (singleton). */
+  readonly source?: string;
+  /** Metadata key under which each item is written per clone. Defaults to `currentItem`. */
+  readonly itemKey?: string;
+  /** Maximum number of clones run concurrently. Defaults to item count. */
+  readonly concurrency?: number;
   /**
-   * Input mapping: child-state key → parent-state dotted path.
-   * Child key is narrowed to `keyof TChildState & string`.
-   * Parent path is narrowed to `Path<TParentState>` when `TParentState` is
-   * a concrete subtype; falls back to `string` when using the default
-   * `NodeStateInterface` (preserving backward compatibility).
-   * Before the embedded-DAG runs, each listed parent field is copied into the
-   * corresponding child field.
+   * Parent → clone field projection before the body runs.
+   * Keys are clone paths; values are parent paths (narrowed to `Path<TState>`
+   * when `TState` is a concrete subtype).
    */
-  readonly 'inputs'?:  Partial<Record<keyof TChildState & string, ParentPath<TParentState>>>;
-
-  /**
-   * Output mapping: parent-state dotted path → child-state dotted path.
-   * Parent key is narrowed to `Path<TParentState>` (falls back to `string`
-   * when using the default); child path is narrowed to `Path<TChildState>`
-   * (falls back to `string` when using the default).
-   * After the embedded-DAG completes, each listed child field is copied back into
-   * the corresponding parent field.
-   */
-  readonly 'outputs'?: Partial<Record<ParentPath<TParentState>, ParentPath<TChildState>>>;
+  readonly projection?: Partial<Record<string, ParentPath<TState>>>;
+  /** Gather config — how produced clone state merges back into the parent. */
+  readonly gather?: GatherConfig;
+  /** Outcome reducer name. Defaults to `'aggregate'` with source, `'terminal'` without. */
+  readonly reducer?: string;
 }
 
 /**
@@ -125,7 +70,7 @@ export interface TypedEmbeddedDAGOptionsInterface<
  *
  * Each node placement is assigned:
  *   - `@id`:   `urn:noocodex:dag:<dagName>/node/<placementName>`
- *   - `@type`: the RDF class name (`'SingleNode'`, `'ParallelNode'`, etc.)
+ *   - `@type`: the RDF class name (`'SingleNode'`, `'ParallelNode'`, `'ScatterNode'`, etc.)
  *
  * @example
  * ```ts
@@ -200,74 +145,53 @@ export class DAGBuilder {
     return this;
   }
 
-  /** Append a fan-out node. `routes` covers `all-success | partial | all-error | empty`. */
-  fanOut<TState extends NodeStateInterface, TOutput extends string, TServices = undefined>(
-    name: string,
-    dagNode: NodeInterface<TState, TOutput, TServices>,
-    source: string,
-    fanIn: FanInConfig,
-    routes: Record<'all-success' | 'partial' | 'all-error' | 'empty', null | string>,
-    options: FanOutOptionsInterface = {},
-  ): this {
-    const dagNodeEntry: FanOutNode = {
-      '@id':     this.#nodeId(name),
-      '@type':   'FanOutNode',
-      name,
-      'node':    dagNode.name,
-      source,
-      fanIn,
-      'outputs': routes,
-    };
-    if (options.concurrency !== undefined) dagNodeEntry.concurrency = options.concurrency;
-    if (options.itemKey !== undefined) dagNodeEntry.itemKey = options.itemKey;
-    this.#nodes.push(dagNodeEntry);
-    this.#nodeImpls.set(name, dagNode as NodeInterface);
-    if (this.#entrypoint === null) this.#entrypoint = name;
-    return this;
-  }
-
   /**
-   * Append a embedded-DAG node. `routes` covers `success | error`.
+   * Append a scatter node. A scatter isolates a state clone per source item
+   * (or exactly one clone when `source` is absent), runs a body (registered
+   * node or registered sub-DAG) in the clone, and routes on the aggregate
+   * outcome.
    *
-   * Supply `TChildState` to narrow the LEFT side of `inputs` and the RIGHT
-   * side of `outputs` to keys / dotted paths that exist on the child state.
-   * Supply `TParentState` to narrow the RIGHT side of `inputs` and BOTH sides
-   * of `outputs` to dotted paths that exist on the parent state.
+   * When `body` is a `NodeInterface` the impl is registered automatically and
+   * the placement emits `body: { node: body.name }`. When `body` is
+   * `{ dag: string }` no impl is registered and the placement emits
+   * `body: { dag }`.
    *
-   * Both generics default to `NodeStateInterface`, so existing call sites
-   * that pass neither generic continue to typecheck unchanged.
+   * Supply `TState` to narrow `options.projection` values and
+   * `options.gather.mapping` values to dotted paths on the state.
    *
    * @example
    * ```ts
-   * builder.embeddedDAG<ChildState, ParentState>('invoke', 'child-dag',
-   *   { success: 'next', error: null },
-   *   { inputs: { payload: 'user.name' }, outputs: { 'user.age': 'result' } },
+   * builder.scatter('generate', generateNode,
+   *   { 'all-success': 'select', 'partial': 'select', 'all-error': null, 'empty': null },
+   *   { source: 'providers', gather: { strategy: 'map', mapping: { candidate: 'candidates' } } },
    * );
    * ```
    */
-  embeddedDAG<
-    TChildState extends NodeStateInterface = NodeStateInterface,
-    TParentState extends NodeStateInterface = NodeStateInterface,
-  >(
+  scatter<TState extends NodeStateInterface, TOutput extends string, TServices = undefined>(
     name: string,
-    dagName: string,
-    routes: Record<'success' | 'error', null | string>,
-    options: TypedEmbeddedDAGOptionsInterface<TChildState, TParentState> = {},
+    body: NodeInterface<TState, TOutput, TServices> | { readonly dag: string },
+    outputs: Record<string, null | string>,
+    options: ScatterOptionsInterface<TState> = {},
   ): this {
-    const dagNode: EmbeddedDAGNode = {
-      '@id':   this.#nodeId(name),
-      '@type': 'EmbeddedDAGNode',
+    const scatterNode: ScatterNode = {
+      '@id':     this.#nodeId(name),
+      '@type':   'ScatterNode',
       name,
-      'dag':   dagName,
-      'outputs': routes,
+      'body':    'dag' in body ? { 'dag': body.dag } : { 'node': (body as NodeInterface<TState, TOutput, TServices>).name },
+      'outputs': outputs,
     };
-    if (options.inputs !== undefined || options.outputs !== undefined) {
-      const stateMapping: EmbeddedDAGNode['stateMapping'] = {};
-      if (options.inputs  !== undefined) stateMapping.input  = options.inputs  as Record<string, string>;
-      if (options.outputs !== undefined) stateMapping.output = options.outputs as Record<string, string>;
-      dagNode.stateMapping = stateMapping;
+    if (options.source !== undefined) scatterNode.source = options.source;
+    if (options.itemKey !== undefined) scatterNode.itemKey = options.itemKey;
+    if (options.concurrency !== undefined) scatterNode.concurrency = options.concurrency;
+    if (options.projection !== undefined) scatterNode.projection = options.projection as Record<string, string>;
+    if (options.gather !== undefined) scatterNode.gather = options.gather;
+    if (options.reducer !== undefined) scatterNode.reducer = options.reducer;
+
+    if (!('dag' in body)) {
+      this.#nodeImpls.set(name, body as NodeInterface);
     }
-    this.#nodes.push(dagNode);
+
+    this.#nodes.push(scatterNode);
     if (this.#entrypoint === null) this.#entrypoint = name;
     return this;
   }
@@ -330,7 +254,7 @@ export class DAGBuilder {
    * dangling-read / dead-write validation that `DAGDeriver` runs at derive
    * time. Dangling reads throw `DAGError`; dead writes are routed to
    * `onContractWarning` (no-op if omitted). Placements added via `.parallel()`
-   * or `.embeddedDAG()` — which do not receive a `NodeInterface` — are not tracked
+   * or `.parallel()` — which do not receive a `NodeInterface` — are not tracked
    * in the impl registry and are silently skipped during contract validation;
    * this prevents false-positive dangling-read errors for node names that are
    * declared elsewhere.
@@ -349,12 +273,12 @@ export class DAGBuilder {
       'name':       this.#name,
       'version':    this.#version,
       'entrypoint': this.#entrypoint,
-      'nodes':      [...this.#nodes],
+      'nodes':      [...this.#nodes] as DAG['nodes'],
     };
 
     // Run contract validation for the subset of placements registered via
-    // .node() / .fanOut() whose underlying NodeInterface carries a contract.
-    // Placements added via .parallel() / .embeddedDAG() are not in #nodeImpls and
+    // .node() / .scatter() whose underlying NodeInterface carries a contract.
+    // Placements added via .parallel() are not in #nodeImpls and
     // are intentionally skipped — no false-positive dangling-read errors.
     const contractNodes = [...this.#nodeImpls.values()].filter(
       (impl) => impl.contract !== undefined,

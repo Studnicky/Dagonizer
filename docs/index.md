@@ -26,16 +26,16 @@ features:
     details: 'Output types narrow the routing map at compile time. An unwired output is a TypeScript error before registerDAG confirms it at runtime.'
   - icon: ⊘
     title: Abortable Execution
-    details: 'Pass a caller-controlled AbortSignal or a deadlineMs hard limit. The dispatcher composes them and propagates cancellation through every in-flight operation and embedded-DAG level.'
+    details: 'Pass a caller-controlled AbortSignal or a deadlineMs hard limit. The dispatcher composes them and propagates cancellation through every in-flight operation and every scatter clone.'
   - icon: ↻
     title: Deterministic Resume
     details: 'Snapshot a paused DAG at its cursor. Serialize to JSON, store anywhere, restore and resume with a new Execution that picks up where it left off.'
   - icon: ⬡
-    title: Embedded-DAG Composition
-    details: 'Invoke a registered DAG as a nested node. State maps in before the child runs and out after it returns. Errors and warnings bubble up.'
+    title: Scatter Composition
+    details: 'Isolate a state clone and run a body (registered node or sub-DAG) in it. Gather produced clone state back into the parent via map, append, partition, or custom strategies. Route on the aggregate outcome.'
   - icon: ⫴
-    title: Parallel and Fan-Out
-    details: 'Run independent nodes concurrently with parallel groups. Apply one node to every item in a collection with fan-out and configurable concurrency.'
+    title: Parallel and Scatter
+    details: 'Run independent nodes concurrently with parallel groups. Scatter over a source array with configurable concurrency, or run a sub-DAG body in a single clone.'
   - icon: ✕
     title: Retry Policies
     details: 'RetryPolicy provides constant, linear, exponential, and decorrelated-jitter strategies. Filter by error type. Cooperates with the abort signal so retries stop on cancellation.'
@@ -50,7 +50,7 @@ features:
     details: 'VirtualClockProvider and VirtualScheduler replace platform timers in tests. Step through retry delays and deadlines with scheduler.advance(ms).'
   - icon: ⊜
     title: Contract-derived Flows
-    details: 'Declare what each operation produces and hardRequires. DAGDeriver builds the topology by matching the data graph. Multi-port routing and embedded-DAG composition come from annotations; adding an operation is one contract and the flow rewires itself.'
+    details: 'Declare what each operation produces and hardRequires. DAGDeriver builds the topology by matching the data graph. Multi-port routing and scatter sub-DAG composition come from annotations; adding an operation is one contract and the flow rewires itself.'
 ---
 
 ## ⦿ What it is
@@ -61,8 +61,7 @@ A **node** is a typed, stateless unit of work that receives shared state and a c
 |------|-------------|
 | `single` | One node; output name selects the next vertex |
 | `parallel` | Multiple independent nodes run concurrently; combine strategy reduces to one route |
-| `fan-out` | One node per item in a state array; fan-in strategy merges results |
-| `embedded-dag` | A registered DAG invoked as a nested call; state mapped in and out |
+| `scatter` | Isolate a state clone, run a body (node or sub-DAG) per source item or once for singletons, gather produced clone state back, route on aggregate outcome |
 
 ## ⦿ FSM-driven lifecycle
 
@@ -82,4 +81,4 @@ Dagonizer runs in-process. No worker pool, no external state store, no IPC. DAG 
 
 ## ⦿ See it in action
 
-[The Archivist](/examples/the-archivist) is an end-to-end in-browser demo built on Dagonizer. It runs a bibliographic-assistant pipeline that exercises linear intake, fan-out, embedded-DAG composition, cancellation, retry, checkpoint, and visualization in a single flow. Start there before reading the concepts page.
+[The Archivist](/examples/the-archivist) is an end-to-end in-browser demo built on Dagonizer. It runs a bibliographic-assistant pipeline that exercises linear intake, scatter over source arrays, scatter over sub-DAG bodies, cancellation, retry, checkpoint, and visualization in a single flow. Start there before reading the concepts page.

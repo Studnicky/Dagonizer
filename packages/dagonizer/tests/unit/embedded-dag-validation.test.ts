@@ -17,7 +17,7 @@ const makeNode = (
   async execute() { return { 'output': outputs[0] as string }; },
 });
 
-// ── Embedded-DAG used as a reusable component ─────────────────────────────────
+// ── Sub-DAG used as a reusable component ─────────────────────────────────────
 const helperDAG: DAG = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:helper',
@@ -36,15 +36,15 @@ const helperDAG: DAG = {
   ],
 };
 
-void describe('registerDAG — embedded-DAG null-route acceptance', () => {
-  void it('accepts embedded-DAG placement with success → null (sugar for terminate-completed)', async () => {
+void describe('registerDAG — scatter/dag-body null-route acceptance', () => {
+  void it('accepts scatter placement with success → null (sugar for terminate-completed)', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('step', ['done']));
     dispatcher.registerNode(makeNode('entry', ['next']));
     dispatcher.registerDAG(helperDAG);
 
-    // Parent DAG where the embedded-dag routes 'success' → null (terminate-completed)
-    const parentWithNullEmbeddedDAG: DAG = {
+    // Parent DAG where the scatter (dag body) routes 'success' → null (terminate-completed)
+    const parentWithNullScatter: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:null-parent',
       '@type':    'DAG',
@@ -61,22 +61,22 @@ void describe('registerDAG — embedded-DAG null-route acceptance', () => {
         },
         {
           '@id':   'urn:noocodex:dag:null-parent/node/run-helper',
-          '@type': 'EmbeddedDAGNode',
+          '@type': 'ScatterNode',
           'name':  'run-helper',
-          'dag':   'helper',
+          'body':  { 'dag': 'helper' },
           'outputs': { 'success': null, 'error': null },
         },
       ],
     };
 
-    assert.doesNotThrow(() => dispatcher.registerDAG(parentWithNullEmbeddedDAG));
+    assert.doesNotThrow(() => dispatcher.registerDAG(parentWithNullScatter));
 
     const state = new NodeStateBase();
     const result = await dispatcher.execute('null-parent', state);
     assert.equal(result.state.lifecycle.kind, 'completed', 'flow completes cleanly');
   });
 
-  void it('accepts embedded-DAG with mixed null and explicit-target routes', async () => {
+  void it('accepts scatter with mixed null and explicit-target routes', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('step', ['done']));
     dispatcher.registerNode(makeNode('entry', ['next']));
@@ -108,9 +108,9 @@ void describe('registerDAG — embedded-DAG null-route acceptance', () => {
         },
         {
           '@id':   'urn:noocodex:dag:mixed-parent/node/run-helper',
-          '@type': 'EmbeddedDAGNode',
+          '@type': 'ScatterNode',
           'name':  'run-helper',
-          'dag':   'helper',
+          'body':  { 'dag': 'helper' },
           'outputs': {
             'error':   'after',  // routes to a parent placement
             'success': null,     // terminate-completed
@@ -126,14 +126,14 @@ void describe('registerDAG — embedded-DAG null-route acceptance', () => {
     assert.equal(result.state.lifecycle.kind, 'completed', 'flow completes cleanly');
   });
 
-  void it('accepts valid embedded-DAG placements where all outputs route to parent placements', () => {
+  void it('accepts valid scatter placements where all outputs route to parent placements', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('step', ['done']));
     dispatcher.registerNode(makeNode('entry', ['next']));
     dispatcher.registerNode(makeNode('terminal', ['done']));
     dispatcher.registerDAG(helperDAG);
 
-    // All embedded-dag outputs route to a real parent placement — no nulls
+    // All scatter outputs route to a real parent placement — no nulls
     const validParent: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:valid-parent',
@@ -158,9 +158,9 @@ void describe('registerDAG — embedded-DAG null-route acceptance', () => {
         },
         {
           '@id':   'urn:noocodex:dag:valid-parent/node/run-helper',
-          '@type': 'EmbeddedDAGNode',
+          '@type': 'ScatterNode',
           'name':  'run-helper',
-          'dag':   'helper',
+          'body':  { 'dag': 'helper' },
           'outputs': {
             'success': 'terminal',
             'error':   'terminal',
@@ -185,14 +185,15 @@ void describe('registerDAG — embedded-DAG null-route acceptance', () => {
     assert.throws(() => Validator.dag.validate(flatDag));
   });
 
-  void it('rejects a node placement using the old embedded-dag discriminator string', () => {
-    // Placements must use @type: 'EmbeddedDAGNode', not the old flat type: 'embedded-dag'
+  void it('rejects a node placement using the old discriminator string (not ScatterNode)', () => {
+    // Placements must use @type: 'ScatterNode'; the old 'EmbeddedDAGNode' string is invalid.
     const oldStylePlacement = {
-      'type': 'embedded-dag',
-      'name': 'run-helper',
-      'dag':  'helper',
+      '@id':   'urn:noocodex:dag:x/node/run-helper',
+      '@type': 'EmbeddedDAGNode',
+      'name':  'run-helper',
+      'dag':   'helper',
       'outputs': { 'success': 'next', 'error': 'next' },
     };
-    assert.equal(Validator.embeddedDAGNode.is(oldStylePlacement), false);
+    assert.equal(Validator.scatterNode.is(oldStylePlacement), false);
   });
 });

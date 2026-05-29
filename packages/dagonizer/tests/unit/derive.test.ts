@@ -78,14 +78,23 @@ void describe('DAGDeriver.derive', () => {
         },
       },
     });
-    const fanOut = dag.nodes.find((node) => node['@type'] === 'FanOutNode');
-    assert.ok(fanOut !== undefined);
-    if (fanOut !== undefined && fanOut['@type'] === 'FanOutNode') {
-      assert.equal(fanOut.fanIn.strategy, 'custom');
-      if (fanOut.fanIn.strategy === 'custom') {
-        assert.equal(fanOut.fanIn.customNode, 'merge');
+    const scatter = dag.nodes.find((node) => node['@type'] === 'ScatterNode');
+    assert.ok(scatter !== undefined);
+    if (scatter !== undefined && scatter['@type'] === 'ScatterNode') {
+      assert.ok('node' in scatter.body, 'body is a node body');
+      if ('node' in scatter.body) {
+        assert.equal(scatter.body.node, 'scout');
       }
-      assert.equal(fanOut.concurrency, 3);
+      assert.equal(scatter.source, 'tasks');
+      assert.equal(scatter.itemKey, 'currentTask');
+      assert.equal(scatter.concurrency, 3);
+      assert.ok(scatter.gather !== undefined);
+      if (scatter.gather !== undefined) {
+        assert.equal(scatter.gather.strategy, 'custom');
+        if (scatter.gather.strategy === 'custom') {
+          assert.equal(scatter.gather.customNode, 'merge');
+        }
+      }
     }
   });
 
@@ -112,12 +121,15 @@ void describe('DAGDeriver.derive', () => {
         },
       },
     });
-    const fanOut = dag.nodes.find((node) => node['@type'] === 'FanOutNode');
-    assert.ok(fanOut !== undefined && fanOut['@type'] === 'FanOutNode');
-    if (fanOut !== undefined && fanOut['@type'] === 'FanOutNode') {
-      assert.equal(fanOut.fanIn.strategy, 'partition');
-      if (fanOut.fanIn.strategy === 'partition') {
-        assert.deepEqual(fanOut.fanIn.partitions, { 'success': 'state.passed', 'error': 'state.failed' });
+    const scatter = dag.nodes.find((node) => node['@type'] === 'ScatterNode');
+    assert.ok(scatter !== undefined && scatter['@type'] === 'ScatterNode');
+    if (scatter !== undefined && scatter['@type'] === 'ScatterNode') {
+      assert.ok(scatter.gather !== undefined);
+      if (scatter.gather !== undefined) {
+        assert.equal(scatter.gather.strategy, 'partition');
+        if (scatter.gather.strategy === 'partition') {
+          assert.deepEqual(scatter.gather.partitions, { 'success': 'state.passed', 'error': 'state.failed' });
+        }
       }
     }
   });
@@ -145,11 +157,15 @@ void describe('DAGDeriver.derive', () => {
         },
       },
     });
-    const fanOut = dag.nodes.find((node) => node['@type'] === 'FanOutNode');
-    if (fanOut !== undefined && fanOut['@type'] === 'FanOutNode') {
-      assert.equal(fanOut.fanIn.strategy, 'append');
-      if (fanOut.fanIn.strategy === 'append') {
-        assert.equal(fanOut.fanIn.target, 'state.allResults');
+    const scatter = dag.nodes.find((node) => node['@type'] === 'ScatterNode');
+    assert.ok(scatter !== undefined && scatter['@type'] === 'ScatterNode');
+    if (scatter !== undefined && scatter['@type'] === 'ScatterNode') {
+      assert.ok(scatter.gather !== undefined);
+      if (scatter.gather !== undefined) {
+        assert.equal(scatter.gather.strategy, 'append');
+        if (scatter.gather.strategy === 'append') {
+          assert.equal(scatter.gather.target, 'state.allResults');
+        }
       }
     }
   });
@@ -275,7 +291,7 @@ void describe('DAGDeriver.derive', () => {
     );
   });
 
-  void it('embeddedDAGs annotation renders a EmbeddedDAGNode placement', () => {
+  void it('embeddedDAGs annotation renders a ScatterNode placement with dag body', () => {
     const contracts: OperationContract[] = [
       { 'name': 'prepare', 'hardRequired': ['input'],   'produces': ['payload'], 'outputs': ['success'] },
       { 'name': 'invoke',  'hardRequired': ['payload'], 'produces': ['result'],  'outputs': ['success', 'error'] },
@@ -296,16 +312,19 @@ void describe('DAGDeriver.derive', () => {
     });
     const invoke = dag.nodes.find((node) => node.name === 'invoke');
     assert.ok(invoke !== undefined, 'invoke placement is emitted');
-    if (invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode') {
-      assert.equal(invoke.dag, 'plugin:parse');
+    if (invoke !== undefined && invoke['@type'] === 'ScatterNode') {
+      assert.ok('dag' in invoke.body, 'body is a dag body');
+      if ('dag' in invoke.body) {
+        assert.equal(invoke.body.dag, 'plugin:parse');
+      }
       assert.equal(invoke.outputs['success'], null);  // no successor
       assert.equal(invoke.outputs['error'],   null);
     } else {
-      assert.fail('expected invoke placement to be EmbeddedDAGNode');
+      assert.fail('expected invoke placement to be ScatterNode with dag body');
     }
   });
 
-  void it('embeddedDAGs forwards stateMapping verbatim to the rendered placement', () => {
+  void it('embeddedDAGs stateMapping renders as projection and gather on the ScatterNode', () => {
     // Child state with the fields referenced in the stateMapping below.
     class EmbeddedDAGChildState extends NodeStateBase {
       childInput  = '';
@@ -334,11 +353,14 @@ void describe('DAGDeriver.derive', () => {
       },
     });
     const invoke = dag.nodes.find((node) => node.name === 'invoke');
-    assert.ok(invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode');
-    if (invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode') {
-      assert.deepEqual(invoke.stateMapping, {
-        'input':  { 'childInput':  'parent.input' },
-        'output': { 'parent.result': 'childResult' },
+    assert.ok(invoke !== undefined && invoke['@type'] === 'ScatterNode');
+    if (invoke !== undefined && invoke['@type'] === 'ScatterNode') {
+      // stateMapping.input (childKey → parentPath) becomes projection
+      assert.deepEqual(invoke.projection, { 'childInput': 'parent.input' });
+      // stateMapping.output (parentPath → childKey) is inverted into gather.mapping (childKey → parentPath)
+      assert.deepEqual(invoke.gather, {
+        'strategy': 'map',
+        'mapping':  { 'childResult': 'parent.result' },
       });
     }
   });
@@ -366,12 +388,12 @@ void describe('DAGDeriver.derive', () => {
       },
     });
     const invoke = dag.nodes.find((node) => node.name === 'invoke');
-    if (invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode') {
+    if (invoke !== undefined && invoke['@type'] === 'ScatterNode') {
       assert.equal(invoke.outputs['success'], 'finish');  // auto-wired to next stage
       assert.equal(invoke.outputs['cached'],  'finish');  // auto-wired to next stage
       assert.equal(invoke.outputs['error'],   null);      // terminal override
     } else {
-      assert.fail('expected invoke placement to be EmbeddedDAGNode');
+      assert.fail('expected invoke placement to be ScatterNode with dag body');
     }
   });
 
@@ -806,7 +828,7 @@ void describe('DAGDeriverEmbeddedDAG<TChildState> — typed stateMapping', () =>
     result:  number = 0;
   }
 
-  void it('positive: typed embeddedDAG annotation compiles and produces correct EmbeddedDAGNode stateMapping', () => {
+  void it('positive: typed embeddedDAG annotation compiles and produces correct ScatterNode projection and gather', () => {
     const contracts: OperationContract[] = [
       { 'name': 'invoke', 'hardRequired': ['input'], 'produces': ['result'], 'outputs': ['success', 'error'] },
     ];
@@ -830,12 +852,12 @@ void describe('DAGDeriverEmbeddedDAG<TChildState> — typed stateMapping', () =>
     });
 
     const invoke = dag.nodes.find((n) => n.name === 'invoke');
-    assert.ok(invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode');
-    if (invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode') {
-      assert.deepEqual(invoke.stateMapping, {
-        'input':  { 'payload': 'parent.seed' },
-        'output': { 'parent.result': 'result' },
-      });
+    assert.ok(invoke !== undefined && invoke['@type'] === 'ScatterNode');
+    if (invoke !== undefined && invoke['@type'] === 'ScatterNode') {
+      // stateMapping.input (childKey → parentPath) becomes projection
+      assert.deepEqual(invoke.projection, { 'payload': 'parent.seed' });
+      // stateMapping.output (parentPath → childKey) is inverted into gather.mapping (childKey → parentPath)
+      assert.deepEqual(invoke.gather, { 'strategy': 'map', 'mapping': { 'result': 'parent.result' } });
     }
   });
 
@@ -863,9 +885,12 @@ void describe('DAGDeriverEmbeddedDAG<TChildState> — typed stateMapping', () =>
     });
 
     const invoke = dag.nodes.find((n) => n.name === 'invoke');
-    assert.ok(invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode');
-    if (invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode') {
-      assert.deepEqual(invoke.stateMapping?.['input'], { 'anyKey': 'parent.path' });
+    assert.ok(invoke !== undefined && invoke['@type'] === 'ScatterNode');
+    if (invoke !== undefined && invoke['@type'] === 'ScatterNode') {
+      // stateMapping.input (childKey → parentPath) becomes projection
+      assert.deepEqual(invoke.projection, { 'anyKey': 'parent.path' });
+      // stateMapping.output (parentPath → childKey) is inverted into gather.mapping (childKey → parentPath)
+      assert.deepEqual(invoke.gather, { 'strategy': 'map', 'mapping': { 'anyKey': 'parent.result' } });
     }
   });
 

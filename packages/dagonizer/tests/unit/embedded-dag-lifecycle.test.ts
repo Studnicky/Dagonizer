@@ -71,7 +71,7 @@ const childDAG: DAG = {
   ],
 };
 
-// ── Parent DAG: entry → run-child (embedded-dag) → parent-end ────────────────
+// ── Parent DAG: entry → run-child (scatter/dag-body singleton) → parent-end ──
 
 const parentDAG: DAG = {
   '@context': DAG_CONTEXT,
@@ -90,9 +90,9 @@ const parentDAG: DAG = {
     },
     {
       '@id':   'urn:noocodex:dag:parent/node/run-child',
-      '@type': 'EmbeddedDAGNode',
+      '@type': 'ScatterNode',
       'name':  'run-child',
-      'dag':   'child',
+      'body':  { 'dag': 'child' },
       'outputs': { 'success': 'parent-end', 'error': 'parent-end' },
     },
     {
@@ -138,9 +138,8 @@ void describe('Embedded-DAG lifecycle scoping', () => {
 
     await dispatcher.execute('parent', new NodeStateBase());
 
-    // Parent nodes appear by their placement name; embedded-DAG nodes appear
-    // prefixed as "<embedded-dag-placement>.<child-placement>" via intermediateResults
-    // but onNodeStart/onNodeEnd fire for each node in the embedded-DAG too.
+    // Parent nodes appear by their placement name; scatter/dag-body inner nodes
+    // fire onNodeStart/onNodeEnd as well.
     const allStarted = dispatcher.nodeStartNames;
     const allEnded   = dispatcher.nodeEndNames;
 
@@ -150,7 +149,7 @@ void describe('Embedded-DAG lifecycle scoping', () => {
     assert.ok(allEnded.includes('parent-entry'),   'parent-entry ended');
     assert.ok(allEnded.includes('parent-end'),     'parent-end ended');
 
-    // Embedded-DAG placement names must appear (engine fires onNodeStart/End per child node)
+    // Scatter/dag-body inner placement names must appear (engine fires onNodeStart/End per child node)
     assert.ok(allStarted.includes('child-start'),  'child-start started');
     assert.ok(allStarted.includes('child-finish'), 'child-finish started');
     assert.ok(allEnded.includes('child-start'),    'child-start ended');
@@ -174,12 +173,12 @@ void describe('Embedded-DAG lifecycle scoping', () => {
     await dispatcher.execute('parent', state);
 
     // State must complete cleanly — no spurious markRunning / markCompleted
-    // from the embedded-DAG re-entry (which would throw on a terminal → running
+    // from the scatter body re-entry (which would throw on a terminal → running
     // transition and leave the lifecycle in an invalid state).
     assert.equal(state.lifecycle.kind, 'completed');
   });
 
-  void it('executedNodes reflects parent placements only (not embedded-DAG internals)', async () => {
+  void it('executedNodes reflects parent placements only (not scatter-body internals)', async () => {
     const dispatcher = new CountingDagonizer<NodeStateBase>();
 
     dispatcher.registerNode(makeNode('child-start',  ['done']));
@@ -193,9 +192,9 @@ void describe('Embedded-DAG lifecycle scoping', () => {
     const result = await dispatcher.execute('parent', new NodeStateBase());
 
     // The top-level runNodes only records the placements it dispatches:
-    // parent-entry, run-child (the embedded-dag placement), parent-end.
+    // parent-entry, run-child (the scatter placement), parent-end.
     assert.ok(result.executedNodes.includes('parent-entry'), 'parent-entry executed');
-    assert.ok(result.executedNodes.includes('run-child'),    'run-child (embedded-dag) executed');
+    assert.ok(result.executedNodes.includes('run-child'),    'run-child (scatter) executed');
     assert.ok(result.executedNodes.includes('parent-end'),   'parent-end executed');
     assert.equal(result.executedNodes.length, 3, 'exactly 3 parent-level nodes recorded');
   });

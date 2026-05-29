@@ -48,8 +48,7 @@ Render a `DAG` as Mermaid `flowchart` source. The output is a complete Mermaid b
 | Placement | Mermaid shape | Example output |
 |-----------|---------------|----------------|
 | `single`  | rectangle     | `greet[greet]` |
-| `fan-out` | hexagon       | `scout{{scout}}` |
-| `embedded-dag` | stadium       | `enrich([enrich])` |
+| `scatter` | hexagon       | `scout{{scout}}` |
 | `parallel`| subgraph      | `subgraph group["group (parallel)"]` … `end` |
 
 Every output route renders as a labeled directed edge: `from -->|outcome| to`. Routes targeting `null` route to a synthetic `END` terminator (one per DAG, rendered as `END([end])`).
@@ -144,7 +143,7 @@ class CytoscapeRenderer {
 
 Renders a `DAG` as a Cytoscape `elements` array. Pass the result directly to `cytoscape({ elements })`.
 
-- Every placement becomes a node element with a `type` field (`'single'` | `'parallel'` | `'fan-out'` | `'embedded-dag'` | `'terminal'`) for per-type stylesheet selectors.
+- Every placement becomes a node element with a `type` field (`'single'` | `'parallel'` | `'scatter'` | `'terminal'`) for per-type stylesheet selectors.
 - Every output route becomes a labeled edge element.
 - Parallel children render with `parent: <parallelPlacementName>` for compound-graph rendering.
 - Embedded-DAG placements are expanded inline when their target DAG is supplied via `options.embeddedDAGs`, showing the full inner flow as a compound cluster.
@@ -178,7 +177,7 @@ interface CytoscapeNodeElement {
   readonly data: {
     readonly id: string;
     readonly label: string;
-    readonly type: 'single' | 'parallel' | 'fan-out' | 'embedded-dag' | 'terminal';
+    readonly type: 'single' | 'parallel' | 'scatter' | 'terminal';
     readonly [key: string]: unknown;
   };
   readonly classes?: string;

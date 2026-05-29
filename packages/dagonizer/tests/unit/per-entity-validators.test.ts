@@ -24,10 +24,103 @@ void describe('Validator per-entity sub-validators', () => {
     assert.equal(Validator.nodeOutput.is({ 'output': 'success' }), true);
   });
 
-  void it('Validator.fanInConfig accepts an append config', () => {
+  void it('Validator.scatterNode accepts a node-body scatter placement', () => {
     assert.equal(
-      Validator.fanInConfig.is({ 'strategy': 'append', 'target': 'results' }),
+      Validator.scatterNode.is({
+        '@id':    'urn:noocodex:dag:pipeline/node/scout',
+        '@type':  'ScatterNode',
+        'name':   'scout',
+        'body':   { 'node': 'scoutOne' },
+        'source': 'tasks',
+        'gather': { 'strategy': 'append', 'target': 'results' },
+        'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+      }),
       true,
+    );
+  });
+
+  void it('Validator.scatterNode accepts a dag-body (embedded-DAG) placement', () => {
+    assert.equal(
+      Validator.scatterNode.is({
+        '@id':    'urn:noocodex:dag:pipeline/node/enrich',
+        '@type':  'ScatterNode',
+        'name':   'enrich',
+        'body':   { 'dag': 'enrichment' },
+        'outputs': { 'success': null, 'error': null },
+      }),
+      true,
+    );
+  });
+
+  void it('Validator.scatterNode accepts a singleton scatter (no source)', () => {
+    assert.equal(
+      Validator.scatterNode.is({
+        '@id':    'urn:noocodex:dag:pipeline/node/transform',
+        '@type':  'ScatterNode',
+        'name':   'transform',
+        'body':   { 'node': 'transformNode' },
+        'gather': { 'strategy': 'map', 'mapping': { 'result': 'output' } },
+        'outputs': { 'success': null, 'error': null },
+      }),
+      true,
+    );
+  });
+
+  void it('Validator.scatterNode accepts partition gather config', () => {
+    assert.equal(
+      Validator.scatterNode.is({
+        '@id':    'urn:noocodex:dag:pipeline/node/classify',
+        '@type':  'ScatterNode',
+        'name':   'classify',
+        'body':   { 'node': 'classifyOne' },
+        'source': 'items',
+        'gather': {
+          'strategy':   'partition',
+          'partitions': { 'even': 'evens', 'odd': 'odds' },
+        },
+        'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+      }),
+      true,
+    );
+  });
+
+  void it('Validator.scatterNode accepts custom gather config', () => {
+    assert.equal(
+      Validator.scatterNode.is({
+        '@id':    'urn:noocodex:dag:pipeline/node/custom',
+        '@type':  'ScatterNode',
+        'name':   'custom',
+        'body':   { 'node': 'processOne' },
+        'source': 'items',
+        'gather': { 'strategy': 'custom', 'customNode': 'mergeNode' },
+        'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+      }),
+      true,
+    );
+  });
+
+  void it('Validator.scatterNode rejects missing body', () => {
+    assert.throws(
+      () => Validator.scatterNode.validate({
+        '@id':    'urn:noocodex:dag:pipeline/node/broken',
+        '@type':  'ScatterNode',
+        'name':   'broken',
+        'outputs': { 'success': null },
+      }),
+      ValidationError,
+    );
+  });
+
+  void it('Validator.scatterNode rejects invalid body shape (no node or dag key)', () => {
+    assert.equal(
+      Validator.scatterNode.is({
+        '@id':    'urn:noocodex:dag:pipeline/node/broken',
+        '@type':  'ScatterNode',
+        'name':   'broken',
+        'body':   { 'unknown': 'x' },
+        'outputs': { 'success': null },
+      }),
+      false,
     );
   });
 
@@ -52,34 +145,6 @@ void describe('Validator per-entity sub-validators', () => {
         'name':    'fanout',
         'nodes':   ['a', 'b'],
         'combine': 'all-success',
-        'outputs': { 'success': null, 'error': null },
-      }),
-      true,
-    );
-  });
-
-  void it('Validator.fanOutNode accepts a fan-out placement', () => {
-    assert.equal(
-      Validator.fanOutNode.is({
-        '@id':    'urn:noocodex:dag:pipeline/node/scout',
-        '@type':  'FanOutNode',
-        'name':   'scout',
-        'node':   'scoutOne',
-        'source': 'tasks',
-        'fanIn':  { 'strategy': 'append', 'target': 'results' },
-        'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
-      }),
-      true,
-    );
-  });
-
-  void it('Validator.embeddedDAGNode accepts a embedded-dag placement', () => {
-    assert.equal(
-      Validator.embeddedDAGNode.is({
-        '@id':   'urn:noocodex:dag:pipeline/node/enrich',
-        '@type': 'EmbeddedDAGNode',
-        'name':  'enrich',
-        'dag':   'enrichment',
         'outputs': { 'success': null, 'error': null },
       }),
       true,

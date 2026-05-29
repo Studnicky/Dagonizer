@@ -37,9 +37,8 @@ import type { NodeInterface } from '../contracts/NodeInterface.js';
 import type { OperationContract } from '../contracts/OperationContract.js';
 import type { DAG } from '../entities/dag/DAG.js';
 import { DAG_CONTEXT } from '../entities/dag/DAG.js';
-import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
+import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 import { DAGError } from '../errors/DAGError.js';
@@ -52,7 +51,7 @@ import type {
   DAGDeriverEmbeddedDAG,
 } from './DAGDeriverAnnotations.js';
 
-type DAGNodeEntry = EmbeddedDAGNode | FanOutNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface;
+type DAGNodeEntry = ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface;
 
 export interface DAGDeriverOptions {
   readonly name: string;
@@ -480,9 +479,9 @@ export class DAGDeriver {
         }
 
         if (fan !== undefined) {
-          nodes.push(DAGDeriver.renderFanOutNode(name, fan, succs, annotations, nodeId, emitCollector));
+          nodes.push(DAGDeriver.renderScatterNodeFromFanOut(name, fan, succs, annotations, nodeId, emitCollector));
         } else if (embeddedDAG !== undefined) {
-          nodes.push(DAGDeriver.renderEmbeddedDAGNode(name, embeddedDAG, succs, annotations, nodeId, emitCollector));
+          nodes.push(DAGDeriver.renderScatterNodeFromEmbeddedDAG(name, embeddedDAG, succs, annotations, nodeId, emitCollector));
         } else {
           const contract = contracts.get(name);
           if (contract === undefined) {
@@ -528,18 +527,23 @@ export class DAGDeriver {
   }
 
   /**
-   * Render a `FanOutNode` placement from a `DAGDeriverFanOut`
-   * annotation. The fan-in `strategy` discriminates which engine-side
-   * `FanInConfig` shape gets emitted.
+   * Render a `ScatterNode` placement from a `DAGDeriverFanOut` annotation.
+   *
+   * A fan-out scatters over a state-array `source`, running its per-item
+   * `node` body once per item. The fan-in `strategy` maps onto the
+   * scatter's `gather` config:
+   *   ⦿ `custom`    → `{ strategy: 'custom', customNode }`
+   *   ⦿ `partition` → `{ strategy: 'partition', partitions }`
+   *   ⦿ `append`    → `{ strategy: 'append', target }`
    */
-  private static renderFanOutNode(
+  private static renderScatterNodeFromFanOut(
     name: string,
     fan: DAGDeriverFanOut,
     successors: ReadonlySet<string>,
     annotations: DAGDeriverAnnotations,
     nodeId: (n: string) => string,
     emitCollector: Map<string, DAGDeriverEmitTerminal>,
-  ): FanOutNode {
+  ): ScatterNode {
     const next0 = [...successors][0] ?? null;
     const outcomeOverrides = new Map<string, string | null>();
     for (const terminal of annotations.terminals?.[name] ?? []) {
@@ -555,50 +559,61 @@ export class DAGDeriver {
         outcomeOverrides.set(terminal.outcome, terminal.target);
       }
     }
-    const fanOutOutputs: Record<string, string | null> = {};
+    const outputs: Record<string, string | null> = {};
     for (const outcome of fan.outcomes) {
-      fanOutOutputs[outcome] = outcomeOverrides.has(outcome)
+      outputs[outcome] = outcomeOverrides.has(outcome)
         ? outcomeOverrides.get(outcome) ?? null
         : next0;
     }
 
-    let fanIn: FanOutNode['fanIn'];
+    let gather: ScatterNode['gather'];
     if (fan.strategy === 'custom') {
-      fanIn = { 'strategy': 'custom', 'customNode': fan.fanInOperation };
+      gather = { 'strategy': 'custom', 'customNode': fan.fanInOperation };
     } else if (fan.strategy === 'partition') {
-      fanIn = { 'strategy': 'partition', 'partitions': { ...fan.partitions } };
+      gather = { 'strategy': 'partition', 'partitions': { ...fan.partitions } };
     } else {
-      fanIn = { 'strategy': 'append', 'target': fan.target };
+      gather = { 'strategy': 'append', 'target': fan.target };
     }
 
-    const fanOutNode: FanOutNode = {
+    const scatterNode: ScatterNode = {
       '@id':     nodeId(name),
-      '@type':   'FanOutNode',
+      '@type':   'ScatterNode',
       name,
-      'node':    fan.node,
+      'body':    { 'node': fan.node },
       'source':  fan.source,
       'itemKey': fan.itemKey,
-      'fanIn':   fanIn,
-      'outputs': fanOutOutputs,
+      'gather':  gather,
+      'outputs': outputs,
     };
-    if (fan.concurrency !== undefined) fanOutNode.concurrency = fan.concurrency;
-    return fanOutNode;
+    if (fan.concurrency !== undefined) scatterNode.concurrency = fan.concurrency;
+    return scatterNode;
   }
 
-  /** Render a `EmbeddedDAGNode` placement from a `DAGDeriverEmbeddedDAG` annotation. */
-  private static renderEmbeddedDAGNode(
+  /**
+   * Render a `ScatterNode` placement from a `DAGDeriverEmbeddedDAG`
+   * annotation.
+   *
+   * An embedded-DAG runs a sub-DAG `body` in one isolated clone (no
+   * `source`). The `stateMapping` maps onto the scatter's clone seeding
+   * and merge-back config:
+   *   ⦿ `stateMapping.input`  (child key → parent path) → `projection`,
+   *     seeding each clone field from the parent before the body runs.
+   *   ⦿ `stateMapping.output` (parent path → child key) → a `map` gather,
+   *     reading the clone field and writing it back to the parent path.
+   */
+  private static renderScatterNodeFromEmbeddedDAG(
     name: string,
     embeddedDAG: DAGDeriverEmbeddedDAG,
     successors: ReadonlySet<string>,
     annotations: DAGDeriverAnnotations,
     nodeId: (n: string) => string,
     emitCollector: Map<string, DAGDeriverEmitTerminal>,
-  ): EmbeddedDAGNode {
-    const embeddedDAGNode: EmbeddedDAGNode = {
+  ): ScatterNode {
+    const scatterNode: ScatterNode = {
       '@id':   nodeId(name),
-      '@type': 'EmbeddedDAGNode',
+      '@type': 'ScatterNode',
       name,
-      'dag':   embeddedDAG.dag,
+      'body':  { 'dag': embeddedDAG.dag },
       'outputs': DAGDeriver.resolveOutputs(
         name,
         embeddedDAG.outputs,
@@ -608,11 +623,23 @@ export class DAGDeriver {
         emitCollector,
       ),
     };
-    if (embeddedDAG.stateMapping !== undefined) {
-      // Cast at the consumption boundary: DAGDeriverEmbeddedDAG<TChildState> narrows
-      // keys for authoring ergonomics; the wire shape is always Record<string, string>.
-      embeddedDAGNode.stateMapping = embeddedDAG.stateMapping as NonNullable<EmbeddedDAGNode['stateMapping']>;
+
+    const mapping = embeddedDAG.stateMapping;
+    if (mapping?.input !== undefined) {
+      // input: child-state key → parent dotted path. projection seeds each
+      // clone field from the parent, so the key/value pairing carries over.
+      scatterNode.projection = { ...(mapping.input as Record<string, string>) };
     }
-    return embeddedDAGNode;
+    if (mapping?.output !== undefined) {
+      // output: parent dotted path → child-state key. A 'map' gather reads
+      // the clone field (child key) and writes the parent path, so invert.
+      const gatherMapping: Record<string, string> = {};
+      for (const [parentPath, childKey] of Object.entries(mapping.output as Record<string, string>)) {
+        gatherMapping[childKey] = parentPath;
+      }
+      scatterNode.gather = { 'strategy': 'map', 'mapping': gatherMapping };
+    }
+
+    return scatterNode;
   }
 }

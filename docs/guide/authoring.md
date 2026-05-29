@@ -148,19 +148,18 @@ All three authoring journeys can produce any DAG the schema allows. The differen
 | `SingleNode` placement | yes | yes | yes |
 | `ParallelNode` placement | yes | yes explicit | yes auto-grouped, `DAGDeriverParallel` for explicit |
 | Combine strategy (`all-success` / `any-success` / `collect`) | yes | yes | yes via `DAGDeriverParallel.combine` |
-| `FanOutNode` placement | yes | yes | yes |
-| Fan-in strategy (`custom` / `partition` / `append`) | yes | yes | yes via `DAGDeriverFanOut.strategy` |
-| Fan-out item kind (`node` or `dag`) | yes | yes via `.fanOut()` / `.embeddedDAG()` | yes via `DAGDeriverFanOut.node` or `dag` |
-| `EmbeddedDAGNode` placement | yes | yes | yes via `DAGDeriverAnnotations.embeddedDAGs` |
+| `ScatterNode` placement | yes | yes via `.scatter()` | yes via `DAGDeriverAnnotations.fanouts` (node body) |
+| Gather strategy (`map` / `append` / `partition` / `custom`) | yes | yes via `options.gather` | yes via `DAGDeriverFanOut.strategy` |
+| Scatter body kind (`node` or `dag`) | yes | yes via `body` argument | node body via `DAGDeriverFanOut`; dag body via raw `DAG` |
 | `TerminalNode` placement | yes | yes via `.terminal()` | (not a target, use DAGBuilder) |
-| `stateMapping` | yes | yes | yes |
+| `projection` (parent → clone seed) | yes | yes via `options.projection` | yes via `DAGDeriverFanOut` |
 | Multi-port routing | yes | yes via `routes` map | yes via `contract.outputs` and `terminals` |
 | Compile-time route narrowing | | yes from `NodeInterface` `TOutput` | (not applicable, declarative) |
 | Topology derivation from data graph | | (not applicable, imperative) | yes from `produces` plus `hardRequired` |
 | Runtime-conditional topology | yes (build conditionally) | yes (chain conditionally) | partial (contracts at runtime, annotations static) |
 | Recursive / trampoline flows | yes via `services.dispatcher.execute` | yes, same pattern in node body | not a declarative target, use DAGBuilder |
 
-The bottom two rows are imperative patterns. A node that recursively dispatches an embedded-DAG via `services.dispatcher.execute(name, state.clone())` is a trampoline; it lives in node logic regardless of which authoring journey produced the DAG. DAGDeriver does not absorb these patterns into annotations.
+The bottom two rows are imperative patterns. A node that recursively dispatches a sub-DAG via `services.dispatcher.execute(name, state.clone())` is a trampoline; it lives in node logic regardless of which authoring journey produced the DAG. DAGDeriver does not absorb these patterns into annotations.
 
 ## Terminal placements
 
@@ -187,10 +186,10 @@ A null route is sugar for "this branch ends with `outcome: completed`." No expli
 1. **Diagram legibility**. The placement appears as a named terminus in the visualisation, which matters when the endpoint name is semantically meaningful (`end-ok`, `response-sent`, `workflow-failed`).
 2. **Explicit failed outcome**. Null routes always mean `completed`. To mark a branch as `failed`, declare a named terminal with `outcome: 'failed'`. There is no null-route shorthand for a failed outcome.
 
-An `EmbeddedDAGNode` placement may target a named terminal directly. This is the idiomatic way to surface a child DAG's error as a `failed` lifecycle in the parent:
+A `ScatterNode` placement may target a named terminal directly. This is the idiomatic way to surface a child DAG's error as a `failed` lifecycle in the parent:
 
 ```ts
-.embeddedDAG('run-child', 'child-dag', { success: 'end-ok', error: 'end-fail' })
+.scatter('run-child', { dag: 'child-dag' }, { success: 'end-ok', error: 'end-fail' })
 .terminal('end-ok')
 .terminal('end-fail', 'failed')
 ```

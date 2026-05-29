@@ -12,7 +12,7 @@ seeAlso:
 
 # State accessors
 
-Fan-out source reads, fan-in writes, and embedded-DAG state mapping all walk paths into the live state object. The `StateAccessor` contract defines that walk; `DottedPathAccessor` is the default implementation.
+Scatter source reads, scatter projection copies, and gather writes all walk paths into the live state object. The `StateAccessor` contract defines that walk; `DottedPathAccessor` is the default implementation.
 
 ## API surface
 
@@ -33,7 +33,7 @@ interface StateAccessor {
 }
 ```
 
-Implementations are stateless. The same instance is shared across every fan-out, fan-in, and embedded-DAG step.
+Implementations are stateless. The same instance is shared across every scatter source read, projection copy, and gather write.
 
 ## Default behavior
 
@@ -70,24 +70,27 @@ const dispatcher = new Dagonizer<MyState>({ accessor: new JsonPointerAccessor() 
 
 The same accessor flows through every code path that resolves a state path:
 
-- `fanOut.source`: reading the array to fan over.
-- `fanIn.target` (append strategy): writing the merged results.
-- `fanIn.partitions` (partition strategy): writing each output bucket.
-- `embeddedDAG.stateMapping.input` and `.output`: copying fields between parent and child state.
+- `scatter.source`: reading the array to scatter over.
+- `scatter.projection`: copying parent fields into the clone before the body runs.
+- `gather.mapping` (map strategy): writing produced clone fields back to parent paths.
+- `gather.target` (append strategy): writing the gathered results.
+- `gather.partitions` (partition strategy): writing each output bucket.
 
-## Accessor inside fan-in strategies
+## Accessor inside gather strategies
 
-Custom `FanInStrategy` subclasses receive the dispatcher's accessor on the execution context:
+Custom `GatherStrategy` subclasses receive the dispatcher's accessor on the execution context:
 
 ```ts
-class AverageFanIn extends FanInStrategy {
+class AverageGather extends GatherStrategy {
   readonly name = 'average';
   async apply<TState extends NodeStateInterface>(
-    config: FanInConfig,
-    execution: FanInExecution<TState>,
+    config: GatherConfig,
+    execution: GatherExecution<TState>,
   ): Promise<void> {
     if (config.target === undefined) return;
-    const all = [...execution.results.values()].flat() as number[];
+    const all = execution.records.map((r) =>
+      execution.accessor.get(r.cloneState, config.field ?? 'score') as number,
+    );
     const avg = all.reduce((a, b) => a + b, 0) / Math.max(1, all.length);
     execution.accessor.set(execution.state, config.target, avg);
   }

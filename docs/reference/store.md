@@ -16,7 +16,7 @@ seeAlso:
 `@noocodex/dagonizer/store`
 
 The store module provides the shared key-value store contract and its
-implementations. Stores live in the services bag and survive embedded-DAG
+implementations. Stores live in the services bag and survive scatter clone
 boundaries within a run. Checkpoint integration snapshots named stores
 alongside parent state for deterministic resume.
 

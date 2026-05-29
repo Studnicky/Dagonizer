@@ -139,42 +139,42 @@ if (recalled !== null) {
 
 `MemoryCheckpointStore` is for tests and demos. Production deployments implement `CheckpointStore` against a database, object store, or filesystem (see [persistence](./persistence)).
 
-## Fan-out resume: per-item progress
+## Scatter resume: per-item progress
 
-A `FanOutNode` records per-item progress on `state.metadata` so a checkpointed run does not re-execute already-completed items on resume. This matters most for long fan-outs whose items hit external APIs or LLMs: re-running a 200-item batch from the top after a restart would burn quota and waste hours.
+A `ScatterNode` with a `source` records per-item progress on `state.metadata` so a checkpointed run does not re-execute already-completed clones on resume. This matters most for long scatter runs whose items hit external APIs or LLMs: re-running a 200-item batch from the top after a restart would burn quota and waste hours.
 
 ### Reserved metadata key
 
 ```ts
-import { FAN_OUT_PROGRESS_KEY } from '@noocodex/dagonizer';
-// FAN_OUT_PROGRESS_KEY === '__dagonizer_fan_out_progress__'
+import { SCATTER_PROGRESS_KEY } from '@noocodex/dagonizer';
+// SCATTER_PROGRESS_KEY === '__dagonizer_scatter_progress__'
 ```
 
-Consumer nodes must not write to this key. It is engine-internal and may be overwritten or cleared between batch boundaries by `executeFanOut`.
+Consumer nodes must not write to this key. It is engine-internal and may be overwritten or cleared between batch boundaries by `executeScatter`.
 
-The stored shape is a record keyed by the fan-out's placement `name`, so multiple `FanOutNode` placements in one DAG keep independent progress entries:
+The stored shape is a record keyed by the scatter placement's `name`, so multiple `ScatterNode` placements in one DAG keep independent progress entries:
 
 ```ts
-interface FanOutProgress {
+interface ScatterProgress {
   readonly placementName: string;
   readonly completedIndices: readonly number[];
   readonly itemResults: readonly { readonly index: number; readonly output: string }[];
 }
 
-type StoredFanOutProgress = Readonly<Record<string, FanOutProgress>>;
+type StoredScatterProgress = Readonly<Record<string, ScatterProgress>>;
 ```
 
 ### Lifecycle
 
-1. **On entry**: `executeFanOut` reads `state.metadata[FAN_OUT_PROGRESS_KEY]?.[fanOut.name]`. Items whose indices appear in `completedIndices` are skipped; their recorded outputs rehydrate the per-output buckets used by fan-in.
+1. **On entry**: `executeScatter` reads `state.metadata[SCATTER_PROGRESS_KEY]?.[scatter.name]`. Items whose indices appear in `completedIndices` are skipped; their recorded outputs rehydrate the gather accumulator.
 2. **Per-batch write**: after each `Promise.all(batchPromises)` resolves, the dispatcher updates the placement's entry with the batch's completed indices. Writes happen once per batch (not per item) to keep the metadata update serialised across concurrent item promises.
-3. **Pre-fan-in clear**: once every batch drains, the placement's entry is removed before the fan-in strategy runs. Fan-in always starts from a clean slate; subsequent re-runs of the same `FanOutNode` (such as inside a loop) do not see stale bookkeeping.
+3. **Pre-gather clear**: once every batch drains, the placement's entry is removed before the gather strategy runs. Gather always starts from a clean slate; subsequent re-runs of the same `ScatterNode` (such as inside a loop) do not see stale bookkeeping.
 
 ### Index semantics on resume
 
-Indices refer to positions in the source array at the time of resume, not the array as it stood when the checkpoint was captured. If the consumer rewrites the source array between checkpoint and resume, the resumed fan-out trusts the persisted indices verbatim; items 0 and 1 are skipped even when the array has been re-sliced or reordered.
+Indices refer to positions in the source array at the time of resume, not the array as it stood when the checkpoint was captured. If the consumer rewrites the source array between checkpoint and resume, the resumed scatter trusts the persisted indices verbatim; items 0 and 1 are skipped even when the array has been re-sliced or reordered.
 
-Treat the fan-out's source array as immutable while a fan-out checkpoint is live. If the source must change between runs, clear the entry under `FAN_OUT_PROGRESS_KEY[fanOut.name]` before calling `dispatcher.resume()` so the fan-out re-executes every item against the new source.
+Treat the scatter's source array as immutable while a scatter checkpoint is live. If the source must change between runs, clear the entry under `SCATTER_PROGRESS_KEY[scatter.name]` before calling `dispatcher.resume()` so the scatter re-executes every item against the new source.
 
 ### Snapshot round-trip
 

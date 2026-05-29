@@ -32,7 +32,7 @@ void describe('JsonLdRenderer.render', () => {
     assert.equal(root?.['dag:entrypoint'], 'urn:dagonizer:mini#greet');
   });
 
-  void it('renders fan-out with itemKey, concurrency, fanIn config', () => {
+  void it('renders ScatterNode (body.node) with source, itemKey, concurrency, gather config', () => {
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scrape',
@@ -42,22 +42,25 @@ void describe('JsonLdRenderer.render', () => {
       'entrypoint': 'fan',
       'nodes': [{
         '@id':         'urn:noocodex:dag:scrape/node/fan',
-        '@type':       'FanOutNode',
+        '@type':       'ScatterNode',
         'name':        'fan',
-        'node':        'worker',
+        'body':        { 'node': 'worker' },
         'source':      'items',
         'itemKey':     'item',
         'concurrency': 3,
-        'fanIn': { 'strategy': 'append', 'target': 'collected' },
+        'gather':      { 'strategy': 'append', 'target': 'collected' },
         'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
       }],
     };
     const doc = JsonLdRenderer.render(dag);
-    const fan = doc['@graph'].find((entry) => entry['@type'] === 'dag:FanOutNode');
-    assert.ok(fan !== undefined);
+    const fan = doc['@graph'].find((entry) => entry['@type'] === 'dag:ScatterNode');
+    assert.ok(fan !== undefined, 'dag:ScatterNode entry must be present');
+    // body serializes as { dag:node: 'worker' } for a node-body scatter
+    assert.deepEqual(fan?.['dag:body'], { 'dag:node': 'worker' });
     assert.equal(fan?.['dag:itemKey'], 'item');
     assert.equal(fan?.['dag:concurrency'], 3);
-    assert.deepEqual(fan?.['dag:fanIn'], { 'strategy': 'append', 'target': 'collected' });
+    assert.deepEqual(fan?.['dag:gather'], { 'strategy': 'append', 'target': 'collected' });
+    assert.equal(fan?.['dag:source'], 'items');
   });
 
   void it('routes targeting null serialize as null targets', () => {
@@ -105,7 +108,7 @@ void describe('JsonLdRenderer.render', () => {
     assert.deepEqual(group?.['dag:children'], ['urn:dagonizer:par#a', 'urn:dagonizer:par#b']);
   });
 
-  void it('renders embedded-dag with cross-DAG reference', () => {
+  void it('renders ScatterNode (body.dag) with cross-DAG IRI reference', () => {
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:parent',
@@ -114,18 +117,22 @@ void describe('JsonLdRenderer.render', () => {
       'version':    '1',
       'entrypoint': 'invoke',
       'nodes': [{
-        '@id':    'urn:noocodex:dag:parent/node/invoke',
-        '@type':  'EmbeddedDAGNode',
-        'name':   'invoke',
-        'dag':    'child',
-        'stateMapping': { 'input': { 'a': 'x' }, 'output': { 'y': 'b' } },
+        '@id':        'urn:noocodex:dag:parent/node/invoke',
+        '@type':      'ScatterNode',
+        'name':       'invoke',
+        'body':       { 'dag': 'child' },
+        'projection': { 'input': 'x' },
+        'gather':     { 'strategy': 'map', 'mapping': { 'y': 'b' } },
         'outputs': { 'success': 'next', 'error': 'next' },
       }],
     };
     const doc = JsonLdRenderer.render(dag);
-    const sub = doc['@graph'].find((entry) => entry['@type'] === 'dag:EmbeddedDAGNode');
-    assert.equal(sub?.['dag:dag'], 'urn:dagonizer:child');
-    assert.deepEqual(sub?.['dag:stateMapping'], { 'input': { 'a': 'x' }, 'output': { 'y': 'b' } });
+    const sub = doc['@graph'].find((entry) => entry['@type'] === 'dag:ScatterNode');
+    assert.ok(sub !== undefined, 'dag:ScatterNode entry must be present');
+    // body.dag serializes as { dag:dag: <iri> }
+    assert.deepEqual(sub?.['dag:body'], { 'dag:dag': 'urn:dagonizer:child' });
+    assert.deepEqual(sub?.['dag:projection'], { 'input': 'x' });
+    assert.deepEqual(sub?.['dag:gather'], { 'strategy': 'map', 'mapping': { 'y': 'b' } });
   });
 });
 
