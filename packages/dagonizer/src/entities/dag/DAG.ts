@@ -7,8 +7,7 @@
  *
  * Inlines its node-entry sub-shapes via `oneOf` so a single validator covers
  * the whole document; the standalone `SingleNodeSchema` / `ParallelNodeSchema`
- * / `FanOutNodeSchema` / `EmbeddedDAGNodeSchema` exports remain available for
- * per-shape validation.
+ * / `ScatterNodeSchema` exports remain available for per-shape validation.
  *
  * Key mapping strategy — type-scoped contexts (JSON-LD 1.1):
  *   The JSON key `nodes` appears at two levels with different meanings:
@@ -20,7 +19,7 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
-import { FanInConfigSchema } from './FanInConfig.js';
+import { GatherConfigSchema } from './GatherConfig.js';
 
 // ---------------------------------------------------------------------------
 // Namespace
@@ -42,8 +41,9 @@ const NS = 'https://noocodex.dev/ontology/dag/';
  *   ParallelNode  — concurrent-node placement (`@type: 'ParallelNode'`); carries
  *                   a nested type-scoped `@context` that remaps the `nodes`
  *                   key to `dag/parallelNodes` within ParallelNode objects.
- *   FanOutNode    — fan-out placement (`@type: 'FanOutNode'`)
- *   EmbeddedDAGNode   — nested-DAG placement (`@type: 'EmbeddedDAGNode'`)
+ *   ScatterNode   — scatter placement (`@type: 'ScatterNode'`): isolate a state
+ *                   clone, run a body (`{node}` or `{dag}`) per item, gather the
+ *                   produced clone state back into the parent, route on outcome.
  *
  * Properties follow the DAG schema field names exactly — no wire-level renames.
  */
@@ -62,14 +62,14 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   'dag':      { '@id': `${NS}dag` },
   'combine':  { '@id': `${NS}combine` },
 
-  // fan-out properties
+  // scatter properties
+  'body':        { '@id': `${NS}body` },
   'source':      { '@id': `${NS}source` },
   'itemKey':     { '@id': `${NS}itemKey` },
   'concurrency': { '@id': `${NS}concurrency` },
-  'fanIn':       { '@id': `${NS}fanIn` },
-
-  // embedded-dag properties
-  'stateMapping': { '@id': `${NS}stateMapping` },
+  'projection':  { '@id': `${NS}projection` },
+  'gather':      { '@id': `${NS}gather` },
+  'reducer':     { '@id': `${NS}reducer` },
 
   // terminal properties
   'outcome': { '@id': `${NS}outcome` },
@@ -81,8 +81,7 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   'DAG':          { '@id': `${NS}DAG` },
   'Placement':    { '@id': `${NS}Placement` },
   'SingleNode':   { '@id': `${NS}SingleNode` },
-  'FanOutNode':   { '@id': `${NS}FanOutNode` },
-  'EmbeddedDAGNode':  { '@id': `${NS}EmbeddedDAGNode` },
+  'ScatterNode':  { '@id': `${NS}ScatterNode` },
   'TerminalNode': { '@id': `${NS}TerminalNode` },
   'PhaseNode':    { '@id': `${NS}PhaseNode` },
 
@@ -139,42 +138,39 @@ const DAGNodeEntrySchema = {
     },
     {
       'type': 'object',
-      'required': ['@id', '@type', 'name', 'node', 'source', 'fanIn', 'outputs'],
+      'required': ['@id', '@type', 'name', 'body', 'outputs'],
       'properties': {
         '@id':         { 'type': 'string', 'minLength': 1 },
-        '@type':       { 'type': 'string', 'const': 'FanOutNode' },
+        '@type':       { 'type': 'string', 'const': 'ScatterNode' },
         'name':        { 'type': 'string', 'minLength': 1 },
-        'node':        { 'type': 'string', 'minLength': 1 },
+        'body': {
+          'oneOf': [
+            {
+              'type': 'object',
+              'required': ['node'],
+              'properties': { 'node': { 'type': 'string', 'minLength': 1 } },
+              'additionalProperties': false,
+            },
+            {
+              'type': 'object',
+              'required': ['dag'],
+              'properties': { 'dag': { 'type': 'string', 'minLength': 1 } },
+              'additionalProperties': false,
+            },
+          ],
+        },
         'source':      { 'type': 'string', 'minLength': 1 },
         'itemKey':     { 'type': 'string', 'minLength': 1 },
         'concurrency': { 'type': 'integer', 'minimum': 1 },
-        'fanIn':       FanInConfigSchema,
+        'projection': {
+          'type': 'object',
+          'additionalProperties': { 'type': 'string' },
+        },
+        'gather':      GatherConfigSchema,
+        'reducer':     { 'type': 'string', 'minLength': 1 },
         'outputs': {
           'type': 'object',
           'additionalProperties': { 'type': ['string', 'null'] },
-        },
-      },
-      'additionalProperties': false,
-    },
-    {
-      'type': 'object',
-      'required': ['@id', '@type', 'name', 'dag', 'outputs'],
-      'properties': {
-        '@id':   { 'type': 'string', 'minLength': 1 },
-        '@type': { 'type': 'string', 'const': 'EmbeddedDAGNode' },
-        'name':  { 'type': 'string', 'minLength': 1 },
-        'dag':   { 'type': 'string', 'minLength': 1 },
-        'outputs': {
-          'type': 'object',
-          'additionalProperties': { 'type': ['string', 'null'] },
-        },
-        'stateMapping': {
-          'type': 'object',
-          'properties': {
-            'input':  { 'type': 'object', 'additionalProperties': { 'type': 'string' } },
-            'output': { 'type': 'object', 'additionalProperties': { 'type': 'string' } },
-          },
-          'additionalProperties': false,
         },
       },
       'additionalProperties': false,

@@ -30,7 +30,7 @@ void describe('MermaidRenderer.render', () => {
     assert.match(out, /END\(\[end\]\)/u);
   });
 
-  void it('renders a fan-out node as a hexagon', () => {
+  void it('renders a ScatterNode as a trapezoid', () => {
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:fan',
@@ -40,16 +40,17 @@ void describe('MermaidRenderer.render', () => {
       'entrypoint': 'fan',
       'nodes': [{
         '@id':    'urn:noocodex:dag:fan/node/fan',
-        '@type':  'FanOutNode',
+        '@type':  'ScatterNode',
         'name':   'fan',
-        'node':   'worker',
+        'body':   { 'node': 'worker' },
         'source': 'items',
-        'fanIn': { 'strategy': 'append', 'target': 'collected' },
+        'gather': { 'strategy': 'partition', 'partitions': { 'success': 'collected', 'error': 'errors' } },
         'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
       }],
     };
     const out = MermaidRenderer.render(dag);
-    assert.match(out, /fan\{\{fan\}\}/u);
+    // ScatterNode renders as trapezoid: name[/label/]
+    assert.match(out, /fan\[\/fan\/\]/u);
     assert.match(out, /fan -->\|all-success\| END/u);
   });
 
@@ -77,7 +78,7 @@ void describe('MermaidRenderer.render', () => {
     assert.match(out, /end/u);
   });
 
-  void it('renders embedded-dag as stadium shape', () => {
+  void it('renders a ScatterNode with body.dag as a trapezoid', () => {
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:deep',
@@ -86,15 +87,16 @@ void describe('MermaidRenderer.render', () => {
       'version':    '1',
       'entrypoint': 'enrich',
       'nodes': [{
-        '@id':    'urn:noocodex:dag:deep/node/enrich',
-        '@type':  'EmbeddedDAGNode',
-        'name':   'enrich',
-        'dag':    'inner',
+        '@id':  'urn:noocodex:dag:deep/node/enrich',
+        '@type': 'ScatterNode',
+        'name':  'enrich',
+        'body':  { 'dag': 'inner' },
         'outputs': { 'success': 'next', 'error': 'next' },
       }],
     };
     const out = MermaidRenderer.render(dag);
-    assert.match(out, /enrich\(\[enrich\]\)/u);
+    // ScatterNode with body.dag still renders as trapezoid, not stadium
+    assert.match(out, /enrich\[\/enrich\/\]/u);
   });
 });
 

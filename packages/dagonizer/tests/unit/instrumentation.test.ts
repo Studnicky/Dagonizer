@@ -168,8 +168,8 @@ void describe('Instrumentation contract', () => {
       'nodes': [
         { '@id': 'urn:noocodex:dag:inst-parent/node/parent-entry', '@type': 'SingleNode',
           'name': 'parent-entry', 'node': 'parent-entry', 'outputs': { 'success': 'run-child' } },
-        { '@id': 'urn:noocodex:dag:inst-parent/node/run-child', '@type': 'EmbeddedDAGNode',
-          'name': 'run-child', 'dag': 'inst-child',
+        { '@id': 'urn:noocodex:dag:inst-parent/node/run-child', '@type': 'ScatterNode',
+          'name': 'run-child', 'body': { 'dag': 'inst-child' },
           'outputs': { 'success': null, 'error': null } },
       ],
     };

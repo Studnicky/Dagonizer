@@ -9,11 +9,12 @@
  * override individual ports and swap placement kinds at render time.
  *
  * This example demonstrates agentic tool dispatch: a parent flow
- * delegates the actual work to a registered embedded-DAG via the `embeddedDAGs`
- * annotation. Plug in a different child DAG (different "tool") at
+ * delegates the actual work to a registered sub-DAG via the `embeddedDAGs`
+ * annotation, which the deriver renders as a ScatterNode singleton
+ * (`body: { dag }`). Plug in a different child DAG (different "tool") at
  * registration time without rewriting the parent.
  *
- *   parent: prepare → invoke-plugin (embedded-DAG) → finalize
+ *   parent: prepare → invoke-plugin (ScatterNode → child DAG) → finalize
  *   child:  validate → transform
  *
  * Run: npx tsx examples/derive.ts
@@ -74,10 +75,11 @@ const transform: NodeInterface<S, 'success'> = {
 };
 
 const invokePlugin: NodeInterface<S, 'success' | 'error'> = {
-  // The embedded-DAG step itself just delegates — the dispatcher routes
-  // through the registered child DAG. This node's `execute` runs as
-  // the "wrapper" that the engine invokes; its outputs match the
-  // declared embeddedDAG.outputs.
+  // invoke-plugin carries the contract (hardRequired/produces) the deriver
+  // uses to place this stage in the topology. The embeddedDAGs annotation
+  // renders it as a ScatterNode whose `body: { dag }` runs the child DAG in
+  // a clone — so this `execute` does not run; the sub-DAG does the work.
+  // Its `outputs` declare the ports the ScatterNode routes on.
   "name": 'invoke-plugin',
   "outputs": ['success', 'error'],
   async execute() {
@@ -130,11 +132,14 @@ const childDAG = DAGDeriver.derive({
   },
 });
 
-// Parent DAG — invoke-plugin runs the child DAG as a EmbeddedDAGNode via
-// the embeddedDAGs annotation. Both `success` and `error` ports auto-wire
-// to `finalize` (the next derived stage); finalize handles both
-// paths uniformly. Per-port terminal overrides would route the
-// error port elsewhere if needed.
+// Parent DAG — invoke-plugin runs the child DAG via the embeddedDAGs
+// annotation, which the deriver renders as a ScatterNode singleton
+// (`body: { dag }`). stateMapping.input becomes the scatter's projection
+// (parent → clone) and stateMapping.output becomes a `map` gather
+// (clone → parent). Both `success` and `error` ports auto-wire to
+// `finalize` (the next derived stage); finalize handles both paths
+// uniformly. Per-port terminal overrides would route the error port
+// elsewhere if needed.
 const parentDAG = DAGDeriver.derive({
   "name":       'parent',
   "version":    '1.0',

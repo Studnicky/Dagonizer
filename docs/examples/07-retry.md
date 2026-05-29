@@ -57,7 +57,7 @@ The complete `ComposeRetryLoopDAG`, a bounded compose, validate, retry loop buil
 
 - **`RetryPolicy.run(task, signal)`.** Composable per-call retry with `EXPONENTIAL`, `LINEAR`, `CONSTANT`, or `DECORRELATED_JITTER` backoff. The second argument is `context.signal`; the policy aborts mid-backoff when the signal fires (see [Phase 06](./06-cancellation)).
 - **Bounded loop modeled in the DAG itself.** `validateResponse` routes `'retry'` back to `'compose-response'`. The bound is tracked on `state.attempts.compose` inside the node; no special loop placement type.
-- **Best-effort fallback.** `'exhausted'` and `'approved'` both exit the embedded-DAG cleanly. The visitor always gets a response; the dispatcher never throws on exhaustion.
+- **Best-effort fallback.** `'exhausted'` and `'approved'` both exit the sub-DAG cleanly. The visitor always gets a response; the dispatcher never throws on exhaustion.
 - **Ranking is best-effort too.** If `rankRetry` exhausts without a valid score, the `catch` block routes `'ranked'` with zero-scored candidates so `mergeCandidates` can still soft-gate.
 
 See this in action in the [Archivist live demo](./the-archivist).

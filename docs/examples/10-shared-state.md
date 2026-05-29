@@ -5,9 +5,9 @@ seeAlso:
   - text: 'Shared state guide'
     link: '../guide/shared-state'
     description: 'decision matrix, concurrency contract, checkpoint integration'
-  - text: 'Phase 05: Embedded-DAG composition'
+  - text: 'Phase 05: Scatter sub-DAG composition'
     link: './05-embedded-dags'
-    description: 'state transfer at the embedded-DAG boundary'
+    description: 'state transfer at the scatter boundary'
   - text: 'Phase 08: Checkpoint + resume'
     link: './08-checkpoint'
     description: 'checkpoint lifecycle this page extends with stores'
@@ -39,7 +39,7 @@ const childDag = new DAGBuilder('sub-flow', '1')
 
 const parentDag = new DAGBuilder('main-flow', '1')
   .node('step-a', stepA, { done: 'run-child' })
-  .embeddedDAG('run-child', 'sub-flow', { success: 'step-b', error: 'step-b' })
+  .scatter('run-child', { dag: 'sub-flow' }, { success: 'step-b', error: 'step-b' })
   .node('step-b', stepB, { done: null })
   .build();
 
@@ -50,7 +50,7 @@ const elements = CytoscapeRenderer.render(parentDag, {
 
 # Phase 10: Shared state
 
-A `MemoryStore` lives on the services bag, threaded through every node and every embedded-DAG. Parent and child append entries to the same store without passing values through `stateMapping`. `Checkpoint.capture` snapshots the store alongside the parent state; `Checkpoint.load` + `restoreStores` restores it on resume.
+A `MemoryStore` lives on the services bag, threaded through every node and every scatter clone. Parent and child append entries to the same store without passing values through `projection` or `gather`. `Checkpoint.capture` snapshots the store alongside the parent state; `Checkpoint.load` + `restoreStores` restores it on resume.
 
 <DagGraph :elements="elements" aria-label="Parent DAG with embedded-DAG sub-flow; both write to the same shared store." />
 
@@ -90,9 +90,9 @@ The runnable example covers the full lifecycle: a normal run, then a second run 
 
 - **`Store` on the services bag.** `Dagonizer<TState, TServices>` is generic over the services shape. The `MemoryStore` instance is the same reference every node receives via `context.services.log`. See the `services` region.
 - **Single store, many writers.** `step-a`, `child-step`, `step-b` all call `log.update('entries', ...)` against one instance. Order of the resulting entries reflects execution order, not topology.
-- **Embedded-DAGs inherit the services bag.** `child-step` sees the same `log` as the parent without any `stateMapping` for the store. `stateMapping` is for parent/child state transfer; stores are orthogonal.
+- **Scatter clones inherit the services bag.** `child-step` sees the same `log` as the parent without any `projection` or `gather` for the store. `projection`/`gather` are for parent/clone state transfer; stores are orthogonal.
 - **`Checkpoint.capture({ stores })`.** Capturing a checkpoint with the `stores` option snapshots each named store alongside the state. The capture is keyed by the same name the services bag uses (`log`).
 - **`Checkpoint.load(...).restoreStores({ log: freshLog })`.** Restores the store contents into a fresh instance. The resumed dispatcher uses the fresh instance on its services bag, so the resume continues from the captured store contents.
 - **Resume is order-preserving.** After restoreStores plus resume, the final `entries` value is `step-a,child-step,step-b` with no duplication, identical to the normal-run output.
 
-See [Shared state](../guide/shared-state) for the decision matrix between `stateMapping` (point-to-point transfer) and `Store` (accumulating shared structure), and the concurrency contract for write-write races in `parallel` placements.
+See [Shared state](../guide/shared-state) for the decision matrix between `projection`/`gather` (point-to-point transfer) and `Store` (accumulating shared structure), and the concurrency contract for write-write races in `parallel` placements.

@@ -76,8 +76,7 @@ The schema covers `name`, `version`, `entrypoint`, and `nodes`. Each node varian
 |---|---|---|
 | `SingleNode` | `@id`, `@type`, `name`, `node`, `outputs` | `outputs` is `Record<string, string \| null>` |
 | `ParallelNode` | `@id`, `@type`, `name`, `nodes`, `combine`, `outputs` | `nodes` is a non-empty string array |
-| `FanOutNode` | `@id`, `@type`, `name`, `node`, `source`, `fanIn`, `outputs` | optional `concurrency`, `itemKey` |
-| `EmbeddedDAGNode` | `@id`, `@type`, `name`, `dag`, `outputs` | optional `stateMapping.input` and `stateMapping.output` |
+| `ScatterNode` | `@id`, `@type`, `name`, `body`, `outputs` | `body` is `{ node }` or `{ dag }`; optional `source`, `itemKey`, `concurrency`, `projection`, `gather`, `reducer` |
 | `TerminalNode` | `@id`, `@type`, `name`, `outcome` | no `outputs` field; `outcome` is `'completed'` or `'failed'` |
 | `PhaseNode` | `@id`, `@type`, `name`, `phase`, `node` | `phase` is `'pre'` or `'post'`; no `outputs` |
 

@@ -1,18 +1,17 @@
 /**
- * 05-embedded-dags — EmbeddedDAGNode: nested DAG invocation with state mapping.
+ * 05-embedded-dags — ScatterNode singleton: nested DAG invocation with state mapping.
  *
- * Demonstrates how a parent DAG can invoke a child (deep) DAG via
- * EmbeddedDAGNode. State mapping controls data flow at the boundary:
- *   stateMapping.input  — copies named fields from parent state into the
- *                         child state before the embedded-DAG runs.
- *   stateMapping.output — copies named fields from child state back into
- *                         parent state after the embedded-DAG returns.
+ * Demonstrates how a parent DAG invokes a child (deep) DAG via a ScatterNode
+ * with no `source` (the singleton pattern — exactly one clone). State mapping
+ * controls data flow at the boundary:
+ *   projection — copies named fields from parent state into the clone before
+ *                the child DAG runs (`{ cloneField: parentPath }`).
+ *   gather     — copies named fields from clone state back into parent state
+ *                after the child DAG returns. Strategy `map` reads each clone
+ *                field and writes to the parent path
+ *                (`{ cloneField: parentPath }`).
  *
- * The embedded-DAG MUST NOT route any output to null directly — the parent DAG
- * owns the terminal transition. Structure: embedded-DAG placement routes its
- * output to a parent-level terminal node that routes to null.
- *
- * Watch: seed=41 enters the embedded-DAG as payload=41, gets incremented to 42,
+ * Watch: seed=41 enters the clone as payload=41, gets incremented to 42,
  * then maps back into parent state as result=42.
  *
  * Run: npx tsx examples/05-embedded-dags.ts
@@ -26,37 +25,26 @@ import {
 import type { DAG, NodeInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
-// State — fields live on the same class; mapping controls which ones cross
-// the embedded-DAG boundary
+// State — fields live on the same class; projection / gather control which
+// ones cross the ScatterNode clone boundary
 // ---------------------------------------------------------------------------
 
 class S extends NodeStateBase {
   seed    = 0;  // parent input value
-  result  = 0;  // parent output value (written back via stateMapping.output)
-  payload = 0;  // the field the embedded-DAG operates on
+  result  = 0;  // parent output value (written back via gather.mapping)
+  payload = 0;  // the field the child DAG operates on
 }
 
 // ---------------------------------------------------------------------------
 // Nodes
 // ---------------------------------------------------------------------------
 
-// The embedded-DAG's working node: increments the payload field
+// The child DAG's working node: increments the payload field
 const increment: NodeInterface<S, 'success'> = {
   "name": 'increment',
   "outputs": ['success'],
   async execute(state) {
     state.payload = state.payload + 1;
-    return { "output": 'success' };
-  },
-};
-
-// Terminal node in the parent DAG — a minimal noop that ends the flow.
-// Required because the parent owns the END transition; the embedded-DAG
-// placement cannot route directly to null.
-const done: NodeInterface<S, 'success'> = {
-  "name": 'done',
-  "outputs": ['success'],
-  async execute(_state) {
     return { "output": 'success' };
   },
 };
@@ -86,7 +74,7 @@ const child: DAG = {
 // #endregion child-dag
 
 // ---------------------------------------------------------------------------
-// Parent DAG — invokes the child via EmbeddedDAGNode, then terminates via 'finish'
+// Parent DAG — invokes the child via ScatterNode (singleton, no source)
 // ---------------------------------------------------------------------------
 
 // #region parent-dag
@@ -100,29 +88,24 @@ const parent: DAG = {
   "nodes": [
     {
       '@id':   'urn:noocodex:dag:parent/node/invoke',
-      '@type': 'EmbeddedDAGNode',                       // invoke a nested (deep) DAG
+      '@type': 'ScatterNode',                        // singleton — no source, one clone
       "name":    'invoke',
-      "dag":     'child',                             // name of the registered child DAG
+      "body":    { "dag": 'child' },                 // run the registered child DAG in the clone
       // #region state-mapping
-      "stateMapping": {
-        // input: maps parent fields → child fields before the embedded-DAG starts
-        // { childField: parentField }
-        "input":  { "payload": 'seed' },                // child.payload ← parent.seed
+      // projection: seeds clone fields from parent before the body runs
+      // { cloneField: parentPath }
+      "projection": { "payload": 'seed' },           // clone.payload ← parent.seed
 
-        // output: maps child fields → parent fields after the embedded-DAG ends
-        // { parentField: childField }
-        "output": { "result": 'payload' },              // parent.result ← child.payload
+      // gather: writes clone fields back to parent after the body returns
+      // strategy 'map' reads each cloneField and writes the parentPath
+      // { cloneField: parentPath }
+      "gather": {
+        "strategy": 'map',
+        "mapping":  { "payload": 'result' },         // parent.result ← clone.payload
       },
       // #endregion state-mapping
-      // Routes for the embedded-DAG outcome; parent terminates via 'finish'
-      "outputs": { "success": 'finish', "error": 'finish' },
-    },
-    {
-      '@id':   'urn:noocodex:dag:parent/node/finish',
-      '@type': 'SingleNode',                        // terminal node — routes to null
-      "name":    'finish',
-      "node":    'done',
-      "outputs": { "success": null },
+      // Routes for the ScatterNode outcome (terminal reducer: success / error)
+      "outputs": { "success": null, "error": null },
     },
   ],
 };
@@ -135,7 +118,6 @@ const parent: DAG = {
 // #region run
 const dispatcher = new Dagonizer<S>();
 dispatcher.registerNode(increment);
-dispatcher.registerNode(done);
 dispatcher.registerDAG(child);
 dispatcher.registerDAG(parent);
 
@@ -143,9 +125,9 @@ const state = new S();
 state.seed = 41;
 await dispatcher.execute('parent', state);
 
-process.stdout.write('\nEmbedded-DAG — parent → invoke(child) → finish → END\n');
-process.stdout.write(`  seed=${state.seed} → embedded-DAG incremented payload → result=${state.result}\n`);
-process.stdout.write('\nLesson: stateMapping.input copies seed→payload into the child;\n');
-process.stdout.write('        stateMapping.output copies payload→result back to parent.\n');
-process.stdout.write('        Parent owns END: embedded-DAG routes to a terminal SingleNode.\n');
+process.stdout.write('\nScatterNode singleton — parent → invoke(child) → END\n');
+process.stdout.write(`  seed=${state.seed} → child DAG incremented payload → result=${state.result}\n`);
+process.stdout.write('\nLesson: projection copies seed→payload into the clone;\n');
+process.stdout.write('        gather.mapping copies payload→result back to parent.\n');
+process.stdout.write('        ScatterNode with no source runs exactly one clone.\n');
 // #endregion run

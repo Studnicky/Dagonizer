@@ -36,7 +36,7 @@ A DAG document carries these top-level fields:
 
 - `@context`. The canonical Dagonizer JSON-LD context inlined as an object literal. The full context is exported from `@noocodex/dagonizer` as `DAG_CONTEXT` (source: `packages/dagonizer/src/entities/dag/DAG.ts`). `DAGBuilder.build()` embeds it verbatim.
 - `@id`. URN identifier for the DAG document. Convention: `urn:noocodex:dag:<name>`.
-- `@type`. RDF class. `"DAG"` for the document; one of `"SingleNode"`, `"ParallelNode"`, `"FanOutNode"`, `"EmbeddedDAGNode"`, `"TerminalNode"`, or `"PhaseNode"` for placements.
+- `@type`. RDF class. `"DAG"` for the document; one of `"SingleNode"`, `"ParallelNode"`, `"ScatterNode"`, `"TerminalNode"`, or `"PhaseNode"` for placements.
 - `name`, `version`, `entrypoint`. The dispatcher uses `name` and `entrypoint` to register and execute.
 - `nodes`. Array of placement objects, each with its own `@id` and `@type`.
 
@@ -48,15 +48,14 @@ Placement `@id`s typically nest under the DAG's URN: `urn:noocodex:dag:demo/node
 
 ## `@type` vocabulary
 
-Six placement classes plus the document class:
+Five placement classes plus the document class:
 
 | `@type` | Role |
 |---|---|
 | `DAG` | Top-level document |
 | `SingleNode` | One registered node, routed by named outputs |
 | `ParallelNode` | Concurrent nodes with a combine strategy |
-| `FanOutNode` | One node executed per item of a source array |
-| `EmbeddedDAGNode` | Nested DAG invocation with optional `stateMapping` |
+| `ScatterNode` | Isolate a clone, run a `body` (node or sub-DAG), gather produced state, route on aggregate outcome |
 | `TerminalNode` | Explicit terminus with `outcome` of `'completed'` or `'failed'` |
 | `PhaseNode` | Lifecycle-attached pre or post placement |
 
@@ -126,8 +125,7 @@ Each placement type carries a distinct `@type` that drives the runtime dispatch:
 |---|---|---|
 | `SingleNode` | One registered node | `@id`, `@type`, `name`, `node`, `outputs` |
 | `ParallelNode` | Concurrent nodes with combine strategy | `@id`, `@type`, `name`, `nodes`, `combine`, `outputs` |
-| `FanOutNode` | One node per array item | `@id`, `@type`, `name`, `node`, `source`, `fanIn`, `outputs` |
-| `EmbeddedDAGNode` | Nested DAG invocation | `@id`, `@type`, `name`, `dag`, `outputs` |
+| `ScatterNode` | Clone, run body, gather, route | `@id`, `@type`, `name`, `body`, `outputs` |
 | `TerminalNode` | Explicit terminus | `@id`, `@type`, `name`, `outcome` |
 | `PhaseNode` | Lifecycle-attached node | `@id`, `@type`, `name`, `phase`, `node` |
 

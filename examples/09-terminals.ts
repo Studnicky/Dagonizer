@@ -20,10 +20,10 @@
  *      triggering `end-ok`, once triggering `end-fail` — and the lifecycle
  *      kind is printed for each run.
  *
- *   4. Embedded-DAG routing to explicit terminals — `.embeddedDAG('run', 'child', {
- *      success: 'end-ok', error: 'end-fail' })`. A child DAG's success/error
- *      outputs route to the parent's named terminals. A child with errors
- *      routes to `end-fail` → state becomes `failed` in the parent.
+ *   4. ScatterNode singleton routing to explicit terminals — `.scatter('run',
+ *      { dag: 'child' }, { success: 'end-ok', error: 'end-fail' })`. A child
+ *      DAG's success/error outputs route to the parent's named terminals.
+ *      A child with errors routes to `end-fail` → state becomes `failed`.
  *
  * Run: npx tsx examples/09-terminals.ts
  */
@@ -64,7 +64,10 @@ const checkNode: NodeInterface<S, 'pass' | 'fail'> = {
   },
 };
 
-// Child DAG work node — used in pattern 4
+// Child DAG work node — used in pattern 4. Reads `shouldPass`, which the
+// ScatterNode projection seeds onto the clone from parent state before the
+// child DAG body runs (a state clone carries metadata, not subclass fields —
+// projection is how parent data reaches the clone).
 const childWork: NodeInterface<S, 'done'> = {
   "name":    'child-work',
   "outputs": ['done'],
@@ -116,7 +119,7 @@ const dag3 = new DAGBuilder('demo-explicit-terminals', '1')
 // #endregion terminal-failed
 
 // ---------------------------------------------------------------------------
-// Pattern 4 — Embedded-DAG routing to explicit terminals
+// Pattern 4 — ScatterNode (sub-DAG body) routing to explicit terminals
 // ---------------------------------------------------------------------------
 
 // #region embedded-terminals
@@ -139,9 +142,12 @@ const childDAG: DAG = {
 };
 
 const dag4 = new DAGBuilder('demo-embedded-dag-terminals', '1')
-  .embeddedDAG('run', 'child-for-terminals', {
+  .scatter<S, 'success' | 'error'>('run', { dag: 'child-for-terminals' }, {
     'success': 'end-ok',
     'error':   'end-fail',
+  }, {
+    // Seed the clone's shouldPass from parent state before the child DAG runs.
+    'projection': { 'shouldPass': 'shouldPass' },
   })
   .terminal('end-ok')
   .terminal('end-fail', 'failed')
@@ -217,7 +223,7 @@ async function run(): Promise<void> {
     const stateOk = new S();
     stateOk.shouldPass = true;
     const resultOk = await dispatcher.execute('demo-embedded-dag-terminals', stateOk);
-    process.stdout.write('\nPattern 4a — embedded-DAG child succeeds → end-ok:\n');
+    process.stdout.write('\nPattern 4a — scatter child DAG succeeds → end-ok:\n');
     process.stdout.write(`  lifecycle.kind = ${resultOk.state.lifecycle.kind}\n`);
     // → completed
   }
@@ -232,7 +238,7 @@ async function run(): Promise<void> {
     const stateErr = new S();
     stateErr.shouldPass = false;
     const resultErr = await dispatcher.execute('demo-embedded-dag-terminals', stateErr);
-    process.stdout.write('\nPattern 4b — embedded-DAG child errors → end-fail:\n');
+    process.stdout.write('\nPattern 4b — scatter child DAG errors → end-fail:\n');
     process.stdout.write(`  lifecycle.kind = ${resultErr.state.lifecycle.kind}\n`);
     // → failed
   }
