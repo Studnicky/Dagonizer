@@ -27,7 +27,7 @@ void describe('CytoscapeRenderer.render', () => {
         'outputs': { 'success': null },
       }],
     };
-    const elements = CytoscapeRenderer.render(dag);
+    const elements = CytoscapeRenderer.render(dag, { "computeLayout": false });
     const nodes = elements.filter((entry) => entry.group === 'nodes');
     const edges = elements.filter((entry) => entry.group === 'edges');
     assert.equal(nodes.length, 2);                          // greet + synthetic END
@@ -36,28 +36,28 @@ void describe('CytoscapeRenderer.render', () => {
     assert.equal(edges[0]?.data.target, 'END');
   });
 
-  void it('marks fan-out placements with type=fan-out', () => {
+  void it('marks ScatterNode placements with type=scatter and class dag-scatter', () => {
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:fan',
       '@type':    'DAG',
-      'name':       'fan',
-      'version':    '1',
+      'name':     'fan',
+      'version':  '1',
       'entrypoint': 'fan',
       'nodes': [{
         '@id':    'urn:noocodex:dag:fan/node/fan',
-        '@type':  'FanOutNode',
+        '@type':  'ScatterNode',
         'name':   'fan',
-        'node':   'worker',
+        'body':   { 'node': 'worker' },
         'source': 'items',
-        'fanIn': { 'strategy': 'append', 'target': 'collected' },
+        'gather': { 'strategy': 'partition', 'partitions': { 'success': 'collected', 'error': 'errors' } },
         'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
       }],
     };
-    const elements = CytoscapeRenderer.render(dag);
+    const elements = CytoscapeRenderer.render(dag, { "computeLayout": false });
     const fan = elements.find((entry): entry is CytoscapeNodeElement => isNode(entry) && entry.data.id === 'fan');
-    assert.equal(fan?.data.type, 'fan-out');
-    assert.equal(fan?.classes, 'dag-fan-out');
+    assert.equal(fan?.data.type, 'scatter');
+    assert.equal(fan?.classes, 'dag-scatter');
   });
 
   void it('parallel placements carry children + combine in data', () => {
@@ -77,7 +77,7 @@ void describe('CytoscapeRenderer.render', () => {
         'outputs': { 'success': null, 'error': null },
       }],
     };
-    const elements = CytoscapeRenderer.render(dag);
+    const elements = CytoscapeRenderer.render(dag, { "computeLayout": false });
     const group = elements.find((entry): entry is CytoscapeNodeElement => isNode(entry) && entry.data.id === 'group');
     assert.equal(group?.data.type, 'parallel');
     assert.deepEqual(group?.data['children'], ['a', 'b']);
@@ -97,7 +97,7 @@ void describe('CytoscapeRenderer.render', () => {
         { '@id': 'urn:noocodex:dag:chain/node/b', '@type': 'SingleNode', 'name': 'b', 'node': 'n', 'outputs': { 'success': null } },
       ],
     };
-    const elements = CytoscapeRenderer.render(dag);
+    const elements = CytoscapeRenderer.render(dag, { "computeLayout": false });
     const edge = elements.find((entry) => entry.group === 'edges' && entry.data.source === 'a');
     assert.equal(edge?.data.target, 'b');
     const terminalEdges = elements.filter(
@@ -122,11 +122,91 @@ void describe('CytoscapeRenderer.render', () => {
         'outputs': { 'success': null, 'error': null },
       }],
     };
-    const elements = CytoscapeRenderer.render(dag);
+    const elements = CytoscapeRenderer.render(dag, { "computeLayout": false });
     const ids = elements
       .filter((entry) => entry.group === 'edges')
       .map((entry) => entry.data.id);
     assert.deepEqual([...ids].sort(), ['a__error__END', 'a__success__END']);
+  });
+
+  void it('ScatterNode with body.dag expands inline when the DAG is registered', () => {
+    const innerDAG: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:inner',
+      '@type':    'DAG',
+      'name':     'inner',
+      'version':  '1',
+      'entrypoint': 'step',
+      'nodes': [{
+        '@id':    'urn:noocodex:dag:inner/node/step',
+        '@type':  'SingleNode',
+        'name':   'step',
+        'node':   'step',
+        'outputs': { 'done': null },
+      }],
+    };
+    const outerDAG: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:outer',
+      '@type':    'DAG',
+      'name':     'outer',
+      'version':  '1',
+      'entrypoint': 'embed',
+      'nodes': [{
+        '@id':   'urn:noocodex:dag:outer/node/embed',
+        '@type': 'ScatterNode',
+        'name':  'embed',
+        'body':  { 'dag': 'inner' },
+        'outputs': { 'success': null },
+      }],
+    };
+    const embeddedDAGs = new Map<string, DAG>([['inner', innerDAG]]);
+    const elements = CytoscapeRenderer.render(outerDAG, { embeddedDAGs, "computeLayout": false });
+
+    // The compound parent node is emitted for the ScatterNode placement
+    const embedNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'embed');
+    assert.ok(embedNode !== undefined, 'embed compound node must be present');
+    assert.equal(embedNode.data.type, 'scatter');
+    assert.equal(embedNode.classes, 'dag-scatter');
+
+    // The inner step node is emitted as a child with parent=embed
+    const stepNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'embed/step');
+    assert.ok(stepNode !== undefined, 'embed/step inner node must be present');
+    assert.equal(stepNode.data['parent'], 'embed');
+  });
+
+  void it('ScatterNode with body.node does not expand inline', () => {
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:scatter-node',
+      '@type':    'DAG',
+      'name':     'scatter-node',
+      'version':  '1',
+      'entrypoint': 'scatter',
+      'nodes': [{
+        '@id':    'urn:noocodex:dag:scatter-node/node/scatter',
+        '@type':  'ScatterNode',
+        'name':   'scatter',
+        'body':   { 'node': 'worker' },
+        'source': 'items',
+        'outputs': { 'success': null },
+      }],
+    };
+    const embeddedDAGs = new Map<string, DAG>();
+    const elements = CytoscapeRenderer.render(dag, { embeddedDAGs, "computeLayout": false });
+
+    // No inner children emitted — node-body scatters are opaque
+    const childNodes = elements.filter(
+      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id.startsWith('scatter/'),
+    );
+    assert.equal(childNodes.length, 0, 'node-body ScatterNode must not expand inline');
+
+    // The scatter node itself is still emitted as type=scatter
+    const scatterNode = elements.find(
+      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'scatter',
+    );
+    assert.ok(scatterNode !== undefined);
+    assert.equal(scatterNode.data.type, 'scatter');
   });
 });
 
@@ -156,7 +236,7 @@ void describe('CytoscapeRenderer.render — TerminalNode', () => {
         terminal,
       ],
     };
-    const elements = CytoscapeRenderer.render(dag);
+    const elements = CytoscapeRenderer.render(dag, { "computeLayout": false });
     const doneNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'done');
     assert.ok(doneNode !== undefined, 'done node should exist');
     assert.equal(doneNode.data.type, 'terminal');
@@ -194,7 +274,7 @@ void describe('CytoscapeRenderer.render — TerminalNode', () => {
         terminal,
       ],
     };
-    const elements = CytoscapeRenderer.render(dag);
+    const elements = CytoscapeRenderer.render(dag, { "computeLayout": false });
     const abortNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'abort');
     assert.ok(abortNode !== undefined);
     assert.equal(abortNode.data.type, 'terminal');
@@ -217,7 +297,7 @@ void describe('CytoscapeRenderer.render — TerminalNode', () => {
         'outputs': { 'success': null },
       }],
     };
-    const elements = CytoscapeRenderer.render(dag);
+    const elements = CytoscapeRenderer.render(dag, { "computeLayout": false });
     const endNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'END');
     assert.ok(endNode !== undefined);
     assert.equal(endNode.data['synthetic'], true);
@@ -248,7 +328,7 @@ void describe('CytoscapeRenderer.render — TerminalNode', () => {
         terminal,
       ],
     };
-    const elements = CytoscapeRenderer.render(dag);
+    const elements = CytoscapeRenderer.render(dag, { "computeLayout": false });
     // explicit TerminalNode exists with outcome
     const doneNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'done');
     assert.ok(doneNode !== undefined);

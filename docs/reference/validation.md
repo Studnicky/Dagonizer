@@ -89,11 +89,10 @@ Every JSON Schema in `@noocodex/dagonizer/entities` has a matching static `Entit
 | `Validator.dag` | `DAG` | `DAGSchema` |
 | `Validator.singleNode` | `SingleNode` | `SingleNodeSchema` |
 | `Validator.parallelNode` | `ParallelNode` | `ParallelNodeSchema` |
-| `Validator.fanOutNode` | `FanOutNode` | `FanOutNodeSchema` |
-| `Validator.embeddedDAGNode` | `EmbeddedDAGNode` | `EmbeddedDAGNodeSchema` |
+| `Validator.scatterNode` | `ScatterNode` | `ScatterNodeSchema` |
 | `Validator.terminalNode` | `TerminalNode` | `TerminalNodeSchema` |
 | `Validator.phaseNode` | `PhaseNode` | `PhaseNodeSchema` |
-| `Validator.fanInConfig` | `FanInConfig` | `FanInConfigSchema` |
+| `Validator.gatherConfig` | `GatherConfig` | `GatherConfigSchema` |
 | `Validator.node` | `Node` | `NodeSchema` |
 | `Validator.nodeContext` | `NodeContext` | `NodeContextSchema` |
 | `Validator.nodeOutput` | `NodeOutput` | `NodeOutputSchema` |

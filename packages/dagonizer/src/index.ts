@@ -9,8 +9,8 @@ export { NodeStateBase } from './NodeStateBase.js';
 // =============================================================================
 
 export {
-  FanInStrategyName,
-  FanOutOutput,
+  GatherStrategyName,
+  ScatterOutput,
   MetadataKey,
   Output,
   ParallelCombine,
@@ -46,8 +46,7 @@ export type {
 
 export { DAGBuilder } from './builder/index.js';
 export type {
-  FanOutOptionsInterface,
-  EmbeddedDAGOptionsInterface,
+  ScatterOptionsInterface,
 } from './builder/index.js';
 
 // =============================================================================
@@ -64,13 +63,12 @@ export type { EntityValidator } from './validation/index.js';
 // =============================================================================
 
 export {
-  FanInConfigSchema,
-  FanOutNodeSchema,
+  ScatterNodeSchema,
+  GatherConfigSchema,
   DAGSchema,
   DAGLifecycleStateSchema,
   ParallelNodeSchema,
   SingleNodeSchema,
-  EmbeddedDAGNodeSchema,
   TerminalNodeSchema,
   PhaseNodeSchema,
   NodeSchema,
@@ -83,8 +81,8 @@ export {
   ExecutionResultSchema,
   ValidationResultSchema,
   DAGErrorJSONSchema,
-  FanInStrategySchema,
-  FanOutOutputSchema,
+  GatherStrategySchema,
+  ScatterOutputSchema,
   MetadataKeySchema,
   OutputSchema,
   ParallelCombineSchema,
@@ -93,13 +91,12 @@ export {
   DAG_CONTEXT,
 } from './entities/index.js';
 export type {
-  FanInConfig,
-  FanOutNode,
+  ScatterNode,
+  GatherConfig,
   DAG,
   DAGLifecycleStateData,
   ParallelNode,
   SingleNode,
-  EmbeddedDAGNode,
   TerminalNode,
   PhaseNode,
   Node,
@@ -143,8 +140,8 @@ export type {
 // FUNCTIONS
 // =============================================================================
 
-export { Dagonizer, FAN_OUT_PROGRESS_KEY } from './Dagonizer.js';
-export type { DagonizerOptionsInterface, FanOutProgress, StoredFanOutProgress } from './Dagonizer.js';
+export { Dagonizer, SCATTER_PROGRESS_KEY } from './Dagonizer.js';
+export type { DagonizerOptionsInterface, ScatterItemResult, ScatterProgress, StoredScatterProgress } from './Dagonizer.js';
 export { Execution } from './Execution.js';
 
 // =============================================================================
@@ -157,10 +154,15 @@ export {
 } from './core/ParallelCombiners.js';
 export type { ParallelResult } from './core/ParallelCombiners.js';
 export {
-  FanInStrategies,
-  FanInStrategy,
-} from './core/FanInStrategies.js';
-export type { FanInExecution } from './core/FanInStrategies.js';
+  GatherStrategies,
+  GatherStrategy,
+} from './core/GatherStrategies.js';
+export type { GatherExecution, GatherRecord } from './core/GatherStrategies.js';
+export {
+  OutcomeReducers,
+  OutcomeReducer,
+} from './core/OutcomeReducers.js';
+export type { OutcomeRecord } from './core/OutcomeReducers.js';
 
 // =============================================================================
 // CHECKPOINT

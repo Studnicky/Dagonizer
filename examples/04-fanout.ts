@@ -1,13 +1,14 @@
 /**
- * 04-fanout — FanOutNode: concurrent iteration + fan-in partition strategy.
+ * 04-fanout — ScatterNode: concurrent iteration + partition gather strategy.
  *
- * Demonstrates FanOutNode: the engine reads the `source` field from state,
- * spawns one `node` execution per item (up to `concurrency` at once), then
- * passes each item's output key to the `fanIn` strategy. The `partition`
- * strategy routes items into named state arrays by their output key.
+ * Demonstrates ScatterNode with source: the engine reads the `source` field
+ * from state, spawns one clone per item (up to `concurrency` at once), runs
+ * the registered `node` body in each clone, then applies the `gather`
+ * strategy. The `partition` strategy routes each clone's produced value into
+ * named state arrays by the clone's output key.
  *
  * Watch: `ok` items land in `state.succeeded`, `fail` in `state.failed`.
- * The FanOutNode outputs (all-success | partial | all-error | empty) reflect
+ * The ScatterNode outputs (all-success | partial | all-error | empty) reflect
  * the aggregate result, not individual items.
  *
  * Run: npx tsx examples/04-fanout.ts
@@ -26,7 +27,7 @@ import type { DAG, NodeInterface } from '@noocodex/dagonizer';
 
 // #region state
 class ScrapeState extends NodeStateBase {
-  urls:      string[] = [];  // source array — FanOutNode reads this by field name
+  urls:      string[] = [];  // source array — ScatterNode reads this by field name
   succeeded: string[] = [];  // partition target for 'ok' output
   failed:    string[] = [];  // partition target for 'fail' output
 }
@@ -53,7 +54,7 @@ const probe: NodeInterface<ScrapeState, 'ok' | 'fail'> = {
 // DAG
 // ---------------------------------------------------------------------------
 
-// #region fanout-placement
+// #region scatter-placement
 const dag: DAG = {
   '@context':   DAG_CONTEXT,
   '@id':        'urn:noocodex:dag:scrape',
@@ -64,26 +65,26 @@ const dag: DAG = {
   "nodes": [
     {
       '@id':        'urn:noocodex:dag:scrape/node/probe-all',
-      '@type':      'FanOutNode',                    // iterate source, run node per item
+      '@type':      'ScatterNode',                   // iterate source, run node per clone
       "name":         'probe-all',
-      "node":         'probe',                         // which registered node to invoke per item
+      "body":         { "node": 'probe' },             // which registered node to invoke per clone
       "source":       'urls',                          // state field to read the items array from
       "itemKey":      'url',                           // metadata key each item is written under
-      "concurrency":  2,                               // max items in-flight simultaneously
-      "fanIn": {
-        "strategy":   'partition',                     // route items by their output key
+      "concurrency":  2,                               // max clones in-flight simultaneously
+      "gather": {
+        "strategy":   'partition',                     // route clones by their output key
         "partitions": { "ok": 'succeeded', "fail": 'failed' },  // output key → state field name
       },
-      // Aggregate outputs — reflect final distribution, not per-item results.
-      // all-success: every item returned 'ok'
+      // Aggregate outputs — reflect final distribution, not per-clone results.
+      // all-success: every clone returned 'ok'
       // partial:     mix of ok and fail
-      // all-error:   every item returned 'fail'
+      // all-error:   every clone returned 'fail'
       // empty:       source array was empty
       "outputs": { 'all-success': null, "partial": null, 'all-error': null, "empty": null },
     },
   ],
 };
-// #endregion fanout-placement
+// #endregion scatter-placement
 
 // ---------------------------------------------------------------------------
 // Run
@@ -104,9 +105,9 @@ state.urls = [
 ];
 await dispatcher.execute('scrape', state);
 
-process.stdout.write('\nFanOut DAG — probe runs once per URL, concurrency=2\n');
+process.stdout.write('\nScatter DAG — probe runs once per URL, concurrency=2\n');
 process.stdout.write(`  succeeded: ${JSON.stringify(state.succeeded)}\n`);
 process.stdout.write(`  failed:    ${JSON.stringify(state.failed)}\n`);
-process.stdout.write('\nLesson: FanOutNode iterates state.urls, writes each item under\n');
+process.stdout.write('\nLesson: ScatterNode iterates state.urls, writes each item under\n');
 process.stdout.write('        itemKey "url", then partitions results into state arrays.\n');
 // #endregion run

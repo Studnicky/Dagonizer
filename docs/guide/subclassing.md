@@ -1,6 +1,6 @@
 ---
 title: 'Subclassing state'
-description: 'NodeStateBase is the canonical base class for domain-specific DAG state. Extend it to add typed fields, override snapshotData and restoreData for checkpoint round-trips, and override clone for deep-copy semantics across fan-out and embedded-DAG boundaries.'
+description: 'NodeStateBase is the canonical base class for domain-specific DAG state. Extend it to add typed fields, override snapshotData and restoreData for checkpoint round-trips, and override clone for deep-copy semantics across scatter clone boundaries.'
 seeAlso:
   - text: 'DAGBuilder'
     link: './builder'
@@ -55,7 +55,7 @@ Two invariants the override must hold:
 
 ## `clone()`
 
-The dispatcher calls `clone()` before fan-out items and embedded-DAG calls so each branch operates on its own state copy. The base implementation copies metadata via `structuredClone` and resets the lifecycle plus error/warning lists. Override `clone()` when the subclass carries reference-typed fields the base class does not know about:
+The dispatcher calls `clone()` before scatter clones so each clone operates on its own state copy. The base implementation copies metadata via `structuredClone` and resets the lifecycle plus error/warning lists. Override `clone()` when the subclass carries reference-typed fields the base class does not know about:
 
 ```ts
 class S extends NodeStateBase {

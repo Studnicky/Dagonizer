@@ -3,7 +3,8 @@
  *
  * Demonstrates:
  *   1. A MemoryStore threaded through the services bag.
- *   2. Two nodes and a embedded-DAG that accumulate entries to the same store.
+ *   2. Two nodes and a ScatterNode sub-DAG that accumulate entries to the
+ *      same store.
  *   3. Checkpoint.capture() snapshots the store alongside parent state.
  *   4. Checkpoint.load() + restoreStores() recovers the store on resume.
  *
@@ -63,9 +64,12 @@ const childDag = new DAGBuilder('sub-flow', '1')
 // #endregion child-dag
 
 // #region parent-dag
+// run-child is a ScatterNode singleton (no source ⇒ one clone) whose body is
+// the registered 'sub-flow' DAG. The clone shares the same services bag, so
+// child-step appends to the same MemoryStore between step-a and step-b.
 const parentDag = new DAGBuilder('main-flow', '1')
   .node('step-a', stepA, { "done": 'run-child' })
-  .embeddedDAG('run-child', 'sub-flow', { "success": 'step-b', "error": 'step-b' })
+  .scatter('run-child', { dag: 'sub-flow' }, { "success": 'step-b', "error": 'step-b' })
   .node('step-b', stepB, { "done": null })
   .build();
 // #endregion parent-dag

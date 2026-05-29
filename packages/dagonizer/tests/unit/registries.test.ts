@@ -3,15 +3,17 @@ import { afterEach, describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import {
-  FanInStrategies,
-  FanInStrategy,
+  GatherStrategies,
+  GatherStrategy,
+  OutcomeReducer,
+  OutcomeReducers,
   ParallelCombiner,
   ParallelCombiners,
 } from '../../src/core/index.js';
-import type { FanInExecution, ParallelResult } from '../../src/core/index.js';
+import type { GatherExecution, OutcomeRecord, ParallelResult } from '../../src/core/index.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG, FanInConfig } from '../../src/entities/index.js';
+import type { DAG, GatherConfig } from '../../src/entities/index.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
@@ -74,37 +76,136 @@ void describe('ParallelCombiners registry', () => {
   });
 });
 
-void describe('FanInStrategies registry', () => {
+void describe('GatherStrategies registry', () => {
   void it('lists default strategies on first import', () => {
-    const names = FanInStrategies.list();
+    const names = GatherStrategies.list();
+    assert.ok(names.includes('map'));
     assert.ok(names.includes('append'));
     assert.ok(names.includes('partition'));
     assert.ok(names.includes('custom'));
   });
 
   void it('resolves a default strategy by name', () => {
-    const strategy = FanInStrategies.resolve('append');
+    const strategy = GatherStrategies.resolve('append');
     assert.equal(strategy.name, 'append');
   });
 
   void it('throws for an unknown strategy name', () => {
-    assert.throws(() => FanInStrategies.resolve('top-n'));
+    assert.throws(() => GatherStrategies.resolve('top-n'));
   });
 
   void it('custom strategy class extends and registers', () => {
-    class TopOneFanIn extends FanInStrategy {
+    class TopOneGather extends GatherStrategy {
       readonly name = 'top-one';
       async apply<TState extends NodeStateInterface>(
-        _config: FanInConfig,
-        execution: FanInExecution<TState>,
+        _config: GatherConfig,
+        execution: GatherExecution<TState>,
       ): Promise<void> {
-        const all = [...execution.results.values()].flat();
-        execution.accessor.set(execution.state, 'top', all[0] ?? null);
+        const first = execution.records[0];
+        execution.accessor.set(execution.state, 'top', first?.item ?? null);
       }
     }
-    FanInStrategies.register(new TopOneFanIn());
-    const strategy = FanInStrategies.resolve('top-one');
+    GatherStrategies.register(new TopOneGather());
+    const strategy = GatherStrategies.resolve('top-one');
     assert.equal(strategy.name, 'top-one');
+  });
+});
+
+void describe('OutcomeReducers registry', () => {
+  void it('lists default reducers on first import', () => {
+    const names = OutcomeReducers.list();
+    assert.ok(names.includes('aggregate'));
+    assert.ok(names.includes('terminal'));
+  });
+
+  void it('resolves a default reducer by name', () => {
+    const reducer = OutcomeReducers.resolve('aggregate');
+    assert.equal(reducer.name, 'aggregate');
+  });
+
+  void it('throws for an unknown reducer name', () => {
+    assert.throws(() => OutcomeReducers.resolve('threshold-75'));
+  });
+
+  void it('aggregate reducer: empty → "empty"', () => {
+    const reducer = OutcomeReducers.resolve('aggregate');
+    assert.equal(reducer.reduce([]), 'empty');
+  });
+
+  void it('aggregate reducer: all success → "all-success"', () => {
+    const reducer = OutcomeReducers.resolve('aggregate');
+    const records: OutcomeRecord[] = [
+      { 'index': 0, 'output': 'success', 'terminalOutcome': null },
+      { 'index': 1, 'output': 'success', 'terminalOutcome': null },
+    ];
+    assert.equal(reducer.reduce(records), 'all-success');
+  });
+
+  void it('aggregate reducer: no success → "all-error"', () => {
+    const reducer = OutcomeReducers.resolve('aggregate');
+    const records: OutcomeRecord[] = [
+      { 'index': 0, 'output': 'error', 'terminalOutcome': null },
+      { 'index': 1, 'output': 'error', 'terminalOutcome': null },
+    ];
+    assert.equal(reducer.reduce(records), 'all-error');
+  });
+
+  void it('aggregate reducer: mixed → "partial"', () => {
+    const reducer = OutcomeReducers.resolve('aggregate');
+    const records: OutcomeRecord[] = [
+      { 'index': 0, 'output': 'success', 'terminalOutcome': null },
+      { 'index': 1, 'output': 'error',   'terminalOutcome': null },
+    ];
+    assert.equal(reducer.reduce(records), 'partial');
+  });
+
+  void it('terminal reducer: success output → "success"', () => {
+    const reducer = OutcomeReducers.resolve('terminal');
+    const records: OutcomeRecord[] = [
+      { 'index': 0, 'output': 'success', 'terminalOutcome': null },
+    ];
+    assert.equal(reducer.reduce(records), 'success');
+  });
+
+  void it('terminal reducer: error output → "error"', () => {
+    const reducer = OutcomeReducers.resolve('terminal');
+    const records: OutcomeRecord[] = [
+      { 'index': 0, 'output': 'error', 'terminalOutcome': null },
+    ];
+    assert.equal(reducer.reduce(records), 'error');
+  });
+
+  void it('terminal reducer: failed terminalOutcome → "error"', () => {
+    const reducer = OutcomeReducers.resolve('terminal');
+    const records: OutcomeRecord[] = [
+      { 'index': 0, 'output': 'success', 'terminalOutcome': 'failed' },
+    ];
+    assert.equal(reducer.reduce(records), 'error');
+  });
+
+  void it('terminal reducer: empty records → "error"', () => {
+    const reducer = OutcomeReducers.resolve('terminal');
+    assert.equal(reducer.reduce([]), 'error');
+  });
+
+  void it('register installs a custom reducer that resolves by name', () => {
+    class ThresholdReducer extends OutcomeReducer {
+      readonly name = 'threshold-75';
+      reduce(records: ReadonlyArray<OutcomeRecord>): string {
+        const successRate = records.filter((r) => r.output === 'success').length / records.length;
+        return successRate >= 0.75 ? 'all-success' : 'partial';
+      }
+    }
+    OutcomeReducers.register(new ThresholdReducer());
+    const reducer = OutcomeReducers.resolve('threshold-75');
+    assert.equal(reducer.name, 'threshold-75');
+    const records: OutcomeRecord[] = [
+      { 'index': 0, 'output': 'success', 'terminalOutcome': null },
+      { 'index': 1, 'output': 'success', 'terminalOutcome': null },
+      { 'index': 2, 'output': 'success', 'terminalOutcome': null },
+      { 'index': 3, 'output': 'error',   'terminalOutcome': null },
+    ];
+    assert.equal(reducer.reduce(records), 'all-success');
   });
 });
 

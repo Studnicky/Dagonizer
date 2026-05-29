@@ -10,7 +10,7 @@
  *   execution/       — ExecutionResult
  *   validation/      — ValidationResult
  *   errors/          — DAGErrorJSON
- *   constants/       — FanInStrategyName, FanOutOutput, MetadataKey, Output, ParallelCombine, NodeType
+ *   constants/       — GatherStrategyName, ScatterOutput, MetadataKey, Output, ParallelCombine, NodeType
  *   runtime/         — BackoffStrategy
  *   primitives/      — JsonSchema (draft-2020-12 TS model)
  *
@@ -23,26 +23,23 @@
 // dag
 // ---------------------------------------------------------------------------
 
-export { FanInConfigSchema } from './dag/FanInConfig.js';
-export type { FanInConfig } from './dag/FanInConfig.js';
-
 export { SingleNodeSchema } from './dag/SingleNode.js';
 export type { SingleNode } from './dag/SingleNode.js';
 
 export { ParallelNodeSchema } from './dag/ParallelNode.js';
 export type { ParallelNode } from './dag/ParallelNode.js';
 
-export { FanOutNodeSchema } from './dag/FanOutNode.js';
-export type { FanOutNode } from './dag/FanOutNode.js';
-
-export { EmbeddedDAGNodeSchema } from './dag/EmbeddedDAGNode.js';
-export type { EmbeddedDAGNode } from './dag/EmbeddedDAGNode.js';
-
 export { TerminalNodeSchema } from './dag/TerminalNode.js';
 export type { TerminalNode } from './dag/TerminalNode.js';
 
 export { PhaseNodeSchema } from './dag/PhaseNode.js';
 export type { PhaseNode } from './dag/PhaseNode.js';
+
+export { GatherConfigSchema } from './dag/GatherConfig.js';
+export type { GatherConfig } from './dag/GatherConfig.js';
+
+export { ScatterNodeSchema } from './dag/ScatterNode.js';
+export type { ScatterNode } from './dag/ScatterNode.js';
 
 export { DAGSchema, DAG_CONTEXT } from './dag/DAG.js';
 export type { DAG } from './dag/DAG.js';
@@ -118,8 +115,8 @@ export type { DAGErrorJSON } from './errors/DAGErrorJSON.js';
 // (the union of permitted string literals) under the same identifier.
 // `export { X }` re-exports both halves.
 
-export { FanInStrategySchema, FanInStrategyName } from './constants/FanInStrategy.js';
-export { FanOutOutputSchema, FanOutOutput } from './constants/FanOutOutput.js';
+export { GatherStrategySchema, GatherStrategyName } from './constants/GatherStrategy.js';
+export { ScatterOutputSchema, ScatterOutput } from './constants/ScatterOutput.js';
 export { MetadataKeySchema, MetadataKey } from './constants/MetadataKey.js';
 export { OutputSchema, Output } from './constants/Output.js';
 export { ParallelCombineSchema, ParallelCombine } from './constants/ParallelCombine.js';

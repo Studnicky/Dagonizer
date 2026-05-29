@@ -219,7 +219,7 @@ class DottedPathAccessor implements StateAccessor {
 }
 ```
 
-Used by the dispatcher for fan-out source reads, fan-in writes, and embedded-DAG state mapping. Swap via `new Dagonizer({ accessor: customAccessor })`.
+Used by the dispatcher for scatter source reads, projection copies, and gather writes. Swap via `new Dagonizer({ accessor: customAccessor })`.
 
 ---
 

@@ -62,8 +62,7 @@ console.log(source);
 | Placement | Mermaid shape | Example output |
 |-----------|---------------|----------------|
 | `single`  | rectangle     | `greet[greet]` |
-| `fan-out` | hexagon       | `scout{{scout}}` |
-| `embedded-dag` | stadium  | `enrich([enrich])` |
+| `scatter` | hexagon       | `scout{{scout}}` |
 | `parallel`| subgraph      | `subgraph group["group (parallel)"]` ... `end` |
 | `terminal` (completed) | double-circle | `done(((done\n(completed))))` |
 | `terminal` (failed) | asymmetric flag | `abort>abort\n(failed)]` |
@@ -93,7 +92,7 @@ import type { ElementDefinition } from 'cytoscape';
 const elements = CytoscapeRenderer.render(dag) as ElementDefinition[];
 ```
 
-Pass an `embeddedDAGs` map to inline-expand `EmbeddedDAGNode` placements as compound nodes:
+Pass an `embeddedDAGs` map to inline-expand `ScatterNode` placements whose `body` is a sub-DAG as compound nodes:
 
 ```ts
 const elements = CytoscapeRenderer.render(parentDag, {
@@ -108,8 +107,7 @@ Every node element carries a `data.type` field for stylesheet selectors.
 | `data.type` | Source | Additional fields |
 |-------------|--------|-------------------|
 | `'single'` | `SingleNode` placement | `data.node` |
-| `'fan-out'` | `FanOutNode` placement | `data.node`, `data.source`, `data.fanIn`, etc. |
-| `'embedded-dag'` | `EmbeddedDAGNode` placement | `data.dag`, `data.stateMapping` |
+| `'scatter'` | `ScatterNode` placement | `data.body`, `data.source`, `data.gather`, etc. |
 | `'parallel'` | `ParallelNode` placement | `data.combine`, `data.children` |
 | `'terminal'` | `TerminalNode` placement | `data.outcome: 'completed' \| 'failed'` |
 | `'terminal'` | synthetic `END` node | `data.synthetic: true` |

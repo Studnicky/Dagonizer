@@ -19,16 +19,12 @@ import { CheckpointDataSchema } from '../entities/checkpoint/CheckpointData.js';
 import type { CheckpointData } from '../entities/checkpoint/CheckpointData.js';
 import { DAGSchema } from '../entities/dag/DAG.js';
 import type { DAG } from '../entities/dag/DAG.js';
-import { EmbeddedDAGNodeSchema } from '../entities/dag/EmbeddedDAGNode.js';
-import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-import { FanInConfigSchema } from '../entities/dag/FanInConfig.js';
-import type { FanInConfig } from '../entities/dag/FanInConfig.js';
-import { FanOutNodeSchema } from '../entities/dag/FanOutNode.js';
-import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import { ParallelNodeSchema } from '../entities/dag/ParallelNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import { PhaseNodeSchema } from '../entities/dag/PhaseNode.js';
 import type { PhaseNode } from '../entities/dag/PhaseNode.js';
+import type { ScatterNode } from '../entities/dag/ScatterNode.js';
+import { ScatterNodeSchema } from '../entities/dag/ScatterNode.js';
 import { SingleNodeSchema } from '../entities/dag/SingleNode.js';
 import type { SingleNode } from '../entities/dag/SingleNode.js';
 import { TerminalNodeSchema } from '../entities/dag/TerminalNode.js';
@@ -129,11 +125,9 @@ export class Validator {
   static readonly dag:         EntityValidator<DAG>          = Validator.compile('DAG',          DAGSchema);
   static readonly singleNode:  EntityValidator<SingleNode>   = Validator.compile('SingleNode',   SingleNodeSchema);
   static readonly parallelNode:EntityValidator<ParallelNode> = Validator.compile('ParallelNode', ParallelNodeSchema);
-  static readonly fanOutNode:  EntityValidator<FanOutNode>   = Validator.compile('FanOutNode',   FanOutNodeSchema);
-  static readonly embeddedDAGNode:  EntityValidator<EmbeddedDAGNode>   = Validator.compile('EmbeddedDAGNode',  EmbeddedDAGNodeSchema);
+  static readonly scatterNode:  EntityValidator<ScatterNode>  = Validator.compile('ScatterNode',  ScatterNodeSchema);
   static readonly terminalNode: EntityValidator<TerminalNode>  = Validator.compile('TerminalNode', TerminalNodeSchema);
   static readonly phaseNode:    EntityValidator<PhaseNode>     = Validator.compile('PhaseNode',    PhaseNodeSchema);
-  static readonly fanInConfig:  EntityValidator<FanInConfig>   = Validator.compile('FanInConfig',  FanInConfigSchema);
 
   // Node runtime shapes
   static readonly node:          EntityValidator<Node>          = Validator.compile('Node',          NodeSchema);

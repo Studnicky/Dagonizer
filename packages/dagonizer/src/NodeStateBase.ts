@@ -20,7 +20,7 @@ import type { DAGLifecycleState } from './lifecycle/DAGLifecycleState.js';
  */
 export interface NodeStateInterface {
   /**
-   * Clone state for isolated execution (sub-flows and fan-out).
+   * Clone state for isolated execution (scatter clones).
    */
   clone(): NodeStateInterface;
 

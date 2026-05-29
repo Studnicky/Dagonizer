@@ -112,7 +112,7 @@ In practice the bag is wide enough to cover everything a flow needs, and every n
 
 ## Lifetime
 
-Services live on the dispatcher instance. There is no per-execution scope; the same bag is handed to every node in every execution, including embedded-DAG nested calls and fan-out items.
+Services live on the dispatcher instance. There is no per-execution scope; the same bag is handed to every node in every execution, including scatter clones and sub-DAG bodies.
 
 If a service needs per-execution state (such as a request ID), put the per-execution data in `state` instead. The bag is for things that outlive any one execution.
 
