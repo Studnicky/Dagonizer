@@ -247,9 +247,9 @@ void describe('TerminalNode — embedded-DAG routing to null is legal', () => {
         },
         {
           '@id':   'urn:noocodex:dag:parent-tn/node/run-child',
-          '@type': 'EmbeddedDAGNode',
+          '@type': 'ScatterNode',
           'name':  'run-child',
-          'dag':   'child-tn',
+          'body':  { 'dag': 'child-tn' },
           'outputs': { 'success': null, 'error': null },
         },
       ],
@@ -297,9 +297,9 @@ void describe('TerminalNode — embedded-DAG routes to explicit TerminalNode pla
     'nodes': [
       {
         '@id':   'urn:noocodex:dag:parent-explicit/node/run-child',
-        '@type': 'EmbeddedDAGNode',
+        '@type': 'ScatterNode',
         'name':  'run-child',
-        'dag':   'child-explicit',
+        'body':  { 'dag': 'child-explicit' },
         'outputs': { 'success': 'end-ok', 'error': 'end-fail' },
       },
       {

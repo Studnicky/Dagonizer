@@ -2,16 +2,16 @@ import type { ExecuteOptionsInterface } from './contracts/ExecuteOptionsInterfac
 import type { Instrumentation } from './contracts/Instrumentation.js';
 import type { NodeInterface } from './contracts/NodeInterface.js';
 import type { StateAccessor } from './contracts/StateAccessor.js';
-import { FanInStrategies } from './core/FanInStrategies.js';
-import type { FanInExecution } from './core/FanInStrategies.js';
+import { GatherStrategies } from './core/GatherStrategies.js';
+import type { GatherExecution, GatherRecord } from './core/GatherStrategies.js';
+import { OutcomeReducers } from './core/OutcomeReducers.js';
+import type { OutcomeRecord } from './core/OutcomeReducers.js';
 import { ParallelCombiners } from './core/ParallelCombiners.js';
 import { ContractRegistryValidator } from './derive/ContractRegistryValidator.js';
 import type { DAG } from './entities/dag/DAG.js';
-import type { EmbeddedDAGNode } from './entities/dag/EmbeddedDAGNode.js';
-import type { FanInConfig } from './entities/dag/FanInConfig.js';
-import type { FanOutNode } from './entities/dag/FanOutNode.js';
 import type { ParallelNode } from './entities/dag/ParallelNode.js';
 import type { PhaseNodePlacementInterface } from './entities/dag/PhaseNode.js';
+import type { ScatterNode } from './entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from './entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from './entities/dag/TerminalNode.js';
 import type { ExecutionResultInterface, InterruptionInfo } from './entities/execution/ExecutionResult.js';
@@ -30,41 +30,61 @@ import { Validator } from './validation/Validator.js';
 /** Default state accessor — installed when the dispatcher is constructed without one. */
 const DEFAULT_STATE_ACCESSOR: StateAccessor = new DottedPathAccessor();
 
+/** Sentinel used as the single item for a singleton scatter (no `source`). */
+const SINGLETON_SENTINEL: unique symbol = Symbol('scatter-singleton');
+
 /**
- * Reserved metadata key used by `executeFanOut` to persist per-item
+ * Reserved metadata key used by `executeScatter` to persist per-clone
  * resume bookkeeping. **Consumer nodes must not write to this key** —
  * it is engine-internal and may be overwritten or cleared between batch
  * boundaries.
  *
- * The stored value is a `StoredFanOutProgress` map keyed by the
- * fan-out's placement `name` so multiple fan-outs in one flow keep
- * independent entries.
+ * The stored value is a `StoredScatterProgress` map keyed by the
+ * scatter placement's `name` so multiple scatter placements in one flow
+ * keep independent entries.
  */
-export const FAN_OUT_PROGRESS_KEY = '__dagonizer_fan_out_progress__';
+export const SCATTER_PROGRESS_KEY = '__dagonizer_scatter_progress__';
 
 /**
- * Per-placement fan-out progress entry. Keyed by `placementName` inside
- * the metadata's `StoredFanOutProgress` map.
+ * Per-clone result stored inside `ScatterProgress.itemResults`.
  *
- * `completedIndices` are the positions in the source array whose
- * `node.execute` call returned successfully and contributed to the
- * fan-out's aggregate result. `itemResults` stores the per-item output
- * tag (`'success'`, `'error'`, etc.) alongside its source-array index
- * so a resumed run can reconstruct the `resultsByOutput` buckets
- * without re-executing earlier items.
+ * `output` is the routing output tag.
+ *
+ * `mappingValues` carries the persisted clone-path values for a `map`
+ * gather strategy — keyed by the clone-side path from `GatherConfig.mapping`.
+ * Present only when the scatter's gather strategy is `'map'`.
+ *
+ * `fieldValue` carries the persisted value of `GatherConfig.field` for
+ * `append` and `partition` strategies that use `field`. Present only when
+ * the scatter's gather strategy uses `field`.
+ *
+ * Strategies that gather the source `item` directly (`append`/`partition`
+ * without `field`) need no persisted value because `item` is re-derivable
+ * from the source array by index on resume.
  */
-export interface FanOutProgress {
-  readonly placementName: string;
-  readonly completedIndices: readonly number[];
-  readonly itemResults: readonly { readonly index: number; readonly output: string }[];
+export interface ScatterItemResult {
+  readonly index: number;
+  readonly output: string;
+  readonly mappingValues?: Readonly<Record<string, unknown>>;
+  readonly fieldValue?: unknown;
 }
 
 /**
- * The actual stored shape under `metadata[FAN_OUT_PROGRESS_KEY]`. Keyed
- * by `FanOutNode.name` so multiple fan-out placements in the same flow
+ * Per-placement scatter progress entry. Keyed by `placementName` inside
+ * the metadata's `StoredScatterProgress` map.
+ */
+export interface ScatterProgress {
+  readonly placementName: string;
+  readonly completedIndices: readonly number[];
+  readonly itemResults: readonly ScatterItemResult[];
+}
+
+/**
+ * The actual stored shape under `metadata[SCATTER_PROGRESS_KEY]`. Keyed
+ * by `ScatterNode.name` so multiple scatter placements in the same flow
  * do not collide.
  */
-export type StoredFanOutProgress = Readonly<Record<string, FanOutProgress>>;
+export type StoredScatterProgress = Readonly<Record<string, ScatterProgress>>;
 
 /**
  * Constructor options for `Dagonizer`.
@@ -101,7 +121,7 @@ export interface DagonizerOptionsInterface<TServices = undefined> {
 }
 
 
-type DAGNodeType = FanOutNode | ParallelNode | SingleNodePlacementInterface | EmbeddedDAGNode | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
+type DAGNodeType = ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
 type DAGNodeAtType = DAGNodeType['@type'];
 
 /**
@@ -408,7 +428,7 @@ implements DagonizerInterface<TState, TServices> {
 
   /**
    * Canonical generator. Yields each node result (including the
-   * intermediate yields from parallel / fan-out / sub-flow nodes) and
+   * intermediate yields from parallel / scatter nodes) and
    * returns the final `ExecutionResultInterface` with `cursor` set.
    * Never throws.
    *
@@ -777,211 +797,348 @@ implements DagonizerInterface<TState, TServices> {
   }
 
   /**
-   * Persist this batch's accumulated fan-out progress to metadata. One
-   * write per batch (not per item) — the call sits outside `Promise.all`
-   * so concurrent item resolutions never race on `setMetadata`.
+   * Persist this batch's accumulated scatter progress to metadata. One
+   * write per batch (not per clone) — the call sits outside `Promise.all`
+   * so concurrent clone resolutions never race on `setMetadata`.
    */
-  private writeFanOutProgress(
+  private writeScatterProgress(
     state: TState,
     placementName: string,
     completed: ReadonlySet<number>,
     itemOutputs: ReadonlyMap<number, string>,
+    mappingValues?: ReadonlyMap<number, Readonly<Record<string, unknown>>>,
+    fieldValues?: ReadonlyMap<number, unknown>,
   ): void {
-    const stored = state.getMetadata<StoredFanOutProgress>(FAN_OUT_PROGRESS_KEY) ?? {};
+    const stored = state.getMetadata<StoredScatterProgress>(SCATTER_PROGRESS_KEY) ?? {};
     const completedIndices = [...completed].sort((a, b) => a - b);
-    const itemResults = completedIndices.map((index) => ({
-      index,
-      'output': itemOutputs.get(index) ?? '',
-    }));
-    const next: Record<string, FanOutProgress> = { ...stored };
+    const itemResults: ScatterItemResult[] = completedIndices.map((index) => {
+      const output = itemOutputs.get(index) ?? '';
+      if (mappingValues !== undefined && mappingValues.has(index)) {
+        const mv = mappingValues.get(index);
+        if (mv !== undefined) {
+          return { index, output, 'mappingValues': mv };
+        }
+      }
+      if (fieldValues !== undefined && fieldValues.has(index)) {
+        return { index, output, 'fieldValue': fieldValues.get(index) };
+      }
+      return { index, output };
+    });
+    const next: Record<string, ScatterProgress> = { ...stored };
     next[placementName] = { placementName, completedIndices, itemResults };
-    state.setMetadata(FAN_OUT_PROGRESS_KEY, next);
+    state.setMetadata(SCATTER_PROGRESS_KEY, next);
   }
 
   /**
-   * Remove this placement's progress entry. Called after the fan-out's
-   * main loop drains so a subsequent re-run starts clean and so the
-   * fan-in strategy never sees stale bookkeeping. When the resulting
-   * map is empty, the reserved metadata key is removed entirely so a
-   * clean snapshot omits it.
+   * Remove this placement's progress entry. Called after the scatter loop
+   * drains so a subsequent re-run starts clean. When the resulting map is
+   * empty the reserved metadata key is removed entirely so a clean snapshot
+   * omits it.
    */
-  private clearFanOutProgress(state: TState, placementName: string): void {
-    const stored = state.getMetadata<StoredFanOutProgress>(FAN_OUT_PROGRESS_KEY);
+  private clearScatterProgress(state: TState, placementName: string): void {
+    const stored = state.getMetadata<StoredScatterProgress>(SCATTER_PROGRESS_KEY);
     if (stored === undefined) return;
     if (!(placementName in stored)) return;
-    const next: Record<string, FanOutProgress> = { ...stored };
+    const next: Record<string, ScatterProgress> = { ...stored };
     delete next[placementName];
     if (Object.keys(next).length === 0) {
-      // The metadata getter returns the live underlying record; the
-      // readonly is a view-only constraint, not a runtime guarantee.
-      // Strip via cast and `delete` so the snapshot omits the key.
       const live = state.metadata as Record<string, unknown>;
-      delete live[FAN_OUT_PROGRESS_KEY];
+      delete live[SCATTER_PROGRESS_KEY];
     } else {
-      state.setMetadata(FAN_OUT_PROGRESS_KEY, next);
+      state.setMetadata(SCATTER_PROGRESS_KEY, next);
     }
   }
 
   /**
-   * Execute a fan-out placement with per-item resume bookkeeping.
+   * Execute a scatter placement — isolate a state clone (one per source
+   * item, or exactly one for the singleton case), run a body (node or
+   * sub-DAG) in it, propagate errors/warnings to the parent, then apply
+   * the gather strategy and route via the outcome reducer.
    *
-   * Progress is persisted in `state.metadata` under the reserved key
-   * {@link FAN_OUT_PROGRESS_KEY} (`__dagonizer_fan_out_progress__`). The
-   * stored value is a `Record<placementName, FanOutProgress>` so multiple
-   * fan-outs in one DAG each keep an independent entry scoped by
-   * `fanOut.name`. **Consumer nodes must not write to this metadata key**
-   * — it is reserved for engine-internal use.
+   * Resume bookkeeping is persisted under {@link SCATTER_PROGRESS_KEY}.
+   * Singleton scatters (no `source`) do not write progress records.
    *
-   * On entry, the bookkeeping for `fanOut.name` (if any) is read; items
-   * whose indices appear in `completedIndices` are skipped and their
-   * outputs are restored from `itemResults`. Per-batch progress writes
-   * (NOT per-item) keep the write set serialised across the batch's
-   * concurrent `Promise.all`. After the main loop drains, the placement's
-   * progress entry is cleared BEFORE fan-in so a subsequent re-run of
-   * the same fan-out (e.g. inside a loop) starts from a clean slate.
-   *
-   * **Index semantics on resume.** Indices refer to positions in the
-   * source array AT THE TIME OF RESUME. If the consumer rewrites the
-   * source array between checkpoint and resume, the resumed fan-out
-   * trusts the persisted indices verbatim — items 0 and 1 are skipped
-   * even if the array has been re-sliced. Treat the source array as
-   * immutable while a fan-out checkpoint is live.
+   * **Index semantics on resume.** Treat the source array as immutable
+   * while a scatter checkpoint is live.
    */
-  private async executeFanOut(
-    fanOut: FanOutNode,
+  private async executeScatter(
+    scatter: ScatterNode,
     state: TState,
     dagName: string,
     signal: AbortSignal | null,
+    placementPath: readonly string[],
   ): Promise<InternalNodeResultInterface<TState>> {
-    const sourceArray = this.accessor.get(state, fanOut.source) as unknown[];
+    // ── 1. Resolve item list ─────────────────────────────────────────────────
+    const isSingleton = scatter.source === undefined;
+    let sourceArray: unknown[];
 
-    if (!Array.isArray(sourceArray) || sourceArray.length === 0) {
-      const nextStage = fanOut.outputs['empty'] ?? null;
-      const result: NodeResultInterface<TState> = {
-        'output': 'empty',
-        'skipped': true,
-        'nodeName': fanOut.name,
-        state
-      };
-
-      return {
-        nextStage,
-        result
-      };
+    if (isSingleton) {
+      sourceArray = [SINGLETON_SENTINEL];
+    } else {
+      const raw = this.accessor.get(state, scatter.source as string);
+      if (!Array.isArray(raw) || raw.length === 0) {
+        const reducerName = scatter.reducer ?? 'aggregate';
+        const routeOutput = OutcomeReducers.resolve(reducerName).reduce([]);
+        const nextStage = scatter.outputs[routeOutput] ?? null;
+        const result: NodeResultInterface<TState> = {
+          'output': routeOutput,
+          'skipped': true,
+          'nodeName': scatter.name,
+          state,
+        };
+        return { nextStage, result };
+      }
+      sourceArray = raw;
     }
 
-    const node = this.nodes.get(fanOut.node);
+    const itemKey = scatter.itemKey ?? 'currentItem';
+    const concurrency = isSingleton ? 1 : (scatter.concurrency ?? sourceArray.length);
 
-    if (!node) {
-      throw new DAGError(`Unknown node: ${fanOut.node}`);
-    }
-    const itemKey = fanOut.itemKey ?? 'currentItem';
-    const concurrency = fanOut.concurrency ?? sourceArray.length;
-
-    // --- Resume bookkeeping -------------------------------------------------
-    // Seed in-memory progress from any persisted entry under this placement
-    // name. `itemOutputs[index]` carries the output recorded for that item;
-    // `completed` is the set lookup used by the per-item skip check.
-    const storedProgress = state.getMetadata<StoredFanOutProgress>(FAN_OUT_PROGRESS_KEY) ?? {};
-    const priorEntry = storedProgress[fanOut.name];
-    const completed = new Set<number>(priorEntry?.completedIndices ?? []);
+    // ── 2. Resume bookkeeping ────────────────────────────────────────────────
+    const storedProgress = isSingleton
+      ? undefined
+      : (state.getMetadata<StoredScatterProgress>(SCATTER_PROGRESS_KEY) ?? {})[scatter.name];
+    const completed = new Set<number>(storedProgress?.completedIndices ?? []);
     const itemOutputs = new Map<number, string>();
-    if (priorEntry) {
-      for (const entry of priorEntry.itemResults) {
+
+    // Per-index gather persistence maps. Only one is populated, depending on
+    // the active gather strategy:
+    //   mappingValues — map strategy: all clone-path values keyed by clone path
+    //   fieldValues   — append/partition with `field`: the field value per index
+    const isMapGather = scatter.gather?.strategy === 'map';
+    const isFieldGather =
+      (scatter.gather?.strategy === 'append' || scatter.gather?.strategy === 'partition') &&
+      scatter.gather.field !== undefined;
+    const mappingValues: Map<number, Readonly<Record<string, unknown>>> | undefined =
+      isMapGather ? new Map() : undefined;
+    const fieldValues: Map<number, unknown> | undefined =
+      isFieldGather ? new Map() : undefined;
+
+    // Rehydrate from stored progress — rebuild itemOutputs and the gather maps
+    // so restored items can contribute synthetic GatherRecords below.
+    if (storedProgress) {
+      for (const entry of storedProgress.itemResults) {
         itemOutputs.set(entry.index, entry.output);
+        if (mappingValues !== undefined && entry.mappingValues !== undefined) {
+          mappingValues.set(entry.index, entry.mappingValues);
+        }
+        if (fieldValues !== undefined && 'fieldValue' in entry) {
+          fieldValues.set(entry.index, entry.fieldValue);
+        }
       }
     }
-    // ------------------------------------------------------------------------
 
-    const resultsByOutput = new Map<string, unknown[]>();
+    // ── 3. Clone + run body ──────────────────────────────────────────────────
+    const allRecords: GatherRecord<TState>[] = [];
+    const intermediateResults: Array<NodeResultInterface<TState>> = [];
 
     for (let i = 0; i < sourceArray.length; i += concurrency) {
       const batch = sourceArray.slice(i, i + concurrency);
-      const batchPromises = batch.map(async (item, batchIndex) => {
-        const itemIndex = i + batchIndex;
+
+      const batchPromises = batch.map(async (item, batchOffset) => {
+        const itemIndex = i + batchOffset;
+
         if (completed.has(itemIndex)) {
-          // Skip already-executed item; output is rehydrated from
-          // bookkeeping for the aggregate calculation below.
-          return null;
+          const restoredOutput = itemOutputs.get(itemIndex) ?? 'success';
+          return {
+            'index': itemIndex,
+            item,
+            'output': restoredOutput,
+            'terminalOutcome': null as 'completed' | 'failed' | null,
+            'cloneState': state,
+            'restored': true,
+          };
         }
 
-        const itemState = state.clone() as TState;
+        const cloneState = this.createChildState(
+          state,
+          scatter.projection as Record<string, string> | undefined,
+        );
 
-        itemState.setMetadata(itemKey, item);
-        itemState.setMetadata('itemIndex', itemIndex);
+        if (!isSingleton) {
+          cloneState.setMetadata(itemKey, item);
+          cloneState.setMetadata('itemIndex', itemIndex);
+        }
 
-        const context = this.buildContext(dagName, fanOut.name, signal);
-        const opResult = await node.execute(itemState, context);
+        let output: string;
+        let terminalOutcome: 'completed' | 'failed' | null = null;
 
-        if (opResult.errors) {
-          for (const error of opResult.errors) {
-            state.collectError(error);
+        if ('node' in scatter.body) {
+          // ── node body ────────────────────────────────────────────────────
+          const dagNode = this.nodes.get(scatter.body.node);
+          if (!dagNode) {
+            throw new DAGError(`ScatterNode '${scatter.name}': unknown node '${scatter.body.node}'`);
           }
+          const opResult = await this.withNodeTimeout(dagNode, signal, (nodeSignal) => {
+            const context = this.buildContext(dagName, scatter.name, nodeSignal);
+            return dagNode.execute(cloneState, context);
+          });
+          if (opResult.errors) {
+            for (const err of opResult.errors) cloneState.collectError(err);
+          }
+          output = opResult.output;
+        } else {
+          // ── dag body ─────────────────────────────────────────────────────
+          const childOptions: ExecuteOptionsInterface = signal ? { 'signal': signal } : {};
+          const innerPath: readonly string[] = [...placementPath, scatter.name];
+          const iter = this.runNodes(scatter.body.dag, cloneState, null, childOptions, true, innerPath);
+
+          while (true) {
+            const step = await iter.next();
+            if (step.done) {
+              terminalOutcome = step.value.terminalOutcome;
+              break;
+            }
+            const nr = step.value;
+            const intermediate: NodeResultInterface<TState> = {
+              'skipped': nr.skipped,
+              'nodeName': `${scatter.name}.${nr.nodeName}`,
+              state,
+            };
+            if (nr.output !== undefined) intermediate.output = nr.output;
+            intermediateResults.push(intermediate);
+          }
+
+          const hasUnrecoverable = cloneState.errors.some((e) => e.recoverable === false);
+          output = (terminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
         }
+
+        for (const err of cloneState.errors) state.collectError(err);
+        for (const warn of cloneState.warnings) state.collectWarning(warn);
 
         return {
           'index': itemIndex,
-          'output': opResult.output,
+          item,
+          output,
+          terminalOutcome,
+          cloneState,
+          'restored': false,
         };
       });
 
       const batchResults = await Promise.all(batchPromises);
 
-      // Serialised metadata write — one update per batch, not per item.
-      // Concurrent per-item writes would race on `setMetadata`.
-      for (const entry of batchResults) {
-        if (entry === null) continue;
-        completed.add(entry.index);
-        itemOutputs.set(entry.index, entry.output);
+      for (const br of batchResults) {
+        completed.add(br.index);
+        itemOutputs.set(br.index, br.output);
+
+        if (!br.restored) {
+          const record: GatherRecord<TState> = {
+            'index': br.index,
+            'item': br.item,
+            'output': br.output,
+            'terminalOutcome': br.terminalOutcome,
+            'cloneState': br.cloneState,
+          };
+          allRecords.push(record);
+
+          // Persist gather values from the freshly-executed clone so a resumed
+          // run can reconstruct the GatherRecord's cloneState contribution.
+          if (mappingValues !== undefined && scatter.gather?.mapping !== undefined) {
+            const snapshot: Record<string, unknown> = {};
+            for (const clonePath of Object.keys(scatter.gather.mapping)) {
+              snapshot[clonePath] = this.accessor.get(br.cloneState, clonePath);
+            }
+            mappingValues.set(br.index, snapshot);
+          }
+          if (fieldValues !== undefined && scatter.gather?.field !== undefined) {
+            fieldValues.set(br.index, this.accessor.get(br.cloneState, scatter.gather.field));
+          }
+        } else {
+          // Restored item: synthesize a GatherRecord with a clone that carries
+          // the persisted gather values so the strategy sees a complete record
+          // set without special-casing restored vs fresh items.
+          const syntheticClone = state.clone() as TState;
+          if (mappingValues !== undefined) {
+            const mv = mappingValues.get(br.index);
+            if (mv !== undefined) {
+              for (const [clonePath, val] of Object.entries(mv)) {
+                this.accessor.set(syntheticClone, clonePath, val);
+              }
+            }
+          }
+          if (fieldValues !== undefined && scatter.gather?.field !== undefined) {
+            const fv = fieldValues.get(br.index);
+            if (fv !== undefined) {
+              this.accessor.set(syntheticClone, scatter.gather.field, fv);
+            }
+          }
+          const record: GatherRecord<TState> = {
+            'index': br.index,
+            'item': br.item,
+            'output': br.output,
+            'terminalOutcome': br.terminalOutcome,
+            'cloneState': syntheticClone,
+          };
+          allRecords.push(record);
+        }
       }
 
-      this.writeFanOutProgress(state, fanOut.name, completed, itemOutputs);
-    }
-
-    // Materialise the per-output buckets from the merged `itemOutputs` map.
-    // This restores prior-run items alongside the freshly executed ones so
-    // fan-in sees the full set on a resumed run.
-    for (const [index, output] of itemOutputs) {
-      const item = sourceArray[index];
-      const outputArray = resultsByOutput.get(output);
-
-      if (outputArray) {
-        outputArray.push(item);
-      } else {
-        resultsByOutput.set(output, [item]);
+      if (!isSingleton) {
+        this.writeScatterProgress(state, scatter.name, completed, itemOutputs, mappingValues, fieldValues);
       }
     }
 
-    // Clear this placement's progress BEFORE fan-in so a subsequent re-run
-    // of the same fan-out (e.g. in a loop) starts clean.
-    this.clearFanOutProgress(state, fanOut.name);
-
-    await this.fanIn(state, fanOut.fanIn, resultsByOutput, dagName, signal);
-
-    const totalCount = itemOutputs.size;
-    const successCount = resultsByOutput.get('success')?.length ?? 0;
-    const errorCount = totalCount - successCount;
-    let aggregateOutput: string;
-
-    if (errorCount === 0) {
-      aggregateOutput = 'all-success';
-    } else if (successCount === 0) {
-      aggregateOutput = 'all-error';
-    } else {
-      aggregateOutput = 'partial';
+    // ── 4. Gather ────────────────────────────────────────────────────────────
+    if (!isSingleton) {
+      this.clearScatterProgress(state, scatter.name);
     }
 
-    const nextStage = fanOut.outputs[aggregateOutput] ?? null;
-    const result: NodeResultInterface<TState> = {
-      'output': aggregateOutput,
+    if (scatter.gather !== undefined && allRecords.length > 0) {
+      const gatherExecution = this.buildGatherExecution(state, allRecords, dagName, signal);
+      await GatherStrategies.resolve(scatter.gather.strategy).apply(scatter.gather, gatherExecution);
+    }
+
+    // ── 5. Reduce to route ───────────────────────────────────────────────────
+    const reducerName = scatter.reducer ?? (isSingleton ? 'terminal' : 'aggregate');
+    const outcomeRecords: OutcomeRecord[] = [...itemOutputs.entries()].map(([index, output]) => {
+      const rec = allRecords.find((r) => r.index === index);
+      return {
+        index,
+        output,
+        'terminalOutcome': rec?.terminalOutcome ?? null,
+      };
+    });
+    const routeOutput = OutcomeReducers.resolve(reducerName).reduce(outcomeRecords);
+    const nextStage = scatter.outputs[routeOutput] ?? null;
+
+    const baseResult: NodeResultInterface<TState> = {
+      'output': routeOutput,
       'skipped': false,
-      'nodeName': fanOut.name,
-      state
+      'nodeName': scatter.name,
+      state,
     };
+    const result = intermediateResults.length > 0
+      ? Object.assign(baseResult, { intermediateResults })
+      : baseResult;
 
+    return { nextStage, result };
+  }
+
+  /**
+   * Build the per-gather execution context handed to a `GatherStrategy`.
+   */
+  private buildGatherExecution(
+    state: TState,
+    records: ReadonlyArray<GatherRecord<TState>>,
+    dagName: string,
+    signal: AbortSignal | null,
+  ): GatherExecution<TState> {
+    const dispatcher = this;
     return {
-      nextStage,
-      result
+      state,
+      records,
+      dagName,
+      signal,
+      'accessor': dispatcher.accessor,
+      async invokeNode(nodeName: string): Promise<void> {
+        const dagNode = dispatcher.nodes.get(nodeName);
+        if (!dagNode) {
+          throw new DAGError(`Unknown custom node: ${nodeName}`);
+        }
+        const context = dispatcher.buildContext(dagName, nodeName, signal);
+        await dagNode.execute(state, context);
+      },
     };
   }
 
@@ -1181,10 +1338,9 @@ implements DagonizerInterface<TState, TServices> {
     placementPath: readonly string[],
   ): Promise<InternalNodeResultInterface<TState>> {
     const dispatch: Readonly<Record<DAGNodeAtType, () => Promise<InternalNodeResultInterface<TState>>>> = {
-      'FanOutNode':   () => this.executeFanOut(entry as FanOutNode, state, dagName, signal),
+      'ScatterNode':  () => this.executeScatter(entry as ScatterNode, state, dagName, signal, placementPath),
       'ParallelNode': () => this.executeParallelGroup(entry as ParallelNode, state, dagName, signal),
       'SingleNode':   () => this.executeSingleNode(entry as SingleNodePlacementInterface, state, dagName, signal),
-      'EmbeddedDAGNode':  () => this.executeEmbeddedDAG(entry as EmbeddedDAGNode, state, signal, placementPath),
       'TerminalNode': () => {
         // TerminalNode is handled before executeDAGNode in runNodes; this
         // branch is unreachable in normal operation but satisfies the
@@ -1220,150 +1376,6 @@ implements DagonizerInterface<TState, TServices> {
     return handler();
   }
 
-  private async executeEmbeddedDAG(
-    embeddedDAG: EmbeddedDAGNode,
-    state: TState,
-    signal: AbortSignal | null,
-    placementPath: readonly string[],
-  ): Promise<InternalNodeResultInterface<TState>> {
-    const childState = this.createChildState(state, embeddedDAG.stateMapping?.input);
-
-    const intermediateResults: Array<NodeResultInterface<TState>> = [];
-
-    // Forward the signal into the nested execution so child nodes also
-    // observe cancellation/timeouts.
-    const childOptions: ExecuteOptionsInterface = signal ? { 'signal': signal } : {};
-
-    // Extend the placement path with this embedded-DAG placement's name
-    // so inner-node lifecycle events carry the full ancestry. Consumers
-    // join with '/' to form cytoscape-style ids that disambiguate same-
-    // named inner placements across multiple embedded-DAG instances.
-    const innerPath: readonly string[] = [...placementPath, embeddedDAG.name];
-
-    // Iterate manually so we can capture the inner generator's return
-    // value (which carries `terminalOutcome`). `for await` only sees
-    // yields; the final return is lost without explicit `.next()` calls.
-    const iter = this.runNodes(embeddedDAG.dag, childState, null, childOptions, true, innerPath);
-    let innerTerminalOutcome: 'completed' | 'failed' | null;
-    while (true) {
-      const step = await iter.next();
-      if (step.done) {
-        innerTerminalOutcome = step.value.terminalOutcome;
-        break;
-      }
-      const nodeResult = step.value;
-      const intermediate: NodeResultInterface<TState> = {
-        'skipped': nodeResult.skipped,
-        'nodeName': `${embeddedDAG.name}.${nodeResult.nodeName}`,
-        state,
-      };
-      if (nodeResult.output !== undefined) {
-        intermediate.output = nodeResult.output;
-      }
-      intermediateResults.push(intermediate);
-    }
-
-    this.mapOutputState(childState, state, embeddedDAG.stateMapping?.output);
-
-    for (const error of childState.errors) {
-      state.collectError(error);
-    }
-    for (const warning of childState.warnings) {
-      state.collectWarning(warning);
-    }
-
-    // Parent routing: inner TerminalNode(failed) propagates as 'error'
-    // even when the child collected no NodeError. This is how an inner
-    // DAG signals failure to the parent without the producing node
-    // needing to call state.collectError().
-    //
-    // Recoverable errors (the `recoverable: true` field on NodeError) are
-    // INFORMATIONAL — a scout 429'd, a soft-gate fired, a single source
-    // came up empty. They are NOT failures of the embedded-DAG as a
-    // whole. Only unrecoverable errors poison the outcome alongside an
-    // explicit TerminalNode(failed). Without this distinction, a single
-    // 429 from one of four parallel scouts would route the entire
-    // search subgraph to 'error' even when the surviving scouts populated
-    // a real shortlist.
-    const hasUnrecoverableError = childState.errors.some((e) => e.recoverable === false);
-    const childOutput = (innerTerminalOutcome === 'failed' || hasUnrecoverableError)
-      ? 'error'
-      : 'success';
-    const nextStage = embeddedDAG.outputs[childOutput] ?? null;
-
-    const result: NodeResultInterface<TState> & { 'intermediateResults': Array<NodeResultInterface<TState>> } = {
-      intermediateResults,
-      'output': childOutput,
-      'skipped': false,
-      'nodeName': embeddedDAG.name,
-      state
-    };
-
-    return {
-      nextStage,
-      result
-    };
-  }
-
-  private async fanIn(
-    state: TState,
-    config: FanInConfig,
-    resultsByOutput: Map<string, unknown[]>,
-    dagName: string,
-    signal: AbortSignal | null,
-  ): Promise<void> {
-    const strategy = FanInStrategies.resolve(config.strategy);
-    const execution = this.buildFanInExecution(state, resultsByOutput, dagName, signal);
-    await strategy.apply(config, execution);
-  }
-
-  /**
-   * Build the per-fan-in execution context handed to a `FanInStrategy`.
-   * Carries the state accessor, the results map, the dag/signal, and the
-   * `invokeNode` method that strategies use to dispatch a registered
-   * node back through the engine.
-   */
-  private buildFanInExecution(
-    state: TState,
-    resultsByOutput: Map<string, unknown[]>,
-    dagName: string,
-    signal: AbortSignal | null,
-  ): FanInExecution<TState> {
-    const dispatcher = this;
-    const readonlyResults: ReadonlyMap<string, readonly unknown[]> = resultsByOutput;
-    return {
-      state,
-      'results': readonlyResults,
-      dagName,
-      signal,
-      'accessor': dispatcher.accessor,
-      async invokeNode(nodeName: string): Promise<void> {
-        const dagNode = dispatcher.nodes.get(nodeName);
-        if (!dagNode) {
-          throw new DAGError(`Unknown custom node: ${nodeName}`);
-        }
-        const context = dispatcher.buildContext(dagName, nodeName, signal);
-        await dagNode.execute(state, context);
-      },
-    };
-  }
-
-  private mapOutputState(
-    childState: TState,
-    parentState: TState,
-    outputMapping?: Record<string, string>
-  ): void {
-    if (outputMapping) {
-      for (const [
-        parentKey,
-        childKey
-      ] of Object.entries(outputMapping)) {
-        const value = this.accessor.get(childState, childKey);
-
-        this.accessor.set(parentState, parentKey, value);
-      }
-    }
-  }
 
   private static validateDAGConfig<TState extends NodeStateInterface, TServices>(
     dag: DAG,
@@ -1385,11 +1397,11 @@ implements DagonizerInterface<TState, TServices> {
     }
 
     for (const node of dag.nodes) {
-      Dagonizer.validateDAGNode(node, nodes, dags, nodeNames, errors);
+      Dagonizer.validateDAGNode(node as DAGNodeType, nodes, dags, nodeNames, errors);
     }
 
-    const embeddedDAGRefs = new Set<string>();
-    Dagonizer.collectEmbeddedDAGReferences(dag, dags, embeddedDAGRefs, new Set([dag.name]), errors);
+    const scatterRefs = new Set<string>();
+    Dagonizer.collectScatterDAGReferences(dag, dags, scatterRefs, new Set([dag.name]), errors);
 
     if (errors.length > 0) {
       throw new DAGError(`Invalid DAG '${dag.name}':\n  - ${errors.join('\n  - ')}`);
@@ -1404,10 +1416,9 @@ implements DagonizerInterface<TState, TServices> {
     errors: string[]
   ): void {
     const validators: Readonly<Record<DAGNodeAtType, () => void>> = {
-      'FanOutNode':   () => Dagonizer.validateFanOutNode(entry as FanOutNode, nodes, nodeNames, errors),
+      'ScatterNode':  () => Dagonizer.validateScatterNode(entry as ScatterNode, nodes, dags, nodeNames, errors),
       'ParallelNode': () => Dagonizer.validateParallelNode(entry as ParallelNode, nodeNames, errors),
       'SingleNode':   () => Dagonizer.validateSingleNode(entry as SingleNodePlacementInterface, nodes, nodeNames, errors),
-      'EmbeddedDAGNode':  () => Dagonizer.validateEmbeddedDAGNode(entry as EmbeddedDAGNode, dags, nodeNames, errors),
       'TerminalNode': () => { /* TerminalNode has no outputs to validate; schema pass is sufficient */ },
       'PhaseNode':    () => Dagonizer.validatePhaseNode(entry as PhaseNodePlacementInterface, nodes, errors),
     };
@@ -1468,78 +1479,73 @@ implements DagonizerInterface<TState, TServices> {
     }
   }
 
-  private static validateFanOutNode<TState extends NodeStateInterface, TServices>(
-    fanOut: FanOutNode,
+  private static validateScatterNode<TState extends NodeStateInterface, TServices>(
+    scatter: ScatterNode,
     nodes: Map<string, NodeInterface<TState, string, TServices>>,
-    nodeNames: Set<string>,
-    errors: string[]
-  ): void {
-    const dagNode = nodes.get(fanOut.node);
-
-    if (!dagNode) {
-      errors.push(`Fan-out '${fanOut.name}' references unknown registered node: ${fanOut.node}`);
-    }
-
-    if (fanOut.fanIn.strategy === 'append' && fanOut.fanIn.target === undefined) {
-      errors.push(`Fan-out '${fanOut.name}': 'append' strategy requires 'target' path`);
-    }
-    if (fanOut.fanIn.strategy === 'partition' && fanOut.fanIn.partitions === undefined) {
-      errors.push(`Fan-out '${fanOut.name}': 'partition' strategy requires 'partitions' config`);
-    }
-    if (fanOut.fanIn.strategy === 'custom') {
-      if (fanOut.fanIn.customNode === undefined) {
-        errors.push(`Fan-out '${fanOut.name}': 'custom' strategy requires 'customNode'`);
-      } else if (!nodes.has(fanOut.fanIn.customNode)) {
-        errors.push(`Fan-out '${fanOut.name}': custom node '${fanOut.fanIn.customNode}' not found`);
-      }
-    }
-
-    for (const [output, target] of Object.entries(fanOut.outputs)) {
-      if (target !== null && !nodeNames.has(target)) {
-        errors.push(`Fan-out '${fanOut.name}': output '${output}' routes to unknown node '${target}'`);
-      }
-    }
-  }
-
-  private static validateEmbeddedDAGNode(
-    embeddedDAG: EmbeddedDAGNode,
     dags: Map<string, DAG>,
     nodeNames: Set<string>,
     errors: string[]
   ): void {
-    if (!dags.has(embeddedDAG.dag)) {
-      errors.push(`Embedded-DAG '${embeddedDAG.name}' references unknown DAG: ${embeddedDAG.dag}`);
+    if ('node' in scatter.body) {
+      if (!nodes.has(scatter.body.node)) {
+        errors.push(`ScatterNode '${scatter.name}': unknown registered node '${scatter.body.node}'`);
+      }
+    } else {
+      if (!dags.has(scatter.body.dag)) {
+        errors.push(`ScatterNode '${scatter.name}': unknown registered DAG '${scatter.body.dag}'`);
+      }
     }
 
-    for (const [output, target] of Object.entries(embeddedDAG.outputs)) {
+    const gather = scatter.gather;
+    if (gather !== undefined) {
+      if (gather.strategy === 'append' && gather.target === undefined) {
+        errors.push(`ScatterNode '${scatter.name}': 'append' gather strategy requires 'target' path`);
+      }
+      if (gather.strategy === 'partition' && gather.partitions === undefined) {
+        errors.push(`ScatterNode '${scatter.name}': 'partition' gather strategy requires 'partitions' config`);
+      }
+      if (gather.strategy === 'map' && gather.mapping === undefined) {
+        errors.push(`ScatterNode '${scatter.name}': 'map' gather strategy requires 'mapping' config`);
+      }
+      if (gather.strategy === 'custom') {
+        if (gather.customNode === undefined) {
+          errors.push(`ScatterNode '${scatter.name}': 'custom' gather strategy requires 'customNode'`);
+        } else if (!nodes.has(gather.customNode)) {
+          errors.push(`ScatterNode '${scatter.name}': custom gather node '${gather.customNode}' not found`);
+        }
+      }
+    }
+
+    for (const [output, target] of Object.entries(scatter.outputs)) {
       if (target !== null && !nodeNames.has(target)) {
-        errors.push(`Embedded-DAG '${embeddedDAG.name}': output '${output}' routes to unknown node '${target}'`);
+        errors.push(`ScatterNode '${scatter.name}': output '${output}' routes to unknown node '${target}'`);
       }
     }
   }
 
-  private static collectEmbeddedDAGReferences(
+  private static collectScatterDAGReferences(
     dag: DAG,
     dags: Map<string, DAG>,
     visited: Set<string>,
     path: Set<string>,
     errors: string[]
   ): void {
-    for (const node of dag.nodes) {
-      if (node['@type'] === 'EmbeddedDAGNode') {
-        if (path.has(node.dag)) {
-          errors.push(`Circular embedded-DAG reference detected: ${Array.from(path).join(' -> ')} -> ${node.dag}`);
+    for (const rawNode of dag.nodes) {
+      if ((rawNode as { '@type': string })['@type'] === 'ScatterNode') {
+        const scatterNode = rawNode as unknown as ScatterNode;
+        if (!('dag' in scatterNode.body)) continue;
+        const dagRef = scatterNode.body.dag;
+        if (path.has(dagRef)) {
+          errors.push(`Circular scatter DAG reference detected: ${Array.from(path).join(' -> ')} -> ${dagRef}`);
           continue;
         }
-
-        if (!visited.has(node.dag)) {
-          visited.add(node.dag);
-          const embeddedDAG = dags.get(node.dag);
-
-          if (embeddedDAG) {
+        if (!visited.has(dagRef)) {
+          visited.add(dagRef);
+          const nested = dags.get(dagRef);
+          if (nested) {
             const newPath = new Set(path);
-            newPath.add(node.dag);
-            Dagonizer.collectEmbeddedDAGReferences(embeddedDAG, dags, visited, newPath, errors);
+            newPath.add(dagRef);
+            Dagonizer.collectScatterDAGReferences(nested, dags, visited, newPath, errors);
           }
         }
       }
@@ -1590,7 +1596,7 @@ implements DagonizerInterface<TState, TServices> {
 
     this.dags.set(dag.name, dag);
     for (const node of dag.nodes) {
-      this.nodeIndex.set(`${dag.name}:${node.name}`, node);
+      this.nodeIndex.set(`${dag.name}:${node.name}`, node as unknown as DAGNodeType);
     }
   }
 

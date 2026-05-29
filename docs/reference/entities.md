@@ -23,7 +23,7 @@ import { DAGSchema } from '@noocodex/dagonizer/entities';
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/DAG`
 
-Top-level DAG declaration in JSON-LD 1.1 canonical form. Required properties: `@context`, `@id`, `@type: 'DAG'`, `name`, `version`, `entrypoint`, `nodes`. Each entry in `nodes` is validated against a `oneOf` covering every placement kind (`SingleNode`, `ParallelNode`, `FanOutNode`, `EmbeddedDAGNode`, `TerminalNode`, `PhaseNode`).
+Top-level DAG declaration in JSON-LD 1.1 canonical form. Required properties: `@context`, `@id`, `@type: 'DAG'`, `name`, `version`, `entrypoint`, `nodes`. Each entry in `nodes` is validated against a `oneOf` covering every placement kind (`SingleNode`, `ParallelNode`, `ScatterNode`, `TerminalNode`, `PhaseNode`).
 
 ```ts
 import type { DAG } from '@noocodex/dagonizer/entities';
@@ -59,52 +59,38 @@ import type { ParallelNode } from '@noocodex/dagonizer/entities';
 
 ---
 
-## `FanOutNodeSchema`
+## `ScatterNodeSchema`
 
-`$id`: `https://noocodex.dev/schemas/dagonizer/FanOutNode`
+`$id`: `https://noocodex.dev/schemas/dagonizer/ScatterNode`
 
-Fan-out + fan-in node. Required: `@id`, `@type: 'FanOutNode'`, `name`, `node`, `source`, `fanIn`, `outputs`. Optional: `itemKey` (default `currentItem`), `concurrency` (default = source array length).
+Scatter placement — isolate a clone, run a body (node or sub-DAG), gather produced state, route on aggregate outcome. Required: `@id`, `@type: 'ScatterNode'`, `name`, `body`, `outputs`. Optional: `source`, `itemKey` (default `currentItem`), `concurrency`, `projection`, `gather`, `reducer`.
 
 ```ts
-import { FanOutNodeSchema } from '@noocodex/dagonizer/entities';
-import type { FanOutNode } from '@noocodex/dagonizer/entities';
+import { ScatterNodeSchema } from '@noocodex/dagonizer/entities';
+import type { ScatterNode } from '@noocodex/dagonizer/entities';
 ```
 
-`outputs` keys are the aggregate results: `all-success`, `partial`, `all-error`, `empty`.
+`body` is a discriminated union: `{ node: string }` for a registered node body or `{ dag: string }` for a registered sub-DAG body.
 
 ---
 
-## `FanInConfigSchema`
+## `GatherConfigSchema`
 
-`$id`: `https://noocodex.dev/schemas/dagonizer/FanInConfig`
+`$id`: `https://noocodex.dev/schemas/dagonizer/GatherConfig`
 
-Fan-in strategy configuration for fan-out nodes. Required: `strategy` (enum: `append` | `partition` | `custom`). Strategy-specific required fields:
+Gather strategy configuration for scatter nodes. Required: `strategy` (enum: `map` | `append` | `partition` | `custom`). Strategy-specific fields:
 
-| Strategy | Additional required |
-|----------|-------------------|
-| `append` | `target: string` (dotted path) |
-| `partition` | `partitions: Record<outputName, targetPath>` |
+| Strategy | Key fields |
+|----------|-----------|
+| `map` | `mapping: Record<clonePath, parentPath>` |
+| `append` | `target: string` (parent array path); optional `field` (clone path; omit ⇒ source item) |
+| `partition` | `partitions: Record<outputToken, parentPath>`; optional `field` |
 | `custom` | `customNode: string` (registered node name) |
 
 ```ts
-import { FanInConfigSchema } from '@noocodex/dagonizer/entities';
-import type { FanInConfig } from '@noocodex/dagonizer/entities';
+import { GatherConfigSchema } from '@noocodex/dagonizer/entities';
+import type { GatherConfig } from '@noocodex/dagonizer/entities';
 ```
-
----
-
-## `EmbeddedDAGNodeSchema`
-
-`$id`: `https://noocodex.dev/schemas/dagonizer/EmbeddedDAGNode`
-
-Nested DAG invocation. Required: `@id`, `@type: 'EmbeddedDAGNode'`, `name`, `dag` (registered DAG name), `outputs`. Optional: `stateMapping.input` and `stateMapping.output` (both `Record<string, string>`).
-
-```ts
-import { EmbeddedDAGNodeSchema } from '@noocodex/dagonizer/entities';
-import type { EmbeddedDAGNode } from '@noocodex/dagonizer/entities';
-```
-
-`outputs` keys are `success` and `error`.
 
 ---
 
@@ -206,12 +192,12 @@ Constants are exported with paired value and type so the JSON literal can be use
 
 | Constant | Members |
 |---|---|
-| `FanInStrategyName` | `'append'`, `'partition'`, `'custom'` |
-| `FanOutOutput` | `'all-success'`, `'partial'`, `'all-error'`, `'empty'` |
+| `GatherStrategyName` | `'map'`, `'append'`, `'partition'`, `'custom'` |
+| `ScatterOutput` | `'all-success'`, `'partial'`, `'all-error'`, `'empty'` |
 | `MetadataKey` | Reserved metadata key constants |
 | `Output` | Reserved canonical output names |
 | `ParallelCombine` | `'all-success'`, `'any-success'`, `'collect'` |
-| `NodeType` | `'SingleNode'`, `'ParallelNode'`, `'FanOutNode'`, `'EmbeddedDAGNode'`, `'TerminalNode'`, `'PhaseNode'` |
+| `NodeType` | `'SingleNode'`, `'ParallelNode'`, `'ScatterNode'`, `'TerminalNode'`, `'PhaseNode'` |
 | `BackoffStrategy` | `'constant'`, `'linear'`, `'exponential'`, `'decorrelated-jitter'` |
 
 Each constant has a matching `*Schema` JSON Schema for `oneOf`-style validation. See [Reference: Runtime](./runtime#const-backoffstrategy) for `BackoffStrategy` usage details.

@@ -83,8 +83,7 @@ flowchart TB
     direction TB
     A[single] --> B[one registered node, output-routed]
     C[parallel] --> D[concurrent nodes, combine then route]
-    E[fan-out] --> F[one node per item, fan-in then aggregate route]
-    G[embedded-dag] --> H[nested registered DAG, state mapped]
+    E[scatter] --> F[isolate clone, run body, gather, reduce route]
   end
 ```
 
@@ -92,9 +91,7 @@ flowchart TB
 
 **`parallel`**, a named group of previously declared `single` entries. The dispatcher runs them with `Promise.all`, then applies a combine strategy (`all-success`, `any-success`, or `collect`) to produce a single routing output.
 
-**`fan-out`** reads an array from a dotted state path, runs one registered node per item with configurable concurrency, then merges results through a fan-in strategy (`append`, `partition`, or `custom`). Aggregate output is one of `all-success`, `partial`, `all-error`, or `empty`.
-
-**`embedded-dag`** invokes another registered DAG as a nested call. The child runs in a cloned node state; optional `stateMapping` copies keys in before the embedded-DAG and out after. Errors and warnings from the child always bubble up.
+**`scatter`** isolates a state clone, runs a `body` (a registered node or a registered sub-DAG) in it, merges the clone back into the parent via a `gather` strategy, and routes on the aggregate outcome via an outcome `reducer`. When `source` is absent, exactly one clone runs (singleton / sub-DAG pattern). When `source` is present, one clone runs per item in the named array (generate-collect pattern). Gather strategies: `map`, `append`, `partition`, `custom`. Default reducer: `aggregate` when `source` is present, `terminal` when absent.
 
 ## Sample three-node DAG
 
@@ -165,7 +162,7 @@ node.execute(state, { signal: composedSignal, dagName, nodeName })
 context.signal propagated to IO (fetch, db, sleep in RetryPolicy)
 ```
 
-Embedded-DAGs receive the composed signal from the parent. Cancellation propagates through the full nesting depth.
+Scatter clones receive the composed signal from the parent. Cancellation propagates through the full nesting depth.
 
 ## State flow
 
@@ -176,14 +173,14 @@ dispatcher.execute(dagName, initialState)
 initialState travels through each node's execute(state, context)
     │  (nodes mutate state in place)
     ▼
-fan-out items get a clone of state (metadata copied, lifecycle reset)
-embedded-DAGs get a clone of state (optional key mapping in/out)
+scatter clones get a clone of state (metadata copied, lifecycle reset)
+optional projection seeds clone fields from parent paths before the body runs
     │
     ▼
 result.state === initialState  // same reference
 ```
 
-`NodeStateBase.clone()` is called for fan-out items and embedded-DAGs. The clone carries metadata but resets lifecycle to `pending` and clears errors and warnings. Each child execution is a fresh lifecycle run.
+`NodeStateBase.clone()` is called for scatter clones. The clone carries metadata but resets lifecycle to `pending` and clears errors and warnings. Each clone execution is a fresh lifecycle run.
 
 ## Interface taxonomy
 
@@ -235,7 +232,7 @@ Every public surface ships through a `package.json` `exports` entry.
 | `./contracts` | Every adapter contract |
 | `./entities` | Every JSON Schema and derived type |
 | `./errors` | `DAGError` and subclasses, `DAGErrorInterface` |
-| `./constants` | Constant value plus type pairs (`FanInStrategy`, etc.) |
+| `./constants` | Constant value plus type pairs (`GatherStrategy`, etc.) |
 | `./lifecycle` | `DAGLifecycleMachine`, lifecycle types |
 | `./runtime` | `Clock`, `Scheduler`, `RetryPolicy`, `RealTimeScheduler`, `BackoffStrategy` |
 | `./builder` | `DAGBuilder` and its option interfaces |

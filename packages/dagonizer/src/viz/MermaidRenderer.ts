@@ -6,9 +6,8 @@
  * the placement type:
  *
  *   single    → rectangle:       `nodeName[name]`
+ *   scatter   → trapezoid:       `nodeName[/name/]`
  *   parallel  → subgraph wrapping its child node names
- *   fan-out   → hexagon:         `nodeName{{name}}`
- *   embedded-dag  → stadium:         `nodeName([name])`
  *   terminal (completed) → double-circle: `nodeName(((name\n(completed))))`
  *   terminal (failed)    → asymmetric flag: `nodeName>name\n(failed)]`
  *
@@ -26,13 +25,12 @@
  */
 
 import type { DAG } from '../entities/dag/DAG.js';
-import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
+import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 
-type AnyPlacement = FanOutNode | ParallelNode | SingleNodePlacementInterface | EmbeddedDAGNode | TerminalNodePlacementInterface;
+type AnyPlacement = ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface;
 
 /**
  * Render a `DAG` as Mermaid `flowchart` source. Output is a complete
@@ -80,16 +78,15 @@ export class MermaidRenderer {
     return value.replace(/"/gu, '#quot;');
   }
 
-  /** Render a placement's Mermaid shape syntax (rectangle / hexagon / stadium / double-circle / flag). */
+  /** Render a placement's Mermaid shape syntax (rectangle / trapezoid / double-circle / flag). */
   private static renderShape(placement: AnyPlacement): string {
     const label = MermaidRenderer.escapeLabel(placement.name);
     switch (placement['@type']) {
       case 'SingleNode':
         return `${placement.name}[${label}]`;
-      case 'FanOutNode':
-        return `${placement.name}{{${label}}}`;
-      case 'EmbeddedDAGNode':
-        return `${placement.name}([${label}])`;
+      case 'ScatterNode':
+        // trapezoid — visually distinct from single, parallel, and terminal
+        return `${placement.name}[/${label}/]`;
       case 'ParallelNode':
         // parallel placements render as subgraphs, not single shapes
         return placement.name;

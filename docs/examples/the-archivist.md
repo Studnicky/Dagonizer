@@ -42,6 +42,8 @@ The Archivist is the running demo every Dagonizer example refers to. It is a boo
 
 Try it live below; the demo runs in your browser. The runner uses an `LlmAdapterCascade` over the providers below and surfaces which one is answering. Cloud-first when keys are present (Groq, Cerebras, Gemini API, Mistral, OpenRouter), local-first when reachable (Ollama on desktop), then on-device fallbacks (Gemini Nano, WebLLM), with the offline stub as the last resort. Intent classification runs through a parallel `EmbedderCascade` (Ollama, Gemini API, Mistral) when an embedder is reachable; otherwise the LLM classifies directly.
 
+The Archivist exercises scatter placements in two forms: `body: { dag }` singletons for the three search branches and the compose loop, and `body: { node }` with `source` for the within-branch parallel scouts.
+
 <ArchivistRunner />
 
 Watch the **DAG** pane: each node lights cyan while executing, then settles to "completed" with the taken edge highlighted. The **Memory** pane mirrors `state.intent`, `state.terms`, `state.shortlist`, `state.attempts.compose` as the dispatcher mutates them. Everything is driven by the dispatcher's `onFlowStart`, `onNodeStart`, `onNodeEnd`, `onError`, `onFlowEnd` hooks; there is no timer-based animation, the runner is a pure observer of the state machine.
@@ -174,24 +176,24 @@ The eight per-phase example pages each isolate one Dagonizer feature against thi
 | 01 | Linear intake + terminal routing | [Phase 01 · Linear intake](./01-linear) |
 | 02 | DAGBuilder authoring | [Phase 02 · DAGBuilder](./02-builder) |
 | 03 | Tool schema design (JSON Schema 2020-12 inputSchema) | [Phase 03 · Tool schemas](./03-schema) |
-| 04 | Fan-out scout with partition fan-in | [Phase 04 · Fan-out scout](./04-fanout) |
-| 05 | Embedded-DAG composition | [Phase 05 · Embedded-DAG composition](./05-embedded-dags) |
+| 04 | Scatter scout with partition gather | [Phase 04 · Scatter scout](./04-fanout) |
+| 05 | Scatter sub-DAG composition | [Phase 05 · Scatter sub-DAG composition](./05-embedded-dags) |
 | 06 | Abortable visitor request | [Phase 06 · Cancellation](./06-cancellation) |
 | 07 | RetryPolicy against the LLM composer | [Phase 07 · Retry](./07-retry) |
 | 08 | Checkpoint mid-draft and resume | [Phase 08 · Checkpoint + resume](./08-checkpoint) |
 
 Every page starts from the same `ArchivistState` + `services` + node set; only the DAG variation and the registered subset change.
 
-## Compositional embedded-DAGs
+## Compositional scatter sub-DAGs
 
-The Archivist's DAG is composed of two reusable embedded-DAGs that ship as independent components. Each is a `DAG` value any consumer can import, register, and reference as a `.embeddedDAG(...)` placement in their own DAG.
+The Archivist's DAG is composed of two reusable sub-DAGs that ship as independent components. Each is a `DAG` value any consumer can import, register, and reference via `.scatter(name, { dag: name }, routes, options)`.
 
-- **`book-search-fanout`**: extract-query, decide-tools, 4-source parallel scout cluster (OpenLibrary, Google Books, Subject, Wikipedia), rank-candidates, merge-candidates, record-findings, has-citations-gate, recall-past-visits. Used in three intent branches (`on-topic-search`, `author-search`, `similar-search`); one definition, three placements.
+- **`book-search-fanout`**: extract-query, decide-tools, 4-source parallel scout cluster (OpenLibrary, Google Books, Subject, Wikipedia), rank-candidates, merge-candidates, record-findings, has-citations-gate, recall-past-visits. Used in three intent branches (`on-topic-search`, `author-search`, `similar-search`); one definition, three scatter placements.
 - **`compose-retry-loop`**: compose-response, validate-response (with bounded retry loop back to compose), respond-to-visitor. Every successful search branch funnels through this one shared cluster.
 
-The renderer expands both embedded-DAGs inline in the diagram. Compound-graph children render inside the placement box so the full topology is visible. No opaque boxes.
+The renderer expands both sub-DAGs inline in the diagram. Compound-graph children render inside the scatter placement box so the full topology is visible. No opaque boxes.
 
-Reviews and describe branches are inlined in the parent DAG because they substitute `rankByRating` and `pickBestMatch` for `rankCandidates` respectively; the structural variation is explicit rather than hidden behind an embedded-DAG parameter.
+Reviews and describe branches are inlined in the parent DAG because they substitute `rankByRating` and `pickBestMatch` for `rankCandidates` respectively; the structural variation is explicit rather than hidden behind a sub-DAG parameter.
 
 ### BookSearchFanoutDAG
 
@@ -224,9 +226,9 @@ Embedded-DAG placements in the JSON-LD output look like:
 
 ```json
 {
-  "@type": "EmbeddedDAGNode",
+  "@type": "ScatterNode",
   "name": "on-topic-search",
-  "dag": "book-search-fanout",
+  "body": { "dag": "book-search-fanout" },
   "outputs": { "success": "compose-loop", "error": "decline-empty" }
 }
 ```

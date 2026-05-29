@@ -55,7 +55,7 @@ void describe('Validator.dag', () => {
     assert.throws(() => Validator.dag.validate(bad), ValidationError);
   });
 
-  void it('rejects fan-in with invalid strategy', () => {
+  void it('rejects a scatter node with an invalid gather strategy', () => {
     const bad = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:x',
@@ -63,9 +63,9 @@ void describe('Validator.dag', () => {
       'name': 'x', 'version': '1', 'entrypoint': 'f',
       'nodes': [{
         '@id':    'urn:noocodex:dag:x/node/f',
-        '@type':  'FanOutNode',
-        'name':   'f', 'node': 'op', 'source': 'items',
-        'fanIn':  { 'strategy': 'magic' },
+        '@type':  'ScatterNode',
+        'name':   'f', 'body': { 'node': 'op' }, 'source': 'items',
+        'gather': { 'strategy': 'magic' },
         'outputs': { 'all-success': null },
       }],
     };

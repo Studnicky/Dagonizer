@@ -71,7 +71,7 @@ const result = await dispatcher.execute('chat', state);
 // result.state         the final state
 // result.cursor        null if completed; a node name if interrupted
 // result.executedNodes nodes that ran
-// result.skippedNodes  nodes skipped (for example, empty fan-out)
+// result.skippedNodes  nodes skipped (for example, empty scatter)
 ```
 
 Async-iterable form, one event per node:
@@ -86,4 +86,4 @@ const result = await execution; // cached; the generator runs once
 
 ## Next destination
 
-See [The Archivist](/examples/the-archivist). It runs a multi-stage bibliographic DAG in the browser and exercises fan-out, embedded-DAG composition, retry, cancellation, and checkpoint resume in a single flow.
+See [The Archivist](/examples/the-archivist). It runs a multi-stage bibliographic DAG in the browser and exercises scatter (over source arrays and sub-DAG bodies), retry, cancellation, and checkpoint resume in a single flow.

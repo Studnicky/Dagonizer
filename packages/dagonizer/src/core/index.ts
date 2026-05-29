@@ -2,7 +2,8 @@
  * `@noocodex/dagonizer/core` — pluggable execution primitives.
  *
  *   - `ParallelCombiners` registry + `ParallelCombiner` extension point
- *   - `FanInStrategies` registry + `FanInStrategy` extension point
+ *   - `GatherStrategies` registry + `GatherStrategy` extension point
+ *   - `OutcomeReducers` registry + `OutcomeReducer` extension point
  *
  * Defaults register at module load; consumers extend the abstract
  * classes and add via `Registry.register(new MyClass())`.
@@ -15,7 +16,13 @@ export {
 export type { ParallelResult } from './ParallelCombiners.js';
 
 export {
-  FanInStrategies,
-  FanInStrategy,
-} from './FanInStrategies.js';
-export type { FanInExecution } from './FanInStrategies.js';
+  GatherStrategies,
+  GatherStrategy,
+} from './GatherStrategies.js';
+export type { GatherExecution, GatherRecord } from './GatherStrategies.js';
+
+export {
+  OutcomeReducer,
+  OutcomeReducers,
+} from './OutcomeReducers.js';
+export type { OutcomeRecord } from './OutcomeReducers.js';
