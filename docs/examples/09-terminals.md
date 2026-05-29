@@ -10,7 +10,7 @@ seeAlso:
     description: 'render DAGs with TerminalNode endpoints as Mermaid'
   - text: 'Phase 05: Embedded-DAG composition'
     link: './05-embedded-dags'
-    description: 'embedded-DAG routing including null and named terminal targets'
+    description: 'scatter routing including null and named terminal targets'
 ---
 
 <script setup lang="ts">
@@ -55,28 +55,28 @@ const childDAG: DAG = {
   ],
 };
 
-const dag4 = new DAGBuilder('demo-embedded-dag-terminals', '1')
-  .embeddedDAG('run', 'child-for-terminals', { success: 'end-ok', error: 'end-fail' })
+const dag4 = new DAGBuilder('demo-scatter-terminals', '1')
+  .scatter('run', { dag: 'child-for-terminals' }, { success: 'end-ok', error: 'end-fail' })
   .terminal('end-ok')
   .terminal('end-fail', 'failed')
   .build();
 
 const elementsP3 = CytoscapeRenderer.render(dag3) as ElementDefinition[];
 const elementsP4 = CytoscapeRenderer.render(dag4, {
-  embeddedDAGs: new Map([['child-for-terminals', childDAG]]),
+  embeddedDAGs: new Map([['child-for-terminals', childDAG]]),  // embeddedDAGs option expands ScatterNode sub-DAG bodies
 }) as ElementDefinition[];
 </script>
 
 # Phase 09: Terminal placements
 
-`TerminalNode` placements name the endpoints of a flow and carry an `outcome` declaration (`completed` or `failed`). Four patterns cover the common cases: an implicit null-route terminal, an explicit completed terminal, an explicit failed terminal, and embedded-DAG outputs routed directly to named terminals.
+`TerminalNode` placements name the endpoints of a flow and carry an `outcome` declaration (`completed` or `failed`). Four patterns cover the common cases: an implicit null-route terminal, an explicit completed terminal, an explicit failed terminal, and scatter outputs routed directly to named terminals.
 
 ## What it shows
 
 - **Implicit terminal via null route.** `.node('step-a', stepA, { ok: null })`. Routing an output to `null` is sugar for "this branch ends with `outcome: completed`." No explicit placement is required. Use this when the endpoint needs no name in the diagram.
 - **Explicit completed terminal.** `.node(..., { ok: 'end' }).terminal('end')`. Declares a named `TerminalNode` placement with the default `outcome: 'completed'`. The diagram shows `end` as a discrete node; the engine behavior is identical to a null route.
 - **Explicit failed terminal.** `.terminal('end-fail', 'failed')`. Two terminal placements, `end-ok` (completed) and `end-fail` (failed), wired from a check node. The DAG runs twice, once triggering each terminal, producing `completed` and `failed` lifecycle kinds respectively.
-- **Embedded-DAG routing to named terminals.** `.embeddedDAG('run', 'child', { success: 'end-ok', error: 'end-fail' })`. The parent registers named terminals and routes the child's `success` and `error` outputs directly to them. A child that collects errors surfaces a `failed` lifecycle in the parent.
+- **Scatter routing to named terminals.** `.scatter('run', { dag: 'child' }, { success: 'end-ok', error: 'end-fail' })`. The parent registers named terminals and routes the scatter's `success` and `error` outputs directly to them. A child DAG that collects errors surfaces a `failed` lifecycle in the parent.
 
 ## The code
 
@@ -116,22 +116,22 @@ Pattern 3b: check node routes to end-fail
 
 Use this pattern when a named path through the flow has a known semantic outcome: a validation gate that declares the flow as failed rather than silently completing, a circuit-breaker endpoint, an explicit error branch.
 
-### Pattern 4: embedded-DAG routing to named terminals
+### Pattern 4: scatter routing to named terminals
 
 <<< @/../examples/09-terminals.ts#embedded-terminals
 
-The `EmbeddedDAGNode` placement's `error` output routes to the parent's `end-fail` terminal. When the child DAG accumulates errors (via `state.collectError`), the engine routes the embedded-DAG placement to its `error` output, which arrives at `end-fail`, which marks the parent flow `failed`.
+The `ScatterNode` placement's `error` output routes to the parent's `end-fail` terminal. When the child DAG accumulates errors (via `state.collectError`), the `terminal` reducer routes `error`, which arrives at `end-fail`, which marks the parent flow `failed`.
 
-Prior to `TerminalNode`, routing an embedded-DAG `error` output to `null` would silently complete the flow: an error in the child had no effect on the parent lifecycle unless the author added a dedicated SingleNode whose sole purpose was to call `state.markFailed()`. The named terminal collapses that pattern to one `.terminal(name, 'failed')` call.
+Without a named terminal, routing a scatter `error` output to `null` would silently complete the flow: an error in the child had no effect on the parent lifecycle unless the author added a dedicated SingleNode whose sole purpose was to call `state.markFailed()`. The named terminal collapses that pattern to one `.terminal(name, 'failed')` call.
 
 Running the DAG twice:
 
 ```
-Pattern 4a: embedded-DAG child succeeds, end-ok
+Pattern 4a: scatter child succeeds, end-ok
   lifecycle.kind = completed
 
-Pattern 4b: embedded-DAG child errors, end-fail
+Pattern 4b: scatter child errors, end-fail
   lifecycle.kind = failed
 ```
 
-<DagGraph :elements="elementsP4" aria-label="demo-embedded-dag-terminals: embedded-DAG success routes to end-ok and error routes to end-fail." />
+<DagGraph :elements="elementsP4" aria-label="demo-scatter-terminals: scatter success routes to end-ok and error routes to end-fail." />

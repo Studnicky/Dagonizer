@@ -155,7 +155,7 @@ void describe('Dagonizer parallel groups', () => {
   });
 });
 
-void describe('Dagonizer fan-out', () => {
+void describe('Dagonizer scatter (source-based / fan-out)', () => {
   void it('executes the node once per item and appends results', async () => {
     interface FanState extends NodeStateBase {
       items: number[];
@@ -182,10 +182,10 @@ void describe('Dagonizer fan-out', () => {
       'version': '1',
       'entrypoint': 'fanout',
       'nodes': [
-        { '@id': 'urn:noocodex:dag:fan/node/fanout', '@type': 'FanOutNode',
-          'name': 'fanout', 'node': 'double',
+        { '@id': 'urn:noocodex:dag:fan/node/fanout', '@type': 'ScatterNode',
+          'name': 'fanout', 'body': { 'node': 'double' },
           'source': 'items', 'itemKey': 'item', 'concurrency': 2,
-          'fanIn': { 'strategy': 'append', 'target': 'doubled' },
+          'gather': { 'strategy': 'append', 'target': 'doubled' },
           'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
       ],
     };
@@ -211,10 +211,10 @@ void describe('Dagonizer fan-out', () => {
       'version': '1',
       'entrypoint': 'fanout',
       'nodes': [
-        { '@id': 'urn:noocodex:dag:empty/node/fanout', '@type': 'FanOutNode',
-          'name': 'fanout', 'node': 'noop',
+        { '@id': 'urn:noocodex:dag:empty/node/fanout', '@type': 'ScatterNode',
+          'name': 'fanout', 'body': { 'node': 'noop' },
           'source': 'missing.items',
-          'fanIn': { 'strategy': 'append', 'target': 'out' },
+          'gather': { 'strategy': 'append', 'target': 'out' },
           'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
       ],
     };
@@ -225,8 +225,8 @@ void describe('Dagonizer fan-out', () => {
   });
 });
 
-void describe('Dagonizer embedded-DAGs', () => {
-  void it('maps node state into and out of nested DAG', async () => {
+void describe('Dagonizer scatter (singleton / sub-dag)', () => {
+  void it('maps node state into and out of nested DAG via projection + gather', async () => {
     interface NestState extends NodeStateBase {
       parentValue: number;
       childValue: number;
@@ -256,8 +256,7 @@ void describe('Dagonizer embedded-DAGs', () => {
           'name': 'inc', 'node': 'inc', 'outputs': { 'success': null } },
       ],
     };
-    // Parent DAG: embedded-dag placement routes to a parent-owned terminal node.
-    // Embedded-DAGs are reusable components — only the parent DAG owns END (null).
+    // Parent DAG: scatter (singleton, dag body) routes to a parent-owned terminal node.
     const parent: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:parent',
@@ -266,12 +265,10 @@ void describe('Dagonizer embedded-DAGs', () => {
       'version': '1',
       'entrypoint': 'invoke',
       'nodes': [
-        { '@id': 'urn:noocodex:dag:parent/node/invoke', '@type': 'EmbeddedDAGNode',
-          'name': 'invoke', 'dag': 'child',
-          'stateMapping': {
-            'input':  { 'childValue': 'parentValue' },
-            'output': { 'parentValue': 'result' },
-          },
+        { '@id': 'urn:noocodex:dag:parent/node/invoke', '@type': 'ScatterNode',
+          'name': 'invoke', 'body': { 'dag': 'child' },
+          'projection': { 'childValue': 'parentValue' },
+          'gather': { 'strategy': 'map', 'mapping': { 'result': 'parentValue' } },
           'outputs': { 'success': 'done', 'error': 'done' } },
         { '@id': 'urn:noocodex:dag:parent/node/done', '@type': 'SingleNode',
           'name': 'done', 'node': 'done', 'outputs': { 'success': null } },
@@ -286,7 +283,7 @@ void describe('Dagonizer embedded-DAGs', () => {
     assert.equal(state.parentValue, 42);
   });
 
-  void it('rejects embedded-DAG referencing an unregistered DAG', () => {
+  void it('rejects scatter placement referencing an unregistered DAG', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('done', ['success'], () => 'success'));
     const dag: DAG = {
@@ -297,11 +294,11 @@ void describe('Dagonizer embedded-DAGs', () => {
       'version': '1',
       'entrypoint': 's',
       'nodes': [
-        // Embedded-dag outputs route to a parent placement (not null) so the
-        // terminal-output invariant passes; registration still fails because
+        // Scatter outputs route to a parent placement (not null) so the
+        // output invariant passes; registration still fails because
         // 'ghost' is not a registered DAG.
-        { '@id': 'urn:noocodex:dag:orphan/node/s', '@type': 'EmbeddedDAGNode',
-          'name': 's', 'dag': 'ghost', 'outputs': { 'success': 'done', 'error': 'done' } },
+        { '@id': 'urn:noocodex:dag:orphan/node/s', '@type': 'ScatterNode',
+          'name': 's', 'body': { 'dag': 'ghost' }, 'outputs': { 'success': 'done', 'error': 'done' } },
         { '@id': 'urn:noocodex:dag:orphan/node/done', '@type': 'SingleNode',
           'name': 'done', 'node': 'done', 'outputs': { 'success': null } },
       ],

@@ -5,7 +5,7 @@ seeAlso:
     description: '`OperationContract`, `OperationContractFragment`'
   - text: 'Reference: Entities'
     link: './entities'
-    description: '`DAG`, `ParallelNode`, `FanOutNode`'
+    description: '`DAG`, `ParallelNode`, `ScatterNode`'
   - text: 'Reference: Viz'
     link: './viz'
     description: 'render the DAG `derive()` returned'
@@ -58,7 +58,7 @@ interface DAGDeriverOptions {
 }
 ```
 
-Operations sharing a topological depth auto-group into a `ParallelNode` with `combine: 'collect'`; use `annotations.parallels` to override the grouping or pick a different combine strategy. Each port in `contract.outputs` routes to the first successor at the next depth; `annotations.terminals` overrides individual ports. When `annotations.fanouts.<name>.strategy === 'custom'`, the referenced `fanInOperation` is emitted as a registered single-node placement alongside the fan-out so the dispatcher's `custom` fan-in reducer can resolve it.
+Operations sharing a topological depth auto-group into a `ParallelNode` with `combine: 'collect'`; use `annotations.parallels` to override the grouping or pick a different combine strategy. Each port in `contract.outputs` routes to the first successor at the next depth; `annotations.terminals` overrides individual ports. When `annotations.fanouts.<name>.strategy === 'custom'`, the referenced `fanInOperation` is emitted as a registered single-node placement alongside the scatter so the dispatcher's `custom` gather reducer can resolve it.
 
 Throws `DAGError` when `contracts` is empty, when a terminal references a port outside the contract's `outputs`, when two `emit` entries share a name but declare conflicting `outcome` values, when an `emit.name` collides with an existing operation name, when a partition outcome isn't in `outcomes`, when a parallel member appears in multiple groups, or when an operation appears in more than one of `fanouts` / `embeddedDAGs` / `parallels`.
 
@@ -121,8 +121,8 @@ interface DAGDeriverParallel {
 | Annotation | Purpose |
 |---|---|
 | `terminals` | Per-operation alternate exits. Target variant routes to a placement name (or `null` for implicit `completed`). Emit variant synthesizes a `TerminalNode` with the declared `outcome`. Multiple operations may share an `emit.name`; conflicting `outcome` values throw `DAGError`; collisions with existing operation names throw `DAGError`. |
-| `fanouts` | Per-operation fan-out wrapping. `source` is the dotted state-array path; `itemKey` is the metadata key the worker reads; `node` is the per-item registered node; `strategy` discriminates which fan-in shape is emitted (`custom`+`fanInOperation`, `partition`+`partitions`, `append`+`target`); `outcomes` lists the fan-out outcome names. Partition keys must appear in `outcomes`. |
-| `embeddedDAGs` | Per-operation embedded-DAG composition. Swaps the rendered placement from `SingleNode` to `EmbeddedDAGNode` while preserving the contract's role in topology derivation. Supply `TChildState` on the generic to narrow `stateMapping.input` keys and `stateMapping.output` values at compile time. |
+| `fanouts` | Per-operation scatter wrapping. `source` is the dotted state-array path; `itemKey` is the metadata key the worker reads; `node` is the per-item registered node; `strategy` discriminates which gather shape is emitted (`custom`+`fanInOperation`, `partition`+`partitions`, `append`+`target`); `outcomes` lists the scatter outcome names. Partition keys must appear in `outcomes`. |
+| `embeddedDAGs` | Per-operation sub-DAG body composition. Swaps the rendered placement from `SingleNode` to a `ScatterNode` with `body: { dag }` while preserving the contract's role in topology derivation. `stateMapping.input` translates to `projection`; `stateMapping.output` translates to a `map` gather. Supply `TChildState` on the generic to narrow `stateMapping.input` keys and `stateMapping.output` values at compile time. |
 | `parallels` | Explicit `ParallelNode` grouping with chosen combine strategy. Without it, same-topological-depth operations auto-group with `combine: 'collect'`. Membership is exclusive across groups. |
 
 An operation cannot appear in more than one of `fanouts`, `embeddedDAGs`, or `parallels`. Placement kind must be unambiguous.

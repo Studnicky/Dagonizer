@@ -53,7 +53,7 @@ void describe('CompositeLayout.compute', () => {
     assert.ok(posB.y < posC.y, `B.y (${posB.y}) must be < C.y (${posC.y})`);
   });
 
-  void it('embedded-DAG: inner children sit between predecessor and successor in y; entry has smallest y in subgraph', () => {
+  void it('ScatterNode (body.dag): inner children sit between predecessor and successor in y; entry has smallest y in subgraph', () => {
     // inner DAG: entry-node → middle-node → exit-node
     const innerDAG = makeDAG('inner', 'entry-node', [
       singleNode('entry-node',  { "go": 'middle-node' }),
@@ -61,14 +61,14 @@ void describe('CompositeLayout.compute', () => {
       singleNode('exit-node',   { "done": null }),
     ]);
 
-    // outer DAG: before → embed-dag-placement → after
+    // outer DAG: before → ScatterNode(body.dag=inner) → after
     const outerDAG: DAG = makeDAG('outer', 'before', [
       singleNode('before', { "go": 'embed' }),
       {
         '@id':    'urn:noocodex:dag:outer/node/embed',
-        '@type':  'EmbeddedDAGNode',
+        '@type':  'ScatterNode',
         'name':   'embed',
-        'dag':    'inner',
+        'body':   { 'dag': 'inner' },
         'outputs': { "done": 'after' },
       },
       singleNode('after', { "done": null }),

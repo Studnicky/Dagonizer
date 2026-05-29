@@ -16,34 +16,34 @@
  *     └─ rank-candidates
  *     └─ merge-candidates
  *          ├─ ranked ──► record-findings
- *          └─ empty  ──► no-results (TerminalNode(failed) → embedded-DAG exits error)
+ *          └─ empty  ──► no-results (TerminalNode(failed) → scatter routes parent error)
  *     └─ record-findings
  *     └─ has-citations-gate
  *          ├─ pass ──► recall-past-visits ──► END (success)
- *          └─ fail ──► no-results (TerminalNode(failed) → embedded-DAG exits error)
+ *          └─ fail ──► no-results (TerminalNode(failed) → scatter routes parent error)
  *
  * Outputs:
  *   success — query extracted, candidates found, ranked, recorded, and recalled
  *   error   — no candidates after merge, or citations gate failed;
  *             signalled by the no-results TerminalNode(failed) placement so
- *             executeEmbeddedDAG routes the parent to its 'error' branch via
- *             innerTerminalOutcome propagation
+ *             the parent ScatterNode's terminal reducer routes the parent
+ *             placement to its 'error' branch
  *
  * Molecular import pattern:
  *   import { BookSearchFanoutDAG, registerBookSearchFanoutNodes } from './embedded-dags/BookSearchFanoutDAG.ts';
  *   registerBookSearchFanoutNodes(dispatcher);
  *   dispatcher.registerDAG(BookSearchFanoutDAG);
  *
- * The embedded-DAG operates on the parent's state directly (no stateMapping
+ * The sub-DAG operates on the parent's state directly (no projection / gather
  * needed) — it reads `state.query` and writes `state.terms`, `state.toolPlan`,
  * `state.candidates`, `state.shortlist`, and `state.priorContext`, which are
  * the same fields every intent branch in the parent DAG expects.
  *
- * Three placements of this DAG replace three inlined fan-out clusters in
- * the parent `the-archivist` DAG. One definition, three usages:
+ * Three ScatterNode placements in the parent `the-archivist` DAG reference
+ * this one definition. One definition, three usages:
  *   on-topic-search  — general web book search
  *   author-search    — author body-of-work search
- *   similar-search   — recommend-similar fan-out
+ *   similar-search   — recommend-similar search
  *
  * Reviews and describe branches are inlined in the parent because they use
  * distinct post-scout steps (rankByRating and pickBestMatch respectively).
@@ -72,7 +72,7 @@ import type { DAG } from '@noocodex/dagonizer/entities';
 
 /**
  * The `book-search-fanout` DAG — one packaged unit that any parent DAG
- * can reference via `.embeddedDAG('placement-name', 'book-search-fanout', routes)`.
+ * can reference via `.scatter('placement-name', { dag: 'book-search-fanout' }, routes)`.
  */
 export const BookSearchFanoutDAG: DAG = new DAGBuilder('book-search-fanout', '1.0')
 
@@ -120,8 +120,8 @@ export const BookSearchFanoutDAG: DAG = new DAGBuilder('book-search-fanout', '1.
 
   // ── 5. merge-candidates ──────────────────────────────────────────────────
   // Cross-source dedupe via CanonicalId, top-5. Routes 'empty' to
-  // no-results (TerminalNode(failed)) so executeEmbeddedDAG routes the
-  // parent to its 'error' branch via innerTerminalOutcome propagation.
+  // no-results (TerminalNode(failed)) so the parent ScatterNode's terminal
+  // reducer routes the parent placement to its 'error' branch.
   .node('merge-candidates', mergeCandidates, {
     'ranked': 'record-findings',
     'empty':  'no-results',
@@ -136,7 +136,7 @@ export const BookSearchFanoutDAG: DAG = new DAGBuilder('book-search-fanout', '1.
   // ── 7. has-citations-gate ────────────────────────────────────────────────
   // SPARQL ASK over the per-run state graph. Symbolic fence for the LLM.
   // 'fail' routes to no-results (TerminalNode(failed)) so the parent
-  // receives 'error' via innerTerminalOutcome propagation.
+  // ScatterNode's terminal reducer routes the parent placement to 'error'.
   .node('has-citations-gate', hasCitationsGate, {
     'pass': 'recall-past-visits',
     'fail': 'no-results',
@@ -144,15 +144,15 @@ export const BookSearchFanoutDAG: DAG = new DAGBuilder('book-search-fanout', '1.
 
   // ── 8. recall-past-visits ────────────────────────────────────────────────
   // Injects prior-session context (prior queries + shortlisted titles) into
-  // state.priorContext. Terminal node — embedded-DAG exits cleanly → 'success'.
+  // state.priorContext. Terminal node — sub-DAG exits cleanly → 'success'.
   .node('recall-past-visits', recallPastVisits, {
     'recalled': null,
   })
 
   // ── 9. no-results ────────────────────────────────────────────────────────
-  // TerminalNode(failed) — executeEmbeddedDAG reads innerTerminalOutcome and
-  // routes the parent placement to its 'error' branch. No backing node or
-  // collectError call required.
+  // TerminalNode(failed) — the parent ScatterNode's terminal reducer reads the
+  // failed terminal outcome and routes the parent placement to its 'error'
+  // branch. No backing node or collectError call required.
   .terminal('no-results', 'failed')
 
   .build();

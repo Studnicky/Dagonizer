@@ -24,9 +24,8 @@
 import dagre from '@dagrejs/dagre';
 
 import type { DAG } from '../entities/dag/DAG.js';
-import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
+import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 
@@ -72,10 +71,9 @@ export interface CompositeLayoutOptions {
 // ---------------------------------------------------------------------------
 
 type DAGNodeEntry =
-  | FanOutNode
+  | ScatterNode
   | ParallelNode
   | SingleNodePlacementInterface
-  | EmbeddedDAGNode
   | TerminalNodePlacementInterface;
 
 interface BoundingBox {
@@ -181,13 +179,14 @@ export class CompositeLayout {
     const subLayouts = new Map<string, Resolved>();
 
     for (const placement of dag.nodes as readonly DAGNodeEntry[]) {
-      if (placement['@type'] !== 'EmbeddedDAGNode') continue;
-      if (visited.has(placement.dag)) continue;
-      const body = embeddedDAGs.get(placement.dag);
+      if (placement['@type'] !== 'ScatterNode' || !('dag' in placement.body)) continue;
+      const dagName = placement.body.dag;
+      if (visited.has(dagName)) continue;
+      const body = embeddedDAGs.get(dagName);
       if (body === undefined) continue;
 
       const innerVisited = new Set(visited);
-      innerVisited.add(placement.dag);
+      innerVisited.add(dagName);
       const innerPrefix = CompositeLayout.idIn(prefix, placement.name);
 
       const sub = CompositeLayout.layoutFlat(
@@ -226,7 +225,7 @@ export class CompositeLayout {
       let w: number;
       let h: number;
 
-      if (placement['@type'] === 'EmbeddedDAGNode') {
+      if (placement['@type'] === 'ScatterNode' && 'dag' in placement.body) {
         const sub = subLayouts.get(placement.name);
         if (sub !== undefined) {
           w = sub.bb.width;
@@ -282,7 +281,7 @@ export class CompositeLayout {
       const dagrePos = g.node(nodeId) as { x: number; y: number } | undefined;
       if (dagrePos === undefined) continue;
 
-      if (placement['@type'] === 'EmbeddedDAGNode') {
+      if (placement['@type'] === 'ScatterNode' && 'dag' in placement.body) {
         const sub = subLayouts.get(placement.name);
         if (sub !== undefined) {
           // Offset all child positions so the sub-layout's center coincides

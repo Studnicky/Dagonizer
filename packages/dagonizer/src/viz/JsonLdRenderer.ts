@@ -26,16 +26,15 @@
  */
 
 import type { DAG } from '../entities/dag/DAG.js';
-import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-import type { FanOutNode } from '../entities/dag/FanOutNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
+import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 
 /** Stable JSON-LD vocabulary URI for the Dagonizer DAG vocabulary. */
 export const DAGONIZER_VOCAB = 'https://noocodex.dev/ontology/dagonizer/';
 
-type DAGNodeEntry = FanOutNode | ParallelNode | SingleNodePlacementInterface | EmbeddedDAGNode | TerminalNodePlacementInterface;
+type DAGNodeEntry = ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface;
 
 /** A single node entry in the rendered `@graph`. */
 export interface JsonLdGraphEntry {
@@ -62,8 +61,7 @@ export class JsonLdRenderer {
   private static readonly TYPE_BY_KIND: Readonly<Record<DAGNodeEntry['@type'], string>> = {
     'SingleNode':   'dag:SingleNode',
     'ParallelNode': 'dag:ParallelNode',
-    'FanOutNode':   'dag:FanOutNode',
-    'EmbeddedDAGNode':  'dag:EmbeddedDAGNode',
+    'ScatterNode':  'dag:ScatterNode',
     'TerminalNode': 'dag:TerminalNode',
   };
 
@@ -132,25 +130,20 @@ export class JsonLdRenderer {
           'dag:combine':  placement.combine,
           'dag:children': placement.nodes.map((child: string) => JsonLdRenderer.placementIri(dagName, child)),
         };
-      case 'FanOutNode': {
+      case 'ScatterNode': {
         const out: JsonLdGraphEntry & Record<string, unknown> = {
           ...base,
           'dag:routes': JsonLdRenderer.renderRoutes(dagName, placement.outputs),
-          'dag:node':   placement.node,
-          'dag:source': placement.source,
-          'dag:fanIn':  placement.fanIn,
+          'dag:body':   'node' in placement.body
+            ? { 'dag:node': placement.body.node }
+            : { 'dag:dag': JsonLdRenderer.dagIri(placement.body.dag) },
         };
+        if (placement.source !== undefined)      out['dag:source']      = placement.source;
         if (placement.itemKey !== undefined)     out['dag:itemKey']     = placement.itemKey;
         if (placement.concurrency !== undefined) out['dag:concurrency'] = placement.concurrency;
-        return out;
-      }
-      case 'EmbeddedDAGNode': {
-        const out: JsonLdGraphEntry & Record<string, unknown> = {
-          ...base,
-          'dag:routes': JsonLdRenderer.renderRoutes(dagName, placement.outputs),
-          'dag:dag':    JsonLdRenderer.dagIri(placement.dag),
-        };
-        if (placement.stateMapping !== undefined) out['dag:stateMapping'] = placement.stateMapping;
+        if (placement.projection !== undefined)  out['dag:projection']  = placement.projection;
+        if (placement.gather !== undefined)      out['dag:gather']      = placement.gather;
+        if (placement.reducer !== undefined)     out['dag:reducer']     = placement.reducer;
         return out;
       }
       case 'TerminalNode':

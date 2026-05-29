@@ -77,7 +77,7 @@ All five default to no-ops. Override only the hooks you need. Class extension is
 
 `onFlowEnd` is always called, even when the flow fails or is cancelled. `onError` may fire before `onFlowEnd` in the same execution.
 
-For parallel and fan-out nodes, `onNodeStart` and `onNodeEnd` fire once for the group entry (the containing `parallel` or `fan-out` node), not once per constituent node.
+For parallel and scatter nodes, `onNodeStart` and `onNodeEnd` fire once for the group entry (the containing `parallel` or `scatter` placement), not once per constituent clone or concurrent node.
 
 ## Structured logging
 

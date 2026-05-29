@@ -1,7 +1,5 @@
 export { DAGBuilder } from './DAGBuilder.js';
 export type {
-  FanOutOptionsInterface,
-  EmbeddedDAGOptionsInterface,
-  TypedEmbeddedDAGOptionsInterface,
+  ScatterOptionsInterface,
 } from './DAGBuilder.js';
 export type { Path } from './Path.js';

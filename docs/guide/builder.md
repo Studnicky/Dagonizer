@@ -10,7 +10,7 @@ seeAlso:
     description: 'define the state class your nodes mutate'
   - text: 'Shared state'
     link: './shared-state'
-    description: 'decision matrix for stateMapping versus stores; checkpoint integration'
+    description: 'decision matrix for projection/gather versus stores; checkpoint integration'
   - text: 'Schema and JSON loading'
     link: './schema'
     description: 'load DAGs from JSON instead of building them in code'
@@ -116,7 +116,7 @@ const dag = new DAGBuilder('pipeline', '1.0')
   });
 ```
 
-Placements added via `.parallel()` or `.embeddedDAG()` do not receive a `NodeInterface` and are not tracked in the impl registry; they are silently skipped during contract validation, preventing false-positive dangling-read errors for node names declared elsewhere.
+Placements added via `.parallel()` or `.scatter()` with a `{ dag }` body do not receive a `NodeInterface` and are not tracked in the impl registry; they are silently skipped during contract validation, preventing false-positive dangling-read errors for node names declared elsewhere.
 
 The `onContractWarning` hook on `build()` fires at construction time and is local to the builder call. When the resulting DAG is registered with a `Dagonizer` subclass, the dispatcher's `onContractWarning` hook fires again at `registerDAG` time if the nodes carry co-located contracts. See [Contract-derived flows](./derive) and [Reference, contracts](../reference/contracts).
 
@@ -147,9 +147,8 @@ const dag = new DAGBuilder('pipeline', '1.0')
 
 `DAGBuilder.fromNodes()` delegates to `DAGDeriver.derive({ nodes })`, the same deriver that powers contract-first topology. Use it when the shape is linear and all nodes carry contracts. Drop into the fluent `.node()` API when you need:
 
-- Fan-out or fan-in placements
+- Scatter placements (node body or sub-DAG body)
 - Terminal routes to `null` mid-flow
-- Embedded-DAG compositions
 - Explicit entrypoint overrides
 - Non-contract nodes that still appear in the placement list
 
@@ -170,88 +169,79 @@ const dag = new DAGBuilder('enrich', '1')
 
 Nodes listed in `parallel()` must already be declared. The builder does not validate this; `registerDAG` does.
 
-## Fan-out
+## Scatter
+
+`.scatter()` places a `ScatterNode` in the parent flow. A scatter isolates a state clone per source item (or exactly one clone when `source` is absent), runs a body (a registered node or a registered sub-DAG) in the clone, and routes on the aggregate outcome.
+
+### Generate-collect pattern (source present)
+
+Each source item gets one clone. After all clones finish, the `gather.mapping` writes produced artifacts back in source-index order:
 
 ```ts
-import type { FanInConfig } from '@noocodex/dagonizer';
-
-const fanIn: FanInConfig = {
-  strategy: 'partition',
-  partitions: { success: 'processed', error: 'failed' },
-};
-
 const dag = new DAGBuilder('batch', '1')
-  .fanOut('process-items', processNode, 'items', fanIn, {
-    'all-success': null,
-    'partial':     null,
-    'all-error':   null,
-    'empty':       null,
-  }, { concurrency: 4 })
+  .scatter('generate', generateNode,
+    { 'all-success': 'select', 'partial': 'select', 'all-error': null, 'empty': null },
+    {
+      source:  'providers',
+      gather:  { strategy: 'map', mapping: { 'candidate': 'candidates' } },
+      concurrency: 4,
+    },
+  )
+  .node('select', selectNode, { success: null })
   .build();
 ```
 
-## Embedded-DAG
-
-`.embeddedDAG()` places a named embedded-DAG in the parent flow. Two optional generic parameters narrow the state-mapping paths at compile time:
-
-- `TChildState` narrows the LEFT side of `inputs` (child key) and the RIGHT side of `outputs` (child path) to paths that exist on the child state.
-- `TParentState` narrows the RIGHT side of `inputs` (parent path) and the LEFT side of `outputs` (parent path) to dotted paths that exist on the parent state.
-
-Both default to `NodeStateInterface`, so existing call sites with no generics continue to typecheck unchanged.
+`gather.strategy: 'partition'` groups clones by their output token:
 
 ```ts
-class ParentState extends NodeStateBase {
-  user = { name: '', age: 0 };
-}
+scatter('process-items', processNode,
+  { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+  {
+    source: 'items',
+    gather: { strategy: 'partition', partitions: { success: 'processed', error: 'failed' } },
+    concurrency: 4,
+  },
+)
+```
 
-class ChildState extends NodeStateBase {
-  payload = '';
-  result  = 0;
-}
+### Singleton pattern (source absent)
 
+One clone runs with a DAG body. The `terminal` reducer routes `success` or `error`:
+
+```ts
 const dag = new DAGBuilder('parent', '1')
-  .embeddedDAG<ChildState, ParentState>('run-child', 'child-dag',
+  .scatter('run-child', { dag: 'child-dag' },
     { success: 'finalize', error: 'finalize' },
     {
-      inputs:  { payload: 'user.name' },   // 'payload' on ChildState; 'user.name' on Path<ParentState>
-      outputs: { 'user.age': 'result' },   // 'user.age' on Path<ParentState>; 'result' on Path<ChildState>
+      projection: { 'payload': 'user.name' },
+      gather:     { strategy: 'map', mapping: { 'user.age': 'result' } },
     },
   )
   .node('finalize', finalizeNode, { success: null })
   .build();
 ```
 
-Misspelled paths are compile errors:
-
-```ts
-// TypeScript error: 'user.notReal' does not exist on Path<ParentState>
-.embeddedDAG<ChildState, ParentState>('run-child', 'child-dag', routes, {
-  inputs: { payload: 'user.notReal' },
-})
-```
-
 The full signature:
 
 ```ts
-embeddedDAG<
-  TChildState extends NodeStateInterface = NodeStateInterface,
-  TParentState extends NodeStateInterface = NodeStateInterface,
->(
+scatter<TState extends NodeStateInterface, TOutput extends string, TServices = undefined>(
   name: string,
-  dagName: string,
-  routes: Record<'success' | 'error', null | string>,
-  options?: TypedEmbeddedDAGOptionsInterface<TChildState, TParentState>,
+  body: NodeInterface<TState, TOutput, TServices> | { readonly dag: string },
+  outputs: Record<string, null | string>,
+  options?: ScatterOptionsInterface<TState>,
 ): this
 ```
 
-`TypedEmbeddedDAGOptionsInterface<TChildState, TParentState>`:
+`ScatterOptionsInterface<TState>`:
 
-| Field | Key type | Value type | Description |
-|---|---|---|---|
-| `inputs?` | `keyof TChildState & string` | `Path<TParentState>` | Child-state key to parent-state dotted path. Copied into child state before the embedded-DAG runs. |
-| `outputs?` | `Path<TParentState>` | `Path<TChildState>` | Parent-state dotted path to child-state dotted path. Copied back into parent state after the embedded-DAG completes. |
-
-When either generic uses the default `NodeStateInterface`, the corresponding path side falls back to `string`, preserving backward compatibility at call sites that pass only `TChildState` or neither generic.
+| Field | Type | Description |
+|---|---|---|
+| `source?` | `string` | Dotted state-array path. Absent ⇒ one clone (singleton). |
+| `itemKey?` | `string` | Metadata key the clone reads for the current item. Default `'currentItem'`. |
+| `concurrency?` | `number` | Max clones running concurrently. Default: source length. |
+| `projection?` | `Partial<Record<string, Path<TState>>>` | Parent → clone field copy before the body runs. Keys are clone paths; values are parent paths. |
+| `gather?` | `GatherConfig` | How produced clone state merges back into the parent. |
+| `reducer?` | `string` | Outcome reducer name. Defaults to `'aggregate'` with source, `'terminal'` without. |
 
 `Path<T>` enumerates valid dotted-path strings over a state shape recursively:
 
@@ -262,9 +252,9 @@ When either generic uses the default `NodeStateInterface`, the corresponding pat
 
 Arrays contribute `${number}` and `${number}.${ElementPath}` paths. The depth cap is 8 levels; deeper nesting falls back to `string`. The type is exported from the `@noocodex/dagonizer/builder` subpath.
 
-The builder translates `inputs` and `outputs` into the JSON-LD wire format (`stateMapping: { input, output }`) at build time. Loaded DAGs (for example from JSON) use the wire format directly. The narrowing is a builder-only concern.
+When `body` is a `NodeInterface`, the impl is registered automatically and the placement emits `body: { node: body.name }`. When `body` is `{ dag: string }`, no impl is registered and the placement emits `body: { dag }`.
 
-For patterns where nodes across multiple embedded-DAGs accumulate to shared mutable state (agent memory, audit log), see [Shared state](./shared-state).
+For patterns where nodes across multiple scatter placements accumulate to shared mutable state (agent memory, audit log), see [Shared state](./shared-state).
 
 ## `.terminal(name, outcome?)`
 
@@ -286,13 +276,13 @@ Use `.terminal(name)` when:
 - The outcome is `'failed'`. Null routes always mean `completed`; there is no null-route shorthand for a failed outcome.
 - Multiple branches converge at named endpoints and legibility matters.
 
-### Routing `embeddedDAG` outputs to a terminal placement
+### Routing scatter outputs to a terminal placement
 
-An `EmbeddedDAGNode` placement may target a named terminal directly:
+A `ScatterNode` placement may target a named terminal directly:
 
 ```ts
 const dag = new DAGBuilder('parent', '1')
-  .embeddedDAG('run-child', 'child-dag', {
+  .scatter('run-child', { dag: 'child-dag' }, {
     success: 'end-ok',
     error:   'end-fail',
   })
@@ -301,7 +291,7 @@ const dag = new DAGBuilder('parent', '1')
   .build();
 ```
 
-When the child DAG accumulates errors, the engine routes the embedded-DAG placement to its `error` output, which arrives at `end-fail`, which marks the parent flow `failed`. Without a named terminal, the author would need a dedicated SingleNode to call `state.markFailed()`. The terminal collapses that to one `.terminal(name, 'failed')` call.
+When the child DAG accumulates errors, the `terminal` reducer routes `error`, which arrives at `end-fail`, which marks the parent flow `failed`. Without a named terminal, the author would need a dedicated SingleNode to call `state.markFailed()`. The terminal collapses that to one `.terminal(name, 'failed')` call.
 
 ### Example, two explicit terminals
 
@@ -383,4 +373,4 @@ The returned object is identical to one written by hand. Pass it directly to `di
 
 - [Phase 02, DAGBuilder demo](../examples/02-builder)
 - [Reference, Dagonizer](../reference/dagonizer)
-- [Reference, Entities, `DAG`, `SingleNode`, `ParallelNode`, `FanOutNode`, `EmbeddedDAGNode`](../reference/entities)
+- [Reference, Entities, `DAG`, `SingleNode`, `ParallelNode`, `ScatterNode`](../reference/entities)

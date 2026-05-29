@@ -41,10 +41,10 @@ Each yielded `NodeResultInterface<TState>` carries:
 |-------|------|-------------|
 | `nodeName` | `string` | Name of the node that completed |
 | `output` | `string \| undefined` | Output name returned by the operation |
-| `skipped` | `boolean` | `true` for an empty fan-out that bypassed execution |
+| `skipped` | `boolean` | `true` for an empty scatter source that bypassed execution |
 | `state` | `TState` | Reference to the shared state object (mutated in place) |
 
-For parallel, fan-out, and embedded-DAG placements, the iterator first yields intermediate results for each constituent node, then yields the group result.
+For parallel and scatter placements, the iterator first yields intermediate results for each constituent node or clone, then yields the group result.
 
 Phase placements (`PhaseNode`) run out of band and do not yield through the iterator. They surface via `Instrumentation.phaseEnter` / `phaseExit` and are appended to `result.executedNodes`.
 
@@ -67,7 +67,7 @@ If the iterator has already been consumed, the cached result is returned; the ge
 | `state` | `TState` | Final state (same reference passed in) |
 | `cursor` | `string \| null` | Next node to run on resume; `null` when the flow completed |
 | `executedNodes` | `string[]` | Nodes that ran (in order), including pre/post phase placements |
-| `skippedNodes` | `string[]` | Nodes skipped (empty fan-out) |
+| `skippedNodes` | `string[]` | Nodes skipped (empty scatter source) |
 | `terminalOutcome` | `'completed' \| 'failed' \| null` | Outcome declared by the `TerminalNode` placement the flow exited through; `null` for null-route, error, or abort exits |
 | `interruptedAt` | `InterruptionInfo \| null` | Cancellation telemetry; `null` on clean exits |
 

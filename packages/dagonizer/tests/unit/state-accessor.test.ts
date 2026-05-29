@@ -79,12 +79,12 @@ void describe('Dagonizer accepts a custom StateAccessor', () => {
       'entrypoint': 'fan',
       'nodes': [{
         '@id':    'urn:noocodex:dag:fan-test/node/fan',
-        '@type':  'FanOutNode',
+        '@type':  'ScatterNode',
         'name':   'fan',
-        'node':   'handler',
+        'body':   { 'node': 'handler' },
         'source': 'items',
         'itemKey': 'item',
-        'fanIn': { 'strategy': 'append', 'target': 'collected' },
+        'gather': { 'strategy': 'append', 'target': 'collected' },
         'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
       }],
     };
