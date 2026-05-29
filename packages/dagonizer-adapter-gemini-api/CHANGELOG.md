@@ -1,5 +1,12 @@
 # @noocodex/dagonizer-adapter-gemini-api
 
+## 1.0.0
+
+### Patch Changes
+
+- Updated dependencies [04448cb]
+  - @noocodex/dagonizer@1.0.0
+
 ## 0.13.2
 
 ### Patch Changes

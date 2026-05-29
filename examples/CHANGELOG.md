@@ -1,5 +1,12 @@
 # @noocodex/dagonizer-examples
 
+## 0.0.2
+
+### Patch Changes
+
+- Updated dependencies [04448cb]
+  - @noocodex/dagonizer@1.0.0
+
 ## 0.0.1
 
 ### Patch Changes
