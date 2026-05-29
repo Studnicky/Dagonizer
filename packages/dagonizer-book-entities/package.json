@@ -1,10 +1,6 @@
 {
   "name": "@noocodex/dagonizer-book-entities",
-<<<<<<< HEAD
-  "version": "0.13.1",
-=======
   "version": "0.13.2",
->>>>>>> origin/main
   "description": "Shared Book/Candidate entity types + CanonicalId dedupe for the book-domain Dagonizer tool packages.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
