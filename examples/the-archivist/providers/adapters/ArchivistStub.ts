@@ -81,7 +81,7 @@ export class ArchivistStub extends StubAdapter {
 /**
  * Index-pointer stub for `decideTools`. Counts the numbered tool list
  * in the prompt and returns indices 1..N — call every tool so the
- * downstream fan-out actually fans out. When no numbered list is
+ * downstream scatter actually runs all scouts. When no numbered list is
  * found in the prompt (degenerate case), returns `{tools: []}`.
  */
 function groundedDecideToolsJson(prompt: string): string {

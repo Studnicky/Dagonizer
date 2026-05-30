@@ -1,15 +1,16 @@
 /**
  * NodeStateData — pure wire/data shape of the shared node state.
  *
- * Captures the serializable fields: errors, warnings, metadata, and the
- * lifecycle wire shape (DAGLifecycleStateData). The runtime `NodeStateInterface`
+ * Captures the serializable fields: errors, warnings, metadata, retry
+ * counters, and the lifecycle wire shape (DAGLifecycleStateData). The runtime
+ * `NodeStateInterface`
  * does NOT extend this entity — its `lifecycle` field carries an in-memory
  * `Error` on the `failed` branch, which is not JSON-expressible. Instead,
  * `NodeStateInterface` is documented to reference this shape as the persistence
  * form returned by `NodeStateBase.snapshot()`.
  *
  * The NodeError and NodeWarning shapes are inlined here to avoid $ref
- * resolution complexity (same pattern as DAGSchema inlining FanInConfig).
+ * resolution complexity (same pattern as DAGSchema inlining GatherConfig).
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
@@ -18,7 +19,7 @@ export const NodeStateDataSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/NodeStateData',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['errors', 'warnings', 'metadata'],
+  'required': ['errors', 'warnings', 'metadata', 'retries'],
   'properties': {
     'errors': {
       'type': 'array',
@@ -51,6 +52,10 @@ export const NodeStateDataSchema = {
       },
     },
     'metadata': { 'type': 'object' },
+    'retries': {
+      'type': 'object',
+      'additionalProperties': { 'type': 'number' },
+    },
   },
   'additionalProperties': false,
 } as const;

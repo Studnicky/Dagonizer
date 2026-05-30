@@ -18,9 +18,9 @@
  *   │ Why an adapter and not just LlmClient methods?                │
  *   │ Retry, error classification, tool-call extraction, structured │
  *   │ output and schema-violation recovery are the same regardless  │
- *   │ of provider. Implementing them once on a shared base, with a  │
- *   │ thin per-provider transport, removes the duplication you see  │
- *   │ in the legacy `*Provider.ts` files.                            │
+ *   │ of provider. They live once on this shared base; each         │
+ *   │ provider package contributes only a thin transport — no       │
+ *   │ per-provider duplication of the cross-cutting machinery.      │
  *   └──────────────────────────────────────────────────────────────┘
  */
 

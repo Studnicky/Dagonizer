@@ -99,12 +99,21 @@ export class ContractRegistryValidator {
   ): void {
     const upstreamProducers = ContractRegistryValidator.buildUpstreamProducers(contracts);
 
-    // Dangling-read: hardRequired path not produced by any upstream node.
+    // The entrypoint's hardRequired paths are the flow's external initial
+    // state — ambient and present from the start, so ANY node may read them
+    // without an upstream producer (not just the entrypoint itself).
+    const externalKeys = new Set<string>(
+      entrypointName === undefined
+        ? []
+        : contracts.find((c) => c.name === entrypointName)?.hardRequired ?? [],
+    );
+
+    // Dangling-read: hardRequired path neither external nor produced upstream.
     for (const contract of contracts) {
-      // Entrypoint hardRequired are seeded externally — skip.
       if (contract.name === entrypointName) continue;
       const upstream = upstreamProducers.get(contract.name) ?? new Set();
       for (const path of contract.hardRequired) {
+        if (externalKeys.has(path)) continue;
         if (!upstream.has(path)) {
           throw new DAGError(
             `ContractRegistryValidator: node '${contract.name}' hardRequires '${path}' but no upstream-in-DAG node produces it`,

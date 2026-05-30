@@ -56,7 +56,7 @@ export class EventLogStore extends BaseStore {
   #handle: FileHandle | null;
 
   constructor(options: EventLogStoreOptions = {}) {
-    super({ 'namespace': options.namespace ?? '' });
+    super(options);
     this.#log = [];
     this.#filePath = options.filePath ?? '';
     this.#syncOnAppend = options.syncOnAppend ?? true;
@@ -75,6 +75,7 @@ export class EventLogStore extends BaseStore {
    */
   override async connect(): Promise<void> {
     if (this.#filePath === '') return;
+    if (this.#handle !== null) return;
     this.#handle = await open(this.#filePath, 'a+');
     const contents = await this.#handle.readFile({ 'encoding': 'utf8' });
     for (const line of contents.split('\n')) {
@@ -123,12 +124,7 @@ export class EventLogStore extends BaseStore {
   }
 
   protected async performHas(key: string): Promise<boolean> {
-    for (let i = this.#log.length - 1; i >= 0; i -= 1) {
-      const entry = this.#log[i];
-      if (entry === undefined || entry.key !== key) continue;
-      return entry.kind === 'set';
-    }
-    return false;
+    return this.#latest(key) !== undefined;
   }
 
   protected async performDelete(key: string): Promise<boolean> {

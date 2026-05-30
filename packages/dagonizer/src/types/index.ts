@@ -60,6 +60,7 @@ export type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js
 export type { DAG } from '../entities/dag/DAG.js';
 export type { GatherConfig } from '../entities/dag/GatherConfig.js';
 export type { ScatterNode } from '../entities/dag/ScatterNode.js';
+export type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 export type { ParallelNode } from '../entities/dag/ParallelNode.js';
 export type { SingleNode } from '../entities/dag/SingleNode.js';
 
@@ -92,7 +93,7 @@ export type {
 // Builder option interfaces
 // ---------------------------------------------------------------------------
 
-export type { ScatterOptionsInterface } from '../builder/DAGBuilder.js';
+export type { ScatterOptionsInterface, TypedEmbeddedDAGOptionsInterface } from '../builder/DAGBuilder.js';
 
 // ---------------------------------------------------------------------------
 // Core dispatcher option types
@@ -104,7 +105,7 @@ export type { ParallelResult, ParallelCombiner } from '../core/ParallelCombiners
 export type { GatherExecution, GatherStrategy } from '../core/GatherStrategies.js';
 export type { OutcomeReducer } from '../core/OutcomeReducers.js';
 export type { DAGDeriverOptions } from '../derive/DAGDeriver.js';
-export type { DAGDeriverAnnotations, DAGDeriverEmbeddedDAG, DAGDeriverFanOut, DAGDeriverTerminal } from '../derive/DAGDeriverAnnotations.js';
+export type { DAGDeriverAnnotations, DAGDeriverEmbeddedDAG, DAGDeriverScatter, DAGDeriverTerminal } from '../derive/DAGDeriverAnnotations.js';
 export type { DagJsonLdDocument, JsonLdGraphEntry } from '../viz/JsonLdRenderer.js';
 export type {
   CytoscapeElement,

@@ -24,10 +24,9 @@
 import dagre from '@dagrejs/dagre';
 
 import type { DAG } from '../entities/dag/DAG.js';
-import type { ParallelNode } from '../entities/dag/ParallelNode.js';
-import type { ScatterNode } from '../entities/dag/ScatterNode.js';
-import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
-import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
+
+import { embeddedDagName, idIn } from './internal.js';
+import type { PlacementEntry } from './internal.js';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -69,12 +68,6 @@ export interface CompositeLayoutOptions {
 // ---------------------------------------------------------------------------
 // Internal types
 // ---------------------------------------------------------------------------
-
-type DAGNodeEntry =
-  | ScatterNode
-  | ParallelNode
-  | SingleNodePlacementInterface
-  | TerminalNodePlacementInterface;
 
 interface BoundingBox {
   readonly minX: number;
@@ -168,7 +161,7 @@ export class CompositeLayout {
     // collective bounding box.
     const parallelChildren = new Set<string>();
     const parallelChildLists = new Map<string, readonly string[]>();
-    for (const placement of dag.nodes as readonly DAGNodeEntry[]) {
+    for (const placement of dag.nodes as readonly PlacementEntry[]) {
       if (placement['@type'] === 'ParallelNode') {
         for (const child of placement.nodes) parallelChildren.add(child);
         parallelChildLists.set(placement.name, placement.nodes);
@@ -178,16 +171,16 @@ export class CompositeLayout {
     // Sub-layout results for embedded-DAGs (keyed by placement.name).
     const subLayouts = new Map<string, Resolved>();
 
-    for (const placement of dag.nodes as readonly DAGNodeEntry[]) {
-      if (placement['@type'] !== 'ScatterNode' || !('dag' in placement.body)) continue;
-      const dagName = placement.body.dag;
+    for (const placement of dag.nodes as readonly PlacementEntry[]) {
+      const dagName = embeddedDagName(placement);
+      if (dagName === null) continue;
       if (visited.has(dagName)) continue;
       const body = embeddedDAGs.get(dagName);
       if (body === undefined) continue;
 
       const innerVisited = new Set(visited);
       innerVisited.add(dagName);
-      const innerPrefix = CompositeLayout.idIn(prefix, placement.name);
+      const innerPrefix = idIn(prefix, placement.name);
 
       const sub = CompositeLayout.layoutFlat(
         body,
@@ -219,13 +212,13 @@ export class CompositeLayout {
     // • all others use the default leaf size.
     const nodeSizes = new Map<string, { width: number; height: number }>();
 
-    for (const placement of dag.nodes as readonly DAGNodeEntry[]) {
+    for (const placement of dag.nodes as readonly PlacementEntry[]) {
       if (parallelChildren.has(placement.name)) continue; // handled inside parallel slot
 
       let w: number;
       let h: number;
 
-      if (placement['@type'] === 'ScatterNode' && 'dag' in placement.body) {
+      if (embeddedDagName(placement) !== null) {
         const sub = subLayouts.get(placement.name);
         if (sub !== undefined) {
           w = sub.bb.width;
@@ -247,22 +240,22 @@ export class CompositeLayout {
       }
 
       nodeSizes.set(placement.name, { "width": w, "height": h });
-      const nodeId = CompositeLayout.idIn(prefix, placement.name);
+      const nodeId = idIn(prefix, placement.name);
       g.setNode(nodeId, { "width": w, "height": h });
     }
 
     // Register edges. Skip null targets (terminals) — no edge needed for layout.
     // Also skip edges to/from parallel children (they're inside the compound).
-    for (const placement of dag.nodes as readonly DAGNodeEntry[]) {
+    for (const placement of dag.nodes as readonly PlacementEntry[]) {
       if (parallelChildren.has(placement.name)) continue;
       if (!('outputs' in placement)) continue;
 
-      const fromId = CompositeLayout.idIn(prefix, placement.name);
+      const fromId = idIn(prefix, placement.name);
 
       for (const target of Object.values(placement.outputs)) {
         if (target === null) continue;                       // terminal route
         if (parallelChildren.has(target)) continue;          // child is inside parallel
-        const toId = CompositeLayout.idIn(prefix, target);
+        const toId = idIn(prefix, target);
         if (g.hasNode(toId)) g.setEdge(fromId, toId);
       }
     }
@@ -274,14 +267,14 @@ export class CompositeLayout {
 
     const positions = new Map<string, NodePosition>();
 
-    for (const placement of dag.nodes as readonly DAGNodeEntry[]) {
+    for (const placement of dag.nodes as readonly PlacementEntry[]) {
       if (parallelChildren.has(placement.name)) continue;
 
-      const nodeId = CompositeLayout.idIn(prefix, placement.name);
+      const nodeId = idIn(prefix, placement.name);
       const dagrePos = g.node(nodeId) as { x: number; y: number } | undefined;
       if (dagrePos === undefined) continue;
 
-      if (placement['@type'] === 'ScatterNode' && 'dag' in placement.body) {
+      if (embeddedDagName(placement) !== null) {
         const sub = subLayouts.get(placement.name);
         if (sub !== undefined) {
           // Offset all child positions so the sub-layout's center coincides
@@ -309,7 +302,7 @@ export class CompositeLayout {
         for (let i = 0; i < children.length; i++) {
           const childName = children[i];
           if (childName === undefined) continue;
-          const childId = CompositeLayout.idIn(prefix, childName);
+          const childId = idIn(prefix, childName);
           const cx = startX + i * (nodeWidth + parallelSep);
           const cy = dagrePos.y;
           positions.set(childId, { "x": cx, "y": cy });
@@ -326,13 +319,6 @@ export class CompositeLayout {
     const bb = CompositeLayout.boundingBox(positions, nodeSizes, nodeWidth, nodeHeight, prefix);
 
     return { positions, bb };
-  }
-
-  // ── Utilities ────────────────────────────────────────────────────────────
-
-  /** Build a placement-name id, optionally prefixed by an enclosing scope. */
-  private static idIn(prefix: string, name: string): string {
-    return prefix === '' ? name : `${prefix}/${name}`;
   }
 
   /**

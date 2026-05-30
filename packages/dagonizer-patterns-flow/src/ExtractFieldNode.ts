@@ -23,6 +23,6 @@ export abstract class ExtractFieldNode<
   ): Promise<NodeOutputInterface<'success'>> {
     const value = this.extract(state);
     this.apply(state, value);
-    return Promise.resolve({ 'output': 'success' });
+    return { 'output': 'success' };
   }
 }

@@ -64,12 +64,12 @@ const childDag = new DAGBuilder('sub-flow', '1')
 // #endregion child-dag
 
 // #region parent-dag
-// run-child is a ScatterNode singleton (no source ⇒ one clone) whose body is
-// the registered 'sub-flow' DAG. The clone shares the same services bag, so
-// child-step appends to the same MemoryStore between step-a and step-b.
+// run-child is an EmbeddedDAGNode whose body is the registered 'sub-flow' DAG.
+// The child shares the same services bag, so child-step appends to the same
+// MemoryStore between step-a and step-b.
 const parentDag = new DAGBuilder('main-flow', '1')
   .node('step-a', stepA, { "done": 'run-child' })
-  .scatter('run-child', { dag: 'sub-flow' }, { "success": 'step-b', "error": 'step-b' })
+  .embeddedDAG('run-child', 'sub-flow', { "success": 'step-b', "error": 'step-b' })
   .node('step-b', stepB, { "done": null })
   .build();
 // #endregion parent-dag

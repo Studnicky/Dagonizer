@@ -7,9 +7,9 @@ npm install
 npx tsx examples/01-linear.ts        # minimal stage chain
 npx tsx examples/02-builder.ts       # DAGBuilder chainable API
 npx tsx examples/03-schema.ts        # JSON load + Ajv validate + round-trip
-npx tsx examples/04-fanout.ts        # ScatterNode over a source + partition gather
+npx tsx examples/04-scatter.ts       # ScatterNode over a source + partition gather
 npx tsx examples/04b-scatter-collect.ts  # ScatterNode generate-and-select: map gather collects produced candidates
-npx tsx examples/05-embedded-dags.ts     # ScatterNode singleton (sub-DAG body) + projection / map gather
+npx tsx examples/05-embedded-dags.ts     # EmbeddedDAGNode (sub-DAG body, cardinality 1) + stateMapping
 npx tsx examples/06-cancellation.ts  # AbortSignal + deadlineMs
 npx tsx examples/07-retry.ts         # RetryPolicy inside an operation
 npx tsx examples/08-checkpoint.ts    # abort → snapshot → restore → resume

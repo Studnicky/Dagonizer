@@ -16,7 +16,8 @@
 
 import type { Candidate } from '@noocodex/dagonizer-book-entities';
 
-import { CanonicalId } from '@noocodex/dagonizer-book-entities';
+import { CanonicalId, toIso6392 } from '@noocodex/dagonizer-book-entities';
+import { HttpTransport } from '@noocodex/dagonizer/tool';
 import type { Tool } from '@noocodex/dagonizer/tool';
 import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
 
@@ -102,14 +103,10 @@ export const GoogleBooksTool: Tool<GoogleBooksInput, readonly Candidate[]> = {
       params.set('langRestrict', input.langRestrict);
     }
 
-    const initOptions: RequestInit & { signal?: AbortSignal } = { 'method': 'GET' };
-    if (signal !== undefined) initOptions.signal = signal;
-    const response = await fetch(`${ENDPOINT}?${params.toString()}`, initOptions);
-    if (!response.ok) {
-      throw new Error(`google-books ${String(response.status)} ${response.statusText}`);
-    }
-
-    const payload = (await response.json()) as GoogleBooksResponse;
+    const payload = await HttpTransport.getJson<GoogleBooksResponse>(
+      `${ENDPOINT}?${params.toString()}`,
+      signal !== undefined ? { signal } : {},
+    );
     const volumes = payload.items ?? [];
     const candidates: Candidate[] = [];
     for (const vol of volumes) {
@@ -119,8 +116,8 @@ export const GoogleBooksTool: Tool<GoogleBooksInput, readonly Candidate[]> = {
         .map((id) => id.identifier)
         .filter((s): s is string => typeof s === 'string');
       const canonical = CanonicalId.pick({
-        'isbns': isbns,
         'title': info.title,
+        ...(isbns.length > 0 ? { 'isbns': isbns } : {}),
         ...(info.authors !== undefined ? { 'authors': info.authors } : {}),
       });
       const year = pickYear(info.publishedDate);
@@ -152,26 +149,6 @@ export const GoogleBooksTool: Tool<GoogleBooksInput, readonly Candidate[]> = {
     return candidates;
   },
 };
-
-// Map the Google Books ISO 639-1 language code into ISO 639-2 (alpha-3)
-// so candidates expose the same code shape every scout writes
-// (OpenLibrary already returns 639-2). Unknown codes pass through
-// unchanged so the consumer can still match exact-string when the
-// mapping is incomplete.
-const ISO_639_1_TO_2: Readonly<Record<string, string>> = Object.freeze({
-  'en': 'eng', 'es': 'spa', 'fr': 'fre', 'de': 'ger', 'it': 'ita',
-  'pt': 'por', 'nl': 'dut', 'sv': 'swe', 'no': 'nor', 'da': 'dan',
-  'fi': 'fin', 'pl': 'pol', 'cs': 'cze', 'ru': 'rus', 'uk': 'ukr',
-  'ja': 'jpn', 'zh': 'chi', 'ko': 'kor', 'ar': 'ara', 'he': 'heb',
-  'hi': 'hin', 'tr': 'tur', 'el': 'gre', 'th': 'tha', 'vi': 'vie',
-});
-
-function toIso6392(code: string): string {
-  const head = code.toLowerCase().split(/[-_]/u)[0];
-  if (head === undefined || head.length === 0) return code;
-  const mapped = ISO_639_1_TO_2[head];
-  return mapped !== undefined ? mapped : head;
-}
 
 function pickYear(date: string | undefined): number | undefined {
   if (date === undefined) return undefined;

@@ -15,7 +15,7 @@ import { strict as assert } from 'node:assert';
 
 import { matchShortcut } from '../../nodes/decideTools.ts';
 
-void test('matchShortcut: "books by Stephen King" → author-lookup full fan-out', () => {
+void test('matchShortcut: "books by Stephen King" → author-lookup full scout plan', () => {
   const m = matchShortcut('books by Stephen King', 'search');
   assert.notEqual(m, null);
   assert.equal(m?.pattern, 'author-lookup');

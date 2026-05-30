@@ -23,7 +23,7 @@ export const CheckpointDataSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/CheckpointData',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['version', 'dagName', 'cursor', 'state', 'executedNodes', 'skippedNodes'],
+  'required': ['version', 'dagName', 'cursor', 'state', 'executedNodes', 'skippedNodes', 'stores'],
   'properties': {
     'version': { 'type': 'string', 'const': '1' },
     'dagName': { 'type': 'string', 'minLength': 1 },
@@ -32,10 +32,9 @@ export const CheckpointDataSchema = {
     'executedNodes': { 'type': 'array', 'items': { 'type': 'string' } },
     'skippedNodes': { 'type': 'array', 'items': { 'type': 'string' } },
     /**
-     * Optional named-store snapshots. Absent in v0.10 checkpoints; present in
-     * v0.11+ when `Checkpoint.capture(dagName, result, { stores })` is used.
-     * Keyed by the same store names passed to `capture`. Absent keys restore
-     * as empty (forward-compatible).
+     * Named-store snapshots, keyed by the store names passed to `capture`
+     * (an empty object when no stores were captured). The same names must be
+     * passed to `restoreStores` on resume.
      */
     'stores': {
       'type': 'object',

@@ -80,4 +80,11 @@ export abstract class MonadicNode<
 
   /** Optional cleanup invoked when the dispatcher is destroyed. */
   destroy?(): Promise<void>;
+
+  /** Conventional routing-output token for the happy path. Override for non-standard ports. */
+  protected successPort(): TOutput { return 'success' as TOutput; }
+  /** Conventional routing-output token for the no-result path. */
+  protected emptyPort(): TOutput { return 'empty' as TOutput; }
+  /** Conventional routing-output token for the error path. */
+  protected errorPort(): TOutput { return 'error' as TOutput; }
 }

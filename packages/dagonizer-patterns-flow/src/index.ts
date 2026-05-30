@@ -8,7 +8,7 @@
 
 export { FlowNode } from './FlowNode.js';
 export { SelectNode, PickByScoreNode, SortByNode } from './SelectNode.js';
-export { ReduceNode, DedupeByKeyNode, GroupByFieldNode, FanInReducerNode } from './ReduceNode.js';
+export { ReduceNode, DedupeByKeyNode, GroupByFieldNode, MergeReducerNode } from './ReduceNode.js';
 export { PredicateGateNode } from './PredicateGateNode.js';
 export { ExtractFieldNode } from './ExtractFieldNode.js';
 export { RespondNode } from './RespondNode.js';

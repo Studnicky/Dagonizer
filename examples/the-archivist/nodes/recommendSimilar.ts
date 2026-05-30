@@ -6,14 +6,14 @@
  * than the current run, finds the most-recently-written shortlist that
  * is non-empty, picks the highest-scored title in it, and harvests
  * that title's `dag:subject` triples. The subjects become the new
- * `state.terms` so the existing `decide-tools → web-search-scout →
+ * `state.terms` so the existing `decide-tools → open-library-scout →
  * rank → ...` flow seeds from "what the visitor liked last time".
  *
  * Output routes:
  *   'seeded'   — prior shortlist + subjects found; terms set; carry
  *                on with the normal pipeline.
  *   'empty'    — no prior run is available; the DAG routes to the
- *                `decline-empty` terminal so the Archivist asks for a
+ *                `compose-empty` terminal so the Archivist asks for a
  *                description of a previous read instead.
  */
 

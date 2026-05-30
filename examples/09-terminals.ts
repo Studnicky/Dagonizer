@@ -20,8 +20,8 @@
  *      triggering `end-ok`, once triggering `end-fail` — and the lifecycle
  *      kind is printed for each run.
  *
- *   4. ScatterNode singleton routing to explicit terminals — `.scatter('run',
- *      { dag: 'child' }, { success: 'end-ok', error: 'end-fail' })`. A child
+ *   4. EmbeddedDAGNode routing to explicit terminals — `.embeddedDAG('run',
+ *      'child', { success: 'end-ok', error: 'end-fail' })`. A child
  *      DAG's success/error outputs route to the parent's named terminals.
  *      A child with errors routes to `end-fail` → state becomes `failed`.
  *
@@ -119,7 +119,7 @@ const dag3 = new DAGBuilder('demo-explicit-terminals', '1')
 // #endregion terminal-failed
 
 // ---------------------------------------------------------------------------
-// Pattern 4 — ScatterNode (sub-DAG body) routing to explicit terminals
+// Pattern 4 — EmbeddedDAGNode routing to explicit terminals
 // ---------------------------------------------------------------------------
 
 // #region embedded-terminals
@@ -142,12 +142,12 @@ const childDAG: DAG = {
 };
 
 const dag4 = new DAGBuilder('demo-embedded-dag-terminals', '1')
-  .scatter<S, 'success' | 'error'>('run', { dag: 'child-for-terminals' }, {
+  .embeddedDAG<S, S>('run', 'child-for-terminals', {
     'success': 'end-ok',
     'error':   'end-fail',
   }, {
-    // Seed the clone's shouldPass from parent state before the child DAG runs.
-    'projection': { 'shouldPass': 'shouldPass' },
+    // Seed the child's shouldPass from parent state before the child DAG runs.
+    'inputs': { 'shouldPass': 'shouldPass' },
   })
   .terminal('end-ok')
   .terminal('end-fail', 'failed')

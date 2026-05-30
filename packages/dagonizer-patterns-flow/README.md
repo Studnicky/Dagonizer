@@ -19,7 +19,7 @@ MonadicNode (root)
     ├── ReduceNode<TState, TItem, TResult>    (collapse a list)
     │   ├── DedupeByKeyNode<TItem>
     │   ├── GroupByFieldNode<TItem, TKey>
-    │   └── FanInReducerNode<TState, TItem>
+    │   └── MergeReducerNode<TState, TItem>
     ├── PredicateGateNode<TState>             ('pass' | 'fail' routing)
     ├── ExtractFieldNode<TState, TValue>      (copy state field)
     └── RespondNode<TState>                   (write draft, mark lifecycle)
@@ -80,9 +80,9 @@ class MergeCandidates extends DedupeByKeyNode<MyState, Candidate> {
 
 Group items by a field — output is a `ReadonlyMap<TKey, readonly TItem[]>`.
 
-### FanInReducerNode
+### MergeReducerNode
 
-Bare base for custom fan-in semantics. Override `reduce()` for your collapse logic.
+Bare base for custom merge semantics. Override `reduce()` for your collapse logic.
 
 ### PredicateGateNode
 

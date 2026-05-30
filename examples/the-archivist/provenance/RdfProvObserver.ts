@@ -114,7 +114,7 @@ export class RdfProvObserver {
    * Sub-activity for one tool call. The parent node activity must have
    * been started before this is invoked.
    *
-   *   const child = obs.recordToolCall('web-search-scout', 'web_search_books', { query: 'Piranesi' });
+   *   const child = obs.recordToolCall('open-library-scout', 'web_search_books', { query: 'Piranesi' });
    *   try { await tool.execute(...); }
    *   finally { obs.recordToolEnd(child, candidates.length); }
    */

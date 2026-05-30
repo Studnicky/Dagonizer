@@ -16,7 +16,7 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  *   flowStart        — before the entrypoint node runs
  *   flowEnd          — after the loop drains (terminal or interrupted)
  *   nodeStart        — before each node's execute() call (including
- *                      placements inside parallel / fan-out / embedded-DAG)
+ *                      placements inside parallel / scatter / embedded-DAG)
  *   nodeEnd          — after the node's result is recorded
  *   phaseEnter       — before a pre/post phase placement runs
  *   phaseExit        — after a pre/post phase placement runs
@@ -41,7 +41,7 @@ export interface Instrumentation<TState extends NodeStateInterface = NodeStateIn
   flowStart(dagName: string, state: TState): void;
   flowEnd(dagName: string, state: TState, result: ExecutionResultInterface<TState>): void;
   nodeStart(dagName: string, nodeName: string, state: TState, placementPath: readonly string[]): void;
-  nodeEnd(dagName: string, nodeName: string, output: string | undefined, state: TState, placementPath: readonly string[]): void;
+  nodeEnd(dagName: string, nodeName: string, output: string | null, state: TState, placementPath: readonly string[]): void;
   phaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
   phaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
   contractWarning(message: string): void;

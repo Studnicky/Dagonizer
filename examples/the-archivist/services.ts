@@ -8,8 +8,8 @@
  *
  *   webSearch  — the only data-acquisition tool. CORS-friendly,
  *                key-free OpenLibrary API. The LLM decides when to
- *                call it via `decideTools`; web-search-scout actually
- *                executes it.
+ *                call it via `decideTools`; the named scouts
+ *                (`open-library-scout` et al.) actually execute it.
  *   memory     — n3.js triple store; nodes write findings, gate nodes
  *                ASK the store.
  *   llm        — the brain. Decides tools, ranks candidates, composes
@@ -114,6 +114,7 @@ export interface LlmClient {
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
+    signal?: AbortSignal,
   ): Promise<string>;
   /** Author-survey compose — chronological body-of-work prose. */
   composeAuthor(
@@ -122,6 +123,7 @@ export interface LlmClient {
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
+    signal?: AbortSignal,
   ): Promise<string>;
   /** Reviews compose — weight ratings (notes.rating / notes.ratingsCount). */
   composeReviews(
@@ -130,6 +132,7 @@ export interface LlmClient {
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
+    signal?: AbortSignal,
   ): Promise<string>;
   /** Describe a single title — no recommendations. */
   describeBook(
@@ -138,6 +141,7 @@ export interface LlmClient {
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
+    signal?: AbortSignal,
   ): Promise<string>;
   /** Recommend similar — anchored on persistent memory. */
   composeSimilar(
@@ -146,6 +150,7 @@ export interface LlmClient {
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
+    signal?: AbortSignal,
   ): Promise<string>;
   /** Validate a draft against quality rules (length, citations, tone). */
   validate(draft: string, shortlist: readonly Candidate[]): Promise<boolean>;
@@ -161,6 +166,7 @@ export interface LlmClient {
     digest: MemoryDigest,
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
+    signal?: AbortSignal,
   ): Promise<string>;
   /**
    * Compose an in-character failure response when all scouts returned
@@ -168,7 +174,7 @@ export interface LlmClient {
    * by the scouts. The response acknowledges what was searched, explains
    * the gap, and offers one concrete next step — never silent-fails.
    */
-  composeEmptyResponse(query: string, failureCause: string, conversation?: readonly ConversationTurn[]): Promise<string>;
+  composeEmptyResponse(query: string, failureCause: string, conversation?: readonly ConversationTurn[], signal?: AbortSignal): Promise<string>;
   /**
    * Generate a short, curious visitor-style question about a popular
    * book, author, or series — used to pre-fill the input on a fresh
@@ -246,6 +252,12 @@ export interface ArchivistServices {
    * Explicit-null sentinel (not optional) keeps V8 hidden-class stability.
    */
   readonly embedder: Embedder | null;
+  /**
+   * Per-placement deadline overrides in milliseconds, keyed by node/placement
+   * name (`context.nodeName`). Empty map ⇒ every node uses its built-in
+   * default. The live demo wires this from the TimeoutPane sliders.
+   */
+  readonly nodeTimeouts: Readonly<Record<string, number>>;
   readonly logger: { info(message: string): void; warn(message: string): void };
 }
 // #endregion services-shape

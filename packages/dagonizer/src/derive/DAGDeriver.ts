@@ -11,23 +11,20 @@
  *
  *   - alternate exits — operations whose non-success outcomes terminate
  *     the flow; declared via `annotations.terminals`.
- *   - fan-out roots — operations dispatched once per item from a
- *     state-array source; declared via `annotations.fanouts`.
+ *   - scatter roots — operations dispatched once per item from a
+ *     state-array source; declared via `annotations.scatters`.
  *
  * Static class. Adding a new operation is one registration; the flow
  * topology updates automatically.
  *
  * @example
  * ```ts
+ * // Each node co-locates its own `contract` ({ hardRequired, produces }).
  * const dag = DAGDeriver.derive({
  *   name: 'pipeline',
  *   version: '1.0',
  *   entrypoint: 'classify',
- *   contracts: [
- *     { name: 'classify', hardRequired: ['input'],          produces: ['classification'], outputs: ['success'] },
- *     { name: 'enrich',   hardRequired: ['classification'], produces: ['enriched'],       outputs: ['success', 'cached', 'skipped'] },
- *     { name: 'finalize', hardRequired: ['enriched'],       produces: ['result'],         outputs: ['success', 'error'] },
- *   ],
+ *   nodes: [classifyNode, enrichNode, finalizeNode],
  * });
  * dispatcher.registerDAG(dag);
  * ```
@@ -37,6 +34,7 @@ import type { NodeInterface } from '../contracts/NodeInterface.js';
 import type { OperationContract } from '../contracts/OperationContract.js';
 import type { DAG } from '../entities/dag/DAG.js';
 import { DAG_CONTEXT } from '../entities/dag/DAG.js';
+import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
@@ -47,27 +45,23 @@ import { ContractRegistryValidator } from './ContractRegistryValidator.js';
 import type {
   DAGDeriverAnnotations,
   DAGDeriverEmitTerminal,
-  DAGDeriverFanOut,
+  DAGDeriverScatter,
   DAGDeriverEmbeddedDAG,
 } from './DAGDeriverAnnotations.js';
 
-type DAGNodeEntry = ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface;
+type DAGNodeEntry = EmbeddedDAGNode | ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface;
 
 export interface DAGDeriverOptions {
   readonly name: string;
   readonly version: string;
   readonly entrypoint: string;
   /**
-   * Standalone contracts (legacy path). Mutually exclusive with `nodes`.
+   * Node registry. Every node with a co-located `contract` field participates
+   * in topology derivation; nodes without one still register but contribute no
+   * derived edges. At least one node must declare a contract. Contracts are
+   * single-source-of-truth on the node — there is no standalone contracts input.
    */
-  readonly contracts?: readonly OperationContract[];
-  /**
-   * Node registry — every node with a `contract` field participates in
-   * topology derivation. Nodes without a contract are silently skipped
-   * (the dispatcher still registers them, they just don't participate
-   * in derived edges).
-   */
-  readonly nodes?: readonly NodeInterface[];
+  readonly nodes: readonly NodeInterface[];
   readonly annotations?: DAGDeriverAnnotations;
 }
 
@@ -99,70 +93,45 @@ export class DAGDeriver {
 
   /**
    * Build a `DAG` from a contract registry plus declared annotations.
-   * Operations named as a fan-out's `fanInOperation` are emitted as
-   * registered single-node placements alongside the fan-out so the
-   * `custom` fan-in strategy can resolve them.
+   * Operations named as a scatter's `customNode` are emitted as
+   * registered single-node placements alongside the scatter so the
+   * `custom` gather strategy can resolve them.
    *
    * The returned document is a canonical JSON-LD DAG with `@context`,
    * `@id`, and `@type` at the root; each placement carries `@id` and
    * `@type` as required by `DAGSchema`.
    *
-   * Accepts either `contracts` (standalone, legacy) or `nodes` (co-located
-   * contract on each node). The two options are mutually exclusive — supply
-   * exactly one.
+   * Topology is derived from the contracts co-located on `opts.nodes`. At
+   * least one node must declare a `contract`.
    */
   static derive(opts: DAGDeriverOptions): DAG {
     const annotations = opts.annotations ?? {};
 
-    const hasContracts = opts.contracts !== undefined;
-    const hasNodes = opts.nodes !== undefined;
-
-    if (hasContracts && hasNodes) {
-      throw new DAGError(
-        'DAGDeriver.derive: supply either `contracts` or `nodes`, not both',
-      );
-    }
-
-    let contracts: readonly OperationContract[];
-
-    if (hasNodes) {
-      const extracted = DAGDeriver.extractContracts(opts.nodes ?? []);
-      if (extracted.length === 0) {
-        throw new DAGError(
-          'DAGDeriver.derive: no node in the registry carries a `contract` field — at least one node must declare a contract for topology derivation',
-        );
-      }
-      // Preflight: same dangling-read / dead-write checks the validator runs
-      // at registration time — surface drift before the DAG is even built.
-      // Pass entrypoint so the entrypoint's hardRequired (external initial state)
-      // are not flagged as dangling reads.
-      ContractRegistryValidator.validate(extracted, (_msg) => { /* warnings surfaced at registerDAG time */ }, opts.entrypoint);
-      contracts = extracted;
-    } else if (hasContracts) {
-      contracts = opts.contracts ?? [];
-    } else {
-      throw new DAGError(
-        'DAGDeriver.derive: supply either `contracts` or `nodes`',
-      );
-    }
-
+    const contracts = DAGDeriver.extractContracts(opts.nodes);
     if (contracts.length === 0) {
-      throw new DAGError('DAGDeriver.derive requires at least one OperationContract');
+      throw new DAGError(
+        'DAGDeriver.derive: no node carries a `contract` field — at least one node must declare a contract for topology derivation',
+      );
     }
+    // Preflight: same dangling-read / dead-write checks the validator runs at
+    // registration time — surface drift before the DAG is even built. Pass
+    // entrypoint so the entrypoint's hardRequired (external initial state) are
+    // not flagged as dangling reads.
+    ContractRegistryValidator.validate(contracts, (_msg) => { /* warnings surfaced at registerDAG time */ }, opts.entrypoint);
 
-    // Operations referenced only as a fan-in step (the `customNode`
-    // for a 'custom' strategy fan-out) are emitted alongside the
-    // fan-out placement but excluded from topology derivation —
-    // they're called by the dispatcher's fan-out reducer, not by a
+    // Operations referenced only as a gather step (the `customNode`
+    // for a 'custom' strategy scatter) are emitted alongside the
+    // scatter placement but excluded from topology derivation —
+    // they're called by the dispatcher's gather reducer, not by a
     // graph edge.
-    const fanInOps = new Set<string>();
-    for (const fan of Object.values(annotations.fanouts ?? {})) {
-      if (fan.strategy === 'custom') fanInOps.add(fan.fanInOperation);
+    const gatherOps = new Set<string>();
+    for (const scatter of Object.values(annotations.scatters ?? {})) {
+      if (scatter.strategy === 'custom') gatherOps.add(scatter.customNode);
     }
 
     DAGDeriver.validateAnnotations(annotations, contracts);
 
-    const eligibleContracts = contracts.filter((contract) => !fanInOps.has(contract.name));
+    const eligibleContracts = contracts.filter((contract) => !gatherOps.has(contract.name));
     const contractsByName = new Map<string, OperationContract>();
     for (const contract of eligibleContracts) contractsByName.set(contract.name, contract);
 
@@ -194,31 +163,31 @@ export class DAGDeriver {
   ): void {
     const contractNames = new Set(contracts.map((c) => c.name));
 
-    // fanouts: validate strategy-specific fields and that referenced ops exist
-    for (const [opName, fan] of Object.entries(annotations.fanouts ?? {})) {
+    // scatters: validate strategy-specific fields and that referenced ops exist
+    for (const [opName, scatter] of Object.entries(annotations.scatters ?? {})) {
       if (!contractNames.has(opName)) {
         throw new DAGError(
-          `DAGDeriver: annotations.fanouts['${opName}'] references an operation not in the contract registry`,
+          `DAGDeriver: annotations.scatters['${opName}'] references an operation not in the contract registry`,
         );
       }
-      if (fan.strategy === 'partition') {
-        for (const outcome of Object.keys(fan.partitions)) {
-          if (!fan.outcomes.includes(outcome)) {
+      if (scatter.strategy === 'partition') {
+        for (const outcome of Object.keys(scatter.partitions)) {
+          if (!scatter.outcomes.includes(outcome)) {
             throw new DAGError(
-              `DAGDeriver: fanouts['${opName}'].partitions['${outcome}'] is not listed in outcomes [${fan.outcomes.join(', ')}]`,
+              `DAGDeriver: scatters['${opName}'].partitions['${outcome}'] is not listed in outcomes [${scatter.outcomes.join(', ')}]`,
             );
           }
         }
       }
-      if (fan.strategy === 'custom' && !contractNames.has(fan.fanInOperation)) {
+      if (scatter.strategy === 'custom' && !contractNames.has(scatter.customNode)) {
         throw new DAGError(
-          `DAGDeriver: fanouts['${opName}'].fanInOperation '${fan.fanInOperation}' is not in the contract registry`,
+          `DAGDeriver: scatters['${opName}'].customNode '${scatter.customNode}' is not in the contract registry`,
         );
       }
     }
 
     // parallels: members must be contracts, no overlapping membership,
-    // can't collide with fanouts or embeddedDAGs.
+    // can't collide with scatters or embeddedDAGs.
     const parallelMembership = new Map<string, string>();   // memberName → parallel groupName
     for (const [groupName, group] of Object.entries(annotations.parallels ?? {})) {
       if (group.members.length === 0) {
@@ -239,9 +208,9 @@ export class DAGDeriver {
           );
         }
         parallelMembership.set(member, groupName);
-        if (annotations.fanouts?.[member] !== undefined) {
+        if (annotations.scatters?.[member] !== undefined) {
           throw new DAGError(
-            `DAGDeriver: operation '${member}' appears in both annotations.parallels['${groupName}'] and annotations.fanouts — placement kind must be unambiguous`,
+            `DAGDeriver: operation '${member}' appears in both annotations.parallels['${groupName}'] and annotations.scatters — placement kind must be unambiguous`,
           );
         }
         if (annotations.embeddedDAGs?.[member] !== undefined) {
@@ -405,7 +374,7 @@ export class DAGDeriver {
     // rendered and its terminals are resolved.
     const emitCollector = new Map<string, DAGDeriverEmitTerminal>();
 
-    // All operation names that will be placed as SingleNode/FanOutNode/etc.
+    // All operation names that will be placed as SingleNode/ScatterNode/etc.
     // Used to detect name collisions with emit terminal names.
     const operationNames = new Set<string>(contracts.keys());
 
@@ -466,22 +435,22 @@ export class DAGDeriver {
       }
 
       for (const name of bucket) {
-        const fan = annotations.fanouts?.[name];
+        const scatter = annotations.scatters?.[name];
         const embeddedDAG = annotations.embeddedDAGs?.[name];
         const succs = edges.get(name) ?? new Set<string>();
 
         // Mutual exclusion across the placement-shape annotations.
         // (parallels collisions are checked in validateAnnotations.)
-        if (fan !== undefined && embeddedDAG !== undefined) {
+        if (scatter !== undefined && embeddedDAG !== undefined) {
           throw new DAGError(
-            `DAGDeriver: operation '${name}' appears in both annotations.fanouts and annotations.embeddedDAGs — placement kind must be unambiguous`,
+            `DAGDeriver: operation '${name}' appears in both annotations.scatters and annotations.embeddedDAGs — placement kind must be unambiguous`,
           );
         }
 
-        if (fan !== undefined) {
-          nodes.push(DAGDeriver.renderScatterNodeFromFanOut(name, fan, succs, annotations, nodeId, emitCollector));
+        if (scatter !== undefined) {
+          nodes.push(DAGDeriver.renderScatterNode(name, scatter, succs, annotations, nodeId, emitCollector));
         } else if (embeddedDAG !== undefined) {
-          nodes.push(DAGDeriver.renderScatterNodeFromEmbeddedDAG(name, embeddedDAG, succs, annotations, nodeId, emitCollector));
+          nodes.push(DAGDeriver.renderEmbeddedDAGNode(name, embeddedDAG, succs, annotations, nodeId, emitCollector));
         } else {
           const contract = contracts.get(name);
           if (contract === undefined) {
@@ -527,18 +496,17 @@ export class DAGDeriver {
   }
 
   /**
-   * Render a `ScatterNode` placement from a `DAGDeriverFanOut` annotation.
+   * Render a `ScatterNode` placement from a `DAGDeriverScatter` annotation.
    *
-   * A fan-out scatters over a state-array `source`, running its per-item
-   * `node` body once per item. The fan-in `strategy` maps onto the
-   * scatter's `gather` config:
+   * A scatter runs its per-item `node` body once per item in `source`. The
+   * gather `strategy` maps onto the scatter's `gather` config:
    *   ⦿ `custom`    → `{ strategy: 'custom', customNode }`
    *   ⦿ `partition` → `{ strategy: 'partition', partitions }`
    *   ⦿ `append`    → `{ strategy: 'append', target }`
    */
-  private static renderScatterNodeFromFanOut(
+  private static renderScatterNode(
     name: string,
-    fan: DAGDeriverFanOut,
+    scatter: DAGDeriverScatter,
     successors: ReadonlySet<string>,
     annotations: DAGDeriverAnnotations,
     nodeId: (n: string) => string,
@@ -547,9 +515,9 @@ export class DAGDeriver {
     const next0 = [...successors][0] ?? null;
     const outcomeOverrides = new Map<string, string | null>();
     for (const terminal of annotations.terminals?.[name] ?? []) {
-      if (!fan.outcomes.includes(terminal.outcome)) {
+      if (!scatter.outcomes.includes(terminal.outcome)) {
         throw new DAGError(
-          `DAGDeriver: terminal for fan-out '${name}' references outcome '${terminal.outcome}' which is not in outcomes [${fan.outcomes.join(', ')}]`,
+          `DAGDeriver: terminal for scatter '${name}' references outcome '${terminal.outcome}' which is not in outcomes [${scatter.outcomes.join(', ')}]`,
         );
       }
       if ('emit' in terminal) {
@@ -560,60 +528,60 @@ export class DAGDeriver {
       }
     }
     const outputs: Record<string, string | null> = {};
-    for (const outcome of fan.outcomes) {
+    for (const outcome of scatter.outcomes) {
       outputs[outcome] = outcomeOverrides.has(outcome)
         ? outcomeOverrides.get(outcome) ?? null
         : next0;
     }
 
     let gather: ScatterNode['gather'];
-    if (fan.strategy === 'custom') {
-      gather = { 'strategy': 'custom', 'customNode': fan.fanInOperation };
-    } else if (fan.strategy === 'partition') {
-      gather = { 'strategy': 'partition', 'partitions': { ...fan.partitions } };
+    if (scatter.strategy === 'custom') {
+      gather = { 'strategy': 'custom', 'customNode': scatter.customNode };
+    } else if (scatter.strategy === 'partition') {
+      gather = { 'strategy': 'partition', 'partitions': { ...scatter.partitions } };
     } else {
-      gather = { 'strategy': 'append', 'target': fan.target };
+      gather = { 'strategy': 'append', 'target': scatter.target };
     }
 
     const scatterNode: ScatterNode = {
       '@id':     nodeId(name),
       '@type':   'ScatterNode',
       name,
-      'body':    { 'node': fan.node },
-      'source':  fan.source,
-      'itemKey': fan.itemKey,
+      'body':    { 'node': scatter.node },
+      'source':  scatter.source,
+      'itemKey': scatter.itemKey,
       'gather':  gather,
       'outputs': outputs,
     };
-    if (fan.concurrency !== undefined) scatterNode.concurrency = fan.concurrency;
+    if (scatter.concurrency !== undefined) scatterNode.concurrency = scatter.concurrency;
     return scatterNode;
   }
 
   /**
-   * Render a `ScatterNode` placement from a `DAGDeriverEmbeddedDAG`
+   * Render an `EmbeddedDAGNode` placement from a `DAGDeriverEmbeddedDAG`
    * annotation.
    *
-   * An embedded-DAG runs a sub-DAG `body` in one isolated clone (no
-   * `source`). The `stateMapping` maps onto the scatter's clone seeding
-   * and merge-back config:
-   *   ⦿ `stateMapping.input`  (child key → parent path) → `projection`,
-   *     seeding each clone field from the parent before the body runs.
-   *   ⦿ `stateMapping.output` (parent path → child key) → a `map` gather,
-   *     reading the clone field and writing it back to the parent path.
+   * An embedded-DAG runs a named sub-DAG at cardinality 1. The
+   * `stateMapping` is forwarded directly onto the `EmbeddedDAGNode` wire
+   * shape:
+   *   ⦿ `stateMapping.input`  (child key → parent path) seeds the child
+   *     state from the parent before the sub-DAG runs.
+   *   ⦿ `stateMapping.output` (parent path → child key) copies child
+   *     state back to the parent after the sub-DAG completes.
    */
-  private static renderScatterNodeFromEmbeddedDAG(
+  private static renderEmbeddedDAGNode(
     name: string,
     embeddedDAG: DAGDeriverEmbeddedDAG,
     successors: ReadonlySet<string>,
     annotations: DAGDeriverAnnotations,
     nodeId: (n: string) => string,
     emitCollector: Map<string, DAGDeriverEmitTerminal>,
-  ): ScatterNode {
-    const scatterNode: ScatterNode = {
+  ): EmbeddedDAGNode {
+    const embeddedNode: EmbeddedDAGNode = {
       '@id':   nodeId(name),
-      '@type': 'ScatterNode',
+      '@type': 'EmbeddedDAGNode',
       name,
-      'body':  { 'dag': embeddedDAG.dag },
+      'dag':   embeddedDAG.dag,
       'outputs': DAGDeriver.resolveOutputs(
         name,
         embeddedDAG.outputs,
@@ -625,21 +593,17 @@ export class DAGDeriver {
     };
 
     const mapping = embeddedDAG.stateMapping;
-    if (mapping?.input !== undefined) {
-      // input: child-state key → parent dotted path. projection seeds each
-      // clone field from the parent, so the key/value pairing carries over.
-      scatterNode.projection = { ...(mapping.input as Record<string, string>) };
-    }
-    if (mapping?.output !== undefined) {
-      // output: parent dotted path → child-state key. A 'map' gather reads
-      // the clone field (child key) and writes the parent path, so invert.
-      const gatherMapping: Record<string, string> = {};
-      for (const [parentPath, childKey] of Object.entries(mapping.output as Record<string, string>)) {
-        gatherMapping[childKey] = parentPath;
+    if (mapping?.input !== undefined || mapping?.output !== undefined) {
+      const stateMapping: EmbeddedDAGNode['stateMapping'] = {};
+      if (mapping?.input !== undefined) {
+        stateMapping.input = { ...(mapping.input as Record<string, string>) };
       }
-      scatterNode.gather = { 'strategy': 'map', 'mapping': gatherMapping };
+      if (mapping?.output !== undefined) {
+        stateMapping.output = { ...(mapping.output as Record<string, string>) };
+      }
+      embeddedNode.stateMapping = stateMapping;
     }
 
-    return scatterNode;
+    return embeddedNode;
   }
 }

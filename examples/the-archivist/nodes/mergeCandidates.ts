@@ -73,7 +73,7 @@ export const mergeCandidates: NodeInterface<ArchivistState, 'ranked' | 'empty', 
       );
     }
 
-    // #region fanin-aggregation
+    // #region merge-aggregation
     // Cross-source dedupe: collapses hits sharing the same canonical id,
     // accumulating notes._sources[] and keeping the richest fields.
     const deduped = CanonicalId.dedupe(pool);
@@ -96,6 +96,6 @@ export const mergeCandidates: NodeInterface<ArchivistState, 'ranked' | 'empty', 
       state.failureCause = 'No candidates found after searching all available sources. ';
     }
     return { "output": ranked.length > 0 ? 'ranked' : 'empty' };
-    // #endregion fanin-aggregation
+    // #endregion merge-aggregation
   },
 };

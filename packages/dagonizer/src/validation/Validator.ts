@@ -19,6 +19,8 @@ import { CheckpointDataSchema } from '../entities/checkpoint/CheckpointData.js';
 import type { CheckpointData } from '../entities/checkpoint/CheckpointData.js';
 import { DAGSchema } from '../entities/dag/DAG.js';
 import type { DAG } from '../entities/dag/DAG.js';
+import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
+import { EmbeddedDAGNodeSchema } from '../entities/dag/EmbeddedDAGNode.js';
 import { ParallelNodeSchema } from '../entities/dag/ParallelNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import { PhaseNodeSchema } from '../entities/dag/PhaseNode.js';
@@ -87,7 +89,7 @@ export class Validator {
 
   /**
    * Compile a schema into a typed `EntityValidator<T>`. Schemas
-   * embedded in others (e.g. `FanInConfigSchema` inlined in
+   * embedded in others (e.g. `GatherConfigSchema` inlined in
    * `DAGSchema`) already register their `$id` when the parent
    * compiles; this method looks the already-registered validator up
    * before compiling fresh.
@@ -122,10 +124,11 @@ export class Validator {
   }
 
   // DAG — top-level definition
-  static readonly dag:         EntityValidator<DAG>          = Validator.compile('DAG',          DAGSchema);
-  static readonly singleNode:  EntityValidator<SingleNode>   = Validator.compile('SingleNode',   SingleNodeSchema);
-  static readonly parallelNode:EntityValidator<ParallelNode> = Validator.compile('ParallelNode', ParallelNodeSchema);
-  static readonly scatterNode:  EntityValidator<ScatterNode>  = Validator.compile('ScatterNode',  ScatterNodeSchema);
+  static readonly dag:             EntityValidator<DAG>             = Validator.compile('DAG',             DAGSchema);
+  static readonly singleNode:      EntityValidator<SingleNode>      = Validator.compile('SingleNode',      SingleNodeSchema);
+  static readonly parallelNode:    EntityValidator<ParallelNode>    = Validator.compile('ParallelNode',    ParallelNodeSchema);
+  static readonly scatterNode:     EntityValidator<ScatterNode>     = Validator.compile('ScatterNode',     ScatterNodeSchema);
+  static readonly embeddedDAGNode: EntityValidator<EmbeddedDAGNode> = Validator.compile('EmbeddedDAGNode', EmbeddedDAGNodeSchema);
   static readonly terminalNode: EntityValidator<TerminalNode>  = Validator.compile('TerminalNode', TerminalNodeSchema);
   static readonly phaseNode:    EntityValidator<PhaseNode>     = Validator.compile('PhaseNode',    PhaseNodeSchema);
 

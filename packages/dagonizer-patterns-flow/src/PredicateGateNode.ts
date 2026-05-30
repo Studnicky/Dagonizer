@@ -18,6 +18,6 @@ export abstract class PredicateGateNode<
     state: TState,
     _context: NodeContextInterface<undefined>,
   ): Promise<NodeOutputInterface<'pass' | 'fail'>> {
-    return Promise.resolve({ 'output': this.predicate(state) ? 'pass' : 'fail' });
+    return { 'output': this.predicate(state) ? 'pass' : 'fail' };
   }
 }
