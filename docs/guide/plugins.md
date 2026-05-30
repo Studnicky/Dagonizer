@@ -151,7 +151,7 @@ MonadicNode<TState, TOutput, TServices>            (root: main package)
 │   └── MemoryDigestNode
 └── FlowNode<TState>                               [patterns-flow]
     ├── SelectNode → PickByScoreNode, SortByNode
-    ├── ReduceNode → DedupeByKeyNode, GroupByFieldNode, FanInReducerNode
+    ├── ReduceNode → DedupeByKeyNode, GroupByFieldNode, MergeReducerNode
     ├── PredicateGateNode
     ├── ExtractFieldNode
     └── RespondNode

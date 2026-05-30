@@ -1,6 +1,6 @@
 ---
 title: 'Visualization'
-description: 'MermaidRenderer.render emits flowchart source; JsonLdRenderer.render emits JSON-LD; CytoscapeRenderer.render emits Cytoscape elements (the doc site uses this); DAGONIZER_VOCAB lists the JSON-LD class IRIs.'
+description: 'MermaidRenderer.render emits flowchart source; JsonLdRenderer.render emits JSON-LD; CytoscapeRenderer.render emits Cytoscape elements (the doc site uses this); DAGONIZER_VOCAB is the vocabulary base URI string.'
 seeAlso:
   - text: 'DAGBuilder'
     link: './builder'
@@ -46,7 +46,7 @@ Three renderers ship in `@noocodex/dagonizer/viz`. Each consumes a `DAG` and emi
 | `MermaidRenderer.render(dag)` | `@noocodex/dagonizer/viz` | Returns Mermaid `flowchart` source |
 | `JsonLdRenderer.render(dag)` | `@noocodex/dagonizer/viz` | Returns a `DagJsonLdDocument` |
 | `CytoscapeRenderer.render(dag, options?)` | `@noocodex/dagonizer/viz` | Returns `readonly CytoscapeElement[]` |
-| `DAGONIZER_VOCAB` | `@noocodex/dagonizer/viz` | JSON-LD class IRIs (`DAG`, `SingleNode`, etc.) |
+| `DAGONIZER_VOCAB` | `@noocodex/dagonizer/viz` | Vocabulary base URI string; classes appear as `dag:ClassName` in the `@context` |
 
 ## MermaidRenderer
 
@@ -62,7 +62,8 @@ console.log(source);
 | Placement | Mermaid shape | Example output |
 |-----------|---------------|----------------|
 | `single`  | rectangle     | `greet[greet]` |
-| `scatter` | hexagon       | `scout{{scout}}` |
+| `scatter` | trapezoid     | `scout[/scout/]` |
+| `embedded-dag` | subroutine | `invoke[[invoke]]` |
 | `parallel`| subgraph      | `subgraph group["group (parallel)"]` ... `end` |
 | `terminal` (completed) | double-circle | `done(((done\n(completed))))` |
 | `terminal` (failed) | asymmetric flag | `abort>abort\n(failed)]` |
@@ -92,7 +93,7 @@ import type { ElementDefinition } from 'cytoscape';
 const elements = CytoscapeRenderer.render(dag) as ElementDefinition[];
 ```
 
-Pass an `embeddedDAGs` map to inline-expand `ScatterNode` placements whose `body` is a sub-DAG as compound nodes:
+Pass an `embeddedDAGs` map to inline-expand `EmbeddedDAGNode` placements and `ScatterNode` placements whose `body` is a sub-DAG as compound nodes:
 
 ```ts
 const elements = CytoscapeRenderer.render(parentDag, {
@@ -108,6 +109,7 @@ Every node element carries a `data.type` field for stylesheet selectors.
 |-------------|--------|-------------------|
 | `'single'` | `SingleNode` placement | `data.node` |
 | `'scatter'` | `ScatterNode` placement | `data.body`, `data.source`, `data.gather`, etc. |
+| `'embedded-dag'` | `EmbeddedDAGNode` placement | `data.dag`, `data.stateMapping` |
 | `'parallel'` | `ParallelNode` placement | `data.combine`, `data.children` |
 | `'terminal'` | `TerminalNode` placement | `data.outcome: 'completed' \| 'failed'` |
 | `'terminal'` | synthetic `END` node | `data.synthetic: true` |
@@ -130,15 +132,16 @@ import { JsonLdRenderer } from '@noocodex/dagonizer/viz';
 const document = JsonLdRenderer.render(dag);
 ```
 
-The output is a `DagJsonLdDocument`: `@context`, `@id`, `@type`, `@graph` (one entry per placement). Useful when feeding to a triple store, an RDF reasoner, or a graph database that consumes JSON-LD natively. The IRIs follow `DAGONIZER_VOCAB`:
+The output is a `DagJsonLdDocument`: `@context`, `@id`, `@type`, `@graph` (one entry per placement). Useful when feeding to a triple store, an RDF reasoner, or a graph database that consumes JSON-LD natively. The vocabulary base URI is available as `DAGONIZER_VOCAB`:
 
 ```ts
 import { DAGONIZER_VOCAB } from '@noocodex/dagonizer/viz';
 
-DAGONIZER_VOCAB.DAG;          // 'urn:noocodex:vocab:DAG'
-DAGONIZER_VOCAB.SingleNode;   // 'urn:noocodex:vocab:SingleNode'
-// ...one IRI per class
+// 'https://noocodex.dev/ontology/dagonizer/'
+console.log(DAGONIZER_VOCAB);
 ```
+
+Classes appear in the output as prefixed IRIs under the `dag:` prefix (e.g. `dag:ScatterNode`, `dag:EmbeddedDAGNode`), where `dag` resolves to `DAGONIZER_VOCAB` via the document's `@context`.
 
 ## Combining with read accessors
 

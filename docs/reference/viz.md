@@ -48,10 +48,13 @@ Render a `DAG` as Mermaid `flowchart` source. The output is a complete Mermaid b
 | Placement | Mermaid shape | Example output |
 |-----------|---------------|----------------|
 | `single`  | rectangle     | `greet[greet]` |
-| `scatter` | hexagon       | `scout{{scout}}` |
+| `scatter` | trapezoid     | `scout[/scout/]` |
+| `embedded-dag` | subroutine | `invoke[[invoke]]` |
 | `parallel`| subgraph      | `subgraph group["group (parallel)"]` … `end` |
+| `terminal` (completed) | double-circle | `done(((done\n(completed))))` |
+| `terminal` (failed) | asymmetric flag | `fail>fail\n(failed)]` |
 
-Every output route renders as a labeled directed edge: `from -->|outcome| to`. Routes targeting `null` route to a synthetic `END` terminator (one per DAG, rendered as `END([end])`).
+Every output route renders as a labeled directed edge: `from -->|outcome| to`. Routes targeting `null` route to a synthetic `END` terminator (one per DAG, rendered as `END([end])`). Explicit `TerminalNode` placements render as their own distinct shapes and emit no edges.
 
 ### Example
 
@@ -99,6 +102,8 @@ class JsonLdRenderer {
 
 Renders a `DAG` as a JSON-LD document with a `@context` and a `@graph` containing the DAG root plus every placement, all typed against the Dagonizer vocabulary (`DAGONIZER_VOCAB`). The output is a plain object; serialize with `JSON.stringify`.
 
+Each placement's `@type` is prefixed with `dag:`: `dag:SingleNode`, `dag:ParallelNode`, `dag:ScatterNode`, `dag:EmbeddedDAGNode`, `dag:TerminalNode`.
+
 ```ts
 import { JsonLdRenderer } from '@noocodex/dagonizer/viz';
 
@@ -143,7 +148,7 @@ class CytoscapeRenderer {
 
 Renders a `DAG` as a Cytoscape `elements` array. Pass the result directly to `cytoscape({ elements })`.
 
-- Every placement becomes a node element with a `type` field (`'single'` | `'parallel'` | `'scatter'` | `'terminal'`) for per-type stylesheet selectors.
+- Every placement becomes a node element with a `type` field (`'single'` | `'parallel'` | `'scatter'` | `'embedded-dag'` | `'terminal'`) for per-type stylesheet selectors.
 - Every output route becomes a labeled edge element.
 - Parallel children render with `parent: <parallelPlacementName>` for compound-graph rendering.
 - Embedded-DAG placements are expanded inline when their target DAG is supplied via `options.embeddedDAGs`, showing the full inner flow as a compound cluster.
@@ -162,8 +167,10 @@ const elements = CytoscapeRenderer.render(dag, {
 
 ```ts
 interface RenderOptions {
-  readonly embeddedDAGs?: ReadonlyMap<string, DAG>;
-  readonly maxDepth?: number;   // default 6
+  readonly embeddedDAGs?:   ReadonlyMap<string, DAG>;
+  readonly maxDepth?:       number;          // default 6
+  readonly computeLayout?:  boolean;         // default true; set false to skip position computation
+  readonly layoutOptions?:  CompositeLayoutOptions;
 }
 ```
 
@@ -177,10 +184,11 @@ interface CytoscapeNodeElement {
   readonly data: {
     readonly id: string;
     readonly label: string;
-    readonly type: 'single' | 'parallel' | 'scatter' | 'terminal';
+    readonly type: 'single' | 'parallel' | 'scatter' | 'embedded-dag' | 'terminal';
     readonly [key: string]: unknown;
   };
   readonly classes?: string;
+  readonly position?: { readonly x: number; readonly y: number };
 }
 
 interface CytoscapeEdgeElement {

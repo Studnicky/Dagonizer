@@ -25,7 +25,7 @@ import type { ExecutionResultInterface } from '@noocodex/dagonizer';
 import { CytoscapeRenderer } from '../../../../packages/dagonizer/src/viz/CytoscapeRenderer.ts';
 
 import { ArchivistState } from '../../../../examples/the-archivist/ArchivistState.ts';
-import { archivistDAG } from '../../../../examples/the-archivist/dag.ts';
+import { archivistBundle, archivistDAG } from '../../../../examples/the-archivist/dag.ts';
 import { ConsoleLogger } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
 import { MemoryStore } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
 import { ONTOLOGY_NTRIPLES } from '../../../../examples/the-archivist/ontology/ArchivistOntology.ts';
@@ -33,24 +33,6 @@ import { SeedLibrary } from '../../../../examples/the-archivist/data/SeedLibrary
 import { RdfProvObserver } from '../../../../examples/the-archivist/provenance/RdfProvObserver.ts';
 import { StateProjection } from '../../../../examples/the-archivist/state/StateProjection.ts';
 import { NODE_KINDS } from '../../../../examples/the-archivist/nodes/ArchivistNode.ts';
-import { classifyIntent } from '../../../../examples/the-archivist/nodes/classifyIntent.ts';
-import { decideTools } from '../../../../examples/the-archivist/nodes/decideTools.ts';
-import { extractQuery } from '../../../../examples/the-archivist/nodes/extractQuery.ts';
-import { groupByYear } from '../../../../examples/the-archivist/nodes/groupByYear.ts';
-import { hasCitationsGate } from '../../../../examples/the-archivist/nodes/hasCitationsGate.ts';
-import { mergeCandidates } from '../../../../examples/the-archivist/nodes/mergeCandidates.ts';
-import { rankByRating } from '../../../../examples/the-archivist/nodes/rankByRating.ts';
-import { pickBestMatch } from '../../../../examples/the-archivist/nodes/pickBestMatch.ts';
-import { recallContext } from '../../../../examples/the-archivist/nodes/recallContext.ts';
-import { recallMemories } from '../../../../examples/the-archivist/nodes/recallMemories.ts';
-import { composeMemoryResponse } from '../../../../examples/the-archivist/nodes/composeMemoryResponse.ts';
-import { recallPastVisits } from '../../../../examples/the-archivist/nodes/recallPastVisits.ts';
-import { recommendSimilar } from '../../../../examples/the-archivist/nodes/recommendSimilar.ts';
-import { recordFindings } from '../../../../examples/the-archivist/nodes/recordFindings.ts';
-import { composeResponse, validateResponse } from '../../../../examples/the-archivist/nodes/composeResponse.ts';
-import { rankCandidates } from '../../../../examples/the-archivist/nodes/rankCandidates.ts';
-import { composeEmptyResponse, declineEmpty, declineOffTopic, respondToVisitor } from '../../../../examples/the-archivist/nodes/respondToVisitor.ts';
-import { webSearchScout, openLibraryScout, googleBooksScout, subjectScout, wikipediaScout } from '../../../../examples/the-archivist/nodes/scouts.ts';
 import { detectBackends, hasNoRunnableModel, instantiateProvider, loadApiKeys, loadOllamaModel, pickBestBackend, saveApiKeys, saveOllamaModel } from '../../../../examples/the-archivist/providers/index.ts';
 import { MobileDetection } from '../../../../examples/the-archivist/providers/MobileDetection.ts';
 import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
@@ -59,14 +41,8 @@ import { GoogleBooksTool } from '@noocodex/dagonizer-tool-googlebooks';
 import { OpenLibrarySearchTool } from '@noocodex/dagonizer-tool-openlibrary';
 import { SubjectSearchTool } from '@noocodex/dagonizer-tool-openlibrary';
 import { WikipediaSummaryTool } from '@noocodex/dagonizer-tool-wikipedia';
-import {
-  BookSearchFanoutDAG,
-  registerBookSearchFanoutNodes,
-} from '../../../../examples/the-archivist/embedded-dags/BookSearchFanoutDAG.ts';
-import {
-  ComposeRetryLoopDAG,
-  registerComposeRetryLoopNodes,
-} from '../../../../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.ts';
+import { BookSearchScatterDAG, bookSearchScatterBundle } from '../../../../examples/the-archivist/embedded-dags/BookSearchScatterDAG.ts';
+import { ComposeRetryLoopDAG, composeRetryLoopBundle } from '../../../../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.ts';
 
 import { ObservedDagonizer } from './ObservedDagonizer.ts';
 import BackendPicker from './BackendPicker.vue';
@@ -258,26 +234,9 @@ async function resumeFromCheckpoint(): Promise<void> {
     'observer': buildObserver(restored.cursor, prov),
   });
 
-  // Register embedded-DAGs (molecular pattern)
-  registerBookSearchFanoutNodes(dispatcher);
-  dispatcher.registerDAG(BookSearchFanoutDAG);
-  registerComposeRetryLoopNodes(dispatcher);
-  dispatcher.registerDAG(ComposeRetryLoopDAG);
-
-  for (const node of [
-    recallContext,
-    classifyIntent, extractQuery, decideTools,
-    webSearchScout, openLibraryScout, googleBooksScout, subjectScout, wikipediaScout,
-    rankByRating, pickBestMatch,
-    mergeCandidates, recordFindings, hasCitationsGate,
-    recallPastVisits, groupByYear, recommendSimilar,
-    // recall-memories branch
-    recallMemories, composeMemoryResponse, respondToVisitor,
-    declineOffTopic, declineEmpty,
-    // empty-result LLM response branch
-    composeEmptyResponse,
-  ]) dispatcher.registerNode(node);
-  dispatcher.registerDAG(archivistDAG);
+  dispatcher.registerBundle(bookSearchScatterBundle);
+  dispatcher.registerBundle(composeRetryLoopBundle);
+  dispatcher.registerBundle(archivistBundle);
 
   activeAbortController = new AbortController();
   const deadlineMs = overallDeadlineMs();
@@ -412,7 +371,7 @@ const dagElements = computed<ElementDefinition[]>(() => {
   // inline in the Cytoscape diagram — full compound-graph children visible,
   // no opaque boxes. This is the renderer-side of molecular composition.
   const embeddedDagRegistry = new Map([
-    ['book-search-fanout', BookSearchFanoutDAG],
+    ['book-search-scatter', BookSearchScatterDAG],
     ['compose-retry-loop', ComposeRetryLoopDAG],
   ]);
   const raw = CytoscapeRenderer.render(archivistDAG, { 'embeddedDAGs': embeddedDagRegistry }) as ElementDefinition[];
@@ -436,6 +395,7 @@ function buildServices(): ArchivistServices {
     // Docs runtime: no embedder wired (browser-only). Cosine recall and
     // hybrid ranking fall back to Jaccard / heuristics when embedder is null.
     'embedder':          null,
+    'nodeTimeouts':      {},
     'logger':            logger,
   };
 }
@@ -638,50 +598,35 @@ async function ask(): Promise<void> {
     'dispatcherAgentId':  `dispatcher:${activeBackend.value}`,
   });
 
-  const services = buildServices();
+  const { composeMs, webSearchMs, rankMs } = timeoutSettings.value;
+  const services: ArchivistServices = {
+    'webSearch':         OpenLibrarySearchTool,
+    'googleBooks':       GoogleBooksTool,
+    'subjectSearch':     SubjectSearchTool,
+    'wikipediaSummary':  WikipediaSummaryTool,
+    'memory':            memoryStore,
+    'llm':               makeLlm(),
+    'embedder':          null,
+    'nodeTimeouts': {
+      'compose-response':        composeMs,
+      'compose-empty':           composeMs,
+      'compose-memory-response': composeMs,
+      'rank-candidates':         rankMs,
+      'open-library-scout':      webSearchMs,
+      'google-books-scout':      webSearchMs,
+      'subject-scout':           webSearchMs,
+      'wikipedia-scout':         webSearchMs,
+    },
+    'logger':            logger,
+  };
   const dispatcher = new ObservedDagonizer<ArchivistState, ArchivistServices>({
     services,
     'observer': buildObserver(null, prov),
   });
 
-  const { composeMs, webSearchMs, rankMs } = timeoutSettings.value;
-
-  // Register embedded-DAGs first (molecular pattern) — each helper registers the
-  // base nodes needed by that embedded-DAG. Then re-register timeout-overridden
-  // versions which overwrite the base entries in the node map.
-  registerBookSearchFanoutNodes(dispatcher);
-  dispatcher.registerDAG(BookSearchFanoutDAG);
-  registerComposeRetryLoopNodes(dispatcher);
-  dispatcher.registerDAG(ComposeRetryLoopDAG);
-
-  // Timeout overrides — re-register after DAG registration (validation already
-  // passed; execution looks up nodes from the map at run time, so overwriting
-  // here applies the configured budget to every subsequent execution).
-  const composeNode          = { ...composeResponse,     'timeoutMs': composeMs };
-  const composeEmptyNode     = { ...composeEmptyResponse, 'timeoutMs': composeMs };
-  const rankNode             = { ...rankCandidates,       'timeoutMs': rankMs };
-  const scoutNode            = { ...webSearchScout,        'timeoutMs': webSearchMs };
-  const olScoutNode          = { ...openLibraryScout,      'timeoutMs': webSearchMs };
-  const gbScoutNode          = { ...googleBooksScout,      'timeoutMs': webSearchMs };
-  const subjectScoutNode     = { ...subjectScout,          'timeoutMs': webSearchMs };
-  const wikiScoutNode        = { ...wikipediaScout,        'timeoutMs': webSearchMs };
-  for (const node of [composeNode, composeEmptyNode, rankNode, scoutNode, olScoutNode, gbScoutNode, subjectScoutNode, wikiScoutNode]) {
-    dispatcher.registerNode(node);
-  }
-
-  for (const node of [
-    recallContext,
-    classifyIntent, extractQuery, decideTools,
-    rankByRating, pickBestMatch,
-    mergeCandidates, recordFindings, hasCitationsGate,
-    groupByYear, recallPastVisits, recommendSimilar,
-    // recall-memories branch
-    recallMemories, composeMemoryResponse, respondToVisitor,
-    declineOffTopic, declineEmpty,
-    // empty-result LLM response branch
-    composeEmptyResponse,
-  ]) dispatcher.registerNode(node);
-  dispatcher.registerDAG(archivistDAG);
+  dispatcher.registerBundle(bookSearchScatterBundle);
+  dispatcher.registerBundle(composeRetryLoopBundle);
+  dispatcher.registerBundle(archivistBundle);
 
   const visitor = new ArchivistState();
   visitor.query = queryText;

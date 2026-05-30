@@ -40,9 +40,10 @@ Each yielded `NodeResultInterface<TState>` carries:
 | Field | Type | Description |
 |-------|------|-------------|
 | `nodeName` | `string` | Name of the node that completed |
-| `output` | `string \| undefined` | Output name returned by the operation |
+| `output` | `string \| null` | Output name returned by the operation; `null` when no route was emitted |
 | `skipped` | `boolean` | `true` for an empty scatter source that bypassed execution |
 | `state` | `TState` | Reference to the shared state object (mutated in place) |
+| `intermediateResults` | `readonly NodeResultInterface<TState>[]` | Per-step results from composite nodes (parallel / scatter / embedded-DAG); `[]` for leaf nodes |
 
 For parallel and scatter placements, the iterator first yields intermediate results for each constituent node or clone, then yields the group result.
 

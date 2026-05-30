@@ -716,7 +716,7 @@ html::-webkit-scrollbar-corner {
   line-height: 1.2 !important;
 }
 
-/* Hexagonal nodes (fan-out — Mermaid `{{name}}`) */
+/* Hexagonal nodes (scatter — Mermaid `{{name}}`) */
 .vp-doc .mermaid svg .node[id*="flowchart-fan"] polygon,
 .vp-doc .mermaid svg .node.hexagon polygon,
 .vp-doc .mermaid svg g.node:has(polygon) polygon {

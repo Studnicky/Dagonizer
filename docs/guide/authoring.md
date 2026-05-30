@@ -148,11 +148,12 @@ All three authoring journeys can produce any DAG the schema allows. The differen
 | `SingleNode` placement | yes | yes | yes |
 | `ParallelNode` placement | yes | yes explicit | yes auto-grouped, `DAGDeriverParallel` for explicit |
 | Combine strategy (`all-success` / `any-success` / `collect`) | yes | yes | yes via `DAGDeriverParallel.combine` |
-| `ScatterNode` placement | yes | yes via `.scatter()` | yes via `DAGDeriverAnnotations.fanouts` (node body) |
-| Gather strategy (`map` / `append` / `partition` / `custom`) | yes | yes via `options.gather` | yes via `DAGDeriverFanOut.strategy` |
-| Scatter body kind (`node` or `dag`) | yes | yes via `body` argument | node body via `DAGDeriverFanOut`; dag body via raw `DAG` |
+| `ScatterNode` placement | yes | yes via `.scatter()` | yes via `DAGDeriverAnnotations.scatters` (node body) |
+| Gather strategy (`map` / `append` / `partition` / `custom`) | yes | yes via `options.gather` | yes via `DAGDeriverScatter.strategy` |
+| Scatter body kind (`node` only) | yes | yes via `body` argument | node body via `DAGDeriverScatter`; dag body via `embeddedDAGs` or raw `DAG` |
+| `EmbeddedDAGNode` placement | yes | yes via `.embeddedDAG()` | yes via `DAGDeriverAnnotations.embeddedDAGs` |
 | `TerminalNode` placement | yes | yes via `.terminal()` | (not a target, use DAGBuilder) |
-| `projection` (parent → clone seed) | yes | yes via `options.projection` | yes via `DAGDeriverFanOut` |
+| `inputs` (parent → clone seed) | yes | yes via `options.inputs` | yes via `DAGDeriverScatter` |
 | Multi-port routing | yes | yes via `routes` map | yes via `contract.outputs` and `terminals` |
 | Compile-time route narrowing | | yes from `NodeInterface` `TOutput` | (not applicable, declarative) |
 | Topology derivation from data graph | | (not applicable, imperative) | yes from `produces` plus `hardRequired` |
@@ -186,10 +187,10 @@ A null route is sugar for "this branch ends with `outcome: completed`." No expli
 1. **Diagram legibility**. The placement appears as a named terminus in the visualisation, which matters when the endpoint name is semantically meaningful (`end-ok`, `response-sent`, `workflow-failed`).
 2. **Explicit failed outcome**. Null routes always mean `completed`. To mark a branch as `failed`, declare a named terminal with `outcome: 'failed'`. There is no null-route shorthand for a failed outcome.
 
-A `ScatterNode` placement may target a named terminal directly. This is the idiomatic way to surface a child DAG's error as a `failed` lifecycle in the parent:
+An `EmbeddedDAGNode` placement may target a named terminal directly. This is the idiomatic way to surface a child DAG's error as a `failed` lifecycle in the parent:
 
 ```ts
-.scatter('run-child', { dag: 'child-dag' }, { success: 'end-ok', error: 'end-fail' })
+.embeddedDAG('run-child', 'child-dag', { success: 'end-ok', error: 'end-fail' })
 .terminal('end-ok')
 .terminal('end-fail', 'failed')
 ```

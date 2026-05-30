@@ -22,6 +22,8 @@ seeAlso:
 | Symbol | Source | Role |
 |--------|--------|------|
 | `CheckpointStore` | `@noocodex/dagonizer/contracts` | Adapter contract: `save`, `load`, `delete` |
+| `Snapshottable` | `@noocodex/dagonizer/contracts` | Capability contract: `snapshot()`, `restore()` — what `Checkpoint.capture` and `restoreStores` depend on |
+| `StoreSnapshot` | `@noocodex/dagonizer/contracts` | Serialized envelope written into `CheckpointData.stores` |
 | `MemoryCheckpointStore` | `@noocodex/dagonizer/checkpoint` | In-memory reference implementation (tests, demos) |
 | `ckpt.persist(store, key)` | instance method | Serializes and writes via the store |
 | `Checkpoint.recall(store, key)` | `@noocodex/dagonizer/checkpoint` | Reads, parses, validates, wraps |
@@ -116,6 +118,42 @@ export class PostgresCheckpointStore implements CheckpointStore {
 ```
 
 The same pattern works for Redis, S3, file system, etcd, or any other key/value store.
+
+## Named stores and `Snapshottable`
+
+`Checkpoint.capture` and `ckpt.restoreStores` both depend on the `Snapshottable` capability, not the full key-value `Store` surface. Any object that implements `snapshot(): Promise<StoreSnapshot>` and `restore(snapshot: StoreSnapshot): Promise<void>` participates in checkpointing — `Store extends Snapshottable`, so every store qualifies, but a non-KV backing (an RDF triple store, a vector index, an append-only log) can ride along in a checkpoint without implementing `get`/`set`/`has`/`delete`/`update`.
+
+```ts
+import type { Snapshottable, StoreSnapshot } from '@noocodex/dagonizer/contracts';
+
+class FactLog implements Snapshottable {
+  #facts: string[] = [];
+  add(fact: string): void { this.#facts.push(fact); }
+
+  async snapshot(): Promise<StoreSnapshot> {
+    return {
+      version: 1,
+      type: 'fact-log',
+      entries: this.#facts.map((fact, i) => ({ key: String(i), value: fact })),
+    };
+  }
+
+  async restore(snapshot: StoreSnapshot): Promise<void> {
+    if (snapshot.type !== 'fact-log') throw new Error('Incompatible snapshot type');
+    this.#facts = snapshot.entries.map((e) => String(e.value));
+  }
+}
+
+// Pass it to capture just like any MemoryStore:
+const log = new FactLog();
+const ckpt = await Checkpoint.capture('my-dag', result, { stores: { log } });
+
+// And restore it on resume:
+const freshLog = new FactLog();
+await recalled.restoreStores({ log: freshLog });
+```
+
+`CheckpointData.stores` is a **required** field. `Checkpoint.capture` always writes it — as an empty object `{}` when no stores are passed, or as a keyed map of `StoreSnapshot` envelopes when stores are supplied. `Checkpoint.load` rejects any payload that lacks the field: checkpoints produced before this field was introduced do not load.
 
 ## Snapshot round-trip
 

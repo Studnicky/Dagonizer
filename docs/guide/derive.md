@@ -20,26 +20,50 @@ seeAlso:
 import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
 import type { ElementDefinition } from 'cytoscape';
 import { DAGDeriver } from '@noocodex/dagonizer/derive';
-import type { OperationContract } from '@noocodex/dagonizer/derive';
+import type { NodeInterface } from '@noocodex/dagonizer';
 
-const childContracts: readonly OperationContract[] = [
-  { name: 'validate',  hardRequired: ['intermediate'], produces: ['validated'],   outputs: ['success', 'error'] },
-  { name: 'transform', hardRequired: ['validated'],    produces: ['childResult'], outputs: ['success'] },
-];
+const validate: NodeInterface = {
+  name: 'validate',
+  outputs: ['success', 'error'],
+  contract: { hardRequired: ['intermediate'], produces: ['validated'] },
+  async execute() { return { output: 'success' }; },
+};
 
-const parentContracts: readonly OperationContract[] = [
-  { name: 'prepare',       hardRequired: ['input'],        produces: ['intermediate'], outputs: ['success'] },
-  { name: 'invoke-plugin', hardRequired: ['intermediate'], produces: ['childResult'],  outputs: ['success', 'error'] },
-  { name: 'finalize',      hardRequired: ['childResult'],  produces: ['final'],        outputs: ['success'] },
-];
+const transform: NodeInterface = {
+  name: 'transform',
+  outputs: ['success'],
+  contract: { hardRequired: ['validated'], produces: ['childResult'] },
+  async execute() { return { output: 'success' }; },
+};
+
+const prepare: NodeInterface = {
+  name: 'prepare',
+  outputs: ['success'],
+  contract: { hardRequired: ['input'], produces: ['intermediate'] },
+  async execute() { return { output: 'success' }; },
+};
+
+const invokePlugin: NodeInterface = {
+  name: 'invoke-plugin',
+  outputs: ['success', 'error'],
+  contract: { hardRequired: ['intermediate'], produces: ['childResult'] },
+  async execute() { return { output: 'success' }; },
+};
+
+const finalize: NodeInterface = {
+  name: 'finalize',
+  outputs: ['success'],
+  contract: { hardRequired: ['childResult'], produces: ['final'] },
+  async execute() { return { output: 'success' }; },
+};
 
 const childDAG = DAGDeriver.derive({
   name: 'plugin:transform',
   version: '1.0',
   entrypoint: 'validate',
-  contracts: childContracts,
+  nodes: [validate, transform],
   annotations: {
-    terminals: { validate: [{ outcome: 'error', target: null }] },
+    terminals: { validate: [{ outcome: 'error', emit: { name: 'validate-failed', outcome: 'failed' } }] },
   },
 });
 
@@ -47,7 +71,7 @@ const parentDAG = DAGDeriver.derive({
   name: 'parent',
   version: '1.0',
   entrypoint: 'prepare',
-  contracts: parentContracts,
+  nodes: [prepare, invokePlugin, finalize],
   annotations: {
     embeddedDAGs: {
       'invoke-plugin': {
@@ -79,7 +103,7 @@ const elements = CytoscapeRenderer.render(parentDAG, {
 | `DAGDeriver.extractContracts(nodes)` | `@noocodex/dagonizer/derive` | Project `OperationContract[]` from a node registry |
 | `OperationContract` | `@noocodex/dagonizer/contracts` | `name`, `hardRequired`, `produces`, `outputs` |
 | `OperationContractFragment` | `@noocodex/dagonizer/contracts` | `hardRequired` + `produces` (the `NodeInterface.contract` field) |
-| `DAGDeriverAnnotations` | `@noocodex/dagonizer/derive` | `terminals`, `fanouts`, `parallels`, `embeddedDAGs` |
+| `DAGDeriverAnnotations` | `@noocodex/dagonizer/derive` | `terminals`, `scatters`, `parallels`, `embeddedDAGs` |
 | `ContractRegistryValidator` | `@noocodex/dagonizer/derive` | Surfaces dangling reads (fatal) and dead writes (warning) |
 | `Chainable<A, B>` | `@noocodex/dagonizer/contracts` | Compile-time pair check; `true` when `A.produces` covers `B.hardRequired` |
 
@@ -87,9 +111,9 @@ const elements = CytoscapeRenderer.render(parentDAG, {
 
 ## The derived topology
 
-The example below derives a parent DAG with one scatter-over-sub-DAG placement. `prepare` produces `intermediate`; `invoke-plugin` requires it and produces `childResult`; `finalize` requires `childResult`. The annotation swaps `invoke-plugin` from `SingleNode` to a `ScatterNode` with `body: { dag }`:
+The example below derives a parent DAG with one embedded-DAG placement. `prepare` produces `intermediate`; `invoke-plugin` requires it and produces `childResult`; `finalize` requires `childResult`. The annotation swaps `invoke-plugin` from `SingleNode` to an `EmbeddedDAGNode`:
 
-<DagGraph :elements="elements" aria-label="Derived parent DAG: prepare → invoke-plugin (scatter/sub-dag) → finalize, with child DAG validate → transform expanded inline." />
+<DagGraph :elements="elements" aria-label="Derived parent DAG: prepare → invoke-plugin (embedded-DAG) → finalize, with child DAG validate → transform expanded inline." />
 
 ## OperationContract
 
@@ -115,7 +139,7 @@ Four fields:
 
 <<< @/../examples/derive.ts#contracts
 
-The runnable example splits the registry into `parentContracts` (three operations) and `childContracts` (two operations). The deriver receives them through the `contracts` array on each `DAGDeriver.derive` call.
+The runnable example defines nodes with co-located contracts. Each `NodeInterface` carries its own `contract: { hardRequired, produces }` alongside `name` and `outputs`; the node array is passed as `nodes` to `DAGDeriver.derive`. See [Co-located contracts](#co-located-contracts) below for the full pattern.
 
 ## Deriving the DAG
 
@@ -135,22 +159,31 @@ When an operation has output ports that should terminate the flow (or route to a
 
 #### `target` variant
 
-`target: null` ends the flow with an implicit `completed` outcome. `target: string` routes the output port to the named existing placement.
+`target: string` routes the output port to the named existing placement. Use this to send an outcome to a placement already in the DAG rather than the auto-derived next stage.
 
 ```ts
+const classify: NodeInterface<S, 'success' | 'off-topic' | 'error'> = {
+  name: 'classify',
+  outputs: ['success', 'off-topic', 'error'],
+  contract: { hardRequired: ['input'], produces: ['classification'] },
+  async execute(state) { return { output: 'success' }; },
+};
+const plan: NodeInterface<S, 'success'> = {
+  name: 'plan',
+  outputs: ['success'],
+  contract: { hardRequired: ['classification'], produces: ['plan'] },
+  async execute(state) { return { output: 'success' }; },
+};
+
 const dag = DAGDeriver.derive({
   name: 'gated',
   version: '1.0',
   entrypoint: 'classify',
-  contracts: [
-    { name: 'classify', hardRequired: ['input'],          produces: ['classification'], outputs: ['success', 'off-topic', 'error'] },
-    { name: 'plan',     hardRequired: ['classification'], produces: ['plan'],           outputs: ['success'] },
-  ],
+  nodes: [classify, plan],
   annotations: {
     terminals: {
       classify: [
-        { outcome: 'off-topic', target: null },
-        { outcome: 'error',     target: null },
+        { outcome: 'off-topic', target: 'plan' }, // re-routes off-topic to the plan placement
       ],
     },
   },
@@ -159,17 +192,27 @@ const dag = DAGDeriver.derive({
 
 #### `emit` variant: inline TerminalNode synthesis
 
-Use `emit` when the flow ends with an explicit `failed` (or `completed`) lifecycle outcome rather than the implicit `completed` that `target: null` produces. The deriver materializes a [`TerminalNode`](../examples/09-terminals) placement and routes the operation's output port to it.
+Use `emit` to end a flow with an explicit `failed` or `completed` lifecycle outcome. The deriver materializes a [`TerminalNode`](../examples/09-terminals) placement and routes the operation's output port to it. `emit` is the only way to end an outcome — there is no implicit completed end from routing alone.
 
 ```ts
+const classify: NodeInterface<S, 'success' | 'fail' | 'error'> = {
+  name: 'classify',
+  outputs: ['success', 'fail', 'error'],
+  contract: { hardRequired: ['input'], produces: ['classification'] },
+  async execute(state) { return { output: 'success' }; },
+};
+const plan: NodeInterface<S, 'success'> = {
+  name: 'plan',
+  outputs: ['success'],
+  contract: { hardRequired: ['classification'], produces: ['plan'] },
+  async execute(state) { return { output: 'success' }; },
+};
+
 const dag = DAGDeriver.derive({
   name: 'gated',
   version: '1.0',
   entrypoint: 'classify',
-  contracts: [
-    { name: 'classify', hardRequired: ['input'],          produces: ['classification'], outputs: ['success', 'fail', 'error'] },
-    { name: 'plan',     hardRequired: ['classification'], produces: ['plan'],           outputs: ['success'] },
-  ],
+  nodes: [classify, plan],
   annotations: {
     terminals: {
       classify: [
@@ -192,8 +235,8 @@ The deriver adds two `TerminalNode` placements (`end-fail` and `end-error`) to `
 ```ts
 terminals: {
   classify: [
-    { outcome: 'fail',  target: null },                                       // target: implicit completed
-    { outcome: 'retry', emit: { name: 'end-retry-exhausted', outcome: 'failed' } }, // emit: explicit failed
+    { outcome: 'retry', target: 'classify' },                                         // target: re-route retry back to classify
+    { outcome: 'error', emit: { name: 'end-error', outcome: 'failed' } },             // emit: end the flow as failed
   ],
 },
 ```
@@ -202,32 +245,47 @@ Cross-link: [Builder `.terminal()`](./builder#terminal) for the imperative equiv
 
 Ports declared in `outputs` but absent from `terminals` auto-wire to the next derived stage. A terminal whose outcome does not appear in the contract's `outputs` throws `DAGError` at derive time; routing-shape mismatches fail fast.
 
-### `fanouts`: scatter roots
+### `scatters`: scatter roots
 
-When an operation dispatches one execution per item from a state-array source, the `fanouts` annotation declares the source path, per-item key, registered node, and gather strategy. `DAGDeriverFanOut` is a discriminated union over the gather strategy; every variant carries its strategy-specific fields and only those.
+When an operation dispatches one execution per item from a state-array source, the `scatters` annotation declares the source path, per-item key, registered node, and gather strategy. `DAGDeriverScatter` is a discriminated union over the gather strategy; every variant carries its strategy-specific fields and only those.
 
 #### Strategy `'custom'`: registered gather node
 
 ```ts
+const plan: NodeInterface<S, 'success'> = {
+  name: 'plan',
+  outputs: ['success'],
+  contract: { hardRequired: ['input'], produces: ['tasks'] },
+  async execute(state) { return { output: 'success' }; },
+};
+const scout: NodeInterface<S, 'success'> = {
+  name: 'scout',
+  outputs: ['success'],
+  contract: { hardRequired: ['tasks'], produces: ['scoutResults'] },
+  async execute(state) { return { output: 'success' }; },
+};
+const merge: NodeInterface<S, 'success'> = {
+  name: 'merge',
+  outputs: ['success'],
+  contract: { hardRequired: ['scoutResults'], produces: ['merged'] },
+  async execute(state) { return { output: 'success' }; },
+};
+
 const dag = DAGDeriver.derive({
   name: 'scout-flow',
   version: '1.0',
   entrypoint: 'plan',
-  contracts: [
-    { name: 'plan',  hardRequired: ['input'],        produces: ['tasks'],        outputs: ['success'] },
-    { name: 'scout', hardRequired: ['tasks'],        produces: ['scoutResults'], outputs: ['success'] },
-    { name: 'merge', hardRequired: ['scoutResults'], produces: ['merged'],       outputs: ['success'] },
-  ],
+  nodes: [plan, scout, merge],
   annotations: {
-    fanouts: {
+    scatters: {
       scout: {
-        source:         'tasks',
-        itemKey:        'currentTask',
-        node:           'scout',
-        concurrency:    3,
-        strategy:       'custom',
-        fanInOperation: 'merge',
-        outcomes:       ['all-success', 'partial', 'all-error', 'empty'],
+        source:      'tasks',
+        itemKey:     'currentTask',
+        node:        'scout',
+        concurrency: 3,
+        strategy:    'custom',
+        customNode:  'merge',
+        outcomes:    ['all-success', 'partial', 'all-error', 'empty'],
       },
     },
   },
@@ -240,7 +298,7 @@ The gather operation is registered with the dispatcher and invoked through the `
 
 ```ts
 annotations: {
-  fanouts: {
+  scatters: {
     scout: {
       source:     'tasks',
       itemKey:    'currentTask',
@@ -259,7 +317,7 @@ Every per-outcome item array writes to the declared state path. `partitions` key
 
 ```ts
 annotations: {
-  fanouts: {
+  scatters: {
     scout: {
       source:   'tasks',
       itemKey:  'currentTask',
@@ -291,50 +349,65 @@ annotations: {
 
 - Every name in `members` must be a contract in the registry.
 - Membership is exclusive; an operation cannot appear in two `parallels` groups.
-- A `parallels` member cannot also appear in `fanouts` or `embeddedDAGs`; placement kind must be unambiguous.
+- A `parallels` member cannot also appear in `scatters` or `embeddedDAGs`; placement kind must be unambiguous.
 - `combine` is one of `'all-success' | 'any-success' | 'collect'`; the engine routes the parallel's aggregate output through the chosen reduction.
 
-### `embeddedDAGs`: sub-DAG body scatter composition
+### `embeddedDAGs`: nested DAG composition
 
-When an operation delegates execution to a nested registered DAG (plugin dispatch, phase composition, runtime-resolved child flows). The contract still declares `produces ↔ hardRequired` for topology derivation; the annotation swaps the rendered placement from `SingleNode` to a `ScatterNode` with `body: { dag }`. The `stateMapping.input` translates to `projection` (parent → clone seed) and `stateMapping.output` translates to a `map` gather (clone → parent).
+When an operation delegates execution to a nested registered DAG (plugin dispatch, phase composition, runtime-resolved child flows). The contract still declares `produces ↔ hardRequired` for topology derivation; the annotation swaps the rendered placement from `SingleNode` to an `EmbeddedDAGNode`. The `stateMapping.input` seeds child-state fields from the parent before the child runs; `stateMapping.output` copies child-state fields back into the parent after the child completes.
 
 ```ts
+const fetch: NodeInterface<S, 'success' | 'cached' | 'error'> = {
+  name: 'fetch',
+  outputs: ['success', 'cached', 'error'],
+  contract: { hardRequired: ['url'], produces: ['html'] },
+  async execute(state) { return { output: 'success' }; },
+};
+const parse: NodeInterface<S, 'success' | 'error'> = {
+  name: 'parse',
+  outputs: ['success', 'error'],
+  contract: { hardRequired: ['html'], produces: ['record'] },
+  async execute(state) { return { output: 'success' }; },
+};
+const persist: NodeInterface<S, 'success'> = {
+  name: 'persist',
+  outputs: ['success'],
+  contract: { hardRequired: ['record'], produces: ['saved'] },
+  async execute(state) { return { output: 'success' }; },
+};
+
 const dag = DAGDeriver.derive({
   name: 'page-pipeline',
   version: '1.0',
   entrypoint: 'fetch',
-  contracts: [
-    { name: 'fetch',    hardRequired: ['url'],     produces: ['html'],   outputs: ['success', 'cached', 'error'] },
-    { name: 'parse',    hardRequired: ['html'],    produces: ['record'], outputs: ['success', 'error'] },
-    { name: 'persist',  hardRequired: ['record'],  produces: ['saved'],  outputs: ['success'] },
-  ],
+  nodes: [fetch, parse, persist],
   annotations: {
     embeddedDAGs: {
       parse: {
         dag:     'aonprd:parse',         // registered DAG name
-        outputs: ['success', 'error'],   // ports the scatter placement routes on
+        outputs: ['success', 'error'],   // ports the embedded placement routes on
         stateMapping: {
-          input:  { html:   'parent.html' },     // projection: 'html' clone key ← 'parent.html' parent path
+          input:  { html:   'parent.html' },     // input mapping: 'html' clone key ← 'parent.html' parent path
           output: { 'parent.record': 'record' }, // map gather: 'parent.record' parent path ← 'record' clone path
         },
       },
     },
     terminals: {
-      parse: [{ outcome: 'error', target: null }],
+      parse: [{ outcome: 'error', emit: { name: 'parse-failed', outcome: 'failed' } }],
     },
   },
 });
 ```
 
-- The child DAG name (`'aonprd:parse'`) is resolved at `registerDAG` time. The parent must register the child DAG first; the dispatcher's existing cycle check rejects self-referential scatter bodies.
+- The child DAG name (`'aonprd:parse'`) is resolved at `registerDAG` time. The parent must register the child DAG first; the dispatcher's existing cycle check rejects self-referential embedded-DAG bodies.
 - Every port in `embeddedDAG.outputs` auto-wires to the next derived stage (same semantics as `contract.outputs`). `terminals` overrides individual ports.
 - A terminal whose outcome is not in `embeddedDAG.outputs` throws `DAGError` at derive time.
-- The scatter placement cannot terminate the run; the parent DAG owns END. The scatter step must route to another parent placement; if every port routes to `null` the engine rejects the DAG at registration.
-- An operation cannot appear in both `fanouts` and `embeddedDAGs`; the placement kind must be unambiguous.
+- The embedded-DAG placement cannot terminate the run; the parent DAG owns END. The embedded-DAG step must route to another parent placement; if every port routes to `null` the engine rejects the DAG at registration.
+- An operation cannot appear in both `scatters` and `embeddedDAGs`; the placement kind must be unambiguous.
 
 #### Typed `stateMapping` via `DAGDeriverEmbeddedDAG<TChildState>`
 
-Supply `TChildState` to narrow `stateMapping.input` keys to names that actually exist on the child state at compile time. The wire shape emitted to the rendered `ScatterNode` (as `projection` and `gather`) is always `Record<string, string>`; the generic is for authoring ergonomics only.
+Supply `TChildState` to narrow `stateMapping.input` keys to names that actually exist on the child state at compile time. The wire shape emitted to the rendered `EmbeddedDAGNode` is always `Record<string, string>`; the generic is for authoring ergonomics only.
 
 ```ts
 class ParseChildState extends NodeStateBase {
@@ -360,36 +433,7 @@ Omitting `TChildState` (using bare `DAGDeriverEmbeddedDAG`) preserves backward c
 
 ## Co-located contracts
 
-The standalone `contracts` array requires every operation to be declared twice: once as an `OperationContract` and once as a `NodeInterface` registered with the dispatcher. `name` and `outputs` must match by convention; drift is silent.
-
-The co-located pattern eliminates that duplication. Declare `hardRequired` and `produces` directly on the node via `NodeInterface.contract`; the node's own `name` and `outputs` complete the full contract surface.
-
-**Standalone (legacy)**
-
-```ts
-// Contract declared separately
-const fetchContract: OperationContract = {
-  name:         'fetch',
-  hardRequired: ['url'],
-  produces:     ['raw'],
-  outputs:      ['success', 'cached', 'error'],
-};
-
-// Node declared separately; name and outputs must match by hand
-const fetchNode: NodeInterface<MyState, 'success' | 'cached' | 'error'> = {
-  name:    'fetch',
-  outputs: ['success', 'cached', 'error'],
-  async execute(state, ctx) { /* ... */ return { output: 'success' }; },
-};
-
-const dag = DAGDeriver.derive({
-  name: 'pipeline', version: '1.0', entrypoint: 'fetch',
-  contracts: [fetchContract, /* ... */],
-});
-dispatcher.registerNode(fetchNode);
-```
-
-**Co-located (recommended)**
+Declare `hardRequired` and `produces` directly on the node via `NodeInterface.contract`. The node's own `name` and `outputs` complete the full contract surface — a single object is the one source of truth for both dispatch and topology derivation.
 
 ```ts
 // Contract lives on the node; single source of truth
@@ -403,7 +447,7 @@ const fetchNode = {
   async execute(state: MyState, ctx) { /* ... */ return { output: 'success' as const }; },
 } satisfies NodeInterface;
 
-// Pass the node registry; no separate contracts array
+// Pass the node registry
 const dag = DAGDeriver.derive({
   name: 'pipeline', version: '1.0', entrypoint: 'fetch',
   nodes: [fetchNode, planNode, executeNode],
@@ -411,7 +455,7 @@ const dag = DAGDeriver.derive({
 dispatcher.registerNode(fetchNode);
 ```
 
-`DAGDeriver.derive({ nodes })` and `DAGDeriver.derive({ contracts })` are mutually exclusive: supply exactly one. Nodes without a `contract` field are silently skipped in topology derivation; the dispatcher still registers and executes them.
+Nodes without a `contract` field are silently skipped in topology derivation; the dispatcher still registers and executes them.
 
 Use `DAGDeriver.extractContracts(nodes)` to inspect the projected contracts before derivation:
 
