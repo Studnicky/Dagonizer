@@ -15,7 +15,7 @@ interface LegendChip {
 
 const chips: readonly LegendChip[] = [
   { kind: 'deterministic',     label: 'deterministic',     hint: 'same inputs → same outputs' },
-  { kind: 'non-deterministic', label: 'non-deterministic', hint: 'LLM / web — output can vary' },
+  { kind: 'non-deterministic', label: 'non-deterministic', hint: 'LLM / web: output can vary' },
 ];
 </script>
 

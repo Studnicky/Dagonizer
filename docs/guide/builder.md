@@ -239,7 +239,7 @@ For patterns where nodes across multiple scatter placements accumulate to shared
 
 ## Embedded DAG
 
-`.embeddedDAG()` places an `EmbeddedDAGNode` in the parent flow — invoke a registered sub-DAG exactly once (cardinality 1). Routes the parent on the child's terminal outcome (`success` | `error`). `options.inputs` seeds the child from the parent before it runs; `options.outputs` copies child fields back into the parent after the child completes.
+`.embeddedDAG()` places an `EmbeddedDAGNode` in the parent flow. It invokes a registered sub-DAG exactly once (cardinality 1) and routes the parent on the child's terminal outcome (`success` | `error`). `options.inputs` seeds the child from the parent before it runs; `options.outputs` copies child fields back into the parent after the child completes.
 
 ```ts
 const dag = new DAGBuilder('parent', '1')

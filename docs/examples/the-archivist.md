@@ -160,7 +160,7 @@ tool-calling path the real models take, without the GPU.
 ---
 
 ```bash
-# CLI — picks the offline stub when no key is set, Gemini REST when GEMINI_API_KEY is present.
+# CLI: picks the offline stub when no key is set, Gemini REST when GEMINI_API_KEY is present.
 npx tsx examples/the-archivist/runArchivist.ts
 
 # Force Gemini REST with your key:

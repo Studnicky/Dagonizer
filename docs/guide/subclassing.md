@@ -198,7 +198,7 @@ const fetchNode: NodeInterface<MyState, 'success' | 'retry' | 'salvage'> = {
 };
 ```
 
-The DAG topology provides the loop — the `retry` output edges back to `fetch`; `salvage` routes forward to a recovery node. The counter is included in `snapshot()` (under the `retries` map in `NodeStateData`), so a retry budget survives checkpoint and resume.
+The DAG topology provides the loop: the `retry` output edges back to `fetch`; `salvage` routes forward to a recovery node. The counter is included in `snapshot()` (under the `retries` map in `NodeStateData`), so a retry budget survives checkpoint and resume.
 
 ## Related reference
 

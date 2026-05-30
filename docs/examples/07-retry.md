@@ -24,11 +24,11 @@ const elements = CytoscapeRenderer.render(ComposeRetryLoopDAG) as ElementDefinit
 
 # Phase 07: Retry
 
-In [The Archivist](./the-archivist) retry is a flow shape. A node that fails — its own deadline fires, or its LLM call throws — makes a flow decision rather than swallowing the failure: it routes a `retry` output that the DAG loops back to the node, bounded by a counter on the state, or a `salvage` output to a deterministic recovery node once the budget is spent. The node never fabricates a result to take the happy path, and there is no `RetryPolicy` hidden inside it.
+In [The Archivist](./the-archivist) retry is a flow shape. When a node fails (its own deadline fires, or its LLM call throws), it makes a flow decision rather than swallowing the failure: it routes a `retry` output that the DAG loops back to the node, bounded by a counter on the state, or a `salvage` output to a deterministic recovery node once the budget is spent. The node never fabricates a result to take the happy path, and there is no `RetryPolicy` hidden inside it.
 
 The same shape appears in two places:
 
-1. **Self-loop retry.** Each agent node — `extract-query`, `decide-tools`, `rank-candidates`, the composers — routes `retry` to itself and `salvage` to a recovery node.
+1. **Self-loop retry.** Each agent node (`extract-query`, `decide-tools`, `rank-candidates`, the composers) routes `retry` to itself and `salvage` to a recovery node.
 2. **Two-node retry loop.** `validate-response` routes `retry` back to `compose-response` when a draft fails the quality gate, bounded by the same `compose` budget.
 
 Both are loop edges in the topology. The dispatcher always sees a named output; nothing throws.
@@ -51,15 +51,15 @@ The `retry` output is a self-edge; `salvage` routes to a recovery node that does
 
 ### Two-node retry loop
 
-`ComposeRetryLoopDAG` is the same shape spread across two nodes — compose, validate, and a `retry` edge back to compose — built from plain `.node()` routes and bounded by `state.retriesFor('compose')`:
+`ComposeRetryLoopDAG` is the same shape spread across two nodes (compose, validate, and a `retry` edge back to compose), built from plain `.node()` routes and bounded by `state.retriesFor('compose')`:
 
 <<< @/../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.ts
 
 ## What it demonstrates
 
-- **The retry budget on the conceptual root.** `state.recordAttempt(key)`, `state.retriesFor(key)`, `state.withinRetryBudget(key, max)`, and `state.clearAttempts(key)` live on `NodeStateBase`, keyed by `context.nodeName`, and ride along in the snapshot — so a budget survives checkpoint/resume.
+- **The retry budget on the conceptual root.** `state.recordAttempt(key)`, `state.retriesFor(key)`, `state.withinRetryBudget(key, max)`, and `state.clearAttempts(key)` live on `NodeStateBase`, keyed by `context.nodeName`, and ride along in the snapshot; a budget survives checkpoint/resume.
 - **Retry is a loop edge.** `retry` routes back to the same placement (a self-edge) or, for the compose loop, from `validate-response` to `compose-response`. The bound lives in state; the loop lives in the DAG. No special loop placement type, no acyclic constraint.
-- **Salvage is a recovery route, not a fabrication.** When the budget is spent the node routes `salvage` to a dedicated node — `extract-query-salvage` splits the query on whitespace, `decide-tools-salvage` emits a minimal tool plan — keeping recovery out of the failing node's `catch`.
+- **Salvage is a recovery route, not a fabrication.** When the budget is spent the node routes `salvage` to a dedicated node: `extract-query-salvage` splits the query on whitespace, `decide-tools-salvage` emits a minimal tool plan. Recovery stays out of the failing node's `catch`.
 - **External cancellation is not a retry.** When `context.signal` is already aborted the node re-throws, so the engine records the run as cancelled rather than looping.
 
 For per-operation retry with backoff (a flaky network call inside a tool or adapter), see `RetryPolicy` in the [Retry guide](../guide/retry).

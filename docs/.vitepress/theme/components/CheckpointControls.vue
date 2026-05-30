@@ -55,7 +55,7 @@ function onResume(): void {
       type="button"
       class="ckpt-btn ckpt-save"
       :disabled="running || checkpointNode === null"
-      :title="checkpointNode !== null ? `Save checkpoint at ${checkpointNode}` : 'No checkpoint available — run the Archivist first'"
+      :title="checkpointNode !== null ? `Save checkpoint at ${checkpointNode}` : 'No checkpoint available. Run the Archivist first.'"
       @click="onSave"
     >
       <span aria-hidden="true">&#9632;</span> checkpoint

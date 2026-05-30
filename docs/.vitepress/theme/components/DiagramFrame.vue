@@ -136,7 +136,7 @@ function onModalKey(event: KeyboardEvent): void {
     >
       <div class="frame-overlay-card">
         <header class="frame-overlay-header">
-          <h4 class="frame-title">{{ title }} — expanded</h4>
+          <h4 class="frame-title">{{ title }} (expanded)</h4>
           <button class="frame-action" title="Close" @click="expanded = false">✕</button>
         </header>
         <div class="frame-overlay-body">

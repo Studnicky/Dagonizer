@@ -34,7 +34,7 @@ const hasFooter = computed(() => seeAlso.value.length > 0 || nextSteps.value.len
       <ul class="footer-list">
         <li v-for="item in nextSteps" :key="item.link">
           <a :href="item.link" class="footer-link">{{ item.text }}</a>
-          <span v-if="item.description" class="footer-desc"> — {{ item.description }}</span>
+          <span v-if="item.description" class="footer-desc">: {{ item.description }}</span>
         </li>
       </ul>
     </section>
@@ -44,7 +44,7 @@ const hasFooter = computed(() => seeAlso.value.length > 0 || nextSteps.value.len
       <ul class="footer-list">
         <li v-for="item in seeAlso" :key="item.link">
           <a :href="item.link" class="footer-link">{{ item.text }}</a>
-          <span v-if="item.description" class="footer-desc"> — {{ item.description }}</span>
+          <span v-if="item.description" class="footer-desc">: {{ item.description }}</span>
         </li>
       </ul>
     </section>

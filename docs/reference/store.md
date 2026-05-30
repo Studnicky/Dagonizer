@@ -49,8 +49,8 @@ interface Snapshottable {
 
 `Snapshottable` is decoupled from the key-value surface on purpose.
 `Checkpoint.capture(dag, result, { stores })` and `Checkpoint.restoreStores(map)`
-take `Record<string, Snapshottable>`, so a non-KV backing — an RDF triple
-store, a vector index, an append-only projection — can ride along in a
+take `Record<string, Snapshottable>`, so a non-KV backing (an RDF triple
+store, a vector index, an append-only projection) can ride along in a
 checkpoint without implementing `get`/`set`/`has`/`delete`/`update`. `Store
 extends Snapshottable`, so every `Store` is also `Snapshottable`. The
 `StoreSnapshot` / `StoreSnapshotEntry` envelopes live with this capability.
@@ -88,7 +88,7 @@ interface Store extends Snapshottable {
 | `has(key)` | `Promise<boolean>` | Return `true` when the key exists. |
 | `delete(key)` | `Promise<boolean>` | Remove the key. Returns `true` when the key existed. |
 | `update(key, fn)` | `Promise<T>` | Atomic read-modify-write. `fn` receives the current value (or `undefined`) and returns the new value. Implementations are responsible for atomicity. |
-| `snapshot()` / `restore(snapshot)` | inherited | From `Snapshottable` — capture / repopulate the whole store. |
+| `snapshot()` / `restore(snapshot)` | inherited | From `Snapshottable`: capture / repopulate the whole store. |
 | `connect()` | `Promise<void>` | Optional lifecycle hook for stores that hold a connection. |
 | `disconnect()` | `Promise<void>` | Optional lifecycle hook for stores that hold a connection. |
 

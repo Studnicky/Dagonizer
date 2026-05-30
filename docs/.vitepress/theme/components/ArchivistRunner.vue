@@ -294,8 +294,8 @@ function onToolSelect(name: string): void { selectedTool.value = name; }
 const toolContextMap: Record<string, string> = {
   'open-library-scout':  'Searches OpenLibrary for books by free-text query and returns normalized Candidate records.',
   'google-books-scout':  'Searches Google Books API and returns Candidate records with ratings and ratingsCount.',
-  'subject-scout':       'OpenLibrary subjects search — finds books by theme/topic, not title.',
-  'wikipedia-scout':     'Wikipedia page summary — enrichment context for any topic or book.',
+  'subject-scout':       'OpenLibrary subjects search: finds books by theme/topic, not title.',
+  'wikipedia-scout':     'Wikipedia page summary: enrichment context for any topic or book.',
   'recall-context':      'SPARQL queries the persistent memory graph for prior intents and recently-seen books to inform classification.',
   'classify-intent':     'LLM classifies the visitor message into one of: on-topic, lookup-author, find-reviews, describe-book, recommend-similar, recall-memories, off-topic.',
   'decide-tools':        'LLM picks which search tools to call based on the classified intent and the visitor query.',
@@ -308,13 +308,13 @@ const toolContextMap: Record<string, string> = {
   'recall-memories':     'Assembles a structured digest of books, intents, and counts from the memory graph.',
   'compose-memory-response': 'LLM composes a warm prose summary of what the Archivist remembers from prior sessions.',
   'recommend-similar':   'LLM composes a recommend-similar reply anchored on persistent memory facts.',
-  'has-citations-gate':  'Deterministic gate — checks whether the shortlist has at least one citation before composing.',
+  'has-citations-gate':  'Deterministic gate: checks whether the shortlist has at least one citation before composing.',
   'decline-off-topic':   'Emits a polite in-character refusal for questions outside the book domain.',
   'decline-empty':       'Emits an in-character acknowledgment when all scouts returned no candidates.',
   'compose-empty-response': 'LLM composes a graceful not-found response that names what was searched and suggests an alternative.',
-  'extract-query':       'Deterministic node — copies the visitor query into state for the scout phase.',
+  'extract-query':       'Deterministic node: copies the visitor query into state for the scout phase.',
   'group-by-year':       'Groups candidates by first-publish year for chronological author-survey display.',
-  'pick-best-match':     'Deterministic node — picks the highest-scored candidate from the ranked list.',
+  'pick-best-match':     'Deterministic node: picks the highest-scored candidate from the ranked list.',
   'rank-by-rating':      'Sorts candidates by Google Books rating signal (rating × log(ratingsCount)) for the find-reviews branch.',
   'respond-to-visitor':  'Routes the composed draft into the conversation output and marks the lifecycle as completed.',
 };
@@ -473,7 +473,7 @@ const STATIC_GREETINGS: readonly string[] = [
   'Stay a while. I have a long list of books and a longer one of questions about them.',
   'A reader, then. Tell me what you are looking for, and I will see what the catalog gives up.',
   'The door is always open here. Name a title, an author, or a feeling, and I will look.',
-  'Good to see you. The shelves run deep on every subject — where would you like to begin?',
+  'Good to see you. The shelves run deep on every subject. Where would you like to begin?',
   'Come in. I keep records on almost everything ever printed. What can I find for you?',
   'Every visitor arrives with a question worth answering. What is yours?',
 ];
@@ -715,10 +715,10 @@ function reset(): void {
     <div v-if="isMobile && !noModel" class="mobile-banner" role="note">
       <span class="mobile-banner-text">
         <template v-if="activeBackend === 'stub'">
-          Mobile mode — running with canned responses (not real AI). Add an API key below for real model output.
+          Mobile mode: running with canned responses (not real AI). Add an API key below for real model output.
         </template>
         <template v-else>
-          Mobile mode — using cloud backend {{ backends.find(b => b.id === activeBackend)?.displayName ?? activeBackend }}.
+          Mobile mode: using cloud backend {{ backends.find(b => b.id === activeBackend)?.displayName ?? activeBackend }}.
         </template>
       </span>
       <button type="button" class="mobile-banner-link" @click="onTreatAsDesktop">Treat as desktop</button>
@@ -732,40 +732,40 @@ function reset(): void {
       <h3>No LLM backend detected</h3>
 
       <template v-if="isMobile">
-        <p>The Archivist demo runs against real cloud LLMs. On mobile, the fastest option is a free Groq key — no download, no GPU required.</p>
+        <p>The Archivist demo runs against real cloud LLMs. On mobile, the fastest option is a free Groq key: no download, no GPU required.</p>
         <ul>
           <li>
-            <strong>Groq (fastest)</strong> — paste a free key from
+            <strong>Groq (fastest):</strong> paste a free key from
             <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">console.groq.com/keys</a>.
             Runs llama-3.3-70b-versatile. ~30 requests/min on the free tier.
           </li>
           <li>
-            <strong>Cerebras</strong> — free key at
+            <strong>Cerebras:</strong> free key at
             <a href="https://cloud.cerebras.ai/?utm=arch" target="_blank" rel="noreferrer">cloud.cerebras.ai</a>.
             Ultra-fast Wafer-Scale Engine inference.
           </li>
           <li>
-            <strong>Mistral</strong> — free key at
+            <strong>Mistral:</strong> free key at
             <a href="https://console.mistral.ai/api-keys/" target="_blank" rel="noreferrer">console.mistral.ai/api-keys/</a>.
             mistral-small-latest.
           </li>
           <li>
-            <strong>OpenRouter</strong> — free key at
+            <strong>OpenRouter:</strong> free key at
             <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai/keys</a>.
             Routes to llama-3.3-70b-instruct:free with no credits needed.
           </li>
         </ul>
       </template>
       <template v-else>
-        <p>The Archivist demo runs against real on-device or web LLMs only — there is no canned fallback in the browser. To watch the DAG execute, enable one of:</p>
+        <p>The Archivist demo runs against real on-device or web LLMs only; there is no canned fallback in the browser. To watch the DAG execute, enable one of:</p>
         <ul>
-          <li><strong>Browser built-in LanguageModel (on-device)</strong> — toggle <code>chrome://flags/#prompt-api-for-gemini-nano</code> and <code>chrome://flags/#optimization-guide-on-device-model</code>, restart, then visit <code>chrome://components</code> to trigger the model download. Implemented by Chrome 138+ and Edge.</li>
-          <li><strong>Gemini API key</strong> — paste a free <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">AI Studio key</a> below; nothing leaves your browser except the request to Google.</li>
-          <li><strong>WebLLM</strong> — needs WebGPU. Use a recent Chrome / Edge / Brave with hardware acceleration on.</li>
-          <li><strong>Groq</strong> — free key at <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">console.groq.com/keys</a>. No GPU required.</li>
-          <li><strong>Cerebras</strong> — free key at <a href="https://cloud.cerebras.ai/?utm=arch" target="_blank" rel="noreferrer">cloud.cerebras.ai</a>.</li>
-          <li><strong>Mistral</strong> — free key at <a href="https://console.mistral.ai/api-keys/" target="_blank" rel="noreferrer">console.mistral.ai/api-keys/</a>.</li>
-          <li><strong>OpenRouter</strong> — free key at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai/keys</a>.</li>
+          <li><strong>Browser built-in LanguageModel (on-device):</strong> toggle <code>chrome://flags/#prompt-api-for-gemini-nano</code> and <code>chrome://flags/#optimization-guide-on-device-model</code>, restart, then visit <code>chrome://components</code> to trigger the model download. Implemented by Chrome 138+ and Edge.</li>
+          <li><strong>Gemini API key:</strong> paste a free <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">AI Studio key</a> below; nothing leaves your browser except the request to Google.</li>
+          <li><strong>WebLLM:</strong> needs WebGPU. Use a recent Chrome / Edge / Brave with hardware acceleration on.</li>
+          <li><strong>Groq:</strong> free key at <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">console.groq.com/keys</a>. No GPU required.</li>
+          <li><strong>Cerebras:</strong> free key at <a href="https://cloud.cerebras.ai/?utm=arch" target="_blank" rel="noreferrer">cloud.cerebras.ai</a>.</li>
+          <li><strong>Mistral:</strong> free key at <a href="https://console.mistral.ai/api-keys/" target="_blank" rel="noreferrer">console.mistral.ai/api-keys/</a>.</li>
+          <li><strong>OpenRouter:</strong> free key at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai/keys</a>.</li>
         </ul>
       </template>
 
@@ -875,7 +875,7 @@ function reset(): void {
             <template #tab-suffix>
               <button
                 :class="['persist-toggle', isPersisted ? 'persist-toggle--on' : 'persist-toggle--off']"
-                :title="isPersisted ? 'Persisted to localStorage — click to switch to in-memory' : 'In-memory only — click to enable localStorage persistence'"
+                :title="isPersisted ? 'Persisted to localStorage. Click to switch to in-memory.' : 'In-memory only. Click to enable localStorage persistence.'"
                 @click="togglePersistence"
               >{{ isPersisted ? '⎓ persisted' : '○ in-memory' }}</button>
             </template>

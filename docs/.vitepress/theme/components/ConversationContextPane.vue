@@ -99,7 +99,7 @@ onMounted(() => {
       </div>
 
       <div class="ccp-footer">
-        <span class="ccp-desc">{{ windowSize === 0 ? 'history disabled — each turn is a cold start' : `last ${windowSize} turn${windowSize === 1 ? '' : 's'} injected into prompts` }}</span>
+        <span class="ccp-desc">{{ windowSize === 0 ? 'history disabled; each turn is a cold start' : `last ${windowSize} turn${windowSize === 1 ? '' : 's'} injected into prompts` }}</span>
         <button class="ccp-reset" type="button" @click="reset">reset</button>
       </div>
     </div>

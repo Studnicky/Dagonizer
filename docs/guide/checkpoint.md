@@ -91,12 +91,12 @@ When a DAG stops early (cancellation, timeout, error), `result.cursor` holds the
 
 ```ts
 const ckpt = await Checkpoint.capture('my-dag', result, { stores: { memory } });
-// …persist, then on resume:
+// ...persist, then on resume:
 const fresh = new MyStore();
 await recalled.restoreStores({ memory: fresh });
 ```
 
-Both take `Record<string, Snapshottable>` — the capability, not the key-value `Store` surface. A non-KV backing (an RDF triple store, a vector index) checkpoints by implementing `snapshot()` / `restore()` only. A name present in the checkpoint but absent from the restore map throws `DAGError`; an extra name in the map is a no-op. See [Store, `Snapshottable`](../reference/store).
+Both take `Record<string, Snapshottable>`: the capability, not the key-value `Store` surface. A non-KV backing (an RDF triple store, a vector index) checkpoints by implementing `snapshot()` / `restore()` only. A name present in the checkpoint but absent from the restore map throws `DAGError`; an extra name in the map is a no-op. See [Store, `Snapshottable`](../reference/store).
 
 ## `NodeStateBase.snapshot()` and `snapshotData()`
 
