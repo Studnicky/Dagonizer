@@ -282,8 +282,9 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
   // Every branch that successfully composes a response converges here.
   // compose-loop (success) and both memory + empty-result paths all route
   // through this one placement. Convergence policy: exactly ONE respond-to-visitor
-  // fires per run with the full converged state.draft in context.
-  .node('respond-to-visitor', respondToVisitor, { 'success': null })
+  // fires per run with the full converged state.draft in context. Success routes
+  // to the canonical `end` TerminalNode rather than a bare null end-of-flow.
+  .node('respond-to-visitor', respondToVisitor, { 'success': 'end' })
 
   // ── recall-memories branch ───────────────────────────────────────────────
   // No search needed; the memory store is queried directly.
@@ -298,13 +299,18 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
 
   // #region terminal-placements
   // ── Terminal nodes ───────────────────────────────────────────────────────
-  .node('decline-off-topic', declineOffTopic, { 'success': null })
+  .node('decline-off-topic', declineOffTopic, { 'success': 'end' })
   .node('compose-empty',     composeEmptyResponse,  {
     'drafted': 'respond-to-visitor',
     'retry':   'compose-empty',
     'salvage': 'compose-empty-salvage',
   })
   .node('compose-empty-salvage', composeEmptyResponseSalvage, { 'done': 'respond-to-visitor' })
+
+  // Canonical end-of-flow: every completed path (a composed answer or an
+  // off-topic decline) routes to this one `TerminalNode(completed)` instead of
+  // a bare `null` route. The flow ends explicitly, not by absence of a route.
+  .terminal('end', 'completed')
   // #endregion terminal-placements
 
   .build();

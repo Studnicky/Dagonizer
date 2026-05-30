@@ -244,20 +244,7 @@ export class CompositeLayout {
       g.setNode(nodeId, { "width": w, "height": h });
     }
 
-    // At the top level, add a synthetic END node to the dagre graph and connect
-    // every top-level placement that has at least one null output route to it.
-    // This gives the synthetic END a real dagre rank, preventing cytoscape from
-    // defaulting it to position (0,0) and producing a 9000px edge.
-    // END is NOT added inside embedded sub-DAGs (prefix !== '') because the
-    // renderer suppresses prefixed END edges there.
-    const endId = idIn(prefix, 'END');
-    if (prefix === '') {
-      g.setNode(endId, { "width": nodeWidth, "height": nodeHeight });
-      nodeSizes.set('END', { "width": nodeWidth, "height": nodeHeight });
-    }
-
-    // Register edges. Skip null targets at sub-DAG level (terminals);
-    // at top level route null targets to the synthetic END node.
+    // Register edges. Skip null targets (terminals); no edge needed for layout.
     // Also skip edges to/from parallel children (they're inside the compound).
     for (const placement of dag.nodes as readonly PlacementEntry[]) {
       if (parallelChildren.has(placement.name)) continue;
@@ -266,11 +253,7 @@ export class CompositeLayout {
       const fromId = idIn(prefix, placement.name);
 
       for (const target of Object.values(placement.outputs)) {
-        if (target === null) {
-          // At top level, connect null routes to the synthetic END node.
-          if (prefix === '' && g.hasNode(endId)) g.setEdge(fromId, endId);
-          continue;
-        }
+        if (target === null) continue;                       // terminal route
         if (parallelChildren.has(target)) continue;          // child is inside parallel
         const toId = idIn(prefix, target);
         if (g.hasNode(toId)) g.setEdge(fromId, toId);
@@ -329,16 +312,6 @@ export class CompositeLayout {
 
       // Regular leaf or unresolved embedded-dag.
       positions.set(nodeId, { "x": dagrePos.x, "y": dagrePos.y });
-    }
-
-    // At top level, collect the dagre-computed position for the synthetic END node.
-    // This ensures the bounding box covers END and cytoscape places it at the
-    // correct position instead of defaulting to (0,0).
-    if (prefix === '') {
-      const endDagrePos = g.node(endId) as { x: number; y: number } | undefined;
-      if (endDagrePos !== undefined) {
-        positions.set(endId, { "x": endDagrePos.x, "y": endDagrePos.y });
-      }
     }
 
     // ── Step 4: compute bounding box ────────────────────────────────────

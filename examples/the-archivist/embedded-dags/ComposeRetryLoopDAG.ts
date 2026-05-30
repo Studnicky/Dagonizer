@@ -64,19 +64,25 @@ export const ComposeRetryLoopDAG: DAG = new DAGBuilder('compose-retry-loop', '1.
     'salvage': 'compose-salvage',
   })
   .node('compose-salvage', composeResponseSalvage, {
-    'done': null,
+    'done': 'composed',
   })
 
   // ── 2. validate-response ─────────────────────────────────────────────────
   // Quality gate: length, citations, tone. On 'retry', routes back to
   // compose (bounded by MAX_COMPOSE_ATTEMPTS via state.retriesFor('compose')).
-  // 'approved' and 'exhausted' both exit the sub-DAG cleanly (null terminal)
-  // so the parent receives output 'success' and routes to respond-to-visitor.
+  // 'approved' and 'exhausted' both exit via the canonical `composed`
+  // TerminalNode (completed), so the parent EmbeddedDAGNode resolves 'success'
+  // and routes to respond-to-visitor.
   .node('validate-response', validateResponse, {
-    'approved':  null,
+    'approved':  'composed',
     'retry':     'compose-response',
-    'exhausted': null,
+    'exhausted': 'composed',
   })
+
+  // ── 3. composed ──────────────────────────────────────────────────────────
+  // Canonical TerminalNode(completed): the single explicit exit of the compose
+  // loop. No bare null end-of-flow routes.
+  .terminal('composed', 'completed')
 
   .build();
 
