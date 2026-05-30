@@ -172,15 +172,17 @@ export const BookSearchScatterDAG: DAG = new DAGBuilder('book-search-scatter', '
 
   // ── 8. recall-past-visits ────────────────────────────────────────────────
   // Injects prior-session context (prior queries + shortlisted titles) into
-  // state.priorContext. Terminal node; sub-DAG exits cleanly to 'success'.
+  // state.priorContext, then routes to the canonical `found` TerminalNode
+  // (completed) so the parent EmbeddedDAGNode resolves its 'success' branch.
   .node('recall-past-visits', recallPastVisits, {
-    'recalled': null,
+    'recalled': 'found',
   })
 
-  // ── 9. no-results ────────────────────────────────────────────────────────
-  // TerminalNode(failed): the parent EmbeddedDAGNode's terminal outcome
-  // reads the failed terminal and routes the parent placement to its 'error'
-  // branch. No backing node or collectError call required.
+  // ── 9. Terminal nodes ────────────────────────────────────────────────────
+  // Both sub-DAG exits are canonical TerminalNode placements (no bare null
+  // routes): `found` (completed) drives the parent EmbeddedDAGNode's 'success'
+  // branch; `no-results` (failed) drives its 'error' branch.
+  .terminal('found', 'completed')
   .terminal('no-results', 'failed')
 
   .build();
