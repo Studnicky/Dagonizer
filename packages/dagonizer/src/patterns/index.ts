@@ -7,8 +7,10 @@
  *   - `LlmClient`: minimal chat-shaped service contract; any
  *     `LlmAdapter` satisfies it.
  *   - `TripleStore`: minimal RDF quad-store service contract.
- *   - `SearchTool<TInput, TOutput>`: generic tool contract used by
- *     `ScoutNode`-style patterns.
+ *
+ * Tool-shaped patterns (e.g. `ScoutNode`) reference the canonical `Tool`
+ * type from `@noocodex/dagonizer/tool` directly — there is no aliased
+ * re-export.
  *
  * Plugin packages (`@noocodex/dagonizer-patterns-rag`,
  * `@noocodex/dagonizer-patterns-graph`,
@@ -26,5 +28,3 @@ export type {
   Term,
   TripleStore,
 } from './TripleStore.js';
-
-export type { SearchTool } from './SearchTool.js';
