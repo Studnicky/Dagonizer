@@ -42,7 +42,7 @@ A DAG document carries these top-level fields:
 
 The Phase 03 demo embeds a full JSON-LD DAG as a string and feeds it through the ingest boundary:
 
-<<< @/../examples/03-schema.ts#dag-literal
+<<< @/../examples/dags/03-schema.ts#dag-literal
 
 Placement `@id`s typically nest under the DAG's URN: `urn:noocodex:dag:demo/node/transform`.
 
@@ -84,7 +84,7 @@ The serializer is a thin wrapper over `JSON.stringify`. There is no transformati
 
 `Dagonizer.load(json)` parses and validates a JSON-LD string. It is the single ingest boundary for external input. `unknown` enters here and exits as a fully-typed `DAG`:
 
-<<< @/../examples/03-schema.ts#load
+<<< @/../examples/dags/03-schema.ts#load
 
 `Dagonizer.load` throws `ValidationError` for:
 

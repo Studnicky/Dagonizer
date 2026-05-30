@@ -286,3 +286,33 @@ void describe('Chainable<A, B> type helper', () => {
     assert.ok(_assert, 'Chainable resolves to true at runtime for compatible node pair');
   });
 });
+
+// ---------------------------------------------------------------------------
+// registerDAG credits contracts from embedded/scatter placements
+// ---------------------------------------------------------------------------
+
+void describe('registerDAG: embedded/scatter placement contracts', () => {
+  void it('credits an EmbeddedDAGNode operation\'s produces so a downstream read is not flagged dangling', () => {
+    const d = new Dagonizer<NodeStateBase>();
+
+    const prepare  = makeNode('prepare',  ['success'],          { 'hardRequired': ['input'], 'produces': ['mid'] });
+    const invoke   = makeNode('invoke',   ['success', 'error'], { 'hardRequired': ['mid'],   'produces': ['out'] });
+    const finalize = makeNode('finalize', ['success'],          { 'hardRequired': ['out'],   'produces': ['final'] });
+    // The sub-DAG the embedded placement runs.
+    const work     = makeNode('work',     ['success'],          { 'hardRequired': ['mid'],   'produces': ['out'] });
+
+    const child = DAGDeriver.derive({ 'name': 'sub', 'version': '1', 'entrypoint': 'work', 'nodes': [work] });
+    const parent = DAGDeriver.derive({
+      'name': 'parent', 'version': '1', 'entrypoint': 'prepare',
+      'nodes': [prepare, invoke, finalize],
+      'annotations': { 'embeddedDAGs': { 'invoke': { 'dag': 'sub', 'outputs': ['success', 'error'] } } },
+    });
+
+    for (const n of [prepare, invoke, finalize, work]) d.registerNode(n);
+    d.registerDAG(child);
+
+    // `invoke` is rendered as an EmbeddedDAGNode; without crediting its
+    // contract, finalize's `out` read would be flagged a dangling read.
+    assert.doesNotThrow(() => d.registerDAG(parent));
+  });
+});

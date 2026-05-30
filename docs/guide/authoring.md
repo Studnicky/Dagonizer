@@ -60,7 +60,7 @@ The mental model: *first this, then that, then if X go here else go there.* Type
 
 The builder example registers two nodes and chains them:
 
-<<< @/../examples/02-builder.topology.ts#builder
+<<< @/../examples/dags/02-builder.topology.ts#builder
 
 Choose DAGBuilder when:
 

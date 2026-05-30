@@ -1691,12 +1691,24 @@ implements DagonizerInterface<TState, TServices> {
 
     Dagonizer.validateDAGConfig(dag, this.nodes, this.dags);
 
-    // Contract validation: for each SingleNode placement whose registered
-    // node carries a co-located `contract`, run dangling-read / dead-write
-    // checks. Dangling reads throw DAGError; dead writes call onContractWarning.
+    // Contract validation: for each placement whose backing operation node
+    // carries a co-located `contract`, run dangling-read / dead-write checks.
+    // Dangling reads throw DAGError; dead writes call onContractWarning.
+    //
+    // A `SingleNode` is keyed by its `node` field. An `EmbeddedDAGNode` or
+    // `ScatterNode` runs an operation registered under the placement's own
+    // name (the deriver names the placement after the operation), so its
+    // contract — and therefore its `produces` — is resolved by placement name.
+    // Without this, an operation rendered as an embedded/scatter placement
+    // would be dropped from the contract graph and a downstream node reading
+    // its output would be flagged as a dangling read.
     const contractBearingNodes = dag.nodes
-      .filter((placement) => placement['@type'] === 'SingleNode')
-      .map((placement) => this.nodes.get((placement as { node: string }).node))
+      .map((placement) => {
+        const type = placement['@type'];
+        if (type === 'SingleNode') return this.nodes.get((placement as { node: string }).node);
+        if (type === 'EmbeddedDAGNode' || type === 'ScatterNode') return this.nodes.get(placement.name);
+        return undefined;
+      })
       .filter((node): node is NodeInterface<TState, string, TServices> => node?.contract !== undefined);
 
     if (contractBearingNodes.length > 0) {

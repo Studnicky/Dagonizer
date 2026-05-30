@@ -29,7 +29,7 @@ nextSteps:
 <script setup lang="ts">
 import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
 import type { ElementDefinition } from 'cytoscape';
-import { dag as builderDag } from '../../examples/02-builder.topology.ts';
+import { dag as builderDag } from '../../examples/dags/02-builder.topology.ts';
 
 const elements = CytoscapeRenderer.render(builderDag) as ElementDefinition[];
 </script>
@@ -44,11 +44,11 @@ If the flow is agent-shaped (operations declare data dependencies, topology fall
 
 The Phase 02 demo registers two nodes and builds a two-step chat flow:
 
-<<< @/../examples/02-builder.topology.ts#imports
+<<< @/../examples/dags/02-builder.topology.ts#imports
 
-<<< @/../examples/02-builder.topology.ts#nodes
+<<< @/../examples/dags/02-builder.topology.ts#nodes
 
-<<< @/../examples/02-builder.topology.ts#builder
+<<< @/../examples/dags/02-builder.topology.ts#builder
 
 <<< @/../examples/02-builder.ts#run
 

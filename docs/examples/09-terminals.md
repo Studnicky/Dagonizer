@@ -86,19 +86,19 @@ const elementsP4 = CytoscapeRenderer.render(dag4, {
 
 ### Pattern 1: null route
 
-<<< @/../examples/09-terminals.ts#null-route
+<<< @/../examples/dags/09-terminals.ts#null-route
 
 `null` in the routes map ends the flow. The lifecycle resolves to `completed` by default. This is the shortest form, sufficient when the endpoint has no semantic meaning beyond "done."
 
 ### Pattern 2: explicit completed terminal
 
-<<< @/../examples/09-terminals.ts#terminal-completed
+<<< @/../examples/dags/09-terminals.ts#terminal-completed
 
 `.terminal('end')` emits a `TerminalNode` placement with `outcome: 'completed'`. The outcome is identical to the null route in pattern 1. The reason to prefer this form is diagram clarity: the rendered diagram shows `end` as a named terminus rather than an implicit edge-to-nowhere. Worth the extra line when the endpoint name carries meaning (`end-ok`, `response-sent`, `workflow-complete`).
 
 ### Pattern 3: explicit failed terminal
 
-<<< @/../examples/09-terminals.ts#terminal-failed
+<<< @/../examples/dags/09-terminals.ts#terminal-failed
 
 `terminal('end-fail', 'failed')` produces a placement with `outcome: 'failed'`. When the engine reaches it, the state lifecycle transitions to `failed` before the flow resolves. The author does not need to call `state.markFailed()` inside any node; the placement itself carries the outcome declaration.
 
@@ -118,7 +118,7 @@ Use this pattern when a named path through the flow has a known semantic outcome
 
 ### Pattern 4: embedded-DAG routing to named terminals
 
-<<< @/../examples/09-terminals.ts#embedded-terminals
+<<< @/../examples/dags/09-terminals.ts#embedded-terminals
 
 The `EmbeddedDAGNode` placement's `error` output routes to the parent's `end-fail` terminal. When the child DAG accumulates errors (via `state.collectError`), the `terminal` reducer routes `error`, which arrives at `end-fail`, which marks the parent flow `failed`.
 
