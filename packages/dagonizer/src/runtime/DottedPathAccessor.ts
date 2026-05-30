@@ -13,6 +13,13 @@
 
 import type { StateAccessor } from '../contracts/StateAccessor.js';
 
+/**
+ * Path segments that would walk or mutate the prototype chain. Reading or
+ * writing through these would let a config-supplied path pollute
+ * `Object.prototype`, so the accessor refuses to traverse them.
+ */
+const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+
 export class DottedPathAccessor implements StateAccessor {
   get(state: object, path: string): unknown {
     const parts = path.split('.');
@@ -20,6 +27,9 @@ export class DottedPathAccessor implements StateAccessor {
 
     for (const part of parts) {
       if (current === null || current === undefined) {
+        return undefined;
+      }
+      if (FORBIDDEN_KEYS.has(part)) {
         return undefined;
       }
       current = (current as Record<string, unknown>)[part];
@@ -33,6 +43,12 @@ export class DottedPathAccessor implements StateAccessor {
 
     if (parts.length === 0) {
       return;
+    }
+    // Refuse paths that would mutate the prototype chain (prototype pollution).
+    for (const part of parts) {
+      if (FORBIDDEN_KEYS.has(part)) {
+        return;
+      }
     }
     let current = state as Record<string, unknown>;
 

@@ -46,7 +46,7 @@ export class CanonicalId {
     return value
       .toLowerCase()
       .replace(/[^a-z0-9]+/gu, '-')
-      .replace(/^-+|-+$/gu, '');
+      .replace(/^-|-$/gu, '');
   }
 
   /** Compose: ISBN if present, else work URN. */
