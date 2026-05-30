@@ -54,7 +54,7 @@ jobs:
       - name: CI gate (typecheck + lint + tests + adapter smoke)
         run: pnpm run ci
 
-      # v0.10.0 ships GitHub-only — npm publish is intentionally skipped
+      # v0.10.0 ships GitHub-only; npm publish is intentionally skipped
       # until live-API smoke testing covers every adapter. Re-enable by
       # adding `publish: pnpm run release` and `NPM_TOKEN` to the env.
       - name: Create Release Pull Request
