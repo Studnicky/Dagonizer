@@ -1,5 +1,5 @@
 /**
- * vite.config.ts — minimal dev/build config for the browser harness.
+ * vite.config.ts: minimal dev/build config for the browser harness.
  *
  * Roots at this directory so `index.html` is the entry. Port pinned so
  * the README + tooling references stay deterministic.

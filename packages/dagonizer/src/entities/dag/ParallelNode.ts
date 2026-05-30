@@ -1,5 +1,5 @@
 /**
- * ParallelNode — multiple single nodes running concurrently with a
+ * ParallelNode: multiple single nodes running concurrently with a
  * combine strategy, in JSON-LD canonical form.
  *
  * Uses `@type: 'ParallelNode'` as the discriminator. `@id` is the placement

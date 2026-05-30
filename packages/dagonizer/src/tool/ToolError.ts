@@ -1,5 +1,5 @@
 /**
- * ToolError — narrow error class for tool-execution failures.
+ * ToolError: narrow error class for tool-execution failures.
  *
  * Tools throw `ToolError` so the dispatcher can route to the
  * appropriate output port without losing the failure classification.
@@ -24,7 +24,7 @@ export interface ToolErrorOptions {
   readonly retryable: boolean;
   /** HTTP status code when applicable. */
   readonly status?: number;
-  /** Cause chain — original error if wrapped. */
+  /** Cause chain: original error if wrapped. */
   readonly cause?: unknown;
 }
 

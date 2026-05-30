@@ -1,14 +1,14 @@
 /**
- * ArchivistNode — `NodeInterface` extended with a `kind` tag.
+ * ArchivistNode: `NodeInterface` extended with a `kind` tag.
  *
- *   deterministic     — pure computation; same input → same output.
+ *   deterministic:     pure computation; same input produces same output.
  *                       Memory writes, gates, ranking, formatting.
- *   non-deterministic — depends on the world (LLM completion, the open
+ *   non-deterministic: depends on the world (LLM completion, the open
  *                       web). Two runs of the same input may differ.
  *
  * The live UI styles non-deterministic nodes with a dashed violet
  * border so the visitor can see, at a glance, which steps are pure and
- * which can drift between runs — the practical difference between
+ * which can drift between runs. The practical difference between
  * symbolic and sub-symbolic reasoning, drawn on the graph.
  *
  * `kind` is the Dagonizer extension; everything else is plain
@@ -47,7 +47,7 @@ export const NODE_KINDS: Readonly<Record<string, NodeKind>> = {
   'recommend-similar':     'deterministic',
   'rank-by-rating':        'deterministic',
   'pick-best-match':       'deterministic',
-  // Non-deterministic — every LLM-driven step
+  // Non-deterministic: every LLM-driven step
   'classify-intent':       'non-deterministic',
   'decide-tools':          'non-deterministic',
   'open-library-scout':    'non-deterministic',

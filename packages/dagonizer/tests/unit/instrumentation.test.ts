@@ -139,7 +139,7 @@ void describe('Instrumentation contract', () => {
     }
   });
 
-  void it('flowStart and flowEnd fire exactly once per top-level execute() — no embedded-DAG re-entry', async () => {
+  void it('flowStart and flowEnd fire exactly once per top-level execute(), with no embedded-DAG re-entry', async () => {
     const instrumentation = new RecordingInstrumentation();
     const dispatcher = new Dagonizer<NodeStateBase>({ instrumentation });
 
@@ -251,7 +251,7 @@ void describe('Instrumentation contract', () => {
 
   void it('a throwing hook propagates and aborts the flow (documented rule: hooks MUST NOT throw)', async () => {
     // The contract JSDoc warns plugins not to throw. The dispatcher does
-    // not wrap hook invocations in try/catch — a hook that throws crashes
+    // not wrap hook invocations in try/catch; a hook that throws crashes
     // the surrounding node execution. This test pins that behavior so a
     // future "swallow plugin errors" change is an explicit decision rather
     // than a silent regression.

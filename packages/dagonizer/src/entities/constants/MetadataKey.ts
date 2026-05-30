@@ -1,10 +1,10 @@
 /**
- * MetadataKey — reserved metadata keys used by the dispatcher.
+ * MetadataKey: reserved metadata keys used by the dispatcher.
  *
- *   currentItem    — item injected per-iteration by scatter
- *   gatherResults  — record map injected by the custom gather strategy
- *   itemIndex      — 0-based index of current scatter item
- *   parallelOutputs — output-per-node map set by 'collect' parallel strategy
+ *   currentItem: item injected per-iteration by scatter
+ *   gatherResults: record map injected by the custom gather strategy
+ *   itemIndex: 0-based index of current scatter item
+ *   parallelOutputs: output-per-node map set by 'collect' parallel strategy
  */
 
 import type { FromSchema } from 'json-schema-to-ts';

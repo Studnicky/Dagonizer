@@ -5,7 +5,7 @@ import type { ToolCall } from './LlmAdapter.js';
  * that emits tool calls as text rather than via a native channel (Gemini Nano,
  * WebLLM). Permissive: extracts the outermost `{ … }` before parsing, so
  * surrounding prose is tolerated. `idPrefix` namespaces the synthesized call
- * ids. Returns `[]` on any parse failure or malformed entry — never throws.
+ * ids. Returns `[]` on any parse failure or malformed entry; never throws.
  */
 export function decodeToolCallsJson(raw: string, idPrefix: string): ToolCall[] {
   try {

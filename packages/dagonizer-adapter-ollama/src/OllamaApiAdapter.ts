@@ -1,5 +1,5 @@
 /**
- * OllamaApiAdapter — local-first Ollama via the OpenAI-compatible endpoint.
+ * OllamaApiAdapter: local-first Ollama via the OpenAI-compatible endpoint.
  *
  * Ollama exposes two HTTP surfaces. The native `/api/chat` and
  * `/api/generate` endpoints carry Ollama-specific options (`keep_alive`,
@@ -8,7 +8,7 @@
  * surface so this adapter reuses `OpenAiCompatibleAdapter` end-to-end
  * (tools, tool_choice, response_format, finish_reason mapping) without
  * a second wire-protocol implementation. Ollama-native knobs that don't
- * map to the OpenAI spec are deferred — set them at the model layer
+ * map to the OpenAI spec are deferred; set them at the model layer
  * (e.g. via a Modelfile) or via the daemon's `OLLAMA_*` environment.
  *
  * Authentication: Ollama doesn't validate credentials on the loopback
@@ -17,7 +17,7 @@
  * override via `apiKey` when proxying Ollama behind a gateway that does
  * enforce auth.
  *
- * Identifier: `'ollama'` — matches the convention used by the other
+ * Identifier: `'ollama'`, matching the convention used by the other
  * adapter plugins (`'mistral'`, `'groq'`, `'cerebras'`).
  */
 
@@ -30,7 +30,7 @@ const DEFAULT_MODEL = 'llama3.2:latest';
 /**
  * Options accepted at construction.
  *
- * `model` is required — Ollama models are pulled per-host and there is
+ * `model` is required. Ollama models are pulled per-host and there is
  * no portable default; the consumer names the model they've pulled.
  *
  * `baseUrl` defaults to the local loopback. Override when targeting a
@@ -108,7 +108,7 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
   /**
    * Probe true when the Ollama daemon answers a GET against
    * `/api/tags` (the native model-list endpoint) with 2xx inside a
-   * short timeout. Replaces the inherited key-presence probe — Ollama
+   * short timeout. Replaces the inherited key-presence probe. Ollama
    * uses a placeholder bearer and gates availability on the daemon
    * being reachable, not on credentials. Never throws.
    */

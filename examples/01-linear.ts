@@ -1,12 +1,12 @@
 /**
- * 01-linear — minimal node chain.
+ * 01-linear: minimal node chain.
  *
  * Demonstrates the simplest possible DAG: a two-node sequence where each node
  * routes to the next via named outputs. The `classify` node inspects state and
  * picks an output key; the placement's `outputs` map routes that key to the
  * next placement name (or null to end the flow).
  *
- * Watch: both on_topic and off_topic inputs arrive at `respond` — different
+ * Watch: both on_topic and off_topic inputs arrive at `respond`; different
  * outputs can route to the same target placement.
  *
  * Run: npx tsx examples/01-linear.ts
@@ -22,7 +22,7 @@ import type { DAG, NodeInterface } from '@noocodex/dagonizer';
 // #endregion imports
 
 // ---------------------------------------------------------------------------
-// State — the shared data bag passed through every node in this DAG
+// State: the shared data bag passed through every node in this DAG
 // ---------------------------------------------------------------------------
 
 // #region state
@@ -34,7 +34,7 @@ class ChatState extends NodeStateBase {
 // #endregion state
 
 // ---------------------------------------------------------------------------
-// Nodes — registered units of work; each returns a named output
+// Nodes: registered units of work; each returns a named output
 // ---------------------------------------------------------------------------
 
 // #region node
@@ -64,7 +64,7 @@ const respond: NodeInterface<ChatState, 'success'> = {
 // #endregion node
 
 // ---------------------------------------------------------------------------
-// DAG — JSON-LD canonical form; '@type' is the RDF class discriminator
+// DAG: JSON-LD canonical form; '@type' is the RDF class discriminator
 // ---------------------------------------------------------------------------
 
 // #region dag
@@ -114,7 +114,7 @@ const offTopic = new ChatState();
 offTopic.input = 'What is the weather like today?';
 await dispatcher.execute('chat', offTopic);
 
-process.stdout.write('\nLinear DAG — classify → respond → END\n');
+process.stdout.write('\nLinear DAG: classify -> respond -> END\n');
 process.stdout.write(`  on_topic  → "${onTopic.reply}"\n`);
 process.stdout.write(`  off_topic → "${offTopic.reply}"\n`);
 process.stdout.write('\nLesson: both outputs of classify route to the same placement;\n');

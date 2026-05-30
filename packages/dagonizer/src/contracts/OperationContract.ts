@@ -1,5 +1,5 @@
 /**
- * OperationContract — adapter contract for contract-derived flow generation.
+ * OperationContract: adapter contract for contract-derived flow generation.
  *
  * Each operation declares the field paths it `hardRequired` to run, the
  * field paths it `produces`, and the output ports it emits. `DAGDeriver`
@@ -16,7 +16,7 @@
  * The `hardRequired` and `produces` fields are defined by `OperationContractFragment`.
  * The standalone `OperationContract` extends the fragment with `name` and `outputs`
  * for use with `DAGDeriver.derive({ contracts })`. When co-locating the contract
- * on a node via `NodeInterface.contract`, use `OperationContractFragment` directly —
+ * on a node via `NodeInterface.contract`, use `OperationContractFragment` directly;
  * the node's own `name` and `outputs` complete the full surface.
  */
 import type { OperationContractFragment } from './OperationContractFragment.js';

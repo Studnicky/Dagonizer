@@ -1,13 +1,13 @@
 /**
- * GatherStrategy — strategies for merging scatter clone results.
+ * GatherStrategy: strategies for merging scatter clone results.
  *
- *   map       — for each cloneFieldPath → parentPath, read the field off
- *               each clone in source-index order and write to the parent.
- *               One clone ⇒ scalar set. N clones ⇒ array append.
- *   append    — flatten the clone's `field` (or the source item) across all
- *               records into `target`.
- *   partition — bucket records by their output token into named target paths.
- *   custom    — invoke a custom node with `gatherResults` metadata.
+ *   map: for each cloneFieldPath → parentPath, read the field off
+ *        each clone in source-index order and write to the parent.
+ *        One clone ⇒ scalar set. N clones ⇒ array append.
+ *   append: flatten the clone's `field` (or the source item) across all
+ *           records into `target`.
+ *   partition: bucket records by their output token into named target paths.
+ *   custom: invoke a custom node with `gatherResults` metadata.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
@@ -23,7 +23,7 @@ export const GatherStrategySchema = {
 export type GatherStrategyName = FromSchema<typeof GatherStrategySchema>;
 // → 'append' | 'custom' | 'map' | 'partition'
 
-/** Gather strategy names — discriminator values used by `GatherConfig.strategy`. */
+/** Gather strategy names; discriminator values used by `GatherConfig.strategy`. */
 export const GatherStrategyName = {
   'APPEND': 'append',
   'CUSTOM': 'custom',

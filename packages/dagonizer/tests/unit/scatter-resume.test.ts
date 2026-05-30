@@ -104,7 +104,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       async execute() {
         const idx = ++completedCount;
         if (idx === 3) {
-          // Throw on the third item so the scatter errors out — the
+          // Throw on the third item so the scatter errors out; the
           // first two batches' progress writes are already persisted.
           throw new Error('simulated mid-flight failure');
         }
@@ -131,7 +131,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     state.items = [1, 2, 3, 4, 5];
     const result = await dispatcher.execute('scatter-interrupt', state);
 
-    // Scatter threw — cursor stays on 'fan'.
+    // Scatter threw; cursor stays on 'fan'.
     assert.equal(result.cursor, 'fan');
 
     const stored = result.state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
@@ -191,7 +191,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
 
     const result = await dispatcher.resume('scatter-resume', state, 'fan');
 
-    // Worker called only for items 2, 3, 4 — three new executions.
+    // Worker called only for items 2, 3, 4: three new executions.
     assert.equal(calls, 3, `expected 3 fresh worker calls, got ${calls}`);
     assert.equal(result.cursor, null);
     // Progress entry cleared on clean completion.
@@ -239,7 +239,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
 
     const result = await dispatcher.resume('scatter-aggregate', state, 'fan');
 
-    // Gather appended every item (resumed + fresh) — the append strategy
+    // Gather appended every item (resumed + fresh); the append strategy
     // operates over the full source-index-ordered record set that now
     // includes synthesized records for the restored indices.
     assert.equal(result.state.processed.length, 5);
@@ -294,7 +294,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     interruptState.items = [2, 4, 6, 8, 10];
     const partial = await interruptDispatcher.execute('scatter-map-interrupt', interruptState);
 
-    // Scatter aborted on the third item — cursor stays on 'fan', and the
+    // Scatter aborted on the third item; cursor stays on 'fan', and the
     // first two indices are persisted with their produced values.
     assert.equal(partial.cursor, 'fan');
     const persisted = partial.state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
@@ -309,7 +309,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       assert.equal(r.mappingValues['produced'], f(interruptState.items[r.index] as number));
     }
     // The parent results array must NOT carry the prior-run produced values
-    // yet — gather only runs once the loop drains, so the array stays empty
+    // yet; gather only runs once the loop drains, so the array stays empty
     // across the interruption and the resume gather is a single, complete append.
     assert.deepEqual(partial.state.results, []);
 
@@ -339,7 +339,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.equal(resumeRunCount, 3, `expected 3 fresh runs on resume, got ${resumeRunCount}`);
     assert.equal(result.cursor, null);
 
-    // The parent `results` array is COMPLETE — one entry per item — in
+    // The parent `results` array is COMPLETE: one entry per item, in
     // SOURCE ORDER, with NO duplicates.
     const expected = interruptState.items.map(f);
     assert.equal(result.state.results.length, interruptState.items.length,
@@ -462,7 +462,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
 
     // Pre-existing progress claims indices 0 and 1 are done. Then the
     // consumer rewrites the source array (re-slicing, reordering) before
-    // calling resume. The scatter trusts the persisted indices — it
+    // calling resume. The scatter trusts the persisted indices; it
     // skips positions 0 and 1 of the NEW array.
     const state = new ScatterState();
     state.items = [10, 20, 30, 40, 50];
@@ -482,7 +482,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     const result = await dispatcher.resume('scatter-strict-index', state, 'fan');
 
     // 3 fresh executions for the items at positions 2..4 of the NEW
-    // array — strict index semantics, items 777, 666, 555.
+    // array (strict index semantics): items 777, 666, 555.
     assert.equal(calls, 3);
     assert.deepEqual(observedItems.sort((a, b) => a - b), [555, 666, 777]);
     assert.equal(result.cursor, null);
@@ -493,7 +493,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.deepEqual([...result.state.processed].sort((a, b) => a - b), [555, 666, 777, 888, 999]);
   });
 
-  void it('per-batch write cadence — one progress update per batch, not per item', async () => {
+  void it('per-batch write cadence: one progress update per batch, not per item', async () => {
     // Snapshot the progress entry after every batch boundary; verify
     // the snapshot count equals the number of batches (not items).
     const dispatcher = new Dagonizer<ScatterState>();
@@ -538,7 +538,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     // 6 items / concurrency 3 = 2 batches → exactly 2 progress writes.
     assert.equal(progressUpdates, 2, `expected 2 batch writes, got ${progressUpdates}`);
     // sanity: setMetadata also fires for itemKey + itemIndex per item
-    // on each cloned itemState, not on the parent state — so those do
+    // on each cloned itemState, not on the parent state; so those do
     // not contribute to setMetadataCalls on the parent.
     assert.ok(setMetadataCalls >= 2);
   });
@@ -653,7 +653,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
     const exec = dispatcher.execute('scatter-e2e', state, { 'signal': ctl.signal });
     const partial = await exec;
 
-    // The scatter itself aborted — cursor still on 'fan'.
+    // The scatter itself aborted; cursor still on 'fan'.
     assert.equal(partial.cursor, 'fan');
     const ckpt = await Checkpoint.capture('scatter-e2e', partial);
     const round = ckpt.toJson();

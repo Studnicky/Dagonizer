@@ -36,7 +36,7 @@ const helperDAG: DAG = {
   ],
 };
 
-void describe('registerDAG — scatter/dag-body null-route acceptance', () => {
+void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
   void it('accepts scatter placement with success → null (sugar for terminate-completed)', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('step', ['done']));
@@ -133,7 +133,7 @@ void describe('registerDAG — scatter/dag-body null-route acceptance', () => {
     dispatcher.registerNode(makeNode('terminal', ['done']));
     dispatcher.registerDAG(helperDAG);
 
-    // All scatter outputs route to a real parent placement — no nulls
+    // All scatter outputs route to a real parent placement; no nulls
     const validParent: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:valid-parent',

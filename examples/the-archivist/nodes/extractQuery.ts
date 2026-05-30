@@ -1,12 +1,12 @@
 /**
- * extractQuery — parse the raw question into structured search terms.
+ * extractQuery: parse the raw question into structured search terms.
  *
  * The LLM returns a small array (`['cosmic horror', 'novella']`,
  * `['ursula le guin', 'fantasy']`) that the scouts use as input.
  *
  * Timeout / failure is a flow decision, not an execution one: the node arms
  * its own deadline, and on its own timeout or an LLM error it makes a flow
- * decision via the conceptual-root retry budget — route `retry` (the DAG loops
+ * decision via the conceptual-root retry budget: route `retry` (the DAG loops
  * the edge back, bounded by `state.withinRetryBudget`) or, once the budget is
  * spent, `salvage` (the DAG routes to a deterministic recovery node). It never
  * fabricates terms and claims success. External cancellation (`context.signal`)
@@ -22,7 +22,7 @@ import type { ArchivistServices } from '../services.ts';
 
 import type { NodeInterface } from '@noocodex/dagonizer';
 
-/** Per-node timeout — generous for Gemini Nano's constrained-output path (20–60 s typical). */
+/** Per-node timeout: generous for Gemini Nano's constrained-output path (20-60 s typical). */
 const NODE_TIMEOUT_MS = 30_000;
 
 /** Total attempts (initial + retries) before routing to salvage. */
@@ -45,11 +45,11 @@ export const extractQuery: NodeInterface<ArchivistState, 'success' | 'retry' | '
       if (context.signal.aborted) throw err;
       // Node-local timeout or LLM failure → retry budget decides the flow.
       if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-        context.services.logger.warn(`extract-query: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}) — retry: ${err instanceof Error ? err.message : String(err)}`);
+        context.services.logger.warn(`extract-query: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
         return { "output": 'retry' };
       }
       state.clearAttempts(context.nodeName);
-      context.services.logger.warn(`extract-query: retries exhausted — salvage: ${err instanceof Error ? err.message : String(err)}`);
+      context.services.logger.warn(`extract-query: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
       return { "output": 'salvage' };
     } finally {
       clearTimeout(handle);

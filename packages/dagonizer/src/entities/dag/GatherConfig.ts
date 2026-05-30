@@ -1,16 +1,16 @@
 /**
- * GatherConfig — how to merge scatter clone results back into the parent state.
+ * GatherConfig: how to merge scatter clone results back into the parent state.
  *
- *   map       — for each cloneFieldPath → parentPath in `mapping`, read the
- *               field off each clone in source-index order and write to the
- *               parent. One clone ⇒ scalar set. N clones ⇒ array append.
- *   append    — flatten the clone's `field` (or the source item when `field`
- *               is absent) across all records into `target`.
- *   partition — bucket records by their `output` token into
- *               `partitions[token]`. The value pushed is the clone's `field`
- *               when set, else the source item.
- *   custom    — expose the records under `gatherResults` metadata and invoke
- *               `customNode` through the engine.
+ *   map: for each cloneFieldPath → parentPath in `mapping`, read the
+ *        field off each clone in source-index order and write to the
+ *        parent. One clone ⇒ scalar set. N clones ⇒ array append.
+ *   append: flatten the clone's `field` (or the source item when `field`
+ *           is absent) across all records into `target`.
+ *   partition: bucket records by their `output` token into
+ *              `partitions[token]`. The value pushed is the clone's `field`
+ *              when set, else the source item.
+ *   custom: expose the records under `gatherResults` metadata and invoke
+ *           `customNode` through the engine.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';

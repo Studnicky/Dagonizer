@@ -1,16 +1,16 @@
 /**
- * ScatterNode — fork over a source array: one clone per item in the named
+ * ScatterNode: fork over a source array: one clone per item in the named
  * array, run a body in each clone, gather produced clone state back into the
  * parent, and route on the aggregate outcome.
  *
  * Uses `@type: 'ScatterNode'` as the discriminator. `@id` is the placement
  * URN: `urn:noocodex:dag:<dagName>/node/<name>`.
  *
- * `source` is required — it is the dotted path on state to the array to fork
+ * `source` is required; it is the dotted path on state to the array to fork
  * over. For a single nested-DAG invocation (cardinality 1), use `EmbeddedDAGNode`.
  *
  * `stateMapping.input` seeds each clone before its body runs (child-state key →
- * parent-state dotted path) — the same seeding concept and orientation as
+ * parent-state dotted path), the same seeding concept and orientation as
  * `EmbeddedDAGNode.stateMapping.input`. Scatter has no `stateMapping.output`:
  * the N→1 merge back into the parent is `gather`'s job (a fork reduces, an embed
  * copies). `reducer` picks the outcome strategy; defaults to `'aggregate'`.
@@ -51,7 +51,7 @@ export const ScatterNodeSchema = {
     'stateMapping': {
       'type': 'object',
       'properties': {
-        // input: seed each clone before its body runs — child-state key → parent-state dotted path.
+        // input: seed each clone before its body runs (child-state key → parent-state dotted path).
         'input': { 'type': 'object', 'additionalProperties': { 'type': 'string' }, 'description': 'child-state key -> parent-state dotted path; seeds each clone before its body runs' },
       },
       'additionalProperties': false,

@@ -1,5 +1,5 @@
 /**
- * DecisionNode — "agent consults the model and returns a structured
+ * DecisionNode: "agent consults the model and returns a structured
  * choice" pattern. Extends LlmDispatchNode for the shared request
  * envelope; adds choice parsing, port routing, state write-back.
  *

@@ -1,5 +1,5 @@
 /**
- * `@noocodex/dagonizer/constants` — constant value+type pairs.
+ * `@noocodex/dagonizer/constants`: constant value+type pairs.
  *
  * Each named export is both a runtime value (a frozen lookup object) and a
  * `FromSchema`-derived type of the same name, alongside its source `*Schema`.

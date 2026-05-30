@@ -1,5 +1,5 @@
 /**
- * prompts.ts — every prompt the Archivist sends, composed from small
+ * prompts.ts: every prompt the Archivist sends, composed from small
  * directive primitives.
  *
  *   Directive  = one short positive instruction (an "attractor")
@@ -28,7 +28,7 @@ export const directives = {
   // ── Persona ──────────────────────────────────────────────────────────
   // All directives are positive imperatives: tell the model what the
   // Archivist DOES and HOW it speaks. Attractors bind tighter than
-  // repulsors — describe the role, the data sources, and the response
+  // repulsors. Describe the role, the data sources, and the response
   // shape; the model will inhabit that frame rather than fight it.
   "persona":          'You are the Archivist, a research librarian. You have global catalog access through OpenLibrary, Google Books, and Wikipedia and you can look up, describe, and discuss any published work.',
   "scope":            'Help the visitor find, describe, and compare books, working from the catalog records you just retrieved (listed below).',
@@ -39,8 +39,8 @@ export const directives = {
 
   // ── Response style ───────────────────────────────────────────────────
   "beTerse":          'Reply in 2–3 sentences.',
-  "conversational":   'Reply in flowing prose as a librarian speaking aloud. Weave the catalog records you cite into your sentences naturally — title-case the work, mention the author when it matters, drop the rest. Headings, bullet lists, and numbered enumerations belong in a printed bibliography, not in conversation.',
-  "citeShortlist":    'Every title you cite comes from the catalog records below — they are the records the visitor is asking about.',
+  "conversational":   'Reply in flowing prose as a librarian speaking aloud. Weave the catalog records you cite into your sentences naturally: title-case the work, mention the author when it matters, drop the rest. Headings, bullet lists, and numbered enumerations belong in a printed bibliography, not in conversation.',
+  "citeShortlist":    'Every title you cite comes from the catalog records below; they are the records the visitor is asking about.',
   "groundInShortlist":'Build each sentence from the metadata in the records below: title, author, year, subjects, notes, source.',
   "clarifyOnDoubt":   'If no records were returned or the question is ambiguous, ask a single clarifying question.',
   "memoryAsContext":  'Treat persistent memory as background only. Mention it when the visitor says "last time" / "earlier" / "I mentioned before".',
@@ -69,15 +69,15 @@ export const directives = {
   // ── Intent classification ────────────────────────────────────────────
   "intentEnumerationHeader": 'Classify the visitor question as exactly one of the following intents:',
   "intentEnumeration": [
-    '  lookup-author      — the visitor named an author and wants their body of work',
-    '  find-reviews       — the visitor wants opinions, reviews, or what readers think',
-    '  describe-book      — the visitor named a specific title and wants a description',
-    '  recommend-similar  — the visitor wants something like a previous read',
-    '  recall-memories    — the visitor asks about your own memory or history: what books you have looked up, what they have asked before, what has been recommended; any meta-question about your past activity',
-    '  search             — the visitor named a topic / title / ISBN (no clear sub-case)',
-    '  describe           — the visitor described a book without naming it',
-    '  recommend          — the visitor asked for a generic recommendation',
-    '  off-topic          — the visitor asked something unrelated to books and unrelated to your memory',
+    '  lookup-author      : the visitor named an author and wants their body of work',
+    '  find-reviews       : the visitor wants opinions, reviews, or what readers think',
+    '  describe-book      : the visitor named a specific title and wants a description',
+    '  recommend-similar  : the visitor wants something like a previous read',
+    '  recall-memories    : the visitor asks about your own memory or history: what books you have looked up, what they have asked before, what has been recommended; any meta-question about your past activity',
+    '  search             : the visitor named a topic / title / ISBN (no clear sub-case)',
+    '  describe           : the visitor described a book without naming it',
+    '  recommend          : the visitor asked for a generic recommendation',
+    '  off-topic          : the visitor asked something unrelated to books and unrelated to your memory',
   ].join('\n'),
   "intentExamplesHeader": 'Examples:',
   "intentExamples": [
@@ -94,14 +94,14 @@ export const directives = {
     '  "what is the weather like?" → off-topic',
     '  "try again" / "another one" / "different" / "no" → REUSE THE PRIOR INTENT from recent context if any, otherwise default to `search`',
   ].join('\n'),
-  "intentRules":          'Rules: prefer the most specific intent. Treat short follow-up phrases ("try again", "next", "no", "different") as continuations of the previous intent — never classify them as off-topic. If the visitor explicitly asks for tools, web search, lookups, or external sources, classify as `search`, NEVER `off-topic`. Off-topic is ONLY for queries clearly unrelated to books or reading (weather, sports scores, jokes, recipes, news). Anything book-adjacent, tool-related, or meta about the assistant is on-topic.',
+  "intentRules":          'Rules: prefer the most specific intent. Treat short follow-up phrases ("try again", "next", "no", "different") as continuations of the previous intent; never classify them as off-topic. If the visitor explicitly asks for tools, web search, lookups, or external sources, classify as `search`, NEVER `off-topic`. Off-topic is ONLY for queries clearly unrelated to books or reading (weather, sports scores, jokes, recipes, news). Anything book-adjacent, tool-related, or meta about the assistant is on-topic.',
   "intentResponseFormat": 'Respond with the single token only.',
 
   // ── Term extraction ──────────────────────────────────────────────────
   "extractTermsTask": [
     'Distill the visitor question into 2-4 catalog-searchable domain keywords.',
     'Strip filler words (do, you, have, any, tell, me, about, like, want, looking, for, please, thanks).',
-    'Strip generic nouns like "book(s)", "novel(s)", "title(s)", "question(s)" — those don\'t narrow a catalog search.',
+    'Strip generic nouns like "book(s)", "novel(s)", "title(s)", "question(s)"; those don\'t narrow a catalog search.',
     'Normalize abbreviations: "sci-fi" → "science fiction", "AI" → "artificial intelligence".',
     'Keep proper nouns intact (author names, book titles).',
     '',
@@ -120,37 +120,37 @@ export const directives = {
   "jsonArrayOnly":    'Return ONLY a JSON array of strings.',
 
   // ── Tool decision ────────────────────────────────────────────────────
-  "callAllToolsForAuthor": 'For any visitor question that names an author or describes a book to find, call ALL of the available tools — do not omit any source.',
+  "callAllToolsForAuthor": 'For any visitor question that names an author or describes a book to find, call ALL of the available tools; do not omit any source.',
   "shortKeywordQuery":     'Use a short, keyword-only query (no surrounding quotes, no filler phrases).',
 
   // ── Compose-side candidate headers ───────────────────────────────────
   "candidatesHeader":              'Catalog records (cite in flowing prose; the order reflects ranking):',
   "candidatesHeaderChronological": 'Catalog records (cite in flowing prose; the order is chronological):',
   "candidatesHeaderRated":         'Catalog records (cite in flowing prose; the order reflects reader ratings):',
-  "persistentMemoryHeader":        'PERSISTENT MEMORY (background only — cite only on explicit recall request):',
-  "persistentMemoryAnchorHeader":  'PERSISTENT MEMORY (anchor — cite explicitly as the basis for similarity):',
+  "persistentMemoryHeader":        'PERSISTENT MEMORY (background only; cite only on explicit recall request):',
+  "persistentMemoryAnchorHeader":  'PERSISTENT MEMORY (anchor; cite explicitly as the basis for similarity):',
 
   // ── Validation ───────────────────────────────────────────────────────
   "validateApprovalRule":   'Approve if the draft (a) cites a title from the catalog records and (b) reads as a polite on-topic reply.',
   "validateResponseFormat": 'Reply with the single token "yes" or "no".',
 
   // ── Starter / greeting / visitor-reply suggestion ────────────────────
-  "starterGenrePool":       'Pick one acclaimed work or author from science fiction or philosophy at random — examples of the genre frame: Liu Cixin\'s Three Body Problem, William Gibson\'s Neuromancer, Ursula K. Le Guin, Stanisław Lem, Ted Chiang, Jorge Luis Borges, Albert Camus, Michel Foucault, Gilles Deleuze, Ludwig Wittgenstein. Pick something in that vein but vary your selection.',
+  "starterGenrePool":       'Pick one acclaimed work or author from science fiction or philosophy at random. Examples of the genre frame: Liu Cixin\'s Three Body Problem, William Gibson\'s Neuromancer, Ursula K. Le Guin, Stanisław Lem, Ted Chiang, Jorge Luis Borges, Albert Camus, Michel Foucault, Gilles Deleuze, Ludwig Wittgenstein. Pick something in that vein but vary your selection.',
   "starterPhraseInstruction":'Phrase ONE short curious question a first-time visitor to a bookstore might ask about it.',
   "starterLengthLimit":     'The question must be under 20 words.',
-  "starterReturnFormat":    'Return just the question — no preamble, no quotation marks, no explanation.',
+  "starterReturnFormat":    'Return just the question, with no preamble, no quotation marks, and no explanation.',
 
   "greetingInstruction":    'Write ONE fresh opening greeting for a new visitor walking into the shop.',
   "greetingTone":           'The greeting must be warm, curious, and invite a book question.',
   "greetingLengthLimit":    'Keep it under 30 words.',
-  "greetingReturnFormat":   'Return just the greeting — no preamble, no quotation marks, no explanation.',
+  "greetingReturnFormat":   'Return just the greeting, with no preamble, no quotation marks, and no explanation.',
 
   "visitorReplyContextLine":  'A bookshop visitor has just received this greeting from the Archivist:',
   "visitorReplyInterest":     'The visitor is interested in science fiction and philosophy.',
   "visitorReplyInstruction":  'Write ONE natural first message the visitor might send in reply.',
   "visitorReplyContent":      'The reply must be a book question or request that follows naturally from the greeting.',
   "visitorReplyLengthLimit":  'Keep it under 30 words.',
-  "visitorReplyReturnFormat": 'Return just the visitor message — no preamble, no quotation marks, no explanation.',
+  "visitorReplyReturnFormat": 'Return just the visitor message, with no preamble, no quotation marks, and no explanation.',
 
   // ── Tool explanation ─────────────────────────────────────────────────
   "explainToolPersona":      'You are a librarian explaining a backend tool to a curious visitor.',
@@ -162,7 +162,7 @@ export const directives = {
   "explainToolReturnFormat": 'Return just the explanation, no preamble.',
 
   // ── Memory recall ────────────────────────────────────────────────────
-  "memoryEmptyStatus": 'Memory status: my shelves are fresh — no books have been recorded yet this session.',
+  "memoryEmptyStatus": 'Memory status: my shelves are fresh. No books have been recorded yet this session.',
 
   // ── Prior memory hint ────────────────────────────────────────────────
   /**
@@ -170,10 +170,10 @@ export const directives = {
    * `notes.fromPriorMemory: true`. Instructs the model to phrase those
    * recalls as "I recall from earlier" rather than "I just searched".
    */
-  "priorMemoryHint": 'Some of these books come from prior sessions where you discussed similar queries — phrase them as "I recall" or "from earlier we found" rather than "I just searched".',
+  "priorMemoryHint": 'Some of these books come from prior sessions where you discussed similar queries; phrase them as "I recall" or "from earlier we found" rather than "I just searched".',
 } as const;
 
-// ── Shared system message — composed from persona directives ───────────
+// ── Shared system message, composed from persona directives ────────────
 // Positive imperatives only. Describe what the Archivist DOES; the model
 // inhabits that frame rather than negotiating around prohibitions.
 const SYSTEM = [
@@ -191,7 +191,7 @@ const SYSTEM = [
   directives.memoryAsContext,
 ].join(' ');
 
-// ── Output schemas (the data contract — paired with prompts) ───────────
+// ── Output schemas (the data contract, paired with prompts) ───────────
 //
 // Index-pointer schemas: the LLM emits flat integer arrays that point at
 // items in the pre-numbered prompt lists. Deterministic code in
@@ -235,7 +235,7 @@ export const schemas = {
   } as Record<string, unknown>,
 };
 
-// ── Language preamble — top-of-prompt directive ────────────────────────
+// ── Language preamble: top-of-prompt directive ────────────────────────
 /**
  * Prepend a single language directive to every prompt body. Single
  * source of truth for the language instruction so we can evolve the
@@ -245,7 +245,7 @@ export const schemas = {
  *   • respond in the user's device language;
  *   • use that language for every natural-language field in any JSON
  *     output (descriptions, ranking reasons, draft responses);
- *   • not echo translations of the input — respond directly in the
+ *   • not echo translations of the input; respond directly in the
  *     target language.
  */
 function withLanguagePreamble(language: string, body: string): string {
@@ -255,7 +255,7 @@ function withLanguagePreamble(language: string, body: string): string {
     `You communicate in ${name} (${code}). Every word you output, including`,
     'JSON field values that contain natural language (book descriptions, ranking',
     `reasons, draft responses), MUST be in ${name}. Do not output translations`,
-    `or transliterations of the user's input — respond directly in ${name}.`,
+    `or transliterations of the user's input. Respond directly in ${name}.`,
   ].join('\n');
   return `${preamble}\n\n${body}`;
 }
@@ -310,11 +310,11 @@ export const prompts = {
     // Index-pointer schema: the LLM picks tools by 1-based index into a
     // numbered list rendered in the prompt. Tool arguments are
     // synthesised deterministically by `BaseLlmClient.decideTools` from
-    // `state.query` and `state.userLanguage` — the model never touches
+    // `state.query` and `state.userLanguage`; the model never touches
     // arguments. Massive token savings vs the per-call adapter tools
     // channel on Nano / WebLLM.
     const toolList = available
-      .map((t, i) => `  ${String(i + 1)}. ${t.name} — ${t.description}`)
+      .map((t, i) => `  ${String(i + 1)}. ${t.name}: ${t.description}`)
       .join('\n');
     const body = [
       SYSTEM,
@@ -695,7 +695,7 @@ function formatCandidateRow(n: number, c: Candidate): string {
     parts.push(`pub: ${c.book.publishers[0]}`);
   }
   if (c.book.summary !== undefined && c.book.summary.length > 0) {
-    parts.push(`— ${c.book.summary}`);
+    parts.push(`summary: ${c.book.summary}`);
   }
   if (c.reason !== undefined && c.reason.length > 0) {
     parts.push(`[rank-reason: ${c.reason}]`);

@@ -1,10 +1,10 @@
 /**
- * Salvage nodes — deterministic recovery reached by a flow decision.
+ * Salvage nodes: deterministic recovery reached by a flow decision.
  *
  * When an LLM node exhausts its retry budget it routes to `salvage`; the DAG
  * wires that edge to one of these nodes, which performs a deterministic,
  * service-free fallback and rejoins the happy path. The recovery is a real
- * node in the topology — NOT logic hidden inside the failing node's catch
+ * node in the topology (NOT logic hidden inside the failing node's catch
  * block. That keeps execution (what a node computes) separate from flow
  * decisioning (which edge the DAG takes), and means a consumer can swap or
  * re-route any salvage without touching the producing node.
@@ -18,11 +18,11 @@ import type { ArchivistServices } from '../services.ts';
 
 import type { NodeInterface } from '@noocodex/dagonizer';
 
-/** Cap on naive split terms — matches the old in-catch fallback. */
+/** Cap on naive split terms; matches the old in-catch fallback. */
 const MAX_NAIVE_TERMS = 6;
 
 /**
- * extract-query salvage — naive whitespace term split. Drops words ≤ 2 chars,
+ * extract-query salvage: naive whitespace term split. Drops words ≤ 2 chars,
  * caps at six. Deterministic; no LLM. Writes `state.terms` and rejoins at
  * decide-tools.
  */
@@ -41,7 +41,7 @@ export const extractQuerySalvage: NodeInterface<ArchivistState, 'done', Archivis
 };
 
 /**
- * decide-tools salvage — minimal tool plan so the scouts still run. No `query`
+ * decide-tools salvage: minimal tool plan so the scouts still run. No `query`
  * arg; each scout falls back to `state.terms.join(' ')`. Rejoins at
  * recall-candidates.
  */
@@ -56,7 +56,7 @@ export const decideToolsSalvage: NodeInterface<ArchivistState, 'done', Archivist
 };
 
 /**
- * classify-intent salvage — default to the broadest on-topic intent (`search`)
+ * classify-intent salvage: default to the broadest on-topic intent (`search`)
  * so the visitor still gets a book search. Rejoins at the on-topic search
  * branch.
  */
@@ -71,7 +71,7 @@ export const classifyIntentSalvage: NodeInterface<ArchivistState, 'done', Archiv
 };
 
 /**
- * rank-candidates salvage — keep the candidates in their scout-produced order
+ * rank-candidates salvage: keep the candidates in their scout-produced order
  * (deterministic given the same inputs). No fabricated scores. Rejoins at
  * merge-candidates, which soft-gates on emptiness.
  */
@@ -88,10 +88,10 @@ export const rankCandidatesSalvage: NodeInterface<ArchivistState, 'done', Archiv
 
 /** Canned message when compose can't reach the LLM after exhausting retries. */
 const COMPOSE_SALVAGE_DRAFT =
-  'I had trouble composing a full response just now. Here is what I found — ask me to expand on any title and I will try again.';
+  'I had trouble composing a full response just now. Here is what I found; ask me to expand on any title and I will try again.';
 
 /**
- * compose-response salvage — transient LLM failure exhausted the compose
+ * compose-response salvage: transient LLM failure exhausted the compose
  * budget. Emit a deterministic acknowledgement rather than fabricating a
  * fluent answer, then exit the compose loop.
  */
@@ -107,10 +107,10 @@ export const composeResponseSalvage: NodeInterface<ArchivistState, 'done', Archi
 
 /** Canned empty-result message when compose-empty exhausts its retry budget. */
 const EMPTY_SALVAGE_DRAFT =
-  'I searched OpenLibrary, Google Books, the subject index, and Wikipedia but nothing came back for that description. Try a single keyword — the author name alone, or one strong image from the book — and I will cast a wider net.';
+  'I searched OpenLibrary, Google Books, the subject index, and Wikipedia but nothing came back for that description. Try a single keyword: the author name alone, or one strong image from the book, and I will cast a wider net.';
 
 /**
- * compose-empty salvage — the empty-result composer couldn't reach the LLM
+ * compose-empty salvage: the empty-result composer couldn't reach the LLM
  * after retries. Emit the deterministic acknowledgement so the visitor always
  * gets a response, then route on to respond-to-visitor.
  */
@@ -129,7 +129,7 @@ const MEMORY_SALVAGE_DRAFT =
   'I had trouble putting my memory into words just now. Ask me again, or tell me a title or author and I will look it up fresh.';
 
 /**
- * compose-memory-response salvage — the recall composer exhausted its budget.
+ * compose-memory-response salvage: the recall composer exhausted its budget.
  * Emit a deterministic acknowledgement and route on to respond-to-visitor.
  */
 export const composeMemoryResponseSalvage: NodeInterface<ArchivistState, 'done', ArchivistServices> = {

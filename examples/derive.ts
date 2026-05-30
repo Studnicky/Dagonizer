@@ -1,7 +1,7 @@
 /**
- * derive — DAGDeriver: declarative authoring for agentic flows.
+ * derive: DAGDeriver for declarative authoring of agentic flows.
  *
- * Use this surface when the operation set IS the spec — adding a tool
+ * Use this surface when the operation set IS the spec; adding a tool
  * should auto-rewire the flow. Each operation declares what it needs
  * (`hardRequired`) and what it produces (`produces`); DAGDeriver
  * matches produces ↔ hardRequired to derive the topology. Every port
@@ -20,8 +20,8 @@
  * Run: npx tsx examples/derive.ts
  *
  * Companion: examples/02-builder.ts demonstrates the deterministic /
- * ETL authoring path via DAGBuilder. Same canonical DAG output — pick
- * the journey that matches your mental model.
+ * ETL authoring path via DAGBuilder. Same canonical DAG output; pick
+ * the path that matches your mental model.
  */
 
 import { DAGDeriver } from '@noocodex/dagonizer/derive';
@@ -43,7 +43,7 @@ class S extends NodeStateBase {
 }
 
 // ---------------------------------------------------------------------------
-// Nodes — same NodeInterface shape regardless of authoring path
+// Nodes: same NodeInterface shape regardless of authoring path
 // ---------------------------------------------------------------------------
 
 const prepare: NodeInterface<S, 'success'> = {
@@ -79,7 +79,7 @@ const transform: NodeInterface<S, 'success'> = {
 const invokePlugin: NodeInterface<S, 'success' | 'error'> = {
   // invoke-plugin carries the contract (hardRequired/produces) the deriver
   // uses to place this stage in the topology. The embeddedDAGs annotation
-  // renders it as an EmbeddedDAGNode whose `dag` runs the child DAG —
+  // renders it as an EmbeddedDAGNode whose `dag` runs the child DAG;
   // so this `execute` does not run; the sub-DAG does the work.
   // Its `outputs` declare the ports the EmbeddedDAGNode routes on.
   "name": 'invoke-plugin',
@@ -105,7 +105,7 @@ const finalize: NodeInterface<S, 'success'> = {
 // ---------------------------------------------------------------------------
 
 // #region derive
-// Child DAG — simple validate→transform chain. validate's error port
+// Child DAG: simple validate->transform chain. validate's error port
 // is terminated via `terminals`; the validator is a hard gate.
 // #region contracts
 const childDAG = DAGDeriver.derive({
@@ -121,7 +121,7 @@ const childDAG = DAGDeriver.derive({
 });
 // #endregion contracts
 
-// Parent DAG — invoke-plugin runs the child DAG via the embeddedDAGs
+// Parent DAG: invoke-plugin runs the child DAG via the embeddedDAGs
 // annotation, which the deriver renders as an EmbeddedDAGNode.
 // stateMapping.input seeds the child from the parent before it runs;
 // stateMapping.output copies child fields back after it completes.

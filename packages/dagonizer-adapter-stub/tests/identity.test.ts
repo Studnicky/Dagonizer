@@ -48,7 +48,7 @@ void test('StubAdapter.setError makes next chat() throw and clears after one use
   const a = new StubAdapter({ 'defaultResponse': 'ok' });
   a.setError(new Error('boom'));
   await assert.rejects(() => a.chat(sampleRequest()), /boom/);
-  // Second call succeeds — error was one-shot.
+  // Second call succeeds; error was one-shot.
   const r = await a.chat(sampleRequest());
   if (r.message.kind === 'text') assert.equal(r.message.content, 'ok');
 });

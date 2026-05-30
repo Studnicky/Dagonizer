@@ -1,20 +1,20 @@
 /**
- * CanonicalId — normalize ids across book-source tools.
+ * CanonicalId: normalize ids across book-source tools.
  *
  * Every collection tool (OpenLibrary, Google Books, Wikipedia) emits
  * a `Candidate` whose `book.isbn` field is the canonical id. The
  * canonical id, in priority order:
  *
- *   1. ISBN-13         — preferred (universally unique)
- *   2. ISBN-10         — accepted (older catalogue records)
- *   3. urn:isbn:<x>    — when only one of either ISBN form is reachable
- *   4. urn:work:<slug> — generated from normalized "title|first-author"
- *                       lowercased + non-alphanum-stripped — so the same
+ *   1. ISBN-13: preferred (universally unique)
+ *   2. ISBN-10: accepted (older catalogue records)
+ *   3. urn:isbn:<x>: when only one of either ISBN form is reachable
+ *   4. urn:work:<slug>: generated from normalized "title|first-author"
+ *                       lowercased + non-alphanum-stripped, so the same
  *                       work indexed by OpenLibrary key, Google Books
  *                       volumeId, and Wikipedia title still de-duplicates.
  *
  * `merge(a, b)` unions two Candidates that resolved to the same
- * canonical id — keeping the richest description, the longest author
+ * canonical id, keeping the richest description, the longest author
  * list, and the union of `sources[]` and `notes`.
  */
 

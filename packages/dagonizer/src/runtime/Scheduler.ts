@@ -1,5 +1,5 @@
 /**
- * Scheduler — engine-owned monotonic timer provider.
+ * Scheduler: engine-owned monotonic timer provider.
  *
  * Same principle as `Clock`: time is monotonic. All scheduling is in
  * milliseconds-since-arbitrary-origin (derived from `Clock.monotonicMs()`).
@@ -10,7 +10,7 @@
  * (most use cases). Raw `setTimeout` / `setInterval` are ONLY permitted
  * inside `RealTimeScheduler.ts`.
  *
- * Static class — no instances, no free helpers.
+ * Static class; no instances, no free helpers.
  */
 
 import type { SchedulerHandle } from '../contracts/SchedulerHandle.js';
@@ -57,7 +57,7 @@ export class Scheduler {
     return new SchedulerHandleImpl(_provider);
   }
 
-  /** Install a scheduler provider. Engine-only — called at boot or in tests. */
+  /** Install a scheduler provider. Engine-only; called at boot or in tests. */
   static configure(provider: SchedulerProvider): void {
     _provider = provider;
   }

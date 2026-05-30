@@ -1,5 +1,5 @@
 /**
- * JsonSchema — TypeScript model of JSON Schema draft 2020-12.
+ * JsonSchema: TypeScript model of JSON Schema draft 2020-12.
  *
  * Narrow by design: only keywords defined by the 2020-12 core, validation,
  * format-annotation, content, and meta-data vocabularies are representable.

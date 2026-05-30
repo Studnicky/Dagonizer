@@ -1,5 +1,5 @@
 /**
- * recallCandidates — pre-scout prior-memory recall node.
+ * recallCandidates: pre-scout prior-memory recall node.
  *
  * Runs INSIDE each `book-search-scatter` embedded-DAG, between
  * `decide-tools` and the parallel scout cluster. Queries the
@@ -23,10 +23,10 @@
  * result that routes 'recalled' with an empty `state.priorCandidates`. An
  * embedder failure degrades to Jaccard scoring (capability fallback, not
  * salvage). A defect in the deterministic memory query has no recovery route
- * here, so it propagates — the node never fabricates a recall result.
+ * here, so it propagates; the node never fabricates a recall result.
  *
- * output: 'recalled' — the prior-memory pre-load completed (possibly empty).
- * kind:   'deterministic' — pure SPARQL pattern-match over a stable store.
+ * output: 'recalled': the prior-memory pre-load completed (possibly empty).
+ * kind:   'deterministic': pure SPARQL pattern-match over a stable store.
  */
 
 import type { Candidate } from '../entities/Book.ts';
@@ -128,7 +128,7 @@ export const recallCandidates: ArchivistNode<'recalled'> = {
         });
         const literal = embRows[0]?.['v']?.value;
         if (literal === undefined) {
-          // No embedding stored for this run — skip rather than mix metrics.
+          // No embedding stored for this run; skip rather than mix metrics.
           // Older runs predating the embedder rollout won't have a vector;
           // they're only reachable via Jaccard fallback (covered below).
           continue;

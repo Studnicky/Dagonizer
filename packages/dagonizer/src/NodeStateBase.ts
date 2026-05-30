@@ -10,10 +10,10 @@ import type { DAGLifecycleState } from './lifecycle/DAGLifecycleState.js';
  * Concrete implementations extend this for domain-specific state.
  *
  * State is the "clipboard" that all nodes read from and write to.
- * Errors are collected in state — they don't stop execution.
+ * Errors are collected in state; they don't stop execution.
  *
  * The data fields (errors, warnings, metadata) mirror `NodeStateData`
- * — the persistence shape returned by `NodeStateBase.snapshot()`.
+ * (the persistence shape returned by `NodeStateBase.snapshot()`).
  * The `lifecycle` field here carries an in-memory `Error` on the `failed`
  * branch, which is not JSON-expressible; `NodeStateData` holds the opaque
  * wire form. See `entities/node/NodeStateData.ts` for the persistence shape.
@@ -36,7 +36,7 @@ export interface NodeStateInterface {
 
   /**
    * Collected errors from all nodes.
-   * Errors accumulate — they don't stop the flow.
+   * Errors accumulate; they don't stop the flow.
    * At completion, caller decides what to do with them.
    */
   readonly 'errors': readonly NodeErrorInterface[];
@@ -97,8 +97,8 @@ export interface NodeStateInterface {
   /**
    * Record one retry attempt for a routing key (typically `context.nodeName`)
    * and return the new attempt count. A node that fails and wants the flow to
-   * retry increments here; a downstream gate — or the same node on a self-loop
-   * — reads the count to decide retry vs. salvage. Retry is a flow shape: the
+   * retry increments here; a downstream gate (or the same node on a self-loop)
+   * reads the count to decide retry vs. salvage. Retry is a flow shape: the
    * count lives in state, the loop edge lives in the DAG. No `RetryPolicy`
    * hidden inside a node.
    */
@@ -277,7 +277,7 @@ export class NodeStateBase implements NodeStateInterface {
    *
    * Subclasses with extra fields override `snapshotData()` to add them;
    * the base implementation captures metadata, errors, and warnings.
-   * Lifecycle is intentionally NOT captured — resume starts a fresh
+   * Lifecycle is intentionally NOT captured; resume starts a fresh
    * execution from `pending`.
    */
   snapshot(): JsonObject {
@@ -299,7 +299,7 @@ export class NodeStateBase implements NodeStateInterface {
   }
 
   /**
-   * Rehydrate state from a snapshot. Lifecycle resets to `pending` — the
+   * Rehydrate state from a snapshot. Lifecycle resets to `pending`; the
    * resumed execution is a new run on the DAG lifecycle FSM.
    *
    * Subclasses with extra fields override `restoreData()` to read them

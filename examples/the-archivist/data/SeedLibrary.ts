@@ -1,5 +1,5 @@
 /**
- * SeedLibrary — 18-book sci-fi + philosophy seed for the Archivist's
+ * SeedLibrary: 18-book sci-fi + philosophy seed for the Archivist's
  * memory graph.
  *
  * Loaded into `urn:dagonizer:memory` on mount so the Memory tab has
@@ -7,7 +7,7 @@
  * ground canned responses in real titles from the visible graph.
  *
  * All ISBNs are ISBN-13, search-engine-verifiable. Subjects are
- * lowercase with hyphens — used for substring matching by the stub.
+ * lowercase with hyphens; used for substring matching by the stub.
  */
 
 import { GRAPH_MEMORY, MemoryStore } from '../memory/MemoryStore.js';
@@ -65,7 +65,7 @@ export const SEED_BOOKS: readonly SeedBook[] = [
     'authors':          ['Ted Chiang'],
     'firstPublishYear': 2002,
     'subjects':         ['linguistics', 'determinism', 'mathematics', 'epistemology', 'hard-science-fiction', 'philosophy-of-language'],
-    'summary':          'Eight stories that remake familiar concepts — language, mathematics, free will — through scrupulously rigorous scientific premises. The title story, basis for the film Arrival, explores how learning an alien grammar rewires human perception of time.',
+    'summary':          'Eight stories that remake familiar concepts (language, mathematics, free will) through scrupulously rigorous scientific premises. The title story, basis for the film Arrival, explores how learning an alien grammar rewires human perception of time.',
   },
   {
     'isbn':             '978-0374104092',
@@ -89,7 +89,7 @@ export const SEED_BOOKS: readonly SeedBook[] = [
     'authors':          ['Dan Simmons'],
     'firstPublishYear': 1989,
     'subjects':         ['far-future', 'pilgrimage', 'artificial-intelligence', 'time-travel', 'poetry', 'canterbury-tales'],
-    'summary':          'Seven pilgrims journey to the Time Tombs on Hyperion, each telling their story on the way — and each story is a different genre: horror, spy thriller, detective, pastoral. Simmons binds them with Keats and the threat of the Shrike.',
+    'summary':          'Seven pilgrims journey to the Time Tombs on Hyperion, each telling their story on the way. Each story is a different genre: horror, spy thriller, detective, pastoral. Simmons binds them with Keats and the threat of the Shrike.',
   },
   {
     'isbn':             '978-0812515282',
@@ -124,7 +124,7 @@ export const SEED_BOOKS: readonly SeedBook[] = [
     'authors':          ['Ludwig Wittgenstein'],
     'firstPublishYear': 1921,
     'subjects':         ['logic', 'language', 'philosophy-of-language', 'logical-atomism', 'limits-of-thought'],
-    'summary':          'Wittgenstein\'s early masterwork proposes that the limits of language are the limits of the world, and that philosophical problems arise from misuse of language. The final proposition — "What we cannot speak about we must pass over in silence" — remains one of philosophy\'s most quoted sentences.',
+    'summary':          'Wittgenstein\'s early masterwork proposes that the limits of language are the limits of the world, and that philosophical problems arise from misuse of language. The final proposition, "What we cannot speak about we must pass over in silence," remains one of philosophy\'s most quoted sentences.',
   },
   {
     'isbn':             '978-0525564454',
@@ -132,7 +132,7 @@ export const SEED_BOOKS: readonly SeedBook[] = [
     'authors':          ['Albert Camus'],
     'firstPublishYear': 1942,
     'subjects':         ['absurdism', 'existentialism', 'meaning', 'suicide', 'revolt', 'freedom'],
-    'summary':          'Camus argues that life is absurd — meaningless and yet irresistibly demanding meaning — and that the only honest response is revolt, not despair. He ends by imagining Sisyphus happy, pushing his boulder forever without illusion.',
+    'summary':          'Camus argues that life is absurd (meaningless and yet irresistibly demanding meaning) and that the only honest response is revolt, not despair. He ends by imagining Sisyphus happy, pushing his boulder forever without illusion.',
   },
   {
     'isbn':             '978-0679752554',
@@ -140,7 +140,7 @@ export const SEED_BOOKS: readonly SeedBook[] = [
     'authors':          ['Michel Foucault'],
     'firstPublishYear': 1975,
     'subjects':         ['power', 'surveillance', 'prison', 'discipline', 'biopolitics', 'social-control'],
-    'summary':          'Foucault traces the shift from public torture to the modern prison and argues that disciplinary power — embodied in the Panopticon — now structures schools, hospitals, and workplaces. A genealogy of surveillance and the modern subject.',
+    'summary':          'Foucault traces the shift from public torture to the modern prison and argues that disciplinary power, embodied in the Panopticon, now structures schools, hospitals, and workplaces. A genealogy of surveillance and the modern subject.',
   },
   {
     'isbn':             '978-0231081597',
@@ -148,7 +148,7 @@ export const SEED_BOOKS: readonly SeedBook[] = [
     'authors':          ['Gilles Deleuze'],
     'firstPublishYear': 1968,
     'subjects':         ['ontology', 'difference', 'repetition', 'identity', 'post-structuralism', 'immanence'],
-    'summary':          'Deleuze argues that difference is primary — not derived from identity — and that repetition is never the return of the same but the production of the new. A difficult and rewarding dismantling of representational thinking.',
+    'summary':          'Deleuze argues that difference is primary, not derived from identity, and that repetition is never the return of the same but the production of the new. A difficult and rewarding dismantling of representational thinking.',
   },
   {
     'isbn':             '978-0465026562',
@@ -164,7 +164,7 @@ export const SEED_BOOKS: readonly SeedBook[] = [
     'authors':          ['Marcus Aurelius'],
     'firstPublishYear': 180,
     'subjects':         ['stoicism', 'ethics', 'self-discipline', 'mortality', 'duty', 'personal-journal'],
-    'summary':          'Private notes the Roman emperor wrote to himself as exercises in Stoic philosophy — on impermanence, duty, the smallness of the self, and the indifference of the cosmos. Remarkably intimate for a document never intended to be published.',
+    'summary':          'Private notes the Roman emperor wrote to himself as exercises in Stoic philosophy, covering impermanence, duty, the smallness of the self, and the indifference of the cosmos. Remarkably intimate for a document never intended to be published.',
   },
   {
     'isbn':             '978-0198245971',
@@ -188,7 +188,7 @@ export class SeedLibrary {
   static loadInto(store: MemoryStore): void {
     // Clear GRAPH_MEMORY and re-assert the full seed set (idempotent).
     // Cross-session data lives in per-run state graphs (urn:dagonizer:state:<id>)
-    // which are separate named graphs — clearing GRAPH_MEMORY is safe.
+    // which are separate named graphs; clearing GRAPH_MEMORY is safe.
     store.clearGraph(GRAPH_MEMORY);
     SeedLibrary.#assertAll(store);
   }

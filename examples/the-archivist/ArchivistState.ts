@@ -1,5 +1,5 @@
 /**
- * ArchivistState — the clipboard the Archivist's nodes mutate.
+ * ArchivistState: the clipboard the Archivist's nodes mutate.
  *
  * Carries the visitor's question, the parsed intent, scout candidates,
  * the merged shortlist, the draft response, and per-execution counters.
@@ -26,7 +26,7 @@ export interface ConversationTurn {
 
 /**
  * A roll-up of everything the Archivist has accumulated in its memory
- * store across all prior runs — produced by `recallMemories` and consumed
+ * store across all prior runs, produced by `recallMemories` and consumed
  * by `composeMemoryResponse`.
  */
 export interface MemoryDigest {
@@ -75,7 +75,7 @@ export type ArchivistIntent =
   | 'search'             // visitor named a title / author / ISBN (generic search)
   | 'describe'           // visitor described a book without naming it
   | 'recommend'          // visitor asked for a generic recommendation
-  | 'off-topic';         // visitor wandered — not a book query and not memory-related
+  | 'off-topic';         // visitor wandered: not a book query and not memory-related
 
 export class ArchivistState extends NodeStateBase {
   /** Raw question the visitor submitted. */
@@ -88,11 +88,11 @@ export class ArchivistState extends NodeStateBase {
    * defaulted to `'en'` so existing call sites stay correct.
    */
   userLanguage: string = 'en';
-  /** Parsed intent — set by `classifyIntent`. */
+  /** Parsed intent; set by `classifyIntent`. */
   intent: ArchivistIntent = 'search';
-  /** Structured query terms — set by `extractQuery`. */
+  /** Structured query terms; set by `extractQuery`. */
   terms: readonly string[] = [];
-  /** Candidates returned by each scout — partitioned by source. */
+  /** Candidates returned by each scout, partitioned by source. */
   candidates: readonly Candidate[] = [];
   /** Final shortlist after merge + dedupe + rank. */
   shortlist: readonly Candidate[] = [];

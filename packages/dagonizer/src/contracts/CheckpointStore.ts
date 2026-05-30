@@ -1,5 +1,5 @@
 /**
- * CheckpointStore — adapter contract for persisting `CheckpointData` JSON.
+ * CheckpointStore: adapter contract for persisting `CheckpointData` JSON.
  *
  * Dagonizer ships no production persistence backend. Consumers implement
  * this interface to put checkpoints in their store of choice (file, kv,

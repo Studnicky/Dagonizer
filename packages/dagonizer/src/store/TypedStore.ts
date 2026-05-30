@@ -1,8 +1,8 @@
 /**
- * TypedStore — schema-narrowed view over any `Store`.
+ * TypedStore: schema-narrowed view over any `Store`.
  *
  * Wraps a base Store and exposes get/set/has/delete/update keyed by
- * `Schema` keys. The value type is inferred from `Schema[K]` — callers
+ * `Schema` keys. The value type is inferred from `Schema[K]`; callers
  * never specify `<T>` at the call site.
  *
  * `TypedStore` does not implement `Store` (its `set` signature is
@@ -12,7 +12,7 @@
  *
  * `Schema` is constrained so every value type must extend `JsonValue`.
  * Plain interfaces with named keys satisfy this constraint without needing
- * an explicit index signature — only the declared values are checked.
+ * an explicit index signature; only the declared values are checked.
  *
  * @example
  * interface AppSchema {

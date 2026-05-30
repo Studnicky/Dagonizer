@@ -1,19 +1,19 @@
 /**
- * 08-checkpoint — abort → snapshot → restore → resume.
+ * 08-checkpoint: abort, snapshot, restore, resume.
  *
  * Demonstrates the full checkpoint lifecycle:
  *   1. Execute a multi-node DAG but abort mid-way.
  *   2. Capture the partial result as a Checkpoint instance.
  *   3. Persist it (here: serialise to a string as a stand-in for a DB write).
  *   4. Parse it back and restore state via a custom restore function.
- *   5. Resume from the cursor — only the remaining nodes run.
+ *   5. Resume from the cursor; only the remaining nodes run.
  *
  * State that needs to survive the gap must override `snapshotData()` and
  * `restoreData()`. The base class handles lifecycle; the subclass handles
  * domain fields.
  *
  * Watch: partial.cursor names the next node to run. After resume,
- * state.count equals 3 and state.log records all three tick events —
+ * state.count equals 3 and state.log records all three tick events,
  * identical to an uninterrupted execution.
  *
  * Run: npx tsx examples/08-checkpoint.ts
@@ -29,7 +29,7 @@ import {
 import type { DAG, NodeInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
-// State — overrides snapshot/restore to persist domain fields
+// State: overrides snapshot/restore to persist domain fields
 // ---------------------------------------------------------------------------
 
 class CountingState extends NodeStateBase {
@@ -57,7 +57,7 @@ class CountingState extends NodeStateBase {
 }
 
 // ---------------------------------------------------------------------------
-// Node — increments count and records each tick in log
+// Node: increments count and records each tick in log
 // ---------------------------------------------------------------------------
 
 const inc: NodeInterface<CountingState, 'success'> = {
@@ -71,7 +71,7 @@ const inc: NodeInterface<CountingState, 'success'> = {
 };
 
 // ---------------------------------------------------------------------------
-// DAG — three sequential inc placements: a → b → c
+// DAG: three sequential inc placements: a -> b -> c
 // ---------------------------------------------------------------------------
 
 const dag: DAG = {
@@ -107,7 +107,7 @@ const dag: DAG = {
 };
 
 // ---------------------------------------------------------------------------
-// Step 1: partial run — abort after the first node completes
+// Step 1: partial run, abort after the first node completes
 // ---------------------------------------------------------------------------
 
 // #region capture
@@ -118,7 +118,7 @@ dispatcher.registerDAG(dag);
 const ctl     = new AbortController();
 const initial = new CountingState();
 
-// execute() returns an Execution — async-iterable over node results.
+// execute() returns an Execution (async-iterable over node results).
 // Iterating yields one result per completed node (not per stage internally).
 const execution = dispatcher.execute('count', initial, { "signal": ctl.signal });
 let stages = 0;
@@ -128,7 +128,7 @@ for await (const _stage of execution) {
 }
 const partial = await execution;
 
-process.stdout.write('\nCheckpoint lifecycle — abort → snapshot → restore → resume\n');
+process.stdout.write('\nCheckpoint lifecycle: abort -> snapshot -> restore -> resume\n');
 process.stdout.write(`  partial: count=${partial.state.count} cursor="${partial.cursor}"\n`);
 // cursor = 'b': the next node that would run if we resume
 // #endregion capture
@@ -163,7 +163,7 @@ process.stdout.write(`  restored: count=${state.count} cursor="${cursor}"\n`);
 // #endregion recall
 
 // #region resume
-// Resume from cursor 'b' — only nodes b and c execute.
+// Resume from cursor 'b'; only nodes b and c execute.
 const resumed = await dispatcher.resume(dagName, state, cursor);
 
 process.stdout.write(`  resumed: count=${resumed.state.count} log=${JSON.stringify(resumed.state.log)}\n`);

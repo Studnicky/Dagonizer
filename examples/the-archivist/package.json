@@ -2,7 +2,7 @@
   "name": "@noocodex/the-archivist-example",
   "version": "0.0.0",
   "private": true,
-  "description": "In-browser Archivist demo for @noocodex/dagonizer — consumes the lib + plugin packages.",
+  "description": "In-browser Archivist demo for @noocodex/dagonizer: consumes the lib + plugin packages.",
   "license": "MIT",
   "type": "module",
   "scripts": {

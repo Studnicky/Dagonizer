@@ -1,17 +1,17 @@
 <script setup lang="ts">
 /**
- * TripleInspector — side panel showing every triple in/out of a selected node.
+ * TripleInspector: side panel showing every triple in/out of a selected node.
  *
  * The visitor clicks a node on the MemoryGraph cosmos canvas; the
  * runner sets `selection` and this panel resolves the full subject+
  * object triple set from `MemoryStore`, grouped by named graph layer
  * (memory / state / prov / default). Each row shows
- *   subject — predicate → object   [graph chip]
+ *   subject / predicate / object   [graph chip]
  * so the viewer can see how this IRI or literal value participates across layers.
  *
  * Two selection kinds are supported:
- *   - 'iri'     — named node; show outbound (subject) and inbound (object) triples.
- *   - 'literal' — literal value; show only inbound triples (?s ?p <literal>).
+ *   - 'iri': named node; show outbound (subject) and inbound (object) triples.
+ *   - 'literal': literal value; show only inbound triples (?s ?p <literal>).
  */
 
 import { computed } from 'vue';
@@ -46,20 +46,20 @@ const rows = computed<readonly Row[]>(() => {
   const out: Row[] = [];
 
   if (sel.kind === 'iri') {
-    // Outbound — IRI is the subject.
+    // Outbound: IRI is the subject.
     for (const q of props.store.select({ 'subject': MemoryStore.iri(sel.iri), 'predicate': '?p', 'object': '?o', 'graph': '?g' })) {
       const graph = q['g'];
       if (graph === undefined) continue;
       out.push(rowFrom('subject', sel.iri, q['p']?.value ?? '?', q['o'] !== undefined ? formatObject(q['o']) : '?', graph.value));
     }
-    // Inbound — IRI is the object.
+    // Inbound: IRI is the object.
     for (const q of props.store.select({ 'subject': '?s', 'predicate': '?p', 'object': MemoryStore.iri(sel.iri), 'graph': '?g' })) {
       const graph = q['g'];
       if (graph === undefined) continue;
       out.push(rowFrom('object', q['s']?.value ?? '?', q['p']?.value ?? '?', sel.iri, graph.value));
     }
   } else {
-    // Literal — only inbound: ?s ?p <literal>
+    // Literal: only inbound: ?s ?p <literal>
     for (const q of props.store.select({ 'subject': '?s', 'predicate': '?p', 'object': MemoryStore.lit.str(sel.value), 'graph': '?g' })) {
       const graph = q['g'];
       if (graph === undefined) continue;

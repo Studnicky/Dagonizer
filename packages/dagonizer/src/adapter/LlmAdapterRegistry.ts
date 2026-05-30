@@ -1,5 +1,5 @@
 /**
- * LlmAdapterRegistry — process-local map of (provider, model) →
+ * LlmAdapterRegistry: process-local map of (provider, model) →
  * adapter factory.
  *
  * Consumers register an `AdapterDescriptorShape` plus a zero-arg factory
@@ -17,7 +17,7 @@ import { AdapterDescriptor, type AdapterDescriptorShape } from './AdapterDescrip
 import type { LlmAdapter } from './LlmAdapter.js';
 import { Classifications, LlmError } from './LlmError.js';
 
-/** Zero-arg constructor for an adapter — built fresh per `resolve()`. */
+/** Zero-arg constructor for an adapter; built fresh per `resolve()`. */
 export type AdapterFactory = () => LlmAdapter;
 
 interface RegistryEntry {
@@ -35,7 +35,7 @@ export class LlmAdapterRegistry {
   /**
    * Register a factory for the (provider, model) pair carried by the
    * descriptor. Throws `LlmError(CONFIGURATION)` if the key is already
-   * registered — re-registration is almost always a bug.
+   * registered; re-registration is almost always a bug.
    */
   register(descriptor: AdapterDescriptorShape, factory: AdapterFactory): void {
     const key = AdapterDescriptor.key(descriptor.provider, descriptor.model);

@@ -1,14 +1,14 @@
 /**
- * ConsoleLogger — Archivist's logger service.
+ * ConsoleLogger: Archivist's logger service.
  *
  * Two surfaces from one class:
  *
- *   • Subscriber surface — `subscribe(fn)` / `unsubscribe(fn)` for the
+ *   • Subscriber surface: `subscribe(fn)` / `unsubscribe(fn)` for the
  *     in-browser demo. Every log call fans out to subscribers with a
  *     structured `LogEvent` so the Vue runner's trace tab can render the
  *     same lines the CLI sees.
  *
- *   • Sink surface — `info(message)` / `warn(message)` satisfy the
+ *   • Sink surface: `info(message)` / `warn(message)` satisfy the
  *     `ArchivistServices.logger` contract. In Node, lines also go to
  *     `process.stdout` / `process.stderr`; in the browser the runtime
  *     guard skips that branch so `process.*` never resolves.
@@ -44,22 +44,22 @@ export class ConsoleLogger {
   /** All events captured so far (most recent last). */
   history(): readonly LogEvent[] { return [...this.#buffer]; }
 
-  /** Empty the buffer — invoked at the top of each Archivist run. */
+  /** Empty the buffer; invoked at the top of each Archivist run. */
   clear(): void {
     this.#buffer.length = 0;
-    for (const fn of this.#subscribers) fn({ 'level': 'info', 'message': '— log cleared —', 'ts': Date.now() });
+    for (const fn of this.#subscribers) fn({ 'level': 'info', 'message': '(log cleared)', 'ts': Date.now() });
   }
 
   subscribe(fn: LogSubscriber): void { this.#subscribers.add(fn); }
   unsubscribe(fn: LogSubscriber): void { this.#subscribers.delete(fn); }
 
-  /** Standard log — visible in CLI stdout and in the browser stream. */
+  /** Standard log; visible in CLI stdout and in the browser stream. */
   info(message: string): void { this.#emit('info', message); }
 
-  /** Warning — CLI stderr, browser stream renders amber. */
+  /** Warning: CLI stderr, browser stream renders amber. */
   warn(message: string): void { this.#emit('warn', message); }
 
-  /** Demo summary line — same stream, distinct level so the UI can highlight. */
+  /** Demo summary line; same stream, distinct level so the UI can highlight. */
   result(message: string): void { this.#emit('result', message); }
 
   #emit(level: LogLevel, message: string): void {

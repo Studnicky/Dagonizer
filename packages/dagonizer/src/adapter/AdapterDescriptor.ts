@@ -1,5 +1,5 @@
 /**
- * AdapterDescriptor — registry key helpers and the descriptor shape used
+ * AdapterDescriptor: registry key helpers and the descriptor shape used
  * to register an adapter factory in `LlmAdapterRegistry`.
  *
  * The descriptor pairs a (provider, model) identity with the static
@@ -7,7 +7,7 @@
  * compute its lookup string; consumers may also call it directly when
  * they need to reason about preferences in their own code.
  *
- * `AdapterDescriptor` is a static class — no instances. Per project
+ * `AdapterDescriptor` is a static class; no instances. Per project
  * standards, helpers live as `noun.verb()` rather than as freestanding
  * functions.
  */
@@ -27,14 +27,14 @@ export interface AdapterDescriptorShape {
 
 /**
  * Static helpers for adapter descriptors. The class exists purely to
- * scope `key()` under a `noun.verb()` name — never instantiated.
+ * scope `key()` under a `noun.verb()` name; never instantiated.
  */
 export class AdapterDescriptor {
   private constructor() { /* static class */ }
 
   /**
    * Canonical registry key for a (provider, model) pair. Stable across
-   * versions — registries and cascades depend on this format.
+   * versions; registries and cascades depend on this format.
    */
   static key(provider: string, model: string): string {
     return `${provider}:${model}`;

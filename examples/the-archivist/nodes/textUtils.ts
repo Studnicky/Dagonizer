@@ -1,12 +1,12 @@
 /**
- * textUtils — shared text-similarity utilities for the Archivist nodes.
+ * textUtils: shared text-similarity utilities for the Archivist nodes.
  *
  * Extracted from recallCandidates, rankCandidates, recallContext,
  * pickBestMatch, and providers/IntentClassifier to eliminate copy-paste.
  *
- * `tokenise` — split text into lowercase tokens (length > 2).
- * `jaccard`  — Jaccard similarity between two token sets.
- * `cosineSimilarity` — cosine similarity between two numeric vectors.
+ * `tokenise`: split text into lowercase tokens (length > 2).
+ * `jaccard`:  Jaccard similarity between two token sets.
+ * `cosineSimilarity`: cosine similarity between two numeric vectors.
  */
 
 /**
@@ -36,7 +36,7 @@ export function jaccard(a: Set<string>, b: Set<string>): number {
 
 /**
  * Cosine similarity between two equal-length numeric vectors.
- * Returns 0 on length mismatch or zero-norm input — those are
+ * Returns 0 on length mismatch or zero-norm input; those are
  * degenerate cases the caller treats as "no signal".
  */
 export function cosineSimilarity(a: readonly number[], b: readonly number[]): number {

@@ -9,7 +9,7 @@ const policy = (): RetryableErrorPolicy =>
   new RetryableErrorPolicy({ 'maxAttempts': 3, 'strategy': BackoffStrategy.EXPONENTIAL, 'baseDelay': 0 });
 
 void describe('RetryableErrorPolicy honors LlmError.classification.retryable', () => {
-  void it('does NOT retry a non-retryable LlmError — exactly one attempt', async () => {
+  void it('does NOT retry a non-retryable LlmError (exactly one attempt)', async () => {
     let calls = 0;
     await assert.rejects(
       () => policy().run(async () => {

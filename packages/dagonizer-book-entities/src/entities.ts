@@ -1,5 +1,5 @@
 /**
- * BookCandidate — book-domain output shape this tool emits.
+ * BookCandidate: book-domain output shape this tool emits.
  *
  * Co-located with the tool because each `Tool` plugin owns its output
  * vocabulary. Consumers map BookCandidate into their own domain shape
@@ -25,7 +25,7 @@ export interface Book {
    * ISO 639-2 (alpha-3) language codes the source attributes to this
    * book (e.g. `['eng']`, `['jpn']`). OpenLibrary emits an array here;
    * other sources may map a single language onto a one-element array.
-   * Empty / undefined means the source did not report a language —
+   * Empty / undefined means the source did not report a language;
    * downstream filters treat that as "do not exclude" so unknown-
    * language records degrade gracefully.
    */

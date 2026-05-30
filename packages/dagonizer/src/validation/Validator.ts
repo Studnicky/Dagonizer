@@ -1,12 +1,12 @@
 /**
- * Validator — unified Ajv-backed entity validator.
+ * Validator: unified Ajv-backed entity validator.
  *
  * Compiled once at module load (schemas are compile-time invariants).
- * Static class — namespaced sub-validators per entity:
+ * Static class; namespaced sub-validators per entity:
  *
- *   Validator.dag.is(x)        — type predicate
- *   Validator.dag.validate(x)  — narrow or throw ValidationError
- *   Validator.dag.errors(x)    — formatted error strings or null
+ *   Validator.dag.is(x):       type predicate
+ *   Validator.dag.validate(x): narrow or throw ValidationError
+ *   Validator.dag.errors(x):   formatted error strings or null
  *
  * Every top-level entity schema in `entities/` ships with a
  * sub-validator on this class. Consumers call them as
@@ -123,7 +123,7 @@ export class Validator {
     };
   }
 
-  // DAG — top-level definition
+  // DAG: top-level definition
   static readonly dag:             EntityValidator<DAG>             = Validator.compile('DAG',             DAGSchema);
   static readonly singleNode:      EntityValidator<SingleNode>      = Validator.compile('SingleNode',      SingleNodeSchema);
   static readonly parallelNode:    EntityValidator<ParallelNode>    = Validator.compile('ParallelNode',    ParallelNodeSchema);

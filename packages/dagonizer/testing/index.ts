@@ -1,5 +1,5 @@
 /**
- * Test utilities. Not part of the runtime — install in tests/replay only.
+ * Test utilities. Not part of the runtime; install in tests/replay only.
  *
  *   import { VirtualClockProvider, VirtualScheduler } from '@noocodex/dagonizer/testing';
  *   Clock.configure(new VirtualClockProvider());

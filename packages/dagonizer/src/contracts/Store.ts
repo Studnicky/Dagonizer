@@ -1,7 +1,7 @@
 /**
- * Store — shared key-value store contract for cross-embedded-DAG state.
+ * Store: shared key-value store contract for cross-embedded-DAG state.
  *
- * Every method returns a Promise. This is the only call shape — there is
+ * Every method returns a Promise. This is the only call shape; there is
  * no sync variant. Durable backings (SQLite, network, RDF) await real work;
  * in-memory backings resolve immediately. Consumers always `await`.
  *
@@ -13,9 +13,9 @@
  * Concurrency contract:
  *   • `update(key, fn)` is atomic within a single store instance. Implementations
  *     are responsible for delivering atomicity (single-step backing access,
- *     SQL transactions, Redis WATCH/MULTI, etc.) — the base-class default does
+ *     SQL transactions, Redis WATCH/MULTI, etc.); the base-class default does
  *     not satisfy this on its own.
- *   • `get + set` is NOT atomic — use `update` when you need read-modify-write.
+ *   • `get + set` is NOT atomic; use `update` when you need read-modify-write.
  *   • `set` is last-write-wins; the store's backing decides what that means
  *     across processes.
  */
@@ -31,7 +31,7 @@ import type { Snapshottable } from './Snapshottable.js';
  * `BaseStore`) to swap the backing without touching DAG topology.
  *
  * Values are typed per-call via the method's `<T extends JsonValue>`
- * parameter — there is no class-level value generic. This keeps stores
+ * parameter; there is no class-level value generic. This keeps stores
  * heterogeneous (one store can hold strings, numbers, and records under
  * different keys) and keeps a `Store` assignable into any
  * `Record<string, Store>` boundary without variance casts.
@@ -41,7 +41,7 @@ import type { Snapshottable } from './Snapshottable.js';
  * (class instances, Date, Map) serialize to a JSON form before `set` and
  * rehydrate after `get`.
  *
- * The generic `T` has no default — callers MUST specify the value type
+ * The generic `T` has no default; callers MUST specify the value type
  * at every call site. The engine never uses `unknown` here.
  */
 export interface Store extends Snapshottable {

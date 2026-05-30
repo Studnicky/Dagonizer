@@ -67,7 +67,7 @@ async function makeAbortedResult(): Promise<ReturnType<typeof Dagonizer.prototyp
 
 // ── Test 1: Round-trip with one store ───────────────────────────────────────
 
-void describe('Checkpoint.capture + restoreStores — one store', () => {
+void describe('Checkpoint.capture + restoreStores: one store', () => {
   void it('round-trips a single named store through persist + load', async () => {
     const memory = new MemoryStore();
     await memory.set('counter', 42);
@@ -98,7 +98,7 @@ void describe('Checkpoint.capture + restoreStores — one store', () => {
 
 // ── Test 2: Round-trip with multiple stores ─────────────────────────────────
 
-void describe('Checkpoint.capture + restoreStores — two stores', () => {
+void describe('Checkpoint.capture + restoreStores: two stores', () => {
   void it('isolates two named stores; each restores independently', async () => {
     const memory = new MemoryStore();
     const audit  = new MemoryStore();
@@ -127,9 +127,9 @@ void describe('Checkpoint.capture + restoreStores — two stores', () => {
   });
 });
 
-// ── Test 3: `stores` is required — pre-v0.11 checkpoints are rejected ────────
+// ── Test 3: `stores` is required; pre-v0.11 checkpoints are rejected ─────────
 
-void describe('Checkpoint.load — rejects a checkpoint missing the stores field', () => {
+void describe('Checkpoint.load: rejects a checkpoint missing the stores field', () => {
   void it('throws when stores is absent (no silent acceptance of stale checkpoints)', () => {
     const rawOld = {
       'version': '1',
@@ -138,7 +138,7 @@ void describe('Checkpoint.load — rejects a checkpoint missing the stores field
       'state': {},
       'executedNodes': [],
       'skippedNodes': [],
-      // no 'stores' field — a checkpoint produced before stores were captured
+      // no 'stores' field; a checkpoint produced before stores were captured
     };
 
     assert.throws(() => Checkpoint.load(rawOld));
@@ -147,7 +147,7 @@ void describe('Checkpoint.load — rejects a checkpoint missing the stores field
 
 // ── Test 4: Missing store in restore map ────────────────────────────────────
 
-void describe('Checkpoint.restoreStores — missing store in map', () => {
+void describe('Checkpoint.restoreStores: missing store in map', () => {
   void it('throws DAGError naming the missing store', async () => {
     const memory = new MemoryStore();
     await memory.set('k', 'v');
@@ -155,7 +155,7 @@ void describe('Checkpoint.restoreStores — missing store in map', () => {
     const result = await makeAbortedResult();
     const ckpt = await Checkpoint.capture('store-test', result, { 'stores': { memory } });
 
-    // Pass empty map — 'memory' is in the checkpoint but not supplied.
+    // Pass empty map; 'memory' is in the checkpoint but not supplied.
     await assert.rejects(
       () => ckpt.restoreStores({}),
       (err: unknown) => {
@@ -172,7 +172,7 @@ void describe('Checkpoint.restoreStores — missing store in map', () => {
 
 // ── Test 5: Extra store in restore map is a no-op ───────────────────────────
 
-void describe('Checkpoint.restoreStores — extra store in map', () => {
+void describe('Checkpoint.restoreStores: extra store in map', () => {
   void it('does not throw when map contains stores absent from checkpoint', async () => {
     const memory = new MemoryStore();
     await memory.set('k', 'v');
@@ -183,7 +183,7 @@ void describe('Checkpoint.restoreStores — extra store in map', () => {
     const freshMemory = new MemoryStore();
     const extra       = new MemoryStore();
 
-    // 'extra' is in map but not in checkpoint — should not throw.
+    // 'extra' is in map but not in checkpoint; should not throw.
     await assert.doesNotReject(
       () => ckpt.restoreStores({ 'memory': freshMemory, 'extra': extra }),
     );
@@ -196,7 +196,7 @@ void describe('Checkpoint.restoreStores — extra store in map', () => {
 
 // ── Test 6: Incompatible snapshot propagates StoreError ─────────────────────
 
-void describe('Checkpoint.restoreStores — incompatible snapshot', () => {
+void describe('Checkpoint.restoreStores: incompatible snapshot', () => {
   void it('propagates StoreError with INCOMPATIBLE_SNAPSHOT from store.restore', async () => {
     // Hand-construct a checkpoint whose stores.memory has the wrong type.
     const badRaw = {
@@ -231,7 +231,7 @@ void describe('Checkpoint.restoreStores — incompatible snapshot', () => {
 
 // ── Test 7: Empty stores option ─────────────────────────────────────────────
 
-void describe('Checkpoint.capture — empty stores option', () => {
+void describe('Checkpoint.capture: empty stores option', () => {
   void it('succeeds without throwing; checkpoint has no stores entries', async () => {
     const result = await makeAbortedResult();
     const ckpt = await Checkpoint.capture('store-test', result, { 'stores': {} });
@@ -254,7 +254,7 @@ void describe('Checkpoint.capture — empty stores option', () => {
 
 // ── Test 8: No stores option ─────────────────────────────────────────────────
 
-void describe('Checkpoint.capture — no stores option', () => {
+void describe('Checkpoint.capture: no stores option', () => {
   void it('succeeds unchanged when called with no second argument', async () => {
     const result = await makeAbortedResult();
     const ckpt = await Checkpoint.capture('store-test', result);
@@ -271,7 +271,7 @@ void describe('Checkpoint.capture — no stores option', () => {
 // ── Test 9: Non-KV Snapshottable participates in checkpointing ───────────────
 
 /**
- * A `Snapshottable` that is NOT a `Store` — it holds an append-only list of
+ * A `Snapshottable` that is NOT a `Store`. It holds an append-only list of
  * facts, exposes no `get`/`set`/`has`/`delete`/`update`/`connect`, and
  * implements only `snapshot()` / `restore()`. Checkpoint depends on the
  * capability, not the key-value surface, so this round-trips.
@@ -297,7 +297,7 @@ class FactLog implements Snapshottable {
   }
 }
 
-void describe('Checkpoint.capture + restoreStores — non-KV Snapshottable', () => {
+void describe('Checkpoint.capture + restoreStores: non-KV Snapshottable', () => {
   void it('round-trips a snapshot-only store that implements no key-value methods', async () => {
     const log = new FactLog();
     log.add('born');

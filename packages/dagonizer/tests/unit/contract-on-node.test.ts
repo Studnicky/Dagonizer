@@ -30,7 +30,7 @@ function makeNode(
 }
 
 // ---------------------------------------------------------------------------
-// DAGDeriver.derive({ nodes }) — same DAG as equivalent contracts call
+// DAGDeriver.derive({ nodes }): same DAG as equivalent contracts call
 // ---------------------------------------------------------------------------
 
 void describe('DAGDeriver.derive with co-located contracts', () => {
@@ -73,7 +73,7 @@ void describe('DAGDeriver.derive with co-located contracts', () => {
     const nodes: NodeInterface<NodeStateBase, string>[] = [
       makeNode('a', ['success'], { 'hardRequired': ['input'], 'produces': ['x'] }),
       makeNode('b', ['success'], { 'hardRequired': ['x'],     'produces': ['y'] }),
-      // no contract — skipped by extractContracts
+      // no contract; skipped by extractContracts
       makeNode('helper', ['success']),
     ];
     const dag = DAGDeriver.derive({
@@ -144,8 +144,8 @@ void describe('DAGDeriver.extractContracts', () => {
 
 void describe('ContractRegistryValidator', () => {
   void it('throws DAGError for a dangling read (non-entrypoint node requires an unproduced path)', () => {
-    // 'a' is the entrypoint — its hardRequired are external initial state.
-    // 'b' hardRequires 'missing-path' which no node produces — dangling read.
+    // 'a' is the entrypoint; its hardRequired are external initial state.
+    // 'b' hardRequires 'missing-path' which no node produces (dangling read).
     const contracts = [
       { 'name': 'a', 'hardRequired': ['input'],        'produces': ['x'],   'outputs': ['success'] },
       { 'name': 'b', 'hardRequired': ['missing-path'], 'produces': ['y'],   'outputs': ['success'] },
@@ -162,7 +162,7 @@ void describe('ContractRegistryValidator', () => {
   });
 
   void it('calls onContractWarning for a dead write (produces not required by any node)', () => {
-    // 'root' is the entrypoint — its hardRequired are skipped.
+    // 'root' is the entrypoint; its hardRequired are skipped.
     // 'a' produces 'x' (consumed by 'b') and 'unused' (consumed by nobody) → dead-write warning.
     const contracts = [
       { 'name': 'root', 'hardRequired': [],        'produces': ['input'],         'outputs': ['success'] },
@@ -183,8 +183,8 @@ void describe('ContractRegistryValidator', () => {
       { 'name': 'b', 'hardRequired': ['x'], 'produces': ['y'], 'outputs': ['success'] },
     ];
     const warnings: string[] = [];
-    // 'x' is consumed by 'b' — no warning for 'x'.
-    // 'y' is produced by 'b' but not required — will warn.
+    // 'x' is consumed by 'b'; no warning for 'x'.
+    // 'y' is produced by 'b' but not required; will warn.
     ContractRegistryValidator.validate(contracts, (msg) => { warnings.push(msg); }, 'a');
     const xWarning = warnings.find((w) => w.includes("'x'"));
     assert.equal(xWarning, undefined, "'x' is consumed so no dead-write warning expected");
@@ -200,7 +200,7 @@ void describe('ContractRegistryValidator', () => {
 
   void it('does not flag entrypoint hardRequired as dangling reads', () => {
     // 'a' is the entrypoint and hardRequires 'initial-input', which no node produces.
-    // This is valid — 'initial-input' is external state seeded before execution.
+    // This is valid: 'initial-input' is external state seeded before execution.
     const contracts = [
       { 'name': 'a', 'hardRequired': ['initial-input'], 'produces': ['x'], 'outputs': ['success'] },
       { 'name': 'b', 'hardRequired': ['x'],             'produces': ['y'], 'outputs': ['success'] },
@@ -213,7 +213,7 @@ void describe('ContractRegistryValidator', () => {
 });
 
 // ---------------------------------------------------------------------------
-// onContractWarning hook — dispatcher integration
+// onContractWarning hook: dispatcher integration
 // ---------------------------------------------------------------------------
 
 void describe('Dagonizer.onContractWarning hook', () => {

@@ -65,7 +65,7 @@ const makeErrorNode = (
 
 // ── 1. Schema validation ──────────────────────────────────────────────────
 
-void describe('TerminalNode — schema validation', () => {
+void describe('TerminalNode: schema validation', () => {
   void it('accepts a well-formed TerminalNode object', () => {
     const valid = {
       '@id':     'urn:noocodex:dag:demo/node/end',
@@ -128,7 +128,7 @@ void describe('TerminalNode — schema validation', () => {
 
 // ── 2. Builder ────────────────────────────────────────────────────────────
 
-void describe('TerminalNode — DAGBuilder.terminal()', () => {
+void describe('TerminalNode: DAGBuilder.terminal()', () => {
   void it('produces a TerminalNode placement with @type and default outcome=completed', () => {
     const dag = new DAGBuilder('demo', '1')
       .node('a', makeNode('a', ['ok']), { 'ok': 'end' })
@@ -154,9 +154,9 @@ void describe('TerminalNode — DAGBuilder.terminal()', () => {
   });
 });
 
-// ── 3. Execution — outcome=completed ─────────────────────────────────────
+// ── 3. Execution: outcome=completed ──────────────────────────────────────
 
-void describe('TerminalNode — execution with outcome=completed', () => {
+void describe('TerminalNode: execution with outcome=completed', () => {
   void it('state ends completed, executedNodes includes terminal, onFlowEnd fires once', async () => {
     const dispatcher = new CountingDagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('a', ['ok']));
@@ -181,9 +181,9 @@ void describe('TerminalNode — execution with outcome=completed', () => {
   });
 });
 
-// ── 4. Execution — outcome=failed ─────────────────────────────────────────
+// ── 4. Execution: outcome=failed ──────────────────────────────────────────
 
-void describe('TerminalNode — execution with outcome=failed', () => {
+void describe('TerminalNode: execution with outcome=failed', () => {
   void it('state ends failed when terminal has outcome=failed', async () => {
     const dispatcher = new CountingDagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('a', ['ok']));
@@ -205,7 +205,7 @@ void describe('TerminalNode — execution with outcome=failed', () => {
 
 // ── 5. Embedded-DAG routing to null is now legal ───────────────────────────────
 
-void describe('TerminalNode — embedded-DAG routing to null is legal', () => {
+void describe('TerminalNode: embedded-DAG routing to null is legal', () => {
   const childDAG: DAG = {
     '@context': DAG_CONTEXT,
     '@id':      'urn:noocodex:dag:child-tn',
@@ -268,7 +268,7 @@ void describe('TerminalNode — embedded-DAG routing to null is legal', () => {
 
 // ── 6. Embedded-DAG routing to a TerminalNode ─────────────────────────────────
 
-void describe('TerminalNode — embedded-DAG routes to explicit TerminalNode placements', () => {
+void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placements', () => {
   const makeChildDAG = (emitError: boolean): DAG => ({
     '@context': DAG_CONTEXT,
     '@id':      'urn:noocodex:dag:child-explicit',

@@ -1,5 +1,5 @@
 /**
- * EmbedderRegistry — process-local map of (provider, model) →
+ * EmbedderRegistry: process-local map of (provider, model) →
  * embedder factory.
  *
  * Consumers register an `AdapterDescriptorShape` plus a zero-arg factory
@@ -21,7 +21,7 @@ import type { Embedder } from '../contracts/Embedder.js';
 import { AdapterDescriptor, type AdapterDescriptorShape } from './AdapterDescriptor.js';
 import { Classifications, LlmError } from './LlmError.js';
 
-/** Zero-arg constructor for an embedder — built fresh per `resolve()`. */
+/** Zero-arg constructor for an embedder; built fresh per `resolve()`. */
 export type EmbedderFactory = () => Embedder;
 
 interface RegistryEntry {
@@ -39,7 +39,7 @@ export class EmbedderRegistry {
   /**
    * Register a factory for the (provider, model) pair carried by the
    * descriptor. Throws `LlmError(CONFIGURATION)` if the key is already
-   * registered — re-registration is almost always a bug.
+   * registered; re-registration is almost always a bug.
    */
   register(descriptor: AdapterDescriptorShape, factory: EmbedderFactory): void {
     const key = AdapterDescriptor.key(descriptor.provider, descriptor.model);

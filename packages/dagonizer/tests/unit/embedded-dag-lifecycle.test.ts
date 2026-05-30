@@ -172,7 +172,7 @@ void describe('Embedded-DAG lifecycle scoping', () => {
 
     await dispatcher.execute('parent', state);
 
-    // State must complete cleanly — no spurious markRunning / markCompleted
+    // State must complete cleanly; no spurious markRunning / markCompleted
     // from the scatter body re-entry (which would throw on a terminal → running
     // transition and leave the lifecycle in an invalid state).
     assert.equal(state.lifecycle.kind, 'completed');

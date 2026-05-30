@@ -1,16 +1,16 @@
 /**
- * OpenLibrarySearchTool — browser-runnable web search for books.
+ * OpenLibrarySearchTool: browser-runnable web search for books.
  *
  * The tool's `inputSchema` IS the contract. Every property carries
  * `description` + `examples` + `default` (where relevant); the prose
  * prompt the agent sees doesn't need to re-explain what each field
  * means. JSON Schema's three tiers do the heavy lifting:
  *
- *   tier 1: `required` — the LLM MUST supply these.
- *   tier 2: known optional `properties` — the LLM SHOULD supply when
+ *   tier 1: `required`: the LLM MUST supply these.
+ *   tier 2: known optional `properties`: the LLM SHOULD supply when
  *           it has the information; `default` and `examples` tell it
  *           the shape we expect.
- *   tier 3: `additionalProperties: true` — the LLM MAY enrich the call
+ *   tier 3: `additionalProperties: true`: the LLM MAY enrich the call
  *           with free-form key/value hints (e.g. `subject`, `lang`,
  *           `era`) that the tool will treat as additional OpenLibrary
  *           query params.
@@ -20,7 +20,7 @@
  *
  * Output: every candidate carries OpenLibrary's actual title, authors,
  * first-publish year, subjects, publishers, and any description/summary
- * we can extract — so the LLM has real metadata to score against and
+ * we can extract, so the LLM has real metadata to score against and
  * cite in its prose response.
  */
 
@@ -46,7 +46,7 @@ interface OpenLibrarySearchInput extends Record<string, unknown> {
 
 const ENDPOINT = 'https://openlibrary.org/search.json';
 
-// The data contract — every field carries description, examples, and
+// The data contract: every field carries description, examples, and
 // where relevant default + format. The agent reads this through the
 // adapter's native function-declaration / responseConstraint channel
 // (Gemini API's `functionDeclarations.parameters`, Nano's
@@ -67,7 +67,7 @@ const definition: ToolDefinition = {
         'type':        'string',
         'minLength':   2,
         'maxLength':   80,
-        'description': 'Terse search terms drawn from the visitor question — keywords, an author name, or a title. AND-matched on OpenLibrary; do not pad with descriptive filler ("book about", "description of") or it drops hits. Omit when using isbn, author, or subject directly.',
+        'description': 'Terse search terms drawn from the visitor question: keywords, an author name, or a title. AND-matched on OpenLibrary; do not pad with descriptive filler ("book about", "description of") or it drops hits. Omit when using isbn, author, or subject directly.',
         'examples':    ['<title-words>', '<author-name>'],
       },
       'isbn': {
@@ -138,7 +138,7 @@ export const OpenLibrarySearchTool: Tool<OpenLibrarySearchInput, readonly Candid
     if (input.first_publish_year !== undefined) params.set('first_publish_year', String(input.first_publish_year));
     if (input.lang !== undefined)               params.set('lang',    String(input.lang));
     if (!params.has('q') && !params.has('author') && !params.has('subject')) {
-      // Nothing to search on — return empty rather than hitting the root endpoint.
+      // Nothing to search on; return empty rather than hitting the root endpoint.
       return [];
     }
 

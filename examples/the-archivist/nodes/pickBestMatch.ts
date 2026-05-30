@@ -1,5 +1,5 @@
 /**
- * pickBestMatch — deterministic title-similarity ranker for the
+ * pickBestMatch: deterministic title-similarity ranker for the
  * `describe-book` branch.
  *
  * When web-search returns multiple hits for a single-title lookup the

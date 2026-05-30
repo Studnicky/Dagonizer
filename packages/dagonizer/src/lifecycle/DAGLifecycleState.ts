@@ -1,12 +1,12 @@
 /**
- * DAGLifecycleState — discriminated union of the six kinds a DAG lifecycle
+ * DAGLifecycleState: discriminated union of the six kinds a DAG lifecycle
  * machine can occupy.
  *
  * All six variants share an identical 5-field shape so V8 sees a single
  * hidden class regardless of which kind is live. Fields absent in a given
- * state carry `null` — never `undefined` or omitted.
+ * state carry `null`; never `undefined` or omitted.
  *
- * Field order (canonical — must be preserved in every object literal):
+ * Field order (canonical; must be preserved in every object literal):
  *   kind · startedAt · finishedAt · error · reason
  *
  * The reducer in `DAGLifecycleMachine.ts` is the source of truth on

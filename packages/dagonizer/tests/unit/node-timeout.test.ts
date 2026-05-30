@@ -5,11 +5,11 @@
  * scoped child signal, race the execute against a deadline, and surface a
  * `NodeTimeoutError` through the `onError` hook.
  *
- * Uses `VirtualScheduler` so the tests are deterministic and fast — no real
+ * Uses `VirtualScheduler` so the tests are deterministic and fast; no real
  * wall-clock timers fire.
  *
  * SCHEDULER ORDERING NOTE:
- * `Execution` is lazy — the generator starts when `Execution.then()` / `await`
+ * `Execution` is lazy; the generator starts when `Execution.then()` / `await`
  * is first awaited. To advance virtual time WHILE the node is executing, we
  * must start draining the execution, yield to the microtask queue so the node
  * begins, advance virtual time, then yield again so the timeout fires.
@@ -90,7 +90,7 @@ void describe('per-node timeoutMs', () => {
       'timeoutMs': 500,
       async execute(_state, context) {
         receivedSignal = context.signal;
-        // Suspend indefinitely — the per-node deadline race wins.
+        // Suspend indefinitely; the per-node deadline race wins.
         await new Promise<never>((_resolve, _reject) => {
           context.signal.addEventListener('abort', () => {
             _reject(context.signal.reason);
@@ -107,7 +107,7 @@ void describe('per-node timeoutMs', () => {
     const runPromise = dispatcher.execute('timeout-dag', state);
 
     // Advance virtual time concurrently while the execution is awaiting.
-    // The execution is lazy — we must start awaiting it BEFORE advancing,
+    // The execution is lazy; we must start awaiting it BEFORE advancing,
     // then yield so the scheduler entry is registered in VirtualScheduler.
     const advancer = (async (): Promise<void> => {
       await tick();                // let the generator start and register .after(500)
@@ -215,7 +215,7 @@ void describe('per-node timeoutMs', () => {
     const slowNode: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'slow-cancel',
       'outputs': ['success'],
-      'timeoutMs': 60_000, // very long node budget — run-level cancel wins
+      'timeoutMs': 60_000, // very long node budget; run-level cancel wins
       async execute(_state, context) {
         await new Promise<never>((_resolve, _reject) => {
           context.signal.addEventListener('abort', () => { _reject(context.signal.reason); }, { 'once': true });

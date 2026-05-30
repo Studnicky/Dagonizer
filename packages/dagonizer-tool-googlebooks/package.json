@@ -1,7 +1,7 @@
 {
   "name": "@noocodex/dagonizer-tool-googlebooks",
   "version": "0.14.0",
-  "description": "Tool plugin for @noocodex/dagonizer — Google Books.",
+  "description": "Tool plugin for @noocodex/dagonizer: Google Books.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
   "type": "module",

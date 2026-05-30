@@ -1,12 +1,12 @@
 /**
- * 05-embedded-dags — EmbeddedDAGNode: nested DAG invocation with state mapping.
+ * 05-embedded-dags: EmbeddedDAGNode nested DAG invocation with state mapping.
  *
  * Demonstrates how a parent DAG invokes a child (deep) DAG via an
  * EmbeddedDAGNode. State mapping controls data flow at the boundary:
- *   inputs  — copies named fields from parent state into the child before
- *              the child DAG runs (`{ childKey: parentPath }`).
- *   outputs — copies named fields from child state back into parent state
- *              after the child DAG returns (`{ parentPath: childKey }`).
+ *   inputs: copies named fields from parent state into the child before
+ *           the child DAG runs (`{ childKey: parentPath }`).
+ *   outputs: copies named fields from child state back into parent state
+ *            after the child DAG returns (`{ parentPath: childKey }`).
  *
  * Watch: seed=41 enters the child as payload=41, gets incremented to 42,
  * then maps back into parent state as result=42.
@@ -22,7 +22,7 @@ import {
 import type { DAG, NodeInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
-// State — fields live on the same class; inputs / outputs control which
+// State: fields live on the same class; inputs / outputs control which
 // ones cross the EmbeddedDAGNode boundary
 // ---------------------------------------------------------------------------
 
@@ -47,7 +47,7 @@ const increment: NodeInterface<S, 'success'> = {
 };
 
 // ---------------------------------------------------------------------------
-// Child (deep) DAG — runs the increment node then hands control back
+// Child (deep) DAG: runs the increment node then hands control back
 // ---------------------------------------------------------------------------
 
 // #region child-dag
@@ -64,14 +64,14 @@ const child: DAG = {
       '@type': 'SingleNode',
       "name":    'inc',
       "node":    'increment',
-      "outputs": { "success": null },  // child DAG ends here — parent resumes after
+      "outputs": { "success": null },  // child DAG ends here; parent resumes after
     },
   ],
 };
 // #endregion child-dag
 
 // ---------------------------------------------------------------------------
-// Parent DAG — invokes the child via EmbeddedDAGNode (cardinality 1)
+// Parent DAG: invokes the child via EmbeddedDAGNode (cardinality 1)
 // ---------------------------------------------------------------------------
 
 // #region parent-dag
@@ -121,7 +121,7 @@ const state = new S();
 state.seed = 41;
 await dispatcher.execute('parent', state);
 
-process.stdout.write('\nEmbeddedDAGNode — parent → invoke(child) → END\n');
+process.stdout.write('\nEmbeddedDAGNode: parent -> invoke(child) -> END\n');
 process.stdout.write(`  seed=${state.seed} → child DAG incremented payload → result=${state.result}\n`);
 process.stdout.write('\nLesson: stateMapping.input copies seed→payload into the child;\n');
 process.stdout.write('        stateMapping.output copies payload→result back to parent.\n');

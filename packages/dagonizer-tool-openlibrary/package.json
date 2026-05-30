@@ -1,7 +1,7 @@
 {
   "name": "@noocodex/dagonizer-tool-openlibrary",
   "version": "0.14.0",
-  "description": "Tool plugin for @noocodex/dagonizer — OpenLibrary.",
+  "description": "Tool plugin for @noocodex/dagonizer: OpenLibrary.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
   "type": "module",

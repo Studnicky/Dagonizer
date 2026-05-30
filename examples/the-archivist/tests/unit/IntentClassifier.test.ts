@@ -1,5 +1,5 @@
 /**
- * IntentClassifier — unit tests with a deterministic stub embedder.
+ * IntentClassifier: unit tests with a deterministic stub embedder.
  *
  * The classifier embeds nine anchor descriptions at construction time
  * and then ranks every query by cosine similarity. The stub embedder
@@ -25,7 +25,7 @@ import {
 const DIM = INTENT_LABELS.length;
 
 /**
- * StubEmbedder — assigns each known anchor a distinct unit-axis
+ * StubEmbedder: assigns each known anchor a distinct unit-axis
  * vector. Queries are routed through a `queryMap` so individual tests
  * can prepare a deterministic input → output for a single call.
  */
@@ -70,24 +70,24 @@ function blend(dominantIndex: number, otherIndex: number, dominantWeight: number
   return v;
 }
 
-void test('cosineSimilarity — orthogonal vectors score 0', () => {
+void test('cosineSimilarity: orthogonal vectors score 0', () => {
   assert.equal(cosineSimilarity([1, 0, 0], [0, 1, 0]), 0);
 });
 
-void test('cosineSimilarity — identical vectors score 1', () => {
+void test('cosineSimilarity: identical vectors score 1', () => {
   const v = [0.5, 0.5, 0.7];
   assert.equal(Math.abs(cosineSimilarity(v, v) - 1) < 1e-9, true);
 });
 
-void test('cosineSimilarity — opposite vectors score -1', () => {
+void test('cosineSimilarity: opposite vectors score -1', () => {
   assert.equal(cosineSimilarity([1, 0], [-1, 0]), -1);
 });
 
-void test('cosineSimilarity — length mismatch returns 0', () => {
+void test('cosineSimilarity: length mismatch returns 0', () => {
   assert.equal(cosineSimilarity([1, 0], [1, 0, 0]), 0);
 });
 
-void test('cosineSimilarity — zero-norm input returns 0', () => {
+void test('cosineSimilarity: zero-norm input returns 0', () => {
   assert.equal(cosineSimilarity([0, 0, 0], [1, 0, 0]), 0);
 });
 
@@ -104,7 +104,7 @@ void test('IntentClassifier picks the intent whose anchor matches the query embe
   const embedder = new StubEmbedder(basisVector(targetIndex));
   const classifier = await IntentClassifier.create(embedder);
 
-  const result = await classifier.classify('anything — routes via stubbed embedder');
+  const result = await classifier.classify('anything (routes via stubbed embedder)');
   assert.notEqual(result, null);
   assert.equal(result?.intent, 'find-reviews');
   assert.equal(result?.score, 1);

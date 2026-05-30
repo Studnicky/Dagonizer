@@ -1,9 +1,9 @@
 /**
- * ParallelCombine — strategies for combining outputs from parallel node groups.
+ * ParallelCombine: strategies for combining outputs from parallel node groups.
  *
- *   all-success — continue with 'success' only if all nodes output 'success'
- *   any-success — continue with 'success' if any node outputs 'success'
- *   collect     — store all outputs in metadata for the next node to inspect
+ *   all-success: continue with 'success' only if all nodes output 'success'
+ *   any-success: continue with 'success' if any node outputs 'success'
+ *   collect: store all outputs in metadata for the next node to inspect
  */
 
 import type { FromSchema } from 'json-schema-to-ts';

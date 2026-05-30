@@ -3,7 +3,7 @@
  * Uses MutationObserver so the enhancer catches SVGs whenever the
  * mermaid plugin hydrates them, regardless of route timing.
  *
- * Ported from Yamete's MermaidEnhancer.client.ts — identical pattern.
+ * Ported from Yamete's MermaidEnhancer.client.ts; identical pattern.
  */
 import {
   onBeforeUnmount, onMounted,

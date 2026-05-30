@@ -1,17 +1,17 @@
 /**
- * `@noocodex/dagonizer/types` — type-only barrel.
+ * `@noocodex/dagonizer/types`: type-only barrel.
  *
  * Every public type and interface re-exported from one place so consumers
  * can import the type surface without pulling the runtime classes. Three
  * tiers of interface live here:
  *
- *   1. Class-shape interfaces — colocated with their class. Describe the
+ *   1. Class-shape interfaces: colocated with their class. Describe the
  *      public face of a single class (`DagonizerInterface`,
  *      `NodeStateInterface`, `DAGErrorInterface`).
- *   2. Adapter contracts — live in `src/contracts/`, single source of truth.
+ *   2. Adapter contracts: live in `src/contracts/`, single source of truth.
  *      What consumers implement to swap a backend (`ClockProvider`,
  *      `SchedulerProvider`, `NodeInterface`).
- *   3. Entity-narrowing interfaces — colocated with the entity in
+ *   3. Entity-narrowing interfaces: colocated with the entity in
  *      `src/entities/<group>/`. Pair with a JSON Schema and its derived
  *      `FromSchema` type (`NodeContextInterface`, `NodeOutputInterface`,
  *      `NodeResultInterface`, `ExecutionResultInterface`,

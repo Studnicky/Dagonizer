@@ -1,5 +1,5 @@
 /**
- * OperationContractFragment — the deriver-only fields of an OperationContract.
+ * OperationContractFragment: the deriver-only fields of an OperationContract.
  *
  * Lives on NodeInterface.contract so the node carries its own data-flow
  * declaration. The node supplies `name` and `outputs` via its own fields;

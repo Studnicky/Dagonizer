@@ -1,5 +1,5 @@
 /**
- * GroqApiAdapter — Groq REST adapter.
+ * GroqApiAdapter: Groq REST adapter.
  *
  * Llama 3.3 70B on Groq's LPU hardware. Free tier ~30 RPM. Uses
  * `max_completion_tokens` (Groq does not accept `max_tokens`).

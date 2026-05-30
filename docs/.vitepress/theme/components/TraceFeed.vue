@@ -1,12 +1,12 @@
 <script setup lang="ts">
 /**
- * TraceFeed — unified chronological stream of node lifecycle events and
+ * TraceFeed: unified chronological stream of node lifecycle events and
  * logger output.
  *
  * Merges two sources:
- *   • `entries` — node start/end/error events from the ObservedDagonizer
+ *   • `entries`: node start/end/error events from the ObservedDagonizer
  *     observer (passed down from ArchivistRunner as the `trace` ref).
- *   • `logger`  — ConsoleLogger subscriber (info/warn/result lines).
+ *   • `logger`: ConsoleLogger subscriber (info/warn/result lines).
  *
  * Both are sorted by `ts` so the feed reads as a single timeline even
  * when logger messages arrive between node events. New items animate in

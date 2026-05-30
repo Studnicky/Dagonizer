@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * TimeoutPane — per-phase timeout controls as a proper tab pane.
+ * TimeoutPane: per-phase timeout controls as a proper tab pane.
  *
  * Replaces the old floating TimeoutDrawer. Same sliders + numeric inputs,
  * same localStorage persistence, but rendered as an open panel instead of
@@ -43,7 +43,7 @@ function load(): void {
     if (typeof parsed.composeMs   === 'number') composeMs.value   = parsed.composeMs;
     if (typeof parsed.webSearchMs === 'number') webSearchMs.value = parsed.webSearchMs;
     if (typeof parsed.rankMs      === 'number') rankMs.value      = parsed.rankMs;
-  } catch { /* corrupted — leave defaults */ }
+  } catch { /* corrupted; leave defaults */ }
 }
 
 function save(): void {

@@ -1,7 +1,7 @@
 {
   "name": "@noocodex/dagonizer-adapter-groq",
   "version": "0.14.0",
-  "description": "LLM adapter plugin for @noocodex/dagonizer — GroqApiAdapter.",
+  "description": "LLM adapter plugin for @noocodex/dagonizer: GroqApiAdapter.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
   "type": "module",

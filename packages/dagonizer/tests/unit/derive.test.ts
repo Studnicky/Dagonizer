@@ -9,7 +9,7 @@ import type { DAGDeriverEmbeddedDAG } from '../../src/derive/DAGDeriverAnnotatio
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 // `DAGDeriver.derive` takes `nodes` with co-located contracts (single source of
-// truth) — there is no standalone `contracts` input. Wrap each contract spec in
+// truth); there is no standalone `contracts` input. Wrap each contract spec in
 // a node whose `contract` carries the topology fields; `execute` is a no-op
 // (derive reads only the contract, never runs the node).
 const contractNode = (c: OperationContract): NodeInterface => ({
@@ -535,8 +535,8 @@ void describe('DAGDeriver.derive', () => {
 
   void it('end-to-end: dispatcher executes a EmbeddedDAGNode emitted by DAGDeriver', async () => {
     // Parent flow: prepare → invoke-child (embedded-DAG) → finalize.
-    // Embedded-DAG placements cannot terminate the run — the parent DAG
-    // owns END — so the embedded-DAG step must be followed by another
+    // Embedded-DAG placements cannot terminate the run; the parent DAG
+    // owns END, so the embedded-DAG step must be followed by another
     // parent placement that routes to null.
     const contracts: OperationContract[] = [
       { 'name': 'prepare',      'hardRequired': ['input'],        'produces': ['intermediate'], 'outputs': ['success'] },
@@ -611,7 +611,7 @@ void describe('DAGDeriver.derive', () => {
   });
 });
 
-void describe('DAGDeriver — terminals with emit variant', () => {
+void describe('DAGDeriver: terminals with emit variant', () => {
   // Helper: make a node that always returns its first output.
   const make = <TOut extends string>(
     name: string,
@@ -826,7 +826,7 @@ void describe('DAGDeriver — terminals with emit variant', () => {
   });
 });
 
-void describe('DAGDeriverEmbeddedDAG<TChildState> — typed stateMapping', () => {
+void describe('DAGDeriverEmbeddedDAG<TChildState>: typed stateMapping', () => {
   /** Concrete child state with known domain fields. */
   class MyChildState extends NodeStateBase {
     payload: string = '';
@@ -867,7 +867,7 @@ void describe('DAGDeriverEmbeddedDAG<TChildState> — typed stateMapping', () =>
   });
 
   void it('untyped: omitting the generic defaults to NodeStateInterface (loose string paths)', () => {
-    // DAGDeriverEmbeddedDAG without a generic — same as the pre-existing usage.
+    // DAGDeriverEmbeddedDAG without a generic; same as the pre-existing usage.
     const contracts: OperationContract[] = [
       { 'name': 'invoke', 'hardRequired': ['input'], 'produces': ['result'], 'outputs': ['success'] },
     ];
@@ -902,7 +902,7 @@ void describe('DAGDeriverEmbeddedDAG<TChildState> — typed stateMapping', () =>
   void it('@ts-expect-error: wrong child-state key in input mapping produces a compile-time error', () => {
     // The typed annotation catches unknown child-state keys at compile time.
     // Assign to the stateMapping type directly so @ts-expect-error targets the erroring line.
-    // @ts-expect-error — 'nonExistentKey' is not a key of MyChildState
+    // @ts-expect-error: 'nonExistentKey' is not a key of MyChildState
     const _bad: DAGDeriverEmbeddedDAG<MyChildState>['stateMapping'] = { 'input': { 'nonExistentKey': 'parent.seed' } };
     void _bad;
   });

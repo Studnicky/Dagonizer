@@ -1,11 +1,11 @@
 /**
- * SqliteStore — BaseStore implementation backed by Node's built-in node:sqlite.
+ * SqliteStore: BaseStore implementation backed by Node's built-in node:sqlite.
  *
  * Snapshot type:    'sqlite-store'
  * Snapshot version: 1
  *
  * Requires Node >= 24 (node:sqlite is stable in Node 23+).
- * No external npm dependencies — only node:sqlite.
+ * No external npm dependencies; only node:sqlite.
  *
  * Atomicity: `update()` uses `BEGIN IMMEDIATE` to acquire a write lock
  * before reading, preventing lost updates under concurrent calls.
@@ -113,7 +113,7 @@ export class SqliteStore extends BaseStore {
   }
 
   protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntry[]> {
-    // Foreign-data boundary cast — node:sqlite's `.all()` returns
+    // Foreign-data boundary cast: node:sqlite's `.all()` returns
     // `unknown[]` because the driver can't statically know table schemas.
     // The double-cast through `unknown` is the conventional TS narrowing
     // at this boundary; structurally identical to the `JSON.parse(...) as

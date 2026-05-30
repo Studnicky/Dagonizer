@@ -1,7 +1,7 @@
 {
   "name": "@noocodex/dagonizer-tool-wikipedia",
   "version": "0.14.0",
-  "description": "Tool plugin for @noocodex/dagonizer — Wikipedia.",
+  "description": "Tool plugin for @noocodex/dagonizer: Wikipedia.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
   "type": "module",

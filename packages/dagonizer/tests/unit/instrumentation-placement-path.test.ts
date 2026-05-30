@@ -52,7 +52,7 @@ const makeNode = (
 
 // ── DAG fixtures ─────────────────────────────────────────────────────────
 //
-// Innermost DAG — used as the inner placement inside `middleDAG`.
+// Innermost DAG: used as the inner placement inside `middleDAG`.
 const leafDAG: DAG = {
   '@context': DAG_CONTEXT,
   '@id':   'urn:noocodex:dag:pp-leaf',
@@ -71,7 +71,7 @@ const leafDAG: DAG = {
   ],
 };
 
-// Middle DAG — wraps `leafDAG` so the leaf runs at depth 2 inside the parent.
+// Middle DAG: wraps `leafDAG` so the leaf runs at depth 2 inside the parent.
 const middleDAG: DAG = {
   '@context': DAG_CONTEXT,
   '@id':   'urn:noocodex:dag:pp-middle',
@@ -97,7 +97,7 @@ const middleDAG: DAG = {
   ],
 };
 
-// Parent DAG — top-level placement, then one embedded-DAG (which itself
+// Parent DAG: top-level placement, then one embedded-DAG (which itself
 // nests another embedded-DAG). Used to assert empty / one-deep / two-deep
 // paths in a single execution.
 const parentDAG: DAG = {
@@ -185,8 +185,8 @@ void describe('Instrumentation placementPath threading', () => {
 
   void it('emits the embedded-DAG placement name as the SAME path for two distinct embed instances with same inner names', async () => {
     // Mirrors the Archivist case: two embedded-DAG placements point at the
-    // SAME inner DAG. The inner node fires twice — once per outer placement
-    // — and each fire must carry its OWN outer name as the path so the
+    // SAME inner DAG. The inner node fires twice, once per outer placement,
+    // and each fire must carry its OWN outer name as the path so the
     // visualiser can disambiguate same-named inner nodes.
 
     const innerDAG: DAG = {

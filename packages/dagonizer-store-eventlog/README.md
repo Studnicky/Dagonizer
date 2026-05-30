@@ -2,7 +2,7 @@
 
 Append-only event-log `Store` implementation for [`@noocodex/dagonizer`](https://github.com/Studnicky/Dagonizer).
 
-Every `set` appends a `{ kind: 'set' }` event; every `delete` appends a `{ kind: 'delete' }` tombstone. `get` returns the latest value for a key by scanning the log in reverse. `snapshot()` compacts the log to a last-write-wins map. `restore()` reseeds the log from snapshot entries. Optional file persistence via `node:fs/promises` — no external dependencies.
+Every `set` appends a `{ kind: 'set' }` event; every `delete` appends a `{ kind: 'delete' }` tombstone. `get` returns the latest value for a key by scanning the log in reverse. `snapshot()` compacts the log to a last-write-wins map. `restore()` reseeds the log from snapshot entries. Optional file persistence via `node:fs/promises`; no external dependencies.
 
 ## Installation
 
@@ -47,7 +47,7 @@ await store.connect();          // opens file, replays existing entries
 await store.set<number>('run', 1);
 await store.disconnect();       // flushes and closes the file
 
-// Resume in a new process — same file, same data.
+// Resume in a new process (same file, same data).
 const resumed = new EventLogStore({ filePath: '/tmp/my-dag.log' });
 await resumed.connect();
 console.log(await resumed.get<number>('run')); // 1

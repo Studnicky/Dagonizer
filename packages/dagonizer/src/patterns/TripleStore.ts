@@ -1,8 +1,8 @@
 /**
- * TripleStore — minimal RDF quad-store contract every graph-tier pattern needs.
+ * TripleStore: minimal RDF quad-store contract every graph-tier pattern needs.
  *
  * Graph patterns (`RecallContextNode`, `RecordFindingsNode`,
- * `MemoryDigestNode`) operate against this interface — `services.memory`
+ * `MemoryDigestNode`) operate against this interface; `services.memory`
  * in the consumer's bag must satisfy it. The Archivist's `MemoryStore`
  * (n3-backed, browser-compatible) is the canonical implementation.
  *
@@ -15,13 +15,13 @@
  * the minimal shapes here so they don't pull n3 into every consumer.
  */
 
-/** RDF-JS Term — NamedNode, Literal, BlankNode, or DefaultGraph. */
+/** RDF-JS Term: NamedNode, Literal, BlankNode, or DefaultGraph. */
 export interface Term {
   readonly termType: 'NamedNode' | 'Literal' | 'BlankNode' | 'DefaultGraph' | 'Variable' | 'Quad';
   readonly value: string;
 }
 
-/** RDF-JS Quad — subject, predicate, object, graph. */
+/** RDF-JS Quad: subject, predicate, object, graph. */
 export interface Quad {
   readonly subject:   Term;
   readonly predicate: Term;
@@ -44,10 +44,10 @@ export interface TripleStore {
   /** Write one quad. `graph` defaults to the default graph. */
   assert(subject: Term, predicate: Term, object: Term, graph?: Term): void;
 
-  /** ASK — true when at least one quad matches the pattern. */
+  /** ASK: true when at least one quad matches the pattern. */
   ask(pattern: SlotPattern): boolean;
 
-  /** SELECT — list bound rows. */
+  /** SELECT: list bound rows. */
   select(pattern: SlotPattern): readonly Binding[];
 
   /** Count matching quads. */

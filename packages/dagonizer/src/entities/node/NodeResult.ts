@@ -1,5 +1,5 @@
 /**
- * NodeResult — result yielded after each node execution.
+ * NodeResult: result yielded after each node execution.
  *
  * The `state` field is opaque (`{ type: 'object' }`) at the JSON boundary.
  * `NodeResultInterface<TState>` extends this via `Omit<NodeResult, 'state'>`

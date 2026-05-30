@@ -1,5 +1,5 @@
 /**
- * ComposeNode — "LLM produces prose" pattern. Extends LlmDispatchNode
+ * ComposeNode: "LLM produces prose" pattern. Extends LlmDispatchNode
  * for the shared request envelope; adds draft write-back.
  *
  * Leaves narrow intent but share the dispatch loop:

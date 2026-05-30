@@ -33,7 +33,7 @@ No API key required for read-only volume search (Google's free tier covers anony
 
 ## Composition with OpenLibrary
 
-`GoogleBooksTool` outputs are mergeable with `@noocodex/dagonizer-tool-openlibrary` via `CanonicalId.dedupe` — both tools emit `Candidate` shapes with stable canonical ids, so cross-source duplicates collapse to a single richer record.
+`GoogleBooksTool` outputs are mergeable with `@noocodex/dagonizer-tool-openlibrary` via `CanonicalId.dedupe`: both tools emit `Candidate` shapes with stable canonical ids, so cross-source duplicates collapse to a single richer record.
 
 ## License
 

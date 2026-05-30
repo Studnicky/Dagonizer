@@ -57,7 +57,7 @@ void describe('Execution streaming (async-iterable)', () => {
     for await (const stage of dispatcher.execute('outer', new NodeStateBase())) seen.push(stage.nodeName);
 
     // The embedded-DAG's inner step streams as its own stage (prefixed with the
-    // placement name), BEFORE the embed placement's own result — proving nested
+    // placement name), BEFORE the embed placement's own result, proving nested
     // intermediate results flow through the stream incrementally.
     assert.deepEqual(seen, ['start', 'embed.inner', 'embed']);
   });

@@ -1,10 +1,10 @@
 /**
- * NodeStateData — pure wire/data shape of the shared node state.
+ * NodeStateData: pure wire/data shape of the shared node state.
  *
  * Captures the serializable fields: errors, warnings, metadata, retry
  * counters, and the lifecycle wire shape (DAGLifecycleStateData). The runtime
  * `NodeStateInterface`
- * does NOT extend this entity — its `lifecycle` field carries an in-memory
+ * does NOT extend this entity; its `lifecycle` field carries an in-memory
  * `Error` on the `failed` branch, which is not JSON-expressible. Instead,
  * `NodeStateInterface` is documented to reference this shape as the persistence
  * form returned by `NodeStateBase.snapshot()`.

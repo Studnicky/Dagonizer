@@ -1,9 +1,9 @@
 /**
- * EventLogStore — append-only event-log implementation of BaseStore.
+ * EventLogStore: append-only event-log implementation of BaseStore.
  *
  * Every `set` appends a `{ kind: 'set' }` event; every `delete` appends a
  * `{ kind: 'delete' }` tombstone. `get` resolves the latest value for a key
- * by scanning the log in reverse — O(n) worst-case, suitable for low-churn
+ * by scanning the log in reverse (O(n) worst-case), suitable for low-churn
  * key sets typical of DAG state.
  *
  * `snapshot()` compacts the log to a last-write-wins map and returns the
@@ -28,8 +28,8 @@ import type { JsonValue } from '@noocodex/dagonizer/entities';
 /**
  * Append-only log event. Each entry records one write operation.
  *
- * `kind: 'set'`    — `value` carries the new value stored under `key`.
- * `kind: 'delete'` — a tombstone; the key is logically absent after this entry.
+ * `kind: 'set'`: `value` carries the new value stored under `key`.
+ * `kind: 'delete'`: a tombstone; the key is logically absent after this entry.
  */
 export type EventLogEntry =
   | { readonly kind: 'set';    readonly at: number; readonly key: string; readonly value: JsonValue }
@@ -80,7 +80,7 @@ export class EventLogStore extends BaseStore {
     const contents = await this.#handle.readFile({ 'encoding': 'utf8' });
     for (const line of contents.split('\n')) {
       if (line === '') continue;
-      // JSON parse IS the JSON ingest boundary — file bytes → runtime type.
+      // JSON parse IS the JSON ingest boundary: file bytes → runtime type.
       const parsed = JSON.parse(line) as EventLogEntry;
       this.#log.push(parsed);
     }
@@ -97,8 +97,8 @@ export class EventLogStore extends BaseStore {
   // ── Atomic RMW override ───────────────────────────────────────────────────
 
   /**
-   * Atomic read-modify-write. Reads `#log` directly via `#latest()` — no
-   * `await` before the result is computed — then appends the new value.
+   * Atomic read-modify-write. Reads `#log` directly via `#latest()`, with no
+   * `await` before the result is computed, then appends the new value.
    * Under JS single-threaded execution the body cannot interleave with another
    * `update()` on the same instance, satisfying the atomicity contract.
    */

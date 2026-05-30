@@ -118,7 +118,7 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
     };
     dispatcher.registerNode(op);
 
-    // Missing @context, @id, @type — fails schema pre-pass before semantic check.
+    // Missing @context, @id, @type; fails schema pre-pass before semantic check.
     const bad = { 'name': 'x', 'entrypoint': 's', 'nodes': [
       { '@id': 'urn:x', '@type': 'SingleNode', 'name': 's', 'node': 'op', 'outputs': { 'success': null } },
     ] } as unknown as DAG;
@@ -135,7 +135,7 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
     };
     dispatcher.registerNode(op);
 
-    // Schema-valid but references unknown node — semantic tier rejects.
+    // Schema-valid but references unknown node; semantic tier rejects.
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:x',

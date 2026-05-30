@@ -1,5 +1,5 @@
 /**
- * mergeCandidates — cross-source dedupe, rank by score, keep top five.
+ * mergeCandidates: cross-source dedupe, rank by score, keep top five.
  *
  * Uses `CanonicalId.dedupe` to collapse multi-source hits sharing the
  * same canonical id (ISBN-13 → ISBN-10 → work URN). A book seen by
@@ -45,7 +45,7 @@ export const mergeCandidates: NodeInterface<ArchivistState, 'ranked' | 'empty', 
       if (state.failureCause.trim().length === 0) {
         state.failureCause = 'No candidates found after searching all available sources. ';
       }
-      context.services.logger.info('merge: live scouts returned 0, no prior memory candidates — routing empty');
+      context.services.logger.info('merge: live scouts returned 0, no prior memory candidates; routing empty');
       return { "output": 'empty' };
     }
 
@@ -62,7 +62,7 @@ export const mergeCandidates: NodeInterface<ArchivistState, 'ranked' | 'empty', 
       // Case 2a: live only (original path).
       pool = state.candidates;
     } else {
-      // Case 2b: both pools have content — merge, dedupe, prefer live over prior.
+      // Case 2b: both pools have content; merge, dedupe, prefer live over prior.
       // Build a set of ISBNs already present in live candidates.
       const liveIsbns = new Set(state.candidates.map((c) => c.book.isbn));
       // Only add prior candidates whose ISBN is NOT already in live results.
@@ -77,7 +77,7 @@ export const mergeCandidates: NodeInterface<ArchivistState, 'ranked' | 'empty', 
     // Cross-source dedupe: collapses hits sharing the same canonical id,
     // accumulating notes._sources[] and keeping the richest fields.
     const deduped = CanonicalId.dedupe(pool);
-    // Defensive language filter — scouts already filter, but a candidate
+    // Defensive language filter: scouts already filter, but a candidate
     // can land here from a stale checkpoint or a future source that
     // skipped the per-scout filter. Candidates without language metadata
     // pass through unchanged.

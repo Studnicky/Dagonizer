@@ -1,5 +1,5 @@
 /**
- * ArchivistOntology — TBox (schema) for the Archivist's RDF memory.
+ * ArchivistOntology: TBox (schema) for the Archivist's RDF memory.
  *
  * Defines the class and property vocabulary under the `dag:` namespace
  * (`https://noocodex.dev/ontology/dagonizer/`).  Every ABox write in
@@ -8,8 +8,8 @@
  * (`urn:dagonizer:memory`, `urn:dagonizer:state:<runId>`) uniformly.
  *
  * Exported surfaces:
- *   - `ArchivistOntologyJsonLd` — canonical JSON-LD document (docs / tooling)
- *   - `ONTOLOGY_NTRIPLES`       — N-Triples ready to load via `MemoryStore.loadOntology()`
+ *   - `ArchivistOntologyJsonLd`: canonical JSON-LD document (docs / tooling)
+ *   - `ONTOLOGY_NTRIPLES`:       N-Triples ready to load via `MemoryStore.loadOntology()`
  *
  * Classes (7):
  *   dag:Book, dag:Author, dag:Subject, dag:Run, dag:Activity,
@@ -23,7 +23,7 @@
  *   dag:title, dag:isbn, dag:summary, dag:firstPublishYear,
  *   dag:rating, dag:score, dag:visitorQuery, dag:runTimestamp, dag:inShortlist
  *
- * Cross-source query surface — with TBox + ABox co-loaded:
+ * Cross-source query surface (with TBox + ABox co-loaded):
  *   • JOIN on dag:title across catalog, web-search, wiki records (same predicate)
  *   • Enumerate all books from a Run:  ?run dag:candidate ?book
  *   • Rank by score across sources:    ?book dag:score ?s  ORDER BY DESC(?s)
@@ -80,7 +80,7 @@ export const ArchivistOntologyJsonLd: Record<string, unknown> = {
       '@id':   `${DAG}Book`,
       'type':  'Class',
       'label': 'Book',
-      'comment': 'A bibliographic record — catalog entry, web-search result, or wiki article.',
+      'comment': 'A bibliographic record: catalog entry, web-search result, or wiki article.',
     },
     {
       '@id':   `${DAG}Author`,
@@ -326,7 +326,7 @@ export const ONTOLOGY_NTRIPLES: readonly string[] = [
   // ── Classes
   triple(`${DAG}Book`,     RDF_TYPE, OWL_CLASS),
   tripleL(`${DAG}Book`,    RDFS_LABEL,   'Book'),
-  tripleL(`${DAG}Book`,    RDFS_COMMENT, 'A bibliographic record — catalog entry, web-search result, or wiki article.'),
+  tripleL(`${DAG}Book`,    RDFS_COMMENT, 'A bibliographic record: catalog entry, web-search result, or wiki article.'),
 
   triple(`${DAG}Author`,   RDF_TYPE, OWL_CLASS),
   tripleL(`${DAG}Author`,  RDFS_LABEL,   'Author'),

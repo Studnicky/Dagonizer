@@ -9,7 +9,7 @@
  *   4. Runtime execute: typed inputs + outputs mappings propagate state correctly.
  *   5. Path<TState>: positive compile-time check for valid nested paths in input values.
  *   6. Path<TState>: negative compile-time check rejects invalid paths in input values.
- *   7. Path<TState>: runtime smoke — typed generic form builds correct wire shape.
+ *   7. Path<TState>: runtime smoke; typed generic form builds correct wire shape.
  */
 
 import assert from 'node:assert/strict';
@@ -46,7 +46,7 @@ const terminal: NodeInterface<NodeStateBase, 'success'> = {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-void describe('TypedEmbeddedDAGOptionsInterface<TChildState, TParentState> — compile-time shape', () => {
+void describe('TypedEmbeddedDAGOptionsInterface<TChildState, TParentState>: compile-time shape', () => {
   void it('accepts valid TState paths in input values', () => {
     // input values are parent paths narrowed to Path<TParentState> when TParentState is concrete.
     // 'payload' and 'result' are valid paths on ChildState used as parent paths here.
@@ -58,14 +58,14 @@ void describe('TypedEmbeddedDAGOptionsInterface<TChildState, TParentState> — c
     assert.deepEqual(opts.outputs, { 'result': 'result' });
   });
 
-  void it('rejects invalid TState paths in input values — @ts-expect-error guard', () => {
-    // @ts-expect-error — 'unknownParentPath' is not a Path<ChildState>; TypeScript must reject this
+  void it('rejects invalid TState paths in input values (@ts-expect-error guard)', () => {
+    // @ts-expect-error: 'unknownParentPath' is not a Path<ChildState>; TypeScript must reject this
     const _bad: TypedEmbeddedDAGOptionsInterface<ChildState, ChildState> = { 'inputs': { 'payload': 'unknownParentPath' } };
     void _bad;
   });
 });
 
-void describe('DAGBuilder.embeddedDAG — wire shape', () => {
+void describe('DAGBuilder.embeddedDAG: wire shape', () => {
   void it('inputs + outputs build the correct EmbeddedDAGNode wire shape', () => {
     const dag = new DAGBuilder('test', '1')
       .embeddedDAG<ChildState, ChildState>('invoke', 'child-dag',
@@ -132,7 +132,7 @@ void describe('DAGBuilder.embeddedDAG — wire shape', () => {
   });
 });
 
-void describe('DAGBuilder.embeddedDAG — runtime execute with typed mapping', () => {
+void describe('DAGBuilder.embeddedDAG: runtime execute with typed mapping', () => {
   void it('inputs + outputs mappings propagate state correctly across the embedded-DAG boundary', async () => {
     // Child node reads cloneState.payload and writes cloneState.result.
     const childNode: NodeInterface<NodeStateBase, 'success'> = {
@@ -199,7 +199,7 @@ void describe('DAGBuilder.embeddedDAG — runtime execute with typed mapping', (
       .build();
     dispatcher.registerDAG(childDag);
 
-    // No generic — defaults to NodeStateInterface; paths are loose `string`.
+    // No generic; defaults to NodeStateInterface; paths are loose `string`.
     const parentDag = new DAGBuilder('compat-parent', '1')
       .embeddedDAG('run', 'compat-child',
         { 'success': 'end', 'error': 'end' },
@@ -214,18 +214,18 @@ void describe('DAGBuilder.embeddedDAG — runtime execute with typed mapping', (
   });
 });
 
-void describe('DAGBuilder.embeddedDAG — Path<TState> narrowing', () => {
+void describe('DAGBuilder.embeddedDAG: Path<TState> narrowing', () => {
   void it('positive compile: typed form accepts valid nested parent paths in input values', () => {
-    // ParentState has user.name, user.age, count — all valid Path<ParentState> values.
+    // ParentState has user.name, user.age, count; all valid Path<ParentState> values.
     const opts: TypedEmbeddedDAGOptionsInterface<ChildState, ParentState> = {
       'inputs': { 'payload': 'user.age' },
     };
     assert.deepEqual(opts.inputs, { 'payload': 'user.age' });
   });
 
-  void it('negative compile: typed form rejects invalid parent paths in input values — @ts-expect-error guard', () => {
-    // 'user.notReal' is not a valid Path<ParentState> — TypeScript must reject this.
-    // @ts-expect-error — 'user.notReal' does not exist on Path<ParentState>
+  void it('negative compile: typed form rejects invalid parent paths in input values (@ts-expect-error guard)', () => {
+    // 'user.notReal' is not a valid Path<ParentState>; TypeScript must reject this.
+    // @ts-expect-error: 'user.notReal' does not exist on Path<ParentState>
     const _bad: TypedEmbeddedDAGOptionsInterface<ChildState, ParentState> = { 'inputs': { 'payload': 'user.notReal' } };
     void _bad;
   });

@@ -6,7 +6,7 @@
  * case matches the named shape; they extend the parent directly for
  * novel shapes.
  *
- * The leaves carry no runtime behaviour beyond their parent — they're
+ * The leaves carry no runtime behaviour beyond their parent; they're
  * named class aliases that document intent and constrain TChoice /
  * output port naming. The same class extension pattern applies.
  */
@@ -19,7 +19,7 @@ import type { ToolCall } from '@noocodex/dagonizer/adapter';
 // ── DecisionNode leaves ───────────────────────────────────────────────────
 
 /**
- * ClassifyIntentNode — LLM picks one intent token from a literal-union
+ * ClassifyIntentNode: LLM picks one intent token from a literal-union
  * `TIntent`. The output port name equals the chosen intent string,
  * so the dispatcher routes each branch to a different downstream node.
  */
@@ -29,7 +29,7 @@ export abstract class ClassifyIntentNode<
 > extends DecisionNode<TState, TIntent, TIntent> {}
 
 /**
- * DecideToolsNode — LLM emits a list of tool calls. The output port
+ * DecideToolsNode: LLM emits a list of tool calls. The output port
  * is 'planned' when at least one tool was chosen, 'skip' otherwise.
  */
 export abstract class DecideToolsNode<
@@ -37,7 +37,7 @@ export abstract class DecideToolsNode<
 > extends DecisionNode<TState, readonly ToolCall[], 'planned' | 'skip'> {}
 
 /**
- * ValidateResponseNode — LLM judges a draft yes/no. Output port is
+ * ValidateResponseNode: LLM judges a draft yes/no. Output port is
  * 'approved' or 'retry'.
  */
 export abstract class ValidateResponseNode<
@@ -45,7 +45,7 @@ export abstract class ValidateResponseNode<
 > extends DecisionNode<TState, 'yes' | 'no', 'approved' | 'retry'> {}
 
 /**
- * RankCandidatesNode — LLM scores each candidate in [0,1]. TChoice
+ * RankCandidatesNode: LLM scores each candidate in [0,1]. TChoice
  * is the array of `(id, score)` pairs; consumer routes 'ranked' or
  * 'empty' depending on whether any candidates were scored.
  */
@@ -60,7 +60,7 @@ export abstract class RankCandidatesNode<
 // ── ComposeNode leaves ────────────────────────────────────────────────────
 
 /**
- * ComposeResponseNode — general LLM prose generation. Default output
+ * ComposeResponseNode: general LLM prose generation. Default output
  * port 'success'.
  */
 export abstract class ComposeResponseNode<
@@ -68,7 +68,7 @@ export abstract class ComposeResponseNode<
 > extends ComposeNode<TState, 'success'> {}
 
 /**
- * ComposeEmptyResponseNode — composition path for the "no data found"
+ * ComposeEmptyResponseNode: composition path for the "no data found"
  * case. Same dispatch loop; semantically distinct.
  */
 export abstract class ComposeEmptyResponseNode<
@@ -76,7 +76,7 @@ export abstract class ComposeEmptyResponseNode<
 > extends ComposeNode<TState, 'success'> {}
 
 /**
- * ComposeMemoryResponseNode — composition that draws from a recalled
+ * ComposeMemoryResponseNode: composition that draws from a recalled
  * memory digest rather than a fresh shortlist. Same dispatch loop.
  */
 export abstract class ComposeMemoryResponseNode<
@@ -84,7 +84,7 @@ export abstract class ComposeMemoryResponseNode<
 > extends ComposeNode<TState, 'success'> {}
 
 /**
- * DeclineNode — composition with refusal slant (polite "I can't help
+ * DeclineNode: composition with refusal slant (polite "I can't help
  * with that" responses). Same dispatch loop.
  */
 export abstract class DeclineNode<

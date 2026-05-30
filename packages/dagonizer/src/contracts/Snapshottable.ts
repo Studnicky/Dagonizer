@@ -1,5 +1,5 @@
 /**
- * Snapshottable — the capability `Checkpoint` depends on: a named state
+ * Snapshottable: the capability `Checkpoint` depends on: a named state
  * container that can serialize itself to a `StoreSnapshot` and rehydrate from
  * one.
  *

@@ -1,5 +1,5 @@
 /**
- * ParallelCombiners — pluggable strategy registry that decides the
+ * ParallelCombiners: pluggable strategy registry that decides the
  * group-level output of a `parallel` placement.
  *
  * A `ParallelCombiner` is a class with a `name` and a `combine` method.
@@ -108,7 +108,7 @@ export class ParallelCombiners {
 
   /**
    * Register a combiner. Replaces any prior registration with the same
-   * `name` — last-write-wins, matching the `nodes` and `dags` registry
+   * `name`: last-write-wins, matching the `nodes` and `dags` registry
    * semantics on the dispatcher.
    */
   static register(combiner: ParallelCombiner): void {

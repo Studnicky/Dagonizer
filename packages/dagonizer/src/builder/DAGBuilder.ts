@@ -1,12 +1,12 @@
 /**
- * DAGBuilder — chainable authoring API for `DAG`.
+ * DAGBuilder: chainable authoring API for `DAG`.
  *
  * Builds a JSON-LD canonical `DAG` document. Each node placement receives
  * `@id` (a URN scoped under the DAG name) and `@type` (the RDF class name).
  * The returned object from `build()` satisfies `DAGSchema` and can be passed
  * directly to `dispatcher.registerDAG(dag)`.
  *
- * Cross-ref: the RDF builder in `semantics/` workspace — same shape, same
+ * Cross-ref: the RDF builder in `semantics/` workspace has the same shape, same
  * chainable surface, output is plain data.
  *
  * Subclass to extend the builder; methods preserve `this` for fluent chaining.
@@ -52,13 +52,13 @@ export interface ScatterOptionsInterface<TState extends NodeStateInterface = Nod
   /** Maximum number of clones run concurrently. Defaults to item count. */
   readonly concurrency?: number;
   /**
-   * Seed each clone before its body runs (becomes `stateMapping.input`) — same
+   * Seed each clone before its body runs (becomes `stateMapping.input`); same
    * concept and orientation as `EmbeddedDAGNode` `inputs`: keys are child-state
    * keys, values are parent-state dotted paths (narrowed to `Path<TState>` when
    * `TState` is a concrete subtype).
    */
   readonly inputs?: Partial<Record<string, ParentPath<TState>>>;
-  /** Gather config — how produced clone state merges back into the parent. */
+  /** Gather config: how produced clone state merges back into the parent. */
   readonly gather?: GatherConfig;
   /** Outcome reducer name. Defaults to `'aggregate'`. */
   readonly reducer?: string;
@@ -221,7 +221,7 @@ export class DAGBuilder {
   }
 
   /**
-   * Append an embedded-DAG node — invoke a registered sub-DAG once (cardinality
+   * Append an embedded-DAG node: invoke a registered sub-DAG once (cardinality
    * 1), routing the parent on the child's terminal outcome (`success` | `error`).
    * `options.inputs` seeds the child from the parent before it runs;
    * `options.outputs` copies child fields back into the parent after it completes.
@@ -264,7 +264,7 @@ export class DAGBuilder {
 
   /**
    * Append a terminal node. When reached, the flow ends with the given
-   * `outcome`. `'completed'` is the default — the flow resolves cleanly.
+   * `outcome`. `'completed'` is the default; the flow resolves cleanly.
    * `'failed'` marks the state as failed before resolving.
    *
    * TerminalNodes have no routing (`outputs` map). They are placement-only
@@ -290,7 +290,7 @@ export class DAGBuilder {
    * collected as warnings on state and do not change the already-set
    * lifecycle.
    *
-   * Phase placements are out-of-band — they have no `outputs`, never the
+   * Phase placements are out-of-band; they have no `outputs`, never the
    * main-loop entrypoint, and never route to other placements.
    */
   phase<TState extends NodeStateInterface, TOutput extends string, TServices = undefined>(
@@ -307,7 +307,7 @@ export class DAGBuilder {
     };
     this.#nodes.push(placement);
     this.#nodeImpls.set(name, dagNode as NodeInterface);
-    // Intentionally does NOT set entrypoint — phase placements are
+    // Intentionally does NOT set entrypoint; phase placements are
     // out-of-band and never the main-loop entry.
     return this;
   }
@@ -320,7 +320,7 @@ export class DAGBuilder {
    * dangling-read / dead-write validation that `DAGDeriver` runs at derive
    * time. Dangling reads throw `DAGError`; dead writes are routed to
    * `onContractWarning` (no-op if omitted). Placements added via `.parallel()`
-   * — which do not receive a `NodeInterface` — are not tracked in the impl
+   * (which do not receive a `NodeInterface`) are not tracked in the impl
    * registry and are silently skipped during contract validation; this prevents
    * false-positive dangling-read errors for node names that are declared
    * elsewhere.
@@ -330,7 +330,7 @@ export class DAGBuilder {
    */
   build(onContractWarning?: (message: string) => void): DAG {
     if (this.#entrypoint === null) {
-      throw new Error(`DAGBuilder('${this.#name}'): cannot build DAG without an entrypoint — call .entrypoint() or add at least one node first`);
+      throw new Error(`DAGBuilder('${this.#name}'): cannot build DAG without an entrypoint; call .entrypoint() or add at least one node first`);
     }
     const dag: DAG = {
       '@context': DAG_CONTEXT,
@@ -345,7 +345,7 @@ export class DAGBuilder {
     // Run contract validation for the subset of placements registered via
     // .node() / .scatter() whose underlying NodeInterface carries a contract.
     // Placements added via .parallel() are not in #nodeImpls and are
-    // intentionally skipped — no false-positive dangling-read errors.
+    // intentionally skipped; no false-positive dangling-read errors.
     const contractNodes = [...this.#nodeImpls.values()].filter(
       (impl) => impl.contract !== undefined,
     );
@@ -362,7 +362,7 @@ export class DAGBuilder {
   }
 
   /**
-   * Construct a DAG directly from a node registry — every node-with-contract
+   * Construct a DAG directly from a node registry; every node-with-contract
    * participates in derivation; the linear topology follows
    * produces ↔ hardRequired matching. Equivalent to calling
    * `DAGDeriver.derive({ name, version, entrypoint, nodes })` and returning

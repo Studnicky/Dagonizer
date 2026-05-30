@@ -1,5 +1,5 @@
 /**
- * BookSearchScatterDAG — reusable query-extract + 4-source parallel scout cluster.
+ * BookSearchScatterDAG: reusable query-extract + 4-source parallel scout cluster.
  *
  * Internal flow:
  *
@@ -23,8 +23,8 @@
  *          └─ fail ──► no-results (TerminalNode(failed) → parent EmbeddedDAGNode routes parent error)
  *
  * Outputs:
- *   success — query extracted, candidates found, ranked, recorded, and recalled
- *   error   — no candidates after merge, or citations gate failed;
+ *   success: query extracted, candidates found, ranked, recorded, and recalled
+ *   error:   no candidates after merge, or citations gate failed;
  *             signalled by the no-results TerminalNode(failed) placement so
  *             the parent EmbeddedDAGNode routes the parent placement to its
  *             'error' branch
@@ -33,18 +33,18 @@
  *   import { bookSearchScatterBundle } from './embedded-dags/BookSearchScatterDAG.ts';
  *   dispatcher.registerBundle(bookSearchScatterBundle);
  *
- * The sub-DAG reads `state.query` directly (no input stateMapping — the field
+ * The sub-DAG reads `state.query` directly (no input stateMapping; the field
  * names already align with the parent). Each parent placement supplies an
- * `outputs` stateMapping that copies the fields the sub-DAG writes —
+ * `outputs` stateMapping that copies the fields the sub-DAG writes:
  * `terms`, `toolPlan`, `candidates`, `shortlist`, `priorContext`,
- * `failureCause` — back onto the parent state so the downstream compose,
+ * `failureCause` back onto the parent state so the downstream compose,
  * group-by-year, and recall steps can read them.
  *
  * Three EmbeddedDAGNode placements in the parent `the-archivist` DAG reference
  * this one definition. One definition, three usages:
- *   on-topic-search  — general web book search
- *   author-search    — author body-of-work search
- *   similar-search   — recommend-similar search
+ *   on-topic-search:  general web book search
+ *   author-search:    author body-of-work search
+ *   similar-search:   recommend-similar search
  *
  * Reviews and describe branches are inlined in the parent because they use
  * distinct post-scout steps (rankByRating and pickBestMatch respectively).
@@ -77,7 +77,7 @@ import { DAGBuilder } from '@noocodex/dagonizer/builder';
 import type { DAG } from '@noocodex/dagonizer/entities';
 
 /**
- * The `book-search-scatter` DAG — one packaged unit that any parent DAG
+ * The `book-search-scatter` DAG: one packaged unit that any parent DAG
  * can reference via `.embeddedDAG('placement-name', 'book-search-scatter', routes)`.
  */
 export const BookSearchScatterDAG: DAG = new DAGBuilder('book-search-scatter', '1.0')
@@ -86,7 +86,7 @@ export const BookSearchScatterDAG: DAG = new DAGBuilder('book-search-scatter', '
   // LLM parses the raw visitor question into structured search terms.
   // Writes state.terms for the scouts and decide-tools to consume.
   // 'retry' loops back (bounded by the state retry budget); 'salvage' routes to
-  // a deterministic recovery node — never a fabricated term list on the node.
+  // a deterministic recovery node; never a fabricated term list on the node.
   // #region retry-salvage-wiring
   .node('extract-query', extractQuery, {
     'success': 'decide-tools',
@@ -115,7 +115,7 @@ export const BookSearchScatterDAG: DAG = new DAGBuilder('book-search-scatter', '
   // ── 2b. recall-candidates ────────────────────────────────────────────────
   // Pre-loads state.priorCandidates from memory: shortlisted books from prior
   // runs whose visitor query has Jaccard >= 0.35 overlap with the current
-  // query. Cap 10. Always routes 'recalled' — even when no prior runs match.
+  // query. Cap 10. Always routes 'recalled', even when no prior runs match.
   .node('recall-candidates', recallCandidates, {
     'recalled': 'book-search-scatter',
   })
@@ -156,7 +156,7 @@ export const BookSearchScatterDAG: DAG = new DAGBuilder('book-search-scatter', '
   })
 
   // ── 6. record-findings ───────────────────────────────────────────────────
-  // Deterministic RDF write — same input always produces the same triples.
+  // Deterministic RDF write: same input always produces the same triples.
   .node('record-findings', recordFindings, {
     'recorded': 'has-citations-gate',
   })
@@ -172,13 +172,13 @@ export const BookSearchScatterDAG: DAG = new DAGBuilder('book-search-scatter', '
 
   // ── 8. recall-past-visits ────────────────────────────────────────────────
   // Injects prior-session context (prior queries + shortlisted titles) into
-  // state.priorContext. Terminal node — sub-DAG exits cleanly → 'success'.
+  // state.priorContext. Terminal node; sub-DAG exits cleanly to 'success'.
   .node('recall-past-visits', recallPastVisits, {
     'recalled': null,
   })
 
   // ── 9. no-results ────────────────────────────────────────────────────────
-  // TerminalNode(failed) — the parent EmbeddedDAGNode's terminal outcome
+  // TerminalNode(failed): the parent EmbeddedDAGNode's terminal outcome
   // reads the failed terminal and routes the parent placement to its 'error'
   // branch. No backing node or collectError call required.
   .terminal('no-results', 'failed')
@@ -187,7 +187,7 @@ export const BookSearchScatterDAG: DAG = new DAGBuilder('book-search-scatter', '
 
 /**
  * Bundle of every node used by `BookSearchScatterDAG` plus the DAG itself.
- * Register with `dispatcher.registerBundle(bookSearchScatterBundle)` — nodes
+ * Register with `dispatcher.registerBundle(bookSearchScatterBundle)`; nodes
  * register before the DAG so the validator resolves all node references.
  */
 export const bookSearchScatterBundle: DispatcherBundle<ArchivistState, ArchivistServices> = {

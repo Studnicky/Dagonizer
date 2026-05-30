@@ -1,5 +1,5 @@
 /**
- * Provenance barrel — PROV-O ontology constants + the RDF observer.
+ * Provenance barrel: PROV-O ontology constants + the RDF observer.
  */
 
 export { PROV, DAG_ACT, ProvIris, RDF_TYPE } from './PROV.ts';

@@ -11,7 +11,7 @@ export interface OpenLibraryDoc {
   readonly first_publish_year?: number;
   readonly publisher?: readonly string[];
   readonly subject?: readonly string[];
-  /** Stable OpenLibrary identifier — `/works/OL...W`. Always present. */
+  /** Stable OpenLibrary identifier (`/works/OL...W`). Always present. */
   readonly key?: string;
   readonly first_sentence?: readonly string[];
   /** Some search responses include a description; many don't. */
@@ -31,7 +31,7 @@ export function pickDescription(doc: OpenLibraryDoc): string | undefined {
   const first = doc.first_sentence?.[0];
   if (typeof first === 'string' && first.length > 0) {
     return doc.subtitle !== undefined && doc.subtitle.length > 0
-      ? `${doc.subtitle} — ${first}`
+      ? `${doc.subtitle}: ${first}`
       : first;
   }
   if (doc.subtitle !== undefined && doc.subtitle.length > 0) return doc.subtitle;

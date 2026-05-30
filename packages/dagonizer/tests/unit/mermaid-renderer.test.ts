@@ -100,7 +100,7 @@ void describe('MermaidRenderer.render', () => {
   });
 });
 
-void describe('MermaidRenderer.render — TerminalNode', () => {
+void describe('MermaidRenderer.render: TerminalNode', () => {
   void it('renders a completed TerminalNode as a double-circle with outcome suffix', () => {
     const terminal: TerminalNodePlacementInterface = {
       '@id':     'urn:noocodex:dag:t/node/done',

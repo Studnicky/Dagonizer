@@ -1,5 +1,5 @@
 /**
- * recallPastVisits — deterministic memory-recall node.
+ * recallPastVisits: deterministic memory-recall node.
  *
  * SPARQL across every prior run's `urn:dagonizer:state:<runId>` named
  * graph to surface (a) the visitor's prior queries and (b) the books
@@ -46,7 +46,7 @@ export const recallPastVisits: ArchivistNode<'recalled'> = {
       if (graphTerm.value === currentGraph) continue;
       priorQueries.push({ 'graph': graphTerm.value, 'text': textTerm.value });
     }
-    // Keep most recent — graph IRIs aren't ordered; use insertion order
+    // Keep most recent; graph IRIs aren't ordered, use insertion order
     // and trim to MAX_PRIOR_QUERIES.
     const recentQueries = priorQueries.slice(-MAX_PRIOR_QUERIES);
 

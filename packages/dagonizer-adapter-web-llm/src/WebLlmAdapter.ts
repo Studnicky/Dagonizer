@@ -1,11 +1,11 @@
 /**
- * WebLlmAdapter — fully in-browser MLC WebLLM adapter.
+ * WebLlmAdapter: fully in-browser MLC WebLLM adapter.
  *
  * Lazy-loads the WebLLM ESM bundle and a small Phi-3.5 / Llama 3.2
  * quantized model (~700 MB) on first use; subsequent calls reuse the
  * engine. WebGPU is required (`navigator.gpu`).
  *
- * Tool calling is not native to WebLLM — we use `response_format` with
+ * Tool calling is not native to WebLLM; we use `response_format` with
  * `{ type: 'json_object' }` and the tool-plan JSON Schema in the
  * system context. The model returns a JSON blob that we decode back
  * into `ToolCall[]` via JSON coercion (`decodeToolCallsJson`).
@@ -75,7 +75,7 @@ export class WebLlmAdapter extends BaseAdapter {
   /**
    * Probe true when WebGPU is reachable AND `requestAdapter()` yields a
    * real hardware adapter. `navigator.gpu` presence alone is not
-   * enough — some Chromium variants expose the API surface but fail to
+   * enough; some Chromium variants expose the API surface but fail to
    * acquire a backing device (no discrete GPU, missing driver, blocked
    * by enterprise policy). Bounded by a short timeout so a stuck
    * driver call cannot delay cascade selection. Never throws.

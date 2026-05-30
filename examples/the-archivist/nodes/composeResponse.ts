@@ -1,13 +1,13 @@
 /**
- * composeResponse + validateResponse — the LLM compose/validate loop.
+ * composeResponse + validateResponse: the LLM compose/validate loop.
  *
  * `composeResponse` produces a prose answer from the shortlist.
  * `validateResponse` runs a soft quality check (length, citations,
  * tone). On a low-quality draft it routes back through compose up to
- * `MAX_COMPOSE_ATTEMPTS` — a retry loop modeled in the DAG, not inside a node.
+ * `MAX_COMPOSE_ATTEMPTS`; a retry loop modeled in the DAG, not inside a node.
  *
- * Compose failures — a flaky LLM call that throws, or the node's own deadline
- * firing on a slow call — share that flow shape: `composeResponse` arms its own
+ * Compose failures (a flaky LLM call that throws, or the node's own deadline
+ * firing on a slow call) share that flow shape: `composeResponse` arms its own
  * deadline (the compose methods are signal-aware, so the abort cancels the
  * in-flight call), catches, and routes `retry` (the DAG loops back, bounded by
  * the same `compose` budget) or `salvage` once the budget is spent. No in-node
@@ -74,10 +74,10 @@ export const composeResponse: NodeInterface<ArchivistState, 'drafted' | 'retry' 
       // Own timeout or transient compose failure → retry budget decides the
       // flow. The attempt was already recorded above, so read the count.
       if (state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS) {
-        context.services.logger.warn(`compose-response: failed (attempt ${String(state.retriesFor('compose'))}/${String(MAX_COMPOSE_ATTEMPTS)}) — retry: ${err instanceof Error ? err.message : String(err)}`);
+        context.services.logger.warn(`compose-response: failed (attempt ${String(state.retriesFor('compose'))}/${String(MAX_COMPOSE_ATTEMPTS)}), retry: ${err instanceof Error ? err.message : String(err)}`);
         return { "output": 'retry' };
       }
-      context.services.logger.warn(`compose-response: retries exhausted — salvage: ${err instanceof Error ? err.message : String(err)}`);
+      context.services.logger.warn(`compose-response: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
       return { "output": 'salvage' };
     } finally {
       clearTimeout(handle);
@@ -100,7 +100,7 @@ export function detectEntities(draft: string): readonly string[] {
   const found = new Map<string, true>();
   // Capitalised tokens: a leading word and one or more trailing capitalised
   // words, optionally with lowercase joiners (of/the/de/von/&/and) BETWEEN
-  // capitalised tokens. The trailing token must be capitalised — joiners
+  // capitalised tokens. The trailing token must be capitalised; joiners
   // never end a match, so "House of Leaves and Piranesi" splits cleanly.
   // Single-letter middle initials (e.g. "Mark Z Danielewski") are allowed.
   const capToken = '[A-Z](?:[a-z\']+|\\.?)';                    // CapWord or initial
@@ -131,7 +131,7 @@ export function detectEntities(draft: string): readonly string[] {
  *      every title in shortlist + priorCandidates.
  *   3. If unmatched AND entity has > 2 words (heuristic: book titles
  *      tend to be longer than 2 words), flag as hallucination.
- *   4. Bias-check — when the shortlist is non-empty and the draft names
+ *   4. Bias-check: when the shortlist is non-empty and the draft names
  *      NO book from it, the response is "compose-was-lazy" and gets
  *      flagged too.
  */
@@ -190,11 +190,11 @@ export const validateResponse: NodeInterface<
   async execute(state, context) {
     // ── Deterministic anti-hallucination pre-check ───────────────────────
     // Runs BEFORE the LLM validator. When it fails we force a retry
-    // without paying for an LLM round-trip — and we accumulate a
+    // without paying for an LLM round-trip; we accumulate a
     // failureCause so the next compose attempt knows what to fix.
     const antiHal = antiHallucinationCheck(state.draft, state.shortlist, state.priorCandidates);
     if (antiHal.status === 'fail') {
-      context.services.logger.warn(`validate-anti-hallucination: FAIL — ${antiHal.cause.trim()}`);
+      context.services.logger.warn(`validate-anti-hallucination: FAIL: ${antiHal.cause.trim()}`);
       state.failureCause += antiHal.cause;
       state.approved = false;
       if (state.retriesFor('compose') >= MAX_COMPOSE_ATTEMPTS) {

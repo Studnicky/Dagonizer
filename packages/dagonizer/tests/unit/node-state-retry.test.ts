@@ -12,7 +12,7 @@ import { describe, it } from 'node:test';
 
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
-void describe('NodeStateBase — retry attempts', () => {
+void describe('NodeStateBase: retry attempts', () => {
   void it('records and reads per-key attempt counts independently', () => {
     const state = new NodeStateBase();
 

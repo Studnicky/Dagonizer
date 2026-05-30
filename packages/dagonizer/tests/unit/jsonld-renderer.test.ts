@@ -134,7 +134,7 @@ void describe('JsonLdRenderer.render', () => {
   });
 });
 
-void describe('JsonLdRenderer.render — TerminalNode', () => {
+void describe('JsonLdRenderer.render: TerminalNode', () => {
   void it('renders a completed TerminalNode with @type dag:TerminalNode and dag:outcome', () => {
     const terminal: TerminalNodePlacementInterface = {
       '@id':     'urn:noocodex:dag:jt/node/done',

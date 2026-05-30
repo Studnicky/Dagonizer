@@ -179,7 +179,7 @@ void test('tombstone: set after delete brings key back', async () => {
 
 // ── 6. File-backed persistence ────────────────────────────────────────────────
 
-void test('connect: double-connect is a no-op — no duplicate entries', async () => {
+void test('connect: double-connect is a no-op; no duplicate entries', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'dagonizer-eventlog-'));
   const filePath = join(dir, 'double-connect.log');
 
@@ -188,7 +188,7 @@ void test('connect: double-connect is a no-op — no duplicate entries', async (
   await store.set<string>('key', 'value');
   // A second connect must be a no-op: no new handle, no replay.
   await store.connect();
-  // Log still has exactly one entry — the single set above.
+  // Log still has exactly one entry; the single set above.
   assert.equal(store.log().length, 1);
   assert.equal(await store.get<string>('key'), 'value');
   await store.disconnect();
@@ -207,7 +207,7 @@ void test('file-backed: persists and replays entries across instances', async ()
   await writer.set<number>('n', 7);
   await writer.disconnect();
 
-  // Read phase — new instance, same file.
+  // Read phase: new instance, same file.
   const reader = new EventLogStore({ filePath });
   await reader.connect();
   assert.equal(await reader.get<string>('hello'), 'world');
@@ -281,7 +281,7 @@ void test('log: includes both set and delete events', async () => {
   assert.equal(log[2]?.kind, 'delete');
 });
 
-void test('log: returns the live internal log — reference identity is stable', async () => {
+void test('log: returns the live internal log; reference identity is stable', async () => {
   const store = new EventLogStore();
   await store.set<string>('k', 'v');
 
@@ -317,5 +317,5 @@ void test('namespace: qualifies keys transparently', async () => {
 });
 
 after(() => {
-  // No persistent cleanup needed — file tests clean up inline.
+  // No persistent cleanup needed; file tests clean up inline.
 });

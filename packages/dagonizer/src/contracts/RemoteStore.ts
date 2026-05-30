@@ -1,11 +1,11 @@
 /**
- * RemoteStore — Store extended with distribution-specific operations.
+ * RemoteStore: Store extended with distribution-specific operations.
  *
  * Plugins implement `RemoteStore` when their backing is over the network
  * (HTTP, gRPC, WebSocket) or replicated across processes. Local
  * in-memory and single-node-durable stores implement `Store` directly.
  *
- * The engine consumes a `RemoteStore` through the `Store` surface — the
+ * The engine consumes a `RemoteStore` through the `Store` surface; the
  * extra methods are observability + coordination primitives the
  * dispatcher can use when distributed execution is wired in (post-v0.11).
  */
@@ -36,7 +36,7 @@ export interface RemoteStoreLease {
   readonly subject:   string;
 }
 
-/** RemoteStore — distributed shared-state contract. */
+/** RemoteStore: distributed shared-state contract. */
 export interface RemoteStore extends Store {
   /** Endpoint descriptor; surfaces in observability / placement decisions. */
   readonly endpoint: RemoteStoreEndpoint;
@@ -44,8 +44,8 @@ export interface RemoteStore extends Store {
   /**
    * Acquire a lease for `subject` with a maximum lifetime. The lease
    * grants exclusive write authority to whoever holds the token. The
-   * store either returns a fresh lease or — when another holder is
-   * active — waits up to `maxWaitMs` for the existing lease to expire
+   * store either returns a fresh lease, or, when another holder is
+   * active, waits up to `maxWaitMs` for the existing lease to expire
    * before throwing.
    *
    * Lease semantics are advisory unless the store enforces them on
@@ -62,7 +62,7 @@ export interface RemoteStore extends Store {
   /**
    * Health probe. Returns `true` when the endpoint is reachable AND the
    * underlying backing responds within `timeoutMs`. Implementations
-   * should NOT throw on transport failure — return `false` instead so
+   * should NOT throw on transport failure; return `false` instead so
    * the dispatcher can route around an unhealthy store.
    */
   health(timeoutMs: number): Promise<boolean>;

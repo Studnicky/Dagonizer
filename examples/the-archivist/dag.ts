@@ -1,10 +1,10 @@
 /**
- * The Archivist — canonical DAG, built with DAGBuilder. Version 6.0.
+ * The Archivist: canonical DAG, built with DAGBuilder. Version 6.0.
  *
  * Molecular composition: the parent DAG is composed of two reusable
  * sub-DAGs that ship as independent components and are imported as
  * `.embeddedDAG(name, dagName, routes)` placements. The sub-DAGs are
- * registered separately and referenced by name — the parent DAG never knows
+ * registered separately and referenced by name; the parent DAG never knows
  * their internals.
  *
  *   recall-context
@@ -43,13 +43,13 @@
  * terminal node fires per run with the full converged state.draft.
  *
  * Embedded-DAGs (molecular components):
- *   book-search-scatter — extract-query + decide-tools + 4-source parallel scouts
+ *   book-search-scatter: extract-query + decide-tools + 4-source parallel scouts
  *                         (OpenLibrary, Google Books, Subject, Wikipedia) + rankCandidates
  *                         + mergeCandidates + recordFindings + hasCitationsGate +
  *                         recallPastVisits. Three placements in this DAG:
  *                         on-topic-search, author-search, similar-search.
  *
- *   compose-retry-loop  — composeResponse + validateResponse (with bounded retry loop)
+ *   compose-retry-loop: composeResponse + validateResponse (with bounded retry loop)
  *                         + respondToVisitor. Four placements in this DAG:
  *                         compose-loop (shared by all four convergent branches).
  *
@@ -57,7 +57,7 @@
  *   Reviews uses `rankByRating` (deterministic, rating-weighted) instead of
  *   `rankCandidates` (LLM-driven). Describe uses `pickBestMatch` to narrow to the
  *   top-3 title-similar candidates before merge. Both are structurally identical to
- *   book-search-scatter except for the post-scout ranking step — keeping them inline
+ *   book-search-scatter except for the post-scout ranking step; keeping them inline
  *   makes the intentional distinction explicit rather than hiding it behind a
  *   embedded-DAG parameter.
  *
@@ -71,7 +71,7 @@
  *   DAGBuilder.node(placementName, nodeImpl, routes) emits the same
  *   { type: 'single', name, node: nodeImpl.name, outputs: routes }
  *   object that the hand-written literal used. build() returns a plain
- *   DAG — identical wire shape, same Dagonizer.load() call.
+ *   DAG: identical wire shape, same Dagonizer.load() call.
  */
 
 
@@ -135,7 +135,7 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
   // ── on-topic branch ──────────────────────────────────────────────────────
   // EmbeddedDAGNode: book-search-scatter handles extract-query, decide-tools,
   // all four scouts, rank-candidates, merge, record, gate, and recall.
-  // One packaged cluster — first of three placements of the same sub-DAG.
+  // One packaged cluster; first of three placements of the same sub-DAG.
   // gather.map copies the fields the sub-DAG writes back to the parent state
   // so compose-loop and group-by-year can read them.
   .embeddedDAG('on-topic-search', 'book-search-scatter', {
@@ -155,7 +155,7 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
   // ── lookup-author branch ─────────────────────────────────────────────────
   // EmbeddedDAGNode: same book-search-scatter cluster, second placement.
   // After success, group-by-year sorts results chronologically before the
-  // compose loop — author surveys read better in publication-timeline order.
+  // compose loop; author surveys read better in publication-timeline order.
   .embeddedDAG('author-search', 'book-search-scatter', {
     'success': 'group-by-year',
     'error':   'compose-empty',
@@ -175,7 +175,7 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
   })
 
   // ── find-reviews branch ───────────────────────────────────────────────────
-  // Inlined — uses rankByRating (deterministic, rating-weighted) in place of
+  // Inlined. Uses rankByRating (deterministic, rating-weighted) in place of
   // rankCandidates (LLM-driven). The Google Books scout carries notes.rating /
   // notes.ratingsCount; rankByRating weights those for reviews-style output.
   .node('reviews-extract', extractQuery, {
@@ -210,7 +210,7 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
   .node('reviews-recall',  recallPastVisits, { 'recalled': 'compose-loop' })
 
   // ── describe-book branch ─────────────────────────────────────────────────
-  // Inlined — uses pickBestMatch to narrow multi-hit results to the top-3
+  // Inlined. Uses pickBestMatch to narrow multi-hit results to the top-3
   // title-similar candidates before merge. Ensures the composer receives the
   // specific book the visitor named, not arbitrary top-5 hits.
   .node('describe-extract',      extractQuery,     { 'success': 'describe-decide-tools', 'retry': 'describe-extract', 'salvage': 'describe-extract-salvage' })
@@ -233,7 +233,7 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
 
   // ── recommend-similar branch ─────────────────────────────────────────────
   // recommendSimilar seeds state.terms from prior-run shortlist memory.
-  // 'seeded' routes to the book-search-scatter sub-DAG — third placement of
+  // 'seeded' routes to the book-search-scatter sub-DAG; third placement of
   // the same packaged cluster. 'empty' routes to the compose-empty terminal.
   .node('recommend-similar', recommendSimilar, {
     'seeded': 'similar-search',
@@ -255,14 +255,14 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
     },
   })
 
-  // ── compose-loop — shared compose/validate sub-DAG ──────────────────────────
+  // ── compose-loop: shared compose/validate sub-DAG ──────────────────────────
   // All branches that successfully find candidates converge here.
   // composeResponse → validateResponse (retry loop, bounded by the retry budget on state (retriesFor('compose'))).
   // One sub-DAG definition serves all four convergent branches.
   // stateMapping.outputs copies the compose loop's writes back to the parent.
   //
   // Convergence policy: 'success' routes to the shared respond-to-visitor terminal
-  // at the parent level — the sub-DAG produces state.draft and exits cleanly;
+  // at the parent level; the sub-DAG produces state.draft and exits cleanly;
   // exactly ONE respond-to-visitor fires per run regardless of branch count.
   // 'error' (retry budget exhausted) falls through to compose-empty so the
   // visitor always receives an in-character response rather than a silent drop.
@@ -278,15 +278,15 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
   })
   // #endregion embedded-dag-placements
 
-  // ── respond-to-visitor — single shared happy-path terminal ───────────────
+  // ── respond-to-visitor: single shared happy-path terminal ───────────────
   // Every branch that successfully composes a response converges here.
   // compose-loop (success) and both memory + empty-result paths all route
-  // through this one placement — convergence policy: exactly ONE respond-to-visitor
+  // through this one placement. Convergence policy: exactly ONE respond-to-visitor
   // fires per run with the full converged state.draft in context.
   .node('respond-to-visitor', respondToVisitor, { 'success': null })
 
   // ── recall-memories branch ───────────────────────────────────────────────
-  // No search needed — the memory store is queried directly.
+  // No search needed; the memory store is queried directly.
   // recallMemories → composeMemoryResponse → respond-to-visitor (shared terminal).
   .node('memory-recall',          recallMemories,       { 'recalled': 'compose-memory-recall' })
   .node('compose-memory-recall',  composeMemoryResponse, {
