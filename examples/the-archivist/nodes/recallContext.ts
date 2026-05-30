@@ -39,6 +39,7 @@ import type { Candidate } from '../entities/Book.ts';
 import { BOOK_NS, GRAPH_MEMORY, MemoryStore, STATE_GRAPH_PREFIX, stateGraphIri } from '../memory/MemoryStore.ts';
 
 import type { ArchivistNode } from './ArchivistNode.ts';
+import { jaccard, tokenise } from './textUtils.ts';
 
 const dagVisitorQuery = MemoryStore.dagIri('visitorQuery');
 const dagIntent       = MemoryStore.dagIri('intent');
@@ -53,25 +54,6 @@ const MAX_PRIOR_INTENTS = 5;
 const MAX_RECENT_CANDIDATES = 6;
 const MAX_PRIOR_CANDIDATES_CONTEXT = 5;
 const JACCARD_THRESHOLD_CONTEXT = 0.35;
-
-/** Return a set of lowercase tokens from a query string. */
-function tokenise(text: string): Set<string> {
-  return new Set(
-    text
-      .toLowerCase()
-      .split(/\W+/)
-      .filter((t) => t.length > 2),
-  );
-}
-
-/** Overlap score: |intersection| / |union| (Jaccard). Returns 0 when both sets are empty. */
-function jaccard(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 && b.size === 0) return 0;
-  let intersect = 0;
-  for (const tok of a) if (b.has(tok)) intersect++;
-  const union = a.size + b.size - intersect;
-  return union === 0 ? 0 : intersect / union;
-}
 
 export const recallContext: ArchivistNode<'recalled'> = {
   'name':    'recall-context',
@@ -260,7 +242,7 @@ export const recallContext: ArchivistNode<'recalled'> = {
     // ── Seed priorCandidates from high-similarity prior runs ──────────────
     // Collect shortlisted books from runs with Jaccard >= 0.35 (same threshold
     // as recallCandidates). Capped at 5 — recallCandidates inside the embedded-
-    // DAG overwrites with a richer cap-10 set when the fanout fires.
+    // DAG overwrites with a richer cap-10 set when the scatter fires.
     const highSimilarGraphs = priorRaw
       .filter((p) => p.jaccard >= JACCARD_THRESHOLD_CONTEXT)
       .map((p) => p.graphIri);

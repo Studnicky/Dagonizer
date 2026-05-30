@@ -26,7 +26,8 @@
  * await typed.set('count', 'wrong');       // TS error
  */
 
-import type { Store, StoreSnapshot } from '../contracts/Store.js';
+import type { StoreSnapshot } from '../contracts/Snapshottable.js';
+import type { Store } from '../contracts/Store.js';
 import type { JsonValue } from '../entities/json.js';
 
 export class TypedStore<Schema extends { [K in keyof Schema]: JsonValue }> {

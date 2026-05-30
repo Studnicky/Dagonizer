@@ -30,7 +30,7 @@ class CountingDagonizer<TState extends NodeStateBase> extends Dagonizer<TState> 
     this.nodeStartNames.push(nodeName);
   }
 
-  protected override onNodeEnd(nodeName: string, _output: string | undefined, _state: TState): void {
+  protected override onNodeEnd(nodeName: string, _output: string | null, _state: TState): void {
     this.nodeEndNames.push(nodeName);
   }
 }
@@ -247,9 +247,9 @@ void describe('TerminalNode — embedded-DAG routing to null is legal', () => {
         },
         {
           '@id':   'urn:noocodex:dag:parent-tn/node/run-child',
-          '@type': 'ScatterNode',
+          '@type': 'EmbeddedDAGNode',
           'name':  'run-child',
-          'body':  { 'dag': 'child-tn' },
+          'dag':   'child-tn',
           'outputs': { 'success': null, 'error': null },
         },
       ],
@@ -297,9 +297,9 @@ void describe('TerminalNode — embedded-DAG routes to explicit TerminalNode pla
     'nodes': [
       {
         '@id':   'urn:noocodex:dag:parent-explicit/node/run-child',
-        '@type': 'ScatterNode',
+        '@type': 'EmbeddedDAGNode',
         'name':  'run-child',
-        'body':  { 'dag': 'child-explicit' },
+        'dag':   'child-explicit',
         'outputs': { 'success': 'end-ok', 'error': 'end-fail' },
       },
       {

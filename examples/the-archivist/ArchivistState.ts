@@ -100,8 +100,6 @@ export class ArchivistState extends NodeStateBase {
   draft = '';
   /** Validation outcome. `null` if not yet validated. */
   approved: boolean | null = null;
-  /** Compose retry counter — `RetryPolicy` reads `attempts.compose`. */
-  attempts: Record<string, number> = {};
   /**
    * Tool plan emitted by the LLM via `decideTools`. The DAG inspects
    * this to gate the optional scouts (web search runs only when the
@@ -150,7 +148,7 @@ export class ArchivistState extends NodeStateBase {
   /**
    * Prior shortlisted candidates loaded from memory by `recallContext`
    * (cap 5, low Jaccard) and overridden by `recallCandidates` inside the
-   * `book-search-fanout` embedded-DAG (cap 10, Jaccard >= 0.35).
+   * `book-search-scatter` embedded-DAG (cap 10, Jaccard >= 0.35).
    * `mergeCandidates` falls back to this pool when live scouts return zero.
    * Always initialized; never undefined (V8 shape stability).
    */
@@ -177,7 +175,6 @@ export class ArchivistState extends NodeStateBase {
     copy.shortlist  = [...this.shortlist];
     copy.draft      = this.draft;
     copy.approved   = this.approved;
-    copy.attempts     = { ...this.attempts };
     copy.toolPlan     = [...this.toolPlan];
     copy.runId        = this.runId;
     copy.failureCause = this.failureCause;
@@ -219,7 +216,6 @@ export class ArchivistState extends NodeStateBase {
       })) as unknown as JsonObject[],
       "draft":        this.draft,
       "approved":     this.approved,
-      "attempts":     { ...this.attempts },
       "failureCause": this.failureCause,
       "recalledContext": {
         "priorIntents":        this.recalledContext.priorIntents as unknown as JsonObject[],
@@ -258,9 +254,6 @@ export class ArchivistState extends NodeStateBase {
     if (Array.isArray(snap['terms']))      this.terms      = snap['terms'] as string[];
     if (Array.isArray(snap['candidates'])) this.candidates = snap['candidates'] as unknown as Candidate[];
     if (Array.isArray(snap['shortlist']))  this.shortlist  = snap['shortlist'] as unknown as Candidate[];
-    if (snap['attempts'] && typeof snap['attempts'] === 'object') {
-      this.attempts = { ...snap['attempts'] as Record<string, number> };
-    }
     const rc = snap['recalledContext'];
     if (rc !== null && rc !== undefined && typeof rc === 'object' && !Array.isArray(rc)) {
       const rcObj = rc as Record<string, unknown>;

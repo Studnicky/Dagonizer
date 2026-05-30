@@ -26,6 +26,10 @@ import type { Embedder } from '@noocodex/dagonizer/contracts';
 
 import type { ClassifiedIntent } from '../services.ts';
 
+import { cosineSimilarity } from '../nodes/textUtils.ts';
+
+export { cosineSimilarity };
+
 /**
  * Canonical intent labels. The order matters only for tie-breaking —
  * argmax returns the first label encountered at the top score.
@@ -120,25 +124,4 @@ export class IntentClassifier {
     if (bestIntent === null || bestScore < confidenceFloor) return null;
     return { 'intent': bestIntent, 'score': bestScore };
   }
-}
-
-/**
- * Cosine similarity between two equal-length vectors. Returns 0 on
- * length mismatch or zero-norm input — those are degenerate cases the
- * caller treats as "no signal" rather than an error to throw on.
- */
-export function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
-  if (a.length !== b.length || a.length === 0) return 0;
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    const ai = a[i] ?? 0;
-    const bi = b[i] ?? 0;
-    dot += ai * bi;
-    normA += ai * ai;
-    normB += bi * bi;
-  }
-  const denom = Math.sqrt(normA) * Math.sqrt(normB);
-  return denom === 0 ? 0 : dot / denom;
 }

@@ -78,7 +78,7 @@ void describe('MermaidRenderer.render', () => {
     assert.match(out, /end/u);
   });
 
-  void it('renders a ScatterNode with body.dag as a trapezoid', () => {
+  void it('renders an EmbeddedDAGNode as a subroutine', () => {
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:deep',
@@ -88,15 +88,15 @@ void describe('MermaidRenderer.render', () => {
       'entrypoint': 'enrich',
       'nodes': [{
         '@id':  'urn:noocodex:dag:deep/node/enrich',
-        '@type': 'ScatterNode',
+        '@type': 'EmbeddedDAGNode',
         'name':  'enrich',
-        'body':  { 'dag': 'inner' },
+        'dag':   'inner',
         'outputs': { 'success': 'next', 'error': 'next' },
       }],
     };
     const out = MermaidRenderer.render(dag);
-    // ScatterNode with body.dag still renders as trapezoid, not stadium
-    assert.match(out, /enrich\[\/enrich\/\]/u);
+    // EmbeddedDAGNode renders as a subroutine shape: name[[label]]
+    assert.match(out, /enrich\[\[enrich\]\]/u);
   });
 });
 

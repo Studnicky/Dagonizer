@@ -21,8 +21,6 @@ export abstract class RecallContextNode<
   protected abstract mapBindings(rows: readonly Binding[]): readonly TBinding[];
   protected abstract applyRecall(state: TState, bindings: readonly TBinding[]): void;
 
-  protected successPort(): TOutput { return 'success' as TOutput; }
-  protected emptyPort():   TOutput { return 'empty' as TOutput; }
 
   async execute(
     state: TState,
@@ -32,6 +30,6 @@ export abstract class RecallContextNode<
     const rows = context.services.memory.select(pattern);
     const bindings = this.mapBindings(rows);
     this.applyRecall(state, bindings);
-    return Promise.resolve({ 'output': bindings.length === 0 ? this.emptyPort() : this.successPort() });
+    return { 'output': bindings.length === 0 ? this.emptyPort() : this.successPort() };
   }
 }

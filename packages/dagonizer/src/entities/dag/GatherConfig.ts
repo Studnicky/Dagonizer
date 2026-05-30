@@ -15,13 +15,15 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
+import { GatherStrategySchema } from '../constants/GatherStrategy.js';
+
 export const GatherConfigSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/GatherConfig',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['strategy'],
   'properties': {
-    'strategy': { 'type': 'string', 'enum': ['map', 'append', 'partition', 'custom'] },
+    'strategy': { 'type': 'string', 'enum': GatherStrategySchema.enum },
     'mapping': {
       'type': 'object',
       'additionalProperties': { 'type': 'string' },

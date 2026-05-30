@@ -22,22 +22,7 @@
 
 import type { JsonValue } from '../entities/json.js';
 
-/** Entry in a serialized snapshot envelope. */
-export interface StoreSnapshotEntry {
-  readonly key:   string;
-  readonly value: JsonValue;
-}
-
-/**
- * Versioned snapshot envelope. Plugin authors writing their own store
- * set `type` to a stable identifier (e.g. 'memory-store-v1') so resume
- * code can refuse incompatible snapshots.
- */
-export interface StoreSnapshot {
-  readonly version: number;
-  readonly type:    string;
-  readonly entries: readonly StoreSnapshotEntry[];
-}
+import type { Snapshottable } from './Snapshottable.js';
 
 /**
  * Shared key-value store for cross-embedded-DAG state.
@@ -59,7 +44,7 @@ export interface StoreSnapshot {
  * The generic `T` has no default — callers MUST specify the value type
  * at every call site. The engine never uses `unknown` here.
  */
-export interface Store {
+export interface Store extends Snapshottable {
   get<T extends JsonValue>(key: string): Promise<T | undefined>;
   set<T extends JsonValue>(key: string, value: T): Promise<void>;
   has(key: string): Promise<boolean>;
@@ -74,14 +59,7 @@ export interface Store {
    */
   update<T extends JsonValue>(key: string, fn: (current: T | undefined) => T): Promise<T>;
 
-  /** Capture the entire store state as a typed envelope. */
-  snapshot(): Promise<StoreSnapshot>;
-
-  /**
-   * Repopulate from a snapshot. Implementations validate
-   * `snapshot.type` and `snapshot.version` before applying entries.
-   */
-  restore(snapshot: StoreSnapshot): Promise<void>;
+  // snapshot() / restore() are inherited from Snapshottable.
 
   /** Optional lifecycle hook for stores that hold a connection. */
   connect(): Promise<void>;

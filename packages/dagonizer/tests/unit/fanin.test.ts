@@ -27,10 +27,10 @@ void describe('Dagonizer scatter gather strategies', () => {
     const dag = new DAGBuilder('partition', '1')
       .scatter(
         'fan',
+        'items',
         classify,
         { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
         {
-          'source':  'items',
           'itemKey': 'item',
           'gather':  { 'strategy': 'partition', 'partitions': { 'even': 'evens', 'odd': 'odds' } },
         },
@@ -72,10 +72,10 @@ void describe('Dagonizer scatter gather strategies', () => {
     const dag = new DAGBuilder('customfan', '1')
       .scatter(
         'fan',
+        'items',
         cls,
         { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
         {
-          'source':  'items',
           'itemKey': 'item',
           'gather':  { 'strategy': 'custom', 'customNode': 'merge' },
         },
@@ -109,10 +109,10 @@ void describe('Dagonizer scatter gather strategies', () => {
     const dag = new DAGBuilder('appendfan', '1')
       .scatter(
         'fan',
+        'items',
         passThrough,
         { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
         {
-          'source':  'items',
           'itemKey': 'item',
           'gather':  { 'strategy': 'append', 'target': 'out' },
         },
@@ -129,8 +129,8 @@ void describe('Dagonizer scatter gather strategies', () => {
     assert.equal(state.out.length, 3);
   });
 
-  void it('map gather strategy writes singleton clone field as scalar to parent', async () => {
-    interface S extends NodeStateBase { payload: string; result: string }
+  void it('map gather strategy writes clone field as scalar to parent via source array', async () => {
+    interface S extends NodeStateBase { items: number[]; result: string }
 
     const dispatcher = new Dagonizer<NodeStateBase>();
     const produce: NodeInterface<NodeStateBase, 'success'> = {
@@ -143,7 +143,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     };
     dispatcher.registerNode(produce);
 
-    // Singleton scatter (no source) + map strategy: reads cloneState metadata
+    // Single-item source scatter + map strategy: reads cloneState metadata
     // via dotted path accessor; use a plain top-level key written via setMetadata
     // that is accessible as a metadata field directly via cloneState.
     // The accessor reads dotted paths off the state object itself — metadata is
@@ -151,10 +151,11 @@ void describe('Dagonizer scatter gather strategies', () => {
     const dag = new DAGBuilder('mapfan', '1')
       .scatter(
         'fan',
+        'items',
         produce,
-        { 'success': null, 'error': null },
+        { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
         {
-          // No source → singleton clone; reducer defaults to 'terminal'
+          'itemKey': 'item',
           'gather': {
             'strategy': 'map',
             'mapping':  { 'metadata.answer': 'metadata.result' },
@@ -165,6 +166,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     dispatcher.registerDAG(dag);
 
     const state = new NodeStateBase() as S;
+    state.items = [1];
     await dispatcher.execute('mapfan', state);
     assert.equal(state.getMetadata('result'), 'hello');
   });
@@ -190,10 +192,10 @@ void describe('Dagonizer scatter gather strategies', () => {
     const dag = new DAGBuilder('conc', '1')
       .scatter(
         'fan',
+        'items',
         slow,
         { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
         {
-          'source':      'items',
           'concurrency': 2,
           'gather':      { 'strategy': 'append', 'target': 'out' },
         },

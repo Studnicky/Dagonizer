@@ -19,7 +19,6 @@ export abstract class RecordFindingsNode<
   protected abstract selectEntities(state: TState): readonly TEntity[];
   protected abstract toQuads(entity: TEntity): readonly Quad[];
 
-  protected successPort(): TOutput { return 'success' as TOutput; }
 
   async execute(
     state: TState,
@@ -31,6 +30,6 @@ export abstract class RecordFindingsNode<
         context.services.memory.assert(q.subject, q.predicate, q.object, q.graph);
       }
     }
-    return Promise.resolve({ 'output': this.successPort() });
+    return { 'output': this.successPort() };
   }
 }

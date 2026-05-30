@@ -60,7 +60,6 @@ export interface OpenAiCompatibleConfig {
 
   /** Per-request timeout. Defaults to 60s. */
   readonly timeoutMs?: number;
-  readonly maxAttempts?: number;
 }
 
 /** Per-consumer options every OpenAI-compatible adapter accepts. */
@@ -103,7 +102,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
       config.id,
       config.displayName,
       config.capabilities,
-      { 'maxAttempts': options.maxAttempts ?? config.maxAttempts ?? 3 },
+      { 'maxAttempts': options.maxAttempts ?? 3 },
     );
     this.#apiKey = apiKey;
     this.#model = options.model ?? config.defaultModel;

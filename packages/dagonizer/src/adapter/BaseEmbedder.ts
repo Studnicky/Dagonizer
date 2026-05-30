@@ -21,9 +21,10 @@
  */
 
 import type { Embedder } from '../contracts/Embedder.js';
-import { BackoffStrategy, RetryPolicy } from '../runtime/index.js';
+import { BackoffStrategy } from '../runtime/index.js';
 
-import { Classifications, LlmError, type ErrorClassification } from './LlmError.js';
+import { Classifications, LlmError, MAX_QUOTA_WAIT_MS, type ErrorClassification } from './LlmError.js';
+import { RetryableErrorPolicy } from './RetryableErrorPolicy.js';
 
 export const DEFAULT_EMBEDDER_MAX_ATTEMPTS = 3;
 export const DEFAULT_EMBEDDER_BASE_DELAY_MS = 400;
@@ -37,7 +38,7 @@ export abstract class BaseEmbedder implements Embedder {
   readonly id: string;
   readonly displayName: string;
   readonly dimensions: number;
-  readonly #retry: RetryPolicy;
+  readonly #retry: RetryableErrorPolicy;
 
   protected constructor(
     id: string,
@@ -48,7 +49,7 @@ export abstract class BaseEmbedder implements Embedder {
     this.id = id;
     this.displayName = displayName;
     this.dimensions = dimensions;
-    this.#retry = new RetryPolicy({
+    this.#retry = new RetryableErrorPolicy({
       'maxAttempts': options.maxAttempts ?? DEFAULT_EMBEDDER_MAX_ATTEMPTS,
       'strategy':    BackoffStrategy.EXPONENTIAL,
       'baseDelay':   options.baseDelayMs ?? DEFAULT_EMBEDDER_BASE_DELAY_MS,
@@ -81,14 +82,26 @@ export abstract class BaseEmbedder implements Embedder {
       try {
         return await this.performEmbed(text);
       } catch (rawError) {
-        const classification = this.classify(rawError);
-        throw new LlmError(messageOf(rawError), classification, rawError);
+        // Already classified by performEmbed — don't double-wrap; apply the
+        // quota cap, then rethrow as-is.
+        if (rawError instanceof LlmError) {
+          const c = rawError.classification;
+          if (c.reason === 'QUOTA_EXHAUSTED' && c.retryAfterMs !== undefined && c.retryAfterMs > MAX_QUOTA_WAIT_MS) {
+            throw new LlmError(
+              `quota exhausted; retry-after ${String(c.retryAfterMs)}ms exceeds ${String(MAX_QUOTA_WAIT_MS)}ms cap`,
+              { ...c, 'retryable': false },
+              rawError,
+            );
+          }
+          throw rawError;
+        }
+        throw new LlmError(messageOf(rawError), this.classify(rawError), rawError);
       }
     });
   }
 
   /**
-   * Default batch — serial fan-out over `embed()`. Adapters whose
+   * Default batch — serial iteration over `embed()`. Adapters whose
    * provider exposes a native batch endpoint override and post one
    * request for the whole batch.
    */

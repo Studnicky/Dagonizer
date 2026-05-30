@@ -108,7 +108,7 @@ void describe('JsonLdRenderer.render', () => {
     assert.deepEqual(group?.['dag:children'], ['urn:dagonizer:par#a', 'urn:dagonizer:par#b']);
   });
 
-  void it('renders ScatterNode (body.dag) with cross-DAG IRI reference', () => {
+  void it('renders EmbeddedDAGNode with cross-DAG IRI reference', () => {
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:parent',
@@ -117,22 +117,20 @@ void describe('JsonLdRenderer.render', () => {
       'version':    '1',
       'entrypoint': 'invoke',
       'nodes': [{
-        '@id':        'urn:noocodex:dag:parent/node/invoke',
-        '@type':      'ScatterNode',
-        'name':       'invoke',
-        'body':       { 'dag': 'child' },
-        'projection': { 'input': 'x' },
-        'gather':     { 'strategy': 'map', 'mapping': { 'y': 'b' } },
+        '@id':          'urn:noocodex:dag:parent/node/invoke',
+        '@type':        'EmbeddedDAGNode',
+        'name':         'invoke',
+        'dag':          'child',
+        'stateMapping': { 'input': { 'input': 'x' }, 'output': { 'b': 'y' } },
         'outputs': { 'success': 'next', 'error': 'next' },
       }],
     };
     const doc = JsonLdRenderer.render(dag);
-    const sub = doc['@graph'].find((entry) => entry['@type'] === 'dag:ScatterNode');
-    assert.ok(sub !== undefined, 'dag:ScatterNode entry must be present');
-    // body.dag serializes as { dag:dag: <iri> }
-    assert.deepEqual(sub?.['dag:body'], { 'dag:dag': 'urn:dagonizer:child' });
-    assert.deepEqual(sub?.['dag:projection'], { 'input': 'x' });
-    assert.deepEqual(sub?.['dag:gather'], { 'strategy': 'map', 'mapping': { 'y': 'b' } });
+    const sub = doc['@graph'].find((entry) => entry['@type'] === 'dag:EmbeddedDAGNode');
+    assert.ok(sub !== undefined, 'dag:EmbeddedDAGNode entry must be present');
+    // the embedded DAG serializes as a cross-DAG IRI reference
+    assert.equal(sub?.['dag:dag'], 'urn:dagonizer:child');
+    assert.deepEqual(sub?.['dag:stateMapping'], { 'input': { 'input': 'x' }, 'output': { 'b': 'y' } });
   });
 });
 

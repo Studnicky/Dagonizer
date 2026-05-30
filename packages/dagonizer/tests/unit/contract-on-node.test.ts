@@ -96,33 +96,7 @@ void describe('DAGDeriver.derive with co-located contracts', () => {
     ];
     assert.throws(
       () => DAGDeriver.derive({ 'name': 'no-contracts', 'version': '1', 'entrypoint': 'a', nodes }),
-      /no node in the registry carries a `contract` field/,
-    );
-  });
-
-  void it('throws when both contracts and nodes are supplied', () => {
-    const contracts = [
-      { 'name': 'a', 'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success'] },
-    ];
-    const nodes: NodeInterface<NodeStateBase, string>[] = [
-      makeNode('a', ['success'], { 'hardRequired': ['input'], 'produces': ['x'] }),
-    ];
-    assert.throws(
-      () => DAGDeriver.derive({
-        'name': 'both',
-        'version': '1',
-        'entrypoint': 'a',
-        contracts,
-        nodes,
-      }),
-      /supply either `contracts` or `nodes`, not both/,
-    );
-  });
-
-  void it('throws when neither contracts nor nodes are supplied', () => {
-    assert.throws(
-      () => DAGDeriver.derive({ 'name': 'neither', 'version': '1', 'entrypoint': 'a' }),
-      /supply either `contracts` or `nodes`/,
+      /no node carries a `contract` field/,
     );
   });
 });

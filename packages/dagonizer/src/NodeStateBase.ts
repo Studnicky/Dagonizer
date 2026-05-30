@@ -90,6 +90,39 @@ export interface NodeStateInterface {
   setMetadata(key: string, value: unknown): void;
 
   /**
+   * Remove a metadata key. No-op when the key is absent.
+   */
+  deleteMetadata(key: string): void;
+
+  /**
+   * Record one retry attempt for a routing key (typically `context.nodeName`)
+   * and return the new attempt count. A node that fails and wants the flow to
+   * retry increments here; a downstream gate — or the same node on a self-loop
+   * — reads the count to decide retry vs. salvage. Retry is a flow shape: the
+   * count lives in state, the loop edge lives in the DAG. No `RetryPolicy`
+   * hidden inside a node.
+   */
+  recordAttempt(key: string): number;
+
+  /** Attempts recorded so far for `key` (0 when never recorded). */
+  retriesFor(key: string): number;
+
+  /**
+   * Reset the attempt counter for `key`. Call on success so a placement that
+   * is later re-entered (a loop, a reused embedded-DAG) starts fresh.
+   */
+  clearAttempts(key: string): void;
+
+  /**
+   * Record an attempt for `key` and report whether the budget allows another
+   * try. `true` → route to a `retry` output (the DAG loops back); `false` →
+   * route to `salvage`. Convenience over `recordAttempt` for the self-loop
+   * shape. The counter is part of the snapshot, so the budget survives
+   * checkpoint/resume.
+   */
+  withinRetryBudget(key: string, maxAttempts: number): boolean;
+
+  /**
    * Collected warnings from all nodes.
    */
   readonly 'warnings': readonly NodeWarning[];
@@ -130,6 +163,7 @@ export class NodeStateBase implements NodeStateInterface {
   private readonly _errors: NodeErrorInterface[] = [];
   private _lifecycle: DAGLifecycleState = DAGLifecycleMachine.initial();
   private _metadata: Record<string, unknown> = {};
+  private _retries: Record<string, number> = {};
   private readonly _warnings: NodeWarning[] = [];
 
   constructor() {
@@ -198,6 +232,28 @@ export class NodeStateBase implements NodeStateInterface {
     this._metadata[key] = value;
   }
 
+  deleteMetadata(key: string): void {
+    delete this._metadata[key];
+  }
+
+  recordAttempt(key: string): number {
+    const next = (this._retries[key] ?? 0) + 1;
+    this._retries[key] = next;
+    return next;
+  }
+
+  retriesFor(key: string): number {
+    return this._retries[key] ?? 0;
+  }
+
+  clearAttempts(key: string): void {
+    delete this._retries[key];
+  }
+
+  withinRetryBudget(key: string, maxAttempts: number): boolean {
+    return this.recordAttempt(key) < maxAttempts;
+  }
+
   get warnings(): readonly NodeWarning[] {
     return this._warnings;
   }
@@ -227,6 +283,7 @@ export class NodeStateBase implements NodeStateInterface {
   snapshot(): JsonObject {
     return {
       'metadata': structuredClone(this._metadata) as JsonValue,
+      'retries': structuredClone(this._retries) as JsonValue,
       'errors': this._errors.map((e) => ({ ...e })) as unknown as JsonValue,
       'warnings': this._warnings.map((w) => ({ ...w })) as unknown as JsonValue,
       ...this.snapshotData(),
@@ -263,6 +320,10 @@ export class NodeStateBase implements NodeStateInterface {
     const metadata = snapshot['metadata'];
     if (metadata !== undefined && typeof metadata === 'object' && metadata !== null && !Array.isArray(metadata)) {
       this._metadata = structuredClone(metadata) as Record<string, unknown>;
+    }
+    const retries = snapshot['retries'];
+    if (retries !== undefined && typeof retries === 'object' && retries !== null && !Array.isArray(retries)) {
+      this._retries = structuredClone(retries) as Record<string, number>;
     }
     const errors = snapshot['errors'];
     if (Array.isArray(errors)) {

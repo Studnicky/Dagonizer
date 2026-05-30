@@ -1,12 +1,10 @@
 /**
- * 04b-scatter-collect — ScatterNode generate-and-select: fan out, collect
+ * 04b-scatter-collect — ScatterNode generate-and-select: scatter, collect
  * produced data with a `map` gather, then pick the best.
  *
- * This is the capability the old fan-out could not express: a plain fan-out
- * routed each clone by its output token but discarded the data the clone
- * produced. A `map` gather over a `source` keeps it — each clone writes a
- * field, and the gather appends those fields (in source-index order) into a
- * parent array. A downstream `select` node then chooses the winner.
+ * A `map` gather over a `source` keeps produced clone data — each clone
+ * writes a field, and the gather appends those fields (in source-index order)
+ * into a parent array. A downstream `select` node then chooses the winner.
  *
  * Flow:
  *   generate (ScatterNode over `providers`)
@@ -18,8 +16,7 @@
  *     └─ reads parent.candidates, picks the highest score → parent.chosen
  *
  * Watch: every provider's produced candidate survives into state.candidates;
- * the select node picks the top score. With a plain fan-out the candidate
- * objects would have been thrown away.
+ * the select node picks the top score.
  *
  * Run: npx tsx examples/04b-scatter-collect.ts
  */
@@ -162,7 +159,7 @@ const state = new GenerateState();
 state.providers = ['alpha', 'bravo', 'charlie', 'delta'];
 await dispatcher.execute('generate-select', state);
 
-process.stdout.write('\nScatter-collect — fan out over providers, collect candidates, select best\n');
+process.stdout.write('\nScatter-collect — scatter over providers, collect candidates, select best\n');
 process.stdout.write(`  providers:  ${JSON.stringify(state.providers)}\n`);
 process.stdout.write(`  candidates: ${state.candidates.length} collected (none discarded)\n`);
 for (const candidate of state.candidates) {
@@ -170,6 +167,6 @@ for (const candidate of state.candidates) {
 }
 process.stdout.write(`  chosen:     ${state.chosen ? `${state.chosen.provider} (score ${state.chosen.score})` : 'none'}\n`);
 process.stdout.write('\nLesson: a map gather over a source appends each clone\'s produced\n');
-process.stdout.write('        field into a parent array — generate-and-select keeps the\n');
-process.stdout.write('        data a plain fan-out would have thrown away.\n');
+process.stdout.write('        field into a parent array — generate-and-select preserves\n');
+process.stdout.write('        data from every scatter clone.\n');
 // #endregion run

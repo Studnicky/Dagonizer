@@ -22,7 +22,7 @@
  * available.
  */
 
-import { BaseEmbedder, Classifications, LlmError } from '@noocodex/dagonizer/adapter';
+import { BaseEmbedder, classifyHttp, Classifications, LlmError } from '@noocodex/dagonizer/adapter';
 import type { BaseEmbedderOptions } from '@noocodex/dagonizer/adapter';
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:11434';
@@ -97,7 +97,7 @@ export class OllamaEmbedder extends BaseEmbedder {
       const body = await res.text();
       throw new LlmError(
         `Ollama embed failed: ${String(res.status)} ${body}`,
-        Classifications['NETWORK'],
+        classifyHttp(res.status, body),
       );
     }
 

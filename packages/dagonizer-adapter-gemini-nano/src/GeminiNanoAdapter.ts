@@ -11,17 +11,17 @@
  *   - Without `tools`:    plain text generation
  *   - With `outputSchema`: structured output via `responseConstraint`
  *   - With `tools`:        emit a `responseConstraint` for `{ tool_calls: [...] }`
- *                          and decode the JSON back into `ToolCall[]`
+ *                          and decode the JSON back into `ToolCall[]` via
+ *                          JSON coercion (`responseConstraint` + `decodeToolCallsJson`)
  *
  * Sessions are short-lived — one prompt per session, destroyed in
  * `finally` to release the on-device GPU buffer.
  */
 
-import { BaseAdapter, ChatResponseMessageBuilder } from '@noocodex/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder, decodeToolCallsJson } from '@noocodex/dagonizer/adapter';
 import type {
   ChatRequest,
   ChatResponse,
-  ToolCall,
   ToolDefinition,
 } from '@noocodex/dagonizer/adapter';
 import { Classifications, LlmError, type ErrorClassification } from '@noocodex/dagonizer/adapter';
@@ -69,7 +69,9 @@ export class GeminiNanoAdapter extends BaseAdapter {
     super(
       'gemini-nano',
       'Browser built-in LanguageModel (on-device)',
-      { 'toolUse': 'none', 'structuredOutput': true, 'jsonMode': false },
+      // Tool calls are emitted via JSON coercion (responseConstraint +
+      // decodeToolCallsJson) rather than a native function-calling channel.
+      { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': false },
       { 'maxAttempts': 2 },
     );
   }
@@ -122,7 +124,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
       }
 
       const text = raw.trim();
-      const toolCalls: readonly ToolCall[] = request.tools.length > 0 ? decodeToolCalls(raw) : [];
+      const toolCalls = request.tools.length > 0 ? decodeToolCallsJson(raw, 'nano') : [];
       return {
         'message': ChatResponseMessageBuilder.from(text, toolCalls),
         'finishReason': toolCalls.length > 0 ? 'tool_call' : 'stop',
@@ -145,11 +147,11 @@ export class GeminiNanoAdapter extends BaseAdapter {
 function collapseUserMessages(request: ChatRequest): string {
   // Nano sessions take one prompt — concatenate user turns. Tool
   // results round-tripped from the DAG land as `role: 'tool'`; we
-  // surface them as `[tool <name>: <content>]` so the next turn knows.
+  // surface them as `[tool <name> result] <content>` so the next turn knows.
   return request.messages
     .filter((m) => m.role !== 'system')
     .map((m) => {
-      if (m.role === 'tool') return `[tool ${m.toolName.length > 0 ? m.toolName : 'unknown'}: ${m.content}]`;
+      if (m.role === 'tool') return `[tool ${m.toolName.length > 0 ? m.toolName : 'unknown'} result] ${m.content}`;
       return m.content;
     })
     .join('\n\n');
@@ -180,24 +182,6 @@ function toolPlanSchema(tools: readonly ToolDefinition[]): Record<string, unknow
     },
     'required': ['tool_calls'],
   };
-}
-
-function decodeToolCalls(raw: string): ToolCall[] {
-  try {
-    const parsed = JSON.parse(raw) as { tool_calls?: ReadonlyArray<{ name?: string; arguments?: Record<string, unknown> }> };
-    const calls = parsed.tool_calls ?? [];
-    return calls
-      .filter((c): c is { name: string; arguments: Record<string, unknown> } =>
-        typeof c.name === 'string' && c.arguments !== undefined,
-      )
-      .map((c, i) => ({
-        'id':   `nano-${String(i)}-${String(Date.now())}`,
-        'name': c.name,
-        'arguments': c.arguments,
-      }));
-  } catch {
-    return [];
-  }
 }
 
 function classifyNanoError(err: unknown): LlmError {

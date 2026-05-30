@@ -36,10 +36,6 @@ export abstract class ScoutNode<
   /** Write the normalized items back into state. */
   protected abstract writeBack(state: TState, items: readonly TItem[]): void;
 
-  /** Output ports — default trio. */
-  protected successPort(): TOutput { return 'success' as TOutput; }
-  protected emptyPort():   TOutput { return 'empty' as TOutput; }
-  protected errorPort():   TOutput { return 'error' as TOutput; }
 
   async execute(
     state: TState,

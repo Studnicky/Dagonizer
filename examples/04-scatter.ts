@@ -1,5 +1,5 @@
 /**
- * 04-fanout — ScatterNode: concurrent iteration + partition gather strategy.
+ * 04-scatter — ScatterNode: concurrent iteration + partition gather strategy.
  *
  * Demonstrates ScatterNode with source: the engine reads the `source` field
  * from state, spawns one clone per item (up to `concurrency` at once), runs
@@ -11,7 +11,7 @@
  * The ScatterNode outputs (all-success | partial | all-error | empty) reflect
  * the aggregate result, not individual items.
  *
- * Run: npx tsx examples/04-fanout.ts
+ * Run: npx tsx examples/04-scatter.ts
  */
 
 import {

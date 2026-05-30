@@ -37,7 +37,7 @@ export class SqliteStore extends BaseStore {
   readonly #tableName: string;
 
   constructor(path: string, options: SqliteStoreOptions = {}) {
-    super({ 'namespace': options.namespace ?? '' });
+    super(options);
     this.#db = options.database !== undefined
       ? new DatabaseSync(path, options.database)
       : new DatabaseSync(path);

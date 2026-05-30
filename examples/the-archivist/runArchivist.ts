@@ -5,13 +5,16 @@
  * registers the canonical DAG (and its embedded-DAG components), and runs one
  * visitor question through.
  *
- * Molecular embedded-DAG registration order:
- *   1. registerBookSearchFanoutNodes(dispatcher) — registers all nodes used by
- *      the book-search-fanout embedded-DAG (extract, decide, scouts, rank, merge, ...)
- *   2. dispatcher.registerDAG(BookSearchFanoutDAG) — registers the embedded-DAG itself
- *   3. registerComposeRetryLoopNodes(dispatcher) — compose, validate, respond
- *   4. dispatcher.registerDAG(ComposeRetryLoopDAG) — registers the compose embedded-DAG
- *   5. dispatcher.registerDAG(archivistDAG) — registers the parent (references embedded-DAGs by name)
+ * Bundle registration order — each `DispatcherBundle` packages its own nodes
+ * and DAG; `registerBundle` installs every node before every DAG so the
+ * validator can resolve node references. Embedded-DAG bundles register before
+ * the parent, which references them by name:
+ *   1. dispatcher.registerBundle(bookSearchScatterBundle) — scouts, extract,
+ *      decide, rank, merge, record, gate, recall + the book-search-scatter DAG
+ *   2. dispatcher.registerBundle(composeRetryLoopBundle) — compose, validate
+ *      + the compose-retry-loop DAG
+ *   3. dispatcher.registerBundle(archivistBundle) — parent-level nodes + the
+ *      `the-archivist` DAG (references the embedded-DAGs by name)
  *
  * LLM resolved via `LlmAdapterCascade` over a registry of providers that
  * have credentials / local services available. Order of preference:
@@ -31,33 +34,11 @@
  */
 
 import { ArchivistState } from './ArchivistState.ts';
-import { archivistDAG } from './dag.ts';
-import {
-  BookSearchFanoutDAG,
-  registerBookSearchFanoutNodes,
-} from './embedded-dags/BookSearchFanoutDAG.ts';
-import {
-  ComposeRetryLoopDAG,
-  registerComposeRetryLoopNodes,
-} from './embedded-dags/ComposeRetryLoopDAG.ts';
+import { archivistBundle } from './dag.ts';
+import { bookSearchScatterBundle } from './embedded-dags/BookSearchScatterDAG.ts';
+import { composeRetryLoopBundle } from './embedded-dags/ComposeRetryLoopDAG.ts';
 import { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
-import { classifyIntent } from './nodes/classifyIntent.ts';
-import { composeMemoryResponse } from './nodes/composeMemoryResponse.ts';
-import { decideTools } from './nodes/decideTools.ts';
-import { extractQuery } from './nodes/extractQuery.ts';
-import { groupByYear } from './nodes/groupByYear.ts';
-import { hasCitationsGate } from './nodes/hasCitationsGate.ts';
-import { mergeCandidates } from './nodes/mergeCandidates.ts';
-import { pickBestMatch } from './nodes/pickBestMatch.ts';
-import { rankByRating } from './nodes/rankByRating.ts';
-import { recallContext } from './nodes/recallContext.ts';
-import { recallMemories } from './nodes/recallMemories.ts';
-import { recallPastVisits } from './nodes/recallPastVisits.ts';
-import { recommendSimilar } from './nodes/recommendSimilar.ts';
-import { recordFindings } from './nodes/recordFindings.ts';
-import { composeEmptyResponse, declineEmpty, declineOffTopic, respondToVisitor } from './nodes/respondToVisitor.ts';
-import { openLibraryScout, googleBooksScout, subjectScout, wikipediaScout, webSearchScout } from './nodes/scouts.ts';
 import { CerebrasApiAdapter }   from '@noocodex/dagonizer-adapter-cerebras';
 import { GeminiApiAdapter }     from '@noocodex/dagonizer-adapter-gemini-api';
 import { GroqApiAdapter }       from '@noocodex/dagonizer-adapter-groq';
@@ -218,6 +199,7 @@ const services: ArchivistServices = {
   "memory":            new MemoryStore(),
   "llm":               llm,
   "embedder":          resolvedEmbedder,
+  "nodeTimeouts":      {},
   "logger":            logger,
 };
 
@@ -225,55 +207,22 @@ const services: ArchivistServices = {
 // ── Dispatcher ───────────────────────────────────────────────────────────
 const dispatcher = new Dagonizer<ArchivistState, ArchivistServices>({ services });
 
-// ── Embedded-DAG node registration (molecular pattern) ───────────────────────
-// Each embedded-DAG module exports a registerXxxNodes helper that registers
-// the nodes it needs. Call it before registerDAG so the validator can
-// resolve all node references when the DAG is registered.
-registerBookSearchFanoutNodes(dispatcher);
-dispatcher.registerDAG(BookSearchFanoutDAG);
-
-registerComposeRetryLoopNodes(dispatcher);
-dispatcher.registerDAG(ComposeRetryLoopDAG);
-
-// ── Parent-DAG-only nodes (not used by embedded-DAGs) ────────────────────────
-for (const node of [
-  recallContext,
-  classifyIntent,
-  // Inlined branch nodes (reviews + describe) — not in the embedded-DAGs
-  extractQuery,
-  decideTools,
-  webSearchScout,
-  openLibraryScout,
-  googleBooksScout,
-  subjectScout,
-  wikipediaScout,
-  rankByRating,
-  pickBestMatch,
-  mergeCandidates,
-  recordFindings,
-  hasCitationsGate,
-  groupByYear,
-  recallPastVisits,
-  recommendSimilar,
-  // recall-memories branch
-  recallMemories,
-  composeMemoryResponse,
-  respondToVisitor,
-  declineOffTopic,
-  declineEmpty,
-  // empty-result LLM response branch
-  composeEmptyResponse,
-]) {
-  dispatcher.registerNode(node);
-}
-
-dispatcher.registerDAG(archivistDAG);
+// ── Bundle registration (molecular pattern) ──────────────────────────────
+// Each bundle packages its nodes + DAG. Embedded-DAG bundles register first
+// so the parent's semantic validator can resolve embedded references by name.
+dispatcher.registerBundle(bookSearchScatterBundle);
+dispatcher.registerBundle(composeRetryLoopBundle);
+dispatcher.registerBundle(archivistBundle);
 
 // ── Demo run ─────────────────────────────────────────────────────────────
 const visitor = new ArchivistState();
 visitor.query = "I'm looking for a book about a strange house and a library";
 
-const result = await dispatcher.execute('the-archivist', visitor);
+const execution = dispatcher.execute('the-archivist', visitor);
+for await (const stage of execution) {
+  logger.info(`▸ ${stage.nodeName}${stage.skipped ? ' (skipped)' : ` → ${stage.output ?? '—'}`}`);
+}
+const result = await execution;
 
 logger.result(`intent=${result.state.intent}`);
 logger.result(`shortlist=${String(result.state.shortlist.length)}`);
@@ -319,17 +268,20 @@ if (cancelResult.cursor !== null) {
 // #region resume-run
 if (cancelResult.cursor !== null) {
   const store = new MemoryCheckpointStore();
-  const ckpt = await Checkpoint.capture('the-archivist', cancelResult);
+  const ckpt = await Checkpoint.capture('the-archivist', cancelResult, { 'stores': { 'memory': services.memory } });
   await ckpt.persist(store, `archivist:${cancelVisitor.query}`);
 
   const recalled = await Checkpoint.recall(store, `archivist:${cancelVisitor.query}`);
   if (recalled !== null) {
+    const freshMemory = new MemoryStore();
+    await recalled.restoreStores({ 'memory': freshMemory });
     const { dagName, state, cursor } = recalled.restoreState(
       (snap) => ArchivistState.restore(snap),
     );
     const resumeResult = await dispatcher.resume(dagName, state, cursor);
     logger.result(`resumed draft=${resumeResult.state.draft}`);
     logger.result(`resumed lifecycle=${resumeResult.state.lifecycle.kind}`);
+    logger.result(`resumed memory triples=${String(freshMemory.size)}`);
   }
 } else {
   logger.result('cancellation-run completed before cursor — no checkpoint needed');

@@ -28,7 +28,7 @@ class PathRecordingInstrumentation extends NoopInstrumentation<NodeStateBase> {
   override nodeStart(_dagName: string, nodeName: string, _state: NodeStateBase, placementPath: readonly string[]): void {
     this.calls.push({ 'hook': 'nodeStart', nodeName, 'placementPath': [...placementPath] });
   }
-  override nodeEnd(_dagName: string, nodeName: string, _output: string | undefined, _state: NodeStateBase, placementPath: readonly string[]): void {
+  override nodeEnd(_dagName: string, nodeName: string, _output: string | null, _state: NodeStateBase, placementPath: readonly string[]): void {
     this.calls.push({ 'hook': 'nodeEnd', nodeName, 'placementPath': [...placementPath] });
   }
 
@@ -89,9 +89,9 @@ const middleDAG: DAG = {
     },
     {
       '@id':   'urn:noocodex:dag:pp-middle/node/run-leaf',
-      '@type': 'ScatterNode',
+      '@type': 'EmbeddedDAGNode',
       'name':  'run-leaf',
-      'body':  { 'dag': 'pp-leaf' },
+      'dag':   'pp-leaf',
       'outputs': { 'success': null, 'error': null },
     },
   ],
@@ -117,9 +117,9 @@ const parentDAG: DAG = {
     },
     {
       '@id':   'urn:noocodex:dag:pp-parent/node/run-middle',
-      '@type': 'ScatterNode',
+      '@type': 'EmbeddedDAGNode',
       'name':  'run-middle',
-      'body':  { 'dag': 'pp-middle' },
+      'dag':   'pp-middle',
       'outputs': { 'success': null, 'error': null },
     },
   ],
@@ -217,16 +217,16 @@ void describe('Instrumentation placementPath threading', () => {
       'nodes': [
         {
           '@id':   'urn:noocodex:dag:pp-two-instances/node/first-embed',
-          '@type': 'ScatterNode',
+          '@type': 'EmbeddedDAGNode',
           'name':  'first-embed',
-          'body':  { 'dag': 'pp-shared-inner' },
+          'dag':   'pp-shared-inner',
           'outputs': { 'success': 'second-embed', 'error': 'second-embed' },
         },
         {
           '@id':   'urn:noocodex:dag:pp-two-instances/node/second-embed',
-          '@type': 'ScatterNode',
+          '@type': 'EmbeddedDAGNode',
           'name':  'second-embed',
-          'body':  { 'dag': 'pp-shared-inner' },
+          'dag':   'pp-shared-inner',
           'outputs': { 'success': null, 'error': null },
         },
       ],

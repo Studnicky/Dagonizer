@@ -178,7 +178,7 @@ void describe('Dagonizer extension hooks', () => {
       protected override onNodeStart(nodeName: string): void {
         events.push(`stage:start:${nodeName}`);
       }
-      protected override onNodeEnd(nodeName: string, output: string | undefined): void {
+      protected override onNodeEnd(nodeName: string, output: string | null): void {
         events.push(`stage:end:${nodeName}:${output ?? '-'}`);
       }
     }

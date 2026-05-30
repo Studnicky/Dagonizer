@@ -20,11 +20,6 @@ export abstract class ComposeNode<
   /** Write the generated draft back to state. */
   protected abstract applyDraft(state: TState, draft: string): void;
 
-  /** Output port to route to once the draft is written. Default 'success'. */
-  protected successPort(): TOutput {
-    return 'success' as TOutput;
-  }
-
   override async execute(
     state: TState,
     context: NodeContextInterface<RagServices>,

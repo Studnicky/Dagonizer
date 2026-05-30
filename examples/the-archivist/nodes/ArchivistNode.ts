@@ -43,7 +43,6 @@ export const NODE_KINDS: Readonly<Record<string, NodeKind>> = {
   'recall-past-visits':    'deterministic',
   'respond-to-visitor':    'deterministic',
   'decline-off-topic':     'deterministic',
-  'decline-empty':         'deterministic',
   'group-by-year':         'deterministic',
   'recommend-similar':     'deterministic',
   'rank-by-rating':        'deterministic',
@@ -51,7 +50,6 @@ export const NODE_KINDS: Readonly<Record<string, NodeKind>> = {
   // Non-deterministic — every LLM-driven step
   'classify-intent':       'non-deterministic',
   'decide-tools':          'non-deterministic',
-  'web-search-scout':      'non-deterministic',
   'open-library-scout':    'non-deterministic',
   'google-books-scout':    'non-deterministic',
   'wikipedia-scout':       'non-deterministic',

@@ -66,9 +66,9 @@ void describe('CompositeLayout.compute', () => {
       singleNode('before', { "go": 'embed' }),
       {
         '@id':    'urn:noocodex:dag:outer/node/embed',
-        '@type':  'ScatterNode',
+        '@type':  'EmbeddedDAGNode',
         'name':   'embed',
-        'body':   { 'dag': 'inner' },
+        'dag':    'inner',
         'outputs': { "done": 'after' },
       },
       singleNode('after', { "done": null }),

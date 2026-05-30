@@ -20,34 +20,12 @@
  */
 
 import { ArchivistState } from './ArchivistState.ts';
-import { archivistDAG } from './dag.ts';
+import { archivistBundle } from './dag.ts';
 import { UserLanguage } from './language/UserLanguage.ts';
-import {
-  BookSearchFanoutDAG,
-  registerBookSearchFanoutNodes,
-} from './embedded-dags/BookSearchFanoutDAG.ts';
-import {
-  ComposeRetryLoopDAG,
-  registerComposeRetryLoopNodes,
-} from './embedded-dags/ComposeRetryLoopDAG.ts';
+import { bookSearchScatterBundle } from './embedded-dags/BookSearchScatterDAG.ts';
+import { composeRetryLoopBundle } from './embedded-dags/ComposeRetryLoopDAG.ts';
 import { ConsoleLogger, type LogEvent } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
-import { classifyIntent } from './nodes/classifyIntent.ts';
-import { composeMemoryResponse } from './nodes/composeMemoryResponse.ts';
-import { decideTools } from './nodes/decideTools.ts';
-import { extractQuery } from './nodes/extractQuery.ts';
-import { groupByYear } from './nodes/groupByYear.ts';
-import { hasCitationsGate } from './nodes/hasCitationsGate.ts';
-import { mergeCandidates } from './nodes/mergeCandidates.ts';
-import { pickBestMatch } from './nodes/pickBestMatch.ts';
-import { rankByRating } from './nodes/rankByRating.ts';
-import { recallContext } from './nodes/recallContext.ts';
-import { recallMemories } from './nodes/recallMemories.ts';
-import { recallPastVisits } from './nodes/recallPastVisits.ts';
-import { recommendSimilar } from './nodes/recommendSimilar.ts';
-import { recordFindings } from './nodes/recordFindings.ts';
-import { composeEmptyResponse, declineEmpty, declineOffTopic, respondToVisitor } from './nodes/respondToVisitor.ts';
-import { openLibraryScout, googleBooksScout, subjectScout, wikipediaScout, webSearchScout } from './nodes/scouts.ts';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
 import type { ArchivistServices, LlmClient } from './services.ts';
 
@@ -171,6 +149,7 @@ const services: ArchivistServices = {
   // download budget. Cosine recall and hybrid ranking fall back to
   // Jaccard / heuristics when embedder is null.
   'embedder':         null,
+  'nodeTimeouts':     {},
   'logger':           logger,
 };
 
@@ -178,41 +157,9 @@ const dispatcher = new Dagonizer<ArchivistState, ArchivistServices>({ services }
 // #endregion wire-services
 
 // #region register-bundle
-registerBookSearchFanoutNodes(dispatcher);
-dispatcher.registerDAG(BookSearchFanoutDAG);
-
-registerComposeRetryLoopNodes(dispatcher);
-dispatcher.registerDAG(ComposeRetryLoopDAG);
-
-for (const node of [
-  recallContext,
-  classifyIntent,
-  extractQuery,
-  decideTools,
-  webSearchScout,
-  openLibraryScout,
-  googleBooksScout,
-  subjectScout,
-  wikipediaScout,
-  rankByRating,
-  pickBestMatch,
-  mergeCandidates,
-  recordFindings,
-  hasCitationsGate,
-  groupByYear,
-  recallPastVisits,
-  recommendSimilar,
-  recallMemories,
-  composeMemoryResponse,
-  respondToVisitor,
-  declineOffTopic,
-  declineEmpty,
-  composeEmptyResponse,
-]) {
-  dispatcher.registerNode(node);
-}
-
-dispatcher.registerDAG(archivistDAG);
+dispatcher.registerBundle(bookSearchScatterBundle);
+dispatcher.registerBundle(composeRetryLoopBundle);
+dispatcher.registerBundle(archivistBundle);
 // #endregion register-bundle
 
 // #region run-loop
@@ -222,7 +169,11 @@ async function ask(query: string): Promise<void> {
   visitor.query = query;
   button.disabled = true;
   try {
-    const result = await dispatcher.execute('the-archivist', visitor);
+    const execution = dispatcher.execute('the-archivist', visitor);
+    for await (const stage of execution) {
+      logger.info(`▸ ${stage.nodeName}${stage.skipped ? ' (skipped)' : ` → ${stage.output ?? '—'}`}`);
+    }
+    const result = await execution;
     logger.result(`intent=${result.state.intent}`);
     logger.result(`shortlist=${String(result.state.shortlist.length)}`);
     logger.result(`draft=${result.state.draft}`);

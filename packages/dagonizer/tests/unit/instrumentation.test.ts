@@ -56,7 +56,7 @@ class RecordingInstrumentation extends NoopInstrumentation<NodeStateBase> {
   override nodeStart(dagName: string, nodeName: string, state: NodeStateBase, placementPath: readonly string[]): void {
     this.calls.push({ 'hook': 'nodeStart', 'args': [dagName, nodeName, state, placementPath] });
   }
-  override nodeEnd(dagName: string, nodeName: string, output: string | undefined, state: NodeStateBase, placementPath: readonly string[]): void {
+  override nodeEnd(dagName: string, nodeName: string, output: string | null, state: NodeStateBase, placementPath: readonly string[]): void {
     this.calls.push({ 'hook': 'nodeEnd', 'args': [dagName, nodeName, output, state, placementPath] });
   }
   override contractWarning(message: string): void {
@@ -168,8 +168,8 @@ void describe('Instrumentation contract', () => {
       'nodes': [
         { '@id': 'urn:noocodex:dag:inst-parent/node/parent-entry', '@type': 'SingleNode',
           'name': 'parent-entry', 'node': 'parent-entry', 'outputs': { 'success': 'run-child' } },
-        { '@id': 'urn:noocodex:dag:inst-parent/node/run-child', '@type': 'ScatterNode',
-          'name': 'run-child', 'body': { 'dag': 'inst-child' },
+        { '@id': 'urn:noocodex:dag:inst-parent/node/run-child', '@type': 'EmbeddedDAGNode',
+          'name': 'run-child', 'dag': 'inst-child',
           'outputs': { 'success': null, 'error': null } },
       ],
     };

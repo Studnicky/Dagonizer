@@ -179,6 +179,23 @@ void test('tombstone: set after delete brings key back', async () => {
 
 // ── 6. File-backed persistence ────────────────────────────────────────────────
 
+void test('connect: double-connect is a no-op — no duplicate entries', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dagonizer-eventlog-'));
+  const filePath = join(dir, 'double-connect.log');
+
+  const store = new EventLogStore({ filePath, 'syncOnAppend': false });
+  await store.connect();
+  await store.set<string>('key', 'value');
+  // A second connect must be a no-op: no new handle, no replay.
+  await store.connect();
+  // Log still has exactly one entry — the single set above.
+  assert.equal(store.log().length, 1);
+  assert.equal(await store.get<string>('key'), 'value');
+  await store.disconnect();
+
+  await unlink(filePath);
+});
+
 void test('file-backed: persists and replays entries across instances', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'dagonizer-eventlog-'));
   const filePath = join(dir, 'store.log');
@@ -229,7 +246,8 @@ void test('restore: wrong type throws StoreError INCOMPATIBLE_SNAPSHOT', async (
     () => store.restore({ 'version': 1, 'type': 'wrong-type', 'entries': [] }),
     (err: unknown) => {
       assert.ok(err instanceof StoreError);
-      assert.equal(err.classification.reason, 'INCOMPATIBLE_SNAPSHOT');
+      const storeErr = err as StoreError;
+      assert.equal(storeErr.classification.reason, 'INCOMPATIBLE_SNAPSHOT');
       return true;
     },
   );
@@ -241,7 +259,8 @@ void test('restore: wrong version throws StoreError INCOMPATIBLE_SNAPSHOT', asyn
     () => store.restore({ 'version': 99, 'type': 'event-log-store', 'entries': [] }),
     (err: unknown) => {
       assert.ok(err instanceof StoreError);
-      assert.equal(err.classification.reason, 'INCOMPATIBLE_SNAPSHOT');
+      const storeErr = err as StoreError;
+      assert.equal(storeErr.classification.reason, 'INCOMPATIBLE_SNAPSHOT');
       return true;
     },
   );
@@ -296,9 +315,6 @@ void test('namespace: qualifies keys transparently', async () => {
   const entry = store.log()[0];
   assert.ok(entry !== undefined && entry.key === 'ns:key');
 });
-
-// Re-export to satisfy TypeScript import checker.
-import type { EventLogEntry } from '../../src/index.js';
 
 after(() => {
   // No persistent cleanup needed — file tests clean up inline.

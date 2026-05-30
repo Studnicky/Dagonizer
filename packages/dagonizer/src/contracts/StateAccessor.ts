@@ -2,7 +2,7 @@
  * StateAccessor — adapter contract for resolving paths into node state.
  *
  * The dispatcher walks dotted paths (`'plan.tasks'`, `'data.items'`)
- * to read fan-out source arrays and write fan-in results. The resolution
+ * to read scatter source arrays and write gather results. The resolution
  * strategy is pluggable: install a custom `StateAccessor` to swap in
  * JSONPath, JSON Pointer, or any other path language.
  *

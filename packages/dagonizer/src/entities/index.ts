@@ -41,6 +41,9 @@ export type { GatherConfig } from './dag/GatherConfig.js';
 export { ScatterNodeSchema } from './dag/ScatterNode.js';
 export type { ScatterNode } from './dag/ScatterNode.js';
 
+export { EmbeddedDAGNodeSchema } from './dag/EmbeddedDAGNode.js';
+export type { EmbeddedDAGNode } from './dag/EmbeddedDAGNode.js';
+
 export { DAGSchema, DAG_CONTEXT } from './dag/DAG.js';
 export type { DAG } from './dag/DAG.js';
 

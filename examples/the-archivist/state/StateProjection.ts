@@ -56,8 +56,8 @@ export class StateProjection {
       store.assert(run, dag('approved'), MemoryStore.lit.bool(state.approved), graph);
     }
 
-    // Compose attempts counter
-    const attempts = state.attempts['compose'] ?? 0;
+    // Compose attempts counter (from the conceptual-root retry budget)
+    const attempts = state.retriesFor('compose');
     store.assert(run, dag('composeAttempts'), MemoryStore.lit.int(attempts), graph);
 
     // Search terms — one triple per term

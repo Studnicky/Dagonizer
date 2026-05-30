@@ -209,7 +209,7 @@ void describe('Checkpoint round-trip', () => {
   void it('restoreState throws ValidationError on null cursor', async () => {
     const data = {
       'version': '1', 'dagName': 'x', 'cursor': null,
-      'state': {}, 'executedNodes': [], 'skippedNodes': [],
+      'state': {}, 'executedNodes': [], 'skippedNodes': [], 'stores': {},
     };
     const ckpt = Checkpoint.load(data);
     assert.throws(() => ckpt.restoreState((snap) => NodeStateBase.restore(snap)), ValidationError);

@@ -43,7 +43,7 @@
  */
 
 import type { CheckpointStore } from '../contracts/CheckpointStore.js';
-import type { Store, StoreSnapshot } from '../contracts/Store.js';
+import type { Snapshottable, StoreSnapshot } from '../contracts/Snapshottable.js';
 import { CHECKPOINT_DATA_VERSION } from '../entities/checkpoint/CheckpointData.js';
 import type { CheckpointData } from '../entities/checkpoint/CheckpointData.js';
 import type { ExecutionResultInterface } from '../entities/execution/ExecutionResult.js';
@@ -81,7 +81,7 @@ export interface CaptureOptionsInterface {
    * `restoreStores()` on resume. Omit or leave empty to capture state
    * only.
    */
-  readonly stores?: Readonly<Record<string, Store>>;
+  readonly stores?: Readonly<Record<string, Snapshottable>>;
 }
 
 /**
@@ -125,6 +125,7 @@ export class Checkpoint {
       'state': result.state.snapshot(),
       'executedNodes': [...result.executedNodes],
       'skippedNodes': [...result.skippedNodes],
+      'stores': {},
     };
 
     const storeMap = options.stores ?? {};
@@ -236,9 +237,9 @@ export class Checkpoint {
    *   `BaseStore.restore` throws `StoreError(INCOMPATIBLE_SNAPSHOT)` on
    *   type/version mismatch; this method propagates that unchanged.
    */
-  async restoreStores(stores: Readonly<Record<string, Store>>): Promise<void> {
+  async restoreStores(stores: Readonly<Record<string, Snapshottable>>): Promise<void> {
     const checkpointStores = this.data.stores;
-    if (checkpointStores === undefined || Object.keys(checkpointStores).length === 0) {
+    if (Object.keys(checkpointStores).length === 0) {
       return;
     }
 

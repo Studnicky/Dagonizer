@@ -5,7 +5,7 @@
  * Snapshot version: 1
  */
 
-import type { StoreSnapshotEntry } from '../contracts/Store.js';
+import type { StoreSnapshotEntry } from '../contracts/Snapshottable.js';
 import type { JsonValue } from '../entities/json.js';
 
 import { BaseStore, type BaseStoreOptions } from './BaseStore.js';

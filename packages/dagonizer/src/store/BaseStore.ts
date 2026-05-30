@@ -14,7 +14,8 @@
  * Modeled directly on `BaseAdapter` in `src/adapter/BaseAdapter.ts`.
  */
 
-import type { Store, StoreSnapshot, StoreSnapshotEntry } from '../contracts/Store.js';
+import type { StoreSnapshot, StoreSnapshotEntry } from '../contracts/Snapshottable.js';
+import type { Store } from '../contracts/Store.js';
 import type { JsonValue } from '../entities/json.js';
 
 import { StoreError } from './StoreError.js';

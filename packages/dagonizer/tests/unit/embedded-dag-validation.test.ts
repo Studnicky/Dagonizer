@@ -61,9 +61,9 @@ void describe('registerDAG — scatter/dag-body null-route acceptance', () => {
         },
         {
           '@id':   'urn:noocodex:dag:null-parent/node/run-helper',
-          '@type': 'ScatterNode',
+          '@type': 'EmbeddedDAGNode',
           'name':  'run-helper',
-          'body':  { 'dag': 'helper' },
+          'dag':   'helper',
           'outputs': { 'success': null, 'error': null },
         },
       ],
@@ -108,9 +108,9 @@ void describe('registerDAG — scatter/dag-body null-route acceptance', () => {
         },
         {
           '@id':   'urn:noocodex:dag:mixed-parent/node/run-helper',
-          '@type': 'ScatterNode',
+          '@type': 'EmbeddedDAGNode',
           'name':  'run-helper',
-          'body':  { 'dag': 'helper' },
+          'dag':   'helper',
           'outputs': {
             'error':   'after',  // routes to a parent placement
             'success': null,     // terminate-completed
@@ -158,9 +158,9 @@ void describe('registerDAG — scatter/dag-body null-route acceptance', () => {
         },
         {
           '@id':   'urn:noocodex:dag:valid-parent/node/run-helper',
-          '@type': 'ScatterNode',
+          '@type': 'EmbeddedDAGNode',
           'name':  'run-helper',
-          'body':  { 'dag': 'helper' },
+          'dag':   'helper',
           'outputs': {
             'success': 'terminal',
             'error':   'terminal',

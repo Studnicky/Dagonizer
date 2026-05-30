@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "declaration": false,
+    "declarationMap": false,
+    "noEmitOnError": false,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "outDir": "${configDir}/dist-test",
+    "rootDir": "${configDir}"
+  },
+  "include": ["${configDir}/src/**/*.ts", "${configDir}/tests/**/*.ts"],
+  "exclude": ["${configDir}/dist", "${configDir}/dist-test", "${configDir}/node_modules"]
+}

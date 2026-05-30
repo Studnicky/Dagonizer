@@ -13,7 +13,8 @@ export type {
   DAGDeriverAnnotations,
   DAGDeriverEmitTerminal,
   DAGDeriverEmbeddedDAG,
-  DAGDeriverFanOut,
+  DAGDeriverParallel,
+  DAGDeriverScatter,
   DAGDeriverTerminal,
 } from './DAGDeriverAnnotations.js';
 export type { OperationContract } from '../contracts/OperationContract.js';

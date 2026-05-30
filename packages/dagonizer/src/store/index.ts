@@ -17,4 +17,5 @@ export type { StoreErrorClassification } from './StoreError.js';
 export { TypedStore } from './TypedStore.js';
 
 // Re-export the contract from /contracts for ergonomic single-import:
-export type { Store, StoreSnapshot, StoreSnapshotEntry } from '../contracts/Store.js';
+export type { Store } from '../contracts/Store.js';
+export type { StoreSnapshot, StoreSnapshotEntry } from '../contracts/Snapshottable.js';
