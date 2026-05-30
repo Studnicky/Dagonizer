@@ -366,14 +366,17 @@ const rightTabs = computed(() => {
   ];
 });
 
+// Stable embedded-DAG registry for the DagGraph self-render path.
+// DagGraph receives this map and renders sub-DAGs collapsed by default;
+// clicking an embedded-dag box expands it inline.
+const embeddedDagRegistry = new Map([
+  ['book-search-scatter', BookSearchScatterDAG],
+  ['compose-retry-loop', ComposeRetryLoopDAG],
+]);
+
 const dagElements = computed<ElementDefinition[]>(() => {
-  // Embedded-DAG registry: placements whose dag name appears here are expanded
-  // inline in the Cytoscape diagram; full compound-graph children visible,
-  // no opaque boxes. This is the renderer-side of molecular composition.
-  const embeddedDagRegistry = new Map([
-    ['book-search-scatter', BookSearchScatterDAG],
-    ['compose-retry-loop', ComposeRetryLoopDAG],
-  ]);
+  // Legacy path kept for backwards compatibility; DagGraph now uses the
+  // self-render path via :dag/:embedded-d-a-gs/:node-kinds directly.
   const raw = CytoscapeRenderer.render(archivistDAG, { 'embeddedDAGs': embeddedDagRegistry }) as ElementDefinition[];
   return raw.map((el) => {
     const data = el.data as { id?: string; node?: string };
@@ -885,7 +888,9 @@ function reset(): void {
               <div class="graph-pane">
                 <DagGraph
                   ref="dagGraph"
-                  :elements="dagElements"
+                  :dag="archivistDAG"
+                  :embedded-d-a-gs="embeddedDagRegistry"
+                  :node-kinds="NODE_KINDS"
                   aria-label="Archivist DAG live execution"
                   @node-click="onToolSelect"
                 />
