@@ -86,9 +86,9 @@ void describe('WellFormedValidator', () => {
     const violations = WellFormedValidator.check(dag);
     assert.equal(violations.length, 1);
     // Violation message names the placement, the route, and the remedy.
-    assert.match(violations[0]!, /placement 'start'/i);
-    assert.match(violations[0]!, /route 'done'/i);
-    assert.match(violations[0]!, /TerminalNode/i);
+    assert.match((violations[0] ?? ''), /placement 'start'/i);
+    assert.match((violations[0] ?? ''), /route 'done'/i);
+    assert.match((violations[0] ?? ''), /TerminalNode/i);
   });
 
   void it('reports one violation per null route on the same placement', () => {
@@ -146,9 +146,9 @@ void describe('WellFormedValidator', () => {
     ]);
     const violations = WellFormedValidator.check(dag);
     assert.equal(violations.length, 1);
-    assert.match(violations[0]!, /placement 'start'/i);
-    assert.match(violations[0]!, /'ghost'/);
-    assert.match(violations[0]!, /does not exist/i);
+    assert.match((violations[0] ?? ''), /placement 'start'/i);
+    assert.match((violations[0] ?? ''), /'ghost'/);
+    assert.match((violations[0] ?? ''), /does not exist/i);
   });
 
   void it('reports one violation per dangling target', () => {
@@ -245,7 +245,7 @@ void describe('WellFormedValidator', () => {
     ]);
     const violations = WellFormedValidator.check(dag);
     assert.equal(violations.length, 1);
-    assert.match(violations[0]!, /placement 'b'/i);
+    assert.match((violations[0] ?? ''), /placement 'b'/i);
   });
 
   // ── ParallelNode routing to TerminalNode (legal) ──────────────────────────
