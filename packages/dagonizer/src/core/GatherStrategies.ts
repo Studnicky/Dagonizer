@@ -60,6 +60,13 @@ export interface GatherRecord<TState extends NodeStateInterface> {
  */
 export interface GatherExecution<TState extends NodeStateInterface> {
   readonly state: TState;
+  /**
+   * Per-clone records. INVARIANT: ordered by source index (`record.index`
+   * ascending). The dispatcher's scatter loop builds them index-ordered across
+   * batches (`Promise.all` preserves per-batch order; restored items flow
+   * through the same index-ordered batch loop on resume). Strategies rely on
+   * this and must not re-sort.
+   */
   readonly records: ReadonlyArray<GatherRecord<TState>>;
   readonly dagName: string;
   readonly signal: AbortSignal | null;
@@ -101,10 +108,10 @@ class MapGatherStrategy extends GatherStrategy {
         const value = execution.accessor.get(execution.records[0].cloneState, clonePath);
         execution.accessor.set(execution.state, parentPath, value);
       } else {
-        // Multi-clone: collect values in source-index order and append to parent array.
+        // Multi-clone: `execution.records` is already in source-index order
+        // (the scatter loop builds them index-ordered across batches — see
+        // GatherExecution.records), so map directly without a re-sort.
         const values = execution.records
-          .slice()
-          .sort((a, b) => a.index - b.index)
           .map((r) => execution.accessor.get(r.cloneState, clonePath));
         const existing = (execution.accessor.get(execution.state, parentPath) as unknown[] | undefined) ?? [];
         execution.accessor.set(execution.state, parentPath, [...existing, ...values]);
@@ -123,8 +130,8 @@ class AppendGatherStrategy extends GatherStrategy {
       throw new DAGError('Gather append strategy requires target path');
     }
     const target = config.target;
-    const sorted = execution.records.slice().sort((a, b) => a.index - b.index);
-    const values = sorted.map((r) =>
+    // records are already source-index ordered (see GatherExecution.records).
+    const values = execution.records.map((r) =>
       config.field !== undefined
         ? execution.accessor.get(r.cloneState, config.field)
         : r.item,
@@ -142,9 +149,10 @@ class PartitionGatherStrategy extends GatherStrategy {
   ): Promise<void> {
     const partitions = config.partitions ?? {};
     for (const [outputToken, targetPath] of Object.entries(partitions)) {
+      // records are already source-index ordered (see GatherExecution.records),
+      // so filtering preserves index order without a re-sort.
       const matching = execution.records
-        .filter((r) => r.output === outputToken)
-        .sort((a, b) => a.index - b.index);
+        .filter((r) => r.output === outputToken);
       const values = matching.map((r) =>
         config.field !== undefined
           ? execution.accessor.get(r.cloneState, config.field)

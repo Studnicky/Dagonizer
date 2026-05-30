@@ -118,7 +118,7 @@ export class GeminiApiAdapter extends BaseAdapter {
     };
 
     const body: Record<string, unknown> = {
-      'contents': request.messages.map(toGeminiContent),
+      'contents': request.messages.map((m) => this.#toGeminiContent(m)),
       'generationConfig': generationConfig,
     };
 
@@ -127,8 +127,8 @@ export class GeminiApiAdapter extends BaseAdapter {
     // `parameters`. When `tools` is set, the model decides whether to
     // emit `parts[].functionCall` based on the prompt + tool description.
     if (request.tools.length > 0) {
-      body['tools'] = [{ 'functionDeclarations': request.tools.map(toFunctionDeclaration) }];
-      body['toolConfig'] = { 'functionCallingConfig': toGeminiToolConfig(request.toolChoice) };
+      body['tools'] = [{ 'functionDeclarations': request.tools.map((t) => this.#toFunctionDeclaration(t)) }];
+      body['toolConfig'] = { 'functionCallingConfig': this.#toGeminiToolConfig(request.toolChoice) };
     } else if (request.outputSchema.kind === 'schema') {
       // Structured-output path: JSON Schema constrains the response
       // body to the requested shape. (Gemini honours `responseSchema` on
@@ -170,40 +170,40 @@ export class GeminiApiAdapter extends BaseAdapter {
         : ZERO_TOKEN_USAGE,
     };
   }
-}
 
-function toGeminiContent(message: ChatMessage): Record<string, unknown> {
-  // Gemini uses `model` instead of `assistant`; `tool` becomes `function`.
-  const role = message.role === 'assistant' ? 'model'
-    : message.role === 'tool' ? 'function'
-    : message.role;
-  const parts: Record<string, unknown>[] = [];
-  if (message.role === 'tool') {
-    parts.push({
-      'functionResponse': {
-        'name':     message.toolName ?? 'unknown',
-        'response': { 'result': message.content },
-      },
-    });
-  } else {
-    parts.push({ 'text': message.content });
+  #toGeminiContent(message: ChatMessage): Record<string, unknown> {
+    // Gemini uses `model` instead of `assistant`; `tool` becomes `function`.
+    const role = message.role === 'assistant' ? 'model'
+      : message.role === 'tool' ? 'function'
+      : message.role;
+    const parts: Record<string, unknown>[] = [];
+    if (message.role === 'tool') {
+      parts.push({
+        'functionResponse': {
+          'name':     message.toolName ?? 'unknown',
+          'response': { 'result': message.content },
+        },
+      });
+    } else {
+      parts.push({ 'text': message.content });
+    }
+    return { role, parts };
   }
-  return { role, parts };
-}
 
-function toFunctionDeclaration(tool: ToolDefinition): Record<string, unknown> {
-  return {
-    'name':        tool.name,
-    'description': tool.description,
-    'parameters':  tool.inputSchema,
-  };
-}
+  #toFunctionDeclaration(tool: ToolDefinition): Record<string, unknown> {
+    return {
+      'name':        tool.name,
+      'description': tool.description,
+      'parameters':  tool.inputSchema,
+    };
+  }
 
-function toGeminiToolConfig(choice: ToolChoice): Record<string, unknown> {
-  switch (choice.type) {
-    case 'auto':     return { 'mode': 'AUTO' };
-    case 'required': return { 'mode': 'ANY' };
-    case 'none':     return { 'mode': 'NONE' };
-    case 'tool':     return { 'mode': 'ANY', 'allowedFunctionNames': [choice.name] };
+  #toGeminiToolConfig(choice: ToolChoice): Record<string, unknown> {
+    switch (choice.type) {
+      case 'auto':     return { 'mode': 'AUTO' };
+      case 'required': return { 'mode': 'ANY' };
+      case 'none':     return { 'mode': 'NONE' };
+      case 'tool':     return { 'mode': 'ANY', 'allowedFunctionNames': [choice.name] };
+    }
   }
 }
