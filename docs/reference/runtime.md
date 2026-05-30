@@ -219,7 +219,7 @@ class DottedPathAccessor implements StateAccessor {
 }
 ```
 
-Used by the dispatcher for scatter source reads, projection copies, and gather writes. Swap via `new Dagonizer({ accessor: customAccessor })`.
+Used by the dispatcher for scatter source reads, state-mapping input copies, and gather writes. Swap via `new Dagonizer({ accessor: customAccessor })`.
 
 ---
 
@@ -232,12 +232,12 @@ class NoopInstrumentation<TState extends NodeStateInterface = NodeStateInterface
   implements Instrumentation<TState> {
   flowStart(dagName: string, state: TState): void;
   flowEnd(dagName: string, state: TState, result: ExecutionResultInterface<TState>): void;
-  nodeStart(dagName: string, nodeName: string, state: TState): void;
-  nodeEnd(dagName: string, nodeName: string, output: string | undefined, state: TState): void;
-  phaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState): void;
-  phaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState): void;
+  nodeStart(dagName: string, nodeName: string, state: TState, placementPath: readonly string[]): void;
+  nodeEnd(dagName: string, nodeName: string, output: string | null, state: TState, placementPath: readonly string[]): void;
+  phaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
+  phaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
   contractWarning(message: string): void;
-  error(dagName: string, nodeName: string, error: Error, state: TState): void;
+  error(dagName: string, nodeName: string, error: Error, state: TState, placementPath: readonly string[]): void;
 }
 ```
 
@@ -250,7 +250,7 @@ class MetricsInstrumentation extends NoopInstrumentation {
   override flowStart(dagName: string, _state: NodeStateInterface): void {
     metrics.counter('dag.flow.start', { dag: dagName }).inc();
   }
-  override nodeEnd(_dagName: string, nodeName: string, output: string | undefined, _state: NodeStateInterface): void {
+  override nodeEnd(_dagName: string, nodeName: string, output: string | null, _state: NodeStateInterface, _placementPath: readonly string[]): void {
     metrics.counter('dag.node.end', { node: nodeName, output: output ?? 'none' }).inc();
   }
 }

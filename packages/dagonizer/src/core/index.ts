@@ -1,5 +1,5 @@
 /**
- * `@noocodex/dagonizer/core` — pluggable execution primitives.
+ * `@noocodex/dagonizer/core`: pluggable execution primitives.
  *
  *   - `ParallelCombiners` registry + `ParallelCombiner` extension point
  *   - `GatherStrategies` registry + `GatherStrategy` extension point

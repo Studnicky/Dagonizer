@@ -1,12 +1,12 @@
 /**
- * @noocodex/dagonizer/tool — public tool contract surface.
+ * @noocodex/dagonizer/tool: public tool contract surface.
  *
  * Ships:
- *   - `Tool<TInput, TOutput>` — canonical executable-tool interface
+ *   - `Tool<TInput, TOutput>`: canonical executable-tool interface
  *     (couples a JSON-Schema `ToolDefinition` with `execute()`).
- *   - `ToolError` + `ToolErrorReason` — narrow error taxonomy for
+ *   - `ToolError` + `ToolErrorReason`: narrow error taxonomy for
  *     tool-execution failures.
- *   - `HttpTransport` — static class providing the shared fetch
+ *   - `HttpTransport`: static class providing the shared fetch
  *     wrapper every HTTP-backed tool needs (timeout, retry, abort
  *     propagation, JSON parsing).
  */

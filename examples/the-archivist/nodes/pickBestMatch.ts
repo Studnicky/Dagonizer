@@ -1,5 +1,5 @@
 /**
- * pickBestMatch — deterministic title-similarity ranker for the
+ * pickBestMatch: deterministic title-similarity ranker for the
  * `describe-book` branch.
  *
  * When web-search returns multiple hits for a single-title lookup the
@@ -21,24 +21,9 @@
 import type { Candidate } from '../entities/Book.ts';
 
 import type { ArchivistNode } from './ArchivistNode.ts';
+import { jaccard, tokenise as wordSet } from './textUtils.ts';
 
 const TOP_K = 3;
-
-function wordSet(text: string): Set<string> {
-  return new Set(
-    text.toLowerCase().replace(/[^a-z0-9\s]/gu, ' ').split(/\s+/u).filter((w) => w.length > 1),
-  );
-}
-
-function jaccard(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 && b.size === 0) return 0;
-  let intersection = 0;
-  for (const word of a) {
-    if (b.has(word)) intersection++;
-  }
-  const union = a.size + b.size - intersection;
-  return union === 0 ? 0 : intersection / union;
-}
 
 export const pickBestMatch: ArchivistNode<'picked'> = {
   'name':    'pick-best-match',

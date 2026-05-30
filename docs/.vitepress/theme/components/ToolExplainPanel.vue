@@ -1,13 +1,13 @@
 <script setup lang="ts">
 /**
- * ToolExplainPanel — right-side slide-in panel that shows an LLM-generated
+ * ToolExplainPanel: right-side slide-in panel that shows an LLM-generated
  * plain-English explanation of any tool or DAG node the visitor clicks.
  *
  * Placement: absolute overlay inside `.graph-pane`, matching the
  * TripleInspector pattern. The runner supplies `selectedTool` and
  * `llm`; the panel fetches on first open and caches thereafter.
  *
- * Cache: `Map<string, string>` keyed by tool name — once fetched, the
+ * Cache: `Map<string, string>` keyed by tool name; once fetched, the
  * cached text is reused on subsequent opens; no second network call.
  */
 
@@ -27,7 +27,7 @@ const emit = defineEmits<{
 const explanation = ref<string | null>(null);
 const loading     = ref(false);
 
-/** Session-scoped cache — never fires two requests for the same name. */
+/** Session-scoped cache: never fires two requests for the same name. */
 const cache = new Map<string, string>();
 
 watch(() => props.selectedTool, async (name) => {
@@ -37,7 +37,7 @@ watch(() => props.selectedTool, async (name) => {
     return;
   }
 
-  // Cache hit — no network call.
+  // Cache hit; no network call.
   const cached = cache.get(name);
   if (cached !== undefined) {
     explanation.value = cached;

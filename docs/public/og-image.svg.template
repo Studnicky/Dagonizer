@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="Dagonizer — Omniscient orchestration for directed acyclic graphs">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="Dagonizer: Omniscient orchestration for directed acyclic graphs">
 
   <defs>
     <!-- Deep oceanic gradient matching Dagonizer's #0a0e1a dark theme -->
@@ -63,7 +63,7 @@
   <!-- Background -->
   <rect x="0" y="0" width="1200" height="630" fill="url(#bgGrad)"/>
 
-  <!-- Subtle grid lines — oceanic depth effect -->
+  <!-- Subtle grid lines: oceanic depth effect -->
   <g opacity="0.04" stroke="#22e8ff" stroke-width="1">
     <line x1="0" y1="105" x2="1200" y2="105"/>
     <line x1="0" y1="210" x2="1200" y2="210"/>
@@ -79,7 +79,7 @@
     <line x1="1050" y1="0" x2="1050" y2="630"/>
   </g>
 
-  <!-- Left panel: the canonical Dagonizer brand icon — the same talisman
+  <!-- Left panel: the canonical Dagonizer brand icon, the same talisman
        used by the favicon, app icon, and the Twitter / OG unfurl across
        every SEO surface. Loaded by relative href so build-time rasterization
        resolves against docs/public/ where both files live. The 420×420 box
@@ -91,7 +91,7 @@
     preserveAspectRatio="xMidYMid meet"
   />
 
-  <!-- Right panel: title + tagline — anchored at x=540 to clear the icon's
+  <!-- Right panel: title + tagline, anchored at x=540 to clear the icon's
        right edge (x=490) with 50px of breathing room. -->
   <g transform="translate(540, 235)">
     <text class="title" x="0" y="0" font-size="82">Dagonizer</text>

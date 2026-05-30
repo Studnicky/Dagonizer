@@ -1,5 +1,5 @@
 /**
- * merge-fallback — unit tests for mergeCandidates prior-memory fallback.
+ * merge-fallback: unit tests for mergeCandidates prior-memory fallback.
  *
  * Covers:
  *   • live empty + prior > 0  → shortlist comes from prior, all carry fromPriorMemory, routes 'ranked'
@@ -86,7 +86,7 @@ void test('mergeCandidates: live=2 + prior=3 (1 overlap isbn B001) → dedupe �
     liveCandidate('B002', 0.8),
   ];
   state.priorCandidates = [
-    priorCandidate('B001'),  // duplicate — live score 0.9 wins
+    priorCandidate('B001'),  // duplicate; live score 0.9 wins
     priorCandidate('B003'),
     priorCandidate('B004'),
   ];
@@ -144,14 +144,14 @@ void test('mergeCandidates: prior-only fallback sets failureCause when still emp
   state.query          = 'some query';
   state.userLanguage   = 'ja'; // Japanese
   state.candidates     = [];
-  // Prior candidate with German language — should be filtered out by language gate.
+  // Prior candidate with German language; should be filtered out by language gate.
   state.priorCandidates = [{
     book: {
       isbn:      'D001',
       title:     'Deutsch Buch',
       authors:   ['Autor'],
       price:     { amount: 0, currency: 'USD' },
-      languages: ['ger'],  // ISO 639-2 German — won't pass Japanese filter
+      languages: ['ger'],  // ISO 639-2 German; won't pass Japanese filter
     },
     score:  0.5,
     source: 'openlibrary',

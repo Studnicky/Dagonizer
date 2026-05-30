@@ -1,14 +1,12 @@
 /**
- * respondToVisitor / declineOffTopic / declineEmpty / composeEmptyResponse
- * — terminal and near-terminal nodes.
+ * respondToVisitor / declineOffTopic / composeEmptyResponse
+ * Terminal and near-terminal nodes.
  *
- * respondToVisitor    — shared happy-path terminal (routes to null after compose).
- * declineOffTopic     — hard off-topic gate; sets a redirect draft and exits.
- * declineEmpty        — legacy canned empty-result exit (kept for backward compat
- *                       with checkpoint resume on older saved states).
- * composeEmptyResponse — LLM-driven empty-result response. Uses `state.failureCause`
+ * respondToVisitor:    shared happy-path terminal (routes to null after compose).
+ * declineOffTopic:     hard off-topic gate; sets a redirect draft and exits.
+ * composeEmptyResponse: LLM-driven empty-result response. Uses `state.failureCause`
  *                       to produce an in-character acknowledgement of what was tried
- *                       and one concrete next-step suggestion. Always responds —
+ *                       and one concrete next-step suggestion. Always responds;
  *                       never throws, never silent-fails. Routes to respond-to-visitor
  *                       so the conversation always gets an answer.
  *
@@ -21,13 +19,10 @@ import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
 import type { NodeInterface } from '@noocodex/dagonizer';
-import { BackoffStrategy, RetryPolicy } from '@noocodex/dagonizer/runtime';
 
-const emptyRetry = new RetryPolicy({
-  "maxAttempts": 2,
-  "strategy":    BackoffStrategy.EXPONENTIAL,
-  "baseDelay":   500,
-});
+/** Per-node compose deadline + total attempts before salvage. */
+const EMPTY_TIMEOUT_MS = 60_000;
+const EMPTY_RETRY_BUDGET = 2;
 
 export const respondToVisitor: NodeInterface<ArchivistState, 'success', ArchivistServices> = {
   "name": 'respond-to-visitor',
@@ -42,27 +37,7 @@ export const declineOffTopic: NodeInterface<ArchivistState, 'success', Archivist
   "name": 'decline-off-topic',
   "outputs": ['success'],
   async execute(state) {
-    state.draft = "I only help with finding and identifying books — what title or topic interests you?";
-    return { "output": 'success' };
-  },
-};
-
-/**
- * Legacy canned-response node. Kept for backward compatibility with
- * checkpoint resume on states that were saved before `composeEmptyResponse`
- * was introduced. New DAG routes use `compose-empty` instead.
- */
-export const declineEmpty: NodeInterface<ArchivistState, 'success', ArchivistServices> = {
-  "name": 'decline-empty',
-  "outputs": ['success'],
-  async execute(state) {
-    state.draft = "I couldn't find anything matching that. Could you describe the cover, the era, or what the book is about?";
-    state.collectWarning({
-      "code": 'EMPTY_SHORTLIST',
-      "message": 'no candidates after merge',
-      "operation": 'decline-empty',
-      "timestamp": new Date().toISOString(),
-    });
+    state.draft = "I only help with finding and identifying books. What title or topic interests you?";
     return { "output": 'success' };
   },
 };
@@ -75,33 +50,42 @@ export const declineEmpty: NodeInterface<ArchivistState, 'success', ArchivistSer
  * a prompt that asks the LLM for a warm in-character message acknowledging
  * what was searched, why it came up empty, and one concrete next step.
  *
- * Always succeeds — on LLM error it falls back to a simple canned message
- * so the visitor always gets a response. Routes to `respond-to-visitor` so
- * the conversation always receives an answer.
+ * Failure is a flow decision: the node arms its own deadline and, on its own
+ * timeout or an LLM error, routes `retry` (loops back, bounded) or `salvage`.
+ * The canned fallback message lives in `compose-empty-salvage`, reached by the
+ * salvage edge; not in this node's catch. No in-node `RetryPolicy`, no engine
+ * `timeoutMs` crutch.
  */
-export const composeEmptyResponse: NodeInterface<ArchivistState, 'drafted', ArchivistServices> = {
+export const composeEmptyResponse: NodeInterface<ArchivistState, 'drafted' | 'retry' | 'salvage', ArchivistServices> = {
   "name":      'compose-empty',
-  "outputs":   ['drafted'],
-  "timeoutMs": 60_000,
+  "outputs":   ['drafted', 'retry', 'salvage'],
   async execute(state, context) {
     state.collectWarning({
       "code":      'EMPTY_SHORTLIST',
-      "message":   'no candidates after merge — composing empty response',
+      "message":   'no candidates after merge; composing empty response',
       "operation": 'compose-empty',
       "timestamp": new Date().toISOString(),
     });
+    const conversation = state.conversation.length > 0 ? state.conversation : undefined;
+    const controller = new AbortController();
+    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? EMPTY_TIMEOUT_MS);
+    const signal = AbortSignal.any([context.signal, controller.signal]);
     try {
-      const conversation = state.conversation.length > 0 ? state.conversation : undefined;
-      state.draft = await emptyRetry.run(
-        () => context.services.llm.composeEmptyResponse(state.query, state.failureCause, conversation),
-        context.signal,
-      );
+      state.draft = await context.services.llm.composeEmptyResponse(state.query, state.failureCause, conversation, signal);
+      state.clearAttempts(context.nodeName);
       context.services.logger.info('compose-empty: LLM response composed');
+      return { "output": 'drafted' };
     } catch (err) {
-      // Never silent-fail — fall back to a canned message.
-      state.draft = "I searched OpenLibrary, Google Books, the subject index, and Wikipedia but nothing came back for that description. Try a single keyword — the author name alone, or one strong image from the book — and I will cast a wider net.";
-      context.services.logger.warn(`compose-empty LLM failed, using fallback: ${String(err)}`);
+      if (context.signal.aborted) throw err;
+      if (state.withinRetryBudget(context.nodeName, EMPTY_RETRY_BUDGET)) {
+        context.services.logger.warn(`compose-empty: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(EMPTY_RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
+        return { "output": 'retry' };
+      }
+      state.clearAttempts(context.nodeName);
+      context.services.logger.warn(`compose-empty: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
+      return { "output": 'salvage' };
+    } finally {
+      clearTimeout(handle);
     }
-    return { "output": 'drafted' };
   },
 };

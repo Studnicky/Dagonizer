@@ -1,5 +1,5 @@
 /**
- * LlmError — error taxonomy + classifier helpers.
+ * LlmError: error taxonomy + classifier helpers.
  *
  * Mirrors nocturne's `LLMInvocationError` (`adapters/llm/...
  * LLMInvocationError.ts:30–146`) trimmed to the categories the
@@ -37,6 +37,13 @@ export class LlmError extends Error {
     if (cause !== undefined) (this as { cause?: unknown }).cause = cause;
   }
 }
+
+/**
+ * Cap on how long a `QUOTA_EXHAUSTED` `Retry-After` hint is honored. Past this,
+ * the adapter gives up immediately rather than blocking the caller. Shared by
+ * `BaseAdapter` and `BaseEmbedder`.
+ */
+export const MAX_QUOTA_WAIT_MS = 10_000;
 
 /** Mark a fact-of-life classification. Used by adapters that already know. */
 export const Classifications: Readonly<Record<LlmErrorReason, ErrorClassification>> = {

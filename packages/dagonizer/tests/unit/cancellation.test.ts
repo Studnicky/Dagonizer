@@ -178,7 +178,7 @@ void describe('Dagonizer extension hooks', () => {
       protected override onNodeStart(nodeName: string): void {
         events.push(`stage:start:${nodeName}`);
       }
-      protected override onNodeEnd(nodeName: string, output: string | undefined): void {
+      protected override onNodeEnd(nodeName: string, output: string | null): void {
         events.push(`stage:end:${nodeName}:${output ?? '-'}`);
       }
     }
@@ -247,7 +247,7 @@ void describe('Dagonizer extension hooks', () => {
     const result = await dispatcher.execute('err', new NodeStateBase());
     assert.equal(result.cursor, 's');
     assert.equal(result.state.lifecycle.kind, 'failed');
-    // Node throws without abort signal — lifecycle is `failed`, not a
+    // Node throws without abort signal; lifecycle is `failed`, not a
     // cancellation. interruptedAt MUST be null.
     assert.equal(result.interruptedAt, null);
     assert.equal(seen.length, 1);

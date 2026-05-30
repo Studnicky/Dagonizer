@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * StateLegend — five chips showing the DAG's visual states.
+ * StateLegend: five chips showing the DAG's visual states.
  *
  *   pending · active · completed · errored · traversed-edge
  *
@@ -18,7 +18,7 @@ interface StateChip {
 
 const chips: readonly StateChip[] = [
   { key: 'pending',    label: 'pending',    hint: 'Awaiting dispatch.' },
-  { key: 'active',     label: 'active',     hint: 'Currently executing — pulses while running.' },
+  { key: 'active',     label: 'active',     hint: 'Currently executing; pulses while running.' },
   { key: 'completed',  label: 'completed',  hint: 'Finished successfully.' },
   { key: 'errored',    label: 'errored',    hint: 'Threw or returned an error route.' },
   { key: 'traversed',  label: 'traversed →', hint: 'Edge taken by the dispatcher; flashes on traversal.' },

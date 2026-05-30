@@ -23,7 +23,7 @@ const DEFAULT_GRAPH: Term = { termType: 'DefaultGraph', value: '' };
 
 // ── 1. Store contract: get/set/has/delete round-trip ─────────────────────────
 
-void describe('RdfStore — Store contract (reified key-value)', () => {
+void describe('RdfStore: Store contract (reified key-value)', () => {
   void it('set then get returns the stored value', async () => {
     const store = new RdfStore();
     await store.set<string>('greeting', 'hello');
@@ -62,7 +62,7 @@ void describe('RdfStore — Store contract (reified key-value)', () => {
 
 // ── 2. update(key, fn) atomic RMW ────────────────────────────────────────────
 
-void describe('RdfStore — update(key, fn) atomic RMW', () => {
+void describe('RdfStore: update(key, fn) atomic RMW', () => {
   void it('increments a counter from undefined', async () => {
     const store = new RdfStore();
     const result = await store.update<number>('counter', (n) => (n ?? 0) + 1);
@@ -87,7 +87,7 @@ void describe('RdfStore — update(key, fn) atomic RMW', () => {
 
 // ── 3. TripleStore contract ───────────────────────────────────────────────────
 
-void describe('RdfStore — TripleStore contract', () => {
+void describe('RdfStore: TripleStore contract', () => {
   void it('assert adds a quad; ask returns true for a matching pattern', () => {
     const store = new RdfStore();
     const s = namedNode('urn:test:subject');
@@ -144,7 +144,7 @@ void describe('RdfStore — TripleStore contract', () => {
 
 // ── 4. clearGraph ─────────────────────────────────────────────────────────────
 
-void describe('RdfStore — clearGraph', () => {
+void describe('RdfStore: clearGraph', () => {
   void it('removes only quads in the named graph, leaves others untouched', () => {
     const store = new RdfStore();
     const p = namedNode('urn:test:p');
@@ -173,7 +173,7 @@ void describe('RdfStore — clearGraph', () => {
 
 // ── 5. triples() iterator ─────────────────────────────────────────────────────
 
-void describe('RdfStore — triples()', () => {
+void describe('RdfStore: triples()', () => {
   void it('iterates all stored quads (reified + user-asserted)', async () => {
     const store = new RdfStore();
 
@@ -199,7 +199,7 @@ void describe('RdfStore — triples()', () => {
 
 // ── 6. Coexistence of reified Store entries and user-asserted quads ───────────
 
-void describe('RdfStore — Store entries and native quads coexist', () => {
+void describe('RdfStore: Store entries and native quads coexist', () => {
   void it('store set/get does not disturb user-asserted quads on other predicates', async () => {
     const store = new RdfStore();
     const p = namedNode('urn:test:custom');
@@ -236,9 +236,9 @@ void describe('RdfStore — Store entries and native quads coexist', () => {
   });
 });
 
-// ── 7. restore() — trade-off: clears all quads, reseeds from snapshot ─────────
+// ── 7. restore(): trade-off: clears all quads, reseeds from snapshot ─────────
 
-void describe('RdfStore — restore()', () => {
+void describe('RdfStore: restore()', () => {
   void it('restores Store entries from a valid snapshot', async () => {
     const source = new RdfStore();
     await source.set<number>('x', 10);
@@ -277,7 +277,7 @@ void describe('RdfStore — restore()', () => {
     })();
 
     await store.restore(snap);
-    // The native assert is gone — this is the documented trade-off.
+    // The native assert is gone; this is the documented trade-off.
     assert.equal(store.count({ subject: namedNode('urn:s') }), 0);
     assert.equal(await store.get<string>('k'), 'v');
   });
@@ -285,7 +285,7 @@ void describe('RdfStore — restore()', () => {
 
 // ── 8. restore() with wrong type/version throws StoreError(INCOMPATIBLE_SNAPSHOT)
 
-void describe('RdfStore — restore() incompatible snapshot', () => {
+void describe('RdfStore: restore() incompatible snapshot', () => {
   void it('throws StoreError INCOMPATIBLE_SNAPSHOT for wrong type', async () => {
     const store = new RdfStore();
     const bad = { version: 1, type: 'wrong-type', entries: [] };

@@ -1,5 +1,5 @@
 /**
- * OpenRouterApiAdapter — OpenRouter REST adapter.
+ * OpenRouterApiAdapter: OpenRouter REST adapter.
  *
  * Defaults to the free-tier Llama 3.3 70B Instruct route. Requires
  * `HTTP-Referer` + `X-Title` headers per OpenRouter's :free tier

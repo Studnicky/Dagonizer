@@ -1,6 +1,6 @@
 /**
- * ReduceNode — root for "collapse a list" patterns.
- * Leaves: DedupeByKeyNode, GroupByFieldNode, FanInReducerNode.
+ * ReduceNode: root for "collapse a list" patterns.
+ * Leaves: DedupeByKeyNode, GroupByFieldNode, MergeReducerNode.
  */
 
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
@@ -17,7 +17,6 @@ export abstract class ReduceNode<
   protected abstract reduce(items: readonly TItem[]): TResult;
   protected abstract writeBack(state: TState, result: TResult): void;
 
-  protected successPort(): TOutput { return 'success' as TOutput; }
 
   async execute(
     state: TState,
@@ -26,7 +25,7 @@ export abstract class ReduceNode<
     const items = this.readItems(state);
     const result = this.reduce(items);
     this.writeBack(state, result);
-    return Promise.resolve({ 'output': this.successPort() });
+    return { 'output': this.successPort() };
   }
 }
 
@@ -70,12 +69,12 @@ export abstract class GroupByFieldNode<
   }
 }
 
-export abstract class FanInReducerNode<
+export abstract class MergeReducerNode<
   TState extends NodeStateInterface,
   TItem,
   TOutput extends string = 'success',
 > extends ReduceNode<TState, TItem, readonly TItem[], TOutput> {
-  // Subclasses override `reduce` directly — this node is the bare base
-  // for custom fan-in semantics. DedupeByKeyNode and GroupByFieldNode
+  // Subclasses override `reduce` directly; this node is the bare base
+  // for custom merge semantics. DedupeByKeyNode and GroupByFieldNode
   // demonstrate two common reductions.
 }

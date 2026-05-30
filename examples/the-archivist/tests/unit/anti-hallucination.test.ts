@@ -1,5 +1,5 @@
 /**
- * Anti-hallucination check — unit tests.
+ * Anti-hallucination check: unit tests.
  *
  * Exercises the deterministic pre-validator in `validateResponse`:
  *   • entity detection picks up capitalised multi-word spans and *italic* titles
@@ -24,7 +24,7 @@ function candidate(title: string, isbn = '0000000000'): Candidate {
 }
 
 void test('detectEntities: picks up capitalised multi-word spans and italic titles', () => {
-  const draft = 'I recommend House of Leaves and *Piranesi* — both touch on liminal architecture. Mark Z Danielewski is a favourite.';
+  const draft = 'I recommend House of Leaves and *Piranesi*, both touching on liminal architecture. Mark Z Danielewski is a favourite.';
   const entities = detectEntities(draft);
   assert.ok(entities.includes('House of Leaves'), 'capitalised multi-word with lowercase joiner');
   assert.ok(entities.includes('Piranesi'), 'italic title span');
@@ -32,14 +32,14 @@ void test('detectEntities: picks up capitalised multi-word spans and italic titl
 });
 
 void test('antiHallucinationCheck: clean draft passes', () => {
-  const draft = 'I recommend House of Leaves — it touches on liminal architecture.';
+  const draft = 'I recommend House of Leaves; it touches on liminal architecture.';
   const result = antiHallucinationCheck(draft, [candidate('House of Leaves')], []);
   assert.equal(result.status, 'pass');
   assert.ok(result.count >= 1, 'should have checked at least 1 entity');
 });
 
 void test('antiHallucinationCheck: draft naming a non-shortlist 3+ word title FAILS', () => {
-  const draft = 'You might enjoy The Time Traveller and the Chronicles Of Riddick — both very engaging.';
+  const draft = 'You might enjoy The Time Traveller and the Chronicles Of Riddick, both very engaging.';
   const result = antiHallucinationCheck(draft, [candidate('House of Leaves')], []);
   assert.equal(result.status, 'fail');
   assert.ok(result.cause.includes('Hallucinated title'), 'should cite the hallucinated title');
@@ -53,15 +53,15 @@ void test('antiHallucinationCheck: 2-word entities (likely authors) are NOT flag
   assert.equal(result.status, 'pass', '2-word capitalised entities (authors) are not flagged');
 });
 
-void test('antiHallucinationCheck: bias-check — shortlist non-empty but draft cites none → FAIL', () => {
-  const draft = 'Hmm — let me think about that one. I have a few ideas but nothing concrete yet.';
+void test('antiHallucinationCheck: bias-check, shortlist non-empty but draft cites none → FAIL', () => {
+  const draft = 'Hmm, let me think about that one. I have a few ideas but nothing concrete yet.';
   const result = antiHallucinationCheck(draft, [candidate('Specific Book Title Here')], []);
   assert.equal(result.status, 'fail');
   assert.ok(result.cause.includes('no book from the shortlist'), 'bias-check failure must mention shortlist');
 });
 
 void test('antiHallucinationCheck: priorCandidates count as known titles', () => {
-  const draft = 'I recall earlier you asked about The Iron Heel — that one was strong.';
+  const draft = 'I recall earlier you asked about The Iron Heel; that one was strong.';
   const result = antiHallucinationCheck(
     draft,
     [candidate('Some Other Live Result')],     // shortlist

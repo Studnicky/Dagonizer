@@ -2,7 +2,7 @@
  * remote-store.test.ts
  *
  * Verifies that:
- * 1. A concrete class can implement `RemoteStore` by extending `BaseStore` —
+ * 1. A concrete class can implement `RemoteStore` by extending `BaseStore`;
  *    the contract is fully implementable without gaps.
  * 2. The new `StoreErrorClassification` reasons discriminate correctly via
  *    the `reason` discriminant field.
@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '../../src/contracts/RemoteStore.js';
-import type { StoreSnapshotEntry } from '../../src/contracts/Store.js';
+import type { StoreSnapshotEntry } from '../../src/contracts/Snapshottable.js';
 import type { JsonValue } from '../../src/entities/json.js';
 import { BaseStore, type BaseStoreOptions } from '../../src/store/BaseStore.js';
 import { StoreError, type StoreErrorClassification } from '../../src/store/StoreError.js';
@@ -65,7 +65,7 @@ class MockRemoteStore extends BaseStore implements RemoteStore {
     }
   }
 
-  // Atomic override — Map access is synchronous, no interleaving possible.
+  // Atomic override: Map access is synchronous, no interleaving possible.
   override async update<T extends JsonValue>(
     key: string,
     fn: (current: T | undefined) => T,
@@ -87,7 +87,7 @@ class MockRemoteStore extends BaseStore implements RemoteStore {
   }
 
   async releaseLease(_lease: RemoteStoreLease): Promise<void> {
-    // no-op — mock never holds state for leases
+    // no-op; mock never holds state for leases
   }
 
   async health(_timeoutMs: number): Promise<boolean> {
@@ -152,7 +152,7 @@ void describe('RemoteStore contract', () => {
 
 // ── StoreError remote-specific discriminants ─────────────────────────────────
 
-void describe('StoreError — remote-specific classification reasons', () => {
+void describe('StoreError: remote-specific classification reasons', () => {
   void it('LEASE_DENIED classifies and discriminates correctly', () => {
     const classification: StoreErrorClassification = {
       'reason':  'LEASE_DENIED',

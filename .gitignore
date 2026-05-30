@@ -9,3 +9,7 @@ docs/.vitepress/cache
 .claude/
 docs/.claude/
 *.tgz
+
+# Planning artifacts are local working notes, never tracked
+plans/
+.plans/

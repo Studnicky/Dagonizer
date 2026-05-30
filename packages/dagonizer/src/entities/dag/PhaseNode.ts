@@ -1,5 +1,5 @@
 /**
- * PhaseNode — lifecycle-attached placement in JSON-LD canonical form.
+ * PhaseNode: lifecycle-attached placement in JSON-LD canonical form.
  *
  * Uses `@type: 'PhaseNode'` as the discriminator. `@id` is the placement
  * URN: `urn:noocodex:dag:<dagName>/node/<name>`.
@@ -13,7 +13,7 @@
  * node throw); a thrown error is collected as a warning on state and
  * does not change the already-set lifecycle.
  *
- * PhaseNode placements have no `outputs` — they cannot route to other
+ * PhaseNode placements have no `outputs`; they cannot route to other
  * placements. They reference a registered `NodeInterface` by name and
  * mutate state in place.
  *
@@ -44,7 +44,7 @@ export type PhaseNode = FromSchema<typeof PhaseNodeSchema>;
 
 /**
  * Phase node placement.
- * Runs around the main DAG loop — `'pre'` before the entrypoint,
+ * Runs around the main DAG loop: `'pre'` before the entrypoint,
  * `'post'` after the main loop drains on every exit path.
  *
  * Carries no `outputs` map: phase placements are out-of-band and never

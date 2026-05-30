@@ -1,5 +1,5 @@
 /**
- * Adapters barrel — re-exports each adapter from its plugin package
+ * Adapters barrel: re-exports each adapter from its plugin package
  * plus the Archivist-grounded stub subclass that lives in the example.
  *
  * Contract types (LlmAdapter, ChatRequest, etc.) and BaseAdapter come
@@ -48,7 +48,7 @@ export type { StubAdapterOptions }  from '@noocodex/dagonizer-adapter-stub';
 export { WebLlmAdapter, detectWebGpu } from '@noocodex/dagonizer-adapter-web-llm';
 export type { WebLlmAdapterOptions, WebLlmInitReport } from '@noocodex/dagonizer-adapter-web-llm';
 
-// Archivist-grounded stub subclass — stays in the example since it depends
+// Archivist-grounded stub subclass. Stays in the example since it depends
 // on the Archivist's SeedLibrary + MemoryStore.
 export { ArchivistStub } from './ArchivistStub.js';
 export type { ArchivistStubOptions } from './ArchivistStub.js';

@@ -56,7 +56,7 @@ class RecordingInstrumentation extends NoopInstrumentation<NodeStateBase> {
   override nodeStart(dagName: string, nodeName: string, state: NodeStateBase, placementPath: readonly string[]): void {
     this.calls.push({ 'hook': 'nodeStart', 'args': [dagName, nodeName, state, placementPath] });
   }
-  override nodeEnd(dagName: string, nodeName: string, output: string | undefined, state: NodeStateBase, placementPath: readonly string[]): void {
+  override nodeEnd(dagName: string, nodeName: string, output: string | null, state: NodeStateBase, placementPath: readonly string[]): void {
     this.calls.push({ 'hook': 'nodeEnd', 'args': [dagName, nodeName, output, state, placementPath] });
   }
   override contractWarning(message: string): void {
@@ -139,7 +139,7 @@ void describe('Instrumentation contract', () => {
     }
   });
 
-  void it('flowStart and flowEnd fire exactly once per top-level execute() — no embedded-DAG re-entry', async () => {
+  void it('flowStart and flowEnd fire exactly once per top-level execute(), with no embedded-DAG re-entry', async () => {
     const instrumentation = new RecordingInstrumentation();
     const dispatcher = new Dagonizer<NodeStateBase>({ instrumentation });
 
@@ -168,8 +168,8 @@ void describe('Instrumentation contract', () => {
       'nodes': [
         { '@id': 'urn:noocodex:dag:inst-parent/node/parent-entry', '@type': 'SingleNode',
           'name': 'parent-entry', 'node': 'parent-entry', 'outputs': { 'success': 'run-child' } },
-        { '@id': 'urn:noocodex:dag:inst-parent/node/run-child', '@type': 'ScatterNode',
-          'name': 'run-child', 'body': { 'dag': 'inst-child' },
+        { '@id': 'urn:noocodex:dag:inst-parent/node/run-child', '@type': 'EmbeddedDAGNode',
+          'name': 'run-child', 'dag': 'inst-child',
           'outputs': { 'success': null, 'error': null } },
       ],
     };
@@ -251,7 +251,7 @@ void describe('Instrumentation contract', () => {
 
   void it('a throwing hook propagates and aborts the flow (documented rule: hooks MUST NOT throw)', async () => {
     // The contract JSDoc warns plugins not to throw. The dispatcher does
-    // not wrap hook invocations in try/catch — a hook that throws crashes
+    // not wrap hook invocations in try/catch; a hook that throws crashes
     // the surrounding node execution. This test pins that behavior so a
     // future "swallow plugin errors" change is an explicit decision rather
     // than a silent regression.

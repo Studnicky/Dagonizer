@@ -61,7 +61,7 @@ void describe('DAGBuilder', () => {
     assert.throws(() => new DAGBuilder('empty', '1').build());
   });
 
-  void it('parallel/fanOut/embeddedDAG round-trip into DAG shape', () => {
+  void it('parallel/scatter/embeddedDAG round-trip into DAG shape', () => {
     const dag = new DAGBuilder('mix', '1')
       .node('a', greet, { 'success': 'b' })
       .node('b', greet, { 'success': 'group' })

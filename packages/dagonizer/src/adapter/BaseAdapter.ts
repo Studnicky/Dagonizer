@@ -1,9 +1,9 @@
 /**
- * BaseAdapter — abstract base every concrete adapter extends.
+ * BaseAdapter: abstract base every concrete adapter extends.
  *
  * Owns the retry plumbing (Dagonizer's `RetryPolicy` with exponential
  * backoff) and the chat-call envelope. Concrete adapters implement
- * `performChat()` — the raw transport call — and `classify()` which
+ * `performChat()` (the raw transport call) and `classify()` which
  * maps a provider-native error into the shared `LlmError` taxonomy.
  *
  *   Adapter contract → BaseAdapter ┐
@@ -20,12 +20,11 @@
  */
 
 
-import { BackoffStrategy, RetryPolicy } from '../runtime/index.js';
+import { BackoffStrategy } from '../runtime/index.js';
 
 import type { AdapterCapabilities, ChatRequest, ChatResponse, LlmAdapter } from './LlmAdapter.js';
-import { Classifications, LlmError, type ErrorClassification } from './LlmError.js';
-
-const MAX_QUOTA_WAIT_MS = 10_000;
+import { Classifications, LlmError, MAX_QUOTA_WAIT_MS, type ErrorClassification } from './LlmError.js';
+import { RetryableErrorPolicy } from './RetryableErrorPolicy.js';
 
 export const DEFAULT_MAX_ATTEMPTS = 3;
 export const DEFAULT_BASE_DELAY_MS = 400;
@@ -39,7 +38,7 @@ export abstract class BaseAdapter implements LlmAdapter {
   readonly id: string;
   readonly displayName: string;
   readonly capabilities: AdapterCapabilities;
-  readonly #retry: RetryPolicy;
+  readonly #retry: RetryableErrorPolicy;
 
   protected constructor(
     id: string,
@@ -50,7 +49,7 @@ export abstract class BaseAdapter implements LlmAdapter {
     this.id = id;
     this.displayName = displayName;
     this.capabilities = capabilities;
-    this.#retry = new RetryPolicy({
+    this.#retry = new RetryableErrorPolicy({
       'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
       'strategy':    BackoffStrategy.EXPONENTIAL,
       'baseDelay':   options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS,
@@ -68,11 +67,11 @@ export abstract class BaseAdapter implements LlmAdapter {
   }
 
   /**
-   * Default availability probe. Returns true — the adapter assumes it
+   * Default availability probe. Returns true; the adapter assumes it
    * can run unless the concrete subclass knows better. Subclasses with
    * meaningful availability constraints (API key presence, runtime
    * feature detect, local model warmth) override and surface their own
-   * check. Must never throw — return false instead.
+   * check. Must never throw; return false instead.
    */
   async probe(): Promise<boolean> {
     return Promise.resolve(true);
@@ -97,16 +96,14 @@ export abstract class BaseAdapter implements LlmAdapter {
             rawError,
           );
         }
-        if (!classification.retryable) {
-          throw new LlmError(messageOf(rawError), classification, rawError);
-        }
-        // Retryable: rethrow as LlmError so RetryPolicy sees it.
+        // Rethrow as LlmError; RetryableErrorPolicy retries only when the
+        // classification is retryable.
         throw new LlmError(messageOf(rawError), classification, rawError);
       }
     }, request.signal);
   }
 
-  /** Concrete adapter — perform the actual API call. */
+  /** Concrete adapter: perform the actual API call. */
   protected abstract performChat(request: ChatRequest): Promise<ChatResponse>;
 
   /** Map a provider-native error into the shared classification. */

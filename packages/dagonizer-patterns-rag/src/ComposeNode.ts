@@ -1,5 +1,5 @@
 /**
- * ComposeNode — "LLM produces prose" pattern. Extends LlmDispatchNode
+ * ComposeNode: "LLM produces prose" pattern. Extends LlmDispatchNode
  * for the shared request envelope; adds draft write-back.
  *
  * Leaves narrow intent but share the dispatch loop:
@@ -19,11 +19,6 @@ export abstract class ComposeNode<
 > extends LlmDispatchNode<TState, TOutput> {
   /** Write the generated draft back to state. */
   protected abstract applyDraft(state: TState, draft: string): void;
-
-  /** Output port to route to once the draft is written. Default 'success'. */
-  protected successPort(): TOutput {
-    return 'success' as TOutput;
-  }
 
   override async execute(
     state: TState,

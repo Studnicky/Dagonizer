@@ -1,5 +1,5 @@
 /**
- * DAGLifecycleStateSchema — uniform single-object schema for the DAG lifecycle
+ * DAGLifecycleStateSchema: uniform single-object schema for the DAG lifecycle
  * wire shape. All six kinds share an identical 5-field shape; `kind` is the
  * discriminator.
  *
@@ -32,7 +32,7 @@ export const DAGLifecycleStateSchema = {
 /**
  * Wire-shape derived from the schema. Note: the canonical in-memory type
  * lives at `src/lifecycle/DAGLifecycleState.ts` and uses `Error`
- * directly on the `failed` branch — this `DAGLifecycleStateData` is
+ * directly on the `failed` branch; this `DAGLifecycleStateData` is
  * the persistence/transport shape where `error` is an opaque object.
  */
 export type DAGLifecycleStateData = FromSchema<typeof DAGLifecycleStateSchema>;

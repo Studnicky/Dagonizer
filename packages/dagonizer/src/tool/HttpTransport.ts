@@ -1,11 +1,11 @@
 /**
- * HttpTransport — shared fetch wrapper for tool packages.
+ * HttpTransport: shared fetch wrapper for tool packages.
  *
  * Every HTTP-backed tool (OpenLibrary, Google Books, Wikipedia, …)
  * needs the same boilerplate: abort propagation, per-request timeout,
  * retry on transient errors (network, 5xx, 429), JSON parsing,
  * classification of failures into `ToolError`. Consolidating that here
- * keeps every tool package thin — `OpenLibrarySearchTool.search(...)`
+ * keeps every tool package thin: `OpenLibrarySearchTool.search(...)`
  * is roughly: build the URL, hand off to `HttpTransport.getJson(...)`,
  * map the response.
  *

@@ -8,6 +8,17 @@ import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
 import type { DAGDeriverEmbeddedDAG } from '../../src/derive/DAGDeriverAnnotations.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
+// `DAGDeriver.derive` takes `nodes` with co-located contracts (single source of
+// truth); there is no standalone `contracts` input. Wrap each contract spec in
+// a node whose `contract` carries the topology fields; `execute` is a no-op
+// (derive reads only the contract, never runs the node).
+const contractNode = (c: OperationContract): NodeInterface => ({
+  'name': c.name,
+  'outputs': c.outputs,
+  'contract': { 'hardRequired': c.hardRequired, 'produces': c.produces },
+  async execute() { return { 'output': c.outputs[0] as string }; },
+});
+
 void describe('DAGDeriver.derive', () => {
   void it('produces a linear DAG from a chain of contracts', () => {
     const contracts: OperationContract[] = [
@@ -19,7 +30,7 @@ void describe('DAGDeriver.derive', () => {
       'name': 'chain',
       'version': '1',
       'entrypoint': 'a',
-      contracts,
+      "nodes": contracts.map(contractNode),
     });
     assert.equal(dag.name, 'chain');
     assert.equal(dag.entrypoint, 'a');
@@ -47,13 +58,13 @@ void describe('DAGDeriver.derive', () => {
       'name': 'fan',
       'version': '1',
       'entrypoint': 'fan-a',
-      contracts,
+      "nodes": contracts.map(contractNode),
     });
     const parallel = dag.nodes.find((node) => node['@type'] === 'ParallelNode');
     assert.ok(parallel !== undefined, 'parallel placement is emitted');
   });
 
-  void it('emits fan-out placement when annotation is supplied', () => {
+  void it('emits scatter placement when annotation is supplied', () => {
     const contracts: OperationContract[] = [
       { 'name': 'plan',  'hardRequired': ['input'],        'produces': ['tasks'],        'outputs': ['success'] },
       { 'name': 'scout', 'hardRequired': ['tasks'],        'produces': ['scoutResults'], 'outputs': ['success'] },
@@ -63,17 +74,17 @@ void describe('DAGDeriver.derive', () => {
       'name': 'scout-flow',
       'version': '1',
       'entrypoint': 'plan',
-      contracts,
+      "nodes": contracts.map(contractNode),
       'annotations': {
-        'fanouts': {
+        'scatters': {
           'scout': {
-            'source':         'tasks',
-            'itemKey':        'currentTask',
-            'node':           'scout',
-            'concurrency':    3,
-            'strategy':       'custom',
-            'fanInOperation': 'merge',
-            'outcomes':       ['all-success', 'partial', 'all-error', 'empty'],
+            'source':     'tasks',
+            'itemKey':    'currentTask',
+            'node':       'scout',
+            'concurrency': 3,
+            'strategy':   'custom',
+            'customNode': 'merge',
+            'outcomes':   ['all-success', 'partial', 'all-error', 'empty'],
           },
         },
       },
@@ -98,7 +109,7 @@ void describe('DAGDeriver.derive', () => {
     }
   });
 
-  void it('renders fan-out with partition strategy', () => {
+  void it('renders scatter with partition strategy', () => {
     const contracts: OperationContract[] = [
       { 'name': 'plan',  'hardRequired': ['input'],  'produces': ['tasks'],   'outputs': ['success'] },
       { 'name': 'scout', 'hardRequired': ['tasks'],  'produces': ['results'], 'outputs': ['success'] },
@@ -107,9 +118,9 @@ void describe('DAGDeriver.derive', () => {
       'name': 'partition-flow',
       'version': '1',
       'entrypoint': 'plan',
-      contracts,
+      "nodes": contracts.map(contractNode),
       'annotations': {
-        'fanouts': {
+        'scatters': {
           'scout': {
             'source':   'tasks',
             'itemKey':  'currentTask',
@@ -134,7 +145,7 @@ void describe('DAGDeriver.derive', () => {
     }
   });
 
-  void it('renders fan-out with append strategy', () => {
+  void it('renders scatter with append strategy', () => {
     const contracts: OperationContract[] = [
       { 'name': 'plan',  'hardRequired': ['input'], 'produces': ['tasks'],   'outputs': ['success'] },
       { 'name': 'scout', 'hardRequired': ['tasks'], 'produces': ['results'], 'outputs': ['success'] },
@@ -143,9 +154,9 @@ void describe('DAGDeriver.derive', () => {
       'name': 'append-flow',
       'version': '1',
       'entrypoint': 'plan',
-      contracts,
+      "nodes": contracts.map(contractNode),
       'annotations': {
-        'fanouts': {
+        'scatters': {
           'scout': {
             'source':   'tasks',
             'itemKey':  'currentTask',
@@ -180,9 +191,9 @@ void describe('DAGDeriver.derive', () => {
         'name': 'mismatched-partition',
         'version': '1',
         'entrypoint': 'plan',
-        contracts,
+        "nodes": contracts.map(contractNode),
         'annotations': {
-          'fanouts': {
+          'scatters': {
             'scout': {
               'source':   'tasks',
               'itemKey':  'currentTask',
@@ -198,7 +209,7 @@ void describe('DAGDeriver.derive', () => {
     );
   });
 
-  void it('terminal annotation routes alternate outcomes to null', () => {
+  void it('terminal annotation routes an alternate outcome to an emitted terminal', () => {
     const contracts: OperationContract[] = [
       { 'name': 'classify', 'hardRequired': ['input'],          'produces': ['classification'], 'outputs': ['success', 'off-topic'] },
       { 'name': 'plan',     'hardRequired': ['classification'], 'produces': ['plan'],           'outputs': ['success'] },
@@ -207,11 +218,11 @@ void describe('DAGDeriver.derive', () => {
       'name': 'gated',
       'version': '1',
       'entrypoint': 'classify',
-      contracts,
+      "nodes": contracts.map(contractNode),
       'annotations': {
         'terminals': {
           'classify': [
-            { 'outcome': 'off-topic', 'target': null },
+            { 'outcome': 'off-topic', 'emit': { 'name': 'off-topic-end', 'outcome': 'completed' } },
           ],
         },
       },
@@ -219,7 +230,7 @@ void describe('DAGDeriver.derive', () => {
     const classify = dag.nodes.find((node) => node.name === 'classify');
     assert.ok(classify !== undefined);
     if (classify !== undefined && classify['@type'] === 'SingleNode') {
-      assert.equal(classify.outputs['off-topic'], null);
+      assert.equal(classify.outputs['off-topic'], 'off-topic-end');
       assert.equal(classify.outputs['success'], 'plan');
     }
   });
@@ -233,7 +244,7 @@ void describe('DAGDeriver.derive', () => {
       'name': 'multi-port',
       'version': '1',
       'entrypoint': 'fetch',
-      contracts,
+      "nodes": contracts.map(contractNode),
     });
     const fetch = dag.nodes.find((node) => node.name === 'fetch');
     assert.ok(fetch !== undefined && fetch['@type'] === 'SingleNode');
@@ -256,10 +267,10 @@ void describe('DAGDeriver.derive', () => {
       'name': 'partial-override',
       'version': '1',
       'entrypoint': 'fetch',
-      contracts,
+      "nodes": contracts.map(contractNode),
       'annotations': {
         'terminals': {
-          'fetch': [{ 'outcome': 'error', 'target': null }],
+          'fetch': [{ 'outcome': 'error', 'emit': { 'name': 'fetch-error-end', 'outcome': 'completed' } }],
         },
       },
     });
@@ -267,7 +278,7 @@ void describe('DAGDeriver.derive', () => {
     if (fetch !== undefined && fetch['@type'] === 'SingleNode') {
       assert.equal(fetch.outputs['success'], 'normalize');
       assert.equal(fetch.outputs['cached'],  'normalize');
-      assert.equal(fetch.outputs['error'],   null);
+      assert.equal(fetch.outputs['error'],   'fetch-error-end');
     }
   });
 
@@ -280,10 +291,10 @@ void describe('DAGDeriver.derive', () => {
         'name': 'mismatched',
         'version': '1',
         'entrypoint': 'fetch',
-        contracts,
+        "nodes": contracts.map(contractNode),
         'annotations': {
           'terminals': {
-            'fetch': [{ 'outcome': 'cached', 'target': null }],
+            'fetch': [{ 'outcome': 'cached', 'emit': { 'name': 'fetch-cached-end', 'outcome': 'completed' } }],
           },
         },
       }),
@@ -291,7 +302,7 @@ void describe('DAGDeriver.derive', () => {
     );
   });
 
-  void it('embeddedDAGs annotation renders a ScatterNode placement with dag body', () => {
+  void it('embeddedDAGs annotation renders an EmbeddedDAGNode placement', () => {
     const contracts: OperationContract[] = [
       { 'name': 'prepare', 'hardRequired': ['input'],   'produces': ['payload'], 'outputs': ['success'] },
       { 'name': 'invoke',  'hardRequired': ['payload'], 'produces': ['result'],  'outputs': ['success', 'error'] },
@@ -300,7 +311,7 @@ void describe('DAGDeriver.derive', () => {
       'name': 'embeddeddag-render',
       'version': '1',
       'entrypoint': 'prepare',
-      contracts,
+      "nodes": contracts.map(contractNode),
       'annotations': {
         'embeddedDAGs': {
           'invoke': {
@@ -312,19 +323,16 @@ void describe('DAGDeriver.derive', () => {
     });
     const invoke = dag.nodes.find((node) => node.name === 'invoke');
     assert.ok(invoke !== undefined, 'invoke placement is emitted');
-    if (invoke !== undefined && invoke['@type'] === 'ScatterNode') {
-      assert.ok('dag' in invoke.body, 'body is a dag body');
-      if ('dag' in invoke.body) {
-        assert.equal(invoke.body.dag, 'plugin:parse');
-      }
+    if (invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode') {
+      assert.equal(invoke.dag, 'plugin:parse');
       assert.equal(invoke.outputs['success'], null);  // no successor
       assert.equal(invoke.outputs['error'],   null);
     } else {
-      assert.fail('expected invoke placement to be ScatterNode with dag body');
+      assert.fail('expected invoke placement to be EmbeddedDAGNode');
     }
   });
 
-  void it('embeddedDAGs stateMapping renders as projection and gather on the ScatterNode', () => {
+  void it('embeddedDAGs stateMapping renders as stateMapping on the EmbeddedDAGNode', () => {
     // Child state with the fields referenced in the stateMapping below.
     class EmbeddedDAGChildState extends NodeStateBase {
       childInput  = '';
@@ -338,7 +346,7 @@ void describe('DAGDeriver.derive', () => {
       'name': 'embeddeddag-mapping',
       'version': '1',
       'entrypoint': 'invoke',
-      contracts,
+      "nodes": contracts.map(contractNode),
       'annotations': {
         'embeddedDAGs': {
           'invoke': {
@@ -353,14 +361,11 @@ void describe('DAGDeriver.derive', () => {
       },
     });
     const invoke = dag.nodes.find((node) => node.name === 'invoke');
-    assert.ok(invoke !== undefined && invoke['@type'] === 'ScatterNode');
-    if (invoke !== undefined && invoke['@type'] === 'ScatterNode') {
-      // stateMapping.input (childKey → parentPath) becomes projection
-      assert.deepEqual(invoke.projection, { 'childInput': 'parent.input' });
-      // stateMapping.output (parentPath → childKey) is inverted into gather.mapping (childKey → parentPath)
-      assert.deepEqual(invoke.gather, {
-        'strategy': 'map',
-        'mapping':  { 'childResult': 'parent.result' },
+    assert.ok(invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode');
+    if (invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode') {
+      assert.deepEqual(invoke.stateMapping, {
+        'input':  { 'childInput':  'parent.input' },
+        'output': { 'parent.result': 'childResult' },
       });
     }
   });
@@ -374,7 +379,7 @@ void describe('DAGDeriver.derive', () => {
       'name': 'embeddeddag-routing',
       'version': '1',
       'entrypoint': 'invoke',
-      contracts,
+      "nodes": contracts.map(contractNode),
       'annotations': {
         'embeddedDAGs': {
           'invoke': {
@@ -383,17 +388,17 @@ void describe('DAGDeriver.derive', () => {
           },
         },
         'terminals': {
-          'invoke': [{ 'outcome': 'error', 'target': null }],
+          'invoke': [{ 'outcome': 'error', 'emit': { 'name': 'invoke-error-end', 'outcome': 'completed' } }],
         },
       },
     });
     const invoke = dag.nodes.find((node) => node.name === 'invoke');
-    if (invoke !== undefined && invoke['@type'] === 'ScatterNode') {
-      assert.equal(invoke.outputs['success'], 'finish');  // auto-wired to next stage
-      assert.equal(invoke.outputs['cached'],  'finish');  // auto-wired to next stage
-      assert.equal(invoke.outputs['error'],   null);      // terminal override
+    if (invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode') {
+      assert.equal(invoke.outputs['success'], 'finish');             // auto-wired to next stage
+      assert.equal(invoke.outputs['cached'],  'finish');             // auto-wired to next stage
+      assert.equal(invoke.outputs['error'],   'invoke-error-end');   // terminal override → emitted terminal
     } else {
-      assert.fail('expected invoke placement to be ScatterNode with dag body');
+      assert.fail('expected invoke placement to be EmbeddedDAGNode');
     }
   });
 
@@ -406,7 +411,7 @@ void describe('DAGDeriver.derive', () => {
         'name': 'embeddeddag-mismatch',
         'version': '1',
         'entrypoint': 'invoke',
-        contracts,
+        "nodes": contracts.map(contractNode),
         'annotations': {
           'embeddedDAGs': {
             'invoke': {
@@ -415,7 +420,7 @@ void describe('DAGDeriver.derive', () => {
             },
           },
           'terminals': {
-            'invoke': [{ 'outcome': 'cached', 'target': null }],
+            'invoke': [{ 'outcome': 'cached', 'emit': { 'name': 'invoke-cached-end', 'outcome': 'completed' } }],
           },
         },
       }),
@@ -433,7 +438,7 @@ void describe('DAGDeriver.derive', () => {
       'name': 'explicit-parallel',
       'version': '1',
       'entrypoint': 'a',
-      contracts,
+      "nodes": contracts.map(contractNode),
       'annotations': {
         'parallels': {
           'fan-stage': {
@@ -464,7 +469,7 @@ void describe('DAGDeriver.derive', () => {
         'name': 'empty-parallel',
         'version': '1',
         'entrypoint': 'a',
-        contracts,
+        "nodes": contracts.map(contractNode),
         'annotations': { 'parallels': { 'g': { 'members': [], 'combine': 'collect' } } },
       }),
       /parallels\['g'\] declares zero members/,
@@ -481,7 +486,7 @@ void describe('DAGDeriver.derive', () => {
         'name': 'overlapping',
         'version': '1',
         'entrypoint': 'a',
-        contracts,
+        "nodes": contracts.map(contractNode),
         'annotations': {
           'parallels': {
             'group-1': { 'members': ['a', 'b'], 'combine': 'collect' },
@@ -493,7 +498,7 @@ void describe('DAGDeriver.derive', () => {
     );
   });
 
-  void it('throws when an operation appears in both fanouts and embeddedDAGs', () => {
+  void it('throws when an operation appears in both scatters and embeddedDAGs', () => {
     const contracts: OperationContract[] = [
       { 'name': 'plan',  'hardRequired': ['input'], 'produces': ['tasks'],       'outputs': ['success'] },
       { 'name': 'scout', 'hardRequired': ['tasks'], 'produces': ['scoutResult'], 'outputs': ['success'] },
@@ -504,16 +509,16 @@ void describe('DAGDeriver.derive', () => {
         'name': 'ambiguous',
         'version': '1',
         'entrypoint': 'plan',
-        contracts,
+        "nodes": contracts.map(contractNode),
         'annotations': {
-          'fanouts': {
+          'scatters': {
             'scout': {
-              'source':         'tasks',
-              'itemKey':        'currentTask',
-              'node':           'scout',
-              'strategy':       'custom',
-              'fanInOperation': 'merge',
-              'outcomes':       ['all-success'],
+              'source':     'tasks',
+              'itemKey':    'currentTask',
+              'node':       'scout',
+              'strategy':   'custom',
+              'customNode': 'merge',
+              'outcomes':   ['all-success'],
             },
           },
           'embeddedDAGs': {
@@ -524,14 +529,14 @@ void describe('DAGDeriver.derive', () => {
           },
         },
       }),
-      /appears in both annotations.fanouts and annotations.embeddedDAGs/,
+      /appears in both annotations.scatters and annotations.embeddedDAGs/,
     );
   });
 
   void it('end-to-end: dispatcher executes a EmbeddedDAGNode emitted by DAGDeriver', async () => {
     // Parent flow: prepare → invoke-child (embedded-DAG) → finalize.
-    // Embedded-DAG placements cannot terminate the run — the parent DAG
-    // owns END — so the embedded-DAG step must be followed by another
+    // Embedded-DAG placements cannot terminate the run; the parent DAG
+    // owns END, so the embedded-DAG step must be followed by another
     // parent placement that routes to null.
     const contracts: OperationContract[] = [
       { 'name': 'prepare',      'hardRequired': ['input'],        'produces': ['intermediate'], 'outputs': ['success'] },
@@ -542,7 +547,7 @@ void describe('DAGDeriver.derive', () => {
       'name': 'parent',
       'version': '1',
       'entrypoint': 'prepare',
-      contracts,
+      "nodes": contracts.map(contractNode),
       'annotations': {
         'embeddedDAGs': {
           'invoke-child': {
@@ -556,9 +561,9 @@ void describe('DAGDeriver.derive', () => {
       'name': 'child',
       'version': '1',
       'entrypoint': 'child-step',
-      'contracts': [
+      "nodes": [
         { 'name': 'child-step', 'hardRequired': ['input'], 'produces': ['final'], 'outputs': ['success'] },
-      ],
+      ].map(contractNode),
     });
 
     const dispatcher = new Dagonizer<NodeStateBase>();
@@ -589,7 +594,7 @@ void describe('DAGDeriver.derive', () => {
       'name': 'reg-test',
       'version': '1',
       'entrypoint': 'first',
-      contracts,
+      "nodes": contracts.map(contractNode),
     });
 
     const dispatcher = new Dagonizer<NodeStateBase>();
@@ -606,7 +611,7 @@ void describe('DAGDeriver.derive', () => {
   });
 });
 
-void describe('DAGDeriver — terminals with emit variant', () => {
+void describe('DAGDeriver: terminals with emit variant', () => {
   // Helper: make a node that always returns its first output.
   const make = <TOut extends string>(
     name: string,
@@ -637,7 +642,7 @@ void describe('DAGDeriver — terminals with emit variant', () => {
       'name': 'emit-basic',
       'version': '1',
       'entrypoint': 'classify',
-      contracts,
+      "nodes": contracts.map(contractNode),
       'annotations': {
         'terminals': {
           'classify': [
@@ -674,7 +679,7 @@ void describe('DAGDeriver — terminals with emit variant', () => {
       'name': 'emit-shared',
       'version': '1',
       'entrypoint': 'step-a',
-      contracts,
+      "nodes": contracts.map(contractNode),
       'annotations': {
         'terminals': {
           'step-a': [{ 'outcome': 'fail', 'emit': { 'name': 'end-fail', 'outcome': 'failed' } }],
@@ -708,7 +713,7 @@ void describe('DAGDeriver — terminals with emit variant', () => {
         'name': 'emit-conflict',
         'version': '1',
         'entrypoint': 'step-a',
-        contracts,
+        "nodes": contracts.map(contractNode),
         'annotations': {
           'terminals': {
             'step-a': [{ 'outcome': 'fail', 'emit': { 'name': 'end-end', 'outcome': 'completed' } }],
@@ -738,7 +743,7 @@ void describe('DAGDeriver — terminals with emit variant', () => {
         'name': 'emit-collision',
         'version': '1',
         'entrypoint': 'classify',
-        contracts,
+        "nodes": contracts.map(contractNode),
         'annotations': {
           'terminals': {
             'classify': [{ 'outcome': 'fail', 'emit': { 'name': 'cleanup', 'outcome': 'failed' } }],
@@ -762,7 +767,7 @@ void describe('DAGDeriver — terminals with emit variant', () => {
       'name': 'emit-exec',
       'version': '1',
       'entrypoint': 'classify',
-      contracts,
+      "nodes": contracts.map(contractNode),
       'annotations': {
         'terminals': {
           'classify': [{ 'outcome': 'fail', 'emit': { 'name': 'end-fail', 'outcome': 'failed' } }],
@@ -782,7 +787,7 @@ void describe('DAGDeriver — terminals with emit variant', () => {
     assert.ok(!result.executedNodes.includes('plan'));
   });
 
-  void it('mixing variants: target and emit coexist on the same operation without conflict', () => {
+  void it('multiple emit terminals (completed and failed) coexist on one operation', () => {
     const contracts: OperationContract[] = [
       { 'name': 'classify', 'hardRequired': ['input'], 'produces': ['classification'], 'outputs': ['success', 'fail', 'retry'] },
       { 'name': 'plan',     'hardRequired': ['classification'], 'produces': ['plan'],  'outputs': ['success'] },
@@ -791,22 +796,22 @@ void describe('DAGDeriver — terminals with emit variant', () => {
       'name': 'emit-mix',
       'version': '1',
       'entrypoint': 'classify',
-      contracts,
+      "nodes": contracts.map(contractNode),
       'annotations': {
         'terminals': {
           'classify': [
-            { 'outcome': 'fail',  'target': null },
+            { 'outcome': 'fail',  'emit': { 'name': 'end-fail', 'outcome': 'completed' } },
             { 'outcome': 'retry', 'emit': { 'name': 'end-retry-exhausted', 'outcome': 'failed' } },
           ],
         },
       },
     });
 
-    // target variant: 'fail' routes to null
+    // both outcomes end via emitted terminals (completed and failed)
     const classify = dag.nodes.find((n) => n.name === 'classify');
     assert.ok(classify !== undefined && classify['@type'] === 'SingleNode');
     if (classify !== undefined && classify['@type'] === 'SingleNode') {
-      assert.equal(classify.outputs['fail'],  null);
+      assert.equal(classify.outputs['fail'],  'end-fail');
       assert.equal(classify.outputs['retry'], 'end-retry-exhausted');
       assert.equal(classify.outputs['success'], 'plan');
     }
@@ -821,14 +826,14 @@ void describe('DAGDeriver — terminals with emit variant', () => {
   });
 });
 
-void describe('DAGDeriverEmbeddedDAG<TChildState> — typed stateMapping', () => {
+void describe('DAGDeriverEmbeddedDAG<TChildState>: typed stateMapping', () => {
   /** Concrete child state with known domain fields. */
   class MyChildState extends NodeStateBase {
     payload: string = '';
     result:  number = 0;
   }
 
-  void it('positive: typed embeddedDAG annotation compiles and produces correct ScatterNode projection and gather', () => {
+  void it('positive: typed embeddedDAG annotation compiles and produces correct EmbeddedDAGNode stateMapping', () => {
     const contracts: OperationContract[] = [
       { 'name': 'invoke', 'hardRequired': ['input'], 'produces': ['result'], 'outputs': ['success', 'error'] },
     ];
@@ -847,22 +852,22 @@ void describe('DAGDeriverEmbeddedDAG<TChildState> — typed stateMapping', () =>
       'name':       'typed-embeddeddag',
       'version':    '1',
       'entrypoint': 'invoke',
-      contracts,
+      "nodes": contracts.map(contractNode),
       'annotations': { 'embeddedDAGs': { 'invoke': typedEmbeddedDAG } },
     });
 
     const invoke = dag.nodes.find((n) => n.name === 'invoke');
-    assert.ok(invoke !== undefined && invoke['@type'] === 'ScatterNode');
-    if (invoke !== undefined && invoke['@type'] === 'ScatterNode') {
-      // stateMapping.input (childKey → parentPath) becomes projection
-      assert.deepEqual(invoke.projection, { 'payload': 'parent.seed' });
-      // stateMapping.output (parentPath → childKey) is inverted into gather.mapping (childKey → parentPath)
-      assert.deepEqual(invoke.gather, { 'strategy': 'map', 'mapping': { 'result': 'parent.result' } });
+    assert.ok(invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode');
+    if (invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode') {
+      assert.deepEqual(invoke.stateMapping, {
+        'input':  { 'payload': 'parent.seed' },
+        'output': { 'parent.result': 'result' },
+      });
     }
   });
 
-  void it('backward compat: omitting generic still typechecks (defaults to NodeStateInterface)', () => {
-    // DAGDeriverEmbeddedDAG without a generic — same as the pre-existing usage.
+  void it('untyped: omitting the generic defaults to NodeStateInterface (loose string paths)', () => {
+    // DAGDeriverEmbeddedDAG without a generic; same as the pre-existing usage.
     const contracts: OperationContract[] = [
       { 'name': 'invoke', 'hardRequired': ['input'], 'produces': ['result'], 'outputs': ['success'] },
     ];
@@ -880,24 +885,24 @@ void describe('DAGDeriverEmbeddedDAG<TChildState> — typed stateMapping', () =>
       'name':       'compat-embeddeddag',
       'version':    '1',
       'entrypoint': 'invoke',
-      contracts,
+      "nodes": contracts.map(contractNode),
       'annotations': { 'embeddedDAGs': { 'invoke': annotation } },
     });
 
     const invoke = dag.nodes.find((n) => n.name === 'invoke');
-    assert.ok(invoke !== undefined && invoke['@type'] === 'ScatterNode');
-    if (invoke !== undefined && invoke['@type'] === 'ScatterNode') {
-      // stateMapping.input (childKey → parentPath) becomes projection
-      assert.deepEqual(invoke.projection, { 'anyKey': 'parent.path' });
-      // stateMapping.output (parentPath → childKey) is inverted into gather.mapping (childKey → parentPath)
-      assert.deepEqual(invoke.gather, { 'strategy': 'map', 'mapping': { 'anyKey': 'parent.result' } });
+    assert.ok(invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode');
+    if (invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode') {
+      assert.deepEqual(invoke.stateMapping, {
+        'input':  { 'anyKey': 'parent.path' },
+        'output': { 'parent.result': 'anyKey' },
+      });
     }
   });
 
   void it('@ts-expect-error: wrong child-state key in input mapping produces a compile-time error', () => {
     // The typed annotation catches unknown child-state keys at compile time.
     // Assign to the stateMapping type directly so @ts-expect-error targets the erroring line.
-    // @ts-expect-error — 'nonExistentKey' is not a key of MyChildState
+    // @ts-expect-error: 'nonExistentKey' is not a key of MyChildState
     const _bad: DAGDeriverEmbeddedDAG<MyChildState>['stateMapping'] = { 'input': { 'nonExistentKey': 'parent.seed' } };
     void _bad;
   });

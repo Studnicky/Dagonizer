@@ -1,9 +1,9 @@
 /**
- * DAGErrorJSON — the serialized form returned by `DAGError.toJSON()`.
+ * DAGErrorJSON: the serialized form returned by `DAGError.toJSON()`.
  *
  * This is the wire shape for DAGError at JSON boundaries. The runtime
  * `DAGErrorInterface` extends `Error` and carries a `Date` timestamp and
- * Error-typed `cause` — none of which are JSON-expressible. `DAGErrorJSON`
+ * Error-typed `cause`, none of which are JSON-expressible. `DAGErrorJSON`
  * is the persistence/transport equivalent with an ISO-8601 string timestamp.
  *
  * `context` is typed as `{ type: 'object' }` (opaque) because its contents

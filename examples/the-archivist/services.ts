@@ -1,20 +1,20 @@
 /**
- * ArchivistServices — the dispatcher's services bag.
+ * ArchivistServices: the dispatcher's services bag.
  *
  * The Archivist does not cheat with hand-crafted in-process catalogs.
  * Every candidate comes from an authoritative source (the OpenLibrary
  * tool, real web data) and every score is assigned by the LLM after
  * inspecting the candidate's metadata against the visitor's question.
  *
- *   webSearch  — the only data-acquisition tool. CORS-friendly,
+ *   webSearch:  the only data-acquisition tool. CORS-friendly,
  *                key-free OpenLibrary API. The LLM decides when to
- *                call it via `decideTools`; web-search-scout actually
- *                executes it.
- *   memory     — n3.js triple store; nodes write findings, gate nodes
+ *                call it via `decideTools`; the named scouts
+ *                (`open-library-scout` et al.) actually execute it.
+ *   memory:     n3.js triple store; nodes write findings, gate nodes
  *                ASK the store.
- *   llm        — the brain. Decides tools, ranks candidates, composes
- *                + validates the response.
- *   logger     — Node stdout + browser observable stream.
+ *   llm:        the brain. Decides tools, ranks candidates, composes
+ *                and validates the response.
+ *   logger:     Node stdout + browser observable stream.
  */
 
 import type { ConversationTurn, MemoryDigest } from './ArchivistState.ts';
@@ -24,7 +24,7 @@ import type { Embedder } from '@noocodex/dagonizer/contracts';
 import type { Tool } from '@noocodex/dagonizer/tool';
 
 /**
- * WebSearchTool — adapter contract for the live-web book search.
+ * WebSearchTool: adapter contract for the live-web book search.
  * Concrete instance lives in `tools/OpenLibrarySearchTool.ts` and runs
  * unmodified in Node and in the browser (OpenLibrary serves CORS).
  */
@@ -37,7 +37,7 @@ export interface ScoredCandidate {
   readonly reason?:   string;
   /**
    * Freeform key/value metadata the LLM attached via the
-   * `additionalProperties: true` channel on the ranking schema —
+   * `additionalProperties: true` channel on the ranking schema,
    * e.g. `{ vibe: 'liminal', confidence: 0.85, themes: [...] }`.
    */
   readonly notes?:    Readonly<Record<string, unknown>>;
@@ -48,7 +48,7 @@ export interface ScoredCandidate {
  * (`search` / `describe` / `recommend` / `off-topic`) drive the original
  * pipeline; the four newer intents (`lookup-author` / `find-reviews` /
  * `describe-book` / `recommend-similar`) each route to a dedicated
- * embedded-DAG branch. `recall-memories` is the meta-query intent — the
+ * embedded-DAG branch. `recall-memories` is the meta-query intent: the
  * visitor asked what the agent has seen/remembered across sessions.
  */
 export type ClassifiedIntent =
@@ -66,7 +66,7 @@ export interface LlmClient {
   /**
    * Classify the visitor's question into one of the supported intents.
    * The optional `recalledSummary` is a 1–2 sentence hint from the
-   * recallContext node — injected into the prompt when non-empty so the
+   * recallContext node, injected into the prompt when non-empty so the
    * classifier benefits from prior-session continuity.
    * The optional `signal` is forwarded to the adapter so the underlying
    * fetch / `LanguageModelSession.prompt` is cancelled on timeout or abort.
@@ -78,7 +78,7 @@ export interface LlmClient {
    */
   extractTerms(query: string, signal?: AbortSignal): Promise<readonly string[]>;
   /**
-   * Decide which tools (if any) to invoke for this query — driven
+   * Decide which tools (if any) to invoke for this query; driven
    * through the adapter's native tool channel (Gemini's
    * `functionDeclarations`, Nano's `responseConstraint`, etc.).
    * The optional `signal` is forwarded to the adapter so Nano's
@@ -91,7 +91,7 @@ export interface LlmClient {
   ): Promise<readonly { name: string; arguments: Record<string, unknown> }[]>;
   /**
    * Rank candidates by relevance to the query. The LLM assigns each
-   * candidate a score in [0, 1] — there are no hand-crafted score
+   * candidate a score in [0, 1]; there are no hand-crafted score
    * floors; the model is the ranker.
    *
    * `signal` is optional and forwarded to the adapter's `ChatRequest`.
@@ -102,7 +102,7 @@ export interface LlmClient {
   /**
    * Compose a prose response from a shortlist of candidates. The
    * optional `priorContext` carries facts the agent should reference
-   * if appropriate — e.g. previous visitor queries, previously
+   * if appropriate, e.g. previous visitor queries, previously
    * recommended titles. The LLM may use this to weave continuity
    * commentary ("Last visit you asked about cosmic horror; now…").
    * The optional `recalledSummary` is a 1–2 sentence hint from the
@@ -114,38 +114,43 @@ export interface LlmClient {
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
+    signal?: AbortSignal,
   ): Promise<string>;
-  /** Author-survey compose — chronological body-of-work prose. */
+  /** Author-survey compose: chronological body-of-work prose. */
   composeAuthor(
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
+    signal?: AbortSignal,
   ): Promise<string>;
-  /** Reviews compose — weight ratings (notes.rating / notes.ratingsCount). */
+  /** Reviews compose: weight ratings (notes.rating / notes.ratingsCount). */
   composeReviews(
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
+    signal?: AbortSignal,
   ): Promise<string>;
-  /** Describe a single title — no recommendations. */
+  /** Describe a single title; no recommendations. */
   describeBook(
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
+    signal?: AbortSignal,
   ): Promise<string>;
-  /** Recommend similar — anchored on persistent memory. */
+  /** Recommend similar: anchored on persistent memory. */
   composeSimilar(
     query: string,
     shortlist: readonly Candidate[],
     priorContext?: readonly { kind: string; text: string }[],
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
+    signal?: AbortSignal,
   ): Promise<string>;
   /** Validate a draft against quality rules (length, citations, tone). */
   validate(draft: string, shortlist: readonly Candidate[]): Promise<boolean>;
@@ -161,17 +166,18 @@ export interface LlmClient {
     digest: MemoryDigest,
     recalledSummary?: string,
     conversation?: readonly ConversationTurn[],
+    signal?: AbortSignal,
   ): Promise<string>;
   /**
    * Compose an in-character failure response when all scouts returned
    * empty. `failureCause` is a sanitized one-liner summary accumulated
    * by the scouts. The response acknowledges what was searched, explains
-   * the gap, and offers one concrete next step — never silent-fails.
+   * the gap, and offers one concrete next step; never silent-fails.
    */
-  composeEmptyResponse(query: string, failureCause: string, conversation?: readonly ConversationTurn[]): Promise<string>;
+  composeEmptyResponse(query: string, failureCause: string, conversation?: readonly ConversationTurn[], signal?: AbortSignal): Promise<string>;
   /**
    * Generate a short, curious visitor-style question about a popular
-   * book, author, or series — used to pre-fill the input on a fresh
+   * book, author, or series; used to pre-fill the input on a fresh
    * session before the visitor types anything. Returns a single
    * question under 20 words. No preamble.
    */
@@ -199,7 +205,7 @@ export interface LlmClient {
 }
 
 /**
- * GoogleBooksTool — adapter contract for Google Books v1 volume search.
+ * GoogleBooksTool: adapter contract for Google Books v1 volume search.
  * Concrete instance lives in `tools/GoogleBooksTool.ts`. Each returned
  * `Candidate` carries `notes.rating` and `notes.ratingsCount` when the
  * source had them; the `find-reviews` branch weights those during compose
@@ -208,7 +214,7 @@ export interface LlmClient {
 export type GoogleBooksToolContract = Tool<{ query: string; maxResults?: number } & Record<string, unknown>, readonly Candidate[]>;
 
 /**
- * WikipediaSummaryTool — adapter contract for the Wikipedia REST
+ * WikipediaSummaryTool: adapter contract for the Wikipedia REST
  * `page/summary` enrichment source. Concrete instance lives in
  * `tools/WikipediaSummaryTool.ts`. Returns one `Candidate` per query
  * keyed by a work URN or `urn:wiki:<title>`; `CanonicalId.dedupe` folds
@@ -217,7 +223,7 @@ export type GoogleBooksToolContract = Tool<{ query: string; maxResults?: number 
 export type WikipediaSummaryToolContract = Tool<{ query: string } & Record<string, unknown>, readonly Candidate[]>;
 
 /**
- * SubjectSearchTool — adapter contract for the OpenLibrary subject/theme
+ * SubjectSearchTool: adapter contract for the OpenLibrary subject/theme
  * search. Concrete instance lives in `tools/SubjectSearchTool.ts`. The
  * `subject_search` tool lets visitors locate books by thematic content
  * (e.g. "labyrinth", "haunted house") rather than by title or author.
@@ -241,11 +247,17 @@ export interface ArchivistServices {
    * Optional embedder service for cosine-similarity recall and hybrid
    * ranking. Resolved at runtime via `EmbedderCascade.select()`. Set to
    * `null` when no embedder is reachable (browser without Ollama, no
-   * API keys, etc.) — every consumer is required to handle this
+   * API keys, etc.); every consumer is required to handle this
    * gracefully and fall back to deterministic Jaccard / heuristics.
    * Explicit-null sentinel (not optional) keeps V8 hidden-class stability.
    */
   readonly embedder: Embedder | null;
+  /**
+   * Per-placement deadline overrides in milliseconds, keyed by node/placement
+   * name (`context.nodeName`). Empty map ⇒ every node uses its built-in
+   * default. The live demo wires this from the TimeoutPane sliders.
+   */
+  readonly nodeTimeouts: Readonly<Record<string, number>>;
   readonly logger: { info(message: string): void; warn(message: string): void };
 }
 // #endregion services-shape

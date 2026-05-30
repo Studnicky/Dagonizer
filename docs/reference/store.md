@@ -22,8 +22,38 @@ alongside parent state for deterministic resume.
 
 ```ts
 import { BaseStore, MemoryStore, StoreError } from '@noocodex/dagonizer/store';
-import type { Store, StoreSnapshot, StoreSnapshotEntry } from '@noocodex/dagonizer/contracts';
+import type { Snapshottable, Store, StoreSnapshot, StoreSnapshotEntry } from '@noocodex/dagonizer/contracts';
 ```
+
+---
+
+## Interface: `Snapshottable`
+
+`@noocodex/dagonizer/contracts`
+
+The capability checkpointing depends on: a named container that serializes
+itself to a `StoreSnapshot` and rehydrates from one. It declares only two
+methods.
+
+```ts
+interface Snapshottable {
+  snapshot(): Promise<StoreSnapshot>;
+  restore(snapshot: StoreSnapshot): Promise<void>;
+}
+```
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `snapshot()` | `Promise<StoreSnapshot>` | Capture the entire state as a typed envelope. |
+| `restore(snapshot)` | `Promise<void>` | Repopulate from a snapshot. Implementations validate `type` and `version` before applying entries. |
+
+`Snapshottable` is decoupled from the key-value surface on purpose.
+`Checkpoint.capture(dag, result, { stores })` and `Checkpoint.restoreStores(map)`
+take `Record<string, Snapshottable>`, so a non-KV backing (an RDF triple
+store, a vector index, an append-only projection) can ride along in a
+checkpoint without implementing `get`/`set`/`has`/`delete`/`update`. `Store
+extends Snapshottable`, so every `Store` is also `Snapshottable`. The
+`StoreSnapshot` / `StoreSnapshotEntry` envelopes live with this capability.
 
 ---
 
@@ -31,22 +61,21 @@ import type { Store, StoreSnapshot, StoreSnapshotEntry } from '@noocodex/dagoniz
 
 `@noocodex/dagonizer/contracts`
 
-Shared key-value store contract. Every method returns a `Promise`. There is no
-sync variant; always `await` store calls.
+Shared key-value store contract, extending `Snapshottable`. Every method returns
+a `Promise`. There is no sync variant; always `await` store calls.
 
 Values are typed per-call via the method's `<T>` parameter. There is no
 class-level value generic. A `Store` instance can hold heterogeneous values
 under different keys; type narrowing happens at the call site.
 
 ```ts
-interface Store {
+interface Store extends Snapshottable {
   get<T extends JsonValue>(key: string): Promise<T | undefined>;
   set<T extends JsonValue>(key: string, value: T): Promise<void>;
   has(key: string): Promise<boolean>;
   delete(key: string): Promise<boolean>;
   update<T extends JsonValue>(key: string, fn: (current: T | undefined) => T): Promise<T>;
-  snapshot(): Promise<StoreSnapshot>;
-  restore(snapshot: StoreSnapshot): Promise<void>;
+  // snapshot() / restore() inherited from Snapshottable.
   connect(): Promise<void>;
   disconnect(): Promise<void>;
 }
@@ -59,8 +88,7 @@ interface Store {
 | `has(key)` | `Promise<boolean>` | Return `true` when the key exists. |
 | `delete(key)` | `Promise<boolean>` | Remove the key. Returns `true` when the key existed. |
 | `update(key, fn)` | `Promise<T>` | Atomic read-modify-write. `fn` receives the current value (or `undefined`) and returns the new value. Implementations are responsible for atomicity. |
-| `snapshot()` | `Promise<StoreSnapshot>` | Capture the entire store state as a typed envelope. |
-| `restore(snapshot)` | `Promise<void>` | Repopulate from a snapshot. Validates `type` and `version` before applying entries. |
+| `snapshot()` / `restore(snapshot)` | inherited | From `Snapshottable`: capture / repopulate the whole store. |
 | `connect()` | `Promise<void>` | Optional lifecycle hook for stores that hold a connection. |
 | `disconnect()` | `Promise<void>` | Optional lifecycle hook for stores that hold a connection. |
 
@@ -74,8 +102,8 @@ Implementations are responsible for delivering this. See the `update` note on
 
 `@noocodex/dagonizer/contracts`
 
-Versioned snapshot envelope returned by `Store.snapshot()` and consumed by
-`Store.restore()`.
+Versioned snapshot envelope returned by `Snapshottable.snapshot()` and consumed
+by `Snapshottable.restore()`.
 
 ```ts
 interface StoreSnapshot {

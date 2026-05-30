@@ -1,5 +1,5 @@
 /**
- * TerminalNode — explicit terminal placement in JSON-LD canonical form.
+ * TerminalNode: explicit terminal placement in JSON-LD canonical form.
  *
  * Uses `@type: 'TerminalNode'` as the discriminator. `@id` is the placement
  * URN: `urn:noocodex:dag:<dagName>/node/<name>`.
@@ -12,7 +12,7 @@
  * Naming: the placement interface is distinct from `NodeInterface` (the adapter
  * contract consumers implement). A "node" is the registered unit of work; a
  * "placement" is its appearance inside a `DAG`. TerminalNodes are placement-only
- * constructs — they have no backing `NodeInterface`.
+ * constructs; they have no backing `NodeInterface`.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
@@ -36,7 +36,7 @@ export type TerminalNode = FromSchema<typeof TerminalNodeSchema>;
 
 /**
  * Terminal node placement.
- * Ends the flow with an explicit outcome — no routing, no outputs.
+ * Ends the flow with an explicit outcome; no routing, no outputs.
  *
  * Unlike every other placement kind, TerminalNode carries no `outputs` map:
  * the engine captures `outcome` from the placement and calls

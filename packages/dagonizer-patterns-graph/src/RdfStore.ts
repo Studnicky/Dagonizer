@@ -1,5 +1,5 @@
 /**
- * RdfStore — in-process triple store that implements both Store
+ * RdfStore: in-process triple store that implements both Store
  * (key-value via reification) and TripleStore (native quads).
  *
  * The Store-side `set(key, value)` reifies as a triple:
@@ -12,7 +12,7 @@
  * Snapshot contract:
  *   `snapshot()` captures only the Store-reified quads (subject under the
  *   configured prefix, predicate matching valuePredicate). User-asserted
- *   quads on other predicates are NOT included in the snapshot — they are
+ *   quads on other predicates are NOT included in the snapshot; they are
  *   considered ephemeral graph data, not durable Store state. After
  *   `restore()`, user-asserted quads that were present before the restore
  *   are cleared alongside the reified ones; the backing array is fully
@@ -66,7 +66,7 @@ export class RdfStore extends BaseStore implements TripleStore {
   // ── Store contract (reified key-value over the quad graph) ──────────────────
 
   /**
-   * Atomic RMW — reads directly from `#quads` without any intermediate
+   * Atomic RMW: reads directly from `#quads` without any intermediate
    * `await`, so no microtask can interleave between the read and the write.
    */
   override async update<T extends JsonValue>(
@@ -205,7 +205,7 @@ export class RdfStore extends BaseStore implements TripleStore {
  * Match a single quad against a SlotPattern.
  *
  * Returns `null` when the quad does not match. Returns a `Binding` (possibly
- * empty) when it does — variable slots (string values in the pattern) are
+ * empty) when it does; variable slots (string values in the pattern) are
  * bound to the corresponding quad Term; constant slots (Term values in the
  * pattern) must match by both `termType` and `value`.
  *
@@ -217,12 +217,12 @@ function matchQuad(quad: Quad, pattern: SlotPattern): Binding | null {
 
   for (const slot of ['subject', 'predicate', 'object', 'graph'] as const) {
     const patternSlot = pattern[slot];
-    if (patternSlot === undefined) continue; // unconstrained — any value matches
+    if (patternSlot === undefined) continue; // unconstrained: any value matches
 
     const quadTerm = quad[slot];
 
     if (typeof patternSlot === 'string') {
-      // Variable slot — strip leading `?` to match the TripleStore.Binding convention
+      // Variable slot: strip leading `?` to match the TripleStore.Binding convention
       // ("Keys are pattern-variable names without the leading `?`").
       const varName = patternSlot.startsWith('?') ? patternSlot.slice(1) : patternSlot;
       binding[varName] = quadTerm;

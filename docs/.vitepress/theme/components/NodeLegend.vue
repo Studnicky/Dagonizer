@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
- * NodeLegend — chip row labelling the two `NodeKind` values.
+ * NodeLegend: chip row labelling the two `NodeKind` values.
  *
- * Pure presentational. Mirrors the cytoscape stylesheet's selectors —
- * solid teal for deterministic, dashed violet for non-deterministic —
+ * Pure presentational. Mirrors the cytoscape stylesheet's selectors:
+ * solid teal for deterministic, dashed violet for non-deterministic,
  * so the visitor can map graph borders to a category at a glance.
  */
 
@@ -15,7 +15,7 @@ interface LegendChip {
 
 const chips: readonly LegendChip[] = [
   { kind: 'deterministic',     label: 'deterministic',     hint: 'same inputs → same outputs' },
-  { kind: 'non-deterministic', label: 'non-deterministic', hint: 'LLM / web — output can vary' },
+  { kind: 'non-deterministic', label: 'non-deterministic', hint: 'LLM / web: output can vary' },
 ];
 </script>
 

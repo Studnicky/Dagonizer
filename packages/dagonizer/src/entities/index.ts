@@ -1,18 +1,18 @@
 /**
- * Entity registry — JSON Schema + derived TS type per shape.
+ * Entity registry: JSON Schema + derived TS type per shape.
  *
  * Layout mirrors the nocturne `entities/` convention so the package can swap
  * in `@noocodex/jsontology` without restructuring:
  *
- *   dag/             — DAG and its node-entry sub-shapes
- *   state-machines/  — DAGLifecycleState wire shape
- *   node/            — Node, NodeContext, NodeOutput, NodeError, NodeWarning, NodeResult, NodeStateData
- *   execution/       — ExecutionResult
- *   validation/      — ValidationResult
- *   errors/          — DAGErrorJSON
- *   constants/       — GatherStrategyName, ScatterOutput, MetadataKey, Output, ParallelCombine, NodeType
- *   runtime/         — BackoffStrategy
- *   primitives/      — JsonSchema (draft-2020-12 TS model)
+ *   dag/: DAG and its node-entry sub-shapes
+ *   state-machines/: DAGLifecycleState wire shape
+ *   node/: Node, NodeContext, NodeOutput, NodeError, NodeWarning, NodeResult, NodeStateData
+ *   execution/: ExecutionResult
+ *   validation/: ValidationResult
+ *   errors/: DAGErrorJSON
+ *   constants/: GatherStrategyName, ScatterOutput, MetadataKey, Output, ParallelCombine, NodeType
+ *   runtime/: BackoffStrategy
+ *   primitives/: JsonSchema (draft-2020-12 TS model)
  *
  * When jsontology lands, replace each `FromSchema<typeof FooSchema>` derived
  * type with `EntityType<typeof FooSchema['$id']>` and register every Schema
@@ -40,6 +40,9 @@ export type { GatherConfig } from './dag/GatherConfig.js';
 
 export { ScatterNodeSchema } from './dag/ScatterNode.js';
 export type { ScatterNode } from './dag/ScatterNode.js';
+
+export { EmbeddedDAGNodeSchema } from './dag/EmbeddedDAGNode.js';
+export type { EmbeddedDAGNode } from './dag/EmbeddedDAGNode.js';
 
 export { DAGSchema, DAG_CONTEXT } from './dag/DAG.js';
 export type { DAG } from './dag/DAG.js';

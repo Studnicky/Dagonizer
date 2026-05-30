@@ -1,5 +1,5 @@
 /**
- * RespondNode — terminal node that writes the draft response to a
+ * RespondNode: terminal node that writes the draft response to a
  * consumer-controlled location and marks the lifecycle completed.
  *
  * Default implementation reads from `state.draft` (a common convention
@@ -20,7 +20,8 @@ export abstract class RespondNode<
 
   /** Default extraction: state.draft when present. Override for custom fields. */
   protected extractDraft(state: TState): string {
-    return (state as { draft?: unknown }).draft as string ?? '';
+    const raw = (state as Record<string, unknown>)['draft'];
+    return typeof raw === 'string' ? raw : '';
   }
 
   async execute(
@@ -28,6 +29,6 @@ export abstract class RespondNode<
     _context: NodeContextInterface<undefined>,
   ): Promise<NodeOutputInterface<'success'>> {
     this.emit(state, this.extractDraft(state));
-    return Promise.resolve({ 'output': 'success' });
+    return { 'output': 'success' };
   }
 }

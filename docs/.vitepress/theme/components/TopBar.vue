@@ -1,11 +1,11 @@
 <script setup lang="ts">
 /**
- * TopBar — owns the left zone of the VitePress navbar.
+ * TopBar: owns the left zone of the VitePress navbar.
  *
  * Renders one continuous row: [sidebar toggle][icon][wordmark]. Mounted
  * via the `nav-bar-content-before` Layout slot in theme/index.ts. The
  * default `VPNavBarTitle` is hidden in base.css so this component is
- * the single authority on the left navbar zone — VitePress keeps
+ * the single authority on the left navbar zone; VitePress keeps
  * ownership of the right zone (search, nav links, theme switch).
  *
  * Sidebar toggle controls the `dagonizer-sidebar-collapsed` class on
@@ -94,7 +94,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-/* Single flex row — toggle and brand sit side by side at the left
+/* Single flex row: toggle and brand sit side by side at the left
    edge of the navbar. The default VitePress flex layout pushes the
    right cluster (search, nav links, theme button) to the opposite
    end on its own; we never touch it. */
@@ -167,7 +167,7 @@ onBeforeUnmount(() => {
   filter: drop-shadow(0 0 6px rgba(34, 232, 255, 0.35));
 }
 
-/* Backdrop scrim — covers the page when the drawer is open. Click
+/* Backdrop scrim: covers the page when the drawer is open. Click
    anywhere outside the drawer to dismiss. The .dagonizer-sidebar-*
    classes on <html> drive visibility (see base.css). */
 .dagonizer-topbar-backdrop {

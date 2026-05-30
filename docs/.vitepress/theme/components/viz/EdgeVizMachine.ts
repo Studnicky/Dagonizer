@@ -1,5 +1,5 @@
 /**
- * EdgeVizMachine — visual-state FSM for one cytoscape edge.
+ * EdgeVizMachine: visual-state FSM for one cytoscape edge.
  *
  *   ┌──────┐  traverse   ┌───────────┐
  *   │ idle ├────────────►│ traversed │

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * HomeHero — renders the hero block and feature grid from the page's
+ * HomeHero: renders the hero block and feature grid from the page's
  * `hero:` and `features:` frontmatter. Mounted in the `doc-before`
  * slot so home content uses `layout: doc` and gets the canonical
  * sidebar/topbar/footer layout that every other page uses. Nothing

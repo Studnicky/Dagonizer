@@ -17,7 +17,7 @@ function removeLanguageModel(): void {
 void test('GeminiNanoAdapter identity', () => {
   const a = new GeminiNanoAdapter();
   assert.equal(a.id, 'gemini-nano');
-  assert.equal(a.capabilities.toolUse, 'none');
+  assert.equal(a.capabilities.toolUse, 'partial');
 });
 
 void test('detectGeminiNano returns unavailable in node', async () => {

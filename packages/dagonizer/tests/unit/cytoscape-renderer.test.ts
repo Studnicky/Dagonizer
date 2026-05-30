@@ -129,7 +129,7 @@ void describe('CytoscapeRenderer.render', () => {
     assert.deepEqual([...ids].sort(), ['a__error__END', 'a__success__END']);
   });
 
-  void it('ScatterNode with body.dag expands inline when the DAG is registered', () => {
+  void it('EmbeddedDAGNode expands inline when the DAG is registered', () => {
     const innerDAG: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:inner',
@@ -154,20 +154,20 @@ void describe('CytoscapeRenderer.render', () => {
       'entrypoint': 'embed',
       'nodes': [{
         '@id':   'urn:noocodex:dag:outer/node/embed',
-        '@type': 'ScatterNode',
+        '@type': 'EmbeddedDAGNode',
         'name':  'embed',
-        'body':  { 'dag': 'inner' },
+        'dag':   'inner',
         'outputs': { 'success': null },
       }],
     };
     const embeddedDAGs = new Map<string, DAG>([['inner', innerDAG]]);
     const elements = CytoscapeRenderer.render(outerDAG, { embeddedDAGs, "computeLayout": false });
 
-    // The compound parent node is emitted for the ScatterNode placement
+    // The compound parent node is emitted for the EmbeddedDAGNode placement
     const embedNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'embed');
     assert.ok(embedNode !== undefined, 'embed compound node must be present');
-    assert.equal(embedNode.data.type, 'scatter');
-    assert.equal(embedNode.classes, 'dag-scatter');
+    assert.equal(embedNode.data.type, 'embedded-dag');
+    assert.equal(embedNode.classes, 'dag-embedded-dag');
 
     // The inner step node is emitted as a child with parent=embed
     const stepNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'embed/step');
@@ -195,7 +195,7 @@ void describe('CytoscapeRenderer.render', () => {
     const embeddedDAGs = new Map<string, DAG>();
     const elements = CytoscapeRenderer.render(dag, { embeddedDAGs, "computeLayout": false });
 
-    // No inner children emitted — node-body scatters are opaque
+    // No inner children emitted; node-body scatters are opaque
     const childNodes = elements.filter(
       (el): el is CytoscapeNodeElement => isNode(el) && el.data.id.startsWith('scatter/'),
     );
@@ -210,7 +210,7 @@ void describe('CytoscapeRenderer.render', () => {
   });
 });
 
-void describe('CytoscapeRenderer.render — TerminalNode', () => {
+void describe('CytoscapeRenderer.render: TerminalNode', () => {
   void it('renders a completed TerminalNode with type=terminal and outcome=completed', () => {
     const terminal: TerminalNodePlacementInterface = {
       '@id':     'urn:noocodex:dag:ct/node/done',
@@ -348,10 +348,10 @@ void describe('CytoscapeRenderer.titleCase', () => {
     assert.equal(CytoscapeRenderer.titleCase('extract-query'), 'Extract Query');
   });
 
-  void it("converts 'book-search-fanout/openlibrary-scout' to 'Book Search Fanout / Openlibrary Scout'", () => {
+  void it("converts 'similar-search/openlibrary-scout' to 'Similar Search / Openlibrary Scout'", () => {
     assert.equal(
-      CytoscapeRenderer.titleCase('book-search-fanout/openlibrary-scout'),
-      'Book Search Fanout / Openlibrary Scout',
+      CytoscapeRenderer.titleCase('similar-search/openlibrary-scout'),
+      'Similar Search / Openlibrary Scout',
     );
   });
 

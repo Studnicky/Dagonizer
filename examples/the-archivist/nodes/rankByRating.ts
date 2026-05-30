@@ -1,5 +1,5 @@
 /**
- * rankByRating — deterministic rating-weighted ranker for the
+ * rankByRating: deterministic rating-weighted ranker for the
  * `find-reviews` branch.
  *
  * Replaces the LLM-based `rankCandidates` for the reviews branch so
@@ -13,7 +13,7 @@
  * top-weighted candidate is normalised to score = 1.0; all others are
  * scaled proportionally.
  *
- * Output route is always 'ranked' — empty or unrated sets pass through
+ * Output route is always 'ranked'; empty or unrated sets pass through
  * so the merge node can soft-gate downstream.
  */
 

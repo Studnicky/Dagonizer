@@ -1,5 +1,5 @@
 /**
- * OpenAiCompatibleAdapter — shared base for providers that speak the
+ * OpenAiCompatibleAdapter: shared base for providers that speak the
  * OpenAI `chat/completions` wire format.
  *
  * Most LPU- and GPU-hosted open-model providers (Groq, Cerebras,
@@ -60,7 +60,6 @@ export interface OpenAiCompatibleConfig {
 
   /** Per-request timeout. Defaults to 60s. */
   readonly timeoutMs?: number;
-  readonly maxAttempts?: number;
 }
 
 /** Per-consumer options every OpenAI-compatible adapter accepts. */
@@ -103,7 +102,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
       config.id,
       config.displayName,
       config.capabilities,
-      { 'maxAttempts': options.maxAttempts ?? config.maxAttempts ?? 3 },
+      { 'maxAttempts': options.maxAttempts ?? 3 },
     );
     this.#apiKey = apiKey;
     this.#model = options.model ?? config.defaultModel;
@@ -123,7 +122,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
   }
 
   /**
-   * Default availability probe — true when a non-empty API key was
+   * Default availability probe: true when a non-empty API key was
    * supplied. Every OpenAI-compatible provider this base targets
    * (Cerebras, Groq, Mistral, OpenRouter, …) gates access on a bearer
    * token; a missing key is a definitive "unavailable" signal that

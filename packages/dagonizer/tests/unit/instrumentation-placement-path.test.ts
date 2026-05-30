@@ -28,7 +28,7 @@ class PathRecordingInstrumentation extends NoopInstrumentation<NodeStateBase> {
   override nodeStart(_dagName: string, nodeName: string, _state: NodeStateBase, placementPath: readonly string[]): void {
     this.calls.push({ 'hook': 'nodeStart', nodeName, 'placementPath': [...placementPath] });
   }
-  override nodeEnd(_dagName: string, nodeName: string, _output: string | undefined, _state: NodeStateBase, placementPath: readonly string[]): void {
+  override nodeEnd(_dagName: string, nodeName: string, _output: string | null, _state: NodeStateBase, placementPath: readonly string[]): void {
     this.calls.push({ 'hook': 'nodeEnd', nodeName, 'placementPath': [...placementPath] });
   }
 
@@ -52,7 +52,7 @@ const makeNode = (
 
 // ── DAG fixtures ─────────────────────────────────────────────────────────
 //
-// Innermost DAG — used as the inner placement inside `middleDAG`.
+// Innermost DAG: used as the inner placement inside `middleDAG`.
 const leafDAG: DAG = {
   '@context': DAG_CONTEXT,
   '@id':   'urn:noocodex:dag:pp-leaf',
@@ -71,7 +71,7 @@ const leafDAG: DAG = {
   ],
 };
 
-// Middle DAG — wraps `leafDAG` so the leaf runs at depth 2 inside the parent.
+// Middle DAG: wraps `leafDAG` so the leaf runs at depth 2 inside the parent.
 const middleDAG: DAG = {
   '@context': DAG_CONTEXT,
   '@id':   'urn:noocodex:dag:pp-middle',
@@ -89,15 +89,15 @@ const middleDAG: DAG = {
     },
     {
       '@id':   'urn:noocodex:dag:pp-middle/node/run-leaf',
-      '@type': 'ScatterNode',
+      '@type': 'EmbeddedDAGNode',
       'name':  'run-leaf',
-      'body':  { 'dag': 'pp-leaf' },
+      'dag':   'pp-leaf',
       'outputs': { 'success': null, 'error': null },
     },
   ],
 };
 
-// Parent DAG — top-level placement, then one embedded-DAG (which itself
+// Parent DAG: top-level placement, then one embedded-DAG (which itself
 // nests another embedded-DAG). Used to assert empty / one-deep / two-deep
 // paths in a single execution.
 const parentDAG: DAG = {
@@ -117,9 +117,9 @@ const parentDAG: DAG = {
     },
     {
       '@id':   'urn:noocodex:dag:pp-parent/node/run-middle',
-      '@type': 'ScatterNode',
+      '@type': 'EmbeddedDAGNode',
       'name':  'run-middle',
-      'body':  { 'dag': 'pp-middle' },
+      'dag':   'pp-middle',
       'outputs': { 'success': null, 'error': null },
     },
   ],
@@ -185,8 +185,8 @@ void describe('Instrumentation placementPath threading', () => {
 
   void it('emits the embedded-DAG placement name as the SAME path for two distinct embed instances with same inner names', async () => {
     // Mirrors the Archivist case: two embedded-DAG placements point at the
-    // SAME inner DAG. The inner node fires twice — once per outer placement
-    // — and each fire must carry its OWN outer name as the path so the
+    // SAME inner DAG. The inner node fires twice, once per outer placement,
+    // and each fire must carry its OWN outer name as the path so the
     // visualiser can disambiguate same-named inner nodes.
 
     const innerDAG: DAG = {
@@ -217,16 +217,16 @@ void describe('Instrumentation placementPath threading', () => {
       'nodes': [
         {
           '@id':   'urn:noocodex:dag:pp-two-instances/node/first-embed',
-          '@type': 'ScatterNode',
+          '@type': 'EmbeddedDAGNode',
           'name':  'first-embed',
-          'body':  { 'dag': 'pp-shared-inner' },
+          'dag':   'pp-shared-inner',
           'outputs': { 'success': 'second-embed', 'error': 'second-embed' },
         },
         {
           '@id':   'urn:noocodex:dag:pp-two-instances/node/second-embed',
-          '@type': 'ScatterNode',
+          '@type': 'EmbeddedDAGNode',
           'name':  'second-embed',
-          'body':  { 'dag': 'pp-shared-inner' },
+          'dag':   'pp-shared-inner',
           'outputs': { 'success': null, 'error': null },
         },
       ],

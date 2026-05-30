@@ -1,5 +1,5 @@
 /**
- * MistralApiAdapter — Mistral la Plateforme REST adapter.
+ * MistralApiAdapter: Mistral la Plateforme REST adapter.
  *
  * `mistral-small-latest`. Uses `max_tokens` (Mistral follows the
  * original OpenAI spec, not the newer `max_completion_tokens`).

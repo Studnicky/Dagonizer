@@ -1,5 +1,5 @@
 /**
- * VirtualClockProvider — deterministic monotonic clock for tests and replay.
+ * VirtualClockProvider: deterministic monotonic clock for tests and replay.
  *
  * Test-only. Install via `Clock.configure(new VirtualClockProvider(0n))`.
  * Advance virtual time by nanoseconds with `tickNs()` (or by milliseconds

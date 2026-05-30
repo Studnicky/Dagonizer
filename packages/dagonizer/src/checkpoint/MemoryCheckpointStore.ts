@@ -1,5 +1,5 @@
 /**
- * MemoryCheckpointStore — in-process `CheckpointStore`.
+ * MemoryCheckpointStore: in-process `CheckpointStore`.
  *
  * Stores entries in a `Map<string, string>` on the instance. Useful for
  * tests, examples, and ephemeral demo flows. Not for production: the

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * ArchivistRunner — orchestrator for the in-browser Archivist demo.
+ * ArchivistRunner: orchestrator for the in-browser Archivist demo.
  *
  * Two-column iridis-style layout with container-query breakpoint:
  *
@@ -12,7 +12,7 @@
  *   └──────────────────────────┴───────────────────────────────────────────┘
  *
  * Pure observer: the dispatcher's lifecycle hooks toggle CSS classes on
- * cytoscape nodes / edges via the DagGraph's imperative surface — no
+ * cytoscape nodes / edges via the DagGraph's imperative surface; no
  * setTimeout, no polling, no JS-driven animation loops.
  */
 
@@ -25,7 +25,7 @@ import type { ExecutionResultInterface } from '@noocodex/dagonizer';
 import { CytoscapeRenderer } from '../../../../packages/dagonizer/src/viz/CytoscapeRenderer.ts';
 
 import { ArchivistState } from '../../../../examples/the-archivist/ArchivistState.ts';
-import { archivistDAG } from '../../../../examples/the-archivist/dag.ts';
+import { archivistBundle, archivistDAG } from '../../../../examples/the-archivist/dag.ts';
 import { ConsoleLogger } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
 import { MemoryStore } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
 import { ONTOLOGY_NTRIPLES } from '../../../../examples/the-archivist/ontology/ArchivistOntology.ts';
@@ -33,24 +33,6 @@ import { SeedLibrary } from '../../../../examples/the-archivist/data/SeedLibrary
 import { RdfProvObserver } from '../../../../examples/the-archivist/provenance/RdfProvObserver.ts';
 import { StateProjection } from '../../../../examples/the-archivist/state/StateProjection.ts';
 import { NODE_KINDS } from '../../../../examples/the-archivist/nodes/ArchivistNode.ts';
-import { classifyIntent } from '../../../../examples/the-archivist/nodes/classifyIntent.ts';
-import { decideTools } from '../../../../examples/the-archivist/nodes/decideTools.ts';
-import { extractQuery } from '../../../../examples/the-archivist/nodes/extractQuery.ts';
-import { groupByYear } from '../../../../examples/the-archivist/nodes/groupByYear.ts';
-import { hasCitationsGate } from '../../../../examples/the-archivist/nodes/hasCitationsGate.ts';
-import { mergeCandidates } from '../../../../examples/the-archivist/nodes/mergeCandidates.ts';
-import { rankByRating } from '../../../../examples/the-archivist/nodes/rankByRating.ts';
-import { pickBestMatch } from '../../../../examples/the-archivist/nodes/pickBestMatch.ts';
-import { recallContext } from '../../../../examples/the-archivist/nodes/recallContext.ts';
-import { recallMemories } from '../../../../examples/the-archivist/nodes/recallMemories.ts';
-import { composeMemoryResponse } from '../../../../examples/the-archivist/nodes/composeMemoryResponse.ts';
-import { recallPastVisits } from '../../../../examples/the-archivist/nodes/recallPastVisits.ts';
-import { recommendSimilar } from '../../../../examples/the-archivist/nodes/recommendSimilar.ts';
-import { recordFindings } from '../../../../examples/the-archivist/nodes/recordFindings.ts';
-import { composeResponse, validateResponse } from '../../../../examples/the-archivist/nodes/composeResponse.ts';
-import { rankCandidates } from '../../../../examples/the-archivist/nodes/rankCandidates.ts';
-import { composeEmptyResponse, declineEmpty, declineOffTopic, respondToVisitor } from '../../../../examples/the-archivist/nodes/respondToVisitor.ts';
-import { webSearchScout, openLibraryScout, googleBooksScout, subjectScout, wikipediaScout } from '../../../../examples/the-archivist/nodes/scouts.ts';
 import { detectBackends, hasNoRunnableModel, instantiateProvider, loadApiKeys, loadOllamaModel, pickBestBackend, saveApiKeys, saveOllamaModel } from '../../../../examples/the-archivist/providers/index.ts';
 import { MobileDetection } from '../../../../examples/the-archivist/providers/MobileDetection.ts';
 import type { BackendAvailability, ProviderId } from '../../../../examples/the-archivist/providers/index.ts';
@@ -59,14 +41,8 @@ import { GoogleBooksTool } from '@noocodex/dagonizer-tool-googlebooks';
 import { OpenLibrarySearchTool } from '@noocodex/dagonizer-tool-openlibrary';
 import { SubjectSearchTool } from '@noocodex/dagonizer-tool-openlibrary';
 import { WikipediaSummaryTool } from '@noocodex/dagonizer-tool-wikipedia';
-import {
-  BookSearchFanoutDAG,
-  registerBookSearchFanoutNodes,
-} from '../../../../examples/the-archivist/embedded-dags/BookSearchFanoutDAG.ts';
-import {
-  ComposeRetryLoopDAG,
-  registerComposeRetryLoopNodes,
-} from '../../../../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.ts';
+import { BookSearchScatterDAG, bookSearchScatterBundle } from '../../../../examples/the-archivist/embedded-dags/BookSearchScatterDAG.ts';
+import { ComposeRetryLoopDAG, composeRetryLoopBundle } from '../../../../examples/the-archivist/embedded-dags/ComposeRetryLoopDAG.ts';
 
 import { ObservedDagonizer } from './ObservedDagonizer.ts';
 import BackendPicker from './BackendPicker.vue';
@@ -99,7 +75,7 @@ const isMobile = ref(false);
 const apiKeys = ref<Partial<Record<ProviderId, string>>>(loadApiKeys());
 const ollamaModel = ref<string>(loadOllamaModel());
 
-// Slow-backend banner — shown when the active backend is the browser
+// Slow-backend banner: shown when the active backend is the browser
 // built-in `LanguageModel` or WebLLM AND no cloud key is configured.
 // Dismissable; preference persisted under `archivist:dismiss-slow-banner`.
 const SLOW_BANNER_KEY = 'archivist:dismiss-slow-banner';
@@ -158,7 +134,7 @@ function onTimeoutSettingsUpdate(settings: TimeoutSettings): void {
 
 /**
  * Overall safety-net deadline: sum of all per-phase budgets plus a small
- * grace window. Per-node timeouts are the primary mechanism — this is a
+ * grace window. Per-node timeouts are the primary mechanism; this is a
  * last-resort hard stop for nodes that do not declare their own budget.
  */
 function overallDeadlineMs(): number {
@@ -258,26 +234,9 @@ async function resumeFromCheckpoint(): Promise<void> {
     'observer': buildObserver(restored.cursor, prov),
   });
 
-  // Register embedded-DAGs (molecular pattern)
-  registerBookSearchFanoutNodes(dispatcher);
-  dispatcher.registerDAG(BookSearchFanoutDAG);
-  registerComposeRetryLoopNodes(dispatcher);
-  dispatcher.registerDAG(ComposeRetryLoopDAG);
-
-  for (const node of [
-    recallContext,
-    classifyIntent, extractQuery, decideTools,
-    webSearchScout, openLibraryScout, googleBooksScout, subjectScout, wikipediaScout,
-    rankByRating, pickBestMatch,
-    mergeCandidates, recordFindings, hasCitationsGate,
-    recallPastVisits, groupByYear, recommendSimilar,
-    // recall-memories branch
-    recallMemories, composeMemoryResponse, respondToVisitor,
-    declineOffTopic, declineEmpty,
-    // empty-result LLM response branch
-    composeEmptyResponse,
-  ]) dispatcher.registerNode(node);
-  dispatcher.registerDAG(archivistDAG);
+  dispatcher.registerBundle(bookSearchScatterBundle);
+  dispatcher.registerBundle(composeRetryLoopBundle);
+  dispatcher.registerBundle(archivistBundle);
 
   activeAbortController = new AbortController();
   const deadlineMs = overallDeadlineMs();
@@ -316,11 +275,11 @@ function togglePersistence(): void {
   memoryTick.value++;
 }
 
-// UI state machine — runner subscribes; views derive UI from the
+// UI state machine: runner subscribes; views derive UI from the
 // machine's current state instead of independent refs.
 const runnerMachine = new RunnerMachine();
 
-// Selected node in the memory graph — TripleInspector reads this.
+// Selected node in the memory graph; TripleInspector reads this.
 const selectedSelection = ref<MemorySelection | null>(null);
 function onMemorySelect(sel: MemorySelection | null): void { selectedSelection.value = sel; }
 
@@ -335,8 +294,8 @@ function onToolSelect(name: string): void { selectedTool.value = name; }
 const toolContextMap: Record<string, string> = {
   'open-library-scout':  'Searches OpenLibrary for books by free-text query and returns normalized Candidate records.',
   'google-books-scout':  'Searches Google Books API and returns Candidate records with ratings and ratingsCount.',
-  'subject-scout':       'OpenLibrary subjects search — finds books by theme/topic, not title.',
-  'wikipedia-scout':     'Wikipedia page summary — enrichment context for any topic or book.',
+  'subject-scout':       'OpenLibrary subjects search: finds books by theme/topic, not title.',
+  'wikipedia-scout':     'Wikipedia page summary: enrichment context for any topic or book.',
   'recall-context':      'SPARQL queries the persistent memory graph for prior intents and recently-seen books to inform classification.',
   'classify-intent':     'LLM classifies the visitor message into one of: on-topic, lookup-author, find-reviews, describe-book, recommend-similar, recall-memories, off-topic.',
   'decide-tools':        'LLM picks which search tools to call based on the classified intent and the visitor query.',
@@ -349,13 +308,13 @@ const toolContextMap: Record<string, string> = {
   'recall-memories':     'Assembles a structured digest of books, intents, and counts from the memory graph.',
   'compose-memory-response': 'LLM composes a warm prose summary of what the Archivist remembers from prior sessions.',
   'recommend-similar':   'LLM composes a recommend-similar reply anchored on persistent memory facts.',
-  'has-citations-gate':  'Deterministic gate — checks whether the shortlist has at least one citation before composing.',
+  'has-citations-gate':  'Deterministic gate: checks whether the shortlist has at least one citation before composing.',
   'decline-off-topic':   'Emits a polite in-character refusal for questions outside the book domain.',
   'decline-empty':       'Emits an in-character acknowledgment when all scouts returned no candidates.',
   'compose-empty-response': 'LLM composes a graceful not-found response that names what was searched and suggests an alternative.',
-  'extract-query':       'Deterministic node — copies the visitor query into state for the scout phase.',
+  'extract-query':       'Deterministic node: copies the visitor query into state for the scout phase.',
   'group-by-year':       'Groups candidates by first-publish year for chronological author-survey display.',
-  'pick-best-match':     'Deterministic node — picks the highest-scored candidate from the ranked list.',
+  'pick-best-match':     'Deterministic node: picks the highest-scored candidate from the ranked list.',
   'rank-by-rating':      'Sorts candidates by Google Books rating signal (rating × log(ratingsCount)) for the find-reviews branch.',
   'respond-to-visitor':  'Routes the composed draft into the conversation output and marks the lifecycle as completed.',
 };
@@ -369,7 +328,7 @@ function makeLlm() {
   });
 }
 
-/** Live LLM client reference — kept in sync with activeBackend changes. */
+/** Live LLM client reference, kept in sync with activeBackend changes. */
 const currentLlm = computed(() => makeLlm());
 
 function clearMemory(): void {
@@ -409,10 +368,10 @@ const rightTabs = computed(() => {
 
 const dagElements = computed<ElementDefinition[]>(() => {
   // Embedded-DAG registry: placements whose dag name appears here are expanded
-  // inline in the Cytoscape diagram — full compound-graph children visible,
+  // inline in the Cytoscape diagram; full compound-graph children visible,
   // no opaque boxes. This is the renderer-side of molecular composition.
   const embeddedDagRegistry = new Map([
-    ['book-search-fanout', BookSearchFanoutDAG],
+    ['book-search-scatter', BookSearchScatterDAG],
     ['compose-retry-loop', ComposeRetryLoopDAG],
   ]);
   const raw = CytoscapeRenderer.render(archivistDAG, { 'embeddedDAGs': embeddedDagRegistry }) as ElementDefinition[];
@@ -436,6 +395,7 @@ function buildServices(): ArchivistServices {
     // Docs runtime: no embedder wired (browser-only). Cosine recall and
     // hybrid ranking fall back to Jaccard / heuristics when embedder is null.
     'embedder':          null,
+    'nodeTimeouts':      {},
     'logger':            logger,
   };
 }
@@ -455,7 +415,7 @@ function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
     onNodeStart(nodeName: string, _state: ArchivistState, placementPath: readonly string[] = []) {
       // `placementPath` is the ordered list of parent embedded-DAG
       // placement names that led to this node. Join with the node name
-      // to form the cytoscape id used by `DagGraph` — this is what
+      // to form the cytoscape id used by `DagGraph`; this is what
       // disambiguates same-named inner placements (e.g. `extract-query`
       // inside `on-topic-search` vs `author-search` vs `similar-search`)
       // so only the placement currently executing lights up.
@@ -513,7 +473,7 @@ const STATIC_GREETINGS: readonly string[] = [
   'Stay a while. I have a long list of books and a longer one of questions about them.',
   'A reader, then. Tell me what you are looking for, and I will see what the catalog gives up.',
   'The door is always open here. Name a title, an author, or a feeling, and I will look.',
-  'Good to see you. The shelves run deep on every subject — where would you like to begin?',
+  'Good to see you. The shelves run deep on every subject. Where would you like to begin?',
   'Come in. I keep records on almost everything ever printed. What can I find for you?',
   'Every visitor arrives with a question worth answering. What is yours?',
 ];
@@ -529,7 +489,7 @@ const STATIC_VISITOR_REPLIES: readonly string[] = [
 ];
 
 function isFreshSession(): boolean {
-  // A fresh session has at most one entry — the archivist greeting (or nothing yet).
+  // A fresh session has at most one entry: the archivist greeting (or nothing yet).
   // Once the visitor has sent any message the session is no longer fresh.
   const turns = conversation.value;
   return turns.length === 0 || (turns.length === 1 && turns[0]?.role === 'archivist');
@@ -554,7 +514,7 @@ onMounted(async () => {
   // On desktop, it returns true when no real backend is runnable.
   if (hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value })) {
     noModel.value = true;
-    logger.warn('no LLM backend detected — visitor must enable one');
+    logger.warn('no LLM backend detected; visitor must enable one');
     return;
   }
   noModel.value = false;
@@ -573,7 +533,7 @@ onMounted(async () => {
 
   // On a fresh session: generate the Archivist greeting, push it to the
   // conversation, then generate a contextual visitor reply and pre-fill
-  // the input. Only runs once per session — once the visitor sends a
+  // the input. Only runs once per session; once the visitor sends a
   // message the input is cleared (via ask()) and this condition no longer fires.
   if (isFreshSession() && visitorQuery.value.length === 0) {
     const llm = makeLlm();
@@ -620,13 +580,13 @@ async function ask(): Promise<void> {
     'text': queryText,
     'ts': Date.now(),
   }];
-  // Clear the input immediately after capturing — the send-and-clear pattern.
+  // Clear the input immediately after capturing (the send-and-clear pattern).
   visitorQuery.value = '';
 
   await dagGraph.value?.reset();
   memoryTick.value++;
   logger.clear();
-  logger.info(`run start — query: "${queryText}"`);
+  logger.info(`run start, query: "${queryText}"`);
 
   const runId = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
     ? crypto.randomUUID()
@@ -638,50 +598,35 @@ async function ask(): Promise<void> {
     'dispatcherAgentId':  `dispatcher:${activeBackend.value}`,
   });
 
-  const services = buildServices();
+  const { composeMs, webSearchMs, rankMs } = timeoutSettings.value;
+  const services: ArchivistServices = {
+    'webSearch':         OpenLibrarySearchTool,
+    'googleBooks':       GoogleBooksTool,
+    'subjectSearch':     SubjectSearchTool,
+    'wikipediaSummary':  WikipediaSummaryTool,
+    'memory':            memoryStore,
+    'llm':               makeLlm(),
+    'embedder':          null,
+    'nodeTimeouts': {
+      'compose-response':        composeMs,
+      'compose-empty':           composeMs,
+      'compose-memory-response': composeMs,
+      'rank-candidates':         rankMs,
+      'open-library-scout':      webSearchMs,
+      'google-books-scout':      webSearchMs,
+      'subject-scout':           webSearchMs,
+      'wikipedia-scout':         webSearchMs,
+    },
+    'logger':            logger,
+  };
   const dispatcher = new ObservedDagonizer<ArchivistState, ArchivistServices>({
     services,
     'observer': buildObserver(null, prov),
   });
 
-  const { composeMs, webSearchMs, rankMs } = timeoutSettings.value;
-
-  // Register embedded-DAGs first (molecular pattern) — each helper registers the
-  // base nodes needed by that embedded-DAG. Then re-register timeout-overridden
-  // versions which overwrite the base entries in the node map.
-  registerBookSearchFanoutNodes(dispatcher);
-  dispatcher.registerDAG(BookSearchFanoutDAG);
-  registerComposeRetryLoopNodes(dispatcher);
-  dispatcher.registerDAG(ComposeRetryLoopDAG);
-
-  // Timeout overrides — re-register after DAG registration (validation already
-  // passed; execution looks up nodes from the map at run time, so overwriting
-  // here applies the configured budget to every subsequent execution).
-  const composeNode          = { ...composeResponse,     'timeoutMs': composeMs };
-  const composeEmptyNode     = { ...composeEmptyResponse, 'timeoutMs': composeMs };
-  const rankNode             = { ...rankCandidates,       'timeoutMs': rankMs };
-  const scoutNode            = { ...webSearchScout,        'timeoutMs': webSearchMs };
-  const olScoutNode          = { ...openLibraryScout,      'timeoutMs': webSearchMs };
-  const gbScoutNode          = { ...googleBooksScout,      'timeoutMs': webSearchMs };
-  const subjectScoutNode     = { ...subjectScout,          'timeoutMs': webSearchMs };
-  const wikiScoutNode        = { ...wikipediaScout,        'timeoutMs': webSearchMs };
-  for (const node of [composeNode, composeEmptyNode, rankNode, scoutNode, olScoutNode, gbScoutNode, subjectScoutNode, wikiScoutNode]) {
-    dispatcher.registerNode(node);
-  }
-
-  for (const node of [
-    recallContext,
-    classifyIntent, extractQuery, decideTools,
-    rankByRating, pickBestMatch,
-    mergeCandidates, recordFindings, hasCitationsGate,
-    groupByYear, recallPastVisits, recommendSimilar,
-    // recall-memories branch
-    recallMemories, composeMemoryResponse, respondToVisitor,
-    declineOffTopic, declineEmpty,
-    // empty-result LLM response branch
-    composeEmptyResponse,
-  ]) dispatcher.registerNode(node);
-  dispatcher.registerDAG(archivistDAG);
+  dispatcher.registerBundle(bookSearchScatterBundle);
+  dispatcher.registerBundle(composeRetryLoopBundle);
+  dispatcher.registerBundle(archivistBundle);
 
   const visitor = new ArchivistState();
   visitor.query = queryText;
@@ -723,7 +668,7 @@ function reset(): void {
   lastResult = null;
   visitorQuery.value = '';
   // Fire-and-forget: the manual reset button is not starting a new run,
-  // so no need to await — the fade plays visually but nothing depends on it.
+  // so no need to await; the fade plays visually but nothing depends on it.
   void dagGraph.value?.reset();
   memoryStore.clear();
   memoryStore.loadOntology(ONTOLOGY_NTRIPLES);
@@ -762,7 +707,7 @@ function reset(): void {
 <template>
   <div :class="['archivist-runner', { 'is-running': isRunning }]">
 
-    <!-- Mobile banner — shown when device is detected as mobile.
+    <!-- Mobile banner: shown when device is detected as mobile.
          Three states:
            stub active (no keys set): canned-responses notice.
            cloud backend active (key set): concise cloud-backend notice.
@@ -770,16 +715,16 @@ function reset(): void {
     <div v-if="isMobile && !noModel" class="mobile-banner" role="note">
       <span class="mobile-banner-text">
         <template v-if="activeBackend === 'stub'">
-          Mobile mode — running with canned responses (not real AI). Add an API key below for real model output.
+          Mobile mode: running with canned responses (not real AI). Add an API key below for real model output.
         </template>
         <template v-else>
-          Mobile mode — using cloud backend {{ backends.find(b => b.id === activeBackend)?.displayName ?? activeBackend }}.
+          Mobile mode: using cloud backend {{ backends.find(b => b.id === activeBackend)?.displayName ?? activeBackend }}.
         </template>
       </span>
       <button type="button" class="mobile-banner-link" @click="onTreatAsDesktop">Treat as desktop</button>
     </div>
 
-    <!-- No-model gate — shown before a backend is available.
+    <!-- No-model gate: shown before a backend is available.
          On mobile this block is unreachable: hasNoRunnableModel returns false
          because stub is the guaranteed fallback. Desktop path: no keys + no
          Nano + no WebLLM still triggers this gate. -->
@@ -787,40 +732,40 @@ function reset(): void {
       <h3>No LLM backend detected</h3>
 
       <template v-if="isMobile">
-        <p>The Archivist demo runs against real cloud LLMs. On mobile, the fastest option is a free Groq key — no download, no GPU required.</p>
+        <p>The Archivist demo runs against real cloud LLMs. On mobile, the fastest option is a free Groq key: no download, no GPU required.</p>
         <ul>
           <li>
-            <strong>Groq (fastest)</strong> — paste a free key from
+            <strong>Groq (fastest):</strong> paste a free key from
             <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">console.groq.com/keys</a>.
             Runs llama-3.3-70b-versatile. ~30 requests/min on the free tier.
           </li>
           <li>
-            <strong>Cerebras</strong> — free key at
+            <strong>Cerebras:</strong> free key at
             <a href="https://cloud.cerebras.ai/?utm=arch" target="_blank" rel="noreferrer">cloud.cerebras.ai</a>.
             Ultra-fast Wafer-Scale Engine inference.
           </li>
           <li>
-            <strong>Mistral</strong> — free key at
+            <strong>Mistral:</strong> free key at
             <a href="https://console.mistral.ai/api-keys/" target="_blank" rel="noreferrer">console.mistral.ai/api-keys/</a>.
             mistral-small-latest.
           </li>
           <li>
-            <strong>OpenRouter</strong> — free key at
+            <strong>OpenRouter:</strong> free key at
             <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai/keys</a>.
             Routes to llama-3.3-70b-instruct:free with no credits needed.
           </li>
         </ul>
       </template>
       <template v-else>
-        <p>The Archivist demo runs against real on-device or web LLMs only — there is no canned fallback in the browser. To watch the DAG execute, enable one of:</p>
+        <p>The Archivist demo runs against real on-device or web LLMs only; there is no canned fallback in the browser. To watch the DAG execute, enable one of:</p>
         <ul>
-          <li><strong>Browser built-in LanguageModel (on-device)</strong> — toggle <code>chrome://flags/#prompt-api-for-gemini-nano</code> and <code>chrome://flags/#optimization-guide-on-device-model</code>, restart, then visit <code>chrome://components</code> to trigger the model download. Implemented by Chrome 138+ and Edge.</li>
-          <li><strong>Gemini API key</strong> — paste a free <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">AI Studio key</a> below; nothing leaves your browser except the request to Google.</li>
-          <li><strong>WebLLM</strong> — needs WebGPU. Use a recent Chrome / Edge / Brave with hardware acceleration on.</li>
-          <li><strong>Groq</strong> — free key at <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">console.groq.com/keys</a>. No GPU required.</li>
-          <li><strong>Cerebras</strong> — free key at <a href="https://cloud.cerebras.ai/?utm=arch" target="_blank" rel="noreferrer">cloud.cerebras.ai</a>.</li>
-          <li><strong>Mistral</strong> — free key at <a href="https://console.mistral.ai/api-keys/" target="_blank" rel="noreferrer">console.mistral.ai/api-keys/</a>.</li>
-          <li><strong>OpenRouter</strong> — free key at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai/keys</a>.</li>
+          <li><strong>Browser built-in LanguageModel (on-device):</strong> toggle <code>chrome://flags/#prompt-api-for-gemini-nano</code> and <code>chrome://flags/#optimization-guide-on-device-model</code>, restart, then visit <code>chrome://components</code> to trigger the model download. Implemented by Chrome 138+ and Edge.</li>
+          <li><strong>Gemini API key:</strong> paste a free <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">AI Studio key</a> below; nothing leaves your browser except the request to Google.</li>
+          <li><strong>WebLLM:</strong> needs WebGPU. Use a recent Chrome / Edge / Brave with hardware acceleration on.</li>
+          <li><strong>Groq:</strong> free key at <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">console.groq.com/keys</a>. No GPU required.</li>
+          <li><strong>Cerebras:</strong> free key at <a href="https://cloud.cerebras.ai/?utm=arch" target="_blank" rel="noreferrer">cloud.cerebras.ai</a>.</li>
+          <li><strong>Mistral:</strong> free key at <a href="https://console.mistral.ai/api-keys/" target="_blank" rel="noreferrer">console.mistral.ai/api-keys/</a>.</li>
+          <li><strong>OpenRouter:</strong> free key at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">openrouter.ai/keys</a>.</li>
         </ul>
       </template>
 
@@ -837,7 +782,7 @@ function reset(): void {
       />
     </section>
 
-    <!-- Main layout — two-column grid, container-query driven -->
+    <!-- Main layout: two-column grid, container-query driven -->
     <template v-else>
       <div class="ar-grid">
 
@@ -851,7 +796,7 @@ function reset(): void {
             <!-- Conversation tab: the visual-first surface -->
             <template #conversation>
               <div class="ar-left-pane">
-                <!-- Slow-backend warning — browser built-in LanguageModel / WebLLM with no cloud key. -->
+                <!-- Slow-backend warning: browser built-in LanguageModel / WebLLM with no cloud key. -->
                 <div v-if="showSlowBanner" class="slow-banner" role="note">
                   <span class="slow-banner-text">
                     <strong>Slow backend.</strong> You&rsquo;re using the browser&rsquo;s built-in
@@ -930,7 +875,7 @@ function reset(): void {
             <template #tab-suffix>
               <button
                 :class="['persist-toggle', isPersisted ? 'persist-toggle--on' : 'persist-toggle--off']"
-                :title="isPersisted ? 'Persisted to localStorage — click to switch to in-memory' : 'In-memory only — click to enable localStorage persistence'"
+                :title="isPersisted ? 'Persisted to localStorage. Click to switch to in-memory.' : 'In-memory only. Click to enable localStorage persistence.'"
                 @click="togglePersistence"
               >{{ isPersisted ? '⎓ persisted' : '○ in-memory' }}</button>
             </template>
@@ -1034,7 +979,7 @@ function reset(): void {
   color: var(--dagonizer-brand);
 }
 
-/* ── Slow-backend banner — gold-warning palette ───────────────────────── */
+/* ── Slow-backend banner: gold-warning palette ───────────────────────── */
 .slow-banner {
   display: flex;
   align-items: flex-start;
@@ -1114,7 +1059,7 @@ function reset(): void {
   font-size: 0.82rem;
 }
 
-/* ── Two-column grid — iridis pattern ──────────────────────────────────── */
+/* ── Two-column grid: iridis pattern ──────────────────────────────────── */
 .ar-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -1205,7 +1150,7 @@ function reset(): void {
   color: var(--vp-c-text-3);
 }
 
-/* ── Shared graph pane — identical dimensions for DAG and Memory tabs ──── */
+/* ── Shared graph pane: identical dimensions for DAG and Memory tabs ──── */
 .graph-pane {
   position: relative;
   width: 100%;

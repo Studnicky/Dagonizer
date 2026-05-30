@@ -1,6 +1,6 @@
 # @noocodex/dagonizer-patterns-flow
 
-Pure flow primitives for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Deterministic transforms on state — no LLM, no triple store, no HTTP. Just the shape-changing utilities every DAG eventually needs.
+Pure flow primitives for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Deterministic transforms on state: no LLM, no triple store, no HTTP. The shape-changing utilities every DAG eventually needs.
 
 ## Install
 
@@ -19,7 +19,7 @@ MonadicNode (root)
     ├── ReduceNode<TState, TItem, TResult>    (collapse a list)
     │   ├── DedupeByKeyNode<TItem>
     │   ├── GroupByFieldNode<TItem, TKey>
-    │   └── FanInReducerNode<TState, TItem>
+    │   └── MergeReducerNode<TState, TItem>
     ├── PredicateGateNode<TState>             ('pass' | 'fail' routing)
     ├── ExtractFieldNode<TState, TValue>      (copy state field)
     └── RespondNode<TState>                   (write draft, mark lifecycle)
@@ -63,7 +63,7 @@ class RankByRating extends SortByNode<MyState, Candidate> {
 
 ### DedupeByKeyNode
 
-Dedupe by computed key — preserves first occurrence.
+Dedupe by computed key; preserves first occurrence.
 
 ```ts
 class MergeCandidates extends DedupeByKeyNode<MyState, Candidate> {
@@ -78,11 +78,11 @@ class MergeCandidates extends DedupeByKeyNode<MyState, Candidate> {
 
 ### GroupByFieldNode
 
-Group items by a field — output is a `ReadonlyMap<TKey, readonly TItem[]>`.
+Group items by a field; output is a `ReadonlyMap<TKey, readonly TItem[]>`.
 
-### FanInReducerNode
+### MergeReducerNode
 
-Bare base for custom fan-in semantics. Override `reduce()` for your collapse logic.
+Bare base for custom merge semantics. Override `reduce()` for your collapse logic.
 
 ### PredicateGateNode
 
@@ -101,7 +101,7 @@ Copy a value from one state location to another (useful when canonical state bur
 
 ### RespondNode
 
-Terminal node — writes the draft to a consumer-controlled location and marks lifecycle complete.
+Terminal node: writes the draft to a consumer-controlled location and marks lifecycle complete.
 
 ```ts
 class RespondToVisitor extends RespondNode<MyState> {

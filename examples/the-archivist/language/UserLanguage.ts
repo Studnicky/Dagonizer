@@ -1,19 +1,19 @@
 /**
- * UserLanguage — domain helper for resolving the visitor's device
+ * UserLanguage: domain helper for resolving the visitor's device
  * language and converting it across the code formats different APIs
  * expect.
  *
- *   detect()                — runtime probe: navigator.language (browser),
+ *   detect()                runtime probe: navigator.language (browser),
  *                             process.env.LANG (Node CLI), else 'en'.
- *   normalize(input)        — coerce any locale string to lower-case ISO 639-1
+ *   normalize(input)        coerce any locale string to lower-case ISO 639-1
  *                             code (e.g. 'en-US' → 'en', 'ja_JP.UTF-8' → 'ja').
- *   toIso6392(code)         — ISO 639-1 → ISO 639-2 (e.g. 'en' → 'eng',
+ *   toIso6392(code)         ISO 639-1 → ISO 639-2 (e.g. 'en' → 'eng',
  *                             'ja' → 'jpn'). Used by OpenLibrary `lang`.
- *   displayName(code)       — human-readable name in the user's locale
+ *   displayName(code)       human-readable name in the user's locale
  *                             (e.g. 'en' → 'English'). Used in prompts.
  *
  * Static-only. No instances. All conversions are pure functions over the
- * supplied input — no global state, no module-level mutation past the
+ * supplied input; no global state, no module-level mutation past the
  * frozen `ISO_639_1_TO_2` map.
  */
 

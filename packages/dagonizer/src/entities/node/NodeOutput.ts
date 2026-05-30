@@ -1,11 +1,11 @@
 /**
- * NodeOutput — result returned by a DAG node.
+ * NodeOutput: result returned by a DAG node.
  *
  * The `output` field is the named port used to route to the next node.
- * Errors are collected and forwarded to state — they do not stop execution.
+ * Errors are collected and forwarded to state; they do not stop execution.
  *
  * The NodeError shape is inlined here (same approach used by DAGSchema
- * which inlines FanInConfig). Standalone NodeErrorSchema is authoritative for
+ * which inlines GatherConfig). Standalone NodeErrorSchema is authoritative for
  * that shape; this is a structural copy to avoid $ref resolution at compile time.
  */
 

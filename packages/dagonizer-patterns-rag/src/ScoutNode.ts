@@ -1,5 +1,5 @@
 /**
- * ScoutNode — canonical "call a Tool, normalise, write back" pattern.
+ * ScoutNode: canonical "call a Tool, normalise, write back" pattern.
  *
  * The scout reads from state to build a tool input, invokes the tool,
  * normalises the response into the consumer's entity shape, and writes
@@ -36,10 +36,6 @@ export abstract class ScoutNode<
   /** Write the normalized items back into state. */
   protected abstract writeBack(state: TState, items: readonly TItem[]): void;
 
-  /** Output ports — default trio. */
-  protected successPort(): TOutput { return 'success' as TOutput; }
-  protected emptyPort():   TOutput { return 'empty' as TOutput; }
-  protected errorPort():   TOutput { return 'error' as TOutput; }
 
   async execute(
     state: TState,

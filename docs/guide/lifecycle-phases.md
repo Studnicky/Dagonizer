@@ -12,7 +12,7 @@ seeAlso:
 
 # Lifecycle phases
 
-`PhaseNode` placements run around the main DAG loop rather than inside it. They are first-class placements: registered like any other, mutate state, can throw, and are observed by the dispatcher hooks and the `Instrumentation` surface.
+`PhaseNode` placements run around the main DAG loop rather than inside it. They are registered like any other placement, mutate state, can throw, and are observed by the dispatcher hooks and the `Instrumentation` surface.
 
 ## API surface
 
@@ -100,9 +100,9 @@ At `registerDAG` time the engine verifies that every `PhaseNode.node` resolves t
 For every phase placement the dispatcher invokes:
 
 ```ts
-instrumentation.phaseEnter(dagName, 'pre' | 'post', placementName, state);
+instrumentation.phaseEnter(dagName, 'pre' | 'post', placementName, state, placementPath);
 // ... await node.execute(state, context)
-instrumentation.phaseExit(dagName,  'pre' | 'post', placementName, state);
+instrumentation.phaseExit(dagName,  'pre' | 'post', placementName, state, placementPath);
 ```
 
 See [Observability](./observability) for the full instrumentation surface.

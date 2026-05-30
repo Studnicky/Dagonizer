@@ -1,5 +1,5 @@
 /**
- * NodeVizMachine — visual-state FSM for one cytoscape node.
+ * NodeVizMachine: visual-state FSM for one cytoscape node.
  *
  *   ┌─────────┐  start   ┌────────┐  end    ┌───────────┐
  *   │ pending ├─────────►│ active ├────────►│ completed │
@@ -18,7 +18,7 @@
  * single source of truth; invalid transitions are no-ops (the machine
  * never crashes on a stray event). Each transition runs an
  * `onEnter[nextState]` action that drives cytoscape via the supplied
- * `NodeVizAdapter` — keeping the FSM pure (no cytoscape import).
+ * `NodeVizAdapter`, keeping the FSM pure (no cytoscape import).
  */
 
 export type NodeVizState = 'pending' | 'active' | 'completed' | 'errored';
@@ -35,7 +35,7 @@ export interface NodeVizAdapter {
   removeClass(name: string): void;
   pulse(): void;
   shake(): void;
-  /** Stop any in-flight animations on this node — used on reset. */
+  /** Stop any in-flight animations on this node; used on reset. */
   stop(): void;
 }
 
@@ -54,7 +54,7 @@ const ENTRY_CLASS: Readonly<Record<NodeVizState, string | null>> = {
   errored:   'dag-errored',
 };
 
-/** Classes to remove on entry — keeps the cytoscape class set in sync. */
+/** Classes to remove on entry; keeps the cytoscape class set in sync. */
 const EXIT_CLASSES: Readonly<Record<NodeVizState, readonly string[]>> = {
   pending:   ['dag-active', 'dag-completed', 'dag-errored'],
   active:    ['dag-completed', 'dag-errored'],
@@ -74,7 +74,7 @@ export class NodeVizMachine {
 
   /**
    * Dispatch an event. Returns the new state (which may equal the
-   * previous state when the event doesn't apply — a no-op is a valid
+   * previous state when the event doesn't apply; a no-op is a valid
    * outcome, not an error).
    */
   dispatch(event: NodeVizEvent): NodeVizState {

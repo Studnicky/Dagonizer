@@ -1,16 +1,16 @@
 /**
- * OpenLibrarySearchTool — browser-runnable web search for books.
+ * OpenLibrarySearchTool: browser-runnable web search for books.
  *
  * The tool's `inputSchema` IS the contract. Every property carries
  * `description` + `examples` + `default` (where relevant); the prose
  * prompt the agent sees doesn't need to re-explain what each field
  * means. JSON Schema's three tiers do the heavy lifting:
  *
- *   tier 1: `required` — the LLM MUST supply these.
- *   tier 2: known optional `properties` — the LLM SHOULD supply when
+ *   tier 1: `required`: the LLM MUST supply these.
+ *   tier 2: known optional `properties`: the LLM SHOULD supply when
  *           it has the information; `default` and `examples` tell it
  *           the shape we expect.
- *   tier 3: `additionalProperties: true` — the LLM MAY enrich the call
+ *   tier 3: `additionalProperties: true`: the LLM MAY enrich the call
  *           with free-form key/value hints (e.g. `subject`, `lang`,
  *           `era`) that the tool will treat as additional OpenLibrary
  *           query params.
@@ -20,38 +20,21 @@
  *
  * Output: every candidate carries OpenLibrary's actual title, authors,
  * first-publish year, subjects, publishers, and any description/summary
- * we can extract — so the LLM has real metadata to score against and
+ * we can extract, so the LLM has real metadata to score against and
  * cite in its prose response.
  */
 
 import type { Candidate } from '@noocodex/dagonizer-book-entities';
 
+import { CanonicalId } from '@noocodex/dagonizer-book-entities';
+import { HttpTransport } from '@noocodex/dagonizer/tool';
 import type { Tool } from '@noocodex/dagonizer/tool';
 import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
 
-interface OpenLibraryDoc {
-  readonly title?: string;
-  readonly subtitle?: string;
-  readonly author_name?: readonly string[];
-  readonly isbn?: readonly string[];
-  readonly first_publish_year?: number;
-  readonly publisher?: readonly string[];
-  readonly subject?: readonly string[];
-  /** Stable OpenLibrary identifier — `/works/OL...W`. Always present. */
-  readonly key?: string;
-  readonly first_sentence?: readonly string[];
-  /** Some search responses include a description; many don't. */
-  readonly description?: string | { value?: string };
-  /** ISO 639-2 (alpha-3) language codes the work is published in. */
-  readonly language?: readonly string[];
-}
+import type { OpenLibraryDoc, OpenLibraryResponse } from './openLibraryTypes.js';
+import { pickDescription } from './openLibraryTypes.js';
 
-interface OpenLibraryResponse {
-  readonly docs?: readonly OpenLibraryDoc[];
-  readonly numFound?: number;
-}
-
-interface WebSearchInput extends Record<string, unknown> {
+interface OpenLibrarySearchInput extends Record<string, unknown> {
   readonly query?: string;
   readonly isbn?: string;
   readonly limit?: number;
@@ -63,7 +46,7 @@ interface WebSearchInput extends Record<string, unknown> {
 
 const ENDPOINT = 'https://openlibrary.org/search.json';
 
-// The data contract — every field carries description, examples, and
+// The data contract: every field carries description, examples, and
 // where relevant default + format. The agent reads this through the
 // adapter's native function-declaration / responseConstraint channel
 // (Gemini API's `functionDeclarations.parameters`, Nano's
@@ -84,7 +67,7 @@ const definition: ToolDefinition = {
         'type':        'string',
         'minLength':   2,
         'maxLength':   80,
-        'description': 'Terse search terms drawn from the visitor question — keywords, an author name, or a title. AND-matched on OpenLibrary; do not pad with descriptive filler ("book about", "description of") or it drops hits. Omit when using isbn, author, or subject directly.',
+        'description': 'Terse search terms drawn from the visitor question: keywords, an author name, or a title. AND-matched on OpenLibrary; do not pad with descriptive filler ("book about", "description of") or it drops hits. Omit when using isbn, author, or subject directly.',
         'examples':    ['<title-words>', '<author-name>'],
       },
       'isbn': {
@@ -110,7 +93,7 @@ const definition: ToolDefinition = {
       'first_publish_year': {
         'type':        'integer',
         'minimum':     1500,
-        'maximum':     new Date().getFullYear(),
+        'maximum':     2100,
         'description': 'Optional first-publication year filter.',
       },
       'lang': {
@@ -123,7 +106,7 @@ const definition: ToolDefinition = {
   'strict': true,
 };
 
-export const OpenLibrarySearchTool: Tool<WebSearchInput, readonly Candidate[]> = {
+export const OpenLibrarySearchTool: Tool<OpenLibrarySearchInput, readonly Candidate[]> = {
   definition,
   async execute(input, signal) {
     const limit = Math.max(1, Math.min(20, input.limit ?? 8));
@@ -134,13 +117,10 @@ export const OpenLibrarySearchTool: Tool<WebSearchInput, readonly Candidate[]> =
     if (input.isbn !== undefined && input.isbn.length > 0) {
       const isbnParams = new URLSearchParams({ 'q': input.isbn, 'limit': String(limit) });
       if (input.lang !== undefined) isbnParams.set('lang', String(input.lang));
-      const isbnOptions: RequestInit & { signal?: AbortSignal } = { 'method': 'GET' };
-      if (signal !== undefined) isbnOptions.signal = signal;
-      const isbnResponse = await fetch(`${ENDPOINT}?${isbnParams.toString()}`, isbnOptions);
-      if (!isbnResponse.ok) {
-        throw new Error(`openlibrary isbn search ${String(isbnResponse.status)} ${isbnResponse.statusText}`);
-      }
-      const isbnPayload = (await isbnResponse.json()) as OpenLibraryResponse;
+      const isbnPayload = await HttpTransport.getJson<OpenLibraryResponse>(
+        `${ENDPOINT}?${isbnParams.toString()}`,
+        signal !== undefined ? { signal } : {},
+      );
       return buildCandidates(isbnPayload.docs ?? []);
     }
 
@@ -158,18 +138,14 @@ export const OpenLibrarySearchTool: Tool<WebSearchInput, readonly Candidate[]> =
     if (input.first_publish_year !== undefined) params.set('first_publish_year', String(input.first_publish_year));
     if (input.lang !== undefined)               params.set('lang',    String(input.lang));
     if (!params.has('q') && !params.has('author') && !params.has('subject')) {
-      // Nothing to search on — return empty rather than hitting the root endpoint.
+      // Nothing to search on; return empty rather than hitting the root endpoint.
       return [];
     }
 
-    const initOptions: RequestInit & { signal?: AbortSignal } = { 'method': 'GET' };
-    if (signal !== undefined) initOptions.signal = signal;
-    const response = await fetch(`${ENDPOINT}?${params.toString()}`, initOptions);
-    if (!response.ok) {
-      throw new Error(`openlibrary search ${String(response.status)} ${response.statusText}`);
-    }
-
-    const payload = (await response.json()) as OpenLibraryResponse;
+    const payload = await HttpTransport.getJson<OpenLibraryResponse>(
+      `${ENDPOINT}?${params.toString()}`,
+      signal !== undefined ? { signal } : {},
+    );
     return buildCandidates(payload.docs ?? []);
   },
 };
@@ -178,12 +154,16 @@ function buildCandidates(docs: readonly OpenLibraryDoc[]): Candidate[] {
   const candidates: Candidate[] = [];
   for (const doc of docs) {
     if (doc.title === undefined) continue;
-    const id = pickIsbn(doc.isbn) ?? doc.key ?? `urn:openlibrary:${doc.title}`;
+    const canonical = CanonicalId.pick({
+      'title':   doc.title,
+      ...(doc.isbn !== undefined ? { 'isbns': doc.isbn } : {}),
+      ...(doc.author_name !== undefined ? { 'authors': doc.author_name } : {}),
+    });
     const summary = pickDescription(doc);
     const subjects = doc.subject?.slice(0, 8);
     candidates.push({
       'book': {
-        'isbn':    id,
+        'isbn':    canonical,
         'title':   doc.title,
         'authors': doc.author_name ?? [],
         'price':   { 'amount': 0, 'currency': 'USD' },
@@ -198,21 +178,4 @@ function buildCandidates(docs: readonly OpenLibraryDoc[]): Candidate[] {
     });
   }
   return candidates;
-}
-
-function pickIsbn(list: readonly string[] | undefined): string | null {
-  if (list === undefined || list.length === 0) return null;
-  const thirteen = list.find((s) => s.length === 13 && (s.startsWith('978') || s.startsWith('979')));
-  return thirteen ?? list[0] ?? null;
-}
-
-function pickDescription(doc: OpenLibraryDoc): string | undefined {
-  if (typeof doc.description === 'string' && doc.description.length > 0) return doc.description;
-  if (typeof doc.description === 'object' && typeof doc.description.value === 'string') return doc.description.value;
-  const first = doc.first_sentence?.[0];
-  if (typeof first === 'string' && first.length > 0) {
-    return doc.subtitle !== undefined && doc.subtitle.length > 0 ? `${doc.subtitle} — ${first}` : first;
-  }
-  if (doc.subtitle !== undefined && doc.subtitle.length > 0) return doc.subtitle;
-  return undefined;
 }

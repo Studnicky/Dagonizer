@@ -1,5 +1,5 @@
 /**
- * RetryPolicy — configurable retry-with-backoff policy.
+ * RetryPolicy: configurable retry-with-backoff policy.
  *
  * Strategy enum: constant, linear, exponential, decorrelated-jitter.
  * Filtering: `retryOn` + `abortOn` lists of Error constructors. When neither
@@ -7,7 +7,7 @@
  *
  * Delay is scheduled via `Scheduler.current()` so tests can install a
  * `VirtualScheduler` and step through retries deterministically. Cancellation
- * is honored via `AbortSignal` — `run(task, signal)` aborts mid-wait when the
+ * is honored via `AbortSignal`; `run(task, signal)` aborts mid-wait when the
  * signal fires.
  *
  * Class extension is the canonical extension point: subclass `RetryPolicy`
@@ -49,7 +49,7 @@ const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategyValue, BackoffComputerTy
  * `EXPONENTIAL`, `DECORRELATED_JITTER`), `retryOn`/`abortOn` filters, and
  * a `run(task, signal)` execution loop.
  *
- * Delay waits are scheduled via `Scheduler.current()` — install
+ * Delay waits are scheduled via `Scheduler.current()`; install
  * `VirtualScheduler` in tests to advance time deterministically.
  *
  * @example

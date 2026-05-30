@@ -187,3 +187,4 @@ Same semantics as `ParallelCombiners`.
 
 - [DAGBuilder](../guide/builder): placements that use `combine` and `gather.strategy`
 - [State accessors](../guide/state-accessor): strategies receive the dispatcher's `accessor`
+- [Reference: Entities](./entities#constant-valuetype-pairs): `GatherStrategyName`, `ParallelCombine`, `ScatterOutput`, and `MetadataKey` are exported from `@noocodex/dagonizer/constants`

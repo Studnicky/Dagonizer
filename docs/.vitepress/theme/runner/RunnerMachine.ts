@@ -1,5 +1,5 @@
 /**
- * RunnerMachine — UI-side FSM for the Archivist demo.
+ * RunnerMachine: UI-side FSM for the Archivist demo.
  *
  *   ┌──────┐  submit   ┌─────────┐  flowEnd(ok)   ┌──────┐
  *   │ idle ├──────────►│ running ├───────────────►│ done │
@@ -18,7 +18,7 @@
  * derive their UI from `machine.state` instead of independent refs.
  *
  * Parallel updates that arrive mid-run (node-start, node-end, tool
- * outcomes) flow through `pulse(event)` — these are sub-events that
+ * outcomes) flow through `pulse(event)`; these are sub-events that
  * don't change the top-level state but listeners can observe.
  */
 
@@ -30,7 +30,7 @@ export type RunnerEvent =
   | { readonly type: 'flowError'; readonly error: Error }
   | { readonly type: 'reset' };
 
-/** Sub-events that don't shift top-level state — for live observers. */
+/** Sub-events that don't shift top-level state; for live observers. */
 export type RunnerPulse =
   | { readonly type: 'nodeStart'; readonly node: string }
   | { readonly type: 'nodeEnd';   readonly node: string; readonly output?: string }
@@ -75,7 +75,7 @@ export class RunnerMachine {
   }
 
   /**
-   * Pulse — sub-event that doesn't shift the top-level state. Listeners
+   * Pulse: sub-event that doesn't shift the top-level state. Listeners
    * see it alongside the current state. Useful for trace/log streams.
    */
   pulse(event: RunnerPulse): void {

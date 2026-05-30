@@ -12,6 +12,7 @@ import { describe, it } from 'node:test';
 import { Checkpoint } from '../../src/checkpoint/Checkpoint.js';
 import { MemoryCheckpointStore } from '../../src/checkpoint/MemoryCheckpointStore.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import type { Snapshottable, StoreSnapshot } from '../../src/contracts/Snapshottable.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import { DAGError } from '../../src/errors/DAGError.js';
@@ -66,7 +67,7 @@ async function makeAbortedResult(): Promise<ReturnType<typeof Dagonizer.prototyp
 
 // ── Test 1: Round-trip with one store ───────────────────────────────────────
 
-void describe('Checkpoint.capture + restoreStores — one store', () => {
+void describe('Checkpoint.capture + restoreStores: one store', () => {
   void it('round-trips a single named store through persist + load', async () => {
     const memory = new MemoryStore();
     await memory.set('counter', 42);
@@ -97,7 +98,7 @@ void describe('Checkpoint.capture + restoreStores — one store', () => {
 
 // ── Test 2: Round-trip with multiple stores ─────────────────────────────────
 
-void describe('Checkpoint.capture + restoreStores — two stores', () => {
+void describe('Checkpoint.capture + restoreStores: two stores', () => {
   void it('isolates two named stores; each restores independently', async () => {
     const memory = new MemoryStore();
     const audit  = new MemoryStore();
@@ -126,34 +127,27 @@ void describe('Checkpoint.capture + restoreStores — two stores', () => {
   });
 });
 
-// ── Test 3: Backward compat — old checkpoint without stores ─────────────────
+// ── Test 3: `stores` is required; pre-v0.11 checkpoints are rejected ─────────
 
-void describe('Checkpoint.restoreStores — old checkpoint without stores field', () => {
-  void it('does not throw; the store stays empty', async () => {
+void describe('Checkpoint.load: rejects a checkpoint missing the stores field', () => {
+  void it('throws when stores is absent (no silent acceptance of stale checkpoints)', () => {
     const rawOld = {
       'version': '1',
-      'dagName': 'legacy-dag',
+      'dagName': 'old-dag',
       'cursor': 'next-node',
       'state': {},
       'executedNodes': [],
       'skippedNodes': [],
-      // no 'stores' field — old v0.10 checkpoint
+      // no 'stores' field; a checkpoint produced before stores were captured
     };
 
-    const recalled = Checkpoint.load(rawOld);
-    const freshMemory = new MemoryStore();
-
-    // Should not throw.
-    await recalled.restoreStores({ 'memory': freshMemory });
-
-    // Store stays empty.
-    assert.equal(await freshMemory.has('anything'), false);
+    assert.throws(() => Checkpoint.load(rawOld));
   });
 });
 
 // ── Test 4: Missing store in restore map ────────────────────────────────────
 
-void describe('Checkpoint.restoreStores — missing store in map', () => {
+void describe('Checkpoint.restoreStores: missing store in map', () => {
   void it('throws DAGError naming the missing store', async () => {
     const memory = new MemoryStore();
     await memory.set('k', 'v');
@@ -161,7 +155,7 @@ void describe('Checkpoint.restoreStores — missing store in map', () => {
     const result = await makeAbortedResult();
     const ckpt = await Checkpoint.capture('store-test', result, { 'stores': { memory } });
 
-    // Pass empty map — 'memory' is in the checkpoint but not supplied.
+    // Pass empty map; 'memory' is in the checkpoint but not supplied.
     await assert.rejects(
       () => ckpt.restoreStores({}),
       (err: unknown) => {
@@ -178,7 +172,7 @@ void describe('Checkpoint.restoreStores — missing store in map', () => {
 
 // ── Test 5: Extra store in restore map is a no-op ───────────────────────────
 
-void describe('Checkpoint.restoreStores — extra store in map', () => {
+void describe('Checkpoint.restoreStores: extra store in map', () => {
   void it('does not throw when map contains stores absent from checkpoint', async () => {
     const memory = new MemoryStore();
     await memory.set('k', 'v');
@@ -189,7 +183,7 @@ void describe('Checkpoint.restoreStores — extra store in map', () => {
     const freshMemory = new MemoryStore();
     const extra       = new MemoryStore();
 
-    // 'extra' is in map but not in checkpoint — should not throw.
+    // 'extra' is in map but not in checkpoint; should not throw.
     await assert.doesNotReject(
       () => ckpt.restoreStores({ 'memory': freshMemory, 'extra': extra }),
     );
@@ -202,7 +196,7 @@ void describe('Checkpoint.restoreStores — extra store in map', () => {
 
 // ── Test 6: Incompatible snapshot propagates StoreError ─────────────────────
 
-void describe('Checkpoint.restoreStores — incompatible snapshot', () => {
+void describe('Checkpoint.restoreStores: incompatible snapshot', () => {
   void it('propagates StoreError with INCOMPATIBLE_SNAPSHOT from store.restore', async () => {
     // Hand-construct a checkpoint whose stores.memory has the wrong type.
     const badRaw = {
@@ -237,7 +231,7 @@ void describe('Checkpoint.restoreStores — incompatible snapshot', () => {
 
 // ── Test 7: Empty stores option ─────────────────────────────────────────────
 
-void describe('Checkpoint.capture — empty stores option', () => {
+void describe('Checkpoint.capture: empty stores option', () => {
   void it('succeeds without throwing; checkpoint has no stores entries', async () => {
     const result = await makeAbortedResult();
     const ckpt = await Checkpoint.capture('store-test', result, { 'stores': {} });
@@ -260,7 +254,7 @@ void describe('Checkpoint.capture — empty stores option', () => {
 
 // ── Test 8: No stores option ─────────────────────────────────────────────────
 
-void describe('Checkpoint.capture — no stores option', () => {
+void describe('Checkpoint.capture: no stores option', () => {
   void it('succeeds unchanged when called with no second argument', async () => {
     const result = await makeAbortedResult();
     const ckpt = await Checkpoint.capture('store-test', result);
@@ -271,5 +265,57 @@ void describe('Checkpoint.capture — no stores option', () => {
 
     // restoreStores on a no-stores checkpoint should be a no-op.
     await assert.doesNotReject(() => ckpt.restoreStores({}));
+  });
+});
+
+// ── Test 9: Non-KV Snapshottable participates in checkpointing ───────────────
+
+/**
+ * A `Snapshottable` that is NOT a `Store`. It holds an append-only list of
+ * facts, exposes no `get`/`set`/`has`/`delete`/`update`/`connect`, and
+ * implements only `snapshot()` / `restore()`. Checkpoint depends on the
+ * capability, not the key-value surface, so this round-trips.
+ */
+class FactLog implements Snapshottable {
+  #facts: string[] = [];
+  add(fact: string): void { this.#facts.push(fact); }
+  get facts(): readonly string[] { return this.#facts; }
+
+  async snapshot(): Promise<StoreSnapshot> {
+    return {
+      'version': 1,
+      'type':    'fact-log',
+      'entries': this.#facts.map((fact, i) => ({ 'key': String(i), 'value': fact })),
+    };
+  }
+
+  async restore(snapshot: StoreSnapshot): Promise<void> {
+    if (snapshot.type !== 'fact-log') {
+      throw new Error(`FactLog.restore: incompatible snapshot type '${snapshot.type}'`);
+    }
+    this.#facts = snapshot.entries.map((entry) => String(entry.value));
+  }
+}
+
+void describe('Checkpoint.capture + restoreStores: non-KV Snapshottable', () => {
+  void it('round-trips a snapshot-only store that implements no key-value methods', async () => {
+    const log = new FactLog();
+    log.add('born');
+    log.add('crawled');
+
+    const result = await makeAbortedResult();
+    const ckpt = await Checkpoint.capture('store-test', result, { 'stores': { 'log': log } });
+
+    const cpStore = new MemoryCheckpointStore();
+    await cpStore.save('run:nonkv', ckpt.toJson());
+
+    const json = await cpStore.load('run:nonkv');
+    assert.ok(json !== null, 'Expected persisted checkpoint to be retrievable');
+    const recalled = Checkpoint.load(JSON.parse(json) as unknown);
+
+    const freshLog = new FactLog();
+    await recalled.restoreStores({ 'log': freshLog });
+
+    assert.deepEqual([...freshLog.facts], ['born', 'crawled']);
   });
 });

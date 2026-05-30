@@ -1,8 +1,8 @@
 /**
- * Node — a discrete unit of work in a flow.
+ * Node: a discrete unit of work in a flow.
  *
  * Describes the node's identity (`name`) and the output ports it can return
- * (`outputs`). This is the wire/registration shape — behavioral members
+ * (`outputs`). This is the wire/registration shape; behavioral members
  * (execute, destroy, validate) live on `NodeInterface<TState, TOutput>`.
  */
 

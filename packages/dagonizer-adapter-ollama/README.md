@@ -1,6 +1,6 @@
 # @noocodex/dagonizer-adapter-ollama
 
-> **Beta — not yet published to npm.** Ships in v0.10.0 as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format compatibility is verified via intercepted-fetch smoke tests. Expect minor adjustments before 1.0.
+> **Beta:** not yet published to npm. Ships in v0.10.0 as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format compatibility is verified via intercepted-fetch smoke tests. Expect minor adjustments before 1.0.
 
 Local-first Ollama adapter for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Targets the [Ollama daemon](https://ollama.com/) on the loopback by default; any model pulled to the host is selectable by name.
 
@@ -14,7 +14,7 @@ Pull a model on the host:
 
 ```bash
 ollama pull llama3.2
-# or any model you prefer — mistral, qwen2, gemma, codellama, etc.
+# or any model you prefer: mistral, qwen2, gemma, codellama, etc.
 ```
 
 ## Usage

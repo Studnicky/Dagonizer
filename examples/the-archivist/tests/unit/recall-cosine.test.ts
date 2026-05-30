@@ -1,5 +1,5 @@
 /**
- * recall-candidates cosine path — unit tests with a deterministic stub embedder.
+ * recall-candidates cosine path: unit tests with a deterministic stub embedder.
  *
  * Seeds a MemoryStore with prior runs that have stored `dag:queryEmbedding`
  * literals. Exercises the cosine branch of recallCandidates:
@@ -111,7 +111,7 @@ void test('recallCandidates cosine: orthogonal query (cos < 0.70) yields no prio
   seedPriorRun(memory, 'prior-cos-2', 'romance', [0, 1, 0, 0], [
     { isbn: '1110000002', title: 'Pride and Prejudice' },
   ]);
-  // Query along axis 0 — orthogonal to axis 1 → cosine ~ 0
+  // Query along axis 0; orthogonal to axis 1 → cosine ~ 0
   const embedder = new StubEmbedder([1, 0, 0, 0]);
   const state = new ArchivistState();
   state.runId = 'cur-cos-2';

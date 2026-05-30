@@ -1,27 +1,27 @@
 /**
- * GeminiNanoAdapter — the browser's built-in `window.LanguageModel`.
+ * GeminiNanoAdapter: the browser's built-in `window.LanguageModel`.
  *
  * Chrome 138+ and Edge expose an on-device LanguageModel via
  * `window.LanguageModel` (behind `chrome://flags/#prompt-api-for-gemini-nano`
  * on earlier versions). The Prompt API exposes
- * `responseConstraint` for JSON-schema-constrained outputs — we use it
+ * `responseConstraint` for JSON-schema-constrained outputs; we use it
  * to enforce the tool-plan shape, since Nano does not yet have a
  * native function-calling channel like the REST API does.
  *
  *   - Without `tools`:    plain text generation
  *   - With `outputSchema`: structured output via `responseConstraint`
  *   - With `tools`:        emit a `responseConstraint` for `{ tool_calls: [...] }`
- *                          and decode the JSON back into `ToolCall[]`
+ *                          and decode the JSON back into `ToolCall[]` via
+ *                          JSON coercion (`responseConstraint` + `decodeToolCallsJson`)
  *
- * Sessions are short-lived — one prompt per session, destroyed in
+ * Sessions are short-lived: one prompt per session, destroyed in
  * `finally` to release the on-device GPU buffer.
  */
 
-import { BaseAdapter, ChatResponseMessageBuilder } from '@noocodex/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder, decodeToolCallsJson } from '@noocodex/dagonizer/adapter';
 import type {
   ChatRequest,
   ChatResponse,
-  ToolCall,
   ToolDefinition,
 } from '@noocodex/dagonizer/adapter';
 import { Classifications, LlmError, type ErrorClassification } from '@noocodex/dagonizer/adapter';
@@ -53,7 +53,7 @@ function getLanguageModel(): LanguageModelStatic | undefined {
   return (globalThis as { LanguageModel?: LanguageModelStatic }).LanguageModel;
 }
 
-/** Public probe — used by the provider matrix to pick the best backend. */
+/** Public probe. Used by the provider matrix to pick the best backend. */
 export async function detectGeminiNano(): Promise<GeminiNanoAvailability> {
   const lm = getLanguageModel();
   if (lm === undefined) return 'unavailable';
@@ -69,7 +69,9 @@ export class GeminiNanoAdapter extends BaseAdapter {
     super(
       'gemini-nano',
       'Browser built-in LanguageModel (on-device)',
-      { 'toolUse': 'none', 'structuredOutput': true, 'jsonMode': false },
+      // Tool calls are emitted via JSON coercion (responseConstraint +
+      // decodeToolCallsJson) rather than a native function-calling channel.
+      { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': false },
       { 'maxAttempts': 2 },
     );
   }
@@ -77,7 +79,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
   /**
    * Probe true only when the browser's `window.LanguageModel` is present
    * AND `availability()` reports `'available'`. `'downloadable'` and
-   * `'downloading'` resolve as false — the model isn't ready to serve
+   * `'downloading'` resolve as false; the model isn't ready to serve
    * a chat call immediately, and a cascade should pick a different
    * adapter while the on-device weights warm up. Never throws.
    */
@@ -122,7 +124,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
       }
 
       const text = raw.trim();
-      const toolCalls: readonly ToolCall[] = request.tools.length > 0 ? decodeToolCalls(raw) : [];
+      const toolCalls = request.tools.length > 0 ? decodeToolCallsJson(raw, 'nano') : [];
       return {
         'message': ChatResponseMessageBuilder.from(text, toolCalls),
         'finishReason': toolCalls.length > 0 ? 'tool_call' : 'stop',
@@ -143,20 +145,20 @@ export class GeminiNanoAdapter extends BaseAdapter {
 }
 
 function collapseUserMessages(request: ChatRequest): string {
-  // Nano sessions take one prompt — concatenate user turns. Tool
+  // Nano sessions take one prompt; concatenate user turns. Tool
   // results round-tripped from the DAG land as `role: 'tool'`; we
-  // surface them as `[tool <name>: <content>]` so the next turn knows.
+  // surface them as `[tool <name> result] <content>` so the next turn knows.
   return request.messages
     .filter((m) => m.role !== 'system')
     .map((m) => {
-      if (m.role === 'tool') return `[tool ${m.toolName.length > 0 ? m.toolName : 'unknown'}: ${m.content}]`;
+      if (m.role === 'tool') return `[tool ${m.toolName.length > 0 ? m.toolName : 'unknown'} result] ${m.content}`;
       return m.content;
     })
     .join('\n\n');
 }
 
 function toolPlanSchema(tools: readonly ToolDefinition[]): Record<string, unknown> {
-  // Per-tool variants — each enforces the tool's own inputSchema on
+  // Per-tool variants: each enforces the tool's own inputSchema on
   // `arguments`. Without this Nano gets a free `{}` and tends to
   // hallucinate extra fields (e.g. padding the query with prose) that
   // wreck downstream API calls.
@@ -180,24 +182,6 @@ function toolPlanSchema(tools: readonly ToolDefinition[]): Record<string, unknow
     },
     'required': ['tool_calls'],
   };
-}
-
-function decodeToolCalls(raw: string): ToolCall[] {
-  try {
-    const parsed = JSON.parse(raw) as { tool_calls?: ReadonlyArray<{ name?: string; arguments?: Record<string, unknown> }> };
-    const calls = parsed.tool_calls ?? [];
-    return calls
-      .filter((c): c is { name: string; arguments: Record<string, unknown> } =>
-        typeof c.name === 'string' && c.arguments !== undefined,
-      )
-      .map((c, i) => ({
-        'id':   `nano-${String(i)}-${String(Date.now())}`,
-        'name': c.name,
-        'arguments': c.arguments,
-      }));
-  } catch {
-    return [];
-  }
 }
 
 function classifyNanoError(err: unknown): LlmError {

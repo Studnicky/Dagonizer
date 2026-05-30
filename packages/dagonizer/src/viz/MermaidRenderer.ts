@@ -1,5 +1,5 @@
 /**
- * MermaidRenderer — render a `DAG` as Mermaid `flowchart` source.
+ * MermaidRenderer: render a `DAG` as Mermaid `flowchart` source.
  *
  * Static class. Output renders to a `flowchart LR` graph with one node
  * per placement and one edge per output route. Node-shape hints encode
@@ -7,6 +7,7 @@
  *
  *   single    → rectangle:       `nodeName[name]`
  *   scatter   → trapezoid:       `nodeName[/name/]`
+ *   embedded  → subroutine:      `nodeName[[name]]`
  *   parallel  → subgraph wrapping its child node names
  *   terminal (completed) → double-circle: `nodeName(((name\n(completed))))`
  *   terminal (failed)    → asymmetric flag: `nodeName>name\n(failed)]`
@@ -14,7 +15,7 @@
  * Output routes render as labeled edges. Routes targeting `null` render
  * as edges to a synthetic `END` terminator (one per DAG). Explicit
  * `TerminalNode` placements render as their own distinct shapes and do
- * not emit edges (they are leaf placements — they end the flow).
+ * not emit edges (they are leaf placements; they end the flow).
  *
  * @example
  * ```ts
@@ -25,12 +26,13 @@
  */
 
 import type { DAG } from '../entities/dag/DAG.js';
+import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 
-type AnyPlacement = ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface;
+type AnyPlacement = EmbeddedDAGNode | ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface;
 
 /**
  * Render a `DAG` as Mermaid `flowchart` source. Output is a complete
@@ -85,15 +87,18 @@ export class MermaidRenderer {
       case 'SingleNode':
         return `${placement.name}[${label}]`;
       case 'ScatterNode':
-        // trapezoid — visually distinct from single, parallel, and terminal
+        // trapezoid: fork over a source
         return `${placement.name}[/${label}/]`;
+      case 'EmbeddedDAGNode':
+        // subroutine shape: a nested sub-DAG invocation
+        return `${placement.name}[[${label}]]`;
       case 'ParallelNode':
         // parallel placements render as subgraphs, not single shapes
         return placement.name;
       case 'TerminalNode': {
         const outcomeLabel = MermaidRenderer.escapeLabel(`${placement.name}\\n(${placement.outcome})`);
         if (placement.outcome === 'completed') {
-          // double-circle — connotes "final state" in Mermaid
+          // double-circle: connotes "final state" in Mermaid
           return `${placement.name}(((${outcomeLabel})))`;
         }
         // asymmetric / flag shape for failed terminals
@@ -104,7 +109,7 @@ export class MermaidRenderer {
 
   /** Render a placement's outbound edges as `from -->|label| to` lines. */
   private static renderEdges(placement: AnyPlacement): readonly string[] {
-    // TerminalNode placements are leaf placements — they have no outputs field.
+    // TerminalNode placements are leaf placements; they have no outputs field.
     if (!('outputs' in placement)) return [];
     const lines: string[] = [];
     for (const [outputName, target] of Object.entries(placement.outputs)) {

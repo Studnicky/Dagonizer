@@ -1,17 +1,17 @@
 /**
- * MonadicNode — the root of every canonical DAG pattern.
+ * MonadicNode: the root of every canonical DAG pattern.
  *
  * Each node is a self-contained unit of computation: a function from
  * `(state, context) → output`, deterministic in routing, total over its
  * declared output ports. The "monadic" framing captures three traits
  * the pattern taxonomy depends on:
  *
- *   1. Context-carrying — execution sees the dispatcher's services bag
+ *   1. Context-carrying: execution sees the dispatcher's services bag
  *      and the abort signal alongside the state, not as ambient globals.
- *   2. Composable — output-port routing chains nodes into larger flows
+ *   2. Composable: output-port routing chains nodes into larger flows
  *      via the dispatcher's placement graph (the bind operation in
  *      Dagonizer terms).
- *   3. Total — every code path returns a `NodeOutputInterface<TOutput>`
+ *   3. Total: every code path returns a `NodeOutputInterface<TOutput>`
  *      naming one of the declared ports; nothing throws past the node
  *      boundary.
  *
@@ -27,11 +27,11 @@
  * `RecallContextNode`, `DedupeByKeyNode`, …) and inject domain-specific
  * pieces via the abstract methods those leaves declare.
  *
- * @typeParam TState    — the node state the dispatcher passes to execute.
- * @typeParam TOutput   — the literal union of output port names. Narrows
- *                        the placement-routing surface at compile time.
- * @typeParam TServices — the services bag shape. `undefined` for nodes
- *                        that don't need any service.
+ * @typeParam TState    the node state the dispatcher passes to execute.
+ * @typeParam TOutput   the literal union of output port names. Narrows
+ *                      the placement-routing surface at compile time.
+ * @typeParam TServices the services bag shape. `undefined` for nodes
+ *                      that don't need any service.
  */
 
 import type { NodeInterface } from '../contracts/NodeInterface.js';
@@ -67,7 +67,7 @@ export abstract class MonadicNode<
 
   /**
    * Execute the node, mutating state. Returns a result indicating which
-   * output port to route to. Never throws — catches all errors internally
+   * output port to route to. Never throws; catches all errors internally
    * and routes to an error output.
    */
   abstract execute(
@@ -80,4 +80,11 @@ export abstract class MonadicNode<
 
   /** Optional cleanup invoked when the dispatcher is destroyed. */
   destroy?(): Promise<void>;
+
+  /** Conventional routing-output token for the happy path. Override for non-standard ports. */
+  protected successPort(): TOutput { return 'success' as TOutput; }
+  /** Conventional routing-output token for the no-result path. */
+  protected emptyPort(): TOutput { return 'empty' as TOutput; }
+  /** Conventional routing-output token for the error path. */
+  protected errorPort(): TOutput { return 'error' as TOutput; }
 }

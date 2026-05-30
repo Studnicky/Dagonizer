@@ -1,5 +1,5 @@
 /**
- * Memory barrel — `MemoryStore` plus the dag: vocabulary IRIs.
+ * Memory barrel: `MemoryStore` plus the dag: vocabulary IRIs.
  */
 
 export {

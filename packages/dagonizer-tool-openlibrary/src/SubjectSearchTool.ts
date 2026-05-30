@@ -1,9 +1,9 @@
 /**
- * SubjectSearchTool — OpenLibrary subject/theme search for the Archivist.
+ * SubjectSearchTool: OpenLibrary subject/theme search for the Archivist.
  *
  * Uses the OpenLibrary search endpoint with `subject=<term>` so that
- * visitors can describe a book by what it is *about* — themes, mood,
- * plot motifs, or setting — rather than by title, author, or ISBN.
+ * visitors can describe a book by what it is *about*: themes, mood,
+ * plot motifs, or setting, rather than by title, author, or ISBN.
  *
  * Endpoint:  GET https://openlibrary.org/search.json?subject=<term>&limit=N
  *
@@ -23,7 +23,7 @@
  * distinguish this tool's output from the keyword-search results.
  *
  * Schema design notes:
- *   - `examples` are intentionally generic / template-shaped — never
+ *   - `examples` are intentionally generic / template-shaped; never
  *     real titles, authors, or ISBNs. Some models quote schema examples
  *     back verbatim into responses; shape-only examples prevent that.
  *   - `additionalProperties: true` lets the LLM pass extra OL params
@@ -33,30 +33,12 @@
 import type { Candidate } from '@noocodex/dagonizer-book-entities';
 
 import { CanonicalId } from '@noocodex/dagonizer-book-entities';
+import { HttpTransport } from '@noocodex/dagonizer/tool';
 import type { Tool } from '@noocodex/dagonizer/tool';
 import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
 
-interface OpenLibraryDoc {
-  readonly title?: string;
-  readonly subtitle?: string;
-  readonly author_name?: readonly string[];
-  readonly isbn?: readonly string[];
-  readonly first_publish_year?: number;
-  readonly publisher?: readonly string[];
-  readonly subject?: readonly string[];
-  /** Stable OpenLibrary identifier — `/works/OL...W`. Always present. */
-  readonly key?: string;
-  readonly first_sentence?: readonly string[];
-  /** Some search responses include a description; many don't. */
-  readonly description?: string | { value?: string };
-  /** ISO 639-2 (alpha-3) language codes the work is published in. */
-  readonly language?: readonly string[];
-}
-
-interface OpenLibraryResponse {
-  readonly docs?: readonly OpenLibraryDoc[];
-  readonly numFound?: number;
-}
+import type { OpenLibraryResponse } from './openLibraryTypes.js';
+import { pickDescription } from './openLibraryTypes.js';
 
 interface SubjectSearchInput extends Record<string, unknown> {
   readonly subject: string;
@@ -70,7 +52,7 @@ const ENDPOINT = 'https://openlibrary.org/search.json';
 const definition: ToolDefinition = {
   'name': 'subject_search',
   'description':
-    'Search OpenLibrary by subject or theme — use when the visitor describes a book by what it is *about* (themes, mood, plot motifs, setting) rather than by title, author, or ISBN. For example: "labyrinth", "haunted house", "minotaur", "cosmic horror", "unreliable narrator". Do NOT use for title or author keyword searches — use web_search_books for those.',
+    'Search OpenLibrary by subject or theme. Use when the visitor describes a book by what it is *about* (themes, mood, plot motifs, setting) rather than by title, author, or ISBN. For example: "labyrinth", "haunted house", "minotaur", "cosmic horror", "unreliable narrator". Do NOT use for title or author keyword searches; use web_search_books for those.',
   'inputSchema': {
     'type': 'object',
     'additionalProperties': true,
@@ -79,7 +61,7 @@ const definition: ToolDefinition = {
         'type':        'string',
         'minLength':   2,
         'maxLength':   80,
-        'description': 'A thematic term, subject heading, or plot motif drawn from the visitor description. Prefer concrete nouns or adjective phrases (e.g. "labyrinth", "haunted house", "unreliable narrator"). AND-matching is strict — use a single focused term rather than a long phrase.',
+        'description': 'A thematic term, subject heading, or plot motif drawn from the visitor description. Prefer concrete nouns or adjective phrases (e.g. "labyrinth", "haunted house", "unreliable narrator"). AND-matching is strict; use a single focused term rather than a long phrase.',
         'examples':    ['<subject-or-theme>', '<plot-motif>', '<setting-or-mood>'],
       },
       'limit': {
@@ -113,23 +95,17 @@ export const SubjectSearchTool: Tool<SubjectSearchInput, readonly Candidate[]> =
       params.set('lang', input.lang);
     }
 
-    const initOptions: RequestInit & { signal?: AbortSignal } = { 'method': 'GET' };
-    if (signal !== undefined) initOptions.signal = signal;
-
-    const response = await fetch(`${ENDPOINT}?${params.toString()}`, initOptions);
-    if (!response.ok) {
-      throw new Error(`openlibrary subject-search ${String(response.status)} ${response.statusText}`);
-    }
-
-    const payload = (await response.json()) as OpenLibraryResponse;
+    const payload = await HttpTransport.getJson<OpenLibraryResponse>(
+      `${ENDPOINT}?${params.toString()}`,
+      signal !== undefined ? { signal } : {},
+    );
     const docs = payload.docs ?? [];
     const candidates: Candidate[] = [];
     for (const doc of docs) {
       if (doc.title === undefined) continue;
-      const isbns = doc.isbn?.slice() ?? [];
       const canonical = CanonicalId.pick({
-        'isbns':   isbns,
         'title':   doc.title,
+        ...(doc.isbn !== undefined ? { 'isbns': doc.isbn } : {}),
         ...(doc.author_name !== undefined ? { 'authors': doc.author_name } : {}),
       });
       const summary = pickDescription(doc);
@@ -156,16 +132,3 @@ export const SubjectSearchTool: Tool<SubjectSearchInput, readonly Candidate[]> =
     return candidates;
   },
 };
-
-function pickDescription(doc: OpenLibraryDoc): string | undefined {
-  if (typeof doc.description === 'string' && doc.description.length > 0) return doc.description;
-  if (typeof doc.description === 'object' && typeof doc.description.value === 'string') return doc.description.value;
-  const first = doc.first_sentence?.[0];
-  if (typeof first === 'string' && first.length > 0) {
-    return doc.subtitle !== undefined && doc.subtitle.length > 0
-      ? `${doc.subtitle} — ${first}`
-      : first;
-  }
-  if (doc.subtitle !== undefined && doc.subtitle.length > 0) return doc.subtitle;
-  return undefined;
-}

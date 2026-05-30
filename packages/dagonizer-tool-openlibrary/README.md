@@ -32,10 +32,10 @@ dispatcher.register({ services: { webSearch: OpenLibrarySearchTool } });
 
 `CanonicalId.dedupe(candidates)` collapses duplicates across sources (OpenLibrary, Google Books, Wikipedia) by canonical id derivation:
 
-1. ISBN-13 (preferred — universally unique)
+1. ISBN-13 (preferred, universally unique)
 2. ISBN-10 (older catalogue records)
 3. `urn:isbn:<x>` (when only one form is reachable)
-4. `urn:work:<slug>` (`title|first-author` normalised — covers cross-source title/author matches)
+4. `urn:work:<slug>` (`title|first-author` normalised; covers cross-source title/author matches)
 
 The merge logic keeps the richest description, longest author list, union of subjects/publishers, and accumulates `sources[]` across collapsed candidates.
 

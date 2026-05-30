@@ -1,0 +1,19 @@
+import { RetryPolicy } from '../runtime/index.js';
+
+import { LlmError } from './LlmError.js';
+
+/**
+ * A `RetryPolicy` that honors the `retryable` flag carried by every `LlmError`:
+ * a non-retryable classification (auth failure, bad request, model-not-found,
+ * quota-exceeded past the cap) is never retried, regardless of attempt budget.
+ * Any other error falls back to the base `retryOn`/`abortOn` behavior.
+ *
+ * Keeps `RetryPolicy` itself generic; the `LlmError` coupling lives here, in
+ * the adapter layer.
+ */
+export class RetryableErrorPolicy extends RetryPolicy {
+  override shouldRetry(error: Error, attempt: number): boolean {
+    if (error instanceof LlmError && !error.classification.retryable) return false;
+    return super.shouldRetry(error, attempt);
+  }
+}

@@ -28,7 +28,7 @@ class CountingDagonizer<TState extends NodeStateBase> extends Dagonizer<TState> 
     this.nodeStartNames.push(nodeName);
   }
 
-  protected override onNodeEnd(nodeName: string, _output: string | undefined, _state: TState): void {
+  protected override onNodeEnd(nodeName: string, _output: string | null, _state: TState): void {
     this.nodeEndNames.push(nodeName);
   }
 }
@@ -90,9 +90,9 @@ const parentDAG: DAG = {
     },
     {
       '@id':   'urn:noocodex:dag:parent/node/run-child',
-      '@type': 'ScatterNode',
+      '@type': 'EmbeddedDAGNode',
       'name':  'run-child',
-      'body':  { 'dag': 'child' },
+      'dag':   'child',
       'outputs': { 'success': 'parent-end', 'error': 'parent-end' },
     },
     {
@@ -172,7 +172,7 @@ void describe('Embedded-DAG lifecycle scoping', () => {
 
     await dispatcher.execute('parent', state);
 
-    // State must complete cleanly — no spurious markRunning / markCompleted
+    // State must complete cleanly; no spurious markRunning / markCompleted
     // from the scatter body re-entry (which would throw on a terminal → running
     // transition and leave the lifecycle in an invalid state).
     assert.equal(state.lifecycle.kind, 'completed');

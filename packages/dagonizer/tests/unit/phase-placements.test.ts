@@ -73,7 +73,7 @@ class RecordingInstrumentation extends NoopInstrumentation<TrackingState> {
 
 // ── 1. Schema validation ──────────────────────────────────────────────────
 
-void describe('PhaseNode placements — schema validation', () => {
+void describe('PhaseNode placements: schema validation', () => {
   void it('accepts a valid pre-phase placement', () => {
     const valid = {
       '@id':   'urn:noocodex:dag:demo/node/setup',
@@ -160,7 +160,7 @@ void describe('PhaseNode placements — schema validation', () => {
 
 // ── 2. Pre-phase execution ────────────────────────────────────────────────
 
-void describe('PhaseNode placements — pre-phase execution', () => {
+void describe('PhaseNode placements: pre-phase execution', () => {
   void it('pre-phase runs before the entrypoint and its mutations are visible to the entrypoint', async () => {
     const dispatcher = new Dagonizer<TrackingState>();
     dispatcher.registerNode(makeNode('setup-node', ['success'], (state) => {
@@ -180,7 +180,7 @@ void describe('PhaseNode placements — pre-phase execution', () => {
     assert.deepEqual(result.state.trace, ['pre-setup', 'entry']);
   });
 
-  void it('pre-phase throw aborts the run — lifecycle is failed and main loop never executes', async () => {
+  void it('pre-phase throw aborts the run; lifecycle is failed and main loop never executes', async () => {
     const dispatcher = new Dagonizer<TrackingState>();
     dispatcher.registerNode(makeThrowingNode('boom-pre', 'pre-phase fail'));
     dispatcher.registerNode(makeNode('entry', ['success']));
@@ -221,7 +221,7 @@ void describe('PhaseNode placements — pre-phase execution', () => {
 
 // ── 3. Post-phase execution ───────────────────────────────────────────────
 
-void describe('PhaseNode placements — post-phase execution', () => {
+void describe('PhaseNode placements: post-phase execution', () => {
   void it('post-phase runs after the main loop on the success path', async () => {
     const dispatcher = new Dagonizer<TrackingState>();
     dispatcher.registerNode(makeNode('entry', ['success']));
@@ -318,7 +318,7 @@ void describe('PhaseNode placements — post-phase execution', () => {
 
 // ── 4. Instrumentation hooks ──────────────────────────────────────────────
 
-void describe('PhaseNode placements — instrumentation hooks', () => {
+void describe('PhaseNode placements: instrumentation hooks', () => {
   void it('phaseEnter / phaseExit fire with correct phase + placement name', async () => {
     const instrumentation = new RecordingInstrumentation();
     const dispatcher = new Dagonizer<TrackingState>({ instrumentation });
@@ -356,7 +356,7 @@ void describe('PhaseNode placements — instrumentation hooks', () => {
 
 // ── 5. executedNodes ordering ────────────────────────────────────────────
 
-void describe('PhaseNode placements — executedNodes ordering', () => {
+void describe('PhaseNode placements: executedNodes ordering', () => {
   void it('executedNodes includes pre-phase names at the start and post-phase names at the end', async () => {
     const dispatcher = new Dagonizer<TrackingState>();
     dispatcher.registerNode(makeNode('setup', ['success']));
@@ -376,9 +376,9 @@ void describe('PhaseNode placements — executedNodes ordering', () => {
   });
 });
 
-// ── 6. Validation — phase.node must resolve ──────────────────────────────
+// ── 6. Validation: phase.node must resolve ───────────────────────────────
 
-void describe('PhaseNode placements — registration validation', () => {
+void describe('PhaseNode placements: registration validation', () => {
   void it('registerDAG throws when a PhaseNode references an unregistered node', () => {
     const dispatcher = new Dagonizer<TrackingState>();
     dispatcher.registerNode(makeNode('entry', ['success']));

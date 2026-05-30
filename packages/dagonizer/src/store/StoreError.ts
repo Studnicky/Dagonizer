@@ -1,5 +1,5 @@
 /**
- * StoreError — error taxonomy for store operations.
+ * StoreError: error taxonomy for store operations.
  *
  * Mirrors `LlmError` in structure. Plugin authors classify backing
  * errors into one of these reasons; callers can discriminate on
@@ -25,7 +25,7 @@ export type StoreErrorClassification =
   | {
       readonly reason:   'LEASE_DENIED';
       readonly subject:  string;
-      /** Identifier of current lease holder — opaque; store-defined format. */
+      /** Identifier of current lease holder (opaque; store-defined format). */
       readonly holder:   string;
     }
   | {

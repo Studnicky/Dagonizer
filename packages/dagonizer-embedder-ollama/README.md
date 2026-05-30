@@ -1,6 +1,6 @@
 # @noocodex/dagonizer-embedder-ollama
 
-> **Beta — not yet published to npm.** Ships as part of the Dagonizer
+> **Beta:** not yet published to npm. Ships as part of the Dagonizer
 > plugin ecosystem (GitHub release only). Live-API smoke testing
 > against the provider has not been completed; wire-format
 > compatibility is verified via intercepted-fetch smoke tests.
