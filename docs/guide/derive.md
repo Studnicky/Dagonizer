@@ -192,7 +192,7 @@ const dag = DAGDeriver.derive({
 
 #### `emit` variant: inline TerminalNode synthesis
 
-Use `emit` to end a flow with an explicit `failed` or `completed` lifecycle outcome. The deriver materializes a [`TerminalNode`](../examples/09-terminals) placement and routes the operation's output port to it. `emit` is the only way to end an outcome — there is no implicit completed end from routing alone.
+Use `emit` to end a flow with an explicit `failed` or `completed` lifecycle outcome. The deriver materializes a [`TerminalNode`](../examples/09-terminals) placement and routes the operation's output port to it. `emit` is the only way to end an outcome; there is no implicit completed end from routing alone.
 
 ```ts
 const classify: NodeInterface<S, 'success' | 'fail' | 'error'> = {
@@ -433,7 +433,7 @@ Omitting `TChildState` (using bare `DAGDeriverEmbeddedDAG`) preserves backward c
 
 ## Co-located contracts
 
-Declare `hardRequired` and `produces` directly on the node via `NodeInterface.contract`. The node's own `name` and `outputs` complete the full contract surface — a single object is the one source of truth for both dispatch and topology derivation.
+Declare `hardRequired` and `produces` directly on the node via `NodeInterface.contract`. The node's own `name` and `outputs` complete the full contract surface; a single object is the one source of truth for both dispatch and topology derivation.
 
 ```ts
 // Contract lives on the node; single source of truth

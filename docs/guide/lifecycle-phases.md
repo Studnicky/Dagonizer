@@ -12,7 +12,7 @@ seeAlso:
 
 # Lifecycle phases
 
-`PhaseNode` placements run around the main DAG loop rather than inside it. They are first-class placements: registered like any other, mutate state, can throw, and are observed by the dispatcher hooks and the `Instrumentation` surface.
+`PhaseNode` placements run around the main DAG loop rather than inside it. They are registered like any other placement, mutate state, can throw, and are observed by the dispatcher hooks and the `Instrumentation` surface.
 
 ## API surface
 

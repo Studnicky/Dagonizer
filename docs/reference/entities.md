@@ -63,7 +63,7 @@ import type { ParallelNode } from '@noocodex/dagonizer/entities';
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/ScatterNode`
 
-Scatter placement — fork a source array (one clone per item), run a body (node or sub-DAG) in each clone, gather produced clone state back into the parent, and route on the aggregate outcome. Required: `@id`, `@type: 'ScatterNode'`, `name`, `body`, `source`, `outputs`. Optional: `itemKey` (default `currentItem`), `concurrency`, `stateMapping.input`, `gather`, `reducer`.
+Scatter placement: fork a source array (one clone per item), run a body (node or sub-DAG) in each clone, gather produced clone state back into the parent, and route on the aggregate outcome. Required: `@id`, `@type: 'ScatterNode'`, `name`, `body`, `source`, `outputs`. Optional: `itemKey` (default `currentItem`), `concurrency`, `stateMapping.input`, `gather`, `reducer`.
 
 ```ts
 import { ScatterNodeSchema } from '@noocodex/dagonizer/entities';
@@ -72,7 +72,7 @@ import type { ScatterNode } from '@noocodex/dagonizer/entities';
 
 `body` is a discriminated union: `{ node: string }` for a registered node body or `{ dag: string }` for a registered sub-DAG body.
 
-`stateMapping.input` seeds each clone before its body runs — a `Record<string, string>` mapping child-state keys to parent-state dotted paths. This is the same seeding concept and orientation as `EmbeddedDAGNode.stateMapping.input`. Scatter has no `stateMapping.output`: the N→1 merge back into the parent is `gather`'s job. Builder option: `inputs` in `ScatterOptionsInterface`.
+`stateMapping.input` seeds each clone before its body runs: a `Record<string, string>` mapping child-state keys to parent-state dotted paths. This is the same seeding concept and orientation as `EmbeddedDAGNode.stateMapping.input`. Scatter has no `stateMapping.output`: the N→1 merge back into the parent is `gather`'s job. Builder option: `inputs` in `ScatterOptionsInterface`.
 
 ---
 
@@ -80,14 +80,14 @@ import type { ScatterNode } from '@noocodex/dagonizer/entities';
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/EmbeddedDAGNode`
 
-Embedded-DAG placement — invoke a nested DAG exactly once (cardinality 1) with optional bidirectional state mapping. Required: `@id`, `@type: 'EmbeddedDAGNode'`, `name`, `dag` (registered DAG name), `outputs`. Optional: `stateMapping`.
+Embedded-DAG placement: invoke a nested DAG exactly once (cardinality 1) with optional bidirectional state mapping. Required: `@id`, `@type: 'EmbeddedDAGNode'`, `name`, `dag` (registered DAG name), `outputs`. Optional: `stateMapping`.
 
 ```ts
 import { EmbeddedDAGNodeSchema } from '@noocodex/dagonizer/entities';
 import type { EmbeddedDAGNode } from '@noocodex/dagonizer/entities';
 ```
 
-`stateMapping.input` seeds the child before it runs — child-state key → parent-state dotted path. `stateMapping.output` copies fields back into the parent after the child completes — parent-state dotted path → child-state key. Builder options: `inputs` and `outputs` in `TypedEmbeddedDAGOptionsInterface`.
+`stateMapping.input` seeds the child before it runs (child-state key → parent-state dotted path). `stateMapping.output` copies fields back into the parent after the child completes (parent-state dotted path → child-state key). Builder options: `inputs` and `outputs` in `TypedEmbeddedDAGOptionsInterface`.
 
 Use `EmbeddedDAGNode` for a single nested-DAG invocation (cardinality 1). For a 1→N fork over a source array, use `ScatterNode` with `source`.
 

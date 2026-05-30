@@ -43,7 +43,7 @@ Six kinds:
 
 - **`single`**: one registered node. The node returns one output name; the dispatcher follows the corresponding route.
 - **`parallel`**: a set of previously declared single placements that run concurrently via `Promise.all`. A combine strategy (`all-success`, `any-success`, `collect`) reduces individual outputs to one aggregate output.
-- **`scatter`**: isolates one state clone per item in a source array, runs a node body in each clone, merges produced clone state back into the parent via a `gather` config, and routes on the aggregate outcome via a `reducer`. This is the fork (generate-collect) pattern — a `ScatterNode` is always 1→N over a required `source`.
+- **`scatter`**: isolates one state clone per item in a source array, runs a node body in each clone, merges produced clone state back into the parent via a `gather` config, and routes on the aggregate outcome via a `reducer`. This is the fork (generate-collect) pattern; a `ScatterNode` is always 1→N over a required `source`.
 - **`embedded`**: invokes a registered sub-DAG exactly once (cardinality 1) in an isolated state, then routes the parent on the child's terminal outcome (`success` or `error`). Optional `stateMapping` seeds the child from the parent before it runs and copies fields back after it completes. The Archivist's sub-DAG compositions are `EmbeddedDAGNode` placements.
 - **`terminal`**: named end state for explicit completion or failure. Use when a flow has more than one "done" semantics (for example, `accepted` versus `rejected`).
 - **`phase`**: groups a sequence of placements under a named phase. Instrumentation receives `phaseEnter` / `phaseExit` events; useful for telemetry and progress bars.
@@ -227,6 +227,6 @@ Pattern: a BullMQ job's payload contains the DAG name and initial state; the wor
 
 ### What Dagonizer carries on its own
 
-Some flows do not need a wrapping runtime. Dagonizer runs in-process with no external dependencies. The dispatcher is a single class to instantiate; flows are plain JSON-LD objects you store in files, databases, or configuration services. Cancellation, retry, and checkpoint/resume are first-class without spinning up infrastructure.
+Some flows do not need a wrapping runtime. Dagonizer runs in-process with no external dependencies. The dispatcher is a single class to instantiate; flows are plain JSON-LD objects you store in files, databases, or configuration services. Cancellation, retry, and checkpoint/resume work without spinning up infrastructure.
 
 A Dagonizer flow that needs to call remote workers does so via scatter placements with a `dag` body; the local dispatcher composes them into the larger DAG without requiring a new primitive.

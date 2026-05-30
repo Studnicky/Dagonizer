@@ -1,4 +1,4 @@
-<p align="center"><a href="https://studnicky.github.io/Dagonizer/"><img src="https://raw.githubusercontent.com/Studnicky/Dagonizer/main/docs/public/og-image.png" alt="Dagonizer — Omniscient orchestration for directed acyclic graphs" width="1200" /></a></p>
+<p align="center"><a href="https://studnicky.github.io/Dagonizer/"><img src="https://raw.githubusercontent.com/Studnicky/Dagonizer/main/docs/public/og-image.png" alt="Dagonizer: Omniscient orchestration for directed acyclic graphs" width="1200" /></a></p>
 
 # @noocodex/dagonizer
 
@@ -9,14 +9,14 @@
 The full documentation is published at **https://studnicky.github.io/Dagonizer/**.
 
 - [Getting Started](https://studnicky.github.io/Dagonizer/getting-started)
-- [Architecture](https://studnicky.github.io/Dagonizer/architecture) — DAG, Node, Placement kinds
-- [Concepts](https://studnicky.github.io/Dagonizer/concepts) — state lifecycle, placement routing, fan-out
-- [DAGBuilder](https://studnicky.github.io/Dagonizer/guide/builder) — fluent authoring API
-- [Lifecycle / FSM](https://studnicky.github.io/Dagonizer/reference/lifecycle) — DAGLifecycleMachine, state transitions
-- [Cancellation & Retry](https://studnicky.github.io/Dagonizer/guide/cancellation) — abort signals, deadlines, backoff strategies
-- [Checkpoint / Resume](https://studnicky.github.io/Dagonizer/guide/checkpoint) — deterministic pause and resume
-- [Schema & JSON-LD](https://studnicky.github.io/Dagonizer/guide/schema) — JSON Schema validation, canonical wire format
-- [The Archivist](https://studnicky.github.io/Dagonizer/examples/the-archivist) — in-browser demo running on Dagonizer
+- [Architecture](https://studnicky.github.io/Dagonizer/architecture): DAG, Node, Placement kinds
+- [Concepts](https://studnicky.github.io/Dagonizer/concepts): state lifecycle, placement routing, fan-out
+- [DAGBuilder](https://studnicky.github.io/Dagonizer/guide/builder): fluent authoring API
+- [Lifecycle / FSM](https://studnicky.github.io/Dagonizer/reference/lifecycle): DAGLifecycleMachine, state transitions
+- [Cancellation & Retry](https://studnicky.github.io/Dagonizer/guide/cancellation): abort signals, deadlines, backoff strategies
+- [Checkpoint / Resume](https://studnicky.github.io/Dagonizer/guide/checkpoint): deterministic pause and resume
+- [Schema & JSON-LD](https://studnicky.github.io/Dagonizer/guide/schema): JSON Schema validation, canonical wire format
+- [The Archivist](https://studnicky.github.io/Dagonizer/examples/the-archivist): in-browser demo running on Dagonizer
 
 ## Requirements
 
@@ -38,7 +38,7 @@ Install only what you use. The main `@noocodex/dagonizer` package exposes three 
 
 ```bash
 npm install @noocodex/dagonizer
-# plus any plugins you want — for example:
+# plus any plugins you want, for example:
 npm install @noocodex/dagonizer-adapter-groq @noocodex/dagonizer-patterns-rag
 ```
 
@@ -51,7 +51,7 @@ npm install @noocodex/dagonizer
 
 ## License
 
-MIT — see [LICENSE](./LICENSE).
+MIT. See [LICENSE](./LICENSE).
 
 ## Changelog
 

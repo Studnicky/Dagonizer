@@ -99,7 +99,7 @@ onMounted(() => {
   <section class="timeout-pane">
     <header class="tp-header">
       <h4>Timeouts</h4>
-      <span class="tp-hint">per-phase budgets — applied to the next run</span>
+      <span class="tp-hint">per-phase budgets, applied to the next run</span>
     </header>
 
     <div class="tp-body">

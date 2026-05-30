@@ -106,7 +106,7 @@ Registers a DAG after three validation passes:
 
 1. **Schema pass.** `Validator.dag.validate(dag)` checks structure (required fields, valid `type` and `strategy` enumerations).
 2. **Semantic pass.** Verifies entrypoint exists, all node references are resolvable, no circular scatter body references, and every registered node output has a routing entry in the placement's `outputs` map.
-3. **Contract pass.** For DAGs derived from a `nodes` registry, `ContractRegistryValidator` checks data-flow correctness. The entrypoint node's `hardRequired` paths are treated as the flow's ambient external state — any node may read those keys without an upstream producer, so multi-root topologies (several nodes reading the initial input) validate. Dangling reads (a non-entrypoint node requires a path no upstream node produces) throw `DAGError`; dead writes call `onContractWarning`.
+3. **Contract pass.** For DAGs derived from a `nodes` registry, `ContractRegistryValidator` checks data-flow correctness. The entrypoint node's `hardRequired` paths are treated as the flow's ambient external state; any node may read those keys without an upstream producer, so multi-root topologies (several nodes reading the initial input) validate. Dangling reads (a non-entrypoint node requires a path no upstream node produces) throw `DAGError`; dead writes call `onContractWarning`.
 
 Throws `DAGError` with a multi-line message listing all failures.
 
