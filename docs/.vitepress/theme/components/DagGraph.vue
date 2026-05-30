@@ -354,10 +354,11 @@ function panDown():  void { markUserGesture(); cy.value?.panBy({ x: 0,   y: -80 
 function panLeft():  void { markUserGesture(); cy.value?.panBy({ x: 80,  y: 0 }); }
 function panRight(): void { markUserGesture(); cy.value?.panBy({ x: -80, y: 0 }); }
 
-// D-pad center button: re-fit pan + zoom to the full graph after the
-// user has dragged or zoomed manually. Bare `cy.center()` only re-pans;
-// the visitor expects "snap back to fitted view" semantics.
-function centerView(): void { applyFit(); }
+// D-pad centre button: re-pan the graph to the viewport centre at the
+// CURRENT zoom. `cy.center()` only re-pans, never rezooms, which is what
+// distinguishes Centre from Fit (Fit also resets zoom to the fitted level).
+// Treated as a manual gesture, so it pauses auto-follow like the pan buttons.
+function centerView(): void { markUserGesture(); cy.value?.center(); }
 
 function expandZoom(): void {
   markUserGesture();
