@@ -49,6 +49,7 @@ defineExpose({
 });
 
 const containerRef = ref<HTMLDivElement | null>(null);
+const diagramFrameRef = ref<InstanceType<typeof DiagramFrame> | null>(null);
 const cy = shallowRef<Core | null>(null);
 const machine = shallowRef<DagVizMachine | null>(null);
 const loading = ref(true);
@@ -349,24 +350,24 @@ function zoomOut(): void {
   });
 }
 
-function panUp():    void { markUserGesture(); cy.value?.panBy({ x: 0,   y: 80 }); }
-function panDown():  void { markUserGesture(); cy.value?.panBy({ x: 0,   y: -80 }); }
-function panLeft():  void { markUserGesture(); cy.value?.panBy({ x: 80,  y: 0 }); }
-function panRight(): void { markUserGesture(); cy.value?.panBy({ x: -80, y: 0 }); }
+// Pan buttons move the graph in the direction the arrow points: ▲ shifts the
+// content up, ▼ down, ◀ left, ▶ right. Cytoscape rendered coords are y-down,
+// so "up" is a negative y delta and "left" a negative x delta.
+function panUp():    void { markUserGesture(); cy.value?.panBy({ x: 0,   y: -80 }); }
+function panDown():  void { markUserGesture(); cy.value?.panBy({ x: 0,   y: 80 }); }
+function panLeft():  void { markUserGesture(); cy.value?.panBy({ x: -80, y: 0 }); }
+function panRight(): void { markUserGesture(); cy.value?.panBy({ x: 80,  y: 0 }); }
 
-// D-pad center button: re-fit pan + zoom to the full graph after the
-// user has dragged or zoomed manually. Bare `cy.center()` only re-pans;
-// the visitor expects "snap back to fitted view" semantics.
-function centerView(): void { applyFit(); }
+// D-pad centre button: re-pan the graph to the viewport centre at the
+// CURRENT zoom. `cy.center()` only re-pans, never rezooms, which is what
+// distinguishes Centre from Fit (Fit also resets zoom to the fitted level).
+// Treated as a manual gesture, so it pauses auto-follow like the pan buttons.
+function centerView(): void { markUserGesture(); cy.value?.center(); }
 
-function expandZoom(): void {
-  markUserGesture();
-  const next = (cy.value?.zoom() ?? 1) * 1.6;
-  cy.value?.zoom({
-    level: Math.min(next, cy.value?.maxZoom() ?? next),
-    renderedPosition: { x: (cy.value?.width() ?? 0) / 2, y: (cy.value?.height() ?? 0) / 2 },
-  });
-}
+// D-pad expand button (⛶): take the visualization fullscreen via the
+// DiagramFrame's Fullscreen API toggle. Fit fits the content to the frame;
+// Expand expands the frame itself to fill the viewport.
+function expandView(): void { void diagramFrameRef.value?.toggleFullscreen(); }
 
 function fitScreen(): void { applyFit(); }
 
@@ -669,6 +670,7 @@ function dagStylesheet(): unknown[] {
 
 <template>
   <DiagramFrame
+    ref="diagramFrameRef"
     title="DAG"
     :frameless="true"
     :aria-label="ariaLabel ?? 'DAG execution graph'"
@@ -695,6 +697,7 @@ function dagStylesheet(): unknown[] {
       <GraphDpad
         :zoom-level="zoomLevel"
         :pan-enabled="true"
+        expand-title="Fullscreen"
         @zoom-in="zoomIn"
         @zoom-out="zoomOut"
         @pan-up="panUp"
@@ -702,7 +705,7 @@ function dagStylesheet(): unknown[] {
         @pan-left="panLeft"
         @pan-right="panRight"
         @centre="centerView"
-        @expand="expandZoom"
+        @expand="expandView"
         @fit="fitScreen"
       />
     </div>

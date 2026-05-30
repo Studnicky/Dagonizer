@@ -88,6 +88,10 @@ function toggleExpand(): void {
 function onModalKey(event: KeyboardEvent): void {
   if (event.key === 'Escape') expanded.value = false;
 }
+
+// Exposed so a hosting diagram (e.g. the DagGraph D-pad's expand button) can
+// drive fullscreen / expand without the frame's own header controls.
+defineExpose({ toggleFullscreen, toggleExpand });
 </script>
 
 <template>
