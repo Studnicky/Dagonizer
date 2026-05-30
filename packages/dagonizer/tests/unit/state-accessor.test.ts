@@ -38,6 +38,21 @@ void describe('DottedPathAccessor', () => {
     accessor.set(target, 'a.b.c', 'value');
     assert.deepEqual(target, { 'a': { 'b': { 'c': 'value' } } });
   });
+
+  void it('refuses to write through __proto__ (no prototype pollution)', () => {
+    const accessor = new DottedPathAccessor();
+    accessor.set({}, '__proto__.polluted', 'yes');
+    accessor.set({}, 'a.__proto__.polluted', 'yes');
+    accessor.set({}, 'constructor.prototype.polluted', 'yes');
+    assert.equal(({} as Record<string, unknown>)['polluted'], undefined);
+    assert.equal((Object.prototype as Record<string, unknown>)['polluted'], undefined);
+  });
+
+  void it('returns undefined for a path that walks a prototype key', () => {
+    const accessor = new DottedPathAccessor();
+    assert.equal(accessor.get({ 'a': 1 }, '__proto__'), undefined);
+    assert.equal(accessor.get({ 'a': 1 }, 'a.constructor'), undefined);
+  });
 });
 
 void describe('Dagonizer accepts a custom StateAccessor', () => {
