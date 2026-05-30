@@ -3,81 +3,32 @@
  *
  * Demonstrates:
  *   1. A MemoryStore threaded through the services bag.
- *   2. Two nodes and a ScatterNode sub-DAG that accumulate entries to the
+ *   2. Two nodes and an embedded sub-DAG that accumulate entries to the
  *      same store.
  *   3. Checkpoint.capture() snapshots the store alongside parent state.
  *   4. Checkpoint.load() + restoreStores() recovers the store on resume.
+ *
+ * DAG definition (services type, step nodes, child/parent dags): examples/dags/10-shared-state.ts
  *
  * Run: npx tsx examples/10-shared-state.ts
  */
 
 import {
   Checkpoint,
-  DAGBuilder,
   Dagonizer,
   NodeStateBase,
 } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
-import { MemoryStore } from '@noocodex/dagonizer/store';
-import type { Store } from '@noocodex/dagonizer/contracts';
+import {
+  MemoryStore,
+  stepA,
+  stepB,
+  childStep,
+  childDag,
+  parentDag,
+} from './dags/10-shared-state.js';
+import type { Services } from './dags/10-shared-state.js';
 
-// ---------------------------------------------------------------------------
-// Services bag type
-// ---------------------------------------------------------------------------
-
-// #region services
-interface Services {
-  log: Store;
-}
-// #endregion services
-
-// ---------------------------------------------------------------------------
-// Nodes: each appends its own name to the store's 'entries' key
-// ---------------------------------------------------------------------------
-
-function makeStep(stepName: string): NodeInterface<NodeStateBase, 'done', Services> {
-  return {
-    "name":    stepName,
-    "outputs": ['done'],
-    async execute(_state, context) {
-      await context.services.log.update<string>('entries', (current) => {
-        const existing = current?.split(',').filter(Boolean) ?? [];
-        return [...existing, stepName].join(',');
-      });
-      return { "output": 'done' };
-    },
-  };
-}
-
-const stepA     = makeStep('step-a');
-const stepB     = makeStep('step-b');
-const childStep = makeStep('child-step');
-
-// ---------------------------------------------------------------------------
-// DAGs: child DAG placed inside the parent
-// ---------------------------------------------------------------------------
-
-// #region child-dag
-const childDag = new DAGBuilder('sub-flow', '1')
-  .node('child-step', childStep, { "done": null })
-  .build();
-// #endregion child-dag
-
-// #region parent-dag
-// run-child is an EmbeddedDAGNode whose body is the registered 'sub-flow' DAG.
-// The child shares the same services bag, so child-step appends to the same
-// MemoryStore between step-a and step-b.
-const parentDag = new DAGBuilder('main-flow', '1')
-  .node('step-a', stepA, { "done": 'run-child' })
-  .embeddedDAG('run-child', 'sub-flow', { "success": 'step-b', "error": 'step-b' })
-  .node('step-b', stepB, { "done": null })
-  .build();
-// #endregion parent-dag
-
-// ---------------------------------------------------------------------------
 // Part 1: Normal run (all three steps accumulate to the store)
-// ---------------------------------------------------------------------------
-
 // #region run
 {
   // #region store-init
@@ -99,10 +50,8 @@ const parentDag = new DAGBuilder('main-flow', '1')
   // → "step-a,child-step,step-b"
 }
 
-// ---------------------------------------------------------------------------
 // Part 2: Checkpoint round-trip
 //   Abort after step-a, capture checkpoint with store, restore, resume.
-// ---------------------------------------------------------------------------
 
 {
   const logStore = new MemoryStore();

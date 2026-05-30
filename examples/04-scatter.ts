@@ -11,80 +11,13 @@
  * The ScatterNode outputs (all-success | partial | all-error | empty) reflect
  * the aggregate result, not individual items.
  *
+ * DAG definition (state, worker node, dag): examples/dags/04-scatter.ts
+ *
  * Run: npx tsx examples/04-scatter.ts
  */
 
-import {
-  DAG_CONTEXT,
-  Dagonizer,
-  NodeStateBase,
-} from '@noocodex/dagonizer';
-import type { DAG, NodeInterface } from '@noocodex/dagonizer';
-
-// ---------------------------------------------------------------------------
-// State
-// ---------------------------------------------------------------------------
-
-// #region state
-class ScrapeState extends NodeStateBase {
-  urls:      string[] = [];  // source array; ScatterNode reads this by field name
-  succeeded: string[] = [];  // partition target for 'ok' output
-  failed:    string[] = [];  // partition target for 'fail' output
-}
-// #endregion state
-
-// ---------------------------------------------------------------------------
-// Nodes
-// ---------------------------------------------------------------------------
-
-// #region worker-node
-const probe: NodeInterface<ScrapeState, 'ok' | 'fail'> = {
-  "name": 'probe',
-  "outputs": ['ok', 'fail'],
-  async execute(state) {
-    // Each item is written to state under the itemKey ('url') before execute.
-    const url = state.getMetadata<string>('url') ?? '';
-    // Fake probe: even-length URLs succeed, odd-length fail.
-    return { "output": url.length % 2 === 0 ? 'ok' : 'fail' };
-  },
-};
-// #endregion worker-node
-
-// ---------------------------------------------------------------------------
-// DAG
-// ---------------------------------------------------------------------------
-
-// #region scatter-placement
-const dag: DAG = {
-  '@context':   DAG_CONTEXT,
-  '@id':        'urn:noocodex:dag:scrape',
-  '@type':      'DAG',
-  "name":         'scrape',
-  "version":      '1',
-  "entrypoint":   'probe-all',
-  "nodes": [
-    {
-      '@id':        'urn:noocodex:dag:scrape/node/probe-all',
-      '@type':      'ScatterNode',                   // iterate source, run node per clone
-      "name":         'probe-all',
-      "body":         { "node": 'probe' },             // which registered node to invoke per clone
-      "source":       'urls',                          // state field to read the items array from
-      "itemKey":      'url',                           // metadata key each item is written under
-      "concurrency":  2,                               // max clones in-flight simultaneously
-      "gather": {
-        "strategy":   'partition',                     // route clones by their output key
-        "partitions": { "ok": 'succeeded', "fail": 'failed' },  // output key → state field name
-      },
-      // Aggregate outputs: reflect final distribution, not per-clone results.
-      // all-success: every clone returned 'ok'
-      // partial:     mix of ok and fail
-      // all-error:   every clone returned 'fail'
-      // empty:       source array was empty
-      "outputs": { 'all-success': null, "partial": null, 'all-error': null, "empty": null },
-    },
-  ],
-};
-// #endregion scatter-placement
+import { Dagonizer } from '@noocodex/dagonizer';
+import { ScrapeState, probe, dag } from './dags/04-scatter.js';
 
 // ---------------------------------------------------------------------------
 // Run
