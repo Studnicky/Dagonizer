@@ -1,5 +1,13 @@
 # @noocodex/dagonizer-tool-wikipedia
 
+## 0.14.1
+
+### Patch Changes
+
+- Updated dependencies [86f8a98]
+  - @noocodex/dagonizer@0.14.1
+  - @noocodex/dagonizer-book-entities@0.14.1
+
 ## 0.14.0
 
 ### Patch Changes

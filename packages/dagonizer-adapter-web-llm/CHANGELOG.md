@@ -1,5 +1,12 @@
 # @noocodex/dagonizer-adapter-web-llm
 
+## 0.14.1
+
+### Patch Changes
+
+- Updated dependencies [86f8a98]
+  - @noocodex/dagonizer@0.14.1
+
 ## 0.14.0
 
 ### Patch Changes
