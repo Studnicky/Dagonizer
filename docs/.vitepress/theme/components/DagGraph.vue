@@ -16,8 +16,11 @@
  * readable against any underlying edge / theme background.
  */
 
-import { nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { Core, ElementDefinition, EdgeCollection, NodeSingular } from 'cytoscape';
+
+import type { DAG } from '../../../../packages/dagonizer/src/entities/dag/DAG.js';
+import { CytoscapeRenderer } from '../../../../packages/dagonizer/src/viz/CytoscapeRenderer.ts';
 
 import DiagramFrame from './DiagramFrame.vue';
 import GraphDpad from './graph/GraphDpad.vue';
@@ -28,8 +31,11 @@ import type { EdgeVizAdapter } from './viz/EdgeVizMachine.ts';
 import type { NodeVizAdapter } from './viz/NodeVizMachine.ts';
 
 const props = defineProps<{
-  elements: ElementDefinition[];
+  elements?: ElementDefinition[];
   ariaLabel?: string;
+  dag?: DAG;
+  embeddedDAGs?: ReadonlyMap<string, DAG>;
+  nodeKinds?: Readonly<Record<string, string>>;
 }>();
 
 const emit = defineEmits<{
@@ -56,6 +62,45 @@ const loading = ref(true);
 const loadError = ref<string | null>(null);
 const zoomLevel = ref<number>(1);
 let resizeObserver: ResizeObserver | null = null;
+
+/**
+ * Self-render mode: the set of embedded-DAG *names* currently expanded.
+ * Empty on mount = all collapsed (rendered as opaque boxes).
+ * Only used when props.dag is provided; ignored otherwise.
+ */
+const expandedDags = ref<Set<string>>(new Set());
+
+/**
+ * Resolve the elements to render. When props.dag is provided (self-render
+ * mode), renders using CytoscapeRenderer with only the expanded sub-DAGs
+ * included, then enriches each element's data.kind from props.nodeKinds.
+ * Falls back to props.elements for static pages that pass elements directly.
+ */
+const resolvedElements = computed<ElementDefinition[]>(() => {
+  if (props.dag !== undefined) {
+    // Build the filtered embedded-DAG registry containing only expanded dags.
+    const expandedRegistry = new Map<string, DAG>();
+    if (props.embeddedDAGs !== undefined) {
+      for (const [name, dag] of props.embeddedDAGs) {
+        if (expandedDags.value.has(name)) expandedRegistry.set(name, dag);
+      }
+    }
+    const raw = CytoscapeRenderer.render(props.dag, {
+      "embeddedDAGs": expandedRegistry,
+    }) as ElementDefinition[];
+    // Enrich each node element with data.kind from nodeKinds map.
+    return raw.map((el) => {
+      const data = el.data as { id?: string; node?: string };
+      const nodeName = data.node ?? data.id;
+      const kind = (nodeName !== undefined && props.nodeKinds !== undefined)
+        ? props.nodeKinds[nodeName]
+        : undefined;
+      if (kind === undefined) return el;
+      return { ...el, "data": { ...el.data, kind } };
+    });
+  }
+  return props.elements ?? [];
+});
 
 /**
  * Component-scoped warn-once set for the suffix-match migration safety net.
@@ -107,7 +152,7 @@ onMounted(async () => {
 
   cy.value = cytoscape({
     container,
-    elements: props.elements,
+    elements: resolvedElements.value,
     style: dagStylesheet(),
     layout: dagLayout(),
     // Nodes are grabbable by default; visitors can drag, pan, zoom,
@@ -131,7 +176,29 @@ onMounted(async () => {
 
   cy.value.on('tap', 'node', (evt) => {
     const node = evt.target as NodeSingular;
-    const data = node.data() as { node?: string; id?: string };
+    const data = node.data() as { node?: string; id?: string; type?: string; dag?: string; body?: string };
+
+    // Click-to-expand: in self-render mode, tapping an embedded-dag or
+    // scatter-with-dag-body node toggles expansion of its embedded DAG.
+    if (props.dag !== undefined && props.embeddedDAGs !== undefined) {
+      const nodeType = data.type;
+      let dagName: string | undefined;
+      if (nodeType === 'embedded-dag' && typeof data.dag === 'string') {
+        dagName = data.dag;
+      } else if (nodeType === 'scatter' && typeof data.body === 'string') {
+        // Check if the body string names a registered embedded DAG.
+        if (props.embeddedDAGs.has(data.body)) dagName = data.body;
+      }
+      if (dagName !== undefined && props.embeddedDAGs.has(dagName)) {
+        // Toggle expansion: add if absent, remove if present.
+        const next = new Set(expandedDags.value);
+        if (next.has(dagName)) { next.delete(dagName); } else { next.add(dagName); }
+        expandedDags.value = next;
+        // Do NOT emit node-click for embed-toggle taps.
+        return;
+      }
+    }
+
     const name = data.node ?? data.id;
     if (typeof name === 'string' && name.length > 0) emit('node-click', name);
   });
@@ -172,6 +239,17 @@ onBeforeUnmount(() => {
   machine.value = null;
 });
 
+// ── Self-render mode: react to embed expansion changes ──────────────────
+// When expandedDags changes (user clicked a collapsed box), rebuild the
+// cytoscape elements and re-run the preset layout with newly computed positions.
+watch(expandedDags, () => {
+  const core = cy.value;
+  if (core === null) return;
+  core.elements().remove();
+  core.add(resolvedElements.value as Parameters<Core['add']>[0]);
+  rerunLayout();
+});
+
 // ── Public dispatch surface ──────────────────────────────────────────────
 
 function dispatch(event: DagVizEvent): void {
@@ -209,10 +287,33 @@ function markUserGesture(): void { userInteracted.value = true; }
 function resolveNode(id: string): ReturnType<NonNullable<typeof cy.value>['$id']> | null {
   const core = cy.value;
   if (core === null) return null;
+
+  // Exact match: the id is in the rendered graph.
   const exact = core.$id(id);
   if (exact.length > 0) return exact;
-  suffixFallbackWarn(id);
-  return core.nodes().filter((n) => n.id().endsWith(`/${id}`));
+
+  // Suffix fallback: migration safety net for runners that pass bare node names.
+  const suffix = core.nodes().filter((n) => n.id().endsWith(`/${id}`));
+  if (suffix.length > 0) {
+    suffixFallbackWarn(id);
+    return suffix;
+  }
+
+  // Ancestor fallback: inner node id not rendered (collapsed embedded-dag).
+  // Walk UP the id path by repeatedly stripping the trailing segment and
+  // checking whether that ancestor node is rendered. This highlights the
+  // collapsed embedding-DAG box when an inner NODE_START fires.
+  // Example: 'on-topic-search/extract-query' → tries 'on-topic-search'.
+  let candidate = id;
+  for (;;) {
+    const slash = candidate.lastIndexOf('/');
+    if (slash <= 0) break;
+    candidate = candidate.slice(0, slash);
+    const ancestor = core.$id(candidate);
+    if (ancestor.length > 0) return ancestor;
+  }
+
+  return core.collection();
 }
 
 function followActiveSet(): void {
