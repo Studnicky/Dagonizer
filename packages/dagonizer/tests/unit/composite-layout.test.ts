@@ -53,6 +53,25 @@ void describe('CompositeLayout.compute', () => {
     assert.ok(posB.y < posC.y, `B.y (${posB.y}) must be < C.y (${posC.y})`);
   });
 
+  void it('null-route placement: synthetic END node is positioned and ranked below its predecessor', () => {
+    const dag = makeDAG('with-end', 'A', [
+      singleNode('A', { "next": 'B' }),
+      singleNode('B', { "done": null }),
+    ]);
+
+    const { positions } = CompositeLayout.compute(dag);
+
+    const posB   = positions.get('B');
+    const posEnd = positions.get('END');
+
+    assert.ok(posEnd !== undefined, 'synthetic END must have a layout position (not stranded at origin)');
+    assert.ok(posB !== undefined, 'B must have a position');
+    // END must not default to the origin and must sit below the placement
+    // that routes to it (top-down rank), not float to the top-left.
+    assert.ok(!(posEnd.x === 0 && posEnd.y === 0), 'END must not be stranded at (0,0)');
+    assert.ok(posEnd.y > posB.y, `END.y (${posEnd.y}) must be below B.y (${posB.y})`);
+  });
+
   void it('ScatterNode (body.dag): inner children sit between predecessor and successor in y; entry has smallest y in subgraph', () => {
     // inner DAG: entry-node → middle-node → exit-node
     const innerDAG = makeDAG('inner', 'entry-node', [
