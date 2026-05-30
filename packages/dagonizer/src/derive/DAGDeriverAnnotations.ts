@@ -1,26 +1,25 @@
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 /**
- * DAGDeriverAnnotations — declarative hooks for routing the contract-derived
+ * DAGDeriverAnnotations: declarative hooks for routing the contract-derived
  * flow cannot express by data-graph alone.
  *
- *   terminals — alternate exit outputs that terminate the flow rather
- *               than continuing into the next derived stage. Useful for
- *               operations whose non-success outcomes route to `null`.
- *   fanouts   — operations whose data-graph successor is reached by
- *               fan-out over a state-array source. Specifies the source
- *               path, the per-item key, the concurrency cap, the
- *               per-item kind (node or embedded-DAG), the fan-in strategy
- *               with its strategy-specific fields, and the fan-out
- *               outcome names.
- *   embeddedDAGs   — operations that delegate execution to a nested
- *               registered DAG. Renders as a `EmbeddedDAGNode` placement
- *               with the supplied `dag` name and optional state
- *               mapping. Every port in `outputs` auto-wires to the
- *               next derived stage; `terminals` overrides per-port.
- *   parallels — explicit `ParallelNode` groupings with a chosen
- *               combine strategy. Without it, same-topological-depth
- *               operations auto-group with `combine: 'collect'`.
+ *   terminals: alternate exit outputs that terminate the flow rather
+ *              than continuing into the next derived stage. Useful for
+ *              operations whose non-success outcomes route to `null`.
+ *   scatters: operations whose data-graph successor is reached by
+ *             scatter over a state-array source. Specifies the source
+ *             path, the per-item key, the concurrency cap, the
+ *             per-item kind (node), the gather strategy with its
+ *             strategy-specific fields, and the scatter outcome names.
+ *   embeddedDAGs: operations that delegate execution to a nested
+ *                 registered DAG. Renders as an `EmbeddedDAGNode` placement
+ *                 with the supplied `dag` name and optional state mapping.
+ *                 Every port in `outputs` auto-wires to the next derived
+ *                 stage; `terminals` overrides per-port.
+ *   parallels: explicit `ParallelNode` groupings with a chosen
+ *              combine strategy. Without it, same-topological-depth
+ *              operations auto-group with `combine: 'collect'`.
  */
 
 /**
@@ -37,11 +36,11 @@ export interface DAGDeriverEmitTerminal {
 }
 
 /**
- * Per-operation alternate exit. Two variants:
+ * Per-operation alternate exit. Two distinct concepts, one way each:
  *
- *   - **target variant** (legacy form): `target: null` ends the flow with an
- *     implicit `completed` outcome; `target: string` routes the output port to
- *     the named existing placement.
+ *   - **target variant**: `target: string` routes the output port to a named
+ *     existing placement. (Routing only. To END the flow at an outcome, use
+ *     the emit variant; there is no implicit null end.)
  *   - **emit variant**: declares an inline `TerminalNode` that the deriver
  *     synthesizes and adds to the DAG. The operation's output port routes to
  *     `emit.name`; the `TerminalNode` carries `emit.outcome` so the engine
@@ -49,21 +48,19 @@ export interface DAGDeriverEmitTerminal {
  *     marking the parent flow `failed` explicitly on a particular operation
  *     outcome (e.g. `fail` → `TerminalNode{outcome:'failed'}`).
  *
- * Multiple operations may declare `emit` annotations with the same `name` —
+ * Multiple operations may declare `emit` annotations with the same `name`;
  * the deriver deduplicates by name. If two `emit` entries share a name but
  * disagree on `outcome`, `DAGDeriver.derive` throws `DAGError`.
  */
 export type DAGDeriverTerminal =
-  | { readonly outcome: string; readonly target: string | null }
+  | { readonly outcome: string; readonly target: string }
   | { readonly outcome: string; readonly emit: DAGDeriverEmitTerminal };
 
 /**
- * Common fields every fan-out annotation carries regardless of
- * strategy. The per-item kind is a registered node — fan-out over
- * a registered embedded-DAG would require an engine FanOutNode schema
- * extension and isn't supported in this release.
+ * Common fields every scatter annotation carries regardless of strategy.
+ * The per-item kind is a registered node.
  */
-interface DAGDeriverFanOutBase {
+interface DAGDeriverScatterBase {
   /** Dotted path on state to the source array. */
   readonly source:       string;
   /** Metadata key the per-item executions read for the current item. */
@@ -72,46 +69,42 @@ interface DAGDeriverFanOutBase {
   readonly node:         string;
   /** Concurrency cap; defaults to source array length when omitted. */
   readonly concurrency?: number;
-  /** Fan-out outcome names the dispatcher routes on. */
+  /** Scatter outcome names the dispatcher routes on. */
   readonly outcomes:     readonly string[];
 }
 
 /**
- * Per-operation fan-out wrapping. The fan-in strategy is a
- * discriminated union — each variant carries the
- * strategy-specific fields the engine's `FanInConfig` requires:
+ * Per-operation scatter wrapping. The gather strategy is a discriminated
+ * union; each variant carries the strategy-specific fields the engine's
+ * `GatherConfig` requires:
  *
- *   ⦿ `'custom'`   — `fanInOperation`: registered node that runs as
- *                    the merge step. The dispatcher passes the
- *                    `Record<outcome, item[]>` map to the node via
- *                    `state.metadata.fanInResults`.
- *   ⦿ `'partition'` — `partitions`: `Record<outcome, statePath>` map
- *                     declaring where each per-outcome item array
- *                     gets written on parent state.
- *   ⦿ `'append'`   — `target`: single dotted state path. Every item
- *                    result (regardless of outcome) is flattened
- *                    into the array at that path.
+ *   ⦿ `'custom'`    (customNode): registered node that runs as the merge
+ *                     step. The dispatcher passes the `Record<outcome, item[]>`
+ *                     map to the node via `state.metadata.gatherResults`.
+ *   ⦿ `'partition'` (partitions): `Record<outcome, statePath>` map declaring
+ *                     where each per-outcome item array gets written on parent
+ *                     state.
+ *   ⦿ `'append'`    (target): single dotted state path. Every item result
+ *                     (regardless of outcome) is flattened into the array at
+ *                     that path.
  *
  * Compile-time discriminator types enforce mutual exclusion;
- * `DAGDeriver.derive` re-validates at runtime as a defensive
- * backstop.
+ * `DAGDeriver.derive` re-validates at runtime as a defensive backstop.
  */
-export type DAGDeriverFanOut = DAGDeriverFanOutBase & (
-  | { readonly strategy: 'custom';    readonly fanInOperation: string;
-      readonly partitions?: never;     readonly target?: never }
-  | { readonly strategy: 'partition'; readonly partitions:    Readonly<Record<string, string>>;
-      readonly fanInOperation?: never; readonly target?: never }
-  | { readonly strategy: 'append';    readonly target:        string;
-      readonly fanInOperation?: never; readonly partitions?: never }
+export type DAGDeriverScatter = DAGDeriverScatterBase & (
+  | { readonly strategy: 'custom';    readonly customNode: string;
+      readonly partitions?: never;    readonly target?: never }
+  | { readonly strategy: 'partition'; readonly partitions: Readonly<Record<string, string>>;
+      readonly customNode?: never;    readonly target?: never }
+  | { readonly strategy: 'append';    readonly target: string;
+      readonly customNode?: never;    readonly partitions?: never }
 );
 
 /**
- * Resolves to `keyof T & string` when `T` is a concrete subtype of
- * `NodeStateInterface` (i.e. the caller passed an explicit `TChildState`);
- * resolves to `string` when `T = NodeStateInterface` (the default). This
- * keeps existing call sites backward-compatible — the child key stays `string`
- * so arbitrary strings continue to typecheck — while enabling narrow checking
- * when a concrete state type is supplied.
+ * Progressive key typing: resolves to `keyof T & string` when `T` is a concrete
+ * state subtype (the caller passed an explicit `TChildState`), or to `string`
+ * when `T = NodeStateInterface` (the default). Authoring untyped keeps loose
+ * `string` keys; passing the child state type narrows to its real keys.
  *
  * The check `NodeStateInterface extends T` is true only when `T` is
  * `NodeStateInterface` itself (or a supertype), not when `T` is a concrete
@@ -128,9 +121,8 @@ type ChildKey<T extends NodeStateInterface> =
  *
  * Supply `TChildState` to narrow `stateMapping.input` keys and
  * `stateMapping.output` values to names that actually exist on the child
- * state at compile time. Omitting `TChildState` (or passing the default
- * `NodeStateInterface`) preserves backward compatibility — any string is
- * accepted on both sides.
+ * state at compile time. Omitting `TChildState` (the default
+ * `NodeStateInterface`) leaves both sides as loose `string`.
  *
  * @example
  * ```ts
@@ -161,15 +153,15 @@ export interface DAGDeriverEmbeddedDAG<TChildState extends NodeStateInterface = 
    * Mirrors `EmbeddedDAGNode.stateMapping` in the engine.
    *
    * When `TChildState` is a concrete subtype:
-   *   - `input` keys are narrowed to `keyof TChildState & string` — a
+   *   - `input` keys are narrowed to `keyof TChildState & string`; a
    *     compile-time error is raised for unknown child-state keys.
    *   - `output` values are narrowed to `keyof TChildState & string`.
    *
    * When `TChildState` is the default `NodeStateInterface`, both sides
-   * accept any `string` — preserving backward compatibility.
+   * accept any `string`.
    *
    * The wire shape written to the rendered `EmbeddedDAGNode` is always
-   * `Record<string, string>` — the generic is for authoring ergonomics only.
+   * `Record<string, string>`; the generic is for authoring ergonomics only.
    */
   readonly stateMapping?: {
     /** Child-state key → parent dotted path. */
@@ -194,7 +186,7 @@ export interface DAGDeriverEmbeddedDAG<TChildState extends NodeStateInterface = 
  * a topological depth with `combine: 'collect'`. Use `parallels`
  * when:
  *   ⦿ Same-depth operations should run sequentially instead
- *     (omit them from any parallels entry — but auto-grouping
+ *     (omit them from any parallels entry; auto-grouping
  *     activates whenever ≥2 operations share a depth, so the
  *     opt-out path is to flatten the data graph)
  *   ⦿ A combine strategy other than `'collect'` is required
@@ -213,8 +205,8 @@ export interface DAGDeriverParallel {
  * `SingleNode` with `success` routing to the next derived operation.
  */
 export interface DAGDeriverAnnotations {
-  readonly terminals?: Readonly<Record<string, readonly DAGDeriverTerminal[]>>;
-  readonly fanouts?:   Readonly<Record<string, DAGDeriverFanOut>>;
-  readonly embeddedDAGs?:   Readonly<Record<string, DAGDeriverEmbeddedDAG>>;
-  readonly parallels?: Readonly<Record<string, DAGDeriverParallel>>;
+  readonly terminals?:   Readonly<Record<string, readonly DAGDeriverTerminal[]>>;
+  readonly scatters?:    Readonly<Record<string, DAGDeriverScatter>>;
+  readonly embeddedDAGs?: Readonly<Record<string, DAGDeriverEmbeddedDAG>>;
+  readonly parallels?:   Readonly<Record<string, DAGDeriverParallel>>;
 }

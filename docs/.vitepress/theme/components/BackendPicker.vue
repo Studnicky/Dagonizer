@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * BackendPicker — backend selector + per-provider API-key form.
+ * BackendPicker: backend selector + per-provider API-key form.
  *
  * Backend dropdown is sorted (runnable first, then by displayName).
  * Cloud backends that require a key each get a collapsible <details>
@@ -85,7 +85,7 @@ const revealMap = ref<Record<string, boolean>>({});
 const visibleIds = computed(() => new Set(browserVisibleBackends(props.isMobile ?? false)));
 
 /** Runnable non-stub backends first, then alphabetical by displayName.
- *  Stub is excluded from the dropdown — it has its own flat row on mobile. */
+ *  Stub is excluded from the dropdown; it has its own flat row on mobile. */
 const sortedBackends = computed<readonly BackendOption[]>(() => {
   const list = props.backends.filter((b) => visibleIds.value.has(b.id) && b.id !== 'stub');
   list.sort((a, b) => {
@@ -95,7 +95,7 @@ const sortedBackends = computed<readonly BackendOption[]>(() => {
   return list;
 });
 
-/** Stub row — only present on mobile. */
+/** Stub row: only present on mobile. */
 const stubBackend = computed<BackendOption | null>(() => {
   if (props.isMobile !== true) return null;
   return props.backends.find((b) => b.id === 'stub') ?? null;
@@ -106,7 +106,7 @@ const keyBackends = computed(() =>
   props.backends.filter((b) => KEY_BACKENDS.has(b.id) && visibleIds.value.has(b.id))
 );
 
-/** Ollama row — no key, takes a model name instead. Visible when not on mobile. */
+/** Ollama row: no key, takes a model name instead. Visible when not on mobile. */
 const ollamaBackend = computed<BackendOption | null>(() => {
   if (props.isMobile === true) return null;
   return props.backends.find((b) => b.id === 'ollama') ?? null;
@@ -155,16 +155,16 @@ function keyFor(id: string): string {
             :value="entry.id"
             :disabled="isDesktopOnly(entry.id)"
           >
-            {{ entry.displayName }}{{ isDesktopOnly(entry.id) ? ' — desktop only' : entry.runnable ? '' : ' — needs setup' }}
+            {{ entry.displayName }}{{ isDesktopOnly(entry.id) ? ' (desktop only)' : entry.runnable ? '' : ' (needs setup)' }}
           </option>
         </select>
       </label>
     </header>
 
-    <!-- Privacy notice — keys are local-only -->
+    <!-- Privacy notice: keys are local-only -->
     <p v-if="keyBackends.length > 0" class="key-privacy-note">
       Keys are stored in your browser's localStorage and used only to call
-      the provider's API directly from your browser — they never reach any
+      the provider's API directly from your browser; they never reach any
       Dagonizer server (there isn't one). See
       <a
         href="https://github.com/Studnicky/Dagonizer/blob/main/examples/the-archivist/providers/index.ts"
@@ -174,7 +174,7 @@ function keyFor(id: string): string {
       (functions <code>loadApiKeys</code> / <code>saveApiKeys</code>) for the source.
     </p>
 
-    <!-- Per-backend key inputs — one collapsible <details> each -->
+    <!-- Per-backend key inputs: one collapsible <details> each -->
     <details
       v-for="backend in keyBackends"
       :key="backend.id"
@@ -217,7 +217,7 @@ function keyFor(id: string): string {
       </div>
     </details>
 
-    <!-- Ollama row — no key, takes a model name instead. Desktop only. -->
+    <!-- Ollama row: no key, takes a model name instead. Desktop only. -->
     <details
       v-if="ollamaBackend !== null"
       class="backend-key"
@@ -253,7 +253,7 @@ function keyFor(id: string): string {
       </div>
     </details>
 
-    <!-- Stub flat row — mobile only, no API-key input, always runnable -->
+    <!-- Stub flat row: mobile only, no API-key input, always runnable -->
     <div
       v-if="stubBackend !== null"
       class="stub-row"

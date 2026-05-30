@@ -12,7 +12,7 @@ seeAlso:
 
 # State accessors
 
-Scatter source reads, scatter projection copies, and gather writes all walk paths into the live state object. The `StateAccessor` contract defines that walk; `DottedPathAccessor` is the default implementation.
+Scatter source reads, scatter state-mapping input copies, and gather writes all walk paths into the live state object. The `StateAccessor` contract defines that walk; `DottedPathAccessor` is the default implementation.
 
 ## API surface
 
@@ -33,7 +33,7 @@ interface StateAccessor {
 }
 ```
 
-Implementations are stateless. The same instance is shared across every scatter source read, projection copy, and gather write.
+Implementations are stateless. The same instance is shared across every scatter source read, state-mapping input copy, and gather write.
 
 ## Default behavior
 
@@ -71,7 +71,8 @@ const dispatcher = new Dagonizer<MyState>({ accessor: new JsonPointerAccessor() 
 The same accessor flows through every code path that resolves a state path:
 
 - `scatter.source`: reading the array to scatter over.
-- `scatter.projection`: copying parent fields into the clone before the body runs.
+- `scatter.stateMapping.input` (builder option `inputs`): copying parent fields into each clone before the body runs.
+- `embeddedDAG.stateMapping.input` / `stateMapping.output`: seeding the child-state clone and copying fields back after the sub-DAG completes.
 - `gather.mapping` (map strategy): writing produced clone fields back to parent paths.
 - `gather.target` (append strategy): writing the gathered results.
 - `gather.partitions` (partition strategy): writing each output bucket.

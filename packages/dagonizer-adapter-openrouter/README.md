@@ -1,6 +1,6 @@
 # @noocodex/dagonizer-adapter-openrouter
 
-> **Beta — not yet published to npm.** Ships in v0.10.0 as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format compatibility is verified via intercepted-fetch smoke tests. Expect minor adjustments before 1.0.
+> **Beta:** not yet published to npm. Ships in v0.10.0 as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format compatibility is verified via intercepted-fetch smoke tests. Expect minor adjustments before 1.0.
 
 OpenRouter REST adapter for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Defaults to the free-tier Llama 3.3 70B Instruct route.
 
@@ -37,7 +37,7 @@ const response = await llm.chat(ChatRequestBuilder.from({
 { toolUse: 'partial', structuredOutput: true, jsonMode: true }
 ```
 
-`toolUse: 'partial'` — OpenRouter's `:free` tier sometimes routes to backend providers that strip the `tools` parameter. The adapter forwards tools optimistically; consumers should validate aggressively or treat tool output as advisory.
+`toolUse: 'partial'`: OpenRouter's `:free` tier sometimes routes to backend providers that strip the `tools` parameter. The adapter forwards tools optimistically; consumers should validate aggressively or treat tool output as advisory.
 
 ## Wire format
 

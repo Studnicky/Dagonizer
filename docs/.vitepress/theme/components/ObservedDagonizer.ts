@@ -1,10 +1,10 @@
 /**
- * ObservedDagonizer — `Dagonizer` subclass that re-exposes the
+ * ObservedDagonizer: `Dagonizer` subclass that re-exposes the
  * protected lifecycle hooks as a typed observer bag.
  *
  * Class extension is Dagonizer's only extension surface. The Vue
- * runner needs to react to every node start / end / error / flow-end
- * — so it constructs an `ObservedDagonizer` with an observer that
+ * runner needs to react to every node start / end / error / flow-end;
+ * it constructs an `ObservedDagonizer` with an observer that
  * Vue refs delegate to. No callbacks pass through the public API; the
  * observer is internal to this subclass.
  *

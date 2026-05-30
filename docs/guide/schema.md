@@ -70,13 +70,14 @@ console.log(DAGSchema.$id);
 // 'https://noocodex.dev/schemas/dagonizer/DAG'
 ```
 
-The schema covers `name`, `version`, `entrypoint`, and `nodes`. Each node variant has its own sub-schema enforcing required fields and valid enumerations for `@type`, `combine`, fan-in `strategy`, and node-output values.
+The schema covers `name`, `version`, `entrypoint`, and `nodes`. Each node variant has its own sub-schema enforcing required fields and valid enumerations for `@type`, `combine`, gather `strategy`, and node-output values.
 
 | `@type` | Required fields | Notes |
 |---|---|---|
 | `SingleNode` | `@id`, `@type`, `name`, `node`, `outputs` | `outputs` is `Record<string, string \| null>` |
 | `ParallelNode` | `@id`, `@type`, `name`, `nodes`, `combine`, `outputs` | `nodes` is a non-empty string array |
-| `ScatterNode` | `@id`, `@type`, `name`, `body`, `outputs` | `body` is `{ node }` or `{ dag }`; optional `source`, `itemKey`, `concurrency`, `projection`, `gather`, `reducer` |
+| `ScatterNode` | `@id`, `@type`, `name`, `body`, `source`, `outputs` | `body` is `{ node }` or `{ dag }`; `source` is required; optional `itemKey`, `concurrency`, `stateMapping.input`, `gather`, `reducer` |
+| `EmbeddedDAGNode` | `@id`, `@type`, `name`, `dag`, `outputs` | `dag` is the registered child DAG name; optional `stateMapping` (`input` and `output` field maps) |
 | `TerminalNode` | `@id`, `@type`, `name`, `outcome` | no `outputs` field; `outcome` is `'completed'` or `'failed'` |
 | `PhaseNode` | `@id`, `@type`, `name`, `phase`, `node` | `phase` is `'pre'` or `'post'`; no `outputs` |
 

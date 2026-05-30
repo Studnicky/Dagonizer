@@ -1,5 +1,5 @@
 /**
- * GeminiApiAdapter — Google AI Studio REST adapter.
+ * GeminiApiAdapter: Google AI Studio REST adapter.
  *
  * Maps the shared `ChatRequest` to Gemini's `generateContent` body:
  *
@@ -13,7 +13,7 @@
  *
  *   { candidates: [{ content: { parts: [{ text, functionCall: {name,args} }] } }] }
  *
- * Function calls land as `parts[].functionCall` — adapter translates
+ * Function calls land as `parts[].functionCall`; the adapter translates
  * back to `ChatResponse.message.toolCalls` so callers never see the
  * wire format. Errors map through `classifyHttp` from the shared
  * taxonomy.
@@ -90,7 +90,7 @@ export class GeminiApiAdapter extends BaseAdapter {
         'method':  'POST',
         'headers': { 'content-type': 'application/json' },
         'body':    JSON.stringify(body),
-        ...(request.signal !== undefined ? { 'signal': request.signal } : {}),
+        'signal': request.signal,
       });
     } catch (err) {
       throw asNetworkError(err);
@@ -112,29 +112,29 @@ export class GeminiApiAdapter extends BaseAdapter {
   }
 
   #buildBody(request: ChatRequest): Record<string, unknown> {
+    const generationConfig: Record<string, unknown> = {
+      'temperature': request.temperature,
+      'maxOutputTokens': request.maxTokens,
+    };
+
     const body: Record<string, unknown> = {
       'contents': request.messages.map(toGeminiContent),
-      'generationConfig': {
-        'temperature': request.temperature ?? 0.2,
-        'maxOutputTokens': request.maxTokens ?? 512,
-      },
+      'generationConfig': generationConfig,
     };
 
     // Native function calling. Gemini's `tools.functionDeclarations` is
-    // the canonical wire format — we forward the JSON Schema as
+    // the canonical wire format; we forward the JSON Schema as
     // `parameters`. When `tools` is set, the model decides whether to
     // emit `parts[].functionCall` based on the prompt + tool description.
     if (request.tools.length > 0) {
       body['tools'] = [{ 'functionDeclarations': request.tools.map(toFunctionDeclaration) }];
-      if (request.toolChoice !== undefined) {
-        body['toolConfig'] = { 'functionCallingConfig': toGeminiToolConfig(request.toolChoice) };
-      }
+      body['toolConfig'] = { 'functionCallingConfig': toGeminiToolConfig(request.toolChoice) };
     } else if (request.outputSchema.kind === 'schema') {
-      // Structured-output path — JSON Schema constrains the response
+      // Structured-output path: JSON Schema constrains the response
       // body to the requested shape. (Gemini honours `responseSchema` on
       // text models since v1beta.)
-      (body['generationConfig'] as Record<string, unknown>)['responseMimeType'] = 'application/json';
-      (body['generationConfig'] as Record<string, unknown>)['responseSchema'] = request.outputSchema.schema;
+      generationConfig['responseMimeType'] = 'application/json';
+      generationConfig['responseSchema'] = request.outputSchema.schema;
     }
 
     return body;

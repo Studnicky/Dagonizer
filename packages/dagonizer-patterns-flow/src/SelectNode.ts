@@ -1,5 +1,5 @@
 /**
- * SelectNode — root for "pick or sort items from a list" patterns.
+ * SelectNode: root for "pick or sort items from a list" patterns.
  */
 
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
@@ -15,8 +15,6 @@ export abstract class SelectNode<
   protected abstract writeBack(state: TState, items: readonly TItem[]): void;
   protected abstract transform(items: readonly TItem[]): readonly TItem[];
 
-  protected successPort(): TOutput { return 'success' as TOutput; }
-  protected emptyPort():   TOutput { return 'empty' as TOutput; }
 
   async execute(
     state: TState,
@@ -25,7 +23,7 @@ export abstract class SelectNode<
     const items = this.readItems(state);
     const next = this.transform(items);
     this.writeBack(state, next);
-    return Promise.resolve({ 'output': next.length === 0 ? this.emptyPort() : this.successPort() });
+    return { 'output': next.length === 0 ? this.emptyPort() : this.successPort() };
   }
 }
 

@@ -40,10 +40,10 @@ await store.disconnect();
 
 ## Notes
 
-- `update(key, fn)` is atomic via `BEGIN IMMEDIATE` — safe under concurrent `Promise.all` calls.
+- `update(key, fn)` is atomic via `BEGIN IMMEDIATE`, safe under concurrent `Promise.all` calls.
 - All values are stored as JSON text (`TEXT NOT NULL`) in a `STRICT` SQLite table.
 - Snapshot envelopes are typed (`type: 'sqlite-store'`, `version: 1`). `restore()` rejects incompatible envelopes with `StoreError(INCOMPATIBLE_SNAPSHOT)`.
 
 ## See also
 
-- [`@noocodex/dagonizer`](https://github.com/Studnicky/Dagonizer) — main package docs and API reference.
+- [`@noocodex/dagonizer`](https://github.com/Studnicky/Dagonizer): main package docs and API reference.

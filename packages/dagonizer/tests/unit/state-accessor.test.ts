@@ -38,10 +38,25 @@ void describe('DottedPathAccessor', () => {
     accessor.set(target, 'a.b.c', 'value');
     assert.deepEqual(target, { 'a': { 'b': { 'c': 'value' } } });
   });
+
+  void it('refuses to write through __proto__ (no prototype pollution)', () => {
+    const accessor = new DottedPathAccessor();
+    accessor.set({}, '__proto__.polluted', 'yes');
+    accessor.set({}, 'a.__proto__.polluted', 'yes');
+    accessor.set({}, 'constructor.prototype.polluted', 'yes');
+    assert.equal(({} as Record<string, unknown>)['polluted'], undefined);
+    assert.equal((Object.prototype as Record<string, unknown>)['polluted'], undefined);
+  });
+
+  void it('returns undefined for a path that walks a prototype key', () => {
+    const accessor = new DottedPathAccessor();
+    assert.equal(accessor.get({ 'a': 1 }, '__proto__'), undefined);
+    assert.equal(accessor.get({ 'a': 1 }, 'a.constructor'), undefined);
+  });
 });
 
 void describe('Dagonizer accepts a custom StateAccessor', () => {
-  void it('uses the supplied accessor for fan-out source reads', async () => {
+  void it('uses the supplied accessor for scatter source reads', async () => {
     let getCalls = 0;
     const trackingAccessor: StateAccessor = {
       get(state: object, path: string): unknown {
@@ -53,12 +68,12 @@ void describe('Dagonizer accepts a custom StateAccessor', () => {
       },
     };
 
-    class FanOutState extends NodeStateBase {
+    class ScatterState extends NodeStateBase {
       items: number[] = [10, 20, 30];
       results: number[] = [];
     }
 
-    const handler: NodeInterface<FanOutState, 'success'> = {
+    const handler: NodeInterface<ScatterState, 'success'> = {
       'name': 'handler',
       'outputs': ['success'],
       async execute(state) {
@@ -68,7 +83,7 @@ void describe('Dagonizer accepts a custom StateAccessor', () => {
       },
     };
 
-    const dispatcher = new Dagonizer<FanOutState>({ 'accessor': trackingAccessor });
+    const dispatcher = new Dagonizer<ScatterState>({ 'accessor': trackingAccessor });
     dispatcher.registerNode(handler);
     const dag: DAG = {
       '@context': DAG_CONTEXT,
@@ -90,7 +105,7 @@ void describe('Dagonizer accepts a custom StateAccessor', () => {
     };
     dispatcher.registerDAG(dag);
 
-    await dispatcher.execute('fan-test', new FanOutState());
+    await dispatcher.execute('fan-test', new ScatterState());
 
     assert.ok(getCalls > 0, 'custom accessor.get was invoked at least once');
   });

@@ -1,5 +1,5 @@
 /**
- * @noocodex/dagonizer/store — shared key-value store public surface.
+ * @noocodex/dagonizer/store: shared key-value store public surface.
  *
  * Plugin authors implement `Store` (typically by extending `BaseStore`)
  * to swap the backing without touching DAG topology. `MemoryStore` is the
@@ -17,4 +17,5 @@ export type { StoreErrorClassification } from './StoreError.js';
 export { TypedStore } from './TypedStore.js';
 
 // Re-export the contract from /contracts for ergonomic single-import:
-export type { Store, StoreSnapshot, StoreSnapshotEntry } from '../contracts/Store.js';
+export type { Store } from '../contracts/Store.js';
+export type { StoreSnapshot, StoreSnapshotEntry } from '../contracts/Snapshottable.js';

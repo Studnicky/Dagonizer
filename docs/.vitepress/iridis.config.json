@@ -20,11 +20,11 @@
     },
     "roles": {
       "name": "dagonizer",
-      "description": "Page-wide WCAG 2.1 AA palette for the Dagonizer talisman aesthetic. Backgrounds are navy + pearl ONLY — silver / steel are highlights and accents, never surfaces. Brand orbs (teal, violet, gold) carry every accent. Iridis assigns each input color to the role whose lightness AND chroma range fits best (chroma separates brand orbs from neutrals), then `enforce:wcagAA` lifts each token along OKLCH L until every contrast pair meets AA.",
+      "description": "Page-wide WCAG 2.1 AA palette for the Dagonizer talisman aesthetic. Backgrounds are navy + pearl ONLY: silver / steel are highlights and accents, never surfaces. Brand orbs (teal, violet, gold) carry every accent. Iridis assigns each input color to the role whose lightness AND chroma range fits best (chroma separates brand orbs from neutrals), then `enforce:wcagAA` lifts each token along OKLCH L until every contrast pair meets AA.",
       "roles": [
         {
           "name": "bg",
-          "description": "Page body — navy hex interior",
+          "description": "Page body: navy hex interior",
           "intent": "background",
           "required": true,
           "lightnessRange": [0.10, 0.20],
@@ -32,7 +32,7 @@
         },
         {
           "name": "bgAlt",
-          "description": "Sidebar / nav / panels — navy mid (raised)",
+          "description": "Sidebar / nav / panels: navy mid (raised)",
           "intent": "background",
           "required": true,
           "lightnessRange": [0.14, 0.24],
@@ -40,7 +40,7 @@
         },
         {
           "name": "bgElv",
-          "description": "Code blocks / deep elevation — pearl black",
+          "description": "Code blocks / deep elevation: pearl black",
           "intent": "background",
           "required": true,
           "lightnessRange": [0.0, 0.10],
@@ -48,14 +48,14 @@
         },
         {
           "name": "bgSoft",
-          "description": "Hover / lift surface — navy soft",
+          "description": "Hover / lift surface: navy soft",
           "intent": "background",
           "lightnessRange": [0.16, 0.26],
           "chromaRange": [0.0, 0.05]
         },
         {
           "name": "text",
-          "description": "Body text — steel shine highlight",
+          "description": "Body text: steel shine highlight",
           "intent": "text",
           "required": true,
           "lightnessRange": [0.92, 1.00],
@@ -63,7 +63,7 @@
         },
         {
           "name": "text2",
-          "description": "Secondary text — polished silver accent",
+          "description": "Secondary text: polished silver accent",
           "intent": "text",
           "required": true,
           "lightnessRange": [0.78, 0.92],
@@ -71,21 +71,21 @@
         },
         {
           "name": "text3",
-          "description": "Tertiary text / captions — graphite accent",
+          "description": "Tertiary text / captions: graphite accent",
           "intent": "muted",
           "lightnessRange": [0.55, 0.72],
           "chromaRange": [0.0, 0.04]
         },
         {
           "name": "divider",
-          "description": "Borders and dividers — silver-line accent",
+          "description": "Borders and dividers: silver-line accent",
           "intent": "muted",
           "lightnessRange": [0.50, 0.68],
           "chromaRange": [0.0, 0.04]
         },
         {
           "name": "brand",
-          "description": "Primary brand — teal orb",
+          "description": "Primary brand: teal orb",
           "intent": "accent",
           "required": true,
           "lightnessRange": [0.78, 0.96],
@@ -93,7 +93,7 @@
         },
         {
           "name": "brand2",
-          "description": "Secondary brand — violet orb",
+          "description": "Secondary brand: violet orb",
           "intent": "accent",
           "required": true,
           "lightnessRange": [0.55, 0.78],
@@ -101,7 +101,7 @@
         },
         {
           "name": "brand3",
-          "description": "Tertiary brand — yellow / gold orb",
+          "description": "Tertiary brand: yellow / gold orb",
           "intent": "accent",
           "required": true,
           "lightnessRange": [0.70, 0.86],

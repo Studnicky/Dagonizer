@@ -78,11 +78,11 @@ import { RdfStore } from '@noocodex/dagonizer-patterns-graph';
 
 const store = new RdfStore();
 
-// Store contract — reifies key-value as a triple.
+// Store contract: reifies key-value as a triple.
 await store.set('tokenBudget', 4096);
 const budget = await store.get<number>('tokenBudget'); // 4096
 
-// TripleStore contract — native quad operations.
+// TripleStore contract: native quad operations.
 store.assert(
   { termType: 'NamedNode', value: 'urn:doc:1' },
   { termType: 'NamedNode', value: 'urn:pred:author' },
@@ -93,7 +93,7 @@ const rows = store.select({ predicate: { termType: 'NamedNode', value: 'urn:pred
 // rows[0]['doc'].value === 'urn:doc:1'
 ```
 
-The backing is a plain `Quad[]` — no external dependencies. Use it directly with the existing `RecallContextNode`, `RecordFindingsNode`, and `MemoryDigestNode` patterns via `services.memory`.
+The backing is a plain `Quad[]` with no external dependencies. Use it directly with the existing `RecallContextNode`, `RecordFindingsNode`, and `MemoryDigestNode` patterns via `services.memory`.
 
 ### Reification scheme
 
@@ -109,7 +109,7 @@ The subject prefix and value predicate are configurable via `RdfStoreOptions`.
 
 `snapshot()` captures only the Store-reified quads. User-asserted quads on
 other predicates are considered ephemeral graph data and are excluded.
-`restore()` replaces the entire backing array — both reified and user-asserted
+`restore()` replaces the entire backing array; both reified and user-asserted
 quads are cleared, then the snapshot entries are reseeded. Plugin authors that
 need to preserve non-reified quads across restore should subclass `RdfStore`
 and override `performRestoreEntries`.

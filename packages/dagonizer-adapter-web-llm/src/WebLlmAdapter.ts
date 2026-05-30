@@ -1,21 +1,20 @@
 /**
- * WebLlmAdapter — fully in-browser MLC WebLLM adapter.
+ * WebLlmAdapter: fully in-browser MLC WebLLM adapter.
  *
  * Lazy-loads the WebLLM ESM bundle and a small Phi-3.5 / Llama 3.2
  * quantized model (~700 MB) on first use; subsequent calls reuse the
  * engine. WebGPU is required (`navigator.gpu`).
  *
- * Tool calling is not native to WebLLM — we use `response_format` with
+ * Tool calling is not native to WebLLM; we use `response_format` with
  * `{ type: 'json_object' }` and the tool-plan JSON Schema in the
  * system context. The model returns a JSON blob that we decode back
- * into `ToolCall[]`.
+ * into `ToolCall[]` via JSON coercion (`decodeToolCallsJson`).
  */
 
-import { BaseAdapter, ChatResponseMessageBuilder, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder, decodeToolCallsJson, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
 import type {
   ChatRequest,
   ChatResponse,
-  ToolCall,
   ToolDefinition,
 } from '@noocodex/dagonizer/adapter';
 import { Classifications, LlmError, type ErrorClassification } from '@noocodex/dagonizer/adapter';
@@ -76,7 +75,7 @@ export class WebLlmAdapter extends BaseAdapter {
   /**
    * Probe true when WebGPU is reachable AND `requestAdapter()` yields a
    * real hardware adapter. `navigator.gpu` presence alone is not
-   * enough — some Chromium variants expose the API surface but fail to
+   * enough; some Chromium variants expose the API surface but fail to
    * acquire a backing device (no discrete GPU, missing driver, blocked
    * by enterprise policy). Bounded by a short timeout so a stuck
    * driver call cannot delay cascade selection. Never throws.
@@ -99,7 +98,7 @@ export class WebLlmAdapter extends BaseAdapter {
   }
 
   protected async performChat(request: ChatRequest): Promise<ChatResponse> {
-    const engine = await this.engine();
+    const engine = await this.#engine();
 
     // Tool-calling via JSON-coerce: inject a system message with the
     // tool-plan schema then ask for json_object.
@@ -111,7 +110,7 @@ export class WebLlmAdapter extends BaseAdapter {
     try {
       result = await engine.chat.completions.create({
         'messages':         messages,
-        'temperature':      request.temperature ?? 0.2,
+        'temperature':      request.temperature,
         ...(wantsJson ? { 'response_format': { 'type': 'json_object' as const } } : {}),
       });
     } catch (err) {
@@ -120,7 +119,7 @@ export class WebLlmAdapter extends BaseAdapter {
 
     const raw = result.choices[0]?.message.content ?? '';
     const text = raw.trim();
-    const toolCalls = request.tools.length > 0 ? decodeToolCalls(raw) : [];
+    const toolCalls = request.tools.length > 0 ? decodeToolCallsJson(raw, 'webllm') : [];
     return {
       'message': ChatResponseMessageBuilder.from(text, toolCalls),
       'finishReason': toolCalls.length > 0 ? 'tool_call' : 'stop',
@@ -140,7 +139,7 @@ export class WebLlmAdapter extends BaseAdapter {
     for (const m of request.messages) {
       if (m.role === 'tool') {
         // Tool result rolled into the user channel as scaffolding.
-        messages.push({ 'role': 'user', 'content': `[tool ${m.toolName ?? 'unknown'} result] ${m.content}` });
+        messages.push({ 'role': 'user', 'content': `[tool ${m.toolName.length > 0 ? m.toolName : 'unknown'} result] ${m.content}` });
         continue;
       }
       if (m.role === 'system' || m.role === 'user' || m.role === 'assistant') {
@@ -163,12 +162,12 @@ export class WebLlmAdapter extends BaseAdapter {
     return messages;
   }
 
-  private engine(): Promise<WebLlmEngine> {
-    if (this.#enginePromise === null) this.#enginePromise = this.boot();
+  #engine(): Promise<WebLlmEngine> {
+    if (this.#enginePromise === null) this.#enginePromise = this.#boot();
     return this.#enginePromise;
   }
 
-  private async boot(): Promise<WebLlmEngine> {
+  async #boot(): Promise<WebLlmEngine> {
     if (!detectWebGpu()) {
       throw new LlmError('navigator.gpu unavailable', Classifications['MODEL_NOT_FOUND']);
     }
@@ -179,28 +178,6 @@ export class WebLlmAdapter extends BaseAdapter {
 }
 
 function quote(t: ToolDefinition): string { return `"${t.name}"`; }
-
-function decodeToolCalls(raw: string): ToolCall[] {
-  try {
-    const start = raw.indexOf('{');
-    const end = raw.lastIndexOf('}');
-    if (start < 0 || end < 0) return [];
-    const json = raw.slice(start, end + 1);
-    const parsed = JSON.parse(json) as { tool_calls?: ReadonlyArray<{ name?: string; arguments?: Record<string, unknown> }> };
-    const calls = parsed.tool_calls ?? [];
-    return calls
-      .filter((c): c is { name: string; arguments: Record<string, unknown> } =>
-        typeof c.name === 'string' && c.arguments !== undefined,
-      )
-      .map((c, i) => ({
-        'id':   `webllm-${String(i)}-${String(Date.now())}`,
-        'name': c.name,
-        'arguments': c.arguments,
-      }));
-  } catch {
-    return [];
-  }
-}
 
 function classifyWebLlmError(err: unknown): LlmError {
   const message = err instanceof Error ? err.message : String(err);

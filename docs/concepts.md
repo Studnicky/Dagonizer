@@ -43,7 +43,8 @@ Six kinds:
 
 - **`single`**: one registered node. The node returns one output name; the dispatcher follows the corresponding route.
 - **`parallel`**: a set of previously declared single placements that run concurrently via `Promise.all`. A combine strategy (`all-success`, `any-success`, `collect`) reduces individual outputs to one aggregate output.
-- **`scatter`**: isolates a state clone, runs a `body` (a registered node or a registered sub-DAG) in it, merges the clone back into the parent, and routes on the aggregate outcome. When `source` is absent, exactly one clone runs — the singleton pattern used for sub-DAG composition. When `source` is present, one clone runs per array item — the generate-collect pattern. An optional `gather` config controls how produced clone state merges back; an optional `reducer` picks the outcome routing strategy. The Archivist's scout scatter runs and its sub-DAG compositions are all `scatter` placements.
+- **`scatter`**: isolates one state clone per item in a source array, runs a node body in each clone, merges produced clone state back into the parent via a `gather` config, and routes on the aggregate outcome via a `reducer`. This is the fork (generate-collect) pattern; a `ScatterNode` is always 1→N over a required `source`.
+- **`embedded`**: invokes a registered sub-DAG exactly once (cardinality 1) in an isolated state, then routes the parent on the child's terminal outcome (`success` or `error`). Optional `stateMapping` seeds the child from the parent before it runs and copies fields back after it completes. The Archivist's sub-DAG compositions are `EmbeddedDAGNode` placements.
 - **`terminal`**: named end state for explicit completion or failure. Use when a flow has more than one "done" semantics (for example, `accepted` versus `rejected`).
 - **`phase`**: groups a sequence of placements under a named phase. Instrumentation receives `phaseEnter` / `phaseExit` events; useful for telemetry and progress bars.
 
@@ -53,8 +54,8 @@ Six kinds:
 |------|------|
 | Sequential steps with conditional branching | `single` |
 | Multiple independent fetches that must all finish before proceeding | `parallel` |
-| Process every item in a collection, then aggregate | `scatter` with `source` |
-| Run a sub-DAG in an isolated clone, then merge results | `scatter` without `source` |
+| Process every item in a collection, then aggregate | `scatter` |
+| Invoke a registered sub-DAG exactly once and route on its outcome | `embedded` |
 | Distinguish multiple terminal semantics | `terminal` |
 | Tag a stretch of nodes for telemetry | `phase` |
 
@@ -169,19 +170,17 @@ gather: { strategy: 'custom', customNode: 'mergeCandidates' }
 
 After gather, an outcome reducer maps the set of per-clone records to one routing output for the scatter placement. The reducer name comes from `ScatterNode.reducer`.
 
-**`aggregate`** (default when `source` is present) counts records where `output === 'success'`. Returns `all-success`, `partial`, `all-error`, or `empty`.
+**`aggregate`** (default) counts records where `output === 'success'`. Returns `all-success`, `partial`, `all-error`, or `empty`.
 
-**`terminal`** (default when `source` is absent) routes `error` when the single clone's body failed (`terminalOutcome === 'failed'` for a DAG body or `output === 'error'` for a node body), otherwise routes `success`.
+## Clone input seeding
 
-## Scatter projection
-
-`projection` seeds the clone before the body runs. Keys are dotted paths on the clone; values are dotted paths on the parent. The copy runs once per clone, before the body starts.
+`stateMapping.input` seeds each clone before the body runs. Keys are dotted paths on the clone; values are dotted paths on the parent. The copy runs once per clone, before the body starts.
 
 ```ts
-projection: { 'query': 'request.query' }
+stateMapping: { input: { 'query': 'request.query' } }
 ```
 
-Without `projection`, the clone starts with the parent's metadata and no domain-field seeds beyond what `clone()` copies.
+Authored via the `inputs` option on `.scatter()` (or `.embeddedDAG()` for embedded-DAG placements). Without `stateMapping.input`, the clone starts with the parent's metadata and no domain-field seeds beyond what `clone()` copies.
 
 ## Checkpoint and resume
 
@@ -228,6 +227,6 @@ Pattern: a BullMQ job's payload contains the DAG name and initial state; the wor
 
 ### What Dagonizer carries on its own
 
-Some flows do not need a wrapping runtime. Dagonizer runs in-process with no external dependencies. The dispatcher is a single class to instantiate; flows are plain JSON-LD objects you store in files, databases, or configuration services. Cancellation, retry, and checkpoint/resume are first-class without spinning up infrastructure.
+Some flows do not need a wrapping runtime. Dagonizer runs in-process with no external dependencies. The dispatcher is a single class to instantiate; flows are plain JSON-LD objects you store in files, databases, or configuration services. Cancellation, retry, and checkpoint/resume work without spinning up infrastructure.
 
 A Dagonizer flow that needs to call remote workers does so via scatter placements with a `dag` body; the local dispatcher composes them into the larger DAG without requiring a new primitive.

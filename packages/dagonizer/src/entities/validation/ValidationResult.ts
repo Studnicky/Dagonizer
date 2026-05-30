@@ -1,5 +1,5 @@
 /**
- * ValidationResult — result of node configuration validation.
+ * ValidationResult: result of node configuration validation.
  *
  * `valid` indicates whether validation passed. `errors` contains the
  * list of validation failure messages (empty when `valid` is `true`).

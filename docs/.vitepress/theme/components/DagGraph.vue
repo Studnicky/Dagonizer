@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * DagGraph — cytoscape host for live DAG visualisation, driven by an
+ * DagGraph: cytoscape host for live DAG visualisation, driven by an
  * explicit `DagVizMachine`. The runner's observer dispatches lifecycle
  * events (`NODE_START` / `NODE_END` / `NODE_ERROR` / `EDGE_TRAVERSE` /
  * `RESET`) into this component's machine, which routes them to per-node
@@ -69,7 +69,7 @@ function suffixFallbackWarn(id: string): void {
   if (typeof console !== 'undefined') {
     // eslint-disable-next-line no-console
     console.debug(
-      `[DagGraph] node name "${id}" resolved via suffix fallback — runner did not pass full placement path`,
+      `[DagGraph] node name "${id}" resolved via suffix fallback; runner did not pass full placement path`,
     );
   }
 }
@@ -109,7 +109,7 @@ onMounted(async () => {
     elements: props.elements,
     style: dagStylesheet(),
     layout: dagLayout(),
-    // Nodes are grabbable by default — visitors can drag, pan, zoom,
+    // Nodes are grabbable by default; visitors can drag, pan, zoom,
     // shift-drag to box-select, and additively click to multi-select.
     userPanningEnabled: true,
     userZoomingEnabled: true,
@@ -137,7 +137,7 @@ onMounted(async () => {
 
   // User-gesture detection: any drag (pan), wheel (zoom), or node-grab
   // hands the camera over to the visitor. The auto-follow stays paused
-  // until they press Fit or Center on the D-pad — those buttons
+  // until they press Fit or Center on the D-pad; those buttons
   // explicitly hand control back to auto-follow.
   cy.value.on('mousedown', markUserGesture);
   cy.value.on('wheel',     markUserGesture);
@@ -182,7 +182,7 @@ function dispatch(event: DagVizEvent): void {
  *
  * Single-node follow caused jitter when nodes fired faster than the
  * 480 ms animation duration: each new follow interrupted the prior
- * animation, producing visible jumps. Worse, parallel fan-outs (four
+ * animation, producing visible jumps. Worse, parallel scouts (four
  * scouts firing at once) made the camera bounce between them.
  *
  * Strategy: track the SET of currently-active node ids. On any
@@ -197,7 +197,7 @@ let pendingFitTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * User-gesture latch. When true, the auto-follow does not move the
- * camera — the visitor is driving. Released only when they press the
+ * camera; the visitor is driving. Released only when they press the
  * D-pad's Fit or Center button. Pan/zoom buttons count as gestures
  * (they're explicit camera control), so those buttons ALSO set the
  * latch; only Fit/Center clear it.
@@ -237,7 +237,7 @@ function followActiveSet(): void {
     // above coalesces parallel starts into one snap, which reads as
     // "the camera lifts out to show the parallel branch" rather than
     // bouncing across each node. Sequential single-node starts get one
-    // snap per node — smooth at the cadence the DAG actually runs.
+    // snap per node; smooth at the cadence the DAG actually runs.
     core.fit(nodes, 80);
     pollZoom();
   }, 120);
@@ -292,12 +292,12 @@ async function reset(): Promise<void> {
 /**
  * Fit the graph to the current viewport from CURRENT state (container
  * dimensions, elements bounding box, whatever the layout's already
- * applied). Cytoscape's `cy.fit()` re-measures both on every call —
+ * applied). Cytoscape's `cy.fit()` re-measures both on every call;
  * the result is never cached. Also re-clamps minZoom (so the visitor
  * can't zoom out past the fit) and maxZoom (8× the fit, generous
  * enough to read individual node labels).
  *
- * Calling `applyFit` releases the user-gesture latch — auto-follow
+ * Calling `applyFit` releases the user-gesture latch; auto-follow
  * resumes from the next node-start event. This is the "hand control
  * back to the camera" semantic the visitor expects from the Fit and
  * Center buttons.
@@ -354,7 +354,7 @@ function panDown():  void { markUserGesture(); cy.value?.panBy({ x: 0,   y: -80 
 function panLeft():  void { markUserGesture(); cy.value?.panBy({ x: 80,  y: 0 }); }
 function panRight(): void { markUserGesture(); cy.value?.panBy({ x: -80, y: 0 }); }
 
-// D-pad center button — re-fit pan + zoom to the full graph after the
+// D-pad center button: re-fit pan + zoom to the full graph after the
 // user has dragged or zoomed manually. Bare `cy.center()` only re-pans;
 // the visitor expects "snap back to fitted view" semantics.
 function centerView(): void { applyFit(); }
@@ -370,12 +370,12 @@ function expandZoom(): void {
 
 function fitScreen(): void { applyFit(); }
 
-// ── Adapters — the only place that touches cytoscape from the FSM. ───────
+// ── Adapters: the only place that touches cytoscape from the FSM. ───────
 
 function makeNodeAdapter(cy: Core | null, id: string): NodeVizAdapter {
   // Resolve the dispatcher's id to a cytoscape element. The runner now
   // passes a full cytoscape-style id (`[...placementPath, nodeName].join('/')`)
-  // so `cy.$id(id)` matches exactly in the common path — including inner
+  // so `cy.$id(id)` matches exactly in the common path; including inner
   // placements inside an embedded-DAG, which disambiguates same-named
   // nodes across multiple embedded-DAG instances.
   //
@@ -447,7 +447,7 @@ function dagLayout(): Record<string, unknown> {
   // Use cytoscape's built-in `preset` layout, which places each node at its
   // `position` field. Positions are pre-computed by CompositeLayout inside
   // CytoscapeRenderer.render() using @dagrejs/dagre in a bottom-up recursive
-  // pass — this correctly handles embedded-DAG compounds without the ordering
+  // pass; this correctly handles embedded-DAG compounds without the ordering
   // and overlap bugs that cytoscape-dagre exhibits on compound graphs.
   return {
     name: 'preset',
@@ -457,7 +457,7 @@ function dagLayout(): Record<string, unknown> {
   };
 }
 
-// Contrast pairs — every fill colour is paired with a text colour that
+// Contrast pairs: every fill colour is paired with a text colour that
 // reaches WCAG AAA against it on both light and dark themes.
 //
 //   teal #22e8ff   →  text #04141c (very-dark navy)
@@ -469,7 +469,7 @@ function dagStylesheet(): unknown[] {
   // cytoscape canvas and SSR mermaid SVGs read as the same family:
   // pearl-black node fill, teal accent border, pearl text, monospace
   // type. Active / completed / errored states change the BORDER
-  // (loud) and a subtle interior tint — the fill stays mostly dark
+  // (loud) and a subtle interior tint; the fill stays mostly dark
   // so the canvas isn't dominated by one color when a graph is
   // largely "completed".
   return [
@@ -496,7 +496,7 @@ function dagStylesheet(): unknown[] {
       'transition-property': 'border-color, border-width, background-color, color, opacity',
       'transition-duration': 220,
     } },
-    { selector: 'node[type="fan-out"]',  style: { 'shape': 'concave-hexagon' } },
+    { selector: 'node[type="scatter"]',  style: { 'shape': 'concave-hexagon' } },
     { selector: 'node[type="parallel"]', style: {
       'shape':            'round-hexagon',
       'background-color': '#04060a',           // --mermaid-cluster-fill (deepest navy)
@@ -519,7 +519,7 @@ function dagStylesheet(): unknown[] {
       'background-color': '#020306',
       'border-color':     '#d4a649',           // gold accent for terminals
     } },
-    // Compound parent (embedded-dag / parallel wrapper) — calm steel
+    // Compound parent (embedded-dag / parallel wrapper): calm steel
     // border on the deepest navy so the cluster reads as a frame,
     // not a focal point.
     { selector: 'node:parent', style: {
@@ -535,7 +535,7 @@ function dagStylesheet(): unknown[] {
       'color':            '#eef3f7',
     } },
 
-    // Kind-tagged styling — solid teal border for deterministic,
+    // Kind-tagged styling: solid teal border for deterministic,
     // dashed violet for non-deterministic. Mirrors NodeLegend.
     { selector: 'node[kind="deterministic"]', style: {
       'border-color': '#22e8ff',
@@ -548,7 +548,7 @@ function dagStylesheet(): unknown[] {
       'border-width': 1.6,
     } },
 
-    // State styling — keep the pearl-black interior and shift the
+    // State styling: keep the pearl-black interior and shift the
     // border / outline color so the canvas stays calm and one
     // active node pops without flooding the viewport with cyan.
     { selector: 'node.dag-active', style: {
@@ -572,7 +572,7 @@ function dagStylesheet(): unknown[] {
       'color':            '#d4a649',
       'text-outline-color': '#020306',
     } },
-    // Transient fade-out class applied during reset — opacity glides to 0.15
+    // Transient fade-out class applied during reset; opacity glides to 0.15
     // over 280 ms (matching the transition-duration on the node base style),
     // then RESET removes it and all state classes so the next run starts clean.
     { selector: 'node.dag-resetting', style: {
@@ -582,20 +582,20 @@ function dagStylesheet(): unknown[] {
     } },
     { selector: 'node:selected', style: { 'border-color': '#22e8ff', 'border-width': 4 } },
 
-    // Edges — straight angled lines (matches mermaid curve: linear),
+    // Edges: straight angled lines (matches mermaid curve: linear),
     // teal stroke and arrowheads. Labels anchor near the source end
-    // and ride along the first horizontal segment of the taxi curve —
+    // and ride along the first horizontal segment of the taxi curve;
     // this keeps them well clear of downstream nodes (the old
     // mid-segment placement collided with target nodes when the taxi
     // turn happened close to one).
     { selector: 'edge', style: {
       'curve-style':         'round-taxi',    // angled segments with rounded corners
       'taxi-direction':      'vertical',
-      'taxi-turn':           '50%',           // turn at midpoint between source and target ranks — label sits in the middle vertical channel
+      'taxi-turn':           '50%',           // turn at midpoint between source and target ranks; label sits in the middle vertical channel
       'taxi-radius':         16,              // rounded corner radius for round-taxi
       'line-color':          '#22e8ff',
       'target-arrow-color':  '#22e8ff',
-      'target-arrow-shape':  'vee',           // sharper 6-sided wedge — matches hex motif
+      'target-arrow-shape':  'vee',           // sharper 6-sided wedge, matches hex motif
       'arrow-scale':         1.4,
       'source-endpoint':     'outside-to-node-or-label',
       'target-endpoint':     'outside-to-node-or-label',
@@ -633,6 +633,36 @@ function dagStylesheet(): unknown[] {
       'color':              '#22e8ff',
       'text-border-color':  '#22e8ff',
     } },
+
+    // Retry routes: a bounded flow-shape loop. When source === target (a node
+    // retrying itself, e.g. extract-query) the taxi curve has no lane, so
+    // switch to a bezier loop and give it a definite direction/sweep so the
+    // arc reads as a self-loop instead of a degenerate stub. Amber + dashed
+    // marks it as the "try again" edge, distinct from the teal happy path.
+    // (Also styles the compose→validate back-edge, which shares the 'retry'
+    // route name; a 2-node loop the same colouring suits.)
+    { selector: 'edge.route-retry', style: {
+      'curve-style':        'bezier',
+      'loop-direction':     '-45deg',
+      'loop-sweep':         '-90deg',
+      'control-point-step-size': 56,
+      'line-style':         'dashed',
+      'line-color':         '#f5a623',
+      'target-arrow-color': '#f5a623',
+      'color':              '#f5a623',
+      'text-border-color':  '#f5a623',
+    } },
+
+    // Salvage routes: the give-up edge to a deterministic recovery node.
+    // Rose + dashed so the "exhausted, recover" path is legible at a glance
+    // and clearly not the success route.
+    { selector: 'edge.route-salvage', style: {
+      'line-style':         'dashed',
+      'line-color':         '#e8556d',
+      'target-arrow-color': '#e8556d',
+      'color':              '#e8556d',
+      'text-border-color':  '#e8556d',
+    } },
   ];
 }
 </script>
@@ -653,14 +683,14 @@ function dagStylesheet(): unknown[] {
       :aria-label="ariaLabel ?? 'DAG execution graph'"
     ></div>
 
-    <!-- Kind legend — bottom-left corner -->
+    <!-- Kind legend: bottom-left corner -->
     <GraphLegend
       v-if="!loading && !loadError"
       :tabs="dagLegendTabs"
       class="dag-legend-pos"
     />
 
-    <!-- D-pad navigation — 3×3 grid anchored to the bottom-right corner -->
+    <!-- D-pad navigation: 3x3 grid anchored to the bottom-right corner -->
     <div v-if="!loading && !loadError" class="dag-dpad-pos">
       <GraphDpad
         :zoom-level="zoomLevel"
@@ -704,7 +734,7 @@ function dagStylesheet(): unknown[] {
 
 .dag-error { color: var(--dagonizer-brand3); }
 
-/* Legend — bottom-left positioning anchor. */
+/* Legend: bottom-left positioning anchor. */
 .dag-legend-pos {
   position: absolute;
   bottom: 10px;
@@ -712,7 +742,7 @@ function dagStylesheet(): unknown[] {
   z-index: 4;
 }
 
-/* D-pad — bottom-right positioning anchor. */
+/* D-pad: bottom-right positioning anchor. */
 .dag-dpad-pos {
   position: absolute;
   right: 10px;

@@ -1,5 +1,5 @@
 /**
- * NodeContext — execution context passed to every `NodeInterface.execute()` call.
+ * NodeContext: execution context passed to every `NodeInterface.execute()` call.
  *
  * The wire shape carries `dagName` and `nodeName`. The runtime `NodeContextInterface`
  * extends this to add `signal: AbortSignal` (not JSON-expressible).
@@ -31,7 +31,7 @@ export type NodeContext = FromSchema<typeof NodeContextSchema>;
  * (signal, services bag) that are not serializable.
  *
  * The `TServices` parameter carries the consumer-defined service bag the
- * dispatcher was constructed with — typically a typed record of injected
+ * dispatcher was constructed with, typically a typed record of injected
  * dependencies (loggers, clients, registries). When a dispatcher is
  * constructed without `services`, `TServices` defaults to `undefined`
  * and `context.services` is `undefined` at runtime.
@@ -40,7 +40,7 @@ export type NodeContext = FromSchema<typeof NodeContextSchema>;
  * subprocess) so cancellation propagates cleanly.
  */
 export interface NodeContextInterface<TServices = undefined> extends NodeContext {
-  /** AbortSignal — fires when the caller aborts or the deadline expires. */
+  /** AbortSignal: fires when the caller aborts or the deadline expires. */
   readonly 'signal': AbortSignal;
   /** Name of the DAG being executed. */
   readonly 'dagName': string;

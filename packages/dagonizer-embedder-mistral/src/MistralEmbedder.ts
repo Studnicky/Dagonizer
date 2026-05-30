@@ -1,5 +1,5 @@
 /**
- * MistralEmbedder — Mistral la Plateforme embeddings adapter.
+ * MistralEmbedder: Mistral la Plateforme embeddings adapter.
  *
  * Wire format:
  *
@@ -9,10 +9,10 @@
  *
  *   → { "data": [ { "embedding": number[] } ] }
  *
- * Default model: `mistral-embed` — 1024-dim vectors. Mistral's embedding
+ * Default model: `mistral-embed` (1024-dim vectors). Mistral's embedding
  * surface is batch-native: `input` is always an array. The default
  * `embedBatch` implementation in `BaseEmbedder` still works (one HTTP
- * call per text), but consumers wanting peak throughput can override —
+ * call per text), but consumers wanting peak throughput can override;
  * left as a deliberate followup since the cost difference is small for
  * the intent-classifier corpus (≤ 10 short texts at startup).
  *
@@ -20,7 +20,7 @@
  * shape `MistralApiAdapter` ships.
  */
 
-import { BaseEmbedder, Classifications, LlmError } from '@noocodex/dagonizer/adapter';
+import { BaseEmbedder, classifyHttp, Classifications, LlmError } from '@noocodex/dagonizer/adapter';
 import type { BaseEmbedderOptions } from '@noocodex/dagonizer/adapter';
 
 const DEFAULT_MODEL = 'mistral-embed';
@@ -79,7 +79,7 @@ export class MistralEmbedder extends BaseEmbedder {
       const body = await res.text();
       throw new LlmError(
         `Mistral embed failed: ${String(res.status)} ${body}`,
-        Classifications['NETWORK'],
+        classifyHttp(res.status, body),
       );
     }
 

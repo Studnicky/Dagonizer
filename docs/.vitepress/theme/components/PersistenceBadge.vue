@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * PersistenceBadge — status chip for the RDF memory store persistence mode.
+ * PersistenceBadge: status chip for the RDF memory store persistence mode.
  *
  * Shows "memory: N triples · persisted" when the store is persisting to
  * localStorage, or "memory: N triples · in-memory" otherwise. Clicking the

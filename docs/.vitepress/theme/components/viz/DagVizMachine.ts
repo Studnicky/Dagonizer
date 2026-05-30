@@ -1,11 +1,11 @@
 /**
- * DagVizMachine — composite that holds per-node + per-edge
+ * DagVizMachine: composite that holds per-node + per-edge
  * `NodeVizMachine` / `EdgeVizMachine` instances indexed by cytoscape id.
  *
  * The Vue runner's observer dispatches one lifecycle event into this
  * composite; the composite routes to the right sub-machine. This is the
  * single seam where the dispatcher's state machine meets the
- * visualisation's state machine — both sides are FSMs, neither side
+ * visualisation's state machine; both sides are FSMs, neither side
  * pokes the other directly.
  *
  *   Observer event           Composite dispatch
@@ -33,11 +33,11 @@ export interface DagVizAdapters {
   /**
    * Build the per-edge cytoscape adapter for edges matching
    * `[source][route]`. May resolve to multiple cytoscape edges if more
-   * than one carries the same source/route pair — the adapter applies
+   * than one carries the same source/route pair; the adapter applies
    * each operation to the full collection.
    */
   edgeAdapter(source: string, route: string): EdgeVizAdapter;
-  /** Reset hook — clear classes and stop animations on every element. */
+  /** Reset hook: clear classes and stop animations on every element. */
   resetAll(): void;
 }
 
@@ -50,7 +50,7 @@ export class DagVizMachine {
     this.#adapters = adapters;
   }
 
-  /** Inspect current visual state for a node — useful for the legend / tests. */
+  /** Inspect current visual state for a node; useful for the legend / tests. */
   nodeState(id: string): NodeVizState | undefined {
     return this.#nodes.get(id)?.state;
   }

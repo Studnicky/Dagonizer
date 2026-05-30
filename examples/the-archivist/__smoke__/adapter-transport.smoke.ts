@@ -1,5 +1,5 @@
 /**
- * adapter-transport.smoke.ts — wire-format smoke test for cloud adapters.
+ * adapter-transport.smoke.ts: wire-format smoke test for cloud adapters.
  *
  * Intercepts `fetch` and asserts each adapter's outgoing request body
  * matches the provider's documented schema (per docs verified at
@@ -92,7 +92,7 @@ async function check(name: string, fn: () => Promise<void>): Promise<void> {
   }
 }
 
-await check('Groq — POSTs to api.groq.com with max_completion_tokens and OpenAI tools', async () => {
+await check('Groq: POSTs to api.groq.com with max_completion_tokens and OpenAI tools', async () => {
   const adapter = new GroqApiAdapter('sk-test');
   const captured = captureNextFetch(openAiSuccessResponse);
   await adapter.chat(sampleRequest);
@@ -107,7 +107,7 @@ await check('Groq — POSTs to api.groq.com with max_completion_tokens and OpenA
   assert.equal(c.body['tool_choice'], 'auto');
 });
 
-await check('Cerebras — POSTs to api.cerebras.ai with gpt-oss-120b default and max_completion_tokens', async () => {
+await check('Cerebras: POSTs to api.cerebras.ai with gpt-oss-120b default and max_completion_tokens', async () => {
   const adapter = new CerebrasApiAdapter('sk-test');
   const captured = captureNextFetch(openAiSuccessResponse);
   await adapter.chat(sampleRequest);
@@ -118,7 +118,7 @@ await check('Cerebras — POSTs to api.cerebras.ai with gpt-oss-120b default and
   assert.ok(!('max_tokens' in c.body), 'must NOT send max_tokens');
 });
 
-await check('Mistral — POSTs to api.mistral.ai with max_tokens and OpenAI tools', async () => {
+await check('Mistral: POSTs to api.mistral.ai with max_tokens and OpenAI tools', async () => {
   const adapter = new MistralApiAdapter('sk-test');
   const captured = captureNextFetch(openAiSuccessResponse);
   await adapter.chat(sampleRequest);
@@ -129,7 +129,7 @@ await check('Mistral — POSTs to api.mistral.ai with max_tokens and OpenAI tool
   assert.equal(tools[0]?.type, 'function');
 });
 
-await check('OpenRouter — POSTs with HTTP-Referer + X-Title headers and OpenAI tools', async () => {
+await check('OpenRouter: POSTs with HTTP-Referer + X-Title headers and OpenAI tools', async () => {
   const adapter = new OpenRouterApiAdapter('sk-test');
   const captured = captureNextFetch(openAiSuccessResponse);
   await adapter.chat(sampleRequest);

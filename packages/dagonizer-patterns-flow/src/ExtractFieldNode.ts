@@ -1,5 +1,5 @@
 /**
- * ExtractFieldNode — copy a value from one state location to another.
+ * ExtractFieldNode: copy a value from one state location to another.
  * Trivial-looking but useful when the canonical state shape buries a
  * field downstream nodes need at the top level.
  */
@@ -23,6 +23,6 @@ export abstract class ExtractFieldNode<
   ): Promise<NodeOutputInterface<'success'>> {
     const value = this.extract(state);
     this.apply(state, value);
-    return Promise.resolve({ 'output': 'success' });
+    return { 'output': 'success' };
   }
 }

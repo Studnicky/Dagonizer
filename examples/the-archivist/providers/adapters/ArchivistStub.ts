@@ -1,5 +1,5 @@
 /**
- * ArchivistStub — Archivist-grounded canned-response adapter.
+ * ArchivistStub: Archivist-grounded canned-response adapter.
  *
  * Extends the plugin-shipped `StubAdapter` with seed-library-aware
  * behavior: compose responses cite real titles from the visible
@@ -80,13 +80,13 @@ export class ArchivistStub extends StubAdapter {
 
 /**
  * Index-pointer stub for `decideTools`. Counts the numbered tool list
- * in the prompt and returns indices 1..N — call every tool so the
- * downstream fan-out actually fans out. When no numbered list is
+ * in the prompt and returns indices 1..N, calling every tool so the
+ * downstream scatter actually runs all scouts. When no numbered list is
  * found in the prompt (degenerate case), returns `{tools: []}`.
  */
 function groundedDecideToolsJson(prompt: string): string {
   const lines = prompt.split('\n');
-  // Count "  N. <name> — <desc>" lines under the `Available tools:` header.
+  // Count "  N. <name>: <desc>" lines under the `Available tools:` header.
   let count = 0;
   let inList = false;
   for (const line of lines) {
@@ -104,7 +104,7 @@ function groundedDecideToolsJson(prompt: string): string {
 /**
  * Index-pointer stub for `rankCandidates`. Counts numbered candidate
  * rows in the prompt and returns a `{order: [...]}` shuffle. The
- * SeedLibrary lookup is used only for shelf-resonance flavour — the
+ * SeedLibrary lookup is used only for shelf-resonance flavour; the
  * stub doesn't try to actually re-rank; it returns the identity order.
  */
 function groundedRankJson(prompt: string): string {
@@ -124,7 +124,7 @@ function groundedAnswer(query: string, shelfSize: number): string {
   if (q.includes('acknowledge which sources were searched')) {
     const notesMatch = /search notes:\s*([^\n]+)/i.exec(query);
     const hint = notesMatch !== null ? ` (${(notesMatch[1] ?? '').trim().slice(0, 120)})` : '';
-    return `I keep ${String(shelfSize)} titles on these shelves and none of them matched your description${hint}. Try a single keyword — an author surname, a year, or one strong image from the book — and I will cast a wider net.`;
+    return `I keep ${String(shelfSize)} titles on these shelves and none of them matched your description${hint}. Try a single keyword (an author surname, a year, or one strong image from the book) and I will cast a wider net.`;
   }
 
   if (q.includes('memory status:')) {
@@ -145,20 +145,20 @@ function groundedAnswer(query: string, shelfSize: number): string {
   const matches = SeedLibrary.findByKeywords(searchFor, 3);
 
   if (matches.length === 0) {
-    return "I don't have anything matching that on the shelves — try a title name, an author surname, or a subject keyword and I'll cast a wider net.";
+    return "I don't have anything matching that on the shelves. Try a title name, an author surname, or a subject keyword and I'll cast a wider net.";
   }
 
   const [first, second, third] = matches;
   if (first === undefined) {
-    return "I don't have anything matching that on the shelves — try a title name, an author surname, or a subject keyword and I'll cast a wider net.";
+    return "I don't have anything matching that on the shelves. Try a title name, an author surname, or a subject keyword and I'll cast a wider net.";
   }
 
   const reason = first.subjects.slice(0, 2).join(', ');
-  let response = `Of what the shelves remember, ${first.title} by ${first.authors[0] ?? 'unknown'} fits closest — ${reason}.`;
+  let response = `Of what the shelves remember, ${first.title} by ${first.authors[0] ?? 'unknown'} fits closest: ${reason}.`;
 
   if (second !== undefined) {
     const reason2 = second.subjects[0] ?? second.summary.split('.')[0] ?? '';
-    response += ` You might also consider ${second.title} by ${second.authors[0] ?? 'unknown'} — ${reason2}.`;
+    response += ` You might also consider ${second.title} by ${second.authors[0] ?? 'unknown'}: ${reason2}.`;
   }
 
   if (third !== undefined) {
@@ -201,33 +201,33 @@ const STUB_GREETINGS: readonly string[] = [
   'Stay a while. I have a long list of books and a longer one of questions about them.',
   'A reader, then. Tell me what you are looking for, and I will see what the catalog gives up.',
   'The door is always open here. Name a title, an author, or a feeling, and I will look.',
-  'Good to see you. The shelves run deep on every subject — where would you like to begin?',
+  'Good to see you. The shelves run deep on every subject. Where would you like to begin?',
   'Come in. I keep records on almost everything ever printed. What can I find for you?',
   'Every visitor arrives with a question worth answering. What is yours?',
 ];
 
 const STUB_VISITOR_REPLIES: readonly string[] = [
-  "I'm looking for something thoughtful about memory — any suggestions?",
+  "I'm looking for something thoughtful about memory. Any suggestions?",
   'What do you have on labyrinths?',
   'A book that feels like winter.',
   'Something by Le Guin I might have missed?',
   'Where should I start with Borges?',
   'Do you have anything about libraries themselves as a subject?',
-  'I want something quietly unsettling — not horror, just strange.',
+  'I want something quietly unsettling, not horror, just strange.',
 ];
 
 const TOOL_EXPLANATIONS: ReadonlyMap<string, string> = new Map([
-  ['open-library-scout',  "This tool reaches out to OpenLibrary — a free, open catalog of millions of books — and fetches matching titles based on your search. It matters because it's the backbone of the Archivist's book discovery: no real data, no real answers. For example, if you ask about Piranesi, this scout retrieves Susanna Clarke's novel with its full metadata."],
+  ['open-library-scout',  "This tool reaches out to OpenLibrary (a free, open catalog of millions of books) and fetches matching titles based on your search. It matters because it's the backbone of the Archivist's book discovery: no real data, no real answers. For example, if you ask about Piranesi, this scout retrieves Susanna Clarke's novel with its full metadata."],
   ['google-books-scout',  "This tool queries the Google Books API to find book candidates with ratings and review counts. It matters because it adds a second independent source to cross-check OpenLibrary results and surfaces titles with community sentiment. For example, asking for the best-reviewed Hemingway triggers this scout to return rated volumes with star counts attached."],
-  ['subject-scout',       "This tool searches OpenLibrary by subject or theme rather than by title or author. It matters because visitors often describe the feeling of a book rather than its name — and subject search catches those cases. For example, asking for something about labyrinths triggers this scout to query the 'labyrinth' subject index directly."],
-  ['wikipedia-scout',     "This tool fetches a Wikipedia page summary for any topic the Archivist wants to enrich context on. It matters because some queries need background that the book catalog alone can't provide — historical events, real people, or places. For example, when a visitor asks about a novel set during a real war, this scout pulls the Wikipedia synopsis for grounding."],
-  ['recall-context',      "This node queries the persistent memory graph using SPARQL to surface prior visitor intents and recently-seen books from earlier sessions. It matters because it gives the Archivist conversational continuity — remembering past visits so responses feel personal. For example, if you asked about cosmic horror last time, this node surfaces that so the classifier can infer a returning genre preference."],
+  ['subject-scout',       "This tool searches OpenLibrary by subject or theme rather than by title or author. It matters because visitors often describe the feeling of a book rather than its name, and subject search catches those cases. For example, asking for something about labyrinths triggers this scout to query the 'labyrinth' subject index directly."],
+  ['wikipedia-scout',     "This tool fetches a Wikipedia page summary for any topic the Archivist wants to enrich context on. It matters because some queries need background that the book catalog alone can't provide, such as historical events, real people, or places. For example, when a visitor asks about a novel set during a real war, this scout pulls the Wikipedia synopsis for grounding."],
+  ['recall-context',      "This node queries the persistent memory graph using SPARQL to surface prior visitor intents and recently-seen books from earlier sessions. It matters because it gives the Archivist conversational continuity by remembering past visits so responses feel personal. For example, if you asked about cosmic horror last time, this node surfaces that so the classifier can infer a returning genre preference."],
   ['classify-intent',     "This node sends the visitor's message to the LLM and asks it to label the intent as one of nine categories: lookup-author, find-reviews, describe-book, recommend-similar, recall-memories, search, describe, recommend, or off-topic. It matters because the label routes the query to the right DAG branch. For example, 'what did Le Guin write?' is classified as lookup-author and steered to the author-survey path."],
-  ['decide-tools',        "This node asks the LLM to choose which search tools to call given the visitor's query. It matters because not every question needs every scout — calling only the right tools saves time and reduces noise in the candidate pool. For example, for a direct ISBN lookup only the OpenLibrary scout is selected, skipping Google Books and Wikipedia."],
-  ['rank-candidates',     "This node asks the LLM to score each candidate book on a 0–1 relevance scale against the visitor's question. It matters because raw search results are unordered — ranking puts the best match first so the final response cites the most relevant titles. For example, ten candidates come in and the LLM scores 'House of Leaves' 0.92 for a query about cosmic architecture."],
+  ['decide-tools',        "This node asks the LLM to choose which search tools to call given the visitor's query. It matters because not every question needs every scout; calling only the right tools saves time and reduces noise in the candidate pool. For example, for a direct ISBN lookup only the OpenLibrary scout is selected, skipping Google Books and Wikipedia."],
+  ['rank-candidates',     "This node asks the LLM to score each candidate book on a 0-1 relevance scale against the visitor's question. It matters because raw search results are unordered; ranking puts the best match first so the final response cites the most relevant titles. For example, ten candidates come in and the LLM scores 'House of Leaves' 0.92 for a query about cosmic architecture."],
   ['merge-candidates',    "This node deduplicates book candidates from all scouts using a canonical ID derived from ISBN-13, ISBN-10, or a title-and-author URN. It matters because the same book can appear in both OpenLibrary and Google Books under slightly different metadata. For example, two copies of The Name of the Rose with different ISBNs are collapsed into one candidate with the richer metadata kept."],
-  ['compose-response',    "This node asks the LLM to write the final reply to the visitor in the Archivist's warm librarian voice, grounding every claim in the ranked shortlist. It matters because this is the public face of the system — the prose the visitor actually reads. For example, it produces: 'You might enjoy Piranesi by Susanna Clarke — a hushed novel about a man cataloguing the rooms of an impossible House.'"],
-  ['validate-response',   "This node asks the LLM to judge the drafted reply: does it mention a shortlisted title and read as a polite, on-topic response? It matters because it acts as a quality gate — if the draft fails, the pipeline retries the compose step rather than showing a weak answer. For example, a draft that only says 'I'm not sure' scores 'no' and triggers a retry with the full shortlist."],
+  ['compose-response',    "This node asks the LLM to write the final reply to the visitor in the Archivist's warm librarian voice, grounding every claim in the ranked shortlist. It matters because this is the public face of the system: the prose the visitor actually reads. For example, it produces: 'You might enjoy Piranesi by Susanna Clarke, a hushed novel about a man cataloguing the rooms of an impossible House.'"],
+  ['validate-response',   "This node asks the LLM to judge the drafted reply: does it mention a shortlisted title and read as a polite, on-topic response? It matters because it acts as a quality gate; if the draft fails, the pipeline retries the compose step rather than showing a weak answer. For example, a draft that only says 'I'm not sure' scores 'no' and triggers a retry with the full shortlist."],
 ]);
 
 function isExplainToolPrompt(query: string): boolean {

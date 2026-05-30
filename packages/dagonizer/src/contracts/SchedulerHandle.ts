@@ -1,6 +1,6 @@
 /**
  * Public scheduling surface returned by `Scheduler.current()`.
- * Identical shape to `SchedulerProvider` — exposed as a separate interface
+ * Identical shape to `SchedulerProvider`; exposed as a separate interface
  * so the distinction between the provider (backend) and the handle (consumer
  * surface) remains explicit.
  */

@@ -21,12 +21,12 @@ seeAlso:
 import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
 import type { ElementDefinition } from 'cytoscape';
 import { archivistDAG } from '@archivist/dag.ts';
-import { BookSearchFanoutDAG } from '@archivist/embedded-dags/BookSearchFanoutDAG.ts';
+import { BookSearchScatterDAG } from '@archivist/embedded-dags/BookSearchScatterDAG.ts';
 import { ComposeRetryLoopDAG } from '@archivist/embedded-dags/ComposeRetryLoopDAG.ts';
 
 const elements = CytoscapeRenderer.render(archivistDAG, {
   embeddedDAGs: new Map([
-    ['book-search-fanout', BookSearchFanoutDAG],
+    ['book-search-scatter', BookSearchScatterDAG],
     ['compose-retry-loop', ComposeRetryLoopDAG],
   ]),
 }) as ElementDefinition[];

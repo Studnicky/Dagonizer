@@ -1,5 +1,5 @@
 /**
- * OutcomeReducers — pluggable registry that maps per-clone records to a
+ * OutcomeReducers: pluggable registry that maps per-clone records to a
  * single routing output token for the scatter placement.
  *
  * A `OutcomeReducer` is a class with a `name` and a `reduce` method.
@@ -30,7 +30,7 @@ import { DAGError } from '../errors/DAGError.js';
 
 /**
  * Per-clone summary passed to `OutcomeReducer.reduce`. Contains only
- * the information needed for routing — no clone state.
+ * the information needed for routing; no clone state.
  */
 export interface OutcomeRecord {
   readonly index: number;
@@ -55,7 +55,7 @@ export abstract class OutcomeReducer {
 }
 
 /**
- * `aggregate` — multi-clone semantics. Counts records where
+ * `aggregate`: multi-clone semantics. Counts records where
  * `output === 'success'` as successes. Returns:
  *   - `'empty'`       when there are no records
  *   - `'all-success'` when every record is a success
@@ -74,7 +74,7 @@ class AggregateOutcomeReducer extends OutcomeReducer {
 }
 
 /**
- * `terminal` — singleton semantics (no `source`). Routes `'error'` when:
+ * `terminal`: singleton semantics (no `source`). Routes `'error'` when:
  *   - a DAG body's `terminalOutcome === 'failed'`
  *   - a node body's `output === 'error'`
  * Otherwise routes `'success'`. Unrecoverable-error poisoning is applied
@@ -106,7 +106,7 @@ export class OutcomeReducers {
 
   /**
    * Register a reducer. Replaces any prior registration with the same
-   * `name` — last-write-wins.
+   * `name`: last-write-wins.
    */
   static register(reducer: OutcomeReducer): void {
     OutcomeReducers.registry.set(reducer.name, reducer);

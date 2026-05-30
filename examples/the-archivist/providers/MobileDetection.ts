@@ -1,12 +1,12 @@
 /**
- * MobileDetection — triangulated mobile-device check.
+ * MobileDetection: triangulated mobile-device check.
  *
  * No single signal is reliable (iPadOS lies in UA, some Android tablets
  * have fine pointers). Triangulate three: touch points, coarse pointer
  * media query, viewport width. All three must indicate mobile to count.
  *
  * The visitor can override via the BackendPicker's "Treat as desktop"
- * toggle (stored in localStorage) — UA detection is a starting hint,
+ * toggle (stored in localStorage). UA detection is a starting hint,
  * not a verdict.
  */
 

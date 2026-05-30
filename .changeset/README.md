@@ -19,5 +19,5 @@ git commit -am "release"
 pnpm -r publish           # publishes everything that changed
 ```
 
-`@noocodex/the-archivist-example` and the workspace root are ignored —
+`@noocodex/the-archivist-example` and the workspace root are ignored;
 they're never published.

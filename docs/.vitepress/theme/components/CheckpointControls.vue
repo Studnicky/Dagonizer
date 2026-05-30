@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * CheckpointControls — Save / Resume checkpoint buttons for the conversation header.
+ * CheckpointControls: Save / Resume checkpoint buttons for the conversation header.
  *
  * "Save checkpoint" captures the execution result via `Checkpoint.from()` and
  * stores the JSON under `dagonizer-archivist-checkpoint` in localStorage.
@@ -21,7 +21,7 @@ const STORAGE_KEY = 'dagonizer-archivist-checkpoint';
 const props = defineProps<{
   /** The node name at which the last checkpoint was captured, or null. */
   checkpointNode: string | null;
-  /** True while a run is in progress — disables both buttons during live execution. */
+  /** True while a run is in progress; disables both buttons during live execution. */
   running: boolean;
   /** True when a valid checkpoint exists in localStorage. */
   hasCheckpoint: boolean;
@@ -55,7 +55,7 @@ function onResume(): void {
       type="button"
       class="ckpt-btn ckpt-save"
       :disabled="running || checkpointNode === null"
-      :title="checkpointNode !== null ? `Save checkpoint at ${checkpointNode}` : 'No checkpoint available — run the Archivist first'"
+      :title="checkpointNode !== null ? `Save checkpoint at ${checkpointNode}` : 'No checkpoint available. Run the Archivist first.'"
       @click="onSave"
     >
       <span aria-hidden="true">&#9632;</span> checkpoint

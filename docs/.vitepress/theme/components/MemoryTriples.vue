@@ -1,10 +1,10 @@
 <script setup lang="ts">
 /**
- * MemoryTriples — live view of the n3.js triple store.
+ * MemoryTriples: live view of the n3.js triple store.
  *
  * Re-reads `store.triples()` whenever the parent bumps the `tick`
  * prop (after every node end), then renders each quad as a compact
- * `subject — predicate — object` row. Subjects are truncated to the
+ * `subject / predicate / object` row. Subjects are truncated to the
  * IRI's local part (`urn:dagonizer:book:9780525536291` → `9780525536291`)
  * so the panel stays readable inside its column.
  */

@@ -1,5 +1,5 @@
 /**
- * 10-shared-state — MemoryStore on the services bag, with checkpoint round-trip.
+ * 10-shared-state: MemoryStore on the services bag, with checkpoint round-trip.
  *
  * Demonstrates:
  *   1. A MemoryStore threaded through the services bag.
@@ -32,7 +32,7 @@ interface Services {
 // #endregion services
 
 // ---------------------------------------------------------------------------
-// Nodes — each appends its own name to the store's 'entries' key
+// Nodes: each appends its own name to the store's 'entries' key
 // ---------------------------------------------------------------------------
 
 function makeStep(stepName: string): NodeInterface<NodeStateBase, 'done', Services> {
@@ -54,7 +54,7 @@ const stepB     = makeStep('step-b');
 const childStep = makeStep('child-step');
 
 // ---------------------------------------------------------------------------
-// DAGs — child DAG placed inside the parent
+// DAGs: child DAG placed inside the parent
 // ---------------------------------------------------------------------------
 
 // #region child-dag
@@ -64,18 +64,18 @@ const childDag = new DAGBuilder('sub-flow', '1')
 // #endregion child-dag
 
 // #region parent-dag
-// run-child is a ScatterNode singleton (no source ⇒ one clone) whose body is
-// the registered 'sub-flow' DAG. The clone shares the same services bag, so
-// child-step appends to the same MemoryStore between step-a and step-b.
+// run-child is an EmbeddedDAGNode whose body is the registered 'sub-flow' DAG.
+// The child shares the same services bag, so child-step appends to the same
+// MemoryStore between step-a and step-b.
 const parentDag = new DAGBuilder('main-flow', '1')
   .node('step-a', stepA, { "done": 'run-child' })
-  .scatter('run-child', { dag: 'sub-flow' }, { "success": 'step-b', "error": 'step-b' })
+  .embeddedDAG('run-child', 'sub-flow', { "success": 'step-b', "error": 'step-b' })
   .node('step-b', stepB, { "done": null })
   .build();
 // #endregion parent-dag
 
 // ---------------------------------------------------------------------------
-// Part 1 — Normal run (all three steps accumulate to the store)
+// Part 1: Normal run (all three steps accumulate to the store)
 // ---------------------------------------------------------------------------
 
 // #region run
@@ -94,13 +94,13 @@ const parentDag = new DAGBuilder('main-flow', '1')
   await dispatcher.execute('main-flow', new NodeStateBase());
 
   const entries = await logStore.get('entries') ?? '';
-  process.stdout.write('\nPart 1 — Normal run:\n');
+  process.stdout.write('\nPart 1: Normal run:\n');
   process.stdout.write(`  log.entries = "${entries}"\n`);
   // → "step-a,child-step,step-b"
 }
 
 // ---------------------------------------------------------------------------
-// Part 2 — Checkpoint round-trip
+// Part 2: Checkpoint round-trip
 //   Abort after step-a, capture checkpoint with store, restore, resume.
 // ---------------------------------------------------------------------------
 
@@ -125,17 +125,17 @@ const parentDag = new DAGBuilder('main-flow', '1')
   const partial = await execution;
 
   if (partial.cursor === null) {
-    process.stdout.write('\nPart 2 — run completed before abort; no cursor\n');
+    process.stdout.write('\nPart 2: run completed before abort; no cursor\n');
   } else {
-    // Capture checkpoint — snapshot the store alongside the parent state.
+    // Capture checkpoint: snapshot the store alongside the parent state.
     const ckpt = await Checkpoint.capture('main-flow', partial, { "stores": { "log": logStore } });
     const json = ckpt.toJson();
 
-    process.stdout.write('\nPart 2 — Checkpoint captured:\n');
+    process.stdout.write('\nPart 2: Checkpoint captured:\n');
     process.stdout.write(`  cursor                  = "${partial.cursor}"\n`);
     process.stdout.write(`  log at capture          = "${await logStore.get('entries') ?? ''}"\n`);
 
-    // Resume — restore store from checkpoint, then resume execution.
+    // Resume: restore store from checkpoint, then resume execution.
     const freshLog = new MemoryStore();
     const ckpt2    = Checkpoint.load(JSON.parse(json) as unknown);
     await ckpt2.restoreStores({ "log": freshLog });

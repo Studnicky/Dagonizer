@@ -12,4 +12,5 @@ export type { SchedulerHandle } from './SchedulerHandle.js';
 export type { SchedulerProvider } from './SchedulerProvider.js';
 export type { StateAccessor } from './StateAccessor.js';
 export type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from './RemoteStore.js';
-export type { Store, StoreSnapshot, StoreSnapshotEntry } from './Store.js';
+export type { Snapshottable, StoreSnapshot, StoreSnapshotEntry } from './Snapshottable.js';
+export type { Store } from './Store.js';

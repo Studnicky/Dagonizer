@@ -1,8 +1,8 @@
 /**
- * Output — common operation output names.
+ * Output: common operation output names.
  *
- *   success — operation completed successfully
- *   error   — operation encountered an error
+ *   success: operation completed successfully
+ *   error: operation encountered an error
  */
 
 import type { FromSchema } from 'json-schema-to-ts';

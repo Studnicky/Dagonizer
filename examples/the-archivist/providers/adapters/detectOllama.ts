@@ -1,10 +1,10 @@
 /**
- * detectOllama — non-throwing ping of the local Ollama daemon.
+ * detectOllama: non-throwing ping of the local Ollama daemon.
  *
  * Hits `GET /api/version` at `127.0.0.1:11434` with a 600 ms timeout.
  * Returns `true` if the daemon answered with anything in the 2xx range,
  * `false` for any failure (network, CORS, daemon down, timeout). Never
- * throws — the picker uses this to decide whether to mark the Ollama
+ * throws. The picker uses this to decide whether to mark the Ollama
  * row runnable.
  *
  * CORS: by default Ollama only accepts requests from a small allowlist.

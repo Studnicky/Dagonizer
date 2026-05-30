@@ -9,6 +9,7 @@ import type { OutcomeRecord } from './core/OutcomeReducers.js';
 import { ParallelCombiners } from './core/ParallelCombiners.js';
 import { ContractRegistryValidator } from './derive/ContractRegistryValidator.js';
 import type { DAG } from './entities/dag/DAG.js';
+import type { EmbeddedDAGNode } from './entities/dag/EmbeddedDAGNode.js';
 import type { ParallelNode } from './entities/dag/ParallelNode.js';
 import type { PhaseNodePlacementInterface } from './entities/dag/PhaseNode.js';
 import type { ScatterNode } from './entities/dag/ScatterNode.js';
@@ -27,16 +28,13 @@ import { Scheduler } from './runtime/Scheduler.js';
 import { SignalComposer } from './runtime/SignalComposer.js';
 import { Validator } from './validation/Validator.js';
 
-/** Default state accessor — installed when the dispatcher is constructed without one. */
+/** Default state accessor: installed when the dispatcher is constructed without one. */
 const DEFAULT_STATE_ACCESSOR: StateAccessor = new DottedPathAccessor();
-
-/** Sentinel used as the single item for a singleton scatter (no `source`). */
-const SINGLETON_SENTINEL: unique symbol = Symbol('scatter-singleton');
 
 /**
  * Reserved metadata key used by `executeScatter` to persist per-clone
- * resume bookkeeping. **Consumer nodes must not write to this key** —
- * it is engine-internal and may be overwritten or cleared between batch
+ * resume bookkeeping. **Consumer nodes must not write to this key.**
+ * It is engine-internal and may be overwritten or cleared between batch
  * boundaries.
  *
  * The stored value is a `StoredScatterProgress` map keyed by the
@@ -51,7 +49,7 @@ export const SCATTER_PROGRESS_KEY = '__dagonizer_scatter_progress__';
  * `output` is the routing output tag.
  *
  * `mappingValues` carries the persisted clone-path values for a `map`
- * gather strategy — keyed by the clone-side path from `GatherConfig.mapping`.
+ * gather strategy, keyed by the clone-side path from `GatherConfig.mapping`.
  * Present only when the scatter's gather strategy is `'map'`.
  *
  * `fieldValue` carries the persisted value of `GatherConfig.field` for
@@ -95,7 +93,7 @@ export type StoredScatterProgress = Readonly<Record<string, ScatterProgress>>;
  */
 export interface DagonizerOptionsInterface<TServices = undefined> {
   /**
-   * Path resolver used for fan-out source reads, fan-in writes, and
+   * Path resolver used for scatter source reads, gather writes, and
    * embedded-DAG state mapping. Defaults to a `DottedPathAccessor` that
    * walks `path.split('.')`.
    */
@@ -109,7 +107,7 @@ export interface DagonizerOptionsInterface<TServices = undefined> {
   readonly services?: TServices;
   /**
    * Instrumentation hooks invoked at execution boundaries. Defaults
-   * to a `NoopInstrumentation` — every method is a no-op when not
+   * to a `NoopInstrumentation`; every method is a no-op when not
    * overridden. Plugins extend `NoopInstrumentation` and override the
    * hooks they care about, then pass the instance through this option.
    *
@@ -121,7 +119,7 @@ export interface DagonizerOptionsInterface<TServices = undefined> {
 }
 
 
-type DAGNodeType = ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
+type DAGNodeType = EmbeddedDAGNode | ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
 type DAGNodeAtType = DAGNodeType['@type'];
 
 /**
@@ -142,12 +140,12 @@ export interface DispatcherBundle<TState extends NodeStateInterface, TServices =
 }
 
 /**
- * Interface for Dagonizer. One execution path — `execute()` and `resume()`
- * both return an `Execution`, which is async-iterable (each stage as it
- * completes) and awaitable (the final summary).
+ * Interface for Dagonizer. Both `execute()` and `resume()` return an
+ * `Execution`, which is async-iterable (each stage as it completes) and
+ * awaitable (the final summary).
  *
  * `TServices` flows through every node's `NodeContextInterface.services`
- * field — defaults to `undefined` when the dispatcher is constructed
+ * field; defaults to `undefined` when the dispatcher is constructed
  * without a services bag.
  */
 export interface DagonizerInterface<
@@ -227,7 +225,7 @@ interface InternalNodeResultInterface<TState extends NodeStateInterface> {
  * Graph-based DAG dispatcher for state-machine-style multi-step
  * node execution.
  *
- * Subclass to attach observability — override `onFlowStart`, `onFlowEnd`,
+ * Subclass to attach observability by overriding `onFlowStart`, `onFlowEnd`,
  * `onNodeStart`, `onNodeEnd`, `onError`. Default implementations are no-ops.
  *
  * For composable observability (multiple observers, plugin-supplied
@@ -273,12 +271,32 @@ implements DagonizerInterface<TState, TServices> {
   private readonly instrumentation: Instrumentation;
 
   /**
+   * Shared never-aborting signal used as the fallback when a call supplies no
+   * `signal`. Allocated once at class load instead of a fresh `AbortController`
+   * per node execution (hot path: one per scatter clone / embedded-DAG step).
+   */
+  private static readonly NEVER_ABORT_SIGNAL: AbortSignal = new AbortController().signal;
+
+  /**
+   * Per-`@type` execution dispatch. Built once per dispatcher instance (not per
+   * node call) so node execution is a single keyed lookup with no per-call
+   * closure/object allocation in the hot loop.
+   */
+  private readonly dispatch: Readonly<Record<DAGNodeAtType, (
+    entry: DAGNodeType,
+    state: TState,
+    dagName: string,
+    signal: AbortSignal | null,
+    placementPath: readonly string[],
+  ) => Promise<InternalNodeResultInterface<TState>>>>;
+
+  /**
    * Construct a dispatcher. Subclass and override the protected hooks
    * (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`)
-   * for observability — no factory indirection, no callbacks.
+   * for observability; no factory indirection, no callbacks.
    *
-   * `options.accessor` swaps the path resolver used for fan-out source
-   * reads, fan-in writes, and embedded-DAG state mapping. Defaults to
+   * `options.accessor` swaps the path resolver used for scatter source
+   * reads, gather writes, and embedded-DAG state mapping. Defaults to
    * `DottedPathAccessor`.
    *
    * `options.services` is the typed services bag exposed to every node
@@ -288,36 +306,59 @@ implements DagonizerInterface<TState, TServices> {
     this.accessor = options.accessor ?? DEFAULT_STATE_ACCESSOR;
     this.services = options.services as TServices;
     this.instrumentation = options.instrumentation ?? new NoopInstrumentation();
+    this.dispatch = {
+      'EmbeddedDAGNode': (entry, state, _dagName, signal, placementPath) =>
+        this.executeEmbeddedDAG(entry as EmbeddedDAGNode, state, signal, placementPath),
+      'ScatterNode': (entry, state, dagName, signal, placementPath) =>
+        this.executeScatter(entry as ScatterNode, state, dagName, signal, placementPath),
+      'ParallelNode': (entry, state, dagName, signal) =>
+        this.executeParallelGroup(entry as ParallelNode, state, dagName, signal),
+      'SingleNode': (entry, state, dagName, signal) =>
+        this.executeSingleNode(entry as SingleNodePlacementInterface, state, dagName, signal),
+      // TerminalNode / PhaseNode are handled before executeDAGNode in runNodes;
+      // these branches are unreachable in normal operation but keep the dispatch
+      // table exhaustive over the node `@type` union.
+      'TerminalNode': (entry, state) => {
+        const terminal = entry as TerminalNodePlacementInterface;
+        return Promise.resolve({ 'nextStage': null, 'result': {
+          'output': terminal.outcome, 'skipped': false, 'nodeName': terminal.name, state, 'intermediateResults': [],
+        } });
+      },
+      'PhaseNode': (entry, state) => {
+        const phase = entry as PhaseNodePlacementInterface;
+        return Promise.resolve({ 'nextStage': null, 'result': {
+          'output': phase.phase, 'skipped': true, 'nodeName': phase.name, state, 'intermediateResults': [],
+        } });
+      },
+    };
   }
 
   // ---------------------------------------------------------------------------
-  // Observability hooks — protected, no-op defaults. Subclass + override.
+  // Observability hooks: protected, no-op defaults. Subclass + override.
   // ---------------------------------------------------------------------------
 
   protected onFlowStart(_dagName: string, _state: TState): void { /* override */ }
   protected onFlowEnd(_dagName: string, _state: TState, _result: ExecutionResultInterface<TState>): void { /* override */ }
   /**
    * Fires before a node begins executing. `placementPath` is the ordered
-   * list of parent embedded-DAG placement names that led to this node —
-   * empty for top-level placements, `['on-topic-search']` for one level
-   * of embedded-DAG nesting, and so on. Use it to disambiguate same-
-   * named inner placements across multiple embedded-DAG instances.
-   *
-   * The argument defaults to `[]` for backward compatibility — existing
-   * subclasses that declared a two-argument override still type-check.
+   * list of parent embedded-DAG placement names that led to this node.
+   * Empty (`[]`) for top-level placements, `['on-topic-search']` for one
+   * level of embedded-DAG nesting, and so on. Use it to disambiguate same-
+   * named inner placements across multiple embedded-DAG instances. The
+   * dispatcher always passes it; an override may take fewer arguments.
    */
-  protected onNodeStart(_nodeName: string, _state: TState, _placementPath: readonly string[] = []): void { /* override */ }
+  protected onNodeStart(_nodeName: string, _state: TState, _placementPath: readonly string[]): void { /* override */ }
   /**
-   * Fires after a node completes successfully. See {@link onNodeStart}
-   * for `placementPath` semantics; defaulted for backward compatibility.
+   * Fires after a node completes successfully. See {@link onNodeStart} for
+   * `placementPath` semantics.
    */
-  protected onNodeEnd(_nodeName: string, _output: string | undefined, _state: TState, _placementPath: readonly string[] = []): void { /* override */ }
+  protected onNodeEnd(_nodeName: string, _output: string | null, _state: TState, _placementPath: readonly string[]): void { /* override */ }
   /**
    * Fires when the dispatcher catches an error from a node (or from the
    * abort/timeout machinery). See {@link onNodeStart} for `placementPath`
-   * semantics; defaulted for backward compatibility.
+   * semantics.
    */
-  protected onError(_nodeName: string, _error: Error, _state: TState, _placementPath: readonly string[] = []): void { /* override */ }
+  protected onError(_nodeName: string, _error: Error, _state: TState, _placementPath: readonly string[]): void { /* override */ }
 
   /**
    * Called for each non-fatal contract warning surfaced during DAG
@@ -346,6 +387,22 @@ implements DagonizerInterface<TState, TServices> {
     }
 
     return childState;
+  }
+
+  /**
+   * Copy fields from `childState` back to `parentState` using `output` mapping.
+   * `output` entries are `{ parentPath: childKey }`: for each entry, read
+   * `childKey` from `childState` and write it to `parentPath` on `parentState`.
+   */
+  private mapOutputState(
+    childState: TState,
+    parentState: TState,
+    output: Record<string, string> | undefined,
+  ): void {
+    if (output === undefined) return;
+    for (const [parentKey, childKey] of Object.entries(output)) {
+      this.accessor.set(parentState, parentKey, this.accessor.get(childState, childKey));
+    }
   }
 
   async destroy(): Promise<void> {
@@ -396,7 +453,7 @@ implements DagonizerInterface<TState, TServices> {
    *
    * Returns an `Execution<TState>` that is both async-iterable (yields
    * each node as it completes) and awaitable (resolves to the final
-   * `ExecutionResultInterface`). One execution path — sync-style is just
+   * `ExecutionResultInterface`). Sync-style is just
    * iteration that consumes every node before resolving.
    *
    * On abort (signal aborted, deadline expired, node threw, output
@@ -435,8 +492,8 @@ implements DagonizerInterface<TState, TServices> {
    * `isEmbeddedDAG` is a private implementation detail for recursive embedded-DAG
    * re-entry. When `true`, lifecycle transitions (`markRunning`,
    * `markCompleted`) and flow hooks (`onFlowStart`, `onFlowEnd`) are
-   * suppressed — those are top-level concerns owned by the consumer's
-   * `execute()` / `resume()` call. Node hooks (`onNodeStart`, `onNodeEnd`,
+   * suppressed (those are top-level concerns owned by the consumer's
+   * `execute()` / `resume()` call). Node hooks (`onNodeStart`, `onNodeEnd`,
    * `onError`) still fire for every child node.
    */
   private async *runNodes(
@@ -483,7 +540,7 @@ implements DagonizerInterface<TState, TServices> {
 
     // --- Pre-phase placements --------------------------------------------------
     // Run before the entrypoint, in DAG declaration order. Suppressed when this
-    // is a embedded-DAG re-entry — pre/post phases are top-level concerns owned by
+    // is a embedded-DAG re-entry; pre/post phases are top-level concerns owned by
     // the consumer's `execute()` / `resume()` call.
     if (!isEmbeddedDAG) {
       const prePhases = dag.nodes.filter(
@@ -513,7 +570,7 @@ implements DagonizerInterface<TState, TServices> {
     let cursor: null | string = currentNodeName;
     let terminalOutcome: 'completed' | 'failed' | null = null;
 
-    // Skip phase placements in the main loop — they are out-of-band and
+    // Skip phase placements in the main loop; they are out-of-band and
     // never the entrypoint. If the consumer's fromStage / entrypoint happens
     // to name a phase placement, treat it as if the main loop is empty.
     const isPhaseEntry = (name: string): boolean => {
@@ -556,7 +613,7 @@ implements DagonizerInterface<TState, TServices> {
       this.onNodeStart(node.name, state, placementPath);
       this.instrumentation.nodeStart(dagName, node.name, state, placementPath);
 
-      // TerminalNode is a no-op execution — capture outcome, synthesize result,
+      // TerminalNode is a no-op execution: capture outcome, synthesize result,
       // fire onNodeEnd, and break the loop. No call to executeDAGNode needed.
       if (node['@type'] === 'TerminalNode') {
         const terminal = node as TerminalNodePlacementInterface;
@@ -567,6 +624,7 @@ implements DagonizerInterface<TState, TServices> {
           'skipped': false,
           'nodeName': terminal.name,
           state,
+          'intermediateResults': [],
         };
         this.onNodeEnd(terminal.name, terminal.outcome, state, placementPath);
         this.instrumentation.nodeEnd(dagName, terminal.name, terminal.outcome, state, placementPath);
@@ -586,7 +644,7 @@ implements DagonizerInterface<TState, TServices> {
           // Run-level signal aborted: classify abort vs timeout via handleAbort.
           // handleAbort inspects signal.reason for TimeoutError, which
           // covers the run-level deadline TimeoutError. The per-node
-          // `NodeTimeoutError` does NOT abort the parent signal — that
+          // `NodeTimeoutError` does NOT abort the parent signal; that
           // case is handled below.
           if (!isEmbeddedDAG) {
             const abortInfo = this.handleAbort(state, signal);
@@ -616,12 +674,11 @@ implements DagonizerInterface<TState, TServices> {
 
       const { nextStage, "result": nodeResult } = nodeOutcome;
 
-      // Yield intermediate results from parallel/fan-out/embedded-DAG nodes
-      if ('intermediateResults' in nodeResult) {
-        const inter = (nodeResult as NodeResultInterface<TState> & { 'intermediateResults': Array<NodeResultInterface<TState>> }).intermediateResults;
-        for (const intermediate of inter) {
-          yield intermediate;
-        }
+      // Stream the per-step results a composite node (parallel / scatter /
+      // embedded-DAG) produced internally, before the node's own result.
+      // Empty for leaf nodes.
+      for (const intermediate of nodeResult.intermediateResults) {
+        yield intermediate;
       }
 
       if (nodeResult.skipped) {
@@ -657,8 +714,8 @@ implements DagonizerInterface<TState, TServices> {
   /**
    * Shared result-object constructor. Centralises the
    * `ExecutionResultInterface<TState>` shape so every exit branch in
-   * `runNodes` returns an identically-shaped object — same key order, same
-   * field set — keeping V8 hidden classes stable across success and error
+   * `runNodes` returns an identically-shaped object (same key order, same
+   * field set), keeping V8 hidden classes stable across success and error
    * paths.
    */
   private buildResult(
@@ -682,7 +739,7 @@ implements DagonizerInterface<TState, TServices> {
   /**
    * Run every `phase: 'post'` placement in DAG declaration order, then
    * fire `onFlowEnd` + `instrumentation.flowEnd`. Suppressed when
-   * `isEmbeddedDAG` is true — phase placements are top-level concerns owned
+   * `isEmbeddedDAG` is true; phase placements are top-level concerns owned
    * by the consumer's `execute()` / `resume()` call.
    *
    * Errors thrown by a post-phase placement are collected as warnings on
@@ -766,7 +823,7 @@ implements DagonizerInterface<TState, TServices> {
     signal: AbortSignal | null,
   ): NodeContextInterface<TServices> {
     return {
-      'signal': signal ?? new AbortController().signal,
+      'signal': signal ?? Dagonizer.NEVER_ABORT_SIGNAL,
       'dagName': dagName,
       nodeName,
       'services': this.services,
@@ -798,7 +855,7 @@ implements DagonizerInterface<TState, TServices> {
 
   /**
    * Persist this batch's accumulated scatter progress to metadata. One
-   * write per batch (not per clone) — the call sits outside `Promise.all`
+   * write per batch (not per clone); the call sits outside `Promise.all`
    * so concurrent clone resolutions never race on `setMetadata`.
    */
   private writeScatterProgress(
@@ -842,21 +899,91 @@ implements DagonizerInterface<TState, TServices> {
     const next: Record<string, ScatterProgress> = { ...stored };
     delete next[placementName];
     if (Object.keys(next).length === 0) {
-      const live = state.metadata as Record<string, unknown>;
-      delete live[SCATTER_PROGRESS_KEY];
+      state.deleteMetadata(SCATTER_PROGRESS_KEY);
     } else {
       state.setMetadata(SCATTER_PROGRESS_KEY, next);
     }
   }
 
   /**
-   * Execute a scatter placement — isolate a state clone (one per source
-   * item, or exactly one for the singleton case), run a body (node or
-   * sub-DAG) in it, propagate errors/warnings to the parent, then apply
-   * the gather strategy and route via the outcome reducer.
+   * Execute an embedded-DAG placement: run the referenced sub-DAG in an
+   * isolated child state clone (cardinality 1), propagate errors/warnings
+   * to the parent, apply `stateMapping.output` back to the parent, and
+   * route via the terminal-propagating reducer.
+   *
+   * State bridging mirrors the scatter seed (`stateMapping.input`) but adds a
+   * copy-back the fork has no use for:
+   * - `stateMapping.input` (child key → parent path) seeds the child clone
+   *   before the sub-DAG runs (the same field scatter uses to seed each clone).
+   * - `stateMapping.output` (parent path → child key) merges child state
+   *   back into the parent after completion (via `mapOutputState`).
+   * - Terminal propagation: if the child run's `terminalOutcome` is `'failed'`
+   *   or any unrecoverable error exists, route `'error'`; otherwise `'success'`.
+   * - Lifecycle scoping: `isEmbeddedDAG: true` suppresses lifecycle transitions
+   *   and flow hooks on the child run (those are top-level concerns).
+   * - `placementPath`: extended with the placement name so inner node hooks
+   *   receive accurate nesting context.
+   */
+  private async executeEmbeddedDAG(
+    placement: EmbeddedDAGNode,
+    state: TState,
+    signal: AbortSignal | null,
+    placementPath: readonly string[],
+  ): Promise<InternalNodeResultInterface<TState>> {
+    const inputMapping = placement.stateMapping?.input as Record<string, string> | undefined;
+    const outputMapping = placement.stateMapping?.output as Record<string, string> | undefined;
+
+    const cloneState = this.createChildState(state, inputMapping);
+
+    const childOptions: ExecuteOptionsInterface = signal ? { 'signal': signal } : {};
+    const innerPath: readonly string[] = [...placementPath, placement.name];
+    const iter = this.runNodes(placement.dag, cloneState, null, childOptions, true, innerPath);
+
+    const intermediateResults: Array<NodeResultInterface<TState>> = [];
+    let step = await iter.next();
+    while (!step.done) {
+      const nr = step.value;
+      const intermediate: NodeResultInterface<TState> = {
+        'output': nr.output,
+        'skipped': nr.skipped,
+        'nodeName': `${placement.name}.${nr.nodeName}`,
+        state,
+        'intermediateResults': [],
+      };
+      intermediateResults.push(intermediate);
+      step = await iter.next();
+    }
+    const terminalOutcome = step.value.terminalOutcome;
+
+    // Propagate errors and warnings from child to parent
+    for (const err of cloneState.errors) state.collectError(err);
+    for (const warn of cloneState.warnings) state.collectWarning(warn);
+
+    // Apply output state mapping: child → parent
+    this.mapOutputState(cloneState, state, outputMapping);
+
+    const hasUnrecoverable = cloneState.errors.some((e) => e.recoverable === false);
+    const routeOutput = (terminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
+    const nextStage = placement.outputs[routeOutput] ?? null;
+
+    const result: NodeResultInterface<TState> = {
+      'output': routeOutput,
+      'skipped': false,
+      'nodeName': placement.name,
+      state,
+      intermediateResults,
+    };
+
+    return { nextStage, result };
+  }
+
+  /**
+   * Execute a scatter placement: fork over a source array (one clone per
+   * item), run a body (node or sub-DAG) in each clone, propagate
+   * errors/warnings to the parent, apply the gather strategy, and route
+   * via the outcome reducer.
    *
    * Resume bookkeeping is persisted under {@link SCATTER_PROGRESS_KEY}.
-   * Singleton scatters (no `source`) do not write progress records.
    *
    * **Index semantics on resume.** Treat the source array as immutable
    * while a scatter checkpoint is live.
@@ -869,42 +996,35 @@ implements DagonizerInterface<TState, TServices> {
     placementPath: readonly string[],
   ): Promise<InternalNodeResultInterface<TState>> {
     // ── 1. Resolve item list ─────────────────────────────────────────────────
-    const isSingleton = scatter.source === undefined;
-    let sourceArray: unknown[];
-
-    if (isSingleton) {
-      sourceArray = [SINGLETON_SENTINEL];
-    } else {
-      const raw = this.accessor.get(state, scatter.source as string);
-      if (!Array.isArray(raw) || raw.length === 0) {
-        const reducerName = scatter.reducer ?? 'aggregate';
-        const routeOutput = OutcomeReducers.resolve(reducerName).reduce([]);
-        const nextStage = scatter.outputs[routeOutput] ?? null;
-        const result: NodeResultInterface<TState> = {
-          'output': routeOutput,
-          'skipped': true,
-          'nodeName': scatter.name,
-          state,
-        };
-        return { nextStage, result };
-      }
-      sourceArray = raw;
+    const raw = this.accessor.get(state, scatter.source);
+    if (!Array.isArray(raw) || raw.length === 0) {
+      const reducerName = scatter.reducer ?? 'aggregate';
+      const routeOutput = OutcomeReducers.resolve(reducerName).reduce([]);
+      const nextStage = scatter.outputs[routeOutput] ?? null;
+      const result: NodeResultInterface<TState> = {
+        'output': routeOutput,
+        'skipped': true,
+        'nodeName': scatter.name,
+        state,
+        'intermediateResults': [],
+      };
+      return { nextStage, result };
     }
+    const sourceArray: unknown[] = raw;
 
     const itemKey = scatter.itemKey ?? 'currentItem';
-    const concurrency = isSingleton ? 1 : (scatter.concurrency ?? sourceArray.length);
+    const concurrency = scatter.concurrency ?? sourceArray.length;
 
     // ── 2. Resume bookkeeping ────────────────────────────────────────────────
-    const storedProgress = isSingleton
-      ? undefined
-      : (state.getMetadata<StoredScatterProgress>(SCATTER_PROGRESS_KEY) ?? {})[scatter.name];
+    const storedProgress =
+      (state.getMetadata<StoredScatterProgress>(SCATTER_PROGRESS_KEY) ?? {})[scatter.name];
     const completed = new Set<number>(storedProgress?.completedIndices ?? []);
     const itemOutputs = new Map<number, string>();
 
     // Per-index gather persistence maps. Only one is populated, depending on
     // the active gather strategy:
-    //   mappingValues — map strategy: all clone-path values keyed by clone path
-    //   fieldValues   — append/partition with `field`: the field value per index
+    //   mappingValues: map strategy: all clone-path values keyed by clone path
+    //   fieldValues:   append/partition with `field`: the field value per index
     const isMapGather = scatter.gather?.strategy === 'map';
     const isFieldGather =
       (scatter.gather?.strategy === 'append' || scatter.gather?.strategy === 'partition') &&
@@ -914,7 +1034,7 @@ implements DagonizerInterface<TState, TServices> {
     const fieldValues: Map<number, unknown> | undefined =
       isFieldGather ? new Map() : undefined;
 
-    // Rehydrate from stored progress — rebuild itemOutputs and the gather maps
+    // Rehydrate from stored progress: rebuild itemOutputs and the gather maps
     // so restored items can contribute synthetic GatherRecords below.
     if (storedProgress) {
       for (const entry of storedProgress.itemResults) {
@@ -952,13 +1072,11 @@ implements DagonizerInterface<TState, TServices> {
 
         const cloneState = this.createChildState(
           state,
-          scatter.projection as Record<string, string> | undefined,
+          scatter.stateMapping?.input as Record<string, string> | undefined,
         );
 
-        if (!isSingleton) {
-          cloneState.setMetadata(itemKey, item);
-          cloneState.setMetadata('itemIndex', itemIndex);
-        }
+        cloneState.setMetadata(itemKey, item);
+        cloneState.setMetadata('itemIndex', itemIndex);
 
         let output: string;
         let terminalOutcome: 'completed' | 'failed' | null = null;
@@ -991,11 +1109,12 @@ implements DagonizerInterface<TState, TServices> {
             }
             const nr = step.value;
             const intermediate: NodeResultInterface<TState> = {
+              'output': nr.output,
               'skipped': nr.skipped,
               'nodeName': `${scatter.name}.${nr.nodeName}`,
               state,
+              'intermediateResults': [],
             };
-            if (nr.output !== undefined) intermediate.output = nr.output;
             intermediateResults.push(intermediate);
           }
 
@@ -1074,15 +1193,11 @@ implements DagonizerInterface<TState, TServices> {
         }
       }
 
-      if (!isSingleton) {
-        this.writeScatterProgress(state, scatter.name, completed, itemOutputs, mappingValues, fieldValues);
-      }
+      this.writeScatterProgress(state, scatter.name, completed, itemOutputs, mappingValues, fieldValues);
     }
 
     // ── 4. Gather ────────────────────────────────────────────────────────────
-    if (!isSingleton) {
-      this.clearScatterProgress(state, scatter.name);
-    }
+    this.clearScatterProgress(state, scatter.name);
 
     if (scatter.gather !== undefined && allRecords.length > 0) {
       const gatherExecution = this.buildGatherExecution(state, allRecords, dagName, signal);
@@ -1090,27 +1205,26 @@ implements DagonizerInterface<TState, TServices> {
     }
 
     // ── 5. Reduce to route ───────────────────────────────────────────────────
-    const reducerName = scatter.reducer ?? (isSingleton ? 'terminal' : 'aggregate');
-    const outcomeRecords: OutcomeRecord[] = [...itemOutputs.entries()].map(([index, output]) => {
-      const rec = allRecords.find((r) => r.index === index);
-      return {
-        index,
-        output,
-        'terminalOutcome': rec?.terminalOutcome ?? null,
-      };
-    });
+    const reducerName = scatter.reducer ?? 'aggregate';
+    // Index records once (O(N)) so the per-item lookup below is O(1); avoids
+    // an O(N²) linear scan when reducing a large source array.
+    const recordByIndex = new Map<number, GatherRecord<TState>>();
+    for (const record of allRecords) recordByIndex.set(record.index, record);
+    const outcomeRecords: OutcomeRecord[] = [...itemOutputs.entries()].map(([index, output]) => ({
+      index,
+      output,
+      'terminalOutcome': recordByIndex.get(index)?.terminalOutcome ?? null,
+    }));
     const routeOutput = OutcomeReducers.resolve(reducerName).reduce(outcomeRecords);
     const nextStage = scatter.outputs[routeOutput] ?? null;
 
-    const baseResult: NodeResultInterface<TState> = {
+    const result: NodeResultInterface<TState> = {
       'output': routeOutput,
       'skipped': false,
       'nodeName': scatter.name,
       state,
+      intermediateResults,
     };
-    const result = intermediateResults.length > 0
-      ? Object.assign(baseResult, { intermediateResults })
-      : baseResult;
 
     return { nextStage, result };
   }
@@ -1189,7 +1303,8 @@ implements DagonizerInterface<TState, TServices> {
       'output': opResult.output,
       'skipped': false,
       'nodeName': node.name,
-      state
+      state,
+      'intermediateResults': [],
     }));
 
     const outputs = results.map((resultItem) => resultItem.opResult.output);
@@ -1197,12 +1312,12 @@ implements DagonizerInterface<TState, TServices> {
     const combinedOutput = combiner.combine(outputs, results, state);
 
     const nextStage = group.outputs[combinedOutput] ?? null;
-    const result: NodeResultInterface<TState> & { 'intermediateResults': Array<NodeResultInterface<TState>> } = {
-      intermediateResults,
+    const result: NodeResultInterface<TState> = {
       'output': combinedOutput,
       'skipped': false,
       'nodeName': group.name,
-      state
+      state,
+      intermediateResults,
     };
 
     return {
@@ -1231,8 +1346,8 @@ implements DagonizerInterface<TState, TServices> {
     const { timeoutMs } = dagNode;
 
     if (timeoutMs === undefined) {
-      // No per-node budget — pass parent signal through unchanged.
-      const sig = parentSignal ?? new AbortController().signal;
+      // No per-node budget; pass parent signal through unchanged.
+      const sig = parentSignal ?? Dagonizer.NEVER_ABORT_SIGNAL;
       return fn(sig);
     }
 
@@ -1271,7 +1386,7 @@ implements DagonizerInterface<TState, TServices> {
     // and the finally block aborts the child signal (causing execute to reject
     // after Promise.race has already settled).
     const nodePromise = fn(childCtrl.signal);
-    nodePromise.catch(() => { /* swallowed — deadline race already settled */ });
+    nodePromise.catch(() => { /* swallowed: deadline race already settled */ });
 
     try {
       // Race the node execute against the deadline rejection.
@@ -1321,7 +1436,8 @@ implements DagonizerInterface<TState, TServices> {
       'output': opResult.output,
       'skipped': false,
       'nodeName': nodeConfig.name,
-      state
+      state,
+      'intermediateResults': [],
     };
 
     return {
@@ -1337,43 +1453,11 @@ implements DagonizerInterface<TState, TServices> {
     signal: AbortSignal | null,
     placementPath: readonly string[],
   ): Promise<InternalNodeResultInterface<TState>> {
-    const dispatch: Readonly<Record<DAGNodeAtType, () => Promise<InternalNodeResultInterface<TState>>>> = {
-      'ScatterNode':  () => this.executeScatter(entry as ScatterNode, state, dagName, signal, placementPath),
-      'ParallelNode': () => this.executeParallelGroup(entry as ParallelNode, state, dagName, signal),
-      'SingleNode':   () => this.executeSingleNode(entry as SingleNodePlacementInterface, state, dagName, signal),
-      'TerminalNode': () => {
-        // TerminalNode is handled before executeDAGNode in runNodes; this
-        // branch is unreachable in normal operation but satisfies the
-        // exhaustive dispatch table.
-        const terminal = entry as TerminalNodePlacementInterface;
-        const result: NodeResultInterface<TState> = {
-          'output': terminal.outcome,
-          'skipped': false,
-          'nodeName': terminal.name,
-          state,
-        };
-        return Promise.resolve({ 'nextStage': null, result });
-      },
-      'PhaseNode': () => {
-        // PhaseNode placements run outside the main loop via
-        // executePhasePlacement; this branch is unreachable in normal
-        // operation (runNodes skips them before dispatch) but satisfies
-        // the exhaustive dispatch table.
-        const phase = entry as PhaseNodePlacementInterface;
-        const result: NodeResultInterface<TState> = {
-          'output': phase.phase,
-          'skipped': true,
-          'nodeName': phase.name,
-          state,
-        };
-        return Promise.resolve({ 'nextStage': null, result });
-      },
-    };
-    const handler = dispatch[entry['@type']];
+    const handler = this.dispatch[entry['@type']];
     if (handler === undefined) {
       throw new DAGError(`Unknown node type: ${(entry as DAGNodeType)['@type']}`);
     }
-    return handler();
+    return handler(entry, state, dagName, signal, placementPath);
   }
 
 
@@ -1400,8 +1484,11 @@ implements DagonizerInterface<TState, TServices> {
       Dagonizer.validateDAGNode(node as DAGNodeType, nodes, dags, nodeNames, errors);
     }
 
-    const scatterRefs = new Set<string>();
-    Dagonizer.collectScatterDAGReferences(dag, dags, scatterRefs, new Set([dag.name]), errors);
+    // Collect circular-reference candidates across BOTH sub-DAG edge kinds in
+    // one traversal: EmbeddedDAGNode(dag) and ScatterNode(body.dag). A
+    // cross-kind cycle (embed → scatter → embed) is caught, not just same-kind.
+    const dagRefs = new Set<string>();
+    Dagonizer.collectDAGReferences(dag, dags, dagRefs, new Set([dag.name]), errors);
 
     if (errors.length > 0) {
       throw new DAGError(`Invalid DAG '${dag.name}':\n  - ${errors.join('\n  - ')}`);
@@ -1416,11 +1503,12 @@ implements DagonizerInterface<TState, TServices> {
     errors: string[]
   ): void {
     const validators: Readonly<Record<DAGNodeAtType, () => void>> = {
-      'ScatterNode':  () => Dagonizer.validateScatterNode(entry as ScatterNode, nodes, dags, nodeNames, errors),
-      'ParallelNode': () => Dagonizer.validateParallelNode(entry as ParallelNode, nodeNames, errors),
-      'SingleNode':   () => Dagonizer.validateSingleNode(entry as SingleNodePlacementInterface, nodes, nodeNames, errors),
-      'TerminalNode': () => { /* TerminalNode has no outputs to validate; schema pass is sufficient */ },
-      'PhaseNode':    () => Dagonizer.validatePhaseNode(entry as PhaseNodePlacementInterface, nodes, errors),
+      'EmbeddedDAGNode': () => Dagonizer.validateEmbeddedDAGNode(entry as EmbeddedDAGNode, dags, nodeNames, errors),
+      'ScatterNode':     () => Dagonizer.validateScatterNode(entry as ScatterNode, nodes, dags, nodeNames, errors),
+      'ParallelNode':    () => Dagonizer.validateParallelNode(entry as ParallelNode, nodeNames, errors),
+      'SingleNode':      () => Dagonizer.validateSingleNode(entry as SingleNodePlacementInterface, nodes, nodeNames, errors),
+      'TerminalNode':    () => { /* TerminalNode has no outputs to validate; schema pass is sufficient */ },
+      'PhaseNode':       () => Dagonizer.validatePhaseNode(entry as PhaseNodePlacementInterface, nodes, errors),
     };
     validators[entry['@type']]?.();
   }
@@ -1479,6 +1567,23 @@ implements DagonizerInterface<TState, TServices> {
     }
   }
 
+  private static validateEmbeddedDAGNode(
+    placement: EmbeddedDAGNode,
+    dags: Map<string, DAG>,
+    nodeNames: Set<string>,
+    errors: string[]
+  ): void {
+    if (!dags.has(placement.dag)) {
+      errors.push(`EmbeddedDAGNode '${placement.name}': unknown registered DAG '${placement.dag}'`);
+    }
+
+    for (const [output, target] of Object.entries(placement.outputs)) {
+      if (target !== null && !nodeNames.has(target)) {
+        errors.push(`EmbeddedDAGNode '${placement.name}': output '${output}' routes to unknown node '${target}'`);
+      }
+    }
+  }
+
   private static validateScatterNode<TState extends NodeStateInterface, TServices>(
     scatter: ScatterNode,
     nodes: Map<string, NodeInterface<TState, string, TServices>>,
@@ -1523,7 +1628,14 @@ implements DagonizerInterface<TState, TServices> {
     }
   }
 
-  private static collectScatterDAGReferences(
+  /**
+   * Depth-first cycle detection over the sub-DAG reference graph. Follows BOTH
+   * sub-DAG edge kinds in a single traversal: `EmbeddedDAGNode.dag` (embed) and
+   * `ScatterNode.body.dag` (fork-of-sub-DAG), so a cross-kind cycle is caught.
+   * `path` is the current DFS stack (back-edge ⇒ cycle); `visited` marks
+   * fully-explored DAGs so shared sub-DAGs are not re-walked.
+   */
+  private static collectDAGReferences(
     dag: DAG,
     dags: Map<string, DAG>,
     visited: Set<string>,
@@ -1531,22 +1643,31 @@ implements DagonizerInterface<TState, TServices> {
     errors: string[]
   ): void {
     for (const rawNode of dag.nodes) {
-      if ((rawNode as { '@type': string })['@type'] === 'ScatterNode') {
-        const scatterNode = rawNode as unknown as ScatterNode;
-        if (!('dag' in scatterNode.body)) continue;
-        const dagRef = scatterNode.body.dag;
-        if (path.has(dagRef)) {
-          errors.push(`Circular scatter DAG reference detected: ${Array.from(path).join(' -> ')} -> ${dagRef}`);
-          continue;
-        }
-        if (!visited.has(dagRef)) {
-          visited.add(dagRef);
-          const nested = dags.get(dagRef);
-          if (nested) {
-            const newPath = new Set(path);
-            newPath.add(dagRef);
-            Dagonizer.collectScatterDAGReferences(nested, dags, visited, newPath, errors);
-          }
+      const kind = (rawNode as { '@type': string })['@type'];
+      let dagRef: string;
+      let label: string;
+      if (kind === 'EmbeddedDAGNode') {
+        dagRef = (rawNode as unknown as EmbeddedDAGNode).dag;
+        label = 'embedded-DAG';
+      } else if (kind === 'ScatterNode') {
+        const body = (rawNode as unknown as ScatterNode).body;
+        if (!('dag' in body)) continue;
+        dagRef = body.dag;
+        label = 'scatter';
+      } else {
+        continue;
+      }
+      if (path.has(dagRef)) {
+        errors.push(`Circular ${label} DAG reference detected: ${Array.from(path).join(' -> ')} -> ${dagRef}`);
+        continue;
+      }
+      if (!visited.has(dagRef)) {
+        visited.add(dagRef);
+        const nested = dags.get(dagRef);
+        if (nested) {
+          const newPath = new Set(path);
+          newPath.add(dagRef);
+          Dagonizer.collectDAGReferences(nested, dags, visited, newPath, errors);
         }
       }
     }
@@ -1556,15 +1677,15 @@ implements DagonizerInterface<TState, TServices> {
    * Register a DAG configuration.
    *
    * Runs two validation passes:
-   * 1. Schema pass — `Validator.dag.validate(dag)` checks structure (required fields, valid
+   * 1. Schema pass: `Validator.dag.validate(dag)` checks structure (required fields, valid
    *    `type` and `strategy` enumerations).
-   * 2. Semantic pass — verifies entrypoint exists, all node references are resolvable,
+   * 2. Semantic pass: verifies entrypoint exists, all node references are resolvable,
    *    no circular embedded-DAG references, and every registered node output has a routing
    *    entry in the placement's `outputs` map.
    */
   registerDAG(dag: DAG): void {
     // Schema pre-pass: catches malformed JSON (missing fields, wrong
-    // node `type`, fan-in strategy mismatch) before semantic validation
+    // node `type`, gather strategy mismatch) before semantic validation
     // surfaces node/DAG cross-references.
     Validator.dag.validate(dag);
 
@@ -1638,7 +1759,7 @@ implements DagonizerInterface<TState, TServices> {
   /**
    * Register a node. Accepts narrowly-typed nodes
    * (`NodeInterface<TState, 'success' | 'error', TServices>`) and stores
-   * them widened to `NodeInterface<TState, string, TServices>` — narrow →
+   * them widened to `NodeInterface<TState, string, TServices>`; narrow
    * wide is sound covariantly on both `outputs` and the result `output`.
    */
   registerNode<TOutput extends string>(
@@ -1656,7 +1777,7 @@ implements DagonizerInterface<TState, TServices> {
 
   /**
    * Register every node, then every DAG, in the supplied bundle. Order
-   * is fixed — nodes first so the semantic-pass DAG validator can
+   * is fixed: nodes first so the semantic-pass DAG validator can
    * resolve every node reference. Throws as soon as any individual
    * registration throws (validation failure, duplicate name, etc.);
    * registrations that ran before the failing one remain installed.

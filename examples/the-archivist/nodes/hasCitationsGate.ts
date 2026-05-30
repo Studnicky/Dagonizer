@@ -1,12 +1,12 @@
 /**
- * hasCitationsGate — deterministic SPARQL ASK over the per-run state graph.
+ * hasCitationsGate: deterministic SPARQL ASK over the per-run state graph.
  *
  *   ASK FROM urn:dagonizer:state:<runId> {
  *     ?book dag:inShortlist "true"^^xsd:boolean .
  *     ?book dag:source      ?src .
  *   }
  *
- * The gate ignores the typed `state.shortlist` deliberately — it
+ * The gate ignores the typed `state.shortlist` deliberately; it
  * reads from the canonical state graph so the rule is auditable
  * against the same triples a downstream PROV-O query would surface.
  *

@@ -335,7 +335,7 @@ void describe('Dagonizer.registerBundle', () => {
     const dagA = makeSingleNodeDAG('flowA', 'a');
 
     // Order in the bundle's `dags` array references a node that only exists
-    // in the same bundle's `nodes` array — succeeds because nodes register first.
+    // in the same bundle's `nodes` array; succeeds because nodes register first.
     dispatcher.registerBundle({ 'nodes': [nodeA], 'dags': [dagA] });
 
     assert.equal(dispatcher.getNode('a'), nodeA);

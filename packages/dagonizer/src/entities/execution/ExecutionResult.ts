@@ -1,5 +1,5 @@
 /**
- * ExecutionResult — result of a complete flow execution.
+ * ExecutionResult: result of a complete flow execution.
  *
  * `cursor` is the name of the next node to run when execution terminated
  * before completing the flow (abort, deadline, node error). It is `null`
@@ -9,7 +9,7 @@
  * when the flow exited through one. `null` when the flow exited via a
  * `null` route, an error path, or an abort. The embedded-DAG executor reads
  * this off the inner DAG's result to route the parent placement's
- * `success` / `error` ports — a TerminalNode(failed) inside an inner DAG
+ * `success` / `error` ports; a TerminalNode(failed) inside an inner DAG
  * surfaces as `error` on the parent.
  *
  * `state` is opaque (`{ type: 'object' }`) at the JSON boundary.

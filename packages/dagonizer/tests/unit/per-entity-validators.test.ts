@@ -39,20 +39,20 @@ void describe('Validator per-entity sub-validators', () => {
     );
   });
 
-  void it('Validator.scatterNode accepts a dag-body (embedded-DAG) placement', () => {
+  void it('Validator.embeddedDAGNode accepts a dag-body embed placement', () => {
     assert.equal(
-      Validator.scatterNode.is({
+      Validator.embeddedDAGNode.is({
         '@id':    'urn:noocodex:dag:pipeline/node/enrich',
-        '@type':  'ScatterNode',
+        '@type':  'EmbeddedDAGNode',
         'name':   'enrich',
-        'body':   { 'dag': 'enrichment' },
+        'dag':    'enrichment',
         'outputs': { 'success': null, 'error': null },
       }),
       true,
     );
   });
 
-  void it('Validator.scatterNode accepts a singleton scatter (no source)', () => {
+  void it('Validator.scatterNode rejects a scatter without a source', () => {
     assert.equal(
       Validator.scatterNode.is({
         '@id':    'urn:noocodex:dag:pipeline/node/transform',
@@ -62,7 +62,7 @@ void describe('Validator per-entity sub-validators', () => {
         'gather': { 'strategy': 'map', 'mapping': { 'result': 'output' } },
         'outputs': { 'success': null, 'error': null },
       }),
-      true,
+      false,
     );
   });
 
@@ -140,9 +140,9 @@ void describe('Validator per-entity sub-validators', () => {
   void it('Validator.parallelNode accepts a parallel placement', () => {
     assert.equal(
       Validator.parallelNode.is({
-        '@id':     'urn:noocodex:dag:pipeline/node/fanout',
+        '@id':     'urn:noocodex:dag:pipeline/node/group',
         '@type':   'ParallelNode',
-        'name':    'fanout',
+        'name':    'group',
         'nodes':   ['a', 'b'],
         'combine': 'all-success',
         'outputs': { 'success': null, 'error': null },

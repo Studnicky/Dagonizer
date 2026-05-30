@@ -11,8 +11,8 @@ export type JsonPrimitive = string | number | boolean | null;
 /** Any JSON-serializable value. */
 export type JsonValue = JsonPrimitive | JsonObject | JsonArray;
 
-/** JSON object — keys are strings, values are `JsonValue`. */
+/** JSON object: keys are strings, values are `JsonValue`. */
 export interface JsonObject { readonly [key: string]: JsonValue }
 
-/** JSON array — elements are `JsonValue`. */
+/** JSON array: elements are `JsonValue`. */
 export type JsonArray = readonly JsonValue[];

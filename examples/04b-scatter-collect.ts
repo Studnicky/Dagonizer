@@ -1,12 +1,10 @@
 /**
- * 04b-scatter-collect — ScatterNode generate-and-select: fan out, collect
+ * 04b-scatter-collect: ScatterNode generate-and-select: scatter, collect
  * produced data with a `map` gather, then pick the best.
  *
- * This is the capability the old fan-out could not express: a plain fan-out
- * routed each clone by its output token but discarded the data the clone
- * produced. A `map` gather over a `source` keeps it — each clone writes a
- * field, and the gather appends those fields (in source-index order) into a
- * parent array. A downstream `select` node then chooses the winner.
+ * A `map` gather over a `source` keeps produced clone data; each clone
+ * writes a field, and the gather appends those fields (in source-index order)
+ * into a parent array. A downstream `select` node then chooses the winner.
  *
  * Flow:
  *   generate (ScatterNode over `providers`)
@@ -18,8 +16,7 @@
  *     └─ reads parent.candidates, picks the highest score → parent.chosen
  *
  * Watch: every provider's produced candidate survives into state.candidates;
- * the select node picks the top score. With a plain fan-out the candidate
- * objects would have been thrown away.
+ * the select node picks the top score.
  *
  * Run: npx tsx examples/04b-scatter-collect.ts
  */
@@ -43,9 +40,9 @@ interface Candidate {
 }
 
 class GenerateState extends NodeStateBase {
-  providers:  string[]    = [];   // source array — one clone per provider
+  providers:  string[]    = [];   // source array; one clone per provider
   candidate:  Candidate | null = null;  // per-clone produced field; the gather reads this off each clone
-  candidates: Candidate[] = [];   // map-gather target — produced candidates land here (parent)
+  candidates: Candidate[] = [];   // map-gather target; produced candidates land here (parent)
   chosen:     Candidate | null = null;  // the select node's winner
 }
 // #endregion state
@@ -71,7 +68,7 @@ const provider: NodeInterface<GenerateState, 'success'> = {
     // the provider name length plus a per-provider salt. In a real flow this
     // is an LLM/tool call producing a candidate answer + a quality score.
     const score = name.length * 10 + (name.charCodeAt(0) % 7);
-    // Write to a clone field — the map gather reads `candidate` off each
+    // Write to a clone field; the map gather reads `candidate` off each
     // clone via the StateAccessor and appends it into parent.candidates.
     state.candidate = {
       "provider": name,
@@ -162,7 +159,7 @@ const state = new GenerateState();
 state.providers = ['alpha', 'bravo', 'charlie', 'delta'];
 await dispatcher.execute('generate-select', state);
 
-process.stdout.write('\nScatter-collect — fan out over providers, collect candidates, select best\n');
+process.stdout.write('\nScatter-collect: scatter over providers, collect candidates, select best\n');
 process.stdout.write(`  providers:  ${JSON.stringify(state.providers)}\n`);
 process.stdout.write(`  candidates: ${state.candidates.length} collected (none discarded)\n`);
 for (const candidate of state.candidates) {
@@ -170,6 +167,6 @@ for (const candidate of state.candidates) {
 }
 process.stdout.write(`  chosen:     ${state.chosen ? `${state.chosen.provider} (score ${state.chosen.score})` : 'none'}\n`);
 process.stdout.write('\nLesson: a map gather over a source appends each clone\'s produced\n');
-process.stdout.write('        field into a parent array — generate-and-select keeps the\n');
-process.stdout.write('        data a plain fan-out would have thrown away.\n');
+process.stdout.write('        field into a parent array; generate-and-select preserves\n');
+process.stdout.write('        data from every scatter clone.\n');
 // #endregion run

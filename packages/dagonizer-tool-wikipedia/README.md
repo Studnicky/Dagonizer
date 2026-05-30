@@ -28,7 +28,7 @@ const results = await WikipediaSummaryTool.execute({ query: 'House of Leaves' })
 
 - `GET https://en.wikipedia.org/api/rest_v1/page/summary/<title>`
 
-No API key. CORS-enabled. Per Wikipedia's bot policy, set a meaningful `User-Agent` for production use (this tool currently sends the default `node-fetch` UA — fine for low-volume demos; identify your app for production).
+No API key. CORS-enabled. Per Wikipedia's bot policy, set a meaningful `User-Agent` for production use (this tool currently sends the default `node-fetch` UA, fine for low-volume demos; identify your app for production).
 
 ## Why a book tool for Wikipedia
 

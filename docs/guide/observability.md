@@ -45,20 +45,21 @@ class ObservableDispatcher<TState> extends Dagonizer<TState> {
     console.log(`[flow:end] ${dagName} cursor=${result.cursor}`);
   }
 
-  protected override onNodeStart(nodeName: string, state: TState): void {
-    console.log(`[node:start] ${nodeName}`);
+  protected override onNodeStart(nodeName: string, state: TState, placementPath: readonly string[]): void {
+    console.log(`[node:start] ${nodeName} path=${placementPath.join('/')}`);
   }
 
   protected override onNodeEnd(
     nodeName: string,
-    output: string | undefined,
+    output: string | null,
     state: TState,
+    placementPath: readonly string[],
   ): void {
-    console.log(`[node:end] ${nodeName} output=${output}`);
+    console.log(`[node:end] ${nodeName} output=${output} path=${placementPath.join('/')}`);
   }
 
-  protected override onError(nodeName: string, error: Error, state: TState): void {
-    console.error(`[error] ${nodeName}: ${error.message}`);
+  protected override onError(nodeName: string, error: Error, state: TState, placementPath: readonly string[]): void {
+    console.error(`[error] ${nodeName} path=${placementPath.join('/')}: ${error.message}`);
   }
 }
 ```
@@ -71,13 +72,23 @@ All five default to no-ops. Override only the hooks you need. Class extension is
 |------|-------------|-----------|
 | `onFlowStart` | After `state.markRunning()`, before the first node | `dagName`, `state` |
 | `onFlowEnd` | After the last node (including aborted or failed paths) | `dagName`, `state`, `result` |
-| `onNodeStart` | Before `node.execute()` for each node entry | `nodeName`, `state` |
-| `onNodeEnd` | After each node resolves, before `yield` | `nodeName`, `output \| undefined`, `state` |
-| `onError` | When a signal fires or a node throws | `nodeName`, `error`, `state` |
+| `onNodeStart` | Before `node.execute()` for each node entry | `nodeName`, `state`, `placementPath` |
+| `onNodeEnd` | After each node resolves, before `yield` | `nodeName`, `output: string \| null`, `state`, `placementPath` |
+| `onError` | When a signal fires or a node throws | `nodeName`, `error`, `state`, `placementPath` |
 
 `onFlowEnd` is always called, even when the flow fails or is cancelled. `onError` may fire before `onFlowEnd` in the same execution.
 
 For parallel and scatter nodes, `onNodeStart` and `onNodeEnd` fire once for the group entry (the containing `parallel` or `scatter` placement), not once per constituent clone or concurrent node.
+
+### `placementPath`
+
+`placementPath` is a required `readonly string[]` argument on `onNodeStart`, `onNodeEnd`, and `onError`. It is the ordered list of parent embedded-DAG placement names that led to the current node:
+
+- Top-level node: `[]`
+- Node inside an `EmbeddedDAGNode` placement named `on-topic-search`: `['on-topic-search']`
+- Doubly-nested: `['on-topic-search', 'inner-placement']`
+
+Use it to disambiguate same-named inner placements across multiple embedded-DAG instances. The full qualified id of the current node is `[...placementPath, nodeName].join('/')`.
 
 ## Structured logging
 
@@ -98,11 +109,11 @@ class TracingDispatcher<TState extends NodeStateBase> extends Dagonizer<TState> 
     this.spans.push({ name: nodeName, start: Date.now() });
   }
 
-  protected override onNodeEnd(nodeName: string, output: string | undefined): void {
+  protected override onNodeEnd(nodeName: string, output: string | null): void {
     const span = this.spans.find((s) => s.name === nodeName && s.end === undefined);
     if (span) {
       span.end = Date.now();
-      span.output = output;
+      span.output = output ?? undefined;
     }
   }
 }
@@ -132,7 +143,7 @@ class OtelDispatcher<TState> extends Dagonizer<TState> {
     this.#spans.set(nodeName, tracer.startSpan(`node.${nodeName}`));
   }
 
-  protected override onNodeEnd(nodeName: string, output?: string): void {
+  protected override onNodeEnd(nodeName: string, output: string | null): void {
     const span = this.#spans.get(nodeName);
     if (span) {
       span.setAttribute('output', output ?? '');
@@ -166,11 +177,11 @@ extends NoopInstrumentation<TState> {
   nodeStarts = 0;
   nodeEnds   = 0;
 
-  override nodeStart(_dagName: string, _nodeName: string, _state: TState): void {
+  override nodeStart(_dagName: string, _nodeName: string, _state: TState, _placementPath: readonly string[]): void {
     this.nodeStarts++;
   }
 
-  override nodeEnd(_dagName: string, _nodeName: string, _output: string | undefined, _state: TState): void {
+  override nodeEnd(_dagName: string, _nodeName: string, _output: string | null, _state: TState, _placementPath: readonly string[]): void {
     this.nodeEnds++;
   }
 }
@@ -185,12 +196,12 @@ const dispatcher = new Dagonizer({ instrumentation: counter });
 |------|-------------|-----------|
 | `flowStart` | Before the entrypoint node runs | `dagName`, `state` |
 | `flowEnd` | After the loop drains (terminal or interrupted) | `dagName`, `state`, `result` |
-| `nodeStart` | Before each node's `execute()` | `dagName`, `nodeName`, `state` |
-| `nodeEnd` | After the node's result is recorded | `dagName`, `nodeName`, `output \| undefined`, `state` |
-| `phaseEnter` | Before a pre/post phase placement runs | `dagName`, `phase`, `placementName`, `state` |
-| `phaseExit` | After a pre/post phase placement runs | `dagName`, `phase`, `placementName`, `state` |
+| `nodeStart` | Before each node's `execute()` | `dagName`, `nodeName`, `state`, `placementPath` |
+| `nodeEnd` | After the node's result is recorded | `dagName`, `nodeName`, `output: string \| null`, `state`, `placementPath` |
+| `phaseEnter` | Before a pre/post phase placement runs | `dagName`, `phase`, `placementName`, `state`, `placementPath` |
+| `phaseExit` | After a pre/post phase placement runs | `dagName`, `phase`, `placementName`, `state`, `placementPath` |
 | `contractWarning` | Non-fatal dangling-write warning at `registerDAG` | `message` |
-| `error` | Any thrown error the dispatcher catches | `dagName`, `nodeName`, `error`, `state` |
+| `error` | Any thrown error the dispatcher catches | `dagName`, `nodeName`, `error`, `state`, `placementPath` |
 
 The `phaseEnter` and `phaseExit` hooks are declared on the contract (see `packages/dagonizer/src/contracts/Instrumentation.ts`). They fire from the lifecycle-phases path described in [Lifecycle phases](../guide/lifecycle-phases).
 

@@ -38,6 +38,7 @@ import type {
   RetryPolicyOptionsInterface,
   SchedulerHandle,
   SchedulerProvider,
+  Snapshottable,
   StateAccessor,
   Store,
   StoreSnapshot,
@@ -121,7 +122,7 @@ interface StateAccessor {
 }
 ```
 
-Path resolver used for scatter source reads, projection copies, and gather writes. Default implementation: `DottedPathAccessor` in `runtime/`. Pass a custom implementation via `new Dagonizer({ accessor })`.
+Path resolver used for scatter source reads, state-mapping input copies, and gather writes. Default implementation: `DottedPathAccessor` in `runtime/`. Pass a custom implementation via `new Dagonizer({ accessor })`.
 
 ## Instrumentation
 
@@ -129,12 +130,12 @@ Path resolver used for scatter source reads, projection copies, and gather write
 interface Instrumentation<TState extends NodeStateInterface = NodeStateInterface> {
   flowStart(dagName: string, state: TState): void;
   flowEnd(dagName: string, state: TState, result: ExecutionResultInterface<TState>): void;
-  nodeStart(dagName: string, nodeName: string, state: TState): void;
-  nodeEnd(dagName: string, nodeName: string, output: string | undefined, state: TState): void;
-  phaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState): void;
-  phaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState): void;
+  nodeStart(dagName: string, nodeName: string, state: TState, placementPath: readonly string[]): void;
+  nodeEnd(dagName: string, nodeName: string, output: string | null, state: TState, placementPath: readonly string[]): void;
+  phaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
+  phaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
   contractWarning(message: string): void;
-  error(dagName: string, nodeName: string, error: Error, state: TState): void;
+  error(dagName: string, nodeName: string, error: Error, state: TState, placementPath: readonly string[]): void;
 }
 ```
 
@@ -145,13 +146,26 @@ Hook surface the dispatcher invokes at execution boundaries. Plugins (`@noocodex
 | `flowStart` | Before the entrypoint node runs |
 | `flowEnd` | After the loop drains (terminal or interrupted) |
 | `nodeStart` | Before each node's `execute()` call, including placements inside parallel and scatter clones |
-| `nodeEnd` | After the node's result is recorded |
+| `nodeEnd` | After the node's result is recorded; `output` is `string \| null` (`null` = no route emitted) |
 | `phaseEnter` | Before a pre or post phase placement runs |
 | `phaseExit` | After a pre or post phase placement runs |
 | `contractWarning` | Non-fatal dangling-write warning from `ContractRegistryValidator` |
 | `error` | Any thrown error the dispatcher catches |
 
+`placementPath` is the ordered array of parent embedded-DAG placement names leading to the current node. For top-level nodes it is `[]`; for a node inside an `EmbeddedDAGNode` named `'search'` it is `['search']`. The full node id is `[...placementPath, nodeName].join('/')`.
+
 Implementations must not throw: an exception surfacing through a hook will abort the flow. Wrap any I/O in try/catch internally. Extend `NoopInstrumentation` from `@noocodex/dagonizer/runtime` to override only the hooks you need.
+
+## Snapshottable
+
+```ts
+interface Snapshottable {
+  snapshot(): Promise<StoreSnapshot>;
+  restore(snapshot: StoreSnapshot): Promise<void>;
+}
+```
+
+The capability checkpointing depends on. `Checkpoint.capture(dag, result, { stores })` and `ckpt.restoreStores(map)` take `Record<string, Snapshottable>`, so a non-KV backing (RDF triple store, vector index) can ride along in a checkpoint without implementing the key-value surface. `Store extends Snapshottable`. The `StoreSnapshot` / `StoreSnapshotEntry` envelopes live with it. See [Store](./store.md) for the envelope shape and `BaseStore`.
 
 ## CheckpointStore
 
@@ -203,7 +217,7 @@ interface OperationContractFragment {
 
 The deriver-only fields of an `OperationContract`. Lives on `NodeInterface.contract` so a node carries its own data-flow declaration. The node's `name` and `outputs` fields complete the full `OperationContract` surface; the fragment carries only the fields `DAGDeriver` uses to wire edges.
 
-Use `OperationContractFragment` when co-locating the contract on a node. Use the full `OperationContract` for the standalone `contracts` array passed to `DAGDeriver.derive`.
+Use `OperationContractFragment` when co-locating the contract on a node. The deriver reads it from `node.contract` alongside `node.name` and `node.outputs` to derive the full `OperationContract`.
 
 ## OperationContract
 
@@ -216,7 +230,7 @@ interface OperationContract extends OperationContractFragment {
 
 Per-operation contract consumed by `DAGDeriver.derive` to compute DAG topology automatically. Extends `OperationContractFragment` with `name` and `outputs`. `outputs` lists every port the node can emit; every port auto-wires to the next derived stage. `DAGDeriverAnnotations.terminals` overrides individual ports. A multi-port node like `['success', 'cached', 'skipped', 'error']` routes uniformly with one contract field instead of N terminal annotations.
 
-**Co-located pattern.** Declare the contract directly on the node so the node is the single source of truth:
+**Co-located pattern.** Declare the contract directly on the node so the node is the single source of truth. `DAGDeriver.derive({ nodes })` reads `node.contract` alongside `node.name` and `node.outputs`:
 
 ```ts
 import type { NodeInterface, OperationContractFragment } from '@noocodex/dagonizer/contracts';
@@ -235,7 +249,7 @@ const fetchNode: NodeInterface = {
 };
 ```
 
-Pass the node registry to `DAGDeriver.derive({ nodes })` instead of a separate `contracts` array. See [co-located contracts](../guide/derive.md#co-located-contracts) and [Reference: Derive](./derive).
+See [co-located contracts](../guide/derive.md#co-located-contracts) and [Reference: Derive](./derive).
 
 ## RetryPolicyOptionsInterface / ErrorConstructorType
 

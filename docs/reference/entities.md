@@ -23,7 +23,7 @@ import { DAGSchema } from '@noocodex/dagonizer/entities';
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/DAG`
 
-Top-level DAG declaration in JSON-LD 1.1 canonical form. Required properties: `@context`, `@id`, `@type: 'DAG'`, `name`, `version`, `entrypoint`, `nodes`. Each entry in `nodes` is validated against a `oneOf` covering every placement kind (`SingleNode`, `ParallelNode`, `ScatterNode`, `TerminalNode`, `PhaseNode`).
+Top-level DAG declaration in JSON-LD 1.1 canonical form. Required properties: `@context`, `@id`, `@type: 'DAG'`, `name`, `version`, `entrypoint`, `nodes`. Each entry in `nodes` is validated against a `oneOf` covering every placement kind (`SingleNode`, `ParallelNode`, `ScatterNode`, `EmbeddedDAGNode`, `TerminalNode`, `PhaseNode`).
 
 ```ts
 import type { DAG } from '@noocodex/dagonizer/entities';
@@ -63,7 +63,7 @@ import type { ParallelNode } from '@noocodex/dagonizer/entities';
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/ScatterNode`
 
-Scatter placement — isolate a clone, run a body (node or sub-DAG), gather produced state, route on aggregate outcome. Required: `@id`, `@type: 'ScatterNode'`, `name`, `body`, `outputs`. Optional: `source`, `itemKey` (default `currentItem`), `concurrency`, `projection`, `gather`, `reducer`.
+Scatter placement: fork a source array (one clone per item), run a body (node or sub-DAG) in each clone, gather produced clone state back into the parent, and route on the aggregate outcome. Required: `@id`, `@type: 'ScatterNode'`, `name`, `body`, `source`, `outputs`. Optional: `itemKey` (default `currentItem`), `concurrency`, `stateMapping.input`, `gather`, `reducer`.
 
 ```ts
 import { ScatterNodeSchema } from '@noocodex/dagonizer/entities';
@@ -71,6 +71,25 @@ import type { ScatterNode } from '@noocodex/dagonizer/entities';
 ```
 
 `body` is a discriminated union: `{ node: string }` for a registered node body or `{ dag: string }` for a registered sub-DAG body.
+
+`stateMapping.input` seeds each clone before its body runs: a `Record<string, string>` mapping child-state keys to parent-state dotted paths. This is the same seeding concept and orientation as `EmbeddedDAGNode.stateMapping.input`. Scatter has no `stateMapping.output`: the N→1 merge back into the parent is `gather`'s job. Builder option: `inputs` in `ScatterOptionsInterface`.
+
+---
+
+## `EmbeddedDAGNodeSchema`
+
+`$id`: `https://noocodex.dev/schemas/dagonizer/EmbeddedDAGNode`
+
+Embedded-DAG placement: invoke a nested DAG exactly once (cardinality 1) with optional bidirectional state mapping. Required: `@id`, `@type: 'EmbeddedDAGNode'`, `name`, `dag` (registered DAG name), `outputs`. Optional: `stateMapping`.
+
+```ts
+import { EmbeddedDAGNodeSchema } from '@noocodex/dagonizer/entities';
+import type { EmbeddedDAGNode } from '@noocodex/dagonizer/entities';
+```
+
+`stateMapping.input` seeds the child before it runs (child-state key → parent-state dotted path). `stateMapping.output` copies fields back into the parent after the child completes (parent-state dotted path → child-state key). Builder options: `inputs` and `outputs` in `TypedEmbeddedDAGOptionsInterface`.
+
+Use `EmbeddedDAGNode` for a single nested-DAG invocation (cardinality 1). For a 1→N fork over a source array, use `ScatterNode` with `source`.
 
 ---
 
@@ -141,7 +160,7 @@ import type { DAGLifecycleStateData } from '@noocodex/dagonizer/entities';
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/CheckpointData`
 
-Persistable snapshot of an in-flight DAG execution. Required: `version`, `dagName`, `cursor` (string or null), `state` (object), `executedNodes`, `skippedNodes`.
+Persistable snapshot of an in-flight DAG execution. Required: `version`, `dagName`, `cursor` (string or null), `state` (object), `executedNodes`, `skippedNodes`, `stores` (named-store snapshots keyed by store name; empty object when no stores were captured).
 
 ```ts
 import { CheckpointDataSchema, CHECKPOINT_DATA_VERSION } from '@noocodex/dagonizer/entities';
@@ -188,16 +207,26 @@ import {
 
 ## Constant value+type pairs
 
+These constants are available from `@noocodex/dagonizer/constants` as value+type pairs. Each constant is a frozen lookup object AND a `FromSchema`-derived type with the same name. `BackoffStrategy` ships through `@noocodex/dagonizer/runtime`, not `./constants`.
+
+```ts
+import { NodeType, MetadataKey, ScatterOutput } from '@noocodex/dagonizer/constants';
+
+NodeType.SCATTER;                  // value: 'scatter'
+const t: NodeType = 'embedded';   // type
+MetadataKey.GATHER_RESULTS;       // value: 'gatherResults'
+```
+
 Constants are exported with paired value and type so the JSON literal can be used as a discriminator.
 
 | Constant | Members |
 |---|---|
 | `GatherStrategyName` | `'map'`, `'append'`, `'partition'`, `'custom'` |
 | `ScatterOutput` | `'all-success'`, `'partial'`, `'all-error'`, `'empty'` |
-| `MetadataKey` | Reserved metadata key constants |
+| `MetadataKey` | `'currentItem'`, `'gatherResults'`, `'itemIndex'`, `'parallelOutputs'` |
 | `Output` | Reserved canonical output names |
 | `ParallelCombine` | `'all-success'`, `'any-success'`, `'collect'` |
-| `NodeType` | `'SingleNode'`, `'ParallelNode'`, `'ScatterNode'`, `'TerminalNode'`, `'PhaseNode'` |
+| `NodeType` | `'embedded'`, `'parallel'`, `'scatter'`, `'single'` |
 | `BackoffStrategy` | `'constant'`, `'linear'`, `'exponential'`, `'decorrelated-jitter'` |
 
 Each constant has a matching `*Schema` JSON Schema for `oneOf`-style validation. See [Reference: Runtime](./runtime#const-backoffstrategy) for `BackoffStrategy` usage details.

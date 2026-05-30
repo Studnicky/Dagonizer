@@ -1,20 +1,20 @@
 /**
- * CanonicalId — normalize ids across book-source tools.
+ * CanonicalId: normalize ids across book-source tools.
  *
  * Every collection tool (OpenLibrary, Google Books, Wikipedia) emits
  * a `Candidate` whose `book.isbn` field is the canonical id. The
  * canonical id, in priority order:
  *
- *   1. ISBN-13         — preferred (universally unique)
- *   2. ISBN-10         — accepted (older catalogue records)
- *   3. urn:isbn:<x>    — when only one of either ISBN form is reachable
- *   4. urn:work:<slug> — generated from normalized "title|first-author"
- *                       lowercased + non-alphanum-stripped — so the same
+ *   1. ISBN-13: preferred (universally unique)
+ *   2. ISBN-10: accepted (older catalogue records)
+ *   3. urn:isbn:<x>: when only one of either ISBN form is reachable
+ *   4. urn:work:<slug>: generated from normalized "title|first-author"
+ *                       lowercased + non-alphanum-stripped, so the same
  *                       work indexed by OpenLibrary key, Google Books
  *                       volumeId, and Wikipedia title still de-duplicates.
  *
  * `merge(a, b)` unions two Candidates that resolved to the same
- * canonical id — keeping the richest description, the longest author
+ * canonical id, keeping the richest description, the longest author
  * list, and the union of `sources[]` and `notes`.
  */
 
@@ -36,9 +36,17 @@ export class CanonicalId {
 
   /** Generate a stable work URN from title + first author (case + punct stripped). */
   static fromWork(title: string, firstAuthor: string | undefined): string {
-    const slugTitle  = slugify(title);
-    const slugAuthor = firstAuthor !== undefined ? slugify(firstAuthor) : 'unknown';
+    const slugTitle  = CanonicalId.slugify(title);
+    const slugAuthor = firstAuthor !== undefined ? CanonicalId.slugify(firstAuthor) : 'unknown';
     return `urn:work:${slugTitle}::${slugAuthor}`;
+  }
+
+  /** Normalise a string to a URL-safe slug (lowercase, non-alphanum → dash, trim dashes). */
+  static slugify(value: string): string {
+    return value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/gu, '-')
+      .replace(/^-|-$/gu, '');
   }
 
   /** Compose: ISBN if present, else work URN. */
@@ -61,8 +69,10 @@ export class CanonicalId {
     const mergedAuthors = unique([...a.book.authors, ...b.book.authors]);
     const mergedSubjects = unique([...(a.book.subjects ?? []), ...(b.book.subjects ?? [])]);
     const mergedPublishers = unique([...(a.book.publishers ?? []), ...(b.book.publishers ?? [])]);
+    const mergedLanguages = unique([...(a.book.languages ?? []), ...(b.book.languages ?? [])]);
     const summary = longest(a.book.summary, b.book.summary);
     const year    = a.book.firstPublishYear ?? b.book.firstPublishYear;
+    const inStock = a.book.inStock ?? b.book.inStock;
     const sources = unique([
       ...sourceList(a),
       ...sourceList(b),
@@ -77,6 +87,8 @@ export class CanonicalId {
         ...(year !== undefined ? { 'firstPublishYear': year } : {}),
         ...(mergedSubjects.length > 0 ? { 'subjects': mergedSubjects } : {}),
         ...(mergedPublishers.length > 0 ? { 'publishers': mergedPublishers } : {}),
+        ...(mergedLanguages.length > 0 ? { 'languages': mergedLanguages } : {}),
+        ...(inStock !== undefined ? { 'inStock': inStock } : {}),
       },
       // Score: keep the higher; sources will all get re-ranked anyway.
       'score':  Math.max(a.score, b.score),
@@ -112,13 +124,6 @@ export class CanonicalId {
       return candidate;
     });
   }
-}
-
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/gu, '-')
-    .replace(/^-+|-+$/gu, '');
 }
 
 function unique<T>(values: readonly T[]): T[] {

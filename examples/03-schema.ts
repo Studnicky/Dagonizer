@@ -1,5 +1,5 @@
 /**
- * 03-schema — JSON-LD DAG: load from JSON string, validate, round-trip.
+ * 03-schema: JSON-LD DAG load from JSON string, validate, round-trip.
  *
  * Demonstrates the ingest boundary: `Dagonizer.load(json)` is the single
  * point where `unknown` enters the engine. It parses JSON, runs the Ajv
@@ -37,12 +37,12 @@ const echo: NodeInterface<NodeStateBase, 'success'> = {
 };
 
 // ---------------------------------------------------------------------------
-// Canonical JSON-LD DAG as a JSON string — the wire format.
+// Canonical JSON-LD DAG as a JSON string (the wire format).
 //
 // Note the required JSON-LD fields:
-//   '@context' — the DAG_CONTEXT object (serialised as an inline object)
-//   '@id'      — a URN uniquely identifying this DAG document
-//   '@type'    — must be the string literal 'DAG'
+//   '@context': the DAG_CONTEXT object (serialised as an inline object)
+//   '@id':      a URN uniquely identifying this DAG document
+//   '@type':    must be the string literal 'DAG'
 //
 // Node placements use '@type' as the discriminator instead of a flat 'type'
 // key. '@id' on each node is a scoped URN: <dagId>/node/<placementName>.
@@ -94,7 +94,7 @@ const dagJson = JSON.stringify({
 // #endregion dag-literal
 
 // ---------------------------------------------------------------------------
-// Load + validate — Dagonizer.load() is the only valid ingest path
+// Load + validate: Dagonizer.load() is the only valid ingest path
 // ---------------------------------------------------------------------------
 
 // #region load
@@ -127,12 +127,12 @@ const isEqual       = JSON.stringify(roundTripped) === JSON.stringify(dag);
 process.stdout.write(`Round-trip equal: ${String(isEqual)}\n`);
 
 // ---------------------------------------------------------------------------
-// ValidationError — schema rejects any document missing required JSON-LD fields
+// ValidationError: schema rejects any document missing required JSON-LD fields
 // ---------------------------------------------------------------------------
 
 // #region validate
 try {
-  // Missing '@context', '@id', '@type', 'entrypoint', 'nodes' — schema rejects it.
+  // Missing '@context', '@id', '@type', 'entrypoint', 'nodes': schema rejects it.
   Dagonizer.load(JSON.stringify({ "name": 'broken', "version": '1' }));
 } catch (error) {
   if (error instanceof ValidationError) {

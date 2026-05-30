@@ -1,5 +1,5 @@
 /**
- * Tool — canonical executable-tool contract.
+ * Tool: canonical executable-tool contract.
  *
  * A `Tool<TInput, TOutput>` couples a `ToolDefinition` (the JSON-Schema
  * surface the LLM declares via the adapter's tool channel) with an

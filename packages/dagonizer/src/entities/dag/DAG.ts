@@ -1,5 +1,5 @@
 /**
- * DAG — top-level DAG declaration in JSON-LD 1.1 canonical form.
+ * DAG: top-level DAG declaration in JSON-LD 1.1 canonical form.
  *
  * A DAG document is JSON-LD natively. The `@context` field identifies the
  * ontology namespace; `@id` is the URN; `@type` is the RDF class. Node
@@ -7,9 +7,10 @@
  *
  * Inlines its node-entry sub-shapes via `oneOf` so a single validator covers
  * the whole document; the standalone `SingleNodeSchema` / `ParallelNodeSchema`
- * / `ScatterNodeSchema` exports remain available for per-shape validation.
+ * / `ScatterNodeSchema` / `EmbeddedDAGNodeSchema` exports remain available for
+ * per-shape validation.
  *
- * Key mapping strategy — type-scoped contexts (JSON-LD 1.1):
+ * Key mapping strategy via type-scoped contexts (JSON-LD 1.1):
  *   The JSON key `nodes` appears at two levels with different meanings:
  *     - DAG root: array of placement objects → IRI `dag/nodes`
  *     - ParallelNode: array of child node name strings → IRI `dag/parallelNodes`
@@ -35,17 +36,17 @@ const NS = 'https://noocodex.dev/ontology/dag/';
  * Canonical `@context` for DAG JSON-LD documents (JSON-LD 1.1).
  *
  * Classes:
- *   DAG           — top-level DAG document
- *   Placement     — abstract superclass of all node placement shapes
- *   SingleNode    — single-node placement (`@type: 'SingleNode'`)
- *   ParallelNode  — concurrent-node placement (`@type: 'ParallelNode'`); carries
- *                   a nested type-scoped `@context` that remaps the `nodes`
- *                   key to `dag/parallelNodes` within ParallelNode objects.
- *   ScatterNode   — scatter placement (`@type: 'ScatterNode'`): isolate a state
- *                   clone, run a body (`{node}` or `{dag}`) per item, gather the
- *                   produced clone state back into the parent, route on outcome.
+ *   DAG: top-level DAG document
+ *   Placement: abstract superclass of all node placement shapes
+ *   SingleNode: single-node placement (`@type: 'SingleNode'`)
+ *   ParallelNode: concurrent-node placement (`@type: 'ParallelNode'`); carries
+ *                 a nested type-scoped `@context` that remaps the `nodes`
+ *                 key to `dag/parallelNodes` within ParallelNode objects.
+ *   ScatterNode: scatter placement (`@type: 'ScatterNode'`): isolate a state
+ *                clone, run a body (`{node}` or `{dag}`) per item, gather the
+ *                produced clone state back into the parent, route on outcome.
  *
- * Properties follow the DAG schema field names exactly — no wire-level renames.
+ * Properties follow the DAG schema field names exactly; no wire-level renames.
  */
 export const DAG_CONTEXT: Record<string, unknown> = {
   '@version': 1.1,
@@ -67,7 +68,6 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   'source':      { '@id': `${NS}source` },
   'itemKey':     { '@id': `${NS}itemKey` },
   'concurrency': { '@id': `${NS}concurrency` },
-  'projection':  { '@id': `${NS}projection` },
   'gather':      { '@id': `${NS}gather` },
   'reducer':     { '@id': `${NS}reducer` },
 
@@ -77,13 +77,17 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   // phase properties
   'phase': { '@id': `${NS}phase` },
 
+  // embedded-dag properties
+  'stateMapping': { '@id': `${NS}stateMapping` },
+
   // ── classes ───────────────────────────────────────────────────────────────
-  'DAG':          { '@id': `${NS}DAG` },
-  'Placement':    { '@id': `${NS}Placement` },
-  'SingleNode':   { '@id': `${NS}SingleNode` },
-  'ScatterNode':  { '@id': `${NS}ScatterNode` },
-  'TerminalNode': { '@id': `${NS}TerminalNode` },
-  'PhaseNode':    { '@id': `${NS}PhaseNode` },
+  'DAG':             { '@id': `${NS}DAG` },
+  'Placement':       { '@id': `${NS}Placement` },
+  'SingleNode':      { '@id': `${NS}SingleNode` },
+  'ScatterNode':     { '@id': `${NS}ScatterNode` },
+  'EmbeddedDAGNode': { '@id': `${NS}EmbeddedDAGNode` },
+  'TerminalNode':    { '@id': `${NS}TerminalNode` },
+  'PhaseNode':       { '@id': `${NS}PhaseNode` },
 
   // ParallelNode carries a type-scoped context: within any object typed
   // ParallelNode, `nodes` maps to `dag/parallelNodes` (child name strings)
@@ -138,7 +142,7 @@ const DAGNodeEntrySchema = {
     },
     {
       'type': 'object',
-      'required': ['@id', '@type', 'name', 'body', 'outputs'],
+      'required': ['@id', '@type', 'name', 'body', 'source', 'outputs'],
       'properties': {
         '@id':         { 'type': 'string', 'minLength': 1 },
         '@type':       { 'type': 'string', 'const': 'ScatterNode' },
@@ -162,15 +166,41 @@ const DAGNodeEntrySchema = {
         'source':      { 'type': 'string', 'minLength': 1 },
         'itemKey':     { 'type': 'string', 'minLength': 1 },
         'concurrency': { 'type': 'integer', 'minimum': 1 },
-        'projection': {
+        'stateMapping': {
           'type': 'object',
-          'additionalProperties': { 'type': 'string' },
+          'properties': {
+            'input': { 'type': 'object', 'additionalProperties': { 'type': 'string' } },
+          },
+          'additionalProperties': false,
         },
         'gather':      GatherConfigSchema,
         'reducer':     { 'type': 'string', 'minLength': 1 },
         'outputs': {
           'type': 'object',
           'additionalProperties': { 'type': ['string', 'null'] },
+        },
+      },
+      'additionalProperties': false,
+    },
+    {
+      'type': 'object',
+      'required': ['@id', '@type', 'name', 'dag', 'outputs'],
+      'properties': {
+        '@id':   { 'type': 'string', 'minLength': 1 },
+        '@type': { 'type': 'string', 'const': 'EmbeddedDAGNode' },
+        'name':  { 'type': 'string', 'minLength': 1 },
+        'dag':   { 'type': 'string', 'minLength': 1 },
+        'outputs': {
+          'type': 'object',
+          'additionalProperties': { 'type': ['string', 'null'] },
+        },
+        'stateMapping': {
+          'type': 'object',
+          'properties': {
+            'input':  { 'type': 'object', 'additionalProperties': { 'type': 'string' } },
+            'output': { 'type': 'object', 'additionalProperties': { 'type': 'string' } },
+          },
+          'additionalProperties': false,
         },
       },
       'additionalProperties': false,

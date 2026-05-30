@@ -1,5 +1,5 @@
 /**
- * CytoscapeRenderer — render a `DAG` as Cytoscape elements.
+ * CytoscapeRenderer: render a `DAG` as Cytoscape elements.
  *
  * Output is the array shape `cytoscape.js` consumes directly:
  *
@@ -10,8 +10,8 @@
  *   });
  *
  * Every placement becomes a node element carrying its `type` (single /
- * parallel / fan-out / embedded-dag / terminal) so consumers can style
- * per-type via Cytoscape's `style({ selector: 'node[type="fan-out"]', ... })`.
+ * parallel / scatter / embedded-dag / terminal) so consumers can style
+ * per-type via Cytoscape's `style({ selector: 'node[type="scatter"]', ... })`.
  * Every output route becomes an edge labeled with the route's name.
  *
  * TerminalNode placements render with `data.type === 'terminal'` and carry
@@ -26,7 +26,7 @@
  *   • Embedded-DAG placements, when their target DAG is supplied via the
  *     `embeddedDAGs` registry, expand RECURSIVELY: every inner node renders
  *     with the placement as `parent`, so the user sees the actual flow
- *     inside the cluster — no shortcuts, no opaque boxes.
+ *     inside the cluster; no shortcuts, no opaque boxes.
  *
  * Routes targeting `null` become edges to a synthetic `END` node so
  * the live runner can highlight termination explicitly. END edges
@@ -38,15 +38,11 @@
  */
 
 import type { DAG } from '../entities/dag/DAG.js';
-import type { ParallelNode } from '../entities/dag/ParallelNode.js';
-import type { ScatterNode } from '../entities/dag/ScatterNode.js';
-import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
-import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 
 import { CompositeLayout } from './CompositeLayout.js';
 import type { CompositeLayoutOptions } from './CompositeLayout.js';
-
-type DAGNodeEntry = ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface;
+import { embeddedDagName, idIn } from './internal.js';
+import type { PlacementEntry } from './internal.js';
 
 /** A Cytoscape node element. */
 export interface CytoscapeNodeElement {
@@ -54,8 +50,8 @@ export interface CytoscapeNodeElement {
   readonly data: {
     readonly id: string;
     readonly label: string;
-    /** Placement kind — selector use: `node[type="scatter"]`. */
-    readonly type: 'single' | 'parallel' | 'scatter' | 'terminal';
+    /** Placement kind; selector use: `node[type="scatter"]`. */
+    readonly type: 'single' | 'parallel' | 'scatter' | 'embedded-dag' | 'terminal';
     /** Free-form metadata consumers can read in stylesheets. */
     readonly [key: string]: unknown;
   };
@@ -88,13 +84,13 @@ export type CytoscapeElement = CytoscapeNodeElement | CytoscapeEdgeElement;
 export interface RenderOptions {
   /**
    * Registry of embedded-DAGs by name. Any `embedded-dag` placement whose
-   * `placement.dag` matches a key here is expanded inline — its
+   * `placement.dag` matches a key here is expanded inline; its
    * internal nodes/edges render as compound-graph children of the
    * placement, so the diagram shows the full inner flow instead of
    * a single opaque box.
    */
   readonly embeddedDAGs?: ReadonlyMap<string, DAG>;
-  /** Max recursion depth — guards against accidental embedded-DAG cycles. */
+  /** Max recursion depth; guards against accidental embedded-DAG cycles. */
   readonly maxDepth?: number;
   /**
    * When `true` (default), run `CompositeLayout.compute` after building
@@ -131,7 +127,7 @@ export class CytoscapeRenderer {
    *
    * @example
    *   titleCase('extract-query')                       // 'Extract Query'
-   *   titleCase('book-search-fanout/openlibrary-scout') // 'Book Search Fanout / Openlibrary Scout'
+   *   titleCase('similar-search/openlibrary-scout')    // 'Similar Search / Openlibrary Scout'
    *   titleCase('no-results')                          // 'No Results'
    */
   static titleCase(name: string): string {
@@ -145,11 +141,12 @@ export class CytoscapeRenderer {
   }
 
   /** Mapping from JSON-LD placement-discriminator to Cytoscape `data.type` value. */
-  private static readonly PLACEMENT_KIND: Readonly<Record<string, 'single' | 'parallel' | 'scatter' | 'terminal'>> = {
-    'SingleNode':   'single',
-    'ParallelNode': 'parallel',
-    'ScatterNode':  'scatter',
-    'TerminalNode': 'terminal',
+  private static readonly PLACEMENT_KIND: Readonly<Record<string, 'single' | 'parallel' | 'scatter' | 'embedded-dag' | 'terminal'>> = {
+    'SingleNode':       'single',
+    'ParallelNode':     'parallel',
+    'ScatterNode':      'scatter',
+    'EmbeddedDAGNode':  'embedded-dag',
+    'TerminalNode':     'terminal',
   };
 
   static render(dag: DAG, options: RenderOptions = {}): readonly CytoscapeElement[] {
@@ -188,13 +185,8 @@ export class CytoscapeRenderer {
     return state.elements;
   }
 
-  /** Build a placement-name id, optionally prefixed by an enclosing scope. */
-  private static idIn(prefix: string, name: string): string {
-    return prefix === '' ? name : `${prefix}/${name}`;
-  }
-
   /** Render one placement as a Cytoscape node element with type-discriminated metadata. */
-  private static placementNode(placement: DAGNodeEntry, id: string): CytoscapeNodeElement {
+  private static placementNode(placement: PlacementEntry, id: string): CytoscapeNodeElement {
     const kind = CytoscapeRenderer.PLACEMENT_KIND[placement['@type']] ?? 'single';
     const base = {
       "group": 'nodes' as const,
@@ -224,6 +216,8 @@ export class CytoscapeRenderer {
           },
         };
       }
+      case 'EmbeddedDAGNode':
+        return { ...base, "data": { ...base.data, "dag": placement.dag } };
       case 'TerminalNode':
         return {
           ...base,
@@ -237,17 +231,17 @@ export class CytoscapeRenderer {
 
   /** Render a placement's outbound routes as Cytoscape edge elements. */
   private static placementEdges(
-    placement: DAGNodeEntry,
+    placement: PlacementEntry,
     fromId: string,
     prefix: string,
   ): readonly CytoscapeEdgeElement[] {
-    // TerminalNode placements are leaf placements — they have no outputs field.
+    // TerminalNode placements are leaf placements; they have no outputs field.
     if (!('outputs' in placement)) return [];
     const edges: CytoscapeEdgeElement[] = [];
     for (const [output, target] of Object.entries(placement.outputs)) {
       const destId = target === null
-        ? CytoscapeRenderer.idIn(prefix, CytoscapeRenderer.END_ID)
-        : CytoscapeRenderer.idIn(prefix, target);
+        ? idIn(prefix, CytoscapeRenderer.END_ID)
+        : idIn(prefix, target);
       edges.push({
         "group": 'edges',
         "data": {
@@ -278,7 +272,7 @@ export class CytoscapeRenderer {
   ): void {
     // Build child→parent map for parallel placements at this level.
     const childToParent = new Map<string, string>();
-    for (const placement of dag.nodes as readonly DAGNodeEntry[]) {
+    for (const placement of dag.nodes as readonly PlacementEntry[]) {
       if (placement['@type'] === 'ParallelNode') {
         for (const child of placement.nodes) childToParent.set(child, placement.name);
       }
@@ -289,47 +283,45 @@ export class CytoscapeRenderer {
     // expanded (its body is registered), rewrite the target to the
     // embedded-DAG's entrypoint child so dagre gets a real rank
     // constraint between the predecessor and the FIRST child of the
-    // compound — not the compound's geometric center. Without this,
+    // compound, not the compound's geometric center. Without this,
     // dagre treats the compound as a rank-opaque slot whose internal
     // layout is decided only by intra-compound edges, often producing
     // an inverted child order and a compound positioned above its own
     // predecessor.
     const embeddedEntryRewrite = new Map<string, string>();
     const maxDepth = state.options.maxDepth ?? CytoscapeRenderer.DEFAULT_MAX_DEPTH;
-    for (const placement of dag.nodes as readonly DAGNodeEntry[]) {
-      if (placement['@type'] !== 'ScatterNode') continue;
-      if (!('dag' in placement.body)) continue;
-      const dagName = placement.body.dag;
+    for (const placement of dag.nodes as readonly PlacementEntry[]) {
+      const dagName = embeddedDagName(placement);
+      if (dagName === null) continue;
       const body = state.options.embeddedDAGs?.get(dagName);
       if (body === undefined) continue;
       if (depth >= maxDepth) continue;
       if (visited.has(dagName)) continue;
-      const placementId = CytoscapeRenderer.idIn(prefix, placement.name);
-      const entryChildId = CytoscapeRenderer.idIn(placementId, body.entrypoint);
+      const placementId = idIn(prefix, placement.name);
+      const entryChildId = idIn(placementId, body.entrypoint);
       embeddedEntryRewrite.set(placement.name, entryChildId);
     }
 
-    for (const placement of dag.nodes as readonly DAGNodeEntry[]) {
-      const myId = CytoscapeRenderer.idIn(prefix, placement.name);
+    for (const placement of dag.nodes as readonly PlacementEntry[]) {
+      const myId = idIn(prefix, placement.name);
       const parallelParent = childToParent.get(placement.name);
       const myCompoundParent = parallelParent !== undefined
-        ? CytoscapeRenderer.idIn(prefix, parallelParent)
+        ? idIn(prefix, parallelParent)
         : compoundParent;
 
-      // ── ScatterNode with body.dag: if the target DAG is registered, expand
-      //    inline as a compound parent containing the sub-DAG's full flow.
-      const embeddedDagName = placement['@type'] === 'ScatterNode' && 'dag' in placement.body
-        ? placement.body.dag
-        : null;
-      const embeddedDagBody = embeddedDagName !== null
-        ? state.options.embeddedDAGs?.get(embeddedDagName)
+      // ── EmbeddedDAGNode / ScatterNode with body.dag: if the target DAG is
+      //    registered, expand inline as a compound parent containing the
+      //    sub-DAG's full flow.
+      const embedDagName = embeddedDagName(placement);
+      const embeddedDagBody = embedDagName !== null
+        ? state.options.embeddedDAGs?.get(embedDagName)
         : undefined;
       const shouldExpand = embeddedDagBody !== undefined
-        && embeddedDagName !== null
+        && embedDagName !== null
         && depth < (state.options.maxDepth ?? CytoscapeRenderer.DEFAULT_MAX_DEPTH)
-        && !visited.has(embeddedDagName);
+        && !visited.has(embedDagName);
 
-      if (shouldExpand && embeddedDagBody !== undefined && embeddedDagName !== null) {
+      if (shouldExpand && embeddedDagBody !== undefined && embedDagName !== null) {
         // Emit the placement as a compound parent (label tells the visitor
         // which embedded-DAG this cluster represents).
         const parentNode = CytoscapeRenderer.placementNode(placement, myId);
@@ -337,20 +329,20 @@ export class CytoscapeRenderer {
           ...parentNode,
           "data": {
             ...parentNode.data,
-            "label": `${CytoscapeRenderer.titleCase(placement.name)}\n[${embeddedDagName}]`,
+            "label": `${CytoscapeRenderer.titleCase(placement.name)}\n[${embedDagName}]`,
             ...(myCompoundParent !== undefined ? { "parent": myCompoundParent } : {}),
           },
         };
         state.elements.push(labelled);
 
         // Recurse: render every node of the embedded-DAG with `parent: myId`.
-        const innerPrefix = CytoscapeRenderer.idIn(prefix, placement.name);
+        const innerPrefix = idIn(prefix, placement.name);
         const innerVisited = new Set(visited);
-        innerVisited.add(embeddedDagName);
+        innerVisited.add(embedDagName);
         CytoscapeRenderer.renderInto(embeddedDagBody, innerPrefix, myId, state, depth + 1, innerVisited);
 
         // External outputs from this placement (after the embedded-DAG completes)
-        // — rewrite the SOURCE from the compound to the matching inner
+        // Rewrite the SOURCE from the compound to the matching inner
         // terminal/leaf child(ren) so dagre ranks the exits at the bottom
         // of the compound rather than aggregating from the compound's
         // geometric center. Mapping:
@@ -362,7 +354,7 @@ export class CytoscapeRenderer {
         // to the compound source (original behavior).
         const innerLeaves = CytoscapeRenderer.collectExitLeaves(embeddedDagBody, innerPrefix);
         for (const edge of CytoscapeRenderer.placementEdges(placement, myId, prefix)) {
-          if (edge.data.target === CytoscapeRenderer.idIn(prefix, CytoscapeRenderer.END_ID)) {
+          if (edge.data.target === idIn(prefix, CytoscapeRenderer.END_ID)) {
             state.touchesTerminal = true;
           }
           const isErrorRoute = edge.data.route === 'error' || edge.data.route === 'failed';
@@ -389,14 +381,14 @@ export class CytoscapeRenderer {
       state.elements.push(enriched);
 
       for (const edge of CytoscapeRenderer.placementEdges(placement, myId, prefix)) {
-        const endId = CytoscapeRenderer.idIn(prefix, CytoscapeRenderer.END_ID);
-        // Suppress synthetic-END routes for children inside a parallel —
+        const endId = idIn(prefix, CytoscapeRenderer.END_ID);
+        // Suppress synthetic-END routes for children inside a parallel;
         // the parent placement's own edges carry the collected result.
         if (parallelParent !== undefined && edge.data.target === endId) continue;
         // Inside an expanded embedded-DAG (prefix non-empty), `null` targets
         // refer to the embedded-DAG's terminus, not the parent's END. The
         // compound parent's own placementEdges carry the real external
-        // routing — drop these internal terminal markers so cytoscape
+        // routing; drop these internal terminal markers so cytoscape
         // doesn't try to wire an edge to a non-existent prefixed END.
         if (prefix !== '' && edge.data.target === endId) continue;
         if (edge.data.target === endId) state.touchesTerminal = true;
@@ -429,7 +421,7 @@ export class CytoscapeRenderer {
     entryMap: ReadonlyMap<string, string>,
   ): string {
     for (const [placementName, entryChildId] of entryMap) {
-      const placementId = CytoscapeRenderer.idIn(prefix, placementName);
+      const placementId = idIn(prefix, placementName);
       if (targetId === placementId) return entryChildId;
     }
     return targetId;
@@ -439,8 +431,8 @@ export class CytoscapeRenderer {
    * Enumerate the inner exit-points of an embedded-DAG body so the renderer
    * can rewrite the parent placement's outgoing edges to originate from
    * them. Two categories:
-   *   • `failed`    — TerminalNode placements with outcome 'failed'
-   *   • `completed` — TerminalNode placements with outcome 'completed' PLUS
+   *   • `failed`: TerminalNode placements with outcome 'failed'
+   *   • `completed`: TerminalNode placements with outcome 'completed' PLUS
    *                   placements with at least one `null` route (natural
    *                   end-of-flow; counts as completed in v0.11 semantics)
    * Each id is returned prefixed with the parent placement path.
@@ -450,11 +442,11 @@ export class CytoscapeRenderer {
     innerPrefix: string,
   ): { readonly completed: readonly string[]; readonly failed: readonly string[] } {
     // Children of a parallel placement use `null` routes to signal
-    // "collected back to the parallel parent" — they are NOT exit
+    // "collected back to the parallel parent"; they are NOT exit
     // leaves of the embedded-DAG. Build a set of parallel-children
     // names so we can skip them.
     const parallelChildren = new Set<string>();
-    for (const placement of body.nodes as readonly DAGNodeEntry[]) {
+    for (const placement of body.nodes as readonly PlacementEntry[]) {
       if (placement['@type'] === 'ParallelNode') {
         for (const child of placement.nodes) parallelChildren.add(child);
       }
@@ -462,9 +454,9 @@ export class CytoscapeRenderer {
 
     const completed: string[] = [];
     const failed: string[] = [];
-    for (const placement of body.nodes as readonly DAGNodeEntry[]) {
+    for (const placement of body.nodes as readonly PlacementEntry[]) {
       if (parallelChildren.has(placement.name)) continue;
-      const placementId = CytoscapeRenderer.idIn(innerPrefix, placement.name);
+      const placementId = idIn(innerPrefix, placement.name);
       if (placement['@type'] === 'TerminalNode') {
         if (placement.outcome === 'failed') failed.push(placementId);
         else completed.push(placementId);

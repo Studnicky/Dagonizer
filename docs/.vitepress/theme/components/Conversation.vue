@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Conversation — visitor/archivist turn history.
+ * Conversation: visitor/archivist turn history.
  *
  * Pure presentational. Renders the chronological transcript; styling
  * differentiates the visitor (gold-ochre) from the Archivist (teal).
@@ -9,7 +9,7 @@
  * into view. We watch `turns.length` (cheap signal) rather than the
  * array contents, and we only auto-scroll when the visitor was already
  * looking at the bottom (or close to it). If they have scrolled UP to
- * re-read an earlier turn, we respect that and leave the camera alone —
+ * re-read an earlier turn, we respect that and leave the camera alone;
  * the same "user gesture" principle that pauses the DAG auto-follow.
  */
 

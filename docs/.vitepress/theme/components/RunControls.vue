@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * RunControls — textarea, ask/reset buttons, terminal status badge.
+ * RunControls: textarea, ask/reset buttons, terminal status badge.
  *
  * Stateless presentational component. Parent owns the query string and
  * is notified via `update:query`, `ask`, and `reset` events.

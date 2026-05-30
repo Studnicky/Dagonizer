@@ -1,8 +1,8 @@
 # Dagonizer
 
-> Type-safe DAG dispatcher for Node.js. JSON-Schema-validated graph definitions, abortable execution, deterministic resume, pluggable fan-in strategies, contract-derived flow generation, and Mermaid visualization.
+> Type-safe DAG dispatcher for Node.js. JSON-Schema-validated graph definitions, abortable execution, deterministic resume, pluggable gather strategies, contract-derived flow generation, and Mermaid visualization.
 
-Dagonizer (`@noocodex/dagonizer`) is a TypeScript library for authoring and executing directed acyclic graphs (DAGs) as typed, abortable workflows. Nodes implement a narrow `NodeInterface<TState, TOutput>`; the dispatcher routes each node's named output to the next placement, handling fan-out, fan-in, embedded-DAG composition, retry policies, timeouts, and checkpoint/resume without consumer-visible callbacks or hidden state. The wire format is JSON-LD 1.1 — every DAG document is a linked-data artifact that validates against a published JSON Schema 2020-12. Zero runtime dependencies beyond `ajv` and `json-schema-to-ts`.
+Dagonizer (`@noocodex/dagonizer`) is a TypeScript library for authoring and executing directed acyclic graphs (DAGs) as typed, abortable workflows. Nodes implement a narrow `NodeInterface<TState, TOutput>`; the dispatcher routes each node's named output to the next placement, handling scatter (fork over a source array), embedded-DAG composition (cardinality-1 nested DAG invocation), retry policies, timeouts, and checkpoint/resume without consumer-visible callbacks or hidden state. The wire format is JSON-LD 1.1; every DAG document is a linked-data artifact that validates against a published JSON Schema 2020-12. Zero runtime dependencies beyond `ajv` and `json-schema-to-ts`.
 
 Dagonizer is **not** a visual drag-and-drop tool, a serverless orchestration service, or a general-purpose task queue. It is a typed, embeddable graph runtime for Node.js that consumers extend by subclassing, not by patching.
 
@@ -13,18 +13,18 @@ Key features: strict TypeScript (exactOptionalPropertyTypes), JSON-LD canonical 
 - [Home](https://studnicky.github.io/Dagonizer/): project overview, feature summary, and quick-start.
 - [Getting Started](https://studnicky.github.io/Dagonizer/getting-started): install, the smallest possible DAG, running the dispatcher.
 - [Architecture](https://studnicky.github.io/Dagonizer/architecture): how the engine routes nodes, manages state, and composes embedded-DAGs.
-- [Concepts](https://studnicky.github.io/Dagonizer/concepts): core mental model — nodes, placements, outputs, fan-out, fan-in, state.
+- [Concepts](https://studnicky.github.io/Dagonizer/concepts): core mental model covering nodes, placements, outputs, scatter, embedded-DAG, and state.
 
 ## Live demo
 
-- [The Archivist](https://studnicky.github.io/Dagonizer/examples/the-archivist): runnable in-browser biblio-assistant demo. Multi-source fan-out, RDF memory graph, checkpoint/resume, PROV-O activity log, and DAG visualization — all driven by the live engine.
+- [The Archivist](https://studnicky.github.io/Dagonizer/examples/the-archivist): runnable in-browser biblio-assistant demo. Multi-source scatter, RDF memory graph, checkpoint/resume, PROV-O activity log, and DAG visualization, all driven by the live engine.
 
 ## Usage guide
 
 - [Subclassing State](https://studnicky.github.io/Dagonizer/guide/subclassing): extend NodeStateBase for domain-specific state with checkpointable fields.
 - [DAGBuilder](https://studnicky.github.io/Dagonizer/guide/builder): fluent builder API for constructing DAG documents programmatically.
 - [Schema & JSON loading](https://studnicky.github.io/Dagonizer/guide/schema): load DAG definitions from external JSON or JSON-LD files via Validator.
-- [Cancellation](https://studnicky.github.io/Dagonizer/guide/cancellation): AbortSignal propagation — cancel a running flow at any depth.
+- [Cancellation](https://studnicky.github.io/Dagonizer/guide/cancellation): AbortSignal propagation; cancel a running flow at any depth.
 - [Retry](https://studnicky.github.io/Dagonizer/guide/retry): per-node retry policies, backoff strategies, and timeout integration.
 - [Services](https://studnicky.github.io/Dagonizer/guide/services): dependency injection pattern for wiring external services into nodes.
 - [Observability](https://studnicky.github.io/Dagonizer/guide/observability): lifecycle hooks (onFlowStart, onFlowEnd, onNodeStart, onNodeEnd, onError).
@@ -36,10 +36,10 @@ Key features: strict TypeScript (exactOptionalPropertyTypes), JSON-LD canonical 
 
 ## Examples
 
-- [Phase 01 · Linear intake](https://studnicky.github.io/Dagonizer/examples/01-linear): simplest sequential node chain — the entry point for every Dagonizer learner.
+- [Phase 01 · Linear intake](https://studnicky.github.io/Dagonizer/examples/01-linear): simplest sequential node chain; the entry point for every Dagonizer learner.
 - [Phase 02 · DAGBuilder](https://studnicky.github.io/Dagonizer/examples/02-builder): build a DAG document at runtime with the fluent builder rather than JSON.
 - [Phase 03 · Tool schemas](https://studnicky.github.io/Dagonizer/examples/03-schema): JSON Schema 2020-12 tool input schemas in the Archivist; shape-only examples and CanonicalId deduplication.
-- [Phase 04 · Fan-out scout](https://studnicky.github.io/Dagonizer/examples/04-fanout): parallel branches from a single node; collect results with fan-in combiners.
+- [Phase 04 · Scatter scout](https://studnicky.github.io/Dagonizer/examples/04-scatter): parallel scouts in a ScatterNode; collect results with gather strategies.
 - [Phase 05 · Embedded-DAG composition](https://studnicky.github.io/Dagonizer/examples/05-embedded-dags): compose reusable embedded-DAGs inside a parent DAG without copying topology.
 - [Phase 06 · Cancellation](https://studnicky.github.io/Dagonizer/examples/06-cancellation): abort a running flow; observe which nodes see the signal.
 - [Phase 07 · Retry](https://studnicky.github.io/Dagonizer/examples/07-retry): wrap a node in a retry loop; configure exponential backoff and max attempts.
@@ -47,24 +47,24 @@ Key features: strict TypeScript (exactOptionalPropertyTypes), JSON-LD canonical 
 
 ## Reference
 
-- [Dagonizer](https://studnicky.github.io/Dagonizer/reference/dagonizer): the main dispatcher class — execute, hooks, and extension surface.
+- [Dagonizer](https://studnicky.github.io/Dagonizer/reference/dagonizer): the main dispatcher class, covering execute, hooks, and extension surface.
 - [Execution](https://studnicky.github.io/Dagonizer/reference/execution): ExecutionResult, ExecuteOptions, and the execute() call contract.
-- [Nodes](https://studnicky.github.io/Dagonizer/reference/operations): placement types — SingleNode, ParallelNode, FanOutNode, EmbeddedDAGNode.
+- [Nodes](https://studnicky.github.io/Dagonizer/reference/operations): placement types (SingleNode, ParallelNode, ScatterNode, EmbeddedDAGNode).
 - [Lifecycle](https://studnicky.github.io/Dagonizer/reference/lifecycle): DAGLifecycleMachine states and transition guards.
 - [Runtime](https://studnicky.github.io/Dagonizer/reference/runtime): Clock, Scheduler, RetryPolicy, RealTimeScheduler, BackoffStrategy.
 - [Contracts](https://studnicky.github.io/Dagonizer/reference/contracts): NodeInterface, ClockProvider, SchedulerProvider, SchedulerHandle.
-- [Core](https://studnicky.github.io/Dagonizer/reference/core): ParallelCombiner, FanInStrategy, FanInStrategies.
+- [Core](https://studnicky.github.io/Dagonizer/reference/core): ParallelCombiner, GatherStrategy, GatherStrategies.
 - [Derive](https://studnicky.github.io/Dagonizer/reference/derive): contract-to-DAG derivation API.
 - [Viz](https://studnicky.github.io/Dagonizer/reference/viz): CytoscapeRenderer and MermaidRenderer APIs.
-- [Validation](https://studnicky.github.io/Dagonizer/reference/validation): Validator and EntityValidator — Ajv compiled once at module load.
+- [Validation](https://studnicky.github.io/Dagonizer/reference/validation): Validator and EntityValidator; Ajv compiled once at module load.
 - [Checkpoint](https://studnicky.github.io/Dagonizer/reference/checkpoint): Checkpoint class, StateRestoreFnType, cursor serialization format.
 - [Entities](https://studnicky.github.io/Dagonizer/reference/entities): JSON Schema 2020-12 definitions and FromSchema-derived TypeScript types.
 - [Testing](https://studnicky.github.io/Dagonizer/reference/testing): VirtualClockProvider and VirtualScheduler for deterministic unit tests.
-- [Errors](https://studnicky.github.io/Dagonizer/reference/errors): DAGError hierarchy — NodeTimeoutError, validation errors, lifecycle errors.
+- [Errors](https://studnicky.github.io/Dagonizer/reference/errors): DAGError hierarchy (NodeTimeoutError, validation errors, lifecycle errors).
 
 ## Optional
 
-- [CHANGELOG](https://studnicky.github.io/Dagonizer/feed.xml): RSS feed — per-version changelog entries.
+- [CHANGELOG](https://studnicky.github.io/Dagonizer/feed.xml): RSS feed of per-version changelog entries.
 - [GitHub repository](https://github.com/Studnicky/Dagonizer): source, issues, and pull requests.
-- [npm package](https://www.npmjs.com/package/@noocodex/dagonizer): `@noocodex/dagonizer` — install, version history, subpath exports.
+- [npm package](https://www.npmjs.com/package/@noocodex/dagonizer): `@noocodex/dagonizer`; install, version history, and subpath exports.
 - [Sitemap](https://studnicky.github.io/Dagonizer/sitemap.xml): machine-readable page index.

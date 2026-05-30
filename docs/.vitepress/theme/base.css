@@ -1,15 +1,15 @@
 /**
- * base.css — Dagonizer shared visual rules.
+ * base.css: Dagonizer shared visual rules.
  * Silver brushed-metal chrome around navy hex-interior panels with
  * steel-shine text, black-pearl buttons, and gem-orb accents.
  *
- * Typography — three-tier system:
- *   - Display / headers (h1–h4): Caudex — the brand voice; humanist serif
+ * Typography: three-tier system:
+ *   - Display / headers (h1-h4): Caudex, the brand voice; humanist serif
  *     with old-god gravitas. Used for headings only.
- *   - Body (p, li, table, blockquote, nav): Source Serif 4 — a clean
+ *   - Body (p, li, table, blockquote, nav): Source Serif 4, a clean
  *     transitional serif, low contrast, high x-height. Sturdy at small
  *     sizes (sidebar, footnotes), barely-serif at body sizes.
- *   - Mono (code, pre, kbd, mermaid): JetBrains Mono — clean no-serif
+ *   - Mono (code, pre, kbd, mermaid): JetBrains Mono, clean no-serif
  *     monospace. Uniform for code blocks and diagram labels.
  *
  * Texture:
@@ -20,11 +20,11 @@
  */
 
 :root {
-  /* Display / headings — Caudex for brand voice, falls back to classic serifs */
+  /* Display / headings: Caudex for brand voice, falls back to classic serifs */
   --vp-font-family-display: "Caudex", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-  /* Body — Source Serif 4: clean transitional serif, readable at sidebar sizes */
+  /* Body: Source Serif 4, clean transitional serif, readable at sidebar sizes */
   --vp-font-family-base: "Source Serif 4", Charter, "Georgia Pro", Georgia, serif;
-  /* Mono — JetBrains Mono: no-serif, uniform for code and diagram labels */
+  /* Mono: JetBrains Mono, no-serif, uniform for code and diagram labels */
   --vp-font-family-mono: "JetBrains Mono", "SF Mono", Menlo, Consolas, ui-monospace, monospace;
 
   /* Mirror the iridis layout: sidebar is an overlay drawer at every
@@ -38,10 +38,10 @@
      Buttons, borders, dividers, scrollbar thumbs: pewter & graphite.
      Text and active-state highlights stay on their existing tokens.
      These tones mirror the brushed-metal grain of the talisman icon. */
-  --dagonizer-silver-ui:   #b8b4ad;   /* light silver — subtle borders, hover ring */
-  --dagonizer-pewter:      #6b6760;   /* mid — button backgrounds, dividers */
-  --dagonizer-graphite:    #38332d;   /* deep — pressed states, panel surfaces */
-  --dagonizer-shadow:      #1a1814;   /* near-black — navy depths */
+  --dagonizer-silver-ui:   #b8b4ad;   /* light silver: subtle borders, hover ring */
+  --dagonizer-pewter:      #6b6760;   /* mid: button backgrounds, dividers */
+  --dagonizer-graphite:    #38332d;   /* deep: pressed states, panel surfaces */
+  --dagonizer-shadow:      #1a1814;   /* near-black: navy depths */
 
   /* ── Texture: SVG noise grain for navy panels (sidebar, cards, code,
         mermaid frames, nav bar). Encoded so no extra HTTP request is
@@ -71,7 +71,7 @@
    The body is the silver chrome frame around the navy content well.
    The actual document scrolls inside .VPContent, which sits on a navy
    panel (rule below) so steel-shine text is always reading against
-   navy — never against the silver bg. */
+   navy; never against the silver bg. */
 
 body {
   background: var(--vp-c-bg);
@@ -107,7 +107,7 @@ html::-webkit-scrollbar-corner {
   background-color: var(--vp-c-bg-alt);
 }
 
-/* The main scroll area — VitePress wraps every page in .VPContent.
+/* The main scroll area: VitePress wraps every page in .VPContent.
    Give it the navy panel surface so paragraph text never lands on
    the silver body and contrast stays high in both modes. */
 .VPContent,
@@ -172,7 +172,7 @@ html::-webkit-scrollbar-corner {
   white-space: normal;
 }
 
-/* Code blocks share the canonical deep surface — same chrome as
+/* Code blocks share the canonical deep surface, same chrome as
    mermaid frames so both read as the same terminal panel. */
 .vp-doc div[class*="language-"] {
   border: var(--dagonizer-surface-border);
@@ -183,7 +183,7 @@ html::-webkit-scrollbar-corner {
   margin: 1.5rem 0;
 }
 
-/* Shiki token overrides — let the inner <pre class="shiki"> stay
+/* Shiki token overrides: let the inner <pre class="shiki"> stay
    transparent so the grain texture from the parent shows through.
    The night-owl token palette already carries its own foreground
    colors that satisfy WCAG AAA against the pearl-black surface. */
@@ -220,7 +220,7 @@ html::-webkit-scrollbar-corner {
   border-color: var(--vp-c-divider);
 }
 
-/* ===== Heading anchors — clickable + visible on hover ===== */
+/* ===== Heading anchors: clickable + visible on hover ===== */
 
 .VPDoc h1, .VPDoc h2, .VPDoc h3, .VPDoc h4, .VPDoc h5, .VPDoc h6 {
   scroll-margin-top: calc(var(--vp-nav-height) + 24px);
@@ -346,7 +346,7 @@ html::-webkit-scrollbar-corner {
   font-size: 0.85em;
 }
 
-/* Ordered lists keep their numeric markers — restore the default
+/* Ordered lists keep their numeric markers; restore the default
    list-style since our `ul` rule sets list-style: none globally. */
 .vp-doc ol {
   list-style: decimal;
@@ -403,7 +403,7 @@ html::-webkit-scrollbar-corner {
   margin-bottom: 0.4rem;
 }
 
-/* ===== Tables — wrap in the canonical surface =====
+/* ===== Tables: wrap in the canonical surface =====
    The table itself stays borderless inside; the wrapper carries the
    chrome so tables visually slot in beside cards, code blocks, and
    mermaid frames. */
@@ -419,7 +419,7 @@ html::-webkit-scrollbar-corner {
   overflow: hidden;
 }
 
-/* ===== HR — two-eye obsidian separator ===== */
+/* ===== HR: two-eye obsidian separator ===== */
 
 .vp-doc hr {
   border: 0;
@@ -476,7 +476,7 @@ html::-webkit-scrollbar-corner {
 
 .VPSidebar {
   background-color: var(--vp-c-bg-alt);
-  /* Engraved navy grain — the inside-the-hex texture. */
+  /* Engraved navy grain: the inside-the-hex texture. */
   background-image: var(--dagonizer-texture-grain);
   background-size: 160px 160px;
   border-right: 1px solid var(--vp-c-divider);
@@ -488,7 +488,7 @@ html::-webkit-scrollbar-corner {
 /* Webkit / Blink: hide the scrollbar gutter entirely */
 .VPSidebar::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
-/* Inner nav containers don't add nested scrollbars — let the outer
+/* Inner nav containers don't add nested scrollbars; let the outer
    sidebar own all the scrolling. Without this VitePress paints inner
    `overflow: hidden` regions that clip group lists awkwardly. */
 .VPSidebarNav,
@@ -498,7 +498,7 @@ html::-webkit-scrollbar-corner {
   height: auto !important;
   max-height: none !important;
 }
-/* Eye motif between sidebar groups — two obsidian dots, like the
+/* Eye motif between sidebar groups: two obsidian dots, like the
    talisman's eyes. Replaces the plain divider rule. */
 .VPSidebar .group {
   border-top: 0;
@@ -558,7 +558,7 @@ html::-webkit-scrollbar-corner {
    pixels; .VPNavBar (inner) is transparent at ≥960px by VitePress's
    scoped CSS, so painting .VPNav is what makes the strip solid. The
    z-index must outrank any positioned descendant of .VPContent
-   (VPDoc, VPDocAside, etc.) — VitePress sets .VPNav to z-index 30
+   (VPDoc, VPDocAside, etc.); VitePress sets .VPNav to z-index 30
    via `var(--vp-z-index-nav)`, and any inner content with a higher
    z-index would punch through the navbar's right edge where its
    pointer-events: none lets hit-test skip past it. Force z-index
@@ -577,7 +577,7 @@ html::-webkit-scrollbar-corner {
 .VPNavBar {
   --vp-sidebar-width:     0px;
   --vp-layout-max-width:  100%;
-  /* No bg-color here — .VPNav owns the surface paint. */
+  /* No bg-color here; .VPNav owns the surface paint. */
   background-image: var(--dagonizer-texture-grain);
   background-size:  160px 160px;
 }
@@ -651,7 +651,7 @@ html::-webkit-scrollbar-corner {
 .vp-doc .dagonizer-mermaid-frame svg {
   /* Mermaid sets explicit width/height attributes when useMaxWidth:
      false. `max-width: 100%` lets CSS scale the SVG DOWN if it
-     exceeds the frame (wide LR diagrams), but never UP — so tall TB
+     exceeds the frame (wide LR diagrams), but never UP, so tall TB
      diagrams stay readable at their natural width rather than being
      stretched to fill the column. */
   width: auto !important;
@@ -662,7 +662,7 @@ html::-webkit-scrollbar-corner {
   background: var(--mermaid-bg);
 }
 
-/* Node fills / strokes / text — every shape route through the same tokens */
+/* Node fills / strokes / text: every shape routes through the same tokens */
 .vp-doc .mermaid svg .node rect,
 .vp-doc .mermaid svg .node polygon,
 .vp-doc .mermaid svg .node path,
@@ -689,7 +689,7 @@ html::-webkit-scrollbar-corner {
      "state.query + tools" to two lines because the rect is the
      same width as the text. Force `white-space: nowrap` so each
      line stays on one line. Explicit `\n` in the mermaid source
-     becomes a `<br/>` in the rendered HTML — `<br/>` ignores
+     becomes a `<br/>` in the rendered HTML; `<br/>` ignores
      white-space and still creates a line break.
    - Mermaid's wrappingWidth (220px) handles overlong labels by
      splitting them into multiple `<br/>`-separated lines BEFORE
@@ -705,7 +705,7 @@ html::-webkit-scrollbar-corner {
 }
 /* Mermaid wraps each label in a `<p>` inside the foreignObject. The
    `.vp-doc p` rule sets a 28px line-height for body prose, which
-   cascades in and makes 13px label text occupy 28px-tall rows —
+   cascades in and makes 13px label text occupy 28px-tall rows,
    pushing the foreignObject taller than the rect. Reset paragraph
    metrics inside the diagram so the foreignObject sizes from the
    text alone. */
@@ -716,21 +716,21 @@ html::-webkit-scrollbar-corner {
   line-height: 1.2 !important;
 }
 
-/* Hexagonal nodes (fan-out — Mermaid `{{name}}`) */
+/* Hexagonal nodes (scatter, Mermaid `{{name}}`) */
 .vp-doc .mermaid svg .node[id*="flowchart-fan"] polygon,
 .vp-doc .mermaid svg .node.hexagon polygon,
 .vp-doc .mermaid svg g.node:has(polygon) polygon {
   fill: var(--mermaid-hex-fill) !important;
   stroke: var(--mermaid-hex-stroke) !important;
 }
-/* Stadium nodes (embedded-dag and END terminator — Mermaid `([name])`) */
+/* Stadium nodes (embedded-dag and END terminator, Mermaid `([name])`) */
 .vp-doc .mermaid svg g.node:has(rect.label-container) ~ rect,
 .vp-doc .mermaid svg .node.stadium rect {
   fill: var(--mermaid-stadium-fill) !important;
   stroke: var(--mermaid-stadium-stroke) !important;
 }
 
-/* Edges — straight angled lines, gem accent stroke */
+/* Edges: straight angled lines, gem accent stroke */
 .vp-doc .mermaid svg .edgePath path,
 .vp-doc .mermaid svg .flowchart-link {
   stroke: var(--mermaid-edge-stroke) !important;
@@ -756,7 +756,7 @@ html::-webkit-scrollbar-corner {
 .vp-doc .mermaid svg .edgeLabel foreignObject span {
   color: var(--mermaid-edge-label-text) !important;
   fill: var(--mermaid-edge-label-text) !important;
-  /* No font-size OR font-weight override — bolder text is wider than
+  /* No font-size OR font-weight override; bolder text is wider than
      normal weight, so if mermaid measures at default weight and CSS
      renders at 600 the foreignObject is too narrow. Keep both
      properties at the values mermaid used during measurement. */
@@ -796,7 +796,7 @@ html::-webkit-scrollbar-corner {
   fill: var(--mermaid-node-text) !important;
 }
 
-/* Typography — every glyph the diagram renders uses the same monospace
+/* Typography: every glyph the diagram renders uses the same monospace
    stack as code blocks. Mermaid and `pre` blocks share one terminal
    typeface so the diagrams read as ASCII-on-pearl, not serif-on-pearl.
    Font size deliberately omitted: mermaid sets it to 13px via
@@ -807,7 +807,7 @@ html::-webkit-scrollbar-corner {
 .vp-doc .mermaid svg text,
 .vp-doc .mermaid svg text.titleText,
 .vp-doc .mermaid svg .label,
-/* No font-family override inside mermaid SVGs — let mermaid's
+/* No font-family override inside mermaid SVGs; let mermaid's
    themeVariables.fontFamily flow through so measurement (at SSR) and
    render (after font load) use the same font stack. Overriding here
    to JetBrains Mono (a web font) causes the measurement/render
@@ -932,7 +932,7 @@ html::-webkit-scrollbar-corner {
    ============================================================ */
 
 /* Fix 1: Sidebar is a pure overlay at EVERY viewport.
-   Content never reserves horizontal space for the drawer — it floats
+   Content never reserves horizontal space for the drawer; it floats
    above at z-index 30. Padding-left is always zero regardless of open/
    collapsed state. The backdrop scrim below makes the dismiss path clear. */
 .VPContent.has-sidebar,
@@ -942,7 +942,7 @@ html.dagonizer-sidebar-collapsed .VPContent.has-sidebar {
   transition: none;
 }
 
-/* Fix 2: Center column — ~70vw on wide screens, wider on smaller.
+/* Fix 2: Center column, ~70vw on wide screens, wider on smaller.
    Content reads as a genuinely centered column regardless of sidebar
    state. The aside is hidden so no right reservation competes. */
 .VPDoc .container {
@@ -1012,7 +1012,7 @@ html.dagonizer-sidebar-collapsed .VPSidebarContainer {
   pointer-events: none !important;
 }
 
-/* Fix 1: Backdrop scrim — painted at ALL viewports when the drawer is
+/* Fix 1: Backdrop scrim, painted at ALL viewports when the drawer is
    open (sidebar is overlay-only, never pushes content). On wide screens
    the scrim dims the center column so the user sees the sidebar as a
    layer above. On narrow screens the scrim covers most of the viewport.
@@ -1032,7 +1032,7 @@ html:not(.dagonizer-sidebar-collapsed) .dagonizer-sidebar-backdrop {
   pointer-events: auto;
 }
 
-/* Right aside (table of contents) — hide everywhere. The fixed-overlay
+/* Right aside (table of contents): hide everywhere. The fixed-overlay
    sidebar covers page navigation; the in-page TOC was eating ~340px
    on the right and pushing the content column off-center. */
 .VPDoc .aside,

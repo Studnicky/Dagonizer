@@ -1,9 +1,9 @@
 /**
- * SignalComposer — fold the dispatcher's `signal` and `deadlineMs` options
+ * SignalComposer: fold the dispatcher's `signal` and `deadlineMs` options
  * into a single `AbortSignal`.
  *
  * Static class. Returns `null` when neither option is supplied (no
- * cancellation surface — the dispatcher composes a never-aborting signal
+ * cancellation surface; the dispatcher composes a never-aborting signal
  * when it builds a node's context).
  *
  * `deadlineMs` is wired through `AbortSignal.timeout()`; the platform

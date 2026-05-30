@@ -1,9 +1,9 @@
 /**
- * 07-retry — RetryPolicy inside a node's execute().
+ * 07-retry: RetryPolicy inside a node's execute().
  *
  * Demonstrates using RetryPolicy.run() to handle transient downstream
  * failures. The policy is constructed inside the node and cooperates
- * with the dispatcher's AbortSignal — if the DAG is cancelled mid-retry,
+ * with the dispatcher's AbortSignal; if the DAG is cancelled mid-retry,
  * the policy propagates the abort rather than retrying again.
  *
  * Watch: the flaky downstream throws twice, then succeeds on attempt 3.
@@ -23,7 +23,7 @@ import {
 import type { DAG, NodeInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
-// Simulated flaky downstream — throws twice, succeeds on third attempt
+// Simulated flaky downstream: throws twice, succeeds on third attempt
 // ---------------------------------------------------------------------------
 
 class TransientError extends Error { constructor() { super('transient'); } }
@@ -44,7 +44,7 @@ class S extends NodeStateBase {
 }
 
 // ---------------------------------------------------------------------------
-// Node — constructs RetryPolicy and passes context.signal through
+// Node: constructs RetryPolicy and passes context.signal through
 // ---------------------------------------------------------------------------
 
 // #region retry-node
@@ -108,7 +108,7 @@ dispatcher.registerDAG(dag);
 const state = new S();
 await dispatcher.execute('retry-dag', state);
 
-process.stdout.write('\nRetry DAG — fetch with EXPONENTIAL backoff\n');
+process.stdout.write('\nRetry DAG: fetch with EXPONENTIAL backoff\n');
 process.stdout.write(`  attempts=${flakyAttempts}  result="${state.result}"\n`);
 process.stdout.write(`  (threw ${flakyAttempts - 1} time(s) before succeeding)\n`);
 process.stdout.write('\nLesson: RetryPolicy.run(fn, signal) retries on declared error classes;\n');

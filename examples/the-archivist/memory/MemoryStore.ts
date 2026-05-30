@@ -1,24 +1,24 @@
 /**
- * MemoryStore — browser-runnable RDF quad store for the Archivist.
+ * MemoryStore: browser-runnable RDF quad store for the Archivist.
  *
  * Wraps `n3.Store` (pure JS, ~30KB gzipped, identical surface on Node
  * and in the browser) and exposes a named-graph-aware surface:
  *
- *   assert(s, p, o, graph?)              — write one quad
- *   ask({ s?, p?, o?, graph? })          — boolean existence check
- *   select({ s?, p?, o?, graph? })       — list bound rows (vars start with ?)
- *   triplesIn(graph)                     — iterate quads in one graph
- *   triples()                            — iterate every quad
+ *   assert(s, p, o, graph?)              write one quad
+ *   ask({ s?, p?, o?, graph? })          boolean existence check
+ *   select({ s?, p?, o?, graph? })       list bound rows (vars start with ?)
+ *   triplesIn(graph)                     iterate quads in one graph
+ *   triples()                            iterate every quad
  *
  * Four named graphs are reserved by convention:
  *
- *   urn:dagonizer:ontology              — TBox schema (classes, properties, domains, ranges)
+ *   urn:dagonizer:ontology              TBox schema (classes, properties, domains, ranges);
  *                                          loaded once on mount via loadOntology()
- *   urn:dagonizer:memory                — persistent cross-run facts
- *                                          (books, sources, scores — survives reloads)
- *   urn:dagonizer:state:<runId>         — per-run typed-state mirror
+ *   urn:dagonizer:memory                persistent cross-run facts
+ *                                          (books, sources, scores; survives reloads)
+ *   urn:dagonizer:state:<runId>         per-run typed-state mirror
  *                                          (ArchivistState fields → triples on every node end)
- *   urn:dagonizer:prov:<runId>          — PROV-O activity log
+ *   urn:dagonizer:prov:<runId>          PROV-O activity log
  *                                          (which node did what when, attributed to which agent)
  *
  * Pattern surface intentionally mirrors SPARQL's basic graph pattern
@@ -29,9 +29,17 @@
 import { DataFactory, Parser, Store, Writer } from 'n3';
 import type { Quad, Quad_Graph, Quad_Object, Quad_Predicate, Quad_Subject, Term } from 'n3';
 
+import type { Snapshottable, StoreSnapshot } from '@noocodex/dagonizer/contracts';
+
 const { namedNode, literal, quad, defaultGraph } = DataFactory;
 
 const LOCALSTORAGE_KEY = 'dagonizer-archivist-memory';
+
+/** Stable identifier + version for `MemoryStore` snapshots; resume refuses anything else. */
+const MEMORY_SNAPSHOT_TYPE = 'archivist-memory-v1';
+const MEMORY_SNAPSHOT_VERSION = 1;
+/** Single snapshot entry key: the whole quad store serialised as N-Quads. */
+const MEMORY_SNAPSHOT_KEY = 'nquads';
 
 export const DAG_NS = 'https://noocodex.dev/ontology/dagonizer/';
 export const BOOK_NS = 'urn:dagonizer:book:';
@@ -58,7 +66,7 @@ interface SlotPattern {
   readonly graph?:     Term | string;
 }
 
-export class MemoryStore {
+export class MemoryStore implements Snapshottable {
   readonly #store = new Store();
   /** Auto-persist writes to localStorage when true (browser only). */
   #persist = false;
@@ -96,7 +104,7 @@ export class MemoryStore {
   /** True when writes are being auto-persisted to localStorage. */
   get isPersisted(): boolean { return this.#persist; }
 
-  /** Total quad count — useful for the live UI counter. */
+  /** Total quad count; useful for the live UI counter. */
   get size(): number { return this.#store.size; }
 
   /** Pre-bake a named-node IRI for the `dag:` vocabulary. */
@@ -108,7 +116,7 @@ export class MemoryStore {
   /** Make any IRI. */
   static iri(value: string):   Term { return namedNode(value); }
 
-  /** Literal helpers — typed XSD where it matters for SPARQL FILTER. */
+  /** Literal helpers: typed XSD where it matters for SPARQL FILTER. */
   static lit = {
     str(value: string):   Term { return literal(value); },
     num(value: number):   Term { return literal(String(value), namedNode('http://www.w3.org/2001/XMLSchema#double')); },
@@ -154,7 +162,7 @@ export class MemoryStore {
     this.#flush();
   }
 
-  /** ASK — true when at least one quad matches the pattern. */
+  /** ASK: true when at least one quad matches the pattern. */
   ask(pattern: SlotPattern): boolean {
     return this.#store.getQuads(
       asTerm(pattern.subject)   ?? null,
@@ -165,7 +173,7 @@ export class MemoryStore {
   }
 
   /**
-   * SELECT — list bound rows. Variables: pass a string `?name` in any
+   * SELECT: list bound rows. Variables: pass a string `?name` in any
    * slot and it becomes a binding key; concrete terms filter.
    */
   select(pattern: SlotPattern): Binding[] {
@@ -237,6 +245,58 @@ export class MemoryStore {
       if (err === null || err === undefined) {
         localStorage.setItem(LOCALSTORAGE_KEY, result);
       }
+    });
+  }
+
+  /**
+   * Capture the entire quad store (all named graphs) as a `StoreSnapshot`.
+   *
+   * Satisfies the `Snapshottable` contract so the store can ride along in
+   * `Checkpoint.capture(dag, result, { stores: { memory } })`. The whole
+   * store serialises to one N-Quads string entry; N-Quads carries the
+   * graph term per quad, so ontology / memory / per-run graphs all round-trip.
+   */
+  async snapshot(): Promise<StoreSnapshot> {
+    const nquads = await this.#serializeNquads();
+    return {
+      'version': MEMORY_SNAPSHOT_VERSION,
+      'type':    MEMORY_SNAPSHOT_TYPE,
+      'entries': [{ 'key': MEMORY_SNAPSHOT_KEY, 'value': nquads }],
+    };
+  }
+
+  /**
+   * Repopulate from a `StoreSnapshot` produced by `snapshot()`. Clears the
+   * current store first so restore is a full replace, not a merge. Refuses a
+   * snapshot whose `type` / `version` doesn't match this store's format.
+   */
+  async restore(snapshot: StoreSnapshot): Promise<void> {
+    if (snapshot.type !== MEMORY_SNAPSHOT_TYPE) {
+      throw new Error(`MemoryStore.restore: incompatible snapshot type '${snapshot.type}' (expected '${MEMORY_SNAPSHOT_TYPE}')`);
+    }
+    if (snapshot.version !== MEMORY_SNAPSHOT_VERSION) {
+      throw new Error(`MemoryStore.restore: incompatible snapshot version ${String(snapshot.version)} (expected ${String(MEMORY_SNAPSHOT_VERSION)})`);
+    }
+    const entry = snapshot.entries.find((e) => e.key === MEMORY_SNAPSHOT_KEY);
+    const nquads = typeof entry?.value === 'string' ? entry.value : '';
+
+    this.#store.removeQuads(this.#store.getQuads(null, null, null, null));
+    if (nquads.length > 0) {
+      const parser = new Parser({ 'format': 'N-Quads' });
+      for (const q of parser.parse(nquads)) this.#store.addQuad(q);
+    }
+    this.#flush();
+  }
+
+  /** Serialise every quad in every graph to an N-Quads string. Promisified `Writer.end`. */
+  #serializeNquads(): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      const writer = new Writer({ 'format': 'N-Quads' });
+      writer.addQuads(this.#store.getQuads(null, null, null, null));
+      writer.end((err, result) => {
+        if (err === null || err === undefined) resolve(result);
+        else reject(err instanceof Error ? err : new Error(String(err)));
+      });
     });
   }
 

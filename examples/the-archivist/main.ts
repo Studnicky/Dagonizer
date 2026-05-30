@@ -1,5 +1,5 @@
 /**
- * main.ts — browser entrypoint for the Archivist demo.
+ * main.ts: browser entrypoint for the Archivist demo.
  *
  * Mirrors `runArchivist.ts`'s setup but composes a browser-runnable
  * cascade and streams the logger to the DOM. Default preference:
@@ -7,7 +7,7 @@
  *   Browser built-in LanguageModel (flag-gated on older Chrome/Edge)
  *     →  WebLLM      (any WebGPU browser; ~700 MB model download on first use)
  *     →  Gemini API  (REST; key supplied via `?apiKey=…` URL param)
- *     →  Ollama      (only when running locally with CORS enabled — see below)
+ *     →  Ollama      (only when running locally with CORS enabled; see below)
  *
  * Ollama CORS caveat: by default the daemon refuses cross-origin
  * requests. To use Ollama from this harness, start it with
@@ -20,34 +20,12 @@
  */
 
 import { ArchivistState } from './ArchivistState.ts';
-import { archivistDAG } from './dag.ts';
+import { archivistBundle } from './dag.ts';
 import { UserLanguage } from './language/UserLanguage.ts';
-import {
-  BookSearchFanoutDAG,
-  registerBookSearchFanoutNodes,
-} from './embedded-dags/BookSearchFanoutDAG.ts';
-import {
-  ComposeRetryLoopDAG,
-  registerComposeRetryLoopNodes,
-} from './embedded-dags/ComposeRetryLoopDAG.ts';
+import { bookSearchScatterBundle } from './embedded-dags/BookSearchScatterDAG.ts';
+import { composeRetryLoopBundle } from './embedded-dags/ComposeRetryLoopDAG.ts';
 import { ConsoleLogger, type LogEvent } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
-import { classifyIntent } from './nodes/classifyIntent.ts';
-import { composeMemoryResponse } from './nodes/composeMemoryResponse.ts';
-import { decideTools } from './nodes/decideTools.ts';
-import { extractQuery } from './nodes/extractQuery.ts';
-import { groupByYear } from './nodes/groupByYear.ts';
-import { hasCitationsGate } from './nodes/hasCitationsGate.ts';
-import { mergeCandidates } from './nodes/mergeCandidates.ts';
-import { pickBestMatch } from './nodes/pickBestMatch.ts';
-import { rankByRating } from './nodes/rankByRating.ts';
-import { recallContext } from './nodes/recallContext.ts';
-import { recallMemories } from './nodes/recallMemories.ts';
-import { recallPastVisits } from './nodes/recallPastVisits.ts';
-import { recommendSimilar } from './nodes/recommendSimilar.ts';
-import { recordFindings } from './nodes/recordFindings.ts';
-import { composeEmptyResponse, declineEmpty, declineOffTopic, respondToVisitor } from './nodes/respondToVisitor.ts';
-import { openLibraryScout, googleBooksScout, subjectScout, wikipediaScout, webSearchScout } from './nodes/scouts.ts';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
 import type { ArchivistServices, LlmClient } from './services.ts';
 
@@ -69,7 +47,7 @@ const input   = document.getElementById('ask-input')     as HTMLInputElement;
 const button  = document.getElementById('ask-button')    as HTMLButtonElement;
 const logEl   = document.getElementById('archivist-log') as HTMLPreElement;
 
-// ── Logger wiring — stream every event to the <pre>. ─────────────────────
+// ── Logger wiring: stream every event to the <pre>. ──────────────────────
 const logger = new ConsoleLogger();
 function appendLogLine(event: LogEvent): void {
   const line = document.createElement('span');
@@ -87,7 +65,7 @@ function appendErrorLine(message: string): void {
 }
 logger.subscribe(appendLogLine);
 
-// ── Cascade — browser-runnable adapters in preference order. ─────────────
+// ── Cascade: browser-runnable adapters in preference order. ──────────────
 const CAPS_FULL_TOOLS:    AdapterCapabilities = { 'toolUse': 'full',    'structuredOutput': true, 'jsonMode': true };
 const CAPS_PARTIAL_TOOLS: AdapterCapabilities = { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true };
 const CAPS_NO_TOOLS:      AdapterCapabilities = { 'toolUse': 'none',    'structuredOutput': true, 'jsonMode': false };
@@ -116,7 +94,7 @@ registry.register(
   () => new WebLlmAdapter({ 'onProgress': (report) => logger.info(`web-llm: ${report.text} (${String(Math.round(report.progress * 100))}%)`) }),
 );
 
-// REST fallback — key from URL param, otherwise prompt the visitor.
+// REST fallback: key from URL param, otherwise prompt the visitor.
 registry.register(
   { 'provider': 'gemini-api', 'model': 'gemini-2.0-flash', 'capabilities': CAPS_FULL_TOOLS },
   () => {
@@ -125,7 +103,7 @@ registry.register(
   },
 );
 
-// Ollama — only useful when the daemon is running locally with CORS
+// Ollama: only useful when the daemon is running locally with CORS
 // allowed (see the file-level comment). Probe fails closed otherwise.
 registry.register(
   { 'provider': 'ollama', 'model': 'llama3.2:latest', 'capabilities': CAPS_PARTIAL_TOOLS },
@@ -146,7 +124,7 @@ try {
   // LanguageModel doesn't expose embeddings, WebLLM embedding models would balloon the
   // download budget). LLM-only intent classification is the path here;
   // log once so the omission is visible in the demo log panel.
-  logger.info('embedder: unavailable in browser — intent classification via LLM only');
+  logger.info('embedder: unavailable in browser; intent classification via LLM only');
   llm = new BaseLlmClient(adapter, { 'language': userLanguage });
   logger.info(`backend: ${adapter.id} (${adapter.displayName})`);
 } catch (err) {
@@ -166,11 +144,12 @@ const services: ArchivistServices = {
   'wikipediaSummary': WikipediaSummaryTool,
   'memory':           new MemoryStore(),
   'llm':              llm,
-  // Browser entry has no native embedder wired today — Browser built-in LanguageModel does
+  // Browser entry has no native embedder wired today. Browser built-in LanguageModel does
   // not expose embeddings and WebLLM embedding models would balloon the
   // download budget. Cosine recall and hybrid ranking fall back to
   // Jaccard / heuristics when embedder is null.
   'embedder':         null,
+  'nodeTimeouts':     {},
   'logger':           logger,
 };
 
@@ -178,51 +157,23 @@ const dispatcher = new Dagonizer<ArchivistState, ArchivistServices>({ services }
 // #endregion wire-services
 
 // #region register-bundle
-registerBookSearchFanoutNodes(dispatcher);
-dispatcher.registerDAG(BookSearchFanoutDAG);
-
-registerComposeRetryLoopNodes(dispatcher);
-dispatcher.registerDAG(ComposeRetryLoopDAG);
-
-for (const node of [
-  recallContext,
-  classifyIntent,
-  extractQuery,
-  decideTools,
-  webSearchScout,
-  openLibraryScout,
-  googleBooksScout,
-  subjectScout,
-  wikipediaScout,
-  rankByRating,
-  pickBestMatch,
-  mergeCandidates,
-  recordFindings,
-  hasCitationsGate,
-  groupByYear,
-  recallPastVisits,
-  recommendSimilar,
-  recallMemories,
-  composeMemoryResponse,
-  respondToVisitor,
-  declineOffTopic,
-  declineEmpty,
-  composeEmptyResponse,
-]) {
-  dispatcher.registerNode(node);
-}
-
-dispatcher.registerDAG(archivistDAG);
+dispatcher.registerBundle(bookSearchScatterBundle);
+dispatcher.registerBundle(composeRetryLoopBundle);
+dispatcher.registerBundle(archivistBundle);
 // #endregion register-bundle
 
 // #region run-loop
-// ── Submit handler — fresh state per ask. ─────────────────────────────────
+// ── Submit handler: fresh state per ask. ──────────────────────────────────
 async function ask(query: string): Promise<void> {
   const visitor = new ArchivistState();
   visitor.query = query;
   button.disabled = true;
   try {
-    const result = await dispatcher.execute('the-archivist', visitor);
+    const execution = dispatcher.execute('the-archivist', visitor);
+    for await (const stage of execution) {
+      logger.info(`▸ ${stage.nodeName}${stage.skipped ? ' (skipped)' : ` → ${stage.output ?? '(none)'}`}`);
+    }
+    const result = await execution;
     logger.result(`intent=${result.state.intent}`);
     logger.result(`shortlist=${String(result.state.shortlist.length)}`);
     logger.result(`draft=${result.state.draft}`);

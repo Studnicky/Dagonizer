@@ -1,15 +1,15 @@
 /**
- * decideTools — non-deterministic node that asks the LLM which tools
+ * decideTools: non-deterministic node that asks the LLM which tools
  * (if any) to invoke for this query.
  *
  * The LLM receives the tool definitions via the adapter's native
- * channel — Gemini API's `functionDeclarations`, the browser built-in model's
+ * channel (Gemini API's `functionDeclarations`, the browser built-in model's
  * `responseConstraint`, WebLLM's `response_format`. There is no
  * tool-listing in the prompt itself; the API enforces the shape.
  *
  * Outputs:
- *   'tools'    — LLM asked for ≥1 tool. `state.toolPlan` populated.
- *   'no-tools' — LLM is confident the local catalog suffices.
+ *   'tools':    LLM asked for ≥1 tool; `state.toolPlan` populated.
+ *   'no-tools': LLM is confident the local catalog suffices.
  *
  * Downstream gating:
  *   openLibraryScout checks `state.toolPlan` for a `web_search_books`
@@ -28,7 +28,7 @@
  *
  * Safety net: for FULL_CATALOG_INTENTS, if the LLM omits any of the three
  * primary catalog tools, the safety net appends the missing entries using
- * the same query text so the fan-out actually fans out.
+ * the same query text so all scouts run.
  */
 
 import { GoogleBooksTool } from '@noocodex/dagonizer-tool-googlebooks';
@@ -77,8 +77,11 @@ function enforceFullCatalog(
   return additions.length > 0 ? [...calls, ...additions] : calls;
 }
 
-/** Per-node timeout — generous for Gemini Nano's constrained-output path (20–60 s typical). */
+/** Per-node timeout: generous for Gemini Nano's constrained-output path (20-60 s typical). */
 const NODE_TIMEOUT_MS = 30_000;
+
+/** Total attempts (initial + retries) before routing to salvage. */
+const RETRY_BUDGET = 2;
 
 /**
  * Result of a deterministic-shortcut pattern match. `null` when no
@@ -101,7 +104,7 @@ const PROPER_NOUN_RE  = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)\b/u;
 const TOPIC_RE        = /^(?:books?|works|literature|stories|novels)\s+(?:about|on)\s+(.+)$/iu;
 const BROWSING_RE     = /^(?:do\s+you\s+have|what\s+(?:do\s+you\s+have|titles\s+do\s+you\s+have)|show\s+me|recommend)/iu;
 
-const FULL_FANOUT: readonly ToolCall[] = [
+const FULL_SCOUT_PLAN: readonly ToolCall[] = [
   { 'name': 'web_search_books',    'arguments': { 'limit': SHORTCUT_LIMIT } },
   { 'name': 'google_books_search', 'arguments': { 'maxResults': SHORTCUT_LIMIT } },
   { 'name': 'subject_search',      'arguments': { 'limit': SHORTCUT_LIMIT } },
@@ -115,10 +118,10 @@ const FULL_FANOUT: readonly ToolCall[] = [
  * returns non-null.
  *
  *   - isbn-lookup          → direct OpenLibrary ISBN lookup
- *   - author-lookup        → full 4-scout fan-out with typed author arg
+ *   - author-lookup        → full 4-scout plan with typed author arg
  *   - quoted-single-title  → wikipedia first then web_search_books
  *   - topic-or-subject     → subject_search + web_search_books with typed subject arg
- *   - catalog-browsing     → full 4-scout fan-out
+ *   - catalog-browsing     → full 4-scout plan
  */
 function matchShortcut(query: string, intent: string): ShortcutMatch | null {
   const trimmed = query.trim();
@@ -137,7 +140,7 @@ function matchShortcut(query: string, intent: string): ShortcutMatch | null {
     };
   }
 
-  // 1. Author lookup — either an explicit "by X Y" pattern OR
+  // 1. Author lookup: either an explicit "by X Y" pattern OR
   //    lookup-author intent with a multi-word capitalised proper noun.
   //    Carry the captured author name as a typed arg so the scout uses
   //    OpenLibrary's ?author= axis instead of falling back to keyword query.
@@ -158,7 +161,7 @@ function matchShortcut(query: string, intent: string): ShortcutMatch | null {
     };
   }
 
-  // 2. Quoted single title — "X Y Z" style; route to wikipedia first.
+  // 2. Quoted single title: "X Y Z" style; route to wikipedia first.
   if (QUOTED_TITLE_RE.test(trimmed)) {
     return {
       'pattern': 'quoted-single-title',
@@ -183,7 +186,7 @@ function matchShortcut(query: string, intent: string): ShortcutMatch | null {
     }
   }
 
-  // 3. Topic / subject — "books about X" etc.
+  // 3. Topic / subject: "books about X" etc.
   //    Capture the topic term and pass it as a typed subject arg so scouts
   //    use OpenLibrary's ?subject= axis and the subject facet directly.
   const topicMatch = trimmed.match(TOPIC_RE);
@@ -198,18 +201,18 @@ function matchShortcut(query: string, intent: string): ShortcutMatch | null {
     };
   }
 
-  // 4. Catalog browsing — "do you have…", "show me…", "recommend…"
+  // 4. Catalog browsing: "do you have...", "show me...", "recommend..."
   if (BROWSING_RE.test(trimmed)) {
-    return { 'pattern': 'catalog-browsing', 'calls': FULL_FANOUT };
+    return { 'pattern': 'catalog-browsing', 'calls': FULL_SCOUT_PLAN };
   }
 
   return null;
 }
 
-export const decideTools: ArchivistNode<'tools' | 'no-tools'> = {
+export const decideTools: ArchivistNode<'tools' | 'no-tools' | 'retry' | 'salvage'> = {
   'name': 'decide-tools',
   'kind': 'non-deterministic',
-  'outputs': ['tools', 'no-tools'],
+  'outputs': ['tools', 'no-tools', 'retry', 'salvage'],
   async execute(state, context) {
     // ── Deterministic shortcut prelude ────────────────────────────────────
     // Pattern-match common query shapes (author lookup, single quoted title,
@@ -219,6 +222,7 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools'> = {
     const shortcut = matchShortcut(state.query, state.intent);
     if (shortcut !== null) {
       state.toolPlan = shortcut.calls;
+      state.clearAttempts(context.nodeName);
       context.services.logger.info(`decide-tools: deterministic shortcut "${shortcut.pattern}"`);
       context.services.logger.info(`tool plan: ${shortcut.calls.map((c) => c.name).join(', ')}`);
       return { 'output': 'tools' };
@@ -230,15 +234,17 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools'> = {
       : [OpenLibrarySearchTool.definition, SubjectSearchTool.definition];
 
     const controller = new AbortController();
-    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), NODE_TIMEOUT_MS);
+    const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? NODE_TIMEOUT_MS);
     const signal = AbortSignal.any([context.signal, controller.signal]);
 
     try {
       let calls = await context.services.llm.decideTools(state.query, available, signal);
+      // LLM responded; the retry budget for this placement is spent.
+      state.clearAttempts(context.nodeName);
 
       // Safety net (Option B): if the LLM returned fewer than all three
       // catalog tools for a full-catalog intent, add the missing ones so
-      // the fan-out actually fans out across all sources.
+      // all scouts run across all sources.
       if (isFullCatalog) {
         const hadCount = calls.length;
         calls = enforceFullCatalog(calls, state.query);
@@ -256,7 +262,7 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools'> = {
       // Arguments intentionally omit `query` / `subject`. Each scout falls back
       // to `state.terms.join(' ')` (the keywords produced by `extract-query`)
       // when its query arg is missing. Passing `state.query` here would make
-      // OpenLibrary search for the literal visitor sentence — 0 hits.
+      // OpenLibrary search for the literal visitor sentence; 0 hits.
       if (!isFullCatalog && state.intent === 'search' && calls.length < 2) {
         calls = [
           { 'name': 'web_search_books',    'arguments': { 'limit': 8 } },
@@ -283,12 +289,17 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools'> = {
       state.failureCause += 'Tool plan: no tools selected. ';
       return { 'output': 'no-tools' };
     } catch (err) {
-      // Salvage path: timeout or any error — fall through with a minimal
-      // plan so the book-search fan-out still runs. No `query` arg —
-      // openLibraryScout falls back to `state.terms.join(' ')`.
-      context.services.logger.warn(`decideTools: timeout/error — falling through with defaults: ${err instanceof Error ? err.message : String(err)}`);
-      state.toolPlan = [{ 'name': 'web_search_books', 'arguments': {} }];
-      return { 'output': 'tools' };
+      // External cancellation / run deadline propagates unchanged.
+      if (context.signal.aborted) throw err;
+      // Node-local timeout or LLM failure → retry budget decides the flow. The
+      // minimal-plan fallback lives in decide-tools-salvage, not here.
+      if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
+        context.services.logger.warn(`decide-tools: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
+        return { 'output': 'retry' };
+      }
+      state.clearAttempts(context.nodeName);
+      context.services.logger.warn(`decide-tools: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
+      return { 'output': 'salvage' };
     } finally {
       clearTimeout(handle);
     }
@@ -298,7 +309,7 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools'> = {
 // Export tool names list for tests / documentation.
 export { FULL_CATALOG_TOOL_NAMES };
 
-// Export the shortcut matcher for unit tests — algorithmic guarantee, no
+// Export the shortcut matcher for unit tests; algorithmic guarantee, no
 // runtime services needed to exercise the pattern set.
 export { matchShortcut };
 export type { ShortcutMatch };

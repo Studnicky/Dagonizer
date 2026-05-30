@@ -1,5 +1,5 @@
 /**
- * WikipediaSummaryTool — REST `page/summary` endpoint.
+ * WikipediaSummaryTool: REST `page/summary` endpoint.
  *
  *   GET https://en.wikipedia.org/api/rest_v1/page/summary/<title>
  *
@@ -15,7 +15,8 @@
 
 import type { Candidate } from '@noocodex/dagonizer-book-entities';
 
-import { CanonicalId } from '@noocodex/dagonizer-book-entities';
+import { CanonicalId, toIso6392 } from '@noocodex/dagonizer-book-entities';
+import { HttpTransport } from '@noocodex/dagonizer/tool';
 import type { Tool } from '@noocodex/dagonizer/tool';
 import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
 
@@ -39,27 +40,9 @@ function endpointFor(lang: string): string {
   return `https://${lang}.wikipedia.org/api/rest_v1/page/summary/`;
 }
 
-// ISO 639-1 → ISO 639-2 (alpha-3) so the candidate exposes the same
-// language-code shape every scout writes. Unknown codes pass through
-// unchanged so the merge filter can still match string-equal when the
-// mapping is incomplete.
-const ISO_639_1_TO_2: Readonly<Record<string, string>> = Object.freeze({
-  'en': 'eng', 'es': 'spa', 'fr': 'fre', 'de': 'ger', 'it': 'ita',
-  'pt': 'por', 'nl': 'dut', 'sv': 'swe', 'no': 'nor', 'da': 'dan',
-  'fi': 'fin', 'pl': 'pol', 'cs': 'cze', 'ru': 'rus', 'uk': 'ukr',
-  'ja': 'jpn', 'zh': 'chi', 'ko': 'kor', 'ar': 'ara', 'he': 'heb',
-  'hi': 'hin', 'tr': 'tur', 'el': 'gre', 'th': 'tha', 'vi': 'vie',
-});
-
 function normalizeLang(input: string): string {
   const head = input.toLowerCase().split(/[-_]/u)[0];
   return head !== undefined && head.length > 0 ? head : DEFAULT_LANG;
-}
-
-function toIso6392(code: string): string {
-  const head = normalizeLang(code);
-  const mapped = ISO_639_1_TO_2[head];
-  return mapped !== undefined ? mapped : head;
 }
 
 const definition: ToolDefinition = {
@@ -94,17 +77,22 @@ export const WikipediaSummaryTool: Tool<WikipediaInput, readonly Candidate[]> = 
       : DEFAULT_LANG;
     const endpoint = endpointFor(lang);
     const title = encodeURIComponent(input.query.trim().replace(/\s+/gu, '_'));
-    const initOptions: RequestInit & { signal?: AbortSignal } = {
-      'method': 'GET',
-      'headers': { 'accept': 'application/json' },
-    };
-    if (signal !== undefined) initOptions.signal = signal;
-    const response = await fetch(`${endpoint}${title}`, initOptions);
-    if (response.status === 404) return [];
-    if (!response.ok) {
-      throw new Error(`wikipedia ${String(response.status)} ${response.statusText}`);
+
+    let payload: WikiSummary;
+    try {
+      payload = await HttpTransport.getJson<WikiSummary>(
+        `${endpoint}${title}`,
+        signal !== undefined
+          ? { signal, 'headers': { 'accept': 'application/json' } }
+          : { 'headers': { 'accept': 'application/json' } },
+      );
+    } catch (err) {
+      // HttpTransport throws ToolError on 404; treat as "no article found".
+      const status = (err as { status?: number }).status;
+      if (status === 404) return [];
+      throw err;
     }
-    const payload = (await response.json()) as WikiSummary;
+
     if (payload.title === undefined || payload.extract === undefined) return [];
 
     // Wikipedia is an enrichment source, not a catalog. We still return
@@ -118,12 +106,12 @@ export const WikipediaSummaryTool: Tool<WikipediaInput, readonly Candidate[]> = 
 
     const canonical = isBookish
       ? CanonicalId.fromWork(payload.title, undefined)
-      : `urn:wiki:${slugify(payload.title)}`;
+      : `urn:wiki:${CanonicalId.slugify(payload.title)}`;
 
     const notes: Record<string, unknown> = { '_sources': ['wikipedia'] };
-    if (payload.thumbnail?.source !== undefined)        notes['thumbnail']  = payload.thumbnail.source;
-    if (payload.content_urls?.desktop?.page !== undefined) notes['wikiUrl'] = payload.content_urls.desktop.page;
-    if (payload.description !== undefined)              notes['wikiKind']   = payload.description;
+    if (payload.thumbnail?.source !== undefined)            notes['thumbnail']  = payload.thumbnail.source;
+    if (payload.content_urls?.desktop?.page !== undefined)  notes['wikiUrl']    = payload.content_urls.desktop.page;
+    if (payload.description !== undefined)                  notes['wikiKind']   = payload.description;
 
     return [{
       'book': {
@@ -140,7 +128,3 @@ export const WikipediaSummaryTool: Tool<WikipediaInput, readonly Candidate[]> = 
     }];
   },
 };
-
-function slugify(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/gu, '-').replace(/^-+|-+$/gu, '');
-}

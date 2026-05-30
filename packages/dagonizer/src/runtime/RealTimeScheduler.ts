@@ -1,5 +1,5 @@
 /**
- * RealTimeScheduler — promise-based scheduling backed by `globalThis.setTimeout`.
+ * RealTimeScheduler: promise-based scheduling backed by `globalThis.setTimeout`.
  *
  * Operates on monotonic-ms timestamps from `Clock.monotonicMs()`. This
  * is the ONLY place in Dagonizer's runtime where platform timer APIs
@@ -8,7 +8,7 @@
  * Isomorphic by design: every Node 24+ runtime and every modern browser
  * exposes `setTimeout` / `clearTimeout` on `globalThis`, so the same
  * default works in both. The implementation wraps each delay in a
- * `Promise` and wires its own abort listener — no `node:timers/promises`
+ * `Promise` and wires its own abort listener; no `node:timers/promises`
  * dependency, so consumers can bundle Dagonizer straight into a browser
  * build (Vite, esbuild, Rollup) without polyfills or aliases.
  */
@@ -27,7 +27,7 @@ const G = globalThis as TimerGlobals;
 /**
  * Default `SchedulerProvider`. The single permitted call site for
  * platform timer APIs in the runtime. Works in Node and the browser
- * unmodified — both expose `setTimeout` on `globalThis`.
+ * unmodified; both expose `setTimeout` on `globalThis`.
  */
 export class RealTimeScheduler implements SchedulerProvider {
   readonly #activeHandles = new Set<unknown>();

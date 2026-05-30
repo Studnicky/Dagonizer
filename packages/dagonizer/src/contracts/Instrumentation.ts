@@ -13,17 +13,17 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  * for in-subclass observers; the two surfaces coexist.
  *
  * Hook timing:
- *   flowStart        — before the entrypoint node runs
- *   flowEnd          — after the loop drains (terminal or interrupted)
- *   nodeStart        — before each node's execute() call (including
- *                      placements inside parallel / fan-out / embedded-DAG)
- *   nodeEnd          — after the node's result is recorded
- *   phaseEnter       — before a pre/post phase placement runs
- *   phaseExit        — after a pre/post phase placement runs
- *   contractWarning  — non-fatal dangling-write warning from derive
- *   error            — any thrown error the dispatcher catches
+ *   flowStart: before the entrypoint node runs
+ *   flowEnd: after the loop drains (terminal or interrupted)
+ *   nodeStart: before each node's execute() call (including
+ *              placements inside parallel / scatter / embedded-DAG)
+ *   nodeEnd: after the node's result is recorded
+ *   phaseEnter: before a pre/post phase placement runs
+ *   phaseExit: after a pre/post phase placement runs
+ *   contractWarning: non-fatal dangling-write warning from derive
+ *   error: any thrown error the dispatcher catches
  *
- * Implementations MUST NOT throw — exceptions surfacing through the
+ * Implementations MUST NOT throw; exceptions surfacing through the
  * hook will abort the flow. Wrap any I/O (HTTP exporters, file writes)
  * in try/catch internally.
  *
@@ -41,7 +41,7 @@ export interface Instrumentation<TState extends NodeStateInterface = NodeStateIn
   flowStart(dagName: string, state: TState): void;
   flowEnd(dagName: string, state: TState, result: ExecutionResultInterface<TState>): void;
   nodeStart(dagName: string, nodeName: string, state: TState, placementPath: readonly string[]): void;
-  nodeEnd(dagName: string, nodeName: string, output: string | undefined, state: TState, placementPath: readonly string[]): void;
+  nodeEnd(dagName: string, nodeName: string, output: string | null, state: TState, placementPath: readonly string[]): void;
   phaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
   phaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
   contractWarning(message: string): void;

@@ -1,5 +1,5 @@
 /**
- * LlmDispatchNode — shared parent for any pattern that consults the
+ * LlmDispatchNode: shared parent for any pattern that consults the
  * LLM and produces some result.
  *
  * Owns the request construction + LLM-call protocol so leaves don't

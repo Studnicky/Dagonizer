@@ -24,7 +24,7 @@ seeAlso:
 | `Dagonizer<TState, TServices>` | `@noocodex/dagonizer` | Carries the services type as a generic parameter |
 | `DagonizerOptionsInterface.services` | `@noocodex/dagonizer` | The bag passed at construction |
 | `NodeInterface<TState, TOutput, TServices>` | `@noocodex/dagonizer` | Propagates `TServices` to `context.services` |
-| `NodeContextInterface.services` | `@noocodex/dagonizer/entities` | The per-call view of the bag |
+| `NodeContextInterface.services` | `@noocodex/dagonizer` | The per-call view of the bag |
 
 `TServices` defaults to `undefined`. Dispatchers that need nothing typed through services work as `new Dagonizer<S>()`.
 

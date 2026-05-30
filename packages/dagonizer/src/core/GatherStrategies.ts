@@ -1,5 +1,5 @@
 /**
- * GatherStrategies — pluggable strategy registry that decides how the
+ * GatherStrategies: pluggable strategy registry that decides how the
  * dispatcher merges scatter clone results back into the parent state.
  *
  * A `GatherStrategy` is a class with a `name` and an `apply` method.
@@ -165,7 +165,7 @@ class CustomGatherStrategy extends GatherStrategy {
     execution: GatherExecution<TState>,
   ): Promise<void> {
     if (config.customNode === undefined) return;
-    // Expose a plain projection of records — no cloneState in metadata.
+    // Expose a plain projection of records; no cloneState in metadata.
     execution.state.setMetadata(
       'gatherResults',
       execution.records.map((r) => ({
@@ -194,7 +194,7 @@ export class GatherStrategies {
 
   /**
    * Register a strategy. Replaces any prior registration with the same
-   * `name` — last-write-wins.
+   * `name`: last-write-wins.
    */
   static register(strategy: GatherStrategy): void {
     GatherStrategies.registry.set(strategy.name, strategy);

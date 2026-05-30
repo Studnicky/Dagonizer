@@ -23,6 +23,7 @@ const SAMPLE_CHECKPOINT: CheckpointData = {
   'state': { 'metadata': {}, 'errors': [], 'warnings': [], 'value': 7 },
   'executedNodes': ['first'],
   'skippedNodes': [],
+  'stores': {},
 };
 
 void describe('MemoryCheckpointStore', () => {

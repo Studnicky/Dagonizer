@@ -4,13 +4,13 @@ description: 'Store on the services bag for cross-DAG accumulation; TypedStore f
 seeAlso:
   - text: 'DAGBuilder'
     link: './builder'
-    description: '`projection` and `gather` on `.scatter()` for compile-time child-state narrowing'
+    description: '`.embeddedDAG()` for embedding a sub-DAG once and `.scatter()` for 1→N fork over a source'
   - text: 'Checkpoint and Resume'
     link: './checkpoint'
     description: 'pair `Checkpoint.capture` with store snapshots to resume shared state alongside parent state'
   - text: 'State accessors'
     link: './state-accessor'
-    description: 'how dotted paths resolve on `projection` and `gather` paths'
+    description: 'how dotted paths resolve on `inputs` and `gather` paths'
   - text: 'Subclassing State'
     link: './subclassing'
     description: 'extend `NodeStateBase` for domain-specific parent state'
@@ -40,7 +40,7 @@ const childDag = new DAGBuilder('sub-flow', '1')
 
 const parentDag = new DAGBuilder('main-flow', '1')
   .node('step-a', stepA, { done: 'run-child' })
-  .scatter('run-child', { dag: 'sub-flow' }, { success: 'step-b', error: 'step-b' })
+  .embeddedDAG('run-child', 'sub-flow', { success: 'step-b', error: 'step-b' })
   .node('step-b', stepB, { done: null })
   .build();
 
@@ -74,17 +74,17 @@ The runnable demo wires a `MemoryStore` onto the services bag of a parent DAG wi
 
 | Need | Use | Why |
 |---|---|---|
-| Scatter body produces a value the parent consumes once | `projection` and `gather` on `.scatter()` | Single-direction, isolated, checkpoint-friendly without extra wiring |
-| Clone needs a parent field as starting input | `projection` on `.scatter()` | Parent field copied into clone state before the body runs |
+| Embed a registered sub-DAG exactly once and transfer specific fields in/out | `inputs` / `outputs` on `.embeddedDAG()` | Single-direction, isolated, checkpoint-friendly without extra wiring |
+| Scatter across an array and seed each clone with a parent field | `inputs` option on `.scatter()` (`stateMapping.input`) | Parent field copied into each clone state before the body runs |
 | Multiple nodes accumulate growing shared state (agent memory, RAG context, audit log) | `MemoryStore` (or another `Store`) on the services bag | Cross-node and cross-scatter; survives execution boundaries within a run |
 | RDF graph patterns (`RecallContextNode`, `RecordFindingsNode`, etc.) need a Store that is also a `TripleStore` | `RdfStore` from `@noocodex/dagonizer-patterns-graph` | Implements both contracts; key-value side reifies as triples; quad side exposes native RDF |
 | Known, fixed key set; compile-time safety without explicit `<T>` at every call | `TypedStore<Schema>` wrapping any `Store` | Keys and value types inferred from the schema |
 | Long-running flow that survives restart | `MemoryStore.snapshot()` via `Checkpoint.capture({ stores })` | Resume captures shared state alongside parent state |
 | Mid-flight introspection by an external observer | `Store` instance held outside the dispatcher | The same instance lives outside the topology; read it concurrently without touching execution |
 
-`projection` and `gather` are field copies at a single scatter boundary. Use them when the relationship between parent and clone is a pure transfer with a defined input and output.
+`inputs` and `outputs` on `.embeddedDAG()` (and `stateMapping.input` on `.scatter()`) are field copies at a single placement boundary. Use them when the relationship between parent and child is a pure point-to-point transfer with a defined input and output.
 
-A `Store` is a live, shared, mutable map. Use it when multiple placements accumulate to the same structure (a message list, a token budget, an event log) and that accumulation must persist across scatter boundaries without threading every value through projection/gather at every hop.
+A `Store` is a live, shared, mutable map. Use it when multiple placements accumulate to the same structure (a message list, a token budget, an event log) and that accumulation must persist across placement boundaries without threading every value through state-mapping options at every hop.
 
 ## Services-bag wiring
 
@@ -303,7 +303,7 @@ await dispatcher.resume(dagName, restored, cursor);
 - **Incompatible snapshot**: `BaseStore.restore` throws `StoreError(INCOMPATIBLE_SNAPSHOT)` when `snapshot.type` or `snapshot.version` does not match the store instance's `snapshotType` or `snapshotVersion`. Schema migration is the plugin author's responsibility; `snapshotVersion` is the hook.
 - **Extra stores in restore map**: stores present in the map but absent from the checkpoint are a no-op. The consumer added a store that was not tracked at capture time; the engine accepts this silently.
 
-Old checkpoints (from v0.10, before stores support) load cleanly. `CheckpointData.stores` is optional in the schema; `restoreStores` is a no-op when the field is absent.
+`CheckpointData.stores` is required in the schema. Checkpoints produced before stores support was added do not load.
 
 ## Distributed execution: `RemoteStore`
 

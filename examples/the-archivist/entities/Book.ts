@@ -1,5 +1,5 @@
 /**
- * Book — the catalog record vocabulary the assistant operates on.
+ * Book: the catalog record vocabulary the assistant operates on.
  *
  * Same shape as json-tology's bookstore demo (`urn:bookstore:Book`) so
  * docs that already use the bookstore vocabulary cross-reference cleanly.
@@ -29,7 +29,7 @@ export interface Book {
   /**
    * ISO 639-2 (alpha-3) language codes attributed to this book by its
    * source (e.g. `['eng']`, `['jpn']`). Empty / undefined when the
-   * source did not report a language — downstream language filters
+   * source did not report a language; downstream language filters
    * treat unknown as "do not exclude" so legacy records pass through.
    */
   readonly languages?: readonly string[];
@@ -46,7 +46,7 @@ export interface Candidate {
   readonly reason?: string;
   /**
    * Freeform key/value metadata the LLM (or scout) attached to this
-   * candidate — e.g. `{ vibe: 'liminal', confidence: 0.7, genre: 'cosmic-horror' }`.
+   * candidate, e.g. `{ vibe: 'liminal', confidence: 0.7, genre: 'cosmic-horror' }`.
    * Encouraged by the rank-candidates JSON Schema (additionalProperties:true).
    */
   readonly notes?: Readonly<Record<string, unknown>>;

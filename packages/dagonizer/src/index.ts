@@ -47,6 +47,7 @@ export type {
 export { DAGBuilder } from './builder/index.js';
 export type {
   ScatterOptionsInterface,
+  TypedEmbeddedDAGOptionsInterface,
 } from './builder/index.js';
 
 // =============================================================================
@@ -64,6 +65,7 @@ export type { EntityValidator } from './validation/index.js';
 
 export {
   ScatterNodeSchema,
+  EmbeddedDAGNodeSchema,
   GatherConfigSchema,
   DAGSchema,
   DAGLifecycleStateSchema,
@@ -92,6 +94,7 @@ export {
 } from './entities/index.js';
 export type {
   ScatterNode,
+  EmbeddedDAGNode,
   GatherConfig,
   DAG,
   DAGLifecycleStateData,
@@ -145,7 +148,7 @@ export type { DagonizerOptionsInterface, ScatterItemResult, ScatterProgress, Sto
 export { Execution } from './Execution.js';
 
 // =============================================================================
-// CORE — pluggable execution primitives
+// CORE: pluggable execution primitives
 // =============================================================================
 
 export {
@@ -194,10 +197,11 @@ export type { Instrumentation } from './contracts/Instrumentation.js';
 export type { Chainable, NodeInterface } from './contracts/NodeInterface.js';
 export type { OperationContractFragment } from './contracts/OperationContractFragment.js';
 export type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from './contracts/RemoteStore.js';
-export type { Store, StoreSnapshot, StoreSnapshotEntry } from './contracts/Store.js';
+export type { Snapshottable, StoreSnapshot, StoreSnapshotEntry } from './contracts/Snapshottable.js';
+export type { Store } from './contracts/Store.js';
 
 // =============================================================================
-// ADAPTER — LLM adapter contract, registry, and cascade selector
+// ADAPTER: LLM adapter contract, registry, and cascade selector
 // =============================================================================
 
 export {

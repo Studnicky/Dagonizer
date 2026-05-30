@@ -6,7 +6,7 @@
  * the `node:` scheme, so we alias `node:timers/promises` to this file.
  *
  * The Vue runner installs `BrowserScheduler` at mount, so this shim's
- * `setTimeout` is never actually invoked — the alias only exists to
+ * `setTimeout` is never actually invoked; the alias only exists to
  * satisfy the bundler's static-import graph. Implementing it anyway
  * costs nothing and keeps the surface honest in case anything else
  * imports it later.

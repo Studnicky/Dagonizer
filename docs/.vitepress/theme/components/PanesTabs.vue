@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * PanesTabs — tabbed container that lets Conversation / Memory / Trace
+ * PanesTabs: tabbed container that lets Conversation / Memory / Trace
  * / Logger each occupy the full center-column width when active.
  *
  * Pure presentation: the parent declares the tab labels + slot names;
@@ -9,7 +9,7 @@
  * is provided via named slots so each pane re-uses its existing SFC.
  *
  * Each tab carries a small `badge` (count, status dot) the parent may
- * compute reactively — useful to surface "the trace has new entries"
+ * compute reactively; useful to surface "the trace has new entries"
  * even when the visitor is looking at another tab.
  */
 
@@ -20,7 +20,7 @@ interface TabDef {
   readonly label: string;
   /** Optional count badge ('5', 'live'). Empty string hides the badge. */
   readonly badge?: string;
-  /** Optional tone for the badge — 'live' pulses, 'warn' uses brand3. */
+  /** Optional tone for the badge: 'live' pulses, 'warn' uses brand3. */
   readonly tone?: 'default' | 'live' | 'warn' | 'accent';
 }
 
@@ -211,7 +211,7 @@ function onKey(event: KeyboardEvent, idx: number): void {
 
 .tab-pane[hidden] { display: none; }
 
-/* Children fill the pane — they bring their own borders/padding. */
+/* Children fill the pane; they bring their own borders/padding. */
 .tab-pane > :deep(*) {
   border: 0;
   border-radius: 0;
