@@ -2,7 +2,7 @@
 seeAlso:
   - text: 'Reference: Contracts'
     link: './contracts'
-    description: '`CheckpointStore`'
+    description: '`CheckpointStore`, `Snapshottable`, `StoreSnapshot`, `StoreSnapshotEntry`'
   - text: 'Reference: Entities'
     link: './entities'
     description: '`CheckpointData`'
@@ -64,7 +64,7 @@ if (result.cursor !== null) {
 }
 ```
 
-Calling `Checkpoint.capture` without a `stores` option (or with an empty map) captures state only.
+Calling `Checkpoint.capture` without a `stores` option (or with an empty map) writes an empty `stores: {}` object. The checkpoint loads and resumes cleanly; `restoreStores` is a no-op when the map is empty.
 
 ---
 
@@ -170,10 +170,10 @@ interface RecalledCheckpoint<TState> {
 ### `ckpt.restoreStores(stores)`
 
 ```ts
-async restoreStores(stores: Readonly<Record<string, Store>>): Promise<void>
+async restoreStores(stores: Readonly<Record<string, Snapshottable>>): Promise<void>
 ```
 
-Populate each named store from the snapshots in this checkpoint. The keys in `stores` must match the names used when calling `Checkpoint.capture`.
+Populate each named store from the snapshots in this checkpoint. The keys in `stores` must match the names used when calling `Checkpoint.capture`. The parameter type is `Snapshottable` — any object that implements `snapshot()` / `restore()`, not just a key-value `Store`. `Store extends Snapshottable`, so every `Store` qualifies; non-KV backends (RDF triple stores, vector indices, append-only logs) participate without implementing `get`/`set`/`has`/`delete`/`update`.
 
 ```ts
 const freshMemory = new MemoryStore();
@@ -213,13 +213,13 @@ Any function that maps a snapshot `JsonObject` to a `TState` instance. The typic
 
 ```ts
 interface CaptureOptionsInterface {
-  readonly stores?: Readonly<Record<string, Store>>;
+  readonly stores?: Readonly<Record<string, Snapshottable>>;
 }
 ```
 
 | Field | Description |
 |-------|-------------|
-| `stores` | Named stores to snapshot alongside the state. Keys become the names in `CheckpointData.stores`; the same keys must be passed to `restoreStores()` on resume. Omit or leave empty for a state-only checkpoint. |
+| `stores` | Named stores to snapshot alongside the state. Any `Snapshottable` — `Store` instances, or any non-KV backing that implements `snapshot()` / `restore()`. Keys become the names in `CheckpointData.stores`; the same keys must be passed to `restoreStores()` on resume. Omit or leave empty for a state-only checkpoint (the `CheckpointData.stores` field is still written as an empty object `{}`). |
 
 ---
 
@@ -249,11 +249,13 @@ interface CheckpointData {
   state: Record<string, unknown>;
   executedNodes: string[];
   skippedNodes: string[];
-  stores?: Record<string, StoreSnapshot>; // present when named stores were captured
+  stores: Record<string, StoreSnapshot>; // always present; empty object {} when no stores were captured
 }
 ```
 
-The `stores` field is absent on checkpoints captured without a `stores` option. `restoreStores` treats an absent or empty `stores` field as a no-op, so state-only checkpoints load and resume cleanly.
+`stores` is a required field. `Checkpoint.capture` always writes it — as an empty object `{}` when no stores are passed, or as a keyed map of `StoreSnapshot` envelopes when stores are supplied. `Checkpoint.load` rejects any payload that lacks the field: checkpoints produced before this field was introduced do not load.
+
+`restoreStores` treats an empty `stores` field as a no-op, so state-only checkpoints resume cleanly. Named stores captured at checkpoint time must be supplied by name in the `restoreStores` map; a name present in the checkpoint but absent from the map throws `DAGError`.
 
 The `version` field tracks the wire format, independent of the DAG's own version. Increment `CHECKPOINT_DATA_VERSION` when the shape changes incompatibly.
 

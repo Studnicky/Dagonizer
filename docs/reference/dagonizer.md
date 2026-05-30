@@ -37,7 +37,7 @@ const dispatcher = new Dagonizer<MyState, MyServices>({ services: { logger, db }
 constructor(options?: DagonizerOptionsInterface<TServices>)
 ```
 
-`options.accessor` swaps the path resolver for scatter source reads, projection copies, and gather writes. Defaults to `DottedPathAccessor`. `options.services` is the typed services bag; defaults to `undefined`.
+`options.accessor` swaps the path resolver for scatter source reads, state-mapping input copies, and gather writes. Defaults to `DottedPathAccessor`. `options.services` is the typed services bag; defaults to `undefined`.
 
 ### `DagonizerOptionsInterface`
 
@@ -106,7 +106,7 @@ Registers a DAG after three validation passes:
 
 1. **Schema pass.** `Validator.dag.validate(dag)` checks structure (required fields, valid `type` and `strategy` enumerations).
 2. **Semantic pass.** Verifies entrypoint exists, all node references are resolvable, no circular scatter body references, and every registered node output has a routing entry in the placement's `outputs` map.
-3. **Contract pass.** For DAGs derived from a `nodes` registry, `ContractRegistryValidator` checks every non-entrypoint node's `hardRequired` paths against upstream producers. Dangling reads throw `DAGError`; dead writes call `onContractWarning`.
+3. **Contract pass.** For DAGs derived from a `nodes` registry, `ContractRegistryValidator` checks data-flow correctness. The entrypoint node's `hardRequired` paths are treated as the flow's ambient external state — any node may read those keys without an upstream producer, so multi-root topologies (several nodes reading the initial input) validate. Dangling reads (a non-entrypoint node requires a path no upstream node produces) throw `DAGError`; dead writes call `onContractWarning`.
 
 Throws `DAGError` with a multi-line message listing all failures.
 
@@ -257,9 +257,9 @@ Six protected no-op methods. Subclass `Dagonizer` and override to attach metrics
 ```ts
 protected onFlowStart(dagName: string, state: TState): void
 protected onFlowEnd(dagName: string, state: TState, result: ExecutionResultInterface<TState>): void
-protected onNodeStart(nodeName: string, state: TState): void
-protected onNodeEnd(nodeName: string, output: string | undefined, state: TState): void
-protected onError(nodeName: string, error: Error, state: TState): void
+protected onNodeStart(nodeName: string, state: TState, placementPath: readonly string[]): void
+protected onNodeEnd(nodeName: string, output: string | null, state: TState, placementPath: readonly string[]): void
+protected onError(nodeName: string, error: Error, state: TState, placementPath: readonly string[]): void
 protected onContractWarning(message: string): void
 ```
 
@@ -268,9 +268,11 @@ protected onContractWarning(message: string): void
 | `onFlowStart` | After `state.markRunning()`, before the first node |
 | `onFlowEnd` | After the final node (all paths: normal, cancelled, failed) |
 | `onNodeStart` | Before `node.execute()` for each node entry point |
-| `onNodeEnd` | After each node resolves, before the result is yielded |
+| `onNodeEnd` | After each node resolves, before the result is yielded; `output` is `string \| null` (`null` = no route emitted) |
 | `onError` | When the signal fires or a node throws |
 | `onContractWarning` | When `ContractRegistryValidator` detects a dead-write during `registerDAG` |
+
+`placementPath` is the ordered array of parent embedded-DAG placement names leading to the current node. Top-level nodes receive `[]`; a node inside an `EmbeddedDAGNode` named `'search'` receives `['search']`. The full cytoscape-style node id is `[...placementPath, nodeName].join('/')`.
 
 See [Observability](/guide/observability) for usage examples. See [catching contract drift](../guide/derive.md#catching-contract-drift) for `onContractWarning` usage.
 
@@ -298,10 +300,16 @@ const SCATTER_PROGRESS_KEY: '__dagonizer_scatter_progress__'
 Reserved metadata key used by the scatter executor to persist per-item resume bookkeeping. Consumer nodes must not write to this key. The stored value is a `StoredScatterProgress` map keyed by the scatter placement's `name`.
 
 ```ts
+interface ScatterItemResult {
+  readonly index:          number;
+  readonly output:         string;
+  readonly mappingValues?: Readonly<Record<string, unknown>>;
+  readonly fieldValue?:    unknown;
+}
 interface ScatterProgress {
   readonly placementName:    string;
   readonly completedIndices: readonly number[];
-  readonly itemResults:      readonly { readonly index: number; readonly output: string }[];
+  readonly itemResults:      readonly ScatterItemResult[];
 }
 type StoredScatterProgress = Readonly<Record<string, ScatterProgress>>;
 ```

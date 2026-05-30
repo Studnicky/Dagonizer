@@ -38,15 +38,15 @@ seeAlso:
 
 # The Archivist
 
-The Archivist is the running demo every Dagonizer example refers to. It is a bookstore help-bot: a visitor describes a book or asks for a recommendation, and the Archivist composes a response by classifying the question, fanning out across the shop's local catalog and an external RAG provider, merging the candidates, and composing plus validating a draft response in a bounded retry loop.
+The Archivist is the running demo every Dagonizer example refers to. It is a bookstore help-bot: a visitor describes a book or asks for a recommendation, and the Archivist composes a response by classifying the question, scattering four parallel scouts across the shop's local catalog and external sources, merging the candidates, and composing plus validating a draft response in a bounded retry loop.
 
 Try it live below; the demo runs in your browser. The runner uses an `LlmAdapterCascade` over the providers below and surfaces which one is answering. Cloud-first when keys are present (Groq, Cerebras, Gemini API, Mistral, OpenRouter), local-first when reachable (Ollama on desktop), then on-device fallbacks (Gemini Nano, WebLLM), with the offline stub as the last resort. Intent classification runs through a parallel `EmbedderCascade` (Ollama, Gemini API, Mistral) when an embedder is reachable; otherwise the LLM classifies directly.
 
-The Archivist exercises scatter placements in two forms: `body: { dag }` singletons for the three search branches and the compose loop, and `body: { node }` with `source` for the within-branch parallel scouts.
+The Archivist exercises two placement types for nested DAG execution: `EmbeddedDAGNode` for the three search branches and the compose loop (cardinality 1), and `ScatterNode` with `source` for the within-branch parallel scouts (one clone per item).
 
 <ArchivistRunner />
 
-Watch the **DAG** pane: each node lights cyan while executing, then settles to "completed" with the taken edge highlighted. The **Memory** pane mirrors `state.intent`, `state.terms`, `state.shortlist`, `state.attempts.compose` as the dispatcher mutates them. Everything is driven by the dispatcher's `onFlowStart`, `onNodeStart`, `onNodeEnd`, `onError`, `onFlowEnd` hooks; there is no timer-based animation, the runner is a pure observer of the state machine.
+Watch the **DAG** pane: each node lights cyan while executing, then settles to "completed" with the taken edge highlighted. The **Memory** pane mirrors `state.intent`, `state.terms`, `state.shortlist`, and the compose retry budget (`state.retriesFor('compose')`) as the dispatcher mutates them. Everything is driven by the dispatcher's `onFlowStart`, `onNodeStart`, `onNodeEnd`, `onError`, `onFlowEnd` hooks; there is no timer-based animation, the runner is a pure observer of the state machine.
 
 ## Branches and gates
 
@@ -55,10 +55,10 @@ Three exit conditions, each carrying a different outcome.
 | Path | Trigger | Terminal node | What happens |
 |------|---------|---------------|--------------|
 | **Off-topic hard gate** | `classifyIntent` returns `off-topic` | `decline-off-topic` | Politely redirects the visitor to a book-related question. |
-| **Empty soft gate** | `mergeCandidates` produces zero candidates | `decline-empty` | Asks the visitor for more detail; collects a `EMPTY_SHORTLIST` warning. |
+| **Empty soft gate** | `mergeCandidates` produces zero candidates | `compose-empty` | Composes an in-character "nothing came back" message; collects a `EMPTY_SHORTLIST` warning. |
 | **Best-effort response** | `validateResponse` exhausts `MAX_COMPOSE_ATTEMPTS` | `respond-to-visitor` | Sends the last draft anyway; the dispatcher never throws. |
 | **Approved response** | `validateResponse` returns `approved` | `respond-to-visitor` | Normal happy path. |
-| **Retry loop** | `validateResponse` returns `retry` | back to `compose-response` | Bounded by the counter on `state.attempts.compose`. |
+| **Retry loop** | `validateResponse` returns `retry` | back to `compose-response` | Bounded by the retry budget on state (`state.retriesFor('compose')`). |
 
 ## Backends
 
@@ -176,28 +176,28 @@ The eight per-phase example pages each isolate one Dagonizer feature against thi
 | 01 | Linear intake + terminal routing | [Phase 01 · Linear intake](./01-linear) |
 | 02 | DAGBuilder authoring | [Phase 02 · DAGBuilder](./02-builder) |
 | 03 | Tool schema design (JSON Schema 2020-12 inputSchema) | [Phase 03 · Tool schemas](./03-schema) |
-| 04 | Scatter scout with partition gather | [Phase 04 · Scatter scout](./04-fanout) |
-| 05 | Scatter sub-DAG composition | [Phase 05 · Scatter sub-DAG composition](./05-embedded-dags) |
+| 04 | Scatter scout with partition gather | [Phase 04 · Scatter scout](./04-scatter) |
+| 05 | EmbeddedDAGNode composition | [Phase 05 · EmbeddedDAGNode composition](./05-embedded-dags) |
 | 06 | Abortable visitor request | [Phase 06 · Cancellation](./06-cancellation) |
-| 07 | RetryPolicy against the LLM composer | [Phase 07 · Retry](./07-retry) |
+| 07 | Retry as a flow shape (retry/salvage loop) | [Phase 07 · Retry](./07-retry) |
 | 08 | Checkpoint mid-draft and resume | [Phase 08 · Checkpoint + resume](./08-checkpoint) |
 
 Every page starts from the same `ArchivistState` + `services` + node set; only the DAG variation and the registered subset change.
 
-## Compositional scatter sub-DAGs
+## Compositional embedded-DAG sub-DAGs
 
-The Archivist's DAG is composed of two reusable sub-DAGs that ship as independent components. Each is a `DAG` value any consumer can import, register, and reference via `.scatter(name, { dag: name }, routes, options)`.
+The Archivist's DAG is composed of two reusable sub-DAGs that ship as independent components. Each is a `DAG` value any consumer can import, register, and reference via `.embeddedDAG(name, dagName, routes, options)`.
 
-- **`book-search-fanout`**: extract-query, decide-tools, 4-source parallel scout cluster (OpenLibrary, Google Books, Subject, Wikipedia), rank-candidates, merge-candidates, record-findings, has-citations-gate, recall-past-visits. Used in three intent branches (`on-topic-search`, `author-search`, `similar-search`); one definition, three scatter placements.
-- **`compose-retry-loop`**: compose-response, validate-response (with bounded retry loop back to compose), respond-to-visitor. Every successful search branch funnels through this one shared cluster.
+- **`book-search-scatter`**: extract-query, decide-tools, 4-source parallel scout cluster (OpenLibrary, Google Books, Subject, Wikipedia), rank-candidates, merge-candidates, record-findings, has-citations-gate, recall-past-visits. Used in three intent branches (`on-topic-search`, `author-search`, `similar-search`); one definition, three embedded-DAG placements.
+- **`compose-retry-loop`**: compose-response and validate-response, with a bounded retry edge back to compose and a `compose-salvage` recovery node. The sub-DAG produces `state.draft` and exits with `success`; the parent DAG owns the shared `respond-to-visitor` terminal. Every successful search branch funnels through this one shared cluster.
 
-The renderer expands both sub-DAGs inline in the diagram. Compound-graph children render inside the scatter placement box so the full topology is visible. No opaque boxes.
+The renderer expands both sub-DAGs inline in the diagram. Compound-graph children render inside the embedded-DAG placement box so the full topology is visible. No opaque boxes.
 
 Reviews and describe branches are inlined in the parent DAG because they substitute `rankByRating` and `pickBestMatch` for `rankCandidates` respectively; the structural variation is explicit rather than hidden behind a sub-DAG parameter.
 
-### BookSearchFanoutDAG
+### BookSearchScatterDAG
 
-<<< ../../examples/the-archivist/embedded-dags/BookSearchFanoutDAG.ts
+<<< ../../examples/the-archivist/embedded-dags/BookSearchScatterDAG.ts
 
 ### ComposeRetryLoopDAG
 
@@ -226,10 +226,10 @@ Embedded-DAG placements in the JSON-LD output look like:
 
 ```json
 {
-  "@type": "ScatterNode",
+  "@type": "EmbeddedDAGNode",
   "name": "on-topic-search",
-  "body": { "dag": "book-search-fanout" },
-  "outputs": { "success": "compose-loop", "error": "decline-empty" }
+  "dag": "book-search-scatter",
+  "outputs": { "success": "compose-loop", "error": "compose-empty" }
 }
 ```
 

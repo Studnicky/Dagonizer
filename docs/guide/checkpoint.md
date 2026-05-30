@@ -50,7 +50,7 @@ const elements = CytoscapeRenderer.render(dag) as ElementDefinition[];
 | `ckpt.toJson()` | instance method | Serializes to a JSON string |
 | `ckpt.persist(store, key)` | instance method | Writes via a `CheckpointStore` |
 | `ckpt.restoreState(fn)` | instance method | Rehydrates `{ dagName, state, cursor }` |
-| `ckpt.restoreStores(map)` | instance method | Restores named stores from the envelope |
+| `ckpt.restoreStores(map)` | instance method | Restores named stores (any `Snapshottable`) from the envelope |
 | `dispatcher.resume(dagName, state, cursor)` | `@noocodex/dagonizer` | Resumes the flow at `cursor` |
 
 ## DAG that drives the example
@@ -85,9 +85,22 @@ When a DAG stops early (cancellation, timeout, error), `result.cursor` holds the
 
 `dispatcher.resume` continues the flow at the cursor and runs the remaining nodes. The dispatcher does not re-execute completed nodes; the recorded `executedNodes` and `skippedNodes` survive the round-trip.
 
+## Named stores ride along
+
+`Checkpoint.capture(dagName, result, { stores })` snapshots named stores into the checkpoint envelope alongside the state, and `ckpt.restoreStores(map)` repopulates fresh instances on resume:
+
+```ts
+const ckpt = await Checkpoint.capture('my-dag', result, { stores: { memory } });
+// …persist, then on resume:
+const fresh = new MyStore();
+await recalled.restoreStores({ memory: fresh });
+```
+
+Both take `Record<string, Snapshottable>` — the capability, not the key-value `Store` surface. A non-KV backing (an RDF triple store, a vector index) checkpoints by implementing `snapshot()` / `restore()` only. A name present in the checkpoint but absent from the restore map throws `DAGError`; an extra name in the map is a no-op. See [Store, `Snapshottable`](../reference/store).
+
 ## `NodeStateBase.snapshot()` and `snapshotData()`
 
-`snapshot()` captures metadata, errors, and warnings. Domain fields are excluded unless the subclass overrides `snapshotData()`:
+`snapshot()` captures metadata, errors, warnings, and the retry budget (`retries`). Domain fields are excluded unless the subclass overrides `snapshotData()`:
 
 ```ts
 class PipelineState extends NodeStateBase {

@@ -21,7 +21,8 @@ A registered `NodeInterface` (the consumer-implemented unit of work) is referenc
 |---|---|---|---|
 | `SingleNode` | `SingleNodeSchema` | `SingleNode`, `SingleNodePlacementInterface<TOutput>` | Run one registered node; route per output |
 | `ParallelNode` | `ParallelNodeSchema` | `ParallelNode` | Run a group of single-node placements concurrently; combine outputs |
-| `ScatterNode` | `ScatterNodeSchema` | `ScatterNode` | Isolate a clone, run a body (node or sub-DAG), gather produced state, route on aggregate outcome |
+| `ScatterNode` | `ScatterNodeSchema` | `ScatterNode` | Isolate one clone per source-array item, run a node body, gather produced state, route on aggregate outcome |
+| `EmbeddedDAGNode` | `EmbeddedDAGNodeSchema` | `EmbeddedDAGNode` | Invoke a registered sub-DAG exactly once (cardinality 1); route on the child's terminal outcome |
 | `TerminalNode` | `TerminalNodeSchema` | `TerminalNode`, `TerminalNodePlacementInterface` | End the flow with an explicit `outcome` |
 | `PhaseNode` | `PhaseNodeSchema` | `PhaseNode`, `PhaseNodePlacementInterface` | Pre/post lifecycle hook running outside the main loop |
 
@@ -96,7 +97,7 @@ import { ScatterNodeSchema } from '@noocodex/dagonizer/entities';
 import type { ScatterNode } from '@noocodex/dagonizer/entities';
 ```
 
-Generate-collect pattern (source present — one clone per array item):
+Generate-collect pattern (one clone per source-array item):
 
 ```json
 {
@@ -112,37 +113,57 @@ Generate-collect pattern (source present — one clone per array item):
 }
 ```
 
-Singleton pattern (source absent — one clone, sub-DAG body):
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `@id` | `string` | yes | Placement URN |
+| `@type` | `'ScatterNode'` | yes | Discriminator |
+| `name` | `string` | yes | Placement name |
+| `body` | `{ node: string }` | yes | Body: registered node name |
+| `outputs` | `Record<string, string \| null>` | yes | Routes for the reduced outcome |
+| `source` | `string` | yes | Dotted state-array path. One clone runs per item. |
+| `itemKey` | `string` | no | Metadata key bound to the current item per clone (default `'currentItem'`). |
+| `concurrency` | `number` | no | Batch size for `Promise.all` (default: source length). |
+| `stateMapping` | `{ input?: Record<childKey, parentPath> }` | no | Seeds each clone: `input` copies parent fields into the clone before the body runs. Authored via the `inputs` builder option. |
+| `gather` | `GatherConfig` | no | How produced clone state merges back into the parent. |
+| `reducer` | `string` | no | Outcome reducer name. Defaults to `'aggregate'`. |
+
+`GatherConfig` is documented under [Gather configuration](#gather-configuration) below.
+
+Per-item resume bookkeeping is persisted under the reserved metadata key `SCATTER_PROGRESS_KEY` so a checkpoint-resume cycle skips clones completed in the prior run.
+
+---
+
+## `EmbeddedDAGNode`
+
+```ts
+import { EmbeddedDAGNodeSchema } from '@noocodex/dagonizer/entities';
+import type { EmbeddedDAGNode } from '@noocodex/dagonizer/entities';
+```
 
 ```json
 {
-  "@id":     "urn:noocodex:dag:parent/node/enrich",
-  "@type":   "ScatterNode",
-  "name":    "enrich",
-  "body":    { "dag": "enrich-pipeline" },
-  "projection": { "query": "request.query" },
-  "gather":  { "strategy": "map", "mapping": { "results.candidates": "candidates" } },
-  "outputs": { "success": "rank", "error": null }
+  "@id":     "urn:noocodex:dag:parent/node/run-child",
+  "@type":   "EmbeddedDAGNode",
+  "name":    "run-child",
+  "dagName": "child-pipeline",
+  "outputs": { "success": "next-step", "error": null },
+  "stateMapping": {
+    "input":  { "payload": "user.name" },
+    "output": { "user.result": "result" }
+  }
 }
 ```
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `@id` | `string` | yes | Placement URN |
-| `@type` | `'ScatterNode'` | yes | Discriminator |
+| `@type` | `'EmbeddedDAGNode'` | yes | Discriminator |
 | `name` | `string` | yes | Placement name |
-| `body` | `{ node: string } \| { dag: string }` | yes | Body: registered node name or registered DAG name |
-| `outputs` | `Record<string, string \| null>` | yes | Routes for the reduced outcome |
-| `source` | `string` | no | Dotted state-array path. Absent ⇒ one clone (singleton). |
-| `itemKey` | `string` | no | Metadata key bound to the current item per clone (default `'currentItem'`). Meaningful only with `source`. |
-| `concurrency` | `number` | no | Batch size for `Promise.all` (default: source length). Meaningful only with `source`. |
-| `projection` | `Record<string, string>` | no | Parent → clone field copy before the body runs. Keys are clone paths; values are parent paths. |
-| `gather` | `GatherConfig` | no | How produced clone state merges back into the parent. |
-| `reducer` | `string` | no | Outcome reducer name. Defaults to `'aggregate'` with source, `'terminal'` without. |
+| `dagName` | `string` | yes | Registered sub-DAG name to invoke (cardinality 1) |
+| `outputs` | `Record<'success' \| 'error', string \| null>` | yes | Routes for the child's terminal outcome |
+| `stateMapping` | `{ input?: Record<string, string>; output?: Record<string, string> }` | no | `input` copies parent fields into the child before it runs (child-key ← parent-path); `output` copies child fields back into the parent after it completes (parent-path ← child-key). |
 
-`GatherConfig` is documented under [Gather configuration](#gather-configuration) below.
-
-Per-item resume bookkeeping is persisted under the reserved metadata key `SCATTER_PROGRESS_KEY` so a checkpoint-resume cycle skips clones completed in the prior run.
+`EmbeddedDAGNode` invokes a registered sub-DAG exactly once (cardinality 1). It is the embedding primitive: the parent flow suspends, the child DAG runs to completion in an isolated state, and the parent routes on the child's terminal outcome (`success` when the child lifecycle is `completed`; `error` when `failed`). Authored via `.embeddedDAG(name, dagName, routes, { inputs, outputs })` on `DAGBuilder`, or via the `embeddedDAGs` annotation on `DAGDeriver.derive`.
 
 ---
 

@@ -182,7 +182,7 @@ function dispatch(event: DagVizEvent): void {
  *
  * Single-node follow caused jitter when nodes fired faster than the
  * 480 ms animation duration: each new follow interrupted the prior
- * animation, producing visible jumps. Worse, parallel fan-outs (four
+ * animation, producing visible jumps. Worse, parallel scouts (four
  * scouts firing at once) made the camera bounce between them.
  *
  * Strategy: track the SET of currently-active node ids. On any
@@ -496,7 +496,7 @@ function dagStylesheet(): unknown[] {
       'transition-property': 'border-color, border-width, background-color, color, opacity',
       'transition-duration': 220,
     } },
-    { selector: 'node[type="fan-out"]',  style: { 'shape': 'concave-hexagon' } },
+    { selector: 'node[type="scatter"]',  style: { 'shape': 'concave-hexagon' } },
     { selector: 'node[type="parallel"]', style: {
       'shape':            'round-hexagon',
       'background-color': '#04060a',           // --mermaid-cluster-fill (deepest navy)
@@ -632,6 +632,36 @@ function dagStylesheet(): unknown[] {
       'width':              3,
       'color':              '#22e8ff',
       'text-border-color':  '#22e8ff',
+    } },
+
+    // Retry routes — a bounded flow-shape loop. When source === target (a node
+    // retrying itself, e.g. extract-query) the taxi curve has no lane, so
+    // switch to a bezier loop and give it a definite direction/sweep so the
+    // arc reads as a self-loop instead of a degenerate stub. Amber + dashed
+    // marks it as the "try again" edge, distinct from the teal happy path.
+    // (Also styles the compose→validate back-edge, which shares the 'retry'
+    // route name — a 2-node loop the same colouring suits.)
+    { selector: 'edge.route-retry', style: {
+      'curve-style':        'bezier',
+      'loop-direction':     '-45deg',
+      'loop-sweep':         '-90deg',
+      'control-point-step-size': 56,
+      'line-style':         'dashed',
+      'line-color':         '#f5a623',
+      'target-arrow-color': '#f5a623',
+      'color':              '#f5a623',
+      'text-border-color':  '#f5a623',
+    } },
+
+    // Salvage routes — the give-up edge to a deterministic recovery node.
+    // Rose + dashed so the "exhausted, recover" path is legible at a glance
+    // and clearly not the success route.
+    { selector: 'edge.route-salvage', style: {
+      'line-style':         'dashed',
+      'line-color':         '#e8556d',
+      'target-arrow-color': '#e8556d',
+      'color':              '#e8556d',
+      'text-border-color':  '#e8556d',
     } },
   ];
 }

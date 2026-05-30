@@ -166,6 +166,40 @@ const final = await dispatcher.resume(dagName, s2, cursor);
 // final.state.count === 3, final.state.log.length === 3
 ```
 
+## Retry-attempt tracking
+
+`NodeStateBase` carries a retry counter keyed by a routing name (typically `context.nodeName`). Retry is a flow shape: the counter lives in state, the loop edge lives in the DAG topology. Nodes do not contain retry logic; they call `state.withinRetryBudget(key, max)` to decide which output to return and the DAG wires the edge back to the failing node.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `recordAttempt` | `(key: string): number` | Increment and return the new attempt count for `key`. |
+| `retriesFor` | `(key: string): number` | Current attempt count for `key` (`0` when never recorded). |
+| `clearAttempts` | `(key: string): void` | Reset the counter for `key`. Call on success so a reused placement starts fresh. |
+| `withinRetryBudget` | `(key: string, maxAttempts: number): boolean` | Record one attempt and return `true` if still within budget (`→ retry` output) or `false` if exhausted (`→ salvage`). |
+
+A typical node that participates in a retry loop:
+
+```ts
+import type { NodeInterface } from '@noocodex/dagonizer';
+
+const fetchNode: NodeInterface<MyState, 'success' | 'retry' | 'salvage'> = {
+  name: 'fetch',
+  outputs: ['success', 'retry', 'salvage'],
+  async execute(state, context) {
+    try {
+      state.data = await fetch('/api', { signal: context.signal }).then((r) => r.json());
+      state.clearAttempts(context.nodeName);
+      return { output: 'success' };
+    } catch {
+      const canRetry = state.withinRetryBudget(context.nodeName, 3);
+      return { output: canRetry ? 'retry' : 'salvage' };
+    }
+  },
+};
+```
+
+The DAG topology provides the loop — the `retry` output edges back to `fetch`; `salvage` routes forward to a recovery node. The counter is included in `snapshot()` (under the `retries` map in `NodeStateData`), so a retry budget survives checkpoint and resume.
+
 ## Related reference
 
 - [Reference, Lifecycle](../reference/lifecycle)

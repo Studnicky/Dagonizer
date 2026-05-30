@@ -4,9 +4,9 @@ description: 'The Archivist demo end-to-end: dispatcher wiring, molecular sub-DA
 seeAlso:
   - text: 'Running domain: The Archivist'
     link: './the-archivist'
-  - text: 'Phase 04: Fan-out scout'
-    link: './04-fanout'
-    description: 'the `book-search-fanout` sub-DAG internals'
+  - text: 'Phase 04: Scatter scout'
+    link: './04-scatter'
+    description: 'the `book-search-scatter` sub-DAG internals'
   - text: 'DAGBuilder'
     link: '../guide/builder'
   - text: 'Reference: Dagonizer'
@@ -19,12 +19,12 @@ seeAlso:
 import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
 import type { ElementDefinition } from 'cytoscape';
 import { archivistDAG } from '@archivist/dag.ts';
-import { BookSearchFanoutDAG } from '@archivist/embedded-dags/BookSearchFanoutDAG.ts';
+import { BookSearchScatterDAG } from '@archivist/embedded-dags/BookSearchScatterDAG.ts';
 import { ComposeRetryLoopDAG } from '@archivist/embedded-dags/ComposeRetryLoopDAG.ts';
 
 const elements = CytoscapeRenderer.render(archivistDAG, {
   embeddedDAGs: new Map([
-    ['book-search-fanout', BookSearchFanoutDAG],
+    ['book-search-scatter', BookSearchScatterDAG],
     ['compose-retry-loop', ComposeRetryLoopDAG],
   ]),
 }) as ElementDefinition[];
@@ -44,7 +44,7 @@ The `#linear-run` region covers the dispatcher construction, molecular sub-DAG r
 
 ## What it demonstrates
 
-- **Molecular registration order.** Sub-DAG nodes must be registered before their DAG is registered (`registerBookSearchFanoutNodes` then `dispatcher.registerDAG(BookSearchFanoutDAG)`), and both sub-DAGs before the parent `archivistDAG`. The dispatcher validates all node references at registration time.
+- **Bundle registration order.** Each sub-DAG ships a `DispatcherBundle` (its nodes plus its DAG); `dispatcher.registerBundle(bundle)` installs every node before the DAG. Register the embedded-DAG bundles (`bookSearchScatterBundle`, `composeRetryLoopBundle`) before the parent `archivistBundle`. The dispatcher validates all node references at registration time.
 - **Single execute call.** `dispatcher.execute('the-archivist', visitor)` drives the entire multi-branch flow. The caller sees one `ExecutionResult<ArchivistState>` containing the final state and lifecycle.
 - **Lifecycle result.** `result.state.lifecycle.kind` is `'completed'`, `'cancelled'`, or `'timed_out'`. Nodes never throw; the dispatcher always returns.
 - **Services bag.** Every node receives `context.services` (LLM, search tools, memory, logger). Nodes never construct their own clients.

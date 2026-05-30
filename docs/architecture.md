@@ -83,7 +83,8 @@ flowchart TB
     direction TB
     A[single] --> B[one registered node, output-routed]
     C[parallel] --> D[concurrent nodes, combine then route]
-    E[scatter] --> F[isolate clone, run body, gather, reduce route]
+    E[scatter] --> F[one clone per source item, gather, reduce route]
+    G[embedded] --> H[sub-DAG once, route on child outcome]
   end
 ```
 
@@ -91,7 +92,9 @@ flowchart TB
 
 **`parallel`**, a named group of previously declared `single` entries. The dispatcher runs them with `Promise.all`, then applies a combine strategy (`all-success`, `any-success`, or `collect`) to produce a single routing output.
 
-**`scatter`** isolates a state clone, runs a `body` (a registered node or a registered sub-DAG) in it, merges the clone back into the parent via a `gather` strategy, and routes on the aggregate outcome via an outcome `reducer`. When `source` is absent, exactly one clone runs (singleton / sub-DAG pattern). When `source` is present, one clone runs per item in the named array (generate-collect pattern). Gather strategies: `map`, `append`, `partition`, `custom`. Default reducer: `aggregate` when `source` is present, `terminal` when absent.
+**`scatter`** isolates one state clone per item in a source array (`source` is required), runs a node body in each clone, merges produced clone state back into the parent via a `gather` strategy, and routes on the aggregate outcome via an outcome `reducer`. Gather strategies: `map`, `append`, `partition`, `custom`. Default reducer: `aggregate`.
+
+**`embedded`** invokes a registered sub-DAG exactly once (cardinality 1) in an isolated state and routes the parent on the child's terminal outcome (`success` or `error`). Optional `stateMapping.input` seeds child fields from the parent before the child runs; `stateMapping.output` copies child fields back into the parent after it completes.
 
 ## Sample three-node DAG
 
@@ -174,7 +177,7 @@ initialState travels through each node's execute(state, context)
     │  (nodes mutate state in place)
     ▼
 scatter clones get a clone of state (metadata copied, lifecycle reset)
-optional projection seeds clone fields from parent paths before the body runs
+optional stateMapping.input seeds clone fields from parent paths before the body runs
     │
     ▼
 result.state === initialState  // same reference

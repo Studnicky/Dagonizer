@@ -100,9 +100,9 @@ At `registerDAG` time the engine verifies that every `PhaseNode.node` resolves t
 For every phase placement the dispatcher invokes:
 
 ```ts
-instrumentation.phaseEnter(dagName, 'pre' | 'post', placementName, state);
+instrumentation.phaseEnter(dagName, 'pre' | 'post', placementName, state, placementPath);
 // ... await node.execute(state, context)
-instrumentation.phaseExit(dagName,  'pre' | 'post', placementName, state);
+instrumentation.phaseExit(dagName,  'pre' | 'post', placementName, state, placementPath);
 ```
 
 See [Observability](./observability) for the full instrumentation surface.
