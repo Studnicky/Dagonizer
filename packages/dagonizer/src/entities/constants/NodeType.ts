@@ -1,10 +1,10 @@
 /**
- * NodeType — node type identifiers used in flow configurations.
+ * NodeType: node type identifiers used in flow configurations.
  *
- *   embedded — a nested DAG invocation with optional state mapping; cardinality 1
- *   single   — a single node placement
- *   parallel — a group of nodes executing concurrently
- *   scatter  — a body forked over a source array (one clone per item)
+ *   embedded: a nested DAG invocation with optional state mapping; cardinality 1
+ *   single: a single node placement
+ *   parallel: a group of nodes executing concurrently
+ *   scatter: a body forked over a source array (one clone per item)
  */
 
 import type { FromSchema } from 'json-schema-to-ts';

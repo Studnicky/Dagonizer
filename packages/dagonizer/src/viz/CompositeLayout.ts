@@ -1,5 +1,5 @@
 /**
- * CompositeLayout — bottom-up composite DAG layout via @dagrejs/dagre.
+ * CompositeLayout: bottom-up composite DAG layout via @dagrejs/dagre.
  *
  * Cytoscape-dagre's compound layout is broken for embedded-DAG compounds:
  * children render in inverted order and compounds overlap predecessors.
@@ -16,7 +16,7 @@
  * Final positions are applied by the caller via cytoscape's built-in preset
  * layout, which places each node at its `position` field value. Cytoscape
  * draws compound containers automatically around children given their absolute
- * positions — no compound layout plugin required.
+ * positions; no compound layout plugin required.
  *
  * Static class. Synchronous.
  */
@@ -48,7 +48,7 @@ export interface LayoutResult {
   readonly height: number;
 }
 
-/** Layout tuning knobs — all optional, sensible defaults apply. */
+/** Layout tuning knobs (all optional; sensible defaults apply). */
 export interface CompositeLayoutOptions {
   /** Vertical gap between ranks (dagre ranksep). Default 80. */
   readonly rankSep?: number;
@@ -244,7 +244,7 @@ export class CompositeLayout {
       g.setNode(nodeId, { "width": w, "height": h });
     }
 
-    // Register edges. Skip null targets (terminals) — no edge needed for layout.
+    // Register edges. Skip null targets (terminals); no edge needed for layout.
     // Also skip edges to/from parallel children (they're inside the compound).
     for (const placement of dag.nodes as readonly PlacementEntry[]) {
       if (parallelChildren.has(placement.name)) continue;

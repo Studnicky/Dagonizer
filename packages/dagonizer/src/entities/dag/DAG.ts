@@ -1,5 +1,5 @@
 /**
- * DAG — top-level DAG declaration in JSON-LD 1.1 canonical form.
+ * DAG: top-level DAG declaration in JSON-LD 1.1 canonical form.
  *
  * A DAG document is JSON-LD natively. The `@context` field identifies the
  * ontology namespace; `@id` is the URN; `@type` is the RDF class. Node
@@ -10,7 +10,7 @@
  * / `ScatterNodeSchema` / `EmbeddedDAGNodeSchema` exports remain available for
  * per-shape validation.
  *
- * Key mapping strategy — type-scoped contexts (JSON-LD 1.1):
+ * Key mapping strategy via type-scoped contexts (JSON-LD 1.1):
  *   The JSON key `nodes` appears at two levels with different meanings:
  *     - DAG root: array of placement objects → IRI `dag/nodes`
  *     - ParallelNode: array of child node name strings → IRI `dag/parallelNodes`
@@ -36,17 +36,17 @@ const NS = 'https://noocodex.dev/ontology/dag/';
  * Canonical `@context` for DAG JSON-LD documents (JSON-LD 1.1).
  *
  * Classes:
- *   DAG           — top-level DAG document
- *   Placement     — abstract superclass of all node placement shapes
- *   SingleNode    — single-node placement (`@type: 'SingleNode'`)
- *   ParallelNode  — concurrent-node placement (`@type: 'ParallelNode'`); carries
- *                   a nested type-scoped `@context` that remaps the `nodes`
- *                   key to `dag/parallelNodes` within ParallelNode objects.
- *   ScatterNode   — scatter placement (`@type: 'ScatterNode'`): isolate a state
- *                   clone, run a body (`{node}` or `{dag}`) per item, gather the
- *                   produced clone state back into the parent, route on outcome.
+ *   DAG: top-level DAG document
+ *   Placement: abstract superclass of all node placement shapes
+ *   SingleNode: single-node placement (`@type: 'SingleNode'`)
+ *   ParallelNode: concurrent-node placement (`@type: 'ParallelNode'`); carries
+ *                 a nested type-scoped `@context` that remaps the `nodes`
+ *                 key to `dag/parallelNodes` within ParallelNode objects.
+ *   ScatterNode: scatter placement (`@type: 'ScatterNode'`): isolate a state
+ *                clone, run a body (`{node}` or `{dag}`) per item, gather the
+ *                produced clone state back into the parent, route on outcome.
  *
- * Properties follow the DAG schema field names exactly — no wire-level renames.
+ * Properties follow the DAG schema field names exactly; no wire-level renames.
  */
 export const DAG_CONTEXT: Record<string, unknown> = {
   '@version': 1.1,

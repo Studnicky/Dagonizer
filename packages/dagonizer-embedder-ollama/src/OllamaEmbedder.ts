@@ -1,9 +1,9 @@
 /**
- * OllamaEmbedder — local-first embeddings via Ollama's `/api/embeddings`
+ * OllamaEmbedder: local-first embeddings via Ollama's `/api/embeddings`
  * endpoint. Mirrors `OllamaApiAdapter` (its sibling under the `adapter`
  * surface) on construction shape and probe behaviour.
  *
- * Wire format (Ollama native — no OpenAI-compatible alternative for
+ * Wire format (Ollama native; no OpenAI-compatible alternative for
  * embeddings as of this writing):
  *
  *   POST {baseUrl}/api/embeddings
@@ -14,7 +14,7 @@
  * Dimensions are model-dependent. Pulled inline from a small table so
  * the registered `dimensions` matches the wire output without a probe
  * round-trip at construction time. Unknown models fall through to the
- * `nomic-embed-text` default (768) — consumers can override by passing
+ * `nomic-embed-text` default (768); consumers can override by passing
  * a known dimension via `options.dimensions`.
  *
  * Probe: GET `/api/tags` with a short timeout. Same surface the chat
@@ -32,7 +32,7 @@ const PROBE_TIMEOUT_MS = 500;
 /**
  * Known model → output dimensionality. Sourced from each model card on
  * the Ollama library. When the consumer pulls a model not listed here
- * they must supply `dimensions` explicitly — the runtime probe-call
+ * they must supply `dimensions` explicitly; the runtime probe-call
  * shortcut isn't worth a round-trip on every adapter construction.
  */
 const KNOWN_DIMENSIONS: Readonly<Record<string, number>> = {
@@ -65,7 +65,7 @@ export class OllamaEmbedder extends BaseEmbedder {
   readonly #model: string;
 
   /**
-   * Constructor: `(model, options?)`. `model` is required — Ollama
+   * Constructor: `(model, options?)`. `model` is required. Ollama
    * embedding models are pulled per-host and there's no portable
    * default; the consumer names the model they've pulled. Pass
    * `'nomic-embed-text'` for the common default.
@@ -114,7 +114,7 @@ export class OllamaEmbedder extends BaseEmbedder {
   /**
    * Probe true when the Ollama daemon answers a GET against `/api/tags`
    * (the native model-list endpoint) with 2xx inside a short timeout.
-   * Never throws — returns false on transport failure or timeout so the
+   * Never throws; returns false on transport failure or timeout so the
    * cascade routes around the embedder. Symmetric with
    * `OllamaApiAdapter.probe`.
    */

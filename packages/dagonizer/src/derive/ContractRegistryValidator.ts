@@ -1,5 +1,5 @@
 /**
- * ContractRegistryValidator — static class for registration-time validation
+ * ContractRegistryValidator: static class for registration-time validation
  * of co-located node contracts.
  *
  * Surfaces two categories of drift:
@@ -100,7 +100,7 @@ export class ContractRegistryValidator {
     const upstreamProducers = ContractRegistryValidator.buildUpstreamProducers(contracts);
 
     // The entrypoint's hardRequired paths are the flow's external initial
-    // state — ambient and present from the start, so ANY node may read them
+    // state: ambient and present from the start, so ANY node may read them
     // without an upstream producer (not just the entrypoint itself).
     const externalKeys = new Set<string>(
       entrypointName === undefined

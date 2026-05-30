@@ -1,12 +1,12 @@
 /**
- * CheckpointData — persistable snapshot of an in-flight flow execution.
+ * CheckpointData: persistable snapshot of an in-flight flow execution.
  *
  * Contains the flow name, the next-node cursor (`null` if the flow has
  * completed), the state snapshot as a JsonObject, and the executed /
  * skipped node history.
  *
  * The schema's `version` field tracks the wire format itself, not the
- * user's flow version — independent so wire migrations can ship without
+ * user's flow version; independent so wire migrations can ship without
  * invalidating existing checkpoints.
  *
  * jsontology migration: replace `FromSchema<typeof CheckpointDataSchema>`

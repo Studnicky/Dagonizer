@@ -1,10 +1,10 @@
 /**
- * GeminiNanoAdapter — the browser's built-in `window.LanguageModel`.
+ * GeminiNanoAdapter: the browser's built-in `window.LanguageModel`.
  *
  * Chrome 138+ and Edge expose an on-device LanguageModel via
  * `window.LanguageModel` (behind `chrome://flags/#prompt-api-for-gemini-nano`
  * on earlier versions). The Prompt API exposes
- * `responseConstraint` for JSON-schema-constrained outputs — we use it
+ * `responseConstraint` for JSON-schema-constrained outputs; we use it
  * to enforce the tool-plan shape, since Nano does not yet have a
  * native function-calling channel like the REST API does.
  *
@@ -14,7 +14,7 @@
  *                          and decode the JSON back into `ToolCall[]` via
  *                          JSON coercion (`responseConstraint` + `decodeToolCallsJson`)
  *
- * Sessions are short-lived — one prompt per session, destroyed in
+ * Sessions are short-lived: one prompt per session, destroyed in
  * `finally` to release the on-device GPU buffer.
  */
 
@@ -53,7 +53,7 @@ function getLanguageModel(): LanguageModelStatic | undefined {
   return (globalThis as { LanguageModel?: LanguageModelStatic }).LanguageModel;
 }
 
-/** Public probe — used by the provider matrix to pick the best backend. */
+/** Public probe. Used by the provider matrix to pick the best backend. */
 export async function detectGeminiNano(): Promise<GeminiNanoAvailability> {
   const lm = getLanguageModel();
   if (lm === undefined) return 'unavailable';
@@ -79,7 +79,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
   /**
    * Probe true only when the browser's `window.LanguageModel` is present
    * AND `availability()` reports `'available'`. `'downloadable'` and
-   * `'downloading'` resolve as false — the model isn't ready to serve
+   * `'downloading'` resolve as false; the model isn't ready to serve
    * a chat call immediately, and a cascade should pick a different
    * adapter while the on-device weights warm up. Never throws.
    */
@@ -145,7 +145,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
 }
 
 function collapseUserMessages(request: ChatRequest): string {
-  // Nano sessions take one prompt — concatenate user turns. Tool
+  // Nano sessions take one prompt; concatenate user turns. Tool
   // results round-tripped from the DAG land as `role: 'tool'`; we
   // surface them as `[tool <name> result] <content>` so the next turn knows.
   return request.messages
@@ -158,7 +158,7 @@ function collapseUserMessages(request: ChatRequest): string {
 }
 
 function toolPlanSchema(tools: readonly ToolDefinition[]): Record<string, unknown> {
-  // Per-tool variants — each enforces the tool's own inputSchema on
+  // Per-tool variants: each enforces the tool's own inputSchema on
   // `arguments`. Without this Nano gets a free `{}` and tends to
   // hallucinate extra fields (e.g. padding the query with prose) that
   // wreck downstream API calls.

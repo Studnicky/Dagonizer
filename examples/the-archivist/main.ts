@@ -1,5 +1,5 @@
 /**
- * main.ts — browser entrypoint for the Archivist demo.
+ * main.ts: browser entrypoint for the Archivist demo.
  *
  * Mirrors `runArchivist.ts`'s setup but composes a browser-runnable
  * cascade and streams the logger to the DOM. Default preference:
@@ -7,7 +7,7 @@
  *   Browser built-in LanguageModel (flag-gated on older Chrome/Edge)
  *     →  WebLLM      (any WebGPU browser; ~700 MB model download on first use)
  *     →  Gemini API  (REST; key supplied via `?apiKey=…` URL param)
- *     →  Ollama      (only when running locally with CORS enabled — see below)
+ *     →  Ollama      (only when running locally with CORS enabled; see below)
  *
  * Ollama CORS caveat: by default the daemon refuses cross-origin
  * requests. To use Ollama from this harness, start it with
@@ -47,7 +47,7 @@ const input   = document.getElementById('ask-input')     as HTMLInputElement;
 const button  = document.getElementById('ask-button')    as HTMLButtonElement;
 const logEl   = document.getElementById('archivist-log') as HTMLPreElement;
 
-// ── Logger wiring — stream every event to the <pre>. ─────────────────────
+// ── Logger wiring: stream every event to the <pre>. ──────────────────────
 const logger = new ConsoleLogger();
 function appendLogLine(event: LogEvent): void {
   const line = document.createElement('span');
@@ -65,7 +65,7 @@ function appendErrorLine(message: string): void {
 }
 logger.subscribe(appendLogLine);
 
-// ── Cascade — browser-runnable adapters in preference order. ─────────────
+// ── Cascade: browser-runnable adapters in preference order. ──────────────
 const CAPS_FULL_TOOLS:    AdapterCapabilities = { 'toolUse': 'full',    'structuredOutput': true, 'jsonMode': true };
 const CAPS_PARTIAL_TOOLS: AdapterCapabilities = { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true };
 const CAPS_NO_TOOLS:      AdapterCapabilities = { 'toolUse': 'none',    'structuredOutput': true, 'jsonMode': false };
@@ -94,7 +94,7 @@ registry.register(
   () => new WebLlmAdapter({ 'onProgress': (report) => logger.info(`web-llm: ${report.text} (${String(Math.round(report.progress * 100))}%)`) }),
 );
 
-// REST fallback — key from URL param, otherwise prompt the visitor.
+// REST fallback: key from URL param, otherwise prompt the visitor.
 registry.register(
   { 'provider': 'gemini-api', 'model': 'gemini-2.0-flash', 'capabilities': CAPS_FULL_TOOLS },
   () => {
@@ -103,7 +103,7 @@ registry.register(
   },
 );
 
-// Ollama — only useful when the daemon is running locally with CORS
+// Ollama: only useful when the daemon is running locally with CORS
 // allowed (see the file-level comment). Probe fails closed otherwise.
 registry.register(
   { 'provider': 'ollama', 'model': 'llama3.2:latest', 'capabilities': CAPS_PARTIAL_TOOLS },
@@ -124,7 +124,7 @@ try {
   // LanguageModel doesn't expose embeddings, WebLLM embedding models would balloon the
   // download budget). LLM-only intent classification is the path here;
   // log once so the omission is visible in the demo log panel.
-  logger.info('embedder: unavailable in browser — intent classification via LLM only');
+  logger.info('embedder: unavailable in browser; intent classification via LLM only');
   llm = new BaseLlmClient(adapter, { 'language': userLanguage });
   logger.info(`backend: ${adapter.id} (${adapter.displayName})`);
 } catch (err) {
@@ -144,7 +144,7 @@ const services: ArchivistServices = {
   'wikipediaSummary': WikipediaSummaryTool,
   'memory':           new MemoryStore(),
   'llm':              llm,
-  // Browser entry has no native embedder wired today — Browser built-in LanguageModel does
+  // Browser entry has no native embedder wired today. Browser built-in LanguageModel does
   // not expose embeddings and WebLLM embedding models would balloon the
   // download budget. Cosine recall and hybrid ranking fall back to
   // Jaccard / heuristics when embedder is null.
@@ -163,7 +163,7 @@ dispatcher.registerBundle(archivistBundle);
 // #endregion register-bundle
 
 // #region run-loop
-// ── Submit handler — fresh state per ask. ─────────────────────────────────
+// ── Submit handler: fresh state per ask. ──────────────────────────────────
 async function ask(query: string): Promise<void> {
   const visitor = new ArchivistState();
   visitor.query = query;
@@ -171,7 +171,7 @@ async function ask(query: string): Promise<void> {
   try {
     const execution = dispatcher.execute('the-archivist', visitor);
     for await (const stage of execution) {
-      logger.info(`▸ ${stage.nodeName}${stage.skipped ? ' (skipped)' : ` → ${stage.output ?? '—'}`}`);
+      logger.info(`▸ ${stage.nodeName}${stage.skipped ? ' (skipped)' : ` → ${stage.output ?? '(none)'}`}`);
     }
     const result = await execution;
     logger.result(`intent=${result.state.intent}`);

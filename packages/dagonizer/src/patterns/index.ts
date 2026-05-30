@@ -1,13 +1,13 @@
 /**
- * @noocodex/dagonizer/patterns — pattern-tier public surface.
+ * @noocodex/dagonizer/patterns: pattern-tier public surface.
  *
  * Ships:
- *   - `MonadicNode<TState, TOutput, TServices>` — root abstract class
+ *   - `MonadicNode<TState, TOutput, TServices>`: root abstract class
  *     every pattern (in this package or downstream plugins) extends.
- *   - `LlmClient` — minimal chat-shaped service contract; any
+ *   - `LlmClient`: minimal chat-shaped service contract; any
  *     `LlmAdapter` satisfies it.
- *   - `TripleStore` — minimal RDF quad-store service contract.
- *   - `SearchTool<TInput, TOutput>` — generic tool contract used by
+ *   - `TripleStore`: minimal RDF quad-store service contract.
+ *   - `SearchTool<TInput, TOutput>`: generic tool contract used by
  *     `ScoutNode`-style patterns.
  *
  * Plugin packages (`@noocodex/dagonizer-patterns-rag`,

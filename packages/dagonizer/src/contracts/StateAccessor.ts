@@ -1,5 +1,5 @@
 /**
- * StateAccessor — adapter contract for resolving paths into node state.
+ * StateAccessor: adapter contract for resolving paths into node state.
  *
  * The dispatcher walks dotted paths (`'plan.tasks'`, `'data.items'`)
  * to read scatter source arrays and write gather results. The resolution

@@ -1,5 +1,5 @@
 /**
- * @noocodex/dagonizer/store — shared key-value store public surface.
+ * @noocodex/dagonizer/store: shared key-value store public surface.
  *
  * Plugin authors implement `Store` (typically by extending `BaseStore`)
  * to swap the backing without touching DAG topology. `MemoryStore` is the

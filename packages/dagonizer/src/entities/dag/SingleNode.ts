@@ -1,5 +1,5 @@
 /**
- * SingleNode — single-node placement in JSON-LD canonical form.
+ * SingleNode: single-node placement in JSON-LD canonical form.
  *
  * Uses `@type: 'SingleNode'` as the discriminator (replacing the flat `type`
  * key). `@id` is the placement URN: `urn:noocodex:dag:<dagName>/node/<name>`.

@@ -1,5 +1,5 @@
 /**
- * recommendSimilar — deterministic seed node for the
+ * recommendSimilar: deterministic seed node for the
  * `recommend-similar` branch.
  *
  * SPARQL across every `urn:dagonizer:state:<runId>` named graph other
@@ -10,9 +10,9 @@
  * rank → ...` flow seeds from "what the visitor liked last time".
  *
  * Output routes:
- *   'seeded'   — prior shortlist + subjects found; terms set; carry
+ *   'seeded':   prior shortlist + subjects found; terms set; carry
  *                on with the normal pipeline.
- *   'empty'    — no prior run is available; the DAG routes to the
+ *   'empty':    no prior run is available; the DAG routes to the
  *                `compose-empty` terminal so the Archivist asks for a
  *                description of a previous read instead.
  */

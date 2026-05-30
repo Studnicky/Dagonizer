@@ -1,5 +1,5 @@
 /**
- * PredicateGateNode — boolean gate. Routes to 'pass' / 'fail' based
+ * PredicateGateNode: boolean gate. Routes to 'pass' / 'fail' based
  * on the consumer-supplied predicate.
  */
 

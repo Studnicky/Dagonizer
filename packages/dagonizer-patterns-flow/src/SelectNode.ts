@@ -1,5 +1,5 @@
 /**
- * SelectNode — root for "pick or sort items from a list" patterns.
+ * SelectNode: root for "pick or sort items from a list" patterns.
  */
 
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';

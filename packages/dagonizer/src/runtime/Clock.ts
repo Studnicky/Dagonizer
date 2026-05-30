@@ -1,8 +1,8 @@
 /**
- * Clock — engine-owned monotonic clock provider.
+ * Clock: engine-owned monotonic clock provider.
  *
  * Single concept of time: monotonic high-resolution nanoseconds from a
- * platform clock. No wall-clock — that's a different concern (logging,
+ * platform clock. No wall-clock; that's a different concern (logging,
  * tracing) and lives elsewhere.
  *
  * Default provider derives nanoseconds from `performance.now()` (in ms,
@@ -11,7 +11,7 @@
  * unmodified in Node, the browser, and bundlers like Vite. This is the
  * ONLY permitted call site for `performance.now()` outside this file.
  *
- * Static class — no instances, no free helpers.
+ * Static class; no instances, no free helpers.
  */
 
 import type { ClockProvider } from '../contracts/ClockProvider.js';
@@ -49,7 +49,7 @@ export class Clock {
   }
 
   /**
-   * Monotonic time in integer milliseconds. Derived from `hrtime()` —
+   * Monotonic time in integer milliseconds. Derived from `hrtime()`;
    * not wall-clock. Suitable for timestamps in the lifecycle FSM,
    * scheduler delays, and other relative-time math.
    */
@@ -57,7 +57,7 @@ export class Clock {
     return Number(_provider.hrtime() / NS_PER_MS);
   }
 
-  /** Install a custom clock provider. Engine-only — called at boot or in tests. */
+  /** Install a custom clock provider. Engine-only; called at boot or in tests. */
   static configure(provider: ClockProvider): void {
     _provider = provider;
   }

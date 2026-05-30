@@ -8,8 +8,8 @@ import type { OperationContractFragment } from './OperationContractFragment.js';
 
 /**
  * A discrete unit of work in a flow.
- * Nodes are stateless — all state flows through NodeStateInterface.
- * Nodes never throw — they return results with named outputs for routing.
+ * Nodes are stateless; all state flows through NodeStateInterface.
+ * Nodes never throw; they return results with named outputs for routing.
  *
  * Extends `Node` entity via `Omit<Node, 'outputs'>`:
  *   - `outputs` is narrowed from `string[]` to `readonly TOutput[]`
@@ -36,7 +36,7 @@ export interface NodeInterface<
    *
    * When set, the engine derives a child `AbortController` from the run's
    * signal and schedules an abort after `timeoutMs`. The child signal is
-   * passed as `context.signal` to this node's `execute()` call only —
+   * passed as `context.signal` to this node's `execute()` call only;
    * other nodes in the same run are unaffected. On expiry the engine throws
    * a `NodeTimeoutError` wrapped as a `DAGError`, fires `onError`, and
    * marks the run failed.
@@ -50,7 +50,7 @@ export interface NodeInterface<
   /**
    * Execute the node, mutating state.
    * Returns a result indicating which output port to route to.
-   * Never throws — catches all errors internally and routes to error output.
+   * Never throws; catches all errors internally and routes to error output.
    *
    * `context` carries the abort signal, the names of the flow/stage being
    * executed, and the dispatcher's services bag. Long-running nodes should
@@ -62,7 +62,7 @@ export interface NodeInterface<
 
   /**
    * Declared output ports this node can return.
-   * Used for flow validation — ensures all outputs are wired.
+   * Used for flow validation; ensures all outputs are wired.
    * Common outputs: 'success', 'error', 'skip', 'retry'
    */
   readonly 'outputs': readonly TOutput[];
@@ -73,7 +73,7 @@ export interface NodeInterface<
    * registration-time validation cross-checks producers and consumers.
    *
    * The node's own `name` and `outputs` fields complete the full
-   * OperationContract surface — the fragment carries only the fields
+   * OperationContract surface; the fragment carries only the fields
    * the deriver uses to wire edges.
    */
   readonly 'contract'?: OperationContractFragment;
@@ -86,7 +86,7 @@ export interface NodeInterface<
 }
 
 /**
- * Chainable<A, B> — compile-time proof that B's hardRequired set is
+ * Chainable<A, B>: compile-time proof that B's hardRequired set is
  * satisfied by A's produces set. Resolves to `true` when chainable,
  * `never` otherwise. Use in test helpers and contract authoring to
  * surface drift at the type layer.

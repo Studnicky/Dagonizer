@@ -7,7 +7,7 @@ import { SqliteStore } from '../../src/SqliteStore.js';
 
 // All tests use ':memory:' so no filesystem I/O occurs.
 
-void describe('SqliteStore — basic operations', () => {
+void describe('SqliteStore: basic operations', () => {
   void it('get/set/has/delete round-trip', async () => {
     const store = new SqliteStore(':memory:');
 
@@ -32,7 +32,7 @@ void describe('SqliteStore — basic operations', () => {
   });
 });
 
-void describe('SqliteStore — update atomicity', () => {
+void describe('SqliteStore: update atomicity', () => {
   void it('update(key, fn) returns the new value; get() reads the same', async () => {
     const store = new SqliteStore(':memory:');
     const result = await store.update<number>('counter', (n) => (n ?? 0) + 1);
@@ -44,7 +44,7 @@ void describe('SqliteStore — update atomicity', () => {
   void it('concurrent updates produce no lost writes via BEGIN IMMEDIATE', async () => {
     const store = new SqliteStore(':memory:');
 
-    // Two simultaneous updates. SQLite serializes via BEGIN IMMEDIATE —
+    // Two simultaneous updates. SQLite serializes via BEGIN IMMEDIATE;
     // the second will block until the first transaction commits, so the
     // final value must be 2 (no lost update).
     await Promise.all([
@@ -56,7 +56,7 @@ void describe('SqliteStore — update atomicity', () => {
   });
 });
 
-void describe('SqliteStore — snapshot', () => {
+void describe('SqliteStore: snapshot', () => {
   void it('snapshot() returns typed envelope with type and version', async () => {
     const store = new SqliteStore(':memory:');
     await store.set<number>('a', 1);
@@ -66,7 +66,7 @@ void describe('SqliteStore — snapshot', () => {
     assert.equal(snap.type, 'sqlite-store');
     assert.equal(snap.version, 1);
 
-    // Snapshot entries are ORDER BY key — a before b
+    // Snapshot entries are ORDER BY key; a before b
     assert.equal(snap.entries.length, 2);
     assert.deepEqual(snap.entries[0], { 'key': 'a', 'value': 1 });
     assert.deepEqual(snap.entries[1], { 'key': 'b', 'value': 'two' });
@@ -125,7 +125,7 @@ void describe('SqliteStore — snapshot', () => {
   });
 });
 
-void describe('SqliteStore — namespace', () => {
+void describe('SqliteStore: namespace', () => {
   void it('namespace option prefixes keys visible in snapshot', async () => {
     const store = new SqliteStore(':memory:', { 'namespace': 'foo' });
     await store.set<string>('key', 'value');
@@ -135,13 +135,13 @@ void describe('SqliteStore — namespace', () => {
     assert.equal(snap.entries.length, 1);
     assert.equal(snap.entries[0]?.key, 'foo:key');
 
-    // Public get uses the same prefix — reads the same entry back
+    // Public get uses the same prefix; reads the same entry back
     assert.equal(await store.get<string>('key'), 'value');
     await store.disconnect();
   });
 });
 
-void describe('SqliteStore — disconnect', () => {
+void describe('SqliteStore: disconnect', () => {
   void it('disconnect() closes the connection; subsequent ops throw', async () => {
     const store = new SqliteStore(':memory:');
     await store.set<string>('before', 'close');
@@ -158,7 +158,7 @@ void describe('SqliteStore — disconnect', () => {
   });
 });
 
-void describe('SqliteStore — custom tableName', () => {
+void describe('SqliteStore: custom tableName', () => {
   void it('custom tableName works as backing table', async () => {
     const store = new SqliteStore(':memory:', { 'tableName': 'app_kv' });
 

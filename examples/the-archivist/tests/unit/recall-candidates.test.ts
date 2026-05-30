@@ -1,5 +1,5 @@
 /**
- * recall-candidates — unit tests.
+ * recall-candidates: unit tests.
  *
  * Seeds a MemoryStore with a prior run that shortlisted 3 books, then
  * exercises the recallCandidates node with:
@@ -110,7 +110,7 @@ void test('recallCandidates: skips the current run', async () => {
   logs.length = 0;
   const memory = new MemoryStore();
 
-  // Seed the current run itself — must be skipped.
+  // Seed the current run itself; must be skipped.
   seedPriorRun(memory, 'current-run-3', 'existentialism science fiction', [
     { isbn: '0000000005', title: 'Sartre' },
   ]);
@@ -150,16 +150,16 @@ void test('recallCandidates: deduplicates books seen in multiple runs', async ()
   assert.equal(uniqueIsbns.size, isbns.length, 'no duplicate ISBNs after dedupe');
 });
 
-void test('recallCandidates: salvage path — never throws on corrupted memory entry', async () => {
+void test('recallCandidates: salvage path, never throws on corrupted memory entry', async () => {
   logs.length = 0;
   const memory = new MemoryStore();
 
-  // Seed a run whose book IRI has no title/source — should not throw.
+  // Seed a run whose book IRI has no title/source; should not throw.
   const runTerm = MemoryStore.runIri('prior-run-corrupt');
   memory.assert(runTerm, MemoryStore.dagIri('visitorQuery'), MemoryStore.lit.str('existentialism fiction'), GRAPH_MEMORY);
   const bookTerm = MemoryStore.bookIri('0000000099');
   memory.assert(runTerm, MemoryStore.dagIri('shortlisted'), bookTerm, GRAPH_MEMORY);
-  // No title or source — graceful degradation expected.
+  // No title or source; graceful degradation expected.
 
   const state = new ArchivistState();
   state.runId  = 'current-run-corrupt';

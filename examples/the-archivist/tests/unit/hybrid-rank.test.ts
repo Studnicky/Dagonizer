@@ -1,5 +1,5 @@
 /**
- * Hybrid rank composite — unit tests.
+ * Hybrid rank composite: unit tests.
  *
  * Exercises the pure `compositeScore` function in `rankCandidates`:
  *   • source priority lifts the same-title candidate above lower-priority sources
@@ -32,7 +32,7 @@ function candidate(over: Partial<Candidate>): Candidate {
 const termTokens = new Set(['existential', 'fiction', 'philosophy']);
 const currentYear = 2026;
 
-void test('compositeScore: source priority — openlibrary > google > subject > wikipedia', () => {
+void test('compositeScore: source priority, openlibrary > google > subject > wikipedia', () => {
   const titleVec = [1, 0, 0];
   const queryVec = [1, 0, 0];
   const ol = compositeScore(candidate({ source: 'openlibrary' }),       queryVec, titleVec, termTokens, currentYear);
@@ -50,7 +50,7 @@ void test('compositeScore: recency bonus fires only within window', () => {
   const fresh = compositeScore(candidate({ book: { isbn: 'a', title: 'A', authors: [], price: { amount: 0, currency: 'USD' }, firstPublishYear: 2020 } }), queryVec, titleVec, termTokens, currentYear);
   const old   = compositeScore(candidate({ book: { isbn: 'a', title: 'A', authors: [], price: { amount: 0, currency: 'USD' }, firstPublishYear: 1850 } }), queryVec, titleVec, termTokens, currentYear);
   assert.ok(fresh > old, 'recent publications earn the recency bonus');
-  // Bonus weight is 0.10 — delta should be at least that.
+  // Bonus weight is 0.10; delta should be at least that.
   assert.ok((fresh - old) >= 0.099, `delta ${String(fresh - old)} should be ~0.10`);
 });
 
@@ -69,7 +69,7 @@ void test('compositeScore: cosine term contributes when vectors provided', () =>
   const aligned = compositeScore(candidate({}), queryVecAligned, titleVec, termTokens, currentYear);
   const ortho   = compositeScore(candidate({}), queryVecOrtho,   titleVec, termTokens, currentYear);
   assert.ok(aligned > ortho, 'aligned vectors must outrank orthogonal');
-  // Cosine weight is 0.50 — delta should be at least that.
+  // Cosine weight is 0.50; delta should be at least that.
   assert.ok((aligned - ortho) >= 0.49, `cosine delta ${String(aligned - ortho)} should be ~0.50`);
 });
 

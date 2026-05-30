@@ -4,7 +4,7 @@ import type { DAGErrorJSON } from '../entities/errors/DAGErrorJSON.js';
  * Interface for DAGError class.
  *
  * Describes the runtime `DAGError` instance. The `toJSON()` method returns
- * `DAGErrorJSON` — the persistence/transport shape with an ISO-8601 string
+ * `DAGErrorJSON`: the persistence/transport shape with an ISO-8601 string
  * timestamp. The class itself carries a `Date` timestamp and an Error-typed
  * `cause`, neither of which are JSON-expressible.
  */

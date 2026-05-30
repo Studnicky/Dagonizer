@@ -1,10 +1,10 @@
 /**
- * BackoffStrategy — backoff delay strategies for `RetryPolicy`.
+ * BackoffStrategy: backoff delay strategies for `RetryPolicy`.
  *
- *   constant            — fixed delay between attempts
- *   linear              — delay grows linearly with attempt number
- *   exponential         — delay grows exponentially (default)
- *   decorrelated-jitter — randomized jitter to spread retry load
+ *   constant: fixed delay between attempts
+ *   linear: delay grows linearly with attempt number
+ *   exponential: delay grows exponentially (default)
+ *   decorrelated-jitter: randomized jitter to spread retry load
  */
 
 import type { FromSchema } from 'json-schema-to-ts';

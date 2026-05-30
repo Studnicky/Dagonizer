@@ -9,7 +9,7 @@
  *
  * Without this propagation, an inner `TerminalNode(failed)` would have
  * to be paired with an explicit `state.collectError()` call to surface
- * as `error` on the parent — losing the value of having an explicit
+ * as `error` on the parent, losing the value of having an explicit
  * terminal placement in the inner DAG.
  */
 

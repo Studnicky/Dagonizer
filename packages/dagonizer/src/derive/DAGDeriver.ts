@@ -1,5 +1,5 @@
 /**
- * DAGDeriver — derive a `DAG` from a registry of `OperationContract`s
+ * DAGDeriver: derive a `DAG` from a registry of `OperationContract`s
  * by matching `produces ↔ hardRequired`.
  *
  * An edge `A → B` exists iff some path in `A.produces` appears in
@@ -9,9 +9,9 @@
  *
  * Two pieces of routing the data graph cannot express:
  *
- *   - alternate exits — operations whose non-success outcomes terminate
+ *   - alternate exits: operations whose non-success outcomes terminate
  *     the flow; declared via `annotations.terminals`.
- *   - scatter roots — operations dispatched once per item from a
+ *   - scatter roots: operations dispatched once per item from a
  *     state-array source; declared via `annotations.scatters`.
  *
  * Static class. Adding a new operation is one registration; the flow
@@ -59,7 +59,7 @@ export interface DAGDeriverOptions {
    * Node registry. Every node with a co-located `contract` field participates
    * in topology derivation; nodes without one still register but contribute no
    * derived edges. At least one node must declare a contract. Contracts are
-   * single-source-of-truth on the node — there is no standalone contracts input.
+   * single-source-of-truth on the node; there is no standalone contracts input.
    */
   readonly nodes: readonly NodeInterface[];
   readonly annotations?: DAGDeriverAnnotations;
@@ -110,18 +110,18 @@ export class DAGDeriver {
     const contracts = DAGDeriver.extractContracts(opts.nodes);
     if (contracts.length === 0) {
       throw new DAGError(
-        'DAGDeriver.derive: no node carries a `contract` field — at least one node must declare a contract for topology derivation',
+        'DAGDeriver.derive: no node carries a `contract` field; at least one node must declare a contract for topology derivation',
       );
     }
     // Preflight: same dangling-read / dead-write checks the validator runs at
-    // registration time — surface drift before the DAG is even built. Pass
+    // registration time: surface drift before the DAG is even built. Pass
     // entrypoint so the entrypoint's hardRequired (external initial state) are
     // not flagged as dangling reads.
     ContractRegistryValidator.validate(contracts, (_msg) => { /* warnings surfaced at registerDAG time */ }, opts.entrypoint);
 
     // Operations referenced only as a gather step (the `customNode`
     // for a 'custom' strategy scatter) are emitted alongside the
-    // scatter placement but excluded from topology derivation —
+    // scatter placement but excluded from topology derivation;
     // they're called by the dispatcher's gather reducer, not by a
     // graph edge.
     const gatherOps = new Set<string>();
@@ -210,12 +210,12 @@ export class DAGDeriver {
         parallelMembership.set(member, groupName);
         if (annotations.scatters?.[member] !== undefined) {
           throw new DAGError(
-            `DAGDeriver: operation '${member}' appears in both annotations.parallels['${groupName}'] and annotations.scatters — placement kind must be unambiguous`,
+            `DAGDeriver: operation '${member}' appears in both annotations.parallels['${groupName}'] and annotations.scatters; placement kind must be unambiguous`,
           );
         }
         if (annotations.embeddedDAGs?.[member] !== undefined) {
           throw new DAGError(
-            `DAGDeriver: operation '${member}' appears in both annotations.parallels['${groupName}'] and annotations.embeddedDAGs — placement kind must be unambiguous`,
+            `DAGDeriver: operation '${member}' appears in both annotations.parallels['${groupName}'] and annotations.embeddedDAGs; placement kind must be unambiguous`,
           );
         }
       }
@@ -443,7 +443,7 @@ export class DAGDeriver {
         // (parallels collisions are checked in validateAnnotations.)
         if (scatter !== undefined && embeddedDAG !== undefined) {
           throw new DAGError(
-            `DAGDeriver: operation '${name}' appears in both annotations.scatters and annotations.embeddedDAGs — placement kind must be unambiguous`,
+            `DAGDeriver: operation '${name}' appears in both annotations.scatters and annotations.embeddedDAGs; placement kind must be unambiguous`,
           );
         }
 
@@ -480,7 +480,7 @@ export class DAGDeriver {
     for (const [emitName, emit] of emitCollector) {
       if (operationNames.has(emitName)) {
         throw new DAGError(
-          `DAGDeriver: emit terminal name '${emitName}' collides with an existing operation placement — choose a distinct name`,
+          `DAGDeriver: emit terminal name '${emitName}' collides with an existing operation placement; choose a distinct name`,
         );
       }
       const terminalNode: TerminalNodePlacementInterface = {

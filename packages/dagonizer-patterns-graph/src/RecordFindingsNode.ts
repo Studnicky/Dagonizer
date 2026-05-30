@@ -1,5 +1,5 @@
 /**
- * RecordFindingsNode — write the consumer's entities back into the
+ * RecordFindingsNode: write the consumer's entities back into the
  * triple store as quads.
  *
  * Consumers override `selectEntities` (which entities from state to

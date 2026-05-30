@@ -1,5 +1,5 @@
 /**
- * LlmError — error taxonomy + classifier helpers.
+ * LlmError: error taxonomy + classifier helpers.
  *
  * Mirrors nocturne's `LLMInvocationError` (`adapters/llm/...
  * LLMInvocationError.ts:30–146`) trimmed to the categories the

@@ -1,19 +1,19 @@
 /**
- * runArchivist — end-to-end demo runner (CLI).
+ * runArchivist: end-to-end demo runner (CLI).
  *
  * Wires the registered nodes onto a `Dagonizer<ArchivistState, ArchivistServices>`,
  * registers the canonical DAG (and its embedded-DAG components), and runs one
  * visitor question through.
  *
- * Bundle registration order — each `DispatcherBundle` packages its own nodes
+ * Bundle registration order: each `DispatcherBundle` packages its own nodes
  * and DAG; `registerBundle` installs every node before every DAG so the
  * validator can resolve node references. Embedded-DAG bundles register before
  * the parent, which references them by name:
- *   1. dispatcher.registerBundle(bookSearchScatterBundle) — scouts, extract,
+ *   1. dispatcher.registerBundle(bookSearchScatterBundle): scouts, extract,
  *      decide, rank, merge, record, gate, recall + the book-search-scatter DAG
- *   2. dispatcher.registerBundle(composeRetryLoopBundle) — compose, validate
+ *   2. dispatcher.registerBundle(composeRetryLoopBundle): compose, validate
  *      + the compose-retry-loop DAG
- *   3. dispatcher.registerBundle(archivistBundle) — parent-level nodes + the
+ *   3. dispatcher.registerBundle(archivistBundle): parent-level nodes + the
  *      `the-archivist` DAG (references the embedded-DAGs by name)
  *
  * LLM resolved via `LlmAdapterCascade` over a registry of providers that
@@ -23,11 +23,11 @@
  *                       →  Mistral     →  OpenRouter
  *
  * Recommended local setup: `ollama pull llama3.2:latest` then
- * `ollama serve` — the cascade probe will hit `/api/tags` and route
+ * `ollama serve`; the cascade probe will hit `/api/tags` and route
  * the run through the local daemon with no API keys required.
  *
  * If no adapter is reachable the cascade throws
- * `LlmError(NO_ADAPTER_AVAILABLE)` — that's the design. There is no
+ * `LlmError(NO_ADAPTER_AVAILABLE)`: that's the design. There is no
  * stub fallback in the CLI; the stub exists only for tests.
  *
  * Run:  npx tsx examples/the-archivist/runArchivist.ts
@@ -91,14 +91,14 @@ const CAPS_PARTIAL_TOOLS: AdapterCapabilities = { 'toolUse': 'partial', 'structu
 
 const registry = new LlmAdapterRegistry();
 
-// Local-first — Ollama runs on the loopback by default and needs no
+// Local-first: Ollama runs on the loopback by default and needs no
 // credentials. Probe hits `/api/tags`; if it answers 2xx we're in.
 registry.register(
   { 'provider': 'ollama', 'model': OLLAMA_MODEL, 'capabilities': CAPS_PARTIAL_TOOLS },
   () => new OllamaApiAdapter({ 'baseUrl': OLLAMA_BASE_URL, 'model': OLLAMA_MODEL }),
 );
 
-// Keyed providers — skip registration when the key is missing so the
+// Keyed providers: skip registration when the key is missing so the
 // `NO_ADAPTER_AVAILABLE` message lists only the providers the user
 // actually configured.
 if (envVar('GEMINI_API_KEY').length > 0) {
@@ -144,7 +144,7 @@ const cascade = new LlmAdapterCascade(registry, [
 const adapter = await cascade.select();
 logger.info(`backend: ${adapter.id} (${adapter.displayName})`);
 
-// ── Embedder cascade — vector intent classification when reachable.
+// ── Embedder cascade: vector intent classification when reachable.
 //    Order of preference mirrors the LLM cascade for symmetric local-first
 //    behaviour: Ollama (loopback, no key) → Gemini REST → Mistral. When
 //    nothing probes true the cascade throws; we catch and continue with
@@ -183,7 +183,7 @@ try {
   logger.info(`embedder: ${resolvedEmbedder.id} (${resolvedEmbedder.displayName})`);
 } catch (err) {
   if (err instanceof LlmError && err.classification.reason === 'NO_ADAPTER_AVAILABLE') {
-    logger.info('embedder: none reachable — intent classification via LLM only, recall falls back to Jaccard');
+    logger.info('embedder: none reachable; intent classification via LLM only, recall falls back to Jaccard');
   } else {
     throw err;
   }
@@ -220,7 +220,7 @@ visitor.query = "I'm looking for a book about a strange house and a library";
 
 const execution = dispatcher.execute('the-archivist', visitor);
 for await (const stage of execution) {
-  logger.info(`▸ ${stage.nodeName}${stage.skipped ? ' (skipped)' : ` → ${stage.output ?? '—'}`}`);
+  logger.info(`▸ ${stage.nodeName}${stage.skipped ? ' (skipped)' : ` → ${stage.output ?? '(none)'}`}`);
 }
 const result = await execution;
 
@@ -232,7 +232,7 @@ logger.result(`triples=${String(services.memory.size)} written`);
 // #endregion linear-run
 
 // #region cancellation-run
-// Caller-driven cancellation — the visitor closes the page.
+// Caller-driven cancellation: the visitor closes the page.
 const controller = new AbortController();
 // Simulate visitor abandoning 800 ms in.
 setTimeout(() => controller.abort('visitor closed page'), 800);
@@ -258,10 +258,10 @@ switch (lc.kind) {
     break;
 }
 
-// result.cursor is the next node that would have run — pass it to
+// result.cursor is the next node that would have run; pass it to
 // Checkpoint.capture to persist and resume in a later process.
 if (cancelResult.cursor !== null) {
-  logger.result(`stopped at ${cancelResult.cursor} — resumable`);
+  logger.result(`stopped at ${cancelResult.cursor} (resumable)`);
 }
 // #endregion cancellation-run
 
@@ -284,6 +284,6 @@ if (cancelResult.cursor !== null) {
     logger.result(`resumed memory triples=${String(freshMemory.size)}`);
   }
 } else {
-  logger.result('cancellation-run completed before cursor — no checkpoint needed');
+  logger.result('cancellation-run completed before cursor; no checkpoint needed');
 }
 // #endregion resume-run

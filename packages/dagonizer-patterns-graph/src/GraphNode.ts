@@ -1,5 +1,5 @@
 /**
- * GraphNode — root for triple-store-driven node patterns.
+ * GraphNode: root for triple-store-driven node patterns.
  *
  * Every pattern in this package operates against a TripleStore service
  * the consumer provides on `services.memory`. The base class itself

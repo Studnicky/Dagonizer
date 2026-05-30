@@ -1,7 +1,7 @@
 {
   "name": "@noocodex/dagonizer-patterns-rag",
   "version": "0.14.0",
-  "description": "Pattern plugin for @noocodex/dagonizer — RAG node patterns.",
+  "description": "Pattern plugin for @noocodex/dagonizer: RAG node patterns.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
   "type": "module",

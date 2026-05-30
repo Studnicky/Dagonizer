@@ -148,7 +148,7 @@ export type { DagonizerOptionsInterface, ScatterItemResult, ScatterProgress, Sto
 export { Execution } from './Execution.js';
 
 // =============================================================================
-// CORE — pluggable execution primitives
+// CORE: pluggable execution primitives
 // =============================================================================
 
 export {
@@ -201,7 +201,7 @@ export type { Snapshottable, StoreSnapshot, StoreSnapshotEntry } from './contrac
 export type { Store } from './contracts/Store.js';
 
 // =============================================================================
-// ADAPTER — LLM adapter contract, registry, and cascade selector
+// ADAPTER: LLM adapter contract, registry, and cascade selector
 // =============================================================================
 
 export {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * SendForm — textarea + action button side-by-side.
+ * SendForm: textarea + action button side-by-side.
  *
  *   ┌──────────────────────────────────────────────────────────┬──────────┐
  *   │ textarea                                                 │ ▶ / ✕   │
@@ -129,7 +129,7 @@ function onActionClick(): void {
 
 .send-input:disabled { opacity: 0.7; cursor: progress; }
 
-/* Running state — pulsing cyan glow around the textarea so it's clearly
+/* Running state: pulsing cyan glow around the textarea so it's clearly
    active rather than just disabled. */
 .send-form:has(.send-btn-running) .send-input {
   border-color: var(--dagonizer-brand);
@@ -158,12 +158,12 @@ function onActionClick(): void {
   transition: filter 0.12s ease, transform 0.12s ease, background 0.18s ease;
 }
 
-/* Cancel state — red accent so the visitor clearly understands the action. */
+/* Cancel state: red accent so the visitor clearly understands the action. */
 .send-btn-cancel {
   background: #c0392b;
 }
 
-/* Running state — a rotating ring sits behind the ✕ glyph so the
+/* Running state: a rotating ring sits behind the ✕ glyph so the
    button reads as "actively working" rather than just "click to cancel". */
 .send-btn-running {
   position: relative;

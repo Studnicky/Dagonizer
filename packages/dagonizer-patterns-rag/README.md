@@ -11,7 +11,7 @@ npm install @noocodex/dagonizer @noocodex/dagonizer-patterns-rag
 ## Taxonomy
 
 ```
-MonadicNode<TState, TOutput, TServices>     (root — main package's ./patterns)
+MonadicNode<TState, TOutput, TServices>     (root: main package's ./patterns)
 ├── DecisionNode<TState, TChoice>           (LLM picks a structured choice)
 │   ├── ClassifyIntentNode<TState, TIntent>
 │   ├── DecideToolsNode<TState>
@@ -33,7 +33,7 @@ Every pattern in this package expects `services.llm: LlmClient` (any `LlmAdapter
 import type { RagServices } from '@noocodex/dagonizer-patterns-rag';
 ```
 
-## Worked example — extending ClassifyIntentNode
+## Worked example: extending ClassifyIntentNode
 
 ```ts
 import { ClassifyIntentNode } from '@noocodex/dagonizer-patterns-rag';

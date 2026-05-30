@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * StateLegend — five chips showing the DAG's visual states.
+ * StateLegend: five chips showing the DAG's visual states.
  *
  *   pending · active · completed · errored · traversed-edge
  *

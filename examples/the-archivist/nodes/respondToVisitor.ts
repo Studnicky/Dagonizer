@@ -1,12 +1,12 @@
 /**
  * respondToVisitor / declineOffTopic / composeEmptyResponse
- * — terminal and near-terminal nodes.
+ * Terminal and near-terminal nodes.
  *
- * respondToVisitor    — shared happy-path terminal (routes to null after compose).
- * declineOffTopic     — hard off-topic gate; sets a redirect draft and exits.
- * composeEmptyResponse — LLM-driven empty-result response. Uses `state.failureCause`
+ * respondToVisitor:    shared happy-path terminal (routes to null after compose).
+ * declineOffTopic:     hard off-topic gate; sets a redirect draft and exits.
+ * composeEmptyResponse: LLM-driven empty-result response. Uses `state.failureCause`
  *                       to produce an in-character acknowledgement of what was tried
- *                       and one concrete next-step suggestion. Always responds —
+ *                       and one concrete next-step suggestion. Always responds;
  *                       never throws, never silent-fails. Routes to respond-to-visitor
  *                       so the conversation always gets an answer.
  *
@@ -37,7 +37,7 @@ export const declineOffTopic: NodeInterface<ArchivistState, 'success', Archivist
   "name": 'decline-off-topic',
   "outputs": ['success'],
   async execute(state) {
-    state.draft = "I only help with finding and identifying books — what title or topic interests you?";
+    state.draft = "I only help with finding and identifying books. What title or topic interests you?";
     return { "output": 'success' };
   },
 };
@@ -53,7 +53,7 @@ export const declineOffTopic: NodeInterface<ArchivistState, 'success', Archivist
  * Failure is a flow decision: the node arms its own deadline and, on its own
  * timeout or an LLM error, routes `retry` (loops back, bounded) or `salvage`.
  * The canned fallback message lives in `compose-empty-salvage`, reached by the
- * salvage edge — not in this node's catch. No in-node `RetryPolicy`, no engine
+ * salvage edge; not in this node's catch. No in-node `RetryPolicy`, no engine
  * `timeoutMs` crutch.
  */
 export const composeEmptyResponse: NodeInterface<ArchivistState, 'drafted' | 'retry' | 'salvage', ArchivistServices> = {
@@ -62,7 +62,7 @@ export const composeEmptyResponse: NodeInterface<ArchivistState, 'drafted' | 're
   async execute(state, context) {
     state.collectWarning({
       "code":      'EMPTY_SHORTLIST',
-      "message":   'no candidates after merge — composing empty response',
+      "message":   'no candidates after merge; composing empty response',
       "operation": 'compose-empty',
       "timestamp": new Date().toISOString(),
     });
@@ -78,11 +78,11 @@ export const composeEmptyResponse: NodeInterface<ArchivistState, 'drafted' | 're
     } catch (err) {
       if (context.signal.aborted) throw err;
       if (state.withinRetryBudget(context.nodeName, EMPTY_RETRY_BUDGET)) {
-        context.services.logger.warn(`compose-empty: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(EMPTY_RETRY_BUDGET)}) — retry: ${err instanceof Error ? err.message : String(err)}`);
+        context.services.logger.warn(`compose-empty: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(EMPTY_RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
         return { "output": 'retry' };
       }
       state.clearAttempts(context.nodeName);
-      context.services.logger.warn(`compose-empty: retries exhausted — salvage: ${err instanceof Error ? err.message : String(err)}`);
+      context.services.logger.warn(`compose-empty: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
       return { "output": 'salvage' };
     } finally {
       clearTimeout(handle);

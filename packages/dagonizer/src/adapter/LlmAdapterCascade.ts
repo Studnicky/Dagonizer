@@ -1,5 +1,5 @@
 /**
- * LlmAdapterCascade — preference-ordered availability selector.
+ * LlmAdapterCascade: preference-ordered availability selector.
  *
  * Given a registry and an ordered list of (provider, model) preferences,
  * walks the list in order, resolving each against the registry and

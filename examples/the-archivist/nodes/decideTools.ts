@@ -1,15 +1,15 @@
 /**
- * decideTools — non-deterministic node that asks the LLM which tools
+ * decideTools: non-deterministic node that asks the LLM which tools
  * (if any) to invoke for this query.
  *
  * The LLM receives the tool definitions via the adapter's native
- * channel — Gemini API's `functionDeclarations`, the browser built-in model's
+ * channel (Gemini API's `functionDeclarations`, the browser built-in model's
  * `responseConstraint`, WebLLM's `response_format`. There is no
  * tool-listing in the prompt itself; the API enforces the shape.
  *
  * Outputs:
- *   'tools'    — LLM asked for ≥1 tool. `state.toolPlan` populated.
- *   'no-tools' — LLM is confident the local catalog suffices.
+ *   'tools':    LLM asked for ≥1 tool; `state.toolPlan` populated.
+ *   'no-tools': LLM is confident the local catalog suffices.
  *
  * Downstream gating:
  *   openLibraryScout checks `state.toolPlan` for a `web_search_books`
@@ -77,7 +77,7 @@ function enforceFullCatalog(
   return additions.length > 0 ? [...calls, ...additions] : calls;
 }
 
-/** Per-node timeout — generous for Gemini Nano's constrained-output path (20–60 s typical). */
+/** Per-node timeout: generous for Gemini Nano's constrained-output path (20-60 s typical). */
 const NODE_TIMEOUT_MS = 30_000;
 
 /** Total attempts (initial + retries) before routing to salvage. */
@@ -140,7 +140,7 @@ function matchShortcut(query: string, intent: string): ShortcutMatch | null {
     };
   }
 
-  // 1. Author lookup — either an explicit "by X Y" pattern OR
+  // 1. Author lookup: either an explicit "by X Y" pattern OR
   //    lookup-author intent with a multi-word capitalised proper noun.
   //    Carry the captured author name as a typed arg so the scout uses
   //    OpenLibrary's ?author= axis instead of falling back to keyword query.
@@ -161,7 +161,7 @@ function matchShortcut(query: string, intent: string): ShortcutMatch | null {
     };
   }
 
-  // 2. Quoted single title — "X Y Z" style; route to wikipedia first.
+  // 2. Quoted single title: "X Y Z" style; route to wikipedia first.
   if (QUOTED_TITLE_RE.test(trimmed)) {
     return {
       'pattern': 'quoted-single-title',
@@ -186,7 +186,7 @@ function matchShortcut(query: string, intent: string): ShortcutMatch | null {
     }
   }
 
-  // 3. Topic / subject — "books about X" etc.
+  // 3. Topic / subject: "books about X" etc.
   //    Capture the topic term and pass it as a typed subject arg so scouts
   //    use OpenLibrary's ?subject= axis and the subject facet directly.
   const topicMatch = trimmed.match(TOPIC_RE);
@@ -201,7 +201,7 @@ function matchShortcut(query: string, intent: string): ShortcutMatch | null {
     };
   }
 
-  // 4. Catalog browsing — "do you have…", "show me…", "recommend…"
+  // 4. Catalog browsing: "do you have...", "show me...", "recommend..."
   if (BROWSING_RE.test(trimmed)) {
     return { 'pattern': 'catalog-browsing', 'calls': FULL_SCOUT_PLAN };
   }
@@ -239,7 +239,7 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools' | 'retry' | 'salvag
 
     try {
       let calls = await context.services.llm.decideTools(state.query, available, signal);
-      // LLM responded — the retry budget for this placement is spent.
+      // LLM responded; the retry budget for this placement is spent.
       state.clearAttempts(context.nodeName);
 
       // Safety net (Option B): if the LLM returned fewer than all three
@@ -262,7 +262,7 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools' | 'retry' | 'salvag
       // Arguments intentionally omit `query` / `subject`. Each scout falls back
       // to `state.terms.join(' ')` (the keywords produced by `extract-query`)
       // when its query arg is missing. Passing `state.query` here would make
-      // OpenLibrary search for the literal visitor sentence — 0 hits.
+      // OpenLibrary search for the literal visitor sentence; 0 hits.
       if (!isFullCatalog && state.intent === 'search' && calls.length < 2) {
         calls = [
           { 'name': 'web_search_books',    'arguments': { 'limit': 8 } },
@@ -294,11 +294,11 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools' | 'retry' | 'salvag
       // Node-local timeout or LLM failure → retry budget decides the flow. The
       // minimal-plan fallback lives in decide-tools-salvage, not here.
       if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-        context.services.logger.warn(`decide-tools: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}) — retry: ${err instanceof Error ? err.message : String(err)}`);
+        context.services.logger.warn(`decide-tools: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
         return { 'output': 'retry' };
       }
       state.clearAttempts(context.nodeName);
-      context.services.logger.warn(`decide-tools: retries exhausted — salvage: ${err instanceof Error ? err.message : String(err)}`);
+      context.services.logger.warn(`decide-tools: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
       return { 'output': 'salvage' };
     } finally {
       clearTimeout(handle);
@@ -309,7 +309,7 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools' | 'retry' | 'salvag
 // Export tool names list for tests / documentation.
 export { FULL_CATALOG_TOOL_NAMES };
 
-// Export the shortcut matcher for unit tests — algorithmic guarantee, no
+// Export the shortcut matcher for unit tests; algorithmic guarantee, no
 // runtime services needed to exercise the pattern set.
 export { matchShortcut };
 export type { ShortcutMatch };

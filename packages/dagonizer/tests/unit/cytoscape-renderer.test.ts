@@ -195,7 +195,7 @@ void describe('CytoscapeRenderer.render', () => {
     const embeddedDAGs = new Map<string, DAG>();
     const elements = CytoscapeRenderer.render(dag, { embeddedDAGs, "computeLayout": false });
 
-    // No inner children emitted — node-body scatters are opaque
+    // No inner children emitted; node-body scatters are opaque
     const childNodes = elements.filter(
       (el): el is CytoscapeNodeElement => isNode(el) && el.data.id.startsWith('scatter/'),
     );
@@ -210,7 +210,7 @@ void describe('CytoscapeRenderer.render', () => {
   });
 });
 
-void describe('CytoscapeRenderer.render — TerminalNode', () => {
+void describe('CytoscapeRenderer.render: TerminalNode', () => {
   void it('renders a completed TerminalNode with type=terminal and outcome=completed', () => {
     const terminal: TerminalNodePlacementInterface = {
       '@id':     'urn:noocodex:dag:ct/node/done',

@@ -1,15 +1,15 @@
 /**
- * scouts — data-acquisition nodes for the Archivist's multi-source scatter.
+ * scouts: data-acquisition nodes for the Archivist's multi-source scatter.
  *
  * Three scouts, each wrapping one external tool:
  *
- *   openLibraryScout  — OpenLibrary `web_search_books` call; LLM-gated
+ *   openLibraryScout:  OpenLibrary `web_search_books` call; LLM-gated
  *                       via `state.toolPlan` (tool name: web_search_books).
- *   googleBooksScout  — Google Books `google_books_search` call; LLM-gated
+ *   googleBooksScout:  Google Books `google_books_search` call; LLM-gated
  *                       via `state.toolPlan` (tool name: google_books_search).
- *   subjectScout      — OpenLibrary subject search; LLM-gated via
+ *   subjectScout:      OpenLibrary subject search; LLM-gated via
  *                       `state.toolPlan` (tool name: subject_search).
- *   wikipediaScout    — Wikipedia `page/summary` enrichment; runs even
+ *   wikipediaScout:    Wikipedia `page/summary` enrichment; runs even
  *                       without a toolPlan entry, using `state.terms` as the
  *                       query, unless terms is empty.
  *
@@ -40,7 +40,7 @@ import type { NodeInterface } from '@noocodex/dagonizer';
 /**
  * Filter scout-returned candidates down to those in the visitor's
  * language. Candidates with no language metadata pass through (the
- * source did not report a language — degrade gracefully). Candidates
+ * source did not report a language; degrade gracefully). Candidates
  * whose reported language array does NOT contain the target ISO 639-2
  * code are dropped.
  */
@@ -59,7 +59,7 @@ function filterByLanguage(
 // #region scout-timeout
 // Per-scout wall-clock budget. A scout is a flow decision, not a resilience
 // layer: it contributes candidates or it doesn't. On its own timeout or a
-// network error it routes 'empty' (contributed nothing) — the four scouts run
+// network error it routes 'empty' (contributed nothing); the four scouts run
 // in parallel, so a dropped source degrades coverage, not the run. Transient
 // network retry, if wanted, belongs in the tool, not the node.
 const SCOUT_TIMEOUT_MS = 60_000;
@@ -97,10 +97,10 @@ function unquote(s: string): string {
 // involvement) and applied to `state.terms` after the extract-query node has
 // already distilled the visitor's prose into catalog keywords.
 //
-// OpenLibrary (keyword search, `q=`): join all terms — keyword AND-match works
+// OpenLibrary (keyword search, `q=`): join all terms; keyword AND-match works
 //   well with multiple short terms. No transformation needed.
 //
-// Google Books (`q=`): same join — full-text keyword search, identical behaviour
+// Google Books (`q=`): same join; full-text keyword search, identical behaviour
 //   to OpenLibrary keyword path. No transformation needed.
 //
 // Subject Search (OpenLibrary `subject=`): the subject facet is indexed from
@@ -113,7 +113,7 @@ function unquote(s: string): string {
 // Wikipedia (page/summary title): the REST endpoint resolves exact article
 //   titles and common redirects. Proper nouns (author names, book titles)
 //   surface the right article. Strategy: if any term starts with an uppercase
-//   letter (likely a proper noun — "Neuromancer", "Philip K. Dick"), use the
+//   letter (likely a proper noun, "Neuromancer", "Philip K. Dick"), use the
 //   first such term alone. Otherwise join all terms as a best-effort phrase.
 
 /** Pick the most-specific (longest) term for LCSH subject search. */
@@ -182,7 +182,7 @@ export const openLibraryScout: NodeInterface<ArchivistState, 'success' | 'empty'
       const rawCandidates = await tool.execute(toolInput as Parameters<typeof tool.execute>[0], signal);
       const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
-      const firstTitle = rawCandidates[0]?.book.title ?? '—';
+      const firstTitle = rawCandidates[0]?.book.title ?? '(none)';
       context.services.logger.info(`openlibrary GET https://openlibrary.org/search.json?${logDimension}&limit=${String(limit)} → ${String(rawCandidates.length)} hits, first: "${firstTitle}" (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
       if (candidates.length === 0) {
         state.failureCause += `OpenLibrary: 0 hits for (${logDimension}). `;
@@ -200,7 +200,7 @@ export const openLibraryScout: NodeInterface<ArchivistState, 'success' | 'empty'
         "recoverable": true,
         "timestamp":   new Date().toISOString(),
       });
-      state.failureCause += `OpenLibrary: error — ${msg}. `;
+      state.failureCause += `OpenLibrary: error: ${msg}. `;
       context.services.logger.warn(`openlibrary failed: ${String(error)}`);
       return { "output": 'empty' };
     } finally {
@@ -235,7 +235,7 @@ export const googleBooksScout: NodeInterface<ArchivistState, 'success' | 'empty'
       const rawCandidates = await tool.execute({ query, "maxResults": args.maxResults ?? 8, "langRestrict": langRestrict }, signal);
       const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
-      const firstGbTitle = rawCandidates[0]?.book.title ?? '—';
+      const firstGbTitle = rawCandidates[0]?.book.title ?? '(none)';
       context.services.logger.info(`google-books GET https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=${String(args.maxResults ?? 8)} → ${String(rawCandidates.length)} hits, first: "${firstGbTitle}" (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
       if (candidates.length === 0) {
         state.failureCause += `Google Books: 0 hits for "${query}". `;
@@ -252,7 +252,7 @@ export const googleBooksScout: NodeInterface<ArchivistState, 'success' | 'empty'
         "recoverable": true,
         "timestamp":   new Date().toISOString(),
       });
-      state.failureCause += `Google Books: error — ${msg}. `;
+      state.failureCause += `Google Books: error: ${msg}. `;
       context.services.logger.warn(`google-books failed: ${String(error)}`);
       return { "output": 'empty' };
     } finally {
@@ -289,7 +289,7 @@ export const subjectScout: NodeInterface<ArchivistState, 'success' | 'empty', Ar
       const rawCandidates = await tool.execute({ subject, "limit": args.limit ?? 8, "lang": lang }, signal);
       const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
-      const firstSubjectTitle = rawCandidates[0]?.book.title ?? '—';
+      const firstSubjectTitle = rawCandidates[0]?.book.title ?? '(none)';
       context.services.logger.info(`subject-search GET https://openlibrary.org/search.json?subject=${encodeURIComponent(subject)}&limit=${String(args.limit ?? 8)} → ${String(rawCandidates.length)} hits, first: "${firstSubjectTitle}" (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
       if (candidates.length === 0) {
         state.failureCause += `Subject search: 0 hits for "${subject}". `;
@@ -306,7 +306,7 @@ export const subjectScout: NodeInterface<ArchivistState, 'success' | 'empty', Ar
         "recoverable": true,
         "timestamp":   new Date().toISOString(),
       });
-      state.failureCause += `Subject search: error — ${msg}. `;
+      state.failureCause += `Subject search: error: ${msg}. `;
       context.services.logger.warn(`subject-search failed: ${String(error)}`);
       return { "output": 'empty' };
     } finally {
@@ -316,7 +316,7 @@ export const subjectScout: NodeInterface<ArchivistState, 'success' | 'empty', Ar
 };
 
 // ── Wikipedia scout ──────────────────────────────────────────────────────────
-// Enrichment-only. Runs even without a toolPlan entry — uses `state.terms`
+// Enrichment-only. Runs even without a toolPlan entry; uses `state.terms`
 // as the query. Skips only when terms is empty. Non-deterministic (live network).
 
 export const wikipediaScout: NodeInterface<ArchivistState, 'success' | 'empty', ArchivistServices> = {
@@ -325,7 +325,7 @@ export const wikipediaScout: NodeInterface<ArchivistState, 'success' | 'empty', 
   async execute(state, context) {
     // Wikipedia shaping: the REST summary endpoint resolves exact article
     // titles best. Prefer the first capitalised term (proper noun heuristic
-    // — "Neuromancer", "Philip K. Dick"). Fall back to joining all terms.
+    // e.g. "Neuromancer", "Philip K. Dick". Fall back to joining all terms.
     const query = pickWikipediaQuery(state.terms).trim();
     if (query.length === 0) return { "output": 'empty' };
     const controller = new AbortController();
@@ -338,7 +338,7 @@ export const wikipediaScout: NodeInterface<ArchivistState, 'success' | 'empty', 
       const rawCandidates = await tool.execute({ query, "lang": lang }, signal);
       const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
-      const firstWikiTitle = rawCandidates[0]?.book.title ?? '—';
+      const firstWikiTitle = rawCandidates[0]?.book.title ?? '(none)';
       context.services.logger.info(`wikipedia GET https://${lang}.wikipedia.org/api/rest_v1/page/summary/${wikiTitle} → ${String(rawCandidates.length)} hits, first: "${firstWikiTitle}" (${String(rawCandidates.length - candidates.length)} dropped by language filter)`);
       if (candidates.length === 0) {
         state.failureCause += `Wikipedia: 0 hits for "${query}". `;
@@ -355,7 +355,7 @@ export const wikipediaScout: NodeInterface<ArchivistState, 'success' | 'empty', 
         "recoverable": true,
         "timestamp":   new Date().toISOString(),
       });
-      state.failureCause += `Wikipedia: error — ${msg}. `;
+      state.failureCause += `Wikipedia: error: ${msg}. `;
       context.services.logger.warn(`wikipedia failed: ${String(error)}`);
       return { "output": 'empty' };
     } finally {

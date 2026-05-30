@@ -1,5 +1,5 @@
 /**
- * GeminiApiEmbedder — Google AI Studio REST adapter for text embeddings.
+ * GeminiApiEmbedder: Google AI Studio REST adapter for text embeddings.
  *
  * Wire format:
  *
@@ -8,7 +8,7 @@
  *
  *   → { "embedding": { "values": number[] } }
  *
- * Default model: `text-embedding-004` — 768-dim vectors. Override via
+ * Default model: `text-embedding-004` (768-dim vectors). Override via
  * `options.model` to target `text-embedding-005` or future models;
  * supply `options.dimensions` when targeting a non-768 model.
  *

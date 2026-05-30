@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * GraphLegend — shared bottom-left legend for any graph canvas.
+ * GraphLegend: shared bottom-left legend for any graph canvas.
  *
  * Accepts a `tabs` array so the same component renders:
  *   • DAG: a single "Kinds" tab with deterministic / non-deterministic entries.
@@ -8,10 +8,10 @@
  *     each clickable to toggle visibility. Emits `toggle(key)` when clicked.
  *
  * Entry swatch shapes:
- *   'solid'  — a solid filled square (default)
- *   'dashed' — an outlined square with a dashed border
- *   'square' — alias for 'solid'
- *   'circle' — a filled circle (pill border-radius)
+ *   'solid': a solid filled square (default)
+ *   'dashed': an outlined square with a dashed border
+ *   'square': alias for 'solid'
+ *   'circle': a filled circle (pill border-radius)
  */
 
 export interface LegendEntry {

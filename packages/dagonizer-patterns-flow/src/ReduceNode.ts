@@ -1,5 +1,5 @@
 /**
- * ReduceNode — root for "collapse a list" patterns.
+ * ReduceNode: root for "collapse a list" patterns.
  * Leaves: DedupeByKeyNode, GroupByFieldNode, MergeReducerNode.
  */
 
@@ -74,7 +74,7 @@ export abstract class MergeReducerNode<
   TItem,
   TOutput extends string = 'success',
 > extends ReduceNode<TState, TItem, readonly TItem[], TOutput> {
-  // Subclasses override `reduce` directly — this node is the bare base
+  // Subclasses override `reduce` directly; this node is the bare base
   // for custom merge semantics. DedupeByKeyNode and GroupByFieldNode
   // demonstrate two common reductions.
 }

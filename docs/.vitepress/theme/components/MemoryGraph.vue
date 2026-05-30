@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * MemoryGraph — cosmos.gl view of the n3.js triple store.
+ * MemoryGraph: cosmos.gl view of the n3.js triple store.
  *
  * Triples are a graph by construction: every (subject, predicate, object)
  * is an edge. Subjects + IRI objects become "iri" points (teal); literal
@@ -15,7 +15,7 @@
  *     with a small dark pill background.
  *
  * Lazy-loaded: `@cosmos.gl/graph` ships a WebGL2 shader pipeline and
- * adds ~250KB gzipped — we dynamic-import on mount so the rest of the
+ * adds ~250KB gzipped; we dynamic-import on mount so the rest of the
  * docs bundle stays light.
  *
  * Mirrors the Pokemontology viewer's ExplorerCanvas pattern at a
@@ -64,7 +64,7 @@ const emit = defineEmits<{
   (event: 'select', selection: MemorySelection | null): void;
 }>();
 
-/** Per-layer visibility toggles — chip filter at top of canvas. */
+/** Per-layer visibility toggles: chip filter at top of canvas. */
 const layerVisible = ref<Record<GraphLayer, boolean>>({
   'ontology': true,
   'memory':  true,
@@ -77,7 +77,7 @@ const layerVisible = ref<Record<GraphLayer, boolean>>({
 const PAN_ENABLED = true;
 const PAN_STEP = 250;
 
-/** Layer entries for GraphLegend — reactive so active state reflects layerVisible. */
+/** Layer entries for GraphLegend: reactive so active state reflects layerVisible. */
 const memoryLegendTabs = computed<readonly LegendTab[]>(() => {
   const entries: LegendEntry[] = [
     { key: 'ontology', swatch: 'solid',  color: '#21ee99', label: 'ontology', active: layerVisible.value['ontology'] },
@@ -102,7 +102,7 @@ const labelsRef = ref<HTMLCanvasElement | null>(null);
 const loading = ref(true);
 const loadError = ref<string | null>(null);
 const zoomLevel = ref<number>(1);
-/** Zoom level at last fitView — zoom-out floor so graph never shrinks to a dot. */
+/** Zoom level at last fitView; zoom-out floor so graph never shrinks to a dot. */
 const fitZoomLevel = ref<number | null>(null);
 
 const graph = shallowRef<GraphHandle | null>(null);
@@ -141,14 +141,14 @@ onMounted(async () => {
   // Cosmos.gl needs non-zero dimensions to init its WebGL context.
   // When this component mounts inside a hidden PanesTabs tab the
   // container is `display: none` (0×0). Init must fire the first time
-  // the container becomes visible — and "first time" might be 30s or
+  // the container becomes visible, and "first time" might be 30s or
   // 30min into the session (visitor explores other tabs first). We use
   // two complementary triggers so no visibility transition is missed:
   //
-  //   1. ResizeObserver — fires when the content rect changes,
-  //      including the `display: none → block` transition that
+  //   1. ResizeObserver: fires when the content rect changes,
+  //      including the `display: none -> block` transition that
   //      happens when the visitor activates the Memory tab.
-  //   2. IntersectionObserver — fires when the container enters the
+  //   2. IntersectionObserver: fires when the container enters the
   //      viewport, covering scroll-into-view scenarios.
   //
   // Both call the same idempotent `tryInit`. Once cosmos is alive,
@@ -194,12 +194,12 @@ onMounted(async () => {
 function initCosmos(container: HTMLDivElement): void {
   if (GraphCtor === null || graph.value !== null) return;
   try {
-    // Native cosmos.gl defaults — the only config is the two callbacks
+    // Native cosmos.gl defaults: the only config is the two callbacks
     // we need so the label overlay and zoom HUD stay in sync with what
     // the simulation does. Everything else (point size, link color,
     // physics, layout) uses cosmos's built-in choices.
     graph.value = new GraphCtor(container, {
-      // Faster cooldown — cosmos.gl default decay is 1000 (slow), which
+      // Faster cooldown: cosmos.gl default decay is 1000 (slow), which
       // animates the layout for tens of seconds after the first paint.
       // 5000 settles the layout in ~1s; the graph picks a stable form
       // and stops jittering well before the visitor reads any node.
@@ -335,7 +335,7 @@ function paint(): void {
   setTimeout(() => handle.fitView(400), 400);
   setTimeout(() => {
     handle.fitView(500);
-    // Capture fit zoom after the final fit settles — this becomes the zoom-out floor.
+    // Capture fit zoom after the final fit settles; this becomes the zoom-out floor.
     setTimeout(() => {
       try {
         const level = graph.value?.getZoomLevel() ?? null;
@@ -391,7 +391,7 @@ function paintLabels(): void {
   try { positions = handle.getPointPositions(); } catch (_) { return; }
   if (positions.length === 0) return;
 
-  // Canvas font does not honour CSS vars — resolve at runtime instead.
+  // Canvas font does not honour CSS vars; resolve at runtime instead.
   const mono = getComputedStyle(document.body).getPropertyValue('--vp-font-family-mono').trim()
     || 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
   ctx.font = `600 13px ${mono}`;
@@ -627,7 +627,7 @@ function humanLabel(term: Quad['subject'] | Quad['object'], store: MemoryStore):
         No triples yet. Ask the Archivist and watch the store grow.
       </p>
 
-      <!-- Layer legend — bottom-left corner (replaces chip filter). -->
+      <!-- Layer legend: bottom-left corner (replaces chip filter). -->
       <GraphLegend
         v-if="!loading && !loadError"
         :tabs="memoryLegendTabs"
@@ -635,7 +635,7 @@ function humanLabel(term: Quad['subject'] | Quad['object'], store: MemoryStore):
         @toggle="onLayerToggle"
       />
 
-      <!-- D-pad navigation — bottom-right corner (replaces zoom HUD + mg-dpad). -->
+      <!-- D-pad navigation: bottom-right corner (replaces zoom HUD + mg-dpad). -->
       <div v-if="!loading && !loadError" class="mg-dpad-pos">
         <GraphDpad
           :zoom-level="zoomLevel"
@@ -729,7 +729,7 @@ function humanLabel(term: Quad['subject'] | Quad['object'], store: MemoryStore):
   color: var(--dagonizer-brand3);
 }
 
-/* Legend — bottom-left positioning anchor. */
+/* Legend: bottom-left positioning anchor. */
 .mg-legend-pos {
   position: absolute;
   bottom: 10px;
@@ -737,7 +737,7 @@ function humanLabel(term: Quad['subject'] | Quad['object'], store: MemoryStore):
   z-index: 4;
 }
 
-/* D-pad — bottom-right positioning anchor. */
+/* D-pad: bottom-right positioning anchor. */
 .mg-dpad-pos {
   position: absolute;
   bottom: 10px;

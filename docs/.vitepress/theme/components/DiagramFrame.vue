@@ -1,20 +1,20 @@
 <script setup lang="ts">
 /**
- * DiagramFrame — generic chrome for any diagram (cytoscape, cosmos,
+ * DiagramFrame: generic chrome for any diagram (cytoscape, cosmos,
  * mermaid). Provides:
  *
  *   • Title bar with the diagram's name + a node/edge/triple counter
- *     (via the `meta` slot — the caller decides what to surface).
- *   • Fullscreen toggle — uses the browser Fullscreen API on the frame
+ *     (via the `meta` slot; the caller decides what to surface).
+ *   • Fullscreen toggle: uses the browser Fullscreen API on the frame
  *     root so the diagram fills the whole viewport.
- *   • Expand-to-modal — covers the page with a high-z-index overlay
+ *   • Expand-to-modal: covers the page with a high-z-index overlay
  *     even when fullscreen is blocked (some browsers gate FS to user
  *     gesture trees only).
- *   • Slot `controls` — diagram-specific buttons (zoom in/out/fit/etc).
+ *   • Slot `controls`: diagram-specific buttons (zoom in/out/fit/etc).
  *
  * The frame doesn't know what's inside the slot; the diagram is
  * responsible for resizing itself when the frame size changes (cytoscape
- * and cosmos both expose a `resize()` call — wire them via the
+ * and cosmos both expose a `resize()` call; wire them via the
  * `@resize` event we emit on every frame-size change).
  */
 
@@ -174,7 +174,7 @@ function onModalKey(event: KeyboardEvent): void {
 }
 
 .diagram-frame.is-expanded {
-  /* The expanded card replaces the inline frame — keep the slot mounted. */
+  /* The expanded card replaces the inline frame; keep the slot mounted. */
 }
 
 .frame-header {
@@ -244,7 +244,7 @@ function onModalKey(event: KeyboardEvent): void {
   min-height: 0;
 }
 
-/* Expand modal — covers viewport when fullscreen is blocked. */
+/* Expand modal: covers viewport when fullscreen is blocked. */
 .frame-overlay {
   position: fixed;
   inset: 0;

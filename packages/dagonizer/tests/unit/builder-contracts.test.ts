@@ -83,7 +83,7 @@ void describe('DAGBuilder.build() contract validation', () => {
     const a = makeNode('a', ['success'], { 'hardRequired': ['input'], 'produces': ['used', 'dead'] });
     const b = makeNode('b', ['success'], { 'hardRequired': ['used'],  'produces': ['done'] });
 
-    // Must not throw — dead writes without a callback are silently ignored.
+    // Must not throw; dead writes without a callback are silently ignored.
     assert.doesNotThrow(() =>
       new DAGBuilder('silent-dead-write', '1.0')
         .node('a', a, { 'success': 'b' })
@@ -93,7 +93,7 @@ void describe('DAGBuilder.build() contract validation', () => {
   });
 
   void it('skips contract validation for placements whose impl is not registered via .node()', () => {
-    // parallel() and embeddedDAG() do not call .node() — their impl is not in #nodeImpls.
+    // parallel() and embeddedDAG() do not call .node(); their impl is not in #nodeImpls.
     // The parallel group references 'a' and 'b' by name, but 'a' and 'b' are added
     // via .node() while 'group' is a ParallelNode with no underlying NodeInterface.
     // The contract check runs only over #nodeImpls entries, so 'group' is not
@@ -162,7 +162,7 @@ void describe('DAGBuilder.fromNodes()', () => {
     const nodes: NodeInterface<NodeStateBase, string>[] = [
       makeNode('a', ['success'], { 'hardRequired': ['input'], 'produces': ['x'] }),
       makeNode('b', ['success'], { 'hardRequired': ['x'],     'produces': ['y'] }),
-      // no contract — should be silently skipped
+      // no contract; should be silently skipped
       makeNode('helper', ['success']),
     ];
 

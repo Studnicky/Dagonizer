@@ -3,7 +3,7 @@ import type { ExecutionResultInterface } from '../entities/execution/ExecutionRe
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 /**
- * No-op base — the default `Dagonizer.instrumentation`. Plugins
+ * No-op base; the default `Dagonizer.instrumentation`. Plugins
  * extend this and override only the hooks they care about; every
  * un-overridden hook stays a no-op.
  */

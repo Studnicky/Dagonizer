@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * ArchivistRunner — orchestrator for the in-browser Archivist demo.
+ * ArchivistRunner: orchestrator for the in-browser Archivist demo.
  *
  * Two-column iridis-style layout with container-query breakpoint:
  *
@@ -12,7 +12,7 @@
  *   └──────────────────────────┴───────────────────────────────────────────┘
  *
  * Pure observer: the dispatcher's lifecycle hooks toggle CSS classes on
- * cytoscape nodes / edges via the DagGraph's imperative surface — no
+ * cytoscape nodes / edges via the DagGraph's imperative surface; no
  * setTimeout, no polling, no JS-driven animation loops.
  */
 
@@ -75,7 +75,7 @@ const isMobile = ref(false);
 const apiKeys = ref<Partial<Record<ProviderId, string>>>(loadApiKeys());
 const ollamaModel = ref<string>(loadOllamaModel());
 
-// Slow-backend banner — shown when the active backend is the browser
+// Slow-backend banner: shown when the active backend is the browser
 // built-in `LanguageModel` or WebLLM AND no cloud key is configured.
 // Dismissable; preference persisted under `archivist:dismiss-slow-banner`.
 const SLOW_BANNER_KEY = 'archivist:dismiss-slow-banner';
@@ -134,7 +134,7 @@ function onTimeoutSettingsUpdate(settings: TimeoutSettings): void {
 
 /**
  * Overall safety-net deadline: sum of all per-phase budgets plus a small
- * grace window. Per-node timeouts are the primary mechanism — this is a
+ * grace window. Per-node timeouts are the primary mechanism; this is a
  * last-resort hard stop for nodes that do not declare their own budget.
  */
 function overallDeadlineMs(): number {
@@ -275,11 +275,11 @@ function togglePersistence(): void {
   memoryTick.value++;
 }
 
-// UI state machine — runner subscribes; views derive UI from the
+// UI state machine: runner subscribes; views derive UI from the
 // machine's current state instead of independent refs.
 const runnerMachine = new RunnerMachine();
 
-// Selected node in the memory graph — TripleInspector reads this.
+// Selected node in the memory graph; TripleInspector reads this.
 const selectedSelection = ref<MemorySelection | null>(null);
 function onMemorySelect(sel: MemorySelection | null): void { selectedSelection.value = sel; }
 
@@ -328,7 +328,7 @@ function makeLlm() {
   });
 }
 
-/** Live LLM client reference — kept in sync with activeBackend changes. */
+/** Live LLM client reference, kept in sync with activeBackend changes. */
 const currentLlm = computed(() => makeLlm());
 
 function clearMemory(): void {
@@ -368,7 +368,7 @@ const rightTabs = computed(() => {
 
 const dagElements = computed<ElementDefinition[]>(() => {
   // Embedded-DAG registry: placements whose dag name appears here are expanded
-  // inline in the Cytoscape diagram — full compound-graph children visible,
+  // inline in the Cytoscape diagram; full compound-graph children visible,
   // no opaque boxes. This is the renderer-side of molecular composition.
   const embeddedDagRegistry = new Map([
     ['book-search-scatter', BookSearchScatterDAG],
@@ -415,7 +415,7 @@ function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
     onNodeStart(nodeName: string, _state: ArchivistState, placementPath: readonly string[] = []) {
       // `placementPath` is the ordered list of parent embedded-DAG
       // placement names that led to this node. Join with the node name
-      // to form the cytoscape id used by `DagGraph` — this is what
+      // to form the cytoscape id used by `DagGraph`; this is what
       // disambiguates same-named inner placements (e.g. `extract-query`
       // inside `on-topic-search` vs `author-search` vs `similar-search`)
       // so only the placement currently executing lights up.
@@ -489,7 +489,7 @@ const STATIC_VISITOR_REPLIES: readonly string[] = [
 ];
 
 function isFreshSession(): boolean {
-  // A fresh session has at most one entry — the archivist greeting (or nothing yet).
+  // A fresh session has at most one entry: the archivist greeting (or nothing yet).
   // Once the visitor has sent any message the session is no longer fresh.
   const turns = conversation.value;
   return turns.length === 0 || (turns.length === 1 && turns[0]?.role === 'archivist');
@@ -514,7 +514,7 @@ onMounted(async () => {
   // On desktop, it returns true when no real backend is runnable.
   if (hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value })) {
     noModel.value = true;
-    logger.warn('no LLM backend detected — visitor must enable one');
+    logger.warn('no LLM backend detected; visitor must enable one');
     return;
   }
   noModel.value = false;
@@ -533,7 +533,7 @@ onMounted(async () => {
 
   // On a fresh session: generate the Archivist greeting, push it to the
   // conversation, then generate a contextual visitor reply and pre-fill
-  // the input. Only runs once per session — once the visitor sends a
+  // the input. Only runs once per session; once the visitor sends a
   // message the input is cleared (via ask()) and this condition no longer fires.
   if (isFreshSession() && visitorQuery.value.length === 0) {
     const llm = makeLlm();
@@ -580,13 +580,13 @@ async function ask(): Promise<void> {
     'text': queryText,
     'ts': Date.now(),
   }];
-  // Clear the input immediately after capturing — the send-and-clear pattern.
+  // Clear the input immediately after capturing (the send-and-clear pattern).
   visitorQuery.value = '';
 
   await dagGraph.value?.reset();
   memoryTick.value++;
   logger.clear();
-  logger.info(`run start — query: "${queryText}"`);
+  logger.info(`run start, query: "${queryText}"`);
 
   const runId = (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
     ? crypto.randomUUID()
@@ -668,7 +668,7 @@ function reset(): void {
   lastResult = null;
   visitorQuery.value = '';
   // Fire-and-forget: the manual reset button is not starting a new run,
-  // so no need to await — the fade plays visually but nothing depends on it.
+  // so no need to await; the fade plays visually but nothing depends on it.
   void dagGraph.value?.reset();
   memoryStore.clear();
   memoryStore.loadOntology(ONTOLOGY_NTRIPLES);
@@ -707,7 +707,7 @@ function reset(): void {
 <template>
   <div :class="['archivist-runner', { 'is-running': isRunning }]">
 
-    <!-- Mobile banner — shown when device is detected as mobile.
+    <!-- Mobile banner: shown when device is detected as mobile.
          Three states:
            stub active (no keys set): canned-responses notice.
            cloud backend active (key set): concise cloud-backend notice.
@@ -724,7 +724,7 @@ function reset(): void {
       <button type="button" class="mobile-banner-link" @click="onTreatAsDesktop">Treat as desktop</button>
     </div>
 
-    <!-- No-model gate — shown before a backend is available.
+    <!-- No-model gate: shown before a backend is available.
          On mobile this block is unreachable: hasNoRunnableModel returns false
          because stub is the guaranteed fallback. Desktop path: no keys + no
          Nano + no WebLLM still triggers this gate. -->
@@ -782,7 +782,7 @@ function reset(): void {
       />
     </section>
 
-    <!-- Main layout — two-column grid, container-query driven -->
+    <!-- Main layout: two-column grid, container-query driven -->
     <template v-else>
       <div class="ar-grid">
 
@@ -796,7 +796,7 @@ function reset(): void {
             <!-- Conversation tab: the visual-first surface -->
             <template #conversation>
               <div class="ar-left-pane">
-                <!-- Slow-backend warning — browser built-in LanguageModel / WebLLM with no cloud key. -->
+                <!-- Slow-backend warning: browser built-in LanguageModel / WebLLM with no cloud key. -->
                 <div v-if="showSlowBanner" class="slow-banner" role="note">
                   <span class="slow-banner-text">
                     <strong>Slow backend.</strong> You&rsquo;re using the browser&rsquo;s built-in
@@ -979,7 +979,7 @@ function reset(): void {
   color: var(--dagonizer-brand);
 }
 
-/* ── Slow-backend banner — gold-warning palette ───────────────────────── */
+/* ── Slow-backend banner: gold-warning palette ───────────────────────── */
 .slow-banner {
   display: flex;
   align-items: flex-start;
@@ -1059,7 +1059,7 @@ function reset(): void {
   font-size: 0.82rem;
 }
 
-/* ── Two-column grid — iridis pattern ──────────────────────────────────── */
+/* ── Two-column grid: iridis pattern ──────────────────────────────────── */
 .ar-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -1150,7 +1150,7 @@ function reset(): void {
   color: var(--vp-c-text-3);
 }
 
-/* ── Shared graph pane — identical dimensions for DAG and Memory tabs ──── */
+/* ── Shared graph pane: identical dimensions for DAG and Memory tabs ──── */
 .graph-pane {
   position: relative;
   width: 100%;

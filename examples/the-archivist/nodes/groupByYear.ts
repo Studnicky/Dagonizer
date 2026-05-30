@@ -1,5 +1,5 @@
 /**
- * groupByYear — deterministic re-ordering for the `lookup-author` branch.
+ * groupByYear: deterministic re-ordering for the `lookup-author` branch.
  *
  * Sorts `state.candidates` ascending by `book.firstPublishYear` so the
  * author's body of work reads chronologically (earliest first). Missing
@@ -8,7 +8,7 @@
  *
  * The compose prompt for this branch (`prompts.composeAuthor`) is
  * primed with the `chronological` directive, so the LLM is told to
- * present the works in publication order — this node makes that
+ * present the works in publication order; this node makes that
  * promise true at the data level.
  */
 

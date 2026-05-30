@@ -1,11 +1,11 @@
 /**
- * CerebrasApiAdapter — Cerebras REST adapter.
+ * CerebrasApiAdapter: Cerebras REST adapter.
  *
  * `gpt-oss-120b` on Cerebras's Wafer-Scale Engine inference. Cerebras
  * has no `llama-3.3-70b` variant; the previous default returned a
  * model-not-found error every call.
  *
- * Tool-use is `'partial'` — model coverage varies. The shared
+ * Tool-use is `'partial'`; model coverage varies. The shared
  * `toolsFallback` hook retries as plain chat when the provider
  * signals tools are unsupported.
  */

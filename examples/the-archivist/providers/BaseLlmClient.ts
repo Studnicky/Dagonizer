@@ -1,11 +1,11 @@
 /**
- * BaseLlmClient — single LlmClient implementation that runs on any
+ * BaseLlmClient: single LlmClient implementation that runs on any
  * `LlmAdapter`. The DAG's nodes call `classifyIntent`, `extractTerms`,
  * `decideTools`, `rankCandidates`, `compose`, `validate`; this class
  * translates each to a `chat(...)` round-trip on the supplied adapter.
  *
  * EVERY prompt and schema is imported from `./prompts.ts`. This file
- * never assembles natural-language directives itself — the prompts
+ * never assembles natural-language directives itself; the prompts
  * module is the single source of truth, composed from small directive
  * primitives so the persona stays consistent across calls.
  */
@@ -38,7 +38,7 @@ const VALID_INTENTS: readonly ClassifiedIntent[] = [
 
 /**
  * Construction options for `BaseLlmClient`. `language` is the visitor's
- * device language (ISO 639-1) — threaded into every prompt builder so
+ * device language (ISO 639-1), threaded into every prompt builder so
  * the model responds in the user's language. Defaulted to `'en'` when
  * absent so existing callers stay correct.
  *
@@ -46,8 +46,8 @@ const VALID_INTENTS: readonly ClassifiedIntent[] = [
  * supplied, `classifyIntent` tries the vector path first; only when the
  * top-scoring intent falls below the classifier's confidence floor does
  * it fall through to the LLM. Pass `undefined` (or omit) to keep the
- * legacy LLM-only behaviour — typically the right default in browser
- * environments where no embedder is reachable.
+ * legacy LLM-only behaviour (typically the right default in browser
+ * environments where no embedder is reachable).
  */
 export interface BaseLlmClientOptions {
   readonly language?: string;
@@ -99,7 +99,7 @@ export class BaseLlmClient implements LlmClient {
     signal?: AbortSignal,
   ): Promise<readonly { name: string; arguments: Record<string, unknown> }[]> {
     if (available.length === 0) return [];
-    // Index-pointer schema — the LLM emits `{tools: [1, 3, ...]}` only.
+    // Index-pointer schema: the LLM emits `{tools: [1, 3, ...]}` only.
     // Token-economy win for slow constrained-output backends (Nano, WebLLM).
     const request = ChatRequestBuilder.from({
       'messages':     [{ 'role': 'user', 'content': prompts.decideTools(this.language, query, available), 'toolCallId': '', 'toolName': '' }],

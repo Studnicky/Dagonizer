@@ -1,9 +1,9 @@
 /**
- * BaseAdapter — abstract base every concrete adapter extends.
+ * BaseAdapter: abstract base every concrete adapter extends.
  *
  * Owns the retry plumbing (Dagonizer's `RetryPolicy` with exponential
  * backoff) and the chat-call envelope. Concrete adapters implement
- * `performChat()` — the raw transport call — and `classify()` which
+ * `performChat()` (the raw transport call) and `classify()` which
  * maps a provider-native error into the shared `LlmError` taxonomy.
  *
  *   Adapter contract → BaseAdapter ┐
@@ -67,11 +67,11 @@ export abstract class BaseAdapter implements LlmAdapter {
   }
 
   /**
-   * Default availability probe. Returns true — the adapter assumes it
+   * Default availability probe. Returns true; the adapter assumes it
    * can run unless the concrete subclass knows better. Subclasses with
    * meaningful availability constraints (API key presence, runtime
    * feature detect, local model warmth) override and surface their own
-   * check. Must never throw — return false instead.
+   * check. Must never throw; return false instead.
    */
   async probe(): Promise<boolean> {
     return Promise.resolve(true);
@@ -103,7 +103,7 @@ export abstract class BaseAdapter implements LlmAdapter {
     }, request.signal);
   }
 
-  /** Concrete adapter — perform the actual API call. */
+  /** Concrete adapter: perform the actual API call. */
   protected abstract performChat(request: ChatRequest): Promise<ChatResponse>;
 
   /** Map a provider-native error into the shared classification. */

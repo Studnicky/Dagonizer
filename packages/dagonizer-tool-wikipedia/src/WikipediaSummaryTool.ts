@@ -1,5 +1,5 @@
 /**
- * WikipediaSummaryTool — REST `page/summary` endpoint.
+ * WikipediaSummaryTool: REST `page/summary` endpoint.
  *
  *   GET https://en.wikipedia.org/api/rest_v1/page/summary/<title>
  *
@@ -87,7 +87,7 @@ export const WikipediaSummaryTool: Tool<WikipediaInput, readonly Candidate[]> = 
           : { 'headers': { 'accept': 'application/json' } },
       );
     } catch (err) {
-      // HttpTransport throws ToolError on 404 — treat as "no article found".
+      // HttpTransport throws ToolError on 404; treat as "no article found".
       const status = (err as { status?: number }).status;
       if (status === 404) return [];
       throw err;

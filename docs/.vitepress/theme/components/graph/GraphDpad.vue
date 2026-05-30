@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * GraphDpad — shared 3×3 D-pad navigation control for any graph canvas.
+ * GraphDpad: shared 3x3 D-pad navigation control for any graph canvas.
  *
  * Layout (row-major, 3 cols × 3 rows):
  *   [zoom-in ] [pan-up  ] [zoom-out]
@@ -8,7 +8,7 @@
  *   [expand  ] [pan-down] [fit     ]
  *
  * When `zoomLevel` is provided a small readout is rendered above the D-pad
- * (e.g. "1.0×") — this is the zoom indicator ported from MemoryGraph.
+ * (e.g. "1.0x"); this is the zoom indicator ported from MemoryGraph.
  *
  * Pan buttons can be hidden via `:pan-enabled="false"` when the underlying
  * canvas (e.g. cosmos.gl) does not expose a first-class pan API.
@@ -37,7 +37,7 @@ const emit = defineEmits<{
 
 <template>
   <div class="graph-dpad-wrap" aria-label="Graph navigation controls">
-    <!-- Zoom level readout — shown only when the parent provides a level -->
+    <!-- Zoom level readout: shown only when the parent provides a level -->
     <aside v-if="zoomLevel !== undefined" class="graph-zoom-hud" aria-live="polite">
       <span class="graph-zoom-level">{{ zoomLevel.toFixed(2) }}×</span>
       <span class="graph-zoom-hint">drag · wheel</span>
@@ -88,7 +88,7 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
-/* Wrap — stacks zoom HUD above D-pad, anchored bottom-right by parent. */
+/* Wrap: stacks zoom HUD above D-pad, anchored bottom-right by parent. */
 .graph-dpad-wrap {
   display: flex;
   flex-direction: column;
@@ -96,7 +96,7 @@ const emit = defineEmits<{
   gap: 6px;
 }
 
-/* Zoom HUD — identical to the MemoryGraph mg-hud styling. */
+/* Zoom HUD: identical to the MemoryGraph mg-hud styling. */
 .graph-zoom-hud {
   display: inline-flex;
   align-items: center;
@@ -125,7 +125,7 @@ const emit = defineEmits<{
   font-size: 0.62rem;
 }
 
-/* D-pad — 3×3 grid, identical to the dag-dpad styling. */
+/* D-pad: 3x3 grid, identical to the dag-dpad styling. */
 .graph-dpad {
   display: grid;
   grid-template-columns: repeat(3, 32px);

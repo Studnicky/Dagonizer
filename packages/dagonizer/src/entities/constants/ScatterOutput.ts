@@ -1,11 +1,11 @@
 /**
- * ScatterOutput — aggregate output names produced by the `aggregate`
+ * ScatterOutput: aggregate output names produced by the `aggregate`
  * outcome reducer of a scatter node.
  *
- *   all-success — every clone routed 'success'
- *   partial     — some clones succeeded, some failed
- *   all-error   — every clone failed
- *   empty       — source array was empty; scatter skipped
+ *   all-success: every clone routed 'success'
+ *   partial: some clones succeeded, some failed
+ *   all-error: every clone failed
+ *   empty: source array was empty; scatter skipped
  */
 
 import type { FromSchema } from 'json-schema-to-ts';

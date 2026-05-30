@@ -17,7 +17,7 @@ const FULL_CAPABILITIES: AdapterCapabilities = {
 /**
  * Minimal concrete embedder for testing. The probe result is fixed at
  * construction so individual tests can wire up deterministic cascades.
- * Returns a stable 4-dim vector — enough to verify cosine math
+ * Returns a stable 4-dim vector; enough to verify cosine math
  * elsewhere without being noisy.
  */
 class TestEmbedder extends BaseEmbedder {
@@ -37,7 +37,7 @@ class TestEmbedder extends BaseEmbedder {
   }
 }
 
-/** Embedder that does NOT override probe — inherits BaseEmbedder default. */
+/** Embedder that does NOT override probe; inherits BaseEmbedder default. */
 class DefaultProbeEmbedder extends BaseEmbedder {
   constructor() {
     super('default-probe', 'default-probe', 4);

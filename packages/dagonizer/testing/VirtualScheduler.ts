@@ -1,5 +1,5 @@
 /**
- * VirtualScheduler — in-memory deterministic scheduler for tests and replay.
+ * VirtualScheduler: in-memory deterministic scheduler for tests and replay.
  *
  * Stores pending resolvers in a sorted array ordered by monotonic-ms. Time is
  * virtual: no platform timers are used. Advance via `advance(ms)`,
@@ -70,7 +70,7 @@ export class VirtualScheduler implements SchedulerProvider {
     }
   }
 
-  /** Test API — advance virtual time by `deltaMs`. */
+  /** Test API: advance virtual time by `deltaMs`. */
   advance(deltaMs: number): void { this.runUntil(this.#virtualNow + deltaMs); }
 
   /** Advance virtual time to `atMs`, resolving all pending entries due by then. */

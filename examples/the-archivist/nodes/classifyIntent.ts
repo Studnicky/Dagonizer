@@ -1,5 +1,5 @@
 /**
- * classifyIntent — entry node. Asks the LLM to classify the visitor's
+ * classifyIntent: entry node. Asks the LLM to classify the visitor's
  * question, then routes one of seven on-topic branches plus the
  * off-topic exit:
  *
@@ -32,7 +32,7 @@ type IntentOutput =
   | 'retry'
   | 'salvage';
 
-/** Per-node timeout — generous for Gemini Nano's constrained-output path (20–60 s typical). */
+/** Per-node timeout: generous for Gemini Nano's constrained-output path (20-60 s typical). */
 const NODE_TIMEOUT_MS = 30_000;
 
 /** Total attempts (initial + retries) before routing to salvage. */
@@ -71,11 +71,11 @@ export const classifyIntent: NodeInterface<ArchivistState, IntentOutput, Archivi
       // Node-local timeout or LLM failure → retry budget decides the flow. The
       // classifier never fabricates an intent it didn't receive.
       if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-        context.services.logger.warn(`classify-intent: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}) — retry: ${err instanceof Error ? err.message : String(err)}`);
+        context.services.logger.warn(`classify-intent: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
         return { "output": 'retry' };
       }
       state.clearAttempts(context.nodeName);
-      context.services.logger.warn(`classify-intent: retries exhausted — salvage: ${err instanceof Error ? err.message : String(err)}`);
+      context.services.logger.warn(`classify-intent: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
       return { "output": 'salvage' };
     } finally {
       clearTimeout(handle);

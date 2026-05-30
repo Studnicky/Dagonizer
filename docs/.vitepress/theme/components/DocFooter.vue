@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * DocFooter — canonical "See also" + "Next steps" footer for every
+ * DocFooter: canonical "See also" + "Next steps" footer for every
  * doc page. Reads `seeAlso` and `nextSteps` arrays from the page's
  * frontmatter; renders nothing if both are absent.
  *

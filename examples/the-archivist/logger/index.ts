@@ -1,5 +1,5 @@
 /**
- * Logger barrel — `ConsoleLogger` + the event/level types.
+ * Logger barrel: `ConsoleLogger` + the event/level types.
  */
 
 export { ConsoleLogger } from './ConsoleLogger.ts';

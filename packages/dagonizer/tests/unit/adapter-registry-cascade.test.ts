@@ -44,7 +44,7 @@ class TestAdapter extends BaseAdapter {
   }
 }
 
-/** Adapter that does NOT override probe — inherits BaseAdapter default. */
+/** Adapter that does NOT override probe; inherits BaseAdapter default. */
 class DefaultProbeAdapter extends BaseAdapter {
   constructor() {
     super('default-probe', 'default-probe', FULL_CAPABILITIES);

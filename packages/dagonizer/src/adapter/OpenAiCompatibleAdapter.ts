@@ -1,5 +1,5 @@
 /**
- * OpenAiCompatibleAdapter — shared base for providers that speak the
+ * OpenAiCompatibleAdapter: shared base for providers that speak the
  * OpenAI `chat/completions` wire format.
  *
  * Most LPU- and GPU-hosted open-model providers (Groq, Cerebras,
@@ -122,7 +122,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
   }
 
   /**
-   * Default availability probe — true when a non-empty API key was
+   * Default availability probe: true when a non-empty API key was
    * supplied. Every OpenAI-compatible provider this base targets
    * (Cerebras, Groq, Mistral, OpenRouter, …) gates access on a bearer
    * token; a missing key is a definitive "unavailable" signal that

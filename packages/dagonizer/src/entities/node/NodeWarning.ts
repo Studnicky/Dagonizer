@@ -1,5 +1,5 @@
 /**
- * NodeWarning — warning collected during node execution.
+ * NodeWarning: warning collected during node execution.
  *
  * Warnings accumulate in state and are available on the final result.
  */

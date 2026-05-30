@@ -1,11 +1,11 @@
 /**
- * LlmAdapter — provider-agnostic chat contract.
+ * LlmAdapter: provider-agnostic chat contract.
  *
  * Mirrors nocturne's `LLMAdapterInterface` (`adapters/llm/providers/
  * types/LLMAdapterInterface.ts:61–247`) but trimmed to the surface the
  * Archivist actually needs: one `chat()` round-trip per call, no
  * streaming, no per-adapter stats. Tools and structured-output run
- * through dedicated request fields — the provider implementation maps
+ * through dedicated request fields; the provider implementation maps
  * them to its native wire format (Gemini's `functionDeclarations`,
  * Nano's `responseConstraint`, WebLLM's `response_format`).
  *
@@ -19,7 +19,7 @@
  *   │ Retry, error classification, tool-call extraction, structured │
  *   │ output and schema-violation recovery are the same regardless  │
  *   │ of provider. They live once on this shared base; each         │
- *   │ provider package contributes only a thin transport — no       │
+ *   │ provider package contributes only a thin transport; no       │
  *   │ per-provider duplication of the cross-cutting machinery.      │
  *   └──────────────────────────────────────────────────────────────┘
  */
@@ -38,7 +38,7 @@ export interface ChatMessage {
 export interface ToolDefinition {
   readonly name: string;
   readonly description: string;
-  /** JSON Schema 2020-12 — sent to the provider verbatim. */
+  /** JSON Schema 2020-12; sent to the provider verbatim. */
   readonly inputSchema: Record<string, unknown>;
   readonly strict: boolean;
 }
@@ -59,7 +59,7 @@ export type ToolChoice =
 
 /**
  * JSON-schema constraint on the model's text response. `kind: 'none'`
- * means "no constraint" — keeps the union shape monomorphic instead of
+ * means "no constraint"; keeps the union shape monomorphic instead of
  * `OutputSchema | undefined`.
  */
 export type OutputSchema =
@@ -76,10 +76,10 @@ export const DEFAULT_OUTPUT_SCHEMA: OutputSchema = { 'kind': 'none' };
 export const DEFAULT_MAX_TOKENS = 512;
 export const DEFAULT_TEMPERATURE = 0.2;
 
-/** A signal that never aborts — used when callers don't supply one. */
+/** A signal that never aborts; used when callers don't supply one. */
 const NEVER_ABORTING_SIGNAL: AbortSignal = new AbortController().signal;
 
-/** One adapter call — every field always present. */
+/** One adapter call; every field always present. */
 export interface ChatRequest {
   readonly messages: readonly ChatMessage[];
   readonly tools: readonly ToolDefinition[];
@@ -96,7 +96,7 @@ export interface ChatRequest {
  *
  *   const req = ChatRequestBuilder.from({ messages: [...] });
  *
- * `messages` is the only field with no sensible default — passing an
+ * `messages` is the only field with no sensible default; passing an
  * empty array satisfies the type but produces no model output.
  */
 export class ChatRequestBuilder {
@@ -132,9 +132,9 @@ export interface PartialChatRequest {
  * The model's response, expressed as a discriminated union so every
  * shape is monomorphic.
  *
- *   text  — pure prose. `content` is the message body, no tools called.
- *   tools — model emitted one or more tool calls; no prose with them.
- *   mixed — model emitted both prose and tool calls.
+ *   text: pure prose. `content` is the message body, no tools called.
+ *   tools: model emitted one or more tool calls; no prose with them.
+ *   mixed: model emitted both prose and tool calls.
  */
 export type ChatResponseMessage =
   | { readonly kind: 'text';  readonly content: string }
@@ -142,7 +142,7 @@ export type ChatResponseMessage =
   | { readonly kind: 'mixed'; readonly content: string; readonly toolCalls: readonly ToolCall[] };
 
 /**
- * ChatResponseMessageBuilder — static factory for `ChatResponseMessage`
+ * ChatResponseMessageBuilder: static factory for `ChatResponseMessage`
  * variants. Centralises the text/tools/mixed dispatch so every adapter
  * calls one canonical entry point. Distinct name from the type so the
  * value and type identifiers never collide at import sites.
@@ -166,7 +166,7 @@ export interface TokenUsage {
 
 export const ZERO_TOKEN_USAGE: TokenUsage = { 'promptTokens': 0, 'completionTokens': 0 };
 
-/** What the adapter returns — every field always present. */
+/** What the adapter returns; every field always present. */
 export interface ChatResponse {
   readonly message: ChatResponseMessage;
   readonly finishReason: 'stop' | 'length' | 'tool_call' | 'error';
@@ -179,22 +179,22 @@ export interface ChatResponse {
  * direct-prose / structured-JSON paths.
  *
  *   toolUse:
- *     'full'    — adapter + default model produce well-formed `tool_calls`.
- *     'partial' — adapter forwards `tools` but the underlying model may
+ *     'full': adapter + default model produce well-formed `tool_calls`.
+ *     'partial': adapter forwards `tools` but the underlying model may
  *                 return malformed calls or refuse silently. Caller
  *                 should validate aggressively or treat tool output as
  *                 advisory.
- *     'none'    — adapter cannot emit tool calls; caller must inline
+ *     'none': adapter cannot emit tool calls; caller must inline
  *                 the data the tools would have fetched.
  *
  *   structuredOutput:
- *     true  — `outputSchema.kind === 'schema'` is honoured via native
+ *     true: `outputSchema.kind === 'schema'` is honoured via native
  *             `response_format` / `responseConstraint` / Nano `outputSchema`.
- *     false — schema is best-effort prose; downstream parsing must tolerate
+ *     false: schema is best-effort prose; downstream parsing must tolerate
  *             prose answers.
  *
  *   jsonMode:
- *     true  — adapter supports `{ "type": "json_object" }` style coarse
+ *     true: adapter supports `{ "type": "json_object" }` style coarse
  *             JSON-only mode (no schema).
  */
 export interface AdapterCapabilities {
@@ -211,7 +211,7 @@ export interface LlmAdapter {
   chat(request: ChatRequest): Promise<ChatResponse>;
   /**
    * Bring up any per-session state (model download, websocket handshake).
-   * Adapters that don't need a session implement a no-op — `BaseAdapter`
+   * Adapters that don't need a session implement a no-op; `BaseAdapter`
    * provides a default empty implementation so consumers don't branch
    * on `connect` vs `undefined`.
    */
@@ -222,7 +222,7 @@ export interface LlmAdapter {
    * Quick availability check. Returns true when this adapter can plausibly
    * serve a chat call right now (credentials present, runtime backend
    * reachable, model available). Implementations MUST NOT throw on
-   * transport failure — return false so a cascade can route around the
+   * transport failure; return false so a cascade can route around the
    * adapter and try the next preference.
    *
    * `BaseAdapter` ships a default that returns true; concrete adapters

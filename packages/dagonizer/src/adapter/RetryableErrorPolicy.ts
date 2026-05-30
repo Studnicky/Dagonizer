@@ -8,7 +8,7 @@ import { LlmError } from './LlmError.js';
  * quota-exceeded past the cap) is never retried, regardless of attempt budget.
  * Any other error falls back to the base `retryOn`/`abortOn` behavior.
  *
- * Keeps `RetryPolicy` itself generic — the `LlmError` coupling lives here, in
+ * Keeps `RetryPolicy` itself generic; the `LlmError` coupling lives here, in
  * the adapter layer.
  */
 export class RetryableErrorPolicy extends RetryPolicy {

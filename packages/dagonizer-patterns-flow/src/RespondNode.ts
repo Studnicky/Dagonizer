@@ -1,5 +1,5 @@
 /**
- * RespondNode — terminal node that writes the draft response to a
+ * RespondNode: terminal node that writes the draft response to a
  * consumer-controlled location and marks the lifecycle completed.
  *
  * Default implementation reads from `state.draft` (a common convention

@@ -1,5 +1,5 @@
 /**
- * ComposeRetryLoopDAG — reusable compose / validate / retry loop.
+ * ComposeRetryLoopDAG: reusable compose / validate / retry loop.
  *
  * Internal flow:
  *
@@ -10,9 +10,9 @@
  *          └─ exhausted ──► END (success) ─► parent: respond-to-visitor
  *
  * Outputs:
- *   success — draft composed (approved or best-effort); parent routes to
+ *   success: draft composed (approved or best-effort); parent routes to
  *             the shared respond-to-visitor terminal.
- *   error   — clone-state errors accumulated (propagated by the parent
+ *   error:   clone-state errors accumulated (propagated by the parent
  *             ScatterNode to the parent's 'error' branch)
  *
  * Convergence policy: this sub-DAG does NOT contain respondToVisitor. It is a
@@ -25,7 +25,7 @@
  *   dispatcher.registerBundle(composeRetryLoopBundle);
  *
  * The sub-DAG operates on the parent's state directly (no projection / gather
- * needed) — it reads `state.shortlist` / `state.intent` / `state.priorContext`
+ * needed); it reads `state.shortlist` / `state.intent` / `state.priorContext`
  * and writes `state.draft` / `state.approved`, which the parent DAG already
  * manages. Every intent branch funnels through this one composed loop rather
  * than each branch owning its own compose→validate chain.
@@ -42,7 +42,7 @@ import type { DAG } from '@noocodex/dagonizer/entities';
 
 
 /**
- * The `compose-retry-loop` DAG — one packaged compose/validate unit that every
+ * The `compose-retry-loop` DAG: one packaged compose/validate unit that every
  * intent branch references via
  * `.embeddedDAG('compose-loop', 'compose-retry-loop', routes)`.
  *
@@ -56,7 +56,7 @@ export const ComposeRetryLoopDAG: DAG = new DAGBuilder('compose-retry-loop', '1.
   // ── 1. compose-response ──────────────────────────────────────────────────
   // Writes state.draft via an intent-specific compose method. A transient LLM
   // failure routes 'retry' (loops back, bounded by the shared 'compose' budget)
-  // or 'salvage' once spent — no in-node RetryPolicy. 'drafted' goes on to the
+  // or 'salvage' once spent; no in-node RetryPolicy. 'drafted' goes on to the
   // quality gate, which adds its own retry edge for low-quality drafts.
   .node('compose-response', composeResponse, {
     'drafted': 'validate-response',

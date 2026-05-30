@@ -1,5 +1,5 @@
 /**
- * BaseStore — abstract base every concrete store extends.
+ * BaseStore: abstract base every concrete store extends.
  *
  * Owns the snapshot envelope (`{ version, type, entries }`), the default
  * `update` implementation (read-modify-write atop `performGet` + `performSet`),
@@ -38,10 +38,10 @@ export abstract class BaseStore implements Store {
     this.#namespace = options.namespace ?? '';
   }
 
-  /** Subclass identifier — recorded in snapshot envelopes. */
+  /** Subclass identifier; recorded in snapshot envelopes. */
   protected abstract get snapshotType(): string;
 
-  /** Subclass snapshot schema version — increment when storage shape changes. */
+  /** Subclass snapshot schema version; increment when storage shape changes. */
   protected abstract get snapshotVersion(): number;
 
   // ── Public Store contract (delegates to protected hooks) ─────────────
@@ -63,7 +63,7 @@ export abstract class BaseStore implements Store {
   }
 
   /**
-   * Default read-modify-write. NOT atomic on its own — there are two
+   * Default read-modify-write. NOT atomic on its own; there are two
    * `await` points (`performGet`, `performSet`) where another `update`
    * on the same key can interleave. Subclasses MUST override when they
    * back a storage layer that supports a single-step RMW (in-memory

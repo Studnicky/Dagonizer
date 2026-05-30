@@ -31,11 +31,11 @@ const result = spawnSync(
 if (result.error || result.status !== 0) {
   if (existsSync(PNG_OUT)) {
     const why = result.error ? `not found (${result.error.message})` : `exited ${result.status}`;
-    console.log(`rasterize-og-image: rsvg-convert ${why} — keeping committed ${PNG_OUT}`);
+    console.log(`rasterize-og-image: rsvg-convert ${why}; keeping committed ${PNG_OUT}`);
     process.exit(0);
   }
   if (result.error) {
-    console.error('rasterize-og-image: rsvg-convert not found —', result.error.message);
+    console.error('rasterize-og-image: rsvg-convert not found:', result.error.message);
     console.error('Install via: brew install librsvg (macOS) or apt-get install librsvg2-bin (Debian/Ubuntu).');
   } else {
     console.error(`rasterize-og-image: rsvg-convert exited with status ${result.status}`);

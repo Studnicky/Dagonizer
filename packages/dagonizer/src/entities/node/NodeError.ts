@@ -1,7 +1,7 @@
 /**
- * NodeError — error collected during node execution.
+ * NodeError: error collected during node execution.
  *
- * Errors accumulate in state — they do not stop the flow.
+ * Errors accumulate in state; they do not stop the flow.
  * At flow completion the caller decides what to do with them.
  */
 

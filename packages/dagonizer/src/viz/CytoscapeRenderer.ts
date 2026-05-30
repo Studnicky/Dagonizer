@@ -1,5 +1,5 @@
 /**
- * CytoscapeRenderer — render a `DAG` as Cytoscape elements.
+ * CytoscapeRenderer: render a `DAG` as Cytoscape elements.
  *
  * Output is the array shape `cytoscape.js` consumes directly:
  *
@@ -26,7 +26,7 @@
  *   • Embedded-DAG placements, when their target DAG is supplied via the
  *     `embeddedDAGs` registry, expand RECURSIVELY: every inner node renders
  *     with the placement as `parent`, so the user sees the actual flow
- *     inside the cluster — no shortcuts, no opaque boxes.
+ *     inside the cluster; no shortcuts, no opaque boxes.
  *
  * Routes targeting `null` become edges to a synthetic `END` node so
  * the live runner can highlight termination explicitly. END edges
@@ -50,7 +50,7 @@ export interface CytoscapeNodeElement {
   readonly data: {
     readonly id: string;
     readonly label: string;
-    /** Placement kind — selector use: `node[type="scatter"]`. */
+    /** Placement kind; selector use: `node[type="scatter"]`. */
     readonly type: 'single' | 'parallel' | 'scatter' | 'embedded-dag' | 'terminal';
     /** Free-form metadata consumers can read in stylesheets. */
     readonly [key: string]: unknown;
@@ -84,13 +84,13 @@ export type CytoscapeElement = CytoscapeNodeElement | CytoscapeEdgeElement;
 export interface RenderOptions {
   /**
    * Registry of embedded-DAGs by name. Any `embedded-dag` placement whose
-   * `placement.dag` matches a key here is expanded inline — its
+   * `placement.dag` matches a key here is expanded inline; its
    * internal nodes/edges render as compound-graph children of the
    * placement, so the diagram shows the full inner flow instead of
    * a single opaque box.
    */
   readonly embeddedDAGs?: ReadonlyMap<string, DAG>;
-  /** Max recursion depth — guards against accidental embedded-DAG cycles. */
+  /** Max recursion depth; guards against accidental embedded-DAG cycles. */
   readonly maxDepth?: number;
   /**
    * When `true` (default), run `CompositeLayout.compute` after building
@@ -235,7 +235,7 @@ export class CytoscapeRenderer {
     fromId: string,
     prefix: string,
   ): readonly CytoscapeEdgeElement[] {
-    // TerminalNode placements are leaf placements — they have no outputs field.
+    // TerminalNode placements are leaf placements; they have no outputs field.
     if (!('outputs' in placement)) return [];
     const edges: CytoscapeEdgeElement[] = [];
     for (const [output, target] of Object.entries(placement.outputs)) {
@@ -283,7 +283,7 @@ export class CytoscapeRenderer {
     // expanded (its body is registered), rewrite the target to the
     // embedded-DAG's entrypoint child so dagre gets a real rank
     // constraint between the predecessor and the FIRST child of the
-    // compound — not the compound's geometric center. Without this,
+    // compound, not the compound's geometric center. Without this,
     // dagre treats the compound as a rank-opaque slot whose internal
     // layout is decided only by intra-compound edges, often producing
     // an inverted child order and a compound positioned above its own
@@ -342,7 +342,7 @@ export class CytoscapeRenderer {
         CytoscapeRenderer.renderInto(embeddedDagBody, innerPrefix, myId, state, depth + 1, innerVisited);
 
         // External outputs from this placement (after the embedded-DAG completes)
-        // — rewrite the SOURCE from the compound to the matching inner
+        // Rewrite the SOURCE from the compound to the matching inner
         // terminal/leaf child(ren) so dagre ranks the exits at the bottom
         // of the compound rather than aggregating from the compound's
         // geometric center. Mapping:
@@ -382,13 +382,13 @@ export class CytoscapeRenderer {
 
       for (const edge of CytoscapeRenderer.placementEdges(placement, myId, prefix)) {
         const endId = idIn(prefix, CytoscapeRenderer.END_ID);
-        // Suppress synthetic-END routes for children inside a parallel —
+        // Suppress synthetic-END routes for children inside a parallel;
         // the parent placement's own edges carry the collected result.
         if (parallelParent !== undefined && edge.data.target === endId) continue;
         // Inside an expanded embedded-DAG (prefix non-empty), `null` targets
         // refer to the embedded-DAG's terminus, not the parent's END. The
         // compound parent's own placementEdges carry the real external
-        // routing — drop these internal terminal markers so cytoscape
+        // routing; drop these internal terminal markers so cytoscape
         // doesn't try to wire an edge to a non-existent prefixed END.
         if (prefix !== '' && edge.data.target === endId) continue;
         if (edge.data.target === endId) state.touchesTerminal = true;
@@ -431,8 +431,8 @@ export class CytoscapeRenderer {
    * Enumerate the inner exit-points of an embedded-DAG body so the renderer
    * can rewrite the parent placement's outgoing edges to originate from
    * them. Two categories:
-   *   • `failed`    — TerminalNode placements with outcome 'failed'
-   *   • `completed` — TerminalNode placements with outcome 'completed' PLUS
+   *   • `failed`: TerminalNode placements with outcome 'failed'
+   *   • `completed`: TerminalNode placements with outcome 'completed' PLUS
    *                   placements with at least one `null` route (natural
    *                   end-of-flow; counts as completed in v0.11 semantics)
    * Each id is returned prefixed with the parent placement path.
@@ -442,7 +442,7 @@ export class CytoscapeRenderer {
     innerPrefix: string,
   ): { readonly completed: readonly string[]; readonly failed: readonly string[] } {
     // Children of a parallel placement use `null` routes to signal
-    // "collected back to the parallel parent" — they are NOT exit
+    // "collected back to the parallel parent"; they are NOT exit
     // leaves of the embedded-DAG. Build a set of parallel-children
     // names so we can skip them.
     const parallelChildren = new Set<string>();

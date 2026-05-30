@@ -1,5 +1,5 @@
 /**
- * recordFindings — memory node.
+ * recordFindings: memory node.
  *
  *   Mints one URI per candidate (`urn:dagonizer:book:<isbn>`) and writes
  *   triples per book into `urn:dagonizer:memory` (the persistent cross-run
@@ -16,9 +16,9 @@
  *     <run>  rdf:type          dag:Run
  *     <run>  dag:visitorQuery  "<query>"
  *     <run>  dag:runTimestamp  "<ms>"^^xsd:double
- *     <run>  dag:shortlisted   <book>           (object property — links run to book URIs)
+ *     <run>  dag:shortlisted   <book>           (object property, links run to book URIs)
  *
- *   This is the canonical "deterministic memory write" node — same
+ *   This is the canonical "deterministic memory write" node; same
  *   input candidates always produce the same triples, so a downstream
  *   SPARQL ASK gate can rely on the store as ground truth.
  */
@@ -41,7 +41,7 @@ const dagRunTimestamp      = MemoryStore.dagIri('runTimestamp');
 const dagShortlistedTitle  = MemoryStore.dagIri('shortlistedTitle');
 const dagEmbedding         = MemoryStore.dagIri('embedding');
 const dagQueryEmbedding    = MemoryStore.dagIri('queryEmbedding');
-// Dispatcher agent IRI — must mirror RdfProvObserver's constructor so
+// Dispatcher agent IRI: must mirror RdfProvObserver's constructor so
 // the prov-graph agent we write to matches what the observer already
 // asserted as type prov:SoftwareAgent.
 const ARCHIVIST_AGENT      = ProvIris.agent('archivist-software');
@@ -56,7 +56,7 @@ export const recordFindings: ArchivistNode<'recorded'> = {
     const shortlistIsbns = new Set(state.shortlist.map((c) => c.book.isbn));
     for (const candidate of state.candidates) {
       const book = MemoryStore.bookIri(candidate.book.isbn);
-      // rdf:type links this ABox instance to the TBox dag:Book class —
+      // rdf:type links this ABox instance to the TBox dag:Book class;
       // this is the triple that connects memory nodes to ontology class nodes
       // in the MemoryGraph cosmos.gl view.
       memory.assert(book, rdfType,        dagBook,                                               GRAPH_MEMORY);
@@ -86,7 +86,7 @@ export const recordFindings: ArchivistNode<'recorded'> = {
       //    prov:wasAttributedTo. Without this bridge the visualiser
       //    shows two disconnected clusters (books + activities). The
       //    triples live in the run's prov-graph so the visualiser
-      //    pulls the Book nodes into the prov layer's adjacency too —
+      //    pulls the Book nodes into the prov layer's adjacency too;
       //    one connected graph, traversable via standard PROV-O
       //    predicates by recall / SPARQL.
       const provGraph    = provGraphIri(state.runId);
@@ -109,7 +109,7 @@ export const recordFindings: ArchivistNode<'recorded'> = {
     //
     // Failure mode: any throw from embedder.embed() (rate limit, network
     // error, NO_ADAPTER_AVAILABLE drift, OOM on Ollama) is swallowed with
-    // a single warn log — the embedding is opaque to the rest of the engine
+    // a single warn log; the embedding is opaque to the rest of the engine
     // so the absence of these triples is invisible to downstream nodes
     // that don't explicitly use embeddings.
     if (embedder !== null) {

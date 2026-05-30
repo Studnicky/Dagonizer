@@ -1,5 +1,5 @@
 /**
- * MemoryStore — reference implementation of BaseStore backed by a `Map`.
+ * MemoryStore: reference implementation of BaseStore backed by a `Map`.
  *
  * Snapshot type:    'memory-store'
  * Snapshot version: 1

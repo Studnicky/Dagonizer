@@ -1,9 +1,9 @@
 /**
- * `@noocodex/dagonizer/derive` — contract-derived flow generation.
+ * `@noocodex/dagonizer/derive`: contract-derived flow generation.
  *
- *   - `OperationContract` — adapter contract describing one operation's
+ *   - `OperationContract`: adapter contract describing one operation's
  *     `produces` and `hardRequired` field paths
- *   - `DAGDeriver.derive` — derive a `DAG` from a contract registry plus
+ *   - `DAGDeriver.derive`: derive a `DAG` from a contract registry plus
  *     declared `DAGDeriverAnnotations` for non-derivable routing
  */
 

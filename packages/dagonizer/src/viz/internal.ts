@@ -1,5 +1,5 @@
 /**
- * viz/internal — shared utilities used by all viz renderers.
+ * viz/internal: shared utilities used by all viz renderers.
  *
  * NOT part of the public `./viz` barrel. Import via relative path
  * within the viz module only.

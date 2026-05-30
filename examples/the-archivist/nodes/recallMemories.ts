@@ -1,31 +1,31 @@
 /**
- * recallMemories — meta-query memory node.
+ * recallMemories: meta-query memory node.
  *
  * Runs when the visitor asks what the Archivist has seen or remembered.
  * Issues SPARQL-style queries against the MemoryStore to produce a
- * `MemoryDigest` — a structured roll-up of everything accumulated across
- * prior runs — then stores it in `state.memoryDigest`.
+ * `MemoryDigest`: a structured roll-up of everything accumulated across
+ * prior runs; then stores it in `state.memoryDigest`.
  *
  * Three query passes (all use the MemoryStore `select()` API):
  *
- *   1. Book count + recent titles
- *      — Walk the default graph for `(?book dag:title ?t)` triples.
+ *   1. Book count + recent titles:
+ *      Walk the default graph for `(?book dag:title ?t)` triples.
  *        `recordFindings` writes there with no named graph, so this is
  *        the canonical cross-run book store.  Collect distinct book IRIs,
  *        their most-recent title, and the first author if present.
  *
- *   2. Query count
- *      — Walk every `urn:dagonizer:state:<runId>` named graph for
+ *   2. Query count:
+ *      Walk every `urn:dagonizer:state:<runId>` named graph for
  *        `(?run dag:visitorQuery ?q)` triples. Count them, skipping the
  *        current run so an in-flight `recall-memories` query does not
  *        inflate the count.
  *
- *   3. Intent breakdown
- *      — Same state graphs; collect `(?run dag:intent ?i)` and group by
+ *   3. Intent breakdown:
+ *      Same state graphs; collect `(?run dag:intent ?i)` and group by
  *        intent value, tallying occurrences.
  *
- * kind: 'non-deterministic' — SPARQL output depends on accumulated memory.
- * output: 'recalled' — always routes forward; empty memory is a valid
+ * kind: 'non-deterministic': SPARQL output depends on accumulated memory.
+ * output: 'recalled': always routes forward; empty memory is a valid
  *   recall result (the digest will have bookCount === 0).
  */
 
@@ -47,7 +47,7 @@ function buildSummary(
   recentBooks: MemoryDigest['recentBooks'],
   intentBreakdown: MemoryDigest['intentBreakdown'],
 ): string {
-  if (bookTitles.size === 0) return 'My shelves are fresh — no books have been recorded yet.';
+  if (bookTitles.size === 0) return 'My shelves are fresh; no books have been recorded yet.';
   const parts: string[] = [
     `${String(bookTitles.size)} distinct book${bookTitles.size === 1 ? '' : 's'} recorded across ${String(queryCount)} prior ${queryCount === 1 ? 'session' : 'sessions'}.`,
   ];
@@ -102,7 +102,7 @@ export const recallMemories: ArchivistNode<'recalled'> = {
       if (firstAuthor !== undefined) bookAuthors.set(bookIri, firstAuthor);
     }
 
-    // Most-recent first — we reverse since books are written in insertion
+    // Most-recent first; we reverse since books are written in insertion
     // order (oldest run first). Slice to MAX_RECENT_BOOKS.
     const bookEntries = [...bookTitles.entries()].reverse().slice(0, MAX_RECENT_BOOKS);
     const recentBooks: MemoryDigest['recentBooks'] = bookEntries.map(([iri, title]) => {

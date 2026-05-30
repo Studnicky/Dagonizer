@@ -1,13 +1,13 @@
 /**
- * decideTools deterministic shortcuts — unit tests.
+ * decideTools deterministic shortcuts: unit tests.
  *
  * Exercises the five pattern shortcuts in `matchShortcut`:
- *   • isbn-lookup         — ISBN-10 / ISBN-13 (with or without hyphens)
- *   • author-lookup       — "by X Y" or lookup-author intent + proper noun
- *   • quoted-single-title — '"X Y"' style
- *   • topic-or-subject    — "books about X" etc.
- *   • catalog-browsing    — "do you have", "show me", etc.
- *   • no-match            — generic query falls through to LLM path
+ *   • isbn-lookup:         ISBN-10 / ISBN-13 (with or without hyphens)
+ *   • author-lookup:       "by X Y" or lookup-author intent + proper noun
+ *   • quoted-single-title: '"X Y"' style
+ *   • topic-or-subject:    "books about X" etc.
+ *   • catalog-browsing:    "do you have", "show me", etc.
+ *   • no-match:            generic query falls through to LLM path
  */
 
 import { test } from 'node:test';
@@ -50,8 +50,8 @@ void test('matchShortcut: quoted single title routes wikipedia first', () => {
 
 void test('matchShortcut: describe-book intent + single proper-noun title → single-title-describe', () => {
   const m = matchShortcut('Piranesi', 'describe-book');
-  // Single capitalised word — does NOT match PROPER_NOUN_RE (which needs >= 2 words).
-  // So no shortcut fires. This is intentional — single-word titles are ambiguous.
+  // Single capitalised word does NOT match PROPER_NOUN_RE (which needs >= 2 words).
+  // So no shortcut fires. This is intentional: single-word titles are ambiguous.
   assert.equal(m, null);
 });
 
@@ -125,7 +125,7 @@ void test('matchShortcut: ISBN-13 → isbn-lookup shortcut with isbn arg', () =>
 
 void test('matchShortcut: ISBN-10 without hyphens → isbn-lookup', () => {
   // The regex matches consecutive-digit ISBN-10 (9 digits + check digit or X).
-  // Hyphenated ISBN-10 (0-7653-7706-7) does not match — hyphens break digit groups;
+  // Hyphenated ISBN-10 (0-7653-7706-7) does not match; hyphens break digit groups,
   // those fall through to the LLM path which handles them via query keywords.
   const m = matchShortcut('0765377067', 'search');
   assert.notEqual(m, null);

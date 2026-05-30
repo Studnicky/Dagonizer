@@ -1,5 +1,5 @@
 /**
- * ScoutNode — canonical "call a Tool, normalise, write back" pattern.
+ * ScoutNode: canonical "call a Tool, normalise, write back" pattern.
  *
  * The scout reads from state to build a tool input, invokes the tool,
  * normalises the response into the consumer's entity shape, and writes

@@ -1,5 +1,5 @@
 /**
- * RecallContextNode — SPARQL select against the memory store, map
+ * RecallContextNode: SPARQL select against the memory store, map
  * bindings into the consumer's binding shape, write to state.
  *
  * Consumers override `buildQuery` (the SlotPattern) and `mapBindings`

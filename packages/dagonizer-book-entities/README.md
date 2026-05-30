@@ -8,7 +8,7 @@ Shared book-domain entity types + canonical-id derivation for the `@noocodex/dag
 npm install @noocodex/dagonizer-book-entities
 ```
 
-You usually don't depend on this package directly — the book-search tool packages re-export the types and `CanonicalId` for ergonomic single-package imports.
+You usually don't depend on this package directly; the book-search tool packages re-export the types and `CanonicalId` for ergonomic single-package imports.
 
 ## Exports
 
@@ -39,10 +39,10 @@ CanonicalId.dedupe(candidatesFromMultipleSources);
 
 Priority order for canonical id derivation:
 
-1. ISBN-13 (preferred — universally unique)
+1. ISBN-13 (preferred, universally unique)
 2. ISBN-10 (older catalogue records)
 3. `urn:isbn:<x>` (when only one form is reachable)
-4. `urn:work:<slug>` (`title|first-author` normalised — covers cross-source matches when ISBNs are absent)
+4. `urn:work:<slug>` (`title|first-author` normalised; covers cross-source matches when ISBNs are absent)
 
 `CanonicalId.dedupe(...)` merges colliding candidates: keeps the richest summary, longest author list, union of subjects/publishers, accumulates `sources[]` so downstream prose can cite all original lookups.
 

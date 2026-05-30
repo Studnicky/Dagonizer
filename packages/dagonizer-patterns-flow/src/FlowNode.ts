@@ -1,5 +1,5 @@
 /**
- * FlowNode — root for pure (service-free) flow primitives.
+ * FlowNode: root for pure (service-free) flow primitives.
  *
  * Pattern leaves under FlowNode handle deterministic transforms on
  * state: pick the best item, sort a list, dedupe, gate on a predicate,

@@ -70,7 +70,7 @@ const outerDAG = makeDAG('deep-outer', 'inc-outer', [
   embedNode('deep-outer', 'embed-mid', 'deep-mid'),
 ]);
 
-void describe('EmbeddedDAGNode — deep recursive nesting', () => {
+void describe('EmbeddedDAGNode: deep recursive nesting', () => {
   void it('threads state down and back through three nesting levels (nested in nested in nested)', async () => {
     const dispatcher = new Dagonizer<CounterState>();
     dispatcher.registerNode(incNode('inc-outer', 1000));

@@ -1,5 +1,5 @@
 /**
- * GoogleBooksTool — books search via the Google Books v1 volumes API.
+ * GoogleBooksTool: books search via the Google Books v1 volumes API.
  *
  *   GET https://www.googleapis.com/books/v1/volumes?q=<query>&maxResults=<n>
  *
@@ -9,7 +9,7 @@
  * `averageRating` + `ratingsCount` as freeform `notes` so the
  * `find-reviews` intent can surface them.
  *
- * The tool's `inputSchema` is the contract — every property carries
+ * The tool's `inputSchema` is the contract; every property carries
  * description + shape-only examples (no real titles/authors that
  * could poison the model's output).
  */
@@ -58,7 +58,7 @@ const ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 
 const definition: ToolDefinition = {
   'name': 'google_books_search',
-  'description': 'Search Google Books for real volumes (returns titles, authors, descriptions, average rating, ratings count). Complementary to openlibrary — many editions and reviews land here that openlibrary lacks.',
+  'description': 'Search Google Books for real volumes (returns titles, authors, descriptions, average rating, ratings count). Complementary to openlibrary; many editions and reviews land here that openlibrary lacks.',
   'inputSchema': {
     'type': 'object',
     'additionalProperties': true,

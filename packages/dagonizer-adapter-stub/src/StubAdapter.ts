@@ -1,17 +1,17 @@
 /**
- * StubAdapter — offline canned-response adapter + test-fixture primitives.
+ * StubAdapter: offline canned-response adapter and test-fixture primitives.
  *
  * Two roles:
  *
- *   1. Production fallback — returns `defaultResponse` (or a per-request
+ *   1. Production fallback: returns `defaultResponse` (or a per-request
  *      `respond()` subclass override) when no real model is attached.
- *   2. Test fixture — records every request, drains a pre-seeded response
+ *   2. Test fixture: records every request, drains a pre-seeded response
  *      queue, and injects errors on demand. Every downstream consumer of
  *      `LlmAdapter` ends up needing these primitives in tests; keeping
  *      them in the upstream stub avoids per-project wrapper drift.
  *
  * Extension surface for production stubs (e.g. Archivist's
- * `ArchivistStub`) is unchanged — subclass and override
+ * `ArchivistStub`) is unchanged; subclass and override
  * `performChat(request)` for full control, or `respond(request)` for the
  * simple text path. Queue + invocations + error injection are additive.
  */
@@ -53,7 +53,7 @@ export class StubAdapter extends BaseAdapter {
       { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false },
       { 'maxAttempts': opts.maxAttempts ?? 1 },
     );
-    this.#defaultResponse = opts.defaultResponse ?? '(stub adapter — no model attached)';
+    this.#defaultResponse = opts.defaultResponse ?? '(stub adapter: no model attached)';
     this.#queue = opts.responses === undefined ? [] : [...opts.responses];
     this.#error = opts.error;
   }
@@ -70,7 +70,7 @@ export class StubAdapter extends BaseAdapter {
 
   /**
    * Make the next `chat()` throw the supplied error. Pass `undefined` to
-   * clear without throwing. The error is cleared after one throw — call
+   * clear without throwing. The error is cleared after one throw; call
    * again to re-arm.
    */
   setError(err: Error | undefined): void {
@@ -86,7 +86,7 @@ export class StubAdapter extends BaseAdapter {
 
   /**
    * Stub adapter never wins a cascade. Probe always returns false so
-   * the stub is opt-in only — consumers must construct and inject it
+   * the stub is opt-in only; consumers must construct and inject it
    * explicitly. A cascade with nothing else available fails loud
    * rather than silently degrading to canned responses.
    */
@@ -103,14 +103,14 @@ export class StubAdapter extends BaseAdapter {
   }
 
   protected async performChat(request: ChatRequest): Promise<ChatResponse> {
-    // 1. Error injection — one-shot. Re-arm via setError().
+    // 1. Error injection: one-shot. Re-arm via setError().
     if (this.#error !== undefined) {
       const err = this.#error;
       this.#error = undefined;
       throw err;
     }
 
-    // 2. Queued response — drains in FIFO order.
+    // 2. Queued response: drains in FIFO order.
     if (this.#queue.length > 0) {
       const text = this.#queue.shift() as string;
       return Promise.resolve({
@@ -133,7 +133,7 @@ export class StubAdapter extends BaseAdapter {
    * specific behaviour (pattern-matching prompts, looking up data,
    * etc.). The default returns the configured `defaultResponse`.
    *
-   * The queue takes precedence over this hook — when both are set, the
+   * The queue takes precedence over this hook; when both are set, the
    * queue drains first. Once empty, `respond()` is consulted.
    */
   protected respond(_request: ChatRequest): string {

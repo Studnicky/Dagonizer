@@ -1,6 +1,6 @@
 # @noocodex/dagonizer-adapter-stub
 
-> **Beta — not yet published to npm.** Ships in v0.10.0 as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format compatibility is verified via intercepted-fetch smoke tests. Expect minor adjustments before 1.0.
+> **Beta:** not yet published to npm. Ships in v0.10.0 as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format compatibility is verified via intercepted-fetch smoke tests. Expect minor adjustments before 1.0.
 
 Offline canned-response adapter for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Useful for CLI smoke tests, offline previews, and as an extension point for domain-grounded fake LLMs.
 
@@ -12,7 +12,7 @@ npm install @noocodex/dagonizer @noocodex/dagonizer-adapter-stub
 
 ## Usage
 
-Bare default — returns a single placeholder string regardless of prompt:
+Bare default: returns a single placeholder string regardless of prompt:
 
 ```ts
 import { StubAdapter } from '@noocodex/dagonizer-adapter-stub';
@@ -50,7 +50,7 @@ See [`examples/the-archivist/providers/adapters/ArchivistStub.ts`](https://githu
 
 | Option | Default | Notes |
 |---|---|---|
-| `defaultResponse` | `'(stub adapter — no model attached)'` | Text returned by the default `respond` |
+| `defaultResponse` | `'(stub adapter: no model attached)'` | Text returned by the default `respond` |
 | `maxAttempts` | 1 | No real network, no retry needed |
 
 ## Capabilities

@@ -1,5 +1,5 @@
 /**
- * Execution — the canonical handle returned by `Dagonizer.execute()` /
+ * Execution: the canonical handle returned by `Dagonizer.execute()` /
  * `Dagonizer.resume()`.
  *
  * Single execution path:
@@ -7,7 +7,7 @@
  *   const result = await dispatcher.execute('flow', state);          // summary
  *   for await (const stage of dispatcher.execute('flow', state)) {}  // streaming
  *
- * Both consumption modes share a single internal generator — calling
+ * Both consumption modes share a single internal generator; calling
  * `await` on an Execution that has already been iterated returns the
  * cached final result. The flow body runs exactly once.
  *

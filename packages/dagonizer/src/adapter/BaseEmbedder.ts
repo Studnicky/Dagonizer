@@ -1,9 +1,9 @@
 /**
- * BaseEmbedder — abstract base every concrete embedder extends.
+ * BaseEmbedder: abstract base every concrete embedder extends.
  *
  * Owns the retry plumbing (Dagonizer's `RetryPolicy` with exponential
  * backoff) and the embed-call envelope. Concrete embedders implement
- * `performEmbed()` — the raw transport call — and may override
+ * `performEmbed()` (the raw transport call) and may override
  * `classify()` to map a provider-native error into the shared
  * `LlmError` taxonomy.
  *
@@ -13,8 +13,8 @@
  *
  * The retry wrapper rethrows non-retryable errors immediately and
  * loops with exponential backoff for retryable ones (NETWORK, TIMEOUT,
- * QUOTA_EXHAUSTED). Default `embedBatch()` calls `embed()` in series
- * — adapters with native batch endpoints override.
+ * QUOTA_EXHAUSTED). Default `embedBatch()` calls `embed()` in series;
+ * adapters with native batch endpoints override.
  *
  * Mirrors `BaseAdapter` symbol-for-symbol so the cascade plumbing and
  * the error taxonomy stay shared across the two surfaces.
@@ -67,11 +67,11 @@ export abstract class BaseEmbedder implements Embedder {
   }
 
   /**
-   * Default availability probe. Returns true — the embedder assumes it
+   * Default availability probe. Returns true; the embedder assumes it
    * can run unless the concrete subclass knows better. Subclasses with
    * meaningful availability constraints (API key presence, runtime
    * feature detect, local model warmth) override and surface their own
-   * check. Must never throw — return false instead.
+   * check. Must never throw; return false instead.
    */
   async probe(): Promise<boolean> {
     return Promise.resolve(true);
@@ -82,7 +82,7 @@ export abstract class BaseEmbedder implements Embedder {
       try {
         return await this.performEmbed(text);
       } catch (rawError) {
-        // Already classified by performEmbed — don't double-wrap; apply the
+        // Already classified by performEmbed; don't double-wrap. Apply the
         // quota cap, then rethrow as-is.
         if (rawError instanceof LlmError) {
           const c = rawError.classification;
@@ -101,7 +101,7 @@ export abstract class BaseEmbedder implements Embedder {
   }
 
   /**
-   * Default batch — serial iteration over `embed()`. Adapters whose
+   * Default batch implementation: serial iteration over `embed()`. Adapters whose
    * provider exposes a native batch endpoint override and post one
    * request for the whole batch.
    */
@@ -113,7 +113,7 @@ export abstract class BaseEmbedder implements Embedder {
     return results;
   }
 
-  /** Concrete embedder — perform the actual API call. */
+  /** Concrete embedder: perform the actual API call. */
   protected abstract performEmbed(text: string): Promise<readonly number[]>;
 
   /** Map a provider-native error into the shared classification. */

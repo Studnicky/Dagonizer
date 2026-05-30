@@ -12,7 +12,7 @@
  *
  * Every backend is one `LlmAdapter` (transport + native tool format)
  * wrapped by `BaseLlmClient` (prompt choreography). The choice between
- * backends is just a choice of adapter — the high-level `LlmClient`
+ * backends is just a choice of adapter; the high-level `LlmClient`
  * surface is identical.
  *
  * `detectBackends()` probes each one and returns rows for all. Cloud
@@ -94,7 +94,7 @@ const PRIORITY_ORDER: readonly ProviderId[] = [
   'stub',          // last-resort fallback
 ];
 
-/** Backends that need a local/desktop runtime — excluded on mobile. */
+/** Backends that need a local/desktop runtime, excluded on mobile. */
 const DESKTOP_ONLY: readonly ProviderId[] = ['gemini-nano', 'web-llm', 'ollama'];
 
 export interface BackendAvailability {
@@ -175,7 +175,7 @@ export async function detectBackends(inputs: DetectionInputs = {}): Promise<read
       : nanoStatus === 'downloadable'
         ? 'The browser will download the model (~2 GB) on first use.'
         : nanoStatus === 'downloading'
-          ? 'The browser is currently downloading the model — try again shortly.'
+          ? 'The browser is currently downloading the model. Try again shortly.'
           : 'Ready.',
   });
 
@@ -202,7 +202,7 @@ export async function detectBackends(inputs: DetectionInputs = {}): Promise<read
   const hasGroqKey = typeof keys['groq'] === 'string' && keys['groq'].length > 0;
   out.push({
     'id': 'groq',
-    'displayName': 'Groq (llama-3.3-70b — free tier)',
+    'displayName': 'Groq (llama-3.3-70b, free tier)',
     'runnable': hasGroqKey,
     'needsAction': hasGroqKey ? null : 'api-key',
     'hint': 'Free key at console.groq.com/keys. ~30 RPM on llama-3.3-70b-versatile.',
@@ -211,7 +211,7 @@ export async function detectBackends(inputs: DetectionInputs = {}): Promise<read
   const hasCerebrasKey = typeof keys['cerebras'] === 'string' && keys['cerebras'].length > 0;
   out.push({
     'id': 'cerebras',
-    'displayName': 'Cerebras (llama-3.3-70b — free tier)',
+    'displayName': 'Cerebras (llama-3.3-70b, free tier)',
     'runnable': hasCerebrasKey,
     'needsAction': hasCerebrasKey ? null : 'api-key',
     'hint': 'Free key at cloud.cerebras.ai. Ultra-fast inference on Wafer-Scale Engine.',
@@ -220,7 +220,7 @@ export async function detectBackends(inputs: DetectionInputs = {}): Promise<read
   const hasMistralKey = typeof keys['mistral'] === 'string' && keys['mistral'].length > 0;
   out.push({
     'id': 'mistral',
-    'displayName': 'Mistral (mistral-small — free tier)',
+    'displayName': 'Mistral (mistral-small, free tier)',
     'runnable': hasMistralKey,
     'needsAction': hasMistralKey ? null : 'api-key',
     'hint': 'Free key at console.mistral.ai/api-keys/. mistral-small-latest.',
@@ -229,13 +229,13 @@ export async function detectBackends(inputs: DetectionInputs = {}): Promise<read
   const hasOpenRouterKey = typeof keys['openrouter'] === 'string' && keys['openrouter'].length > 0;
   out.push({
     'id': 'openrouter',
-    'displayName': 'OpenRouter (llama-3.3-70b — free tier)',
+    'displayName': 'OpenRouter (llama-3.3-70b, free tier)',
     'runnable': hasOpenRouterKey,
     'needsAction': hasOpenRouterKey ? null : 'api-key',
     'hint': 'Free key at openrouter.ai/keys. Routes to llama-3.3-70b-instruct:free.',
   });
 
-  // Ollama — local daemon detection. Browser hits 127.0.0.1:11434; if the
+  // Ollama: local daemon detection. Browser hits 127.0.0.1:11434; if the
   // daemon is up and CORS-permissive, the version endpoint replies in <50 ms.
   // No API key required. Model is whatever the user has pulled.
   const ollamaUp = await detectOllama();
@@ -257,7 +257,7 @@ export async function detectBackends(inputs: DetectionInputs = {}): Promise<read
     'displayName':  'Canned responses (no real LLM)',
     'runnable':     true,
     'needsAction':  null,
-    'hint':         'Pattern-matched offline responses — demonstrates the DAG without an API key. Add a key above for real model output.',
+    'hint':         'Pattern-matched offline responses. Demonstrates the DAG without an API key. Add a key above for real model output.',
   });
   return out;
 }
@@ -282,7 +282,7 @@ export function pickBestBackend(
 
   for (const id of PRIORITY_ORDER) {
     if (isMobile && DESKTOP_ONLY.includes(id)) continue;
-    // On desktop, skip stub — visitors have real keyless options via Nano/WebLLM.
+    // On desktop, skip stub: visitors have real keyless options via Nano/WebLLM.
     if (!isMobile && id === 'stub') continue;
     if (!BROWSER_VISIBLE.includes(id)) continue;
     const entry = byId.get(id);
@@ -293,14 +293,14 @@ export function pickBestBackend(
 
 /**
  * True when no real model is available and the visitor must enable one.
- * On mobile this always returns false — stub is the guaranteed fallback,
+ * On mobile this always returns false. The stub is the guaranteed fallback,
  * so mobile visitors never see the no-model gate.
  */
 export function hasNoRunnableModel(
   available: readonly BackendAvailability[],
   options: PickBestOptions = {},
 ): boolean {
-  // Mobile path: stub is always runnable — bypass the gate entirely.
+  // Mobile path: stub is always runnable, so bypass the gate entirely.
   if (options.isMobile === true) return false;
   return pickBestBackend(available, options) === null;
 }
@@ -377,7 +377,7 @@ export function instantiateProvider(id: ProviderId, inputs: InstantiateInputs = 
       return new BaseLlmClient(new OpenRouterApiAdapter(key));
     }
     case 'ollama': {
-      // No API key required — Ollama's loopback daemon accepts a
+      // No API key required. Ollama's loopback daemon accepts a
       // placeholder Bearer header. Pass the model the user has pulled.
       return new BaseLlmClient(new OllamaApiAdapter(
         inputs.ollamaModel !== undefined ? { 'model': inputs.ollamaModel } : {},

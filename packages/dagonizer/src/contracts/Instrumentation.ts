@@ -13,17 +13,17 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  * for in-subclass observers; the two surfaces coexist.
  *
  * Hook timing:
- *   flowStart        — before the entrypoint node runs
- *   flowEnd          — after the loop drains (terminal or interrupted)
- *   nodeStart        — before each node's execute() call (including
- *                      placements inside parallel / scatter / embedded-DAG)
- *   nodeEnd          — after the node's result is recorded
- *   phaseEnter       — before a pre/post phase placement runs
- *   phaseExit        — after a pre/post phase placement runs
- *   contractWarning  — non-fatal dangling-write warning from derive
- *   error            — any thrown error the dispatcher catches
+ *   flowStart: before the entrypoint node runs
+ *   flowEnd: after the loop drains (terminal or interrupted)
+ *   nodeStart: before each node's execute() call (including
+ *              placements inside parallel / scatter / embedded-DAG)
+ *   nodeEnd: after the node's result is recorded
+ *   phaseEnter: before a pre/post phase placement runs
+ *   phaseExit: after a pre/post phase placement runs
+ *   contractWarning: non-fatal dangling-write warning from derive
+ *   error: any thrown error the dispatcher catches
  *
- * Implementations MUST NOT throw — exceptions surfacing through the
+ * Implementations MUST NOT throw; exceptions surfacing through the
  * hook will abort the flow. Wrap any I/O (HTTP exporters, file writes)
  * in try/catch internally.
  *

@@ -1,8 +1,8 @@
-# Dagonizer — Project Standards
+# Dagonizer: Project Standards
 
 `@noocodex/dagonizer` is a DAG dispatcher. Type-safe nodes, abortable
 execution, deterministic resume. Backbone of the noocodex orchestration
-stack — consumers extend and compose, never patch.
+stack; consumers extend and compose, never patch.
 
 ## Operating principles
 
@@ -39,19 +39,19 @@ stack — consumers extend and compose, never patch.
   the dispatcher hasn't narrowed yet, explicit `null` for "no value
   exists" sentinels). Inside the engine, `T` not `T | undefined`.
   This dovetails with `exactOptionalPropertyTypes: true` in the base
-  tsconfig — both rules push toward "if the property is declared, it's
+  tsconfig; both rules push toward "if the property is declared, it's
   there with a real value."
 ⦿ **V8 shape stability.** Object shape (key set, key order, property
   types) is part of the contract. Initialise every property in the
   constructor in declaration order; never add or delete properties
   after construction; never assign a value of a different type to a
-  property. Optional/undefined breaks shape consistency — every
+  property. Optional/undefined breaks shape consistency: every
   instance with the property has one hidden class, every instance
   without has another, and V8 falls back to dictionary mode. The
   required-with-defaults rule above is the primary lever; classes for
   hot-path entities, consistent constructor order, and avoiding `as
   any` casts close the rest of the gap.
-⦿ **Canonical names only — no aliasing imports or exports.** Every
+⦿ **Canonical names only: no aliasing imports or exports.** Every
   symbol has one canonical name, used everywhere. Forbidden:
     ⊥ `import { Foo as Bar }`
     ⊥ `export { Foo as Bar }`
@@ -66,7 +66,7 @@ stack — consumers extend and compose, never patch.
   arguments, overrides, and ergonomic flags live in a single trailing
   config object (`options: { … } = {}`). One canonical shape for every
   method or factory in the codebase:
-    `.method(requiredA, requiredB, options?)` — never
+    `.method(requiredA, requiredB, options?)`, never
     `.method({ requiredA, requiredB, optional })` (when args are
     required) and never `.method(a, b, c, d)` with optional positional
     tail. The trailing config object's own fields follow the same
@@ -104,7 +104,7 @@ Examples: `ClockProvider`, `SchedulerProvider`, `SchedulerHandle`,
 `ErrorConstructorType`.
 
 A `runtime/` barrel may re-export an adapter contract for ergonomic
-co-import with the engine class — the source of the type stays in
+co-import with the engine class; the source of the type stays in
 `contracts/`.
 
 Adding a new contract? Create `src/contracts/<Name>.ts`. Do not embed
@@ -136,7 +136,7 @@ Every public surface ships through a `package.json` `exports` entry:
 
 | Subpath | Contents |
 |---------|----------|
-| `.` | Root barrel — classes, constants, errors, schemas, types |
+| `.` | Root barrel: classes, constants, errors, schemas, types |
 | `./types` | Every public type and interface (no runtime classes) |
 | `./contracts` | Every adapter contract |
 | `./entities` | Every JSON Schema and derived type |
@@ -156,7 +156,7 @@ the root barrel.
 
 ⦿ Consumers extend `Dagonizer` for observability hooks (`onFlowStart`,
   `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`). Multi-observer
-  composition is the consumer's responsibility — write it into the
+  composition is the consumer's responsibility; write it into the
   subclass.
 ⦿ Consumers extend `NodeStateBase` for domain-specific state. Override
   `snapshotData()` and `restoreData()` for checkpointable fields.
@@ -172,7 +172,7 @@ Every commit lands with:
 
 ⦿ `npm run typecheck` clean.
 ⦿ `npm run lint --max-warnings 0` clean.
-⦿ `npm run test` clean — every existing test passes.
+⦿ `npm run test` clean; every existing test passes.
 ⦿ New public surface ships with new tests.
 ⦿ CHANGELOG entry under the next `## [unreleased]` section in
   present-tense factual form.

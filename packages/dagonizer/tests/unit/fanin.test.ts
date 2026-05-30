@@ -89,7 +89,7 @@ void describe('Dagonizer scatter gather strategies', () => {
 
     assert.ok(seenResults !== undefined);
     assert.equal(seenResults?.length, 3);
-    // gatherResults carries {index, item, output} — items are source items
+    // gatherResults carries {index, item, output}; items are source items
     const items = seenResults?.map((r) => r.item).sort((a, b) => Number(a) - Number(b));
     assert.deepEqual(items, [1, 2, 3]);
     assert.ok(seenResults?.every((r) => r.output === 'success'));
@@ -146,7 +146,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     // Single-item source scatter + map strategy: reads cloneState metadata
     // via dotted path accessor; use a plain top-level key written via setMetadata
     // that is accessible as a metadata field directly via cloneState.
-    // The accessor reads dotted paths off the state object itself — metadata is
+    // The accessor reads dotted paths off the state object itself; metadata is
     // stored under the 'metadata' property on NodeStateBase.
     const dag = new DAGBuilder('mapfan', '1')
       .scatter(

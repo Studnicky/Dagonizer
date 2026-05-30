@@ -1,9 +1,9 @@
 /**
- * EmbeddedDAGNode — invoke a nested DAG with optional state mapping,
+ * EmbeddedDAGNode: invoke a nested DAG with optional state mapping,
  * in JSON-LD canonical form.
  *
  * Uses `@type: 'EmbeddedDAGNode'` as the discriminator. `@id` is the placement
- * URN: `urn:noocodex:dag:<dagName>/node/<name>`. Cardinality is always 1 —
+ * URN: `urn:noocodex:dag:<dagName>/node/<name>`. Cardinality is always 1;
  * exactly one child execution runs. To fork (one clone per source item),
  * use `ScatterNode` with `source`.
  */
@@ -27,9 +27,9 @@ export const EmbeddedDAGNodeSchema = {
     'stateMapping': {
       'type': 'object',
       'properties': {
-        // input: seed the child before it runs — child-state key → parent-state dotted path.
+        // input: seed the child before it runs (child-state key → parent-state dotted path).
         'input':  { 'type': 'object', 'additionalProperties': { 'type': 'string' }, 'description': 'child-state key -> parent-state dotted path; copied into the child before it runs' },
-        // output: copy back after the child completes — parent-state dotted path → child-state key.
+        // output: copy back after the child completes (parent-state dotted path → child-state key).
         'output': { 'type': 'object', 'additionalProperties': { 'type': 'string' }, 'description': 'parent-state dotted path -> child-state key; copied into the parent after the child completes' },
       },
       'additionalProperties': false,

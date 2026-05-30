@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
- * ConversationContextPane — conversation context window control.
+ * ConversationContextPane: conversation context window control.
  *
- * Exposes a slider for "Conversation context window" — the number of
+ * Exposes a slider for "Conversation context window": the number of
  * prior turns (visitor + archivist) threaded into each LLM prompt.
  * Setting it to 0 disables history threading entirely.
  *
@@ -35,7 +35,7 @@ function load(): void {
     if (typeof parsed === 'number' && Number.isFinite(parsed)) {
       windowSize.value = clamp(parsed, MIN_WINDOW, MAX_WINDOW);
     }
-  } catch { /* corrupted — leave default */ }
+  } catch { /* corrupted; leave default */ }
 }
 
 function save(): void {

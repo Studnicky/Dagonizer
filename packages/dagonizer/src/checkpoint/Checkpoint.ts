@@ -1,5 +1,5 @@
 /**
- * Checkpoint — build, parse, persist, and restore DAG execution snapshots.
+ * Checkpoint: build, parse, persist, and restore DAG execution snapshots.
  *
  * Obtain instances via `Checkpoint.capture()` (when saving) or
  * `Checkpoint.load()` (when recalling a persisted record). Both paths return
@@ -59,7 +59,7 @@ import { Validator } from '../validation/Validator.js';
  *   ckpt.restoreState((snap) => MyState.restore(snap))
  *
  * The factory form is what carries the concrete type through generic
- * inference — a class reference loses the type when passed directly.
+ * inference; a class reference loses the type when passed directly.
  */
 export type StateRestoreFnType<TState extends NodeStateInterface>
   = (snapshot: JsonObject) => TState;
@@ -85,7 +85,7 @@ export interface CaptureOptionsInterface {
 }
 
 /**
- * `Checkpoint` — a parsed and validated checkpoint record.
+ * `Checkpoint`: a parsed and validated checkpoint record.
  *
  * Obtain instances via `Checkpoint.capture()` (when saving) or
  * `Checkpoint.load()` / `Checkpoint.recall()` (when recalling). Instance
@@ -106,7 +106,7 @@ export class Checkpoint {
    * Build a `Checkpoint` instance from a flow name, execution result, and
    * optional named stores. Snapshots all stores in parallel.
    *
-   * Throws `DAGError` when `result.cursor === null` (the flow completed —
+   * Throws `DAGError` when `result.cursor === null` (the flow completed;
    * nothing to resume).
    */
   static async capture<TState extends NodeStateInterface & NodeStateBase>(
@@ -115,7 +115,7 @@ export class Checkpoint {
     options: CaptureOptionsInterface = {},
   ): Promise<Checkpoint> {
     if (result.cursor === null) {
-      throw new DAGError(`Cannot checkpoint a completed DAG '${dagName}' — no cursor to resume from`);
+      throw new DAGError(`Cannot checkpoint a completed DAG '${dagName}': no cursor to resume from`);
     }
 
     const base: CheckpointData = {
@@ -143,8 +143,8 @@ export class Checkpoint {
     );
 
     // Build the stores record in the schema-derived mutable shape.
-    // StoreSnapshot uses readonly entries; CheckpointData uses mutable —
-    // they are structurally identical at runtime; cast narrows the gap.
+    // StoreSnapshot uses readonly entries; CheckpointData uses mutable.
+    // They are structurally identical at runtime; cast narrows the gap.
     type StoreRecord = NonNullable<CheckpointData['stores']>;
     type StoreEntry  = StoreRecord[string];
     const stores: StoreRecord = {};
@@ -205,7 +205,7 @@ export class Checkpoint {
   /**
    * Rehydrate the state from this checkpoint via the supplied factory.
    * Returns the rehydrated state, dag name, cursor, and execution history.
-   * The factory maps a snapshot `JsonObject` to a `TState` instance —
+   * The factory maps a snapshot `JsonObject` to a `TState` instance;
    * typically `(snap) => MyState.restore(snap)`.
    *
    * Throws `ValidationError` when `this.data.cursor === null`.
@@ -214,7 +214,7 @@ export class Checkpoint {
     restoreFn: StateRestoreFnType<TState>,
   ): RecalledCheckpoint<TState> {
     if (this.data.cursor === null) {
-      throw new ValidationError(`Cannot restore from a CheckpointData with null cursor — the DAG had no resumable position`);
+      throw new ValidationError(`Cannot restore from a CheckpointData with null cursor: the DAG had no resumable position`);
     }
     return {
       'state': restoreFn(this.data.state as JsonObject),
@@ -259,7 +259,7 @@ export class Checkpoint {
     await Promise.all(
       Object.entries(checkpointStores).map(async ([name, snapshot]) => {
         const store = stores[name];
-        // store is guaranteed present — missing keys were checked above.
+        // store is guaranteed present; missing keys were checked above.
         if (store === undefined) return;
         await store.restore(snapshot as StoreSnapshot);
       }),

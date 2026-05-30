@@ -1,5 +1,5 @@
 /**
- * RdfProvObserver — wires Dagonizer's lifecycle hooks into PROV-O quads.
+ * RdfProvObserver: wires Dagonizer's lifecycle hooks into PROV-O quads.
  *
  * One `prov:Activity` per node execution lands in
  * `urn:dagonizer:prov:<runId>` with `prov:startedAtTime`,
@@ -11,7 +11,7 @@
  * The observer is engine-agnostic: it doesn't know about ArchivistState
  * fields, only about the lifecycle events the dispatcher fires.
  *
- * Wire it into an `ObservedDagonizer` via the `observer:` option —
+ * Wire it into an `ObservedDagonizer` via the `observer:` option;
  * `onFlowStart`/`onNodeStart`/`onNodeEnd`/`onError`/`onFlowEnd` all
  * call `record*` here, which immediately writes quads into the store.
  */
@@ -71,7 +71,7 @@ export class RdfProvObserver {
       MemoryStore.lit.dateTime(new Date(now)), this.#graph);
     this.#store.assert(activity, PROV.wasAssociatedWith,
       this.#dispatcher, this.#graph);
-    // wasInformedBy — chain to the previous activity (if any).
+    // wasInformedBy: chain to the previous activity (if any).
     if (this.#lastActivity !== null) {
       this.#store.assert(activity, PROV.wasInformedBy, this.#lastActivity, this.#graph);
     } else {
@@ -171,7 +171,7 @@ export class RdfProvObserver {
       MemoryStore.lit.int(tokensOut), this.#graph);
   }
 
-  /** Drop everything written for this run — used on reset. */
+  /** Drop everything written for this run; used on reset. */
   reset(): void {
     this.#store.clearGraph(this.#graph);
     this.#lastActivity = null;

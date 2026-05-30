@@ -1,5 +1,5 @@
 /**
- * @noocodex/dagonizer-patterns-flow — pure flow primitives.
+ * @noocodex/dagonizer-patterns-flow: pure flow primitives.
  *
  * No services bag; deterministic transforms on state. The patterns are
  * the canonical "shape" nodes (select/sort, reduce/dedupe/group,

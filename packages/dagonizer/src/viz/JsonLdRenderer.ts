@@ -1,5 +1,5 @@
 /**
- * JsonLdRenderer — render a `DAG` as JSON-LD.
+ * JsonLdRenderer: render a `DAG` as JSON-LD.
  *
  * JSON-LD is the canonical interchange format for the noocodex stack
  * (matches the json-tology / cartographus / sigil vocabulary). The
@@ -158,7 +158,7 @@ export class JsonLdRenderer {
         return out;
       }
       case 'TerminalNode':
-        // TerminalNode placements end the flow — no routing, no dag:routes field.
+        // TerminalNode placements end the flow; no routing, no dag:routes field.
         return {
           ...base,
           'dag:outcome': placement.outcome,

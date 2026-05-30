@@ -1,12 +1,12 @@
 /**
- * DottedPathAccessor — default `StateAccessor`.
+ * DottedPathAccessor: default `StateAccessor`.
  *
  * Walks `path.split('.')` to read and write nested fields on a state
  * object. Creates intermediate plain objects on write when they are
  * absent. Treats `null` and `undefined` segments on read as misses,
  * returning `undefined`.
  *
- * Static class — no instances. The dispatcher consumes it through the
+ * Static class; no instances. The dispatcher consumes it through the
  * `StateAccessor` contract and may be configured with any other
  * implementation.
  */

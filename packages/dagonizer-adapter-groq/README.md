@@ -1,6 +1,6 @@
 # @noocodex/dagonizer-adapter-groq
 
-> **Beta — not yet published to npm.** Ships in v0.10.0 as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format compatibility is verified via intercepted-fetch smoke tests. Expect minor adjustments before 1.0.
+> **Beta:** not yet published to npm. Ships in v0.10.0 as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format compatibility is verified via intercepted-fetch smoke tests. Expect minor adjustments before 1.0.
 
 Groq REST adapter for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Targets `llama-3.3-70b-versatile` on Groq's LPU hardware (300–800 tok/s at the free tier).
 
@@ -37,7 +37,7 @@ const response = await llm.chat(ChatRequestBuilder.from({
 { toolUse: 'full', structuredOutput: true, jsonMode: true }
 ```
 
-Llama 3.3 70B has solid tool-calling format adherence — pattern bases that consume `services.llm` dispatch `tools` reliably.
+Llama 3.3 70B has solid tool-calling format adherence; pattern bases that consume `services.llm` dispatch `tools` reliably.
 
 ## Wire format
 

@@ -1,5 +1,5 @@
 /**
- * rankCandidates — hybrid (deterministic + LLM tiebreak) ranking node.
+ * rankCandidates: hybrid (deterministic + LLM tiebreak) ranking node.
  *
  * The previous implementation handed every candidate to the LLM and
  * used its ordering wholesale. That cost one LLM call per turn on Nano
@@ -15,7 +15,7 @@
  *        recencyBonus             × 0.10
  *        +0.05 for fromPriorMemory candidates
  *   2. Sort descending by composite.
- *   3. LLM tiebreak — when the top-3 are within 0.10 of each other,
+ *   3. LLM tiebreak: when the top-3 are within 0.10 of each other,
  *      hand ONLY those 3 candidates to the LLM and use its ordering for
  *      them. Keep the rest in deterministic order. Soft timeout on the
  *      tiebreak: any failure / abort falls through to deterministic order.
@@ -36,7 +36,7 @@ import type { ArchivistNode } from './ArchivistNode.ts';
 import { cosineSimilarity, jaccard, tokenise } from './textUtils.ts';
 
 /**
- * Per-node timeout — generous for Gemini Nano's batch-scoring path.
+ * Per-node timeout: generous for Gemini Nano's batch-scoring path.
  * The hybrid path normally finishes in a few hundred ms (no LLM call when
  * top-3 are not tied). LLM tiebreak still wraps in an AbortController
  * merged with `context.signal`.
@@ -46,17 +46,17 @@ export const RANK_TIMEOUT_MS = 30_000;
 /** Total attempts (initial + retries) before routing to salvage. */
 const RETRY_BUDGET = 2;
 
-/** Composite score weights — sum to 1.00 (plus the +0.05 memory bonus). */
+/** Composite score weights: sum to 1.00 (plus the +0.05 memory bonus). */
 const W_COSINE   = 0.50;
 const W_JACCARD  = 0.25;
 const W_SOURCE   = 0.15;
 const W_RECENCY  = 0.10;
 const MEMORY_BONUS = 0.05;
 
-/** Tie window for LLM tiebreak — top-3 within this score range trigger the LLM. */
+/** Tie window for LLM tiebreak: top-3 within this score range trigger the LLM. */
 const TIE_WINDOW = 0.10;
 
-/** Source-priority lookup table — higher = stronger catalog signal. */
+/** Source-priority lookup table: higher = stronger catalog signal. */
 const SOURCE_PRIORITY: Readonly<Record<string, number>> = {
   'openlibrary':       1.0,
   'web-search':        1.0,
@@ -69,7 +69,7 @@ const SOURCE_PRIORITY: Readonly<Record<string, number>> = {
   'memory':            0.7,
 };
 
-/** Recency window — books first published within the last N years earn the bonus. */
+/** Recency window: books first published within the last N years earn the bonus. */
 const RECENCY_WINDOW_YEARS = 30;
 
 function sourcePriority(source: string): number {
@@ -78,7 +78,7 @@ function sourcePriority(source: string): number {
 }
 
 /**
- * Hybrid composite scorer. Pure function — given the inputs, the output
+ * Hybrid composite scorer. Pure function: given the inputs, the output
  * is deterministic and unit-testable.
  */
 export function compositeScore(
@@ -128,7 +128,7 @@ interface ScoredEntry {
  * array of vectors. Reuses `candidate.notes.titleEmbedding` when present
  * so re-ranks across nodes don't re-embed.
  *
- * Any throw bubbles up and is caught by the caller — the deterministic
+ * Any throw bubbles up and is caught by the caller; the deterministic
  * ranker continues with `titleEmbeddings = null` (Jaccard takes the
  * whole weight via the redistribution branch above).
  */
@@ -219,7 +219,7 @@ export const rankCandidates: ArchivistNode<'ranked' | 'retry' | 'salvage'> = {
             llmTiebreaks = 3;
           }
         } catch (err) {
-          // Salvage — keep deterministic order.
+          // Salvage: keep deterministic order.
           const message = err instanceof Error ? err.message : String(err);
           context.services.logger.info(`rank-candidates: tiebreak fell back to deterministic order (${message})`);
         }
@@ -263,11 +263,11 @@ export const rankCandidates: ArchivistNode<'ranked' | 'retry' | 'salvage'> = {
         'timestamp':   new Date().toISOString(),
       });
       if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
-        context.services.logger.warn(`rank-candidates: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}) — retry: ${err instanceof Error ? err.message : String(err)}`);
+        context.services.logger.warn(`rank-candidates: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
         return { 'output': 'retry' };
       }
       state.clearAttempts(context.nodeName);
-      context.services.logger.warn(`rank-candidates: retries exhausted — salvage: ${err instanceof Error ? err.message : String(err)}`);
+      context.services.logger.warn(`rank-candidates: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
       return { 'output': 'salvage' };
     } finally {
       clearTimeout(handle);

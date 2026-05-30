@@ -1,5 +1,5 @@
 /**
- * StateProjection — mirror ArchivistState into `urn:dagonizer:state:<runId>`.
+ * StateProjection: mirror ArchivistState into `urn:dagonizer:state:<runId>`.
  *
  * The named graph is canonical: nodes that need cross-cutting facts
  * SPARQL the graph (`store.select({...,graph: stateGraphIri(runId)})`).
@@ -44,7 +44,7 @@ export class StateProjection {
     store.clearGraph(graph);
     const run = MemoryStore.runIri(state.runId);
 
-    // rdf:type links this ABox run instance to the TBox dag:Run class —
+    // rdf:type links this ABox run instance to the TBox dag:Run class;
     // connects the state graph to the ontology graph in the MemoryGraph view.
     store.assert(run, rdfType, dagRun, graph);
 
@@ -60,15 +60,15 @@ export class StateProjection {
     const attempts = state.retriesFor('compose');
     store.assert(run, dag('composeAttempts'), MemoryStore.lit.int(attempts), graph);
 
-    // Search terms — one triple per term
+    // Search terms: one triple per term
     for (const term of state.terms) {
       store.assert(run, dag('term'), MemoryStore.lit.str(term), graph);
     }
 
-    // Candidates — full book metadata + scoring per candidate
+    // Candidates: full book metadata + scoring per candidate
     for (const candidate of state.candidates) {
       const book = MemoryStore.bookIri(candidate.book.isbn);
-      // rdf:type links this ABox book instance to the TBox dag:Book class —
+      // rdf:type links this ABox book instance to the TBox dag:Book class;
       // connects the state graph to the ontology graph in the MemoryGraph view.
       store.assert(book, rdfType,          dagBook,                                          graph);
       store.assert(run,  dag('candidate'), book,                                             graph);
@@ -99,7 +99,7 @@ export class StateProjection {
       }
     }
 
-    // Shortlist — flagged via dag:inShortlist on the book
+    // Shortlist: flagged via dag:inShortlist on the book
     const shortlistIsbns = new Set(state.shortlist.map((c) => c.book.isbn));
     for (const candidate of state.candidates) {
       const book = MemoryStore.bookIri(candidate.book.isbn);
@@ -107,7 +107,7 @@ export class StateProjection {
         MemoryStore.lit.bool(shortlistIsbns.has(candidate.book.isbn)), graph);
     }
 
-    // Tool plan — one triple per planned call
+    // Tool plan: one triple per planned call
     for (const call of state.toolPlan) {
       store.assert(run, dag('toolPlanned'), MemoryStore.lit.str(call.name), graph);
     }

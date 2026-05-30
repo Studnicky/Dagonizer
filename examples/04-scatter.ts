@@ -1,5 +1,5 @@
 /**
- * 04-scatter — ScatterNode: concurrent iteration + partition gather strategy.
+ * 04-scatter: ScatterNode concurrent iteration with partition gather strategy.
  *
  * Demonstrates ScatterNode with source: the engine reads the `source` field
  * from state, spawns one clone per item (up to `concurrency` at once), runs
@@ -27,7 +27,7 @@ import type { DAG, NodeInterface } from '@noocodex/dagonizer';
 
 // #region state
 class ScrapeState extends NodeStateBase {
-  urls:      string[] = [];  // source array — ScatterNode reads this by field name
+  urls:      string[] = [];  // source array; ScatterNode reads this by field name
   succeeded: string[] = [];  // partition target for 'ok' output
   failed:    string[] = [];  // partition target for 'fail' output
 }
@@ -75,7 +75,7 @@ const dag: DAG = {
         "strategy":   'partition',                     // route clones by their output key
         "partitions": { "ok": 'succeeded', "fail": 'failed' },  // output key → state field name
       },
-      // Aggregate outputs — reflect final distribution, not per-clone results.
+      // Aggregate outputs: reflect final distribution, not per-clone results.
       // all-success: every clone returned 'ok'
       // partial:     mix of ok and fail
       // all-error:   every clone returned 'fail'
@@ -105,7 +105,7 @@ state.urls = [
 ];
 await dispatcher.execute('scrape', state);
 
-process.stdout.write('\nScatter DAG — probe runs once per URL, concurrency=2\n');
+process.stdout.write('\nScatter DAG: probe runs once per URL, concurrency=2\n');
 process.stdout.write(`  succeeded: ${JSON.stringify(state.succeeded)}\n`);
 process.stdout.write(`  failed:    ${JSON.stringify(state.failed)}\n`);
 process.stdout.write('\nLesson: ScatterNode iterates state.urls, writes each item under\n');

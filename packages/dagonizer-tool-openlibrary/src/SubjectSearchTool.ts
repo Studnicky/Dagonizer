@@ -1,9 +1,9 @@
 /**
- * SubjectSearchTool — OpenLibrary subject/theme search for the Archivist.
+ * SubjectSearchTool: OpenLibrary subject/theme search for the Archivist.
  *
  * Uses the OpenLibrary search endpoint with `subject=<term>` so that
- * visitors can describe a book by what it is *about* — themes, mood,
- * plot motifs, or setting — rather than by title, author, or ISBN.
+ * visitors can describe a book by what it is *about*: themes, mood,
+ * plot motifs, or setting, rather than by title, author, or ISBN.
  *
  * Endpoint:  GET https://openlibrary.org/search.json?subject=<term>&limit=N
  *
@@ -23,7 +23,7 @@
  * distinguish this tool's output from the keyword-search results.
  *
  * Schema design notes:
- *   - `examples` are intentionally generic / template-shaped — never
+ *   - `examples` are intentionally generic / template-shaped; never
  *     real titles, authors, or ISBNs. Some models quote schema examples
  *     back verbatim into responses; shape-only examples prevent that.
  *   - `additionalProperties: true` lets the LLM pass extra OL params
@@ -52,7 +52,7 @@ const ENDPOINT = 'https://openlibrary.org/search.json';
 const definition: ToolDefinition = {
   'name': 'subject_search',
   'description':
-    'Search OpenLibrary by subject or theme — use when the visitor describes a book by what it is *about* (themes, mood, plot motifs, setting) rather than by title, author, or ISBN. For example: "labyrinth", "haunted house", "minotaur", "cosmic horror", "unreliable narrator". Do NOT use for title or author keyword searches — use web_search_books for those.',
+    'Search OpenLibrary by subject or theme. Use when the visitor describes a book by what it is *about* (themes, mood, plot motifs, setting) rather than by title, author, or ISBN. For example: "labyrinth", "haunted house", "minotaur", "cosmic horror", "unreliable narrator". Do NOT use for title or author keyword searches; use web_search_books for those.',
   'inputSchema': {
     'type': 'object',
     'additionalProperties': true,
@@ -61,7 +61,7 @@ const definition: ToolDefinition = {
         'type':        'string',
         'minLength':   2,
         'maxLength':   80,
-        'description': 'A thematic term, subject heading, or plot motif drawn from the visitor description. Prefer concrete nouns or adjective phrases (e.g. "labyrinth", "haunted house", "unreliable narrator"). AND-matching is strict — use a single focused term rather than a long phrase.',
+        'description': 'A thematic term, subject heading, or plot motif drawn from the visitor description. Prefer concrete nouns or adjective phrases (e.g. "labyrinth", "haunted house", "unreliable narrator"). AND-matching is strict; use a single focused term rather than a long phrase.',
         'examples':    ['<subject-or-theme>', '<plot-motif>', '<setting-or-mood>'],
       },
       'limit': {

@@ -1,5 +1,5 @@
 /**
- * DAGLifecycleMachine — pure reducer + initial-state factory + terminal
+ * DAGLifecycleMachine: pure reducer + initial-state factory + terminal
  * predicate for the lifecycle defined in `DAGLifecycleState.ts`.
  *
  * Side-effect-free: no IO, no logging. The reducer reads the optional `at`
@@ -36,14 +36,14 @@ type Handler<K extends StateKind, T extends EventType> = (
 ) => DAGLifecycleState;
 
 /**
- * Pure reducer for `DAGLifecycleState`. Static class — never
+ * Pure reducer for `DAGLifecycleState`. Static class; never
  * instantiated. Use `initial()` to seed a new state and `transition()` to
  * advance it. Illegal transitions return the input state unchanged;
  * `NodeStateBase.dispatch` detects the identity return and throws.
  */
 export class DAGLifecycleMachine {
   private constructor() {
-    /* utility class — never instantiated */
+    /* utility class; never instantiated */
   }
 
   static initial(): DAGLifecycleState {

@@ -1,5 +1,5 @@
 /**
- * MemoryDigestNode — assemble a structured digest of recent activity
+ * MemoryDigestNode: assemble a structured digest of recent activity
  * from the triple store and write it to state.
  *
  * Consumers override `buildDigest` (compute the digest from the store)

@@ -1,6 +1,6 @@
 # @noocodex/dagonizer-adapter-cerebras
 
-> **Beta — not yet published to npm.** Ships in v0.10.0 as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format compatibility is verified via intercepted-fetch smoke tests. Expect minor adjustments before 1.0.
+> **Beta:** not yet published to npm. Ships in v0.10.0 as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format compatibility is verified via intercepted-fetch smoke tests. Expect minor adjustments before 1.0.
 
 Cerebras REST adapter for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Defaults to `gpt-oss-120b` on Cerebras's Wafer-Scale Engine inference hardware.
 
@@ -37,7 +37,7 @@ const response = await llm.chat(ChatRequestBuilder.from({
 { toolUse: 'partial', structuredOutput: true, jsonMode: true }
 ```
 
-`toolUse: 'partial'` — Cerebras model coverage for `tools`/`tool_choice` varies; the adapter retries as plain chat when the model signals tools are unsupported (try/catch fallback inside `performChat`).
+`toolUse: 'partial'`: Cerebras model coverage for `tools`/`tool_choice` varies; the adapter retries as plain chat when the model signals tools are unsupported (try/catch fallback inside `performChat`).
 
 ## Wire format
 

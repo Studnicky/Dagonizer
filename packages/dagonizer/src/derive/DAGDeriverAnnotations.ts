@@ -1,25 +1,25 @@
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 /**
- * DAGDeriverAnnotations — declarative hooks for routing the contract-derived
+ * DAGDeriverAnnotations: declarative hooks for routing the contract-derived
  * flow cannot express by data-graph alone.
  *
- *   terminals    — alternate exit outputs that terminate the flow rather
- *                  than continuing into the next derived stage. Useful for
- *                  operations whose non-success outcomes route to `null`.
- *   scatters     — operations whose data-graph successor is reached by
- *                  scatter over a state-array source. Specifies the source
- *                  path, the per-item key, the concurrency cap, the
- *                  per-item kind (node), the gather strategy with its
- *                  strategy-specific fields, and the scatter outcome names.
- *   embeddedDAGs — operations that delegate execution to a nested
- *                  registered DAG. Renders as an `EmbeddedDAGNode` placement
- *                  with the supplied `dag` name and optional state mapping.
- *                  Every port in `outputs` auto-wires to the next derived
- *                  stage; `terminals` overrides per-port.
- *   parallels    — explicit `ParallelNode` groupings with a chosen
- *                  combine strategy. Without it, same-topological-depth
- *                  operations auto-group with `combine: 'collect'`.
+ *   terminals: alternate exit outputs that terminate the flow rather
+ *              than continuing into the next derived stage. Useful for
+ *              operations whose non-success outcomes route to `null`.
+ *   scatters: operations whose data-graph successor is reached by
+ *             scatter over a state-array source. Specifies the source
+ *             path, the per-item key, the concurrency cap, the
+ *             per-item kind (node), the gather strategy with its
+ *             strategy-specific fields, and the scatter outcome names.
+ *   embeddedDAGs: operations that delegate execution to a nested
+ *                 registered DAG. Renders as an `EmbeddedDAGNode` placement
+ *                 with the supplied `dag` name and optional state mapping.
+ *                 Every port in `outputs` auto-wires to the next derived
+ *                 stage; `terminals` overrides per-port.
+ *   parallels: explicit `ParallelNode` groupings with a chosen
+ *              combine strategy. Without it, same-topological-depth
+ *              operations auto-group with `combine: 'collect'`.
  */
 
 /**
@@ -36,10 +36,10 @@ export interface DAGDeriverEmitTerminal {
 }
 
 /**
- * Per-operation alternate exit. Two distinct concepts — one way each:
+ * Per-operation alternate exit. Two distinct concepts, one way each:
  *
  *   - **target variant**: `target: string` routes the output port to a named
- *     existing placement. (Routing only — to END the flow at an outcome, use
+ *     existing placement. (Routing only. To END the flow at an outcome, use
  *     the emit variant; there is no implicit null end.)
  *   - **emit variant**: declares an inline `TerminalNode` that the deriver
  *     synthesizes and adds to the DAG. The operation's output port routes to
@@ -48,7 +48,7 @@ export interface DAGDeriverEmitTerminal {
  *     marking the parent flow `failed` explicitly on a particular operation
  *     outcome (e.g. `fail` → `TerminalNode{outcome:'failed'}`).
  *
- * Multiple operations may declare `emit` annotations with the same `name` —
+ * Multiple operations may declare `emit` annotations with the same `name`;
  * the deriver deduplicates by name. If two `emit` entries share a name but
  * disagree on `outcome`, `DAGDeriver.derive` throws `DAGError`.
  */
@@ -75,16 +75,16 @@ interface DAGDeriverScatterBase {
 
 /**
  * Per-operation scatter wrapping. The gather strategy is a discriminated
- * union — each variant carries the strategy-specific fields the engine's
+ * union; each variant carries the strategy-specific fields the engine's
  * `GatherConfig` requires:
  *
- *   ⦿ `'custom'`    — `customNode`: registered node that runs as the merge
+ *   ⦿ `'custom'`    (customNode): registered node that runs as the merge
  *                     step. The dispatcher passes the `Record<outcome, item[]>`
  *                     map to the node via `state.metadata.gatherResults`.
- *   ⦿ `'partition'` — `partitions`: `Record<outcome, statePath>` map declaring
+ *   ⦿ `'partition'` (partitions): `Record<outcome, statePath>` map declaring
  *                     where each per-outcome item array gets written on parent
  *                     state.
- *   ⦿ `'append'`    — `target`: single dotted state path. Every item result
+ *   ⦿ `'append'`    (target): single dotted state path. Every item result
  *                     (regardless of outcome) is flattened into the array at
  *                     that path.
  *
@@ -153,7 +153,7 @@ export interface DAGDeriverEmbeddedDAG<TChildState extends NodeStateInterface = 
    * Mirrors `EmbeddedDAGNode.stateMapping` in the engine.
    *
    * When `TChildState` is a concrete subtype:
-   *   - `input` keys are narrowed to `keyof TChildState & string` — a
+   *   - `input` keys are narrowed to `keyof TChildState & string`; a
    *     compile-time error is raised for unknown child-state keys.
    *   - `output` values are narrowed to `keyof TChildState & string`.
    *
@@ -161,7 +161,7 @@ export interface DAGDeriverEmbeddedDAG<TChildState extends NodeStateInterface = 
    * accept any `string`.
    *
    * The wire shape written to the rendered `EmbeddedDAGNode` is always
-   * `Record<string, string>` — the generic is for authoring ergonomics only.
+   * `Record<string, string>`; the generic is for authoring ergonomics only.
    */
   readonly stateMapping?: {
     /** Child-state key → parent dotted path. */
@@ -186,7 +186,7 @@ export interface DAGDeriverEmbeddedDAG<TChildState extends NodeStateInterface = 
  * a topological depth with `combine: 'collect'`. Use `parallels`
  * when:
  *   ⦿ Same-depth operations should run sequentially instead
- *     (omit them from any parallels entry — but auto-grouping
+ *     (omit them from any parallels entry; auto-grouping
  *     activates whenever ≥2 operations share a depth, so the
  *     opt-out path is to flatten the data graph)
  *   ⦿ A combine strategy other than `'collect'` is required

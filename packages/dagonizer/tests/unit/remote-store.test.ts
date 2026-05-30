@@ -2,7 +2,7 @@
  * remote-store.test.ts
  *
  * Verifies that:
- * 1. A concrete class can implement `RemoteStore` by extending `BaseStore` —
+ * 1. A concrete class can implement `RemoteStore` by extending `BaseStore`;
  *    the contract is fully implementable without gaps.
  * 2. The new `StoreErrorClassification` reasons discriminate correctly via
  *    the `reason` discriminant field.
@@ -65,7 +65,7 @@ class MockRemoteStore extends BaseStore implements RemoteStore {
     }
   }
 
-  // Atomic override — Map access is synchronous, no interleaving possible.
+  // Atomic override: Map access is synchronous, no interleaving possible.
   override async update<T extends JsonValue>(
     key: string,
     fn: (current: T | undefined) => T,
@@ -87,7 +87,7 @@ class MockRemoteStore extends BaseStore implements RemoteStore {
   }
 
   async releaseLease(_lease: RemoteStoreLease): Promise<void> {
-    // no-op — mock never holds state for leases
+    // no-op; mock never holds state for leases
   }
 
   async health(_timeoutMs: number): Promise<boolean> {
@@ -152,7 +152,7 @@ void describe('RemoteStore contract', () => {
 
 // ── StoreError remote-specific discriminants ─────────────────────────────────
 
-void describe('StoreError — remote-specific classification reasons', () => {
+void describe('StoreError: remote-specific classification reasons', () => {
   void it('LEASE_DENIED classifies and discriminates correctly', () => {
     const classification: StoreErrorClassification = {
       'reason':  'LEASE_DENIED',

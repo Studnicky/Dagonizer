@@ -1,5 +1,5 @@
 /**
- * IntentClassifier — vector-similarity intent picker.
+ * IntentClassifier: vector-similarity intent picker.
  *
  * Today's `BaseLlmClient.classifyIntent` asks an LLM to name an intent
  * label. That works but drifts: short follow-ups, multilingual queries,
@@ -31,7 +31,7 @@ import { cosineSimilarity } from '../nodes/textUtils.ts';
 export { cosineSimilarity };
 
 /**
- * Canonical intent labels. The order matters only for tie-breaking —
+ * Canonical intent labels. The order matters only for tie-breaking:
  * argmax returns the first label encountered at the top score.
  */
 export const INTENT_LABELS: readonly ClassifiedIntent[] = [
@@ -47,7 +47,7 @@ export const INTENT_LABELS: readonly ClassifiedIntent[] = [
 ] as const;
 
 /**
- * Anchor descriptions per intent — embedded once at startup, cosine-
+ * Anchor descriptions per intent, embedded once at startup. Cosine-
  * similarity vs the query at classify-time. Phrased as visitor-style
  * paraphrases so the embedding sits close to where real queries land.
  */
@@ -63,7 +63,7 @@ export const INTENT_DESCRIPTIONS: Readonly<Record<ClassifiedIntent, string>> = {
   'off-topic':         'question is clearly unrelated to books reading or libraries, such as asking about the weather sports scores jokes cooking recipes or current news events',
 };
 
-/** Default confidence floor — below this, the classifier returns null. */
+/** Default confidence floor. Below this, the classifier returns null. */
 export const DEFAULT_CONFIDENCE_FLOOR = 0.4;
 
 interface IntentVector {
@@ -81,7 +81,7 @@ export class IntentClassifier {
   }
 
   /**
-   * Build a classifier — embeds the canonical intent descriptions once,
+   * Build a classifier: embeds the canonical intent descriptions once,
    * then reuses the vectors for every `classify()` call. Throws if the
    * embedder fails on any anchor; the caller chooses how to recover
    * (typically by skipping vector classification and falling back to
@@ -97,14 +97,14 @@ export class IntentClassifier {
     return new IntentClassifier(embedder, vectors);
   }
 
-  /** Provider identity of the underlying embedder — for logging. */
+  /** Provider identity of the underlying embedder (for logging). */
   get embedderId(): string { return this.#embedder.id; }
   get embedderDisplayName(): string { return this.#embedder.displayName; }
 
   /**
    * Embed the query, compute cosine similarity vs every intent vector,
    * return the highest-scoring intent paired with its score. Returns
-   * `null` when the top score is below `confidenceFloor` — caller
+   * `null` when the top score is below `confidenceFloor`; the caller
    * falls back to LLM classification.
    */
   async classify(

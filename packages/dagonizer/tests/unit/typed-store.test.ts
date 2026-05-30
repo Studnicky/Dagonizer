@@ -28,7 +28,7 @@ void describe('TypedStore', () => {
 
     await typed.set('count', 42);
     const n = await typed.get('count');
-    // n is inferred as number | undefined — no explicit <T> at the call site.
+    // n is inferred as number | undefined; no explicit <T> at the call site.
     assert.equal(n, 42);
 
     await typed.set('label', 'hello');
@@ -57,15 +57,15 @@ void describe('TypedStore', () => {
     assert.equal(alreadyGone, false);
   });
 
-  void it('update(key, fn) — fn receives Schema[K] | undefined as current', async () => {
+  void it('update(key, fn): fn receives Schema[K] | undefined as current', async () => {
     const inner = new MemoryStore();
     const typed = new TypedStore<AppSchema>(inner);
 
-    // First update — current is undefined; default to 0.
+    // First update: current is undefined; default to 0.
     const first = await typed.update('count', (current) => (current ?? 0) + 10);
     assert.equal(first, 10);
 
-    // Second update — current is 10.
+    // Second update: current is 10.
     const second = await typed.update('count', (current) => (current ?? 0) + 5);
     assert.equal(second, 15);
 
@@ -108,7 +108,7 @@ void describe('TypedStore', () => {
 
     await typed.set('count', 7);
 
-    // .inner exposes the wide Store interface — caller specifies <T> directly.
+    // .inner exposes the wide Store interface; caller specifies <T> directly.
     const raw = await typed.inner.get<number>('count');
     assert.equal(raw, 7);
 
@@ -149,22 +149,22 @@ void describe('TypedStore', () => {
   //
   // The next two tests use @ts-expect-error to verify that TypeScript rejects
   // invalid call sites. If TypedStore's key/value constraints are removed, tsc
-  // will report "Unused '@ts-expect-error' directive" — which our lint config
-  // treats as an error — so these tests serve as compile-time regression guards.
+  // will report "Unused '@ts-expect-error' directive", which our lint config
+  // treats as an error, so these tests serve as compile-time regression guards.
 
-  void it('@ts-expect-error — set with a key absent from Schema is rejected', async () => {
+  void it('@ts-expect-error: set with a key absent from Schema is rejected', async () => {
     const inner = new MemoryStore();
     const typed = new TypedStore<AppSchema>(inner);
 
-    // @ts-expect-error — 'missing-key' is not a key of AppSchema.
+    // @ts-expect-error: 'missing-key' is not a key of AppSchema.
     await typed.set('missing-key', 'x');
   });
 
-  void it('@ts-expect-error — set with wrong value type for a Schema key is rejected', async () => {
+  void it('@ts-expect-error: set with wrong value type for a Schema key is rejected', async () => {
     const inner = new MemoryStore();
     const typed = new TypedStore<AppSchema>(inner);
 
-    // @ts-expect-error — AppSchema['count'] is number; 'wrong-type' is a string.
+    // @ts-expect-error: AppSchema['count'] is number; 'wrong-type' is a string.
     await typed.set('count', 'wrong-type');
   });
 });
