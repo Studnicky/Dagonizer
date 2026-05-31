@@ -1,5 +1,7 @@
 # @noocodex/dagonizer-tool-openlibrary
 
+## 0.15.0
+
 ## 0.14.0
 
 ### Patch Changes
