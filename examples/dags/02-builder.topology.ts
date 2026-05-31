@@ -1,9 +1,9 @@
 /**
- * 02-builder.topology: Pure topology for the DAGBuilder example.
+ * 02-builder.topology/dags: pure topology for the DAGBuilder example.
  *
  * No side effects, no top-level await. Exports ChatState, classify, respond,
- * and dag for use by the runnable script (02-builder.ts) and documentation
- * carve directives.
+ * and dag for use by the runnable script (examples/02-builder.ts) and the
+ * documentation carve directives.
  *
  * Runnable script: examples/02-builder.ts
  */
@@ -69,6 +69,7 @@ export const dag = new DAGBuilder('chat', '1')
   // First .node() call → entrypoint is set to 'classify' automatically.
   .node('classify', classify, { "on_topic": 'respond', "off_topic": 'respond' })
   // routes for 'respond' must cover exactly { success }, no more, no less.
-  .node('respond', respond, { "success": null })
+  .node('respond', respond, { "success": 'end' })
+  .terminal('end')
   .build();  // materialises the canonical JSON-LD DAG document
 // #endregion builder
