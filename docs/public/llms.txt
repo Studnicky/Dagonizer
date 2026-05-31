@@ -49,7 +49,7 @@ Key features: strict TypeScript (exactOptionalPropertyTypes), JSON-LD canonical 
 
 - [Dagonizer](https://studnicky.github.io/Dagonizer/reference/dagonizer): the main dispatcher class, covering execute, hooks, and extension surface.
 - [Execution](https://studnicky.github.io/Dagonizer/reference/execution): ExecutionResult, ExecuteOptions, and the execute() call contract.
-- [Nodes](https://studnicky.github.io/Dagonizer/reference/operations): placement types (SingleNode, ParallelNode, ScatterNode, EmbeddedDAGNode).
+- [Nodes](https://studnicky.github.io/Dagonizer/reference/nodes): placement types (SingleNode, ParallelNode, ScatterNode, EmbeddedDAGNode).
 - [Lifecycle](https://studnicky.github.io/Dagonizer/reference/lifecycle): DAGLifecycleMachine states and transition guards.
 - [Runtime](https://studnicky.github.io/Dagonizer/reference/runtime): Clock, Scheduler, RetryPolicy, RealTimeScheduler, BackoffStrategy.
 - [Contracts](https://studnicky.github.io/Dagonizer/reference/contracts): NodeInterface, ClockProvider, SchedulerProvider, SchedulerHandle.

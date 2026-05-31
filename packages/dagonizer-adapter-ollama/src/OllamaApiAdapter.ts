@@ -52,7 +52,7 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
   readonly #baseUrl: string;
   readonly #currentModel: string;
 
-  public constructor(options: OllamaApiAdapterOptions = {}) {
+  constructor(options: OllamaApiAdapterOptions = {}) {
     const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
     const model = options.model ?? DEFAULT_MODEL;
     super(

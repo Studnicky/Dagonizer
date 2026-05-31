@@ -161,6 +161,8 @@ function buildCandidates(docs: readonly OpenLibraryDoc[]): Candidate[] {
     });
     const summary = pickDescription(doc);
     const subjects = doc.subject?.slice(0, 8);
+    const notes: Record<string, unknown> = { '_sources': ['web-search'] };
+    if (doc.key !== undefined) notes['openlibraryKey'] = doc.key;
     candidates.push({
       'book': {
         'isbn':    canonical,
@@ -175,6 +177,7 @@ function buildCandidates(docs: readonly OpenLibraryDoc[]): Candidate[] {
       },
       'score':  0,                  // tool does not score; rank-candidates is the ranker.
       'source': 'web-search',
+      'notes':  notes,
     });
   }
   return candidates;

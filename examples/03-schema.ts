@@ -13,6 +13,8 @@
  * required by the schema. A document missing these fields produces a
  * ValidationError with an itemised Ajv failure list.
  *
+ * DAG definition (dag-literal JSON, load, echo node): examples/dags/03-schema.ts
+ *
  * Run: npx tsx examples/03-schema.ts
  */
 
@@ -21,92 +23,11 @@ import {
   NodeStateBase,
   ValidationError,
 } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { echo, dag } from './dags/03-schema.js';
 
-// ---------------------------------------------------------------------------
-// Node
-// ---------------------------------------------------------------------------
-
-const echo: NodeInterface<NodeStateBase, 'success'> = {
-  'name': 'echo',
-  'outputs': ['success'],
-  async execute(state) {
-    state.setMetadata('seen', true);
-    return { 'output': 'success' };
-  },
-};
-
-// ---------------------------------------------------------------------------
-// Canonical JSON-LD DAG as a JSON string (the wire format).
-//
-// Note the required JSON-LD fields:
-//   '@context': the DAG_CONTEXT object (serialised as an inline object)
-//   '@id':      a URN uniquely identifying this DAG document
-//   '@type':    must be the string literal 'DAG'
-//
-// Node placements use '@type' as the discriminator instead of a flat 'type'
-// key. '@id' on each node is a scoped URN: <dagId>/node/<placementName>.
-// ---------------------------------------------------------------------------
-
-// #region dag-literal
-const dagJson = JSON.stringify({
-  '@context': {
-    '@version': 1.1,
-    'name':        { '@id': 'https://noocodex.dev/ontology/dag/name' },
-    'version':     { '@id': 'https://noocodex.dev/ontology/dag/version' },
-    'entrypoint':  { '@id': 'https://noocodex.dev/ontology/dag/entrypoint' },
-    'nodes':       { '@id': 'https://noocodex.dev/ontology/dag/nodes', '@container': '@set' },
-    'outputs':     { '@id': 'https://noocodex.dev/ontology/dag/outputs' },
-    'node':        { '@id': 'https://noocodex.dev/ontology/dag/node' },
-    'dag':         { '@id': 'https://noocodex.dev/ontology/dag/dag' },
-    'combine':     { '@id': 'https://noocodex.dev/ontology/dag/combine' },
-    'body':        { '@id': 'https://noocodex.dev/ontology/dag/body' },
-    'source':      { '@id': 'https://noocodex.dev/ontology/dag/source' },
-    'itemKey':     { '@id': 'https://noocodex.dev/ontology/dag/itemKey' },
-    'concurrency': { '@id': 'https://noocodex.dev/ontology/dag/concurrency' },
-    'projection':  { '@id': 'https://noocodex.dev/ontology/dag/projection' },
-    'gather':      { '@id': 'https://noocodex.dev/ontology/dag/gather' },
-    'reducer':     { '@id': 'https://noocodex.dev/ontology/dag/reducer' },
-    'DAG':         { '@id': 'https://noocodex.dev/ontology/dag/DAG' },
-    'Placement':   { '@id': 'https://noocodex.dev/ontology/dag/Placement' },
-    'SingleNode':  { '@id': 'https://noocodex.dev/ontology/dag/SingleNode' },
-    'ScatterNode': { '@id': 'https://noocodex.dev/ontology/dag/ScatterNode' },
-    'ParallelNode': {
-      '@id': 'https://noocodex.dev/ontology/dag/ParallelNode',
-      '@context': { 'nodes': { '@id': 'https://noocodex.dev/ontology/dag/parallelNodes', '@container': '@list' } },
-    },
-  },
-  '@id':        'urn:noocodex:dag:from-json',
-  '@type':      'DAG',
-  'name':       'from-json',
-  'version':    '1',
-  'entrypoint': 'echo',
-  'nodes': [
-    {
-      '@id':     'urn:noocodex:dag:from-json/node/echo',
-      '@type':   'SingleNode',
-      'name':    'echo',
-      'node':    'echo',
-      'outputs': { 'success': null },
-    },
-  ],
-});
-// #endregion dag-literal
-
-// ---------------------------------------------------------------------------
-// Load + validate: Dagonizer.load() is the only valid ingest path
-// ---------------------------------------------------------------------------
-
-// #region load
-// Dagonizer.load() throws ValidationError if JSON is malformed or schema fails.
-const dag = Dagonizer.load(dagJson);
 process.stdout.write(`\nLoaded:  ${dag.name} v${dag.version} (${dag.nodes.length} node(s))\n`);
-// #endregion load
 
-// ---------------------------------------------------------------------------
-// Execute
-// ---------------------------------------------------------------------------
-
+// ── Execute ──────────────────────────────────────────────────────────────
 const dispatcher = new Dagonizer<NodeStateBase>();
 dispatcher.registerNode(echo);
 dispatcher.registerDAG(dag);
@@ -115,10 +36,7 @@ const state = new NodeStateBase();
 await dispatcher.execute('from-json', state);
 process.stdout.write(`Executed: metadata.seen = ${String(state.getMetadata('seen'))}\n`);
 
-// ---------------------------------------------------------------------------
-// Round-trip: serialize → load → equivalent object
-// ---------------------------------------------------------------------------
-
+// ── Round-trip: serialize → load → equivalent object ─────────────────────
 // serialize() produces pretty JSON (2-space indent). The result is a valid
 // string that load() can parse back without loss.
 const serialized    = Dagonizer.serialize(dag);
@@ -126,10 +44,7 @@ const roundTripped  = Dagonizer.load(serialized);
 const isEqual       = JSON.stringify(roundTripped) === JSON.stringify(dag);
 process.stdout.write(`Round-trip equal: ${String(isEqual)}\n`);
 
-// ---------------------------------------------------------------------------
-// ValidationError: schema rejects any document missing required JSON-LD fields
-// ---------------------------------------------------------------------------
-
+// ── ValidationError: schema rejects any document missing required JSON-LD fields
 // #region validate
 try {
   // Missing '@context', '@id', '@type', 'entrypoint', 'nodes': schema rejects it.

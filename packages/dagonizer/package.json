@@ -1,6 +1,6 @@
 {
   "name": "@noocodex/dagonizer",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "description": "DAG + FSM architecture framework for TypeScript. Type-safe nodes, abortable execution, deterministic resume, embedded-DAG composition, JSON-LD canonical wire format.",
   "private": false,
   "license": "MIT",

@@ -90,15 +90,15 @@ A `Store` is a live, shared, mutable map. Use it when multiple placements accumu
 
 The runnable example declares a `Services` interface whose `log` field has type `Store`, then instantiates the dispatcher with a `MemoryStore` bound to that field:
 
-<<< @/../examples/10-shared-state.ts#services
+<<< @/../examples/dags/10-shared-state.ts#services
 
 <<< @/../examples/10-shared-state.ts#store-init
 
 ## Parent and child DAGs
 
-<<< @/../examples/10-shared-state.ts#child-dag
+<<< @/../examples/dags/10-shared-state.ts#child-dag
 
-<<< @/../examples/10-shared-state.ts#parent-dag
+<<< @/../examples/dags/10-shared-state.ts#parent-dag
 
 `step-a`, `child-step`, and `step-b` all call `context.services.log.update('entries', ...)` against the same store. The resulting `entries` value is `step-a,child-step,step-b`, ordered by execution.
 
