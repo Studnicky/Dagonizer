@@ -170,82 +170,82 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
     }
 
     const payload = (await res.json()) as OpenAiResponseBody;
-    return parseOpenAiResponse(payload);
+    return this.#parseResponse(payload);
   }
 
   #buildBody(request: ChatRequest, withTools: boolean): Record<string, unknown> {
     const body: Record<string, unknown> = {
       'model': this.#model,
-      'messages': request.messages.map(toOpenAiMessage),
+      'messages': request.messages.map((m) => this.#toMessage(m)),
       'temperature': request.temperature,
       [this.#config.tokenField]: request.maxTokens,
     };
 
     if (withTools && request.tools.length > 0) {
-      body['tools'] = request.tools.map(toOpenAiTool);
-      body['tool_choice'] = toOpenAiToolChoice(request.toolChoice);
+      body['tools'] = request.tools.map((t) => this.#toTool(t));
+      body['tool_choice'] = this.#toToolChoice(request.toolChoice);
     } else if (request.outputSchema.kind === 'schema') {
       body['response_format'] = { 'type': 'json_object' };
     }
 
     return body;
   }
-}
 
-function toOpenAiMessage(message: ChatMessage): Record<string, unknown> {
-  if (message.role === 'tool') {
+  #toMessage(message: ChatMessage): Record<string, unknown> {
+    if (message.role === 'tool') {
+      return {
+        'role': 'tool',
+        'tool_call_id': message.toolCallId,
+        'content': message.content,
+      };
+    }
+    return { 'role': message.role, 'content': message.content };
+  }
+
+  #toTool(tool: ToolDefinition): Record<string, unknown> {
     return {
-      'role': 'tool',
-      'tool_call_id': message.toolCallId,
-      'content': message.content,
+      'type': 'function',
+      'function': {
+        'name': tool.name,
+        'description': tool.description,
+        'parameters': tool.inputSchema,
+        ...(tool.strict ? { 'strict': true } : {}),
+      },
     };
   }
-  return { 'role': message.role, 'content': message.content };
-}
 
-function toOpenAiTool(tool: ToolDefinition): Record<string, unknown> {
-  return {
-    'type': 'function',
-    'function': {
-      'name': tool.name,
-      'description': tool.description,
-      'parameters': tool.inputSchema,
-      ...(tool.strict ? { 'strict': true } : {}),
-    },
-  };
-}
-
-function toOpenAiToolChoice(choice: ToolChoice): unknown {
-  switch (choice.type) {
-    case 'auto':     return 'auto';
-    case 'required': return 'required';
-    case 'none':     return 'none';
-    case 'tool':     return { 'type': 'function', 'function': { 'name': choice.name } };
+  #toToolChoice(choice: ToolChoice): unknown {
+    switch (choice.type) {
+      case 'auto':     return 'auto';
+      case 'required': return 'required';
+      case 'none':     return 'none';
+      case 'tool':     return { 'type': 'function', 'function': { 'name': choice.name } };
+    }
   }
-}
 
-function parseOpenAiResponse(payload: OpenAiResponseBody): ChatResponse {
-  const choice = payload.choices?.[0];
-  const msg = choice?.message;
-  const rawToolCalls = msg?.tool_calls ?? [];
-  const toolCalls: ToolCall[] = rawToolCalls.map((tc) => ({
-    'id': tc.id,
-    'name': tc.function.name,
-    'arguments': parseJson(tc.function.arguments),
-  }));
-  const text = msg?.content ?? '';
-  const finishReason = toolCalls.length > 0
-    ? 'tool_call'
-    : choice?.finish_reason === 'length' ? 'length' : 'stop';
-  return {
-    'message': ChatResponseMessageBuilder.from(text, toolCalls),
-    'finishReason': finishReason,
-    'usage': payload.usage !== undefined
-      ? { 'promptTokens': payload.usage.prompt_tokens ?? 0, 'completionTokens': payload.usage.completion_tokens ?? 0 }
-      : ZERO_TOKEN_USAGE,
-  };
-}
+  #parseResponse(payload: OpenAiResponseBody): ChatResponse {
+    const choice = payload.choices?.[0];
+    const msg = choice?.message;
+    const rawToolCalls = msg?.tool_calls ?? [];
+    const toolCalls: ToolCall[] = rawToolCalls.map((tc) => ({
+      'id': tc.id,
+      'name': tc.function.name,
+      'arguments': this.#parseJson(tc.function.arguments),
+    }));
+    const text = msg?.content ?? '';
+    const finishReason = toolCalls.length > 0
+      ? 'tool_call'
+      : choice?.finish_reason === 'length' ? 'length' : 'stop';
+    return {
+      'message': ChatResponseMessageBuilder.from(text, toolCalls),
+      'finishReason': finishReason,
+      'usage': payload.usage !== undefined
+        ? { 'promptTokens': payload.usage.prompt_tokens ?? 0, 'completionTokens': payload.usage.completion_tokens ?? 0 }
+        : ZERO_TOKEN_USAGE,
+    };
+  }
 
-function parseJson(raw: string): Record<string, unknown> {
-  try { return JSON.parse(raw) as Record<string, unknown>; } catch { return {}; }
+  #parseJson(raw: string): Record<string, unknown> {
+    try { return JSON.parse(raw) as Record<string, unknown>; } catch { return {}; }
+  }
 }

@@ -18,30 +18,6 @@ import type { SchedulerProvider } from '../contracts/SchedulerProvider.js';
 
 import { RealTimeScheduler } from './RealTimeScheduler.js';
 
-class SchedulerHandleImpl implements SchedulerHandle {
-  readonly #provider: SchedulerProvider;
-
-  constructor(provider: SchedulerProvider) {
-    this.#provider = provider;
-  }
-
-  after(delayMs: number, signal?: AbortSignal): Promise<void> {
-    return this.#provider.after(delayMs, signal);
-  }
-
-  at(atMs: number, signal?: AbortSignal): Promise<void> {
-    return this.#provider.at(atMs, signal);
-  }
-
-  every(intervalMs: number, signal?: AbortSignal): AsyncIterable<void> {
-    return this.#provider.every(intervalMs, signal);
-  }
-
-  cancelAll(): void {
-    this.#provider.cancelAll();
-  }
-}
-
 let _provider: SchedulerProvider = new RealTimeScheduler();
 
 /**
@@ -52,9 +28,14 @@ let _provider: SchedulerProvider = new RealTimeScheduler();
 export class Scheduler {
   private constructor() { /* static class */ }
 
-  /** Get the current scheduler handle. */
+  /**
+   * Get the current scheduler handle. Returns the active provider directly:
+   * `SchedulerProvider` structurally satisfies `SchedulerHandle`, so no wrapper
+   * is allocated. This call is on the hot path (per node with a timeout, per
+   * scatter clone), so it must not allocate.
+   */
   static current(): SchedulerHandle {
-    return new SchedulerHandleImpl(_provider);
+    return _provider;
   }
 
   /** Install a scheduler provider. Engine-only; called at boot or in tests. */

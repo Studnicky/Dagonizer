@@ -15,7 +15,6 @@ import { BaseAdapter, ChatResponseMessageBuilder, decodeToolCallsJson, ZERO_TOKE
 import type {
   ChatRequest,
   ChatResponse,
-  ToolDefinition,
 } from '@noocodex/dagonizer/adapter';
 import { Classifications, LlmError, type ErrorClassification } from '@noocodex/dagonizer/adapter';
 
@@ -114,7 +113,7 @@ export class WebLlmAdapter extends BaseAdapter {
         ...(wantsJson ? { 'response_format': { 'type': 'json_object' as const } } : {}),
       });
     } catch (err) {
-      throw classifyWebLlmError(err);
+      throw this.#classifyWebLlmError(err);
     }
 
     const raw = result.choices[0]?.message.content ?? '';
@@ -150,7 +149,7 @@ export class WebLlmAdapter extends BaseAdapter {
     if (request.tools.length > 0) {
       messages.push({
         'role': 'system',
-        'content': `You must respond with a JSON object of the form { "tool_calls": [{ "name": "...", "arguments": { ... } }] } using only these tool names: ${request.tools.map(quote).join(', ')}. Emit an empty array when no tool helps.`,
+        'content': `You must respond with a JSON object of the form { "tool_calls": [{ "name": "...", "arguments": { ... } }] } using only these tool names: ${request.tools.map((t) => `"${t.name}"`).join(', ')}. Emit an empty array when no tool helps.`,
       });
     } else if (request.outputSchema.kind === 'schema') {
       messages.push({
@@ -175,11 +174,9 @@ export class WebLlmAdapter extends BaseAdapter {
     const options = this.#onProgress === undefined ? undefined : { 'initProgressCallback': this.#onProgress };
     return mod.CreateMLCEngine(this.#model, options);
   }
-}
 
-function quote(t: ToolDefinition): string { return `"${t.name}"`; }
-
-function classifyWebLlmError(err: unknown): LlmError {
-  const message = err instanceof Error ? err.message : String(err);
-  return new LlmError(message, Classifications['UNKNOWN'], err);
+  #classifyWebLlmError(err: unknown): LlmError {
+    const message = err instanceof Error ? err.message : String(err);
+    return new LlmError(message, Classifications['UNKNOWN'], err);
+  }
 }

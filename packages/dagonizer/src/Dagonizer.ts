@@ -1210,11 +1210,16 @@ implements DagonizerInterface<TState, TServices> {
     // an O(N²) linear scan when reducing a large source array.
     const recordByIndex = new Map<number, GatherRecord<TState>>();
     for (const record of allRecords) recordByIndex.set(record.index, record);
-    const outcomeRecords: OutcomeRecord[] = [...itemOutputs.entries()].map(([index, output]) => ({
-      index,
-      output,
-      'terminalOutcome': recordByIndex.get(index)?.terminalOutcome ?? null,
-    }));
+    // Iterate the Map directly (no intermediate spread array) into the
+    // reducer's input shape.
+    const outcomeRecords: OutcomeRecord[] = [];
+    for (const [index, output] of itemOutputs) {
+      outcomeRecords.push({
+        index,
+        output,
+        'terminalOutcome': recordByIndex.get(index)?.terminalOutcome ?? null,
+      });
+    }
     const routeOutput = OutcomeReducers.resolve(reducerName).reduce(outcomeRecords);
     const nextStage = scatter.outputs[routeOutput] ?? null;
 
