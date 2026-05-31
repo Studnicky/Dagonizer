@@ -43,7 +43,7 @@ export class StubAdapter extends BaseAdapter {
   readonly #invocations: ChatRequest[] = [];
   #error: Error | undefined;
 
-  constructor(opts: StubAdapterOptions = {}) {
+  constructor(options: StubAdapterOptions = {}) {
     super(
       'stub',
       'Canned responses (no real LLM)',
@@ -51,11 +51,11 @@ export class StubAdapter extends BaseAdapter {
       // intelligence behind the responses. Subclasses that emit
       // structured tool calls or JSON re-declare via their super() call.
       { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false },
-      { 'maxAttempts': opts.maxAttempts ?? 1 },
+      { 'maxAttempts': options.maxAttempts ?? 1 },
     );
-    this.#defaultResponse = opts.defaultResponse ?? '(stub adapter: no model attached)';
-    this.#queue = opts.responses === undefined ? [] : [...opts.responses];
-    this.#error = opts.error;
+    this.#defaultResponse = options.defaultResponse ?? '(stub adapter: no model attached)';
+    this.#queue = options.responses === undefined ? [] : [...options.responses];
+    this.#error = options.error;
   }
 
   /** Snapshot of every ChatRequest seen via `chat()`, in arrival order. */

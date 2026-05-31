@@ -134,7 +134,6 @@ The patterns subpath exposes the abstract `MonadicNode` root plus the service co
 | `MonadicNode<TState, TOutput, TServices>` | Abstract base class. Owns the dispatch loop; subclasses inject domain pieces via abstract methods |
 | `LlmClient` | Service contract: `chat(ChatRequest): Promise<ChatResponse>` (subset of `LlmAdapter`) |
 | `TripleStore` | Service contract: `assert`, `ask`, `select`, `count`, `clearGraph`, `triples` |
-| `SearchTool` | Service contract: tool-like search returning `readonly Candidate[]` |
 | `Binding`, `Quad`, `SlotPattern`, `Term` | RDF value types used by `TripleStore` |
 
 ### Pattern taxonomy

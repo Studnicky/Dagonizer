@@ -31,7 +31,9 @@ export interface ToolErrorOptions {
 export class ToolError extends Error {
   readonly reason: ToolErrorReason;
   readonly retryable: boolean;
-  readonly status?: number;
+  // Always initialised (null = no HTTP status) so every ToolError instance
+  // shares one stable V8 hidden class; declaration order matches assignment.
+  readonly status: number | null;
 
   constructor(message: string, options: ToolErrorOptions) {
     const opts: ErrorOptions = {};
@@ -40,6 +42,6 @@ export class ToolError extends Error {
     this.name = 'ToolError';
     this.reason = options.reason;
     this.retryable = options.retryable;
-    if (options.status !== undefined) this.status = options.status;
+    this.status = options.status ?? null;
   }
 }

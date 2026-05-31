@@ -101,7 +101,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
     }
 
     const systemMessages = request.messages.filter((m) => m.role === 'system');
-    const userPrompt = collapseUserMessages(request);
+    const userPrompt = this.#collapseUserMessages(request);
 
     const initialPrompts = systemMessages.length > 0
       ? systemMessages.map((m) => ({ 'role': 'system' as const, 'content': m.content }))
@@ -111,7 +111,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
     try {
       const options: PromptOptions = {};
       if (request.tools.length > 0) {
-        options.responseConstraint = toolPlanSchema(request.tools);
+        options.responseConstraint = this.#toolPlanSchema(request.tools);
       } else if (request.outputSchema.kind === 'schema') {
         options.responseConstraint = request.outputSchema.schema;
       }
@@ -120,7 +120,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
       try {
         raw = await session.prompt(userPrompt, options);
       } catch (err) {
-        throw classifyNanoError(err);
+        throw this.#classifyNanoError(err);
       }
 
       const text = raw.trim();
@@ -142,54 +142,54 @@ export class GeminiNanoAdapter extends BaseAdapter {
     if (msg.includes('aborted')) return Classifications['NETWORK'];
     return Classifications['UNKNOWN'];
   }
-}
 
-function collapseUserMessages(request: ChatRequest): string {
-  // Nano sessions take one prompt; concatenate user turns. Tool
-  // results round-tripped from the DAG land as `role: 'tool'`; we
-  // surface them as `[tool <name> result] <content>` so the next turn knows.
-  return request.messages
-    .filter((m) => m.role !== 'system')
-    .map((m) => {
-      if (m.role === 'tool') return `[tool ${m.toolName.length > 0 ? m.toolName : 'unknown'} result] ${m.content}`;
-      return m.content;
-    })
-    .join('\n\n');
-}
-
-function toolPlanSchema(tools: readonly ToolDefinition[]): Record<string, unknown> {
-  // Per-tool variants: each enforces the tool's own inputSchema on
-  // `arguments`. Without this Nano gets a free `{}` and tends to
-  // hallucinate extra fields (e.g. padding the query with prose) that
-  // wreck downstream API calls.
-  const variants = tools.map((t) => ({
-    'type': 'object',
-    'additionalProperties': false,
-    'properties': {
-      'name':      { 'type': 'string', 'const': t.name },
-      'arguments': t.inputSchema,
-    },
-    'required': ['name', 'arguments'],
-  }));
-  return {
-    'type': 'object',
-    'additionalProperties': false,
-    'properties': {
-      'tool_calls': {
-        'type':  'array',
-        'items': variants.length === 1 ? variants[0] : { 'anyOf': variants },
-      },
-    },
-    'required': ['tool_calls'],
-  };
-}
-
-function classifyNanoError(err: unknown): LlmError {
-  const message = err instanceof Error ? err.message : String(err);
-  const msg = message.toLowerCase();
-  if (msg.includes('schema') || msg.includes('constraint')) {
-    return new LlmError(message, Classifications['SCHEMA_VIOLATION'], err);
+  #collapseUserMessages(request: ChatRequest): string {
+    // Nano sessions take one prompt; concatenate user turns. Tool
+    // results round-tripped from the DAG land as `role: 'tool'`; we
+    // surface them as `[tool <name> result] <content>` so the next turn knows.
+    return request.messages
+      .filter((m) => m.role !== 'system')
+      .map((m) => {
+        if (m.role === 'tool') return `[tool ${m.toolName.length > 0 ? m.toolName : 'unknown'} result] ${m.content}`;
+        return m.content;
+      })
+      .join('\n\n');
   }
-  if (msg.includes('quota')) return new LlmError(message, Classifications['QUOTA_EXHAUSTED'], err);
-  return new LlmError(message, Classifications['UNKNOWN'], err);
+
+  #toolPlanSchema(tools: readonly ToolDefinition[]): Record<string, unknown> {
+    // Per-tool variants: each enforces the tool's own inputSchema on
+    // `arguments`. Without this Nano gets a free `{}` and tends to
+    // hallucinate extra fields (e.g. padding the query with prose) that
+    // wreck downstream API calls.
+    const variants = tools.map((t) => ({
+      'type': 'object',
+      'additionalProperties': false,
+      'properties': {
+        'name':      { 'type': 'string', 'const': t.name },
+        'arguments': t.inputSchema,
+      },
+      'required': ['name', 'arguments'],
+    }));
+    return {
+      'type': 'object',
+      'additionalProperties': false,
+      'properties': {
+        'tool_calls': {
+          'type':  'array',
+          'items': variants.length === 1 ? variants[0] : { 'anyOf': variants },
+        },
+      },
+      'required': ['tool_calls'],
+    };
+  }
+
+  #classifyNanoError(err: unknown): LlmError {
+    const message = err instanceof Error ? err.message : String(err);
+    const msg = message.toLowerCase();
+    if (msg.includes('schema') || msg.includes('constraint')) {
+      return new LlmError(message, Classifications['SCHEMA_VIOLATION'], err);
+    }
+    if (msg.includes('quota')) return new LlmError(message, Classifications['QUOTA_EXHAUSTED'], err);
+    return new LlmError(message, Classifications['UNKNOWN'], err);
+  }
 }
