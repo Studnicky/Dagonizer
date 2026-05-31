@@ -1,5 +1,28 @@
 # @noocodex/dagonizer
 
+## 0.15.0
+
+### Minor Changes
+
+- b5b931f: Audit-driven cleanup across the monorepo (performance, V8 shape, consistency) — every confirmed and advisory finding addressed.
+
+  Core (`@noocodex/dagonizer`):
+
+  - perf: `Scheduler.current()` returns the active provider directly (no per-call wrapper allocation on the node/scatter hot path); `SchedulerProvider` structurally satisfies `SchedulerHandle`, so the public return type is unchanged.
+  - perf: gather strategies (`map`/`append`/`partition`) no longer re-sort `execution.records` — records are now documented as an invariant to be source-index ordered (the scatter loop builds them so on every path including resume), eliminating a redundant `.slice().sort()` per gather. `executeScatter` builds the reducer input by iterating the outputs map directly (no intermediate spread).
+  - fix(v8-shape): `ToolError.status` is `number | null`, always initialised, so every instance shares one hidden class.
+  - consistency: wire-format helpers in `OpenAiCompatibleAdapter` are private methods (no freestanding `toX`/`parseX` functions); removed the forbidden `SearchTool` alias from `./patterns` (use canonical `Tool` from `./tool`).
+
+  Plugin packages: provider adapters' wire-format/error helpers consolidated onto their adapter classes; `StubAdapter` constructor arg `opts`→`options`; redundant `public` modifier dropped; `OpenLibrarySearchTool` populates `notes` provenance consistently with the other tools.
+
+  Tool packages (`-tool-googlebooks`, `-tool-wikipedia`): now re-export the `@noocodex/dagonizer-book-entities` types (`Book`, `Candidate`, `Money`, `CanonicalId`) they expose in their public surface, matching `-tool-openlibrary`.
+
+- a338274: Add `WellFormedValidator` (`./validation`): an opt-in authoring lint that flags hacky/legacy DAG shapes the structural Ajv schema cannot express — bare `null` flow-ends (route to a canonical `TerminalNode` instead), dangling output targets, and malformed scatter/embedded/terminal placements. It returns human-readable violations and is NOT wired into the permissive runtime `registerDAG` (where `null` routes remain a supported natural-end). The repo's flagship example DAGs are gated against it via a new `lint:dags` CI step.
+
+### Patch Changes
+
+- a338274: `registerDAG` now credits the co-located contract of `EmbeddedDAGNode` and `ScatterNode` placements (resolved by placement name), not just `SingleNode` placements. Previously, an operation rendered as an embedded-DAG or scatter placement was dropped from the contract graph, so a downstream node reading its `produces` was wrongly flagged as a dangling read and `registerDAG` threw `DAGError`. Fixes the `examples/derive.ts` embedded-DAG flow, which failed contract validation at registration.
+
 ## 0.14.0
 
 ### Minor Changes
