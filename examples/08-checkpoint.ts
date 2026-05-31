@@ -16,100 +16,18 @@
  * state.count equals 3 and state.log records all three tick events,
  * identical to an uninterrupted execution.
  *
+ * DAG definition (state with snapshot/restore, inc node, dag): examples/dags/08-checkpoint.ts
+ *
  * Run: npx tsx examples/08-checkpoint.ts
  */
 
-import type { JsonObject } from '@noocodex/dagonizer/entities';
 import {
   Checkpoint,
-  DAG_CONTEXT,
   Dagonizer,
-  NodeStateBase,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface } from '@noocodex/dagonizer';
+import { CountingState, inc, dag } from './dags/08-checkpoint.js';
 
-// ---------------------------------------------------------------------------
-// State: overrides snapshot/restore to persist domain fields
-// ---------------------------------------------------------------------------
-
-class CountingState extends NodeStateBase {
-  count = 0;
-  log:  string[] = [];
-
-  /**
-   * Serialize domain fields into a plain JSON-serialisable object.
-   * Called by Checkpoint.capture() to capture state at the abort point.
-   */
-  protected override snapshotData(): JsonObject {
-    return { "count": this.count, "log": [...this.log] };
-  }
-
-  /**
-   * Restore domain fields from a previously-captured snapshot.
-   * Called by CountingState.restore() after the parse step.
-   */
-  protected override restoreData(snapshot: JsonObject): void {
-    const c = snapshot['count'];
-    if (typeof c === 'number') this.count = c;
-    const l = snapshot['log'];
-    if (Array.isArray(l)) this.log = l.filter((x): x is string => typeof x === 'string');
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Node: increments count and records each tick in log
-// ---------------------------------------------------------------------------
-
-const inc: NodeInterface<CountingState, 'success'> = {
-  "name": 'inc',
-  "outputs": ['success'],
-  async execute(state) {
-    state.count++;
-    state.log.push(`tick:${state.count}`);
-    return { "output": 'success' };
-  },
-};
-
-// ---------------------------------------------------------------------------
-// DAG: three sequential inc placements: a -> b -> c
-// ---------------------------------------------------------------------------
-
-const dag: DAG = {
-  '@context':  DAG_CONTEXT,
-  '@id':       'urn:noocodex:dag:count',
-  '@type':     'DAG',
-  "name":        'count',
-  "version":     '1',
-  "entrypoint":  'a',
-  "nodes": [
-    {
-      '@id':   'urn:noocodex:dag:count/node/a',
-      '@type': 'SingleNode',
-      "name":    'a',
-      "node":    'inc',
-      "outputs": { "success": 'b' },  // routes to 'b' on success
-    },
-    {
-      '@id':   'urn:noocodex:dag:count/node/b',
-      '@type': 'SingleNode',
-      "name":    'b',
-      "node":    'inc',
-      "outputs": { "success": 'c' },  // routes to 'c' on success
-    },
-    {
-      '@id':   'urn:noocodex:dag:count/node/c',
-      '@type': 'SingleNode',
-      "name":    'c',
-      "node":    'inc',
-      "outputs": { "success": null },  // end of flow
-    },
-  ],
-};
-
-// ---------------------------------------------------------------------------
 // Step 1: partial run, abort after the first node completes
-// ---------------------------------------------------------------------------
-
 // #region capture
 const dispatcher = new Dagonizer<CountingState>();
 dispatcher.registerNode(inc);
@@ -133,10 +51,7 @@ process.stdout.write(`  partial: count=${partial.state.count} cursor="${partial.
 // cursor = 'b': the next node that would run if we resume
 // #endregion capture
 
-// ---------------------------------------------------------------------------
 // Step 2: capture and persist the checkpoint as JSON
-// ---------------------------------------------------------------------------
-
 // #region persist
 // Checkpoint.capture() returns a Checkpoint instance.
 // cursor !== null here because we aborted mid-run.
@@ -144,10 +59,7 @@ const checkpoint = await Checkpoint.capture('count', partial);
 const persisted  = checkpoint.toJson();  // → JSON string (store in DB, file, etc.)
 // #endregion persist
 
-// ---------------------------------------------------------------------------
 // Step 3: restore + resume (simulating a process restart)
-// ---------------------------------------------------------------------------
-
 // #region recall
 // Parse the persisted JSON back to an unknown value, then load into a Checkpoint.
 const ckpt = Checkpoint.load(JSON.parse(persisted) as unknown);

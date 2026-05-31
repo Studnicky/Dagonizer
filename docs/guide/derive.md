@@ -137,13 +137,13 @@ Four fields:
 
 ## Declaring the contracts
 
-<<< @/../examples/derive.ts#contracts
+<<< @/../examples/dags/derive.ts#contracts
 
 The runnable example defines nodes with co-located contracts. Each `NodeInterface` carries its own `contract: { hardRequired, produces }` alongside `name` and `outputs`; the node array is passed as `nodes` to `DAGDeriver.derive`. See [Co-located contracts](#co-located-contracts) below for the full pattern.
 
 ## Deriving the DAG
 
-<<< @/../examples/derive.ts#derive
+<<< @/../examples/dags/derive.ts#derive
 
 Linear chains derive directly. Operations sharing a depth (no remaining unsatisfied prerequisites) are wrapped in a `parallel` placement that fires them concurrently and joins to the next depth. Multi-port operations declare every port in `outputs`; each port auto-wires to the next derived stage so a node with `outputs: ['success', 'cached', 'skipped', 'error']` does not need four separate terminal annotations.
 
@@ -151,7 +151,7 @@ Linear chains derive directly. Operations sharing a depth (no remaining unsatisf
 
 Two routing patterns the data graph cannot express live in `annotations`. The `annotations` block in the runnable example covers the `embeddedDAGs` variant:
 
-<<< @/../examples/derive.ts#annotations
+<<< @/../examples/dags/derive.ts#annotations
 
 ### `terminals`: alternate exits
 
