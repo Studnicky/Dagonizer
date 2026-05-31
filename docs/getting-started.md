@@ -42,13 +42,13 @@ A two-node chain that picks a route at the first node and ends at the second. Th
 
 State and nodes:
 
-<<< @/../examples/01-linear.ts#state
+<<< @/../examples/dags/01-linear.ts#state
 
-<<< @/../examples/01-linear.ts#node
+<<< @/../examples/dags/01-linear.ts#node
 
 The DAG definition (JSON-LD canonical form):
 
-<<< @/../examples/01-linear.ts#dag
+<<< @/../examples/dags/01-linear.ts#dag
 
 Register, then execute:
 

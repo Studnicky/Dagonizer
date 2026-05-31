@@ -55,11 +55,11 @@ The validator does no acyclic check, so the self-edge and the multi-node compose
 
 The Phase 07 demo constructs the policy at module scope so the configuration lives next to the operation it guards and no fresh instance is built per invocation. `jitterFactor: 0` keeps the delay deterministic for the example:
 
-<<< @/../examples/07-retry.ts#policy-config
+<<< @/../examples/dags/07-retry.ts#policy-config
 
 The node body calls `policy.run(...)`, propagating `context.signal`:
 
-<<< @/../examples/07-retry.ts#retry-node
+<<< @/../examples/dags/07-retry.ts#retry-node
 
 Runtime wiring is the standard `registerNode` plus `registerDAG` pair:
 

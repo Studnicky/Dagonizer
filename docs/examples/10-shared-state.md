@@ -60,19 +60,19 @@ A `MemoryStore` lives on the services bag, threaded through every node and every
 
 The services bag declares one field of type `Store`. The dispatcher binds a concrete `MemoryStore` instance at construction time; every node sees the same instance via `context.services.log`:
 
-<<< @/../examples/10-shared-state.ts#services
+<<< @/../examples/dags/10-shared-state.ts#services
 
 ### Child DAG
 
 The child DAG runs a single `child-step` placement; it never references the store directly. The store lives outside the topology:
 
-<<< @/../examples/10-shared-state.ts#child-dag
+<<< @/../examples/dags/10-shared-state.ts#child-dag
 
 ### Parent DAG with embedded-DAG placement
 
 `run-child` is the embedded-DAG placement. Parent and child both call `context.services.log.update(...)` against the same backing store, so `step-a`, `child-step`, and `step-b` accumulate to one entry list in execution order:
 
-<<< @/../examples/10-shared-state.ts#parent-dag
+<<< @/../examples/dags/10-shared-state.ts#parent-dag
 
 ### Store initialisation + run
 

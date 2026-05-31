@@ -39,7 +39,7 @@ Both produce a non-`null` `result.cursor` and a non-`null` `result.interruptedAt
 
 Nodes receive the composed signal in the `context` argument and must propagate it into every IO call to be cancellable. The Phase 06 node wires `context.signal` into its delay primitive:
 
-<<< @/../examples/06-cancellation.ts#node-cancellation-aware
+<<< @/../examples/dags/06-cancellation.ts#node-cancellation-aware
 
 `context` also carries `context.dagName` and `context.nodeName` for logging.
 

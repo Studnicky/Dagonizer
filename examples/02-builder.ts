@@ -16,11 +16,13 @@
  * '@id', and '@type'. Identical canonical output to 01-linear's hand-written
  * DAG literal; DAGBuilder is sugar that produces the same wire-format object.
  *
+ * DAG definition (state, nodes, dag): examples/dags/02-builder.topology.ts
+ *
  * Run: npx tsx examples/02-builder.ts
  */
 
 import { Dagonizer } from '@noocodex/dagonizer';
-import { dag, ChatState, classify, respond } from './02-builder.topology.js';
+import { dag, ChatState, classify, respond } from './dags/02-builder.topology.js';
 
 // ---------------------------------------------------------------------------
 // Run
