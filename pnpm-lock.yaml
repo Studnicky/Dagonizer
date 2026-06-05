@@ -398,7 +398,7 @@ importers:
   packages/dagonizer-store-sqlite:
     dependencies:
       '@noocodex/dagonizer':
-        specifier: workspace:>=0.15.0
+        specifier: workspace:>=0.16.0
         version: link:../dagonizer
     devDependencies:
       '@eslint/js':
