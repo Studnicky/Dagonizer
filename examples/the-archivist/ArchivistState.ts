@@ -165,6 +165,7 @@ export class ArchivistState extends NodeStateBase {
     'summary':         '',
   };
 
+  // #region clone
   override clone(): ArchivistState {
     const copy = new ArchivistState();
     copy.query        = this.query;
@@ -196,6 +197,7 @@ export class ArchivistState extends NodeStateBase {
     };
     return copy;
   }
+  // #endregion clone
 
   // #region snapshot-restore
   protected override snapshotData(): JsonObject {

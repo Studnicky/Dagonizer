@@ -51,17 +51,7 @@ Async factory. Builds a `Checkpoint` instance from a flow name, execution result
 Throws `DAGError` when `result.cursor === null` (the DAG completed; nothing to resume).
 
 ```ts
-import { Checkpoint } from '@noocodex/dagonizer/checkpoint';
-import { MemoryStore } from '@noocodex/dagonizer/store';
-
-const memory = new MemoryStore();
-// ... nodes write to memory during the run ...
-const result = await dispatcher.execute('my-dag', state, { signal: ctl.signal });
-
-if (result.cursor !== null) {
-  const ckpt = await Checkpoint.capture('my-dag', result, { stores: { memory } });
-  await storage.set(runId, ckpt.toJson());
-}
+<<< @/../examples/08-checkpoint.ts#capture
 ```
 
 Calling `Checkpoint.capture` without a `stores` option (or with an empty map) writes an empty `stores: {}` object. The checkpoint loads and resumes cleanly; `restoreStores` is a no-op when the map is empty.
@@ -77,8 +67,7 @@ static load(raw: unknown): Checkpoint
 Parse and validate a raw `CheckpointData` object (e.g. from `JSON.parse`) and wrap it in a `Checkpoint` instance. Throws `ValidationError` when the raw value fails schema validation.
 
 ```ts
-const raw = JSON.parse(await storage.get(runId)) as unknown;
-const ckpt = Checkpoint.load(raw);
+<<< @/../examples/08-checkpoint.ts#recall
 ```
 
 ---
@@ -92,11 +81,7 @@ static async recall(store: CheckpointStore, key: string): Promise<Checkpoint | n
 Load a checkpoint from a `CheckpointStore` by key. Returns `null` when the store has no entry for the key. Composes `store.load` + `JSON.parse` + `Checkpoint.load`. Throws `ValidationError` when the stored JSON fails schema validation.
 
 ```ts
-const ckpt = await Checkpoint.recall(store, 'ckpt:my-dag');
-if (ckpt !== null) {
-  const { dagName, state, cursor } = ckpt.restoreState((snap) => MyState.restore(snap));
-  await dispatcher.resume(dagName, state, cursor);
-}
+<<< @/../examples/the-archivist/runArchivist.ts#resume-run
 ```
 
 ---
@@ -110,8 +95,7 @@ toJson(): string
 Serialize this checkpoint's data to a pretty-printed JSON string. Symmetric counterpart to `JSON.parse` + `Checkpoint.load`.
 
 ```ts
-const ckpt = await Checkpoint.capture('my-dag', result);
-await storage.set('ckpt', ckpt.toJson());
+<<< @/../examples/08-checkpoint.ts#persist
 ```
 
 ---
@@ -125,9 +109,7 @@ async persist(store: CheckpointStore, key: string): Promise<void>
 Persist this checkpoint to a `CheckpointStore` under `key`. Composes `toJson` + `store.save`. Throws when the underlying store throws.
 
 ```ts
-const store = new MemoryCheckpointStore();
-const ckpt = await Checkpoint.capture('my-dag', result);
-await ckpt.persist(store, 'ckpt:my-dag');
+<<< @/../examples/08-checkpoint.ts#persist
 ```
 
 ---
@@ -143,12 +125,7 @@ restoreState<TState extends NodeStateInterface>(
 Rehydrate the state from this checkpoint via the supplied factory. Returns the rehydrated state, dag name, cursor, and execution history. Pass the result to `dispatcher.resume`.
 
 ```ts
-const raw = JSON.parse(await storage.get(runId)) as unknown;
-const ckpt = Checkpoint.load(raw);
-const { dagName, state, cursor } = ckpt.restoreState(
-  (snap) => MyState.restore(snap),
-);
-const result = await dispatcher.resume(dagName, state, cursor);
+<<< @/../examples/08-checkpoint.ts#recall
 ```
 
 Throws `ValidationError` when `ckpt.data.cursor === null`.
@@ -176,9 +153,7 @@ async restoreStores(stores: Readonly<Record<string, Snapshottable>>): Promise<vo
 Populate each named store from the snapshots in this checkpoint. The keys in `stores` must match the names used when calling `Checkpoint.capture`. The parameter type is `Snapshottable`: any object that implements `snapshot()` / `restore()`. `Store extends Snapshottable`, so every `Store` qualifies; non-KV backends (RDF triple stores, vector indices, append-only logs) participate without implementing `get`/`set`/`has`/`delete`/`update`.
 
 ```ts
-const freshMemory = new MemoryStore();
-await ckpt.restoreStores({ memory: freshMemory });
-// freshMemory now contains the state captured at checkpoint time.
+<<< @/../examples/the-archivist/runArchivist.ts#resume-run
 ```
 
 **Rules:**
@@ -301,13 +276,7 @@ import { MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
 | `get size()` | Number of entries currently held. Test-only convenience. |
 
 ```ts
-const store = new MemoryCheckpointStore();
-const ckpt = await Checkpoint.capture('my-dag', result);
-await ckpt.persist(store, 'ckpt');
-const recalled = await Checkpoint.recall(store, 'ckpt');
-if (recalled !== null) {
-  const { dagName, state, cursor } = recalled.restoreState((snap) => MyState.restore(snap));
-}
+<<< @/../examples/the-archivist/runArchivist.ts#resume-run
 ```
 
 ---

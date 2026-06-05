@@ -1,0 +1,28 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module":           "esnext",
+    "moduleResolution": "bundler",
+    "noEmit":           true,
+    "target":           "es2022",
+    "allowImportingTsExtensions": true,
+    "types":            ["node"]
+  },
+  "include": [
+    "CartographerState.ts",
+    "CartographerServices.ts",
+    "dag.ts",
+    "dag-validate.ts",
+    "record-geo-fixtures.ts",
+    "runCartographer.ts",
+    "services.ts",
+    "tz-lookup.d.ts",
+    "contracts/**/*.ts",
+    "embedded-dags/**/*.ts",
+    "entities/**/*.ts",
+    "nodes/**/*.ts",
+    "services/**/*.ts",
+    "data/**/*.ts",
+    "__smoke__/**/*.ts"
+  ]
+}

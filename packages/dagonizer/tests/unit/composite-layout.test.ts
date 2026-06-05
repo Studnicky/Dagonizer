@@ -32,14 +32,14 @@ function makeDAG(name: string, entrypoint: string, nodes: DAG['nodes']): DAG {
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 void describe('CompositeLayout.compute', () => {
-  void it('linear DAG: A→B→C positions form a top-down sequence (A smallest y)', () => {
+  void it('linear DAG: A→B→C positions form a top-down sequence (A smallest y)', async () => {
     const dag = makeDAG('linear', 'A', [
       singleNode('A', { "next": 'B' }),
       singleNode('B', { "next": 'C' }),
       singleNode('C', { "done": null }),
     ]);
 
-    const { positions } = CompositeLayout.compute(dag);
+    const { positions } = await CompositeLayout.compute(dag);
 
     const posA = positions.get('A');
     const posB = positions.get('B');
@@ -53,7 +53,7 @@ void describe('CompositeLayout.compute', () => {
     assert.ok(posB.y < posC.y, `B.y (${posB.y}) must be < C.y (${posC.y})`);
   });
 
-  void it('ScatterNode (body.dag): inner children sit between predecessor and successor in y; entry has smallest y in subgraph', () => {
+  void it('ScatterNode (body.dag): inner children sit between predecessor and successor in y; entry has smallest y in subgraph', async () => {
     // inner DAG: entry-node → middle-node → exit-node
     const innerDAG = makeDAG('inner', 'entry-node', [
       singleNode('entry-node',  { "go": 'middle-node' }),
@@ -75,7 +75,7 @@ void describe('CompositeLayout.compute', () => {
     ]);
 
     const embeddedDAGs = new Map<string, DAG>([['inner', innerDAG]]);
-    const { positions } = CompositeLayout.compute(outerDAG, embeddedDAGs);
+    const { positions } = await CompositeLayout.compute(outerDAG, embeddedDAGs);
 
     const posBefore  = positions.get('before');
     const posEmbed   = positions.get('embed');
@@ -108,7 +108,7 @@ void describe('CompositeLayout.compute', () => {
     assert.ok(posExit.y   < posAfter.y, `exit-node.y < after.y`);
   });
 
-  void it('parallel placement: all 3 children share the same y, distributed horizontally', () => {
+  void it('parallel placement: all 3 children share the same y, distributed horizontally', async () => {
     const dag: DAG = makeDAG('par', 'par-group', [
       {
         '@id':     'urn:noocodex:dag:par/node/par-group',
@@ -120,7 +120,7 @@ void describe('CompositeLayout.compute', () => {
       },
     ]);
 
-    const { positions } = CompositeLayout.compute(dag);
+    const { positions } = await CompositeLayout.compute(dag);
 
     const posAlpha = positions.get('alpha');
     const posBeta  = positions.get('beta');

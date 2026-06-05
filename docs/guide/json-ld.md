@@ -48,7 +48,7 @@ Placement `@id`s typically nest under the DAG's URN: `urn:noocodex:dag:demo/node
 
 ## `@type` vocabulary
 
-Five placement classes plus the document class:
+Six placement classes plus the document class:
 
 | `@type` | Role |
 |---|---|

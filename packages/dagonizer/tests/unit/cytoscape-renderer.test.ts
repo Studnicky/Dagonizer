@@ -27,7 +27,7 @@ void describe('CytoscapeRenderer.render', () => {
         'outputs': { 'success': null },
       }],
     };
-    const elements = CytoscapeRenderer.render(dag, { "computeLayout": false });
+    const elements = CytoscapeRenderer.render(dag, {});
     const nodes = elements.filter((entry) => entry.group === 'nodes');
     const edges = elements.filter((entry) => entry.group === 'edges');
     assert.equal(nodes.length, 2);                          // greet + synthetic END
@@ -54,7 +54,7 @@ void describe('CytoscapeRenderer.render', () => {
         'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
       }],
     };
-    const elements = CytoscapeRenderer.render(dag, { "computeLayout": false });
+    const elements = CytoscapeRenderer.render(dag, {});
     const fan = elements.find((entry): entry is CytoscapeNodeElement => isNode(entry) && entry.data.id === 'fan');
     assert.equal(fan?.data.type, 'scatter');
     assert.equal(fan?.classes, 'dag-scatter');
@@ -77,7 +77,7 @@ void describe('CytoscapeRenderer.render', () => {
         'outputs': { 'success': null, 'error': null },
       }],
     };
-    const elements = CytoscapeRenderer.render(dag, { "computeLayout": false });
+    const elements = CytoscapeRenderer.render(dag, {});
     const group = elements.find((entry): entry is CytoscapeNodeElement => isNode(entry) && entry.data.id === 'group');
     assert.equal(group?.data.type, 'parallel');
     assert.deepEqual(group?.data['children'], ['a', 'b']);
@@ -97,7 +97,7 @@ void describe('CytoscapeRenderer.render', () => {
         { '@id': 'urn:noocodex:dag:chain/node/b', '@type': 'SingleNode', 'name': 'b', 'node': 'n', 'outputs': { 'success': null } },
       ],
     };
-    const elements = CytoscapeRenderer.render(dag, { "computeLayout": false });
+    const elements = CytoscapeRenderer.render(dag, {});
     const edge = elements.find((entry) => entry.group === 'edges' && entry.data.source === 'a');
     assert.equal(edge?.data.target, 'b');
     const terminalEdges = elements.filter(
@@ -122,7 +122,7 @@ void describe('CytoscapeRenderer.render', () => {
         'outputs': { 'success': null, 'error': null },
       }],
     };
-    const elements = CytoscapeRenderer.render(dag, { "computeLayout": false });
+    const elements = CytoscapeRenderer.render(dag, {});
     const ids = elements
       .filter((entry) => entry.group === 'edges')
       .map((entry) => entry.data.id);
@@ -161,7 +161,7 @@ void describe('CytoscapeRenderer.render', () => {
       }],
     };
     const embeddedDAGs = new Map<string, DAG>([['inner', innerDAG]]);
-    const elements = CytoscapeRenderer.render(outerDAG, { embeddedDAGs, "computeLayout": false });
+    const elements = CytoscapeRenderer.render(outerDAG, { embeddedDAGs });
 
     // The compound parent node is emitted for the EmbeddedDAGNode placement
     const embedNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'embed');
@@ -193,7 +193,7 @@ void describe('CytoscapeRenderer.render', () => {
       }],
     };
     const embeddedDAGs = new Map<string, DAG>();
-    const elements = CytoscapeRenderer.render(dag, { embeddedDAGs, "computeLayout": false });
+    const elements = CytoscapeRenderer.render(dag, { embeddedDAGs });
 
     // No inner children emitted; node-body scatters are opaque
     const childNodes = elements.filter(
@@ -236,7 +236,7 @@ void describe('CytoscapeRenderer.render: TerminalNode', () => {
         terminal,
       ],
     };
-    const elements = CytoscapeRenderer.render(dag, { "computeLayout": false });
+    const elements = CytoscapeRenderer.render(dag, {});
     const doneNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'done');
     assert.ok(doneNode !== undefined, 'done node should exist');
     assert.equal(doneNode.data.type, 'terminal');
@@ -274,7 +274,7 @@ void describe('CytoscapeRenderer.render: TerminalNode', () => {
         terminal,
       ],
     };
-    const elements = CytoscapeRenderer.render(dag, { "computeLayout": false });
+    const elements = CytoscapeRenderer.render(dag, {});
     const abortNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'abort');
     assert.ok(abortNode !== undefined);
     assert.equal(abortNode.data.type, 'terminal');
@@ -297,7 +297,7 @@ void describe('CytoscapeRenderer.render: TerminalNode', () => {
         'outputs': { 'success': null },
       }],
     };
-    const elements = CytoscapeRenderer.render(dag, { "computeLayout": false });
+    const elements = CytoscapeRenderer.render(dag, {});
     const endNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'END');
     assert.ok(endNode !== undefined);
     assert.equal(endNode.data['synthetic'], true);
@@ -328,7 +328,7 @@ void describe('CytoscapeRenderer.render: TerminalNode', () => {
         terminal,
       ],
     };
-    const elements = CytoscapeRenderer.render(dag, { "computeLayout": false });
+    const elements = CytoscapeRenderer.render(dag, {});
     // explicit TerminalNode exists with outcome
     const doneNode = elements.find((el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'done');
     assert.ok(doneNode !== undefined);
@@ -340,6 +340,83 @@ void describe('CytoscapeRenderer.render: TerminalNode', () => {
     assert.equal(endNode.data['synthetic'], true);
     // they are distinct elements
     assert.notEqual(doneNode.data.id, endNode.data.id);
+  });
+});
+
+void describe('CytoscapeRenderer.render: PhaseNode', () => {
+  void it('renders a pre-phase PhaseNode with data.type===phase and data.phase/node populated', () => {
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:ph',
+      '@type':    'DAG',
+      'name':       'ph',
+      'version':    '1',
+      'entrypoint': 'step',
+      'nodes': [
+        {
+          '@id':    'urn:noocodex:dag:ph/node/step',
+          '@type':  'SingleNode',
+          'name':   'step',
+          'node':   'step',
+          'outputs': { 'success': null },
+        },
+        {
+          '@id':   'urn:noocodex:dag:ph/node/setup',
+          '@type': 'PhaseNode',
+          'name':  'setup',
+          'node':  'setup-worker',
+          'phase': 'pre',
+        },
+      ],
+    };
+    const elements = CytoscapeRenderer.render(dag, {});
+    const setupNode = elements.find(
+      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'setup',
+    );
+    assert.ok(setupNode !== undefined, 'PhaseNode element must be present');
+    assert.equal(setupNode.data.type, 'phase');
+    assert.equal(setupNode.data['phase'], 'pre');
+    assert.equal(setupNode.data['node'], 'setup-worker');
+    assert.equal(setupNode.classes, 'dag-phase');
+    // PhaseNode emits no outgoing edges
+    const edgesFromSetup = elements.filter(
+      (el) => el.group === 'edges' && el.data.source === 'setup',
+    );
+    assert.equal(edgesFromSetup.length, 0);
+  });
+
+  void it('renders a post-phase PhaseNode with data.phase===post', () => {
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:ph2',
+      '@type':    'DAG',
+      'name':       'ph2',
+      'version':    '1',
+      'entrypoint': 'step',
+      'nodes': [
+        {
+          '@id':    'urn:noocodex:dag:ph2/node/step',
+          '@type':  'SingleNode',
+          'name':   'step',
+          'node':   'step',
+          'outputs': { 'success': null },
+        },
+        {
+          '@id':   'urn:noocodex:dag:ph2/node/teardown',
+          '@type': 'PhaseNode',
+          'name':  'teardown',
+          'node':  'teardown-worker',
+          'phase': 'post',
+        },
+      ],
+    };
+    const elements = CytoscapeRenderer.render(dag, {});
+    const teardownNode = elements.find(
+      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'teardown',
+    );
+    assert.ok(teardownNode !== undefined, 'post-phase PhaseNode element must be present');
+    assert.equal(teardownNode.data.type, 'phase');
+    assert.equal(teardownNode.data['phase'], 'post');
   });
 });
 

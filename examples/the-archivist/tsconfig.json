@@ -15,9 +15,13 @@
     "vite.config.ts",
     "ArchivistState.ts",
     "dag.ts",
+    "dag-roundtrip.ts",
+    "dag-validate.ts",
     "services.ts",
+    "ObservedArchivist.ts",
     "embedded-dags/**/*.ts",
     "entities/**/*.ts",
+    "instrumentation/**/*.ts",
     "logger/**/*.ts",
     "memory/**/*.ts",
     "nodes/**/*.ts",
@@ -26,6 +30,7 @@
     "provenance/**/*.ts",
     "state/**/*.ts",
     "tools/**/*.ts",
+    "viz/**/*.ts",
     "data/**/*.ts",
     "tests/**/*.ts"
   ]

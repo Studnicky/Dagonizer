@@ -25,7 +25,7 @@ seeAlso:
 | `Instrumentation.phaseEnter` | `@noocodex/dagonizer/contracts` | Fires before each phase placement |
 | `Instrumentation.phaseExit` | `@noocodex/dagonizer/contracts` | Fires after each phase placement |
 
-`Instrumentation.phaseEnter` and `phaseExit` are declared on the contract at `packages/dagonizer/src/contracts/Instrumentation.ts` lines 35 and 36.
+`Instrumentation.phaseEnter` and `phaseExit` are declared on the contract in `packages/dagonizer/src/contracts/Instrumentation.ts`.
 
 ## Two arms
 

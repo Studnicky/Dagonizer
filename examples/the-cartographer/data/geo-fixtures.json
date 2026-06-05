@@ -1,0 +1,150 @@
+{
+  "_recorded": true,
+  "_note": "IP-geolocation fixtures only (freeipapi.com). GPS reverse-geocode is offline country-coder — no fixture entries needed for that modality.",
+  "ipGeolocate": {
+    "114.114.114.114": {
+      "modality": "ip",
+      "resolved": true,
+      "country": "CN",
+      "countryName": "China",
+      "continent": "Asia",
+      "region": "Shandong",
+      "locality": "Jinan",
+      "lat": 36.6518,
+      "lng": 117.12,
+      "water": false
+    },
+    "210.130.1.1": {
+      "modality": "ip",
+      "resolved": true,
+      "country": "JP",
+      "countryName": "Japan",
+      "continent": "Asia",
+      "region": "Tokyo",
+      "locality": "Chiyoda City",
+      "lat": 35.6906,
+      "lng": 139.77,
+      "water": false
+    },
+    "196.4.160.4": {
+      "modality": "ip",
+      "resolved": true,
+      "country": "ZA",
+      "countryName": "South Africa",
+      "continent": "Africa",
+      "region": "Gauteng",
+      "locality": "Sandton (Bryanston)",
+      "lat": -26.0441,
+      "lng": 28.0217,
+      "water": false
+    },
+    "200.33.146.249": {
+      "modality": "ip",
+      "resolved": true,
+      "country": "MX",
+      "countryName": "Mexico",
+      "continent": "Americas",
+      "region": "Mexico City",
+      "locality": "Mexico City (Centro)",
+      "lat": 19.4196,
+      "lng": -99.1428,
+      "water": false
+    },
+    "212.58.244.1": {
+      "modality": "ip",
+      "resolved": true,
+      "country": "GB",
+      "countryName": "United Kingdom",
+      "continent": "Europe",
+      "region": "England",
+      "locality": "London",
+      "lat": 51.5072,
+      "lng": -0.127586,
+      "water": false
+    },
+    "49.44.79.1": {
+      "modality": "ip",
+      "resolved": true,
+      "country": "IN",
+      "countryName": "India",
+      "continent": "Asia",
+      "region": "Maharashtra",
+      "locality": "Navi Mumbai (Ghansoli)",
+      "lat": 19.1258,
+      "lng": 73.0004,
+      "water": false
+    },
+    "80.67.169.12": {
+      "modality": "ip",
+      "resolved": true,
+      "country": "FR",
+      "countryName": "France",
+      "continent": "Europe",
+      "region": "Île-de-France",
+      "locality": "Paris",
+      "lat": 48.8575,
+      "lng": 2.35138,
+      "water": false
+    },
+    "194.150.168.168": {
+      "modality": "ip",
+      "resolved": true,
+      "country": "DE",
+      "countryName": "Germany",
+      "continent": "Europe",
+      "region": "Berlin",
+      "locality": "Berlin (Friedrichshain-Kreuzberg)",
+      "lat": 52.5009,
+      "lng": 13.4051,
+      "water": false
+    },
+    "200.160.2.3": {
+      "modality": "ip",
+      "resolved": true,
+      "country": "BR",
+      "countryName": "Brazil",
+      "continent": "Americas",
+      "region": "São Paulo",
+      "locality": "Pinheiros",
+      "lat": -23.5611,
+      "lng": -46.6876,
+      "water": false
+    },
+    "8.8.8.8": {
+      "modality": "ip",
+      "resolved": true,
+      "country": "US",
+      "countryName": "United States",
+      "continent": "Americas",
+      "region": "California",
+      "locality": "Mountain View",
+      "lat": 37.422,
+      "lng": -122.085,
+      "water": false
+    },
+    "94.200.200.200": {
+      "modality": "ip",
+      "resolved": true,
+      "country": "AE",
+      "countryName": "United Arab Emirates",
+      "continent": "Asia",
+      "region": "Abu Dhabi",
+      "locality": "Abu Dhabi",
+      "lat": 24.4539,
+      "lng": 54.3773,
+      "water": false
+    },
+    "1.1.1.1": {
+      "modality": "ip",
+      "resolved": true,
+      "country": "AU",
+      "countryName": "Australia",
+      "continent": "Oceania",
+      "region": "New South Wales",
+      "locality": "Sydney",
+      "lat": -33.8688,
+      "lng": 151.209,
+      "water": false
+    }
+  }
+}

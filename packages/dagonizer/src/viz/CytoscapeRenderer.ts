@@ -33,14 +33,17 @@
  * inside a parallel or embedded-DAG cluster are suppressed (the parent
  * placement's own edges carry the collected/terminal route out).
  *
+ * Layout positioning is a separate concern handled by `CompositeLayout`.
+ * This renderer returns elements WITHOUT positions; callers that need
+ * positioned elements should call `CompositeLayout.compute` and attach
+ * positions separately.
+ *
  * Static class. The renderer does not invoke Cytoscape; it returns a
- * plain element array.
+ * plain element array synchronously.
  */
 
 import type { DAG } from '../entities/dag/DAG.js';
 
-import { CompositeLayout } from './CompositeLayout.js';
-import type { CompositeLayoutOptions } from './CompositeLayout.js';
 import { embeddedDagName, idIn } from './internal.js';
 import type { PlacementEntry } from './internal.js';
 
@@ -51,7 +54,7 @@ export interface CytoscapeNodeElement {
     readonly id: string;
     readonly label: string;
     /** Placement kind; selector use: `node[type="scatter"]`. */
-    readonly type: 'single' | 'parallel' | 'scatter' | 'embedded-dag' | 'terminal';
+    readonly type: 'single' | 'parallel' | 'scatter' | 'embedded-dag' | 'terminal' | 'phase';
     /** Free-form metadata consumers can read in stylesheets. */
     readonly [key: string]: unknown;
   };
@@ -92,17 +95,6 @@ export interface RenderOptions {
   readonly embeddedDAGs?: ReadonlyMap<string, DAG>;
   /** Max recursion depth; guards against accidental embedded-DAG cycles. */
   readonly maxDepth?: number;
-  /**
-   * When `true` (default), run `CompositeLayout.compute` after building
-   * elements and attach `position: { x, y }` to each node element.
-   * Callers should then use cytoscape's built-in `preset` layout.
-   *
-   * Set to `false` to skip position computation (useful in tests or when
-   * the caller will apply its own layout).
-   */
-  readonly computeLayout?: boolean;
-  /** Layout tuning options forwarded to `CompositeLayout.compute`. */
-  readonly layoutOptions?: CompositeLayoutOptions;
 }
 
 interface RenderState {
@@ -141,12 +133,13 @@ export class CytoscapeRenderer {
   }
 
   /** Mapping from JSON-LD placement-discriminator to Cytoscape `data.type` value. */
-  private static readonly PLACEMENT_KIND: Readonly<Record<string, 'single' | 'parallel' | 'scatter' | 'embedded-dag' | 'terminal'>> = {
+  private static readonly PLACEMENT_KIND: Readonly<Record<string, 'single' | 'parallel' | 'scatter' | 'embedded-dag' | 'terminal' | 'phase'>> = {
     'SingleNode':       'single',
     'ParallelNode':     'parallel',
     'ScatterNode':      'scatter',
     'EmbeddedDAGNode':  'embedded-dag',
     'TerminalNode':     'terminal',
+    'PhaseNode':        'phase',
   };
 
   static render(dag: DAG, options: RenderOptions = {}): readonly CytoscapeElement[] {
@@ -163,23 +156,6 @@ export class CytoscapeRenderer {
         "data":  { "id": CytoscapeRenderer.END_ID, "label": 'End', "type": 'terminal', "synthetic": true },
         "classes": 'dag-terminal',
       });
-    }
-
-    // Attach pre-computed positions via CompositeLayout so the caller can use
-    // cytoscape's built-in `preset` layout instead of cytoscape-dagre.
-    // Skipped when `computeLayout === false` (tests, headless consumers).
-    if (options.computeLayout !== false) {
-      const embeddedDAGs = options.embeddedDAGs ?? new Map<string, DAG>();
-      const layoutResult = CompositeLayout.compute(dag, embeddedDAGs, options.layoutOptions ?? {});
-
-      const withPositions: CytoscapeElement[] = state.elements.map((el) => {
-        if (el.group !== 'nodes') return el;
-        const pos = layoutResult.positions.get(el.data.id);
-        if (pos === undefined) return el;
-        return { ...el, "position": { "x": pos.x, "y": pos.y } } as CytoscapeNodeElement;
-      });
-
-      return withPositions;
     }
 
     return state.elements;
@@ -224,6 +200,15 @@ export class CytoscapeRenderer {
           "data": {
             ...base.data,
             "outcome": placement.outcome,
+          },
+        };
+      case 'PhaseNode':
+        return {
+          ...base,
+          "data": {
+            ...base.data,
+            "phase": placement.phase,
+            "node":  placement.node,
           },
         };
     }

@@ -2,3 +2,4 @@ packages:
   - "packages/*"
   - "examples"
   - "examples/the-archivist"
+  - "examples/the-cartographer"

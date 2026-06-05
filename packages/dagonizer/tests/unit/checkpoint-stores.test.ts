@@ -200,7 +200,7 @@ void describe('Checkpoint.restoreStores: incompatible snapshot', () => {
   void it('propagates StoreError with INCOMPATIBLE_SNAPSHOT from store.restore', async () => {
     // Hand-construct a checkpoint whose stores.memory has the wrong type.
     const badRaw = {
-      'version': '1',
+      'version': '2',
       'dagName': 'test-dag',
       'cursor': 'next-node',
       'state': {},

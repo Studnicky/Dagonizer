@@ -18,10 +18,8 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
 import { DAG_CONTEXT } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
-import type { ElementDefinition } from 'cytoscape';
 import DagGraph from './.vitepress/theme/components/DagGraph.vue';
 
 // Sample three-node DAG used to illustrate output routing.
@@ -57,13 +55,13 @@ const sampleDAG: DAG = {
     },
   ],
 };
-
-const sampleElements = CytoscapeRenderer.render(sampleDAG) as ElementDefinition[];
 </script>
 
 # Architecture
 
 Dagonizer is a single-class, in-process DAG dispatcher. The core loop is a `while` iterator over a node graph. The dispatcher is the watcher; every node is an eye on the graph.
+
+The engine is domain-agnostic. The Archivist (LLM-agent bibliographic assistant) and the Cartographer (streaming multi-format data-orchestration / ETL, no LLM) both run on the identical dispatcher, lifecycle FSM, scatter/gather machinery, and checkpoint/resume mechanism. The difference is entirely in the node implementations; the engine is the same.
 
 ## Core objects
 
@@ -92,7 +90,9 @@ flowchart TB
 
 **`parallel`**, a named group of previously declared `single` entries. The dispatcher runs them with `Promise.all`, then applies a combine strategy (`all-success`, `any-success`, or `collect`) to produce a single routing output.
 
-**`scatter`** isolates one state clone per item in a source array (`source` is required), runs a node body in each clone, merges produced clone state back into the parent via a `gather` strategy, and routes on the aggregate outcome via an outcome `reducer`. Gather strategies: `map`, `append`, `partition`, `custom`. Default reducer: `aggregate`.
+**`scatter`** isolates one state clone per item in a `source`, runs a node body in each clone, merges produced clone state back into the parent via a `gather` strategy, and routes on the aggregate outcome via an outcome `reducer`. Gather strategies: `map`, `append`, `partition`, `custom`. Default reducer: `aggregate`.
+
+The `source` can be a plain array (finite producer) or an `AsyncIterable`/`AsyncGenerator` (stream). Both drain through the same bounded worker pool: `concurrency` is the backpressure — the engine pulls the next item only when a worker slot frees. Resume is durable via an **inbox/work-queue**: un-acked items reprocess on restart; the stream source is never re-read from the beginning. This is the streaming spine both finite scatter and live-feed ETL pipelines share.
 
 **`embedded`** invokes a registered sub-DAG exactly once (cardinality 1) in an isolated state and routes the parent on the child's terminal outcome (`success` or `error`). Optional `stateMapping.input` seeds child fields from the parent before the child runs; `stateMapping.output` copies child fields back into the parent after it completes.
 
@@ -100,7 +100,7 @@ flowchart TB
 
 A validate node routes to an enrich step on `valid`; enrich routes to save on `success`. Each placement declares both its happy-path output and its terminal exit.
 
-<DagGraph :elements="sampleElements" aria-label="Sample three-node DAG: validate, enrich, save" />
+<DagGraph :dag="sampleDAG" aria-label="Sample three-node DAG: validate, enrich, save" />
 
 ## Lifecycle FSM
 
@@ -235,13 +235,20 @@ Every public surface ships through a `package.json` `exports` entry.
 | `./contracts` | Every adapter contract |
 | `./entities` | Every JSON Schema and derived type |
 | `./errors` | `DAGError` and subclasses, `DAGErrorInterface` |
-| `./constants` | Constant value plus type pairs (`GatherStrategy`, etc.) |
+| `./constants` | Constant value plus type pairs (`GatherStrategyName`, `MetadataKey`, `NodeType`, `Output`, `ParallelCombine`, `ScatterOutput`) |
 | `./lifecycle` | `DAGLifecycleMachine`, lifecycle types |
 | `./runtime` | `Clock`, `Scheduler`, `RetryPolicy`, `RealTimeScheduler`, `BackoffStrategy` |
 | `./builder` | `DAGBuilder` and its option interfaces |
 | `./validation` | `Validator` and `EntityValidator<T>` |
 | `./checkpoint` | `Checkpoint`, `StateRestoreFnType` |
 | `./testing` | `VirtualClockProvider`, `VirtualScheduler` (test-only) |
+| `./adapter` | `LlmAdapter`, `BaseAdapter`, `OpenAiCompatibleAdapter`, `LlmAdapterCascade`, `LlmAdapterRegistry`, `BaseEmbedder`, `EmbedderCascade`, `EmbedderRegistry`, related types |
+| `./patterns` | `MonadicNode` base class, `LlmClient` and `TripleStore` service contracts for pattern plugins |
+| `./tool` | `Tool` interface, `ToolError`, `HttpTransport` shared fetch wrapper |
+| `./core` | `ParallelCombiners`, `GatherStrategies`, `OutcomeReducers` extension registries |
+| `./derive` | `DAGDeriver.derive`, `OperationContract`, `DAGDeriverAnnotations`, `ContractRegistryValidator` |
+| `./viz` | `MermaidRenderer`, `JsonLdRenderer`, `CytoscapeRenderer`, `CytoscapeGraph`, `CompositeLayout` |
+| `./store` | `Store` contract, `BaseStore`, `MemoryStore`, `TypedStore`, `StoreError` |
 
 Consumers import from the narrowest subpath that gives them what they need. The root barrel is for one-line bootstraps; everything else lives behind a stable subpath so the bundle stays trim.
 

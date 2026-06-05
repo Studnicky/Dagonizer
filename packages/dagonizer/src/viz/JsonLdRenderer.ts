@@ -28,6 +28,7 @@
 import type { DAG } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
+import type { PhaseNodePlacementInterface } from '../entities/dag/PhaseNode.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
@@ -35,7 +36,7 @@ import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNod
 /** Stable JSON-LD vocabulary URI for the Dagonizer DAG vocabulary. */
 export const DAGONIZER_VOCAB = 'https://noocodex.dev/ontology/dagonizer/';
 
-type DAGNodeEntry = EmbeddedDAGNode | ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface;
+type DAGNodeEntry = EmbeddedDAGNode | ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
 
 /** A single node entry in the rendered `@graph`. */
 export interface JsonLdGraphEntry {
@@ -65,6 +66,7 @@ export class JsonLdRenderer {
     'ScatterNode':     'dag:ScatterNode',
     'EmbeddedDAGNode': 'dag:EmbeddedDAGNode',
     'TerminalNode':    'dag:TerminalNode',
+    'PhaseNode':       'dag:PhaseNode',
   };
 
   static render(dag: DAG): DagJsonLdDocument {
@@ -162,6 +164,13 @@ export class JsonLdRenderer {
         return {
           ...base,
           'dag:outcome': placement.outcome,
+        };
+      case 'PhaseNode':
+        // PhaseNode placements are out-of-band; they have no outputs/routes.
+        return {
+          ...base,
+          'dag:phase': placement.phase,
+          'dag:node':  placement.node,
         };
     }
   }

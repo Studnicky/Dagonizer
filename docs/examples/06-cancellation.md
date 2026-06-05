@@ -18,25 +18,21 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
-import type { ElementDefinition } from 'cytoscape';
 import { archivistDAG } from '@archivist/dag.ts';
 import { BookSearchScatterDAG } from '@archivist/embedded-dags/BookSearchScatterDAG.ts';
 import { ComposeRetryLoopDAG } from '@archivist/embedded-dags/ComposeRetryLoopDAG.ts';
 
-const elements = CytoscapeRenderer.render(archivistDAG, {
-  embeddedDAGs: new Map([
-    ['book-search-scatter', BookSearchScatterDAG],
-    ['compose-retry-loop', ComposeRetryLoopDAG],
-  ]),
-}) as ElementDefinition[];
+const archivistRegistry = new Map([
+  ['book-search-scatter', BookSearchScatterDAG],
+  ['compose-retry-loop', ComposeRetryLoopDAG],
+]);
 </script>
 
 # Phase 06: Cancellation
 
 [The Archivist](./the-archivist) sometimes talks to slow external APIs. When the visitor closes the page, the dispatcher aborts cleanly: every node that is mid-network call sees the signal flip, skips its work, and the lifecycle records `cancelled` with the abort reason. A `deadlineMs` cap adds a hard ceiling regardless of the signal.
 
-<DagGraph :elements="elements" aria-label="The Archivist DAG. Any node mid-execution sees the dispatcher signal flip on cancel or deadline expiry." />
+<DagGraph :dag="archivistDAG" :embedded-d-a-gs="archivistRegistry" :expand-all="true" aria-label="The Archivist DAG. Any node mid-execution sees the dispatcher signal flip on cancel or deadline expiry." />
 
 ## Code
 

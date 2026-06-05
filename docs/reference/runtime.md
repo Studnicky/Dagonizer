@@ -122,18 +122,7 @@ import { RetryPolicy, BackoffStrategy } from '@noocodex/dagonizer/runtime';
 Also re-exported from `@noocodex/dagonizer` root.
 
 ```ts
-const policy = new RetryPolicy({
-  maxAttempts: 5,
-  strategy: BackoffStrategy.EXPONENTIAL,
-  baseDelay: 500,
-  maxDelay: 10_000,
-  multiplier: 2,
-  jitterFactor: 0.1,
-  retryOn: [NetworkError],
-  abortOn: [AuthError],
-});
-
-const result = await policy.run(task, context.signal);
+<<< @/../examples/dags/07-retry.ts#policy-config
 ```
 
 See [Retry](/guide/retry) for detailed usage.
