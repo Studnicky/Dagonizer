@@ -28,7 +28,7 @@
 
 import { Dagonizer } from '@noocodex/dagonizer';
 import {
-  S,
+  PipelineState,
   prepare,
   invokePlugin,
   finalize,
@@ -42,7 +42,7 @@ import {
 // Dispatch
 // ---------------------------------------------------------------------------
 
-const dispatcher = new Dagonizer<S>();
+const dispatcher = new Dagonizer<PipelineState>();
 dispatcher.registerNode(prepare);
 dispatcher.registerNode(invokePlugin);
 dispatcher.registerNode(finalize);
@@ -51,7 +51,7 @@ dispatcher.registerNode(transform);
 dispatcher.registerDAG(childDAG);
 dispatcher.registerDAG(parentDAG);
 
-const state = new S();
+const state = new PipelineState();
 state.input = 'hello';
 const result = await dispatcher.execute('parent', state);
 

@@ -18,7 +18,7 @@ import type { NodeInterface } from '@noocodex/dagonizer';
 // State
 // ---------------------------------------------------------------------------
 
-export class S extends NodeStateBase {
+export class PipelineState extends NodeStateBase {
   input        = '';
   intermediate = '';
   childResult  = '';
@@ -29,7 +29,7 @@ export class S extends NodeStateBase {
 // Nodes: same NodeInterface shape regardless of authoring path
 // ---------------------------------------------------------------------------
 
-export const prepare: NodeInterface<S, 'success'> = {
+export const prepare: NodeInterface<PipelineState, 'success'> = {
   "name": 'prepare',
   "outputs": ['success'],
   "contract": { "hardRequired": ['input'], "produces": ['intermediate'] },
@@ -39,7 +39,7 @@ export const prepare: NodeInterface<S, 'success'> = {
   },
 };
 
-export const validate: NodeInterface<S, 'success' | 'error'> = {
+export const validate: NodeInterface<PipelineState, 'success' | 'error'> = {
   "name": 'validate',
   "outputs": ['success', 'error'],
   "contract": { "hardRequired": ['intermediate'], "produces": ['validated'] },
@@ -49,7 +49,7 @@ export const validate: NodeInterface<S, 'success' | 'error'> = {
   },
 };
 
-export const transform: NodeInterface<S, 'success'> = {
+export const transform: NodeInterface<PipelineState, 'success'> = {
   "name": 'transform',
   "outputs": ['success'],
   "contract": { "hardRequired": ['validated'], "produces": ['childResult'] },
@@ -59,7 +59,7 @@ export const transform: NodeInterface<S, 'success'> = {
   },
 };
 
-export const invokePlugin: NodeInterface<S, 'success' | 'error'> = {
+export const invokePlugin: NodeInterface<PipelineState, 'success' | 'error'> = {
   // invoke-plugin carries the contract (hardRequired/produces) the deriver
   // uses to place this stage in the topology. The embeddedDAGs annotation
   // renders it as an EmbeddedDAGNode whose `dag` runs the child DAG;
@@ -73,7 +73,7 @@ export const invokePlugin: NodeInterface<S, 'success' | 'error'> = {
   },
 };
 
-export const finalize: NodeInterface<S, 'success'> = {
+export const finalize: NodeInterface<PipelineState, 'success'> = {
   "name": 'finalize',
   "outputs": ['success'],
   "contract": { "hardRequired": ['childResult'], "produces": ['final'] },

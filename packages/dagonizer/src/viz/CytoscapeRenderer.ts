@@ -44,7 +44,7 @@
 
 import type { DAG } from '../entities/dag/DAG.js';
 
-import { embeddedDagName, idIn } from './internal.js';
+import { PlacementUtils } from './internal.js';
 import type { PlacementEntry } from './internal.js';
 
 /** A Cytoscape node element. */
@@ -225,8 +225,8 @@ export class CytoscapeRenderer {
     const edges: CytoscapeEdgeElement[] = [];
     for (const [output, target] of Object.entries(placement.outputs)) {
       const destId = target === null
-        ? idIn(prefix, CytoscapeRenderer.END_ID)
-        : idIn(prefix, target);
+        ? PlacementUtils.idIn(prefix, CytoscapeRenderer.END_ID)
+        : PlacementUtils.idIn(prefix, target);
       edges.push({
         "group": 'edges',
         "data": {
@@ -276,28 +276,28 @@ export class CytoscapeRenderer {
     const embeddedEntryRewrite = new Map<string, string>();
     const maxDepth = state.options.maxDepth ?? CytoscapeRenderer.DEFAULT_MAX_DEPTH;
     for (const placement of dag.nodes as readonly PlacementEntry[]) {
-      const dagName = embeddedDagName(placement);
+      const dagName = PlacementUtils.embeddedDagName(placement);
       if (dagName === null) continue;
       const body = state.options.embeddedDAGs?.get(dagName);
       if (body === undefined) continue;
       if (depth >= maxDepth) continue;
       if (visited.has(dagName)) continue;
-      const placementId = idIn(prefix, placement.name);
-      const entryChildId = idIn(placementId, body.entrypoint);
+      const placementId = PlacementUtils.idIn(prefix, placement.name);
+      const entryChildId = PlacementUtils.idIn(placementId, body.entrypoint);
       embeddedEntryRewrite.set(placement.name, entryChildId);
     }
 
     for (const placement of dag.nodes as readonly PlacementEntry[]) {
-      const myId = idIn(prefix, placement.name);
+      const myId = PlacementUtils.idIn(prefix, placement.name);
       const parallelParent = childToParent.get(placement.name);
       const myCompoundParent = parallelParent !== undefined
-        ? idIn(prefix, parallelParent)
+        ? PlacementUtils.idIn(prefix, parallelParent)
         : compoundParent;
 
       // ── EmbeddedDAGNode / ScatterNode with body.dag: if the target DAG is
       //    registered, expand inline as a compound parent containing the
       //    sub-DAG's full flow.
-      const embedDagName = embeddedDagName(placement);
+      const embedDagName = PlacementUtils.embeddedDagName(placement);
       const embeddedDagBody = embedDagName !== null
         ? state.options.embeddedDAGs?.get(embedDagName)
         : undefined;
@@ -321,7 +321,7 @@ export class CytoscapeRenderer {
         state.elements.push(labelled);
 
         // Recurse: render every node of the embedded-DAG with `parent: myId`.
-        const innerPrefix = idIn(prefix, placement.name);
+        const innerPrefix = PlacementUtils.idIn(prefix, placement.name);
         const innerVisited = new Set(visited);
         innerVisited.add(embedDagName);
         CytoscapeRenderer.renderInto(embeddedDagBody, innerPrefix, myId, state, depth + 1, innerVisited);
@@ -339,7 +339,7 @@ export class CytoscapeRenderer {
         // to the compound source (original behavior).
         const innerLeaves = CytoscapeRenderer.collectExitLeaves(embeddedDagBody, innerPrefix);
         for (const edge of CytoscapeRenderer.placementEdges(placement, myId, prefix)) {
-          if (edge.data.target === idIn(prefix, CytoscapeRenderer.END_ID)) {
+          if (edge.data.target === PlacementUtils.idIn(prefix, CytoscapeRenderer.END_ID)) {
             state.touchesTerminal = true;
           }
           const isErrorRoute = edge.data.route === 'error' || edge.data.route === 'failed';
@@ -366,7 +366,7 @@ export class CytoscapeRenderer {
       state.elements.push(enriched);
 
       for (const edge of CytoscapeRenderer.placementEdges(placement, myId, prefix)) {
-        const endId = idIn(prefix, CytoscapeRenderer.END_ID);
+        const endId = PlacementUtils.idIn(prefix, CytoscapeRenderer.END_ID);
         // Suppress synthetic-END routes for children inside a parallel;
         // the parent placement's own edges carry the collected result.
         if (parallelParent !== undefined && edge.data.target === endId) continue;
@@ -406,7 +406,7 @@ export class CytoscapeRenderer {
     entryMap: ReadonlyMap<string, string>,
   ): string {
     for (const [placementName, entryChildId] of entryMap) {
-      const placementId = idIn(prefix, placementName);
+      const placementId = PlacementUtils.idIn(prefix, placementName);
       if (targetId === placementId) return entryChildId;
     }
     return targetId;
@@ -441,7 +441,7 @@ export class CytoscapeRenderer {
     const failed: string[] = [];
     for (const placement of body.nodes as readonly PlacementEntry[]) {
       if (parallelChildren.has(placement.name)) continue;
-      const placementId = idIn(innerPrefix, placement.name);
+      const placementId = PlacementUtils.idIn(innerPrefix, placement.name);
       if (placement['@type'] === 'TerminalNode') {
         if (placement.outcome === 'failed') failed.push(placementId);
         else completed.push(placementId);

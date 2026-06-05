@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { GeminiNanoAdapter, detectGeminiNano } from '../src/index.js';
+import { GeminiNanoAdapter } from '../src/index.js';
 
 interface MutableGlobal {
   LanguageModel?: unknown;
@@ -20,8 +20,8 @@ void test('GeminiNanoAdapter identity', () => {
   assert.equal(a.capabilities.toolUse, 'partial');
 });
 
-void test('detectGeminiNano returns unavailable in node', async () => {
-  const status = await detectGeminiNano();
+void test('GeminiNanoAdapter.detect returns unavailable in node', async () => {
+  const status = await GeminiNanoAdapter.detect();
   assert.equal(status, 'unavailable');
 });
 

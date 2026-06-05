@@ -14,6 +14,7 @@
  */
 
 import type { SchedulerProvider } from '../contracts/SchedulerProvider.js';
+import { ExecutionError } from '../errors/DAGError.js';
 
 import { Clock } from './Clock.js';
 
@@ -35,7 +36,7 @@ export class RealTimeScheduler implements SchedulerProvider {
   async after(delayMs: number, signal?: AbortSignal): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       if (signal?.aborted === true) {
-        reject(this.#abortReason(signal));
+        reject(ExecutionError.fromSignal(signal));
         return;
       }
       const handle = G.setTimeout(() => {
@@ -49,7 +50,7 @@ export class RealTimeScheduler implements SchedulerProvider {
         this.#activeHandles.delete(handle);
         G.clearTimeout(handle);
         signal?.removeEventListener('abort', onAbort);
-        reject(this.#abortReason(signal));
+        reject(ExecutionError.fromSignal(signal));
       };
       signal?.addEventListener('abort', onAbort, { 'once': true });
     });
@@ -75,11 +76,5 @@ export class RealTimeScheduler implements SchedulerProvider {
       G.clearTimeout(handle);
     }
     this.#activeHandles.clear();
-  }
-
-  #abortReason(signal?: AbortSignal): Error {
-    const reason = signal?.reason;
-    if (reason instanceof Error) return reason;
-    return new Error(typeof reason === 'string' ? reason : 'aborted');
   }
 }

@@ -38,7 +38,8 @@ The adapter subpath exposes everything an LLM-provider adapter needs:
 | `LlmAdapterCascade`, `LlmAdapterRegistry`, `AdapterDescriptor` | Multi-adapter routing |
 | `EmbedderCascade`, `EmbedderRegistry`, `BaseEmbedder` | Embedding model cascade |
 | `ChatRequest`, `ChatResponse`, `ChatRequestBuilder`, `ChatResponseMessageBuilder` | Wire types and value factories |
-| `LlmError`, `Classifications`, `classifyHttp`, `asNetworkError` | Error taxonomy |
+| `LlmError`, `Classifications` | Error taxonomy — `LlmError.classifyHttp(status, body)` and `LlmError.fromNetworkError(err)` are static methods on `LlmError` |
+| `ToolCallCodec` | JSON envelope decoder for models that emit tool calls as text (Gemini Nano, WebLLM) |
 | `AdapterCapabilities`, `ToolCall`, `ToolChoice`, `ToolDefinition`, `TokenUsage` | Capability metadata |
 
 ### Using an adapter

@@ -24,7 +24,7 @@ const state = new ArchiveState();
 state.catalogue = { shelves: { fiction: 'Shelf A' } };
 
 // Read a nested value by dotted path; returns `undefined` on a miss.
-const shelf = accessor.get(state, 'catalogue.shelves.fiction');
+export const shelf = accessor.get(state, 'catalogue.shelves.fiction');
 // shelf === 'Shelf A'
 // #endregion dotted-get
 
@@ -62,9 +62,5 @@ class PrefixAccessor implements StateAccessor {
 // #region wire-accessor
 // Pass any StateAccessor to the Dagonizer constructor; scatter source reads
 // and gather writes will use it for every execution.
-const dispatcher = new Dagonizer({ accessor: new PrefixAccessor('archivist') });
+export const dispatcher = new Dagonizer({ accessor: new PrefixAccessor('archivist') });
 // #endregion wire-accessor
-
-// Suppress unused variable warnings.
-void shelf;
-void dispatcher;

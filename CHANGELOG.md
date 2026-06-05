@@ -6,6 +6,33 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 ### Added
 
+- **`DAGValidator` static class** in `src/validation/DAGValidator.ts`. All semantic validation logic (`validateDAGConfig`, `validateDAGNode`, `validatePhaseNode`, `validateSingleNode`, `validateParallelNode`, `validateEmbeddedDAGNode`, `validateScatterNode`, `collectDAGReferences`) extracted from `Dagonizer` into a dedicated static class. `Dagonizer.registerDAG` delegates to `DAGValidator.validateDAGConfig`.
+- **`StateMapper<TState>` class** in `src/runtime/StateMapper.ts`. `createChild(parentState, inputMapping?)` and `mapOutput(childState, parentState, output?)` extracted from `Dagonizer` instance methods. `Dagonizer` holds a `StateMapper` constructed with its `StateAccessor`.
+- **`ScatterCheckpoint` static class** in `src/runtime/ScatterCheckpoint.ts`. `ScatterCheckpoint.write(state, placementName, inbox, ackedResults)` and `ScatterCheckpoint.clear(state, placementName)` replace the private instance methods `writeScatterProgress` / `clearScatterProgress`.
+- **`PlacementUtils` static class** in `src/viz/internal.ts`. `embeddedDagName(placement)` and `idIn(prefix, name)` moved from free-function exports to static methods. All call sites in `CytoscapeRenderer` and `CompositeLayout` updated.
+- **`ToolCallCodec` static class** in `src/adapter/ToolCallCodec.ts`. Replaces the free function `decodeToolCallsJson`. Call: `ToolCallCodec.decode(raw, idPrefix)`.
+- **`OpenLibraryDocs` static class** in `src/openLibraryTypes.ts`. `pickDescription(doc)` and `buildCandidates(docs, source, sourcesLabel)` replace the free functions `pickDescription` and `buildCandidates`. `OPENLIBRARY_ENDPOINT` constant exported from the same module.
+- **`GeminiNanoAdapter.detect()` static method.** Replaces the free function `detectGeminiNano()`. Call: `GeminiNanoAdapter.detect()`.
+- **`LlmError.classifyHttp(status, body?)` static method.** Replaces the free function `classifyHttp`.
+- **`LlmError.fromNetworkError(err)` static method.** Replaces the free function `asNetworkError`.
+- **`ExecutionError.fromSignal(signal?)` static method.** Normalises `AbortSignal.reason` into a typed `Error`.
+- **Named constants** replace inline magic numbers across adapter and tool packages: `DEFAULT_MAX_ATTEMPTS`, `WEBLLM_MAX_ATTEMPTS`, `GPU_PROBE_TIMEOUT_MS`, `DEFAULT_GEMINI_MAX_ATTEMPTS`, `DEFAULT_TOKEN_COUNT`, `GOOGLE_BOOKS_MAX_RESULTS`, `GOOGLE_BOOKS_MIN_RESULTS`, `GOOGLE_BOOKS_DEFAULT_RESULTS`, `GOOGLE_BOOKS_MAX_SUBJECTS`, `MAX_SUBJECTS`, `MAX_PUBLISHERS`, `GEMINI_NANO_MAX_ATTEMPTS`.
+- **`RunOptions` internal interface** on `Dagonizer`. Replaces the positional `isEmbeddedDAG: boolean` parameter on `runNodes` and `runPostPhasesAndFinalize` with `runOptions: RunOptions` carrying `embedded: boolean`.
+- **`BookEntitiesError`** base error class for `@noocodex/dagonizer-book-entities`.
+
+### Changed
+
+- **`OpenAiCompatibleAdapter.#doRequest`** split into `#doRequest(request)` (tools path) and `#doRequestWithoutTools(request)` (toolless fallback path) with shared `#sendRequest(request, body)` wire implementation. Eliminates the `withTools: boolean` flag argument.
+
+### Removed
+
+- **`detectGeminiNano` free function** from `@noocodex/dagonizer-adapter-gemini-nano`. Use `GeminiNanoAdapter.detect()`.
+- **`decodeToolCallsJson` free function** from `@noocodex/dagonizer/adapter`. Use `ToolCallCodec.decode(raw, idPrefix)`.
+- **`classifyHttp` free function** from `@noocodex/dagonizer/adapter`. Use `LlmError.classifyHttp(status, body)`.
+- **`asNetworkError` free function** from `@noocodex/dagonizer/adapter`. Use `LlmError.fromNetworkError(err)`.
+
+### Added
+
 - **Native streaming scatter (§A).** `executeScatter` now uses a single unified executor for all source types. Arrays, sync iterables, and `AsyncIterable` sources all drain through a bounded worker pool (max in-flight = `scatter.concurrency`). True backpressure: a new item is pulled from the source only when a worker slot frees; the full source is never buffered. Default concurrency for arrays without an explicit cap is `source.length` (backwards-compatible: all items run concurrently as before). Streaming sources default to `concurrency = 1`.
 - **Durable-inbox checkpoint model.** As each item is pulled from the source it enters a persisted inbox under `SCATTER_PROGRESS_KEY`. The inbox holds the actual item payload so resume never needs to re-read the source by index. On success the item is acked (removed from inbox, added to `ackedResults`). On crash/resume, inbox items are reprocessed first, then fresh source items continue. `CHECKPOINT_DATA_VERSION` bumped to `'2'`.
 - **Incremental gather.** `GatherStrategy` gains an optional `applyIncremental(config, record, state, accessor)` method. `Map`, `Append`, and `Partition` implement it: each completed record is folded into parent state as it arrives. `Custom` does not implement it; it continues to accumulate records and call `apply` once at the end.

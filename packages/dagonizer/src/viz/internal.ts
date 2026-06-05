@@ -21,21 +21,26 @@ export type PlacementEntry =
   | TerminalNodePlacementInterface
   | PhaseNodePlacementInterface;
 
-/**
- * Return the sub-DAG name that this placement embeds, or `null` if it does
- * not embed a DAG.
- *
- * Covers both shapes:
- *   - `EmbeddedDAGNode`           → `placement.dag`
- *   - `ScatterNode` with dag body → `placement.body.dag`
- */
-export function embeddedDagName(placement: PlacementEntry): string | null {
-  if (placement['@type'] === 'EmbeddedDAGNode') return placement.dag;
-  if (placement['@type'] === 'ScatterNode' && 'dag' in placement.body) return placement.body.dag;
-  return null;
-}
+/** Placement utility operations. Static class; no instantiation. */
+export class PlacementUtils {
+  private constructor() { /* static class */ }
 
-/** Build a placement-name id, optionally prefixed by an enclosing scope. */
-export function idIn(prefix: string, name: string): string {
-  return prefix === '' ? name : `${prefix}/${name}`;
+  /**
+   * Return the sub-DAG name that this placement embeds, or `null` if it does
+   * not embed a DAG.
+   *
+   * Covers both shapes:
+   *   - `EmbeddedDAGNode`           → `placement.dag`
+   *   - `ScatterNode` with dag body → `placement.body.dag`
+   */
+  static embeddedDagName(placement: PlacementEntry): string | null {
+    if (placement['@type'] === 'EmbeddedDAGNode') return placement.dag;
+    if (placement['@type'] === 'ScatterNode' && 'dag' in placement.body) return placement.body.dag;
+    return null;
+  }
+
+  /** Build a placement-name id, optionally prefixed by an enclosing scope. */
+  static idIn(prefix: string, name: string): string {
+    return prefix === '' ? name : `${prefix}/${name}`;
+  }
 }

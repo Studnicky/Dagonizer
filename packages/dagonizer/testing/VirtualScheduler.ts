@@ -11,6 +11,13 @@
 
 import type { SchedulerProvider } from '../dist/contracts/SchedulerProvider.js';
 
+class SchedulerAbortError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SchedulerAbortError';
+  }
+}
+
 interface PendingType {
   readonly atMs: number;
   readonly resolve: () => void;
@@ -36,7 +43,7 @@ export class VirtualScheduler implements SchedulerProvider {
   at(atMs: number, signal?: AbortSignal): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       if (signal?.aborted === true) {
-        reject(signal.reason instanceof Error ? signal.reason : new Error('aborted'));
+        reject(signal.reason instanceof Error ? signal.reason : new SchedulerAbortError('aborted'));
         return;
       }
 
@@ -46,7 +53,7 @@ export class VirtualScheduler implements SchedulerProvider {
       if (signal !== undefined) {
         signal.addEventListener('abort', () => {
           this.#remove(entry);
-          reject(signal.reason instanceof Error ? signal.reason : new Error('aborted'));
+          reject(signal.reason instanceof Error ? signal.reason : new SchedulerAbortError('aborted'));
         }, { 'once': true });
       }
     });
@@ -66,7 +73,7 @@ export class VirtualScheduler implements SchedulerProvider {
   cancelAll(): void {
     while (this.#pending.length > 0) {
       const entry = this.#pending.shift();
-      entry?.reject(new Error('cancelled'));
+      entry?.reject(new SchedulerAbortError('cancelled'));
     }
   }
 

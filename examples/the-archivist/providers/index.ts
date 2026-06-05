@@ -42,7 +42,6 @@ import {
   OpenRouterApiAdapter,
   ArchivistStub,
   WebLlmAdapter,
-  detectGeminiNano,
   detectOllama,
   listOllamaModels,
   detectWebGpu,
@@ -202,7 +201,7 @@ export async function detectBackends(inputs: DetectionInputs = {}): Promise<read
   const keys = inputs.apiKeys ?? {};
   const out: BackendAvailability[] = [];
 
-  const nanoStatus: GeminiNanoAvailability = await detectGeminiNano();
+  const nanoStatus: GeminiNanoAvailability = await GeminiNanoAdapter.detect();
   out.push({
     'id': 'gemini-nano',
     'displayName': 'Browser built-in LanguageModel (on-device)',
@@ -462,7 +461,6 @@ export {
   OpenRouterApiAdapter,
   ArchivistStub,
   WebLlmAdapter,
-  detectGeminiNano,
   detectOllama,
   listOllamaModels,
   detectWebGpu,

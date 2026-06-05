@@ -20,7 +20,7 @@ import {
   BackoffStrategy,
   type BackoffStrategyValue,
 } from '../entities/runtime/BackoffStrategy.js';
-import { DAGError } from '../errors/DAGError.js';
+import { DAGError, ExecutionError } from '../errors/DAGError.js';
 
 import { Scheduler } from './Scheduler.js';
 
@@ -154,16 +154,14 @@ export class RetryPolicy {
 
     while (attempt < this.maxAttempts) {
       if (signal?.aborted) {
-        throw signal.reason instanceof Error
-          ? signal.reason
-          : new Error(typeof signal.reason === 'string' ? signal.reason : 'aborted');
+        throw ExecutionError.fromSignal(signal);
       }
       attempt++;
 
       try {
         return await task(attempt);
       } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
+        lastError = error instanceof Error ? error : new ExecutionError(String(error));
 
         if (!this.shouldRetry(lastError, attempt)) {
           throw lastError;
@@ -174,7 +172,7 @@ export class RetryPolicy {
       }
     }
 
-    throw lastError ?? new Error('Retry attempts exhausted');
+    throw lastError ?? new ExecutionError('Retry attempts exhausted');
   }
 
   /**
@@ -188,9 +186,7 @@ export class RetryPolicy {
     } catch (err) {
       // Re-throw abort errors as the signal's reason for consistent error shape.
       if (signal?.aborted === true) {
-        throw signal.reason instanceof Error
-          ? signal.reason
-          : new Error(typeof signal.reason === 'string' ? signal.reason : 'aborted');
+        throw ExecutionError.fromSignal(signal);
       }
       throw err;
     }
