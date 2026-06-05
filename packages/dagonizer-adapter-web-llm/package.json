@@ -1,6 +1,6 @@
 {
   "name": "@noocodex/dagonizer-adapter-web-llm",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "LLM adapter plugin for @noocodex/dagonizer: WebLlmAdapter.",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
