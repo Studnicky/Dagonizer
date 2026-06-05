@@ -40,7 +40,7 @@ export { MistralApiAdapter }        from '@noocodex/dagonizer-adapter-mistral';
 export type { MistralApiAdapterOptions } from '@noocodex/dagonizer-adapter-mistral';
 export { OllamaApiAdapter }         from '@noocodex/dagonizer-adapter-ollama';
 export type { OllamaApiAdapterOptions } from '@noocodex/dagonizer-adapter-ollama';
-export { detectOllama }             from './detectOllama.js';
+export { detectOllama, listOllamaModels } from './detectOllama.js';
 export { OpenRouterApiAdapter }     from '@noocodex/dagonizer-adapter-openrouter';
 export type { OpenRouterApiAdapterOptions } from '@noocodex/dagonizer-adapter-openrouter';
 export { StubAdapter }              from '@noocodex/dagonizer-adapter-stub';

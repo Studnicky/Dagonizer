@@ -18,10 +18,12 @@
  * draws compound containers automatically around children given their absolute
  * positions; no compound layout plugin required.
  *
- * Static class. Synchronous.
+ * Static class. @dagrejs/dagre is lazily loaded on first call to `compute`.
  */
 
-import dagre from '@dagrejs/dagre';
+import type DagreDefault from '@dagrejs/dagre';
+
+type DagreModule = typeof DagreDefault;
 
 import type { DAG } from '../entities/dag/DAG.js';
 
@@ -110,13 +112,18 @@ export class CompositeLayout {
    *
    * Returns a `LayoutResult` where every key is the fully-prefixed cytoscape
    * node id (matching the ids produced by `CytoscapeRenderer`).
+   *
+   * @dagrejs/dagre is loaded lazily on first call; the package must be
+   * installed as an optional peer dependency by the consumer.
    */
-  static compute(
+  static async compute(
     dag: DAG,
     embeddedDAGs: ReadonlyMap<string, DAG> = new Map(),
     options: CompositeLayoutOptions = {},
-  ): LayoutResult {
+  ): Promise<LayoutResult> {
+    const dagreModule = (await import('@dagrejs/dagre')).default;
     const resolved = CompositeLayout.layoutFlat(
+      dagreModule,
       dag,
       embeddedDAGs,
       '',
@@ -135,6 +142,7 @@ export class CompositeLayout {
   /**
    * Layout one DAG body as a flat graph, recursing into embedded-DAGs first.
    *
+   * @param dagreLib    The lazily-loaded dagre module default export.
    * @param dag         The DAG body to lay out.
    * @param embeddedDAGs Registry of registered embedded-DAG bodies.
    * @param prefix      Path prefix for cytoscape node ids (empty at root).
@@ -142,6 +150,7 @@ export class CompositeLayout {
    * @param opts        Layout tuning options.
    */
   private static layoutFlat(
+    dagreLib: DagreModule,
     dag: DAG,
     embeddedDAGs: ReadonlyMap<string, DAG>,
     prefix: string,
@@ -183,6 +192,7 @@ export class CompositeLayout {
       const innerPrefix = idIn(prefix, placement.name);
 
       const sub = CompositeLayout.layoutFlat(
+        dagreLib,
         body,
         embeddedDAGs,
         innerPrefix,
@@ -194,7 +204,7 @@ export class CompositeLayout {
 
     // ── Step 2: build the dagre graph for THIS level ───────────────────────
 
-    const g = new dagre.graphlib.Graph({ "compound": false });
+    const g = new dagreLib.graphlib.Graph({ "compound": false });
     g.setGraph({
       "rankdir":  'TB',
       "ranksep":  rankSep,
@@ -261,7 +271,7 @@ export class CompositeLayout {
     }
 
     // Run dagre layout synchronously.
-    dagre.layout(g);
+    dagreLib.layout(g);
 
     // ── Step 3: collect final positions ──────────────────────────────────
 

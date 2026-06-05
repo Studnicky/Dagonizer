@@ -31,7 +31,8 @@
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "ignore": [
-    "@noocodex/the-archivist-example"
+    "@noocodex/the-archivist-example",
+    "@noocodex/the-cartographer-example"
   ],
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true

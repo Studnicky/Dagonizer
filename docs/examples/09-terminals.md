@@ -14,8 +14,6 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
-import type { ElementDefinition } from 'cytoscape';
 import {
   DAG_CONTEXT,
   DAGBuilder,
@@ -61,10 +59,7 @@ const dag4 = new DAGBuilder('demo-scatter-terminals', '1')
   .terminal('end-fail', 'failed')
   .build();
 
-const elementsP3 = CytoscapeRenderer.render(dag3) as ElementDefinition[];
-const elementsP4 = CytoscapeRenderer.render(dag4, {
-  embeddedDAGs: new Map([['child-for-terminals', childDAG]]),  // embeddedDAGs option expands ScatterNode sub-DAG bodies
-}) as ElementDefinition[];
+const terminalsRegistry = new Map([['child-for-terminals', childDAG]]);
 </script>
 
 # Phase 09: Terminal placements
@@ -112,7 +107,7 @@ Pattern 3b: check node routes to end-fail
   lifecycle.kind = failed
 ```
 
-<DagGraph :elements="elementsP3" aria-label="demo-explicit-terminals: a check node routes pass to end-ok and fail to end-fail." />
+<DagGraph :dag="dag3" aria-label="demo-explicit-terminals: a check node routes pass to end-ok and fail to end-fail." />
 
 Use this pattern when a named path through the flow has a known semantic outcome: a validation gate that declares the flow as failed rather than silently completing, a circuit-breaker endpoint, an explicit error branch.
 
@@ -134,4 +129,4 @@ Pattern 4b: scatter child errors, end-fail
   lifecycle.kind = failed
 ```
 
-<DagGraph :elements="elementsP4" aria-label="demo-scatter-terminals: scatter success routes to end-ok and error routes to end-fail." />
+<DagGraph :dag="dag4" :embedded-d-a-gs="terminalsRegistry" :expand-all="true" aria-label="demo-scatter-terminals: scatter success routes to end-ok and error routes to end-fail." />

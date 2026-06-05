@@ -129,9 +129,11 @@ void describe('Dagonizer scatter gather strategies', () => {
     assert.equal(state.out.length, 3);
   });
 
-  void it('map gather strategy writes clone field as scalar to parent via source array', async () => {
-    interface S extends NodeStateBase { items: number[]; result: string }
-
+  void it('map gather strategy writes clone field to parent as an array (incremental gather)', async () => {
+    // With incremental gather, map strategy always appends to an array — even for
+    // a single-item source. Cardinality is not known up front in streaming mode,
+    // so the target is always an array. This is the documented behavior change
+    // introduced with native streaming scatter (§A.3.4).
     const dispatcher = new Dagonizer<NodeStateBase>();
     const produce: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'produce',
@@ -165,10 +167,12 @@ void describe('Dagonizer scatter gather strategies', () => {
       .build();
     dispatcher.registerDAG(dag);
 
+    interface S extends NodeStateBase { items: number[] }
     const state = new NodeStateBase() as S;
     state.items = [1];
     await dispatcher.execute('mapfan', state);
-    assert.equal(state.getMetadata('result'), 'hello');
+    // Incremental gather always produces an array; single-item → ['hello'].
+    assert.deepEqual(state.getMetadata('result'), ['hello']);
   });
 
   void it('scatter respects concurrency cap', async () => {

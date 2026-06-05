@@ -144,7 +144,7 @@ export type {
 // =============================================================================
 
 export { Dagonizer, SCATTER_PROGRESS_KEY } from './Dagonizer.js';
-export type { DagonizerOptionsInterface, ScatterItemResult, ScatterProgress, StoredScatterProgress } from './Dagonizer.js';
+export type { DagonizerOptionsInterface, ScatterAckedResult, ScatterInboxItem, ScatterProgress, StoredScatterProgress } from './Dagonizer.js';
 export { Execution } from './Execution.js';
 
 // =============================================================================

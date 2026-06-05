@@ -2,10 +2,12 @@
  * GatherStrategies: pluggable strategy registry that decides how the
  * dispatcher merges scatter clone results back into the parent state.
  *
- * A `GatherStrategy` is a class with a `name` and an `apply` method.
- * The dispatcher resolves a strategy by `name` (the `strategy` field
- * on `GatherConfig`) and calls `.apply(config, execution)` once every
- * clone has reported.
+ * A `GatherStrategy` is a class with a `name`, an `apply` method (batch
+ * gather — called after all clones complete), and an optional
+ * `applyIncremental` method (fold a single record into parent state as it
+ * arrives). Strategies that implement `applyIncremental` produce results
+ * progressively; strategies that do not accumulate records and call `apply`
+ * at the end.
  *
  * Four defaults register at module load: `map`, `append`, `partition`,
  * `custom`. Consumers extend `GatherStrategy` and call
@@ -77,26 +79,67 @@ export interface GatherExecution<TState extends NodeStateInterface> {
 /**
  * Extension point for gather strategies.
  *
- * Subclass and override `apply`. The class registers in
- * `GatherStrategies` under its `name`; the dispatcher resolves it via
- * `GatherStrategies.resolve(name)` when all scatter clones have reported.
+ * Subclass and override `apply`. Optionally override `applyIncremental` for
+ * streaming gather — the dispatcher calls it after each clone completes when
+ * the strategy supports it, enabling results to fold into parent state
+ * progressively without waiting for all clones to finish.
+ *
+ * The class registers in `GatherStrategies` under its `name`; the dispatcher
+ * resolves it via `GatherStrategies.resolve(name)` when all scatter clones
+ * have reported.
  */
 export abstract class GatherStrategy {
   /** Wire-shape identifier; matches `GatherConfig.strategy`. */
   abstract readonly name: string;
 
   /**
-   * Apply the strategy. Mutates `execution.state` in place; may invoke
+   * Apply the strategy in batch mode. Called once after all scatter clones
+   * complete (or, for strategies that do not support `applyIncremental`, after
+   * every clone regardless). Mutates `execution.state` in place; may invoke
    * a registered node via `execution.invokeNode(name)`.
    */
   abstract apply<TState extends NodeStateInterface>(
     config: GatherConfig,
     execution: GatherExecution<TState>,
   ): Promise<void>;
+
+  /**
+   * Apply the strategy incrementally for a single record as it arrives.
+   * Called after each clone body completes successfully, before the next clone
+   * starts. Implementations mutate `state` in place.
+   *
+   * When `undefined`, the dispatcher accumulates records and calls `apply` once
+   * all clones are done. Override in subclasses to enable streaming gather.
+   *
+   * The `accessor` and `state` parameters mirror those in `GatherExecution`
+   * and are provided directly to avoid constructing a full execution context
+   * for every incremental fold.
+   */
+  applyIncremental?(
+    config: GatherConfig,
+    record: GatherRecord<NodeStateInterface>,
+    state: NodeStateInterface,
+    accessor: StateAccessor,
+  ): void;
 }
 
 class MapGatherStrategy extends GatherStrategy {
   readonly name = 'map';
+
+  override applyIncremental(
+    config: GatherConfig,
+    record: GatherRecord<NodeStateInterface>,
+    state: NodeStateInterface,
+    accessor: StateAccessor,
+  ): void {
+    const mapping = config.mapping ?? {};
+    for (const [clonePath, parentPath] of Object.entries(mapping)) {
+      const value = accessor.get(record.cloneState, clonePath);
+      const existing = (accessor.get(state, parentPath) as unknown[] | undefined) ?? [];
+      accessor.set(state, parentPath, [...existing, value]);
+    }
+  }
+
   async apply<TState extends NodeStateInterface>(
     config: GatherConfig,
     execution: GatherExecution<TState>,
@@ -122,6 +165,21 @@ class MapGatherStrategy extends GatherStrategy {
 
 class AppendGatherStrategy extends GatherStrategy {
   readonly name = 'append';
+
+  override applyIncremental(
+    config: GatherConfig,
+    record: GatherRecord<NodeStateInterface>,
+    state: NodeStateInterface,
+    accessor: StateAccessor,
+  ): void {
+    if (config.target === undefined) return;
+    const value = config.field !== undefined
+      ? accessor.get(record.cloneState, config.field)
+      : record.item;
+    const existing = (accessor.get(state, config.target) as unknown[] | undefined) ?? [];
+    accessor.set(state, config.target, [...existing, value]);
+  }
+
   async apply<TState extends NodeStateInterface>(
     config: GatherConfig,
     execution: GatherExecution<TState>,
@@ -143,6 +201,23 @@ class AppendGatherStrategy extends GatherStrategy {
 
 class PartitionGatherStrategy extends GatherStrategy {
   readonly name = 'partition';
+
+  override applyIncremental(
+    config: GatherConfig,
+    record: GatherRecord<NodeStateInterface>,
+    state: NodeStateInterface,
+    accessor: StateAccessor,
+  ): void {
+    const partitions = config.partitions ?? {};
+    const targetPath = partitions[record.output];
+    if (targetPath === undefined) return;
+    const value = config.field !== undefined
+      ? accessor.get(record.cloneState, config.field)
+      : record.item;
+    const existing = (accessor.get(state, targetPath) as unknown[] | undefined) ?? [];
+    accessor.set(state, targetPath, [...existing, value]);
+  }
+
   async apply<TState extends NodeStateInterface>(
     config: GatherConfig,
     execution: GatherExecution<TState>,
@@ -168,6 +243,7 @@ class PartitionGatherStrategy extends GatherStrategy {
 
 class CustomGatherStrategy extends GatherStrategy {
   readonly name = 'custom';
+  // No applyIncremental: custom strategies run as a batch node invocation.
   async apply<TState extends NodeStateInterface>(
     config: GatherConfig,
     execution: GatherExecution<TState>,

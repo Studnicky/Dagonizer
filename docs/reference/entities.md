@@ -209,13 +209,7 @@ import {
 
 These constants are available from `@noocodex/dagonizer/constants` as value+type pairs. Each constant is a frozen lookup object AND a `FromSchema`-derived type with the same name. `BackoffStrategy` ships through `@noocodex/dagonizer/runtime`, not `./constants`.
 
-```ts
-import { NodeType, MetadataKey, ScatterOutput } from '@noocodex/dagonizer/constants';
-
-NodeType.SCATTER;                  // value: 'scatter'
-const t: NodeType = 'embedded';   // type
-MetadataKey.GATHER_RESULTS;       // value: 'gatherResults'
-```
+<<< @/../examples/dags/constants-usage.ts#constants
 
 Constants are exported with paired value and type so the JSON literal can be used as a discriminator.
 

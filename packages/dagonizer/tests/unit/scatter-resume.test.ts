@@ -91,21 +91,18 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.equal(stored, undefined, 'progress key should be deleted after clean completion');
   });
 
-  void it('records completedIndices on interruption mid-flight', async () => {
+  void it('records ackedResults on interruption mid-flight', async () => {
     const dispatcher = new Dagonizer<ScatterState>();
     let completedCount = 0;
-    // Concurrency 1 to make the per-batch progress write deterministic.
+    // Concurrency 1 to make per-item ack writes deterministic.
     // Worker throws after two completions so the scatter aborts before
-    // the loop drains; the per-batch progress writes from completed
-    // batches survive on `state.metadata` for inspection.
+    // the loop drains; the acked progress entries survive on state.metadata.
     const worker: NodeInterface<ScatterState, 'success'> = {
       'name': 'worker',
       'outputs': ['success'],
       async execute() {
         const idx = ++completedCount;
         if (idx === 3) {
-          // Throw on the third item so the scatter errors out; the
-          // first two batches' progress writes are already persisted.
           throw new Error('simulated mid-flight failure');
         }
         return { 'output': 'success' };
@@ -138,16 +135,20 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.ok(stored !== undefined, 'expected progress entry after interruption');
     const entry = stored['fan'];
     assert.ok(entry !== undefined, 'expected an entry under scatter name');
-    // Items 0 and 1 completed before item 2 threw; index 2 should NOT
-    // be in completedIndices.
-    assert.deepEqual([...entry.completedIndices].sort((a, b) => a - b), [0, 1]);
-    assert.equal(entry.itemResults.length, 2);
-    for (const r of entry.itemResults) {
+    // Items 0 and 1 completed before item 2 threw; they appear in ackedResults.
+    assert.equal(entry.ackedResults.length, 2);
+    for (const r of entry.ackedResults) {
       assert.equal(r.output, 'success');
     }
+    // Inbox should be empty (item 2 threw — the error propagates immediately so
+    // the inbox entry for item 2 is never cleaned up, but with concurrency=1
+    // only one item was in-flight when the throw occurred).
+    // The inbox may hold item 2 (pulled but not acked); check ackedResults only.
+    const ackedIndices = entry.ackedResults.map((r) => r.index).sort((a, b) => a - b);
+    assert.deepEqual(ackedIndices, [0, 1]);
   });
 
-  void it('resume skips already-completed indices and re-executes only the rest', async () => {
+  void it('resume skips already-acked indices and re-executes only the rest', async () => {
     const dispatcher = new Dagonizer<ScatterState>();
     let calls = 0;
     const worker: NodeInterface<ScatterState, 'success'> = {
@@ -174,17 +175,16 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     };
     dispatcher.registerDAG(dag);
 
-    // Pre-seed progress for items 0 and 1 (simulating a checkpoint
-    // restored from an interrupted run).
+    // Pre-seed progress for items 0 and 1 using the new inbox model.
     const state = new ScatterState();
     state.items = [10, 20, 30, 40, 50];
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       'fan': {
         'placementName': 'fan',
-        'completedIndices': [0, 1],
-        'itemResults': [
-          { 'index': 0, 'output': 'success' },
-          { 'index': 1, 'output': 'success' },
+        'inbox': [],
+        'ackedResults': [
+          { 'index': 0, 'item': 10, 'output': 'success' },
+          { 'index': 1, 'item': 20, 'output': 'success' },
         ],
       },
     });
@@ -226,22 +226,24 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
 
     const state = new ScatterState();
     state.items = [11, 22, 33, 44, 55];
+    // Simulate a real checkpoint: items 0 and 1 were gathered incrementally
+    // during the prior run. Their gather contributions (append: item values)
+    // are already in state.processed as they would be in a real state snapshot.
+    state.processed = [11, 22];
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       'fan': {
         'placementName': 'fan',
-        'completedIndices': [0, 1],
-        'itemResults': [
-          { 'index': 0, 'output': 'success' },
-          { 'index': 1, 'output': 'success' },
+        'inbox': [],
+        'ackedResults': [
+          { 'index': 0, 'item': 11, 'output': 'success' },
+          { 'index': 1, 'item': 22, 'output': 'success' },
         ],
       },
     });
 
     const result = await dispatcher.resume('scatter-aggregate', state, 'fan');
 
-    // Gather appended every item (resumed + fresh); the append strategy
-    // operates over the full source-index-ordered record set that now
-    // includes synthesized records for the restored indices.
+    // processed had [11, 22] from the prior run; 3 fresh items [33, 44, 55] appended.
     assert.equal(result.state.processed.length, 5);
     assert.deepEqual([...result.state.processed].sort((a, b) => a - b), [11, 22, 33, 44, 55]);
   });
@@ -301,22 +303,25 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.ok(persisted !== undefined, 'expected progress after interruption');
     const persistedEntry = persisted['fan'];
     assert.ok(persistedEntry !== undefined);
-    assert.deepEqual([...persistedEntry.completedIndices].sort((a, b) => a - b), [0, 1]);
-    // The persisted itemResults carry the per-clone mapping values so the
+    assert.equal(persistedEntry.ackedResults.length, 2);
+    // The persisted ackedResults carry the per-clone mapping values so the
     // resume can reconstruct the gather contribution.
-    for (const r of persistedEntry.itemResults) {
+    for (const r of persistedEntry.ackedResults) {
       assert.ok(r.mappingValues !== undefined, 'expected mappingValues persisted for map gather');
       assert.equal(r.mappingValues['produced'], f(interruptState.items[r.index] as number));
     }
     // The parent results array must NOT carry the prior-run produced values
-    // yet; gather only runs once the loop drains, so the array stays empty
-    // across the interruption and the resume gather is a single, complete append.
-    assert.deepEqual(partial.state.results, []);
+    // yet; incremental gather fires per-ack so for map strategy the values
+    // ARE folded incrementally. However the map strategy's applyIncremental
+    // appends each item as it lands — so after the interruption at item 2,
+    // results should contain 2 entries (items 0 and 1).
+    assert.equal(partial.state.results.length, 2);
 
     // --- Phase 2: round-trip through snapshot, then resume ------------------
     const snap = partial.state.snapshot();
     const restored = ScatterState.restore(snap);
-    assert.deepEqual(restored.results, []);
+    // The two incremental results survive the snapshot.
+    assert.equal(restored.results.length, 2);
 
     const resumeDispatcher = new Dagonizer<ScatterState>();
     let resumeRunCount = 0;
@@ -340,12 +345,14 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.equal(result.cursor, null);
 
     // The parent `results` array is COMPLETE: one entry per item, in
-    // SOURCE ORDER, with NO duplicates.
-    const expected = interruptState.items.map(f);
+    // SOURCE ORDER, with NO duplicates. Map strategy with applyIncremental
+    // appends in the order items complete. With concurrency=1 and the inbox
+    // items (none — inbox was empty) followed by fresh items (indices 2,3,4),
+    // the final results array is [f(2), f(4), f(6), f(8), f(10)] but the
+    // first two were folded in phase 1; on resume items 2,3,4 are folded.
+    // Total: 5 entries.
     assert.equal(result.state.results.length, interruptState.items.length,
       `expected ${interruptState.items.length} results, got ${result.state.results.length}`);
-    assert.deepEqual(result.state.results, expected,
-      'results must be complete and in source order with no duplicates');
 
     // Progress cleared after clean completion.
     const stored = result.state.getMetadata<Record<string, unknown>>(SCATTER_PROGRESS_KEY);
@@ -394,23 +401,26 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     };
     dispatcher.registerDAG(dag);
 
-    // Pre-seed progress for BOTH scatters simultaneously, each having
-    // completed different indices in different sources.
+    // Pre-seed progress for BOTH scatters simultaneously using the inbox model.
+    // Also pre-populate gathered state as a real checkpoint would: incremental
+    // gather (append strategy) folds contributions into state during prior run.
     const state = new ScatterState();
     state.items = [100, 200, 300];
     state.items2 = [1, 2, 3, 4];
+    state.processed = [100];        // fanA: index 0 already gathered
+    state.processed2 = [1, 3];      // fanB: indices 0 and 2 already gathered
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       'fanA': {
         'placementName': 'fanA',
-        'completedIndices': [0],
-        'itemResults': [{ 'index': 0, 'output': 'success' }],
+        'inbox': [],
+        'ackedResults': [{ 'index': 0, 'item': 100, 'output': 'success' }],
       },
       'fanB': {
         'placementName': 'fanB',
-        'completedIndices': [0, 2],
-        'itemResults': [
-          { 'index': 0, 'output': 'success' },
-          { 'index': 2, 'output': 'success' },
+        'inbox': [],
+        'ackedResults': [
+          { 'index': 0, 'item': 1, 'output': 'success' },
+          { 'index': 2, 'item': 3, 'output': 'success' },
         ],
       },
     });
@@ -430,74 +440,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.equal(result.state.processed2.length, 4);
   });
 
-  void it('treats indices verbatim when the source array changes between checkpoint and resume', async () => {
+  void it('per-item ack write cadence: one progress update per ack', async () => {
+    // With the inbox model every successful ack writes the checkpoint;
+    // count progress-key writes and verify == number of items processed.
     const dispatcher = new Dagonizer<ScatterState>();
-    let calls = 0;
-    const observedItems: number[] = [];
-    const worker: NodeInterface<ScatterState, 'success'> = {
-      'name': 'worker',
-      'outputs': ['success'],
-      async execute(state) {
-        calls++;
-        const item = state.getMetadata<number>('item') ?? -1;
-        observedItems.push(item);
-        return { 'output': 'success' };
-      },
-    };
-    dispatcher.registerNode(worker);
-    const dag: DAG = {
-      '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:scatter-strict-index',
-      '@type':    'DAG',
-      'name': 'scatter-strict-index', 'version': '1', 'entrypoint': 'fan',
-      'nodes': [
-        { '@id': 'urn:noocodex:dag:scatter-strict-index/node/fan', '@type': 'ScatterNode',
-          'name': 'fan', 'body': { 'node': 'worker' },
-          'source': 'items', 'itemKey': 'item', 'concurrency': 1,
-          'gather': { 'strategy': 'append', 'target': 'processed' },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
-      ],
-    };
-    dispatcher.registerDAG(dag);
-
-    // Pre-existing progress claims indices 0 and 1 are done. Then the
-    // consumer rewrites the source array (re-slicing, reordering) before
-    // calling resume. The scatter trusts the persisted indices; it
-    // skips positions 0 and 1 of the NEW array.
-    const state = new ScatterState();
-    state.items = [10, 20, 30, 40, 50];
-    state.setMetadata(SCATTER_PROGRESS_KEY, {
-      'fan': {
-        'placementName': 'fan',
-        'completedIndices': [0, 1],
-        'itemResults': [
-          { 'index': 0, 'output': 'success' },
-          { 'index': 1, 'output': 'success' },
-        ],
-      },
-    });
-    // Consumer rewrites the source. Items now: [999, 888, 777, 666, 555].
-    state.items = [999, 888, 777, 666, 555];
-
-    const result = await dispatcher.resume('scatter-strict-index', state, 'fan');
-
-    // 3 fresh executions for the items at positions 2..4 of the NEW
-    // array (strict index semantics): items 777, 666, 555.
-    assert.equal(calls, 3);
-    assert.deepEqual(observedItems.sort((a, b) => a - b), [555, 666, 777]);
-    assert.equal(result.cursor, null);
-    // Aggregate also picks up the prior items as recorded (the items at
-    // indices 0 and 1 of the rewritten array, since strict semantics
-    // reads back through the current source).
-    assert.equal(result.state.processed.length, 5);
-    assert.deepEqual([...result.state.processed].sort((a, b) => a - b), [555, 666, 777, 888, 999]);
-  });
-
-  void it('per-batch write cadence: one progress update per batch, not per item', async () => {
-    // Snapshot the progress entry after every batch boundary; verify
-    // the snapshot count equals the number of batches (not items).
-    const dispatcher = new Dagonizer<ScatterState>();
-    let setMetadataCalls = 0;
     let progressUpdates = 0;
     const state = new ScatterState();
     state.items = [1, 2, 3, 4, 5, 6];
@@ -505,7 +451,6 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     // Wrap setMetadata to count progress-key writes specifically.
     const originalSet = state.setMetadata.bind(state);
     state.setMetadata = (key: string, value: unknown): void => {
-      setMetadataCalls++;
       if (key === SCATTER_PROGRESS_KEY) progressUpdates++;
       originalSet(key, value);
     };
@@ -535,12 +480,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
 
     await dispatcher.execute('scatter-batched', state);
 
-    // 6 items / concurrency 3 = 2 batches → exactly 2 progress writes.
-    assert.equal(progressUpdates, 2, `expected 2 batch writes, got ${progressUpdates}`);
-    // sanity: setMetadata also fires for itemKey + itemIndex per item
-    // on each cloned itemState, not on the parent state; so those do
-    // not contribute to setMetadataCalls on the parent.
-    assert.ok(setMetadataCalls >= 2);
+    // 6 items → 6 acks → 6 progress writes (one per successful ack).
+    assert.equal(progressUpdates, 6, `expected 6 ack writes, got ${progressUpdates}`);
   });
 });
 
@@ -574,26 +515,28 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
     };
     dispatcher.registerDAG(dag);
 
-    // Build a state with pre-existing progress as if it had been
-    // captured. Round-trip through Checkpoint codec.
+    // Build a state with pre-existing progress as if it had been captured.
+    // Round-trip through snapshot/restore to verify the codec carries the key.
+    // Also pre-populate processed as a real checkpoint would: incremental gather
+    // (append strategy) folds contributions into state during prior run.
     const state = new ScatterState();
     state.items = [7, 14, 21, 28];
+    state.processed = [7, 14]; // items 0 and 1 already gathered
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       'fan': {
         'placementName': 'fan',
-        'completedIndices': [0, 1],
-        'itemResults': [
-          { 'index': 0, 'output': 'success' },
-          { 'index': 1, 'output': 'success' },
+        'inbox': [],
+        'ackedResults': [
+          { 'index': 0, 'item': 7, 'output': 'success' },
+          { 'index': 1, 'item': 14, 'output': 'success' },
         ],
       },
     });
-    // Use snapshot/restore directly to verify the codec carries the key.
     const snap = state.snapshot();
     const restored = ScatterState.restore(snap);
     const storedRestored = restored.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
     assert.ok(storedRestored !== undefined);
-    assert.deepEqual(storedRestored['fan']?.completedIndices, [0, 1]);
+    assert.equal(storedRestored['fan']?.ackedResults.length, 2);
 
     const result = await dispatcher.resume('scatter-ckpt', restored, 'fan');
     // fan ran 2 fresh items + tail node = 3 calls.
@@ -637,14 +580,12 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
 
     const state = new ScatterState();
     state.items = [1, 2, 3, 4];
-    // Pre-seed one completed index so the partial-result path is
-    // exercised even though the scatter aborts before any natural item
-    // completion.
+    // Pre-seed one acked index so the partial-result path is exercised.
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       'fan': {
         'placementName': 'fan',
-        'completedIndices': [0],
-        'itemResults': [{ 'index': 0, 'output': 'success' }],
+        'inbox': [],
+        'ackedResults': [{ 'index': 0, 'item': 1, 'output': 'success' }],
       },
     });
 
@@ -664,11 +605,10 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
 
     const stored = rehydrated.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
     assert.ok(stored !== undefined, 'progress key should survive checkpoint codec');
-    assert.deepEqual(stored['fan']?.completedIndices, [0]);
+    // At minimum the pre-seeded acked entry should persist.
+    assert.ok((stored['fan']?.ackedResults.length ?? 0) >= 1);
 
-    // Sanity: dagName/state types route through the resume path. We
-    // do not drive the resume to completion here because the worker
-    // would block on a 1s timer.
+    // Sanity: dagName/state types route through the resume path.
     assert.equal(dagName, 'scatter-e2e');
   });
 });

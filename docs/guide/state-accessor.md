@@ -39,13 +39,9 @@ Implementations are stateless. The same instance is shared across every scatter 
 
 `DottedPathAccessor` ships in `@noocodex/dagonizer/runtime`:
 
-```ts
-import { DottedPathAccessor } from '@noocodex/dagonizer/runtime';
+<<< @/../examples/dags/state-accessor.ts#dotted-get
 
-const accessor = new DottedPathAccessor();
-accessor.get({ a: { b: 1 } }, 'a.b');  // 1
-accessor.set({}, 'a.b.c', 'value');    // mutates in place to { a: { b: { c: 'value' } } }
-```
+<<< @/../examples/dags/state-accessor.ts#dotted-set
 
 Nested writes auto-vivify intermediate objects. Reads through a missing or non-object segment return `undefined`.
 
@@ -53,20 +49,9 @@ Nested writes auto-vivify intermediate objects. Reads through a missing or non-o
 
 Pass it via the dispatcher constructor:
 
-```ts
-import { Dagonizer } from '@noocodex/dagonizer';
+<<< @/../examples/dags/state-accessor.ts#custom-accessor
 
-class JsonPointerAccessor implements StateAccessor {
-  get(state: object, path: string): unknown {
-    // walk path as an RFC 6901 JSON Pointer
-  }
-  set(state: object, path: string, value: unknown): void {
-    // write at the JSON Pointer location
-  }
-}
-
-const dispatcher = new Dagonizer<MyState>({ accessor: new JsonPointerAccessor() });
-```
+<<< @/../examples/dags/state-accessor.ts#wire-accessor
 
 The same accessor flows through every code path that resolves a state path:
 
@@ -82,6 +67,8 @@ The same accessor flows through every code path that resolves a state path:
 Custom `GatherStrategy` subclasses receive the dispatcher's accessor on the execution context:
 
 ```ts
+import { GatherStrategy } from '@noocodex/dagonizer';
+
 class AverageGather extends GatherStrategy {
   readonly name = 'average';
   async apply<TState extends NodeStateInterface>(

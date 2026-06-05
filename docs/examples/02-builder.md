@@ -17,25 +17,21 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
-import type { ElementDefinition } from 'cytoscape';
 import { archivistDAG } from '@archivist/dag.ts';
 import { BookSearchScatterDAG } from '@archivist/embedded-dags/BookSearchScatterDAG.ts';
 import { ComposeRetryLoopDAG } from '@archivist/embedded-dags/ComposeRetryLoopDAG.ts';
 
-const elements = CytoscapeRenderer.render(archivistDAG, {
-  embeddedDAGs: new Map([
-    ['book-search-scatter', BookSearchScatterDAG],
-    ['compose-retry-loop', ComposeRetryLoopDAG],
-  ]),
-}) as ElementDefinition[];
+const archivistRegistry = new Map([
+  ['book-search-scatter', BookSearchScatterDAG],
+  ['compose-retry-loop', ComposeRetryLoopDAG],
+]);
 </script>
 
 # Phase 02: DAGBuilder
 
 The same [Archivist](./the-archivist) DAG, authored with the chainable `DAGBuilder` API. The builder is a thin layer over plain-object DAG configs; `.build()` returns the exact same `DAG` data structure the dispatcher consumes. The win is compile-time exhaustiveness: each `.node(name, nodeImpl, routes)` call narrows `routes` to the node's `TOutput` union, so TypeScript flags any missing or stray output mapping before the code ships.
 
-<DagGraph :elements="elements" aria-label="The Archivist DAG authored via DAGBuilder, with sub-DAGs expanded." />
+<DagGraph :dag="archivistDAG" :embedded-d-a-gs="archivistRegistry" :expand-all="true" aria-label="The Archivist DAG authored via DAGBuilder, with sub-DAGs expanded." />
 
 ## Code
 
@@ -49,7 +45,7 @@ The complete `archivistDAG`, the parent DAG as a single `DAGBuilder` chain. The 
 - **Compile-time route exhaustiveness.** The `routes` argument is typed as `Record<TOutput, null | string>`. TypeScript catches missing outputs (forgot `'error'`) and stray outputs (typo in output name) at compile time.
 - **Auto-entrypoint.** The first `.node()` call (`'recall-context'`) sets the DAG entrypoint automatically. Override with `.entrypoint(name)` if needed.
 - **Embedded-DAG placements via `.embeddedDAG()`.** `on-topic-search`, `author-search`, `similar-search`, and `compose-loop` are `EmbeddedDAGNode` placements. Each references a registered sub-DAG by name and declares its `stateMapping.outputs`.
-- **Parallel nodes via `.parallel()`.** `reviews-parallel` and `describe-parallel` run four scouts concurrently per branch (inlined because they use `rankByRating` or `pickBestMatch` instead of the standard `rankCandidates`).
+- **Parallel nodes via `.parallel()`.** `reviews-scatter` and `describe-scatter` run four scouts concurrently per branch (inlined because they use `rankByRating` or `pickBestMatch` instead of the standard `rankCandidates`).
 - **Same output as a literal `DAG`.** `.build()` returns the identical wire shape `Dagonizer.load()` expects. The builder is a convenience layer, not a separate runtime.
 
 See this in action in the [Archivist live demo](./the-archivist).

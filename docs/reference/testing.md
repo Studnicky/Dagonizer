@@ -60,26 +60,7 @@ Set the virtual clock to an absolute nanosecond value.
 ### Usage
 
 ```ts
-import { VirtualClockProvider } from '@noocodex/dagonizer/testing';
-import { Clock } from '@noocodex/dagonizer/runtime';
-import { after, before, describe, it } from 'node:test';
-
-describe('lifecycle timestamps', () => {
-  const clock = new VirtualClockProvider(0n);
-
-  before(() => Clock.configure(clock));
-  after(() => Clock.reset());
-
-  it('records duration correctly', async () => {
-    const state = new MyState();
-    state.markRunning();
-    clock.tickMs(100);
-    state.markCompleted();
-    const lc = state.lifecycle;
-    assert.strictEqual(lc.kind, 'completed');
-    assert.strictEqual(lc.finishedAt - lc.startedAt, 100);
-  });
-});
+<<< @/../examples/dags/virtual-clock.ts#virtual-time
 ```
 
 ---
@@ -144,49 +125,7 @@ Number of active (non-cancelled) pending tasks.
 ### Usage with `RetryPolicy`
 
 ```ts
-import { VirtualScheduler } from '@noocodex/dagonizer/testing';
-import { VirtualClockProvider } from '@noocodex/dagonizer/testing';
-import { Scheduler, Clock, RetryPolicy, BackoffStrategy } from '@noocodex/dagonizer/runtime';
-import { describe, it, before, after } from 'node:test';
-import assert from 'node:assert/strict';
-
-describe('RetryPolicy', () => {
-  const clock = new VirtualClockProvider(0n);
-  const scheduler = new VirtualScheduler(0);
-
-  before(() => {
-    Clock.configure(clock);
-    Scheduler.configure(scheduler);
-  });
-  after(() => {
-    Clock.reset();
-    Scheduler.reset();
-  });
-
-  it('retries with exponential backoff', async () => {
-    let attempts = 0;
-    const policy = new RetryPolicy({
-      maxAttempts: 3,
-      strategy: BackoffStrategy.EXPONENTIAL,
-      baseDelay: 1000,
-      jitterFactor: 0,
-    });
-
-    const promise = policy.run(async () => {
-      attempts++;
-      if (attempts < 3) throw new Error('transient');
-      return 'ok';
-    });
-
-    // Step through retry delays
-    scheduler.advance(1000); // attempt 1 → sleep 1000ms
-    scheduler.advance(2000); // attempt 2 → sleep 2000ms
-
-    const result = await promise;
-    assert.strictEqual(result, 'ok');
-    assert.strictEqual(attempts, 3);
-  });
-});
+<<< @/../examples/dags/virtual-clock.ts#virtual-time
 ```
 
 ### `SchedulerProvider` interface

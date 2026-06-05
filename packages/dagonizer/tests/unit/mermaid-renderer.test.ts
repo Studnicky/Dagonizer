@@ -100,6 +100,72 @@ void describe('MermaidRenderer.render', () => {
   });
 });
 
+void describe('MermaidRenderer.render: PhaseNode', () => {
+  void it('renders a pre-phase PhaseNode as a stadium shape and emits no outgoing edges', () => {
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:ph',
+      '@type':    'DAG',
+      'name':       'ph',
+      'version':    '1',
+      'entrypoint': 'step',
+      'nodes': [
+        {
+          '@id':    'urn:noocodex:dag:ph/node/step',
+          '@type':  'SingleNode',
+          'name':   'step',
+          'node':   'step',
+          'outputs': { 'success': null },
+        },
+        {
+          '@id':   'urn:noocodex:dag:ph/node/setup',
+          '@type': 'PhaseNode',
+          'name':  'setup',
+          'node':  'setup-worker',
+          'phase': 'pre',
+        },
+      ],
+    };
+    const out = MermaidRenderer.render(dag);
+    // stadium shape: name([label (phase)])
+    assert.match(out, /setup\(\[setup \(pre\)\]\)/u);
+    // PhaseNode emits no outgoing edges
+    const edgeLines = out.split('\n').filter((line) => line.includes('-->') && line.includes('setup'));
+    assert.equal(edgeLines.length, 0);
+    // does not crash; returns valid flowchart
+    assert.match(out, /flowchart LR/u);
+  });
+
+  void it('renders a post-phase PhaseNode with phase suffix in label', () => {
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:ph2',
+      '@type':    'DAG',
+      'name':       'ph2',
+      'version':    '1',
+      'entrypoint': 'step',
+      'nodes': [
+        {
+          '@id':    'urn:noocodex:dag:ph2/node/step',
+          '@type':  'SingleNode',
+          'name':   'step',
+          'node':   'step',
+          'outputs': { 'success': null },
+        },
+        {
+          '@id':   'urn:noocodex:dag:ph2/node/teardown',
+          '@type': 'PhaseNode',
+          'name':  'teardown',
+          'node':  'teardown-worker',
+          'phase': 'post',
+        },
+      ],
+    };
+    const out = MermaidRenderer.render(dag);
+    assert.match(out, /teardown\(\[teardown \(post\)\]\)/u);
+  });
+});
+
 void describe('MermaidRenderer.render: TerminalNode', () => {
   void it('renders a completed TerminalNode as a double-circle with outcome suffix', () => {
     const terminal: TerminalNodePlacementInterface = {

@@ -13,6 +13,7 @@
  */
 
 const PING_URL = 'http://127.0.0.1:11434/api/version';
+const TAGS_URL = 'http://127.0.0.1:11434/api/tags';
 const TIMEOUT_MS = 600;
 
 export async function detectOllama(): Promise<boolean> {
@@ -24,6 +25,33 @@ export async function detectOllama(): Promise<boolean> {
     return res.ok;
   } catch {
     return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * List the models the local Ollama daemon has pulled, via `GET /api/tags`.
+ *
+ * Returns the model names (e.g. `['llama3.2:3b', 'nomic-embed-text:latest']`)
+ * or an empty array on any failure (daemon down, CORS, timeout). Never throws.
+ * The picker uses this to select an installed chat model instead of assuming a
+ * fixed default that the host may not have pulled.
+ */
+export async function listOllamaModels(): Promise<readonly string[]> {
+  if (typeof fetch === 'undefined') return [];
+  const controller = new AbortController();
+  const timer = setTimeout(() => { controller.abort(); }, TIMEOUT_MS);
+  try {
+    const res = await fetch(TAGS_URL, { 'method': 'GET', 'signal': controller.signal });
+    if (!res.ok) return [];
+    const data = await res.json() as { models?: ReadonlyArray<{ name?: string }> };
+    const models = data.models ?? [];
+    return models
+      .map((entry) => entry.name)
+      .filter((name): name is string => typeof name === 'string' && name.length > 0);
+  } catch {
+    return [];
   } finally {
     clearTimeout(timer);
   }

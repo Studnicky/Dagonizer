@@ -17,7 +17,7 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 /** Current wire-format version for `CheckpointData`. Increment when the schema changes incompatibly. */
-export const CHECKPOINT_DATA_VERSION = '1' as const;
+export const CHECKPOINT_DATA_VERSION = '2' as const;
 
 export const CheckpointDataSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/CheckpointData',
@@ -25,7 +25,7 @@ export const CheckpointDataSchema = {
   'type': 'object',
   'required': ['version', 'dagName', 'cursor', 'state', 'executedNodes', 'skippedNodes', 'stores'],
   'properties': {
-    'version': { 'type': 'string', 'const': '1' },
+    'version': { 'type': 'string', 'const': '2' },
     'dagName': { 'type': 'string', 'minLength': 1 },
     'cursor': { 'type': ['string', 'null'] },
     'state': { 'type': 'object' },

@@ -14,18 +14,14 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
-import type { ElementDefinition } from 'cytoscape';
 import { archivistDAG } from '@archivist/dag.ts';
 import { BookSearchScatterDAG } from '@archivist/embedded-dags/BookSearchScatterDAG.ts';
 import { ComposeRetryLoopDAG } from '@archivist/embedded-dags/ComposeRetryLoopDAG.ts';
 
-const elements = CytoscapeRenderer.render(archivistDAG, {
-  embeddedDAGs: new Map([
-    ['book-search-scatter', BookSearchScatterDAG],
-    ['compose-retry-loop', ComposeRetryLoopDAG],
-  ]),
-}) as ElementDefinition[];
+const archivistRegistry = new Map([
+  ['book-search-scatter', BookSearchScatterDAG],
+  ['compose-retry-loop', ComposeRetryLoopDAG],
+]);
 </script>
 
 # Phase 05: EmbeddedDAGNode composition
@@ -35,9 +31,9 @@ const elements = CytoscapeRenderer.render(archivistDAG, {
 - **`book-search-scatter`**: the full 4-source scout cluster (extract query, decide tools, 4 parallel scouts, rank, merge, record, gate, recall). Placed three times in the parent: `on-topic-search`, `author-search`, and `similar-search`.
 - **`compose-retry-loop`**: the compose, validate, retry, respond terminal. Placed once as `compose-loop`; every successful search branch converges on it.
 
-Each embedded-DAG placement uses `stateMapping.inputs` to seed child fields from parent paths before the body runs and `stateMapping.outputs` to copy produced child fields back into the parent after the body completes.
+Each embedded-DAG placement uses the wire field `stateMapping.input` to seed child fields from parent paths before the body runs and `stateMapping.output` to copy produced child fields back into the parent after the body completes. (The builder option object spells these `inputs` / `outputs`; the serialized JSON-LD wire form is singular.)
 
-<DagGraph :elements="elements" aria-label="The Archivist parent DAG with both sub-DAGs expanded inline." />
+<DagGraph :dag="archivistDAG" :embedded-d-a-gs="archivistRegistry" :expand-all="true" aria-label="The Archivist parent DAG with both sub-DAGs expanded inline." />
 
 ## Sub-DAG: the packaged scout cluster
 
@@ -71,8 +67,8 @@ See [Phase 09: Terminal placements](./09-terminals) for the full pattern with ru
 ## What it demonstrates
 
 - **`.embeddedDAG(name, dagName, routes, options)`.** The placement references the sub-DAG by its registered name. The parent and child run in the same dispatcher; the child shares the same node registry.
-- **`stateMapping.inputs`.** Before the body runs, the dispatcher copies the listed parent fields into the child. The child receives the seed; the body then reads from the child.
-- **`stateMapping.outputs`.** After the body completes, the dispatcher copies the listed child fields back into the parent. Fields not listed stay isolated.
+- **`stateMapping.input` (wire) / `inputs` (builder option).** Before the body runs, the dispatcher copies the listed parent fields into the child. The child receives the seed; the body then reads from the child.
+- **`stateMapping.output` (wire) / `outputs` (builder option).** After the body completes, the dispatcher copies the listed child fields back into the parent. Fields not listed stay isolated.
 - **One definition, three placements.** `book-search-scatter` is registered once and placed three times with distinct placement names. Each placement routes its `'success'` and `'error'` outputs differently (`compose-loop`, `group-by-year`, or `compose-empty`).
 - **Errors bubble up.** Anything the child accumulates via `state.collectError` reaches the parent's error accumulator automatically. The child's terminal outcome determines the `'error'` output.
 - **`bookSearchScatterBundle` and `composeRetryLoopBundle`.** Each sub-DAG module exports a `DispatcherBundle` packaging its nodes plus its DAG. `dispatcher.registerBundle(bundle)` installs the nodes before the DAG; register both embedded-DAG bundles before the parent `archivistBundle`.

@@ -83,6 +83,7 @@ import { groupByYear }          from './nodes/groupByYear.ts';
 import { hasCitationsGate }     from './nodes/hasCitationsGate.ts';
 import { mergeCandidates }      from './nodes/mergeCandidates.ts';
 import { pickBestMatch }        from './nodes/pickBestMatch.ts';
+import { preRunSetup }          from './nodes/preRunSetup.ts';
 import { rankByRating }         from './nodes/rankByRating.ts';
 import { recallContext }        from './nodes/recallContext.ts';
 import { recallMemories }       from './nodes/recallMemories.ts';
@@ -99,6 +100,12 @@ import type { ArchivistServices } from './services.ts';
 import type { ArchivistState } from './ArchivistState.ts';
 
 export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
+
+  // ── pre-phase: setup ─────────────────────────────────────────────────────
+  // Stamps state.runId and clears any stale draft before the main loop starts.
+  // PhaseNode placement: runs before the entrypoint node; errors abort the run.
+  // No routing: phase placements are out-of-band and never set the entrypoint.
+  .phase('setup', 'pre', preRunSetup)
 
   // ── 0. recall-context ────────────────────────────────────────────────────
   // First added → auto-entrypoint. Runs before classifyIntent so the
@@ -315,6 +322,7 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
 
   .build();
 
+// #region dispatcher-bundle
 /**
  * Bundle of the parent-level nodes plus the `the-archivist` DAG itself.
  * Register AFTER the embedded-DAG bundles so the validator can resolve the
@@ -322,6 +330,7 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
  */
 export const archivistBundle: DispatcherBundle<ArchivistState, ArchivistServices> = {
   'nodes': [
+    preRunSetup,
     recallContext, classifyIntent, extractQuery, decideTools,
     openLibraryScout, googleBooksScout, subjectScout, wikipediaScout,
     rankByRating, pickBestMatch, mergeCandidates, recordFindings,
@@ -333,3 +342,4 @@ export const archivistBundle: DispatcherBundle<ArchivistState, ArchivistServices
   ],
   'dags': [archivistDAG],
 };
+// #endregion dispatcher-bundle

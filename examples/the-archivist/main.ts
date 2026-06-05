@@ -24,9 +24,12 @@ import { archivistBundle } from './dag.ts';
 import { UserLanguage } from './language/UserLanguage.ts';
 import { bookSearchScatterBundle } from './embedded-dags/BookSearchScatterDAG.ts';
 import { composeRetryLoopBundle } from './embedded-dags/ComposeRetryLoopDAG.ts';
+import { ArchivistInstrumentation } from './instrumentation/ArchivistInstrumentation.ts';
 import { ConsoleLogger, type LogEvent } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
+import { ObservedArchivist } from './ObservedArchivist.ts';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
+import { listOllamaModels, pickOllamaChatModel } from './providers/index.ts';
 import type { ArchivistServices, LlmClient } from './services.ts';
 
 import { GeminiApiAdapter }   from '@noocodex/dagonizer-adapter-gemini-api';
@@ -34,7 +37,7 @@ import { GeminiNanoAdapter }  from '@noocodex/dagonizer-adapter-gemini-nano';
 import { OllamaApiAdapter }   from '@noocodex/dagonizer-adapter-ollama';
 import { WebLlmAdapter }      from '@noocodex/dagonizer-adapter-web-llm';
 
-import { Dagonizer, LlmAdapterCascade, LlmAdapterRegistry } from '@noocodex/dagonizer';
+import { LlmAdapterCascade, LlmAdapterRegistry } from '@noocodex/dagonizer';
 import type { AdapterCapabilities } from '@noocodex/dagonizer/adapter';
 
 import { GoogleBooksTool }       from '@noocodex/dagonizer-tool-googlebooks';
@@ -104,17 +107,23 @@ registry.register(
 );
 
 // Ollama: only useful when the daemon is running locally with CORS
-// allowed (see the file-level comment). Probe fails closed otherwise.
-registry.register(
-  { 'provider': 'ollama', 'model': 'llama3.2:latest', 'capabilities': CAPS_PARTIAL_TOOLS },
-  () => new OllamaApiAdapter({ 'baseUrl': 'http://127.0.0.1:11434', 'model': 'llama3.2:latest' }),
-);
+// allowed (see the file-level comment). The model is resolved from the
+// daemon's installed list (GET /api/tags) so it always names a model the
+// host has actually pulled; ollama is skipped entirely when no chat model
+// is installed, so the cascade never falls into a "model not found" loop.
+const ollamaModel = pickOllamaChatModel(await listOllamaModels());
+if (ollamaModel !== null) {
+  registry.register(
+    { 'provider': 'ollama', 'model': ollamaModel, 'capabilities': CAPS_PARTIAL_TOOLS },
+    () => new OllamaApiAdapter({ 'baseUrl': 'http://127.0.0.1:11434', 'model': ollamaModel }),
+  );
+}
 
 const cascade = new LlmAdapterCascade(registry, [
   { 'provider': 'gemini-nano', 'model': 'on-device' },
   { 'provider': 'web-llm',     'model': 'Phi-3.5-mini-instruct-q4f16_1-MLC' },
   { 'provider': 'gemini-api',  'model': 'gemini-2.0-flash' },
-  { 'provider': 'ollama',      'model': 'llama3.2:latest' },
+  ...(ollamaModel !== null ? [{ 'provider': 'ollama', 'model': ollamaModel }] : []),
 ]);
 
 let llm: LlmClient;
@@ -153,7 +162,12 @@ const services: ArchivistServices = {
   'logger':           logger,
 };
 
-const dispatcher = new Dagonizer<ArchivistState, ArchivistServices>({ services });
+// ObservedArchivist: a Dagonizer subclass that wires every lifecycle hook to
+// the logger. ArchivistInstrumentation adds the composable telemetry surface.
+const dispatcher = new ObservedArchivist(
+  { services, 'instrumentation': new ArchivistInstrumentation(logger) },
+  logger,
+);
 // #endregion wire-services
 
 // #region register-bundle

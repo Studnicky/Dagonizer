@@ -27,11 +27,7 @@ nextSteps:
 ---
 
 <script setup lang="ts">
-import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
-import type { ElementDefinition } from 'cytoscape';
 import { dag as builderDag } from '../../examples/dags/02-builder.topology.ts';
-
-const elements = CytoscapeRenderer.render(builderDag) as ElementDefinition[];
 </script>
 
 # DAGBuilder
@@ -56,7 +52,7 @@ The first `.node()` call sets the entrypoint automatically. Call `.entrypoint('n
 
 The built DAG visualised:
 
-<DagGraph :elements="elements" aria-label="A two-node DAGBuilder example: classify routes to respond on either topic; respond terminates." />
+<DagGraph :dag="builderDag" aria-label="A two-node DAGBuilder example: classify routes to respond on either topic; respond terminates." />
 
 ## Type-safe output routing
 
@@ -208,9 +204,9 @@ The full signature:
 scatter<TState extends NodeStateInterface, TOutput extends string, TServices = undefined>(
   name:    string,
   source:  string,
-  body:    NodeInterface<TState, TOutput, TServices>,
+  body:    NodeInterface<TState, TOutput, TServices> | { readonly dag: string },
   outputs: Record<string, null | string>,
-  options?: ScatterOptionsInterface<TState>,
+  options: ScatterOptionsInterface<TState> = {},
 ): this
 ```
 
