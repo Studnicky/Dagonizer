@@ -76,18 +76,38 @@ DAGDeriver is for agentic flows where reaching the final state matters more than
 The mental model: *these operations declare what they need and what they produce; the system figures out the order.* Adding a new operation is a one-line registration; the data graph (`produces` paired with `hardRequired`) derives the edges.
 
 ```ts
+const classifyIntent = {
+  name: 'classify-intent',
+  outputs: ['lookup', 'similar', 'off-topic'] as const,
+  contract: { hardRequired: ['query'] as const, produces: ['intent'] as const },
+  async execute(state) { return { output: 'lookup' as const }; },
+};
+const fetchCandidates = {
+  name: 'fetch-candidates',
+  outputs: ['success', 'empty'] as const,
+  contract: { hardRequired: ['intent'] as const, produces: ['candidates'] as const },
+  async execute(state) { return { output: 'success' as const }; },
+};
+const rank = {
+  name: 'rank',
+  outputs: ['success'] as const,
+  contract: { hardRequired: ['candidates'] as const, produces: ['shortlist'] as const },
+  async execute(state) { return { output: 'success' as const }; },
+};
+const compose = {
+  name: 'compose',
+  outputs: ['success', 'retry'] as const,
+  contract: { hardRequired: ['shortlist'] as const, produces: ['response'] as const },
+  async execute(state) { return { output: 'success' as const }; },
+};
+
 const dag = DAGDeriver.derive({
   name:       'research-agent',
   version:    '1',
   entrypoint: 'classify-intent',
-  contracts: [
-    { name: 'classify-intent',  hardRequired: ['query'],      produces: ['intent'],     outputs: ['lookup', 'similar', 'off-topic'] },
-    { name: 'fetch-candidates', hardRequired: ['intent'],     produces: ['candidates'], outputs: ['success', 'empty'] },
-    { name: 'rank',             hardRequired: ['candidates'], produces: ['shortlist'],  outputs: ['success'] },
-    { name: 'compose',          hardRequired: ['shortlist'],  produces: ['response'],   outputs: ['success', 'retry'] },
-  ],
+  nodes: [classifyIntent, fetchCandidates, rank, compose],
   annotations: {
-    terminals: { 'classify-intent': [{ outcome: 'off-topic', target: null }] },
+    terminals: { 'classify-intent': [{ outcome: 'off-topic', target: 'compose' }] },
   },
 });
 ```

@@ -44,6 +44,7 @@ import {
   WebLlmAdapter,
   detectGeminiNano,
   detectOllama,
+  listOllamaModels,
   detectWebGpu,
   type GeminiNanoAvailability,
   type WebLlmInitReport,
@@ -106,11 +107,24 @@ export interface BackendAvailability {
   readonly needsAction: 'download' | 'api-key' | null;
   /** Free-text hint for the UI (download size, error reason, etc.). */
   readonly hint?: string;
+  /**
+   * For the `ollama` backend: the installed chat model the picker resolved
+   * (e.g. `'llama3.2:3b'`), or `undefined` when the daemon is down or no chat
+   * model is installed. The runner instantiates the adapter with this model so
+   * it always names a model the host has actually pulled.
+   */
+  readonly resolvedModel?: string;
 }
 
 export interface DetectionInputs {
   /** Per-provider API keys. Cloud adapters are runnable when their key is present. */
   readonly apiKeys?: Partial<Record<ProviderId, string>>;
+  /**
+   * The visitor's explicitly-chosen Ollama model, if any. When this names a
+   * model the daemon has installed it is preferred; otherwise the picker
+   * auto-selects the first installed chat model.
+   */
+  readonly preferredOllamaModel?: string;
 }
 
 /** Load the per-provider API key map from localStorage. */
@@ -142,12 +156,36 @@ export function saveApiKeys(keys: Partial<Record<ProviderId, string>>): void {
 }
 
 const OLLAMA_MODEL_KEY = 'dagonizer-ollama-model';
-const DEFAULT_OLLAMA_MODEL = 'llama3.2:latest';
 
-/** Load the user's chosen Ollama model name from localStorage. */
+/**
+ * Substrings that mark an Ollama model as embedding-only, so the chat-model
+ * picker skips them (an embedder cannot answer a chat prompt).
+ */
+const OLLAMA_EMBED_MARKERS: readonly string[] = ['embed', 'bge', 'minilm', 'gte-'];
+
+/**
+ * Load the visitor's explicitly-chosen Ollama model from localStorage, or the
+ * empty string when they have not chosen one. Empty means "auto": the picker
+ * resolves an installed chat model from the daemon's tag list.
+ */
 export function loadOllamaModel(): string {
-  if (typeof localStorage === 'undefined') return DEFAULT_OLLAMA_MODEL;
-  return localStorage.getItem(OLLAMA_MODEL_KEY) ?? DEFAULT_OLLAMA_MODEL;
+  if (typeof localStorage === 'undefined') return '';
+  return localStorage.getItem(OLLAMA_MODEL_KEY) ?? '';
+}
+
+/**
+ * Choose an installed Ollama chat model. Prefers `preferred` when the daemon
+ * has it pulled; otherwise returns the first installed model that is not an
+ * embedding-only model. Returns `null` when no chat model is installed.
+ */
+export function pickOllamaChatModel(installed: readonly string[], preferred?: string): string | null {
+  if (preferred !== undefined && preferred.length > 0 && installed.includes(preferred)) {
+    return preferred;
+  }
+  const chat = installed.filter(
+    (name) => !OLLAMA_EMBED_MARKERS.some((marker) => name.toLowerCase().includes(marker)),
+  );
+  return chat[0] ?? null;
 }
 
 /** Persist the Ollama model name. */
@@ -239,14 +277,24 @@ export async function detectBackends(inputs: DetectionInputs = {}): Promise<read
   // daemon is up and CORS-permissive, the version endpoint replies in <50 ms.
   // No API key required. Model is whatever the user has pulled.
   const ollamaUp = await detectOllama();
+  const ollamaModel = ollamaUp
+    ? pickOllamaChatModel(await listOllamaModels(), inputs.preferredOllamaModel)
+    : null;
   out.push({
     'id': 'ollama',
-    'displayName': 'Ollama (local daemon)',
-    'runnable': ollamaUp,
+    'displayName': ollamaModel !== null
+      ? `Ollama (local · ${ollamaModel})`
+      : 'Ollama (local daemon)',
+    // Runnable only when a chat model is actually installed; otherwise every
+    // node would fail with "model not installed" and salvage to canned output.
+    'runnable': ollamaUp && ollamaModel !== null,
     'needsAction': null,
-    'hint': ollamaUp
-      ? 'Local daemon detected. Override model + baseUrl via the adapter constructor.'
-      : 'Start the Ollama daemon at 127.0.0.1:11434 and ensure CORS allows the docs origin (OLLAMA_ORIGINS).',
+    ...(ollamaModel !== null ? { 'resolvedModel': ollamaModel } : {}),
+    'hint': !ollamaUp
+      ? 'Start the Ollama daemon at 127.0.0.1:11434 and ensure CORS allows the docs origin (OLLAMA_ORIGINS).'
+      : ollamaModel === null
+        ? 'Daemon detected but no chat model is installed. Run e.g. `ollama pull llama3.2:3b`.'
+        : `Local daemon detected; using installed model "${ollamaModel}".`,
   });
 
   // Stub is always emitted last. The picker uses browserVisibleBackends
@@ -324,7 +372,11 @@ export interface InstantiateInputs {
   readonly apiKeys?: Partial<Record<ProviderId, string>>;
   readonly webLlmModel?: string;
   readonly onWebLlmProgress?: (report: WebLlmInitReport) => void;
-  /** Override the Ollama model the consumer has pulled (e.g. 'llama3.2:latest'). */
+  /**
+   * Ollama chat model to use. Defaults to the installed model the detector
+   * resolved from the daemon's tag list (e.g. 'llama3.2:3b'); pass a value to
+   * override with a specific model the host has pulled.
+   */
   readonly ollamaModel?: string;
   /** Passed to StubAdapter so canned responses cite real seed-library titles. */
   readonly memoryStore?: MemoryStore;
@@ -378,9 +430,12 @@ export function instantiateProvider(id: ProviderId, inputs: InstantiateInputs = 
     }
     case 'ollama': {
       // No API key required. Ollama's loopback daemon accepts a
-      // placeholder Bearer header. Pass the model the user has pulled.
+      // placeholder Bearer header. Pass the installed model the picker
+      // resolved; an empty string means "no explicit model" and is treated
+      // as absent so the adapter never sends a blank model name.
+      const model = inputs.ollamaModel;
       return new BaseLlmClient(new OllamaApiAdapter(
-        inputs.ollamaModel !== undefined ? { 'model': inputs.ollamaModel } : {},
+        typeof model === 'string' && model.length > 0 ? { 'model': model } : {},
       ));
     }
     case 'stub': {
@@ -409,6 +464,7 @@ export {
   WebLlmAdapter,
   detectGeminiNano,
   detectOllama,
+  listOllamaModels,
   detectWebGpu,
 } from './adapters/index.ts';
 export { MobileDetection } from './MobileDetection.ts';

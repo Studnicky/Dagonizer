@@ -1,8 +1,9 @@
 import { fileURLToPath, URL }                from 'node:url';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve }                               from 'node:path';
-import { defineConfig }                          from 'vitepress';
+import { defineConfig, type HeadConfig }          from 'vitepress';
 import { withMermaid }                           from 'vitepress-plugin-mermaid';
+import type { MermaidConfig }                    from 'mermaid';
 
 import pkg from '../../package.json' with { type: 'json' };
 
@@ -46,9 +47,10 @@ const VERIFY_BING         = seo.bingSiteVerification;
 const SITE_TWITTER_HANDLE = seo.twitterHandle;
 
 // Repo paths the in-browser ArchivistRunner Vue component imports from.
-const REPO_ROOT  = fileURLToPath(new URL('../..', import.meta.url));
-const ARCHIVIST  = fileURLToPath(new URL('../../examples/the-archivist', import.meta.url));
-const VIZ_SRC    = fileURLToPath(new URL('../../src/viz', import.meta.url));
+const REPO_ROOT     = fileURLToPath(new URL('../..', import.meta.url));
+const ARCHIVIST     = fileURLToPath(new URL('../../examples/the-archivist', import.meta.url));
+const CARTOGRAPHER  = fileURLToPath(new URL('../../examples/the-cartographer', import.meta.url));
+const VIZ_SRC       = fileURLToPath(new URL('../../src/viz', import.meta.url));
 
 const sidebar = [
   {
@@ -64,6 +66,7 @@ const sidebar = [
     collapsed: false,
     items: [
       { text: 'The Archivist (in-browser demo)',    link: '/examples/the-archivist' },
+      { text: 'The Cartographer (in-browser demo)', link: '/examples/the-cartographer' },
       { text: 'Phase 01: Linear intake',            link: '/examples/01-linear' },
       { text: 'Phase 02: DAGBuilder',               link: '/examples/02-builder' },
       { text: 'Phase 03: Tool schemas',             link: '/examples/03-schema' },
@@ -142,7 +145,7 @@ const sidebar = [
 // Site identity: single source of truth for SEO, OG, JSON-LD.
 const SITE_TITLE = 'Dagonizer';
 const SITE_TAGLINE = 'TypeScript framework for orchestrating work as a DAG of typed nodes with a state machine lifecycle';
-const SITE_DESCRIPTION = 'Dagonizer orchestrates work as a directed acyclic graph of typed TypeScript nodes. Features: type-safe routing, abortable execution, deterministic resume, embedded-DAG composition, retry policies, JSON-LD wire format, FSM lifecycle, pluggable visualization. No external runtime.';
+const SITE_DESCRIPTION = 'Dagonizer is one type-safe DAG engine for both LLM-agent orchestration and data-pipeline / ETL workflows. Features: streaming backpressure, type-safe routing, abortable execution, deterministic resume, embedded-DAG composition, retry policies, JSON-LD wire format, FSM lifecycle, pluggable visualization. No external runtime. Runs in the browser.';
 const SITE_DESCRIPTION_SHORT = 'TypeScript DAG orchestration framework. Type-safe nodes, abortable execution, deterministic resume, embedded-DAG composition, FSM lifecycle, no external runtime.';
 const SITE_BASE = '/Dagonizer/';
 const SITE_URL = `https://studnicky.github.io${SITE_BASE}`;
@@ -239,8 +242,8 @@ export default withMermaid(defineConfig({
     /* Search-console verification meta tags. Empty content suppresses
        the tag at build time. Add values to package.json `dagonizer.seo.*`
        to enable. We don't ship orphan tags pointing at unowned properties. */
-    ...(VERIFY_GOOGLE !== '' ? [['meta', { 'name': 'google-site-verification', 'content': VERIFY_GOOGLE }] as const] : []),
-    ...(VERIFY_BING   !== '' ? [['meta', { 'name': 'msvalidate.01',            'content': VERIFY_BING   }] as const] : []),
+    ...(VERIFY_GOOGLE !== '' ? [['meta', { 'name': 'google-site-verification', 'content': VERIFY_GOOGLE }] as [string, Record<string, string>]] : []),
+    ...(VERIFY_BING   !== '' ? [['meta', { 'name': 'msvalidate.01',            'content': VERIFY_BING   }] as [string, Record<string, string>]] : []),
 
     /* Open Graph + Twitter: drive the unfurl card that Discord, Slack,
        iMessage, Twitter/X, and LinkedIn render when someone pastes the
@@ -264,8 +267,8 @@ export default withMermaid(defineConfig({
     ['meta', { 'name':     'twitter:image',       'content': SITE_OG_IMAGE }],
     ['meta', { 'name':     'twitter:image:alt',   'content': `${SITE_TITLE}: ${SITE_TAGLINE}` }],
     ...(SITE_TWITTER_HANDLE !== '' ? [
-      ['meta', { 'name': 'twitter:site',    'content': SITE_TWITTER_HANDLE }] as const,
-      ['meta', { 'name': 'twitter:creator', 'content': SITE_TWITTER_HANDLE }] as const,
+      ['meta', { 'name': 'twitter:site',    'content': SITE_TWITTER_HANDLE }] as HeadConfig,
+      ['meta', { 'name': 'twitter:creator', 'content': SITE_TWITTER_HANDLE }] as HeadConfig,
     ] : []),
 
     /* JSON-LD structured data. Search engines parse this into a rich
@@ -503,7 +506,7 @@ export default withMermaid(defineConfig({
   markdown: {
     theme: 'night-owl',
   },
-  mermaid: {
+  mermaid: ({
     // Theme colors are owned by base.css overrides on the rendered SVG so
     // mode switching is instant and consistent across the site. The
     // `themeVariables` here are SSR-time placeholders; the runtime CSS
@@ -588,7 +591,7 @@ export default withMermaid(defineConfig({
       diagramMarginX: 8,
       diagramMarginY: 8,
     },
-  },
+  } as unknown as MermaidConfig),
   mermaidPlugin: { class: 'mermaid dagonizer-mermaid' },
   themeConfig: {
     // No logo in the top nav; the icon lives in the sidebar and on the
@@ -618,16 +621,20 @@ export default withMermaid(defineConfig({
     docFooter: { next: 'Next', prev: 'Previous' },
   },
   vite: {
-    // Aliases so the in-browser ArchivistRunner can import the canonical
-    // domain files straight from `examples/the-archivist/` and the
+    // Aliases so the in-browser runners can import the canonical
+    // domain files straight from `examples/` and the
     // renderer source from `src/viz/`. Browser bundles use these; the
     // package's own consumers see the published `@noocodex/dagonizer/*`.
     resolve: {
       alias: {
-        '@archivist': ARCHIVIST,
+        '@archivist':    ARCHIVIST,
+        '@cartographer': CARTOGRAPHER,
         '@dagonizer-viz': VIZ_SRC,
         '@dagonizer-src': REPO_ROOT,
       },
+    },
+    optimizeDeps: {
+      include: ['tz-lookup', '@rapideditor/country-coder'],
     },
   },
 }));

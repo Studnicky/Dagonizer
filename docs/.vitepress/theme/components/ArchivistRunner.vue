@@ -17,12 +17,9 @@
  */
 
 import { computed, onMounted, ref, watch } from 'vue';
-import type { ElementDefinition } from 'cytoscape';
 
 import { Checkpoint } from '@noocodex/dagonizer/checkpoint';
 import type { ExecutionResultInterface } from '@noocodex/dagonizer';
-
-import { CytoscapeRenderer } from '../../../../packages/dagonizer/src/viz/CytoscapeRenderer.ts';
 
 import { ArchivistState } from '../../../../examples/the-archivist/ArchivistState.ts';
 import { archivistBundle, archivistDAG } from '../../../../examples/the-archivist/dag.ts';
@@ -319,12 +316,24 @@ const toolContextMap: Record<string, string> = {
   'respond-to-visitor':  'Routes the composed draft into the conversation output and marks the lifecycle as completed.',
 };
 
+/**
+ * The Ollama model to instantiate with: the visitor's explicit choice when
+ * set, otherwise the installed chat model the detector resolved from the
+ * daemon's tag list. Never the empty string, so the adapter always names a
+ * model the host has actually pulled.
+ */
+const resolvedOllamaModel = computed<string>(() => {
+  if (ollamaModel.value.length > 0) return ollamaModel.value;
+  const entry = backends.value.find((b) => b.id === 'ollama');
+  return entry?.resolvedModel ?? '';
+});
+
 /** Construct an LLM client for the active backend, always including memoryStore. */
 function makeLlm() {
   return instantiateProvider(activeBackend.value, {
     'apiKeys':     apiKeys.value,
     'memoryStore': memoryStore,
-    'ollamaModel': ollamaModel.value,
+    'ollamaModel': resolvedOllamaModel.value,
   });
 }
 
@@ -339,7 +348,7 @@ function clearMemory(): void {
 
 // Re-detect backend availability when apiKeys change.
 watch(apiKeys, async () => {
-  backends.value = await detectBackends({ 'apiKeys': apiKeys.value });
+  backends.value = await detectBackends({ 'apiKeys': apiKeys.value, 'preferredOllamaModel': ollamaModel.value.length > 0 ? ollamaModel.value : undefined });
   noModel.value = hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
 }, { 'deep': true });
 
@@ -366,26 +375,14 @@ const rightTabs = computed(() => {
   ];
 });
 
-// Stable embedded-DAG registry for the DagGraph self-render path.
-// DagGraph receives this map and renders sub-DAGs collapsed by default;
-// clicking an embedded-dag box expands it inline.
+// Stable embedded-DAG registry for the DagGraph self-render path. Passed to
+// DagGraph with `:expand-all`, so every embedded sub-DAG (book-search-scatter,
+// compose-retry-loop) renders fully expanded as a connected subgraph from the
+// first paint — every node in every DAG is visible.
 const embeddedDagRegistry = new Map([
   ['book-search-scatter', BookSearchScatterDAG],
   ['compose-retry-loop', ComposeRetryLoopDAG],
 ]);
-
-const dagElements = computed<ElementDefinition[]>(() => {
-  // Legacy path kept for backwards compatibility; DagGraph now uses the
-  // self-render path via :dag/:embedded-d-a-gs/:node-kinds directly.
-  const raw = CytoscapeRenderer.render(archivistDAG, { 'embeddedDAGs': embeddedDagRegistry }) as ElementDefinition[];
-  return raw.map((el) => {
-    const data = el.data as { id?: string; node?: string };
-    const nodeName = data.node ?? data.id;
-    const kind = nodeName !== undefined ? NODE_KINDS[nodeName] : undefined;
-    if (kind === undefined) return el;
-    return { ...el, data: { ...el.data, kind } };
-  });
-});
 
 function buildServices(): ArchivistServices {
   return {
@@ -511,7 +508,7 @@ onMounted(async () => {
 
   isMobile.value = MobileDetection.isLikelyMobile();
 
-  backends.value = await detectBackends({ 'apiKeys': apiKeys.value });
+  backends.value = await detectBackends({ 'apiKeys': apiKeys.value, 'preferredOllamaModel': ollamaModel.value.length > 0 ? ollamaModel.value : undefined });
 
   // On mobile, hasNoRunnableModel always returns false (stub is the floor).
   // On desktop, it returns true when no real backend is runnable.
@@ -891,6 +888,7 @@ function reset(): void {
                   :dag="archivistDAG"
                   :embedded-d-a-gs="embeddedDagRegistry"
                   :node-kinds="NODE_KINDS"
+                  :expand-all="true"
                   aria-label="Archivist DAG live execution"
                   @node-click="onToolSelect"
                 />

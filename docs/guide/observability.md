@@ -21,50 +21,16 @@ Two surfaces fire at every execution boundary: the protected `on*` hooks on `Dag
 
 | Symbol | Source | Role |
 |--------|--------|------|
-| `Dagonizer.on*` | `@noocodex/dagonizer` | Protected hooks: `onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError` |
+| `Dagonizer.on*` | `@noocodex/dagonizer` | Protected hooks: `onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`, `onContractWarning` |
 | `Instrumentation<TState>` | `@noocodex/dagonizer/contracts` | Vendor-neutral hook surface |
 | `NoopInstrumentation<TState>` | `@noocodex/dagonizer` | No-op base for selective override |
 | `DagonizerOptionsInterface.instrumentation` | `@noocodex/dagonizer` | Constructor slot for the contract |
 
-## The five subclass hooks
+## The six subclass hooks
 
-```ts
-import { Dagonizer } from '@noocodex/dagonizer';
-import type { ExecutionResultInterface } from '@noocodex/dagonizer';
+<<< @/../examples/the-archivist/ObservedArchivist.ts#observed-archivist
 
-class ObservableDispatcher<TState> extends Dagonizer<TState> {
-  protected override onFlowStart(dagName: string, state: TState): void {
-    console.log(`[flow:start] ${dagName}`);
-  }
-
-  protected override onFlowEnd(
-    dagName: string,
-    state: TState,
-    result: ExecutionResultInterface<TState>,
-  ): void {
-    console.log(`[flow:end] ${dagName} cursor=${result.cursor}`);
-  }
-
-  protected override onNodeStart(nodeName: string, state: TState, placementPath: readonly string[]): void {
-    console.log(`[node:start] ${nodeName} path=${placementPath.join('/')}`);
-  }
-
-  protected override onNodeEnd(
-    nodeName: string,
-    output: string | null,
-    state: TState,
-    placementPath: readonly string[],
-  ): void {
-    console.log(`[node:end] ${nodeName} output=${output} path=${placementPath.join('/')}`);
-  }
-
-  protected override onError(nodeName: string, error: Error, state: TState, placementPath: readonly string[]): void {
-    console.error(`[error] ${nodeName} path=${placementPath.join('/')}: ${error.message}`);
-  }
-}
-```
-
-All five default to no-ops. Override only the hooks you need. Class extension is the only extension mechanism; the dispatcher exposes no callback API. Multi-observer composition (logger plus tracer plus metrics) is a subclass concern: write it into the subclass body.
+All six default to no-ops. Override only the hooks you need. Class extension is the only extension mechanism; the dispatcher exposes no callback API. Multi-observer composition (logger plus tracer plus metrics) is a subclass concern: write it into the subclass body.
 
 ## Hook contracts
 
@@ -75,6 +41,7 @@ All five default to no-ops. Override only the hooks you need. Class extension is
 | `onNodeStart` | Before `node.execute()` for each node entry | `nodeName`, `state`, `placementPath` |
 | `onNodeEnd` | After each node resolves, before `yield` | `nodeName`, `output: string \| null`, `state`, `placementPath` |
 | `onError` | When a signal fires or a node throws | `nodeName`, `error`, `state`, `placementPath` |
+| `onContractWarning` | When `registerDAG` produces a non-fatal contract-registry warning | `message: string` |
 
 `onFlowEnd` is always called, even when the flow fails or is cancelled. `onError` may fire before `onFlowEnd` in the same execution.
 
@@ -168,27 +135,7 @@ The subclass-hook pattern fits when one consumer owns the dispatcher. It does no
 
 For multi-observer scenarios, install an `Instrumentation` implementation via `DagonizerOptionsInterface.instrumentation`. The dispatcher fires both surfaces at every execution boundary, so a single dispatcher mixes subclass-local observability with plugin-supplied tracing, metrics, or audit collectors.
 
-```ts
-import { Dagonizer, NoopInstrumentation } from '@noocodex/dagonizer';
-import type { NodeStateInterface } from '@noocodex/dagonizer';
-
-class CountingInstrumentation<TState extends NodeStateInterface>
-extends NoopInstrumentation<TState> {
-  nodeStarts = 0;
-  nodeEnds   = 0;
-
-  override nodeStart(_dagName: string, _nodeName: string, _state: TState, _placementPath: readonly string[]): void {
-    this.nodeStarts++;
-  }
-
-  override nodeEnd(_dagName: string, _nodeName: string, _output: string | null, _state: TState, _placementPath: readonly string[]): void {
-    this.nodeEnds++;
-  }
-}
-
-const counter = new CountingInstrumentation();
-const dispatcher = new Dagonizer({ instrumentation: counter });
-```
+<<< @/../examples/the-archivist/instrumentation/ArchivistInstrumentation.ts#instrumentation
 
 ### Hook surface
 

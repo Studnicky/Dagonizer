@@ -16,18 +16,14 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
-import type { ElementDefinition } from 'cytoscape';
 import { BookSearchScatterDAG } from '@archivist/embedded-dags/BookSearchScatterDAG.ts';
-
-const elements = CytoscapeRenderer.render(BookSearchScatterDAG) as ElementDefinition[];
 </script>
 
 # Phase 03: Tool schemas
 
 [The Archivist](./the-archivist) exposes its capabilities to the LLM as typed tools with JSON Schema 2020-12 `inputSchema` definitions. `decideTools` hands these schemas to the LLM and asks it to produce a `toolPlan`, a list of `{ name, arguments }` calls the scouts then execute. The schema design principles used here apply to any Dagonizer tool.
 
-<DagGraph :elements="elements" aria-label="The book-search-scatter DAG: decide-tools feeds four scouts and ranks the merged candidates." />
+<DagGraph :dag="BookSearchScatterDAG" aria-label="The book-search-scatter DAG: decide-tools feeds four scouts and ranks the merged candidates." />
 
 ## Code
 

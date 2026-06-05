@@ -17,7 +17,7 @@ class StoreState extends NodeStateBase {
 }
 
 const SAMPLE_CHECKPOINT: CheckpointData = {
-  'version': '1',
+  'version': '2',
   'dagName': 'demo',
   'cursor': 'next-node',
   'state': { 'metadata': {}, 'errors': [], 'warnings': [], 'value': 7 },

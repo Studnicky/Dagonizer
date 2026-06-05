@@ -113,7 +113,7 @@ Subclass `RetryPolicy` and override `getDelay` for non-standard curves:
 
 ```ts
 class FibonacciRetry extends RetryPolicy {
-  override getDelay(attempt: number): number {
+  override getDelay(attempt: number, _error: Error | null = null): number {
     const fib = (n: number): number => n <= 1 ? n : fib(n - 1) + fib(n - 2);
     return Math.min(fib(attempt) * 100, this.maxDelay);
   }

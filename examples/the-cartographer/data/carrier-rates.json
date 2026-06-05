@@ -1,0 +1,50 @@
+{
+  "fedex": {
+    "baseMinorUsd":     999,
+    "perKmMinorUsd":    8,
+    "perKgMinorUsd":    45,
+    "tierMultipliers":  { "express": 2.5, "standard": 1.0, "economy": 0.7 },
+    "speedKmPerHour":   800,
+    "handlingHours":    2
+  },
+  "ups": {
+    "baseMinorUsd":     849,
+    "perKmMinorUsd":    7,
+    "perKgMinorUsd":    40,
+    "tierMultipliers":  { "express": 2.4, "standard": 1.0, "economy": 0.75 },
+    "speedKmPerHour":   700,
+    "handlingHours":    3
+  },
+  "dhl": {
+    "baseMinorUsd":     1099,
+    "perKmMinorUsd":    9,
+    "perKgMinorUsd":    50,
+    "tierMultipliers":  { "express": 2.8, "standard": 1.0, "economy": 0.65 },
+    "speedKmPerHour":   850,
+    "handlingHours":    2
+  },
+  "usps": {
+    "baseMinorUsd":     499,
+    "perKmMinorUsd":    4,
+    "perKgMinorUsd":    25,
+    "tierMultipliers":  { "express": 2.0, "standard": 1.0, "economy": 0.8 },
+    "speedKmPerHour":   400,
+    "handlingHours":    8
+  },
+  "royal-mail": {
+    "baseMinorUsd":     649,
+    "perKmMinorUsd":    5,
+    "perKgMinorUsd":    30,
+    "tierMultipliers":  { "express": 2.2, "standard": 1.0, "economy": 0.75 },
+    "speedKmPerHour":   450,
+    "handlingHours":    6
+  },
+  "dpd": {
+    "baseMinorUsd":     749,
+    "perKmMinorUsd":    6,
+    "perKgMinorUsd":    35,
+    "tierMultipliers":  { "express": 2.1, "standard": 1.0, "economy": 0.72 },
+    "speedKmPerHour":   500,
+    "handlingHours":    4
+  }
+}
