@@ -15,7 +15,7 @@
  *
  * Function calls land as `parts[].functionCall`; the adapter translates
  * back to `ChatResponse.message.toolCalls` so callers never see the
- * wire format. Errors map through `classifyHttp` from the shared
+ * wire format. Errors map through `LlmError.classifyHttp` from the shared
  * taxonomy.
  */
 
@@ -28,10 +28,12 @@ import type {
   ToolChoice,
   ToolDefinition,
 } from '@noocodex/dagonizer/adapter';
-import { asNetworkError, classifyHttp, Classifications, LlmError, type ErrorClassification } from '@noocodex/dagonizer/adapter';
+import { Classifications, LlmError, type ErrorClassification } from '@noocodex/dagonizer/adapter';
 
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 const DEFAULT_MODEL = 'gemini-2.0-flash';
+const DEFAULT_GEMINI_MAX_ATTEMPTS = 3;
+const DEFAULT_TOKEN_COUNT = 0;
 
 interface GeminiPart {
   readonly text?: string;
@@ -63,7 +65,7 @@ export class GeminiApiAdapter extends BaseAdapter {
       'gemini-api',
       'Gemini API (your AI Studio key)',
       { 'toolUse': 'full', 'structuredOutput': true, 'jsonMode': true },
-      { 'maxAttempts': options.maxAttempts ?? 3 },
+      { 'maxAttempts': options.maxAttempts ?? DEFAULT_GEMINI_MAX_ATTEMPTS },
     );
     this.#apiKey = apiKey;
     this.#model  = options.model ?? DEFAULT_MODEL;
@@ -93,12 +95,12 @@ export class GeminiApiAdapter extends BaseAdapter {
         'signal': request.signal,
       });
     } catch (err) {
-      throw asNetworkError(err);
+      throw LlmError.fromNetworkError(err);
     }
 
     if (!res.ok) {
       const text = await res.text();
-      throw new LlmError(`Gemini REST ${String(res.status)}: ${text}`, classifyHttp(res.status, text));
+      throw new LlmError(`Gemini REST ${String(res.status)}: ${text}`, LlmError.classifyHttp(res.status, text));
     }
 
     const payload = (await res.json()) as GeminiResponseBody;
@@ -164,8 +166,8 @@ export class GeminiApiAdapter extends BaseAdapter {
       'finishReason': finishReason,
       'usage': payload.usageMetadata !== undefined
         ? {
-          'promptTokens':     payload.usageMetadata.promptTokenCount ?? 0,
-          'completionTokens': payload.usageMetadata.candidatesTokenCount ?? 0,
+          'promptTokens':     payload.usageMetadata.promptTokenCount ?? DEFAULT_TOKEN_COUNT,
+          'completionTokens': payload.usageMetadata.candidatesTokenCount ?? DEFAULT_TOKEN_COUNT,
         }
         : ZERO_TOKEN_USAGE,
     };

@@ -8,10 +8,10 @@
  * Tool calling is not native to WebLLM; we use `response_format` with
  * `{ type: 'json_object' }` and the tool-plan JSON Schema in the
  * system context. The model returns a JSON blob that we decode back
- * into `ToolCall[]` via JSON coercion (`decodeToolCallsJson`).
+ * into `ToolCall[]` via JSON coercion (`ToolCallCodec.decode`).
  */
 
-import { BaseAdapter, ChatResponseMessageBuilder, decodeToolCallsJson, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder, ToolCallCodec, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
 import type {
   ChatRequest,
   ChatResponse,
@@ -20,6 +20,8 @@ import { Classifications, LlmError, type ErrorClassification } from '@noocodex/d
 
 const DEFAULT_MODEL = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
 const WEBLLM_ESM = 'https://esm.run/@mlc-ai/web-llm';
+const WEBLLM_MAX_ATTEMPTS = 2;
+const GPU_PROBE_TIMEOUT_MS = 1_500;
 
 export interface WebLlmInitReport {
   readonly progress: number;
@@ -42,12 +44,6 @@ interface WebLlmModule {
   CreateMLCEngine(model: string, options?: { initProgressCallback?: (report: WebLlmInitReport) => void }): Promise<WebLlmEngine>;
 }
 
-export function detectWebGpu(): boolean {
-  const nav = (globalThis as { navigator?: { gpu?: unknown } }).navigator;
-  if (nav === undefined) return false;
-  return 'gpu' in nav;
-}
-
 export interface WebLlmAdapterOptions {
   readonly model?: string;
   readonly onProgress?: (report: WebLlmInitReport) => void;
@@ -58,6 +54,12 @@ export class WebLlmAdapter extends BaseAdapter {
   readonly #onProgress?: (report: WebLlmInitReport) => void;
   #enginePromise: Promise<WebLlmEngine> | null = null;
 
+  static detectWebGpu(): boolean {
+    const nav = (globalThis as { navigator?: { gpu?: unknown } }).navigator;
+    if (nav === undefined) return false;
+    return 'gpu' in nav;
+  }
+
   constructor(options: WebLlmAdapterOptions = {}) {
     super(
       'web-llm',
@@ -65,7 +67,7 @@ export class WebLlmAdapter extends BaseAdapter {
       // Phi-3.5 supports structured output but tool-call format is
       // inconsistent across the small in-browser model class.
       { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true },
-      { 'maxAttempts': 2 },
+      { 'maxAttempts': WEBLLM_MAX_ATTEMPTS },
     );
     this.#model = options.model ?? DEFAULT_MODEL;
     if (options.onProgress !== undefined) this.#onProgress = options.onProgress;
@@ -88,7 +90,7 @@ export class WebLlmAdapter extends BaseAdapter {
     try {
       const adapter = await Promise.race<unknown>([
         gpu.requestAdapter(),
-        new Promise((resolve) => setTimeout(() => { resolve(null); }, 1_500)),
+        new Promise((resolve) => setTimeout(() => { resolve(null); }, GPU_PROBE_TIMEOUT_MS)),
       ]);
       return adapter !== null;
     } catch {
@@ -118,7 +120,7 @@ export class WebLlmAdapter extends BaseAdapter {
 
     const raw = result.choices[0]?.message.content ?? '';
     const text = raw.trim();
-    const toolCalls = request.tools.length > 0 ? decodeToolCallsJson(raw, 'webllm') : [];
+    const toolCalls = request.tools.length > 0 ? ToolCallCodec.decode(raw, 'webllm') : [];
     return {
       'message': ChatResponseMessageBuilder.from(text, toolCalls),
       'finishReason': toolCalls.length > 0 ? 'tool_call' : 'stop',
@@ -167,7 +169,7 @@ export class WebLlmAdapter extends BaseAdapter {
   }
 
   async #boot(): Promise<WebLlmEngine> {
-    if (!detectWebGpu()) {
+    if (!WebLlmAdapter.detectWebGpu()) {
       throw new LlmError('navigator.gpu unavailable', Classifications['MODEL_NOT_FOUND']);
     }
     const mod = await import(/* @vite-ignore */ WEBLLM_ESM) as WebLlmModule;

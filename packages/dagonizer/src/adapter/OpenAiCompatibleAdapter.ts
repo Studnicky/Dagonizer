@@ -32,10 +32,11 @@ import type {
   ToolChoice,
   ToolDefinition,
 } from './LlmAdapter.js';
-import { asNetworkError, Classifications, classifyHttp, LlmError } from './LlmError.js';
+import { Classifications, LlmError } from './LlmError.js';
 import type { ErrorClassification } from './LlmError.js';
 
 const DEFAULT_TIMEOUT_MS = 60_000;
+const DEFAULT_MAX_ATTEMPTS = 3;
 
 /** Provider-specific configuration the subclass passes in. */
 export interface OpenAiCompatibleConfig {
@@ -102,7 +103,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
       config.id,
       config.displayName,
       config.capabilities,
-      { 'maxAttempts': options.maxAttempts ?? 3 },
+      { 'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS },
     );
     this.#apiKey = apiKey;
     this.#model = options.model ?? config.defaultModel;
@@ -111,11 +112,11 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
 
   protected async performChat(request: ChatRequest): Promise<ChatResponse> {
     try {
-      return await this.#doRequest(request, /* withTools */ true);
+      return await this.#doRequest(request);
     } catch (err) {
       const fallback = this.#config.toolsFallback;
       if (fallback !== undefined && fallback(err) && request.tools.length > 0) {
-        return this.#doRequest(request, false);
+        return this.#doRequestWithoutTools(request);
       }
       throw err;
     }
@@ -140,10 +141,18 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
     return Classifications['UNKNOWN'];
   }
 
-  async #doRequest(request: ChatRequest, withTools: boolean): Promise<ChatResponse> {
+  async #doRequest(request: ChatRequest): Promise<ChatResponse> {
+    return this.#sendRequest(request, this.#buildBody(request));
+  }
+
+  async #doRequestWithoutTools(request: ChatRequest): Promise<ChatResponse> {
+    return this.#sendRequest(request, this.#buildBodyWithoutTools(request));
+  }
+
+  async #sendRequest(request: ChatRequest, body: Record<string, unknown>): Promise<ChatResponse> {
     const controller = new AbortController();
     const timeoutMs = this.#config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    const timeoutId = setTimeout(() => { controller.abort(new Error(`${this.#config.id} request timeout`)); }, timeoutMs);
+    const timeoutId = setTimeout(() => { controller.abort(new LlmError(`${this.#config.id} request timeout`, Classifications['TIMEOUT'])); }, timeoutMs);
     const signal = AbortSignal.any([request.signal, controller.signal]);
 
     let res: Response;
@@ -155,25 +164,25 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
           'authorization': `Bearer ${this.#apiKey}`,
           ...this.#config.extraHeaders,
         },
-        'body': JSON.stringify(this.#buildBody(request, withTools)),
+        'body': JSON.stringify(body),
         signal,
       });
     } catch (err) {
-      throw asNetworkError(err);
+      throw LlmError.fromNetworkError(err);
     } finally {
       clearTimeout(timeoutId);
     }
 
     if (!res.ok) {
       const text = await res.text();
-      throw new LlmError(`${this.#config.displayName} ${String(res.status)}: ${text}`, classifyHttp(res.status, text));
+      throw new LlmError(`${this.#config.displayName} ${String(res.status)}: ${text}`, LlmError.classifyHttp(res.status, text));
     }
 
     const payload = (await res.json()) as OpenAiResponseBody;
     return this.#parseResponse(payload);
   }
 
-  #buildBody(request: ChatRequest, withTools: boolean): Record<string, unknown> {
+  #buildBody(request: ChatRequest): Record<string, unknown> {
     const body: Record<string, unknown> = {
       'model': this.#model,
       'messages': request.messages.map((m) => this.#toMessage(m)),
@@ -181,10 +190,25 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
       [this.#config.tokenField]: request.maxTokens,
     };
 
-    if (withTools && request.tools.length > 0) {
+    if (request.tools.length > 0) {
       body['tools'] = request.tools.map((t) => this.#toTool(t));
       body['tool_choice'] = this.#toToolChoice(request.toolChoice);
     } else if (request.outputSchema.kind === 'schema') {
+      body['response_format'] = { 'type': 'json_object' };
+    }
+
+    return body;
+  }
+
+  #buildBodyWithoutTools(request: ChatRequest): Record<string, unknown> {
+    const body: Record<string, unknown> = {
+      'model': this.#model,
+      'messages': request.messages.map((m) => this.#toMessage(m)),
+      'temperature': request.temperature,
+      [this.#config.tokenField]: request.maxTokens,
+    };
+
+    if (request.outputSchema.kind === 'schema') {
       body['response_format'] = { 'type': 'json_object' };
     }
 

@@ -46,6 +46,7 @@ export type {
 
 export { DAGBuilder } from './builder/index.js';
 export type {
+  Path,
   ScatterOptionsInterface,
   TypedEmbeddedDAGOptionsInterface,
 } from './builder/index.js';

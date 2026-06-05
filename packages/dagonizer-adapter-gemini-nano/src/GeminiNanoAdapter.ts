@@ -12,13 +12,13 @@
  *   - With `outputSchema`: structured output via `responseConstraint`
  *   - With `tools`:        emit a `responseConstraint` for `{ tool_calls: [...] }`
  *                          and decode the JSON back into `ToolCall[]` via
- *                          JSON coercion (`responseConstraint` + `decodeToolCallsJson`)
+ *                          JSON coercion (`responseConstraint` + `ToolCallCodec.decode`)
  *
  * Sessions are short-lived: one prompt per session, destroyed in
  * `finally` to release the on-device GPU buffer.
  */
 
-import { BaseAdapter, ChatResponseMessageBuilder, decodeToolCallsJson } from '@noocodex/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder, ToolCallCodec } from '@noocodex/dagonizer/adapter';
 import type {
   ChatRequest,
   ChatResponse,
@@ -48,31 +48,33 @@ interface LanguageModelStatic {
   }): Promise<LanguageModelSession>;
 }
 
+const GEMINI_NANO_MAX_ATTEMPTS = 2;
+
 function getLanguageModel(): LanguageModelStatic | undefined {
   if (typeof globalThis === 'undefined') return undefined;
   return (globalThis as { LanguageModel?: LanguageModelStatic }).LanguageModel;
 }
 
-/** Public probe. Used by the provider matrix to pick the best backend. */
-export async function detectGeminiNano(): Promise<GeminiNanoAvailability> {
-  const lm = getLanguageModel();
-  if (lm === undefined) return 'unavailable';
-  try {
-    return await lm.availability();
-  } catch {
-    return 'unavailable';
-  }
-}
-
 export class GeminiNanoAdapter extends BaseAdapter {
+  /** Public probe. Used by the provider matrix to pick the best backend. */
+  static async detect(): Promise<GeminiNanoAvailability> {
+    const lm = getLanguageModel();
+    if (lm === undefined) return 'unavailable';
+    try {
+      return await lm.availability();
+    } catch {
+      return 'unavailable';
+    }
+  }
+
   constructor() {
     super(
       'gemini-nano',
       'Browser built-in LanguageModel (on-device)',
       // Tool calls are emitted via JSON coercion (responseConstraint +
-      // decodeToolCallsJson) rather than a native function-calling channel.
+      // ToolCallCodec.decode) rather than a native function-calling channel.
       { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': false },
-      { 'maxAttempts': 2 },
+      { 'maxAttempts': GEMINI_NANO_MAX_ATTEMPTS },
     );
   }
 
@@ -124,7 +126,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
       }
 
       const text = raw.trim();
-      const toolCalls = request.tools.length > 0 ? decodeToolCallsJson(raw, 'nano') : [];
+      const toolCalls = request.tools.length > 0 ? ToolCallCodec.decode(raw, 'nano') : [];
       return {
         'message': ChatResponseMessageBuilder.from(text, toolCalls),
         'finishReason': toolCalls.length > 0 ? 'tool_call' : 'stop',

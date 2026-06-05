@@ -19,7 +19,7 @@ import type { DAG, NodeInterface } from '@noocodex/dagonizer';
 // State
 // ---------------------------------------------------------------------------
 
-export class S extends NodeStateBase {
+export class GateState extends NodeStateBase {
   shouldPass = true;  // controls which terminal the check node routes to
 }
 
@@ -27,7 +27,7 @@ export class S extends NodeStateBase {
 // Nodes
 // ---------------------------------------------------------------------------
 
-export const stepA: NodeInterface<S, 'ok'> = {
+export const stepA: NodeInterface<GateState, 'ok'> = {
   "name":    'step-a',
   "outputs": ['ok'],
   async execute(_state) {
@@ -35,7 +35,7 @@ export const stepA: NodeInterface<S, 'ok'> = {
   },
 };
 
-export const checkNode: NodeInterface<S, 'pass' | 'fail'> = {
+export const checkNode: NodeInterface<GateState, 'pass' | 'fail'> = {
   "name":    'check',
   "outputs": ['pass', 'fail'],
   async execute(state) {
@@ -47,7 +47,7 @@ export const checkNode: NodeInterface<S, 'pass' | 'fail'> = {
 // ScatterNode projection seeds onto the clone from parent state before the
 // child DAG body runs (a state clone carries metadata, not subclass fields;
 // projection is how parent data reaches the clone).
-export const childWork: NodeInterface<S, 'done'> = {
+export const childWork: NodeInterface<GateState, 'done'> = {
   "name":    'child-work',
   "outputs": ['done'],
   async execute(state) {
@@ -132,7 +132,7 @@ export const childDAG: DAG = {
 };
 
 export const dag4 = new DAGBuilder('demo-embedded-dag-terminals', '1')
-  .embeddedDAG<S, S>('run', 'child-for-terminals', {
+  .embeddedDAG<GateState, GateState>('run', 'child-for-terminals', {
     'success': 'end-ok',
     'error':   'end-fail',
   }, {

@@ -15,7 +15,7 @@ import type { DAG, NodeInterface } from '@noocodex/dagonizer';
 // ones cross the EmbeddedDAGNode boundary
 // ---------------------------------------------------------------------------
 
-export class S extends NodeStateBase {
+export class IncrementState extends NodeStateBase {
   seed    = 0;  // parent input value
   result  = 0;  // parent output value (written back via stateMapping.outputs)
   payload = 0;  // the field the child DAG operates on
@@ -26,7 +26,7 @@ export class S extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // The child DAG's working node: increments the payload field
-export const increment: NodeInterface<S, 'success'> = {
+export const increment: NodeInterface<IncrementState, 'success'> = {
   "name": 'increment',
   "outputs": ['success'],
   async execute(state) {

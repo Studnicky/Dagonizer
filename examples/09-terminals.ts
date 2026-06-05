@@ -32,7 +32,7 @@
 
 import { Dagonizer } from '@noocodex/dagonizer';
 import {
-  S,
+  GateState,
   stepA,
   checkNode,
   childWork,
@@ -49,11 +49,11 @@ import {
 
 // ── Pattern 1 ─────────────────────────────────────────────────────────────
 {
-  const dispatcher = new Dagonizer<S>();
+  const dispatcher = new Dagonizer<GateState>();
   dispatcher.registerNode(stepA);
   dispatcher.registerDAG(dag1);
 
-  const state = new S();
+  const state = new GateState();
   const result = await dispatcher.execute('demo-null-route', state);
   process.stdout.write('\nPattern 1: null route (implicit terminal):\n');
   process.stdout.write(`  lifecycle.kind = ${result.state.lifecycle.kind}\n`);
@@ -62,11 +62,11 @@ import {
 
 // ── Pattern 2 ─────────────────────────────────────────────────────────────
 {
-  const dispatcher = new Dagonizer<S>();
+  const dispatcher = new Dagonizer<GateState>();
   dispatcher.registerNode(stepA);
   dispatcher.registerDAG(dag2);
 
-  const state = new S();
+  const state = new GateState();
   const result = await dispatcher.execute('demo-explicit-completed', state);
   process.stdout.write('\nPattern 2: explicit completed terminal:\n');
   process.stdout.write(`  lifecycle.kind = ${result.state.lifecycle.kind}\n`);
@@ -75,11 +75,11 @@ import {
 
 // ── Pattern 3a: routes to end-ok ──────────────────────────────────────────
 {
-  const dispatcher = new Dagonizer<S>();
+  const dispatcher = new Dagonizer<GateState>();
   dispatcher.registerNode(checkNode);
   dispatcher.registerDAG(dag3);
 
-  const statePass = new S();
+  const statePass = new GateState();
   statePass.shouldPass = true;
   const resultPass = await dispatcher.execute('demo-explicit-terminals', statePass);
   process.stdout.write('\nPattern 3a: check node routes to end-ok:\n');
@@ -89,11 +89,11 @@ import {
 
 // ── Pattern 3b: routes to end-fail ────────────────────────────────────────
 {
-  const dispatcher = new Dagonizer<S>();
+  const dispatcher = new Dagonizer<GateState>();
   dispatcher.registerNode(checkNode);
   dispatcher.registerDAG(dag3);
 
-  const stateFail = new S();
+  const stateFail = new GateState();
   stateFail.shouldPass = false;
   const resultFail = await dispatcher.execute('demo-explicit-terminals', stateFail);
   process.stdout.write('\nPattern 3b: check node routes to end-fail:\n');
@@ -103,12 +103,12 @@ import {
 
 // ── Pattern 4a: child succeeds -> end-ok ──────────────────────────────────
 {
-  const dispatcher = new Dagonizer<S>();
+  const dispatcher = new Dagonizer<GateState>();
   dispatcher.registerNode(childWork);
   dispatcher.registerDAG(childDAG);
   dispatcher.registerDAG(dag4);
 
-  const stateOk = new S();
+  const stateOk = new GateState();
   stateOk.shouldPass = true;
   const resultOk = await dispatcher.execute('demo-embedded-dag-terminals', stateOk);
   process.stdout.write('\nPattern 4a: scatter child DAG succeeds -> end-ok:\n');
@@ -118,12 +118,12 @@ import {
 
 // ── Pattern 4b: child errors -> end-fail ──────────────────────────────────
 {
-  const dispatcher = new Dagonizer<S>();
+  const dispatcher = new Dagonizer<GateState>();
   dispatcher.registerNode(childWork);
   dispatcher.registerDAG(childDAG);
   dispatcher.registerDAG(dag4);
 
-  const stateErr = new S();
+  const stateErr = new GateState();
   stateErr.shouldPass = false;
   const resultErr = await dispatcher.execute('demo-embedded-dag-terminals', stateErr);
   process.stdout.write('\nPattern 4b: scatter child DAG errors -> end-fail:\n');

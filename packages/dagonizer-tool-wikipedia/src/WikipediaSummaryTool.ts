@@ -15,7 +15,7 @@
 
 import type { Candidate } from '@noocodex/dagonizer-book-entities';
 
-import { CanonicalId, toIso6392 } from '@noocodex/dagonizer-book-entities';
+import { CanonicalId, LanguageCode } from '@noocodex/dagonizer-book-entities';
 import { HttpTransport } from '@noocodex/dagonizer/tool';
 import type { Tool } from '@noocodex/dagonizer/tool';
 import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
@@ -82,9 +82,7 @@ export const WikipediaSummaryTool: Tool<WikipediaInput, readonly Candidate[]> = 
     try {
       payload = await HttpTransport.getJson<WikiSummary>(
         `${endpoint}${title}`,
-        signal !== undefined
-          ? { signal, 'headers': { 'accept': 'application/json' } }
-          : { 'headers': { 'accept': 'application/json' } },
+        { ...(signal !== undefined && { signal }), 'headers': { 'accept': 'application/json' } },
       );
     } catch (err) {
       // HttpTransport throws ToolError on 404; treat as "no article found".
@@ -108,10 +106,12 @@ export const WikipediaSummaryTool: Tool<WikipediaInput, readonly Candidate[]> = 
       ? CanonicalId.fromWork(payload.title, undefined)
       : `urn:wiki:${CanonicalId.slugify(payload.title)}`;
 
-    const notes: Record<string, unknown> = { '_sources': ['wikipedia'] };
-    if (payload.thumbnail?.source !== undefined)            notes['thumbnail']  = payload.thumbnail.source;
-    if (payload.content_urls?.desktop?.page !== undefined)  notes['wikiUrl']    = payload.content_urls.desktop.page;
-    if (payload.description !== undefined)                  notes['wikiKind']   = payload.description;
+    const notes: Record<string, unknown> = {
+      '_sources': ['wikipedia'],
+      ...(payload.thumbnail?.source !== undefined           && { 'thumbnail': payload.thumbnail.source }),
+      ...(payload.content_urls?.desktop?.page !== undefined && { 'wikiUrl':   payload.content_urls.desktop.page }),
+      ...(payload.description !== undefined                 && { 'wikiKind':  payload.description }),
+    };
 
     return [{
       'book': {
@@ -120,7 +120,7 @@ export const WikipediaSummaryTool: Tool<WikipediaInput, readonly Candidate[]> = 
         'authors':   [],
         'price':     { 'amount': 0, 'currency': 'USD' },
         'summary':   payload.extract,
-        'languages': [toIso6392(lang)],
+        'languages': [LanguageCode.toIso6392(lang)],
       },
       'score':  0,
       'source': 'wikipedia',

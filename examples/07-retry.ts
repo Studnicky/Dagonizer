@@ -16,18 +16,18 @@
  */
 
 import { Dagonizer } from '@noocodex/dagonizer';
-import { S, fetchNode, dag, flakyAttempts } from './dags/07-retry.js';
+import { FetchState, fetchNode, dag, flakyAttempts } from './dags/07-retry.js';
 
 // ---------------------------------------------------------------------------
 // Run
 // ---------------------------------------------------------------------------
 
 // #region runtime
-const dispatcher = new Dagonizer<S>();
+const dispatcher = new Dagonizer<FetchState>();
 dispatcher.registerNode(fetchNode);
 dispatcher.registerDAG(dag);
 
-const state = new S();
+const state = new FetchState();
 await dispatcher.execute('retry-dag', state);
 
 // flakyAttempts is a live binding from the dag module; it reflects the count

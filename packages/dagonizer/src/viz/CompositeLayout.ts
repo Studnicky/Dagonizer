@@ -27,7 +27,7 @@ type DagreModule = typeof DagreDefault;
 
 import type { DAG } from '../entities/dag/DAG.js';
 
-import { embeddedDagName, idIn } from './internal.js';
+import { PlacementUtils } from './internal.js';
 import type { PlacementEntry } from './internal.js';
 
 // ---------------------------------------------------------------------------
@@ -181,7 +181,7 @@ export class CompositeLayout {
     const subLayouts = new Map<string, Resolved>();
 
     for (const placement of dag.nodes as readonly PlacementEntry[]) {
-      const dagName = embeddedDagName(placement);
+      const dagName = PlacementUtils.embeddedDagName(placement);
       if (dagName === null) continue;
       if (visited.has(dagName)) continue;
       const body = embeddedDAGs.get(dagName);
@@ -189,7 +189,7 @@ export class CompositeLayout {
 
       const innerVisited = new Set(visited);
       innerVisited.add(dagName);
-      const innerPrefix = idIn(prefix, placement.name);
+      const innerPrefix = PlacementUtils.idIn(prefix, placement.name);
 
       const sub = CompositeLayout.layoutFlat(
         dagreLib,
@@ -228,7 +228,7 @@ export class CompositeLayout {
       let w: number;
       let h: number;
 
-      if (embeddedDagName(placement) !== null) {
+      if (PlacementUtils.embeddedDagName(placement) !== null) {
         const sub = subLayouts.get(placement.name);
         if (sub !== undefined) {
           w = sub.bb.width;
@@ -250,7 +250,7 @@ export class CompositeLayout {
       }
 
       nodeSizes.set(placement.name, { "width": w, "height": h });
-      const nodeId = idIn(prefix, placement.name);
+      const nodeId = PlacementUtils.idIn(prefix, placement.name);
       g.setNode(nodeId, { "width": w, "height": h });
     }
 
@@ -260,12 +260,12 @@ export class CompositeLayout {
       if (parallelChildren.has(placement.name)) continue;
       if (!('outputs' in placement)) continue;
 
-      const fromId = idIn(prefix, placement.name);
+      const fromId = PlacementUtils.idIn(prefix, placement.name);
 
       for (const target of Object.values(placement.outputs)) {
         if (target === null) continue;                       // terminal route
         if (parallelChildren.has(target)) continue;          // child is inside parallel
-        const toId = idIn(prefix, target);
+        const toId = PlacementUtils.idIn(prefix, target);
         if (g.hasNode(toId)) g.setEdge(fromId, toId);
       }
     }
@@ -280,11 +280,11 @@ export class CompositeLayout {
     for (const placement of dag.nodes as readonly PlacementEntry[]) {
       if (parallelChildren.has(placement.name)) continue;
 
-      const nodeId = idIn(prefix, placement.name);
+      const nodeId = PlacementUtils.idIn(prefix, placement.name);
       const dagrePos = g.node(nodeId) as { x: number; y: number } | undefined;
       if (dagrePos === undefined) continue;
 
-      if (embeddedDagName(placement) !== null) {
+      if (PlacementUtils.embeddedDagName(placement) !== null) {
         const sub = subLayouts.get(placement.name);
         if (sub !== undefined) {
           // Offset all child positions so the sub-layout's center coincides
@@ -312,7 +312,7 @@ export class CompositeLayout {
         for (let i = 0; i < children.length; i++) {
           const childName = children[i];
           if (childName === undefined) continue;
-          const childId = idIn(prefix, childName);
+          const childId = PlacementUtils.idIn(prefix, childName);
           const cx = startX + i * (nodeWidth + parallelSep);
           const cy = dagrePos.y;
           positions.set(childId, { "x": cx, "y": cy });
