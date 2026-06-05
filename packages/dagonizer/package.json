@@ -187,15 +187,19 @@
   },
   "publishConfig": {
     "access": "public",
-    "provenance": true
+    "registry": "https://npm.pkg.github.com"
   },
   "peerDependencies": {
     "cytoscape": "^3.33.3",
     "@dagrejs/dagre": "^3.0.0"
   },
   "peerDependenciesMeta": {
-    "cytoscape": { "optional": true },
-    "@dagrejs/dagre": { "optional": true }
+    "cytoscape": {
+      "optional": true
+    },
+    "@dagrejs/dagre": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@cosmos.gl/graph": "^2.6.4",

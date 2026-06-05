@@ -108,48 +108,34 @@ Each routing node records its decision on the clone's `state.routing` object (a
 `EnrichedShipment.routing` value). The parent's `summarize` node folds these across
 all records to produce the savings tally.
 
-```ts
 <<< ../../examples/the-cartographer/nodes/routeGeo.ts#route-geo-node
-```
 
-```ts
 <<< ../../examples/the-cartographer/nodes/routeRedaction.ts#route-redaction-node
-```
 
 ## The DAGs
 
 ### Top-level: `cartographer`
 
-```ts
 <<< ../../examples/the-cartographer/dag.ts#cartographer-dag
-```
 
 ### Branching enrichment: `event-pipeline`
 
-```ts
 <<< ../../examples/the-cartographer/dag.ts#event-pipeline-dag
-```
 
 ### Ingestion sub-DAG: `ingest-source`
 
 The shared transform node chain. Only the subset each format needs runs; the rest is
 skipped by the `select-source` routing node.
 
-```ts
 <<< ../../examples/the-cartographer/embedded-dags/IngestSourceDAG.ts
-```
 
 ### Geo-resolution sub-DAG: `geo-resolve`
 
-```ts
 <<< ../../examples/the-cartographer/embedded-dags/GeoResolveDAG.ts
-```
 
 ### GDPR compliance sub-DAG: `gdpr-compliance`
 
-```ts
 <<< ../../examples/the-cartographer/embedded-dags/GdprComplianceDAG.ts
-```
 
 ## State and services
 
@@ -159,9 +145,7 @@ The mutable clipboard threaded through every node. Top-level fields hold the
 source feeds, ingested events, gathered records, and insights aggregates. Clone
 fields hold the per-event enrichment pipeline's intermediate values.
 
-```ts
 <<< ../../examples/the-cartographer/CartographerState.ts#cartographer-state
-```
 
 ### `CartographerServices`
 
@@ -170,17 +154,13 @@ swappable transport adapters: the GPS modality is always the offline
 `@rapideditor/country-coder` (deterministic, no HTTP); the IP modality uses the live
 `freeipapi.com` API online or recorded fixture replay for the smoke tests.
 
-```ts
 <<< ../../examples/the-cartographer/CartographerServices.ts#cartographer-services
-```
 
 ### `GeoResolvers`
 
 Factory that assembles the `CartographerServices` bag for the chosen backend.
 
-```ts
 <<< ../../examples/the-cartographer/services/GeoResolvers.ts#geo-resolvers
-```
 
 ## Key nodes
 
@@ -191,9 +171,7 @@ to produce the four heterogeneous source feeds (JSON position-pings, CSV facilit
 gzip NDJSON sensor-readings, JSON customs/delivery) and writes them to `state.sources`.
 The ingestion scatter then reads `state.sources` by path.
 
-```ts
 <<< ../../examples/the-cartographer/nodes/seedEvents.ts#seed-events-node
-```
 
 ### `normalize` — local time at the scan's timezone
 
@@ -202,9 +180,7 @@ timestamp to a UTC epoch, then derives the local time at the scan's IANA timezon
 `Intl.DateTimeFormat`. Cross-zone journeys show different local times and UTC offsets
 per scan.
 
-```ts
 <<< ../../examples/the-cartographer/nodes/normalize.ts#normalize-node
-```
 
 ### `aggregateEvent` — writes the enriched record
 
@@ -212,9 +188,7 @@ Pulls every enrichment result out of the clone's state and assembles the compact
 `EnrichedShipment` record. The routing decisions, redacted PII sample, and pricing/
 shipping/ETA figures all land here.
 
-```ts
 <<< ../../examples/the-cartographer/nodes/aggregateEvent.ts#aggregate-event-node
-```
 
 ### `summarizeInsights` — fold into two views
 
@@ -224,29 +198,21 @@ After all scatter clones complete, `summarizeInsights` folds `state.records` int
 - **Per-journey rollup** (`state.journeys`): grouped by `shipmentId`, ordered by epoch;
   path distance, elapsed time, timezones crossed, jurisdictions traversed.
 
-```ts
 <<< ../../examples/the-cartographer/nodes/summarizeInsights.ts#summarize-insights-node
-```
 
 ## Entities
 
 ### `EnrichedShipment` — the per-scan enriched record
 
-```ts
 <<< ../../examples/the-cartographer/entities/EnrichedShipment.ts#enriched-shipment-entity
-```
 
 ### `CanonicalEvent` — the unified event model
 
-```ts
 <<< ../../examples/the-cartographer/entities/CanonicalEvent.ts#canonical-event-entity
-```
 
 ### `GeoContext` — geo-enrichment result
 
-```ts
 <<< ../../examples/the-cartographer/entities/GeoContext.ts#geo-context-entity
-```
 
 ## Offline geo resolution
 
@@ -255,9 +221,7 @@ no HTTP, no key, deterministic, runs identically in Node 18+ and the browser. IP
 geolocation uses the live `freeipapi.com` API (CORS-enabled, no key), or a committed
 fixture replay in the smoke tests.
 
-```ts
 <<< ../../examples/the-cartographer/services/OfflineReverseGeocoder.ts#offline-reverse-geocoder
-```
 
 ## CLI
 
@@ -272,6 +236,4 @@ npx tsx examples/the-cartographer/runCartographer.ts --recorded
 npx tsx examples/the-cartographer/runCartographer.ts --events 50
 ```
 
-```ts
 <<< ../../examples/the-cartographer/runCartographer.ts#run-cartographer
-```

@@ -1096,6 +1096,7 @@ onMounted(() => {
 
 .cr-stream-row {
   display: flex;
+  flex-shrink: 0;
   align-items: baseline;
   gap: 0.35rem;
   font-size: 0.74rem;
