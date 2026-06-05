@@ -20,7 +20,7 @@
  * shape `MistralApiAdapter` ships.
  */
 
-import { BaseEmbedder, classifyHttp, Classifications, LlmError } from '@noocodex/dagonizer/adapter';
+import { BaseEmbedder, Classifications, LlmError } from '@noocodex/dagonizer/adapter';
 import type { BaseEmbedderOptions } from '@noocodex/dagonizer/adapter';
 
 const DEFAULT_MODEL = 'mistral-embed';
@@ -79,7 +79,7 @@ export class MistralEmbedder extends BaseEmbedder {
       const body = await res.text();
       throw new LlmError(
         `Mistral embed failed: ${String(res.status)} ${body}`,
-        classifyHttp(res.status, body),
+        LlmError.classifyHttp(res.status, body),
       );
     }
 

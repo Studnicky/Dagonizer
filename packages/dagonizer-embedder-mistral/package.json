@@ -1,6 +1,6 @@
 {
   "name": "@noocodex/dagonizer-embedder-mistral",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "description": "Embedder plugin for @noocodex/dagonizer: MistralEmbedder (mistral-embed).",
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",

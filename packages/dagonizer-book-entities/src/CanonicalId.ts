@@ -18,6 +18,7 @@
  * list, and the union of `sources[]` and `notes`.
  */
 
+import { BookEntitiesError } from './BookEntitiesError.js';
 import type { Candidate } from './entities.js';
 
 export class CanonicalId {
@@ -37,7 +38,7 @@ export class CanonicalId {
   /** Generate a stable work URN from title + first author (case + punct stripped). */
   static fromWork(title: string, firstAuthor: string | undefined): string {
     const slugTitle  = CanonicalId.slugify(title);
-    const slugAuthor = firstAuthor !== undefined ? CanonicalId.slugify(firstAuthor) : 'unknown';
+    const slugAuthor = CanonicalId.slugify(firstAuthor ?? 'unknown');
     return `urn:work:${slugTitle}::${slugAuthor}`;
   }
 
@@ -120,7 +121,7 @@ export class CanonicalId {
     }
     return order.map((id) => {
       const candidate = byId.get(id);
-      if (candidate === undefined) throw new Error(`unreachable: missing canonical id ${id}`);
+      if (candidate === undefined) throw new BookEntitiesError(`unreachable: missing canonical id ${id}`);
       return candidate;
     });
   }

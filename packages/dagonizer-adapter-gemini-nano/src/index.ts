@@ -1,2 +1,2 @@
-export { GeminiNanoAdapter, detectGeminiNano } from './GeminiNanoAdapter.js';
+export { GeminiNanoAdapter } from './GeminiNanoAdapter.js';
 export type { GeminiNanoAvailability } from './GeminiNanoAdapter.js';

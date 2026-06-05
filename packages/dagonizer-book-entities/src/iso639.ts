@@ -19,17 +19,21 @@ export const ISO_639_1_TO_2: Readonly<Record<string, string>> = Object.freeze({
   'hi': 'hin', 'tr': 'tur', 'el': 'gre', 'th': 'tha', 'vi': 'vie',
 });
 
-/**
- * Map an ISO 639-1 code (or BCP-47 tag) to its ISO 639-2 alpha-3 equivalent.
- * The input is lowercased and the subtag (after `-` or `_`) is stripped before
- * lookup, so `en-US`, `en_GB`, and `en` all map to `eng`.
- *
- * When the code is not in the table the normalised head segment is returned as-is
- * so three-letter 639-2 codes (e.g. `jpn`) pass through unchanged.
- */
-export function toIso6392(code: string): string {
-  const head = code.toLowerCase().split(/[-_]/u)[0];
-  if (head === undefined || head.length === 0) return code;
-  const mapped = ISO_639_1_TO_2[head];
-  return mapped !== undefined ? mapped : head;
+export class LanguageCode {
+  private constructor() { /* static class */ }
+
+  /**
+   * Map an ISO 639-1 code (or BCP-47 tag) to its ISO 639-2 alpha-3 equivalent.
+   * The input is lowercased and the subtag (after `-` or `_`) is stripped before
+   * lookup, so `en-US`, `en_GB`, and `en` all map to `eng`.
+   *
+   * When the code is not in the table the normalised head segment is returned as-is
+   * so three-letter 639-2 codes (e.g. `jpn`) pass through unchanged.
+   */
+  static toIso6392(code: string): string {
+    const head = code.toLowerCase().split(/[-_]/u)[0];
+    if (head === undefined || head.length === 0) return code;
+    const mapped = ISO_639_1_TO_2[head];
+    return mapped !== undefined ? mapped : head;
+  }
 }

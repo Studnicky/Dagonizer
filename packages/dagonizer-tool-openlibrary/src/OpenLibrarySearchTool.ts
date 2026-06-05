@@ -26,13 +26,12 @@
 
 import type { Candidate } from '@noocodex/dagonizer-book-entities';
 
-import { CanonicalId } from '@noocodex/dagonizer-book-entities';
 import { HttpTransport } from '@noocodex/dagonizer/tool';
 import type { Tool } from '@noocodex/dagonizer/tool';
 import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
 
-import type { OpenLibraryDoc, OpenLibraryResponse } from './openLibraryTypes.js';
-import { pickDescription } from './openLibraryTypes.js';
+import type { OpenLibraryResponse } from './openLibraryTypes.js';
+import { OPENLIBRARY_ENDPOINT, OpenLibraryDocs } from './openLibraryTypes.js';
 
 interface OpenLibrarySearchInput extends Record<string, unknown> {
   readonly query?: string;
@@ -43,8 +42,6 @@ interface OpenLibrarySearchInput extends Record<string, unknown> {
   readonly first_publish_year?: number;
   readonly lang?: string;
 }
-
-const ENDPOINT = 'https://openlibrary.org/search.json';
 
 // The data contract: every field carries description, examples, and
 // where relevant default + format. The agent reads this through the
@@ -118,10 +115,10 @@ export const OpenLibrarySearchTool: Tool<OpenLibrarySearchInput, readonly Candid
       const isbnParams = new URLSearchParams({ 'q': input.isbn, 'limit': String(limit) });
       if (input.lang !== undefined) isbnParams.set('lang', String(input.lang));
       const isbnPayload = await HttpTransport.getJson<OpenLibraryResponse>(
-        `${ENDPOINT}?${isbnParams.toString()}`,
-        signal !== undefined ? { signal } : {},
+        `${OPENLIBRARY_ENDPOINT}?${isbnParams.toString()}`,
+        { ...(signal !== undefined && { signal }) },
       );
-      return buildCandidates(isbnPayload.docs ?? []);
+      return OpenLibraryDocs.buildCandidates(isbnPayload.docs ?? [], 'web-search', 'web-search');
     }
 
     // Author path: use dedicated ?author= param for ranked author search.
@@ -143,42 +140,9 @@ export const OpenLibrarySearchTool: Tool<OpenLibrarySearchInput, readonly Candid
     }
 
     const payload = await HttpTransport.getJson<OpenLibraryResponse>(
-      `${ENDPOINT}?${params.toString()}`,
-      signal !== undefined ? { signal } : {},
+      `${OPENLIBRARY_ENDPOINT}?${params.toString()}`,
+      { ...(signal !== undefined && { signal }) },
     );
-    return buildCandidates(payload.docs ?? []);
+    return OpenLibraryDocs.buildCandidates(payload.docs ?? [], 'web-search', 'web-search');
   },
 };
-
-function buildCandidates(docs: readonly OpenLibraryDoc[]): Candidate[] {
-  const candidates: Candidate[] = [];
-  for (const doc of docs) {
-    if (doc.title === undefined) continue;
-    const canonical = CanonicalId.pick({
-      'title':   doc.title,
-      ...(doc.isbn !== undefined ? { 'isbns': doc.isbn } : {}),
-      ...(doc.author_name !== undefined ? { 'authors': doc.author_name } : {}),
-    });
-    const summary = pickDescription(doc);
-    const subjects = doc.subject?.slice(0, 8);
-    const notes: Record<string, unknown> = { '_sources': ['web-search'] };
-    if (doc.key !== undefined) notes['openlibraryKey'] = doc.key;
-    candidates.push({
-      'book': {
-        'isbn':    canonical,
-        'title':   doc.title,
-        'authors': doc.author_name ?? [],
-        'price':   { 'amount': 0, 'currency': 'USD' },
-        ...(summary !== undefined ? { 'summary': summary } : {}),
-        ...(doc.first_publish_year !== undefined ? { 'firstPublishYear': doc.first_publish_year } : {}),
-        ...(subjects !== undefined ? { 'subjects': subjects } : {}),
-        ...(doc.publisher !== undefined ? { 'publishers': doc.publisher.slice(0, 4) } : {}),
-        ...(doc.language !== undefined && doc.language.length > 0 ? { 'languages': doc.language } : {}),
-      },
-      'score':  0,                  // tool does not score; rank-candidates is the ranker.
-      'source': 'web-search',
-      'notes':  notes,
-    });
-  }
-  return candidates;
-}

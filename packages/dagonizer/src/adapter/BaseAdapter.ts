@@ -98,7 +98,7 @@ export abstract class BaseAdapter implements LlmAdapter {
         }
         // Rethrow as LlmError; RetryableErrorPolicy retries only when the
         // classification is retryable.
-        throw new LlmError(messageOf(rawError), classification, rawError);
+        throw new LlmError(LlmError.messageFrom(rawError), classification, rawError);
       }
     }, request.signal);
   }
@@ -113,7 +113,3 @@ export abstract class BaseAdapter implements LlmAdapter {
   }
 }
 
-function messageOf(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return String(error);
-}

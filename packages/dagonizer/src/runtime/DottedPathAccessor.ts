@@ -29,7 +29,7 @@ export class DottedPathAccessor implements StateAccessor {
       if (current === null || current === undefined) {
         return undefined;
       }
-      if (FORBIDDEN_KEYS.has(part)) {
+      if (part === '' || FORBIDDEN_KEYS.has(part)) {
         return undefined;
       }
       current = (current as Record<string, unknown>)[part];
@@ -46,7 +46,7 @@ export class DottedPathAccessor implements StateAccessor {
     }
     // Refuse paths that would mutate the prototype chain (prototype pollution).
     for (const part of parts) {
-      if (FORBIDDEN_KEYS.has(part)) {
+      if (part === '' || FORBIDDEN_KEYS.has(part)) {
         return;
       }
     }

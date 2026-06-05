@@ -64,8 +64,3 @@ OutcomeReducers.register(new ThresholdReducer());
 // OutcomeReducers.resolve('threshold-75') now works in any scatter placement.
 // #endregion outcome-reducer
 
-// Compile-time checks via list queries.
-const _hasMajority   = ParallelCombiners.list().includes('majority');
-const _hasThreshold  = OutcomeReducers.list().includes('threshold-75');
-void _hasMajority;
-void _hasThreshold;

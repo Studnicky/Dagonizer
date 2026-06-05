@@ -29,7 +29,7 @@ export const flakyDownstream = async (): Promise<string> => {
 // State
 // ---------------------------------------------------------------------------
 
-export class S extends NodeStateBase {
+export class FetchState extends NodeStateBase {
   result = '';
 }
 
@@ -38,7 +38,7 @@ export class S extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // #region retry-node
-export const fetchNode: NodeInterface<S, 'success' | 'error'> = {
+export const fetchNode: NodeInterface<FetchState, 'success' | 'error'> = {
   'name': 'fetch',
   'outputs': ['success', 'error'],
   async execute(state, context) {

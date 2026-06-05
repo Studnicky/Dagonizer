@@ -69,10 +69,8 @@ export class HttpTransport {
 
     while (attempt <= maxRetries) {
       const controller = new AbortController();
-      const timeoutId  = setTimeout(() => controller.abort(new Error('timeout')), timeoutMs);
-      const signal     = options.signal !== undefined
-        ? AbortSignal.any([controller.signal, options.signal])
-        : controller.signal;
+      const timeoutId  = setTimeout(() => controller.abort(new ToolError('timeout', { 'reason': 'TIMEOUT', 'retryable': true })), timeoutMs);
+      const signal = AbortSignal.any([controller.signal, ...(options.signal !== undefined ? [options.signal] : [])]);
 
       const headers: Record<string, string> = {};
       if (init.headers !== undefined) {

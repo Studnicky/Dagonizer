@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { WebLlmAdapter, detectWebGpu } from '../src/index.js';
+import { WebLlmAdapter } from '../src/index.js';
 
 interface MutableGlobal {
   navigator?: unknown;
@@ -21,7 +21,7 @@ void test('WebLlmAdapter identity', () => {
 });
 
 void test('detectWebGpu returns false in node', () => {
-  assert.equal(detectWebGpu(), false);
+  assert.equal(WebLlmAdapter.detectWebGpu(), false);
 });
 
 void test('WebLlmAdapter.probe returns false when navigator is absent', async () => {

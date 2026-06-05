@@ -8,7 +8,7 @@
  */
 
 // #region virtual-time
-import { BackoffStrategy, RetryPolicy, Scheduler } from '@noocodex/dagonizer/runtime';
+import { BackoffStrategy, Clock, RetryPolicy, Scheduler } from '@noocodex/dagonizer/runtime';
 import { VirtualClockProvider, VirtualScheduler } from '@noocodex/dagonizer/testing';
 
 // ── Install virtual time ──────────────────────────────────────────────────────
@@ -18,6 +18,7 @@ const scheduler = new VirtualScheduler(0);         // starts at t=0 ms
 
 // VirtualClock drives Clock.monotonicMs(); VirtualScheduler drives Scheduler.
 // Both must be installed before the RetryPolicy runs.
+Clock.configure(clock);
 Scheduler.configure(scheduler);
 
 // ── Flaky operation: succeeds on the third attempt ───────────────────────────
@@ -62,9 +63,9 @@ const title = await runPromise;
 // attempts === 3
 // scheduler.virtualNow === 300 (100 + 200 ms of virtual time elapsed)
 
-// ── Restore real-time scheduler so subsequent tests are unaffected ─────────────
+// ── Restore real-time providers so subsequent tests are unaffected ────────────
 Scheduler.reset();
+Clock.reset();
 // #endregion virtual-time
 
-void clock;
-void title;
+if (title !== 'The Archivist Compendium, Vol. 1') throw new Error(`unexpected title: ${title}`);

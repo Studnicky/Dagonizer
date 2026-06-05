@@ -32,21 +32,18 @@
 
 import type { Candidate } from '@noocodex/dagonizer-book-entities';
 
-import { CanonicalId } from '@noocodex/dagonizer-book-entities';
 import { HttpTransport } from '@noocodex/dagonizer/tool';
 import type { Tool } from '@noocodex/dagonizer/tool';
 import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
 
 import type { OpenLibraryResponse } from './openLibraryTypes.js';
-import { pickDescription } from './openLibraryTypes.js';
+import { OPENLIBRARY_ENDPOINT, OpenLibraryDocs } from './openLibraryTypes.js';
 
 interface SubjectSearchInput extends Record<string, unknown> {
   readonly subject: string;
   readonly limit?: number;
   readonly lang?: string;
 }
-
-const ENDPOINT = 'https://openlibrary.org/search.json';
 
 // #region tool-schema
 const definition: ToolDefinition = {
@@ -96,39 +93,9 @@ export const SubjectSearchTool: Tool<SubjectSearchInput, readonly Candidate[]> =
     }
 
     const payload = await HttpTransport.getJson<OpenLibraryResponse>(
-      `${ENDPOINT}?${params.toString()}`,
-      signal !== undefined ? { signal } : {},
+      `${OPENLIBRARY_ENDPOINT}?${params.toString()}`,
+      { ...(signal !== undefined && { signal }) },
     );
-    const docs = payload.docs ?? [];
-    const candidates: Candidate[] = [];
-    for (const doc of docs) {
-      if (doc.title === undefined) continue;
-      const canonical = CanonicalId.pick({
-        'title':   doc.title,
-        ...(doc.isbn !== undefined ? { 'isbns': doc.isbn } : {}),
-        ...(doc.author_name !== undefined ? { 'authors': doc.author_name } : {}),
-      });
-      const summary = pickDescription(doc);
-      const subjects = doc.subject?.slice(0, 8);
-      const notes: Record<string, unknown> = { '_sources': ['openlibrary-subject'] };
-      if (doc.key !== undefined) notes['openlibraryKey'] = doc.key;
-      candidates.push({
-        'book': {
-          'isbn':    canonical,
-          'title':   doc.title,
-          'authors': doc.author_name ?? [],
-          'price':   { 'amount': 0, 'currency': 'USD' },
-          ...(summary !== undefined ? { 'summary': summary } : {}),
-          ...(doc.first_publish_year !== undefined ? { 'firstPublishYear': doc.first_publish_year } : {}),
-          ...(subjects !== undefined ? { 'subjects': subjects } : {}),
-          ...(doc.publisher !== undefined ? { 'publishers': doc.publisher.slice(0, 4) } : {}),
-          ...(doc.language !== undefined && doc.language.length > 0 ? { 'languages': doc.language } : {}),
-        },
-        'score':  0,
-        'source': 'subject-search',
-        'notes':  notes,
-      });
-    }
-    return candidates;
+    return OpenLibraryDocs.buildCandidates(payload.docs ?? [], 'subject-search', 'openlibrary-subject');
   },
 };

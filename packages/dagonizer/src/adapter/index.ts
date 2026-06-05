@@ -48,9 +48,7 @@ export type {
 } from './OpenAiCompatibleAdapter.js';
 
 export {
-  asNetworkError,
   Classifications,
-  classifyHttp,
   LlmError,
 } from './LlmError.js';
 export type { ErrorClassification, LlmErrorReason } from './LlmError.js';
@@ -58,7 +56,7 @@ export type { ErrorClassification, LlmErrorReason } from './LlmError.js';
 export { AdapterDescriptor } from './AdapterDescriptor.js';
 export type { AdapterDescriptorShape } from './AdapterDescriptor.js';
 
-export { decodeToolCallsJson } from './decodeToolCallsJson.js';
+export { ToolCallCodec } from './ToolCallCodec.js';
 
 export { LlmAdapterRegistry } from './LlmAdapterRegistry.js';
 export type { AdapterFactory } from './LlmAdapterRegistry.js';

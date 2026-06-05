@@ -17,19 +17,19 @@
  */
 
 import { Dagonizer } from '@noocodex/dagonizer';
-import { S, increment, child, parent } from './dags/05-embedded-dags.js';
+import { IncrementState, increment, child, parent } from './dags/05-embedded-dags.js';
 
 // ---------------------------------------------------------------------------
 // Run
 // ---------------------------------------------------------------------------
 
 // #region run
-const dispatcher = new Dagonizer<S>();
+const dispatcher = new Dagonizer<IncrementState>();
 dispatcher.registerNode(increment);
 dispatcher.registerDAG(child);
 dispatcher.registerDAG(parent);
 
-const state = new S();
+const state = new IncrementState();
 state.seed = 41;
 await dispatcher.execute('parent', state);
 

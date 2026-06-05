@@ -9,7 +9,7 @@
 
 // #region remote-store
 import { BaseStore } from '@noocodex/dagonizer/store';
-import type { StoreSnapshot, StoreSnapshotEntry } from '@noocodex/dagonizer/store';
+import type { StoreSnapshotEntry } from '@noocodex/dagonizer/store';
 import type {
   RemoteStore,
   RemoteStoreEndpoint,
@@ -103,9 +103,3 @@ export class GrpcStore extends BaseStore implements RemoteStore {
 }
 // #endregion remote-store
 
-// Compile-time check: GrpcStore satisfies both contracts.
-const _check: RemoteStore = new GrpcStore('grpc://catalogue.archivist.svc:50051', 'us-east-1');
-void _check;
-// Suppress unused import (StoreSnapshot is referenced through the implement chain).
-type _SS = StoreSnapshot;
-void 0 as unknown as _SS;

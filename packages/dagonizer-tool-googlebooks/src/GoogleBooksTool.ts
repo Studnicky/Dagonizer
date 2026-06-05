@@ -16,7 +16,7 @@
 
 import type { Candidate } from '@noocodex/dagonizer-book-entities';
 
-import { CanonicalId, toIso6392 } from '@noocodex/dagonizer-book-entities';
+import { CanonicalId, LanguageCode } from '@noocodex/dagonizer-book-entities';
 import { HttpTransport } from '@noocodex/dagonizer/tool';
 import type { Tool } from '@noocodex/dagonizer/tool';
 import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
@@ -56,6 +56,11 @@ interface GoogleBooksInput extends Record<string, unknown> {
 
 const ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 
+const GOOGLE_BOOKS_MIN_RESULTS = 1;
+const GOOGLE_BOOKS_MAX_RESULTS = 40;
+const GOOGLE_BOOKS_DEFAULT_RESULTS = 8;
+const GOOGLE_BOOKS_MAX_SUBJECTS = 8;
+
 const definition: ToolDefinition = {
   'name': 'google_books_search',
   'description': 'Search Google Books for real volumes (returns titles, authors, descriptions, average rating, ratings count). Complementary to openlibrary; many editions and reviews land here that openlibrary lacks.',
@@ -72,9 +77,9 @@ const definition: ToolDefinition = {
       },
       'maxResults': {
         'type':    'integer',
-        'minimum': 1,
-        'maximum': 40,
-        'default': 8,
+        'minimum': GOOGLE_BOOKS_MIN_RESULTS,
+        'maximum': GOOGLE_BOOKS_MAX_RESULTS,
+        'default': GOOGLE_BOOKS_DEFAULT_RESULTS,
         'description': 'Maximum volumes to return.',
       },
       'orderBy': {
@@ -96,7 +101,7 @@ const definition: ToolDefinition = {
 export const GoogleBooksTool: Tool<GoogleBooksInput, readonly Candidate[]> = {
   definition,
   async execute(input, signal) {
-    const max = Math.max(1, Math.min(40, input.maxResults ?? 8));
+    const max = Math.max(GOOGLE_BOOKS_MIN_RESULTS, Math.min(GOOGLE_BOOKS_MAX_RESULTS, input.maxResults ?? GOOGLE_BOOKS_DEFAULT_RESULTS));
     const params = new URLSearchParams({ 'q': input.query, 'maxResults': String(max) });
     if (input.orderBy !== undefined) params.set('orderBy', input.orderBy);
     if (input.langRestrict !== undefined && input.langRestrict.length > 0) {
@@ -105,7 +110,7 @@ export const GoogleBooksTool: Tool<GoogleBooksInput, readonly Candidate[]> = {
 
     const payload = await HttpTransport.getJson<GoogleBooksResponse>(
       `${ENDPOINT}?${params.toString()}`,
-      signal !== undefined ? { signal } : {},
+      { ...(signal !== undefined && { signal }) },
     );
     const volumes = payload.items ?? [];
     const candidates: Candidate[] = [];
@@ -117,17 +122,19 @@ export const GoogleBooksTool: Tool<GoogleBooksInput, readonly Candidate[]> = {
         .filter((s): s is string => typeof s === 'string');
       const canonical = CanonicalId.pick({
         'title': info.title,
-        ...(isbns.length > 0 ? { 'isbns': isbns } : {}),
-        ...(info.authors !== undefined ? { 'authors': info.authors } : {}),
+        ...(isbns.length > 0 && { 'isbns': isbns }),
+        ...(info.authors !== undefined && { 'authors': info.authors }),
       });
       const year = pickYear(info.publishedDate);
-      const notes: Record<string, unknown> = { '_sources': ['google-books'] };
-      if (info.averageRating !== undefined) notes['rating']       = info.averageRating;
-      if (info.ratingsCount !== undefined)  notes['ratingsCount'] = info.ratingsCount;
-      if (vol.id !== undefined)             notes['googleVolumeId'] = vol.id;
-      if (info.imageLinks?.thumbnail !== undefined) notes['thumbnail'] = info.imageLinks.thumbnail;
+      const notes: Record<string, unknown> = {
+        '_sources': ['google-books'],
+        ...(info.averageRating !== undefined && { 'rating': info.averageRating }),
+        ...(info.ratingsCount !== undefined  && { 'ratingsCount': info.ratingsCount }),
+        ...(vol.id !== undefined             && { 'googleVolumeId': vol.id }),
+        ...(info.imageLinks?.thumbnail !== undefined && { 'thumbnail': info.imageLinks.thumbnail }),
+      };
       const languages = info.language !== undefined && info.language.length > 0
-        ? [toIso6392(info.language)]
+        ? [LanguageCode.toIso6392(info.language)]
         : undefined;
       candidates.push({
         'book': {
@@ -135,11 +142,11 @@ export const GoogleBooksTool: Tool<GoogleBooksInput, readonly Candidate[]> = {
           'title':   info.title,
           'authors': info.authors ?? [],
           'price':   { 'amount': 0, 'currency': 'USD' },
-          ...(info.description !== undefined ? { 'summary': info.description } : {}),
-          ...(year !== undefined ? { 'firstPublishYear': year } : {}),
-          ...(info.categories !== undefined ? { 'subjects': info.categories.slice(0, 8) } : {}),
-          ...(info.publisher !== undefined ? { 'publishers': [info.publisher] } : {}),
-          ...(languages !== undefined ? { 'languages': languages } : {}),
+          ...(info.description !== undefined && { 'summary': info.description }),
+          ...(year !== undefined             && { 'firstPublishYear': year }),
+          ...(info.categories !== undefined  && { 'subjects': info.categories.slice(0, GOOGLE_BOOKS_MAX_SUBJECTS) }),
+          ...(info.publisher !== undefined   && { 'publishers': [info.publisher] }),
+          ...(languages !== undefined        && { 'languages': languages }),
         },
         'score':  0,
         'source': 'google-books',
