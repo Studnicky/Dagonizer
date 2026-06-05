@@ -1,0 +1,593 @@
+/**
+ * CytoscapeGraph: subclassable factory that creates a fully-configured
+ * `cytoscape.Core` from a `DAG`.
+ *
+ * ## Design intent
+ *
+ * Consumers call `new CytoscapeGraph(cytoscapeFactory, container, dag)` and
+ * then `await instance.mount()` to receive a `cytoscape.Core` that is:
+ *   - Populated with elements from `CytoscapeRenderer`.
+ *   - Positioned by `CompositeLayout` (bottom-up dagre pass).
+ *   - Styled with the canonical DAG stylesheet (dark pearl-black + teal accent).
+ *   - Laid out via cytoscape's built-in `preset` layout (positions pre-computed).
+ *   - Configured with standard interaction defaults (pan, zoom, box-select).
+ *
+ * ## Cytoscape is dependency-injected
+ *
+ * This module uses `import type cytoscape from 'cytoscape'` so the package
+ * itself never imports cytoscape as a value. The consumer passes the real
+ * `cytoscape` function (or any compatible factory) at construction time. This
+ * keeps the package runtime-neutral: SSR contexts, test stubs, and future
+ * cytoscape versions can be used without changes here.
+ *
+ * ## Self-loop visibility fix
+ *
+ * Cytoscape's dimension cache for nodes with self-loop edges can become
+ * degenerate when the stylesheet uses `'width': 'label'` / `'height': 'label'`
+ * auto-sizing. The degenerate cache causes cytoscape to cull these nodes from
+ * rendering entirely. This class applies two fixes:
+ *   1. **Explicit numeric node dimensions** (180 × 48) in the stylesheet; the
+ *      string `'label'` is never used for `width` or `height`.
+ *   2. **`enforceVisibility` sweep** after mount: a pair of `cy.batch()` calls
+ *      toggles every node's `display` style off then on, forcing cytoscape to
+ *      flush the size cache so self-loop nodes are never invisible.
+ *
+ * ## Extension via protected hooks
+ *
+ * Subclasses override any of:
+ *   - `buildElements()` — enrich or replace the raw element array.
+ *   - `stylesheet()` — alter or extend the canonical stylesheet.
+ *   - `presetLayout()` — change layout options passed to cytoscape.
+ *   - `interactionDefaults()` — change pan/zoom/select configuration.
+ *   - `enforceVisibility(cy)` — alter the visibility sweep strategy.
+ *   - `onReady(cy)` — called after mount completes; subclasses wire animation here.
+ *
+ * The docs site uses this pattern: `DagGraph extends CytoscapeGraph` and
+ * overrides `onReady` to attach the live-run animation machine.
+ */
+
+import type cytoscape from 'cytoscape';
+
+import type { DAG } from '../entities/dag/DAG.js';
+
+import { CompositeLayout } from './CompositeLayout.js';
+import type { CompositeLayoutOptions } from './CompositeLayout.js';
+import { CytoscapeRenderer } from './CytoscapeRenderer.js';
+
+// ---------------------------------------------------------------------------
+// DI factory type
+// ---------------------------------------------------------------------------
+
+/**
+ * The cytoscape factory function type.
+ *
+ * `typeof cytoscape` is the callable default export: given `CytoscapeOptions`
+ * it returns a `cytoscape.Core`. Consumers pass their imported `cytoscape`
+ * function directly, e.g.:
+ *
+ *   ```ts
+ *   import cytoscape from 'cytoscape';
+ *   const graph = new CytoscapeGraph(cytoscape, container, dag);
+ *   ```
+ */
+type CytoscapeFactory = typeof cytoscape;
+
+/**
+ * The container element type accepted by the injected cytoscape factory.
+ *
+ * Derived directly from `CytoscapeOptions['container']` so this module does
+ * not depend on the DOM lib (`lib: ["DOM"]` is not in the project tsconfig).
+ * Consumers pass a real `HTMLElement`; the type resolves correctly at their
+ * call site where the DOM lib is available.
+ */
+type CytoscapeContainer = NonNullable<cytoscape.CytoscapeOptions['container']>;
+
+// ---------------------------------------------------------------------------
+// Module-level defaults (required-with-defaults pattern)
+// ---------------------------------------------------------------------------
+
+/** Default empty embedded-DAGs registry. */
+const DEFAULT_EMBEDDED_DAGS: ReadonlyMap<string, DAG> = new Map();
+
+/** Default CompositeLayout options (all fields delegated to CompositeLayout defaults). */
+const DEFAULT_LAYOUT_OPTIONS: CompositeLayoutOptions = {};
+
+/**
+ * Vertical gap below the laid-out graph at which the first layout-unpositioned
+ * node (e.g. the renderer's synthetic `END` sink) is placed.
+ */
+const FALLBACK_SINK_GAP = 160;
+
+/** Vertical step between successive layout-unpositioned nodes stacked at the sink. */
+const FALLBACK_SINK_STEP = 80;
+
+// ---------------------------------------------------------------------------
+// Class-shape interface (tier-1 taxonomy: same file as the class)
+// ---------------------------------------------------------------------------
+
+/**
+ * Public contract of `CytoscapeGraph`.
+ *
+ * Consumers program to this interface when they need to accept both the base
+ * class and subclasses without depending on the concrete implementation.
+ */
+export interface CytoscapeGraphInterface {
+  /** Mount the graph: compute layout, create cytoscape Core, run hooks. */
+  mount(): Promise<cytoscape.Core>;
+  /** The `cytoscape.Core` instance after mount, or `null` before. */
+  readonly cy: cytoscape.Core | null;
+}
+
+// ---------------------------------------------------------------------------
+// Options interface
+// ---------------------------------------------------------------------------
+
+/**
+ * Configuration for `CytoscapeGraph`.
+ *
+ * All fields are required inside the engine; the constructor accepts
+ * `Partial<CytoscapeGraphOptions>` and fills defaults via the module-level
+ * constants above so callers never have to provide them.
+ */
+export interface CytoscapeGraphOptions {
+  /**
+   * Registry of embedded-DAGs by name, passed to `CytoscapeRenderer` and
+   * `CompositeLayout` for recursive expansion. Default: empty `Map`.
+   */
+  readonly embeddedDAGs: ReadonlyMap<string, DAG>;
+  /**
+   * Layout tuning options forwarded to `CompositeLayout.compute`.
+   * Default: `{}` (all tuning delegated to CompositeLayout's own defaults).
+   */
+  readonly layoutOptions: CompositeLayoutOptions;
+}
+
+// ---------------------------------------------------------------------------
+// CytoscapeGraph
+// ---------------------------------------------------------------------------
+
+/**
+ * Subclassable factory that creates a fully-configured `cytoscape.Core` from
+ * a `DAG` instance.
+ *
+ * Call `await instance.mount()` to build the graph. Extend this class and
+ * override the protected hook methods to customise elements, stylesheet, layout,
+ * or interaction defaults without reimplementing the core lifecycle.
+ *
+ * @example
+ * ```ts
+ * import cytoscape from 'cytoscape';
+ * import { CytoscapeGraph } from '@noocodex/dagonizer/viz';
+ *
+ * const graph = new CytoscapeGraph(cytoscape, containerEl, dag);
+ * const cy = await graph.mount();
+ * ```
+ */
+export class CytoscapeGraph implements CytoscapeGraphInterface {
+  /** The injected cytoscape factory. Never called as a value inside this module. */
+  protected readonly cytoscapeFactory: CytoscapeFactory;
+  /**
+   * The DOM container element that cytoscape will render into.
+   * Typed via `CytoscapeContainer` (derived from `CytoscapeOptions['container']`)
+   * so this module does not require `lib: ["DOM"]` in its tsconfig.
+   */
+  protected readonly container: CytoscapeContainer;
+  /** The DAG to visualise. */
+  protected readonly dag: DAG;
+  /** Registry of embedded-DAGs for recursive expansion. */
+  protected readonly embeddedDAGs: ReadonlyMap<string, DAG>;
+  /** Layout tuning options forwarded to CompositeLayout. */
+  protected readonly layoutOptions: CompositeLayoutOptions;
+  /** The live cytoscape Core after `mount()`, or `null` before. */
+  protected cyInstance: cytoscape.Core | null;
+
+  /**
+   * Create a new `CytoscapeGraph`.
+   *
+   * @param cytoscapeFactory The `cytoscape` function (or compatible stub). Injected
+   *   to avoid this package importing cytoscape as a value.
+   * @param container The DOM element cytoscape will render into.
+   * @param dag The DAG to visualise.
+   * @param options Optional configuration; all fields have sensible defaults.
+   */
+  constructor(
+    cytoscapeFactory: CytoscapeFactory,
+    container: CytoscapeContainer,
+    dag: DAG,
+    options: Partial<CytoscapeGraphOptions> = {},
+  ) {
+    this.cytoscapeFactory = cytoscapeFactory;
+    this.container        = container;
+    this.dag              = dag;
+    this.embeddedDAGs     = options.embeddedDAGs ?? DEFAULT_EMBEDDED_DAGS;
+    this.layoutOptions    = options.layoutOptions ?? DEFAULT_LAYOUT_OPTIONS;
+    this.cyInstance       = null;
+  }
+
+  // ── CytoscapeGraphInterface ───────────────────────────────────────────────
+
+  /**
+   * The `cytoscape.Core` after a successful `mount()`, or `null` if the graph
+   * has not yet been mounted.
+   */
+  get cy(): cytoscape.Core | null {
+    return this.cyInstance;
+  }
+
+  /**
+   * Compute layout, create the `cytoscape.Core`, and run all post-mount hooks.
+   *
+   * Steps:
+   *   1. Build elements via `buildElements()`.
+   *   2. Compute node positions via `CompositeLayout.compute()`.
+   *   3. Apply positions to each node element.
+   *   4. Instantiate `cytoscape.Core` with elements, stylesheet, and layout.
+   *   5. Run `enforceVisibility(cy)` to clear the self-loop size cache.
+   *   6. Call `onReady(cy)` for subclass post-mount work (e.g. animation wiring).
+   *   7. Return the mounted `Core`.
+   *
+   * @returns The mounted `cytoscape.Core`.
+   */
+  async mount(): Promise<cytoscape.Core> {
+    const positioned = await this.applyLayout(this.buildElements());
+
+    const cy = this.cytoscapeFactory({
+      "container": this.container,
+      "elements":  positioned,
+      "style":     this.stylesheet(),
+      "layout":    this.presetLayout(),
+      ...this.interactionDefaults(),
+    });
+
+    this.cyInstance = cy;
+
+    this.enforceVisibility(cy);
+    this.onReady(cy);
+
+    return cy;
+  }
+
+  /**
+   * Compute layout for `elements` via `CompositeLayout` and return a new array
+   * with a `position` attached to every node element.
+   *
+   * Nodes the layout engine does not position — the renderer's synthetic `END`
+   * sink is not a DAG placement, so `CompositeLayout` never assigns it
+   * coordinates — are placed below the laid-out graph at its horizontal centre,
+   * so they never collapse onto the preset layout's origin (0,0) and overlap
+   * the entrypoint.
+   *
+   * Reused by `mount()` and by subclasses that re-layout after mutating the
+   * element set (e.g. expanding an embedded-DAG). Uses `layoutRegistry()` so a
+   * subclass can lay out against the same embedded-DAG subset it renders.
+   */
+  protected async applyLayout(
+    elements: ReadonlyArray<cytoscape.ElementDefinition>,
+  ): Promise<cytoscape.ElementDefinition[]> {
+    const layout = await CompositeLayout.compute(
+      this.dag,
+      this.layoutRegistry(),
+      this.layoutOptions,
+    );
+
+    const laidOut = [...layout.positions.values()];
+    const centreX = laidOut.length > 0
+      ? laidOut.reduce((sum, p) => sum + p.x, 0) / laidOut.length
+      : 0;
+    const lowestY = laidOut.length > 0
+      ? Math.max(...laidOut.map((p) => p.y))
+      : 0;
+    let sinkY = lowestY + FALLBACK_SINK_GAP;
+
+    return elements.map((el) => {
+      if (el.group !== 'nodes') return el;
+      const id = el.data?.['id'];
+      if (typeof id !== 'string') return el;
+      const pos = layout.positions.get(id);
+      if (pos !== undefined) return { ...el, "position": { "x": pos.x, "y": pos.y } };
+      const fallback = { "x": centreX, "y": sinkY };
+      sinkY += FALLBACK_SINK_STEP;
+      return { ...el, "position": fallback };
+    });
+  }
+
+  /**
+   * The embedded-DAG registry used for layout. Defaults to the full
+   * `embeddedDAGs` passed at construction. Subclasses that render only a
+   * subset of embedded-DAGs expanded (collapse/expand UX) override this to
+   * return the SAME subset they emit from `buildElements()`, so layout and
+   * rendering agree on which compounds are expanded.
+   */
+  protected layoutRegistry(): ReadonlyMap<string, DAG> {
+    return this.embeddedDAGs;
+  }
+
+  // ── Protected hook methods ────────────────────────────────────────────────
+
+  /**
+   * Build the Cytoscape element array for this DAG.
+   *
+   * Default implementation delegates to `CytoscapeRenderer.render`. Subclasses
+   * may override to enrich elements (e.g. add `data.kind` from a node registry)
+   * or replace them entirely.
+   */
+  protected buildElements(): ReadonlyArray<cytoscape.ElementDefinition> {
+    return CytoscapeRenderer.render(this.dag, {
+      "embeddedDAGs": this.embeddedDAGs,
+    }) as ReadonlyArray<cytoscape.ElementDefinition>;
+  }
+
+  /**
+   * Return the canonical DAG stylesheet.
+   *
+   * The stylesheet is ported from `DagGraph.vue` with two required bug fixes:
+   *   1. `'width'` and `'height'` on the node base rule use explicit numeric
+   *      values (180 and 48 respectively) instead of the string `'label'`.
+   *      The string `'label'` triggers a degenerate size cache on self-loop
+   *      nodes that causes cytoscape to cull them from rendering.
+   *   2. `'font-family'` uses a real font stack instead of the CSS custom
+   *      property `var(--vp-font-family-mono)`, which cytoscape cannot resolve
+   *      on the canvas context.
+   *
+   * Subclasses may override to extend or replace this stylesheet.
+   */
+  protected stylesheet(): cytoscape.StylesheetStyle[] {
+    const MONO = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    return [
+      // ── Node base ─────────────────────────────────────────────────────────
+      // width/height are explicit numbers (NOT 'label') to avoid the degenerate
+      // size-cache bug that makes self-loop nodes invisible in cytoscape.
+      { "selector": 'node', "style": {
+        'background-color':     '#020306',
+        'border-color':         '#22e8ff',
+        'border-width':         1.4,
+        'color':                '#eef3f7',
+        'label':                'data(label)',
+        'font-family':          MONO,
+        'font-size':            14,
+        'font-weight':          500,
+        'text-halign':          'center',
+        'text-valign':          'center',
+        'text-wrap':            'wrap',
+        'text-max-width':       '150px',
+        'text-outline-color':   '#020306',
+        'text-outline-width':   2,
+        'text-outline-opacity': 1,
+        'padding':              '14px',
+        // Explicit numeric sizing — NEVER 'label' — prevents the self-loop
+        // size-cache deoptimisation in cytoscape's internal renderer.
+        'width':                180,
+        'height':               48,
+        'shape':                'round-rectangle',
+        'transition-property':  'border-color, border-width, background-color, color, opacity',
+        'transition-duration':  220,
+      } },
+
+      // ── Per-type shapes ───────────────────────────────────────────────────
+      { "selector": 'node[type="scatter"]',  "style": { 'shape': 'concave-hexagon' } },
+      { "selector": 'node[type="parallel"]', "style": {
+        'shape':              'round-hexagon',
+        'background-color':   '#04060a',
+        'background-opacity': 1,
+        'border-color':       '#7a8290',
+        'border-width':       1.4,
+        'border-style':       'dashed',
+        'text-valign':        'top',
+        'text-halign':        'center',
+        'text-margin-y':      -6,
+        'padding':            '22px',
+        'font-family':        MONO,
+        'font-size':          13,
+        'font-weight':        600,
+        'color':              '#eef3f7',
+      } },
+      { "selector": 'node[type="embedded-dag"]', "style": { 'shape': 'round-hexagon' } },
+      { "selector": 'node[type="terminal"]', "style": {
+        'shape':            'round-rectangle',
+        'background-color': '#020306',
+        'border-color':     '#d4a649',
+      } },
+      { "selector": 'node[type="phase"]', "style": {
+        'shape':            'barrel',
+        'background-color': '#020306',
+        'border-color':     '#8f6dff',
+        'border-style':     'dashed',
+        'border-width':     1.4,
+        'width':            180,
+        'height':           48,
+        'font-family':      MONO,
+        'font-size':        13,
+        'font-weight':      500,
+      } },
+
+      // ── Compound parent (parallel / embedded-dag wrapper) ─────────────────
+      { "selector": 'node:parent', "style": {
+        'shape':            'round-hexagon',
+        'background-color': '#04060a',
+        'border-color':     '#7a8290',
+        'border-style':     'dashed',
+        'border-width':     1.4,
+        'text-valign':      'top',
+        'font-family':      MONO,
+        'font-size':        13,
+        'font-weight':      600,
+        'color':            '#eef3f7',
+      } },
+
+      // ── Kind-tagged styles ────────────────────────────────────────────────
+      { "selector": 'node[kind="deterministic"]', "style": {
+        'border-color': '#22e8ff',
+        'border-style': 'solid',
+        'border-width': 1.4,
+      } },
+      { "selector": 'node[kind="non-deterministic"]', "style": {
+        'border-color': '#8f6dff',
+        'border-style': 'dashed',
+        'border-width': 1.6,
+      } },
+
+      // ── State classes ─────────────────────────────────────────────────────
+      { "selector": 'node.dag-active', "style": {
+        'background-color':   '#020306',
+        'border-color':       '#22e8ff',
+        'border-width':       3,
+        'color':              '#22e8ff',
+        'text-outline-color': '#020306',
+      } },
+      { "selector": 'node.dag-completed', "style": {
+        'background-color':   '#020306',
+        'border-color':       '#0e8a99',
+        'border-width':       2,
+        'color':              '#eafcff',
+        'text-outline-color': '#020306',
+      } },
+      { "selector": 'node.dag-errored', "style": {
+        'background-color':   '#020306',
+        'border-color':       '#d4a649',
+        'border-width':       3,
+        'color':              '#d4a649',
+        'text-outline-color': '#020306',
+      } },
+      { "selector": 'node.dag-resetting', "style": {
+        'opacity':             0.15,
+        'transition-property': 'opacity',
+        'transition-duration': 280,
+      } },
+      { "selector": 'node:selected', "style": {
+        'border-color': '#22e8ff',
+        'border-width': 4,
+      } },
+
+      // ── Edge base ─────────────────────────────────────────────────────────
+      { "selector": 'edge', "style": {
+        'curve-style':             'round-taxi',
+        'taxi-direction':          'vertical',
+        'taxi-turn':               '50%',
+        'taxi-radius':             16,
+        'line-color':              '#22e8ff',
+        'target-arrow-color':      '#22e8ff',
+        'target-arrow-shape':      'vee',
+        'arrow-scale':             1.4,
+        'source-endpoint':         'outside-to-node-or-label',
+        'target-endpoint':         'outside-to-node-or-label',
+        'label':                   'data(label)',
+        'text-rotation':           'none',
+        'text-margin-y':           -8,
+        'text-events':             'no',
+        'font-family':             MONO,
+        'font-size':               12,
+        'font-weight':             600,
+        'color':                   '#eef3f7',
+        'text-background-color':   '#0e1525',
+        'text-background-opacity': 1,
+        'text-background-padding': '6px',
+        'text-background-shape':   'roundrectangle',
+        'text-border-color':       '#7a8290',
+        'text-border-width':       1,
+        'text-border-opacity':     0.85,
+        'width':                   1.4,
+        'z-index':                 1,
+        'transition-property':     'line-color, target-arrow-color, width',
+        'transition-duration':     220,
+      } },
+      { "selector": 'edge.dag-traversed', "style": {
+        'line-color':         '#22e8ff',
+        'target-arrow-color': '#22e8ff',
+        'width':              3,
+        'color':              '#22e8ff',
+        'text-border-color':  '#22e8ff',
+      } },
+
+      // ── Retry routes: bezier self-loop ────────────────────────────────────
+      // Self-loop edges require bezier (not round-taxi) to produce a visible arc.
+      // loop-direction / loop-sweep give the arc a definite direction and sweep.
+      { "selector": 'edge.route-retry', "style": {
+        'curve-style':              'bezier',
+        'loop-direction':           '-45deg',
+        'loop-sweep':               '-90deg',
+        'control-point-step-size':  56,
+        'line-style':               'dashed',
+        'line-color':               '#f5a623',
+        'target-arrow-color':       '#f5a623',
+        'color':                    '#f5a623',
+        'text-border-color':        '#f5a623',
+      } },
+
+      // ── Salvage routes ────────────────────────────────────────────────────
+      { "selector": 'edge.route-salvage', "style": {
+        'line-style':         'dashed',
+        'line-color':         '#e8556d',
+        'target-arrow-color': '#e8556d',
+        'color':              '#e8556d',
+        'text-border-color':  '#e8556d',
+      } },
+    ];
+  }
+
+  /**
+   * Return the cytoscape layout options for positioning pre-computed elements.
+   *
+   * Uses the built-in `preset` layout, which reads `position` from each element.
+   * Positions are pre-computed by `CompositeLayout.compute` (bottom-up dagre pass),
+   * so no cytoscape layout plugin is required.
+   *
+   * Subclasses may override to change padding, animate, or supply a different
+   * layout when positions are not pre-computed.
+   */
+  protected presetLayout(): cytoscape.PresetLayoutOptions {
+    return {
+      "name":    'preset',
+      "fit":     true,
+      "padding": 60,
+      "animate": false,
+    };
+  }
+
+  /**
+   * Return the cytoscape interaction default options merged into the Core config.
+   *
+   * These fields are spread directly into the `cytoscape({...})` constructor
+   * options, enabling pan, zoom, box-select, and additive selection out of
+   * the box. `wheelSensitivity` is tuned down from the default to avoid
+   * accidental viewport jumps on track-pad scroll.
+   */
+  protected interactionDefaults(): Record<string, unknown> {
+    return {
+      "userPanningEnabled":  true,
+      "userZoomingEnabled":  true,
+      "boxSelectionEnabled": true,
+      "selectionType":       'additive',
+      "wheelSensitivity":    0.25,
+    };
+  }
+
+  /**
+   * Force cytoscape to recompute the visibility cache for all nodes.
+   *
+   * Self-loop edges (e.g. a `retry` route whose target is the node itself) can
+   * leave a degenerate entry in cytoscape's internal size cache when the node
+   * was created with auto-sizing (`'width': 'label'`). Even with explicit
+   * numeric sizing this sweep is a belt-and-suspenders guard: toggling
+   * `display` off then on in two `batch()` calls discards the stale cache
+   * entry so every node, including self-loop nodes, renders correctly.
+   *
+   * Subclasses may override to replace or extend the sweep strategy.
+   */
+  protected enforceVisibility(cy: cytoscape.Core): void {
+    cy.batch(() => { cy.nodes().style('display', 'none'); });
+    cy.batch(() => { cy.nodes().style('display', 'element'); });
+  }
+
+  /**
+   * Called after the `cytoscape.Core` is mounted and visibility is enforced.
+   *
+   * Default implementation is a no-op. Subclasses override this to wire
+   * animation machines, event listeners, or other post-mount behaviour.
+   *
+   * @param _cy The mounted `cytoscape.Core`.
+   */
+   
+  protected onReady(_cy: cytoscape.Core): void {
+    // No-op in the base class. Subclasses wire animation here.
+  }
+}

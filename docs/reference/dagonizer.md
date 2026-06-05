@@ -84,15 +84,7 @@ interface DispatcherBundle<TState extends NodeStateInterface, TServices = undefi
 
 Both arrays are required. Either may be empty (a node-only bundle uses `dags: []`; a DAG-only bundle uses `nodes: []`).
 
-```ts
-import type { DispatcherBundle } from '@noocodex/dagonizer';
-
-const bundle: DispatcherBundle<MyState> = {
-  nodes: [fetchNode, parseNode, persistNode],
-  dags:  [pipelineDag],
-};
-dispatcher.registerBundle(bundle);
-```
+<<< @/../examples/the-archivist/dag.ts#dispatcher-bundle
 
 ---
 
@@ -102,11 +94,12 @@ dispatcher.registerBundle(bundle);
 registerDAG(dag: DAG): void
 ```
 
-Registers a DAG after three validation passes:
+Registers a DAG after two validation passes, followed by an optional contract check:
 
 1. **Schema pass.** `Validator.dag.validate(dag)` checks structure (required fields, valid `type` and `strategy` enumerations).
-2. **Semantic pass.** Verifies entrypoint exists, all node references are resolvable, no circular scatter body references, and every registered node output has a routing entry in the placement's `outputs` map.
-3. **Contract pass.** For DAGs derived from a `nodes` registry, `ContractRegistryValidator` checks data-flow correctness. The entrypoint node's `hardRequired` paths are treated as the flow's ambient external state; any node may read those keys without an upstream producer, so multi-root topologies (several nodes reading the initial input) validate. Dangling reads (a non-entrypoint node requires a path no upstream node produces) throw `DAGError`; dead writes call `onContractWarning`.
+2. **Semantic pass.** Verifies entrypoint exists, all node references are resolvable, no circular embedded-DAG references, and every registered node output has a routing entry in the placement's `outputs` map.
+
+After both passes, `ContractRegistryValidator` runs a data-flow check for each placement whose backing node carries a co-located contract. Dangling reads (a non-entrypoint node requires a path no upstream node produces) throw `DAGError`; dead writes call `onContractWarning`. This check is skipped for placements without a contract.
 
 Throws `DAGError` with a multi-line message listing all failures.
 
@@ -205,15 +198,7 @@ execute(
 
 Returns an `Execution<TState>` starting at the DAG's entrypoint. The execution is lazy: the generator does not run until the caller awaits or iterates.
 
-```ts
-// Await (one-shot)
-const result = await dispatcher.execute('my-dag', state);
-
-// Iterate (streaming per node)
-for await (const node of dispatcher.execute('my-dag', state)) {
-  console.log(node.nodeName, node.output);
-}
-```
+<<< @/../examples/the-archivist/runArchivist.ts#linear-run
 
 `ExecuteOptionsInterface` has two fields: `signal?: AbortSignal` and `deadlineMs?: number`.
 
@@ -232,11 +217,7 @@ resume(
 
 Identical to `execute()` but begins at `fromStage` instead of the DAG's entrypoint. The caller is responsible for rehydrating `state` (typically via `Checkpoint.load(raw).restoreState(fn)`) before calling.
 
-```ts
-const ckpt = Checkpoint.load(raw);
-const { dagName, state, cursor } = ckpt.restoreState((snap) => MyState.restore(snap));
-const result = await dispatcher.resume(dagName, state, cursor);
-```
+<<< @/../examples/the-archivist/runArchivist.ts#resume-run
 
 ---
 

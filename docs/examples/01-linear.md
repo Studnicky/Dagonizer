@@ -16,25 +16,21 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
-import type { ElementDefinition } from 'cytoscape';
 import { archivistDAG } from '@archivist/dag.ts';
 import { BookSearchScatterDAG } from '@archivist/embedded-dags/BookSearchScatterDAG.ts';
 import { ComposeRetryLoopDAG } from '@archivist/embedded-dags/ComposeRetryLoopDAG.ts';
 
-const elements = CytoscapeRenderer.render(archivistDAG, {
-  embeddedDAGs: new Map([
-    ['book-search-scatter', BookSearchScatterDAG],
-    ['compose-retry-loop', ComposeRetryLoopDAG],
-  ]),
-}) as ElementDefinition[];
+const archivistRegistry = new Map([
+  ['book-search-scatter', BookSearchScatterDAG],
+  ['compose-retry-loop', ComposeRetryLoopDAG],
+]);
 </script>
 
 # Phase 01: Linear intake
 
 The simplest slice of [The Archivist](./the-archivist): wire a dispatcher, register its nodes and DAGs in dependency order, execute one visitor query, and read the lifecycle result. The full runner is below; this is the real code.
 
-<DagGraph :elements="elements" aria-label="The Archivist DAG with sub-DAGs expanded." />
+<DagGraph :dag="archivistDAG" :embedded-d-a-gs="archivistRegistry" :expand-all="true" aria-label="The Archivist DAG with sub-DAGs expanded." />
 
 ## Code
 

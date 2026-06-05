@@ -28,11 +28,12 @@
 import type { DAG } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
+import type { PhaseNodePlacementInterface } from '../entities/dag/PhaseNode.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 
-type AnyPlacement = EmbeddedDAGNode | ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface;
+type AnyPlacement = EmbeddedDAGNode | ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
 
 /**
  * Render a `DAG` as Mermaid `flowchart` source. Output is a complete
@@ -104,6 +105,9 @@ export class MermaidRenderer {
         // asymmetric / flag shape for failed terminals
         return `${placement.name}>${outcomeLabel}]`;
       }
+      case 'PhaseNode':
+        // stadium shape: connotes a lifecycle hook (pre/post) wrapping a node
+        return `${placement.name}([${MermaidRenderer.escapeLabel(placement.name)} (${placement.phase})])`;
     }
   }
 

@@ -15,11 +15,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
-import type { ElementDefinition } from 'cytoscape';
 import { ComposeRetryLoopDAG } from '@archivist/embedded-dags/ComposeRetryLoopDAG.ts';
-
-const elements = CytoscapeRenderer.render(ComposeRetryLoopDAG) as ElementDefinition[];
 </script>
 
 # Phase 07: Retry
@@ -33,7 +29,7 @@ The same shape appears in two places:
 
 Both are loop edges in the topology. The dispatcher always sees a named output; nothing throws.
 
-<DagGraph :elements="elements" aria-label="ComposeRetryLoopDAG: compose, validate, retry loop bounded by the retry budget on state." />
+<DagGraph :dag="ComposeRetryLoopDAG" aria-label="ComposeRetryLoopDAG: compose, validate, retry loop bounded by the retry budget on state." />
 
 ## Code
 

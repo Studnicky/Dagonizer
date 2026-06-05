@@ -51,7 +51,9 @@ const adapter = new GroqApiAdapter({ apiKey: process.env.GROQ_API_KEY! });
 const response = await adapter.chat(ChatRequestBuilder.from({
   messages: [{ role: 'user', content: 'Hello', toolCallId: '', toolName: '' }],
 }));
-console.log(response.message);
+if (response.message.kind === 'text') {
+  console.log(response.message.content);
+}
 ```
 
 ### Writing an adapter
@@ -64,11 +66,7 @@ import type { ChatRequest, ChatResponse } from '@noocodex/dagonizer/adapter';
 
 export class MyAdapter extends BaseAdapter {
   constructor() {
-    super({
-      id: 'mine',
-      displayName: 'My Provider',
-      capabilities: { toolUse: 'full', structuredOutput: true, jsonMode: true },
-    });
+    super('mine', 'My Provider', { toolUse: 'full', structuredOutput: true, jsonMode: true });
   }
 
   protected async performChat(request: ChatRequest): Promise<ChatResponse> {

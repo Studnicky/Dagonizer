@@ -7,11 +7,12 @@ name: Release
 #      bumps each affected package's version, regenerates per-package
 #      CHANGELOGs, and refreshes the lockfile.
 #   2. When that PR merges: each package whose version differs from
-#      the npm registry gets published. Tags are pushed for each
-#      released package (e.g. `@noocodex/dagonizer-adapter-groq@0.1.1`).
+#      the GitHub Packages registry gets published. Tags are pushed for
+#      each released package (e.g. `@noocodex/dagonizer@0.16.0`).
 #
-# Independent versioning: a bug fix to one adapter bumps that package
-# only; other packages stay where they are.
+# All packages publish to GitHub Packages (https://npm.pkg.github.com).
+# Packages are scoped to @noocodex and the fixed-group lockstep ensures
+# every package in the monorepo releases together on each minor/major bump.
 
 on:
   push:
@@ -21,6 +22,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  packages: write
   id-token: write
 
 jobs:
@@ -42,7 +44,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
+          registry-url: 'https://npm.pkg.github.com'
           cache: 'pnpm'
 
       - name: Install
@@ -54,15 +56,14 @@ jobs:
       - name: CI gate (typecheck + lint + tests + adapter smoke)
         run: pnpm run ci
 
-      # v0.10.0 ships GitHub-only; npm publish is intentionally skipped
-      # until live-API smoke testing covers every adapter. Re-enable by
-      # adding `publish: pnpm run release` and `NPM_TOKEN` to the env.
-      - name: Create Release Pull Request
+      - name: Create Release Pull Request or Publish
         id: changesets
         uses: changesets/action@v1
         with:
           version: pnpm run version-packages
+          publish: pnpm exec changeset publish
           commit: "chore(release): version packages"
           title: "chore(release): version packages"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

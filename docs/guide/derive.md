@@ -17,8 +17,6 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
-import type { ElementDefinition } from 'cytoscape';
 import { DAGDeriver } from '@noocodex/dagonizer/derive';
 import type { NodeInterface } from '@noocodex/dagonizer';
 
@@ -86,9 +84,7 @@ const parentDAG = DAGDeriver.derive({
   },
 });
 
-const elements = CytoscapeRenderer.render(parentDAG, {
-  embeddedDAGs: new Map([['plugin:transform', childDAG]]),
-}) as ElementDefinition[];
+const deriveRegistry = new Map([['plugin:transform', childDAG]]);
 </script>
 
 # Contract-derived flows
@@ -105,7 +101,7 @@ const elements = CytoscapeRenderer.render(parentDAG, {
 | `OperationContractFragment` | `@noocodex/dagonizer/contracts` | `hardRequired` + `produces` (the `NodeInterface.contract` field) |
 | `DAGDeriverAnnotations` | `@noocodex/dagonizer/derive` | `terminals`, `scatters`, `parallels`, `embeddedDAGs` |
 | `ContractRegistryValidator` | `@noocodex/dagonizer/derive` | Surfaces dangling reads (fatal) and dead writes (warning) |
-| `Chainable<A, B>` | `@noocodex/dagonizer/contracts` | Compile-time pair check; `true` when `A.produces` covers `B.hardRequired` |
+| `Chainable<A, B>` | `@noocodex/dagonizer` (also `/types`) | Compile-time pair check; `true` when `A.produces` covers `B.hardRequired` |
 
 `DAGDeriver` is the declarative authoring path for agentic flows where reaching the final state matters more than authoring the order: tool-driven agents, exploratory pipelines, workflows where the operation set changes per deployment. For deterministic ETL pipelines, use [DAGBuilder](./builder). See [Authoring DAGs](./authoring) for the decision matrix.
 
@@ -113,7 +109,7 @@ const elements = CytoscapeRenderer.render(parentDAG, {
 
 The example below derives a parent DAG with one embedded-DAG placement. `prepare` produces `intermediate`; `invoke-plugin` requires it and produces `childResult`; `finalize` requires `childResult`. The annotation swaps `invoke-plugin` from `SingleNode` to an `EmbeddedDAGNode`:
 
-<DagGraph :elements="elements" aria-label="Derived parent DAG: prepare → invoke-plugin (embedded-DAG) → finalize, with child DAG validate → transform expanded inline." />
+<DagGraph :dag="parentDAG" :embedded-d-a-gs="deriveRegistry" :expand-all="true" aria-label="Derived parent DAG: prepare → invoke-plugin (embedded-DAG) → finalize, with child DAG validate → transform expanded inline." />
 
 ## OperationContract
 
@@ -192,7 +188,7 @@ const dag = DAGDeriver.derive({
 
 #### `emit` variant: inline TerminalNode synthesis
 
-Use `emit` to end a flow with an explicit `failed` or `completed` lifecycle outcome. The deriver materializes a [`TerminalNode`](../examples/09-terminals) placement and routes the operation's output port to it. `emit` is the only way to end an outcome; there is no implicit completed end from routing alone.
+Use `emit` to end a flow with an explicit `failed` or `completed` lifecycle outcome. The deriver materializes a [`TerminalNode`](../examples/09-terminals) placement and routes the operation's output port to it. `emit` is the only way to declare an explicit `failed` terminal in the deriver; null-routing a node to `null` drains the main loop and produces an implicit `completed` end.
 
 ```ts
 const classify: NodeInterface<S, 'success' | 'fail' | 'error'> = {

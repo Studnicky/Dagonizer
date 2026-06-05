@@ -405,41 +405,7 @@ Extend `BaseStore` and implement the three additional methods plus the
 `endpoint` property:
 
 ```ts
-import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '@noocodex/dagonizer/contracts';
-import { BaseStore, type BaseStoreOptions } from '@noocodex/dagonizer/store';
-
-export class HttpStore extends BaseStore implements RemoteStore {
-  readonly endpoint: RemoteStoreEndpoint;
-
-  constructor(url: string, region: string, options: BaseStoreOptions = {}) {
-    super(options);
-    this.endpoint = { url, region };
-  }
-
-  async acquireLease(subject: string, ttlMs: number, maxWaitMs: number): Promise<RemoteStoreLease> {
-    // Call remote lease endpoint, wait up to maxWaitMs, throw StoreError(LEASE_DENIED) if blocked.
-    // ...
-  }
-
-  async releaseLease(lease: RemoteStoreLease): Promise<void> {
-    // Call remote release endpoint. No-op when lease has already expired.
-    // ...
-  }
-
-  async health(timeoutMs: number): Promise<boolean> {
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-      const res = await fetch(`${this.endpoint.url}/health`, { signal: ctrl.signal });
-      clearTimeout(timer);
-      return res.ok;
-    } catch {
-      return false;   // never throw; dispatcher routes around false
-    }
-  }
-
-  // ... BaseStore abstract hooks ...
-}
+<<< @/../examples/dags/store-remote.ts#remote-store
 ```
 
 ---
@@ -457,20 +423,7 @@ narrower). Use `.inner` to access the underlying `Store` when you need the
 wider, heterogeneous contract.
 
 ```ts
-import { MemoryStore, TypedStore } from '@noocodex/dagonizer/store';
-
-interface AppSchema {
-  users: User[];
-  count: number;
-}
-
-const inner = new MemoryStore();
-const typed = new TypedStore<AppSchema>(inner);
-
-await typed.set('count', 42);            // ok, value type inferred as number
-const n = await typed.get('count');      // n: number | undefined
-await typed.set('count', 'wrong');       // TS error: expected number
-await typed.set('missing', 'x');         // TS error: key not in AppSchema
+<<< @/../examples/the-archivist/memory/TypedRunStore.ts#typed-store
 ```
 
 ### Constructor

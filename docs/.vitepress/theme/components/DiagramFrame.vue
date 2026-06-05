@@ -45,6 +45,7 @@ onMounted(() => {
   }
   if (typeof document !== 'undefined') {
     document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('keydown', onDocumentKey);
   }
 });
 
@@ -53,6 +54,7 @@ onBeforeUnmount(() => {
   resizeObserver = null;
   if (typeof document !== 'undefined') {
     document.removeEventListener('fullscreenchange', onFsChange);
+    document.removeEventListener('keydown', onDocumentKey);
   }
 });
 
@@ -61,11 +63,20 @@ function onFsChange(): void {
   if (fs !== isFullscreen.value) {
     isFullscreen.value = fs;
     emit('fullscreen-change', fs);
+    // Give the fullscreen transition a frame to settle before signalling
+    // the diagram to resize/fit; without this delay cytoscape measures a
+    // stale container size and renders a blank canvas.
+    requestAnimationFrame(() => emit('resize'));
   }
 }
 
 async function toggleFullscreen(): Promise<void> {
   if (frameRef.value === null) return;
+  // If already in CSS-expanded mode, toggle it off.
+  if (expanded.value) {
+    toggleExpand();
+    return;
+  }
   if (document.fullscreenElement === frameRef.value) {
     await document.exitFullscreen();
     return;
@@ -74,8 +85,8 @@ async function toggleFullscreen(): Promise<void> {
     await frameRef.value.requestFullscreen();
   } catch {
     // Fullscreen blocked (some browsers require a specific gesture path);
-    // fall back to the expanded modal.
-    expanded.value = true;
+    // fall back to CSS expand so the mounted slot content stays visible.
+    toggleExpand();
   }
 }
 
@@ -89,6 +100,13 @@ function onModalKey(event: KeyboardEvent): void {
   if (event.key === 'Escape') expanded.value = false;
 }
 
+function onDocumentKey(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && expanded.value) {
+    expanded.value = false;
+    requestAnimationFrame(() => emit('resize'));
+  }
+}
+
 // Exposed so a hosting diagram (e.g. the DagGraph D-pad's expand button) can
 // drive fullscreen / expand without the frame's own header controls.
 defineExpose({ toggleFullscreen, toggleExpand });
@@ -99,6 +117,8 @@ defineExpose({ toggleFullscreen, toggleExpand });
     ref="frameRef"
     :class="['diagram-frame', { 'is-fullscreen': isFullscreen, 'is-expanded': expanded }]"
     :aria-label="ariaLabel ?? title"
+    :tabindex="expanded ? 0 : undefined"
+    @keydown="onModalKey"
   >
     <header v-if="!frameless" class="frame-header">
       <h4 class="frame-title">{{ title }}</h4>
@@ -127,28 +147,14 @@ defineExpose({ toggleFullscreen, toggleExpand });
     </div>
   </div>
 
+  <!-- Backdrop: closes the expand when clicked outside the card -->
   <Teleport to="body">
     <div
       v-if="expanded && !isFullscreen"
-      class="frame-overlay"
-      role="dialog"
-      aria-modal="true"
-      :aria-label="`${title} (expanded)`"
-      tabindex="-1"
-      @keydown="onModalKey"
-      @click.self="expanded = false"
-    >
-      <div class="frame-overlay-card">
-        <header class="frame-overlay-header">
-          <h4 class="frame-title">{{ title }} (expanded)</h4>
-          <button class="frame-action" title="Close" @click="expanded = false">✕</button>
-        </header>
-        <div class="frame-overlay-body">
-          <slot name="overlay" />
-          <p class="frame-overlay-hint">Press Esc to close.</p>
-        </div>
-      </div>
-    </div>
+      class="frame-overlay-backdrop"
+      aria-hidden="true"
+      @click="toggleExpand"
+    />
   </Teleport>
 </template>
 
@@ -178,7 +184,13 @@ defineExpose({ toggleFullscreen, toggleExpand });
 }
 
 .diagram-frame.is-expanded {
-  /* The expanded card replaces the inline frame; keep the slot mounted. */
+  position: fixed;
+  inset: 2rem;
+  z-index: 9999;
+  border-radius: 8px;
+  border-color: var(--dagonizer-brand);
+  box-shadow: 0 10px 50px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--dagonizer-brand);
+  animation: overlay-in 0.18s ease-out;
 }
 
 .frame-header {
@@ -248,60 +260,14 @@ defineExpose({ toggleFullscreen, toggleExpand });
   min-height: 0;
 }
 
-/* Expand modal: covers viewport when fullscreen is blocked. */
-.frame-overlay {
+/* Semi-transparent backdrop behind the expanded frame card. */
+.frame-overlay-backdrop {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.78);
   backdrop-filter: blur(6px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-  padding: 2rem;
+  z-index: 9998;
   animation: overlay-in 0.18s ease-out;
-}
-
-.frame-overlay-card {
-  width: 100%;
-  height: 100%;
-  max-width: 1600px;
-  max-height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: var(--vp-c-bg);
-  border: 1px solid var(--dagonizer-brand);
-  border-radius: 8px;
-  box-shadow: 0 10px 50px rgba(0, 0, 0, 0.55), 0 0 0 1px var(--dagonizer-brand);
-  overflow: hidden;
-}
-
-.frame-overlay-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.6rem 0.85rem;
-  background: var(--vp-c-bg-alt);
-  border-bottom: 1px solid var(--vp-c-divider);
-}
-
-.frame-overlay-body {
-  flex: 1 1 auto;
-  position: relative;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.frame-overlay-hint {
-  position: absolute;
-  bottom: 8px;
-  right: 12px;
-  margin: 0;
-  font-family: var(--vp-font-family-mono);
-  font-size: 0.65rem;
-  color: var(--vp-c-text-3);
-  pointer-events: none;
 }
 
 @keyframes overlay-in {
