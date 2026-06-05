@@ -15,18 +15,14 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
-import type { ElementDefinition } from 'cytoscape';
 import { BookSearchScatterDAG } from '@archivist/embedded-dags/BookSearchScatterDAG.ts';
-
-const elements = CytoscapeRenderer.render(BookSearchScatterDAG) as ElementDefinition[];
 </script>
 
 # Phase 04: Scatter scout
 
 [The Archivist](./the-archivist) queries four book sources at once: OpenLibrary keyword search, Google Books, OpenLibrary subject search, and Wikipedia enrichment. All four scouts run in a `parallel` placement with `combine: 'collect'`. The gather waits for all four and merges their `state.candidates` mutations before routing forward to rank and merge. The `BookSearchScatterDAG` packages this entire cluster as a reusable sub-DAG body in an embedded-DAG placement.
 
-<DagGraph :elements="elements" aria-label="book-search-scatter DAG: parallel scouts merge into ranked candidates." />
+<DagGraph :dag="BookSearchScatterDAG" aria-label="book-search-scatter DAG: parallel scouts merge into ranked candidates." />
 
 ## Code
 

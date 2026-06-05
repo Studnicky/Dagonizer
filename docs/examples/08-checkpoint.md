@@ -19,11 +19,7 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
-import type { ElementDefinition } from 'cytoscape';
 import { ComposeRetryLoopDAG } from '@archivist/embedded-dags/ComposeRetryLoopDAG.ts';
-
-const elements = CytoscapeRenderer.render(ComposeRetryLoopDAG) as ElementDefinition[];
 </script>
 
 # Phase 08: Checkpoint + resume
@@ -32,7 +28,7 @@ The compose / validate loop in [The Archivist](./the-archivist) is the most expe
 
 The `ArchivistState` makes this possible by overriding `snapshotData()` and `restoreData()`, the two methods `NodeStateBase` calls during `Checkpoint.capture` and the resume path.
 
-<DagGraph :elements="elements" aria-label="ComposeRetryLoopDAG: checkpoint captures the cursor between compose and validate." />
+<DagGraph :dag="ComposeRetryLoopDAG" aria-label="ComposeRetryLoopDAG: checkpoint captures the cursor between compose and validate." />
 
 ## Code
 

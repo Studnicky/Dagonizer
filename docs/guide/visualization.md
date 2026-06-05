@@ -14,8 +14,6 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
-import type { ElementDefinition } from 'cytoscape';
 import { DAG_CONTEXT } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
 
@@ -31,13 +29,11 @@ const dag: DAG = {
     { '@id': 'urn:noocodex:dag:demo/node/b', '@type': 'SingleNode', name: 'b', node: 'noop', outputs: { success: null } },
   ],
 };
-
-const elements = CytoscapeRenderer.render(dag) as ElementDefinition[];
 </script>
 
 # Visualization
 
-Three renderers ship in `@noocodex/dagonizer/viz`. Each consumes a `DAG` and emits a different surface: `MermaidRenderer.render` produces `flowchart` source for embedding in Markdown; `JsonLdRenderer.render` produces a JSON-LD document for graph databases and semantic tooling; `CytoscapeRenderer.render` produces a `cytoscape.js` element array, the format the doc site's live `<DagGraph>` component consumes.
+Three renderers ship in `@noocodex/dagonizer/viz`. Each consumes a `DAG` and emits a different surface: `MermaidRenderer.render` produces `flowchart` source for embedding in Markdown; `JsonLdRenderer.render` produces a JSON-LD document for graph databases and semantic tooling; `CytoscapeRenderer.render` produces a plain `readonly CytoscapeElement[]` array for consumers who manage their own cytoscape instance.
 
 ## API surface
 
@@ -45,17 +41,12 @@ Three renderers ship in `@noocodex/dagonizer/viz`. Each consumes a `DAG` and emi
 |--------|--------|------|
 | `MermaidRenderer.render(dag)` | `@noocodex/dagonizer/viz` | Returns Mermaid `flowchart` source |
 | `JsonLdRenderer.render(dag)` | `@noocodex/dagonizer/viz` | Returns a `DagJsonLdDocument` |
-| `CytoscapeRenderer.render(dag, options?)` | `@noocodex/dagonizer/viz` | Returns `readonly CytoscapeElement[]` |
+| `CytoscapeRenderer.render(dag, options?)` | `@noocodex/dagonizer/viz` | Returns `readonly CytoscapeElement[]` (elements only; no positions) |
 | `DAGONIZER_VOCAB` | `@noocodex/dagonizer/viz` | Vocabulary base URI string; classes appear as `dag:ClassName` in the `@context` |
 
 ## MermaidRenderer
 
-```ts
-import { MermaidRenderer } from '@noocodex/dagonizer/viz';
-
-const source = MermaidRenderer.render(dispatcher.getDAG('pipeline')!);
-console.log(source);
-```
+<<< @/../examples/the-archivist/viz/render-mermaid.ts#mermaid-render
 
 ### Shape vocabulary
 
@@ -82,24 +73,21 @@ Routes render as labeled directed edges. Routes targeting `null` route to a synt
 
 The output is a complete Mermaid block ready to drop into a fenced code block.
 
-## CytoscapeRenderer (used by the doc site)
+## CytoscapeRenderer
 
-`CytoscapeRenderer.render(dag)` emits a plain element array consumable directly by `cytoscape.js`. The doc site's `<DagGraph>` component wraps `cytoscape` plus an FSM that animates live runs; every DAG diagram in these docs is a `<DagGraph>` driven by `CytoscapeRenderer`.
+`CytoscapeRenderer.render(dag, options?)` returns a plain `readonly CytoscapeElement[]` with NO positions. Positioning is performed separately by `CompositeLayout.compute` (async) or handled internally by the `CytoscapeGraph` factory. To use the cytoscape visualizer, install the optional peer dependencies:
 
-```ts
-import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
-import type { ElementDefinition } from 'cytoscape';
-
-const elements = CytoscapeRenderer.render(dag) as ElementDefinition[];
+```sh
+npm install cytoscape @dagrejs/dagre
 ```
 
-Pass an `embeddedDAGs` map to inline-expand `EmbeddedDAGNode` placements and `ScatterNode` placements whose `body` is a sub-DAG as compound nodes:
+The package injects cytoscape (consumers pass the constructor to `CytoscapeGraph`) and lazy-loads `@dagrejs/dagre` internally. Neither peer is required for the non-cytoscape renderers.
 
-```ts
-const elements = CytoscapeRenderer.render(parentDag, {
-  embeddedDAGs: new Map([['child-dag', childDag]]),
-}) as ElementDefinition[];
-```
+<<< @/../examples/the-archivist/viz/render-cytoscape.ts#cytoscape-render
+
+Pass an `embeddedDAGs` map to inline-expand `EmbeddedDAGNode` placements and `ScatterNode` placements whose `body` is a sub-DAG as compound nodes. The example above shows the Archivist's full embedded-DAG map.
+
+The `options` object accepts only `embeddedDAGs` and `maxDepth`. The `computeLayout` and `layoutOptions` options are not accepted; layout is performed by `CompositeLayout.compute` or `CytoscapeGraph` internally.
 
 ### Cytoscape element metadata
 
@@ -118,28 +106,17 @@ User-declared `TerminalNode` placements and the synthetic `END` node both use `d
 
 ### Live rendering in the doc site
 
-A `<DagGraph>` block takes a CytoscapeRenderer output and renders it inline:
+The doc site renders DAGs via `CytoscapeGraph`, the package-shipped subclassable factory. `DagGraph.vue` (the doc site component) extends `CytoscapeGraph`; the `:dag` prop passes the `DAG` object directly and `CytoscapeGraph` builds elements, computes layout, and mounts cytoscape internally. Embedded DAGs render collapsed by default; pass `:expand-all="true"` to expand them all.
 
-<DagGraph :elements="elements" aria-label="Two-node demo DAG rendered via CytoscapeRenderer." />
+<DagGraph :dag="dag" aria-label="Two-node demo DAG rendered via CytoscapeRenderer." />
 
-The same renderer drives every DAG diagram in this guide and in the [Phase demos](../examples/the-archivist).
+The same factory drives every DAG diagram in this guide and in the [Phase demos](../examples/the-archivist).
 
 ## JsonLdRenderer
 
-```ts
-import { JsonLdRenderer } from '@noocodex/dagonizer/viz';
+<<< @/../examples/the-archivist/viz/render-jsonld.ts#jsonld-render
 
-const document = JsonLdRenderer.render(dag);
-```
-
-The output is a `DagJsonLdDocument`: `@context`, `@id`, `@type`, `@graph` (one entry per placement). Useful when feeding to a triple store, an RDF reasoner, or a graph database that consumes JSON-LD natively. The vocabulary base URI is available as `DAGONIZER_VOCAB`:
-
-```ts
-import { DAGONIZER_VOCAB } from '@noocodex/dagonizer/viz';
-
-// 'https://noocodex.dev/ontology/dagonizer/'
-console.log(DAGONIZER_VOCAB);
-```
+The output is a `DagJsonLdDocument`: `@context`, `@id`, `@type`, `@graph` (one entry per placement). Useful when feeding to a triple store, an RDF reasoner, or a graph database that consumes JSON-LD natively. The vocabulary base URI is available as `DAGONIZER_VOCAB` and is printed by the example above.
 
 Classes appear in the output as prefixed IRIs under the `dag:` prefix (e.g. `dag:ScatterNode`, `dag:EmbeddedDAGNode`), where `dag` resolves to `DAGONIZER_VOCAB` via the document's `@context`.
 

@@ -2,7 +2,10 @@
 seeAlso:
   - text: 'The Archivist demo'
     link: './examples/the-archivist'
-    description: 'these concepts in a running flow'
+    description: 'these concepts in a running LLM-agent flow'
+  - text: 'The Cartographer demo'
+    link: './examples/the-cartographer'
+    description: 'these concepts in a running data-orchestration / ETL flow'
   - text: 'Architecture'
     link: './architecture'
     description: 'internals and submodule layout'
@@ -19,7 +22,7 @@ seeAlso:
 
 # Concepts
 
-Vocabulary that the rest of the docs assume. Read this after running [The Archivist](/examples/the-archivist) so each term has a concrete referent.
+Vocabulary that the rest of the docs assume. The engine is domain-agnostic: agentic LLM orchestration and data-orchestration / ETL are the same engine — only the node domain differs. The Archivist demo shows LLM-agent concepts in a running flow; the Cartographer demo shows data-pipeline and streaming concepts. Read this after running either (or both).
 
 ## Node
 
@@ -46,7 +49,7 @@ Six kinds:
 - **`scatter`**: isolates one state clone per item in a source array, runs a node body in each clone, merges produced clone state back into the parent via a `gather` config, and routes on the aggregate outcome via a `reducer`. This is the fork (generate-collect) pattern; a `ScatterNode` is always 1→N over a required `source`.
 - **`embedded`**: invokes a registered sub-DAG exactly once (cardinality 1) in an isolated state, then routes the parent on the child's terminal outcome (`success` or `error`). Optional `stateMapping` seeds the child from the parent before it runs and copies fields back after it completes. The Archivist's sub-DAG compositions are `EmbeddedDAGNode` placements.
 - **`terminal`**: named end state for explicit completion or failure. Use when a flow has more than one "done" semantics (for example, `accepted` versus `rejected`).
-- **`phase`**: groups a sequence of placements under a named phase. Instrumentation receives `phaseEnter` / `phaseExit` events; useful for telemetry and progress bars.
+- **`phase`**: a single placement that wraps one registered node with a lifecycle attachment. `phase: 'pre'` runs the node before the DAG entrypoint; `phase: 'post'` runs the node after the main loop drains on every exit path. Pre-phase errors abort the run; post-phase errors are collected as warnings and do not change the already-set lifecycle. Phase placements carry no `outputs` and cannot route to other placements.
 
 ### When to choose each
 
@@ -82,7 +85,7 @@ A **lifecycle** is the FSM behind each DAG execution: `pending → running → c
 
 - The dispatcher marks `running` when the flow starts.
 - It marks `completed` when every output routes to `null` without error.
-- It marks `failed` when a node throws (which should not happen, but the dispatcher guards the boundary).
+- It marks `failed` when a node throws (which should not happen, but the dispatcher guards the boundary), or when execution reaches a `TerminalNode` with `outcome: 'failed'`.
 - It marks `cancelled` when the composed `AbortSignal` fires before a deadline.
 - It marks `timed_out` when the `deadlineMs` timer fires.
 
@@ -165,6 +168,18 @@ gather: { strategy: 'partition', partitions: { success: 'passed', error: 'failed
 ```ts
 gather: { strategy: 'custom', customNode: 'mergeCandidates' }
 ```
+
+## Streaming and backpressure
+
+`ScatterNode` has one code path for both finite and streaming sources. A `source` that is an array is a finite producer; a `source` that is an `AsyncIterable` or `AsyncGenerator` is a stream. Both drain through the same bounded worker pool.
+
+`concurrency` is the backpressure mechanism. The engine pulls the next item from the source only when a worker slot frees. No item is fetched ahead of capacity; the producer cannot overrun the pool.
+
+Resume is durable via an **inbox/work-queue**. An item stays checkpointed (un-acked) until its body completes successfully. On crash or early termination, the inbox is restored and only un-acked items reprocess. The stream source is never re-read from the beginning. This gives exactly-once processing semantics across restarts.
+
+"Streaming is configuration, not a duplicate code path." The same scatter placement that fans over a static array also fans over a live feed; the only change is the type of the `source` value.
+
+The Cartographer demo exercises this pattern: multi-format satellite tracking feeds are streamed through per-format ingest sub-DAGs with bounded concurrency and durable-inbox resume.
 
 ## Scatter outcome reducers
 

@@ -16,8 +16,6 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
-import type { ElementDefinition } from 'cytoscape';
 import { DAGBuilder, NodeStateBase } from '@noocodex/dagonizer';
 import type { NodeInterface } from '@noocodex/dagonizer';
 
@@ -43,16 +41,14 @@ const parentDag = new DAGBuilder('main-flow', '1')
   .node('step-b', stepB, { done: null })
   .build();
 
-const elements = CytoscapeRenderer.render(parentDag, {
-  embeddedDAGs: new Map([['sub-flow', childDag]]),
-}) as ElementDefinition[];
+const sharedStateRegistry = new Map([['sub-flow', childDag]]);
 </script>
 
 # Phase 10: Shared state
 
 A `MemoryStore` lives on the services bag, threaded through every node and every scatter clone. Parent and child append entries to the same store without passing values through `inputs` or `gather`. `Checkpoint.capture` snapshots the store alongside the parent state; `Checkpoint.load` + `restoreStores` restores it on resume.
 
-<DagGraph :elements="elements" aria-label="Parent DAG with embedded-DAG sub-flow; both write to the same shared store." />
+<DagGraph :dag="parentDag" :embedded-d-a-gs="sharedStateRegistry" :expand-all="true" aria-label="Parent DAG with embedded-DAG sub-flow; both write to the same shared store." />
 
 ## Code
 

@@ -1,0 +1,1623 @@
+/**
+ * Cartographer services: static domain classes following the noun.verb() pattern.
+ *
+ * GeoLookup        — lat/lng → grid zone → GeoContext (country/region/hub/tz/jurisdiction)
+ * TimeZoneResolver — coords → IANA zone (tz-lookup); UTC epoch → local ISO + offset
+ * Jurisdictions    — ISO-3 country → privacy regime + strictness + retention
+ * GdprRedactor     — location + consent driven PII redaction; coords-as-PII coarsening
+ * GeoCoarsener     — precise lat/lng → grid-zone centroid (location-PII coarsening)
+ * ShipmentEvents   — deterministic synthetic journey/scan generator (seeded LCG)
+ * TimeNormalizer   — multi-format timestamp → epoch ms + ISO-8601
+ * CarrierRegistry  — carrier alias → canonical carrierId/carrierName
+ * CountryCodes     — alpha-2/alpha-3/name → ISO-3
+ * Units            — weight unit conversion to grams
+ * EventClassifier  — free-text status → eventType; carrier/weight → service/size tiers
+ * FxRates          — currency minor units → USD cents (FX normalisation)
+ * PricingCatalog   — productId lookup + basket pricing with FX normalisation
+ * ShippingCalculator — haversine distance + carrier rate → ShippingQuote
+ * EtaEstimator     — shared transit fn + SLA promise vs disrupted ETA → DeliveryEstimate
+ *
+ * Determinism: ShipmentEvents uses a seeded LCG (no Date.now/Math.random).
+ * tz-lookup and Intl.DateTimeFormat are pure functions of their inputs.
+ */
+
+import tzLookupDefault from 'tz-lookup';
+
+import CATALOG_RAW from './data/product-catalog.json' with { type: 'json' };
+import CARRIER_RATES_RAW from './data/carrier-rates.json' with { type: 'json' };
+import FX_RATES_RAW from './data/fx-rates.json' with { type: 'json' };
+import JURISDICTION_TABLE_RAW from './data/jurisdictions.json' with { type: 'json' };
+
+import type { CanonicalEvent } from './entities/CanonicalEvent.ts';
+import type { DeliveryEstimate } from './entities/DeliveryEstimate.ts';
+import type { GdprResult } from './entities/GdprResult.ts';
+import type { GeoContext } from './entities/GeoContext.ts';
+import type { NormalizedShipment } from './entities/NormalizedShipment.ts';
+import type { PricedOrder } from './entities/PricedOrder.ts';
+import type { RawShipmentEvent } from './entities/RawShipmentEvent.ts';
+import type { ShipmentEvent } from './entities/ShipmentEvent.ts';
+import type { ShippingQuote } from './entities/ShippingQuote.ts';
+import type { SourcePayload } from './entities/SourcePayload.ts';
+import { OfflineGeo } from './services/OfflineGeo.ts';
+
+// ── tz-lookup: CJS package; import-default works under tsx (Node CJS interop)
+// and under Vite (with optimizeDeps.include — see docs/.vitepress/config.ts).
+const tzLookup = tzLookupDefault as unknown as (lat: number, lng: number) => string;
+
+// ── Data tables (static JSON imports — ESM + Vite compatible; no createRequire)
+
+interface CatalogEntry {
+  readonly 'productId': string;
+  readonly 'name': string;
+  readonly 'category': string;
+  readonly 'unitPriceMinor': number;
+  readonly 'currency': string;
+}
+
+interface CarrierRate {
+  readonly 'baseMinorUsd': number;
+  readonly 'perKmMinorUsd': number;
+  readonly 'perKgMinorUsd': number;
+  readonly 'tierMultipliers': { readonly 'express': number; readonly 'standard': number; readonly 'economy': number };
+  readonly 'speedKmPerHour': number;
+  readonly 'handlingHours': number;
+}
+
+interface JurisdictionEntry {
+  readonly 'jurisdiction': GeoContext['jurisdiction'];
+  readonly 'strictness': GdprResult['strictness'];
+  readonly 'baseRetentionDays': number;
+}
+interface JurisdictionTable {
+  readonly 'byCountry': Record<string, JurisdictionEntry>;
+  readonly 'default': JurisdictionEntry;
+}
+
+const CATALOG = CATALOG_RAW as unknown as CatalogEntry[];
+const CARRIER_RATES = CARRIER_RATES_RAW as unknown as Record<string, CarrierRate>;
+const FX_TABLE = FX_RATES_RAW as unknown as Record<string, number>;
+const JURISDICTION_TABLE = JURISDICTION_TABLE_RAW as unknown as JurisdictionTable;
+
+// #region timezone-resolver-service
+/**
+ * TimeZoneResolver: location → IANA timezone, and UTC epoch → local time.
+ *
+ * `zoneFor` uses tz-lookup (offline coords→IANA). `localParts` formats a UTC
+ * epoch in a target zone via Intl.DateTimeFormat (Node ICU) — a pure function
+ * of (epoch, zone), so determinism holds on a fixed epoch.
+ */
+export class TimeZoneResolver {
+  static zoneFor(lat: number, lng: number): string {
+    try {
+      return tzLookup(lat, lng);
+    } catch {
+      // tz-lookup throws for out-of-range coords; fall back to UTC.
+      return 'UTC';
+    }
+  }
+
+  /** Local ISO (YYYY-MM-DDTHH:mm:ss) + UTC offset label (e.g. 'GMT+9') at zone. */
+  static localParts(epochMs: number, timeZone: string): { 'localIso': string; 'utcOffset': string } {
+    const fmt = new Intl.DateTimeFormat('en-CA', {
+      'timeZone':     timeZone,
+      'year':         'numeric',
+      'month':        '2-digit',
+      'day':          '2-digit',
+      'hour':         '2-digit',
+      'minute':       '2-digit',
+      'second':       '2-digit',
+      'hour12':       false,
+      'timeZoneName': 'shortOffset',
+    });
+    const parts = fmt.formatToParts(new Date(epochMs));
+    const get = (t: string): string => parts.find((p) => p.type === t)?.value ?? '';
+    let hour = get('hour');
+    if (hour === '24') hour = '00'; // en-CA can emit 24 for midnight
+    const localIso = `${get('year')}-${get('month')}-${get('day')}T${hour}:${get('minute')}:${get('second')}`;
+    const utcOffset = get('timeZoneName') || 'GMT';
+    return { 'localIso': localIso, 'utcOffset': utcOffset };
+  }
+}
+// #endregion timezone-resolver-service
+
+// #region jurisdictions-service
+/**
+ * Jurisdictions: country → privacy regime + redaction strictness + base
+ * retention days. EU/EEA→GDPR, GB→UK-GDPR, US→CCPA, BR→LGPD, JP→APPI, else
+ * baseline. This is COMPLIANCE data (which privacy law governs a country), not a
+ * geo-resolution table — the geo APIs resolve WHERE a ping is; this maps that
+ * country to its privacy regime. The geo APIs return ISO-2 codes, so the lookup
+ * accepts ISO-2 (a tiny code conversion, not a curated location lookup).
+ */
+const ISO2_TO_ISO3: Record<string, string> = {
+  'US': 'USA', 'CA': 'CAN', 'MX': 'MEX', 'GB': 'GBR', 'DE': 'DEU', 'FR': 'FRA',
+  'NL': 'NLD', 'IT': 'ITA', 'ES': 'ESP', 'PL': 'POL', 'SE': 'SWE', 'NO': 'NOR',
+  'DK': 'DNK', 'FI': 'FIN', 'BE': 'BEL', 'AT': 'AUT', 'CZ': 'CZE', 'HU': 'HUN',
+  'PT': 'PRT', 'RO': 'ROU', 'BG': 'BGR', 'GR': 'GRC', 'CH': 'CHE', 'IE': 'IRL',
+  'HR': 'HRV', 'SK': 'SVK', 'SI': 'SVN', 'LT': 'LTU', 'LV': 'LVA', 'EE': 'EST',
+  'LU': 'LUX', 'CY': 'CYP', 'MT': 'MLT', 'IS': 'ISL', 'LI': 'LIE',
+  'RU': 'RUS', 'UA': 'UKR', 'TR': 'TUR', 'CN': 'CHN', 'JP': 'JPN', 'KR': 'KOR',
+  'IN': 'IND', 'AU': 'AUS', 'NZ': 'NZL', 'SG': 'SGP', 'TH': 'THA', 'VN': 'VNM',
+  'MY': 'MYS', 'ID': 'IDN', 'PH': 'PHL', 'BD': 'BGD', 'PK': 'PAK', 'LK': 'LKA',
+  'BR': 'BRA', 'AR': 'ARG', 'CO': 'COL', 'CL': 'CHL', 'PE': 'PER', 'VE': 'VEN',
+  'EC': 'ECU', 'BO': 'BOL', 'PY': 'PRY', 'UY': 'URY', 'GY': 'GUY', 'SR': 'SUR',
+  'ZA': 'ZAF', 'NG': 'NGA', 'EG': 'EGY', 'SA': 'SAU', 'AE': 'ARE', 'KE': 'KEN',
+  'MA': 'MAR', 'DZ': 'DZA', 'TN': 'TUN', 'ET': 'ETH', 'GH': 'GHA', 'TZ': 'TZA',
+  'KZ': 'KAZ', 'UZ': 'UZB', 'IR': 'IRN', 'IQ': 'IRQ', 'IL': 'ISR', 'JO': 'JOR',
+};
+
+export class Jurisdictions {
+  static forCountry(countryIso3: string): JurisdictionEntry {
+    return JURISDICTION_TABLE.byCountry[countryIso3] ?? JURISDICTION_TABLE.default;
+  }
+
+  /** Resolve the privacy regime from an ISO-2 country code (the geo API format). */
+  static forIso2(countryIso2: string): JurisdictionEntry {
+    const iso3 = ISO2_TO_ISO3[countryIso2.toUpperCase()] ?? countryIso2;
+    return Jurisdictions.forCountry(iso3);
+  }
+}
+// #endregion jurisdictions-service
+
+// #region geo-coarsener-service
+/**
+ * GeoCoarsener: coarsen precise scan coords to a grid-zone centroid.
+ *
+ * Location is PII; when the jurisdiction is strict OR consent is not valid, the
+ * stored coords are snapped to the centre of their ~1° grid cell so the exact
+ * scan point is not retained. Deterministic (pure floor/round arithmetic).
+ */
+export class GeoCoarsener {
+  static toCentroid(lat: number, lng: number): { 'lat': number; 'lng': number } {
+    // Snap to the centre of a 1°×1° cell.
+    const cLat = Math.floor(lat) + 0.5;
+    const cLng = Math.floor(lng) + 0.5;
+    return { 'lat': Math.round(cLat * 100) / 100, 'lng': Math.round(cLng * 100) / 100 };
+  }
+}
+// #endregion geo-coarsener-service
+
+// #region geo-lookup-service
+/**
+ * GeoLookup: the skip-geo adapter — materialise a GeoContext from a source's
+ * PRE-RESOLVED geo (country/region), the only remaining use after curated tables
+ * were removed. The full resolution is performed by the geo-resolve sub-DAG
+ * (offline country-coder for GPS + freeipapi.com for IP); this builds the context
+ * when a RICH source already carried the resolved location, so the sub-DAG is skipped.
+ *
+ * The pre-resolved `country` is an ISO-2 code (the country-coder format). tz comes
+ * from the coords; jurisdiction (a privacy-regime mapping, not a geo table) from the
+ * country. No grid lookup, no curated region/hub maps.
+ */
+export class GeoLookup {
+  static fromResolved(country: string, continent: string, region: string, lat: number, lng: number): GeoContext {
+    const timezone = TimeZoneResolver.zoneFor(lat, lng);
+    // A pre-resolved MARITIME marker → maritime context (high-seas, no regime).
+    if (country === 'INTL' || country.length === 0) {
+      return {
+        'gridZone':     'API',
+        'country':      'INTL',
+        'continent':    'International Waters / Maritime',
+        'countries':    [],
+        'region':       region || 'In Transit / Maritime',
+        'hub':          region || 'International Waters',
+        'status':       'water',
+        'waterBodies':  [region || 'International Waters'],
+        'timezone':     timezone,
+        'jurisdiction': 'international-waters',
+      };
+    }
+    const jurisdiction = Jurisdictions.forIso2(country).jurisdiction;
+    return {
+      'gridZone':     'API',
+      'country':      country,
+      'continent':    continent || 'Unmapped',
+      'countries':    [country],
+      'region':       region,
+      'hub':          region || country,
+      'status':       'land',
+      'waterBodies':  [],
+      'timezone':     timezone,
+      'jurisdiction': jurisdiction,
+    };
+  }
+}
+// #endregion geo-lookup-service
+
+// #region gdpr-redactor-service
+/**
+ * GdprRedactor: location- and consent-driven PII redaction.
+ *
+ * Redaction strictness is `max(jurisdiction baseline, consent-implied)`:
+ *   - strict (GDPR / UK-GDPR / LGPD, or consent not valid): irreversible
+ *     redaction (Anon_/hash_), coords coarsened to a grid-zone centroid,
+ *     short retention.
+ *   - moderate (CCPA / APPI with valid consent): reversible pseudonym, coords
+ *     coarsened only when consent is not valid, medium retention.
+ *   - light (baseline with valid consent): reversible pseudonym, precise coords
+ *     retained, longer retention.
+ *
+ * coords-as-PII: precise scan lat/lng are coarsened to a 1° grid centroid when
+ * the jurisdiction is strict OR consent is missing/expired — only valid-consent
+ * + light-jurisdiction keeps precise coords.
+ *
+ * Processing a delivery is always lawful under the contract basis, so a shipment
+ * is never dropped for lack of marketing consent. The only drop is the rare
+ * special-category-without-lawful-basis violation.
+ */
+export class GdprRedactor {
+  static classify(_event: ShipmentEvent): Pick<GdprResult, 'personalDataFields' | 'sensitiveDataFields'> {
+    return {
+      'personalDataFields':  ['recipientName', 'recipientEmail', 'recipientPhone', 'recipientAddress', 'scanCoords'],
+      'sensitiveDataFields': ['recipientCountry'],
+    };
+  }
+
+  /**
+   * A record is unlawful to process only when it carries special-category
+   * (Article 9) data with no lawful basis. Everything else is processable
+   * under the contract basis.
+   */
+  static hasLawfulBasis(lawfulBasis: GdprResult['lawfulBasis'], specialCategory: string): boolean {
+    if (specialCategory !== 'none') {
+      return lawfulBasis !== 'none';
+    }
+    return true;
+  }
+
+  /**
+   * Effective strictness = max(jurisdiction baseline, consent-implied).
+   * A strict jurisdiction is strict regardless of consent; a non-strict
+   * jurisdiction is escalated to strict when consent is missing/expired.
+   */
+  static strictnessFor(
+    jurisdictionStrictness: GdprResult['strictness'],
+    consentStatus: GdprResult['consentStatus'],
+  ): GdprResult['strictness'] {
+    if (jurisdictionStrictness === 'strict') return 'strict';
+    if (consentStatus !== 'valid') return 'strict';
+    return jurisdictionStrictness; // 'moderate' or 'light' with valid consent
+  }
+
+  /** Whether the scan's precise coords must be coarsened (location-as-PII). */
+  static mustCoarsenCoords(
+    jurisdictionStrictness: GdprResult['strictness'],
+    consentStatus: GdprResult['consentStatus'],
+  ): boolean {
+    return jurisdictionStrictness === 'strict' || consentStatus !== 'valid';
+  }
+
+  static async redact(
+    event: ShipmentEvent,
+    consentStatus: GdprResult['consentStatus'],
+    lawfulBasis: GdprResult['lawfulBasis'],
+    jurisdiction: GeoContext['jurisdiction'],
+    jurisdictionStrictness: GdprResult['strictness'],
+    baseRetentionDays: number,
+  ): Promise<{ redacted: Partial<ShipmentEvent>; result: GdprResult }> {
+    const now = new Date('2026-06-04T00:00:00Z');
+    const strictness = GdprRedactor.strictnessFor(jurisdictionStrictness, consentStatus);
+    const irreversible = strictness === 'strict';
+    const hasValidConsent = consentStatus === 'valid';
+
+    // Retention: jurisdiction base × consent. Valid consent extends; missing/
+    // expired shortens to a 30-day floor.
+    const retentionDays = hasValidConsent ? baseRetentionDays : Math.min(30, baseRetentionDays);
+    const retainUntil = new Date(now.getTime() + retentionDays * 86_400_000).toISOString().slice(0, 10);
+
+    const emailHashBytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(event.recipientEmail));
+    const emailHash = Array.from(new Uint8Array(emailHashBytes)).map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+    const redactedEmail = irreversible
+      ? `hash_${emailHash}@redacted.invalid`
+      : `pseudo_${emailHash}@redacted.invalid`;
+
+    const nameHashBytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(event.recipientName));
+    const nameHash = Array.from(new Uint8Array(nameHashBytes)).map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 8);
+    const redactedName = irreversible ? `Anon_${nameHash}` : `Pseudo_${nameHash}`;
+
+    const addressParts = event.recipientAddress.split(',');
+    const redactedAddress = addressParts[addressParts.length - 1]?.trim() ?? 'REDACTED';
+
+    const redacted: Partial<ShipmentEvent> = {
+      'recipientName':    redactedName,
+      'recipientEmail':   redactedEmail,
+      'recipientPhone':   '(XXX) XXX-XXXX',
+      'recipientAddress': redactedAddress,
+    };
+
+    const coordsCoarsened = GdprRedactor.mustCoarsenCoords(jurisdictionStrictness, consentStatus);
+
+    // complianceScore is a reported metric, not a gate.
+    const complianceScore = consentStatus === 'valid' ? 95 : consentStatus === 'expired' ? 70 : 55;
+
+    const result: GdprResult = {
+      'personalDataFields':  ['recipientName', 'recipientEmail', 'recipientPhone', 'recipientAddress', 'scanCoords'],
+      'sensitiveDataFields': ['recipientCountry'],
+      'consentStatus':    consentStatus,
+      'lawfulBasis':      lawfulBasis,
+      'jurisdiction':     jurisdiction,
+      'strictness':       strictness,
+      'complianceScore':  complianceScore,
+      'retention': {
+        'retainUntil': retainUntil,
+        'autoDelete':  !hasValidConsent,
+      },
+      'redactionApplied': true,
+      'marketingAnalyticsEligible': hasValidConsent,
+      'coordsCoarsened':  coordsCoarsened,
+    };
+
+    return { redacted, result };
+  }
+}
+// #endregion gdpr-redactor-service
+
+// #region time-normalizer-service
+/**
+ * TimeNormalizer: handles 5 messy timestamp formats → epoch ms + ISO-8601.
+ *
+ * Supported formats:
+ *   1. ISO-8601  (2026-01-15T08:30:00Z or with offset)
+ *   2. MM/DD/YYYY HH:mm
+ *   3. Unix epoch seconds as string ("1735990200")
+ *   4. YYYY-MM-DD date-only
+ *   5. RFC-2822-ish ("Wed, 04 Jun 2026 12:30:00 GMT")
+ *
+ * Returns NaN for unparseable input so the node can route to 'rejected'.
+ */
+export class TimeNormalizer {
+  // Match MM/DD/YYYY HH:mm
+  private static readonly RE_MDY = /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})$/;
+  // Match date-only YYYY-MM-DD (no T, no colon after the year-month-day)
+  private static readonly RE_DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+  // Match unix epoch seconds string (9-10 digits, no hyphens/slashes)
+  private static readonly RE_UNIX_S = /^\d{9,11}$/;
+
+  static toEpochMs(raw: string): number {
+    const trimmed = raw.trim();
+
+    // 1. Unix epoch seconds as plain digits
+    if (TimeNormalizer.RE_UNIX_S.test(trimmed)) {
+      const seconds = parseInt(trimmed, 10);
+      return seconds * 1000;
+    }
+
+    // 2. MM/DD/YYYY HH:mm
+    const mdyMatch = TimeNormalizer.RE_MDY.exec(trimmed);
+    if (mdyMatch !== null) {
+      const [, mm, dd, yyyy, hh, min] = mdyMatch;
+      const iso = `${yyyy}-${mm!.padStart(2, '0')}-${dd!.padStart(2, '0')}T${hh!.padStart(2, '0')}:${min!.padStart(2, '0')}:00Z`;
+      const ms = new Date(iso).getTime();
+      return ms;
+    }
+
+    // 3. Date-only YYYY-MM-DD
+    if (TimeNormalizer.RE_DATE_ONLY.test(trimmed)) {
+      const ms = new Date(`${trimmed}T00:00:00Z`).getTime();
+      return ms;
+    }
+
+    // 4. ISO-8601 and RFC-2822-ish: let Date parse them
+    const ms = new Date(trimmed).getTime();
+    return ms;
+  }
+
+  static toIso(epochMs: number): string {
+    return new Date(epochMs).toISOString();
+  }
+}
+// #endregion time-normalizer-service
+
+// #region carrier-registry-service
+/**
+ * CarrierRegistry: resolves carrier aliases to canonical carrierId/carrierName pairs.
+ */
+const CARRIER_ALIAS_MAP: Record<string, { 'carrierId': string; 'carrierName': string }> = {
+  'FEDEX':            { 'carrierId': 'fedex',      'carrierName': 'FedEx' },
+  'FEDEX GROUND':     { 'carrierId': 'fedex',      'carrierName': 'FedEx' },
+  'FEDEX EXPRESS':    { 'carrierId': 'fedex',      'carrierName': 'FedEx' },
+  'FEDERAL EXPRESS':  { 'carrierId': 'fedex',      'carrierName': 'FedEx' },
+  'FEDEX CORP':       { 'carrierId': 'fedex',      'carrierName': 'FedEx' },
+  'UPS':              { 'carrierId': 'ups',        'carrierName': 'UPS' },
+  'UNITED PARCEL SERVICE': { 'carrierId': 'ups',   'carrierName': 'UPS' },
+  'UPS GROUND':       { 'carrierId': 'ups',        'carrierName': 'UPS' },
+  'DHL':              { 'carrierId': 'dhl',        'carrierName': 'DHL' },
+  'DHL EXPRESS':      { 'carrierId': 'dhl',        'carrierName': 'DHL' },
+  'DHL ECOMMERCE':    { 'carrierId': 'dhl',        'carrierName': 'DHL' },
+  'USPS':             { 'carrierId': 'usps',       'carrierName': 'USPS' },
+  'UNITED STATES POSTAL SERVICE': { 'carrierId': 'usps', 'carrierName': 'USPS' },
+  'ROYAL MAIL':       { 'carrierId': 'royal-mail', 'carrierName': 'Royal Mail' },
+  'ROYAL MAIL GROUP': { 'carrierId': 'royal-mail', 'carrierName': 'Royal Mail' },
+  'DPD':              { 'carrierId': 'dpd',        'carrierName': 'DPD' },
+  'DPD GROUP':        { 'carrierId': 'dpd',        'carrierName': 'DPD' },
+  'DPD UK':           { 'carrierId': 'dpd',        'carrierName': 'DPD' },
+};
+
+export class CarrierRegistry {
+  static canonical(raw: string): { 'carrierId': string; 'carrierName': string } {
+    const key = raw.trim().toUpperCase();
+    return CARRIER_ALIAS_MAP[key] ?? { 'carrierId': 'unknown', 'carrierName': raw };
+  }
+}
+// #endregion carrier-registry-service
+
+// #region country-codes-service
+/**
+ * CountryCodes: resolves alpha-2, alpha-3, and full country names to ISO-3.
+ */
+const COUNTRY_CODE_MAP: Record<string, string> = {
+  // Alpha-2 → ISO-3
+  'US': 'USA', 'CA': 'CAN', 'MX': 'MEX', 'GB': 'GBR', 'DE': 'DEU',
+  'FR': 'FRA', 'NL': 'NLD', 'IT': 'ITA', 'ES': 'ESP', 'PL': 'POL',
+  'SE': 'SWE', 'NO': 'NOR', 'DK': 'DNK', 'FI': 'FIN', 'BE': 'BEL',
+  'CH': 'CHE', 'AT': 'AUT', 'CZ': 'CZE', 'HU': 'HUN', 'PT': 'PRT',
+  'RO': 'ROU', 'BG': 'BGR', 'GR': 'GRC', 'CN': 'CHN', 'JP': 'JPN',
+  'KR': 'KOR', 'AU': 'AUS', 'NZ': 'NZL', 'SG': 'SGP', 'IN': 'IND',
+  'TH': 'THA', 'VN': 'VNM', 'MY': 'MYS', 'ID': 'IDN', 'PH': 'PHL',
+  'BR': 'BRA', 'AR': 'ARG', 'CO': 'COL', 'CL': 'CHL', 'PE': 'PER',
+  'VE': 'VEN', 'ZA': 'ZAF', 'NG': 'NGA', 'EG': 'EGY', 'SA': 'SAU',
+  'AE': 'ARE', 'KE': 'KEN', 'MA': 'MAR', 'TR': 'TUR', 'RU': 'RUS',
+  'UA': 'UKR',
+  // Full names → ISO-3
+  'UNITED STATES': 'USA', 'UNITED STATES OF AMERICA': 'USA',
+  'CANADA': 'CAN', 'MEXICO': 'MEX',
+  'UNITED KINGDOM': 'GBR', 'UK': 'GBR', 'GREAT BRITAIN': 'GBR',
+  'GERMANY': 'DEU', 'FRANCE': 'FRA', 'NETHERLANDS': 'NLD',
+  'ITALY': 'ITA', 'SPAIN': 'ESP', 'POLAND': 'POL', 'SWEDEN': 'SWE',
+  'NORWAY': 'NOR', 'DENMARK': 'DNK', 'FINLAND': 'FIN', 'BELGIUM': 'BEL',
+  'SWITZERLAND': 'CHE', 'AUSTRIA': 'AUT', 'CZECH REPUBLIC': 'CZE',
+  'HUNGARY': 'HUN', 'PORTUGAL': 'PRT', 'ROMANIA': 'ROU', 'BULGARIA': 'BGR',
+  'GREECE': 'GRC', 'CHINA': 'CHN', 'JAPAN': 'JPN', 'SOUTH KOREA': 'KOR',
+  'AUSTRALIA': 'AUS', 'NEW ZEALAND': 'NZL', 'SINGAPORE': 'SGP', 'INDIA': 'IND',
+  'THAILAND': 'THA', 'VIETNAM': 'VNM', 'MALAYSIA': 'MYS', 'INDONESIA': 'IDN',
+  'PHILIPPINES': 'PHL', 'BRAZIL': 'BRA', 'ARGENTINA': 'ARG', 'COLOMBIA': 'COL',
+  'CHILE': 'CHL', 'PERU': 'PER', 'VENEZUELA': 'VEN', 'SOUTH AFRICA': 'ZAF',
+  'NIGERIA': 'NGA', 'EGYPT': 'EGY', 'SAUDI ARABIA': 'SAU',
+  'UNITED ARAB EMIRATES': 'ARE', 'UAE': 'ARE', 'KENYA': 'KEN', 'MOROCCO': 'MAR',
+  'TURKEY': 'TUR', 'RUSSIA': 'RUS', 'UKRAINE': 'UKR',
+};
+
+export class CountryCodes {
+  static toIso3(raw: string): string {
+    const key = raw.trim().toUpperCase();
+    // Already ISO-3 (3 uppercase letters in our known set)
+    if (key.length === 3 && /^[A-Z]{3}$/.test(key)) {
+      // Validate it's a known ISO-3 code; if so, return directly
+      const known = Object.values(COUNTRY_CODE_MAP).includes(key) || COUNTRY_CODE_MAP[key] !== undefined;
+      if (known) return COUNTRY_CODE_MAP[key] ?? key;
+      return key; // pass through unknown 3-letter codes
+    }
+    return COUNTRY_CODE_MAP[key] ?? raw.slice(0, 3).toUpperCase();
+  }
+}
+// #endregion country-codes-service
+
+// #region units-service
+/**
+ * Units: weight conversion to grams.
+ */
+export class Units {
+  static toGrams(value: number, unit: string): number {
+    switch (unit) {
+      case 'g':  return value;
+      case 'kg': return value * 1000;
+      case 'lb': return value * 453.592;
+      case 'oz': return value * 28.3495;
+      default:   return value;
+    }
+  }
+}
+// #endregion units-service
+
+// #region event-classifier-service
+/**
+ * EventClassifier: maps free-text statuses and carrier/weight to canonical enums.
+ */
+// Order matters: the more specific 'out for delivery' must be tested BEFORE the
+// generic 'deliver' (which 'out for delivery' also contains), or an OFD scan
+// would be mis-classified as the DELIVERED terminal.
+const STATUS_DISPATCH: Array<{ 'pattern': RegExp; 'eventType': NormalizedShipment['eventType'] }> = [
+  { 'pattern': /out.?for.?delivery|out_for_delivery/i, 'eventType': 'OUT_FOR_DELIVERY' },
+  { 'pattern': /deliver/i,                           'eventType': 'DELIVERED' },
+  { 'pattern': /exception|address|hold|customs|delay|damage/i, 'eventType': 'EXCEPTION' },
+  { 'pattern': /arrival|arrived|arrival.scan/i,      'eventType': 'ARRIVAL' },
+  { 'pattern': /depart|departed|dispatch/i,          'eventType': 'DEPARTURE' },
+  { 'pattern': /scan|transit|in.transit|picked.?up|pickup/i, 'eventType': 'SCAN' },
+];
+
+export class EventClassifier {
+  static eventType(rawStatus: string): NormalizedShipment['eventType'] {
+    for (const { pattern, eventType } of STATUS_DISPATCH) {
+      if (pattern.test(rawStatus)) return eventType;
+    }
+    return 'SCAN'; // default for unrecognised but non-exceptional statuses
+  }
+
+  static serviceTier(carrierId: string, weightGrams: number): NormalizedShipment['serviceTier'] {
+    // Express: premium carriers at any weight, or light parcels via any carrier
+    if (carrierId === 'fedex' || carrierId === 'dhl') {
+      return weightGrams < 5000 ? 'express' : 'standard';
+    }
+    if (carrierId === 'usps' || carrierId === 'royal-mail') {
+      return weightGrams < 500 ? 'standard' : 'economy';
+    }
+    // ups, dpd: standard for typical weights
+    return weightGrams > 20_000 ? 'economy' : 'standard';
+  }
+
+  static sizeTier(weightGrams: number): NormalizedShipment['sizeTier'] {
+    if (weightGrams < 50)       return 'envelope';
+    if (weightGrams < 500)      return 'small';
+    if (weightGrams < 5_000)    return 'medium';
+    if (weightGrams < 30_000)   return 'large';
+    return 'freight';
+  }
+}
+// #endregion event-classifier-service
+
+// #region fx-rates-service
+/**
+ * FxRates: currency → USD conversion for integer minor units.
+ */
+export class FxRates {
+  static rate(currency: string): number {
+    return FX_TABLE[currency.toUpperCase()] ?? 1.0;
+  }
+
+  static toUsdMinor(amountMinor: number, currency: string): number {
+    const rate = FxRates.rate(currency);
+    return Math.round(amountMinor * rate);
+  }
+}
+// #endregion fx-rates-service
+
+// #region pricing-catalog-service
+/**
+ * PricingCatalog: product lookup and basket pricing with FX normalisation.
+ */
+const CATALOG_MAP = new Map<string, CatalogEntry>(CATALOG.map((e) => [e.productId, e]));
+const CATALOG_IDS = CATALOG.map((e) => e.productId);
+
+export class PricingCatalog {
+  static priceFor(productId: string): { 'name': string; 'category': string; 'unitPriceMinor': number; 'currency': string } {
+    const entry = CATALOG_MAP.get(productId);
+    if (entry === undefined) {
+      return { 'name': 'Unknown Product', 'category': 'Unknown', 'unitPriceMinor': 0, 'currency': 'USD' };
+    }
+    return { 'name': entry.name, 'category': entry.category, 'unitPriceMinor': entry.unitPriceMinor, 'currency': entry.currency };
+  }
+
+  static catalogIds(): string[] {
+    return CATALOG_IDS;
+  }
+
+  static order(lineItems: Array<{ 'productId': string; 'quantity': number }>): PricedOrder {
+    const lines = lineItems.map((item) => {
+      const product = PricingCatalog.priceFor(item.productId);
+      return {
+        'productId':      item.productId,
+        'name':           product.name,
+        'category':       product.category,
+        'quantity':       item.quantity,
+        'unitPriceMinor': product.unitPriceMinor,
+        'currency':       product.currency,
+        'lineTotalMinor': product.unitPriceMinor * item.quantity,
+      };
+    });
+
+    // Group by currency; use the first line's currency as the order currency
+    const currency = lines[0]?.currency ?? 'USD';
+
+    // Sum all lines in their native currencies, then FX-normalize each to USD
+    let subtotalMinor = 0;
+    let subtotalUsdMinor = 0;
+    for (const line of lines) {
+      subtotalMinor += line.lineTotalMinor;
+      subtotalUsdMinor += FxRates.toUsdMinor(line.lineTotalMinor, line.currency);
+    }
+
+    const fxRate = FxRates.rate(currency);
+
+    return {
+      'lines':            lines,
+      'subtotalMinor':    subtotalMinor,
+      'currency':         currency,
+      'subtotalUsdMinor': subtotalUsdMinor,
+      'fxRate':           fxRate,
+    };
+  }
+}
+// #endregion pricing-catalog-service
+
+// #region shipping-calculator-service
+/**
+ * ShippingCalculator: haversine distance and carrier rate → ShippingQuote.
+ */
+export class ShippingCalculator {
+  private static readonly EARTH_RADIUS_KM = 6371;
+
+  static distanceKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+    const toRad = (deg: number): number => (deg * Math.PI) / 180;
+    const dLat = toRad(bLat - aLat);
+    const dLng = toRad(bLng - aLng);
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const raw = ShippingCalculator.EARTH_RADIUS_KM * c;
+    // Minimum meaningful distance (same-city): 1 km
+    return Math.max(raw, 1);
+  }
+
+  static quote(
+    distanceKm: number,
+    weightGrams: number,
+    serviceTier: NormalizedShipment['serviceTier'],
+    carrierId: string,
+  ): ShippingQuote {
+    const rate = CARRIER_RATES[carrierId] ?? CARRIER_RATES['ups'];
+    if (rate === undefined) {
+      return {
+        'distanceKm':   distanceKm,
+        'costUsdMinor': 999,
+        'breakdown': { 'baseMinor': 999, 'perKmMinor': 0, 'perKgMinor': 0, 'tierMultiplier': 1.0 },
+      };
+    }
+    const multiplier = rate.tierMultipliers[serviceTier];
+    const weightKg = weightGrams / 1000;
+    const baseMinor   = rate.baseMinorUsd;
+    const perKmMinor  = Math.round(rate.perKmMinorUsd * distanceKm);
+    const perKgMinor  = Math.round(rate.perKgMinorUsd * weightKg);
+    const costUsdMinor = Math.round((baseMinor + perKmMinor + perKgMinor) * multiplier);
+
+    return {
+      'distanceKm':   distanceKm,
+      'costUsdMinor': costUsdMinor,
+      'breakdown': {
+        'baseMinor':      baseMinor,
+        'perKmMinor':     perKmMinor,
+        'perKgMinor':     perKgMinor,
+        'tierMultiplier': multiplier,
+      },
+    };
+  }
+}
+// #endregion shipping-calculator-service
+
+// #region eta-estimator-service
+/**
+ * EtaEstimator: nominal transit + disruptions → actual ETA vs the SLA promise.
+ *
+ * `transitHours` is the single source of truth for NOMINAL transit duration:
+ * both the generator (sizing the promised SLA and the disrupted ETA) and
+ * `estimate` (computing the actual ETA) call it.
+ *
+ * The promise is an SLA commitment set at dispatch, not a function of transit.
+ * Disruptions (breakdown, customs hold, mis-sort, weather) make actual delays
+ * routinely EXCEED nominal transit — realistic, not a bug. The only hard
+ * invariant is promised ≥ dispatch. The generator carries the disruption hours
+ * forward implicitly through the scan timestamps; `estimate` adds the scan's
+ * own disruption hours so etaEpochMs = depart + (nominalTransit + disruption).
+ */
+export class EtaEstimator {
+  /**
+   * Transit hours = distance / speed + handling, scaled by a tier factor.
+   * Non-express tiers add a modest sortation/consolidation overhead.
+   */
+  static transitHours(
+    distanceKm: number,
+    carrierId: string,
+    serviceTier: NormalizedShipment['serviceTier'],
+  ): number {
+    const rate = CARRIER_RATES[carrierId] ?? CARRIER_RATES['ups'];
+    const speedKmH = rate?.speedKmPerHour ?? 500;
+    const handlingH = rate?.handlingHours ?? 4;
+    const tierFactor = serviceTier === 'express' ? 1.0 : serviceTier === 'standard' ? 1.25 : 1.6;
+    return (distanceKm / speedKmH + handlingH) * tierFactor;
+  }
+
+  static estimate(
+    distanceKm: number,
+    carrierId: string,
+    serviceTier: NormalizedShipment['serviceTier'],
+    departEpochMs: number,
+    promisedEpochMs: number,
+    disruptionHours: number,
+  ): DeliveryEstimate {
+    // transitHours reports the NOMINAL transit; actual ETA adds disruptions.
+    const transitHours = EtaEstimator.transitHours(distanceKm, carrierId, serviceTier);
+
+    const etaEpochMs = departEpochMs + Math.round((transitHours + disruptionHours) * 3_600_000);
+    // Invariant: promised >= dispatch is enforced by the generator. Late delays
+    // MAY exceed nominal transit when a disruption struck. onTime is DERIVED from
+    // the (rounded) delay so the two are always consistent — a sub-hour overrun
+    // rounds to 0 delay and counts as on-time, never "late with 0 delay".
+    const delayHours = Math.max(0, Math.round((etaEpochMs - promisedEpochMs) / 3_600_000));
+    const onTime = delayHours === 0;
+
+    return {
+      'transitHours':    transitHours,
+      'etaEpochMs':      etaEpochMs,
+      'etaIso':          TimeNormalizer.toIso(etaEpochMs),
+      'promisedEpochMs': promisedEpochMs,
+      'onTime':          onTime,
+      'delayHours':      delayHours,
+    };
+  }
+}
+// #endregion eta-estimator-service
+
+// #region disruptions-service
+/**
+ * Disruptions: maps a journey's disruption reason to its extra delivery hours.
+ *
+ * The generator stamps a reason on every scan of a disrupted journey; the
+ * pipeline's enrich-eta converts the reason back to hours so the actual ETA
+ * (and the resulting delay, which MAY exceed nominal transit) is reproduced
+ * deterministically from the carried reason alone.
+ */
+const DISRUPTION_HOURS: Record<string, number> = {
+  '':                 0,
+  'customs hold':     18,
+  'mechanical delay': 30,
+  'weather hold':     12,
+  'mis-sort':         48,
+  'lost in transit':  96,
+};
+
+export class Disruptions {
+  static hoursFor(reason: string): number {
+    return DISRUPTION_HOURS[reason] ?? 0;
+  }
+}
+// #endregion disruptions-service
+
+// #region cold-chain-service
+/**
+ * ColdChain: evaluates a sensor-reading's telemetry against cold-chain limits.
+ *
+ * A breach is a temperature outside the 2–8°C window or a shock event above 2.5g.
+ * Pure deterministic thresholds — only `sensor-reading` events carry telemetry,
+ * so this check runs ONLY on the sensor lane (the per-kind skip showcase).
+ */
+const COLD_CHAIN_MIN_C = 2;
+const COLD_CHAIN_MAX_C = 8;
+const COLD_CHAIN_MAX_SHOCK_G = 2.5;
+
+export class ColdChain {
+  static breached(tempC: number, shockG: number): boolean {
+    return tempC < COLD_CHAIN_MIN_C || tempC > COLD_CHAIN_MAX_C || shockG > COLD_CHAIN_MAX_SHOCK_G;
+  }
+}
+// #endregion cold-chain-service
+
+// #region customs-service
+/**
+ * Customs: maps a customs-event's status to its clearance dwell hours.
+ *
+ * A held shipment dwells longer than a cleared one. Pure deterministic lookup —
+ * runs ONLY on the customs lane (pricing/eta are skipped for customs events).
+ */
+const CUSTOMS_DWELL_HOURS: Record<string, number> = {
+  'held':    18,
+  'cleared': 2,
+};
+
+export class Customs {
+  static dwellHours(customsStatus: string): number {
+    return CUSTOMS_DWELL_HOURS[customsStatus] ?? 4;
+  }
+}
+// #endregion customs-service
+
+// #region consent-service
+/**
+ * Consent: resolves the deterministic marketing consent status for a scan.
+ *
+ * Marketing consent → 'valid' normally, 'expired' for a deterministic 10% slice
+ * (shipment index % 10 === 0), 'missing' when not consented. The same derivation
+ * is used by the redaction routing decision and the GDPR consent-gate, so they
+ * never disagree.
+ */
+export class Consent {
+  static statusFor(shipmentId: string, marketingConsent: boolean): GdprResult['consentStatus'] {
+    if (!marketingConsent) return 'missing';
+    const index = parseInt(shipmentId.replace('SHP-', ''), 10);
+    return Number.isFinite(index) && index % 10 === 0 ? 'expired' : 'valid';
+  }
+}
+// #endregion consent-service
+
+// #region shipment-events-service
+/**
+ * ShipmentEvents: deterministic synthetic journey/scan generator.
+ *
+ * Each entity (shipmentId) has a JOURNEY: an ordered sequence of M~2–5 scans
+ * moving origin → destination with monotonically increasing timestamps and
+ * coords along the path. Scans from many journeys are interleaved in time order
+ * (a real feed); one scan per scatter item. The eventType progression is
+ * DEPARTURE → SCAN/ARRIVAL → OUT_FOR_DELIVERY → DELIVERED, with a disrupted
+ * scan flagged EXCEPTION. Seeded LCG (Knuth params) — no Date.now/Math.random;
+ * tz-lookup + Intl are pure on the fixed epochs.
+ */
+export class ShipmentEvents {
+  private static lcg(seed: number): () => number {
+    let state = seed >>> 0;
+    return (): number => {
+      state = ((state * 1664525 + 1013904223) >>> 0);
+      return state / 4294967296;
+    };
+  }
+
+  // ── Canonical timestamp formats (5 variants, cycle by index % 5) ──────────
+  private static formatTimestamp(epochMs: number, variant: number): string {
+    const d = new Date(epochMs);
+    switch (variant % 5) {
+      case 0:
+        // ISO-8601 with Z
+        return d.toISOString();
+      case 1: {
+        // MM/DD/YYYY HH:mm
+        const mm  = String(d.getUTCMonth() + 1).padStart(2, '0');
+        const dd  = String(d.getUTCDate()).padStart(2, '0');
+        const yyyy = String(d.getUTCFullYear());
+        const hh  = String(d.getUTCHours()).padStart(2, '0');
+        const min = String(d.getUTCMinutes()).padStart(2, '0');
+        return `${mm}/${dd}/${yyyy} ${hh}:${min}`;
+      }
+      case 2:
+        // Unix epoch seconds as string
+        return String(Math.floor(epochMs / 1000));
+      case 3:
+        // YYYY-MM-DD date-only
+        return d.toISOString().slice(0, 10);
+      default: {
+        // RFC-2822-ish: "Wed, 04 Jun 2026 12:30:00 GMT"
+        const DAYS   = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+        const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+        const dayName   = DAYS[d.getUTCDay()] ?? 'Mon';
+        const monthName = MONTHS[d.getUTCMonth()] ?? 'Jan';
+        const dd  = String(d.getUTCDate()).padStart(2, '0');
+        const yyyy = String(d.getUTCFullYear());
+        const hh  = String(d.getUTCHours()).padStart(2, '0');
+        const min = String(d.getUTCMinutes()).padStart(2, '0');
+        const sec = String(d.getUTCSeconds()).padStart(2, '0');
+        return `${dayName}, ${dd} ${monthName} ${yyyy} ${hh}:${min}:${sec} GMT`;
+      }
+    }
+  }
+
+  // SLA committed window per tier (hours), plus deterministic variance.
+  private static slaBaseHours(serviceTier: NormalizedShipment['serviceTier']): number {
+    return serviceTier === 'express' ? 24 : serviceTier === 'standard' ? 72 : 120;
+  }
+
+  // Disruption reasons (heavy-tailed extra hours). Index 0 = clean (most scans).
+  private static readonly DISRUPTIONS: Array<{ 'reason': string; 'hours': number }> = [
+    { 'reason': '',                 'hours': 0 },
+    { 'reason': 'customs hold',     'hours': 18 },
+    { 'reason': 'mechanical delay', 'hours': 30 },
+    { 'reason': 'weather hold',     'hours': 12 },
+    { 'reason': 'mis-sort',         'hours': 48 },
+    { 'reason': 'lost in transit',  'hours': 96 },
+  ];
+
+  /**
+   * Build the deterministic raw scan feed: N journeys, each M~2–5 scans, all
+   * scans interleaved by timestamp. This is the single source of truth for the
+   * synthetic data; the multi-format `Sources` encode a partition of it.
+   */
+  static buildRawScans(n: number): RawShipmentEvent[] {
+    const rand = ShipmentEvents.lcg(42);
+
+    const CARRIERS: Array<{ 'alias': string; 'carrierId': string }> = [
+      { 'alias': 'FEDEX',                  'carrierId': 'fedex' },
+      { 'alias': 'FedEx',                  'carrierId': 'fedex' },
+      { 'alias': 'Federal Express',        'carrierId': 'fedex' },
+      { 'alias': 'fedex ground',           'carrierId': 'fedex' },
+      { 'alias': 'UPS',                    'carrierId': 'ups' },
+      { 'alias': 'United Parcel Service',  'carrierId': 'ups' },
+      { 'alias': 'DHL Express',            'carrierId': 'dhl' },
+      { 'alias': 'DHL',                    'carrierId': 'dhl' },
+      { 'alias': 'USPS',                   'carrierId': 'usps' },
+      { 'alias': 'Royal Mail',             'carrierId': 'royal-mail' },
+      { 'alias': 'DPD',                    'carrierId': 'dpd' },
+    ];
+
+    // Free-text statuses keyed by journey position (the eventType progression
+    // DEPARTURE → SCAN/ARRIVAL → OUT_FOR_DELIVERY → DELIVERED). A disrupted
+    // scan emits an EXCEPTION-flavoured status.
+    const STATUS_DEPARTURE = ['departed facility', 'dispatch', 'picked up'];
+    const STATUS_TRANSIT   = ['in transit', 'arrival scan', 'arrived at hub', 'en route'];
+    const STATUS_OFD       = ['out for delivery'];
+    const STATUS_DELIVERED = ['delivered', 'DELIVERED'];
+    const STATUS_EXCEPTION = ['exception - address', 'customs hold'];
+
+    // Destination region anchors — coords land well inside country polygons.
+    // Each region carries a REAL public per-region gateway IP (an in-region
+    // public DNS resolver / datacenter anycast endpoint) — the IP modality's
+    // signal. The IP API geolocates these to a real country to fuse with the GPS
+    // reverse-geocode. These are sample SIGNAL inputs, not a resolution table.
+    const REGIONS: Array<{ 'lat': number; 'lng': number; 'country': string; 'countryVariants': string[]; 'gatewayIp': string }> = [
+      { 'lat':  39.9,  'lng':  -75.2, 'country': 'USA',  'countryVariants': ['US', 'USA', 'United States'],        'gatewayIp': '8.8.8.8' },
+      { 'lat':  51.5,  'lng':   -0.1, 'country': 'GBR',  'countryVariants': ['GB', 'GBR', 'United Kingdom'],       'gatewayIp': '212.58.244.1' },
+      { 'lat':  48.9,  'lng':    2.3, 'country': 'FRA',  'countryVariants': ['FR', 'FRA', 'France'],               'gatewayIp': '80.67.169.12' },
+      { 'lat':  52.5,  'lng':   13.4, 'country': 'DEU',  'countryVariants': ['DE', 'DEU', 'Germany'],              'gatewayIp': '194.150.168.168' },
+      { 'lat':  35.7,  'lng':  139.7, 'country': 'JPN',  'countryVariants': ['JP', 'JPN', 'Japan'],                'gatewayIp': '210.130.1.1' },
+      { 'lat':  31.2,  'lng':  121.5, 'country': 'CHN',  'countryVariants': ['CN', 'CHN', 'China'],                'gatewayIp': '114.114.114.114' },
+      { 'lat': -33.9,  'lng':  151.2, 'country': 'AUS',  'countryVariants': ['AU', 'AUS', 'Australia'],            'gatewayIp': '1.1.1.1' },
+      { 'lat': -23.5,  'lng':  -46.6, 'country': 'BRA',  'countryVariants': ['BR', 'BRA', 'Brazil'],               'gatewayIp': '200.160.2.3' },
+      { 'lat':  19.4,  'lng':  -99.1, 'country': 'MEX',  'countryVariants': ['MX', 'MEX', 'Mexico'],               'gatewayIp': '200.33.146.249' },
+      { 'lat':  28.6,  'lng':   77.2, 'country': 'IND',  'countryVariants': ['IN', 'IND', 'India'],                'gatewayIp': '49.44.79.1' },
+      { 'lat':  25.2,  'lng':   55.3, 'country': 'ARE',  'countryVariants': ['AE', 'ARE', 'United Arab Emirates'], 'gatewayIp': '94.200.200.200' },
+      { 'lat': -26.2,  'lng':   28.0, 'country': 'ZAF',  'countryVariants': ['ZA', 'ZAF', 'South Africa'],         'gatewayIp': '196.4.160.4' },
+    ];
+
+    // Global dispatch hubs — origin picked INDEPENDENTLY of destination so a
+    // meaningful fraction of journeys are cross-region / intercontinental.
+    const ORIGIN_HUBS: Array<{ 'lat': number; 'lng': number; 'name': string }> = [
+      { 'lat':  35.0,  'lng':  -89.9, 'name': 'Memphis' },
+      { 'lat':  51.4,  'lng':   12.2, 'name': 'Leipzig' },
+      { 'lat':  22.3,  'lng':  113.9, 'name': 'Hong Kong' },
+      { 'lat':  25.3,  'lng':   55.4, 'name': 'Dubai' },
+      { 'lat':  40.6,  'lng':  -73.8, 'name': 'New York' },
+      { 'lat':  -3.1,  'lng':  -38.5, 'name': 'Fortaleza' },
+    ];
+
+    const NAMES   = ['Alice Müller', 'Bob Chen', 'Carol Smith', 'David García', 'Eve Johnson',
+                     'Frank Kim', 'Grace Lee', 'Henry Brown', 'Isabelle Dubois', 'Jack Okonkwo'];
+    const DOMAINS = ['example.com', 'test.org', 'mail.net', 'inbox.io', 'post.co'];
+
+    const catalogIds = PricingCatalog.catalogIds();
+    const BASE_EPOCH_MS = 1735689600000; // 2026-01-01T00:00:00Z
+    const WEIGHT_UNITS: Array<RawShipmentEvent['weightUnit']> = ['lb', 'kg', 'g', 'oz'];
+
+    const pick = <T>(arr: readonly T[]): T => arr[Math.floor(rand() * arr.length)] ?? arr[0]!;
+
+    // Build every journey's scans, then interleave all scans by timestamp so the
+    // emitted feed looks like a real stream of individual scans from many
+    // journeys in flight at once.
+    const allScans: RawShipmentEvent[] = [];
+    let formatIdx = 0; // advances per scan so all 5 timestamp formats appear
+
+    for (let i = 0; i < n; i++) {
+      const dest = pick(REGIONS);
+      // The asset's per-region gateway IP (the IP modality's signal). ~20% of
+      // assets report NO gateway IP → route-modalities skips ip-geolocate for
+      // them (a real IP-lookup avoided — the savings showcase).
+      const hasGatewayIp = rand() < 0.8;
+      const gatewayIp = hasGatewayIp ? dest.gatewayIp : '';
+      const destLat = dest.lat + (rand() - 0.5) * 4;
+      const destLng = dest.lng + (rand() - 0.5) * 4;
+
+      const hub = pick(ORIGIN_HUBS);
+      const originLat = hub.lat + (rand() - 0.5) * 4;
+      const originLng = hub.lng + (rand() - 0.5) * 4;
+
+      const carrierEntry = pick(CARRIERS);
+      const carrier   = carrierEntry.alias;
+      const carrierId = carrierEntry.carrierId;
+
+      const name       = pick(NAMES);
+      const domain     = pick(DOMAINS);
+      const localPart  = `user${i}`;
+      const countryRaw = pick(dest.countryVariants);
+
+      const weightValue = 10 + Math.floor(rand() * 3490) / 10;
+      const weightUnit  = pick(WEIGHT_UNITS);
+      const weightGrams = Units.toGrams(weightValue, weightUnit);
+      const serviceTier = EventClassifier.serviceTier(carrierId, weightGrams);
+
+      // Shipment-level shipping distance (origin → destination) and nominal transit.
+      const shipDistanceKm = ShippingCalculator.distanceKm(originLat, originLng, destLat, destLng);
+      const nominalTransitH = EtaEstimator.transitHours(shipDistanceKm, carrierId, serviceTier);
+
+      // SLA promise (committed window at dispatch, ALWAYS >= dispatch). A
+      // meaningful share commits a TIGHT window (near nominal transit) so even a
+      // modest disruption — or simply a slow leg — misses it; the rest commit a
+      // looser window. Floor is nominalTransit + 1h so promised never precedes
+      // dispatch and a clean fast run can still beat a tight promise.
+      const slaBase = ShipmentEvents.slaBaseHours(serviceTier);
+      const tightRoll = rand();
+      const tightSla = tightRoll < 0.5;
+      // Tight SLA ≈ nominal transit (zero slack), so ANY disruption misses it.
+      // Loose SLA gives a few hours' slack so small disruptions are absorbed.
+      const slaHours = tightSla
+        ? Math.max(nominalTransitH + 1, nominalTransitH * (1.0 + rand() * 0.1))
+        : Math.max(nominalTransitH + 1, nominalTransitH + 6 + rand() * Math.min(slaBase, 36));
+
+      // Journey-level disruption (heavy-tailed). About a third of journeys hit a
+      // disruption; long-haul more often. Disruption adds to delivery time and
+      // can exceed nominal transit.
+      const disruptProb = shipDistanceKm > 8000 ? 0.42 : 0.32;
+      const disrupted = rand() < disruptProb;
+      const disruptionPick = disrupted
+        ? (ShipmentEvents.DISRUPTIONS[1 + Math.floor(rand() * (ShipmentEvents.DISRUPTIONS.length - 1))] ?? ShipmentEvents.DISRUPTIONS[0]!)
+        : ShipmentEvents.DISRUPTIONS[0]!;
+      const disruptionHours  = disruptionPick.hours;
+      const disruptionReason = disruptionPick.reason;
+
+      // Dispatch epoch (the journey's seq-0 time), spread across ~60 days.
+      const daysOffset  = Math.floor(rand() * 60);
+      const hoursOffset = Math.floor(rand() * 24);
+      const dispatchEpochMs = BASE_EPOCH_MS + daysOffset * 86_400_000 + hoursOffset * 3_600_000;
+
+      // SLA promise timestamp (lossless format so it round-trips exactly).
+      const promisedMs = dispatchEpochMs + Math.round(slaHours * 3_600_000);
+      const rawPromisedDeliveryAt = ShipmentEvents.formatTimestamp(promisedMs, i % 2 === 0 ? 0 : 2);
+      // Dispatch timestamp also lossless so the pipeline reconstructs the exact
+      // dispatch epoch (the ETA anchor) regardless of per-scan format messiness.
+      const rawDispatchAt = ShipmentEvents.formatTimestamp(dispatchEpochMs, i % 2 === 0 ? 2 : 0);
+
+      const consent = rand() < 0.6;
+      const violationRoll = rand();
+      const isViolation = violationRoll < 0.02;
+      const lawfulBasis: RawShipmentEvent['lawfulBasis'] = isViolation ? 'none' : 'contract';
+      const specialCategory: RawShipmentEvent['specialCategory'] = isViolation ? 'health' : 'none';
+
+      const lineCount = 1 + Math.floor(rand() * 4);
+      const lineItems: Array<{ 'productId': string; 'quantity': number }> = [];
+      for (let j = 0; j < lineCount; j++) {
+        const productId = catalogIds[Math.floor(rand() * catalogIds.length)] ?? 'PROD-001';
+        const quantity  = 1 + Math.floor(rand() * 3);
+        lineItems.push({ 'productId': productId, 'quantity': quantity });
+      }
+      const phonePrefix = 100 + Math.floor(rand() * 900);
+      const phoneMid    = 100 + Math.floor(rand() * 900);
+      const phoneSuffix = 1000 + Math.floor(rand() * 9000);
+      const recipientEmail   = `${localPart}@${domain}`;
+      const recipientPhone   = `+1-${phonePrefix}-${phoneMid}-${phoneSuffix}`;
+      const recipientAddress = `${1000 + Math.floor(rand() * 8000)} Main St, ${dest.country}`;
+      const facilityId       = `FAC-${hub.name.replace(/\s+/g, '').toUpperCase().slice(0, 3)}-${String(Math.floor(rand() * 100)).padStart(3, '0')}`;
+
+      // Journey length M ~2–5 scans along origin → destination.
+      const scanCount = 2 + Math.floor(rand() * 4);
+      // A small fraction of journeys FAIL: they end EXCEPTION with NO DELIVERED
+      // (single-terminal enforcement — exactly one terminal per journey).
+      const journeyFails = rand() < 0.12;
+      // The intermediate scan that carries a transient disruption EXCEPTION (a
+      // mid leg, never the first or last), if disrupted. The last scan is always
+      // the single terminal (DELIVERED or, for a failed journey, EXCEPTION).
+      const disruptScanIdx = disrupted && scanCount > 2
+        ? 1 + Math.floor(rand() * (scanCount - 2))
+        : -1;
+
+      let prevLat = originLat;
+      let prevLng = originLng;
+      let cursorMs = dispatchEpochMs;
+
+      for (let s = 0; s < scanCount; s++) {
+        const t = scanCount === 1 ? 0 : s / (scanCount - 1); // 0..1 along path
+        const lat = originLat + (destLat - originLat) * t;
+        const lng = originLng + (destLng - originLng) * t;
+
+        // Time advances by the leg's share of nominal transit; the disrupted
+        // scan adds the disruption hours, pushing later scans (and delivery) out.
+        if (s > 0) {
+          const legShare = nominalTransitH / (scanCount - 1);
+          let legHours = legShare;
+          if (s === disruptScanIdx) legHours += disruptionHours;
+          cursorMs += Math.round(legHours * 3_600_000);
+        }
+
+        const isLast  = s === scanCount - 1;
+        const isFirst = s === 0;
+        // A transient disruption EXCEPTION can fall ONLY on an intermediate scan.
+        const isTransientException = s === disruptScanIdx;
+
+        // Single-terminal enforcement: exactly one terminal per journey.
+        //   - last scan  → DELIVERED (normal) OR EXCEPTION (failed journey)
+        //   - first scan → DEPARTURE
+        //   - second-to-last → OUT_FOR_DELIVERY (when not a transient exception)
+        //   - other intermediate → SCAN/ARRIVAL, or a transient EXCEPTION
+        const rawStatus = isLast
+            ? (journeyFails ? pick(STATUS_EXCEPTION) : pick(STATUS_DELIVERED))
+          : isFirst ? pick(STATUS_DEPARTURE)
+          : isTransientException ? pick(STATUS_EXCEPTION)
+          : (s === scanCount - 2) ? pick(STATUS_OFD)
+          : pick(STATUS_TRANSIT);
+
+        // ~6% invalid scan coords (out of WGS-84 range) to exercise reject path.
+        const invalid = rand() < 0.06;
+        const finalLat = invalid ? 95 + rand() * 10  : lat;
+        const finalLng = invalid ? 185 + rand() * 10 : lng;
+
+        // Per-scan timestamps cycle through the 4 time-of-day-preserving formats
+        // (ISO-8601, MM/DD HH:mm, unix-seconds, RFC-2822) — skipping the
+        // date-only format (variant 3) so each scan's LOCAL time stays accurate
+        // within a journey. The messy-format normalization showcase still
+        // exercises all formats across the feed.
+        const FORMAT_CYCLE = [0, 1, 2, 4] as const;
+        const variant = FORMAT_CYCLE[formatIdx % FORMAT_CYCLE.length] ?? 0;
+        const rawTimestamp = ShipmentEvents.formatTimestamp(cursorMs, variant);
+        formatIdx++;
+
+        allScans.push({
+          'shipmentId':          `SHP-${String(i).padStart(6, '0')}`,
+          'scanSeq':             s,
+          'rawTimestamp':        rawTimestamp,
+          'rawDispatchAt':       rawDispatchAt,
+          'rawStatus':           rawStatus,
+          'carrier':             carrier,
+          'ipAddress':           gatewayIp,
+          'latitude':            finalLat,
+          'longitude':           finalLng,
+          'legFromLat':          prevLat,
+          'legFromLng':          prevLng,
+          'originLat':           originLat,
+          'originLng':           originLng,
+          'destLat':             destLat,
+          'destLng':             destLng,
+          'weight':              weightValue,
+          'weightUnit':          weightUnit,
+          'recipientName':       name,
+          'recipientEmail':      recipientEmail,
+          'recipientPhone':      recipientPhone,
+          'recipientAddress':    recipientAddress,
+          'recipientCountry':    countryRaw,
+          'marketingConsent':    consent,
+          'rawPromisedDeliveryAt': rawPromisedDeliveryAt,
+          'lineItems':           lineItems.map((li) => ({ ...li })),
+          'facilityId':          facilityId,
+          'lawfulBasis':         lawfulBasis,
+          'specialCategory':     specialCategory,
+          // The journey's disruption (if any) is carried on EVERY scan so the
+          // shipment-level enrich-eta can reconstruct the same delivery delay
+          // regardless of which scan is being processed.
+          'disruptionReason':    disruptionReason,
+        });
+
+        prevLat = lat;
+        prevLng = lng;
+      }
+    }
+
+    // Interleave all scans by their UTC epoch (the real feed: many journeys'
+    // scans arrive in time order). Stable sort on the parsed epoch.
+    allScans.sort((a, b) =>
+      TimeNormalizer.toEpochMs(a.rawTimestamp) - TimeNormalizer.toEpochMs(b.rawTimestamp));
+
+    return allScans;
+  }
+}
+// #endregion shipment-events-service
+
+// #region field-mappings-service
+/**
+ * FieldMappings: per-source field-name → canonical-body-field maps.
+ *
+ * Each source feed names its columns/keys differently (the heterogeneity the
+ * `map-fields` shared node resolves). A mapping is `{ canonicalBodyField:
+ * sourceFieldName }`; `map-fields` reads the source record's `sourceFieldName`
+ * and writes the value under `canonicalBodyField`. Both the generator (encoding)
+ * and the ingest pipeline (decoding) use the SAME mapping, so they cannot drift.
+ *
+ * The canonical body fields are the union the enrichment needs; a source that
+ * does not carry a field simply omits its column (the `coerce-types` node fills
+ * the canonical default).
+ */
+export type FieldMap = Readonly<Record<string, string>>;
+
+const FIELD_MAPPINGS: Readonly<Record<string, FieldMap>> = {
+  // JSON API feed (position-pings). RICH: camelCase keys, includes resolved geo.
+  'json-position': {
+    'shipmentId':       'asset_id',
+    'eventId':          'ping_id',
+    'scanSeq':          'seq',
+    'epochRaw':         'observed_at',
+    'dispatchRaw':      'dispatched_at',
+    'promisedRaw':      'promised_at',
+    'status':           'movement',
+    'ipAddress':        'gateway_ip',
+    'latitude':         'lat',
+    'longitude':        'lon',
+    'legFromLat':       'prev_lat',
+    'legFromLng':       'prev_lon',
+    'originLat':        'origin_lat',
+    'originLng':        'origin_lon',
+    'destLat':          'dest_lat',
+    'destLng':          'dest_lon',
+    'carrier':          'carrier',
+    'facilityId':       'facility',
+    'weight':           'weight',
+    'weightUnit':       'weight_unit',
+    'lineItems':        'basket',
+    'recipientName':    'recipient_name',
+    'recipientEmail':   'recipient_email',
+    'recipientPhone':   'recipient_phone',
+    'recipientAddress': 'recipient_address',
+    'recipientCountry': 'recipient_country',
+    'marketingConsent': 'consent',
+    'lawfulBasis':      'lawful_basis',
+    'specialCategory':  'special_category',
+    'disruptionReason': 'disruption',
+    'geoCountry':       'geo_country',
+    'geoContinent':     'geo_continent',
+    'geoRegion':        'geo_region',
+  },
+  // CSV dump (facility-scans). RAW: snake_case headers, raw recipient PII.
+  'csv-facility': {
+    'shipmentId':       'SHIPMENT_ID',
+    'eventId':          'SCAN_ID',
+    'scanSeq':          'SEQ',
+    'epochRaw':         'SCAN_TS',
+    'dispatchRaw':      'DISPATCH_TS',
+    'promisedRaw':      'PROMISE_TS',
+    'status':           'STATUS',
+    'ipAddress':        'GATEWAY_IP',
+    'latitude':         'LAT',
+    'longitude':        'LNG',
+    'legFromLat':       'FROM_LAT',
+    'legFromLng':       'FROM_LNG',
+    'originLat':        'ORIG_LAT',
+    'originLng':        'ORIG_LNG',
+    'destLat':          'DEST_LAT',
+    'destLng':          'DEST_LNG',
+    'carrier':          'CARRIER',
+    'facilityId':       'FACILITY',
+    'weight':           'WEIGHT',
+    'weightUnit':       'WEIGHT_UNIT',
+    'lineItems':        'BASKET',
+    'recipientName':    'RCPT_NAME',
+    'recipientEmail':   'RCPT_EMAIL',
+    'recipientPhone':   'RCPT_PHONE',
+    'recipientAddress': 'RCPT_ADDR',
+    'recipientCountry': 'RCPT_COUNTRY',
+    'marketingConsent': 'CONSENT',
+    'lawfulBasis':      'LAWFUL_BASIS',
+    'specialCategory':  'SPECIAL_CATEGORY',
+    'disruptionReason': 'DISRUPTION',
+  },
+  // Gzipped NDJSON (sensor-readings). Cold-chain telemetry + position.
+  'ndjson-sensor': {
+    'shipmentId':       'sid',
+    'eventId':          'rid',
+    'scanSeq':          'n',
+    'epochRaw':         'ts',
+    'dispatchRaw':      'dts',
+    'promisedRaw':      'pts',
+    'status':           'st',
+    'ipAddress':        'gw',
+    'latitude':         'la',
+    'longitude':        'lo',
+    'legFromLat':       'fla',
+    'legFromLng':       'flo',
+    'originLat':        'ola',
+    'originLng':        'olo',
+    'destLat':          'dla',
+    'destLng':          'dlo',
+    'carrier':          'crr',
+    'facilityId':       'fac',
+    'weight':           'wt',
+    'weightUnit':       'wu',
+    'lineItems':        'bsk',
+    'recipientName':    'rn',
+    'recipientEmail':   're',
+    'recipientPhone':   'rp',
+    'recipientAddress': 'ra',
+    'recipientCountry': 'rc',
+    'marketingConsent': 'cns',
+    'lawfulBasis':      'lb',
+    'specialCategory':  'sc',
+    'disruptionReason': 'dis',
+    'tempC':            'temp_c',
+    'humidityPct':      'humidity',
+    'shockG':           'shock_g',
+  },
+  // Customs/Delivery feed (JSON). customs-events + delivery-confirmations.
+  'json-customs': {
+    'shipmentId':       'shipment',
+    'eventId':          'event_id',
+    'scanSeq':          'sequence',
+    'epochRaw':         'event_time',
+    'dispatchRaw':      'dispatch_time',
+    'promisedRaw':      'promise_time',
+    'status':           'event_status',
+    'ipAddress':        'gateway_ip',
+    'latitude':         'latitude',
+    'longitude':        'longitude',
+    'legFromLat':       'from_latitude',
+    'legFromLng':       'from_longitude',
+    'originLat':        'origin_latitude',
+    'originLng':        'origin_longitude',
+    'destLat':          'dest_latitude',
+    'destLng':          'dest_longitude',
+    'carrier':          'carrier_name',
+    'facilityId':       'facility_id',
+    'weight':           'weight_value',
+    'weightUnit':       'weight_uom',
+    'lineItems':        'line_items',
+    'recipientName':    'consignee_name',
+    'recipientEmail':   'consignee_email',
+    'recipientPhone':   'consignee_phone',
+    'recipientAddress': 'consignee_address',
+    'recipientCountry': 'consignee_country',
+    'marketingConsent': 'marketing_ok',
+    'lawfulBasis':      'lawful_basis',
+    'specialCategory':  'special_category',
+    'disruptionReason': 'disruption_reason',
+    'customsStatus':    'customs_state',
+    'delivered':        'delivered_flag',
+  },
+};
+
+export class FieldMappings {
+  static forKey(mappingKey: string): FieldMap {
+    return FIELD_MAPPINGS[mappingKey] ?? FIELD_MAPPINGS['json-position']!;
+  }
+}
+// #endregion field-mappings-service
+
+// #region sources-service
+/**
+ * Sources: deterministically encode the raw scan feed into a few heterogeneous
+ * on-the-wire source feeds (the multi-format fan-in showcase).
+ *
+ * The single raw feed (ShipmentEvents.buildRawScans) is partitioned by each
+ * scan's eventType-derived `kind`, then each partition is encoded in its
+ * source's native format under that source's field-name mapping:
+ *   - position-ping        → JSON API array string         (RICH: carries geo)
+ *   - facility-scan        → CSV string (header + rows)     (RAW PII)
+ *   - sensor-reading       → gzip(NDJSON) bytes, base64'd   (cold-chain)
+ *   - customs/delivery     → JSON array string              (customs + POD)
+ *
+ * Gzip output is base64-encoded so the payload is a JSON-safe string that
+ * round-trips through state snapshot/restore; the `decompress` ingest node
+ * reverses it (base64 → gunzip → text).
+ *
+ * Deterministic: a pure function of `n` (the raw feed is seeded; partitioning
+ * is by eventType; no Date.now/Math.random).
+ */
+export class Sources {
+  /** Derive the canonical `kind` for a scan from its free-text status. */
+  private static kindFor(rawStatus: string): CanonicalEvent['kind'] {
+    const eventType = EventClassifier.eventType(rawStatus);
+    if (eventType === 'DELIVERED') return 'delivery-confirmation';
+    if (eventType === 'EXCEPTION') return 'customs-event';
+    // Non-terminal movement scans are split across the three streaming formats
+    // by a stable hash of the shipment+seq, so each format carries a real share.
+    return 'position-ping';
+  }
+
+  /**
+   * Stable 0..2 bucket for a scan (which streaming format carries it).
+   * FNV-1a 32-bit: deterministic, no external dep, synchronous.
+   */
+  private static bucket(scan: RawShipmentEvent): number {
+    const key = `${scan.shipmentId}:${scan.scanSeq}`;
+    let h = 2166136261;
+    for (let i = 0; i < key.length; i++) {
+      h = Math.imul(h ^ key.charCodeAt(i), 16777619) >>> 0;
+    }
+    return h % 3;
+  }
+
+  /** A CSV cell: quote and escape embedded quotes/commas/newlines. */
+  private static csvCell(value: string): string {
+    if (/[",\n]/.test(value)) {
+      return `"${value.replace(/"/g, '""')}"`;
+    }
+    return value;
+  }
+
+  /** Build the wire record (canonical-field → value) for a scan. */
+  private static wireRecord(scan: RawShipmentEvent, withGeo: boolean): Record<string, unknown> {
+    const record: Record<string, unknown> = {
+      'shipmentId':       scan.shipmentId,
+      'eventId':          `${scan.shipmentId}-${scan.scanSeq}`,
+      'scanSeq':          scan.scanSeq,
+      'epochRaw':         scan.rawTimestamp,
+      'dispatchRaw':      scan.rawDispatchAt,
+      'promisedRaw':      scan.rawPromisedDeliveryAt,
+      'status':           scan.rawStatus,
+      'ipAddress':        scan.ipAddress,
+      'latitude':         scan.latitude,
+      'longitude':        scan.longitude,
+      'legFromLat':       scan.legFromLat,
+      'legFromLng':       scan.legFromLng,
+      'originLat':        scan.originLat,
+      'originLng':        scan.originLng,
+      'destLat':          scan.destLat,
+      'destLng':          scan.destLng,
+      'carrier':          scan.carrier,
+      'facilityId':       scan.facilityId,
+      'weight':           scan.weight,
+      'weightUnit':       scan.weightUnit,
+      'lineItems':        JSON.stringify(scan.lineItems),
+      'recipientName':    scan.recipientName,
+      'recipientEmail':   scan.recipientEmail,
+      'recipientPhone':   scan.recipientPhone,
+      'recipientAddress': scan.recipientAddress,
+      'recipientCountry': scan.recipientCountry,
+      'marketingConsent': scan.marketingConsent,
+      'lawfulBasis':      scan.lawfulBasis,
+      'specialCategory':  scan.specialCategory,
+      'disruptionReason': scan.disruptionReason,
+    };
+    if (withGeo) {
+      // RICH source pre-resolves geo via the offline country-coder (sync, universal).
+      // No fixture dependency — country-coder is deterministic across environments.
+      const cand = OfflineGeo.resolve(scan.latitude, scan.longitude);
+      if (cand.resolved && !cand.water && cand.country.length > 0) {
+        record['geoCountry']   = cand.country;
+        record['geoContinent'] = cand.continent;
+        record['geoRegion']    = cand.region || cand.locality || cand.countryName;
+      }
+    }
+    return record;
+  }
+
+  /** Encode an array of wire records as a JSON array string under a mapping. */
+  private static encodeJson(records: Array<Record<string, unknown>>, map: FieldMap): string {
+    const rows = records.map((rec) => {
+      const out: Record<string, unknown> = {};
+      for (const [canonical, sourceKey] of Object.entries(map)) {
+        if (canonical in rec) out[sourceKey] = rec[canonical];
+      }
+      return out;
+    });
+    return JSON.stringify(rows);
+  }
+
+  /** Encode wire records as a CSV string (header + rows), values stringified. */
+  private static encodeCsv(records: Array<Record<string, unknown>>, map: FieldMap): string {
+    const entries = Object.entries(map);
+    const header = entries.map(([, sourceKey]) => sourceKey).join(',');
+    const lines = records.map((rec) =>
+      entries
+        .map(([canonical]) => Sources.csvCell(String(rec[canonical] ?? '')))
+        .join(','),
+    );
+    return [header, ...lines].join('\n');
+  }
+
+  /**
+   * Encode wire records as NDJSON, gzip via CompressionStream, base64 the result.
+   * Uses Web Streams API (Node 18+ + browser compatible; no node:zlib/Buffer).
+   */
+  private static async encodeNdjsonGz(records: Array<Record<string, unknown>>, map: FieldMap): Promise<string> {
+    const lines = records.map((rec) => {
+      const out: Record<string, unknown> = {};
+      for (const [canonical, sourceKey] of Object.entries(map)) {
+        if (canonical in rec) out[sourceKey] = rec[canonical];
+      }
+      return JSON.stringify(out);
+    });
+    const ndjson = lines.join('\n');
+    const encoded = new TextEncoder().encode(ndjson);
+
+    const cs = new CompressionStream('gzip');
+    const writer = cs.writable.getWriter();
+    void writer.write(encoded);
+    void writer.close();
+
+    const chunks: Uint8Array[] = [];
+    const reader = cs.readable.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+
+    // Concatenate chunks → base64 without Buffer.
+    let totalLen = 0;
+    for (const c of chunks) totalLen += c.length;
+    const merged = new Uint8Array(totalLen);
+    let offset = 0;
+    for (const c of chunks) { merged.set(c, offset); offset += c.length; }
+
+    // btoa requires a binary string (char per byte).
+    let binary = '';
+    for (let i = 0; i < merged.length; i++) binary += String.fromCharCode(merged[i]!);
+    return btoa(binary);
+  }
+
+  /**
+   * FNV-1a 32-bit hash of a string → integer.
+   * Deterministic, synchronous, no external dep — used for sensor telemetry sharding.
+   */
+  private static fnv1a(key: string): number {
+    let h = 2166136261;
+    for (let i = 0; i < key.length; i++) {
+      h = Math.imul(h ^ key.charCodeAt(i), 16777619) >>> 0;
+    }
+    return h;
+  }
+
+  /**
+   * Build the fixed list of multi-format source feeds for N journeys.
+   *
+   * Returns ≥3 distinct formats (json, csv, ndjson.gz) plus a 4th customs/
+   * delivery JSON feed, covering all five canonical kinds.
+   */
+  static async build(n: number): Promise<SourcePayload[]> {
+    const scans = ShipmentEvents.buildRawScans(n);
+
+    const positionScans: RawShipmentEvent[] = [];
+    const facilityScans: RawShipmentEvent[] = [];
+    const sensorScans:   RawShipmentEvent[] = [];
+    const customsScans:  RawShipmentEvent[] = [];
+    const deliveryScans: RawShipmentEvent[] = [];
+
+    for (const scan of scans) {
+      const kind = Sources.kindFor(scan.rawStatus);
+      if (kind === 'delivery-confirmation') {
+        deliveryScans.push(scan);
+      } else if (kind === 'customs-event') {
+        customsScans.push(scan);
+      } else {
+        // Movement scans split deterministically across the three feeds.
+        const b = Sources.bucket(scan);
+        if (b === 0)      positionScans.push(scan);
+        else if (b === 1) facilityScans.push(scan);
+        else              sensorScans.push(scan);
+      }
+    }
+
+    // Add cold-chain telemetry to sensor records (deterministic from coords/seq).
+    // FNV-1a hash provides the same byte-level determinism as SHA-256 for sharding.
+    const sensorRecords = sensorScans.map((scan) => {
+      const rec = Sources.wireRecord(scan, false);
+      const h = Sources.fnv1a(`${scan.shipmentId}:${scan.scanSeq}:sensor`);
+      const b0 = (h >>> 24) & 0xff;
+      const b1 = (h >>> 16) & 0xff;
+      const b2 = (h >>> 8)  & 0xff;
+      rec['tempC']       = Math.round((2 + (b0 / 255) * 6) * 10) / 10;   // 2–8°C cold chain
+      rec['humidityPct'] = Math.round(40 + (b1 / 255) * 40);             // 40–80%
+      rec['shockG']      = Math.round((b2 / 255) * 30) / 10;             // 0–3g
+      return rec;
+    });
+
+    // Customs + delivery records carry their per-kind body fields.
+    const customsRecords = customsScans.map((scan) => {
+      const rec = Sources.wireRecord(scan, false);
+      rec['customsStatus'] = scan.disruptionReason === 'customs hold' ? 'held' : 'cleared';
+      return rec;
+    });
+    const deliveryRecords = deliveryScans.map((scan) => {
+      const rec = Sources.wireRecord(scan, false);
+      rec['delivered'] = true;
+      return rec;
+    });
+
+    const positionMap = FieldMappings.forKey('json-position');
+    const facilityMap = FieldMappings.forKey('csv-facility');
+    const sensorMap   = FieldMappings.forKey('ndjson-sensor');
+    const customsMap  = FieldMappings.forKey('json-customs');
+
+    // Customs + delivery share the customs JSON feed (both per-kind JSON bodies).
+    const customsDeliveryRecords = [...customsRecords, ...deliveryRecords];
+
+    return [
+      {
+        'sourceId':   'sat-json-api',
+        'format':     'json',
+        'mappingKey': 'json-position',
+        'kind':       'position-ping',
+        'payload':    Sources.encodeJson(positionScans.map((s) => Sources.wireRecord(s, true)), positionMap),
+      },
+      {
+        'sourceId':   'depot-csv-dump',
+        'format':     'csv',
+        'mappingKey': 'csv-facility',
+        'kind':       'facility-scan',
+        'payload':    Sources.encodeCsv(facilityScans.map((s) => Sources.wireRecord(s, false)), facilityMap),
+      },
+      {
+        'sourceId':   'coldchain-ndjson-gz',
+        'format':     'ndjson.gz',
+        'mappingKey': 'ndjson-sensor',
+        'kind':       'sensor-reading',
+        'payload':    await Sources.encodeNdjsonGz(sensorRecords, sensorMap),
+      },
+      {
+        'sourceId':   'customs-delivery-json',
+        'format':     'json',
+        'mappingKey': 'json-customs',
+        'kind':       'customs-event',
+        'payload':    Sources.encodeJson(customsDeliveryRecords, customsMap),
+      },
+    ];
+  }
+}
+// #endregion sources-service

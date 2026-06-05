@@ -17,8 +17,6 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
-import type { ElementDefinition } from 'cytoscape';
 import { DAGBuilder, NodeStateBase } from '@noocodex/dagonizer';
 import type { NodeInterface } from '@noocodex/dagonizer';
 
@@ -44,9 +42,7 @@ const parentDag = new DAGBuilder('main-flow', '1')
   .node('step-b', stepB, { done: null })
   .build();
 
-const elements = CytoscapeRenderer.render(parentDag, {
-  embeddedDAGs: new Map([['sub-flow', childDag]]),
-}) as ElementDefinition[];
+const sharedStateRegistry = new Map([['sub-flow', childDag]]);
 </script>
 
 # Shared state
@@ -68,7 +64,7 @@ Two mechanisms cross the scatter boundary in Dagonizer. The choice depends on th
 
 The runnable demo wires a `MemoryStore` onto the services bag of a parent DAG with a scatter sub-DAG child. Both write to the same store:
 
-<DagGraph :elements="elements" aria-label="Parent main-flow with embedded sub-flow; both DAGs share one Store via the services bag." />
+<DagGraph :dag="parentDag" :embedded-d-a-gs="sharedStateRegistry" :expand-all="true" aria-label="Parent main-flow with embedded sub-flow; both DAGs share one Store via the services bag." />
 
 ## When to use what
 
@@ -280,7 +276,7 @@ if (result.cursor !== null) {
   const ckpt = await Checkpoint.capture('my-dag', result, {
     stores: { memory, audit },
   });
-  await checkpointStore.save(runId, Checkpoint.toJson(ckpt.data));
+  await checkpointStore.save(runId, ckpt.toJson());
 }
 
 // Resume
@@ -328,34 +324,7 @@ The engine consumes a `RemoteStore` through the `Store` surface. The extra metho
 
 Extend `BaseStore` and implement `RemoteStore`:
 
-```ts
-import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '@noocodex/dagonizer/contracts';
-import { BaseStore, type BaseStoreOptions } from '@noocodex/dagonizer/store';
-
-export class GrpcStore extends BaseStore implements RemoteStore {
-  readonly endpoint: RemoteStoreEndpoint;
-
-  constructor(url: string, region: string, options: BaseStoreOptions = {}) {
-    super(options);
-    this.endpoint = { url, region };
-  }
-
-  async acquireLease(subject: string, ttlMs: number, _maxWaitMs: number): Promise<RemoteStoreLease> {
-    // Delegate to remote lease service. Throw StoreError(LEASE_DENIED) when blocked.
-    return { token: 'opaque-token', expiresAt: Date.now() + ttlMs, subject };
-  }
-
-  async releaseLease(_lease: RemoteStoreLease): Promise<void> {
-    // Delegate to remote release endpoint. No-op when lease already expired.
-  }
-
-  async health(timeoutMs: number): Promise<boolean> {
-    return this.#ping(timeoutMs).then(() => true).catch(() => false);
-  }
-
-  // ...BaseStore abstract hooks (performGet, performSet, etc.)
-}
-```
+<<< @/../examples/dags/store-remote.ts#remote-store
 
 `region` is required. Stores without a region constraint set it to `''` at construction. All `RemoteStore` fields are concrete types: no `undefined`, no optional properties in the lease or endpoint shapes.
 

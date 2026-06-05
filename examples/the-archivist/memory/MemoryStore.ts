@@ -256,6 +256,7 @@ export class MemoryStore implements Snapshottable {
    * store serialises to one N-Quads string entry; N-Quads carries the
    * graph term per quad, so ontology / memory / per-run graphs all round-trip.
    */
+  // #region snapshottable-impl
   async snapshot(): Promise<StoreSnapshot> {
     const nquads = await this.#serializeNquads();
     return {
@@ -287,6 +288,7 @@ export class MemoryStore implements Snapshottable {
     }
     this.#flush();
   }
+  // #endregion snapshottable-impl
 
   /** Serialise every quad in every graph to an N-Quads string. Promisified `Writer.end`. */
   #serializeNquads(): Promise<string> {

@@ -22,9 +22,10 @@
  *   Ollama (localhost)  →  Gemini API  →  Cerebras  →  Groq
  *                       →  Mistral     →  OpenRouter
  *
- * Recommended local setup: `ollama pull llama3.2:latest` then
- * `ollama serve`; the cascade probe will hit `/api/tags` and route
- * the run through the local daemon with no API keys required.
+ * Recommended local setup: pull any chat model (e.g. `ollama pull llama3.2:3b`)
+ * then `ollama serve`. The runner reads `/api/tags` and picks an installed
+ * chat model automatically (override with `OLLAMA_MODEL`); the cascade probe
+ * routes the run through the local daemon with no API keys required.
  *
  * If no adapter is reachable the cascade throws
  * `LlmError(NO_ADAPTER_AVAILABLE)`: that's the design. There is no
@@ -37,8 +38,10 @@ import { ArchivistState } from './ArchivistState.ts';
 import { archivistBundle } from './dag.ts';
 import { bookSearchScatterBundle } from './embedded-dags/BookSearchScatterDAG.ts';
 import { composeRetryLoopBundle } from './embedded-dags/ComposeRetryLoopDAG.ts';
+import { ArchivistInstrumentation } from './instrumentation/ArchivistInstrumentation.ts';
 import { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
+import { ObservedArchivist } from './ObservedArchivist.ts';
 import { CerebrasApiAdapter }   from '@noocodex/dagonizer-adapter-cerebras';
 import { GeminiApiAdapter }     from '@noocodex/dagonizer-adapter-gemini-api';
 import { GroqApiAdapter }       from '@noocodex/dagonizer-adapter-groq';
@@ -50,6 +53,7 @@ import { MistralEmbedder }      from '@noocodex/dagonizer-embedder-mistral';
 import { OllamaEmbedder }       from '@noocodex/dagonizer-embedder-ollama';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
 import { IntentClassifier } from './providers/IntentClassifier.ts';
+import { listOllamaModels, pickOllamaChatModel } from './providers/index.ts';
 import type { ArchivistServices, LlmClient } from './services.ts';
 import { GoogleBooksTool } from '@noocodex/dagonizer-tool-googlebooks';
 import { OpenLibrarySearchTool } from '@noocodex/dagonizer-tool-openlibrary';
@@ -57,13 +61,13 @@ import { SubjectSearchTool } from '@noocodex/dagonizer-tool-openlibrary';
 import { WikipediaSummaryTool } from '@noocodex/dagonizer-tool-wikipedia';
 
 import {
-  Dagonizer,
   EmbedderCascade,
   EmbedderRegistry,
   LlmAdapterCascade,
   LlmAdapterRegistry,
   LlmError,
 } from '@noocodex/dagonizer';
+import { ExecutionError, NodeTimeoutError } from '@noocodex/dagonizer/errors';
 import type { AdapterCapabilities } from '@noocodex/dagonizer/adapter';
 import type { Embedder } from '@noocodex/dagonizer/contracts';
 import { Checkpoint, MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
@@ -80,7 +84,13 @@ function envVar(key: string): string {
 }
 
 const OLLAMA_BASE_URL = envVar('OLLAMA_BASE_URL') || 'http://127.0.0.1:11434';
-const OLLAMA_MODEL    = envVar('OLLAMA_MODEL')    || 'llama3.2:latest';
+// Model resolution: an explicit OLLAMA_MODEL env var wins; otherwise pick the
+// first chat model the daemon actually has installed (GET /api/tags); only if
+// both are unavailable fall back to a documented default so the registry still
+// has a descriptor (the cascade probe fails closed when nothing is pulled).
+const OLLAMA_MODEL    = envVar('OLLAMA_MODEL')
+  || pickOllamaChatModel(await listOllamaModels())
+  || 'llama3.2:latest';
 
 // Capability shapes mirror each adapter's own declaration so the
 // registry descriptor stays faithful to runtime behaviour. The
@@ -89,6 +99,7 @@ const OLLAMA_MODEL    = envVar('OLLAMA_MODEL')    || 'llama3.2:latest';
 const CAPS_FULL_TOOLS:    AdapterCapabilities = { 'toolUse': 'full',    'structuredOutput': true, 'jsonMode': true };
 const CAPS_PARTIAL_TOOLS: AdapterCapabilities = { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true };
 
+// #region adapter-cascade
 const registry = new LlmAdapterRegistry();
 
 // Local-first: Ollama runs on the loopback by default and needs no
@@ -143,7 +154,9 @@ const cascade = new LlmAdapterCascade(registry, [
 
 const adapter = await cascade.select();
 logger.info(`backend: ${adapter.id} (${adapter.displayName})`);
+// #endregion adapter-cascade
 
+// #region embedder-cascade
 // ── Embedder cascade: vector intent classification when reachable.
 //    Order of preference mirrors the LLM cascade for symmetric local-first
 //    behaviour: Ollama (loopback, no key) → Gemini REST → Mistral. When
@@ -188,6 +201,7 @@ try {
     throw err;
   }
 }
+// #endregion embedder-cascade
 
 const llm: LlmClient = new BaseLlmClient(adapter, intentClassifier !== undefined ? { intentClassifier } : {});
 
@@ -205,7 +219,13 @@ const services: ArchivistServices = {
 
 // #region linear-run
 // ── Dispatcher ───────────────────────────────────────────────────────────
-const dispatcher = new Dagonizer<ArchivistState, ArchivistServices>({ services });
+// ObservedArchivist: Dagonizer subclass wiring every lifecycle hook to the
+// logger. ArchivistInstrumentation: plugin surface for composable telemetry.
+// Both coexist on the same dispatcher; neither suppresses the other.
+const dispatcher = new ObservedArchivist(
+  { services, 'instrumentation': new ArchivistInstrumentation(logger) },
+  logger,
+);
 
 // ── Bundle registration (molecular pattern) ──────────────────────────────
 // Each bundle packages its nodes + DAG. Embedded-DAG bundles register first
@@ -218,11 +238,36 @@ dispatcher.registerBundle(archivistBundle);
 const visitor = new ArchivistState();
 visitor.query = "I'm looking for a book about a strange house and a library";
 
-const execution = dispatcher.execute('the-archivist', visitor);
-for await (const stage of execution) {
-  logger.info(`▸ ${stage.nodeName}${stage.skipped ? ' (skipped)' : ` → ${stage.output ?? '(none)'}`}`);
+// #region error-taxonomy
+// ExecutionError wraps a node throw that was not a timeout.
+// NodeTimeoutError fires when the dispatcher's per-node deadline elapses.
+// LlmError wraps adapter-level failures (rate limit, bad credentials, etc.).
+// Distinguish by class so callers can log or retry at the right granularity.
+let result;
+try {
+  const execution = dispatcher.execute('the-archivist', visitor);
+  for await (const stage of execution) {
+    logger.info(`▸ ${stage.nodeName}${stage.skipped ? ' (skipped)' : ` → ${stage.output ?? '(none)'}`}`);
+  }
+  result = await execution;
+} catch (err) {
+  if (err instanceof NodeTimeoutError) {
+    logger.warn(`node timed out: ${err.message}`);
+    throw err;
+  }
+  if (err instanceof ExecutionError) {
+    logger.warn(`execution failed: ${err.message}`);
+    throw err;
+  }
+  // #region llm-error-catch
+  if (err instanceof LlmError) {
+    logger.warn(`llm error [${err.classification.reason}]: ${err.message}`);
+    throw err;
+  }
+  // #endregion llm-error-catch
+  throw err;
 }
-const result = await execution;
+// #endregion error-taxonomy
 
 logger.result(`intent=${result.state.intent}`);
 logger.result(`shortlist=${String(result.state.shortlist.length)}`);
@@ -245,6 +290,9 @@ const cancelResult = await dispatcher.execute('the-archivist', cancelVisitor, {
   'deadlineMs': 5000,              // hard 5s ceiling regardless of signal
 });
 
+// #region lifecycle-state-switch
+// lifecycle.kind is a discriminated union: 'completed' | 'cancelled' | 'timed_out'.
+// Each arm carries only the fields relevant to that outcome (e.g. reason, finishedAt).
 const lc = cancelResult.state.lifecycle;
 switch (lc.kind) {
   case 'completed':
@@ -257,6 +305,7 @@ switch (lc.kind) {
     logger.result(`hit deadline at: ${lc.finishedAt}`);
     break;
 }
+// #endregion lifecycle-state-switch
 
 // result.cursor is the next node that would have run; pass it to
 // Checkpoint.capture to persist and resume in a later process.

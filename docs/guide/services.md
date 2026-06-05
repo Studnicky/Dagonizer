@@ -36,21 +36,7 @@ Consumers declare a plain interface. There is no DI container, no provider scope
 
 ## Constructing the dispatcher
 
-```ts
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-
-class S extends NodeStateBase {
-  out: unknown = null;
-}
-
-const dispatcher = new Dagonizer<S, AppServices>({
-  services: {
-    logger,
-    db,
-    cache,
-  },
-});
-```
+<<< @/../examples/the-archivist/main.ts#wire-services
 
 ## How services flow
 

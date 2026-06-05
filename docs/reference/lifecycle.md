@@ -37,18 +37,7 @@ All timestamps are monotonic milliseconds from `Clock.monotonicMs()`. They are r
 
 Inspect via `state.lifecycle.kind`. Narrow to a terminal variant to access its payload:
 
-```ts
-const lc = state.lifecycle;
-if (lc.kind === 'failed') {
-  console.error(lc.error); // Error
-}
-if (lc.kind === 'cancelled') {
-  console.log(lc.reason); // string
-}
-if (lc.kind === 'completed') {
-  const durationMs = lc.finishedAt - lc.startedAt;
-}
-```
+<<< @/../examples/the-archivist/runArchivist.ts#lifecycle-state-switch
 
 ---
 

@@ -145,7 +145,7 @@ import type { EmbeddedDAGNode } from '@noocodex/dagonizer/entities';
   "@id":     "urn:noocodex:dag:parent/node/run-child",
   "@type":   "EmbeddedDAGNode",
   "name":    "run-child",
-  "dagName": "child-pipeline",
+  "dag":     "child-pipeline",
   "outputs": { "success": "next-step", "error": null },
   "stateMapping": {
     "input":  { "payload": "user.name" },
@@ -159,7 +159,7 @@ import type { EmbeddedDAGNode } from '@noocodex/dagonizer/entities';
 | `@id` | `string` | yes | Placement URN |
 | `@type` | `'EmbeddedDAGNode'` | yes | Discriminator |
 | `name` | `string` | yes | Placement name |
-| `dagName` | `string` | yes | Registered sub-DAG name to invoke (cardinality 1) |
+| `dag` | `string` | yes | Registered sub-DAG name to invoke (cardinality 1) |
 | `outputs` | `Record<'success' \| 'error', string \| null>` | yes | Routes for the child's terminal outcome |
 | `stateMapping` | `{ input?: Record<string, string>; output?: Record<string, string> }` | no | `input` copies parent fields into the child before it runs (child-key ← parent-path); `output` copies child fields back into the parent after it completes (parent-path ← child-key). |
 

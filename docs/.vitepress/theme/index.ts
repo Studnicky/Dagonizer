@@ -15,6 +15,12 @@ const ArchivistRunner = defineAsyncComponent(() =>
   import('./components/ArchivistRunner.vue'),
 )
 
+// CartographerRunner: deterministic data-orchestration demo (no LLM).
+// Lazy-loaded for the same reason as ArchivistRunner.
+const CartographerRunner = defineAsyncComponent(() =>
+  import('./components/CartographerRunner.vue'),
+)
+
 // DagGraph renders any Dagonizer DAG via cytoscape. Lazy-load: only doc
 // pages with a <DagGraph :elements="..." /> block pull the bundle.
 const DagGraph = defineAsyncComponent(() =>
@@ -25,6 +31,7 @@ export default {
   extends: DefaultTheme,
   enhanceApp({ app }) {
     app.component('ArchivistRunner', ArchivistRunner)
+    app.component('CartographerRunner', CartographerRunner)
     app.component('DagGraph', DagGraph)
   },
   Layout() {

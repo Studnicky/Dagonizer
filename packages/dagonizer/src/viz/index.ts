@@ -9,6 +9,10 @@
  *   - `CytoscapeRenderer.render(dag)`: Cytoscape `elements` array for
  *     mounting an interactive DAG view in a browser (live-highlight
  *     active nodes, drag the layout, click for inspection).
+ *   - `CytoscapeGraph`: subclassable factory that builds a fully
+ *     configured `cytoscape.Core` (elements + canonical stylesheet +
+ *     preset layout) from a `DAG`. The cytoscape constructor is
+ *     dependency-injected; subclass it to layer on live-run animation.
  */
 
 export { MermaidRenderer } from './MermaidRenderer.js';
@@ -26,3 +30,8 @@ export type {
   LayoutResult,
   CompositeLayoutOptions,
 } from './CompositeLayout.js';
+export { CytoscapeGraph } from './CytoscapeGraph.js';
+export type {
+  CytoscapeGraphInterface,
+  CytoscapeGraphOptions,
+} from './CytoscapeGraph.js';

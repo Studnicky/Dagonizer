@@ -6,9 +6,33 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 ### Added
 
+- **Native streaming scatter (§A).** `executeScatter` now uses a single unified executor for all source types. Arrays, sync iterables, and `AsyncIterable` sources all drain through a bounded worker pool (max in-flight = `scatter.concurrency`). True backpressure: a new item is pulled from the source only when a worker slot frees; the full source is never buffered. Default concurrency for arrays without an explicit cap is `source.length` (backwards-compatible: all items run concurrently as before). Streaming sources default to `concurrency = 1`.
+- **Durable-inbox checkpoint model.** As each item is pulled from the source it enters a persisted inbox under `SCATTER_PROGRESS_KEY`. The inbox holds the actual item payload so resume never needs to re-read the source by index. On success the item is acked (removed from inbox, added to `ackedResults`). On crash/resume, inbox items are reprocessed first, then fresh source items continue. `CHECKPOINT_DATA_VERSION` bumped to `'2'`.
+- **Incremental gather.** `GatherStrategy` gains an optional `applyIncremental(config, record, state, accessor)` method. `Map`, `Append`, and `Partition` implement it: each completed record is folded into parent state as it arrives. `Custom` does not implement it; it continues to accumulate records and call `apply` once at the end.
+- **Source-normalization statics on `Dagonizer`.** `toAsyncIterator(v)` normalizes any array, sync iterable, or async iterable to an `AsyncIterator<unknown>`.
+- **`ScatterInboxItem`, `ScatterAckedResult`, `ScatterProgress`, `StoredScatterProgress` types** exported from `Dagonizer.ts` for checkpoint inspection and testing.
+- **7 acceptance tests** under `packages/dagonizer/tests/unit/scatter-streaming.test.ts`: backward-compat array source, bounded concurrency, `AsyncIterable` source, true backpressure, resume mid-stream (array), resume mid-stream (async-iterable), and incremental gather (`map`/`append`/`partition` progressive + `custom` batch fallback).
+
 ### Changed
 
+- **`MapGatherStrategy.applyIncremental` always writes arrays.** In incremental gather mode, cardinality is not known up front, so `map` always appends values to an array rather than writing a scalar for single-item sources. The batch `apply` path (used only by `custom` strategy) retains the singleton-scalar behavior.
+- **`CHECKPOINT_DATA_VERSION` bumped from `'1'` to `'2'`.** Old checkpoints will not resume across the bump; this is intentional (0.x breakage policy).
+
+### Added
+
+- **`CytoscapeGraph`: subclassable Cytoscape factory in `@noocodex/dagonizer/viz`.** Given a `DAG`, `await new CytoscapeGraph(cytoscape, container, dag, options).mount()` returns a fully-configured `cytoscape.Core`: elements (via `CytoscapeRenderer`), the canonical dark-pearl stylesheet, the bottom-up dagre `preset` layout, and pan/zoom/box-select interaction defaults. Cytoscape is dependency-injected (the package never imports it), so any consumer can render their flows with no bespoke wiring. Protected hooks — `buildElements`, `stylesheet`, `presetLayout`, `interactionDefaults`, `layoutRegistry`, `applyLayout`, `enforceVisibility`, `onReady` — are the extension surface; subclass it to layer on live-run animation. Shipped with `CytoscapeGraphInterface` and `CytoscapeGraphOptions`.
+- **`cytoscape` and `@dagrejs/dagre` are optional peer dependencies.** The visualizer is opt-in: consumers who do not import `./viz` install neither. Consumers who do install both and pass the `cytoscape` constructor in.
+
+### Changed
+
+- **`CompositeLayout.compute` is now `async`** and lazy-imports `@dagrejs/dagre` on first call, so `MermaidRenderer` / `JsonLdRenderer` consumers never pull in the layout engine.
+- **`CytoscapeRenderer.render` returns elements only.** The `computeLayout` and `layoutOptions` options are removed; positioning is owned by `CompositeLayout.compute` / `CytoscapeGraph`. The renderer is a pure DAG→elements transform.
+- **The docs site renders every DAG through the shipped factory.** `DagGraph.vue` is a thin host over `AnimatedDagGraph extends CytoscapeGraph`, which adds the live-run `DagVizMachine`, camera-follow, embed-expand toggle, and the imperative runner surface. The hand-rolled stylesheet, layout, and `cytoscape()` instantiation that lived in the component are gone.
+
 ### Fixed
+
+- **DAG nodes carrying a self-loop edge no longer render invisible.** A node targeted by its own `retry` route (e.g. `classify-intent`, the `*-extract` / `*-decide-tools` nodes, `compose-empty`) was culled from the canvas because the stylesheet used the deprecated `width: 'label'` / `height: 'label'` auto-sizing, which leaves a degenerate size cache on self-loop nodes. The canonical stylesheet now uses explicit numeric node dimensions and a real monospace font stack (cytoscape cannot resolve a CSS custom property on the canvas), and a post-layout visibility sweep guards against any residual cache staleness.
+- **`@dagrejs/dagre` is a declared dependency of the viz layout path.** It was a `devDependency` while `dist/viz/CompositeLayout` imported it at runtime, so an external consumer calling the cytoscape renderer crashed with `Cannot find module '@dagrejs/dagre'`. It is now a declared (optional) peer, lazy-loaded.
 
 ## [0.13.1] - 2026-05-26
 

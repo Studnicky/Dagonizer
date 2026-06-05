@@ -2,7 +2,10 @@
 nextSteps:
   - text: 'The Archivist demo'
     link: '/examples/the-archivist'
-    description: 'end-to-end DAG running in the browser'
+    description: 'LLM-agent DAG running live in the browser'
+  - text: 'The Cartographer demo'
+    link: '/examples/the-cartographer'
+    description: 'data-orchestration / ETL / streaming DAG running live in the browser'
   - text: 'Concepts'
     link: '/concepts'
     description: 'vocabulary for nodes, placements, lifecycle'
@@ -12,7 +15,10 @@ nextSteps:
 seeAlso:
   - text: 'The Archivist demo'
     link: './examples/the-archivist'
-    description: 'live in-browser DAG'
+    description: 'LLM-agent live in-browser DAG'
+  - text: 'The Cartographer demo'
+    link: './examples/the-cartographer'
+    description: 'data-orchestration / ETL / streaming live in-browser DAG'
   - text: 'Concepts'
     link: './concepts'
     description: 'vocabulary'
@@ -86,4 +92,7 @@ const result = await execution; // cached; the generator runs once
 
 ## Next destination
 
-See [The Archivist](/examples/the-archivist). It runs a multi-stage bibliographic DAG in the browser and exercises scatter (over source arrays and sub-DAG bodies), retry, cancellation, and checkpoint resume in a single flow.
+Two in-browser demos show the same engine in different domains:
+
+- [The Archivist](/examples/the-archivist) — LLM agents. A multi-stage bibliographic-assistant DAG that exercises scatter (over source arrays and sub-DAG bodies), retry, cancellation, and checkpoint resume.
+- [The Cartographer](/examples/the-cartographer) — data orchestration / ETL / streaming. Multi-format satellite tracking feeds fanned through per-format ingest sub-DAGs with conditional routing, geo-resolution, GDPR redaction, and streaming backpressure. No LLM.

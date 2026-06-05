@@ -44,25 +44,41 @@ const DEFAULT_STATE_ACCESSOR: StateAccessor = new DottedPathAccessor();
 export const SCATTER_PROGRESS_KEY = '__dagonizer_scatter_progress__';
 
 /**
- * Per-clone result stored inside `ScatterProgress.itemResults`.
- *
- * `output` is the routing output tag.
- *
- * `mappingValues` carries the persisted clone-path values for a `map`
- * gather strategy, keyed by the clone-side path from `GatherConfig.mapping`.
- * Present only when the scatter's gather strategy is `'map'`.
- *
- * `fieldValue` carries the persisted value of `GatherConfig.field` for
- * `append` and `partition` strategies that use `field`. Present only when
- * the scatter's gather strategy uses `field`.
- *
- * Strategies that gather the source `item` directly (`append`/`partition`
- * without `field`) need no persisted value because `item` is re-derivable
- * from the source array by index on resume.
+ * A single item that has been pulled from the scatter source but whose
+ * body has not yet completed successfully. Persisted in the durable inbox
+ * so that a crash/resume can reprocess in-flight items without re-reading
+ * the original source (critical for streaming / `AsyncIterable` sources
+ * where the source cannot be rewound).
  */
-export interface ScatterItemResult {
+export interface ScatterInboxItem {
+  /** Sequential index assigned when the item was pulled from the source. */
+  readonly index: number;
+  /**
+   * The actual item payload. Persisted here so resume does not need to
+   * re-read the source by index.
+   */
+  readonly item: unknown;
+}
+
+/**
+ * A successfully completed (acked) scatter item. Carries the routing output,
+ * the original source item payload, and any gather-strategy-specific values
+ * needed to reconstruct a `GatherRecord` on resume without re-running the
+ * body.
+ *
+ * `item`          — the original source item payload (persisted so the
+ *                   `GatherRecord` can be reconstructed without re-reading
+ *                   the source, which may not be rewindable).
+ * `mappingValues` — map strategy: per-clone-path values keyed by clone path.
+ * `fieldValue`    — append/partition with `field`: the resolved field value.
+ *
+ * For append/partition without `field`, the gather value is `item` itself.
+ */
+export interface ScatterAckedResult {
   readonly index: number;
   readonly output: string;
+  /** Original source item payload — required to reconstruct the GatherRecord on resume. */
+  readonly item: unknown;
   readonly mappingValues?: Readonly<Record<string, unknown>>;
   readonly fieldValue?: unknown;
 }
@@ -70,11 +86,20 @@ export interface ScatterItemResult {
 /**
  * Per-placement scatter progress entry. Keyed by `placementName` inside
  * the metadata's `StoredScatterProgress` map.
+ *
+ * **Inbox model (durable-work-queue checkpoint):**
+ * - `inbox`       — items pulled from the source but not yet acked (body not
+ *                   complete). Reprocessed first on resume.
+ * - `ackedResults`— items whose body completed successfully. Acked items are
+ *                   never reprocessed; their results are reconstructed
+ *                   synthetically from the persisted values.
  */
 export interface ScatterProgress {
   readonly placementName: string;
-  readonly completedIndices: readonly number[];
-  readonly itemResults: readonly ScatterItemResult[];
+  /** Un-acked (in-flight / pending) items at the time of the checkpoint. */
+  readonly inbox: readonly ScatterInboxItem[];
+  /** Successfully completed items with their gather contribution values. */
+  readonly ackedResults: readonly ScatterAckedResult[];
 }
 
 /**
@@ -854,35 +879,48 @@ implements DagonizerInterface<TState, TServices> {
   }
 
   /**
-   * Persist this batch's accumulated scatter progress to metadata. One
-   * write per batch (not per clone); the call sits outside `Promise.all`
-   * so concurrent clone resolutions never race on `setMetadata`.
+   * Normalize any scatter source value — array, sync iterable, or async
+   * iterable — to an `AsyncIterator<unknown>`. Arrays and sync iterables are
+   * wrapped so the scatter loop has a single unified pull interface.
+   */
+  private static toAsyncIterator(source: unknown): AsyncIterator<unknown> {
+    if (source !== null && typeof source === 'object') {
+      // AsyncIterable first (duck-type Symbol.asyncIterator).
+      if (Symbol.asyncIterator in (source as object)) {
+        return (source as AsyncIterable<unknown>)[Symbol.asyncIterator]();
+      }
+      // Sync iterable (duck-type Symbol.iterator), including arrays.
+      if (Symbol.iterator in (source as object)) {
+        const syncIter = (source as Iterable<unknown>)[Symbol.iterator]();
+        return {
+          next(): Promise<IteratorResult<unknown>> {
+            return Promise.resolve(syncIter.next());
+          },
+        };
+      }
+    }
+    // Scalar or null/undefined: treat as empty.
+    return {
+      next(): Promise<IteratorResult<unknown>> {
+        return Promise.resolve({ 'value': undefined, 'done': true });
+      },
+    };
+  }
+
+  /**
+   * Persist the current scatter checkpoint (inbox + acked results) to
+   * metadata. Called after each item ack so the checkpoint always reflects
+   * the latest durable state.
    */
   private writeScatterProgress(
     state: TState,
     placementName: string,
-    completed: ReadonlySet<number>,
-    itemOutputs: ReadonlyMap<number, string>,
-    mappingValues?: ReadonlyMap<number, Readonly<Record<string, unknown>>>,
-    fieldValues?: ReadonlyMap<number, unknown>,
+    inbox: readonly ScatterInboxItem[],
+    ackedResults: readonly ScatterAckedResult[],
   ): void {
     const stored = state.getMetadata<StoredScatterProgress>(SCATTER_PROGRESS_KEY) ?? {};
-    const completedIndices = [...completed].sort((a, b) => a - b);
-    const itemResults: ScatterItemResult[] = completedIndices.map((index) => {
-      const output = itemOutputs.get(index) ?? '';
-      if (mappingValues !== undefined && mappingValues.has(index)) {
-        const mv = mappingValues.get(index);
-        if (mv !== undefined) {
-          return { index, output, 'mappingValues': mv };
-        }
-      }
-      if (fieldValues !== undefined && fieldValues.has(index)) {
-        return { index, output, 'fieldValue': fieldValues.get(index) };
-      }
-      return { index, output };
-    });
     const next: Record<string, ScatterProgress> = { ...stored };
-    next[placementName] = { placementName, completedIndices, itemResults };
+    next[placementName] = { placementName, inbox, ackedResults };
     state.setMetadata(SCATTER_PROGRESS_KEY, next);
   }
 
@@ -978,15 +1016,29 @@ implements DagonizerInterface<TState, TServices> {
   }
 
   /**
-   * Execute a scatter placement: fork over a source array (one clone per
-   * item), run a body (node or sub-DAG) in each clone, propagate
-   * errors/warnings to the parent, apply the gather strategy, and route
-   * via the outcome reducer.
+   * Execute a scatter placement with a unified streaming executor.
+   *
+   * The scatter source (array, `Iterable`, or `AsyncIterable`) is normalised
+   * to an `AsyncIterator` via `Dagonizer.toAsyncIterator`. A bounded worker
+   * pool (max in-flight = `scatter.concurrency`) pulls items lazily — a new
+   * item is only pulled once a worker slot frees up (true backpressure). Array
+   * sources are treated as finite producers and behave identically to streaming
+   * producers; there is no separate batch loop.
+   *
+   * **Durable-inbox checkpoint model.** As each item is pulled it enters a
+   * persisted inbox (`ScatterInboxItem[]`). The inbox carries the actual item
+   * payload so that a streaming source does not need to be rewound on resume.
+   * When a body completes successfully the item is removed from the inbox and
+   * its result is added to `ackedResults`. On crash/resume the inbox items are
+   * reprocessed first (as the priority source), then any remaining source
+   * items continue normally.
+   *
+   * **Incremental gather.** Strategies that implement `applyIncremental` fold
+   * each completed record into parent state as it arrives. Strategies without
+   * `applyIncremental` (e.g. `custom`) accumulate records and call `apply`
+   * once at the end.
    *
    * Resume bookkeeping is persisted under {@link SCATTER_PROGRESS_KEY}.
-   *
-   * **Index semantics on resume.** Treat the source array as immutable
-   * while a scatter checkpoint is live.
    */
   private async executeScatter(
     scatter: ScatterNode,
@@ -995,9 +1047,13 @@ implements DagonizerInterface<TState, TServices> {
     signal: AbortSignal | null,
     placementPath: readonly string[],
   ): Promise<InternalNodeResultInterface<TState>> {
-    // ── 1. Resolve item list ─────────────────────────────────────────────────
+    // ── 1. Resolve source ────────────────────────────────────────────────────
     const raw = this.accessor.get(state, scatter.source);
-    if (!Array.isArray(raw) || raw.length === 0) {
+
+    // Empty / absent source: skip immediately.
+    const isEmpty = raw === null || raw === undefined ||
+      (Array.isArray(raw) && raw.length === 0);
+    if (isEmpty) {
       const reducerName = scatter.reducer ?? 'aggregate';
       const routeOutput = OutcomeReducers.resolve(reducerName).reduce([]);
       const nextStage = scatter.outputs[routeOutput] ?? null;
@@ -1010,215 +1066,403 @@ implements DagonizerInterface<TState, TServices> {
       };
       return { nextStage, result };
     }
-    const sourceArray: unknown[] = raw;
 
     const itemKey = scatter.itemKey ?? 'currentItem';
-    const concurrency = scatter.concurrency ?? sourceArray.length;
+    // Default concurrency: unbounded for arrays (backwards compat) — all items
+    // run concurrently unless scatter.concurrency is set.
+    const concurrencyLimit = scatter.concurrency ?? (Array.isArray(raw) ? raw.length : 1);
 
-    // ── 2. Resume bookkeeping ────────────────────────────────────────────────
+    // ── 2. Restore checkpoint (inbox model) ─────────────────────────────────
     const storedProgress =
       (state.getMetadata<StoredScatterProgress>(SCATTER_PROGRESS_KEY) ?? {})[scatter.name];
-    const completed = new Set<number>(storedProgress?.completedIndices ?? []);
-    const itemOutputs = new Map<number, string>();
 
-    // Per-index gather persistence maps. Only one is populated, depending on
-    // the active gather strategy:
-    //   mappingValues: map strategy: all clone-path values keyed by clone path
-    //   fieldValues:   append/partition with `field`: the field value per index
-    const isMapGather = scatter.gather?.strategy === 'map';
-    const isFieldGather =
-      (scatter.gather?.strategy === 'append' || scatter.gather?.strategy === 'partition') &&
-      scatter.gather.field !== undefined;
-    const mappingValues: Map<number, Readonly<Record<string, unknown>>> | undefined =
-      isMapGather ? new Map() : undefined;
-    const fieldValues: Map<number, unknown> | undefined =
-      isFieldGather ? new Map() : undefined;
+    // Mutable inbox: items pulled but not yet acked.
+    // Seed from checkpoint on resume, drain first.
+    const inbox: ScatterInboxItem[] = storedProgress
+      ? [...storedProgress.inbox]
+      : [];
 
-    // Rehydrate from stored progress: rebuild itemOutputs and the gather maps
-    // so restored items can contribute synthetic GatherRecords below.
-    if (storedProgress) {
-      for (const entry of storedProgress.itemResults) {
-        itemOutputs.set(entry.index, entry.output);
-        if (mappingValues !== undefined && entry.mappingValues !== undefined) {
-          mappingValues.set(entry.index, entry.mappingValues);
-        }
-        if (fieldValues !== undefined && 'fieldValue' in entry) {
-          fieldValues.set(entry.index, entry.fieldValue);
-        }
-      }
+    // Acked results: items that completed in a prior run.
+    const ackedResults: ScatterAckedResult[] = storedProgress
+      ? [...storedProgress.ackedResults]
+      : [];
+
+    // Index for quick lookup by index number.
+    const ackedByIndex = new Map<number, ScatterAckedResult>();
+    for (const r of ackedResults) ackedByIndex.set(r.index, r);
+
+    // Determine which index to assign to the next pulled item.
+    // Start after the highest index seen (inbox + acked).
+    let nextIndex = 0;
+    for (const item of inbox) {
+      if (item.index >= nextIndex) nextIndex = item.index + 1;
+    }
+    for (const r of ackedResults) {
+      if (r.index >= nextIndex) nextIndex = r.index + 1;
     }
 
-    // ── 3. Clone + run body ──────────────────────────────────────────────────
-    const allRecords: GatherRecord<TState>[] = [];
+    // ── 3. Gather strategy and incremental fold ──────────────────────────────
+    const gatherStrategy = scatter.gather !== undefined
+      ? GatherStrategies.resolve(scatter.gather.strategy)
+      : null;
+    const supportsIncremental = gatherStrategy?.applyIncremental !== undefined;
+
+    // Accumulate fresh records; used only by strategies without applyIncremental
+    // and for the final outcome-reducer pass.
+    const allFreshRecords: GatherRecord<TState>[] = [];
     const intermediateResults: Array<NodeResultInterface<TState>> = [];
+    const itemOutputs = new Map<number, string>();
+    // Populate itemOutputs from prior acked results.
+    for (const r of ackedResults) itemOutputs.set(r.index, r.output);
 
-    for (let i = 0; i < sourceArray.length; i += concurrency) {
-      const batch = sourceArray.slice(i, i + concurrency);
+    // NOTE: For incremental gather strategies (applyIncremental defined), the
+    // gather contributions from acked items are already present in the state
+    // snapshot (they were folded per-ack during the prior run). No replay is
+    // needed here. The batch-only path at step 7 handles reconstruction for
+    // non-incremental strategies.
 
-      const batchPromises = batch.map(async (item, batchOffset) => {
-        const itemIndex = i + batchOffset;
-
-        if (completed.has(itemIndex)) {
-          const restoredOutput = itemOutputs.get(itemIndex) ?? 'success';
-          return {
-            'index': itemIndex,
-            item,
-            'output': restoredOutput,
-            'terminalOutcome': null as 'completed' | 'failed' | null,
-            'cloneState': state,
-            'restored': true,
-          };
+    // ── 4. Build the source async iterator ──────────────────────────────────
+    // Priority source: inbox items from a prior run come first.
+    // inbox items were already pulled from the source; their payloads are stored.
+    let inboxPos = 0;
+    const inboxIter: AsyncIterator<unknown> = {
+      next(): Promise<IteratorResult<unknown>> {
+        if (inboxPos >= inbox.length) {
+          return Promise.resolve({ 'value': undefined, 'done': true });
         }
-
-        const cloneState = this.createChildState(
-          state,
-          scatter.stateMapping?.input as Record<string, string> | undefined,
-        );
-
-        cloneState.setMetadata(itemKey, item);
-        cloneState.setMetadata('itemIndex', itemIndex);
-
-        let output: string;
-        let terminalOutcome: 'completed' | 'failed' | null = null;
-
-        if ('node' in scatter.body) {
-          // ── node body ────────────────────────────────────────────────────
-          const dagNode = this.nodes.get(scatter.body.node);
-          if (!dagNode) {
-            throw new DAGError(`ScatterNode '${scatter.name}': unknown node '${scatter.body.node}'`);
-          }
-          const opResult = await this.withNodeTimeout(dagNode, signal, (nodeSignal) => {
-            const context = this.buildContext(dagName, scatter.name, nodeSignal);
-            return dagNode.execute(cloneState, context);
-          });
-          if (opResult.errors) {
-            for (const err of opResult.errors) cloneState.collectError(err);
-          }
-          output = opResult.output;
-        } else {
-          // ── dag body ─────────────────────────────────────────────────────
-          const childOptions: ExecuteOptionsInterface = signal ? { 'signal': signal } : {};
-          const innerPath: readonly string[] = [...placementPath, scatter.name];
-          const iter = this.runNodes(scatter.body.dag, cloneState, null, childOptions, true, innerPath);
-
-          while (true) {
-            const step = await iter.next();
-            if (step.done) {
-              terminalOutcome = step.value.terminalOutcome;
-              break;
-            }
-            const nr = step.value;
-            const intermediate: NodeResultInterface<TState> = {
-              'output': nr.output,
-              'skipped': nr.skipped,
-              'nodeName': `${scatter.name}.${nr.nodeName}`,
-              state,
-              'intermediateResults': [],
-            };
-            intermediateResults.push(intermediate);
-          }
-
-          const hasUnrecoverable = cloneState.errors.some((e) => e.recoverable === false);
-          output = (terminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
+        const entry = inbox[inboxPos++];
+        if (entry === undefined) {
+          return Promise.resolve({ 'value': undefined, 'done': true });
         }
+        return Promise.resolve({ 'value': entry, 'done': false });
+      },
+    };
+    // Fresh source: new items from the actual source value.
+    //
+    // For index-stable sources (arrays, sync iterables) items are pulled
+    // sequentially and assigned indices 0, 1, 2, … by position.
+    // On resume, items whose position-index is already in seenIndices
+    // (acked or inbox) must be consumed from the iterator without spawning
+    // a worker; their work is already tracked.
+    //
+    // For async-iterable sources the consumer provides an iterator already
+    // positioned at the correct continuation point (it should yield only
+    // the remaining, un-processed items). No positional skip is applied;
+    // items are indexed starting from nextIndex as they arrive.
+    const isIndexStableSource = raw !== null && typeof raw === 'object' &&
+      Symbol.iterator in (raw as object) &&
+      !(Symbol.asyncIterator in (raw as object));
 
-        for (const err of cloneState.errors) state.collectError(err);
-        for (const warn of cloneState.warnings) state.collectWarning(warn);
+    // All indices already accounted for (acked + inbox from prior run).
+    const seenIndices = new Set<number>();
+    for (const r of ackedResults) seenIndices.add(r.index);
+    for (const entry of inbox) seenIndices.add(entry.index);
 
-        return {
-          'index': itemIndex,
-          item,
-          output,
-          terminalOutcome,
-          cloneState,
-          'restored': false,
-        };
-      });
+    const rawIter = Dagonizer.toAsyncIterator(raw);
 
-      const batchResults = await Promise.all(batchPromises);
-
-      for (const br of batchResults) {
-        completed.add(br.index);
-        itemOutputs.set(br.index, br.output);
-
-        if (!br.restored) {
-          const record: GatherRecord<TState> = {
-            'index': br.index,
-            'item': br.item,
-            'output': br.output,
-            'terminalOutcome': br.terminalOutcome,
-            'cloneState': br.cloneState,
-          };
-          allRecords.push(record);
-
-          // Persist gather values from the freshly-executed clone so a resumed
-          // run can reconstruct the GatherRecord's cloneState contribution.
-          if (mappingValues !== undefined && scatter.gather?.mapping !== undefined) {
-            const snapshot: Record<string, unknown> = {};
-            for (const clonePath of Object.keys(scatter.gather.mapping)) {
-              snapshot[clonePath] = this.accessor.get(br.cloneState, clonePath);
-            }
-            mappingValues.set(br.index, snapshot);
-          }
-          if (fieldValues !== undefined && scatter.gather?.field !== undefined) {
-            fieldValues.set(br.index, this.accessor.get(br.cloneState, scatter.gather.field));
-          }
-        } else {
-          // Restored item: synthesize a GatherRecord with a clone that carries
-          // the persisted gather values so the strategy sees a complete record
-          // set without special-casing restored vs fresh items.
-          const syntheticClone = state.clone() as TState;
-          if (mappingValues !== undefined) {
-            const mv = mappingValues.get(br.index);
-            if (mv !== undefined) {
-              for (const [clonePath, val] of Object.entries(mv)) {
-                this.accessor.set(syntheticClone, clonePath, val);
-              }
-            }
-          }
-          if (fieldValues !== undefined && scatter.gather?.field !== undefined) {
-            const fv = fieldValues.get(br.index);
-            if (fv !== undefined) {
-              this.accessor.set(syntheticClone, scatter.gather.field, fv);
-            }
-          }
-          const record: GatherRecord<TState> = {
-            'index': br.index,
-            'item': br.item,
-            'output': br.output,
-            'terminalOutcome': br.terminalOutcome,
-            'cloneState': syntheticClone,
-          };
-          allRecords.push(record);
+    // For index-stable sources on resume: consume items from positions 0 to
+    // (nextIndex-1) from the raw source. Items whose position is in seenIndices
+    // are silently dropped (already handled). Items NOT in seenIndices were not
+    // processed in the prior run (gap in the acked set); add them to the inbox
+    // with their canonical index so the pool re-processes them.
+    // After this pre-scan, the raw iterator is positioned at nextIndex and ready
+    // for normal sequential assignment.
+    if (isIndexStableSource && seenIndices.size > 0) {
+      for (let pos = 0; pos < nextIndex; pos++) {
+        const step = await rawIter.next();
+        if (step.done) { break; }
+        if (!seenIndices.has(pos)) {
+          // Gap: this position was never processed. Add to inbox for reprocessing.
+          inbox.push({ 'index': pos, 'item': step.value });
         }
       }
-
-      this.writeScatterProgress(state, scatter.name, completed, itemOutputs, mappingValues, fieldValues);
+      // Reset inboxPos so inboxIter starts from the beginning (which now
+      // includes any gap items just discovered plus the original inbox items).
+      inboxPos = 0;
     }
 
-    // ── 4. Gather ────────────────────────────────────────────────────────────
+    // Wrap the pre-scanned (or fresh) raw iterator for use in pullNext.
+    const freshIter = rawIter;
+
+    // ── 5. Bounded worker pool with lazy pull ────────────────────────────────
+    // The pool pulls from inboxIter first (priority), then freshIter.
+    // It only pulls the next item when a worker slot is free (backpressure).
+    let inboxDone = false;
+    let freshDone = false;
+    let activeWorkers = 0;
+    let poolError: unknown = null;
+
+    // Promise-based semaphore: resolves when a slot frees.
+    let slotResolve: (() => void) | null = null;
+    const waitForSlot = (): Promise<void> =>
+      new Promise<void>((res) => { slotResolve = res; });
+    const releaseSlot = (): void => {
+      const fn = slotResolve;
+      slotResolve = null;
+      fn?.();
+    };
+
+    /**
+     * Pull the next item from inbox (priority) then fresh source.
+     * Returns `null` when both sources are exhausted.
+     * A pulled inbox item has `type: 'inbox'`; its index comes from
+     * `ScatterInboxItem.index`. A fresh item has `type: 'fresh'`; its
+     * index is assigned from `nextIndex`.
+     */
+    const pullNext = async (): Promise<
+      | { 'type': 'inbox'; 'index': number; 'item': unknown }
+      | { 'type': 'fresh'; 'index': number; 'item': unknown }
+      | null
+    > => {
+      if (!inboxDone) {
+        const step = await inboxIter.next();
+        if (!step.done) {
+          const inboxEntry = step.value as ScatterInboxItem;
+          return { 'type': 'inbox', 'index': inboxEntry.index, 'item': inboxEntry.item };
+        }
+        inboxDone = true;
+      }
+      if (!freshDone) {
+        const step = await freshIter.next();
+        if (!step.done) {
+          const index = nextIndex++;
+          // Add to inbox immediately (durable: pulled but not yet acked).
+          inbox.push({ index, 'item': step.value });
+          return { 'type': 'fresh', index, 'item': step.value };
+        }
+        freshDone = true;
+      }
+      return null;
+    };
+
+    /**
+     * Execute one scatter item (the body) and return a completed record.
+     * Handles both node and dag body variants. Does not mutate shared
+     * state — callers handle ack and gather after this resolves.
+     */
+    const executeItem = async (
+      itemIndex: number,
+      item: unknown,
+    ): Promise<{
+      'index': number;
+      'item': unknown;
+      'output': string;
+      'terminalOutcome': 'completed' | 'failed' | null;
+      'cloneState': TState;
+    }> => {
+      const cloneState = this.createChildState(
+        state,
+        scatter.stateMapping?.input as Record<string, string> | undefined,
+      );
+      cloneState.setMetadata(itemKey, item);
+      cloneState.setMetadata('itemIndex', itemIndex);
+
+      let output: string;
+      let terminalOutcome: 'completed' | 'failed' | null = null;
+
+      if ('node' in scatter.body) {
+        const dagNode = this.nodes.get(scatter.body.node);
+        if (!dagNode) {
+          throw new DAGError(`ScatterNode '${scatter.name}': unknown node '${scatter.body.node}'`);
+        }
+        const opResult = await this.withNodeTimeout(dagNode, signal, (nodeSignal) => {
+          const context = this.buildContext(dagName, scatter.name, nodeSignal);
+          return dagNode.execute(cloneState, context);
+        });
+        if (opResult.errors) {
+          for (const err of opResult.errors) cloneState.collectError(err);
+        }
+        output = opResult.output;
+      } else {
+        const childOptions: ExecuteOptionsInterface = signal ? { 'signal': signal } : {};
+        const innerPath: readonly string[] = [...placementPath, scatter.name];
+        const iter = this.runNodes(scatter.body.dag, cloneState, null, childOptions, true, innerPath);
+
+        while (true) {
+          const step = await iter.next();
+          if (step.done) {
+            terminalOutcome = step.value.terminalOutcome;
+            break;
+          }
+          const nr = step.value;
+          intermediateResults.push({
+            'output': nr.output,
+            'skipped': nr.skipped,
+            'nodeName': `${scatter.name}.${nr.nodeName}`,
+            state,
+            'intermediateResults': [],
+          });
+        }
+
+        const hasUnrecoverable = cloneState.errors.some((e) => e.recoverable === false);
+        output = (terminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
+      }
+
+      for (const err of cloneState.errors) state.collectError(err);
+      for (const warn of cloneState.warnings) state.collectWarning(warn);
+
+      return { 'index': itemIndex, item, output, terminalOutcome, cloneState };
+    };
+
+    /**
+     * Ack a completed item: remove it from the inbox, add to ackedResults,
+     * persist the checkpoint, and apply incremental gather if supported.
+     */
+    const ackItem = (
+      itemIndex: number,
+      item: unknown,
+      output: string,
+      terminalOutcome: 'completed' | 'failed' | null,
+      cloneState: TState,
+    ): GatherRecord<TState> => {
+      // Remove from inbox.
+      const inboxIdx = inbox.findIndex((e) => e.index === itemIndex);
+      if (inboxIdx !== -1) inbox.splice(inboxIdx, 1);
+
+      // Build acked result with gather persistence values.
+      const ackedResult: ScatterAckedResult = (() => {
+        if (scatter.gather?.strategy === 'map' && scatter.gather.mapping !== undefined) {
+          const snapshot: Record<string, unknown> = {};
+          for (const clonePath of Object.keys(scatter.gather.mapping)) {
+            snapshot[clonePath] = this.accessor.get(cloneState, clonePath);
+          }
+          return { 'index': itemIndex, 'item': item, output, 'mappingValues': snapshot };
+        }
+        if (
+          (scatter.gather?.strategy === 'append' || scatter.gather?.strategy === 'partition') &&
+          scatter.gather.field !== undefined
+        ) {
+          return { 'index': itemIndex, 'item': item, output, 'fieldValue': this.accessor.get(cloneState, scatter.gather.field) };
+        }
+        return { 'index': itemIndex, 'item': item, output };
+      })();
+
+      ackedResults.push(ackedResult);
+      ackedByIndex.set(itemIndex, ackedResult);
+      itemOutputs.set(itemIndex, output);
+
+      const record: GatherRecord<TState> = {
+        'index': itemIndex,
+        item,
+        output,
+        terminalOutcome,
+        cloneState,
+      };
+
+      // Incremental gather: fold this record into parent state BEFORE the
+      // checkpoint write so the persisted state already reflects the fold.
+      // This ensures any observer of the metadata write (e.g. tests, monitoring)
+      // sees a consistent state: gather target updated, then checkpoint written.
+      if (supportsIncremental && scatter.gather !== undefined && gatherStrategy?.applyIncremental !== undefined) {
+        gatherStrategy.applyIncremental(scatter.gather, record, state, this.accessor);
+      } else {
+        // Accumulate for batch apply at the end.
+        allFreshRecords.push(record);
+      }
+
+      // Persist checkpoint after the incremental fold (so gathered state is
+      // already captured in the state snapshot that backs the metadata write).
+      this.writeScatterProgress(state, scatter.name, [...inbox], [...ackedResults]);
+
+      return record;
+    };
+
+    // ── 6. Drive the worker pool ─────────────────────────────────────────────
+    // Uses a promise-chaining loop: spawn workers up to concurrencyLimit,
+    // each worker pulls from pullNext() and releases a slot on completion.
+    // The outer loop waits for a slot before pulling the next item.
+
+    const workerDone = (): void => {
+      activeWorkers--;
+      releaseSlot();
+    };
+
+    const spawnWorker = (itemIndex: number, item: unknown): void => {
+      activeWorkers++;
+      const workerPromise = executeItem(itemIndex, item).then(
+        (res) => {
+          ackItem(res.index, res.item, res.output, res.terminalOutcome, res.cloneState);
+          workerDone();
+        },
+        (err: unknown) => {
+          poolError = err;
+          workerDone();
+        },
+      );
+      // Attach a no-op catch so the promise is always handled.
+      workerPromise.catch(() => { /* handled above */ });
+    };
+
+    // Pull loop: keeps filling slots until both sources are exhausted or an
+    // error is set.
+    while (poolError === null) {
+      if (activeWorkers >= concurrencyLimit) {
+        await waitForSlot();
+        continue;
+      }
+      const pulled = await pullNext();
+      if (pulled === null) break; // both sources exhausted
+      spawnWorker(pulled.index, pulled.item);
+    }
+
+    // Wait for all in-flight workers to settle.
+    while (activeWorkers > 0) {
+      await waitForSlot();
+    }
+
+    if (poolError !== null) {
+      throw poolError instanceof Error ? poolError : new Error(String(poolError));
+    }
+
+    // ── 7. Synthesise acked records that came from a prior run ───────────────
+    // Strategies using incremental gather only saw fresh records; acked-only
+    // records (from a prior run that used incremental gather) were already
+    // folded into parent state by the previous run — they are not re-gathered.
+    // For batch-only strategies (e.g. custom) we must reconstruct the full
+    // record set in source-index order.
+    if (!supportsIncremental && scatter.gather !== undefined) {
+      // Build synthetic records for acked items that were NOT re-executed
+      // (i.e. items present in ackedResults but not in allFreshRecords).
+      const freshIndices = new Set<number>(allFreshRecords.map((r) => r.index));
+      const syntheticRecords: GatherRecord<TState>[] = [];
+      for (const acked of ackedResults) {
+        if (freshIndices.has(acked.index)) continue; // already in allFreshRecords
+        const syntheticClone = state.clone() as TState;
+        if (acked.mappingValues !== undefined) {
+          for (const [clonePath, val] of Object.entries(acked.mappingValues)) {
+            this.accessor.set(syntheticClone, clonePath, val);
+          }
+        } else if (acked.fieldValue !== undefined && scatter.gather.field !== undefined) {
+          this.accessor.set(syntheticClone, scatter.gather.field, acked.fieldValue);
+        }
+        syntheticRecords.push({
+          'index': acked.index,
+          'item': acked.item,
+          'output': acked.output,
+          'terminalOutcome': null,
+          'cloneState': syntheticClone,
+        });
+      }
+      // Merge synthetic + fresh, sorted by index.
+      const merged = [...syntheticRecords, ...allFreshRecords]
+        .sort((a, b) => a.index - b.index);
+
+      if (merged.length > 0) {
+        const gatherExecution = this.buildGatherExecution(state, merged, dagName, signal);
+        await GatherStrategies.resolve(scatter.gather.strategy).apply(scatter.gather, gatherExecution);
+      }
+    }
+
+    // ── 8. Clear checkpoint after clean completion ───────────────────────────
     this.clearScatterProgress(state, scatter.name);
 
-    if (scatter.gather !== undefined && allRecords.length > 0) {
-      const gatherExecution = this.buildGatherExecution(state, allRecords, dagName, signal);
-      await GatherStrategies.resolve(scatter.gather.strategy).apply(scatter.gather, gatherExecution);
-    }
-
-    // ── 5. Reduce to route ───────────────────────────────────────────────────
+    // ── 9. Reduce to route ───────────────────────────────────────────────────
     const reducerName = scatter.reducer ?? 'aggregate';
-    // Index records once (O(N)) so the per-item lookup below is O(1); avoids
-    // an O(N²) linear scan when reducing a large source array.
-    const recordByIndex = new Map<number, GatherRecord<TState>>();
-    for (const record of allRecords) recordByIndex.set(record.index, record);
-    // Iterate the Map directly (no intermediate spread array) into the
-    // reducer's input shape.
     const outcomeRecords: OutcomeRecord[] = [];
     for (const [index, output] of itemOutputs) {
-      outcomeRecords.push({
-        index,
-        output,
-        'terminalOutcome': recordByIndex.get(index)?.terminalOutcome ?? null,
-      });
+      // terminalOutcome is not tracked in itemOutputs; use null for all (reducer
+      // does not need it for aggregate/fail-fast modes).
+      outcomeRecords.push({ index, output, 'terminalOutcome': null });
     }
     const routeOutput = OutcomeReducers.resolve(reducerName).reduce(outcomeRecords);
     const nextStage = scatter.outputs[routeOutput] ?? null;

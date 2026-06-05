@@ -39,13 +39,7 @@ Validator.dag.validate(value: unknown): DAG
 Validates `value` against `DAGSchema`. Returns a typed `DAG` on success. Throws `ValidationError` with a multi-line message listing every Ajv failure on error.
 
 ```ts
-try {
-  const dag = Validator.dag.validate(unknownValue);
-} catch (error) {
-  if (error instanceof ValidationError) {
-    console.error(error.message); // '<instancePath>: <message>' per line
-  }
-}
+<<< @/../examples/03-schema.ts#validate
 ```
 
 #### `Validator.dag.is(value)`

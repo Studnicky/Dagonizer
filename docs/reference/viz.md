@@ -59,10 +59,7 @@ Every output route renders as a labeled directed edge: `from -->|outcome| to`. R
 ### Example
 
 ```ts
-import { Dagonizer } from '@noocodex/dagonizer';
-import { MermaidRenderer } from '@noocodex/dagonizer/viz';
-
-const source = MermaidRenderer.render(dispatcher.getDAG('pipeline')!);
+<<< @/../examples/the-archivist/viz/render-mermaid.ts#mermaid-render
 ```
 
 ```mermaid
@@ -105,10 +102,7 @@ Renders a `DAG` as a JSON-LD document with a `@context` and a `@graph` containin
 Each placement's `@type` is prefixed with `dag:`: `dag:SingleNode`, `dag:ParallelNode`, `dag:ScatterNode`, `dag:EmbeddedDAGNode`, `dag:TerminalNode`.
 
 ```ts
-import { JsonLdRenderer } from '@noocodex/dagonizer/viz';
-
-const doc = JsonLdRenderer.render(dispatcher.getDAG('pipeline')!);
-await fs.writeFile('pipeline.jsonld', JSON.stringify(doc, null, 2));
+<<< @/../examples/the-archivist/viz/render-jsonld.ts#jsonld-render
 ```
 
 ### `DAGONIZER_VOCAB`
@@ -136,9 +130,83 @@ interface JsonLdGraphEntry {
 
 ---
 
+## CytoscapeGraph
+
+Subclassable factory class for mounting an interactive cytoscape graph in a DOM container. `cytoscape` and `@dagrejs/dagre` are optional peer dependencies; install them to use this class. The cytoscape constructor is dependency-injected: consumers pass it to the `CytoscapeGraph` constructor so the factory never bundles cytoscape directly.
+
+```ts
+import { CytoscapeGraph } from '@noocodex/dagonizer/viz';
+import cytoscape from 'cytoscape';
+
+const graph = new CytoscapeGraph(cytoscape, container, dag, options?);
+await graph.mount(); // returns cytoscape.Core
+```
+
+### Constructor
+
+```ts
+new CytoscapeGraph(
+  cytoscapeFactory: typeof cytoscape,
+  container:        HTMLElement,
+  dag:              DAG,
+  options?:         CytoscapeGraphOptions,
+)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `cytoscapeFactory` | `typeof cytoscape` | The cytoscape constructor (DI-injected; not bundled) |
+| `container` | `HTMLElement` | DOM element to mount the graph into |
+| `dag` | `DAG` | The DAG to render |
+| `options` | `CytoscapeGraphOptions?` | Optional configuration |
+
+### `CytoscapeGraphOptions`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `embeddedDAGs?` | `ReadonlyMap<string, DAG>` | Registry of embedded-DAGs by name, passed to `CytoscapeRenderer` and `CompositeLayout` for recursive expansion. Default: empty `Map`. |
+| `layoutOptions?` | `CompositeLayoutOptions` | Layout tuning options forwarded to `CompositeLayout.compute`. Default: `{}` (all tuning delegated to `CompositeLayout`'s own defaults). |
+
+The constructor accepts `Partial<CytoscapeGraphOptions>`; both fields are optional at the call site with the defaults noted above.
+
+### `async mount(): Promise<cytoscape.Core>`
+
+Builds elements via `CytoscapeRenderer.render`, computes layout via `CompositeLayout.compute` (async), mounts the cytoscape instance into the container, and calls `onReady`. Returns the mounted `cytoscape.Core`.
+
+### `cy` getter
+
+```ts
+get cy(): cytoscape.Core | null
+```
+
+Returns the `cytoscape.Core` after a successful `mount()`, or `null` if the graph has not yet been mounted.
+
+### Protected hooks (override in subclasses)
+
+| Hook | Signature | Purpose |
+|------|-----------|---------|
+| `buildElements` | `(dag: DAG, options: CytoscapeGraphOptions) => readonly CytoscapeElement[]` | Override to customize element construction. Default calls `CytoscapeRenderer.render`. |
+| `stylesheet` | `() => cytoscape.Stylesheet[]` | Override to supply a custom stylesheet. |
+| `presetLayout` | `(elements: readonly CytoscapeElement[]) => cytoscape.LayoutOptions` | Override to supply a preset (position-based) layout when positions are already computed. |
+| `interactionDefaults` | `() => cytoscape.CytoscapeOptions` | Override to customize pan/zoom/interaction defaults. |
+| `layoutRegistry` | `() => Record<string, cytoscape.LayoutOptions>` | Override to register named layout configurations. |
+| `applyLayout` | `(cy: cytoscape.Core) => Promise<void>` | Override to customize the layout application step. |
+| `enforceVisibility` | `(cy: cytoscape.Core) => void` | Override to enforce node/edge visibility rules after layout. |
+| `onReady` | `(cy: cytoscape.Core) => void` | Called after layout is applied. Override to attach event listeners or run post-mount logic. |
+
+### Example: subclassing for doc animations
+
+The doc site's `AnimatedDagGraph` extends `CytoscapeGraph` and overrides `onReady` to attach execution-trace animation:
+
+```ts
+<<< @/../examples/the-archivist/viz/ArchivistGraph.ts#cytoscape-graph-subclass
+```
+
+---
+
 ## CytoscapeRenderer
 
-Static class.
+Static class. Returns a plain element array with NO computed positions. Layout is performed separately by `CompositeLayout.compute` or handled internally by `CytoscapeGraph`.
 
 ```ts
 class CytoscapeRenderer {
@@ -146,7 +214,7 @@ class CytoscapeRenderer {
 }
 ```
 
-Renders a `DAG` as a Cytoscape `elements` array. Pass the result directly to `cytoscape({ elements })`.
+Renders a `DAG` as a Cytoscape elements array.
 
 - Every placement becomes a node element with a `type` field (`'single'` | `'parallel'` | `'scatter'` | `'embedded-dag'` | `'terminal'`) for per-type stylesheet selectors.
 - Every output route becomes a labeled edge element.
@@ -155,24 +223,19 @@ Renders a `DAG` as a Cytoscape `elements` array. Pass the result directly to `cy
 - Routes to `null` become edges to a synthetic `END` terminal node.
 
 ```ts
-import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
-
-const elements = CytoscapeRenderer.render(dag, {
-  embeddedDAGs: new Map([['inner-dag', innerDag]]),
-  maxDepth: 4,
-});
+<<< @/../examples/the-archivist/viz/render-cytoscape.ts#cytoscape-render
 ```
 
 ### `RenderOptions`
 
 ```ts
 interface RenderOptions {
-  readonly embeddedDAGs?:   ReadonlyMap<string, DAG>;
-  readonly maxDepth?:       number;          // default 6
-  readonly computeLayout?:  boolean;         // default true; set false to skip position computation
-  readonly layoutOptions?:  CompositeLayoutOptions;
+  readonly embeddedDAGs?: ReadonlyMap<string, DAG>;
+  readonly maxDepth?:     number;  // default 6
 }
 ```
+
+Note: `computeLayout` and `layoutOptions` are not options on `CytoscapeRenderer.render`. Positioning is performed by `CompositeLayout.compute` (async) or handled internally by `CytoscapeGraph`.
 
 ### Types
 
@@ -203,6 +266,21 @@ interface CytoscapeEdgeElement {
   readonly classes?: string;
 }
 ```
+
+## CompositeLayout
+
+Static class that computes positions for a Cytoscape element array using `@dagrejs/dagre`. `compute` is async: it lazy-loads dagre and applies the layout, then returns a `LayoutResult` with positioned elements.
+
+```ts
+import { CompositeLayout } from '@noocodex/dagonizer/viz';
+
+const result = await CompositeLayout.compute(elements, options?);
+// result.elements: readonly CytoscapeElement[] with positions set
+```
+
+`CytoscapeGraph.mount()` calls `CompositeLayout.compute` internally; direct use is for consumers managing their own cytoscape instances outside the factory.
+
+---
 
 ## Related guides
 

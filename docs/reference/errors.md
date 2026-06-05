@@ -110,15 +110,7 @@ import { ValidationError } from '@noocodex/dagonizer';
 The `message` contains every Ajv failure formatted as `<instancePath>: <message>`, one per line.
 
 ```ts
-try {
-  Dagonizer.load('{ "name": "broken" }');
-} catch (error) {
-  if (error instanceof ValidationError) {
-    for (const line of error.message.split('\n')) {
-      console.error(line);
-    }
-  }
-}
+<<< @/../examples/03-schema.ts#validate
 ```
 
 ---

@@ -7,17 +7,19 @@
 
 import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import type { ParallelNode } from '../entities/dag/ParallelNode.js';
+import type { PhaseNodePlacementInterface } from '../entities/dag/PhaseNode.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 
-/** 5-member union of every concrete placement shape. */
+/** 6-member union of every concrete placement shape. */
 export type PlacementEntry =
   | EmbeddedDAGNode
   | ScatterNode
   | ParallelNode
   | SingleNodePlacementInterface
-  | TerminalNodePlacementInterface;
+  | TerminalNodePlacementInterface
+  | PhaseNodePlacementInterface;
 
 /**
  * Return the sub-DAG name that this placement embeds, or `null` if it does

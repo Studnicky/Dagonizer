@@ -14,8 +14,6 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
-import type { ElementDefinition } from 'cytoscape';
 import { DAG_CONTEXT } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
 
@@ -32,13 +30,11 @@ const dag: DAG = {
     { '@id': 'urn:noocodex:dag:count/node/c', '@type': 'SingleNode', name: 'c', node: 'inc', outputs: { success: null } },
   ],
 };
-
-const elements = CytoscapeRenderer.render(dag) as ElementDefinition[];
 </script>
 
 # Checkpoint and Resume
 
-`Checkpoint` is the codec: it turns an interrupted `ExecutionResult` into a portable record and back. `dispatcher.resume(dagName, state, cursor)` picks the execution up from the restored cursor. Persistence is the consumer's concern (see [persistence](./persistence)).
+`Checkpoint` is the codec: it turns an interrupted `ExecutionResult` into a portable record and back. `dispatcher.resume(dagName, state, fromStage, options?)` picks the execution up from the restored cursor. Persistence is the consumer's concern (see [persistence](./persistence)).
 
 ## API surface
 
@@ -51,13 +47,13 @@ const elements = CytoscapeRenderer.render(dag) as ElementDefinition[];
 | `ckpt.persist(store, key)` | instance method | Writes via a `CheckpointStore` |
 | `ckpt.restoreState(fn)` | instance method | Rehydrates `{ dagName, state, cursor }` |
 | `ckpt.restoreStores(map)` | instance method | Restores named stores (any `Snapshottable`) from the envelope |
-| `dispatcher.resume(dagName, state, cursor)` | `@noocodex/dagonizer` | Resumes the flow at `cursor` |
+| `dispatcher.resume(dagName, state, fromStage, options?)` | `@noocodex/dagonizer` | Resumes the flow at `fromStage`; `options` accepts the same `ExecuteOptionsInterface` as `execute` |
 
 ## DAG that drives the example
 
 A three-node linear DAG. An abort after node `a` leaves `cursor === 'b'`; the resumed run executes `b` and `c` only:
 
-<DagGraph :elements="elements" aria-label="Three-node linear count DAG; abort after a; resume from b." />
+<DagGraph :dag="dag" aria-label="Three-node linear count DAG; abort after a; resume from b." />
 
 ## Capturing a partial run
 
