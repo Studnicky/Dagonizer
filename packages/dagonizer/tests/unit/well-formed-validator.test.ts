@@ -2,10 +2,9 @@
  * WellFormedValidator: unit tests for DAG well-formedness rules.
  *
  * Rules tested:
- *   1. No bare null flow-ends on non-parallel-member placements.
+ *   1. No bare null flow-ends (null routes always require a TerminalNode).
  *   2. All non-null targets must resolve to a placement name in dag.nodes.
  *   3. Structural guards: ScatterNode source, EmbeddedDAGNode dag, TerminalNode outcome.
- *   4. Parallel members with null routes → no violation (legal "collected back").
  */
 
 import assert from 'node:assert/strict';
@@ -77,9 +76,9 @@ void describe('WellFormedValidator', () => {
     assert.equal(violations.length, 0);
   });
 
-  // ── Rule 1: null on a non-parallel member → violation ────────────────────
+  // ── Rule 1: null route → violation ──────────────────────────────────────
 
-  void it('reports a violation when a non-parallel placement routes to null', () => {
+  void it('reports a violation when a placement routes to null', () => {
     const dag = baseDAG([
       makeSingleNodePlacement('start', { 'done': null }),
     ]);
@@ -97,45 +96,6 @@ void describe('WellFormedValidator', () => {
     ]);
     const violations = WellFormedValidator.check(dag);
     assert.equal(violations.length, 2);
-  });
-
-  // ── Rule 1 exception: parallel members with null routes → no violation ───
-
-  void it('does NOT report a violation for parallel-member null routes', () => {
-    // The parallel members 'worker-a' and 'worker-b' are listed in the
-    // ParallelNode's nodes array; their null routes are "collected back".
-    const dag = baseDAG([
-      {
-        '@id':     'urn:noocodex:dag:test/node/parallel-gate',
-        '@type':   'ParallelNode',
-        'name':    'parallel-gate',
-        'nodes':   ['worker-a', 'worker-b'],
-        'combine': 'collect',
-        'outputs': { 'success': 'end', 'error': 'end' },
-      },
-      makeSingleNodePlacement('worker-a', { 'ok': null }),
-      makeSingleNodePlacement('worker-b', { 'fail': null }),
-      makeTerminal('end', 'completed'),
-    ]);
-    const violations = WellFormedValidator.check(dag);
-    assert.equal(violations.length, 0, `Expected no violations; got: ${JSON.stringify(violations)}`);
-  });
-
-  void it('allows a parallel member with multiple null routes (success + empty)', () => {
-    const dag = baseDAG([
-      {
-        '@id':     'urn:noocodex:dag:test/node/fan-out',
-        '@type':   'ParallelNode',
-        'name':    'fan-out',
-        'nodes':   ['scout'],
-        'combine': 'collect',
-        'outputs': { 'success': 'end' },
-      },
-      makeSingleNodePlacement('scout', { 'success': null, 'empty': null }),
-      makeTerminal('end', 'completed'),
-    ]);
-    const violations = WellFormedValidator.check(dag);
-    assert.equal(violations.length, 0);
   });
 
   // ── Rule 2: dangling target → violation ──────────────────────────────────
@@ -179,6 +139,7 @@ void describe('WellFormedValidator', () => {
         'name':   'scatter',
         'body':   { 'node': 'worker' },
         'source': 'items',
+        'gather': { 'strategy': 'discard' },
         'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
       },
       makeTerminal('end', 'completed'),
@@ -246,25 +207,5 @@ void describe('WellFormedValidator', () => {
     const violations = WellFormedValidator.check(dag);
     assert.equal(violations.length, 1);
     assert.match((violations[0] ?? ''), /placement 'b'/i);
-  });
-
-  // ── ParallelNode routing to TerminalNode (legal) ──────────────────────────
-
-  void it('returns no violations for a ParallelNode whose outputs route to a TerminalNode', () => {
-    const dag = baseDAG([
-      {
-        '@id':     'urn:noocodex:dag:test/node/parallel-gate',
-        '@type':   'ParallelNode',
-        'name':    'parallel-gate',
-        'nodes':   ['w1', 'w2'],
-        'combine': 'all-success',
-        'outputs': { 'success': 'done', 'error': 'done' },
-      },
-      makeSingleNodePlacement('w1', { 'ok': null }),
-      makeSingleNodePlacement('w2', { 'ok': null }),
-      makeTerminal('done', 'completed'),
-    ]);
-    const violations = WellFormedValidator.check(dag);
-    assert.equal(violations.length, 0);
   });
 });

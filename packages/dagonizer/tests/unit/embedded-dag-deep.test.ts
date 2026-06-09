@@ -128,6 +128,7 @@ void describe('EmbeddedDAGNode: deep recursive nesting', () => {
       'name':   'fork-b',
       'source': 'items',
       'body':   { 'dag': 'cyc-b' },
+      'gather': { 'strategy': 'discard' },
       'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
     }]);
 

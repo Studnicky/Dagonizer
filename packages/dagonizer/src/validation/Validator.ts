@@ -21,8 +21,6 @@ import { DAGSchema } from '../entities/dag/DAG.js';
 import type { DAG } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import { EmbeddedDAGNodeSchema } from '../entities/dag/EmbeddedDAGNode.js';
-import { ParallelNodeSchema } from '../entities/dag/ParallelNode.js';
-import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import { PhaseNodeSchema } from '../entities/dag/PhaseNode.js';
 import type { PhaseNode } from '../entities/dag/PhaseNode.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
@@ -133,7 +131,6 @@ export class Validator {
   // DAG: top-level definition
   static readonly dag:             EntityValidator<DAG>             = Validator.compile('DAG',             DAGSchema);
   static readonly singleNode:      EntityValidator<SingleNode>      = Validator.compile('SingleNode',      SingleNodeSchema);
-  static readonly parallelNode:    EntityValidator<ParallelNode>    = Validator.compile('ParallelNode',    ParallelNodeSchema);
   static readonly scatterNode:     EntityValidator<ScatterNode>     = Validator.compile('ScatterNode',     ScatterNodeSchema);
   static readonly embeddedDAGNode: EntityValidator<EmbeddedDAGNode> = Validator.compile('EmbeddedDAGNode', EmbeddedDAGNodeSchema);
   static readonly terminalNode: EntityValidator<TerminalNode>  = Validator.compile('TerminalNode', TerminalNodeSchema);

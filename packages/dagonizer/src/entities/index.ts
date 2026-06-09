@@ -10,7 +10,7 @@
  *   execution/: ExecutionResult
  *   validation/: ValidationResult
  *   errors/: DAGErrorJSON
- *   constants/: GatherStrategyName, ScatterOutput, MetadataKey, Output, ParallelCombine, NodeType
+ *   constants/: GatherStrategyName, ScatterOutput, MetadataKey, Output, NodeType
  *   runtime/: BackoffStrategy
  *   primitives/: JsonSchema (draft-2020-12 TS model)
  *
@@ -25,9 +25,6 @@
 
 export { SingleNodeSchema } from './dag/SingleNode.js';
 export type { SingleNode } from './dag/SingleNode.js';
-
-export { ParallelNodeSchema } from './dag/ParallelNode.js';
-export type { ParallelNode } from './dag/ParallelNode.js';
 
 export { TerminalNodeSchema } from './dag/TerminalNode.js';
 export type { TerminalNode } from './dag/TerminalNode.js';
@@ -122,7 +119,6 @@ export { GatherStrategySchema, GatherStrategyName } from './constants/GatherStra
 export { ScatterOutputSchema, ScatterOutput } from './constants/ScatterOutput.js';
 export { MetadataKeySchema, MetadataKey } from './constants/MetadataKey.js';
 export { OutputSchema, Output } from './constants/Output.js';
-export { ParallelCombineSchema, ParallelCombine } from './constants/ParallelCombine.js';
 export { NodeTypeSchema, NodeType } from './constants/NodeType.js';
 
 // ---------------------------------------------------------------------------

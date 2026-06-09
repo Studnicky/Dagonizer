@@ -85,29 +85,6 @@ void describe('JsonLdRenderer.render', () => {
     assert.equal(routes[0]?.['dag:target'], null);
   });
 
-  void it('renders parallel placements with combine + children', () => {
-    const dag: DAG = {
-      '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:par',
-      '@type':    'DAG',
-      'name':       'par',
-      'version':    '1',
-      'entrypoint': 'group',
-      'nodes': [{
-        '@id':     'urn:noocodex:dag:par/node/group',
-        '@type':   'ParallelNode',
-        'name':    'group',
-        'nodes':   ['a', 'b'],
-        'combine': 'all-success',
-        'outputs': { 'success': null, 'error': null },
-      }],
-    };
-    const doc = JsonLdRenderer.render(dag);
-    const group = doc['@graph'].find((entry) => entry['@type'] === 'dag:ParallelNode');
-    assert.equal(group?.['dag:combine'], 'all-success');
-    assert.deepEqual(group?.['dag:children'], ['urn:dagonizer:par#a', 'urn:dagonizer:par#b']);
-  });
-
   void it('renders EmbeddedDAGNode with cross-DAG IRI reference', () => {
     const dag: DAG = {
       '@context': DAG_CONTEXT,

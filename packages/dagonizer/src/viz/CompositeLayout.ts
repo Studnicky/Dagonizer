@@ -10,8 +10,6 @@
  *   3. At the parent level, treat each embedded-DAG as a macro-node sized to
  *      its sub-LayoutResult's bounding box and lay the parent flat via dagre.
  *   4. Composite: offset all child positions to the macro-node's dagre position.
- *   5. For parallel placements: lay children horizontally in a single rank,
- *      then anchor the parallel node to their bounding box center.
  *
  * Final positions are applied by the caller via cytoscape's built-in preset
  * layout, which places each node at its `position` field value. Cytoscape
@@ -60,11 +58,6 @@ export interface CompositeLayoutOptions {
   readonly nodeWidth?: number;
   /** Default node render height for leaf nodes. Default 50. */
   readonly nodeHeight?: number;
-  /**
-   * Horizontal gap between parallel siblings.
-   * Defaults to `nodeSep ?? 60`.
-   */
-  readonly parallelNodeSep?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -161,21 +154,8 @@ export class CompositeLayout {
     const nodeSep    = opts.nodeSep    ?? CompositeLayout.DEFAULT_NODE_SEP;
     const nodeWidth  = opts.nodeWidth  ?? CompositeLayout.DEFAULT_NODE_WIDTH;
     const nodeHeight = opts.nodeHeight ?? CompositeLayout.DEFAULT_NODE_HEIGHT;
-    const parallelSep = opts.parallelNodeSep ?? nodeSep;
 
-    // ── Step 1: identify parallel children, embedded-DAG sub-layouts ─────
-
-    // Parallel children are rendered inside their parent compound. We'll lay
-    // them out horizontally and treat the parallel node's dagre slot as their
-    // collective bounding box.
-    const parallelChildren = new Set<string>();
-    const parallelChildLists = new Map<string, readonly string[]>();
-    for (const placement of dag.nodes as readonly PlacementEntry[]) {
-      if (placement['@type'] === 'ParallelNode') {
-        for (const child of placement.nodes) parallelChildren.add(child);
-        parallelChildLists.set(placement.name, placement.nodes);
-      }
-    }
+    // ── Step 1: identify embedded-DAG sub-layouts ───────────────────────────
 
     // Sub-layout results for embedded-DAGs (keyed by placement.name).
     const subLayouts = new Map<string, Resolved>();
@@ -215,16 +195,11 @@ export class CompositeLayout {
     g.setDefaultEdgeLabel(() => ({}));
 
     // Determine node sizes and register with dagre.
-    // • parallel children are SKIPPED at this level (they get their own
-    //   horizontal mini-layout applied after dagre positions the parallel slot).
-    // • parallel nodes take the size of their collective children BB.
     // • embedded-DAG nodes take the size of their sub-layout BB.
     // • all others use the default leaf size.
     const nodeSizes = new Map<string, { width: number; height: number }>();
 
     for (const placement of dag.nodes as readonly PlacementEntry[]) {
-      if (parallelChildren.has(placement.name)) continue; // handled inside parallel slot
-
       let w: number;
       let h: number;
 
@@ -237,13 +212,6 @@ export class CompositeLayout {
           w = nodeWidth;
           h = nodeHeight;
         }
-      } else if (placement['@type'] === 'ParallelNode') {
-        const children = parallelChildLists.get(placement.name) ?? [];
-        // Horizontal strip: all children at same height, distributed with gap.
-        const stripW = children.length * nodeWidth + Math.max(0, children.length - 1) * parallelSep;
-        const stripH = nodeHeight;
-        w = stripW + CompositeLayout.MARGIN * 2;
-        h = stripH + CompositeLayout.MARGIN * 2;
       } else {
         w = nodeWidth;
         h = nodeHeight;
@@ -255,16 +223,13 @@ export class CompositeLayout {
     }
 
     // Register edges. Skip null targets (terminals); no edge needed for layout.
-    // Also skip edges to/from parallel children (they're inside the compound).
     for (const placement of dag.nodes as readonly PlacementEntry[]) {
-      if (parallelChildren.has(placement.name)) continue;
       if (!('outputs' in placement)) continue;
 
       const fromId = PlacementUtils.idIn(prefix, placement.name);
 
       for (const target of Object.values(placement.outputs)) {
         if (target === null) continue;                       // terminal route
-        if (parallelChildren.has(target)) continue;          // child is inside parallel
         const toId = PlacementUtils.idIn(prefix, target);
         if (g.hasNode(toId)) g.setEdge(fromId, toId);
       }
@@ -278,8 +243,6 @@ export class CompositeLayout {
     const positions = new Map<string, NodePosition>();
 
     for (const placement of dag.nodes as readonly PlacementEntry[]) {
-      if (parallelChildren.has(placement.name)) continue;
-
       const nodeId = PlacementUtils.idIn(prefix, placement.name);
       const dagrePos = g.node(nodeId) as { x: number; y: number } | undefined;
       if (dagrePos === undefined) continue;
@@ -299,25 +262,6 @@ export class CompositeLayout {
           continue;
         }
         // Fallthrough: embedded-dag body not registered → treat as leaf.
-      }
-
-      if (placement['@type'] === 'ParallelNode') {
-        // Position the parallel compound node itself.
-        positions.set(nodeId, { "x": dagrePos.x, "y": dagrePos.y });
-
-        // Distribute parallel children horizontally inside the compound slot.
-        const children = parallelChildLists.get(placement.name) ?? [];
-        const totalW = children.length * nodeWidth + Math.max(0, children.length - 1) * parallelSep;
-        const startX = dagrePos.x - totalW / 2 + nodeWidth / 2;
-        for (let i = 0; i < children.length; i++) {
-          const childName = children[i];
-          if (childName === undefined) continue;
-          const childId = PlacementUtils.idIn(prefix, childName);
-          const cx = startX + i * (nodeWidth + parallelSep);
-          const cy = dagrePos.y;
-          positions.set(childId, { "x": cx, "y": cy });
-        }
-        continue;
       }
 
       // Regular leaf or unresolved embedded-dag.

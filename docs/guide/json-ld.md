@@ -36,7 +36,7 @@ A DAG document carries these top-level fields:
 
 - `@context`. The canonical Dagonizer JSON-LD context inlined as an object literal. The full context is exported from `@noocodex/dagonizer` as `DAG_CONTEXT` (source: `packages/dagonizer/src/entities/dag/DAG.ts`). `DAGBuilder.build()` embeds it verbatim.
 - `@id`. URN identifier for the DAG document. Convention: `urn:noocodex:dag:<name>`.
-- `@type`. RDF class. `"DAG"` for the document; one of `"SingleNode"`, `"ParallelNode"`, `"ScatterNode"`, `"EmbeddedDAGNode"`, `"TerminalNode"`, or `"PhaseNode"` for placements.
+- `@type`. RDF class. `"DAG"` for the document; one of `"SingleNode"`, `"ScatterNode"`, `"EmbeddedDAGNode"`, `"TerminalNode"`, or `"PhaseNode"` for placements.
 - `name`, `version`, `entrypoint`. The dispatcher uses `name` and `entrypoint` to register and execute.
 - `nodes`. Array of placement objects, each with its own `@id` and `@type`.
 
@@ -54,8 +54,7 @@ Six placement classes plus the document class:
 |---|---|
 | `DAG` | Top-level document |
 | `SingleNode` | One registered node, routed by named outputs |
-| `ParallelNode` | Concurrent nodes with a combine strategy |
-| `ScatterNode` | Fork over a `source` array: one clone per item, run a node body in each clone, gather produced state, route on aggregate outcome |
+| `ScatterNode` | Fork over a `source` array: one clone per item, run a body in each clone, gather produced state back through a required `gather`, route on aggregate outcome |
 | `EmbeddedDAGNode` | Invoke a nested registered DAG at cardinality 1, with optional `stateMapping` to copy fields in and out |
 | `TerminalNode` | Explicit terminus with `outcome` of `'completed'` or `'failed'` |
 | `PhaseNode` | Lifecycle-attached pre or post placement |
@@ -125,13 +124,10 @@ Each placement type carries a distinct `@type` that drives the runtime dispatch:
 | `@type` | Placement | Required fields |
 |---|---|---|
 | `SingleNode` | One registered node | `@id`, `@type`, `name`, `node`, `outputs` |
-| `ParallelNode` | Concurrent nodes with combine strategy | `@id`, `@type`, `name`, `nodes`, `combine`, `outputs` |
-| `ScatterNode` | Fork over source array, run node body per clone, gather, route | `@id`, `@type`, `name`, `body`, `source`, `outputs` |
+| `ScatterNode` | Fork over source array, run body per clone, gather, route | `@id`, `@type`, `name`, `body`, `source`, `gather`, `outputs` |
 | `EmbeddedDAGNode` | Nested DAG invocation at cardinality 1 | `@id`, `@type`, `name`, `dag`, `outputs` |
 | `TerminalNode` | Explicit terminus | `@id`, `@type`, `name`, `outcome` |
 | `PhaseNode` | Lifecycle-attached node | `@id`, `@type`, `name`, `phase`, `node` |
-
-`ParallelNode` carries a nested type-scoped `@context` that remaps the `nodes` key (within `ParallelNode` objects, `nodes` is an array of child name strings; at the DAG root, `nodes` is an array of placement objects). The remapping is invisible to consumers reading via `Dagonizer.load`, but RDF and JSON-LD processors see the distinction natively.
 
 ## Persistence patterns
 

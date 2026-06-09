@@ -92,25 +92,6 @@ void describe('DAGBuilder.build() contract validation', () => {
     );
   });
 
-  void it('skips contract validation for placements whose impl is not registered via .node()', () => {
-    // parallel() and embeddedDAG() do not call .node(); their impl is not in #nodeImpls.
-    // The parallel group references 'a' and 'b' by name, but 'a' and 'b' are added
-    // via .node() while 'group' is a ParallelNode with no underlying NodeInterface.
-    // The contract check runs only over #nodeImpls entries, so 'group' is not
-    // evaluated and cannot generate false-positive dangling-read errors.
-    const a = makeNode('a', ['success'], { 'hardRequired': ['input'], 'produces': ['x'] });
-    const b = makeNode('b', ['success'], { 'hardRequired': ['x'],     'produces': ['y'] });
-
-    // The parallel placement 'group' references node names not added via .node().
-    // This must not throw, because .parallel() placements are outside the impl registry.
-    assert.doesNotThrow(() =>
-      new DAGBuilder('with-parallel', '1.0')
-        .node('a', a, { 'success': 'b' })
-        .node('b', b, { 'success': 'group' })
-        .parallel('group', ['a', 'b'], 'all-success', { 'success': null })
-        .build(),
-    );
-  });
 });
 
 // ---------------------------------------------------------------------------

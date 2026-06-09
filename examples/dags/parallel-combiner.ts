@@ -1,43 +1,55 @@
 /**
- * parallel-combiner/dags: demonstrates custom ParallelCombiner and custom
- * OutcomeReducer registration via the ParallelCombiners and OutcomeReducers
- * static registries.
+ * scatter-extensions/dags: demonstrates scatter extension points —
+ * custom GatherStrategy and custom OutcomeReducer — via the
+ * GatherStrategies and OutcomeReducers static registries.
  *
  * Pure module: no side effects beyond registry.register calls; no dispatcher.
  */
 
 import {
+  GatherStrategies,
+  GatherStrategy,
   OutcomeReducer,
   OutcomeReducers,
-  ParallelCombiner,
-  ParallelCombiners,
 } from '@noocodex/dagonizer';
-import type { OutcomeRecord, ParallelResult } from '@noocodex/dagonizer';
-import type { NodeStateInterface } from '@noocodex/dagonizer';
+import type {
+  GatherConfig,
+  GatherExecution,
+  NodeStateInterface,
+  OutcomeRecord,
+} from '@noocodex/dagonizer';
 
-// #region parallel-combiner
+// #region gather-strategy
 /**
- * MajorityCombiner: succeeds when more than half the parallel nodes report
- * 'success'. Registered under 'majority' so any parallel placement with
- * `combine: 'majority'` uses this strategy.
+ * TopNGatherStrategy: collects each clone's `candidate` field, keeps the
+ * top-N by score, and writes the result to `topCandidates` on the parent.
+ * Registered under 'top-n'. Reference via `gather: { strategy: 'top-n', target: 'topCandidates' }`
+ * on a ScatterNode placement to collect and rank clone outputs in one pass.
  */
-class MajorityCombiner extends ParallelCombiner {
-  readonly name = 'majority';
+interface ScoredCandidate {
+  readonly score: number;
+}
 
-  combine(
-    outputs: readonly string[],
-    _results: readonly ParallelResult[],
-    _state: NodeStateInterface,
-  ): string {
-    if (outputs.length === 0) return 'error';
-    const successes = outputs.filter((o) => o === 'success').length;
-    return successes > outputs.length / 2 ? 'success' : 'error';
+class TopNGatherStrategy extends GatherStrategy {
+  readonly name = 'top-n';
+
+  async apply<TState extends NodeStateInterface>(
+    config: GatherConfig,
+    execution: GatherExecution<TState>,
+  ): Promise<void> {
+    const target = config.target ?? 'topCandidates';
+    const n = 3;
+    const all = execution.records.map((r) =>
+      execution.accessor.get(r.cloneState, 'candidate') as ScoredCandidate | undefined,
+    ).filter((c): c is ScoredCandidate => c !== undefined);
+    const sorted = [...all].sort((a, b) => b.score - a.score).slice(0, n);
+    execution.accessor.set(execution.state, target, sorted);
   }
 }
 
-ParallelCombiners.register(new MajorityCombiner());
-// ParallelCombiners.resolve('majority') now works in any parallel placement.
-// #endregion parallel-combiner
+GatherStrategies.register(new TopNGatherStrategy());
+// GatherStrategies.resolve('top-n') now works in any scatter placement.
+// #endregion gather-strategy
 
 // #region outcome-reducer
 /**
@@ -63,4 +75,3 @@ class ThresholdReducer extends OutcomeReducer {
 OutcomeReducers.register(new ThresholdReducer());
 // OutcomeReducers.resolve('threshold-75') now works in any scatter placement.
 // #endregion outcome-reducer
-

@@ -6,17 +6,15 @@
  */
 
 import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { PhaseNodePlacementInterface } from '../entities/dag/PhaseNode.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 
-/** 6-member union of every concrete placement shape. */
+/** 5-member union of every concrete placement shape. */
 export type PlacementEntry =
   | EmbeddedDAGNode
   | ScatterNode
-  | ParallelNode
   | SingleNodePlacementInterface
   | TerminalNodePlacementInterface
   | PhaseNodePlacementInterface;

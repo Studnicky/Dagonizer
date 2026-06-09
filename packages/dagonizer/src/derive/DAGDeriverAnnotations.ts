@@ -17,9 +17,6 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  *                 with the supplied `dag` name and optional state mapping.
  *                 Every port in `outputs` auto-wires to the next derived
  *                 stage; `terminals` overrides per-port.
- *   parallels: explicit `ParallelNode` groupings with a chosen
- *              combine strategy. Without it, same-topological-depth
- *              operations auto-group with `combine: 'collect'`.
  */
 
 /**
@@ -178,28 +175,6 @@ export interface DAGDeriverEmbeddedDAG<TChildState extends NodeStateInterface = 
 }
 
 /**
- * Per-grouping explicit parallel placement. Operations listed in
- * `members` execute concurrently under a `ParallelNode` with the
- * specified `combine` strategy, regardless of their data-graph depth.
- *
- * Without this annotation, DAGDeriver auto-groups operations sharing
- * a topological depth with `combine: 'collect'`. Use `parallels`
- * when:
- *   ⦿ Same-depth operations should run sequentially instead
- *     (omit them from any parallels entry; auto-grouping
- *     activates whenever ≥2 operations share a depth, so the
- *     opt-out path is to flatten the data graph)
- *   ⦿ A combine strategy other than `'collect'` is required
- *   ⦿ Cross-depth operations should be grouped explicitly
- */
-export interface DAGDeriverParallel {
-  /** Operation names to group into one ParallelNode. */
-  readonly members:  readonly string[];
-  /** Combine strategy reducing per-member outputs to one routing output. */
-  readonly combine:  'all-success' | 'any-success' | 'collect';
-}
-
-/**
  * Annotations consumed by `DAGDeriver.derive`. All fields are
  * optional; when all are absent every operation renders as a
  * `SingleNode` with `success` routing to the next derived operation.
@@ -208,5 +183,4 @@ export interface DAGDeriverAnnotations {
   readonly terminals?:   Readonly<Record<string, readonly DAGDeriverTerminal[]>>;
   readonly scatters?:    Readonly<Record<string, DAGDeriverScatter>>;
   readonly embeddedDAGs?: Readonly<Record<string, DAGDeriverEmbeddedDAG>>;
-  readonly parallels?:   Readonly<Record<string, DAGDeriverParallel>>;
 }

@@ -23,7 +23,7 @@ import type { DAG } from '@noocodex/dagonizer';
 import DagGraph from './.vitepress/theme/components/DagGraph.vue';
 
 // Sample three-node DAG used to illustrate output routing.
-// validate → enrich (parallel) → save, with explicit terminal routes.
+// validate → enrich → save, with explicit terminal routes.
 const sampleDAG: DAG = {
   '@context': DAG_CONTEXT,
   '@id': 'urn:noocodex:dag:sample',
@@ -84,7 +84,6 @@ flowchart TB
   subgraph kinds["Node kinds"]
     direction TB
     A[single] --> B[one registered node, output-routed]
-    C[parallel] --> D[concurrent nodes, combine then route]
     E[scatter] --> F[one clone per source item, gather, reduce route]
     G[embedded] --> H[sub-DAG once, route on child outcome]
   end
@@ -92,9 +91,7 @@ flowchart TB
 
 **`single`**, the fundamental unit. One registered node; output name selects the next node (or `null` to terminate).
 
-**`parallel`**, a named group of previously declared `single` entries. The dispatcher runs them with `Promise.all`, then applies a combine strategy (`all-success`, `any-success`, or `collect`) to produce a single routing output.
-
-**`scatter`** isolates one state clone per item in a `source`, runs a node body in each clone, merges produced clone state back into the parent via a `gather` strategy, and routes on the aggregate outcome via an outcome `reducer`. Gather strategies: `map`, `append`, `partition`, `custom`. Default reducer: `aggregate`.
+**`scatter`** isolates one state clone per item in a `source`, runs a node body in each clone, merges produced clone state back into the parent via a required `gather` strategy, and routes on the aggregate outcome via an outcome `reducer`. Gather strategies: `map`, `append`, `partition`, `custom`, `collect`, `discard`. Default reducer: `aggregate`. Declare `{ strategy: 'discard' }` for side-effect-only fan-outs. Heterogeneous fan-out (running different logic per item) is expressed by authoring the `source` as a descriptor array and writing a body node that dispatches on the item — the engine is indifferent to whether bodies are identical.
 
 The `source` can be a plain array (finite producer) or an `AsyncIterable`/`AsyncGenerator` (stream). Both drain through the same bounded worker pool: `concurrency` is the backpressure — the engine pulls the next item only when a worker slot frees. Resume is durable via an **inbox/work-queue**: un-acked items reprocess on restart; the stream source is never re-read from the beginning. This is the streaming spine both finite scatter and live-feed ETL pipelines share.
 
@@ -166,9 +163,8 @@ Containment attaches to exactly two sites — both run a whole child DAG:
 | `ScatterNode` (dag body) with `container` key | Each clone's sub-DAG runs in the bound backend |
 | `ScatterNode` (node body) | Runs inline; a node body is not a DAG |
 | `SingleNode` | Never contained |
-| `ParallelNode` | Never contained; members share live parent state by reference |
 
-`SingleNode` and `ParallelNode` carry no `container` key — this is a schema-level constraint.
+`SingleNode` carries no `container` key — this is a schema-level constraint.
 
 ### Hand-off channel binding
 
@@ -270,7 +266,7 @@ Every public surface ships through a `package.json` `exports` entry.
 | `./contracts` | Every adapter contract |
 | `./entities` | Every JSON Schema and derived type |
 | `./errors` | `DAGError` and subclasses, `DAGErrorInterface` |
-| `./constants` | Constant value plus type pairs (`GatherStrategyName`, `MetadataKey`, `NodeType`, `Output`, `ParallelCombine`, `ScatterOutput`) |
+| `./constants` | Constant value plus type pairs (`GatherStrategyName`, `MetadataKey`, `NodeType`, `Output`, `ScatterOutput`) |
 | `./lifecycle` | `DAGLifecycleMachine`, lifecycle types |
 | `./runtime` | `Clock`, `Scheduler`, `RetryPolicy`, `RealTimeScheduler`, `BackoffStrategy` |
 | `./builder` | `DAGBuilder` and its option interfaces |
@@ -280,7 +276,7 @@ Every public surface ships through a `package.json` `exports` entry.
 | `./adapter` | `LlmAdapter`, `BaseAdapter`, `OpenAiCompatibleAdapter`, `LlmAdapterCascade`, `LlmAdapterRegistry`, `BaseEmbedder`, `EmbedderCascade`, `EmbedderRegistry`, related types |
 | `./patterns` | `MonadicNode` base class, `LlmClient` and `TripleStore` service contracts for pattern plugins |
 | `./tool` | `Tool` interface, `ToolError`, `HttpTransport` shared fetch wrapper |
-| `./core` | `ParallelCombiners`, `GatherStrategies`, `OutcomeReducers` extension registries |
+| `./core` | `GatherStrategies`, `OutcomeReducers` extension registries |
 | `./derive` | `DAGDeriver.derive`, `OperationContract`, `DAGDeriverAnnotations`, `ContractRegistryValidator` |
 | `./viz` | `MermaidRenderer`, `JsonLdRenderer`, `CytoscapeRenderer`, `CytoscapeGraph`, `CompositeLayout` |
 | `./store` | `Store` contract, `BaseStore`, `MemoryStore`, `TypedStore`, `StoreError` |

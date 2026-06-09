@@ -10,11 +10,9 @@ import { GatherStrategies } from './core/GatherStrategies.js';
 import type { GatherExecution, GatherRecord } from './core/GatherStrategies.js';
 import { OutcomeReducers } from './core/OutcomeReducers.js';
 import type { OutcomeRecord } from './core/OutcomeReducers.js';
-import { ParallelCombiners } from './core/ParallelCombiners.js';
 import { ContractRegistryValidator } from './derive/ContractRegistryValidator.js';
 import type { DAG } from './entities/dag/DAG.js';
 import type { EmbeddedDAGNode } from './entities/dag/EmbeddedDAGNode.js';
-import type { ParallelNode } from './entities/dag/ParallelNode.js';
 import type { PhaseNodePlacementInterface } from './entities/dag/PhaseNode.js';
 import type { ScatterNode } from './entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from './entities/dag/SingleNode.js';
@@ -183,7 +181,7 @@ export interface DagonizerOptionsInterface<TState extends NodeStateInterface = N
 }
 
 
-type DAGNodeType = EmbeddedDAGNode | ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
+type DAGNodeType = EmbeddedDAGNode | ScatterNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
 type DAGNodeAtType = DAGNodeType['@type'];
 
 /**
@@ -390,8 +388,6 @@ implements DagonizerInterface<TState, TServices> {
         this.executeEmbeddedDAG(entry as EmbeddedDAGNode, state, signal, placementPath),
       'ScatterNode': (entry, state, dagName, signal, placementPath) =>
         this.executeScatter(entry as ScatterNode, state, dagName, signal, placementPath),
-      'ParallelNode': (entry, state, dagName, signal) =>
-        this.executeParallelGroup(entry as ParallelNode, state, dagName, signal),
       'SingleNode': (entry, state, dagName, signal) =>
         this.executeSingleNode(entry as SingleNodePlacementInterface, state, dagName, signal),
       // TerminalNode / PhaseNode are handled before executeDAGNode in runNodes;
@@ -1678,71 +1674,6 @@ implements DagonizerInterface<TState, TServices> {
     };
   }
 
-  private async executeParallelGroup(
-    group: ParallelNode,
-    state: TState,
-    dagName: string,
-    signal: AbortSignal | null,
-  ): Promise<InternalNodeResultInterface<TState>> {
-    const nodes = group.nodes.map((nodeName) => {
-      const node = this.nodeIndex.get(`${dagName}:${nodeName}`);
-
-      if (node?.['@type'] !== 'SingleNode') {
-        throw new DAGError(`Parallel group ${group.name} references invalid node: ${String(nodeName)}`);
-      }
-
-      return node;
-    });
-
-    const promises = nodes.map(async (nodeConfig) => {
-      const dagNode = this.nodes.get(nodeConfig.node);
-
-      if (!dagNode) {
-        throw new DAGError(`Unknown node: ${nodeConfig.node}`);
-      }
-      const context = this.buildContext(dagName, nodeConfig.name, signal);
-      const opResult = await dagNode.execute(state, context);
-
-      return {
-        opResult,
-        'node': nodeConfig
-      };
-    });
-
-    const results = await Promise.all(promises);
-
-    for (const { opResult } of results) {
-      for (const error of (opResult.errors ?? [])) state.collectError(error);
-    }
-
-    const intermediateResults: Array<NodeResultInterface<TState>> = results.map(({
-      opResult, node
-    }) => ({
-      'output': opResult.output,
-      'skipped': false,
-      'nodeName': node.name,
-      state,
-      'intermediateResults': [],
-    }));
-
-    const outputs = results.map((resultItem) => resultItem.opResult.output);
-    const combiner = ParallelCombiners.resolve(group.combine);
-    const combinedOutput = combiner.combine(outputs, results, state);
-
-    const nextStage = group.outputs[combinedOutput] ?? null;
-    const result: NodeResultInterface<TState> = {
-      'output': combinedOutput,
-      'skipped': false,
-      'nodeName': group.name,
-      state,
-      intermediateResults,
-    };
-
-    return {
-      nextStage,
-      result
-    };
-  }
 
   /**
    * Wrap a node execute call with a per-node timeout when `dagNode.timeoutMs`

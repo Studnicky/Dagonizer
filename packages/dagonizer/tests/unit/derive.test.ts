@@ -48,22 +48,6 @@ void describe('DAGDeriver.derive', () => {
     }
   });
 
-  void it('groups same-depth contracts under a parallel placement', () => {
-    const contracts: OperationContract[] = [
-      { 'name': 'fan-a', 'hardRequired': ['input'],            'produces': ['a-data'],  'outputs': ['success'] },
-      { 'name': 'fan-b', 'hardRequired': ['input'],            'produces': ['b-data'],  'outputs': ['success'] },
-      { 'name': 'merge', 'hardRequired': ['a-data', 'b-data'], 'produces': ['merged'],  'outputs': ['success'] },
-    ];
-    const dag = DAGDeriver.derive({
-      'name': 'fan',
-      'version': '1',
-      'entrypoint': 'fan-a',
-      "nodes": contracts.map(contractNode),
-    });
-    const parallel = dag.nodes.find((node) => node['@type'] === 'ParallelNode');
-    assert.ok(parallel !== undefined, 'parallel placement is emitted');
-  });
-
   void it('emits scatter placement when annotation is supplied', () => {
     const contracts: OperationContract[] = [
       { 'name': 'plan',  'hardRequired': ['input'],        'produces': ['tasks'],        'outputs': ['success'] },
@@ -425,76 +409,6 @@ void describe('DAGDeriver.derive', () => {
         },
       }),
       /port 'cached' which is not in the embeddedDAG 'child-dag' declared outputs/,
-    );
-  });
-
-  void it('parallels annotation renders explicit ParallelNode with chosen combine strategy', () => {
-    const contracts: OperationContract[] = [
-      { 'name': 'a', 'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success'] },
-      { 'name': 'b', 'hardRequired': ['input'], 'produces': ['y'], 'outputs': ['success'] },
-      { 'name': 'c', 'hardRequired': ['x', 'y'], 'produces': ['z'], 'outputs': ['success'] },
-    ];
-    const dag = DAGDeriver.derive({
-      'name': 'explicit-parallel',
-      'version': '1',
-      'entrypoint': 'a',
-      "nodes": contracts.map(contractNode),
-      'annotations': {
-        'parallels': {
-          'fan-stage': {
-            'members': ['a', 'b'],
-            'combine': 'all-success',
-          },
-        },
-      },
-    });
-    const explicit = dag.nodes.find((node) => node.name === 'fan-stage');
-    assert.ok(explicit !== undefined && explicit['@type'] === 'ParallelNode');
-    if (explicit !== undefined && explicit['@type'] === 'ParallelNode') {
-      assert.deepEqual([...explicit.nodes], ['a', 'b']);
-      assert.equal(explicit.combine, 'all-success');
-    }
-    // Auto-grouped placement with the auto name `depth_0` should NOT exist
-    // since both depth-0 members are claimed by the explicit group.
-    const auto = dag.nodes.find((node) => node.name === 'depth_0');
-    assert.equal(auto, undefined, 'no auto-grouped depth_0 when members are in explicit parallels');
-  });
-
-  void it('throws when a parallels group is empty', () => {
-    const contracts: OperationContract[] = [
-      { 'name': 'a', 'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success'] },
-    ];
-    assert.throws(
-      () => DAGDeriver.derive({
-        'name': 'empty-parallel',
-        'version': '1',
-        'entrypoint': 'a',
-        "nodes": contracts.map(contractNode),
-        'annotations': { 'parallels': { 'g': { 'members': [], 'combine': 'collect' } } },
-      }),
-      /parallels\['g'\] declares zero members/,
-    );
-  });
-
-  void it('throws when an operation appears in multiple parallels', () => {
-    const contracts: OperationContract[] = [
-      { 'name': 'a', 'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success'] },
-      { 'name': 'b', 'hardRequired': ['input'], 'produces': ['y'], 'outputs': ['success'] },
-    ];
-    assert.throws(
-      () => DAGDeriver.derive({
-        'name': 'overlapping',
-        'version': '1',
-        'entrypoint': 'a',
-        "nodes": contracts.map(contractNode),
-        'annotations': {
-          'parallels': {
-            'group-1': { 'members': ['a', 'b'], 'combine': 'collect' },
-            'group-2': { 'members': ['b'],      'combine': 'collect' },
-          },
-        },
-      }),
-      /appears in multiple parallels/,
     );
   });
 

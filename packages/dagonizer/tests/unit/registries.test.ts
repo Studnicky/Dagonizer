@@ -7,15 +7,12 @@ import {
   GatherStrategy,
   OutcomeReducer,
   OutcomeReducers,
-  ParallelCombiner,
-  ParallelCombiners,
 } from '../../src/core/index.js';
-import type { GatherExecution, OutcomeRecord, ParallelResult } from '../../src/core/index.js';
+import type { GatherExecution, OutcomeRecord } from '../../src/core/index.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG, GatherConfig } from '../../src/entities/index.js';
-import type { NodeStateInterface } from '../../src/NodeStateBase.js';
-import { NodeStateBase } from '../../src/NodeStateBase.js';
+import type { NodeStateBase, NodeStateInterface } from '../../src/NodeStateBase.js';
 
 const makeNode = (
   name: string,
@@ -28,52 +25,6 @@ const makeNode = (
     const output = await exec(state);
     return { output };
   },
-});
-
-void describe('ParallelCombiners registry', () => {
-  void it('lists default combiners on first import', () => {
-    const names = ParallelCombiners.list();
-    assert.ok(names.includes('all-success'));
-    assert.ok(names.includes('any-success'));
-    assert.ok(names.includes('collect'));
-  });
-
-  void it('resolves a default combiner by name', () => {
-    const combiner = ParallelCombiners.resolve('all-success');
-    assert.equal(combiner.name, 'all-success');
-    assert.equal(
-      combiner.combine(['success', 'success'], [], new NodeStateBase()),
-      'success',
-    );
-  });
-
-  void it('throws for an unknown combiner name', () => {
-    assert.throws(() => ParallelCombiners.resolve('weighted-success'));
-  });
-
-  void it('register installs a custom combiner that resolves by name', () => {
-    class MajorityCombiner extends ParallelCombiner {
-      readonly name = 'majority';
-      combine(outputs: readonly string[]): string {
-        const successes = outputs.filter((output) => output === 'success').length;
-        return successes * 2 > outputs.length ? 'success' : 'error';
-      }
-    }
-    ParallelCombiners.register(new MajorityCombiner());
-    const combiner = ParallelCombiners.resolve('majority');
-    assert.equal(combiner.combine(['success', 'success', 'error'], [], new NodeStateBase()), 'success');
-    assert.equal(combiner.combine(['success', 'error', 'error'], [], new NodeStateBase()), 'error');
-  });
-
-  void it('collect combiner records per-node outputs in metadata', () => {
-    const state = new NodeStateBase();
-    const results: ParallelResult[] = [
-      { 'opResult': { 'output': 'a' }, 'node': { 'name': 'first' } },
-      { 'opResult': { 'output': 'b' }, 'node': { 'name': 'second' } },
-    ];
-    ParallelCombiners.resolve('collect').combine(['a', 'b'], results, state);
-    assert.deepEqual(state.getMetadata('parallelOutputs'), { 'first': 'a', 'second': 'b' });
-  });
 });
 
 void describe('GatherStrategies registry', () => {

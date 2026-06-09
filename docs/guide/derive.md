@@ -89,7 +89,7 @@ const deriveRegistry = new Map([['plugin:transform', childDAG]]);
 
 # Contract-derived flows
 
-`DAGDeriver.derive` builds a `DAG` from a registry of `OperationContract`s by matching `produces ↔ hardRequired`. Each operation declares the field paths it needs and the field paths it produces; an edge `A → B` exists when some path in `A.produces` appears in `B.hardRequired`. Same-topological-depth operations auto-group into a `ParallelNode` with `combine: 'collect'`; the `parallels` annotation overrides the grouping or picks a different combine strategy.
+`DAGDeriver.derive` builds a `DAG` from a registry of `OperationContract`s by matching `produces ↔ hardRequired`. Each operation declares the field paths it needs and the field paths it produces; an edge `A → B` exists when some path in `A.produces` appears in `B.hardRequired`. Operations that share a topological depth and that the `scatters` annotation targets become scatter placements; otherwise they are sequenced by depth.
 
 ## API surface
 
@@ -99,7 +99,7 @@ const deriveRegistry = new Map([['plugin:transform', childDAG]]);
 | `DAGDeriver.extractContracts(nodes)` | `@noocodex/dagonizer/derive` | Project `OperationContract[]` from a node registry |
 | `OperationContract` | `@noocodex/dagonizer/contracts` | `name`, `hardRequired`, `produces`, `outputs` |
 | `OperationContractFragment` | `@noocodex/dagonizer/contracts` | `hardRequired` + `produces` (the `NodeInterface.contract` field) |
-| `DAGDeriverAnnotations` | `@noocodex/dagonizer/derive` | `terminals`, `scatters`, `parallels`, `embeddedDAGs` |
+| `DAGDeriverAnnotations` | `@noocodex/dagonizer/derive` | `terminals`, `scatters`, `embeddedDAGs` |
 | `ContractRegistryValidator` | `@noocodex/dagonizer/derive` | Surfaces dangling reads (fatal) and dead writes (warning) |
 | `Chainable<A, B>` | `@noocodex/dagonizer` (also `/types`) | Compile-time pair check; `true` when `A.produces` covers `B.hardRequired` |
 
@@ -107,7 +107,7 @@ const deriveRegistry = new Map([['plugin:transform', childDAG]]);
 
 ## The derived topology
 
-The example below derives a parent DAG with one embedded-DAG placement. `prepare` produces `intermediate`; `invoke-plugin` requires it and produces `childResult`; `finalize` requires `childResult`. The annotation swaps `invoke-plugin` from `SingleNode` to an `EmbeddedDAGNode`:
+The example below derives a parent DAG with one embedded-DAG placement. `prepare` produces `intermediate`; `invoke-plugin` requires it and produces `childResult`; `finalize` requires `childResult`. The `embeddedDAGs` annotation swaps `invoke-plugin` from `SingleNode` to an `EmbeddedDAGNode`:
 
 <DagGraph :dag="parentDAG" :embedded-d-a-gs="deriveRegistry" :expand-all="true" aria-label="Derived parent DAG: prepare → invoke-plugin (embedded-DAG) → finalize, with child DAG validate → transform expanded inline." />
 
@@ -141,7 +141,7 @@ The runnable example defines nodes with co-located contracts. Each `NodeInterfac
 
 <<< @/../examples/dags/derive.ts#derive
 
-Linear chains derive directly. Operations sharing a depth (no remaining unsatisfied prerequisites) are wrapped in a `parallel` placement that fires them concurrently and joins to the next depth. Multi-port operations declare every port in `outputs`; each port auto-wires to the next derived stage so a node with `outputs: ['success', 'cached', 'skipped', 'error']` does not need four separate terminal annotations.
+Linear chains derive directly. Multi-port operations declare every port in `outputs`; each port auto-wires to the next derived stage so a node with `outputs: ['success', 'cached', 'skipped', 'error']` does not need four separate terminal annotations. Operations that share a topological depth and need concurrent execution are expressed via the `scatters` annotation (scatter over a descriptor source with a dispatching body).
 
 ## Annotations
 
@@ -327,26 +327,6 @@ annotations: {
 ```
 
 Every item result (regardless of outcome) is flattened into the array at `target`.
-
-### `parallels`: explicit parallel grouping
-
-By default, DAGDeriver auto-groups same-topological-depth operations into a `ParallelNode` with `combine: 'collect'`. The `parallels` annotation overrides that grouping: declare named groups with a chosen combine strategy:
-
-```ts
-annotations: {
-  parallels: {
-    'scout-cluster': {
-      members: ['openLibraryScout', 'googleBooksScout', 'subjectScout', 'wikipediaScout'],
-      combine: 'all-success',
-    },
-  },
-}
-```
-
-- Every name in `members` must be a contract in the registry.
-- Membership is exclusive; an operation cannot appear in two `parallels` groups.
-- A `parallels` member cannot also appear in `scatters` or `embeddedDAGs`; placement kind must be unambiguous.
-- `combine` is one of `'all-success' | 'any-success' | 'collect'`; the engine routes the parallel's aggregate output through the chosen reduction.
 
 ### `embeddedDAGs`: nested DAG composition
 

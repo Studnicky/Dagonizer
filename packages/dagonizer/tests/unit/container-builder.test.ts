@@ -27,6 +27,7 @@ void describe('Builder container key', () => {
     const dag = new DAGBuilder('scatter-c', '1')
       .scatter('fan-out', 'items', { 'dag': 'child-dag' }, { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null }, {
         'container': 'cpu',
+        'gather': { 'strategy': 'discard' },
       })
       .build();
 
@@ -38,7 +39,9 @@ void describe('Builder container key', () => {
 
   void it('scatter without container option has no container property', () => {
     const dag = new DAGBuilder('scatter-nc', '1')
-      .scatter('fan-out', 'items', noop, { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null })
+      .scatter('fan-out', 'items', noop, { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null }, {
+        'gather': { 'strategy': 'discard' },
+      })
       .build();
 
     const placement = dag.nodes[0];

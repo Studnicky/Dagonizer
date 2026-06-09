@@ -1,7 +1,6 @@
 import type { NodeInterface } from '../contracts/NodeInterface.js';
 import type { DAG } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { PhaseNodePlacementInterface } from '../entities/dag/PhaseNode.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
@@ -9,7 +8,7 @@ import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNod
 import { DAGError, ValidationError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-type DAGNodeType = EmbeddedDAGNode | ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
+type DAGNodeType = EmbeddedDAGNode | ScatterNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
 type DAGNodeAtType = DAGNodeType['@type'];
 
 export class DAGValidator {
@@ -59,7 +58,6 @@ export class DAGValidator {
     const validators: Readonly<Record<DAGNodeAtType, () => void>> = {
       'EmbeddedDAGNode': () => DAGValidator.validateEmbeddedDAGNode(entry as EmbeddedDAGNode, dags, nodeNames, errors),
       'ScatterNode':     () => DAGValidator.validateScatterNode(entry as ScatterNode, nodes, dags, nodeNames, errors),
-      'ParallelNode':    () => DAGValidator.validateParallelNode(entry as ParallelNode, nodeNames, errors),
       'SingleNode':      () => DAGValidator.validateSingleNode(entry as SingleNodePlacementInterface, nodes, nodeNames, errors),
       'TerminalNode':    () => { /* TerminalNode has no outputs to validate; schema pass is sufficient */ },
       'PhaseNode':       () => DAGValidator.validatePhaseNode(entry as PhaseNodePlacementInterface, nodes, errors),
@@ -99,24 +97,6 @@ export class DAGValidator {
     for (const [output, target] of Object.entries(nodeConfig.outputs)) {
       if (target !== null && !nodeNames.has(target)) {
         errors.push(`Node '${nodeConfig.name}': output '${output}' routes to unknown node '${target}'`);
-      }
-    }
-  }
-
-  static validateParallelNode(
-    group: ParallelNode,
-    nodeNames: Set<string>,
-    errors: string[],
-  ): void {
-    for (const nodeName of group.nodes) {
-      if (!nodeNames.has(nodeName)) {
-        errors.push(`Parallel group '${group.name}' references unknown node: ${nodeName}`);
-      }
-    }
-
-    for (const [output, target] of Object.entries(group.outputs)) {
-      if (target !== null && !nodeNames.has(target)) {
-        errors.push(`Parallel group '${group.name}': output '${output}' routes to unknown node '${target}'`);
       }
     }
   }
@@ -164,22 +144,23 @@ export class DAGValidator {
     }
 
     const gather = scatter.gather;
-    if (gather !== undefined) {
-      if (gather.strategy === 'append' && gather.target === undefined) {
-        errors.push(`ScatterNode '${scatter.name}': 'append' gather strategy requires 'target' path`);
-      }
-      if (gather.strategy === 'partition' && gather.partitions === undefined) {
-        errors.push(`ScatterNode '${scatter.name}': 'partition' gather strategy requires 'partitions' config`);
-      }
-      if (gather.strategy === 'map' && gather.mapping === undefined) {
-        errors.push(`ScatterNode '${scatter.name}': 'map' gather strategy requires 'mapping' config`);
-      }
-      if (gather.strategy === 'custom') {
-        if (gather.customNode === undefined) {
-          errors.push(`ScatterNode '${scatter.name}': 'custom' gather strategy requires 'customNode'`);
-        } else if (!nodes.has(gather.customNode)) {
-          errors.push(`ScatterNode '${scatter.name}': custom gather node '${gather.customNode}' not found`);
-        }
+    if (gather.strategy === 'append' && gather.target === undefined) {
+      errors.push(`ScatterNode '${scatter.name}': 'append' gather strategy requires 'target' path`);
+    }
+    if (gather.strategy === 'collect' && gather.target === undefined) {
+      errors.push(`ScatterNode '${scatter.name}': 'collect' gather strategy requires 'target' path`);
+    }
+    if (gather.strategy === 'partition' && gather.partitions === undefined) {
+      errors.push(`ScatterNode '${scatter.name}': 'partition' gather strategy requires 'partitions' config`);
+    }
+    if (gather.strategy === 'map' && gather.mapping === undefined) {
+      errors.push(`ScatterNode '${scatter.name}': 'map' gather strategy requires 'mapping' config`);
+    }
+    if (gather.strategy === 'custom') {
+      if (gather.customNode === undefined) {
+        errors.push(`ScatterNode '${scatter.name}': 'custom' gather strategy requires 'customNode'`);
+      } else if (!nodes.has(gather.customNode)) {
+        errors.push(`ScatterNode '${scatter.name}': custom gather node '${gather.customNode}' not found`);
       }
     }
 

@@ -93,6 +93,34 @@ class TerminalOutcomeReducer extends OutcomeReducer {
 }
 
 /**
+ * `all-success`: routes `'success'` when every clone output === `'success'`,
+ * otherwise routes `'error'`, evaluated over the scatter clone records.
+ *
+ * Returns `'error'` for an empty record set (no clones → not all success).
+ */
+class AllSuccessOutcomeReducer extends OutcomeReducer {
+  readonly name = 'all-success';
+  reduce(records: ReadonlyArray<OutcomeRecord>): string {
+    if (records.length === 0) return 'error';
+    return records.every((r) => r.output === 'success') ? 'success' : 'error';
+  }
+}
+
+/**
+ * `any-success`: routes `'success'` when at least one clone output === `'success'`,
+ * otherwise routes `'error'`, evaluated over the scatter clone records.
+ *
+ * Returns `'error'` for an empty record set (no clones → none succeeded).
+ */
+class AnySuccessOutcomeReducer extends OutcomeReducer {
+  readonly name = 'any-success';
+  reduce(records: ReadonlyArray<OutcomeRecord>): string {
+    if (records.length === 0) return 'error';
+    return records.some((r) => r.output === 'success') ? 'success' : 'error';
+  }
+}
+
+/**
  * Static registry of `OutcomeReducer` instances. Defaults register at
  * module load. Consumers add more via `OutcomeReducers.register`.
  */
@@ -100,8 +128,10 @@ export class OutcomeReducers {
   private constructor() { /* static class */ }
 
   private static readonly registry = new Map<string, OutcomeReducer>([
-    ['aggregate', new AggregateOutcomeReducer()],
-    ['terminal', new TerminalOutcomeReducer()],
+    ['aggregate',   new AggregateOutcomeReducer()],
+    ['all-success', new AllSuccessOutcomeReducer()],
+    ['any-success', new AnySuccessOutcomeReducer()],
+    ['terminal',    new TerminalOutcomeReducer()],
   ]);
 
   /**

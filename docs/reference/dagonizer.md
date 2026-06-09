@@ -8,7 +8,7 @@ seeAlso:
     description: '`NodeInterface`, `ExecuteOptionsInterface`'
   - text: 'Reference: Core'
     link: './core'
-    description: '`ParallelCombiners`, `GatherStrategies`, `OutcomeReducers`'
+    description: '`GatherStrategies`, `OutcomeReducers`'
   - text: 'Reference: Lifecycle'
     link: './lifecycle'
 ---

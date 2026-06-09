@@ -23,7 +23,7 @@ import { DAGSchema } from '@noocodex/dagonizer/entities';
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/DAG`
 
-Top-level DAG declaration in JSON-LD 1.1 canonical form. Required properties: `@context`, `@id`, `@type: 'DAG'`, `name`, `version`, `entrypoint`, `nodes`. Each entry in `nodes` is validated against a `oneOf` covering every placement kind (`SingleNode`, `ParallelNode`, `ScatterNode`, `EmbeddedDAGNode`, `TerminalNode`, `PhaseNode`).
+Top-level DAG declaration in JSON-LD 1.1 canonical form. Required properties: `@context`, `@id`, `@type: 'DAG'`, `name`, `version`, `entrypoint`, `nodes`. Each entry in `nodes` is validated against a `oneOf` covering every placement kind (`SingleNode`, `ScatterNode`, `EmbeddedDAGNode`, `TerminalNode`, `PhaseNode`).
 
 ```ts
 import type { DAG } from '@noocodex/dagonizer/entities';
@@ -46,24 +46,11 @@ import type { SingleNode } from '@noocodex/dagonizer/entities';
 
 ---
 
-## `ParallelNodeSchema`
-
-`$id`: `https://noocodex.dev/schemas/dagonizer/ParallelNode`
-
-Concurrent node group. Required: `@id`, `@type: 'ParallelNode'`, `name`, `nodes` (non-empty array of node names), `combine` (enum: `all-success` | `any-success` | `collect`), `outputs`.
-
-```ts
-import { ParallelNodeSchema } from '@noocodex/dagonizer/entities';
-import type { ParallelNode } from '@noocodex/dagonizer/entities';
-```
-
----
-
 ## `ScatterNodeSchema`
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/ScatterNode`
 
-Scatter placement: fork a source array (one clone per item), run a body (node or sub-DAG) in each clone, gather produced clone state back into the parent, and route on the aggregate outcome. Required: `@id`, `@type: 'ScatterNode'`, `name`, `body`, `source`, `outputs`. Optional: `itemKey` (default `currentItem`), `concurrency`, `stateMapping.input`, `gather`, `reducer`.
+Scatter placement: fork a source array (one clone per item), run a body (node or sub-DAG) in each clone, fold clone state back through a required `gather`, and route on the aggregate outcome. Required: `@id`, `@type: 'ScatterNode'`, `name`, `body`, `source`, `gather`, `outputs`. Optional: `itemKey` (default `currentItem`), `concurrency`, `stateMapping.input`, `reducer`.
 
 ```ts
 import { ScatterNodeSchema } from '@noocodex/dagonizer/entities';
@@ -97,13 +84,15 @@ Use `EmbeddedDAGNode` for a single nested-DAG invocation (cardinality 1). For a 
 
 `$id`: `https://noocodex.dev/schemas/dagonizer/GatherConfig`
 
-Gather strategy configuration for scatter nodes. Required: `strategy` (enum: `map` | `append` | `partition` | `custom`). Strategy-specific fields:
+Gather strategy configuration for scatter nodes. Required: `strategy` (open `string`; built-in values: `map`, `append`, `partition`, `custom`, `collect`, `discard`; custom strategies registered via `GatherStrategies.register` are also referenceable). Strategy-specific fields:
 
 | Strategy | Key fields |
 |----------|-----------|
 | `map` | `mapping: Record<clonePath, parentPath>` |
 | `append` | `target: string` (parent array path); optional `field` (clone path; omit ⇒ source item) |
 | `partition` | `partitions: Record<outputToken, parentPath>`; optional `field` |
+| `collect` | `target: string` (parent array path); optional `field` |
+| `discard` | (none) — no-op; use for side-effect-only fan-outs |
 | `custom` | `customNode: string` (registered node name) |
 
 ```ts
@@ -215,12 +204,11 @@ Constants are exported with paired value and type so the JSON literal can be use
 
 | Constant | Members |
 |---|---|
-| `GatherStrategyName` | `'map'`, `'append'`, `'partition'`, `'custom'` |
+| `GatherStrategyName` | `'map'`, `'append'`, `'partition'`, `'custom'`, `'collect'`, `'discard'` |
 | `ScatterOutput` | `'all-success'`, `'partial'`, `'all-error'`, `'empty'` |
-| `MetadataKey` | `'currentItem'`, `'gatherResults'`, `'itemIndex'`, `'parallelOutputs'` |
+| `MetadataKey` | `'currentItem'`, `'gatherResults'`, `'itemIndex'` |
 | `Output` | Reserved canonical output names |
-| `ParallelCombine` | `'all-success'`, `'any-success'`, `'collect'` |
-| `NodeType` | `'embedded'`, `'parallel'`, `'scatter'`, `'single'` |
+| `NodeType` | `'embedded'`, `'scatter'`, `'single'` |
 | `BackoffStrategy` | `'constant'`, `'linear'`, `'exponential'`, `'decorrelated-jitter'` |
 
 Each constant has a matching `*Schema` JSON Schema for `oneOf`-style validation. See [Reference: Runtime](./runtime#const-backoffstrategy) for `BackoffStrategy` usage details.

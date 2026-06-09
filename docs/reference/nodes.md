@@ -8,7 +8,7 @@ seeAlso:
     description: '`NodeInterface`, the contract a placement references'
   - text: 'Reference: Core'
     link: './core'
-    description: '`ParallelCombiner`, `GatherStrategy`, `OutcomeReducer`'
+    description: '`GatherStrategy`, `OutcomeReducer`'
 ---
 
 # Nodes
@@ -20,8 +20,7 @@ A registered `NodeInterface` (the consumer-implemented unit of work) is referenc
 | Placement `@type` | Schema | TS type | Purpose |
 |---|---|---|---|
 | `SingleNode` | `SingleNodeSchema` | `SingleNode`, `SingleNodePlacementInterface<TOutput>` | Run one registered node; route per output |
-| `ParallelNode` | `ParallelNodeSchema` | `ParallelNode` | Run a group of single-node placements concurrently; combine outputs |
-| `ScatterNode` | `ScatterNodeSchema` | `ScatterNode` | Isolate one clone per source-array item, run a node body, gather produced state, route on aggregate outcome |
+| `ScatterNode` | `ScatterNodeSchema` | `ScatterNode` | Isolate one clone per source-array item, run a body, fold clone state back through a required `gather`, route on aggregate outcome |
 | `EmbeddedDAGNode` | `EmbeddedDAGNodeSchema` | `EmbeddedDAGNode` | Invoke a registered sub-DAG exactly once (cardinality 1); route on the child's terminal outcome |
 | `TerminalNode` | `TerminalNodeSchema` | `TerminalNode`, `TerminalNodePlacementInterface` | End the flow with an explicit `outcome` |
 | `PhaseNode` | `PhaseNodeSchema` | `PhaseNode`, `PhaseNodePlacementInterface` | Pre/post lifecycle hook running outside the main loop |
@@ -59,37 +58,6 @@ import type { SingleNode, SingleNodePlacementInterface } from '@noocodex/dagoniz
 
 ---
 
-## `ParallelNode`
-
-```ts
-import { ParallelNodeSchema } from '@noocodex/dagonizer/entities';
-import type { ParallelNode } from '@noocodex/dagonizer/entities';
-```
-
-```json
-{
-  "@id":     "urn:noocodex:dag:my-dag/node/probe-group",
-  "@type":   "ParallelNode",
-  "name":    "probe-group",
-  "nodes":   ["probe-a", "probe-b"],
-  "combine": "all-success",
-  "outputs": { "success": "merge", "error": null }
-}
-```
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `@id` | `string` | yes | Placement URN |
-| `@type` | `'ParallelNode'` | yes | Discriminator |
-| `name` | `string` | yes | Placement name |
-| `nodes` | `readonly string[]` | yes | Non-empty list of `SingleNode` placement names within the same DAG |
-| `combine` | `'all-success' \| 'any-success' \| 'collect'` | yes | Built-in combiner, or any name registered via `ParallelCombiners.register` |
-| `outputs` | `Record<string, string \| null>` | yes | Routes for the combined output |
-
-The group runs every member via `Promise.all`. The dispatcher resolves the combiner by `ParallelCombiners.resolve(combine)` and yields a group result after the intermediates.
-
----
-
 ## `ScatterNode`
 
 ```ts
@@ -124,8 +92,8 @@ Generate-collect pattern (one clone per source-array item):
 | `itemKey` | `string` | no | Metadata key bound to the current item per clone (default `'currentItem'`). |
 | `concurrency` | `number` | no | Batch size for `Promise.all` (default: source length). |
 | `stateMapping` | `{ input?: Record<childKey, parentPath> }` | no | Seeds each clone: `input` copies parent fields into the clone before the body runs. Authored via the `inputs` builder option. |
-| `gather` | `GatherConfig` | no | How produced clone state merges back into the parent. |
-| `reducer` | `string` | no | Outcome reducer name. Defaults to `'aggregate'`. |
+| `gather` | `GatherConfig` | **yes** | How produced clone state merges back into the parent. Use `{ strategy: 'discard' }` for side-effect-only fan-outs. |
+| `reducer` | `string` | no | Outcome reducer name. Defaults to `'aggregate'`. Built-in: `'aggregate'`, `'terminal'`, `'all-success'`, `'any-success'`. Custom reducers registered via `OutcomeReducers.register` are referenceable by name. |
 
 `GatherConfig` is documented under [Gather configuration](#gather-configuration) below.
 
@@ -234,10 +202,10 @@ import type { GatherConfig } from '@noocodex/dagonizer/entities';
 
 ```ts
 interface GatherConfig {
-  strategy: 'map' | 'append' | 'partition' | 'custom';
+  strategy: string;  // open: any name registered via GatherStrategies.register
   mapping?:    Record<string, string>;   // map: clone path → parent path
-  field?:      string;                   // append/partition: clone field to read (omit ⇒ source item)
-  target?:     string;                   // append: parent array path
+  field?:      string;                   // append/partition/collect: clone field to read (omit ⇒ source item)
+  target?:     string;                   // append/collect: parent array path
   partitions?: Record<string, string>;   // partition: output token → parent array path
   customNode?: string;                   // custom: registered node name
 }
@@ -248,9 +216,11 @@ interface GatherConfig {
 | `map` | `mapping` (clone path → parent path) | One clone ⇒ scalar set; N clones ⇒ index-ordered array append. This is the generate-collect pattern. |
 | `append` | `target` (dotted path), optional `field` | Flatten the clone `field` (or source item) across all clones into `target`. |
 | `partition` | `partitions: Record<output, path>`, optional `field` | Bucket clones by their output token; write each group to its dedicated path. |
+| `collect` | `target` (dotted path), optional `field` | Collect each clone's output token (or `field` value) into `target` in source-index order. |
+| `discard` | (none) | No-op. No clone state flows back to the parent. Use for side-effect-only fan-outs. |
 | `custom` | `customNode` (registered name) | Stage per-clone records under `state.metadata.gatherResults` and dispatch the named node. |
 
-Strategies are pluggable: register a new one with `GatherStrategies.register(strategy)`. See [Reference: Core](./core).
+Strategies are pluggable: register a new one with `GatherStrategies.register(strategy)`. Unknown strategy names are caught at runtime by `GatherStrategies.resolve`. See [Reference: Core](./core).
 
 ---
 

@@ -50,7 +50,6 @@ Render a `DAG` as Mermaid `flowchart` source. The output is a complete Mermaid b
 | `single`  | rectangle     | `greet[greet]` |
 | `scatter` | trapezoid     | `scout[/scout/]` |
 | `embedded-dag` | subroutine | `invoke[[invoke]]` |
-| `parallel`| subgraph      | `subgraph group["group (parallel)"]` … `end` |
 | `terminal` (completed) | double-circle | `done(((done\n(completed))))` |
 | `terminal` (failed) | asymmetric flag | `fail>fail\n(failed)]` |
 
@@ -99,7 +98,7 @@ class JsonLdRenderer {
 
 Renders a `DAG` as a JSON-LD document with a `@context` and a `@graph` containing the DAG root plus every placement, all typed against the Dagonizer vocabulary (`DAGONIZER_VOCAB`). The output is a plain object; serialize with `JSON.stringify`.
 
-Each placement's `@type` is prefixed with `dag:`: `dag:SingleNode`, `dag:ParallelNode`, `dag:ScatterNode`, `dag:EmbeddedDAGNode`, `dag:TerminalNode`.
+Each placement's `@type` is prefixed with `dag:`: `dag:SingleNode`, `dag:ScatterNode`, `dag:EmbeddedDAGNode`, `dag:TerminalNode`.
 
 ```ts
 <<< @/../examples/the-archivist/viz/render-jsonld.ts#jsonld-render

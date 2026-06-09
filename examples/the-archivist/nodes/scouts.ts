@@ -1,7 +1,7 @@
 /**
  * scouts: data-acquisition nodes for the Archivist's multi-source scatter.
  *
- * Three scouts, each wrapping one external tool:
+ * Four scouts, each wrapping one external tool:
  *
  *   openLibraryScout:  OpenLibrary `web_search_books` call; LLM-gated
  *                       via `state.toolPlan` (tool name: web_search_books).
@@ -12,6 +12,18 @@
  *   wikipediaScout:    Wikipedia `page/summary` enrichment; runs even
  *                       without a toolPlan entry, using `state.terms` as the
  *                       query, unless terms is empty.
+ *
+ * Scatter dispatch:
+ *   `scoutDispatch` is the single scatter body node. The DAG seeds
+ *   `state.scoutProviders = ['openlibrary','googlebooks','subject','wikipedia']`
+ *   as the scatter source. Each clone receives one descriptor under the
+ *   `currentItem` metadata key; `scoutDispatch` reads it and calls the
+ *   matching scout logic. Concurrency 4 runs all four in parallel exactly
+ *   as the old ParallelNode did.
+ *
+ *   `ScoutGatherStrategy` ('scout-merge') flat-merges each clone's
+ *   `candidates` array and concatenates `failureCause` strings into the
+ *   parent state after all four clones complete.
  *
  * All four are non-deterministic (network + possible model-supplied args).
  * Each appends to `state.candidates` so the downstream merge step can
@@ -35,7 +47,16 @@ import type { Candidate } from '../entities/Book.ts';
 import { UserLanguage } from '../language/UserLanguage.ts';
 import type { ArchivistServices } from '../services.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import {
+  GatherStrategies,
+  GatherStrategy,
+} from '@noocodex/dagonizer';
+import type {
+  GatherConfig,
+  GatherExecution,
+  NodeInterface,
+  NodeStateInterface,
+} from '@noocodex/dagonizer';
 
 /**
  * Filter scout-returned candidates down to those in the visitor's
@@ -363,3 +384,76 @@ export const wikipediaScout: NodeInterface<ArchivistState, 'success' | 'empty', 
     }
   },
 };
+
+// #region scout-dispatch
+// ── Scout dispatch: single scatter body ─────────────────────────────────────
+// Reads the provider descriptor from the `currentItem` metadata key (written
+// by the scatter engine per clone) and dispatches to the matching scout logic.
+// This is the heterogeneous-fan-out-as-data pattern: the four providers become
+// a source array on state; the body branches on the item value. The four
+// individual scout implementations above remain the underlying logic.
+
+/** Provider descriptor type used as scatter source items. */
+export type ScoutProvider = 'openlibrary' | 'googlebooks' | 'subject' | 'wikipedia';
+
+export const scoutDispatch: NodeInterface<ArchivistState, 'success' | 'empty', ArchivistServices> = {
+  "name":    'scout-dispatch',
+  "outputs": ['success', 'empty'],
+  async execute(state, context) {
+    const provider = state.getMetadata<ScoutProvider>('currentItem');
+    switch (provider) {
+      case 'openlibrary': return openLibraryScout.execute(state, context);
+      case 'googlebooks': return googleBooksScout.execute(state, context);
+      case 'subject':     return subjectScout.execute(state, context);
+      case 'wikipedia':   return wikipediaScout.execute(state, context);
+      default:
+        context.services.logger.warn(`scout-dispatch: unknown provider '${String(provider)}'`);
+        return { "output": 'empty' };
+    }
+  },
+};
+// #endregion scout-dispatch
+
+// #region scout-gather-strategy
+// ── ScoutGatherStrategy ('scout-merge') ─────────────────────────────────────
+// Flat-merges each clone's `candidates` array and concatenates `failureCause`
+// strings into the parent state after all four scatter clones complete.
+//
+// This reproduces the shared-state accumulation that the old ParallelNode
+// provided: all four scouts wrote to the same `state.candidates` and
+// `state.failureCause` because they ran with a shared, concurrently-mutated
+// state object. Scatter clones are isolated; this strategy performs the
+// equivalent merge at gather time, with defined ordering (source-index order).
+
+class ScoutGatherStrategy extends GatherStrategy {
+  readonly name = 'scout-merge';
+
+  async apply<TState extends NodeStateInterface>(
+    _config: GatherConfig,
+    execution: GatherExecution<TState>,
+  ): Promise<void> {
+    const parentState = execution.state as unknown as ArchivistState;
+    const merged: Candidate[] = [...parentState.candidates];
+    let failureText = parentState.failureCause;
+
+    for (const record of execution.records) {
+      const cloneState = record.cloneState as unknown as ArchivistState;
+      // Flat-merge the clone's candidates into parent (order is source-index order
+      // because GatherExecution.records is guaranteed source-index ordered).
+      for (const candidate of cloneState.candidates) {
+        merged.push(candidate);
+      }
+      // Concatenate failure text (empty when the scout succeeded).
+      if (cloneState.failureCause.length > 0) {
+        failureText += cloneState.failureCause;
+      }
+    }
+
+    parentState.candidates = merged;
+    parentState.failureCause = failureText;
+  }
+}
+
+GatherStrategies.register(new ScoutGatherStrategy());
+// GatherStrategies.resolve('scout-merge') now works in any scatter placement.
+// #endregion scout-gather-strategy

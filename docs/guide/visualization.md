@@ -55,7 +55,6 @@ Three renderers ship in `@noocodex/dagonizer/viz`. Each consumes a `DAG` and emi
 | `single`  | rectangle     | `greet[greet]` |
 | `scatter` | trapezoid     | `scout[/scout/]` |
 | `embedded-dag` | subroutine | `invoke[[invoke]]` |
-| `parallel`| subgraph      | `subgraph group["group (parallel)"]` ... `end` |
 | `terminal` (completed) | double-circle | `done(((done\n(completed))))` |
 | `terminal` (failed) | asymmetric flag | `abort>abort\n(failed)]` |
 
@@ -98,7 +97,6 @@ Every node element carries a `data.type` field for stylesheet selectors.
 | `'single'` | `SingleNode` placement | `data.node` |
 | `'scatter'` | `ScatterNode` placement | `data.body`, `data.source`, `data.gather`, etc. |
 | `'embedded-dag'` | `EmbeddedDAGNode` placement | `data.dag`, `data.stateMapping` |
-| `'parallel'` | `ParallelNode` placement | `data.combine`, `data.children` |
 | `'terminal'` | `TerminalNode` placement | `data.outcome: 'completed' \| 'failed'` |
 | `'terminal'` | synthetic `END` node | `data.synthetic: true` |
 

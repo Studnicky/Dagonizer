@@ -21,8 +21,6 @@
  * `data.synthetic === true`.
  *
  * Compound rendering:
- *   • Parallel children render with `parent: <parallel placement name>`
- *     so cytoscape draws them inside the parallel placement's box.
  *   • Embedded-DAG placements, when their target DAG is supplied via the
  *     `embeddedDAGs` registry, expand RECURSIVELY: every inner node renders
  *     with the placement as `parent`, so the user sees the actual flow
@@ -54,7 +52,7 @@ export interface CytoscapeNodeElement {
     readonly id: string;
     readonly label: string;
     /** Placement kind; selector use: `node[type="scatter"]`. */
-    readonly type: 'single' | 'parallel' | 'scatter' | 'embedded-dag' | 'terminal' | 'phase';
+    readonly type: 'single' | 'scatter' | 'embedded-dag' | 'terminal' | 'phase';
     /** Free-form metadata consumers can read in stylesheets. */
     readonly [key: string]: unknown;
   };
@@ -133,9 +131,8 @@ export class CytoscapeRenderer {
   }
 
   /** Mapping from JSON-LD placement-discriminator to Cytoscape `data.type` value. */
-  private static readonly PLACEMENT_KIND: Readonly<Record<string, 'single' | 'parallel' | 'scatter' | 'embedded-dag' | 'terminal' | 'phase'>> = {
+  private static readonly PLACEMENT_KIND: Readonly<Record<string, 'single' | 'scatter' | 'embedded-dag' | 'terminal' | 'phase'>> = {
     'SingleNode':       'single',
-    'ParallelNode':     'parallel',
     'ScatterNode':      'scatter',
     'EmbeddedDAGNode':  'embedded-dag',
     'TerminalNode':     'terminal',
@@ -177,8 +174,6 @@ export class CytoscapeRenderer {
     switch (placement['@type']) {
       case 'SingleNode':
         return { ...base, "data": { ...base.data, "node": placement.node } };
-      case 'ParallelNode':
-        return { ...base, "data": { ...base.data, "combine": placement.combine, "children": [...placement.nodes] } };
       case 'ScatterNode': {
         const bodyRef = 'node' in placement.body ? placement.body.node : placement.body.dag;
         return {
@@ -255,14 +250,6 @@ export class CytoscapeRenderer {
     depth: number,
     visited: ReadonlySet<string>,
   ): void {
-    // Build child→parent map for parallel placements at this level.
-    const childToParent = new Map<string, string>();
-    for (const placement of dag.nodes as readonly PlacementEntry[]) {
-      if (placement['@type'] === 'ParallelNode') {
-        for (const child of placement.nodes) childToParent.set(child, placement.name);
-      }
-    }
-
     // Build an embedded-DAG entrypoint-rewrite map for THIS level: when an
     // edge at this level targets an embedded-DAG placement that will be
     // expanded (its body is registered), rewrite the target to the
@@ -289,10 +276,7 @@ export class CytoscapeRenderer {
 
     for (const placement of dag.nodes as readonly PlacementEntry[]) {
       const myId = PlacementUtils.idIn(prefix, placement.name);
-      const parallelParent = childToParent.get(placement.name);
-      const myCompoundParent = parallelParent !== undefined
-        ? PlacementUtils.idIn(prefix, parallelParent)
-        : compoundParent;
+      const myCompoundParent = compoundParent;
 
       // ── EmbeddedDAGNode / ScatterNode with body.dag: if the target DAG is
       //    registered, expand inline as a compound parent containing the
@@ -367,9 +351,6 @@ export class CytoscapeRenderer {
 
       for (const edge of CytoscapeRenderer.placementEdges(placement, myId, prefix)) {
         const endId = PlacementUtils.idIn(prefix, CytoscapeRenderer.END_ID);
-        // Suppress synthetic-END routes for children inside a parallel;
-        // the parent placement's own edges carry the collected result.
-        if (parallelParent !== undefined && edge.data.target === endId) continue;
         // Inside an expanded embedded-DAG (prefix non-empty), `null` targets
         // refer to the embedded-DAG's terminus, not the parent's END. The
         // compound parent's own placementEdges carry the real external
@@ -426,21 +407,9 @@ export class CytoscapeRenderer {
     body: DAG,
     innerPrefix: string,
   ): { readonly completed: readonly string[]; readonly failed: readonly string[] } {
-    // Children of a parallel placement use `null` routes to signal
-    // "collected back to the parallel parent"; they are NOT exit
-    // leaves of the embedded-DAG. Build a set of parallel-children
-    // names so we can skip them.
-    const parallelChildren = new Set<string>();
-    for (const placement of body.nodes as readonly PlacementEntry[]) {
-      if (placement['@type'] === 'ParallelNode') {
-        for (const child of placement.nodes) parallelChildren.add(child);
-      }
-    }
-
     const completed: string[] = [];
     const failed: string[] = [];
     for (const placement of body.nodes as readonly PlacementEntry[]) {
-      if (parallelChildren.has(placement.name)) continue;
       const placementId = PlacementUtils.idIn(innerPrefix, placement.name);
       if (placement['@type'] === 'TerminalNode') {
         if (placement.outcome === 'failed') failed.push(placementId);

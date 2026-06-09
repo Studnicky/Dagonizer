@@ -108,37 +108,4 @@ void describe('CompositeLayout.compute', () => {
     assert.ok(posExit.y   < posAfter.y, `exit-node.y < after.y`);
   });
 
-  void it('parallel placement: all 3 children share the same y, distributed horizontally', async () => {
-    const dag: DAG = makeDAG('par', 'par-group', [
-      {
-        '@id':     'urn:noocodex:dag:par/node/par-group',
-        '@type':   'ParallelNode',
-        'name':    'par-group',
-        'nodes':   ['alpha', 'beta', 'gamma'],
-        'combine': 'collect',
-        'outputs': { "success": null },
-      },
-    ]);
-
-    const { positions } = await CompositeLayout.compute(dag);
-
-    const posAlpha = positions.get('alpha');
-    const posBeta  = positions.get('beta');
-    const posGamma = positions.get('gamma');
-    const posGroup = positions.get('par-group');
-
-    assert.ok(posAlpha !== undefined, 'alpha must have a position');
-    assert.ok(posBeta  !== undefined, 'beta must have a position');
-    assert.ok(posGamma !== undefined, 'gamma must have a position');
-    assert.ok(posGroup !== undefined, 'par-group must have a position');
-
-    // All three parallel children must share the same y (single horizontal rank).
-    assert.equal(posAlpha.y, posBeta.y,  `alpha.y (${posAlpha.y}) === beta.y (${posBeta.y})`);
-    assert.equal(posBeta.y,  posGamma.y, `beta.y (${posBeta.y}) === gamma.y (${posGamma.y})`);
-
-    // They must be distributed horizontally (distinct x values).
-    assert.notEqual(posAlpha.x, posBeta.x,  'alpha and beta must have different x');
-    assert.notEqual(posBeta.x,  posGamma.x, 'beta and gamma must have different x');
-    assert.notEqual(posAlpha.x, posGamma.x, 'alpha and gamma must have different x');
-  });
 });

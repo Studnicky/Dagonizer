@@ -154,6 +154,14 @@ export class ArchivistState extends NodeStateBase {
    */
   priorCandidates: readonly Candidate[] = [];
   /**
+   * Fixed provider descriptor array seeded once at state construction.
+   * Each scatter fan-out (book-search, reviews, describe) reads this as
+   * its source so the dispatching scout body knows which provider to invoke.
+   * Immutable across all runs; never written by nodes.
+   */
+  readonly scoutProviders: readonly string[] = ['openlibrary', 'googlebooks', 'subject', 'wikipedia'];
+
+  /**
    * Memory roll-up produced by `recallMemories` for the `recall-memories`
    * intent. Empty/zero-valued when the intent is not `recall-memories`.
    */
@@ -168,6 +176,7 @@ export class ArchivistState extends NodeStateBase {
   // #region clone
   override clone(): ArchivistState {
     const copy = new ArchivistState();
+    // scoutProviders is readonly and always the default value — no clone needed.
     copy.query        = this.query;
     copy.userLanguage = this.userLanguage;
     copy.intent       = this.intent;

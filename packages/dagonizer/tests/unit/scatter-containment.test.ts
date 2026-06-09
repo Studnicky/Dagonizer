@@ -125,6 +125,7 @@ const runnerDag: DAG = {
       'source': 'items',
       'itemKey': 'item',
       'concurrency': 1,
+      'gather': { 'strategy': 'discard' },
       'container': CONTAINER_ROLE,
       'outputs': {
         'all-success': null,
@@ -153,6 +154,7 @@ const inProcessRunnerDag: DAG = {
       'source': 'items',
       'itemKey': 'item',
       'concurrency': 1,
+      'gather': { 'strategy': 'discard' },
       'outputs': {
         'all-success': null,
         'partial': null,
@@ -180,6 +182,7 @@ const nodeBodyRunnerDag: DAG = {
       'source': 'items',
       'itemKey': 'item',
       'concurrency': 1,
+      'gather': { 'strategy': 'discard' },
       'outputs': {
         'all-success': null,
         'partial': null,

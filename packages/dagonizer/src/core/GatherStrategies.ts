@@ -263,6 +263,77 @@ class CustomGatherStrategy extends GatherStrategy {
 }
 
 /**
+ * `discard`: no-op merge. Clones run for side-effects; nothing is folded
+ * back into the parent state. Use this when a scatter body is purely
+ * effectful and no clone state should flow to the parent.
+ *
+ * `gather` is required on every `ScatterNode`. Declare `{ strategy: 'discard' }`
+ * to make the no-merge intent explicit.
+ */
+class DiscardGatherStrategy extends GatherStrategy {
+  readonly name = 'discard';
+
+  // applyIncremental is a no-op: never accumulates any state.
+  override applyIncremental(): void {
+    // Intentional no-op: discard strategy folds nothing.
+  }
+
+  async apply(): Promise<void> {
+    // Intentional no-op: discard strategy folds nothing.
+  }
+}
+
+/**
+ * `collect`: collect each clone's output token (and/or its `field` value)
+ * into a target collection on the parent in source-index order. Mirrors the
+ * `CollectCombiner` intent for scatter: produces a per-clone result array
+ * keyed by source index.
+ *
+ * Config fields:
+ *   `target` (required): parent state path to write the collected array.
+ *   `field`  (optional): clone state path to read the per-clone value. When
+ *            absent the clone's output token is collected instead.
+ *
+ * The collected array is appended to the existing value at `target`
+ * (consistent with `append`/`map` semantics), preserving source-index order.
+ */
+class CollectGatherStrategy extends GatherStrategy {
+  readonly name = 'collect';
+
+  override applyIncremental(
+    config: GatherConfig,
+    record: GatherRecord<NodeStateInterface>,
+    state: NodeStateInterface,
+    accessor: StateAccessor,
+  ): void {
+    if (config.target === undefined) return;
+    const value = config.field !== undefined
+      ? accessor.get(record.cloneState, config.field)
+      : record.output;
+    const existing = (accessor.get(state, config.target) as unknown[] | undefined) ?? [];
+    accessor.set(state, config.target, [...existing, value]);
+  }
+
+  async apply<TState extends NodeStateInterface>(
+    config: GatherConfig,
+    execution: GatherExecution<TState>,
+  ): Promise<void> {
+    if (config.target === undefined) {
+      throw new DAGError('Gather collect strategy requires target path');
+    }
+    const target = config.target;
+    // records are already source-index ordered (see GatherExecution.records).
+    const values = execution.records.map((r) =>
+      config.field !== undefined
+        ? execution.accessor.get(r.cloneState, config.field)
+        : r.output,
+    );
+    const existing = (execution.accessor.get(execution.state, target) as unknown[] | undefined) ?? [];
+    execution.accessor.set(execution.state, target, [...existing, ...values]);
+  }
+}
+
+/**
  * Static registry of `GatherStrategy` instances. Defaults register at
  * module load. Consumers add more via `GatherStrategies.register`.
  */
@@ -270,10 +341,12 @@ export class GatherStrategies {
   private constructor() { /* static class */ }
 
   private static readonly registry = new Map<string, GatherStrategy>([
-    ['map', new MapGatherStrategy()],
     ['append', new AppendGatherStrategy()],
-    ['partition', new PartitionGatherStrategy()],
+    ['collect', new CollectGatherStrategy()],
     ['custom', new CustomGatherStrategy()],
+    ['discard', new DiscardGatherStrategy()],
+    ['map', new MapGatherStrategy()],
+    ['partition', new PartitionGatherStrategy()],
   ]);
 
   /**

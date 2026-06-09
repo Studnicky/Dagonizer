@@ -15,7 +15,6 @@ import {
   MetadataKey,
   NodeType,
   Output,
-  ParallelCombine,
   ScatterOutput,
 } from '@noocodex/dagonizer/constants';
 
@@ -38,22 +37,24 @@ function isParallelPlacement(type: NodeType): boolean {
 function isKnownGatherStrategy(name: string): name is GatherStrategyName {
   const known: readonly string[] = [
     GatherStrategyName.APPEND,
+    GatherStrategyName.COLLECT,
     GatherStrategyName.CUSTOM,
+    GatherStrategyName.DISCARD,
     GatherStrategyName.MAP,
     GatherStrategyName.PARTITION,
   ];
   return known.includes(name);
 }
 
+// Select the gather strategy for a fan-out that collects per-clone output
+// tokens into a target array on the parent state.
+const fanOutGatherStrategy: GatherStrategyName = GatherStrategyName.COLLECT;
+
 // -- MetadataKey -------------------------------------------------------------
 // Read a reserved key off a node's metadata bag.
 function readCurrentItem(metadata: Partial<Record<MetadataKey, unknown>>): unknown {
   return metadata[MetadataKey.CURRENT_ITEM];
 }
-
-// -- ParallelCombine ---------------------------------------------------------
-// Pick a combine strategy name for a parallel placement.
-const combineStrategy: ParallelCombine = ParallelCombine.ALL_SUCCESS;
 
 // -- ScatterOutput -----------------------------------------------------------
 // Branch on scatter aggregate output.
@@ -70,5 +71,5 @@ void describeOutput;
 void isParallelPlacement;
 void isKnownGatherStrategy;
 void readCurrentItem;
-void combineStrategy;
+void fanOutGatherStrategy;
 void interpretScatterOutput;

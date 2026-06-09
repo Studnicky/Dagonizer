@@ -35,7 +35,6 @@ import type { OperationContract } from '../contracts/OperationContract.js';
 import type { DAG } from '../entities/dag/DAG.js';
 import { DAG_CONTEXT } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
@@ -49,7 +48,7 @@ import type {
   DAGDeriverEmbeddedDAG,
 } from './DAGDeriverAnnotations.js';
 
-type DAGNodeEntry = EmbeddedDAGNode | ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface;
+type DAGNodeEntry = EmbeddedDAGNode | ScatterNode | SingleNodePlacementInterface | TerminalNodePlacementInterface;
 
 export interface DAGDeriverOptions {
   readonly name: string;
@@ -183,41 +182,6 @@ export class DAGDeriver {
         throw new DAGError(
           `DAGDeriver: scatters['${opName}'].customNode '${scatter.customNode}' is not in the contract registry`,
         );
-      }
-    }
-
-    // parallels: members must be contracts, no overlapping membership,
-    // can't collide with scatters or embeddedDAGs.
-    const parallelMembership = new Map<string, string>();   // memberName → parallel groupName
-    for (const [groupName, group] of Object.entries(annotations.parallels ?? {})) {
-      if (group.members.length === 0) {
-        throw new DAGError(
-          `DAGDeriver: parallels['${groupName}'] declares zero members; a parallel group requires at least one operation`,
-        );
-      }
-      for (const member of group.members) {
-        if (!contractNames.has(member)) {
-          throw new DAGError(
-            `DAGDeriver: parallels['${groupName}'].members contains '${member}' which is not in the contract registry`,
-          );
-        }
-        const existingGroup = parallelMembership.get(member);
-        if (existingGroup !== undefined) {
-          throw new DAGError(
-            `DAGDeriver: operation '${member}' appears in multiple parallels (${existingGroup}, ${groupName}); membership must be exclusive`,
-          );
-        }
-        parallelMembership.set(member, groupName);
-        if (annotations.scatters?.[member] !== undefined) {
-          throw new DAGError(
-            `DAGDeriver: operation '${member}' appears in both annotations.parallels['${groupName}'] and annotations.scatters; placement kind must be unambiguous`,
-          );
-        }
-        if (annotations.embeddedDAGs?.[member] !== undefined) {
-          throw new DAGError(
-            `DAGDeriver: operation '${member}' appears in both annotations.parallels['${groupName}'] and annotations.embeddedDAGs; placement kind must be unambiguous`,
-          );
-        }
       }
     }
   }
@@ -378,69 +342,12 @@ export class DAGDeriver {
     // Used to detect name collisions with emit terminal names.
     const operationNames = new Set<string>(contracts.keys());
 
-    // Member → group lookup so we render explicit parallels exactly once
-    // (when the first member is encountered in topological order).
-    const memberToParallel = new Map<string, string>();
-    for (const [groupName, group] of Object.entries(annotations.parallels ?? {})) {
-      for (const member of group.members) memberToParallel.set(member, groupName);
-    }
-    const renderedParallels = new Set<string>();
-
-    buckets.forEach((bucket, depth) => {
-      const next = buckets[depth + 1] ?? [];
-
-      // Explicit `parallels` annotation takes precedence over auto-grouping:
-      // when a member is at the current depth and its parallel group hasn't
-      // been rendered yet, emit the ParallelNode with the consumer's
-      // chosen combine strategy.
-      for (const name of bucket) {
-        const groupName = memberToParallel.get(name);
-        if (groupName === undefined || renderedParallels.has(groupName)) continue;
-        const group = annotations.parallels?.[groupName];
-        if (group === undefined) continue;
-        const join = next[0] ?? null;
-        const parallelNode: ParallelNode = {
-          '@id':     nodeId(groupName),
-          '@type':   'ParallelNode',
-          'name':    groupName,
-          'nodes':   [...group.members],
-          'combine': group.combine,
-          'outputs': {
-            'success': join,
-            'error':   join,
-          },
-        };
-        nodes.push(parallelNode);
-        renderedParallels.add(groupName);
-      }
-
-      // Auto-parallel on same-depth ONLY for members not already covered by
-      // an explicit `parallels` group. Auto-grouping uses combine: 'collect'.
-      const autoBucket = bucket.filter((name) => memberToParallel.get(name) === undefined);
-      if (autoBucket.length > 1) {
-        const join = next[0] ?? null;
-        const parallelName = `depth_${depth.toString()}`;
-        const parallelNode: ParallelNode = {
-          '@id':     nodeId(parallelName),
-          '@type':   'ParallelNode',
-          'name':    parallelName,
-          'nodes':   [...autoBucket],
-          'combine': 'collect',
-          'outputs': {
-            'success': join,
-            'error':   join,
-          },
-        };
-        nodes.push(parallelNode);
-      }
-
+    buckets.forEach((bucket) => {
       for (const name of bucket) {
         const scatter = annotations.scatters?.[name];
         const embeddedDAG = annotations.embeddedDAGs?.[name];
         const succs = edges.get(name) ?? new Set<string>();
 
-        // Mutual exclusion across the placement-shape annotations.
-        // (parallels collisions are checked in validateAnnotations.)
         if (scatter !== undefined && embeddedDAG !== undefined) {
           throw new DAGError(
             `DAGDeriver: operation '${name}' appears in both annotations.scatters and annotations.embeddedDAGs; placement kind must be unambiguous`,

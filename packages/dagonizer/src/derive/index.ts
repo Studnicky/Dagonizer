@@ -13,7 +13,6 @@ export type {
   DAGDeriverAnnotations,
   DAGDeriverEmitTerminal,
   DAGDeriverEmbeddedDAG,
-  DAGDeriverParallel,
   DAGDeriverScatter,
   DAGDeriverTerminal,
 } from './DAGDeriverAnnotations.js';

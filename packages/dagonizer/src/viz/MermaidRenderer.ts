@@ -8,7 +8,6 @@
  *   single    → rectangle:       `nodeName[name]`
  *   scatter   → trapezoid:       `nodeName[/name/]`
  *   embedded  → subroutine:      `nodeName[[name]]`
- *   parallel  → subgraph wrapping its child node names
  *   terminal (completed) → double-circle: `nodeName(((name\n(completed))))`
  *   terminal (failed)    → asymmetric flag: `nodeName>name\n(failed)]`
  *
@@ -27,13 +26,12 @@
 
 import type { DAG } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { PhaseNodePlacementInterface } from '../entities/dag/PhaseNode.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 
-type AnyPlacement = EmbeddedDAGNode | ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
+type AnyPlacement = EmbeddedDAGNode | ScatterNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
 
 /**
  * Render a `DAG` as Mermaid `flowchart` source. Output is a complete
@@ -54,15 +52,7 @@ export class MermaidRenderer {
     let touchesTerminal = false;
 
     for (const placement of dag.nodes as readonly AnyPlacement[]) {
-      if (placement['@type'] === 'ParallelNode') {
-        lines.push(`  subgraph ${placement.name}["${MermaidRenderer.escapeLabel(placement.name)} (parallel)"]`);
-        for (const childName of placement.nodes) {
-          lines.push(`    ${childName}[${MermaidRenderer.escapeLabel(childName)}]`);
-        }
-        lines.push('  end');
-      } else {
-        lines.push(`  ${MermaidRenderer.renderShape(placement)}`);
-      }
+      lines.push(`  ${MermaidRenderer.renderShape(placement)}`);
       for (const edge of MermaidRenderer.renderEdges(placement)) {
         if (edge.endsWith(MermaidRenderer.TERMINAL_ID)) touchesTerminal = true;
         lines.push(edge);
@@ -93,9 +83,6 @@ export class MermaidRenderer {
       case 'EmbeddedDAGNode':
         // subroutine shape: a nested sub-DAG invocation
         return `${placement.name}[[${label}]]`;
-      case 'ParallelNode':
-        // parallel placements render as subgraphs, not single shapes
-        return placement.name;
       case 'TerminalNode': {
         const outcomeLabel = MermaidRenderer.escapeLabel(`${placement.name}\\n(${placement.outcome})`);
         if (placement.outcome === 'completed') {

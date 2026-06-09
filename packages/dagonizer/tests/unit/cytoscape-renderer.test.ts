@@ -60,30 +60,6 @@ void describe('CytoscapeRenderer.render', () => {
     assert.equal(fan?.classes, 'dag-scatter');
   });
 
-  void it('parallel placements carry children + combine in data', () => {
-    const dag: DAG = {
-      '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:par',
-      '@type':    'DAG',
-      'name':       'par',
-      'version':    '1',
-      'entrypoint': 'group',
-      'nodes': [{
-        '@id':     'urn:noocodex:dag:par/node/group',
-        '@type':   'ParallelNode',
-        'name':    'group',
-        'nodes':   ['a', 'b'],
-        'combine': 'collect',
-        'outputs': { 'success': null, 'error': null },
-      }],
-    };
-    const elements = CytoscapeRenderer.render(dag, {});
-    const group = elements.find((entry): entry is CytoscapeNodeElement => isNode(entry) && entry.data.id === 'group');
-    assert.equal(group?.data.type, 'parallel');
-    assert.deepEqual(group?.data['children'], ['a', 'b']);
-    assert.equal(group?.data['combine'], 'collect');
-  });
-
   void it('routes targeting named placements produce non-terminal edges', () => {
     const dag: DAG = {
       '@context': DAG_CONTEXT,
@@ -189,6 +165,7 @@ void describe('CytoscapeRenderer.render', () => {
         'name':   'scatter',
         'body':   { 'node': 'worker' },
         'source': 'items',
+        'gather': { 'strategy': 'discard' },
         'outputs': { 'success': null },
       }],
     };

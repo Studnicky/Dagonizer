@@ -61,13 +61,4 @@ void describe('DAGBuilder', () => {
     assert.throws(() => new DAGBuilder('empty', '1').build());
   });
 
-  void it('parallel/scatter/embeddedDAG round-trip into DAG shape', () => {
-    const dag = new DAGBuilder('mix', '1')
-      .node('a', greet, { 'success': 'b' })
-      .node('b', greet, { 'success': 'group' })
-      .parallel('group', ['a', 'b'], 'all-success', { 'success': null })
-      .build();
-    assert.equal(dag.nodes.length, 3);
-    assert.equal(dag.nodes[2]?.['@type'], 'ParallelNode');
-  });
 });

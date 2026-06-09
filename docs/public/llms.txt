@@ -49,11 +49,11 @@ Key features: strict TypeScript (exactOptionalPropertyTypes), JSON-LD canonical 
 
 - [Dagonizer](https://studnicky.github.io/Dagonizer/reference/dagonizer): the main dispatcher class, covering execute, hooks, and extension surface.
 - [Execution](https://studnicky.github.io/Dagonizer/reference/execution): ExecutionResult, ExecuteOptions, and the execute() call contract.
-- [Nodes](https://studnicky.github.io/Dagonizer/reference/nodes): placement types (SingleNode, ParallelNode, ScatterNode, EmbeddedDAGNode).
+- [Nodes](https://studnicky.github.io/Dagonizer/reference/nodes): placement types (SingleNode, ScatterNode, EmbeddedDAGNode, TerminalNode, PhaseNode).
 - [Lifecycle](https://studnicky.github.io/Dagonizer/reference/lifecycle): DAGLifecycleMachine states and transition guards.
 - [Runtime](https://studnicky.github.io/Dagonizer/reference/runtime): Clock, Scheduler, RetryPolicy, RealTimeScheduler, BackoffStrategy.
 - [Contracts](https://studnicky.github.io/Dagonizer/reference/contracts): NodeInterface, ClockProvider, SchedulerProvider, SchedulerHandle.
-- [Core](https://studnicky.github.io/Dagonizer/reference/core): ParallelCombiner, GatherStrategy, GatherStrategies.
+- [Core](https://studnicky.github.io/Dagonizer/reference/core): GatherStrategy, GatherStrategies, OutcomeReducers.
 - [Derive](https://studnicky.github.io/Dagonizer/reference/derive): contract-to-DAG derivation API.
 - [Viz](https://studnicky.github.io/Dagonizer/reference/viz): CytoscapeRenderer and MermaidRenderer APIs.
 - [Validation](https://studnicky.github.io/Dagonizer/reference/validation): Validator and EntityValidator; Ajv compiled once at module load.

@@ -31,7 +31,7 @@ export const ScatterNodeSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/ScatterNode',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['@id', '@type', 'name', 'body', 'source', 'outputs'],
+  'required': ['@id', '@type', 'name', 'body', 'source', 'gather', 'outputs'],
   'properties': {
     '@id':         { 'type': 'string', 'minLength': 1 },
     '@type':       { 'type': 'string', 'const': 'ScatterNode' },

@@ -112,7 +112,7 @@ const dag = new DAGBuilder('pipeline', '1.0')
   });
 ```
 
-Placements added via `.parallel()` or `.scatter()` with a `{ dag }` body do not receive a `NodeInterface` and are not tracked in the impl registry; they are silently skipped during contract validation, preventing false-positive dangling-read errors for node names declared elsewhere.
+Placements added via `.scatter()` with a `{ dag }` body do not receive a `NodeInterface` and are not tracked in the impl registry; they are silently skipped during contract validation, preventing false-positive dangling-read errors for node names declared elsewhere.
 
 The `onContractWarning` hook on `build()` fires at construction time and is local to the builder call. When the resulting DAG is registered with a `Dagonizer` subclass, the dispatcher's `onContractWarning` hook fires again at `registerDAG` time if the nodes carry co-located contracts. See [Contract-derived flows](./derive) and [Reference, contracts](../reference/contracts).
 
@@ -148,26 +148,42 @@ const dag = new DAGBuilder('pipeline', '1.0')
 - Explicit entrypoint overrides
 - Non-contract nodes that still appear in the placement list
 
-## Parallel group
+## Scatter
+
+`.scatter()` places a `ScatterNode` in the parent flow. A scatter isolates a state clone per source item, runs a body (a registered node or a sub-DAG) in the clone, folds clone state back through a required `gather`, and routes on the aggregate outcome via an outcome `reducer`. `source` is a required positional argument.
+
+`gather` is required on every scatter. Use `{ strategy: 'discard' }` to express a side-effect-only fan-out where no clone state flows back to the parent:
 
 ```ts
-const dag = new DAGBuilder('enrich', '1')
-  .node('fetch-a', fetchA, { success: null, error: null })
-  .node('fetch-b', fetchB, { success: null, error: null })
-  .parallel('enrich-both', ['fetch-a', 'fetch-b'], 'all-success', {
-    success: 'save',
-    error:   null,
-  })
-  .node('save', saveNode, { success: null })
-  .entrypoint('enrich-both')
+const dag = new DAGBuilder('notify', '1')
+  .scatter('fan-out', 'targets', notifyNode,
+    { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+    {
+      gather:      { strategy: 'discard' },
+      concurrency: 10,
+    },
+  )
   .build();
 ```
 
-Nodes listed in `parallel()` must already be declared. The builder does not validate this; `registerDAG` does.
+Heterogeneous fan-out — running different logic per item — is expressed by authoring the `source` as a descriptor array and writing a body node that dispatches on `state.metadata.currentItem`:
 
-## Scatter
+```ts
+// state.scoutProviders = ['openlibrary', 'googlebooks', 'wikipedia']
+const dag = new DAGBuilder('search', '1')
+  .scatter('scout', 'scoutProviders', scoutDispatchNode,
+    { 'any-success': 'merge', 'all-error': null, 'empty': null },
+    {
+      gather:      { strategy: 'collect', target: 'scoutResults' },
+      reducer:     'any-success',
+      concurrency: 3,
+    },
+  )
+  .node('merge', mergeNode, { success: null })
+  .build();
+```
 
-`.scatter()` places a `ScatterNode` in the parent flow. A scatter isolates a state clone per source item, runs a body (a registered node) in the clone, and routes on the aggregate outcome. `source` is a required positional argument.
+`scoutDispatchNode` reads `state.metadata.currentItem` and routes to the matching scout logic. Whether bodies are identical or all different is the implementer's choice; the engine is indifferent.
 
 ### Generate-collect pattern
 
@@ -217,8 +233,8 @@ scatter<TState extends NodeStateInterface, TOutput extends string, TServices = u
 | `itemKey?` | `string` | Metadata key the clone reads for the current item. Default `'currentItem'`. |
 | `concurrency?` | `number` | Max clones running concurrently. Default: source length. |
 | `inputs?` | `Partial<Record<string, Path<TState>>>` | Parent → clone field copy before the body runs. Becomes `stateMapping.input` on the entity. Keys are child-state keys; values are parent-state dotted paths. |
-| `gather?` | `GatherConfig` | How produced clone state merges back into the parent. |
-| `reducer?` | `string` | Outcome reducer name. Defaults to `'aggregate'`. |
+| `gather` | `GatherConfig` | **Required.** How produced clone state merges back into the parent. Use `{ strategy: 'discard' }` for side-effect-only fan-outs. |
+| `reducer?` | `string` | Outcome reducer name. Defaults to `'aggregate'`. Built-in reducers: `'aggregate'`, `'terminal'`, `'all-success'`, `'any-success'`. Custom reducers registered via `OutcomeReducers.register` are referenceable by name. |
 
 `Path<T>` enumerates valid dotted-path strings over a state shape recursively:
 
@@ -388,4 +404,4 @@ The returned object is identical to one written by hand. Pass it directly to `di
 
 - [Phase 02, DAGBuilder demo](../examples/02-builder)
 - [Reference, Dagonizer](../reference/dagonizer)
-- [Reference, Entities, `DAG`, `SingleNode`, `ParallelNode`, `ScatterNode`, `EmbeddedDAGNode`](../reference/entities)
+- [Reference, Entities, `DAG`, `SingleNode`, `ScatterNode`, `EmbeddedDAGNode`](../reference/entities)

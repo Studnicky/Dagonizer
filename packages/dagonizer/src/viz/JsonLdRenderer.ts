@@ -27,7 +27,6 @@
 
 import type { DAG } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { PhaseNodePlacementInterface } from '../entities/dag/PhaseNode.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
@@ -36,7 +35,7 @@ import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNod
 /** Stable JSON-LD vocabulary URI for the Dagonizer DAG vocabulary. */
 export const DAGONIZER_VOCAB = 'https://noocodex.dev/ontology/dagonizer/';
 
-type DAGNodeEntry = EmbeddedDAGNode | ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
+type DAGNodeEntry = EmbeddedDAGNode | ScatterNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
 
 /** A single node entry in the rendered `@graph`. */
 export interface JsonLdGraphEntry {
@@ -62,7 +61,6 @@ export class JsonLdRenderer {
   /** Mapping from JSON-LD placement-discriminator to vocabulary-prefixed `@type`. */
   private static readonly TYPE_BY_KIND: Readonly<Record<DAGNodeEntry['@type'], string>> = {
     'SingleNode':      'dag:SingleNode',
-    'ParallelNode':    'dag:ParallelNode',
     'ScatterNode':     'dag:ScatterNode',
     'EmbeddedDAGNode': 'dag:EmbeddedDAGNode',
     'TerminalNode':    'dag:TerminalNode',
@@ -126,13 +124,6 @@ export class JsonLdRenderer {
           ...base,
           'dag:routes': JsonLdRenderer.renderRoutes(dagName, placement.outputs),
           'dag:node':   placement.node,
-        };
-      case 'ParallelNode':
-        return {
-          ...base,
-          'dag:routes':   JsonLdRenderer.renderRoutes(dagName, placement.outputs),
-          'dag:combine':  placement.combine,
-          'dag:children': placement.nodes.map((child: string) => JsonLdRenderer.placementIri(dagName, child)),
         };
       case 'ScatterNode': {
         const out: JsonLdGraphEntry & Record<string, unknown> = {

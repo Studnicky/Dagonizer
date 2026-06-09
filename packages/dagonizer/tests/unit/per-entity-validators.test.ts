@@ -137,20 +137,6 @@ void describe('Validator per-entity sub-validators', () => {
     );
   });
 
-  void it('Validator.parallelNode accepts a parallel placement', () => {
-    assert.equal(
-      Validator.parallelNode.is({
-        '@id':     'urn:noocodex:dag:pipeline/node/group',
-        '@type':   'ParallelNode',
-        'name':    'group',
-        'nodes':   ['a', 'b'],
-        'combine': 'all-success',
-        'outputs': { 'success': null, 'error': null },
-      }),
-      true,
-    );
-  });
-
   void it('Validator.executionResult accepts a run summary', () => {
     assert.equal(
       Validator.executionResult.is({

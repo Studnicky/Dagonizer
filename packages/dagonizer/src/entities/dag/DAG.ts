@@ -6,16 +6,8 @@
  * placements use `@type` as the discriminator (replacing the flat `type` key).
  *
  * Inlines its node-entry sub-shapes via `oneOf` so a single validator covers
- * the whole document; the standalone `SingleNodeSchema` / `ParallelNodeSchema`
- * / `ScatterNodeSchema` / `EmbeddedDAGNodeSchema` exports remain available for
- * per-shape validation.
- *
- * Key mapping strategy via type-scoped contexts (JSON-LD 1.1):
- *   The JSON key `nodes` appears at two levels with different meanings:
- *     - DAG root: array of placement objects → IRI `dag/nodes`
- *     - ParallelNode: array of child node name strings → IRI `dag/parallelNodes`
- *   A JSON-LD 1.1 type-scoped context nested under the `ParallelNode` class
- *   overrides `nodes` to map to `dag/parallelNodes` within ParallelNode objects.
+ * the whole document; the standalone `SingleNodeSchema` / `ScatterNodeSchema`
+ * / `EmbeddedDAGNodeSchema` exports remain available for per-shape validation.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
@@ -39,9 +31,6 @@ const NS = 'https://noocodex.dev/ontology/dag/';
  *   DAG: top-level DAG document
  *   Placement: abstract superclass of all node placement shapes
  *   SingleNode: single-node placement (`@type: 'SingleNode'`)
- *   ParallelNode: concurrent-node placement (`@type: 'ParallelNode'`); carries
- *                 a nested type-scoped `@context` that remaps the `nodes`
- *                 key to `dag/parallelNodes` within ParallelNode objects.
  *   ScatterNode: scatter placement (`@type: 'ScatterNode'`): isolate a state
  *                clone, run a body (`{node}` or `{dag}`) per item, gather the
  *                produced clone state back into the parent, route on outcome.
@@ -61,7 +50,6 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   'outputs':  { '@id': `${NS}outputs` },
   'node':     { '@id': `${NS}node` },
   'dag':      { '@id': `${NS}dag` },
-  'combine':  { '@id': `${NS}combine` },
 
   // scatter properties
   'body':        { '@id': `${NS}body` },
@@ -91,19 +79,6 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   'EmbeddedDAGNode': { '@id': `${NS}EmbeddedDAGNode` },
   'TerminalNode':    { '@id': `${NS}TerminalNode` },
   'PhaseNode':       { '@id': `${NS}PhaseNode` },
-
-  // ParallelNode carries a type-scoped context: within any object typed
-  // ParallelNode, `nodes` maps to `dag/parallelNodes` (child name strings)
-  // rather than the root-level `dag/nodes` (placement objects).
-  'ParallelNode': {
-    '@id': `${NS}ParallelNode`,
-    '@context': {
-      'nodes': {
-        '@id':        `${NS}parallelNodes`,
-        '@container': '@list',
-      },
-    },
-  },
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -129,23 +104,7 @@ const DAGNodeEntrySchema = {
     },
     {
       'type': 'object',
-      'required': ['@id', '@type', 'name', 'nodes', 'combine', 'outputs'],
-      'properties': {
-        '@id':     { 'type': 'string', 'minLength': 1 },
-        '@type':   { 'type': 'string', 'const': 'ParallelNode' },
-        'name':    { 'type': 'string', 'minLength': 1 },
-        'nodes':   { 'type': 'array', 'items': { 'type': 'string', 'minLength': 1 }, 'minItems': 1 },
-        'combine': { 'type': 'string', 'enum': ['all-success', 'any-success', 'collect'] },
-        'outputs': {
-          'type': 'object',
-          'additionalProperties': { 'type': ['string', 'null'] },
-        },
-      },
-      'additionalProperties': false,
-    },
-    {
-      'type': 'object',
-      'required': ['@id', '@type', 'name', 'body', 'source', 'outputs'],
+      'required': ['@id', '@type', 'name', 'body', 'source', 'gather', 'outputs'],
       'properties': {
         '@id':         { 'type': 'string', 'minLength': 1 },
         '@type':       { 'type': 'string', 'const': 'ScatterNode' },

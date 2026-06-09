@@ -20,7 +20,6 @@ import type { DAG } from '../entities/dag/DAG.js';
 import { DAG_CONTEXT } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import type { GatherConfig } from '../entities/dag/GatherConfig.js';
-import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { PhaseNodePlacementInterface } from '../entities/dag/PhaseNode.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
@@ -30,7 +29,7 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { Path } from './Path.js';
 
-type DAGNodeType = EmbeddedDAGNode | ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
+type DAGNodeType = EmbeddedDAGNode | ScatterNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
 
 /**
  * Progressive path typing: resolves to `Path<T>` when `T` is a concrete state
@@ -42,7 +41,11 @@ type ParentPath<T extends NodeStateInterface> =
   NodeStateInterface extends T ? string : Path<T>;
 
 /**
- * Optional configuration for a scatter node added via `DAGBuilder.scatter`.
+ * Configuration for a scatter node added via `DAGBuilder.scatter`.
+ *
+ * `gather` is required: every scatter must declare how clone state merges
+ * back into the parent. Use `{ strategy: 'discard' }` for side-effect-only
+ * scatters where no clone state needs to flow back.
  *
  * `TState` narrows `inputs` values and `gather.mapping` values to dotted
  * paths that exist on the state when a concrete subtype is passed.
@@ -59,8 +62,12 @@ export interface ScatterOptionsInterface<TState extends NodeStateInterface = Nod
    * `TState` is a concrete subtype).
    */
   readonly inputs?: Partial<Record<string, ParentPath<TState>>>;
-  /** Gather config: how produced clone state merges back into the parent. */
-  readonly gather?: GatherConfig;
+  /**
+   * Gather config: how produced clone state merges back into the parent.
+   * Required — every scatter must declare the merge strategy. Declare
+   * `{ strategy: 'discard' }` for side-effect-only fan-outs.
+   */
+  readonly gather: GatherConfig;
   /** Outcome reducer name. Defaults to `'aggregate'`. */
   readonly reducer?: string;
   /**
@@ -108,7 +115,7 @@ export interface TypedEmbeddedDAGOptionsInterface<
  *
  * Each node placement is assigned:
  *   - `@id`:   `urn:noocodex:dag:<dagName>/node/<placementName>`
- *   - `@type`: the RDF class name (`'SingleNode'`, `'ParallelNode'`, `'ScatterNode'`, etc.)
+ *   - `@type`: the RDF class name (`'SingleNode'`, `'ScatterNode'`, `'EmbeddedDAGNode'`, etc.)
  *
  * @example
  * ```ts
@@ -164,25 +171,6 @@ export class DAGBuilder {
     return this;
   }
 
-  /** Append a parallel group of previously-declared single nodes. */
-  parallel(
-    name: string,
-    nodes: readonly string[],
-    combine: ParallelNode['combine'],
-    routes: Record<string, null | string>,
-  ): this {
-    this.#nodes.push({
-      '@id':     this.#nodeId(name),
-      '@type':   'ParallelNode',
-      name,
-      'nodes':   [...nodes],
-      combine,
-      'outputs': routes,
-    });
-    if (this.#entrypoint === null) this.#entrypoint = name;
-    return this;
-  }
-
   /**
    * Append a scatter node. A scatter isolates a state clone per source item,
    * runs a body (registered node or registered sub-DAG) in each clone, and
@@ -209,7 +197,7 @@ export class DAGBuilder {
     source: string,
     body: NodeInterface<TState, TOutput, TServices> | { readonly dag: string },
     outputs: Record<string, null | string>,
-    options: ScatterOptionsInterface<TState> = {},
+    options: ScatterOptionsInterface<TState>,
   ): this {
     const scatterNode: ScatterNode = {
       '@id':     this.#nodeId(name),
@@ -217,12 +205,12 @@ export class DAGBuilder {
       name,
       'source':  source,
       'body':    'dag' in body ? { 'dag': body.dag } : { 'node': (body as NodeInterface<TState, TOutput, TServices>).name },
+      'gather':  options.gather,
       'outputs': outputs,
     };
     if (options.itemKey !== undefined) scatterNode.itemKey = options.itemKey;
     if (options.concurrency !== undefined) scatterNode.concurrency = options.concurrency;
     if (options.inputs !== undefined) scatterNode.stateMapping = { 'input': options.inputs as Record<string, string> };
-    if (options.gather !== undefined) scatterNode.gather = options.gather;
     if (options.reducer !== undefined) scatterNode.reducer = options.reducer;
     if (options.container !== undefined) scatterNode.container = options.container;
 
@@ -335,11 +323,7 @@ export class DAGBuilder {
    * `contract` on its underlying `NodeInterface`, `build()` runs the same
    * dangling-read / dead-write validation that `DAGDeriver` runs at derive
    * time. Dangling reads throw `DAGError`; dead writes are routed to
-   * `onContractWarning` (no-op if omitted). Placements added via `.parallel()`
-   * (which do not receive a `NodeInterface`) are not tracked in the impl
-   * registry and are silently skipped during contract validation; this prevents
-   * false-positive dangling-read errors for node names that are declared
-   * elsewhere.
+   * `onContractWarning` (no-op if omitted).
    *
    * @param onContractWarning - Optional callback for dead-write warnings. If
    *   omitted, dead writes are silently no-oped. Dangling reads always throw.
@@ -360,7 +344,7 @@ export class DAGBuilder {
 
     // Run contract validation for the subset of placements registered via
     // .node() / .scatter() whose underlying NodeInterface carries a contract.
-    // Placements added via .parallel() are not in #nodeImpls and are
+    // Placements not tracked in #nodeImpls are
     // intentionally skipped; no false-positive dangling-read errors.
     const contractNodes = [...this.#nodeImpls.values()].filter(
       (impl) => impl.contract !== undefined,

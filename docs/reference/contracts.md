@@ -2,7 +2,7 @@
 seeAlso:
   - text: 'Reference: Core'
     link: './core'
-    description: '`ParallelCombiner`, `GatherStrategy`, `OutcomeReducer` extension classes'
+    description: '`GatherStrategy`, `OutcomeReducer` extension classes'
   - text: 'Reference: Derive'
     link: './derive'
     description: 'uses `OperationContract`'

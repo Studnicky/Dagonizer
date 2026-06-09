@@ -2,6 +2,66 @@
 
 ## [Unreleased]
 
+### Breaking
+
+**Fan-out is now expressed solely via `ScatterNode` + a required `gather`.** `ParallelNode` and all associated surface are removed. The following specific symbols are deleted:
+
+- **`ParallelNode` placement type removed.** DAGs with `'@type': 'ParallelNode'` fail schema validation and dispatch.
+- **`ParallelCombine` constant removed.** `import { ParallelCombine } from '@noocodex/dagonizer/constants'` no longer resolves.
+- **`ParallelCombiners` registry removed.** `import { ParallelCombiners } from '@noocodex/dagonizer/core'` no longer resolves.
+- **`DAGBuilder.parallel()` removed.** Call sites that used `.parallel(name, nodes, combine, routes)` must be rewritten as `.scatter(name, source, body, routes, { gather, reducer })`.
+- **`MetadataKey.PARALLEL_OUTPUTS` removed.** The `'parallelOutputs'` metadata key is no longer written by the engine. Migrate consumers reading `state.getMetadata('parallelOutputs')` to the scatter gather result written to the `target` key declared in `GatherConfig`.
+- **`NodeType.PARALLEL` removed.** The `'parallel'` node type string is no longer in the schema enum or the `NodeType` const.
+- **`DAGDeriverAnnotations.parallels` removed.** The `parallels` annotation key and `DAGDeriverParallel` interface are deleted. Use the `scatters` annotation to express same-depth fan-outs.
+- **`Validator.parallelNode` removed.** The per-entity validator for `ParallelNode` is no longer present on the `Validator` class.
+
+**Migration: `ParallelNode` → `ScatterNode`**
+
+A parallel group of N named nodes becomes a `ScatterNode` over an N-element descriptor source with a body node that dispatches on the `currentItem` metadata key:
+
+```ts
+// Before (removed):
+.parallel('probe-group', ['probe-a', 'probe-b'], 'all-success', { success: 'next', error: null })
+
+// After:
+// state.probeDescriptors = ['probe-a', 'probe-b']
+.scatter('probe-group', 'probeDescriptors', probeDispatchNode,
+  { 'all-success': 'next', 'all-error': null, 'partial': null, 'empty': null },
+  {
+    gather:  { strategy: 'collect', target: 'probeResults' },
+    reducer: 'all-success',
+    concurrency: 2,
+  },
+)
+```
+
+One-to-one mapping for `combine` modes:
+
+| Old `combine` | New scatter `reducer` | New scatter `gather.strategy` |
+|---|---|---|
+| `'all-success'` | `'all-success'` | `'collect'` or `'discard'` |
+| `'any-success'` | `'any-success'` | `'collect'` or `'discard'` |
+| `'collect'` | `'aggregate'` | `'collect'` (writes per-clone output tokens in source-index order to `target`) |
+| side-effect only | `'aggregate'` | `'discard'` (no clone state written back) |
+
+`gather` is required on every `ScatterNode`. Use `{ strategy: 'discard' }` for fan-outs where no clone state flows back to the parent.
+
+### Changed
+
+- **Archivist scout fan-outs converted to scatter.** The `reviews-scatter`, `describe-scatter` (in `the-archivist/dag.ts`), and `book-search-scatter` (in `BookSearchScatterDAG.ts`) fan-outs now use `ScatterNode` with a descriptor source (`state.scoutProviders = ['openlibrary','googlebooks','subject','wikipedia']`), a single `scoutDispatch` body node that dispatches on the `currentItem` metadata key to the matching scout logic, the `scout-merge` gather strategy that flat-merges `candidates` and `failureCause` from all four clone states, and the `any-success` outcome reducer. Concurrency is 4. The four individual per-source node placements are removed; behavior is preserved.
+- **`GatherConfig.strategy` is now an open `string`.** The schema constraint was widened from a closed enum (`'append' | 'collect' | ...`) to `{ type: 'string', minLength: 1 }`. Custom gather strategies registered via `GatherStrategies.register(...)` can now be referenced by name in DAG author expressions without a type error. Unknown names are caught at runtime by `GatherStrategies.resolve(name)`.
+- **`examples/dags/parallel-combiner.ts` recast as scatter-extension demo.** The `MajorityCombiner`/`ParallelCombiner` half is removed; the file now demonstrates `TopNGatherStrategy` (custom `GatherStrategy`) and `ThresholdReducer` (custom `OutcomeReducer`) as the scatter extension points.
+- **`examples/dags/constants-usage.ts`** replaces the `ParallelCombine.ALL_SUCCESS` snippet with `GatherStrategyName.COLLECT` to showcase the current fan-out vocabulary.
+
+### Added
+
+- **`gather` is now required on `ScatterNode`** (schema + builder + validator). Every scatter must declare the merge strategy. The `discard` gather strategy (`{ strategy: 'discard' }`) is the explicit declaration for side-effect-only fan-outs where no clone state flows back to the parent. Existing scatter DAGs with no gather must add `discard` (or the appropriate real merge strategy).
+- **`discard` gather strategy** (`GatherStrategies`): a no-op `GatherStrategy` for side-effect-only scatters. `apply` and `applyIncremental` both no-op; nothing is written to parent state. Registered in `GatherStrategies` at module load.
+- **`collect` gather strategy** (`GatherStrategies`): collects each clone's output token (or its `field` value when `field` is set) into a target collection on the parent in source-index order. Requires `target`. Mirrors the `CollectCombiner` intent for scatter: per-clone result array keyed by source index, appended in index order.
+- **`all-success` outcome reducer** (`OutcomeReducers`): routes `'success'` when every clone output equals `'success'`, otherwise routes `'error'`. Mirrors `AllSuccessCombiner` semantics from `ParallelCombiners`, expressed over scatter clone records. Returns `'error'` for empty record sets.
+- **`any-success` outcome reducer** (`OutcomeReducers`): routes `'success'` when at least one clone output equals `'success'`, otherwise routes `'error'`. Mirrors `AnySuccessCombiner` semantics, expressed over scatter clone records. Returns `'error'` for empty record sets.
+- **`'collect'` and `'discard'`** added to `GatherStrategySchema.enum` and `GatherStrategyName` const.
+
 ### Added
 
 - **`ChannelInterface`** (`./contracts`): adapter contract for publishing completed-DAG hand-off envelopes to a downstream transport. Implementations provide `publish(handoff: DAGHandoff): Promise<void>` and an optional `destroy()`. Channels must not throw out of the dispatcher; the dispatcher wraps every publish call in a try/catch.

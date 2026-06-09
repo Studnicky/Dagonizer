@@ -166,11 +166,10 @@ All three authoring journeys can produce any DAG the schema allows. The differen
 | Capability | Raw `DAG` | DAGBuilder | DAGDeriver |
 |---|---|---|---|
 | `SingleNode` placement | yes | yes | yes |
-| `ParallelNode` placement | yes | yes explicit | yes auto-grouped, `DAGDeriverParallel` for explicit |
-| Combine strategy (`all-success` / `any-success` / `collect`) | yes | yes | yes via `DAGDeriverParallel.combine` |
 | `ScatterNode` placement | yes | yes via `.scatter()` | yes via `DAGDeriverAnnotations.scatters` (node body) |
-| Gather strategy (`map` / `append` / `partition` / `custom`) | yes | yes via `options.gather` | yes via `DAGDeriverScatter.strategy` |
-| Scatter body kind (`node` only) | yes | yes via `body` argument | node body via `DAGDeriverScatter`; dag body via `embeddedDAGs` or raw `DAG` |
+| Gather strategy (`map` / `append` / `partition` / `custom` / `collect` / `discard`) | yes | yes via `options.gather` | yes via `DAGDeriverScatter.strategy` |
+| Outcome reducer (`aggregate` / `all-success` / `any-success` / custom) | yes | yes via `options.reducer` | (via scatter scatter outcomes) |
+| Scatter body kind (`node` or `dag`) | yes | yes via `body` argument | node body via `DAGDeriverScatter`; dag body via `embeddedDAGs` or raw `DAG` |
 | `EmbeddedDAGNode` placement | yes | yes via `.embeddedDAG()` | yes via `DAGDeriverAnnotations.embeddedDAGs` |
 | `TerminalNode` placement | yes | yes via `.terminal()` | (not a target, use DAGBuilder) |
 | `inputs` (parent → clone seed) | yes | yes via `options.inputs` | yes via `DAGDeriverScatter` |

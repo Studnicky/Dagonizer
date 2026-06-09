@@ -92,69 +92,6 @@ void describe('Dagonizer single-node routing', () => {
   });
 });
 
-void describe('Dagonizer parallel groups', () => {
-  void it('all-success combiner requires every output to be success', async () => {
-    const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('a', ['success', 'error'], () => 'success'));
-    dispatcher.registerNode(makeNode('b', ['success', 'error'], () => 'error'));
-    dispatcher.registerNode(makeNode('done', ['success'], () => 'success'));
-
-    const dag: DAG = {
-      '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:p',
-      '@type':    'DAG',
-      'name': 'p',
-      'version': '1',
-      'entrypoint': 'group',
-      'nodes': [
-        { '@id': 'urn:noocodex:dag:p/node/a', '@type': 'SingleNode',
-          'name': 'a', 'node': 'a', 'outputs': { 'success': null, 'error': null } },
-        { '@id': 'urn:noocodex:dag:p/node/b', '@type': 'SingleNode',
-          'name': 'b', 'node': 'b', 'outputs': { 'success': null, 'error': null } },
-        { '@id': 'urn:noocodex:dag:p/node/group', '@type': 'ParallelNode',
-          'name': 'group', 'nodes': ['a', 'b'], 'combine': 'all-success',
-          'outputs': { 'success': 'done', 'error': null } },
-        { '@id': 'urn:noocodex:dag:p/node/done', '@type': 'SingleNode',
-          'name': 'done', 'node': 'done', 'outputs': { 'success': null } },
-      ],
-    };
-    dispatcher.registerDAG(dag);
-
-    const result = await dispatcher.execute('p', new NodeStateBase());
-    assert.ok(!result.executedNodes.includes('done'));
-  });
-
-  void it('collect combiner stashes parallel outputs in metadata', async () => {
-    const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('a', ['success'], () => 'success'));
-    dispatcher.registerNode(makeNode('b', ['warn'], () => 'warn'));
-
-    const dag: DAG = {
-      '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:collect',
-      '@type':    'DAG',
-      'name': 'collect',
-      'version': '1',
-      'entrypoint': 'group',
-      'nodes': [
-        { '@id': 'urn:noocodex:dag:collect/node/a', '@type': 'SingleNode',
-          'name': 'a', 'node': 'a', 'outputs': { 'success': null } },
-        { '@id': 'urn:noocodex:dag:collect/node/b', '@type': 'SingleNode',
-          'name': 'b', 'node': 'b', 'outputs': { 'warn': null } },
-        { '@id': 'urn:noocodex:dag:collect/node/group', '@type': 'ParallelNode',
-          'name': 'group', 'nodes': ['a', 'b'], 'combine': 'collect',
-          'outputs': { 'success': null } },
-      ],
-    };
-    dispatcher.registerDAG(dag);
-
-    const state = new NodeStateBase();
-    await dispatcher.execute('collect', state);
-    const collected = state.getMetadata<Record<string, string>>('parallelOutputs');
-    assert.deepEqual(collected, { 'a': 'success', 'b': 'warn' });
-  });
-});
-
 void describe('Dagonizer scatter (source-based fork)', () => {
   void it('executes the node once per item and appends results', async () => {
     interface FanState extends NodeStateBase {

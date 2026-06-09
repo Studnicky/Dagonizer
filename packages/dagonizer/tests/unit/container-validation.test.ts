@@ -36,6 +36,7 @@ const invalidDAG: DAG = {
       'name':      'scatter',
       'source':    'items',
       'body':      { 'node': 'body-node' },
+      'gather':    { 'strategy': 'discard' },
       'container': 'cpu',
       'outputs':   {
         'all-success': null,
@@ -62,6 +63,7 @@ const validDagBodyDAG: DAG = {
       'name':      'scatter',
       'source':    'items',
       'body':      { 'dag': 'child' },
+      'gather':    { 'strategy': 'discard' },
       'container': 'cpu',
       'outputs':   {
         'all-success': null,

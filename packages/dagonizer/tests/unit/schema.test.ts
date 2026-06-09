@@ -55,8 +55,12 @@ void describe('Validator.dag', () => {
     assert.throws(() => Validator.dag.validate(bad), ValidationError);
   });
 
-  void it('rejects a scatter node with an invalid gather strategy', () => {
-    const bad = {
+  void it('accepts a scatter node with a custom registered gather strategy name', () => {
+    // GatherConfig.strategy is an open string: custom strategies are registered
+    // via GatherStrategies.register() and resolved at runtime. The schema no longer
+    // restricts strategy to a closed enum — unknown names are caught by
+    // GatherStrategies.resolve() when the scatter executes, not at author time.
+    const doc = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:x',
       '@type':    'DAG',
@@ -65,11 +69,11 @@ void describe('Validator.dag', () => {
         '@id':    'urn:noocodex:dag:x/node/f',
         '@type':  'ScatterNode',
         'name':   'f', 'body': { 'node': 'op' }, 'source': 'items',
-        'gather': { 'strategy': 'magic' },
+        'gather': { 'strategy': 'my-domain-specific-gather' },
         'outputs': { 'all-success': null },
       }],
     };
-    assert.throws(() => Validator.dag.validate(bad), ValidationError);
+    assert.doesNotThrow(() => Validator.dag.validate(doc));
   });
 
   void it('returns formatted errors list without throwing', () => {

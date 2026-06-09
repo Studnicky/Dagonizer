@@ -54,30 +54,6 @@ void describe('MermaidRenderer.render', () => {
     assert.match(out, /fan -->\|all-success\| END/u);
   });
 
-  void it('wraps a parallel placement in a subgraph', () => {
-    const dag: DAG = {
-      '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:par',
-      '@type':    'DAG',
-      'name':       'par',
-      'version':    '1',
-      'entrypoint': 'group',
-      'nodes': [{
-        '@id':     'urn:noocodex:dag:par/node/group',
-        '@type':   'ParallelNode',
-        'name':    'group',
-        'nodes':   ['a', 'b'],
-        'combine': 'all-success',
-        'outputs': { 'success': null, 'error': null },
-      }],
-    };
-    const out = MermaidRenderer.render(dag);
-    assert.match(out, /subgraph group/u);
-    assert.match(out, /a\[a\]/u);
-    assert.match(out, /b\[b\]/u);
-    assert.match(out, /end/u);
-  });
-
   void it('renders an EmbeddedDAGNode as a subroutine', () => {
     const dag: DAG = {
       '@context': DAG_CONTEXT,

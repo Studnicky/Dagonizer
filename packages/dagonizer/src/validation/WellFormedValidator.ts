@@ -30,9 +30,8 @@ export class WellFormedValidator {
    * Check a DAG for well-formedness violations.
    *
    * Rules applied:
-   *   1. No bare null flow-ends on non-parallel-member placements.
-   *      A null route target is a violation unless the placement is a member
-   *      of a ParallelNode (parallel members use null to mean "collected back").
+   *   1. No bare null flow-ends. A null route target is always a violation.
+   *      Replace null routes with an explicit TerminalNode placement.
    *   2. All non-null output targets must resolve to a placement name in dag.nodes.
    *   3. Structural: ScatterNode must have a non-empty `source` field.
    *   4. Structural: EmbeddedDAGNode must have a non-empty `dag` field.
@@ -51,19 +50,8 @@ export class WellFormedValidator {
     // Build a set of all placement names for target resolution.
     const placementNames = new Set<string>(dag.nodes.map((n) => n.name));
 
-    // Build a set of all parallel-member names across all ParallelNode placements.
-    // These members use null to mean "collected back by the parent" — that is legal.
-    const parallelMemberNames = new Set<string>();
     for (const node of dag.nodes) {
-      if (node['@type'] === 'ParallelNode') {
-        for (const memberName of node.nodes) {
-          parallelMemberNames.add(memberName);
-        }
-      }
-    }
-
-    for (const node of dag.nodes) {
-      WellFormedValidator.checkPlacement(node, parallelMemberNames, placementNames, violations);
+      WellFormedValidator.checkPlacement(node, placementNames, violations);
     }
 
     return violations;
@@ -71,7 +59,6 @@ export class WellFormedValidator {
 
   private static checkPlacement(
     node: NodeEntry,
-    parallelMemberNames: ReadonlySet<string>,
     placementNames: ReadonlySet<string>,
     violations: string[],
   ): void {
@@ -112,18 +99,14 @@ export class WellFormedValidator {
     }
 
     // Nodes with outputs: apply null-route and target-resolution rules.
-    if (type === 'SingleNode' || type === 'ParallelNode' || type === 'ScatterNode' || type === 'EmbeddedDAGNode') {
-      const isParallelMember = parallelMemberNames.has(node.name);
+    if (type === 'SingleNode' || type === 'ScatterNode' || type === 'EmbeddedDAGNode') {
       const outputs = node.outputs as Record<string, string | null>;
 
       for (const [route, target] of Object.entries(outputs)) {
         if (target === null) {
-          // Null is legal for parallel members (collected back by the parent ParallelNode).
-          if (!isParallelMember) {
-            violations.push(
-              `Placement '${node.name}': route '${route}' targets null. Route to a TerminalNode instead of a bare null end-of-flow.`,
-            );
-          }
+          violations.push(
+            `Placement '${node.name}': route '${route}' targets null. Route to a TerminalNode instead of a bare null end-of-flow.`,
+          );
         } else {
           // Non-null target must name an existing placement.
           if (!placementNames.has(target)) {

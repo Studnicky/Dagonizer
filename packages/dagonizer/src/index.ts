@@ -13,7 +13,6 @@ export {
   ScatterOutput,
   MetadataKey,
   Output,
-  ParallelCombine,
   NodeType,
 } from './entities/index.js';
 
@@ -70,7 +69,6 @@ export {
   GatherConfigSchema,
   DAGSchema,
   DAGLifecycleStateSchema,
-  ParallelNodeSchema,
   SingleNodeSchema,
   TerminalNodeSchema,
   PhaseNodeSchema,
@@ -88,7 +86,6 @@ export {
   ScatterOutputSchema,
   MetadataKeySchema,
   OutputSchema,
-  ParallelCombineSchema,
   NodeTypeSchema,
   BackoffStrategySchema,
   DAG_CONTEXT,
@@ -103,7 +100,6 @@ export type {
   GatherConfig,
   DAG,
   DAGLifecycleStateData,
-  ParallelNode,
   SingleNode,
   TerminalNode,
   PhaseNode,
@@ -190,11 +186,6 @@ export { Execution } from './Execution.js';
 // CORE: pluggable execution primitives
 // =============================================================================
 
-export {
-  ParallelCombiner,
-  ParallelCombiners,
-} from './core/ParallelCombiners.js';
-export type { ParallelResult } from './core/ParallelCombiners.js';
 export {
   GatherStrategies,
   GatherStrategy,
