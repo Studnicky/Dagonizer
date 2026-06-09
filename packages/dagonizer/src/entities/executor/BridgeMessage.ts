@@ -45,13 +45,13 @@ const InlineNodeErrorShape = {
  */
 const InlineExecutionRequestShape = {
   'type': 'object',
-  'required': ['dagName', 'placementPath', 'stateSnapshot', 'timeoutMs', 'requestId'],
+  'required': ['dagName', 'placementPath', 'stateSnapshot', 'timeoutMs', 'correlationId'],
   'properties': {
     'dagName':       { 'type': 'string', 'minLength': 1 },
     'placementPath': { 'type': 'array', 'items': { 'type': 'string' } },
     'stateSnapshot': { 'type': 'object' },
     'timeoutMs':     { 'type': ['number', 'null'] },
-    'requestId':     { 'type': 'string', 'minLength': 1 },
+    'correlationId': { 'type': 'string', 'minLength': 1 },
   },
   'additionalProperties': false,
 } as const;
@@ -66,9 +66,9 @@ const InlineExecutionRequestShape = {
  */
 const InlineExecutionResponseShape = {
   'type': 'object',
-  'required': ['requestId', 'terminalOutput', 'errors', 'stateSnapshot', 'intermediates'],
+  'required': ['correlationId', 'terminalOutput', 'errors', 'stateSnapshot', 'intermediates'],
   'properties': {
-    'requestId':      { 'type': 'string', 'minLength': 1 },
+    'correlationId':  { 'type': 'string', 'minLength': 1 },
     'terminalOutput': { 'type': 'string' },
     'errors': {
       'type': 'array',
@@ -123,11 +123,11 @@ export const BridgeMessageSchema = {
     },
     {
       'type': 'object',
-      'required': ['kind', 'requestId', 'reason'],
+      'required': ['kind', 'correlationId', 'reason'],
       'properties': {
-        'kind':      { 'type': 'string', 'const': 'abort' },
-        'requestId': { 'type': 'string' },
-        'reason':    { 'type': 'string' },
+        'kind':          { 'type': 'string', 'const': 'abort' },
+        'correlationId': { 'type': 'string' },
+        'reason':        { 'type': 'string' },
       },
       'additionalProperties': false,
     },
@@ -161,10 +161,10 @@ export const BridgeMessageSchema = {
     },
     {
       'type': 'object',
-      'required': ['kind', 'requestId', 'nodeName', 'output', 'placementPath'],
+      'required': ['kind', 'correlationId', 'nodeName', 'output', 'placementPath'],
       'properties': {
         'kind':          { 'type': 'string', 'const': 'intermediate' },
-        'requestId':     { 'type': 'string' },
+        'correlationId': { 'type': 'string' },
         'nodeName':      { 'type': 'string' },
         'output':        { 'type': ['string', 'null'] },
         'placementPath': { 'type': 'array', 'items': { 'type': 'string' } },
@@ -173,10 +173,10 @@ export const BridgeMessageSchema = {
     },
     {
       'type': 'object',
-      'required': ['kind', 'requestId', 'hook', 'phase', 'dagName', 'nodeName', 'output', 'message', 'placementPath'],
+      'required': ['kind', 'correlationId', 'hook', 'phase', 'dagName', 'nodeName', 'output', 'message', 'placementPath'],
       'properties': {
         'kind':          { 'type': 'string', 'const': 'instrumentation' },
-        'requestId':     { 'type': 'string' },
+        'correlationId': { 'type': 'string' },
         'hook':          { 'type': 'string', 'enum': ['nodeStart', 'nodeEnd', 'phaseEnter', 'phaseExit', 'error', 'contractWarning'] },
         // 'pre'/'post' for phaseEnter/phaseExit; '' for every other hook.
         'phase':         { 'type': 'string', 'enum': ['pre', 'post', ''] },
@@ -190,13 +190,13 @@ export const BridgeMessageSchema = {
     },
     {
       'type': 'object',
-      'required': ['kind', 'requestId', 'code', 'message', 'recoverable'],
+      'required': ['kind', 'correlationId', 'code', 'message', 'recoverable'],
       'properties': {
-        'kind':        { 'type': 'string', 'const': 'error' },
-        'requestId':   { 'type': ['string', 'null'] },
-        'code':        { 'type': 'string' },
-        'message':     { 'type': 'string' },
-        'recoverable': { 'type': 'boolean' },
+        'kind':          { 'type': 'string', 'const': 'error' },
+        'correlationId': { 'type': ['string', 'null'] },
+        'code':          { 'type': 'string' },
+        'message':       { 'type': 'string' },
+        'recoverable':   { 'type': 'boolean' },
       },
       'additionalProperties': false,
     },
@@ -217,3 +217,32 @@ export const BridgeMessageSchema = {
 
 /** TypeScript type derived from `BridgeMessageSchema` via `json-schema-to-ts`. */
 export type BridgeMessage = FromSchema<typeof BridgeMessageSchema>;
+
+// ---------------------------------------------------------------------------
+// BridgeMessageBuilder
+// ---------------------------------------------------------------------------
+
+/**
+ * Static factory for constructing `BridgeMessage` values. The type
+ * `BridgeMessage` and this factory are distinct identifiers per the
+ * canonical-names rule: `BridgeMessage` is the type; `BridgeMessageBuilder`
+ * is the value that builds instances.
+ */
+export class BridgeMessageBuilder {
+  private constructor() { /* static class */ }
+
+  /**
+   * Build a channel-scoped error BridgeMessage with `correlationId: null`.
+   * Use when no specific request is in flight (e.g. init failures, transport
+   * setup errors, invalid message receipts).
+   */
+  static invalid(code: string, message: string): BridgeMessage & { kind: 'error' } {
+    return {
+      'kind': 'error',
+      'correlationId': null,
+      'code': code,
+      'message': message,
+      'recoverable': false,
+    };
+  }
+}

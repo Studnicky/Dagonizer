@@ -396,11 +396,21 @@ void describe('Scatter dag-body container seam (W4)', () => {
     assert.ok(result.state.errors.length > 0, 'state must have collected errors from container failure');
   });
 
-  // ── (e) Law 7: per-ack checkpoint writes byte-identical in-process vs contained
-  void it('Law 7: per-ack SCATTER_PROGRESS_KEY writes are byte-identical across in-process and contained', async () => {
+  // ── (e) Law 7: per-ack checkpoint writes are deep-equal in-process vs contained
+  //
+  // The SCATTER_PROGRESS_KEY payload is keyed by scatter node name ('fan' in
+  // both cases). The scatter node name is not the DAG name, so identical
+  // checkpoint keys appear regardless of which runner DAG was used. Each
+  // ScatterProgress entry contains { placementName, inbox, ackedResults }.
+  // With gather:'discard' no mappingValues/fieldValue are present. The item
+  // payload (numbers 10/20/30) and index are deterministic across both runs.
+  // deepStrictEqual is therefore achievable and is a stronger assertion than
+  // comparing lengths only.
+  void it('Law 7: per-ack SCATTER_PROGRESS_KEY writes are deep-equal across in-process and contained', async () => {
     // Helper: run scatter DAG and capture all SCATTER_PROGRESS_KEY writes.
     const runAndCapture = async (useContainer: boolean): Promise<{
       checkpoints: unknown[];
+      finalSnapshot: unknown;
     }> => {
       const checkpoints: unknown[] = [];
 
@@ -426,47 +436,47 @@ void describe('Scatter dag-body container seam (W4)', () => {
       };
 
       await dispatcher.execute(useContainer ? RUNNER_DAG_NAME : 'scatter-inprocess', state);
-      return { checkpoints };
+      const finalSnapshot = JSON.parse(JSON.stringify(state.snapshot()));
+      return { checkpoints, finalSnapshot };
     };
 
     const inProcess = await runAndCapture(false);
     const contained = await runAndCapture(true);
 
-    // Same number of checkpoint writes (one per acked item).
+    // Same number of checkpoint writes (one per acked item = 3).
     assert.strictEqual(
       inProcess.checkpoints.length,
       contained.checkpoints.length,
       `checkpoint write count must match: in-process=${inProcess.checkpoints.length} contained=${contained.checkpoints.length}`,
     );
 
-    // Structure comparison: only compare inbox and ackedResults lengths
-    // and output values (not timestamps). The scatter names differ between
-    // in-process (scatter-inprocess:fan) and contained (scatter-runner:fan)
-    // so we compare the structure of the 'fan' entry.
+    // Each checkpoint write must be deep-equal. The scatter node name is 'fan'
+    // in both DAGs so the checkpoint key is identical. The ScatterProgress
+    // payload — { placementName, inbox: ScatterInboxItem[], ackedResults:
+    // ScatterAckedResult[] } — is constructed by the parent dispatcher using
+    // the original item values from state.items ([10, 20, 30]) and sequential
+    // indices, independent of which container (or no container) ran the body.
     for (let i = 0; i < inProcess.checkpoints.length; i++) {
-      const ipCkpt = (inProcess.checkpoints[i] as Record<string, unknown>)['fan'] as {
-        ackedResults: unknown[];
-        inbox: unknown[];
-      } | undefined;
-      const ctCkpt = (contained.checkpoints[i] as Record<string, unknown>)['fan'] as {
-        ackedResults: unknown[];
-        inbox: unknown[];
-      } | undefined;
-
-      assert.ok(ipCkpt !== undefined, `in-process checkpoint[${i}] must have 'fan' entry`);
-      assert.ok(ctCkpt !== undefined, `contained checkpoint[${i}] must have 'fan' entry`);
-
-      // Same number of acked results and inbox items at each write point.
-      assert.strictEqual(
-        ipCkpt.ackedResults.length,
-        ctCkpt.ackedResults.length,
-        `ackedResults.length must match at write[${i}]`,
-      );
-      assert.strictEqual(
-        ipCkpt.inbox.length,
-        ctCkpt.inbox.length,
-        `inbox.length must match at write[${i}]`,
+      assert.deepStrictEqual(
+        inProcess.checkpoints[i],
+        contained.checkpoints[i],
+        `checkpoint write[${i}] must be deep-equal: ` +
+        `in-process=${JSON.stringify(inProcess.checkpoints[i])} ` +
+        `contained=${JSON.stringify(contained.checkpoints[i])}`,
       );
     }
+
+    // Final gathered state must also be identical across both runs.
+    // With gather:'discard' the parent state is unchanged by gather; both
+    // runs over the same items produce the same final snapshot.
+    const inProcessData = (inProcess.finalSnapshot as Record<string, unknown>)['data'] as Record<string, unknown> | undefined;
+    const containedData = (contained.finalSnapshot as Record<string, unknown>)['data'] as Record<string, unknown> | undefined;
+    assert.deepStrictEqual(
+      inProcessData?.['processed'],
+      containedData?.['processed'],
+      `final processed must be deep-equal: ` +
+      `in-process=${JSON.stringify(inProcessData?.['processed'])} ` +
+      `contained=${JSON.stringify(containedData?.['processed'])}`,
+    );
   });
 });

@@ -25,6 +25,8 @@ export default tseslint.config(
         NodeJS: 'readonly',
         console: 'readonly',
         structuredClone: 'readonly',
+        AbortController: 'readonly',
+        AbortSignal: 'readonly',
       },
     },
     plugins: {

@@ -101,8 +101,8 @@ void describe('MessagePortChannel — ingest validation', () => {
     const msg = received[0];
     assert.ok(msg?.kind === 'error');
     assert.strictEqual(msg.code, 'INVALID_MESSAGE');
-    assert.strictEqual(msg.requestId, null);
-    assert.strictEqual(msg.recoverable, true);
+    assert.strictEqual(msg.correlationId, null);
+    assert.strictEqual(msg.recoverable, false);
   });
 
   void it('surfaces a non-object payload as an error BridgeMessage', () => {
@@ -147,8 +147,8 @@ void describe('IpcChannel — ingest validation', () => {
     const msg = received[0];
     assert.ok(msg?.kind === 'error');
     assert.strictEqual(msg.code, 'INVALID_MESSAGE');
-    assert.strictEqual(msg.requestId, null);
-    assert.strictEqual(msg.recoverable, true);
+    assert.strictEqual(msg.correlationId, null);
+    assert.strictEqual(msg.recoverable, false);
   });
 
   void it('surfaces a null payload as an error BridgeMessage', () => {

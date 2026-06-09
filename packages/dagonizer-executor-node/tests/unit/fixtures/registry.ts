@@ -1,7 +1,7 @@
 /**
  * Conformance registry fixture for dagonizer-executor-node tests.
  *
- * Constructs a RegistryModuleInterface implementation using buildConformanceBundle
+ * Constructs a RegistryModuleInterface implementation using ConformanceRegistry.bundle()
  * from @noocodex/dagonizer/testing and exports it as the module default so that
  * DagHost can dynamic-import this compiled file to reconstruct the conformance
  * bundle inside an isolate.
@@ -16,11 +16,11 @@
 
 import type { RegistryBundleInterface, RegistryModuleInterface } from '@noocodex/dagonizer/contracts';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
-import { buildConformanceBundle } from '@noocodex/dagonizer/testing';
+import { ConformanceRegistry } from '@noocodex/dagonizer/testing';
 
 const registry: RegistryModuleInterface = {
   async createBundle(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
-    return buildConformanceBundle();
+    return ConformanceRegistry.bundle();
   },
 };
 

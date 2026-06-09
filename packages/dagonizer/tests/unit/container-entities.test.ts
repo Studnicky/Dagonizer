@@ -76,9 +76,9 @@ void describe('ExecutorIntermediate schema', () => {
 const validRequest = {
   'dagName':       'child',
   'placementPath': ['parent', 'embed'],
-  'stateSnapshot': { 'metadata': {}, 'retries': {}, 'errors': [], 'warnings': [] },
+  'stateSnapshot': { 'metadata': {}, 'retries': {}, 'warnings': [] },
   'timeoutMs':     null,
-  'requestId':     'child:1',
+  'correlationId': 'child:1',
 };
 
 void describe('ExecutionRequest schema', () => {
@@ -104,9 +104,9 @@ void describe('ExecutionRequest schema', () => {
     assert.equal(requestValidator(rest), false);
   });
 
-  void it('rejects missing required requestId', () => {
-     
-    const { 'requestId': _requestId, ...rest } = validRequest;
+  void it('rejects missing required correlationId', () => {
+
+    const { 'correlationId': _correlationId, ...rest } = validRequest;
     assert.equal(requestValidator(rest), false);
   });
 
@@ -120,10 +120,10 @@ void describe('ExecutionRequest schema', () => {
 // ---------------------------------------------------------------------------
 
 const validResponse = {
-  'requestId':      'child:1',
+  'correlationId':  'child:1',
   'terminalOutput': 'success',
   'errors': [],
-  'stateSnapshot': { 'metadata': {}, 'retries': {}, 'errors': [], 'warnings': [], 'value': 10 },
+  'stateSnapshot': { 'metadata': {}, 'retries': {}, 'warnings': [], 'value': 10 },
   'intermediates': [
     { 'output': 'success', 'skipped': false, 'nodeName': 'increment' },
   ],

@@ -109,6 +109,7 @@ const sidebar = [
       { text: 'Checkpoint persistence',    link: '/guide/persistence' },
       { text: 'Contract-derived flows',    link: '/guide/derive' },
       { text: 'Visualization',             link: '/guide/visualization' },
+      { text: 'Distribution and cloud',    link: '/guide/distribution' },
     ],
   },
   {

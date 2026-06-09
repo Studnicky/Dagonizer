@@ -79,7 +79,8 @@ export class WebSystemInfo implements SystemInfoInterface {
     const raw = this.#hardwareConcurrency - config.mainThreadReservation;
     // maximumWorkers is a hard cap: it wins over fallbackWorkerCount when the
     // two conflict (a pool must never exceed its configured ceiling).
-    const clamped = Math.min(config.maximumWorkers, Math.max(raw, config.fallbackWorkerCount));
+    // Floor at 1: a zero- or negative-result pool parks every caller forever.
+    const clamped = Math.max(1, Math.min(config.maximumWorkers, Math.max(raw, config.fallbackWorkerCount)));
     return clamped;
   }
 }

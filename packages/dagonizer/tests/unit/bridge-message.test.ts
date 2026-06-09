@@ -35,7 +35,7 @@ const validExecute: BridgeMessage = {
     'placementPath': ['a', 'b'],
     'stateSnapshot': { 'value': 42 },
     'timeoutMs': 5000,
-    'requestId': 'req-1',
+    'correlationId': 'req-1',
   },
 };
 
@@ -46,13 +46,13 @@ const validExecuteNullTimeout: BridgeMessage = {
     'placementPath': [],
     'stateSnapshot': {},
     'timeoutMs': null,
-    'requestId': 'req-2',
+    'correlationId': 'req-2',
   },
 };
 
 const validAbort: BridgeMessage = {
   'kind': 'abort',
-  'requestId': 'req-1',
+  'correlationId': 'req-1',
   'reason': 'user-cancelled',
 };
 
@@ -69,7 +69,7 @@ const validReady: BridgeMessage = {
 const validResult: BridgeMessage = {
   'kind': 'result',
   'response': {
-    'requestId': 'req-1',
+    'correlationId': 'req-1',
     'terminalOutput': 'completed',
     'errors': [],
     'stateSnapshot': { 'value': 99 },
@@ -82,7 +82,7 @@ const validResult: BridgeMessage = {
 const validResultNullSnapshot: BridgeMessage = {
   'kind': 'result',
   'response': {
-    'requestId': 'req-1',
+    'correlationId': 'req-1',
     'terminalOutput': 'failed',
     'errors': [{
       'code': 'ERR',
@@ -98,7 +98,7 @@ const validResultNullSnapshot: BridgeMessage = {
 
 const validIntermediate: BridgeMessage = {
   'kind': 'intermediate',
-  'requestId': 'req-1',
+  'correlationId': 'req-1',
   'nodeName': 'step1',
   'output': 'done',
   'placementPath': ['parent'],
@@ -106,7 +106,7 @@ const validIntermediate: BridgeMessage = {
 
 const validInstrumentation: BridgeMessage = {
   'kind': 'instrumentation',
-  'requestId': 'req-1',
+  'correlationId': 'req-1',
   'hook': 'nodeStart',
   'phase': '',
   'dagName': 'my-dag',
@@ -118,7 +118,7 @@ const validInstrumentation: BridgeMessage = {
 
 const validError: BridgeMessage = {
   'kind': 'error',
-  'requestId': null,
+  'correlationId': null,
   'code': 'INIT_FAILED',
   'message': 'module not found',
   'recoverable': false,
@@ -177,7 +177,7 @@ describe('BridgeMessage schema — valid branches', () => {
     assert.ok(Validator.bridgeMessage.is(validInstrumentation));
   });
 
-  it('validates error branch with null requestId', () => {
+  it('validates error branch with null correlationId', () => {
     assert.ok(Validator.bridgeMessage.is(validError));
   });
 
@@ -195,7 +195,7 @@ describe('BridgeMessage schema — dag-only proof (execute request)', () => {
         'placementPath': [],
         'stateSnapshot': {},
         'timeoutMs': null,
-        'requestId': 'req-1',
+        'correlationId': 'req-1',
         'nodeName': 'step1',   // must be rejected: no per-node routing
       },
     };
@@ -211,7 +211,7 @@ describe('BridgeMessage schema — dag-only proof (execute request)', () => {
         'placementPath': [],
         'stateSnapshot': {},
         'timeoutMs': null,
-        'requestId': 'req-1',
+        'correlationId': 'req-1',
       },
     };
     assert.strictEqual(Validator.bridgeMessage.is(invalid), false);
@@ -224,13 +224,13 @@ describe('BridgeMessage schema — dag-only proof (execute request)', () => {
         'placementPath': [],
         'stateSnapshot': {},
         'timeoutMs': null,
-        'requestId': 'req-1',
+        'correlationId': 'req-1',
       },
     };
     assert.strictEqual(Validator.bridgeMessage.is(invalid), false);
   });
 
-  it('rejects execute request missing required requestId', () => {
+  it('rejects execute request missing required correlationId', () => {
     const invalid = {
       'kind': 'execute',
       'request': {
@@ -260,7 +260,7 @@ describe('BridgeMessage schema — additionalProperties rejection', () => {
     const invalid = {
       'kind': 'result',
       'response': {
-        'requestId': 'req-1',
+        'correlationId': 'req-1',
         'terminalOutput': 'completed',
         'errors': [],
         'stateSnapshot': null,

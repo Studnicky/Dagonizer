@@ -4,8 +4,8 @@ import { describe, it } from 'node:test';
 import type { TerminalNodePlacementInterface } from '../../src/entities/dag/TerminalNode.js';
 import type { DAG } from '../../src/entities/index.js';
 import { DAG_CONTEXT } from '../../src/entities/index.js';
-import { MermaidRenderer } from '../../src/viz/MermaidRenderer.js';
 import { RoleColorUtils } from '../../src/viz/internal.js';
+import { MermaidRenderer } from '../../src/viz/MermaidRenderer.js';
 
 void describe('MermaidRenderer.render', () => {
   void it('renders a single-node DAG with terminal', () => {

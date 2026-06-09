@@ -310,15 +310,16 @@ export class NodeStateBase implements NodeStateInterface {
    * Serialize state to a JSON-safe snapshot for checkpointing.
    *
    * Subclasses with extra fields override `snapshotData()` to add them;
-   * the base implementation captures metadata, errors, and warnings.
+   * the base implementation captures metadata, retries, and warnings.
    * Lifecycle is intentionally NOT captured; resume starts a fresh
-   * execution from `pending`.
+   * execution from `pending`. Errors are intentionally NOT captured;
+   * engine error diagnostics flow via `DagOutcomeInterface.errors` as the
+   * single authoritative channel, exactly as lifecycle is excluded.
    */
   snapshot(): JsonObject {
     return {
       'metadata': structuredClone(this._metadata) as JsonValue,
       'retries': structuredClone(this._retries) as JsonValue,
-      'errors': this._errors.map((e) => ({ ...e })) as unknown as JsonValue,
       'warnings': this._warnings.map((w) => ({ ...w })) as unknown as JsonValue,
       ...this.snapshotData(),
     };
@@ -350,8 +351,23 @@ export class NodeStateBase implements NodeStateInterface {
    * container seam to rehydrate a child clone with terminal state returned
    * by a contained DAG execution. Subclasses override to read domain-specific
    * fields, calling `super.applySnapshot` to inherit the base behavior.
+   *
+   * Replace-semantics: resets warnings, metadata, and retries to the values in
+   * the snapshot before populating. Re-applying the same snapshot twice produces
+   * identical state (idempotent). The round-trip `snapshot() → applySnapshot()`
+   * is a fixed point. Errors are NOT restored from the snapshot; they are always
+   * supplied via `outcome.errors` (the single authoritative channel) by the
+   * caller after applying the snapshot.
    */
   applySnapshot(snapshot: JsonObject): void {
+    // Reset base fields to empty before populating from the snapshot so
+    // this method is idempotent (replace-semantics, not append-semantics).
+    // Errors are intentionally excluded — they flow via outcome.errors, not
+    // via the snapshot, so _errors is left as-is for the caller to populate.
+    this._warnings.splice(0);
+    this._metadata = {};
+    this._retries = {};
+
     const metadata = snapshot['metadata'];
     if (metadata !== undefined && typeof metadata === 'object' && metadata !== null && !Array.isArray(metadata)) {
       this._metadata = structuredClone(metadata) as Record<string, unknown>;
@@ -359,14 +375,6 @@ export class NodeStateBase implements NodeStateInterface {
     const retries = snapshot['retries'];
     if (retries !== undefined && typeof retries === 'object' && retries !== null && !Array.isArray(retries)) {
       this._retries = structuredClone(retries) as Record<string, number>;
-    }
-    const errors = snapshot['errors'];
-    if (Array.isArray(errors)) {
-      for (const e of errors) {
-        if (typeof e === 'object' && e !== null && !Array.isArray(e)) {
-          this._errors.push(e as unknown as NodeErrorInterface);
-        }
-      }
     }
     const warnings = snapshot['warnings'];
     if (Array.isArray(warnings)) {

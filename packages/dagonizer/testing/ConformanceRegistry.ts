@@ -475,17 +475,22 @@ const CONFORMANCE_DAGS: DAG[] = [
   runnerLaw7, runnerLaw8, runnerLaw9,
 ];
 
-/** Build a fresh RegistryBundleInterface (new array references each call). */
-export function buildConformanceBundle(): RegistryBundleInterface {
-  return {
-    'bundle': {
-      'nodes': [...CONFORMANCE_NODES],
-      'dags': [...CONFORMANCE_DAGS],
-    },
-    'services': undefined,
-    'registryVersion': CONFORMANCE_REGISTRY_VERSION,
-    'restoreState': (snap: JsonObject) => restoreConformanceState(snap) as NodeStateInterface,
-  };
+/** Static factory for conformance bundles. */
+export class ConformanceRegistry {
+  private constructor() { /* static class */ }
+
+  /** Build a fresh RegistryBundleInterface (new array references each call). */
+  static bundle(): RegistryBundleInterface {
+    return {
+      'bundle': {
+        'nodes': [...CONFORMANCE_NODES],
+        'dags': [...CONFORMANCE_DAGS],
+      },
+      'services': undefined,
+      'registryVersion': CONFORMANCE_REGISTRY_VERSION,
+      'restoreState': (snap: JsonObject) => restoreConformanceState(snap) as NodeStateInterface,
+    };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -494,7 +499,7 @@ export function buildConformanceBundle(): RegistryBundleInterface {
 
 const registryModule: RegistryModuleInterface = {
   async createBundle(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
-    return buildConformanceBundle();
+    return ConformanceRegistry.bundle();
   },
 };
 

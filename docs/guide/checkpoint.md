@@ -96,7 +96,7 @@ Both take `Record<string, Snapshottable>`: the capability, not the key-value `St
 
 ## `NodeStateBase.snapshot()` and `snapshotData()`
 
-`snapshot()` captures metadata, errors, warnings, and the retry budget (`retries`). Domain fields are excluded unless the subclass overrides `snapshotData()`:
+`snapshot()` captures metadata, warnings, and the retry budget (`retries`). Engine errors are intentionally excluded from the snapshot — they flow via `outcome.errors` as the single authoritative channel. Domain fields are excluded unless the subclass overrides `snapshotData()`:
 
 ```ts
 class PipelineState extends NodeStateBase {
@@ -126,6 +126,7 @@ class PipelineState extends NodeStateBase {
 - `snapshotData()` returns a JSON-serializable `JsonObject`. No `undefined` values, no circular references.
 - `restoreData(snap)` receives the full merged snapshot (base fields plus domain fields). Call `super.applySnapshot(snap)` when overriding `applySnapshot` directly.
 - Lifecycle is intentionally not captured. `resume()` starts a fresh lifecycle run from `pending`.
+- Engine errors are intentionally not captured. `applySnapshot` leaves `_errors` untouched; the caller populates errors from `outcome.errors` after applying the snapshot.
 
 ## CheckpointStore: composing with persistence
 

@@ -10,7 +10,7 @@ export { VirtualClockProvider } from './VirtualClock.js';
 export { VirtualScheduler } from './VirtualScheduler.js';
 export { LoopbackChannel } from './LoopbackChannel.js';
 export {
-  buildConformanceBundle,
+  ConformanceRegistry,
   ConformanceState,
   CONFORMANCE_CONTAINER_ROLE,
   CONFORMANCE_DAG,

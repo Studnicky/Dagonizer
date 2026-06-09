@@ -4,7 +4,7 @@
  * Each pool slot is a forked child process running forkEntry.js. IPC is the
  * transport; IpcChannel wraps the child's send/on. Requests are serialized
  * per-child: each child handles one request at a time; concurrent requests
- * queue until a slot is free.
+ * queue in the base's semaphore until a slot is free.
  *
  * Constructor options:
  *   registryModule   — URL string passed to DagHost init
@@ -20,8 +20,10 @@
 import { fork } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 
+import type { NodeStateInterface } from '@noocodex/dagonizer';
 import { DagContainerBase, DAG_CONTAINER_WORKER_DIED } from '@noocodex/dagonizer/container';
-import type { Instrumentation, MessageChannelInterface } from '@noocodex/dagonizer/contracts';
+import type { PoolEntry } from '@noocodex/dagonizer/container';
+import type { Instrumentation } from '@noocodex/dagonizer/contracts';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 import { RecommendedWorkerCountConfigDefault } from '@noocodex/dagonizer/entities';
 
@@ -42,133 +44,47 @@ export interface ForkContainerOptions {
 }
 
 // ---------------------------------------------------------------------------
-// ForkPoolEntry
-// ---------------------------------------------------------------------------
-
-interface ForkPoolEntry {
-  child: ChildProcess;
-  channel: IpcChannel;
-  initialized: boolean;
-}
-
-// ---------------------------------------------------------------------------
 // ForkContainer
 // ---------------------------------------------------------------------------
 
-export class ForkContainer extends DagContainerBase {
-  readonly #registryModule: string;
-  readonly #registryVersion: string;
-  readonly #servicesConfig: JsonObject;
-  readonly #poolSize: number;
+export class ForkContainer extends DagContainerBase<NodeStateInterface, ChildProcess> {
   readonly #entryUrl: URL;
 
-  readonly #pool: ForkPoolEntry[];
-  readonly #free: ForkPoolEntry[];
-  #waiters: Array<() => void>;
-  #destroyed: boolean;
-
   constructor(options: ForkContainerOptions) {
-    super(options.instrumentation !== undefined ? { 'instrumentation': options.instrumentation } : {});
-    this.#registryModule = options.registryModule;
-    this.#registryVersion = options.registryVersion;
-    this.#servicesConfig = options.servicesConfig ?? {};
-    this.#entryUrl = options.entryUrl ?? new URL('./forkEntry.js', import.meta.url);
-
     const sysInfo = new NodeSystemInfo();
     const defaultPoolSize = sysInfo.recommendedWorkerCount({
       ...RecommendedWorkerCountConfigDefault,
       'maximumWorkers': 8,
     });
-    this.#poolSize = options.poolSize ?? defaultPoolSize;
-
-    this.#pool = [];
-    this.#free = [];
-    this.#waiters = [];
-    this.#destroyed = false;
-  }
-
-  protected async acquireChannel(): Promise<MessageChannelInterface> {
-    if (this.#destroyed) {
-      throw new Error('ForkContainer: destroyed');
-    }
-
-    if (this.#free.length === 0 && this.#pool.length < this.#poolSize) {
-      const entry = this.#spawnChild();
-      this.#pool.push(entry);
-      this.#free.push(entry);
-    }
-
-    if (this.#free.length === 0) {
-      await this.#waitForSlot();
-    }
-
-    const entry = this.#free.pop();
-    if (entry === undefined) {
-      throw new Error('ForkContainer: no free slot after wait');
-    }
-
-    if (!entry.initialized) {
-      await this.initializeChannel(entry.channel, {
-        'registryModule': this.#registryModule,
-        'registryVersion': this.#registryVersion,
-        'servicesConfig': this.#servicesConfig,
-      });
-      entry.initialized = true;
-    }
-
-    return entry.channel;
-  }
-
-  protected releaseChannel(channel: MessageChannelInterface): void {
-    const entry = this.#pool.find((e) => e.channel === channel);
-    if (entry !== undefined && !this.#destroyed) {
-      this.#free.push(entry);
-      this.#releaseSlot();
-    }
-  }
-
-  async destroy(): Promise<void> {
-    if (this.#destroyed) return;
-    this.#destroyed = true;
-
-    for (const entry of this.#pool) {
-      if (entry.initialized) {
-        try {
-          entry.channel.send({ 'kind': 'shutdown' });
-        } catch { /* suppress */ }
-      }
-    }
-
-    await Promise.allSettled(
-      this.#pool.map((entry) =>
-        Promise.race([
-          this.#waitForChildExit(entry.child),
-          new Promise<void>((resolve) => setTimeout(resolve, 2000)),
-        ]),
-      ),
-    );
-
-    for (const entry of this.#pool) {
-      try { entry.child.kill('SIGKILL'); } catch { /* suppress */ }
-      entry.channel.close();
-    }
-
-    this.#pool.length = 0;
-    this.#free.length = 0;
+    super({
+      'instrumentation': options.instrumentation,
+      'poolSize': options.poolSize ?? defaultPoolSize,
+      'init': {
+        'registryModule': options.registryModule,
+        'registryVersion': options.registryVersion,
+        'servicesConfig': options.servicesConfig ?? {},
+      },
+    });
+    this.#entryUrl = options.entryUrl ?? new URL('./forkEntry.js', import.meta.url);
   }
 
   // ---------------------------------------------------------------------------
-  // Private helpers
+  // Abstract seam implementations
   // ---------------------------------------------------------------------------
 
-  #spawnChild(): ForkPoolEntry {
+  /**
+   * createEntry: fork a child process + construct an IpcChannel, initialized: false.
+   * No death listeners, no init handshake — the base handles both.
+   */
+  protected override createEntry(): PoolEntry<ChildProcess> {
     // Fork the entry module. IPC is enabled by default for fork().
-    // No execArgv override needed: the package.json "type": "module" makes
+    // No execArgv override needed: package.json "type": "module" makes
     // the compiled .js output ESM.
     const child = fork(this.#entryUrl.pathname, []);
 
-    // child.send expects Serializable; BridgeMessage is JSON-serializable so
-    // casting to object satisfies Serializable at this IPC ingest boundary.
+    // child.send expects Serializable; BridgeMessage is JSON-serializable.
+    // The IpcEndpoint.send type is (message: unknown) => void, so the cast
+    // to object is narrowed here at the IPC boundary only.
     const sendFn = (message: unknown): void => { child.send(message as object); };
     const onFn = (event: 'message', listener: (message: unknown) => void) => {
       child.on(event, listener);
@@ -176,59 +92,39 @@ export class ForkContainer extends DagContainerBase {
     };
 
     const channel = new IpcChannel({ 'send': sendFn, 'on': onFn });
-    const entry: ForkPoolEntry = { 'child': child, 'channel': channel, 'initialized': false };
-
-    // Death detection (parent backstop, Law 4): a child that dies, errors, or
-    // disconnects without sending a result must fail its in-flight request and
-    // be evicted. destroy() kills children deliberately (SIGKILL after
-    // shutdown), so #destroyed gates the handlers off during teardown.
-    child.on('error', (err: Error) => {
-      this.#handleDeath(entry, `child error: ${err.message}`);
-    });
-    child.on('exit', () => {
-      if (this.#destroyed) return;
-      this.#handleDeath(entry, 'child exited unexpectedly');
-    });
-    child.on('disconnect', () => {
-      if (this.#destroyed) return;
-      this.#handleDeath(entry, 'child IPC channel disconnected');
-    });
-
-    return entry;
+    return { 'worker': child, 'channel': channel, 'initialized': false };
   }
 
-  /** Fail the dead child's in-flight request and evict its pool entry. */
-  #handleDeath(entry: ForkPoolEntry, reason: string): void {
-    if (this.#destroyed) return;
-    this.failChannel(entry.channel, DAG_CONTAINER_WORKER_DIED, reason);
-    this.#evict(entry);
+  /**
+   * attachDeathListeners: wire child error/exit/disconnect events → onTransportDeath().
+   * Called unconditionally; the base's #destroyed guard prevents spurious
+   * eviction during intentional teardown.
+   */
+  protected override attachDeathListeners(entry: PoolEntry<ChildProcess>): void {
+    entry.worker.on('error', (err: Error) => {
+      this.onTransportDeath(entry, DAG_CONTAINER_WORKER_DIED, `child error: ${err.message}`);
+    });
+    entry.worker.on('exit', () => {
+      this.onTransportDeath(entry, DAG_CONTAINER_WORKER_DIED, 'child exited unexpectedly');
+    });
+    entry.worker.on('disconnect', () => {
+      this.onTransportDeath(entry, DAG_CONTAINER_WORKER_DIED, 'child IPC channel disconnected');
+    });
   }
 
-  /** Remove a dead entry from #pool and #free, then wake a slot waiter. */
-  #evict(entry: ForkPoolEntry): void {
-    const poolIdx = this.#pool.indexOf(entry);
-    if (poolIdx === -1) return;
-    this.#pool.splice(poolIdx, 1);
-    const freeIdx = this.#free.indexOf(entry);
-    if (freeIdx !== -1) this.#free.splice(freeIdx, 1);
-    try { entry.channel.close(); } catch { /* suppress */ }
-    this.#releaseSlot();
+  /**
+   * terminateWorker: force-kill the child process. Must not throw.
+   */
+  protected override terminateWorker(worker: ChildProcess): void {
+    worker.kill('SIGKILL');
   }
 
-  #waitForSlot(): Promise<void> {
+  /**
+   * awaitWorkerExit: resolves when the child process's 'exit' event fires.
+   */
+  protected override awaitWorkerExit(worker: ChildProcess): Promise<void> {
     return new Promise<void>((resolve) => {
-      this.#waiters.push(resolve);
-    });
-  }
-
-  #releaseSlot(): void {
-    const waiter = this.#waiters.shift();
-    if (waiter !== undefined) waiter();
-  }
-
-  #waitForChildExit(child: ChildProcess): Promise<void> {
-    return new Promise<void>((resolve) => {
-      child.once('exit', () => resolve());
+      worker.once('exit', () => { resolve(); });
     });
   }
 }

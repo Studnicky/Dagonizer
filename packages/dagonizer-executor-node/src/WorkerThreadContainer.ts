@@ -4,7 +4,7 @@
  * Maintains a pool of Worker instances running workerEntry.js. Each worker
  * hosts one DagHost over a MessagePortChannel. Requests are serialized
  * per-worker: a worker handles one request at a time; concurrent requests wait
- * in a promise-based semaphore queue for a free slot.
+ * in the base's semaphore queue for a free slot.
  *
  * Constructor options:
  *   registryModule      — URL string passed to DagHost init
@@ -20,8 +20,10 @@
 
 import { Worker } from 'node:worker_threads';
 
+import type { NodeStateInterface } from '@noocodex/dagonizer';
 import { DagContainerBase, DAG_CONTAINER_WORKER_DIED } from '@noocodex/dagonizer/container';
-import type { Instrumentation, MessageChannelInterface } from '@noocodex/dagonizer/contracts';
+import type { PoolEntry } from '@noocodex/dagonizer/container';
+import type { Instrumentation } from '@noocodex/dagonizer/contracts';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 import { RecommendedWorkerCountConfigDefault } from '@noocodex/dagonizer/entities';
 
@@ -52,137 +54,41 @@ export interface WorkerThreadContainerOptions {
 }
 
 // ---------------------------------------------------------------------------
-// PoolEntry: tracks a worker and its channel
-// ---------------------------------------------------------------------------
-
-interface PoolEntry {
-  worker: Worker;
-  channel: MessagePortChannel;
-  initialized: boolean;
-}
-
-// ---------------------------------------------------------------------------
 // WorkerThreadContainer
 // ---------------------------------------------------------------------------
 
-export class WorkerThreadContainer extends DagContainerBase {
-  readonly #registryModule: string;
-  readonly #registryVersion: string;
-  readonly #servicesConfig: JsonObject;
-  readonly #poolSize: number;
+export class WorkerThreadContainer extends DagContainerBase<NodeStateInterface, Worker> {
   readonly #resourceLimits: WorkerThreadResourceLimits;
   readonly #entryUrl: URL;
 
-  readonly #pool: PoolEntry[];
-  readonly #free: PoolEntry[];
-  #waiters: Array<() => void>;
-  #destroyed: boolean;
-
   constructor(options: WorkerThreadContainerOptions) {
-    super(options.instrumentation !== undefined ? { 'instrumentation': options.instrumentation } : {});
-    this.#registryModule = options.registryModule;
-    this.#registryVersion = options.registryVersion;
-    this.#servicesConfig = options.servicesConfig ?? {};
-    this.#resourceLimits = options.resourceLimits ?? {};
-    this.#entryUrl = options.entryUrl ?? new URL('./workerEntry.js', import.meta.url);
-
     const sysInfo = new NodeSystemInfo();
     const defaultPoolSize = sysInfo.recommendedWorkerCount({
       ...RecommendedWorkerCountConfigDefault,
       'maximumWorkers': 8,
     });
-    this.#poolSize = options.poolSize ?? defaultPoolSize;
-
-    this.#pool = [];
-    this.#free = [];
-    this.#waiters = [];
-    this.#destroyed = false;
-  }
-
-  protected async acquireChannel(): Promise<MessageChannelInterface> {
-    if (this.#destroyed) {
-      throw new Error('WorkerThreadContainer: destroyed');
-    }
-
-    // Grow pool up to #poolSize on demand.
-    if (this.#free.length === 0 && this.#pool.length < this.#poolSize) {
-      const entry = this.#spawnWorker();
-      this.#pool.push(entry);
-      this.#free.push(entry);
-    }
-
-    // Wait for a free slot.
-    if (this.#free.length === 0) {
-      await this.#waitForSlot();
-    }
-
-    const entry = this.#free.pop();
-    if (entry === undefined) {
-      throw new Error('WorkerThreadContainer: no free slot after wait');
-    }
-
-    // Initialize on first use.
-    if (!entry.initialized) {
-      await this.initializeChannel(entry.channel, {
-        'registryModule': this.#registryModule,
-        'registryVersion': this.#registryVersion,
-        'servicesConfig': this.#servicesConfig,
-      });
-      entry.initialized = true;
-    }
-
-    return entry.channel;
-  }
-
-  protected releaseChannel(channel: MessageChannelInterface): void {
-    const entry = this.#pool.find((e) => e.channel === channel);
-    if (entry !== undefined && !this.#destroyed) {
-      this.#free.push(entry);
-      this.#releaseSlot();
-    }
-  }
-
-  async destroy(): Promise<void> {
-    if (this.#destroyed) return;
-    this.#destroyed = true;
-
-    // Send shutdown to all initialized workers.
-    const shutdownPromises: Promise<void>[] = [];
-    for (const entry of this.#pool) {
-      if (entry.initialized) {
-        try {
-          entry.channel.send({ 'kind': 'shutdown' });
-        } catch { /* suppress */ }
-      }
-      shutdownPromises.push(this.#waitForWorkerExit(entry.worker));
-    }
-
-    // Give workers a chance to exit cleanly; terminate stragglers.
-    await Promise.allSettled(
-      shutdownPromises.map((p) =>
-        Promise.race([
-          p,
-          new Promise<void>((resolve) => setTimeout(resolve, 2000)),
-        ]),
-      ),
-    );
-
-    for (const entry of this.#pool) {
-      try {
-        await entry.worker.terminate();
-      } catch { /* suppress */ }
-      entry.channel.close();
-    }
-
-    this.#pool.length = 0;
-    this.#free.length = 0;
+    super({
+      'instrumentation': options.instrumentation,
+      'poolSize': options.poolSize ?? defaultPoolSize,
+      'init': {
+        'registryModule': options.registryModule,
+        'registryVersion': options.registryVersion,
+        'servicesConfig': options.servicesConfig ?? {},
+      },
+    });
+    this.#resourceLimits = options.resourceLimits ?? {};
+    this.#entryUrl = options.entryUrl ?? new URL('./workerEntry.js', import.meta.url);
   }
 
   // ---------------------------------------------------------------------------
-  // Private helpers
+  // Abstract seam implementations
   // ---------------------------------------------------------------------------
 
-  #spawnWorker(): PoolEntry {
+  /**
+   * createEntry: construct a Worker + MessagePortChannel, initialized: false.
+   * No death listeners, no init handshake — the base handles both.
+   */
+  protected override createEntry(): PoolEntry<Worker> {
     const resourceLimits: { maxOldGenerationSizeMb?: number } = {};
     if (this.#resourceLimits.maxOldGenerationSizeMb !== undefined) {
       resourceLimits.maxOldGenerationSizeMb = this.#resourceLimits.maxOldGenerationSizeMb;
@@ -200,65 +106,40 @@ export class WorkerThreadContainer extends DagContainerBase {
         worker.on(event, listener);
         return portLike;
       },
-      'close': () => { /* worker lifetime managed by container.destroy() */ },
+      'close': () => { /* worker lifetime managed by base destroy() */ },
     };
 
     const channel = new MessagePortChannel(portLike);
-    const entry: PoolEntry = { 'worker': worker, 'channel': channel, 'initialized': false };
-
-    // Death detection (parent backstop, Law 4): a worker that dies without
-    // sending a result/error must fail its in-flight request and be evicted so
-    // a fresh worker is spawned on the next acquire. Distinguish an unexpected
-    // death from intentional teardown via #destroyed (destroy() terminates
-    // workers deliberately and must not fail pending requests).
-    worker.on('error', (err: Error) => {
-      this.#handleDeath(entry, `worker error: ${err.message}`);
-    });
-    worker.on('exit', () => {
-      if (this.#destroyed) return; // intentional shutdown during destroy()
-      this.#handleDeath(entry, 'worker exited unexpectedly');
-    });
-
-    return entry;
+    return { 'worker': worker, 'channel': channel, 'initialized': false };
   }
 
   /**
-   * Fail the dead worker's in-flight request and evict its pool entry so it is
-   * never re-acquired. Idempotent across the error+exit pair (eviction guards
-   * against double processing).
+   * attachDeathListeners: wire worker error/exit events → onTransportDeath().
+   * Called unconditionally; the base's #destroyed guard prevents spurious
+   * eviction during intentional teardown.
    */
-  #handleDeath(entry: PoolEntry, reason: string): void {
-    if (this.#destroyed) return;
-    this.failChannel(entry.channel, DAG_CONTAINER_WORKER_DIED, reason);
-    this.#evict(entry);
-  }
-
-  /** Remove a dead entry from #pool and #free, then release a slot waiter. */
-  #evict(entry: PoolEntry): void {
-    const poolIdx = this.#pool.indexOf(entry);
-    if (poolIdx === -1) return; // already evicted
-    this.#pool.splice(poolIdx, 1);
-    const freeIdx = this.#free.indexOf(entry);
-    if (freeIdx !== -1) this.#free.splice(freeIdx, 1);
-    try { entry.channel.close(); } catch { /* suppress */ }
-    // Wake a waiter: acquireChannel will spawn a fresh worker (pool shrank).
-    this.#releaseSlot();
-  }
-
-  #waitForSlot(): Promise<void> {
-    return new Promise<void>((resolve) => {
-      this.#waiters.push(resolve);
+  protected override attachDeathListeners(entry: PoolEntry<Worker>): void {
+    entry.worker.on('error', (err: Error) => {
+      this.onTransportDeath(entry, DAG_CONTAINER_WORKER_DIED, `worker error: ${err.message}`);
+    });
+    entry.worker.on('exit', () => {
+      this.onTransportDeath(entry, DAG_CONTAINER_WORKER_DIED, 'worker exited unexpectedly');
     });
   }
 
-  #releaseSlot(): void {
-    const waiter = this.#waiters.shift();
-    if (waiter !== undefined) waiter();
+  /**
+   * terminateWorker: force-kill the Worker. Must not throw.
+   */
+  protected override terminateWorker(worker: Worker): void {
+    void worker.terminate();
   }
 
-  #waitForWorkerExit(worker: Worker): Promise<void> {
+  /**
+   * awaitWorkerExit: resolves when the Worker's 'exit' event fires.
+   */
+  protected override awaitWorkerExit(worker: Worker): Promise<void> {
     return new Promise<void>((resolve) => {
-      worker.once('exit', () => resolve());
+      worker.once('exit', () => { resolve(); });
     });
   }
 }

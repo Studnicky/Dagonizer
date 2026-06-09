@@ -15,6 +15,7 @@
  */
 
 import type { MessageChannelInterface } from '@noocodex/dagonizer/contracts';
+import { BridgeMessageBuilder } from '@noocodex/dagonizer/entities';
 import type { BridgeMessage } from '@noocodex/dagonizer/entities';
 import { Validator } from '@noocodex/dagonizer/validation';
 
@@ -85,14 +86,10 @@ export class PostMessageChannel implements MessageChannelInterface {
       // Invalid payload: surface as an error message to the handler.
       // This keeps the channel alive and lets the DagHost or DagContainerBase
       // surface the failure rather than silently swallowing it.
-      const errorMessage: BridgeMessage = {
-        'kind': 'error',
-        'requestId': null,
-        'code': 'INVALID_MESSAGE',
-        'message': 'PostMessageChannel received a payload that does not conform to BridgeMessage schema',
-        'recoverable': true,
-      };
-      handler(errorMessage);
+      handler(BridgeMessageBuilder.invalid(
+        'INVALID_MESSAGE',
+        'PostMessageChannel received a payload that does not conform to BridgeMessage schema',
+      ));
       return;
     }
 

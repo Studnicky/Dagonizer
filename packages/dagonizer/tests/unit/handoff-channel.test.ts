@@ -322,7 +322,7 @@ void describe('handoff-channel: DAGHandoff schema', () => {
       'terminalName': 'done',
       'terminalOutput': 'completed',
       'registryVersion': '1.0.0',
-      'correlationId': 'test-dag:handoff:1',
+      'correlationId': 'test-dag:1',
       'placementPath': [],
       'stateSnapshot': { 'metadata': {} },
     };
@@ -335,7 +335,7 @@ void describe('handoff-channel: DAGHandoff schema', () => {
       'terminalName': 'done',
       'terminalOutput': 'completed',
       'registryVersion': '1.0.0',
-      'correlationId': 'test-dag:handoff:1',
+      'correlationId': 'test-dag:1',
       'placementPath': ['parent'],
       'stateSnapshotRef': 's3://my-bucket/snapshots/abc123',
     };
@@ -348,7 +348,7 @@ void describe('handoff-channel: DAGHandoff schema', () => {
       'terminalName': 'done',
       'terminalOutput': 'completed',
       'registryVersion': '1.0.0',
-      'correlationId': 'test-dag:handoff:1',
+      'correlationId': 'test-dag:1',
       'placementPath': [],
       'stateSnapshot': { 'metadata': {} },
       'stateSnapshotRef': 's3://bucket/key',
@@ -362,7 +362,7 @@ void describe('handoff-channel: DAGHandoff schema', () => {
       'terminalName': 'done',
       'terminalOutput': 'completed',
       'registryVersion': '1.0.0',
-      'correlationId': 'test-dag:handoff:1',
+      'correlationId': 'test-dag:1',
       'placementPath': [],
     };
     assert.ok(!Validator.dagHandoff.is(envelope), 'neither field should be invalid');
@@ -374,7 +374,7 @@ void describe('handoff-channel: DAGHandoff schema', () => {
       'terminalName': 'done',
       'terminalOutput': 'completed',
       'registryVersion': '1.0.0',
-      'correlationId': 'test-dag:handoff:1',
+      'correlationId': 'test-dag:1',
       'placementPath': [],
       'stateSnapshot': {},
       'extraField': 'not-allowed',
@@ -388,7 +388,7 @@ void describe('handoff-channel: DAGHandoff schema', () => {
       'terminalName': 'done',
       'terminalOutput': 'completed',
       'registryVersion': '1.0.0',
-      'correlationId': 'test-dag:handoff:1',
+      'correlationId': 'test-dag:1',
       'placementPath': [],
       'stateSnapshot': {},
     };

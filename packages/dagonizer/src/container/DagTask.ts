@@ -20,7 +20,7 @@ export class DagTask<
 > implements DagTaskInterface<TState, TServices> {
   readonly dagName: string;
   readonly placementPath: readonly string[];
-  readonly requestId: string;
+  readonly correlationId: string;
   readonly timeoutMs: number | null;
   readonly state: TState;
   readonly context: NodeContextInterface<TServices>;
@@ -28,14 +28,14 @@ export class DagTask<
   constructor(
     dagName: string,
     placementPath: readonly string[],
-    requestId: string,
+    correlationId: string,
     timeoutMs: number | null,
     state: TState,
     context: NodeContextInterface<TServices>,
   ) {
     this.dagName = dagName;
     this.placementPath = placementPath;
-    this.requestId = requestId;
+    this.correlationId = correlationId;
     this.timeoutMs = timeoutMs;
     this.state = state;
     this.context = context;
@@ -51,7 +51,7 @@ export class DagTask<
       'placementPath': [...this.placementPath],
       'stateSnapshot': this.state.snapshot(),
       'timeoutMs':     this.timeoutMs,
-      'requestId':     this.requestId,
+      'correlationId': this.correlationId,
     };
   }
 }

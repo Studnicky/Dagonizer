@@ -340,7 +340,6 @@ implements DagonizerInterface<TState, TServices> {
   private readonly containers: Readonly<Record<string, DagContainerInterface<TState>>>;
   private readonly channels: Readonly<Record<string, ChannelInterface>>;
   private readonly registryVersion: string;
-  #requestSeq = 0;
   #correlationSeq = 0;
 
   /**
@@ -460,19 +459,11 @@ implements DagonizerInterface<TState, TServices> {
   }
 
   /**
-   * Generate a monotonic request id for container correlation. Uses a private
-   * `#requestSeq` counter. No randomness; no Date.now.
-   */
-  private nextRequestId(dagName: string): string {
-    return `${dagName}:${++this.#requestSeq}`;
-  }
-
-  /**
-   * Generate a monotonic correlation id for hand-off envelopes. Uses a
-   * private `#correlationSeq` counter. No randomness; no Date.now.
+   * Generate a monotonic correlation id for container requests and hand-off
+   * envelopes. Uses a private `#correlationSeq` counter. No randomness; no Date.now.
    */
   private nextCorrelationId(dagName: string): string {
-    return `${dagName}:handoff:${++this.#correlationSeq}`;
+    return `${dagName}:${++this.#correlationSeq}`;
   }
 
   // ---------------------------------------------------------------------------
@@ -1043,9 +1034,7 @@ implements DagonizerInterface<TState, TServices> {
     const intermediateResults: Array<NodeResultInterface<TState>> = [];
     let terminalOutcome: 'completed' | 'failed' | null;
 
-    const container = this.resolveContainer(
-      ('container' in placement ? (placement as { container?: string }).container : undefined),
-    );
+    const container = this.resolveContainer(placement.container);
 
     if (container === null) {
       // ── In-process path (byte-identical to the original) ───────────────────
@@ -1068,12 +1057,12 @@ implements DagonizerInterface<TState, TServices> {
       terminalOutcome = step.value.terminalOutcome;
     } else {
       // ── Contained path ─────────────────────────────────────────────────────
-      const requestId = this.nextRequestId(placement.dag);
+      const correlationId = this.nextCorrelationId(placement.dag);
       const context = this.buildContext(placement.dag, placement.name, signal);
       const task = new DagTask<TState, TServices>(
         placement.dag,
         innerPath,
-        requestId,
+        correlationId,
         null,
         cloneState,
         context,
@@ -1088,13 +1077,15 @@ implements DagonizerInterface<TState, TServices> {
       // NodeError; collecting it below makes hasUnrecoverable true and routes
       // this placement to its 'error' output. No silent success.
 
-      // Apply terminal state snapshot back to clone (in-place; parent state
-      // identity is preserved: result.state === initialState invariant holds).
+      // Apply terminal state snapshot back to clone for domain state (in-place;
+      // parent state identity is preserved: result.state === initialState
+      // invariant holds). outcome.errors is the single authoritative error
+      // channel — always collect it regardless of whether a snapshot is present.
+      // Errors are intentionally not serialized into the snapshot; the snapshot
+      // carries domain state only (metadata, retries, warnings, subclass fields).
       if (outcome.stateSnapshot !== null) {
         cloneState.applySnapshot(outcome.stateSnapshot);
       }
-
-      // Collect child errors into clone (propagated to parent below).
       for (const err of outcome.errors) cloneState.collectError(err);
 
       // Re-yield each intermediate as a NodeResultInterface.
@@ -1387,9 +1378,7 @@ implements DagonizerInterface<TState, TServices> {
       } else {
         // DAG body — may run in-process or through a bound container.
         const innerPath: readonly string[] = [...placementPath, scatter.name];
-        const container = this.resolveContainer(
-          ('container' in scatter ? (scatter as { container?: string }).container : undefined),
-        );
+        const container = this.resolveContainer(scatter.container);
 
         if (container === null) {
           // ── In-process path (byte-identical to the original) ─────────────────
@@ -1413,12 +1402,12 @@ implements DagonizerInterface<TState, TServices> {
           }
         } else {
           // ── Contained path ───────────────────────────────────────────────────
-          const requestId = this.nextRequestId(scatter.body.dag);
+          const correlationId = this.nextCorrelationId(scatter.body.dag);
           const context = this.buildContext(scatter.body.dag, scatter.name, signal);
           const task = new DagTask<TState, TServices>(
             scatter.body.dag,
             innerPath,
-            requestId,
+            correlationId,
             null,
             cloneState,
             context,
@@ -1440,12 +1429,16 @@ implements DagonizerInterface<TState, TServices> {
             );
           }
 
-          // Apply terminal state snapshot back to clone in place.
+          // Apply terminal state snapshot back to clone for domain state.
+          // outcome.errors is the single authoritative error channel — always
+          // collect it regardless of whether a snapshot is present. Errors are
+          // intentionally not serialized into the snapshot; the snapshot carries
+          // domain state only (metadata, retries, warnings, subclass fields).
+          // Infrastructure failures throw above; the null case here handles any
+          // non-infrastructure container that cannot produce a snapshot.
           if (outcome.stateSnapshot !== null) {
             cloneState.applySnapshot(outcome.stateSnapshot);
           }
-
-          // Collect child errors into clone (propagated to shared state below).
           for (const err of outcome.errors) cloneState.collectError(err);
 
           // Re-yield each intermediate as a NodeResultInterface with scatter prefix.
@@ -1868,9 +1861,7 @@ implements DagonizerInterface<TState, TServices> {
     // Emit contractWarning for placements that declare a container role that is
     // not bound in this.containers. Those placements will fall back to in-process.
     for (const placement of dag.nodes) {
-      const containerRole = ('container' in placement)
-        ? (placement as { container?: string }).container
-        : undefined;
+      const containerRole = 'container' in placement ? placement.container : undefined;
       if (containerRole !== undefined && this.resolveContainer(containerRole) === null) {
         const msg = `DAG '${dag.name}' placement '${placement.name}' declares container role '${containerRole}' which is not bound; resolving to in-process`;
         this.onContractWarning(msg);

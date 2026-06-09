@@ -21,9 +21,9 @@ export const ExecutionResponseSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/ExecutionResponse',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['requestId', 'terminalOutput', 'errors', 'stateSnapshot', 'intermediates'],
+  'required': ['correlationId', 'terminalOutput', 'errors', 'stateSnapshot', 'intermediates'],
   'properties': {
-    'requestId':      { 'type': 'string', 'minLength': 1 },
+    'correlationId':  { 'type': 'string', 'minLength': 1 },
     'terminalOutput': { 'type': 'string' },
     'errors': {
       'type': 'array',

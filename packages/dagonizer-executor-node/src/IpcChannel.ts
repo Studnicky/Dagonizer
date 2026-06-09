@@ -15,6 +15,7 @@
  */
 
 import type { MessageChannelInterface } from '@noocodex/dagonizer/contracts';
+import { BridgeMessageBuilder } from '@noocodex/dagonizer/entities';
 import type { BridgeMessage } from '@noocodex/dagonizer/entities';
 import { Validator } from '@noocodex/dagonizer/validation';
 
@@ -53,13 +54,10 @@ export class IpcChannel implements MessageChannelInterface {
       if (Validator.bridgeMessage.is(value)) {
         handler(value);
       } else {
-        handler({
-          'kind': 'error',
-          'requestId': null,
-          'code': 'INVALID_MESSAGE',
-          'message': 'Received a message that does not conform to BridgeMessage schema',
-          'recoverable': true,
-        });
+        handler(BridgeMessageBuilder.invalid(
+          'INVALID_MESSAGE',
+          'Received a message that does not conform to BridgeMessage schema',
+        ));
       }
     });
   }

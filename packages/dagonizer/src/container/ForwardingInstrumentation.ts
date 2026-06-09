@@ -16,7 +16,7 @@
  * instrumentation sees a non-empty, meaningful placementPath. Pass `[]` for a
  * top-level host with no parent placement context.
  *
- * Constructor(channel, requestId, basePath): DI, no callbacks.
+ * Constructor(channel, correlationId, basePath): DI, no callbacks.
  */
 
 import type { Instrumentation } from '../contracts/Instrumentation.js';
@@ -28,12 +28,12 @@ export class ForwardingInstrumentation<TState extends NodeStateInterface = NodeS
   implements Instrumentation<TState> {
 
   readonly #channel: MessageChannelInterface;
-  readonly #requestId: string;
+  readonly #correlationId: string;
   readonly #basePath: readonly string[];
 
-  constructor(channel: MessageChannelInterface, requestId: string, basePath: readonly string[]) {
+  constructor(channel: MessageChannelInterface, correlationId: string, basePath: readonly string[]) {
     this.#channel = channel;
-    this.#requestId = requestId;
+    this.#correlationId = correlationId;
     this.#basePath = basePath;
   }
 
@@ -50,7 +50,7 @@ export class ForwardingInstrumentation<TState extends NodeStateInterface = NodeS
   nodeStart(dagName: string, nodeName: string, _state: TState, placementPath: readonly string[]): void {
     this.#channel.send({
       'kind': 'instrumentation',
-      'requestId': this.#requestId,
+      'correlationId': this.#correlationId,
       'hook': 'nodeStart',
       'phase': '',
       'dagName': dagName,
@@ -64,7 +64,7 @@ export class ForwardingInstrumentation<TState extends NodeStateInterface = NodeS
   nodeEnd(dagName: string, nodeName: string, output: string | null, _state: TState, placementPath: readonly string[]): void {
     this.#channel.send({
       'kind': 'instrumentation',
-      'requestId': this.#requestId,
+      'correlationId': this.#correlationId,
       'hook': 'nodeEnd',
       'phase': '',
       'dagName': dagName,
@@ -78,7 +78,7 @@ export class ForwardingInstrumentation<TState extends NodeStateInterface = NodeS
   phaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, _state: TState, placementPath: readonly string[]): void {
     this.#channel.send({
       'kind': 'instrumentation',
-      'requestId': this.#requestId,
+      'correlationId': this.#correlationId,
       'hook': 'phaseEnter',
       'phase': phase,
       'dagName': dagName,
@@ -92,7 +92,7 @@ export class ForwardingInstrumentation<TState extends NodeStateInterface = NodeS
   phaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, _state: TState, placementPath: readonly string[]): void {
     this.#channel.send({
       'kind': 'instrumentation',
-      'requestId': this.#requestId,
+      'correlationId': this.#correlationId,
       'hook': 'phaseExit',
       'phase': phase,
       'dagName': dagName,
@@ -106,7 +106,7 @@ export class ForwardingInstrumentation<TState extends NodeStateInterface = NodeS
   contractWarning(message: string): void {
     this.#channel.send({
       'kind': 'instrumentation',
-      'requestId': this.#requestId,
+      'correlationId': this.#correlationId,
       'hook': 'contractWarning',
       'phase': '',
       'dagName': '',
@@ -120,7 +120,7 @@ export class ForwardingInstrumentation<TState extends NodeStateInterface = NodeS
   error(dagName: string, nodeName: string, error: Error, _state: TState, placementPath: readonly string[]): void {
     this.#channel.send({
       'kind': 'instrumentation',
-      'requestId': this.#requestId,
+      'correlationId': this.#correlationId,
       'hook': 'error',
       'phase': '',
       'dagName': dagName,

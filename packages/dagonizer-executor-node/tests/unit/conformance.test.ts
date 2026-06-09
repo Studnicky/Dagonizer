@@ -3,9 +3,9 @@
  *
  * Runs the full DagConformance.laws() suite against:
  * (1) WorkerThreadContainer — real worker_threads pool (Laws 1–9 including Law 8 real kill)
- * (2) ForkContainer          — real child_process.fork pool
- * (3) SpawnContainer          — real child_process.spawn pool (NDJSON stdio)
- * (4) ClusterContainer        — node:cluster workers (protocol-level round-trip)
+ * (2) ForkContainer          — real child_process.fork pool (Laws 1–9 including Law 8 real kill)
+ * (3) SpawnContainer          — real child_process.spawn pool (NDJSON stdio, Laws 1–9 with Law 8)
+ * (4) ClusterContainer        — node:cluster workers (Laws 1–9 including Law 8 real kill)
  *
  * All backends use the ConformanceRegistry fixture at dist-test/tests/unit/fixtures/registry.js
  * as their registryModule so DagHost reconstructs the identical bundle.
@@ -18,12 +18,20 @@
  * conformance.test.ts (LoopbackContainer per createDispatcherForLaw call).
  *
  * Law 8 (at-least-once under container failure):
- *   Only provided for WorkerThreadContainer — it exposes the cleanest isolate-kill
- *   mechanism (worker.terminate()). The `interruptMidScatter` capability returns a
- *   `KillAfterOneContainer` that terminates the worker pool after the first item's
- *   runDag() call completes and THROWS on the next call (so executeItem rejects,
- *   poolError is set, scatter throws, inbox retains un-acked items). A fresh
- *   WorkerThreadContainer is the `freshContainer` for resume.
+ *   Real isolate death is exercised for ALL four backends. The mechanism is the
+ *   kill-registry fixture (fixtures/kill-registry.ts): the `scatter-counter` node
+ *   calls `process.exit(7)` on item 20 with no result/error sent. Because all four
+ *   backends run real OS processes or worker threads, the parent's death-detection
+ *   backstop (attachDeathListeners → onTransportDeath) fires and resolves the
+ *   in-flight runDag with a transport-error outcome. The scatter infra-failure
+ *   discriminator leaves item 20 un-acked. Resume via a fresh container (normal
+ *   registry) reprocesses all un-acked items (at-least-once delivery).
+ *
+ *   WorkerThreadContainer: kill-registry kills only the worker_thread (process.exit
+ *   from a worker_thread terminates only that thread, not the parent).
+ *   ForkContainer / SpawnContainer / ClusterContainer: kill-registry kills only the
+ *   child process (fork/spawn/cluster children are real OS processes; process.exit
+ *   there is contained to the child).
  *
  * NOTE on ClusterContainer: node:cluster workers share the primary's state
  * machine. Running cluster.setupPrimary() multiple times in the same process
@@ -46,7 +54,7 @@ import { Dagonizer, SCATTER_PROGRESS_KEY } from '@noocodex/dagonizer';
 import type { DagonizerInterface, DispatcherBundle, NodeStateInterface, ScatterProgress } from '@noocodex/dagonizer';
 import type { DagContainerInterface, Instrumentation } from '@noocodex/dagonizer/contracts';
 import {
-  buildConformanceBundle,
+  ConformanceRegistry,
   ConformanceState,
   CONFORMANCE_CONTAINER_ROLE,
   CONFORMANCE_DAG,
@@ -334,7 +342,7 @@ void describe('WorkerThreadContainer — silent worker death (Law 4 backstop + L
     });
     allContainers.push(killing);
 
-    const bundle = buildConformanceBundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
+    const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
     const state = new ConformanceState();
     state.scatterItems = [10, 20, 30];
 
@@ -405,10 +413,10 @@ void describe('WorkerThreadContainer — silent worker death (Law 4 backstop + L
 });
 
 // ---------------------------------------------------------------------------
-// (2) ForkContainer — full conformance suite
+// (2) ForkContainer — full conformance suite including Law 8 real kill
 // ---------------------------------------------------------------------------
 
-void describe('DAG Container Conformance — ForkContainer (Laws 1–9, Law 8 skipped)', () => {
+void describe('DAG Container Conformance — ForkContainer (Laws 1–9 including Law 8)', () => {
   const allContainers: Destroyable[] = [];
 
   const factory: ContainerFactory = (opts) => {
@@ -423,7 +431,36 @@ void describe('DAG Container Conformance — ForkContainer (Laws 1–9, Law 8 sk
     return c;
   };
 
-  const harness = buildHarness(factory);
+  // Law 8 capability: kill-registry causes the child process to process.exit(7)
+  // on item 20. The parent's attachDeathListeners → onTransportDeath fires, leaving
+  // item 20 un-acked. Resume via a fresh container reprocesses it.
+  const interruptMidScatter = (): {
+    failingContainer: DagContainerInterface;
+    freshContainer: DagContainerInterface;
+  } => {
+    const failingContainer = new ForkContainer({
+      'registryModule': killRegistryUrl(),
+      'registryVersion': CONFORMANCE_REGISTRY_VERSION,
+      'poolSize': 1,
+      'entryUrl': new URL('../../src/forkEntry.js', import.meta.url),
+    });
+    allContainers.push(failingContainer);
+
+    const freshContainer = new ForkContainer({
+      'registryModule': registryUrl(),
+      'registryVersion': CONFORMANCE_REGISTRY_VERSION,
+      'poolSize': 1,
+      'entryUrl': new URL('../../src/forkEntry.js', import.meta.url),
+    });
+    allContainers.push(freshContainer);
+
+    return { failingContainer, freshContainer };
+  };
+
+  const harness = {
+    ...buildHarness(factory),
+    interruptMidScatter,
+  };
 
   afterEach(async () => {
     await harness.teardown();
@@ -441,10 +478,10 @@ void describe('DAG Container Conformance — ForkContainer (Laws 1–9, Law 8 sk
 });
 
 // ---------------------------------------------------------------------------
-// (3) SpawnContainer — full conformance suite
+// (3) SpawnContainer — full conformance suite including Law 8 real kill
 // ---------------------------------------------------------------------------
 
-void describe('DAG Container Conformance — SpawnContainer (Laws 1–9, Law 8 skipped)', () => {
+void describe('DAG Container Conformance — SpawnContainer (Laws 1–9 including Law 8)', () => {
   const allContainers: Destroyable[] = [];
 
   const factory: ContainerFactory = (opts) => {
@@ -459,7 +496,36 @@ void describe('DAG Container Conformance — SpawnContainer (Laws 1–9, Law 8 s
     return c;
   };
 
-  const harness = buildHarness(factory);
+  // Law 8 capability: kill-registry causes the spawned process to process.exit(7)
+  // on item 20. The parent's stdout 'close' / 'exit' listener → onTransportDeath
+  // fires, leaving item 20 un-acked. Resume via a fresh container reprocesses it.
+  const interruptMidScatter = (): {
+    failingContainer: DagContainerInterface;
+    freshContainer: DagContainerInterface;
+  } => {
+    const failingContainer = new SpawnContainer({
+      'registryModule': killRegistryUrl(),
+      'registryVersion': CONFORMANCE_REGISTRY_VERSION,
+      'poolSize': 1,
+      'entryUrl': new URL('../../src/spawnEntry.js', import.meta.url),
+    });
+    allContainers.push(failingContainer);
+
+    const freshContainer = new SpawnContainer({
+      'registryModule': registryUrl(),
+      'registryVersion': CONFORMANCE_REGISTRY_VERSION,
+      'poolSize': 1,
+      'entryUrl': new URL('../../src/spawnEntry.js', import.meta.url),
+    });
+    allContainers.push(freshContainer);
+
+    return { failingContainer, freshContainer };
+  };
+
+  const harness = {
+    ...buildHarness(factory),
+    interruptMidScatter,
+  };
 
   afterEach(async () => {
     await harness.teardown();
@@ -485,9 +551,14 @@ void describe('DAG Container Conformance — SpawnContainer (Laws 1–9, Law 8 s
 // full laws() suite creates one shared container factory here and runs all
 // nine laws against it. This exercises the full protocol over real cluster
 // IPC workers while avoiding cross-instance cluster setup races.
+//
+// Law 8: uses the kill-registry which causes the cluster worker (an OS process)
+// to process.exit(7) on item 20. All ClusterContainer instances here use
+// forkEntry.js as the exec target, so cluster.setupPrimary is called with the
+// same path each time — no exec-target collision.
 // ---------------------------------------------------------------------------
 
-void describe('DAG Container Conformance — ClusterContainer (Laws 1–9, Law 8 skipped, single instance)', () => {
+void describe('DAG Container Conformance — ClusterContainer (Laws 1–9 including Law 8, single instance)', () => {
   const allContainers: Destroyable[] = [];
 
   const factory: ContainerFactory = (opts) => {
@@ -502,7 +573,37 @@ void describe('DAG Container Conformance — ClusterContainer (Laws 1–9, Law 8
     return c;
   };
 
-  const harness = buildHarness(factory);
+  // Law 8 capability: kill-registry causes the cluster worker (a real OS process)
+  // to process.exit(7) on item 20. The parent's exit/disconnect listeners →
+  // onTransportDeath fires, leaving item 20 un-acked. Resume via a fresh cluster
+  // container (normal registry) reprocesses it.
+  const interruptMidScatter = (): {
+    failingContainer: DagContainerInterface;
+    freshContainer: DagContainerInterface;
+  } => {
+    const failingContainer = new ClusterContainer({
+      'registryModule': killRegistryUrl(),
+      'registryVersion': CONFORMANCE_REGISTRY_VERSION,
+      'poolSize': 1,
+      'entryUrl': new URL('../../src/forkEntry.js', import.meta.url),
+    });
+    allContainers.push(failingContainer);
+
+    const freshContainer = new ClusterContainer({
+      'registryModule': registryUrl(),
+      'registryVersion': CONFORMANCE_REGISTRY_VERSION,
+      'poolSize': 1,
+      'entryUrl': new URL('../../src/forkEntry.js', import.meta.url),
+    });
+    allContainers.push(freshContainer);
+
+    return { failingContainer, freshContainer };
+  };
+
+  const harness = {
+    ...buildHarness(factory),
+    interruptMidScatter,
+  };
 
   afterEach(async () => {
     await harness.teardown();

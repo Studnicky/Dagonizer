@@ -10,6 +10,14 @@
  * surface as 'error' BridgeMessage dispatched to the handler — the channel
  * never throws.
  *
+ * Buffer safety: the accumulator is capped at MAX_BUFFER_BYTES (8 MiB). On
+ * overflow the channel emits an NDJSON_PARSE_ERROR and resets the buffer;
+ * a partial un-terminated trailing line at stream close is traced as an
+ * NDJSON_PARSE_ERROR rather than silently discarded.
+ *
+ * Stream events: readable 'error' and 'close' are handled — an error surfaces
+ * as an NDJSON_PARSE_ERROR; a close with a non-empty buffer emits a trace.
+ *
  * send    → writable.write(JSON.stringify(message) + '\n')
  * onMessage → accumulate readable data; parse each '\n'-terminated line
  * close   → stop delivering; destroy streams
@@ -20,8 +28,16 @@
 import type { Readable, Writable } from 'node:stream';
 
 import type { MessageChannelInterface } from '@noocodex/dagonizer/contracts';
+import { BridgeMessageBuilder } from '@noocodex/dagonizer/entities';
 import type { BridgeMessage } from '@noocodex/dagonizer/entities';
 import { Validator } from '@noocodex/dagonizer/validation';
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Maximum accumulated NDJSON buffer size before the channel emits an overflow error. */
+const MAX_BUFFER_BYTES = 8 * 1024 * 1024; // 8 MiB
 
 // ---------------------------------------------------------------------------
 // NdjsonChannel
@@ -46,8 +62,41 @@ export class NdjsonChannel implements MessageChannelInterface {
     // onMessage() replaces this.#handler — it never re-subscribes to the stream.
     this.#readable.on('data', (chunk: Buffer | string) => {
       if (this.#closed) return;
-      this.#buffer += typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      this.#buffer += text;
+
+      // Buffer overflow guard: cap at MAX_BUFFER_BYTES to prevent unbounded growth.
+      if (this.#buffer.length > MAX_BUFFER_BYTES) {
+        this.#buffer = '';
+        this.#dispatch(BridgeMessageBuilder.invalid(
+          'NDJSON_PARSE_ERROR',
+          `NDJSON buffer overflow: accumulated data exceeded ${MAX_BUFFER_BYTES} bytes; buffer reset`,
+        ));
+        return;
+      }
+
       this.#processBuffer();
+    });
+
+    this.#readable.on('error', (err: Error) => {
+      if (this.#closed) return;
+      this.#dispatch(BridgeMessageBuilder.invalid(
+        'NDJSON_PARSE_ERROR',
+        `NDJSON readable stream error: ${err.message}`,
+      ));
+    });
+
+    this.#readable.on('close', () => {
+      if (this.#closed) return;
+      // Trace any un-terminated trailing line that was never delimited.
+      const trailing = this.#buffer.trim();
+      if (trailing.length > 0) {
+        this.#buffer = '';
+        this.#dispatch(BridgeMessageBuilder.invalid(
+          'NDJSON_PARSE_ERROR',
+          `NDJSON stream closed with un-terminated trailing line: ${trailing.slice(0, 200)}`,
+        ));
+      }
     });
   }
 
@@ -89,21 +138,17 @@ export class NdjsonChannel implements MessageChannelInterface {
   }
 
   #dispatchLine(line: string): void {
-    const handler = this.#handler;
-    if (handler === null || this.#closed) return;
+    if (this.#handler === null || this.#closed) return;
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(line) as unknown;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      handler({
-        'kind': 'error',
-        'requestId': null,
-        'code': 'NDJSON_PARSE_ERROR',
-        'message': `Failed to parse NDJSON line: ${message}`,
-        'recoverable': true,
-      });
+      this.#dispatch(BridgeMessageBuilder.invalid(
+        'NDJSON_PARSE_ERROR',
+        `Failed to parse NDJSON line: ${message}`,
+      ));
       return;
     }
 
@@ -112,16 +157,21 @@ export class NdjsonChannel implements MessageChannelInterface {
       validated = Validator.bridgeMessage.validate(parsed);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      handler({
-        'kind': 'error',
-        'requestId': null,
-        'code': 'NDJSON_VALIDATION_ERROR',
-        'message': `BridgeMessage validation failed: ${message}`,
-        'recoverable': true,
-      });
+      this.#dispatch(BridgeMessageBuilder.invalid(
+        'NDJSON_VALIDATION_ERROR',
+        `BridgeMessage validation failed: ${message}`,
+      ));
       return;
     }
 
-    handler(validated);
+    this.#dispatch(validated);
+  }
+
+  /** Deliver a message to the handler if the channel is open and a handler is set. */
+  #dispatch(message: BridgeMessage): void {
+    const handler = this.#handler;
+    if (handler !== null && !this.#closed) {
+      handler(message);
+    }
   }
 }

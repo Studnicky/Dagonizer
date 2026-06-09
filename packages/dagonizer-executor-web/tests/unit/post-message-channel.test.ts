@@ -208,7 +208,7 @@ void describe('PostMessageChannel', () => {
     assert.strictEqual(msg.kind, 'error');
     if (msg.kind === 'error') {
       assert.strictEqual(msg.code, 'INVALID_MESSAGE');
-      assert.strictEqual(msg.recoverable, true);
+      assert.strictEqual(msg.recoverable, false);
     }
   });
 

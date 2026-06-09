@@ -2,13 +2,13 @@
  * DagOutcome: factory for `DagOutcomeInterface` values.
  *
  * A static class (`noun.verb()`) so outcome construction has one canonical
- * call site. `DagOutcome.transportError(requestId, code?, message?)` builds the
+ * call site. `DagOutcome.transportError(correlationId, code?, message?)` builds the
  * collected-error outcome the transport layer returns when a DAG never ran to a
  * terminal — a closed channel, a send failure, an unroutable error message, or
  * a worker/child that died without sending a result.
  *
  * The default `code` is `DAG_CONTAINER_TRANSPORT` (generic transport loss); the
- * default `message` interpolates `requestId`. The returned outcome carries an
+ * default `message` interpolates `correlationId`. The returned outcome carries an
  * unrecoverable `NodeError` keyed to the `runDag` operation so the parent routes
  * the placement to its `error` output (embedded-DAG) or leaves the scatter item
  * un-acked for resume (the `TransportErrorCode.isInfrastructureFailure` path).
@@ -27,9 +27,9 @@ export class DagOutcome {
    * with a single unrecoverable `NodeError` carrying `code` and `message`.
    */
   static transportError(
-    requestId: string,
+    correlationId: string,
     code: string = DAG_CONTAINER_TRANSPORT,
-    message: string = `Transport failure for request ${requestId}`,
+    message: string = `Transport failure for request ${correlationId}`,
   ): DagOutcomeInterface {
     const error: NodeError = {
       'code': code,

@@ -9,7 +9,7 @@
  * `dagName`       — name of the registered DAG to run.
  * `placementPath` — nesting path of embedded-DAG placement names leading to
  *                   this execution (for instrumentation/observability).
- * `requestId`     — dispatcher-monotonic correlation id; no randomness.
+ * `correlationId` — dispatcher-monotonic correlation id; no randomness.
  * `timeoutMs`     — timeout budget forwarded to the container; `null` = no limit.
  * `state`         — live seeded child clone (TState).
  * `context`       — composed NodeContext including the abort signal.
@@ -25,7 +25,7 @@ export interface DagTaskInterface<
 > {
   readonly dagName: string;
   readonly placementPath: readonly string[];
-  readonly requestId: string;
+  readonly correlationId: string;
   readonly timeoutMs: number | null;
   readonly state: TState;
   readonly context: NodeContextInterface<TServices>;

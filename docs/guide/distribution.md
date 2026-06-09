@@ -122,6 +122,10 @@ export default registry;
 
 Services never cross the isolation boundary — each isolate constructs its own services bag. If an isolate requires a network connection, it opens it locally; the parent does not proxy requests.
 
+::: warning Trust boundary
+The `registryModule` path passed to a container backend is dynamically imported inside the isolate with full module privileges. Pass only operator-controlled paths. Accepting a `registryModule` value from untrusted input (user data, external queue messages) creates a remote code execution vector.
+:::
+
 ---
 
 ## Cross-host hand-off
@@ -138,14 +142,24 @@ When a top-level DAG completes at a terminal placement bound to a `ChannelInterf
 
 ```ts
 import { Dagonizer, InMemoryChannel } from '@noocodex/dagonizer';
+import type { DAGHandoff } from '@noocodex/dagonizer/entities';
 
-const channel = new InMemoryChannel({
-  onPublish: async (handoff) => {
+// Extension via subclass (zero callbacks). Override the protected onPublished
+// hook to chain a downstream DAG. InMemoryChannelOptions carries no fields;
+// passing a callback object to the constructor is not supported.
+class HandoffChannel extends InMemoryChannel {
+  protected override async onPublished(handoff: DAGHandoff): Promise<void> {
+    // DAGHandoff is a oneOf discriminated union: either stateSnapshot (by-value
+    // JsonObject) or stateSnapshotRef (by-reference URI string). Narrow before
+    // accessing stateSnapshot — the field is absent on the ref branch.
+    if (!('stateSnapshot' in handoff)) return;
     // Restore state on the receiving side and run the continuation DAG.
-    const state = AppState.restore(handoff.stateSnapshot);
+    const state = AppState.restore(handoff.stateSnapshot as JsonObject);
     await downstreamDispatcher.execute('continuation-dag', state);
-  },
-});
+  }
+}
+
+const channel = new HandoffChannel();
 
 const dispatcher = new Dagonizer<AppState, AppServices>({
   services,
@@ -190,7 +204,15 @@ export async function handler(envelope: DAGHandoff): Promise<void> {
   }
 
   // 2. Restore state from the envelope.
-  const state = AppState.restore(envelope.stateSnapshot);
+  // DAGHandoff is a oneOf: stateSnapshot (by-value) or stateSnapshotRef
+  // (by-reference URI). Narrow to the by-value branch before calling restore.
+  // A stateSnapshotRef envelope requires the receiver to fetch the snapshot
+  // from the referenced URI before restoring — see the stateSnapshotRef note
+  // in the envelope fields list above.
+  if (!('stateSnapshot' in envelope)) {
+    throw new Error('stateSnapshotRef envelopes require fetching the snapshot URI before restore');
+  }
+  const state = AppState.restore(envelope.stateSnapshot as JsonObject);
 
   // 3. Construct the dispatcher with egress channels bound to terminal names.
   const services = buildServices();
@@ -244,6 +266,12 @@ Exactly-once delivery is out of scope for Dagonizer's channel contract. At-least
 - Use `correlationId` from the envelope as an idempotency key when the downstream API supports one.
 
 Dagonizer guarantees envelope fidelity (a `stateSnapshot` round-trip is a fixed point) and `correlationId` uniqueness within a dispatcher instance. Delivery semantics above that are a property of the channel transport and the deployment.
+
+### Trust boundaries
+
+**`stateSnapshotRef` URI dereference.** When an envelope carries `stateSnapshotRef` instead of `stateSnapshot`, the receiver must fetch the snapshot from the referenced URI. The receiver owns SSRF and allowlist responsibility: validate that the URI resolves to an operator-controlled storage backend (S3 bucket, GCS object, internal blob store) before fetching. Dagonizer does not fetch `stateSnapshotRef` values; the fetch and the allowlist check are deployment code.
+
+**Incoming state from workers.** State-snapshot keys that arrive from a worker or a remote host are untrusted-shaped. If your `restoreData` override reads state keys from a snapshot, treat incoming keys defensively — validate schema, coerce types, and apply defaults before trusting the values. The engine does not validate the shape of individual state fields; the `JsonObject` constraint only guarantees the top-level is an object.
 
 ---
 

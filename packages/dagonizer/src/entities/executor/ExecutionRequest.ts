@@ -14,13 +14,13 @@ export const ExecutionRequestSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/ExecutionRequest',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['dagName', 'placementPath', 'stateSnapshot', 'timeoutMs', 'requestId'],
+  'required': ['dagName', 'placementPath', 'stateSnapshot', 'timeoutMs', 'correlationId'],
   'properties': {
     'dagName':       { 'type': 'string', 'minLength': 1 },
     'placementPath': { 'type': 'array', 'items': { 'type': 'string' } },
     'stateSnapshot': { 'type': 'object' },
     'timeoutMs':     { 'type': ['number', 'null'] },
-    'requestId':     { 'type': 'string', 'minLength': 1 },
+    'correlationId': { 'type': 'string', 'minLength': 1 },
   },
   'additionalProperties': false,
 } as const;

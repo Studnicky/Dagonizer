@@ -22,7 +22,7 @@ import { describe, it, afterEach } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { DagContainerBase } from '../../src/container/DagContainerBase.js';
-import type { DagContainerOptions } from '../../src/container/DagContainerBase.js';
+import type { DagContainerOptions, PoolEntry } from '../../src/container/DagContainerBase.js';
 import { DagHost } from '../../src/container/DagHost.js';
 import { DAG_CONTAINER_TRANSPORT } from '../../src/container/TransportErrorCode.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
@@ -36,7 +36,7 @@ import type { JsonObject } from '../../src/entities/json.js';
 import type { NodeError } from '../../src/entities/node/NodeError.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import {
-  buildConformanceBundle,
+  ConformanceRegistry,
   ConformanceState,
   CONFORMANCE_CONTAINER_ROLE,
   CONFORMANCE_REGISTRY_VERSION,
@@ -57,61 +57,51 @@ const PACKAGE_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '
 const REGISTRY_MODULE_URL = resolve(PACKAGE_ROOT, 'dist-testing', 'ConformanceRegistry.js');
 
 // ---------------------------------------------------------------------------
-// LoopbackContainer: minimal DagContainerBase subclass
-//
-// acquireChannel() returns the singleton parent-side channel connected to a
-// DagHost. releaseChannel() is a no-op (singleton). destroy() shuts down.
+// LoopbackWorker: the "worker" value held in PoolEntry for test containers.
+// Carries the host-side channel so terminateWorker can close it.
 // ---------------------------------------------------------------------------
 
-class LoopbackContainer extends DagContainerBase {
-  readonly #registryModuleUrl: string;
-  #parentSide: MessageChannelInterface | null;
-  #initialized: boolean;
+interface LoopbackWorker {
+  hostSide: MessageChannelInterface;
+}
 
-  constructor(registryModuleUrl: string, options: DagContainerOptions = {}) {
-    super(options);
-    this.#registryModuleUrl = registryModuleUrl;
-    this.#parentSide = null;
-    this.#initialized = false;
+// ---------------------------------------------------------------------------
+// LoopbackContainer: DagContainerBase subclass backed by a single DagHost
+// connected over a LoopbackChannel. Uses poolSize:1.
+// ---------------------------------------------------------------------------
+
+class LoopbackContainer extends DagContainerBase<NodeStateInterface, LoopbackWorker> {
+  constructor(registryModuleUrl: string, options: Partial<DagContainerOptions> = {}) {
+    super({
+      'instrumentation': options.instrumentation,
+      'poolSize': 1,
+      'init': {
+        'registryModule': registryModuleUrl,
+        'registryVersion': CONFORMANCE_REGISTRY_VERSION,
+        'servicesConfig': {} as JsonObject,
+      },
+      ...(options.shutdownGraceMs !== undefined ? { 'shutdownGraceMs': options.shutdownGraceMs } : {}),
+    });
   }
 
-  /**
-   * Initialize the DagHost once. Sends init, awaits ready.
-   */
-  async initialize(): Promise<void> {
+  protected override createEntry(): PoolEntry<LoopbackWorker> {
     const [parentSide, hostSide] = LoopbackChannel.pair();
     const host = new DagHost(hostSide);
     host.start();
-
-    await this.initializeChannel(parentSide, {
-      'registryModule': this.#registryModuleUrl,
-      'registryVersion': CONFORMANCE_REGISTRY_VERSION,
-      'servicesConfig': {} as JsonObject,
-    });
-
-    this.#parentSide = parentSide;
-    this.#initialized = true;
+    return { 'worker': { hostSide }, 'channel': parentSide, 'initialized': false };
   }
 
-  protected async acquireChannel(): Promise<MessageChannelInterface> {
-    if (!this.#initialized || this.#parentSide === null) {
-      throw new Error('LoopbackContainer: not initialized; call initialize() first');
-    }
-    return this.#parentSide;
+  protected override attachDeathListeners(_entry: PoolEntry<LoopbackWorker>): void {
+    // In-process DagHost — no death events to attach.
   }
 
-  protected releaseChannel(_channel: MessageChannelInterface): void {
-    // Singleton channel: do not close on release.
+  protected override terminateWorker(worker: LoopbackWorker): void {
+    try { worker.hostSide.close(); } catch { /* suppress */ }
   }
 
-  async destroy(): Promise<void> {
-    if (this.#parentSide !== null) {
-      this.#parentSide.send({ 'kind': 'shutdown' });
-      await new Promise<void>((resolve) => setTimeout(resolve, 10));
-      this.#parentSide.close();
-    }
-    this.#parentSide = null;
-    this.#initialized = false;
+  protected override awaitWorkerExit(_worker: LoopbackWorker): Promise<void> {
+    // In-process host; no real process exit to await.
+    return Promise.resolve();
   }
 }
 
@@ -151,21 +141,13 @@ function createDispatcherForLaw(
   _containers: Readonly<Record<string, DagContainerInterface<NodeStateInterface>>>,
   instrumentation?: Instrumentation,
 ): Dagonizer<NodeStateInterface, undefined> {
-  // makeContainer is async; we must return a dispatcher synchronously.
-  // We build the container eagerly via a factory that schedules the async
-  // initialize() call and returns a proxy container that buffers runDag()
-  // calls until initialization completes.
-  //
-  // Simpler approach: build a container that lazily initializes on first
-  // runDag(). LoopbackContainer.acquireChannel() throws if not initialized,
-  // which triggers DagContainerBase.runDag()'s catch → transport error.
-  //
-  // The cleanest approach is an AsyncLoopbackContainer that initializes
-  // on first acquireChannel(). Implement it here to avoid touching the
-  // tested class.
-
-  const containerOptions = instrumentation !== undefined ? { instrumentation } : {};
-  const container = new LazyLoopbackContainer(REGISTRY_MODULE_URL, containerOptions);
+  // LoopbackContainer demand-grows its pool on first runDag(); no async init
+  // needed in the synchronous factory. The base's acquireChannel loop handles
+  // lazy entry creation and init on first use.
+  const container = new LoopbackContainer(
+    REGISTRY_MODULE_URL,
+    instrumentation !== undefined ? { instrumentation } : {},
+  );
   perLawContainers.push(container);
 
   const containers = { [CONFORMANCE_CONTAINER_ROLE]: container } as Readonly<Record<string, DagContainerInterface<NodeStateInterface>>>;
@@ -177,59 +159,11 @@ function createDispatcherForLaw(
   return dispatcher;
 }
 
-// ---------------------------------------------------------------------------
-// LazyLoopbackContainer: initializes on first acquireChannel() call.
-// This avoids async setup in createDispatcherForLaw (which is synchronous).
-// ---------------------------------------------------------------------------
-
-class LazyLoopbackContainer extends DagContainerBase {
-  readonly #registryModuleUrl: string;
-  #parentSide: MessageChannelInterface | null;
-  #initPromise: Promise<void> | null;
-
-  constructor(registryModuleUrl: string, options: DagContainerOptions = {}) {
-    super(options);
-    this.#registryModuleUrl = registryModuleUrl;
-    this.#parentSide = null;
-    this.#initPromise = null;
-  }
-
-  #doInitialize(): Promise<void> {
-    if (this.#initPromise !== null) return this.#initPromise;
-    this.#initPromise = (async (): Promise<void> => {
-      const [parentSide, hostSide] = LoopbackChannel.pair();
-      const host = new DagHost(hostSide);
-      host.start();
-      await this.initializeChannel(parentSide, {
-        'registryModule': this.#registryModuleUrl,
-        'registryVersion': CONFORMANCE_REGISTRY_VERSION,
-        'servicesConfig': {} as JsonObject,
-      });
-      this.#parentSide = parentSide;
-    })();
-    return this.#initPromise;
-  }
-
-  protected async acquireChannel(): Promise<MessageChannelInterface> {
-    await this.#doInitialize();
-    if (this.#parentSide === null) throw new Error('LazyLoopbackContainer: init failed');
-    return this.#parentSide;
-  }
-
-  protected releaseChannel(_channel: MessageChannelInterface): void {
-    // Singleton — do not close on release.
-  }
-
-  async destroy(): Promise<void> {
-    if (this.#parentSide !== null) {
-      this.#parentSide.send({ 'kind': 'shutdown' });
-      await new Promise<void>((resolve) => setTimeout(resolve, 10));
-      this.#parentSide.close();
-    }
-    this.#parentSide = null;
-    this.#initPromise = null;
-  }
-}
+// LazyLoopbackContainer is an alias for LoopbackContainer: the pool-lifecycle
+// base already handles lazy entry creation on first acquire. The type alias
+// keeps the harness sentinel construction readable.
+const LazyLoopbackContainer = LoopbackContainer;
+type LazyLoopbackContainer = LoopbackContainer;
 
 // ---------------------------------------------------------------------------
 // Harness — sentinel container for harness.container getter.
@@ -303,11 +237,11 @@ describe('DagConformance (LoopbackContainer, structuredClone boundary)', () => {
 
 describe('LoopbackContainer — state round-trip fixed point (Law 9 direct)', () => {
   it('seed→snapshot→transport→restore→run→snapshot→apply is lossless', async () => {
+    // Pool lifecycle handled by base; no explicit initialize() needed.
     const container = new LoopbackContainer(REGISTRY_MODULE_URL);
-    await container.initialize();
 
     try {
-      const bundle = buildConformanceBundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
+      const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
       const containers = { [CONFORMANCE_CONTAINER_ROLE]: container } as Readonly<Record<string, DagContainerInterface<NodeStateInterface>>>;
       const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ containers });
       dispatcher.registerBundle(bundle);
@@ -363,7 +297,7 @@ class ReturnTransportErrorAfterOneContainer implements DagContainerInterface<Nod
     // Subsequent items: RETURN a transport-error outcome (do NOT throw).
     const error: NodeError = {
       'code': DAG_CONTAINER_TRANSPORT,
-      'message': `simulated transport loss for request ${task.requestId}`,
+      'message': `simulated transport loss for request ${task.correlationId}`,
       'operation': 'runDag',
       'recoverable': false,
       'timestamp': new Date().toISOString(),
@@ -391,7 +325,7 @@ describe('DagConformance Law 8 — returns-transport-error mid-scatter (no throw
     const failing = new ReturnTransportErrorAfterOneContainer(inner);
     perLawContainers.push(failing);
 
-    const bundle = buildConformanceBundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
+    const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
 
     // Phase 1: scatter through the failing container. Item 0 acks; item 1
     // returns a transport error → scatter throws (poolError) → item 1 stays

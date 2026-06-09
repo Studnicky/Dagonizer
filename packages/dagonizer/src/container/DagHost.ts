@@ -8,15 +8,15 @@
  * Lifecycle:
  *   init     → dynamic-import registry module; createBundle; reply ready
  *   execute  → restore state; run whole DAG; reply result + stream intermediates
- *   abort    → fire AbortController for that requestId
+ *   abort    → fire AbortController for that correlationId
  *   shutdown → destroy registered nodes; close channel
  *
  * ForwardingInstrumentation is constructed per-execute, bound to the channel
- * and requestId, and passed to the Dagonizer constructor for that run. This
+ * and correlationId, and passed to the Dagonizer constructor for that run. This
  * means each execute creates a fresh Dagonizer with per-request instrumentation.
  * This is the correct wiring: a single Dagonizer per host lifetime would require
  * a mutable instrumentation slot (unsafe for concurrent executions); per-execute
- * construction is cheap and gives exact per-requestId routing of instrumentation
+ * construction is cheap and gives exact per-correlationId routing of instrumentation
  * messages without synchronisation.
  *
  * All properties are initialised in constructor for V8 hidden-class stability.
@@ -26,6 +26,7 @@ import type { MessageChannelInterface } from '../contracts/MessageChannelInterfa
 import type { RegistryBundleInterface, RegistryModuleInterface } from '../contracts/RegistryModuleInterface.js';
 import { Dagonizer } from '../Dagonizer.js';
 import type { DispatcherBundle } from '../Dagonizer.js';
+import type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js';
 import type { ExecutionResponse } from '../entities/executor/ExecutionResponse.js';
 import type { ExecutorIntermediate } from '../entities/executor/ExecutorIntermediate.js';
 import type { JsonObject } from '../entities/json.js';
@@ -51,7 +52,7 @@ export type DagHostOptions = Record<string, never>;
 
 export class DagHost {
   readonly #channel: MessageChannelInterface;
-  /** In-flight requests: requestId → AbortController. */
+  /** In-flight requests: correlationId → AbortController. */
   readonly #inflight: Map<string, AbortController>;
   /** Bundle loaded after init. */
   #bundle: RegistryBundleInterface | null;
@@ -80,7 +81,7 @@ export class DagHost {
     } catch {
       this.#channel.send({
         'kind': 'error',
-        'requestId': null,
+        'correlationId': null,
         'code': 'INVALID_MESSAGE',
         'message': 'Received a message that does not conform to BridgeMessage schema',
         'recoverable': true,
@@ -93,10 +94,10 @@ export class DagHost {
         await this.#handleInit(message.registryModule, message.registryVersion, message.servicesConfig as JsonObject);
         break;
       case 'execute':
-        void this.#handleExecute(message.request.requestId, message.request);
+        void this.#handleExecute(message.request.correlationId, message.request);
         break;
       case 'abort':
-        this.#handleAbort(message.requestId, message.reason);
+        this.#handleAbort(message.correlationId, message.reason);
         break;
       case 'shutdown':
         await this.#handleShutdown();
@@ -106,7 +107,7 @@ export class DagHost {
         // unexpected on this side but must not crash the host.
         this.#channel.send({
           'kind': 'error',
-          'requestId': null,
+          'correlationId': null,
           'code': 'UNEXPECTED_MESSAGE',
           'message': `DagHost received unexpected message kind: ${(message as { kind: string }).kind}`,
           'recoverable': true,
@@ -136,7 +137,7 @@ export class DagHost {
       ) {
         this.#channel.send({
           'kind': 'error',
-          'requestId': null,
+          'correlationId': null,
           'code': 'INVALID_REGISTRY_MODULE',
           'message': `Registry module default export does not implement RegistryModuleInterface (missing createBundle)`,
           'recoverable': false,
@@ -150,7 +151,7 @@ export class DagHost {
       if (bundle.registryVersion !== expectedVersion) {
         this.#channel.send({
           'kind': 'error',
-          'requestId': null,
+          'correlationId': null,
           'code': 'VERSION_MISMATCH',
           'message': `Registry version mismatch: expected '${expectedVersion}', got '${bundle.registryVersion}'`,
           'recoverable': false,
@@ -169,7 +170,7 @@ export class DagHost {
       const message = error instanceof Error ? error.message : String(error);
       this.#channel.send({
         'kind': 'error',
-        'requestId': null,
+        'correlationId': null,
         'code': 'INIT_FAILED',
         'message': `DagHost init failed: ${message}`,
         'recoverable': false,
@@ -182,19 +183,13 @@ export class DagHost {
   // ---------------------------------------------------------------------------
 
   async #handleExecute(
-    requestId: string,
-    request: {
-      readonly dagName: string;
-      readonly placementPath: readonly string[];
-      readonly stateSnapshot: Record<string, unknown>;
-      readonly timeoutMs: number | null;
-      readonly requestId: string;
-    },
+    correlationId: string,
+    request: ExecutionRequest,
   ): Promise<void> {
     if (this.#bundle === null) {
       this.#channel.send({
         'kind': 'error',
-        'requestId': requestId,
+        'correlationId': correlationId,
         'code': 'NOT_INITIALIZED',
         'message': 'DagHost has not been initialized; send init first',
         'recoverable': false,
@@ -203,28 +198,24 @@ export class DagHost {
     }
 
     const controller = new AbortController();
-    this.#inflight.set(requestId, controller);
+    this.#inflight.set(correlationId, controller);
     const bundle = this.#bundle;
 
     try {
-      await this.#executeDAG(requestId, request, controller, bundle);
+      await this.#executeDAG(correlationId, request, controller, bundle);
     } finally {
-      this.#inflight.delete(requestId);
+      this.#inflight.delete(correlationId);
     }
   }
 
   async #executeDAG(
-    requestId: string,
-    request: {
-      readonly dagName: string;
-      readonly placementPath: readonly string[];
-      readonly stateSnapshot: Record<string, unknown>;
-      readonly timeoutMs: number | null;
-    },
+    correlationId: string,
+    request: ExecutionRequest,
     controller: AbortController,
     bundle: RegistryBundleInterface,
   ): Promise<void> {
-    const state = bundle.restoreState(request.stateSnapshot as JsonObject);
+    const stateSnapshot = request.stateSnapshot as JsonObject;
+    const state = bundle.restoreState(stateSnapshot);
 
     // Set up timeout abort if specified.
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
@@ -235,10 +226,10 @@ export class DagHost {
     }
 
     // ForwardingInstrumentation is constructed per-execute to route instrumentation
-    // messages with the correct requestId. The request.placementPath is used as
+    // messages with the correct correlationId. The request.placementPath is used as
     // the basePath so that forwarded placementPaths are the full composite path
     // (parent path + inner body path), making them non-empty on the parent side.
-    const forwarding = new ForwardingInstrumentation(this.#channel, requestId, request.placementPath);
+    const forwarding = new ForwardingInstrumentation(this.#channel, correlationId, request.placementPath);
     const dagonizer = new Dagonizer<NodeStateInterface, unknown>({
       'services': bundle.services,
       'instrumentation': forwarding,
@@ -271,36 +262,37 @@ export class DagHost {
         intermediates.push(intermediate);
         this.#channel.send({
           'kind': 'intermediate',
-          'requestId': requestId,
+          'correlationId': correlationId,
           'nodeName': nodeResult.nodeName,
           'output': nodeResult.output,
           'placementPath': [...request.placementPath],
         });
       }
 
-      // Derive terminalOutput from terminalOutcome. If null, the DAG did not
-      // complete normally (e.g. unknown DAG name). Treat as 'failed' when the
-      // lifecycle never advanced past 'pending' (the DAG never started running)
-      // or when the lifecycle is in a failed terminal state.
+      // Derive terminalOutput from terminalOutcome. When terminalOutcome is null
+      // the DAG did not route to a TerminalNode. Any lifecycle that is not
+      // 'completed' (including 'running', 'pending', 'failed') is treated as
+      // failed — a non-completed lifecycle with no terminal output is never
+      // reported as success.
       const lifecycle = state.lifecycle;
       const derivedTerminal = terminalOutcome !== null
         ? terminalOutcome
-        : (lifecycle.kind === 'failed' || lifecycle.kind === 'pending')
-          ? 'failed'
-          : 'completed';
+        : lifecycle.kind === 'completed'
+          ? 'completed'
+          : 'failed';
 
-      // Collect errors from state. For unknown or never-started DAGs
-      // (terminalOutcome null, lifecycle pending/failed), there are no errors in
-      // state.errors because the engine swallows them into the lifecycle.
-      // Surface a synthetic error in that case. DAGs that run to completion
-      // without a TerminalNode (lifecycle completed) are normal — do NOT add a
-      // synthetic error simply because terminalOutcome is null.
+      // Collect errors from state. Surface a synthetic DAG_EXECUTION_FAILED error
+      // whenever terminalOutcome is null AND the lifecycle is not 'completed'.
+      // This covers unknown DAG names, never-started DAGs (pending), aborted runs
+      // still in 'running', and explicit 'failed' lifecycle. DAGs that run to
+      // completion without a TerminalNode (lifecycle completed, terminalOutcome
+      // null) are normal — no synthetic error.
       const collectedErrors = [
         ...state.errors,
-        ...(terminalOutcome === null && state.errors.length === 0 && lifecycle.kind !== 'completed'
+        ...(terminalOutcome === null && lifecycle.kind !== 'completed'
           ? [{
             'code': 'DAG_EXECUTION_FAILED' as const,
-            'message': `DAG '${request.dagName}' did not complete normally`,
+            'message': `DAG '${request.dagName}' did not complete normally (lifecycle: ${lifecycle.kind})`,
             'operation': request.dagName,
             'recoverable': false,
             'timestamp': new Date().toISOString(),
@@ -309,7 +301,7 @@ export class DagHost {
       ];
 
       const response: ExecutionResponse = {
-        'requestId': requestId,
+        'correlationId': correlationId,
         'terminalOutput': derivedTerminal,
         'errors': collectedErrors,
         'stateSnapshot': state.snapshot(),
@@ -321,7 +313,7 @@ export class DagHost {
       const message = error instanceof Error ? error.message : String(error);
 
       const response: ExecutionResponse = {
-        'requestId': requestId,
+        'correlationId': correlationId,
         'terminalOutput': 'failed',
         'errors': [{
           'code': 'DAG_EXECUTION_FAILED',
@@ -346,8 +338,8 @@ export class DagHost {
   // abort
   // ---------------------------------------------------------------------------
 
-  #handleAbort(requestId: string, reason: string): void {
-    const controller = this.#inflight.get(requestId);
+  #handleAbort(correlationId: string, reason: string): void {
+    const controller = this.#inflight.get(correlationId);
     if (controller !== undefined) {
       controller.abort(new Error(reason));
     }

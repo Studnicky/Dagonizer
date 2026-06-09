@@ -11,6 +11,7 @@ export type { ClockProvider } from './ClockProvider.js';
 export type { ErrorConstructorType } from './ErrorConstructorType.js';
 export type { ExecuteOptionsInterface } from './ExecuteOptionsInterface.js';
 export type { Instrumentation } from './Instrumentation.js';
+export type { InstrumentationSink } from './InstrumentationSink.js';
 export type { NodeInterface } from './NodeInterface.js';
 export type { OperationContract } from './OperationContract.js';
 export type { OperationContractFragment } from './OperationContractFragment.js';

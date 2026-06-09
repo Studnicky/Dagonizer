@@ -6,8 +6,8 @@
  * port-sharing workers. The protocol is identical to ForkContainer; only worker
  * provenance differs.
  *
- * Construction calls `cluster.setupPrimary({ exec: entryPath })` once. All
- * workers run the forkEntry bootstrap over IPC.
+ * Construction calls `cluster.setupPrimary({ exec: entryPath })` once (lazily
+ * on first createEntry). All workers run the forkEntry bootstrap over IPC.
  *
  * Constructor options:
  *   registryModule   — URL string passed to DagHost init
@@ -23,8 +23,10 @@
 import cluster from 'node:cluster';
 import type { Worker } from 'node:cluster';
 
+import type { NodeStateInterface } from '@noocodex/dagonizer';
 import { DagContainerBase, DAG_CONTAINER_WORKER_DIED } from '@noocodex/dagonizer/container';
-import type { Instrumentation, MessageChannelInterface } from '@noocodex/dagonizer/contracts';
+import type { PoolEntry } from '@noocodex/dagonizer/container';
+import type { Instrumentation } from '@noocodex/dagonizer/contracts';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 import { RecommendedWorkerCountConfigDefault } from '@noocodex/dagonizer/entities';
 
@@ -45,135 +47,51 @@ export interface ClusterContainerOptions {
 }
 
 // ---------------------------------------------------------------------------
-// ClusterPoolEntry
-// ---------------------------------------------------------------------------
-
-interface ClusterPoolEntry {
-  worker: Worker;
-  channel: IpcChannel;
-  initialized: boolean;
-}
-
-// ---------------------------------------------------------------------------
 // ClusterContainer
 // ---------------------------------------------------------------------------
 
-export class ClusterContainer extends DagContainerBase {
-  readonly #registryModule: string;
-  readonly #registryVersion: string;
-  readonly #servicesConfig: JsonObject;
-  readonly #poolSize: number;
+export class ClusterContainer extends DagContainerBase<NodeStateInterface, Worker> {
   readonly #entryUrl: URL;
   #setupDone: boolean;
 
-  readonly #pool: ClusterPoolEntry[];
-  readonly #free: ClusterPoolEntry[];
-  #waiters: Array<() => void>;
-  #destroyed: boolean;
-
   constructor(options: ClusterContainerOptions) {
-    super(options.instrumentation !== undefined ? { 'instrumentation': options.instrumentation } : {});
-    this.#registryModule = options.registryModule;
-    this.#registryVersion = options.registryVersion;
-    this.#servicesConfig = options.servicesConfig ?? {};
-    this.#entryUrl = options.entryUrl ?? new URL('./forkEntry.js', import.meta.url);
-    this.#setupDone = false;
-
     const sysInfo = new NodeSystemInfo();
     const defaultPoolSize = sysInfo.recommendedWorkerCount({
       ...RecommendedWorkerCountConfigDefault,
       'maximumWorkers': 8,
     });
-    this.#poolSize = options.poolSize ?? defaultPoolSize;
-
-    this.#pool = [];
-    this.#free = [];
-    this.#waiters = [];
-    this.#destroyed = false;
+    super({
+      'instrumentation': options.instrumentation,
+      'poolSize': options.poolSize ?? defaultPoolSize,
+      'init': {
+        'registryModule': options.registryModule,
+        'registryVersion': options.registryVersion,
+        'servicesConfig': options.servicesConfig ?? {},
+      },
+    });
+    this.#entryUrl = options.entryUrl ?? new URL('./forkEntry.js', import.meta.url);
+    this.#setupDone = false;
   }
 
-  protected async acquireChannel(): Promise<MessageChannelInterface> {
-    if (this.#destroyed) {
-      throw new Error('ClusterContainer: destroyed');
-    }
+  // ---------------------------------------------------------------------------
+  // Abstract seam implementations
+  // ---------------------------------------------------------------------------
 
+  /**
+   * createEntry: configure cluster primary (once) and fork a worker, initialized: false.
+   * No death listeners, no init handshake — the base handles both.
+   */
+  protected override createEntry(): PoolEntry<Worker> {
     if (!this.#setupDone) {
       cluster.setupPrimary({ 'exec': this.#entryUrl.pathname });
       this.#setupDone = true;
     }
 
-    if (this.#free.length === 0 && this.#pool.length < this.#poolSize) {
-      const entry = this.#spawnWorker();
-      this.#pool.push(entry);
-      this.#free.push(entry);
-    }
-
-    if (this.#free.length === 0) {
-      await this.#waitForSlot();
-    }
-
-    const entry = this.#free.pop();
-    if (entry === undefined) {
-      throw new Error('ClusterContainer: no free slot after wait');
-    }
-
-    if (!entry.initialized) {
-      await this.initializeChannel(entry.channel, {
-        'registryModule': this.#registryModule,
-        'registryVersion': this.#registryVersion,
-        'servicesConfig': this.#servicesConfig,
-      });
-      entry.initialized = true;
-    }
-
-    return entry.channel;
-  }
-
-  protected releaseChannel(channel: MessageChannelInterface): void {
-    const entry = this.#pool.find((e) => e.channel === channel);
-    if (entry !== undefined && !this.#destroyed) {
-      this.#free.push(entry);
-      this.#releaseSlot();
-    }
-  }
-
-  async destroy(): Promise<void> {
-    if (this.#destroyed) return;
-    this.#destroyed = true;
-
-    for (const entry of this.#pool) {
-      if (entry.initialized) {
-        try {
-          entry.channel.send({ 'kind': 'shutdown' });
-        } catch { /* suppress */ }
-      }
-    }
-
-    await Promise.allSettled(
-      this.#pool.map((entry) =>
-        Promise.race([
-          this.#waitForWorkerExit(entry.worker),
-          new Promise<void>((resolve) => setTimeout(resolve, 2000)),
-        ]),
-      ),
-    );
-
-    for (const entry of this.#pool) {
-      try { entry.worker.kill('SIGKILL'); } catch { /* suppress */ }
-      entry.channel.close();
-    }
-
-    this.#pool.length = 0;
-    this.#free.length = 0;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Private helpers
-  // ---------------------------------------------------------------------------
-
-  #spawnWorker(): ClusterPoolEntry {
     const worker = cluster.fork();
 
+    // worker.send expects Serializable; BridgeMessage is JSON-serializable.
+    // The IpcEndpoint.send type is (message: unknown) => void, so the cast
+    // to object is narrowed here at the IPC boundary only.
     const sendFn = (message: unknown): void => { worker.send(message as object); };
     const onFn = (event: 'message', listener: (message: unknown) => void) => {
       worker.on(event, listener);
@@ -181,58 +99,39 @@ export class ClusterContainer extends DagContainerBase {
     };
 
     const channel = new IpcChannel({ 'send': sendFn, 'on': onFn });
-    const entry: ClusterPoolEntry = { 'worker': worker, 'channel': channel, 'initialized': false };
-
-    // Death detection (parent backstop, Law 4): a cluster worker that dies,
-    // errors, or disconnects without a result must fail its in-flight request
-    // and be evicted. #destroyed gates the handlers off during destroy().
-    worker.on('error', (err: Error) => {
-      this.#handleDeath(entry, `cluster worker error: ${err.message}`);
-    });
-    worker.on('exit', () => {
-      if (this.#destroyed) return;
-      this.#handleDeath(entry, 'cluster worker exited unexpectedly');
-    });
-    worker.on('disconnect', () => {
-      if (this.#destroyed) return;
-      this.#handleDeath(entry, 'cluster worker IPC channel disconnected');
-    });
-
-    return entry;
+    return { 'worker': worker, 'channel': channel, 'initialized': false };
   }
 
-  /** Fail the dead worker's in-flight request and evict its pool entry. */
-  #handleDeath(entry: ClusterPoolEntry, reason: string): void {
-    if (this.#destroyed) return;
-    this.failChannel(entry.channel, DAG_CONTAINER_WORKER_DIED, reason);
-    this.#evict(entry);
+  /**
+   * attachDeathListeners: wire cluster worker error/exit/disconnect events → onTransportDeath().
+   * Called unconditionally; the base's #destroyed guard prevents spurious
+   * eviction during intentional teardown.
+   */
+  protected override attachDeathListeners(entry: PoolEntry<Worker>): void {
+    entry.worker.on('error', (err: Error) => {
+      this.onTransportDeath(entry, DAG_CONTAINER_WORKER_DIED, `cluster worker error: ${err.message}`);
+    });
+    entry.worker.on('exit', () => {
+      this.onTransportDeath(entry, DAG_CONTAINER_WORKER_DIED, 'cluster worker exited unexpectedly');
+    });
+    entry.worker.on('disconnect', () => {
+      this.onTransportDeath(entry, DAG_CONTAINER_WORKER_DIED, 'cluster worker IPC channel disconnected');
+    });
   }
 
-  /** Remove a dead entry from #pool and #free, then wake a slot waiter. */
-  #evict(entry: ClusterPoolEntry): void {
-    const poolIdx = this.#pool.indexOf(entry);
-    if (poolIdx === -1) return;
-    this.#pool.splice(poolIdx, 1);
-    const freeIdx = this.#free.indexOf(entry);
-    if (freeIdx !== -1) this.#free.splice(freeIdx, 1);
-    try { entry.channel.close(); } catch { /* suppress */ }
-    this.#releaseSlot();
+  /**
+   * terminateWorker: force-kill the cluster worker. Must not throw.
+   */
+  protected override terminateWorker(worker: Worker): void {
+    worker.kill('SIGKILL');
   }
 
-  #waitForSlot(): Promise<void> {
+  /**
+   * awaitWorkerExit: resolves when the cluster worker's 'exit' event fires.
+   */
+  protected override awaitWorkerExit(worker: Worker): Promise<void> {
     return new Promise<void>((resolve) => {
-      this.#waiters.push(resolve);
-    });
-  }
-
-  #releaseSlot(): void {
-    const waiter = this.#waiters.shift();
-    if (waiter !== undefined) waiter();
-  }
-
-  #waitForWorkerExit(worker: Worker): Promise<void> {
-    return new Promise<void>((resolve) => {
-      worker.once('exit', () => resolve());
+      worker.once('exit', () => { resolve(); });
     });
   }
 }

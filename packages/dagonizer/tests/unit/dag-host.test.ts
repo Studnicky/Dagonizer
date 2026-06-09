@@ -111,7 +111,7 @@ describe('DagHost — init handshake', () => {
     if (reply.kind === 'error') {
       assert.strictEqual(reply.code, 'VERSION_MISMATCH');
       assert.strictEqual(reply.recoverable, false);
-      assert.strictEqual(reply.requestId, null);
+      assert.strictEqual(reply.correlationId, null);
     }
   });
 
@@ -167,14 +167,14 @@ describe('DagHost — execute returns result', () => {
         'placementPath': ['parent'],
         'stateSnapshot': initialState.snapshot(),
         'timeoutMs': 5000,
-        'requestId': 'req-exec-1',
+        'correlationId': 'req-exec-1',
       },
     });
 
     const result = await resultPromise;
     assert.strictEqual(result.kind, 'result');
     if (result.kind === 'result') {
-      assert.strictEqual(result.response.requestId, 'req-exec-1');
+      assert.strictEqual(result.response.correlationId, 'req-exec-1');
       assert.strictEqual(result.response.terminalOutput, 'completed');
       assert.ok(result.response.stateSnapshot !== null, 'stateSnapshot must be non-null');
       assert.ok(Array.isArray(result.response.intermediates));
@@ -204,7 +204,7 @@ describe('DagHost — execute returns result', () => {
         'placementPath': ['host'],
         'stateSnapshot': initialState.snapshot(),
         'timeoutMs': 5000,
-        'requestId': 'req-exec-2',
+        'correlationId': 'req-exec-2',
       },
     });
 
@@ -215,7 +215,7 @@ describe('DagHost — execute returns result', () => {
     const first = intermediates[0];
     assert.ok(first !== undefined);
     if (first.kind === 'intermediate') {
-      assert.strictEqual(first.requestId, 'req-exec-2');
+      assert.strictEqual(first.correlationId, 'req-exec-2');
       assert.ok(typeof first.nodeName === 'string');
     }
   });
@@ -241,7 +241,7 @@ describe('DagHost — execute returns result', () => {
         'placementPath': [],
         'stateSnapshot': initialState.snapshot(),
         'timeoutMs': 1000,
-        'requestId': 'req-exec-fail',
+        'correlationId': 'req-exec-fail',
       },
     });
 
@@ -279,7 +279,7 @@ describe('DagHost — abort', () => {
         'placementPath': ['host'],
         'stateSnapshot': initialState.snapshot(),
         'timeoutMs': null,
-        'requestId': 'req-abort',
+        'correlationId': 'req-abort',
       },
     });
 
@@ -289,7 +289,7 @@ describe('DagHost — abort', () => {
     const start = Date.now();
     parentSide.send({
       'kind': 'abort',
-      'requestId': 'req-abort',
+      'correlationId': 'req-abort',
       'reason': 'test-abort',
     });
 

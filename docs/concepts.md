@@ -202,7 +202,7 @@ Authored via the `inputs` option on `.scatter()` (or `.embeddedDAG()` for embedd
 A **checkpoint** records the position and state of an in-flight flow so it can resume later.
 
 - **Cursor**: the name of the next node to run. Set on `ExecutionResultInterface.cursor` when execution stops early. `null` means the flow ran to completion.
-- **State snapshot**: `NodeStateBase.snapshot()` returns a `JsonObject` containing metadata, errors, and warnings. Domain-specific fields are captured by overriding `snapshotData()`.
+- **State snapshot**: `NodeStateBase.snapshot()` returns a `JsonObject` containing metadata, warnings, and the retry budget. Engine errors are excluded from snapshots; they flow via `outcome.errors`. Domain-specific fields are captured by overriding `snapshotData()`.
 
 Resume is a new execution. `dispatcher.resume(dagName, state, cursor)` starts a new lifecycle run from `pending`, identical to `execute()` except it begins at `cursor` instead of the entrypoint. The checkpoint's `executedNodes` and `skippedNodes` are available from `ckpt.restoreState(fn)` for inspection; they are not replayed.
 

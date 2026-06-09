@@ -1,8 +1,8 @@
 /**
- * ChannelDispatch: single-subscription requestId correlator for a MessageChannelInterface.
+ * ChannelDispatch: single-subscription correlationId correlator for a MessageChannelInterface.
  *
  * One instance per channel. Installs EXACTLY ONE channel.onMessage handler in
- * the constructor and demuxes inbound messages by requestId. No per-request
+ * the constructor and demuxes inbound messages by correlationId. No per-request
  * listeners are ever registered.
  *
  * Protocol responsibilities:
@@ -17,7 +17,9 @@
  * V8 shape stability: all fields initialised in constructor in declaration order.
  */
 
+
 import type { DagOutcomeInterface } from '../contracts/DagOutcomeInterface.js';
+import type { InstrumentationSink } from '../contracts/InstrumentationSink.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
 import type { BridgeMessage } from '../entities/executor/BridgeMessage.js';
 import type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js';
@@ -40,9 +42,9 @@ export interface InitMessageShape {
 
 /** Per-request correlation entry. */
 interface PendingEntry {
-  requestId: string;
+  correlationId: string;
   settle: (outcome: DagOutcomeInterface) => void;
-  onInstrumentation: (msg: BridgeMessage & { kind: 'instrumentation' }) => void;
+  sink: InstrumentationSink;
   settled: boolean;
 }
 
@@ -97,47 +99,45 @@ export class ChannelDispatch {
   }
 
   /**
-   * Send execute, await the correlated result. Forwards abort and
-   * instrumentation per request. Never throws — transport failures
-   * resolve to a transport-error DagOutcomeInterface.
+   * Send execute, await the correlated result. `signal` is a required positional
+   * arg; `sink` receives forwarded instrumentation messages. Never throws —
+   * transport failures resolve to a transport-error DagOutcomeInterface.
    */
   request(
     request: ExecutionRequest,
-    handlers: {
-      signal: AbortSignal;
-      onInstrumentation: (msg: BridgeMessage & { kind: 'instrumentation' }) => void;
-    },
+    signal: AbortSignal,
+    sink: InstrumentationSink,
   ): Promise<DagOutcomeInterface> {
-    const { requestId } = request;
+    const { correlationId } = request;
 
     return new Promise<DagOutcomeInterface>((resolve) => {
       const entry: PendingEntry = {
-        'requestId': requestId,
+        'correlationId': correlationId,
         'settle': resolve,
-        'onInstrumentation': handlers.onInstrumentation,
+        'sink': sink,
         'settled': false,
       };
 
-      this.#pending.set(requestId, entry);
+      this.#pending.set(correlationId, entry);
 
       // Forward abort signal to the host.
       const onAbort = (): void => {
         try {
           this.#channel.send({
             'kind': 'abort',
-            'requestId': requestId,
+            'correlationId': correlationId,
             'reason': 'abort',
           });
         } catch { /* fire-and-forget */ }
       };
-      handlers.signal.addEventListener('abort', onAbort);
+      signal.addEventListener('abort', onAbort);
 
       // Settle helper: settles once, removes abort listener, deletes pending entry.
       const settleOnce = (outcome: DagOutcomeInterface): void => {
         if (entry.settled) return;
         entry.settled = true;
-        handlers.signal.removeEventListener('abort', onAbort);
-        this.#pending.delete(requestId);
+        signal.removeEventListener('abort', onAbort);
+        this.#pending.delete(correlationId);
         resolve(outcome);
       };
 
@@ -149,9 +149,9 @@ export class ChannelDispatch {
       } catch {
         // Send failure: resolve immediately as transport error.
         settleOnce(DagOutcome.transportError(
-          requestId,
+          correlationId,
           DAG_CONTAINER_TRANSPORT,
-          `Transport failure for request ${requestId}`,
+          `Transport failure for request ${correlationId}`,
         ));
       }
     });
@@ -164,8 +164,8 @@ export class ChannelDispatch {
    * This is the parent backstop for crash DETECTION: a backend that observes
    * its worker/child die (exit, error, disconnect, stream close) calls this
    * to fail the in-flight request(s) instead of hanging forever. The channel-
-   * scoped 'error' message path (requestId === null) routes here too, so there
-   * is exactly one code path that fails all pending work.
+   * scoped 'error' message path (correlationId === null) routes here too, so
+   * there is exactly one code path that fails all pending work.
    *
    * Idempotent: safe to call when there is nothing pending and no init waiter.
    */
@@ -179,7 +179,7 @@ export class ChannelDispatch {
     // Snapshot entries before settling: settleOnce mutates #pending (delete).
     const entries = [...this.#pending.values()];
     for (const entry of entries) {
-      entry.settle(DagOutcome.transportError(entry.requestId, code, message));
+      entry.settle(DagOutcome.transportError(entry.correlationId, code, message));
     }
     // settleOnce removes each entry; ensure the map is empty regardless.
     this.#pending.clear();
@@ -206,8 +206,8 @@ export class ChannelDispatch {
       }
 
       case 'result': {
-        const requestId = msg.response.requestId;
-        const entry = this.#pending.get(requestId);
+        const correlationId = msg.response.correlationId;
+        const entry = this.#pending.get(correlationId);
         if (entry === undefined) return;
         entry.settle({
           'terminalOutput': msg.response.terminalOutput,
@@ -219,22 +219,22 @@ export class ChannelDispatch {
       }
 
       case 'instrumentation': {
-        const entry = this.#pending.get(msg.requestId);
+        const entry = this.#pending.get(msg.correlationId);
         if (entry === undefined) return;
-        entry.onInstrumentation(msg);
+        entry.sink.onInstrumentation(msg);
         break;
       }
 
       case 'error': {
-        const requestId = msg.requestId;
-        if (requestId !== null) {
+        const correlationId = msg.correlationId;
+        if (correlationId !== null) {
           // Request-scoped error: settle that specific pending entry.
-          const entry = this.#pending.get(requestId);
+          const entry = this.#pending.get(correlationId);
           if (entry !== undefined) {
-            entry.settle(DagOutcome.transportError(requestId, msg.code, msg.message));
+            entry.settle(DagOutcome.transportError(correlationId, msg.code, msg.message));
           }
         } else {
-          // Channel-scoped error (null requestId): the host is in a bad state.
+          // Channel-scoped error (null correlationId): the host is in a bad state.
           // Single code path — failAll rejects an in-flight init and settles
           // every pending request as a transport error.
           this.failAll(msg.code, msg.message);

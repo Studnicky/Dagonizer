@@ -5,7 +5,7 @@
  *   Before fix: DagContainerBase.runDag called channel.onMessage(handler) on
  *   every request, accumulating O(N) listeners on a pooled worker channel.
  *   After fix: ChannelDispatch installs exactly ONE channel.onMessage handler
- *   for the channel's lifetime; requestId routing demuxes all responses.
+ *   for the channel's lifetime; correlationId routing demuxes all responses.
  *
  * What this test asserts:
  *   (a) Exactly ONE underlying subscription is installed regardless of request
@@ -13,7 +13,7 @@
  *   (b) Results correlate correctly — each of N sequential requests gets its
  *       own outcome, never a cross-contaminated one.
  *   (c) No cross-talk — every response is delivered to the caller that sent
- *       the matching requestId.
+ *       the matching correlationId.
  *
  * The test drives 30 sequential runDag() calls through a single channel using
  * a minimal DagContainerBase subclass whose acquireChannel() always returns the
@@ -24,16 +24,16 @@
  * it must be exactly 1 regardless of request count.
  *
  * A FakeHost drives the other side of the LoopbackChannel: it receives
- * 'execute' messages and echoes a 'result' message with the matching requestId
+ * 'execute' messages and echoes a 'result' message with the matching correlationId
  * and a deterministic terminalOutput derived from the request. This lets the
- * test verify that requestId routing is correct.
+ * test verify that correlationId routing is correct.
  */
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { DagContainerOptions } from '../../src/container/DagContainerBase.js';
 import { DagContainerBase } from '../../src/container/DagContainerBase.js';
+import type { DagContainerOptions, PoolEntry } from '../../src/container/DagContainerBase.js';
 import type { DagOutcomeInterface } from '../../src/contracts/DagOutcomeInterface.js';
 import type { DagTaskInterface } from '../../src/contracts/DagTaskInterface.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
@@ -85,18 +85,18 @@ class MinimalState extends NodeStateBase {}
 // MinimalDagTask: minimal DagTaskInterface implementation
 // ---------------------------------------------------------------------------
 
-function makeTask(requestId: string, signal: AbortSignal): DagTaskInterface<MinimalState, undefined> {
+function makeTask(correlationId: string, signal: AbortSignal): DagTaskInterface<MinimalState, undefined> {
   const request: ExecutionRequest = {
     'dagName': 'test-dag',
     'placementPath': [],
     'stateSnapshot': {} as JsonObject,
     'timeoutMs': null,
-    'requestId': requestId,
+    'correlationId': correlationId,
   };
   return {
     'dagName': 'test-dag',
     'placementPath': [],
-    'requestId': requestId,
+    'correlationId': correlationId,
     'timeoutMs': null,
     'state': new MinimalState(),
     'context': {
@@ -110,23 +110,55 @@ function makeTask(requestId: string, signal: AbortSignal): DagTaskInterface<Mini
 }
 
 // ---------------------------------------------------------------------------
-// SingleChannelContainer: DagContainerBase that always returns the same channel
+// SingleChannelContainer: DagContainerBase that always routes through a single
+// pre-built channel. Both sequential and concurrent requests use the same
+// channel so ChannelDispatch's correlationId-demux is exercised directly.
+//
+// The pool seams are no-ops — the base pool is never used because acquireChannel
+// and releaseChannel are overridden to bypass it. This tests ChannelDispatch
+// concurrency invariants, not pool growth.
 // ---------------------------------------------------------------------------
 
-class SingleChannelContainer extends DagContainerBase<MinimalState> {
+const NOOP_INIT: DagContainerOptions['init'] = {
+  'registryModule': 'test',
+  'registryVersion': '0.0.0',
+  'servicesConfig': {},
+};
+
+class SingleChannelContainer extends DagContainerBase<MinimalState, null> {
   readonly #channel: MessageChannelInterface;
 
-  constructor(channel: MessageChannelInterface, options: DagContainerOptions = {}) {
-    super(options);
+  constructor(channel: MessageChannelInterface, _options: Partial<DagContainerOptions> = {}) {
+    super({
+      'instrumentation': undefined,
+      'poolSize': 1,
+      'init': NOOP_INIT,
+    });
     this.#channel = channel;
   }
 
-  protected acquireChannel(): Promise<MessageChannelInterface> {
+  // Override acquireChannel to bypass the pool and always return the same channel.
+  protected override acquireChannel(): Promise<MessageChannelInterface> {
     return Promise.resolve(this.#channel);
   }
 
-  protected releaseChannel(_channel: MessageChannelInterface): void {
-    // Single-channel pool: no-op.
+  // Override releaseChannel: no-op — the channel is never pooled.
+  protected override releaseChannel(_channel: MessageChannelInterface): void { /* bypass pool */ }
+
+  protected override createEntry(): PoolEntry<null> {
+    return { 'worker': null, 'channel': this.#channel, 'initialized': true };
+  }
+
+  protected override attachDeathListeners(_entry: PoolEntry<null>): void {
+    // Test channel — no death events.
+  }
+
+  protected override terminateWorker(_worker: null): void {
+    // No worker to terminate.
+  }
+
+  protected override awaitWorkerExit(_worker: null): Promise<void> {
+    return new Promise(() => { /* never resolves — no real worker exit */ });
   }
 }
 
@@ -134,8 +166,8 @@ class SingleChannelContainer extends DagContainerBase<MinimalState> {
 // FakeHost: drives the host side of the LoopbackChannel.
 //
 // Receives 'init' → sends 'ready'.
-// Receives 'execute' → sends 'result' with the matching requestId and
-//   terminalOutput = 'done-' + requestId (deterministic per-request value).
+// Receives 'execute' → sends 'result' with the matching correlationId and
+//   terminalOutput = 'done-' + correlationId (deterministic per-request value).
 // ---------------------------------------------------------------------------
 
 function startFakeHost(hostSide: MessageChannelInterface): void {
@@ -147,12 +179,12 @@ function startFakeHost(hostSide: MessageChannelInterface): void {
         'capabilities': [],
       });
     } else if (msg.kind === 'execute') {
-      const { requestId } = msg.request;
+      const { correlationId } = msg.request;
       hostSide.send({
         'kind': 'result',
         'response': {
-          'requestId': requestId,
-          'terminalOutput': `done-${requestId}`,
+          'correlationId': correlationId,
+          'terminalOutput': `done-${correlationId}`,
           'errors': [],
           'stateSnapshot': null,
           'intermediates': [],
@@ -166,7 +198,7 @@ function startFakeHost(hostSide: MessageChannelInterface): void {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('channel-correlation: single subscription + requestId demux', () => {
+describe('channel-correlation: single subscription + correlationId demux', () => {
 
   it('(a) exactly ONE underlying onMessage subscription regardless of request count', async () => {
     const [parentSide, hostSide] = LoopbackChannel.pair();
@@ -215,20 +247,20 @@ describe('channel-correlation: single subscription + requestId demux', () => {
     const ac = new AbortController();
 
     for (let i = 0; i < REQUEST_COUNT; i++) {
-      const requestId = `req-${i}`;
-      const task = makeTask(requestId, ac.signal);
+      const correlationId = `req-${i}`;
+      const task = makeTask(correlationId, ac.signal);
       const outcome = await container.runDag(task);
 
       // (b) Each request must receive its own correlated terminalOutput.
       assert.strictEqual(
         outcome.terminalOutput,
-        `done-${requestId}`,
-        `Request ${requestId}: expected terminalOutput 'done-${requestId}', got '${outcome.terminalOutput}'`,
+        `done-${correlationId}`,
+        `Request ${correlationId}: expected terminalOutput 'done-${correlationId}', got '${outcome.terminalOutput}'`,
       );
     }
   });
 
-  it('(c) no cross-talk — requestId routing delivers to the correct caller', async () => {
+  it('(c) no cross-talk — correlationId routing delivers to the correct caller', async () => {
     // Drive two overlapping requests concurrently on the same channel.
     // The FakeHost delays the first response until after the second execute
     // is sent, verifying that each caller receives exactly its own response.
@@ -237,8 +269,8 @@ describe('channel-correlation: single subscription + requestId demux', () => {
     const container = new SingleChannelContainer(parentSide);
 
     // Custom host: collect execute messages and respond in reverse order
-    // to prove requestId routing (not FIFO) assigns responses correctly.
-    const pending: Array<{ requestId: string }> = [];
+    // to prove correlationId routing (not FIFO) assigns responses correctly.
+    const pending: Array<{ correlationId: string }> = [];
     hostSide.onMessage((msg) => {
       if (msg.kind === 'init') {
         hostSide.send({
@@ -247,17 +279,17 @@ describe('channel-correlation: single subscription + requestId demux', () => {
           'capabilities': [],
         });
       } else if (msg.kind === 'execute') {
-        pending.push({ 'requestId': msg.request.requestId });
+        pending.push({ 'correlationId': msg.request.correlationId });
         // After collecting two requests, respond in REVERSE order.
         if (pending.length === 2) {
-          const secondId = pending[1]?.requestId ?? '';
-          const firstId = pending[0]?.requestId ?? '';
+          const secondId = pending[1]?.correlationId ?? '';
+          const firstId = pending[0]?.correlationId ?? '';
           // Respond to second first, then first.
           setImmediate(() => {
             hostSide.send({
               'kind': 'result',
               'response': {
-                'requestId': secondId,
+                'correlationId': secondId,
                 'terminalOutput': `done-${secondId}`,
                 'errors': [],
                 'stateSnapshot': null,
@@ -268,7 +300,7 @@ describe('channel-correlation: single subscription + requestId demux', () => {
               hostSide.send({
                 'kind': 'result',
                 'response': {
-                  'requestId': firstId,
+                  'correlationId': firstId,
                   'terminalOutput': `done-${firstId}`,
                   'errors': [],
                   'stateSnapshot': null,

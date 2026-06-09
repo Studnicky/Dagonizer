@@ -51,7 +51,7 @@ import type { NodeStateInterface } from '../dist/NodeStateBase.js';
 import type {
   ConformanceState} from './ConformanceRegistry.js';
 import {
-  buildConformanceBundle,
+  ConformanceRegistry,
   CONFORMANCE_DAG,
 } from './ConformanceRegistry.js';
 
@@ -125,7 +125,7 @@ function dispatcherFor(
   harness: DagConformanceHarnessInterface,
   instrumentation?: Instrumentation,
 ): DagonizerInterface<NodeStateInterface, undefined> {
-  const bundle = buildConformanceBundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
+  const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
   const containers = { [harness.containerRole]: harness.container } as Readonly<Record<string, DagContainerInterface>>;
   return instrumentation !== undefined
     ? harness.createDispatcher(bundle, containers, instrumentation)
@@ -299,7 +299,7 @@ export class DagConformance {
     const law7: DagConformanceLawInterface = {
       'name': 'Law 7: scatter checkpoint/resume bookkeeping byte-identical across backends',
       async run(): Promise<void> {
-        const bundleResult = buildConformanceBundle();
+        const bundleResult = ConformanceRegistry.bundle();
         const bundle = bundleResult.bundle as DispatcherBundle<NodeStateInterface, undefined>;
 
         // Helper: run the scatter DAG and capture every per-ack checkpoint write.
@@ -398,7 +398,7 @@ export class DagConformance {
         }
 
         const { failingContainer, freshContainer } = harness.interruptMidScatter();
-        const bundle = buildConformanceBundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
+        const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
 
         // Phase 1: start the scatter through the failing container.
         // The failingContainer kills its isolate after >=1 item acks.

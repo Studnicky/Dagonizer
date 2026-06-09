@@ -31,7 +31,7 @@ class CountingState extends NodeStateBase {
 }
 
 void describe('NodeStateBase snapshot/restore', () => {
-  void it('preserves metadata, errors, warnings; resets lifecycle to pending', () => {
+  void it('preserves metadata and warnings; errors are excluded; resets lifecycle to pending', () => {
     const s = new NodeStateBase();
     s.setMetadata('k', { 'nested': [1, 2] });
     s.collectError({ 'code': 'E', 'message': 'm', 'operation': 'op',
@@ -40,7 +40,12 @@ void describe('NodeStateBase snapshot/restore', () => {
 
     const restored = NodeStateBase.restore(s.snapshot());
     assert.deepEqual(restored.getMetadata('k'), { 'nested': [1, 2] });
-    assert.equal(restored.errors.length, 1);
+    // Errors are intentionally NOT captured in the snapshot — they flow via
+    // outcome.errors as the single authoritative channel (matching lifecycle
+    // which is also excluded). Checkpointed errors are diagnostic; domain
+    // state (metadata, retries, warnings, subclass fields) is what matters for
+    // deterministic resume.
+    assert.equal(restored.errors.length, 0);
     assert.equal(restored.lifecycle.kind, 'pending');
   });
 

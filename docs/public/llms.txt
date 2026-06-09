@@ -33,6 +33,7 @@ Key features: strict TypeScript (exactOptionalPropertyTypes), JSON-LD canonical 
 - [Persistence](https://studnicky.github.io/Dagonizer/guide/persistence): store and reload checkpoint data across process restarts.
 - [Contract-derived flows](https://studnicky.github.io/Dagonizer/guide/derive): generate a DAG topology automatically from a typed contract interface.
 - [Visualization](https://studnicky.github.io/Dagonizer/guide/visualization): render any DAG (including embedded-DAG expansions) as Mermaid or Cytoscape.
+- [Distribution and cloud](https://studnicky.github.io/Dagonizer/guide/distribution): scale deployments across threads, processes, and hosts using DagContainerInterface backends and DAGHandoff channels; serverless handler pattern, Step Functions wiring, registryVersion handshake, idempotency, and trust boundaries.
 
 ## Examples
 

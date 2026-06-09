@@ -21,18 +21,23 @@
  *     registryVersion: '1.2.3',
  *   });
  *
- * Pool lifecycle:
- *   - Workers are created lazily on first `runDag` call.
- *   - `acquireChannel()` pops from the idle pool or waits via a promise queue.
- *   - `releaseChannel()` pushes back to the idle pool and resolves the next waiter.
- *   - `destroy()` sends `shutdown` to every spawned worker then terminates it.
+ * Pool lifecycle is owned by DagContainerBase: demand growth, semaphore
+ * waiting, lazy init, death detection (fixes P0 hang), eviction, graceful
+ * shutdown. This class implements the four abstract seams only.
  *
  * All properties initialised in constructor for V8 shape stability.
  */
 
-import { DagContainerBase, DAG_CONTAINER_WORKER_DIED } from '@noocodex/dagonizer/container';
-import type { DagContainerOptions } from '@noocodex/dagonizer/container';
-import type { MessageChannelInterface } from '@noocodex/dagonizer/contracts';
+import type { NodeStateInterface } from '@noocodex/dagonizer';
+import {
+  DagContainerBase,
+  DAG_CONTAINER_WORKER_DIED,
+} from '@noocodex/dagonizer/container';
+import type {
+  DagContainerOptions,
+  PoolEntry,
+} from '@noocodex/dagonizer/container';
+import type { Instrumentation } from '@noocodex/dagonizer/contracts';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 import { RecommendedWorkerCountConfigDefault } from '@noocodex/dagonizer/entities';
 
@@ -44,7 +49,7 @@ import type { WebWorkerLikeInterface } from './WebWorkerLike.js';
 // WebWorkerContainerOptions
 // ---------------------------------------------------------------------------
 
-export interface WebWorkerContainerOptions extends DagContainerOptions {
+export interface WebWorkerContainerOptions {
   /**
    * Module URL forwarded to the DagHost via the `init` message.
    * The host dynamic-imports this URL to load the registry.
@@ -66,111 +71,78 @@ export interface WebWorkerContainerOptions extends DagContainerOptions {
    * from `navigator` when available, falling back to 2.
    */
   readonly poolSize?: number;
-}
-
-// ---------------------------------------------------------------------------
-// PoolSlot — tracks the channel and the underlying worker together
-// ---------------------------------------------------------------------------
-
-interface PoolSlot {
-  readonly channel: MessageChannelInterface;
-  readonly worker: WebWorkerLikeInterface;
+  /**
+   * Instrumentation sink forwarded to DagContainerBase.
+   */
+  readonly instrumentation?: Instrumentation;
 }
 
 // ---------------------------------------------------------------------------
 // WebWorkerContainer
 // ---------------------------------------------------------------------------
 
-export class WebWorkerContainer extends DagContainerBase {
-  readonly #registryModule: string;
-  readonly #registryVersion: string;
-  readonly #servicesConfig: JsonObject;
-  readonly #poolSize: number;
-  /** All spawned slots (idle + in-use). Parallel to pool state. */
-  readonly #allSlots: PoolSlot[];
-  /** Idle slots available for acquisition. */
-  readonly #idleSlots: PoolSlot[];
-  /** Resolve callbacks for callers waiting for a free slot. */
-  readonly #waiters: Array<(slot: PoolSlot) => void>;
-  /** Set by destroy(); gates death handlers off during intentional teardown. */
-  #destroyed: boolean;
+export class WebWorkerContainer extends DagContainerBase<NodeStateInterface, WebWorkerLikeInterface> {
 
   constructor(options: WebWorkerContainerOptions) {
-    super(options.instrumentation !== undefined
-      ? { 'instrumentation': options.instrumentation }
-      : {});
-    this.#registryModule = options.registryModule;
-    this.#registryVersion = options.registryVersion;
-    this.#servicesConfig = options.servicesConfig ?? {};
-    this.#poolSize = options.poolSize ?? WebWorkerContainer.#defaultPoolSize();
-    this.#allSlots = [];
-    this.#idleSlots = [];
-    this.#waiters = [];
-    this.#destroyed = false;
+    const poolSize = options.poolSize ?? WebWorkerContainer.#resolvePoolSize();
+    const servicesConfig: JsonObject = options.servicesConfig ?? {};
+
+    const baseOptions: DagContainerOptions = {
+      'instrumentation': options.instrumentation,
+      'poolSize': poolSize,
+      'init': {
+        'registryModule': options.registryModule,
+        'registryVersion': options.registryVersion,
+        'servicesConfig': servicesConfig,
+      },
+    };
+
+    super(baseOptions);
   }
 
   // ---------------------------------------------------------------------------
-  // DagContainerBase abstract implementation
+  // Abstract seams
   // ---------------------------------------------------------------------------
 
-  protected async acquireChannel(): Promise<MessageChannelInterface> {
-    // Fast path: take from the idle pool.
-    const idle = this.#idleSlots.pop();
-    if (idle !== undefined) {
-      return idle.channel;
-    }
+  /**
+   * Construct a fresh worker and its wired channel. Delegates worker creation
+   * to `createWorker()` (the consumer override point). Returns a PoolEntry with
+   * `initialized: false`; the base attaches death listeners and inits separately.
+   */
+  protected override createEntry(): PoolEntry<WebWorkerLikeInterface> {
+    const worker = this.createWorker();
+    const channel = new PostMessageChannel(worker);
+    return { 'worker': worker, 'channel': channel, 'initialized': false };
+  }
 
-    // Grow path: spawn a new worker if the pool is not full yet.
-    if (this.#allSlots.length < this.#poolSize) {
-      const slot = await this.#spawnSlot();
-      return slot.channel;
-    }
-
-    // Wait path: block until a slot is released.
-    return new Promise<MessageChannelInterface>((resolve) => {
-      this.#waiters.push((slot) => resolve(slot.channel));
+  /**
+   * Attach the 'error' listener that fires `onTransportDeath` when the worker
+   * throws an uncaught exception. This is the death-detection backstop (Law 4).
+   */
+  protected override attachDeathListeners(entry: PoolEntry<WebWorkerLikeInterface>): void {
+    entry.worker.addEventListener('error', (event) => {
+      const reason = `web worker error: ${event.message ?? 'uncaught error'}`;
+      this.onTransportDeath(entry, DAG_CONTAINER_WORKER_DIED, reason);
     });
   }
 
-  protected releaseChannel(channel: MessageChannelInterface): void {
-    // Find the slot by channel reference.
-    const slot = this.#allSlots.find((s) => s.channel === channel);
-    if (slot === undefined) return;
-
-    const waiter = this.#waiters.shift();
-    if (waiter !== undefined) {
-      // Hand directly to the next waiter.
-      waiter(slot);
-    } else {
-      this.#idleSlots.push(slot);
-    }
+  /**
+   * Force-terminate the worker. Called during eviction and destroy. Must not throw.
+   */
+  protected override terminateWorker(worker: WebWorkerLikeInterface): void {
+    worker.terminate();
   }
 
-  async destroy(): Promise<void> {
-    this.#destroyed = true;
-    // Send shutdown to every spawned worker then terminate.
-    for (const slot of this.#allSlots) {
-      try {
-        slot.channel.send({
-          'kind': 'shutdown',
-        });
-      } catch {
-        // Suppress — terminate unconditionally below.
-      }
-      try {
-        slot.worker.terminate();
-      } catch {
-        // Suppress — worker may already be dead.
-      }
-    }
-
-    this.#allSlots.length = 0;
-    this.#idleSlots.length = 0;
-    this.#waiters.length = 0;
+  /**
+   * Web Workers have no exit event; `terminate()` is synchronous. Resolve
+   * immediately so the base's graceful-shutdown race proceeds without delay.
+   */
+  protected override awaitWorkerExit(_worker: WebWorkerLikeInterface): Promise<void> {
+    return Promise.resolve();
   }
 
   // ---------------------------------------------------------------------------
-  // Worker construction (override point)
+  // Worker construction (consumer override point)
   // ---------------------------------------------------------------------------
 
   /**
@@ -197,54 +169,7 @@ export class WebWorkerContainer extends DagContainerBase {
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  async #spawnSlot(): Promise<PoolSlot> {
-    const worker = this.createWorker();
-    const channel = new PostMessageChannel(worker);
-
-    // Death detection (parent backstop, Law 4): a worker that throws an
-    // uncaught error fires 'error'. Fail its in-flight request and evict the
-    // slot so a fresh worker spawns on the next acquire. #destroyed gates the
-    // handler off during intentional teardown (terminate() emits no 'error').
-    worker.addEventListener('error', (event) => {
-      if (this.#destroyed) return;
-      this.#handleDeath(channel, `web worker error: ${event.message ?? 'uncaught error'}`);
-    });
-
-    await this.initializeChannel(channel, {
-      'registryModule': this.#registryModule,
-      'registryVersion': this.#registryVersion,
-      'servicesConfig': this.#servicesConfig,
-    });
-
-    const slot: PoolSlot = { 'channel': channel, 'worker': worker };
-    this.#allSlots.push(slot);
-    return slot;
-  }
-
-  /**
-   * Fail the dead worker's in-flight request and evict its slot from the pool
-   * so it is never re-acquired.
-   */
-  #handleDeath(channel: MessageChannelInterface, reason: string): void {
-    if (this.#destroyed) return;
-    this.failChannel(channel, DAG_CONTAINER_WORKER_DIED, reason);
-    this.#evict(channel);
-  }
-
-  /** Remove the dead slot from #allSlots and #idleSlots, then terminate it. */
-  #evict(channel: MessageChannelInterface): void {
-    const slotIdx = this.#allSlots.findIndex((s) => s.channel === channel);
-    if (slotIdx === -1) return;
-    const slot = this.#allSlots[slotIdx];
-    if (slot === undefined) return;
-    this.#allSlots.splice(slotIdx, 1);
-    const idleIdx = this.#idleSlots.indexOf(slot);
-    if (idleIdx !== -1) this.#idleSlots.splice(idleIdx, 1);
-    try { slot.worker.terminate(); } catch { /* suppress */ }
-    try { slot.channel.close(); } catch { /* suppress */ }
-  }
-
-  static #defaultPoolSize(): number {
+  static #resolvePoolSize(): number {
     // Safe probe: navigator is unavailable in Node test environments.
     // Access through globalThis to avoid a DOM-lib type dependency.
     const nav = (globalThis as Record<string, unknown>)['navigator'];

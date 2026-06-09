@@ -31,7 +31,7 @@ import type {
   RegistryModuleInterface,
 } from '@noocodex/dagonizer/contracts';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
-import { buildConformanceBundle } from '@noocodex/dagonizer/testing';
+import { ConformanceRegistry } from '@noocodex/dagonizer/testing';
 import type { ConformanceState } from '@noocodex/dagonizer/testing';
 import type { NodeOutputInterface } from '@noocodex/dagonizer/types';
 
@@ -66,7 +66,7 @@ const scatterKillerNode: NodeInterface<ConformanceState> = {
  * the same restoreState/version so the parent and the worker agree on shapes.
  */
 function buildKillBundle(): RegistryBundleInterface {
-  const base = buildConformanceBundle();
+  const base = ConformanceRegistry.bundle();
   const nodes = base.bundle.nodes.filter((n) => n.name !== 'scatter-counter');
   nodes.push(scatterKillerNode as (typeof base.bundle.nodes)[number]);
   return {

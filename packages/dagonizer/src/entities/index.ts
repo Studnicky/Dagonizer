@@ -141,7 +141,7 @@ export type { ExecutionRequest } from './executor/ExecutionRequest.js';
 export { ExecutionResponseSchema } from './executor/ExecutionResponse.js';
 export type { ExecutionResponse } from './executor/ExecutionResponse.js';
 
-export { BridgeMessageSchema } from './executor/BridgeMessage.js';
+export { BridgeMessageBuilder, BridgeMessageSchema } from './executor/BridgeMessage.js';
 export type { BridgeMessage } from './executor/BridgeMessage.js';
 
 export {

@@ -65,12 +65,13 @@ export class NodeSystemInfo implements SystemInfoInterface {
     const parallelism = this.#os.availableParallelism();
     // maximumWorkers is a hard cap: it wins over fallbackWorkerCount when the
     // two conflict (a pool must never exceed its configured ceiling).
-    const base = Math.min(maximumWorkers, Math.max(fallbackWorkerCount, parallelism - mainThreadReservation));
+    // Floor at Math.max(1, …) so a zero/negative result never yields a 0-worker pool.
+    const base = Math.max(1, Math.min(maximumWorkers, Math.max(fallbackWorkerCount, parallelism - mainThreadReservation)));
 
-    if (memoryPerWorkerBytes !== null) {
+    if (memoryPerWorkerBytes !== null && memoryPerWorkerBytes > 0) {
       const freemem = this.#os.freemem();
       const memoryBased = Math.floor(freemem / memoryPerWorkerBytes);
-      return Math.min(base, Math.max(fallbackWorkerCount, memoryBased));
+      return Math.max(1, Math.min(base, Math.max(fallbackWorkerCount, memoryBased)));
     }
 
     return base;

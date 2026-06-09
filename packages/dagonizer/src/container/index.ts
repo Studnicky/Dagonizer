@@ -1,20 +1,27 @@
 /**
  * Container subpath barrel (`@noocodex/dagonizer/container`).
  *
- * W1 exports: DagTask (engine-side task object for contained DAG execution).
- * W2 exports: DagHost (isolate-side runtime), DagContainerBase (abstract
- *             transport base), ForwardingInstrumentation (instrumentation
- *             forwarding over a channel).
- * W3 will add: WorkerThreadContainer, ForkContainer, ClusterContainer,
- *              SpawnContainer (executor-node package);
- *              WebWorkerContainer (executor-web package).
+ * Exports the full container surface: pool-lifecycle base, channel request
+ * correlator, isolate-side host runtime, task and outcome value types,
+ * instrumentation forwarding, and transport error codes.
+ *
+ * Subclasses extend DagContainerBase<TState, TWorker> and implement the
+ * four abstract seams: createEntry, attachDeathListeners, terminateWorker,
+ * awaitWorkerExit. The base owns pool growth, semaphore waiting, lazy init,
+ * death eviction, and graceful shutdown.
  */
 
 export { DagTask } from './DagTask.js';
 export { DagHost } from './DagHost.js';
 export type { DagHostOptions } from './DagHost.js';
 export { DagContainerBase } from './DagContainerBase.js';
-export type { DagContainerOptions } from './DagContainerBase.js';
+export type {
+  DagContainerOptions,
+  InstrumentationSink,
+  PoolEntry,
+} from './DagContainerBase.js';
+export { DEFAULT_SHUTDOWN_GRACE_MS } from './DagContainerBase.js';
+export { DagContainerError } from './DagContainerError.js';
 export { DagOutcome } from './DagOutcome.js';
 export { ForwardingInstrumentation } from './ForwardingInstrumentation.js';
 export {
