@@ -38,6 +38,8 @@
     "example:08": "tsx examples/08-checkpoint.ts",
     "example:09": "tsx examples/09-terminals.ts",
     "example:10": "tsx examples/10-shared-state.ts",
+    "example:11": "tsx examples/11-handoff.ts",
+    "example:12": "tsc -p examples/tsconfig.workers.json && node examples/dist/12-workers.js",
     "example:derive": "tsx examples/derive.ts"
   },
   "devDependencies": {
@@ -52,6 +54,8 @@
     "@noocodex/dagonizer-adapter-openrouter": "workspace:^",
     "@noocodex/dagonizer-adapter-stub": "workspace:^",
     "@noocodex/dagonizer-adapter-web-llm": "workspace:^",
+    "@noocodex/dagonizer-executor-node": "workspace:^",
+    "@noocodex/dagonizer-executor-web": "workspace:^",
     "@noocodex/dagonizer-patterns-flow": "workspace:^",
     "@noocodex/dagonizer-patterns-graph": "workspace:^",
     "@noocodex/dagonizer-patterns-rag": "workspace:^",

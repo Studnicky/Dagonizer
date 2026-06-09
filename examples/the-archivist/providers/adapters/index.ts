@@ -30,7 +30,7 @@ export { CerebrasApiAdapter }       from '@noocodex/dagonizer-adapter-cerebras';
 export type { CerebrasApiAdapterOptions } from '@noocodex/dagonizer-adapter-cerebras';
 export { GeminiApiAdapter }         from '@noocodex/dagonizer-adapter-gemini-api';
 export type { GeminiApiAdapterOptions } from '@noocodex/dagonizer-adapter-gemini-api';
-export { GeminiNanoAdapter } from '@noocodex/dagonizer-adapter-gemini-nano';
+export { GeminiNanoAdapter, detectGeminiNano } from '@noocodex/dagonizer-adapter-gemini-nano';
 export type { GeminiNanoAvailability } from '@noocodex/dagonizer-adapter-gemini-nano';
 export { GroqApiAdapter }           from '@noocodex/dagonizer-adapter-groq';
 export type { GroqApiAdapterOptions } from '@noocodex/dagonizer-adapter-groq';

@@ -6,7 +6,7 @@ import type { PhaseNodePlacementInterface } from '../entities/dag/PhaseNode.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
-import { DAGError } from '../errors/index.js';
+import { DAGError, ValidationError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 type DAGNodeType = EmbeddedDAGNode | ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
@@ -146,6 +146,14 @@ export class DAGValidator {
     errors: string[],
   ): void {
     if ('node' in scatter.body) {
+      // A node body with a container key is invalid: a node body is one node, not a DAG.
+      // Container is only valid for dag bodies. Throw immediately — this is a structural
+      // error that must surface before any execution.
+      if ('container' in scatter && (scatter as { container?: string }).container !== undefined) {
+        throw new ValidationError(
+          `ScatterNode '${scatter.name}' has a node body; 'container' is only valid for a dag body`,
+        );
+      }
       if (!nodes.has(scatter.body.node)) {
         errors.push(`ScatterNode '${scatter.name}': unknown registered node '${scatter.body.node}'`);
       }

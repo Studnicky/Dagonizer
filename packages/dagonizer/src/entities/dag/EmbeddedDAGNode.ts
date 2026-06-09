@@ -6,6 +6,12 @@
  * URN: `urn:noocodex:dag:<dagName>/node/<name>`. Cardinality is always 1;
  * exactly one child execution runs. To fork (one clone per source item),
  * use `ScatterNode` with `source`.
+ *
+ * `container` (optional): logical container role name. The dispatcher binds
+ * role names to `DagContainerInterface` instances at construction via
+ * `DagonizerOptionsInterface.containers`. When declared but unbound, the
+ * placement resolves to in-process and fires a `contractWarning`. When absent,
+ * the embedded DAG always runs in-process.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
@@ -34,6 +40,9 @@ export const EmbeddedDAGNodeSchema = {
       },
       'additionalProperties': false,
     },
+    // Logical container role. Bound at dispatcher construction via
+    // DagonizerOptionsInterface.containers. Absent = always in-process.
+    'container': { 'type': 'string', 'minLength': 1 },
   },
   'additionalProperties': false,
 } as const;

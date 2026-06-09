@@ -32,7 +32,7 @@ export class ObservedArchivist extends Dagonizer<ArchivistState, ArchivistServic
   readonly #logger: ObservabilityLogger;
 
   constructor(
-    options: DagonizerOptionsInterface<ArchivistServices>,
+    options: DagonizerOptionsInterface<ArchivistState, ArchivistServices>,
     logger: ObservabilityLogger,
   ) {
     super(options);

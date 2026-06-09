@@ -1,3 +1,7 @@
+import { DagTask } from './container/DagTask.js';
+import { TransportErrorCode } from './container/TransportErrorCode.js';
+import type { ChannelInterface } from './contracts/ChannelInterface.js';
+import type { DagContainerInterface } from './contracts/DagContainerInterface.js';
 import type { ExecuteOptionsInterface } from './contracts/ExecuteOptionsInterface.js';
 import type { Instrumentation } from './contracts/Instrumentation.js';
 import type { NodeInterface } from './contracts/NodeInterface.js';
@@ -16,6 +20,7 @@ import type { ScatterNode } from './entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from './entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from './entities/dag/TerminalNode.js';
 import type { ExecutionResultInterface, InterruptionInfo } from './entities/execution/ExecutionResult.js';
+import type { DAGHandoff } from './entities/handoff/DAGHandoff.js';
 import type { NodeContextInterface } from './entities/node/NodeContext.js';
 import type { NodeResultInterface } from './entities/node/NodeResult.js';
 import { DAGError, ExecutionError, NodeTimeoutError, ValidationError } from './errors/index.js';
@@ -33,6 +38,9 @@ import { Validator } from './validation/Validator.js';
 
 /** Default state accessor: installed when the dispatcher is constructed without one. */
 const DEFAULT_STATE_ACCESSOR: StateAccessor = new DottedPathAccessor();
+
+/** Registry version used when the dispatcher is constructed without one. */
+const DEFAULT_REGISTRY_VERSION = '0';
 
 /**
  * Reserved metadata key used by `executeScatter` to persist per-clone
@@ -119,7 +127,7 @@ export type StoredScatterProgress = Readonly<Record<string, ScatterProgress>>;
  * passes through every `NodeContextInterface`. Default `undefined` means
  * nodes receive `context.services === undefined`.
  */
-export interface DagonizerOptionsInterface<TServices = undefined> {
+export interface DagonizerOptionsInterface<TState extends NodeStateInterface = NodeStateInterface, TServices = undefined> {
   /**
    * Path resolver used for scatter source reads, gather writes, and
    * embedded-DAG state mapping. Defaults to a `DottedPathAccessor` that
@@ -144,6 +152,34 @@ export interface DagonizerOptionsInterface<TServices = undefined> {
    * can mix subclass observability with plugin-supplied instrumentation.
    */
   readonly instrumentation?: Instrumentation;
+  /**
+   * Named container backends. Keys are logical role names declared on
+   * `EmbeddedDAGNode.container` and `ScatterNode.container` (dag-body
+   * only). An unbound role resolves to in-process and fires
+   * `onContractWarning` + `instrumentation.contractWarning`.
+   *
+   * Containers are optional: an empty registry is the default and
+   * means every placement runs in-process.
+   */
+  readonly containers?: Readonly<Record<string, DagContainerInterface<TState>>>;
+  /**
+   * Named egress channels keyed by terminal placement name. When a
+   * non-embedded run completes at a terminal whose name is bound here,
+   * the dispatcher builds a `DAGHandoff` envelope and calls
+   * `channel.publish(handoff)` after `onFlowEnd`/`flowEnd`.
+   *
+   * An unbound terminal (the default for all terminals) does not publish
+   * and leaves the in-process path byte-identical to today. Different
+   * terminals may route to different channels (`done` → queue,
+   * `escalate` → DLQ).
+   */
+  readonly channels?: Readonly<Record<string, ChannelInterface>>;
+  /**
+   * Registry version string included in every `DAGHandoff` envelope.
+   * Receivers use this for version-handshake validation. Defaults to
+   * `DEFAULT_REGISTRY_VERSION` ('0') when not supplied.
+   */
+  readonly registryVersion?: string;
 }
 
 
@@ -303,6 +339,11 @@ implements DagonizerInterface<TState, TServices> {
   private readonly services: TServices;
   private readonly instrumentation: Instrumentation;
   private readonly stateMapper: StateMapper<TState>;
+  private readonly containers: Readonly<Record<string, DagContainerInterface<TState>>>;
+  private readonly channels: Readonly<Record<string, ChannelInterface>>;
+  private readonly registryVersion: string;
+  #requestSeq = 0;
+  #correlationSeq = 0;
 
   /**
    * Shared never-aborting signal used as the fallback when a call supplies no
@@ -336,11 +377,14 @@ implements DagonizerInterface<TState, TServices> {
    * `options.services` is the typed services bag exposed to every node
    * via `context.services`. Defaults to `undefined`.
    */
-  constructor(options: DagonizerOptionsInterface<TServices> = {}) {
+  constructor(options: DagonizerOptionsInterface<TState, TServices> = {}) {
     this.accessor = options.accessor ?? DEFAULT_STATE_ACCESSOR;
     this.services = options.services as TServices;
     this.instrumentation = options.instrumentation ?? new NoopInstrumentation();
     this.stateMapper = new StateMapper<TState>(this.accessor);
+    this.containers = options.containers ?? {};
+    this.channels = options.channels ?? {};
+    this.registryVersion = options.registryVersion ?? DEFAULT_REGISTRY_VERSION;
     this.dispatch = {
       'EmbeddedDAGNode': (entry, state, _dagName, signal, placementPath) =>
         this.executeEmbeddedDAG(entry as EmbeddedDAGNode, state, signal, placementPath),
@@ -406,11 +450,56 @@ implements DagonizerInterface<TState, TServices> {
   protected onContractWarning(_message: string): void { /* override */ }
 
   // ---------------------------------------------------------------------------
+  // Container support
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Resolve a logical container role to its bound `DagContainerInterface`, or
+   * return `null` when the role is undefined or not bound (null = in-process path).
+   */
+  private resolveContainer(role: string | undefined): DagContainerInterface<TState> | null {
+    if (role === undefined) return null;
+    const bound = this.containers[role];
+    return bound !== undefined ? bound : null;
+  }
+
+  /**
+   * Generate a monotonic request id for container correlation. Uses a private
+   * `#requestSeq` counter. No randomness; no Date.now.
+   */
+  private nextRequestId(dagName: string): string {
+    return `${dagName}:${++this.#requestSeq}`;
+  }
+
+  /**
+   * Generate a monotonic correlation id for hand-off envelopes. Uses a
+   * private `#correlationSeq` counter. No randomness; no Date.now.
+   */
+  private nextCorrelationId(dagName: string): string {
+    return `${dagName}:handoff:${++this.#correlationSeq}`;
+  }
+
+  // ---------------------------------------------------------------------------
 
   async destroy(): Promise<void> {
+    // Teardown order: nodes first (they may hold references into containers),
+    // then bound containers (worker/child pools), then egress channels. Each
+    // backend's `destroy()` is optional; guard the call. Safe to call more than
+    // once — the registries are cleared at the end and re-destroying an
+    // already-torn-down backend is the backend's own idempotency concern.
     for (const node of this.nodes.values()) {
       if (node.destroy) {
         await node.destroy();
+      }
+    }
+    for (const container of Object.values(this.containers)) {
+      if (container.destroy) {
+        await container.destroy();
+      }
+    }
+    for (const channel of Object.values(this.channels)) {
+      if (channel.destroy) {
+        await channel.destroy();
       }
     }
     this.nodes.clear();
@@ -532,6 +621,14 @@ implements DagonizerInterface<TState, TServices> {
     const signal = SignalComposer.compose(options);
 
     if (!runOptions.embedded) {
+      // When resuming after a crash (fromStage !== null), the prior run may
+      // have left the lifecycle in a terminal state (failed/cancelled/timed_out).
+      // Reset to `pending` so `markRunning()` can re-enter the running state.
+      // Lifecycle is not captured in snapshots; this reset is safe — the
+      // checkpoint data (SCATTER_PROGRESS_KEY, etc.) is in metadata and survives.
+      if (fromStage !== null && DAGLifecycleMachine.isTerminal(state.lifecycle)) {
+        state.resetLifecycle();
+      }
       state.markRunning();
       this.onFlowStart(dagName, state);
       this.instrumentation.flowStart(dagName, state);
@@ -539,6 +636,7 @@ implements DagonizerInterface<TState, TServices> {
 
     const executedNodes: string[] = [];
     const skippedNodes: string[] = [];
+    let terminalNodeName: string | null = null;
 
     // --- Pre-phase placements --------------------------------------------------
     // Run before the entrypoint, in DAG declaration order. Suppressed when this
@@ -561,7 +659,7 @@ implements DagonizerInterface<TState, TServices> {
           try { state.markFailed(error); } catch { /* already terminal */ }
           this.instrumentation.phaseExit(dagName, 'pre', phase.name, state, placementPath);
           const result = this.buildResult(null, executedNodes, skippedNodes, null, null, state);
-          await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, placementPath);
+          await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
           return result;
         }
         this.instrumentation.phaseExit(dagName, 'pre', phase.name, state, placementPath);
@@ -594,7 +692,7 @@ implements DagonizerInterface<TState, TServices> {
           'reason':   abortInfo.reason,
         };
         const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
-        await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, placementPath);
+        await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
         return result;
       }
 
@@ -608,7 +706,7 @@ implements DagonizerInterface<TState, TServices> {
           try { state.markFailed(error); } catch { /* already terminal */ }
         }
         const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, null, state);
-        await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, placementPath);
+        await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
         return result;
       }
 
@@ -620,6 +718,7 @@ implements DagonizerInterface<TState, TServices> {
       if (node['@type'] === 'TerminalNode') {
         const terminal = node as TerminalNodePlacementInterface;
         terminalOutcome = terminal.outcome;
+        terminalNodeName = terminal.name;
         executedNodes.push(terminal.name);
         const terminalResult: NodeResultInterface<TState> = {
           'output': terminal.outcome,
@@ -670,7 +769,7 @@ implements DagonizerInterface<TState, TServices> {
           try { state.markFailed(error); } catch { /* already terminal */ }
         }
         const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
-        await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, placementPath);
+        await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
         return result;
       }
 
@@ -709,7 +808,7 @@ implements DagonizerInterface<TState, TServices> {
       }
     }
     const result = this.buildResult(null, executedNodes, skippedNodes, terminalOutcome, null, state);
-    await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, placementPath);
+    await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
     return result;
   }
 
@@ -755,6 +854,7 @@ implements DagonizerInterface<TState, TServices> {
     state: TState,
     result: ExecutionResultInterface<TState>,
     runOptions: RunOptions,
+    terminalNodeName: string | null,
     placementPath: readonly string[] = [],
   ): Promise<void> {
     if (runOptions.embedded) {
@@ -783,6 +883,38 @@ implements DagonizerInterface<TState, TServices> {
     }
     this.onFlowEnd(dagName, state, result);
     this.instrumentation.flowEnd(dagName, state, result);
+
+    // Hand-off channel publish: only for non-embedded top-level runs that
+    // completed at a bound terminal. The in-process (no-channels) path is
+    // byte-identical: when channels is empty this block is skipped entirely.
+    if (terminalNodeName !== null) {
+      const channel = this.channels[terminalNodeName];
+      if (channel !== undefined) {
+        const stateSnapshot = state.snapshot();
+        const handoff: DAGHandoff = {
+          'dagName': dagName,
+          'terminalName': terminalNodeName,
+          'terminalOutput': result.terminalOutcome ?? 'completed',
+          'registryVersion': this.registryVersion,
+          'correlationId': this.nextCorrelationId(dagName),
+          'placementPath': [...placementPath],
+          'stateSnapshot': stateSnapshot,
+        };
+        try {
+          await channel.publish(handoff);
+        } catch (err) {
+          const error = err instanceof Error ? err : new Error(String(err));
+          state.collectError({
+            'code': 'HANDOFF_PUBLISH_FAILED',
+            'message': `Channel publish failed for terminal '${terminalNodeName}': ${error.message}`,
+            'operation': terminalNodeName,
+            'recoverable': false,
+            'timestamp': new Date().toISOString(),
+          });
+          this.instrumentation.error(dagName, terminalNodeName, error, state, placementPath);
+        }
+      }
+    }
   }
 
   /**
@@ -909,34 +1041,87 @@ implements DagonizerInterface<TState, TServices> {
   ): Promise<InternalNodeResultInterface<TState>> {
     const inputMapping = placement.stateMapping?.input as Record<string, string> | undefined;
     const outputMapping = placement.stateMapping?.output as Record<string, string> | undefined;
+    const innerPath: readonly string[] = [...placementPath, placement.name];
 
     const cloneState = this.stateMapper.createChild(state, inputMapping);
-
-    const childOptions: ExecuteOptionsInterface = { ...(signal !== null && { 'signal': signal }) };
-    const innerPath: readonly string[] = [...placementPath, placement.name];
-    const iter = this.runNodes(placement.dag, cloneState, null, childOptions, { 'embedded': true }, innerPath);
-
     const intermediateResults: Array<NodeResultInterface<TState>> = [];
-    let step = await iter.next();
-    while (!step.done) {
-      const nr = step.value;
-      const intermediate: NodeResultInterface<TState> = {
-        'output': nr.output,
-        'skipped': nr.skipped,
-        'nodeName': `${placement.name}.${nr.nodeName}`,
-        state,
-        'intermediateResults': [],
-      };
-      intermediateResults.push(intermediate);
-      step = await iter.next();
-    }
-    const terminalOutcome = step.value.terminalOutcome;
+    let terminalOutcome: 'completed' | 'failed' | null;
 
-    // Propagate errors and warnings from child to parent
+    const container = this.resolveContainer(
+      ('container' in placement ? (placement as { container?: string }).container : undefined),
+    );
+
+    if (container === null) {
+      // ── In-process path (byte-identical to the original) ───────────────────
+      const childOptions: ExecuteOptionsInterface = { ...(signal !== null && { 'signal': signal }) };
+      const iter = this.runNodes(placement.dag, cloneState, null, childOptions, { 'embedded': true }, innerPath);
+
+      let step = await iter.next();
+      while (!step.done) {
+        const nr = step.value;
+        const intermediate: NodeResultInterface<TState> = {
+          'output': nr.output,
+          'skipped': nr.skipped,
+          'nodeName': `${placement.name}.${nr.nodeName}`,
+          state,
+          'intermediateResults': [],
+        };
+        intermediateResults.push(intermediate);
+        step = await iter.next();
+      }
+      terminalOutcome = step.value.terminalOutcome;
+    } else {
+      // ── Contained path ─────────────────────────────────────────────────────
+      const requestId = this.nextRequestId(placement.dag);
+      const context = this.buildContext(placement.dag, placement.name, signal);
+      const task = new DagTask<TState, TServices>(
+        placement.dag,
+        innerPath,
+        requestId,
+        null,
+        cloneState,
+        context,
+      );
+
+      const outcome = await container.runDag(task);
+
+      // Embedded DAG is cardinality-1 (not inbox-backed), so an infrastructure
+      // failure does NOT throw — Law 3 requires host crash / transport loss to
+      // surface as a collected error routed like any node failure, never an
+      // unhandled throw. The transport-error outcome carries an unrecoverable
+      // NodeError; collecting it below makes hasUnrecoverable true and routes
+      // this placement to its 'error' output. No silent success.
+
+      // Apply terminal state snapshot back to clone (in-place; parent state
+      // identity is preserved: result.state === initialState invariant holds).
+      if (outcome.stateSnapshot !== null) {
+        cloneState.applySnapshot(outcome.stateSnapshot);
+      }
+
+      // Collect child errors into clone (propagated to parent below).
+      for (const err of outcome.errors) cloneState.collectError(err);
+
+      // Re-yield each intermediate as a NodeResultInterface.
+      for (const wi of outcome.intermediates) {
+        intermediateResults.push({
+          'output': wi.output,
+          'skipped': wi.skipped,
+          'nodeName': `${placement.name}.${wi.nodeName}`,
+          state,
+          'intermediateResults': [],
+        });
+      }
+
+      // Derive terminalOutcome from terminalOutput.
+      terminalOutcome = outcome.terminalOutput === 'failed' ? 'failed' : 'completed';
+    }
+
+    // ── Common tail (shared between both branches) ──────────────────────────
+    // Propagate errors and warnings from child to parent.
     for (const err of cloneState.errors) state.collectError(err);
     for (const warn of cloneState.warnings) state.collectWarning(warn);
 
-    // Apply output state mapping: child → parent
+    // Apply output state mapping: child → parent.
     this.stateMapper.mapOutput(cloneState, state, outputMapping);
 
     const hasUnrecoverable = cloneState.errors.some((e) => e.recoverable === false);
@@ -1204,24 +1389,82 @@ implements DagonizerInterface<TState, TServices> {
         for (const err of (opResult.errors ?? [])) cloneState.collectError(err);
         output = opResult.output;
       } else {
-        const childOptions: ExecuteOptionsInterface = { ...(signal !== null && { 'signal': signal }) };
+        // DAG body — may run in-process or through a bound container.
         const innerPath: readonly string[] = [...placementPath, scatter.name];
-        const iter = this.runNodes(scatter.body.dag, cloneState, null, childOptions, { 'embedded': true }, innerPath);
+        const container = this.resolveContainer(
+          ('container' in scatter ? (scatter as { container?: string }).container : undefined),
+        );
 
-        while (true) {
-          const step = await iter.next();
-          if (step.done) {
-            terminalOutcome = step.value.terminalOutcome;
-            break;
+        if (container === null) {
+          // ── In-process path (byte-identical to the original) ─────────────────
+          const childOptions: ExecuteOptionsInterface = { ...(signal !== null && { 'signal': signal }) };
+          const iter = this.runNodes(scatter.body.dag, cloneState, null, childOptions, { 'embedded': true }, innerPath);
+
+          while (true) {
+            const step = await iter.next();
+            if (step.done) {
+              terminalOutcome = step.value.terminalOutcome;
+              break;
+            }
+            const nr = step.value;
+            intermediateResults.push({
+              'output': nr.output,
+              'skipped': nr.skipped,
+              'nodeName': `${scatter.name}.${nr.nodeName}`,
+              state,
+              'intermediateResults': [],
+            });
           }
-          const nr = step.value;
-          intermediateResults.push({
-            'output': nr.output,
-            'skipped': nr.skipped,
-            'nodeName': `${scatter.name}.${nr.nodeName}`,
-            state,
-            'intermediateResults': [],
-          });
+        } else {
+          // ── Contained path ───────────────────────────────────────────────────
+          const requestId = this.nextRequestId(scatter.body.dag);
+          const context = this.buildContext(scatter.body.dag, scatter.name, signal);
+          const task = new DagTask<TState, TServices>(
+            scatter.body.dag,
+            innerPath,
+            requestId,
+            null,
+            cloneState,
+            context,
+          );
+
+          const outcome = await container.runDag(task);
+
+          // Infrastructure/transport failure (worker died, channel lost): the
+          // child DAG never ran to a terminal. Throw so spawnWorker takes the
+          // reject branch → poolError set → item is NOT acked → it stays in the
+          // inbox → resume reprocesses it. This matches the in-process path
+          // (a body crash throws) and preserves at-least-once. A legitimate
+          // body that ran and routed to 'error' (terminalOutput 'failed' from a
+          // TerminalNode) is NOT an infrastructure failure and acks normally.
+          if (outcome.errors.some((e) => TransportErrorCode.isInfrastructureFailure(e.code))) {
+            const infra = outcome.errors.find((e) => TransportErrorCode.isInfrastructureFailure(e.code));
+            throw new ExecutionError(
+              `ScatterNode '${scatter.name}': container infrastructure failure — ${infra?.message ?? 'transport lost'}`,
+            );
+          }
+
+          // Apply terminal state snapshot back to clone in place.
+          if (outcome.stateSnapshot !== null) {
+            cloneState.applySnapshot(outcome.stateSnapshot);
+          }
+
+          // Collect child errors into clone (propagated to shared state below).
+          for (const err of outcome.errors) cloneState.collectError(err);
+
+          // Re-yield each intermediate as a NodeResultInterface with scatter prefix.
+          for (const wi of outcome.intermediates) {
+            intermediateResults.push({
+              'output': wi.output,
+              'skipped': wi.skipped,
+              'nodeName': `${scatter.name}.${wi.nodeName}`,
+              state,
+              'intermediateResults': [],
+            });
+          }
+
+          // Derive terminalOutcome from the container's terminal output.
+          terminalOutcome = outcome.terminalOutput === 'failed' ? 'failed' : 'completed';
         }
 
         const hasUnrecoverable = cloneState.errors.some((e) => e.recoverable === false);
@@ -1689,6 +1932,19 @@ implements DagonizerInterface<TState, TServices> {
     this.dags.set(dag.name, dag);
     for (const node of dag.nodes) {
       this.nodeIndex.set(`${dag.name}:${node.name}`, node as unknown as DAGNodeType);
+    }
+
+    // Emit contractWarning for placements that declare a container role that is
+    // not bound in this.containers. Those placements will fall back to in-process.
+    for (const placement of dag.nodes) {
+      const containerRole = ('container' in placement)
+        ? (placement as { container?: string }).container
+        : undefined;
+      if (containerRole !== undefined && this.resolveContainer(containerRole) === null) {
+        const msg = `DAG '${dag.name}' placement '${placement.name}' declares container role '${containerRole}' which is not bound; resolving to in-process`;
+        this.onContractWarning(msg);
+        this.instrumentation.contractWarning(msg);
+      }
     }
   }
 

@@ -8,3 +8,16 @@
 
 export { VirtualClockProvider } from './VirtualClock.js';
 export { VirtualScheduler } from './VirtualScheduler.js';
+export { LoopbackChannel } from './LoopbackChannel.js';
+export {
+  buildConformanceBundle,
+  ConformanceState,
+  CONFORMANCE_CONTAINER_ROLE,
+  CONFORMANCE_DAG,
+  CONFORMANCE_REGISTRY_VERSION,
+} from './ConformanceRegistry.js';
+export { DagConformance } from './DagConformance.js';
+export type {
+  DagConformanceHarnessInterface,
+  DagConformanceLawInterface,
+} from './DagConformance.js';

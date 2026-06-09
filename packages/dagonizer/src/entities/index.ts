@@ -133,6 +133,38 @@ export { BackoffStrategySchema, BackoffStrategy } from './runtime/BackoffStrateg
 export type { BackoffStrategyValue } from './runtime/BackoffStrategy.js';
 
 // ---------------------------------------------------------------------------
+// executor (container wire shapes)
+// ---------------------------------------------------------------------------
+
+export { ExecutorIntermediateSchema } from './executor/ExecutorIntermediate.js';
+export type { ExecutorIntermediate } from './executor/ExecutorIntermediate.js';
+
+export { ExecutionRequestSchema } from './executor/ExecutionRequest.js';
+export type { ExecutionRequest } from './executor/ExecutionRequest.js';
+
+export { ExecutionResponseSchema } from './executor/ExecutionResponse.js';
+export type { ExecutionResponse } from './executor/ExecutionResponse.js';
+
+export { BridgeMessageSchema } from './executor/BridgeMessage.js';
+export type { BridgeMessage } from './executor/BridgeMessage.js';
+
+export {
+  RecommendedWorkerCountConfigSchema,
+  RecommendedWorkerCountConfigDefault,
+  RECOMMENDED_WORKER_COUNT_MAIN_THREAD_RESERVATION,
+  RECOMMENDED_WORKER_COUNT_FALLBACK,
+  RECOMMENDED_WORKER_COUNT_MEMORY_PER_WORKER_BYTES,
+} from './executor/RecommendedWorkerCountConfig.js';
+export type { RecommendedWorkerCountConfig } from './executor/RecommendedWorkerCountConfig.js';
+
+// ---------------------------------------------------------------------------
+// handoff
+// ---------------------------------------------------------------------------
+
+export { DAGHandoffSchema } from './handoff/DAGHandoff.js';
+export type { DAGHandoff } from './handoff/DAGHandoff.js';
+
+// ---------------------------------------------------------------------------
 // json primitives
 // ---------------------------------------------------------------------------
 

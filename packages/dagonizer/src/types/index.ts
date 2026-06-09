@@ -30,17 +30,24 @@ export type { DAGErrorInterface } from '../errors/DAGError.js';
 // Adapter contracts
 // ---------------------------------------------------------------------------
 
+export type { ChannelInterface } from '../contracts/ChannelInterface.js';
 export type { CheckpointStore } from '../contracts/CheckpointStore.js';
 export type { ClockProvider } from '../contracts/ClockProvider.js';
+export type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
+export type { DagOutcomeInterface } from '../contracts/DagOutcomeInterface.js';
+export type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
 export type { ErrorConstructorType } from '../contracts/ErrorConstructorType.js';
 export type { ExecuteOptionsInterface } from '../contracts/ExecuteOptionsInterface.js';
+export type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
 export type { Chainable, NodeInterface } from '../contracts/NodeInterface.js';
 export type { OperationContract } from '../contracts/OperationContract.js';
 export type { OperationContractFragment } from '../contracts/OperationContractFragment.js';
+export type { RegistryBundleInterface, RegistryModuleInterface } from '../contracts/RegistryModuleInterface.js';
 export type { RetryPolicyOptionsInterface } from '../contracts/RetryPolicyOptionsInterface.js';
 export type { SchedulerHandle } from '../contracts/SchedulerHandle.js';
 export type { SchedulerProvider } from '../contracts/SchedulerProvider.js';
 export type { StateAccessor } from '../contracts/StateAccessor.js';
+export type { SystemInfoInterface } from '../contracts/SystemInfoInterface.js';
 
 // ---------------------------------------------------------------------------
 // Entity-narrowing interfaces
@@ -76,6 +83,12 @@ export type { NodeWarning } from '../entities/node/NodeWarning.js';
 export type { ExecutionResult } from '../entities/execution/ExecutionResult.js';
 export type { ValidationResult } from '../entities/validation/ValidationResult.js';
 export type { DAGErrorJSON } from '../entities/errors/DAGErrorJSON.js';
+export type { DAGHandoff } from '../entities/handoff/DAGHandoff.js';
+export type { BridgeMessage } from '../entities/executor/BridgeMessage.js';
+export type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js';
+export type { ExecutionResponse } from '../entities/executor/ExecutionResponse.js';
+export type { ExecutorIntermediate } from '../entities/executor/ExecutorIntermediate.js';
+export type { RecommendedWorkerCountConfig } from '../entities/executor/RecommendedWorkerCountConfig.js';
 export type { CheckpointData } from '../entities/checkpoint/CheckpointData.js';
 export type { DAGLifecycleStateData } from '../entities/state-machines/DAGLifecycleState.js';
 export type { BackoffStrategyValue } from '../entities/runtime/BackoffStrategy.js';

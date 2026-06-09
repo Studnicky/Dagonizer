@@ -63,6 +63,13 @@ export interface ScatterOptionsInterface<TState extends NodeStateInterface = Nod
   readonly gather?: GatherConfig;
   /** Outcome reducer name. Defaults to `'aggregate'`. */
   readonly reducer?: string;
+  /**
+   * Logical container role for scatter dag-body execution. The dispatcher
+   * binds role names to `DagContainerInterface` instances at construction.
+   * Honored only when the body is a `{dag: string}` body. A node body
+   * with `container` set is a validation error.
+   */
+  readonly container?: string;
 }
 
 /**
@@ -88,6 +95,12 @@ export interface TypedEmbeddedDAGOptionsInterface<
   readonly inputs?:  Partial<Record<keyof TChildState & string, ParentPath<TParentState>>>;
   /** Output mapping: parent-state dotted path → child-state dotted path. Copied back into the parent after it completes. */
   readonly outputs?: Partial<Record<ParentPath<TParentState>, ParentPath<TChildState>>>;
+  /**
+   * Logical container role for this embedded DAG execution. The dispatcher
+   * binds role names to `DagContainerInterface` instances at construction.
+   * When absent, the embedded DAG runs in-process.
+   */
+  readonly container?: string;
 }
 
 /**
@@ -211,6 +224,7 @@ export class DAGBuilder {
     if (options.inputs !== undefined) scatterNode.stateMapping = { 'input': options.inputs as Record<string, string> };
     if (options.gather !== undefined) scatterNode.gather = options.gather;
     if (options.reducer !== undefined) scatterNode.reducer = options.reducer;
+    if (options.container !== undefined) scatterNode.container = options.container;
 
     if (!('dag' in body)) {
       this.#nodeImpls.set(name, body as NodeInterface);
@@ -257,6 +271,7 @@ export class DAGBuilder {
       if (options.outputs !== undefined) stateMapping.output = options.outputs as Record<string, string>;
       embeddedNode.stateMapping = stateMapping;
     }
+    if (options.container !== undefined) embeddedNode.container = options.container;
 
     this.#nodes.push(embeddedNode);
     if (this.#entrypoint === null) this.#entrypoint = name;

@@ -14,6 +14,13 @@
  * `EmbeddedDAGNode.stateMapping.input`. Scatter has no `stateMapping.output`:
  * the N→1 merge back into the parent is `gather`'s job (a fork reduces, an embed
  * copies). `reducer` picks the outcome strategy; defaults to `'aggregate'`.
+ *
+ * `container` (optional): logical container role name. Honored ONLY when the
+ * body is a `dag` body (a `{dag: string}` body). A node body with `container`
+ * set is a validation error — a node body is one node, not a DAG, and cannot be
+ * contained. Bound at dispatcher construction via
+ * `DagonizerOptionsInterface.containers`. When declared but unbound, the scatter
+ * dag-body resolves to in-process and fires a `contractWarning`.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
@@ -62,6 +69,10 @@ export const ScatterNodeSchema = {
       'type': 'object',
       'additionalProperties': { 'type': ['string', 'null'] },
     },
+    // Logical container role. Honored only for dag-body scatter.
+    // A node-body scatter with container set is a validation error.
+    // Bound at dispatcher construction via DagonizerOptionsInterface.containers.
+    'container': { 'type': 'string', 'minLength': 1 },
   },
   'additionalProperties': false,
 } as const;

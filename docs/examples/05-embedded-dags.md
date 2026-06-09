@@ -75,6 +75,26 @@ See [Phase 09: Terminal placements](./09-terminals) for the full pattern with ru
 
 See this in action in the [Archivist live demo](./the-archivist).
 
+## Running in a container
+
+An `EmbeddedDAGNode` placement can run the sub-DAG in an isolate by adding a `container` key to the placement and binding a `DagContainerInterface` backend at dispatcher construction:
+
+```ts
+import { WorkerThreadContainer } from '@noocodex/dagonizer-executor-node';
+
+const dispatcher = new Dagonizer<AppState, AppServices>({
+  services,
+  containers: {
+    isolated: new WorkerThreadContainer({
+      registryModule: new URL('./registry.js', import.meta.url).href,
+      registryVersion: '1.0.0',
+    }),
+  },
+});
+```
+
+In the DAG document, add `container: "isolated"` to the `EmbeddedDAGNode` placement. The `stateMapping.input` seed and `stateMapping.output` copy operate identically in both paths — only the execution location changes. An unbound role falls back to in-process and fires `contractWarning`. See [Example 12: Worker pool](./12-workers) for a complete walkthrough of the registry module and pool lifecycle.
+
 ## Typed `stateMapping` and growing shared state
 
 The `.embeddedDAG()` call accepts `TChildState` and `TParentState` generic parameters that narrow `options.inputs` keys and `options.outputs` paths to dotted paths that exist on the respective state at compile time:

@@ -36,6 +36,7 @@ import {
   CerebrasApiAdapter,
   GeminiApiAdapter,
   GeminiNanoAdapter,
+  detectGeminiNano,
   GroqApiAdapter,
   MistralApiAdapter,
   OllamaApiAdapter,
@@ -201,7 +202,7 @@ export async function detectBackends(inputs: DetectionInputs = {}): Promise<read
   const keys = inputs.apiKeys ?? {};
   const out: BackendAvailability[] = [];
 
-  const nanoStatus: GeminiNanoAvailability = await GeminiNanoAdapter.detect();
+  const nanoStatus: GeminiNanoAvailability = await detectGeminiNano();
   out.push({
     'id': 'gemini-nano',
     'displayName': 'Browser built-in LanguageModel (on-device)',
@@ -455,6 +456,7 @@ export {
   CerebrasApiAdapter,
   GeminiApiAdapter,
   GeminiNanoAdapter,
+  detectGeminiNano,
   GroqApiAdapter,
   MistralApiAdapter,
   OllamaApiAdapter,

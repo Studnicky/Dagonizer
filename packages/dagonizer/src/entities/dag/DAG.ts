@@ -80,6 +80,9 @@ export const DAG_CONTEXT: Record<string, unknown> = {
   // embedded-dag properties
   'stateMapping': { '@id': `${NS}stateMapping` },
 
+  // containment properties (EmbeddedDAGNode + ScatterNode dag-body only)
+  'container': { '@id': `${NS}container` },
+
   // ── classes ───────────────────────────────────────────────────────────────
   'DAG':             { '@id': `${NS}DAG` },
   'Placement':       { '@id': `${NS}Placement` },
@@ -179,6 +182,7 @@ const DAGNodeEntrySchema = {
           'type': 'object',
           'additionalProperties': { 'type': ['string', 'null'] },
         },
+        'container': { 'type': 'string', 'minLength': 1 },
       },
       'additionalProperties': false,
     },
@@ -202,6 +206,7 @@ const DAGNodeEntrySchema = {
           },
           'additionalProperties': false,
         },
+        'container': { 'type': 'string', 'minLength': 1 },
       },
       'additionalProperties': false,
     },

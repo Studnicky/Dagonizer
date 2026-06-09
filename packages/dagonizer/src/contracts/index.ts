@@ -1,4 +1,11 @@
+export type { ChannelInterface } from './ChannelInterface.js';
 export type { CheckpointStore } from './CheckpointStore.js';
+export type { MessageChannelInterface } from './MessageChannelInterface.js';
+export type { RegistryBundleInterface, RegistryModuleInterface } from './RegistryModuleInterface.js';
+export type { SystemInfoInterface } from './SystemInfoInterface.js';
+export type { DagContainerInterface } from './DagContainerInterface.js';
+export type { DagOutcomeInterface } from './DagOutcomeInterface.js';
+export type { DagTaskInterface } from './DagTaskInterface.js';
 export type { Embedder } from './Embedder.js';
 export type { ClockProvider } from './ClockProvider.js';
 export type { ErrorConstructorType } from './ErrorConstructorType.js';

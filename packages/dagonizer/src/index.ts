@@ -92,6 +92,10 @@ export {
   NodeTypeSchema,
   BackoffStrategySchema,
   DAG_CONTEXT,
+  ExecutorIntermediateSchema,
+  ExecutionRequestSchema,
+  ExecutionResponseSchema,
+  DAGHandoffSchema,
 } from './entities/index.js';
 export type {
   ScatterNode,
@@ -117,6 +121,22 @@ export type {
   JsonSchema,
   JsonSchemaObject,
   JsonSchemaTypeName,
+  ExecutorIntermediate,
+  ExecutionRequest,
+  ExecutionResponse,
+} from './entities/index.js';
+export {
+  BridgeMessageSchema,
+  RecommendedWorkerCountConfigSchema,
+  RecommendedWorkerCountConfigDefault,
+  RECOMMENDED_WORKER_COUNT_MAIN_THREAD_RESERVATION,
+  RECOMMENDED_WORKER_COUNT_FALLBACK,
+  RECOMMENDED_WORKER_COUNT_MEMORY_PER_WORKER_BYTES,
+} from './entities/index.js';
+export type {
+  BridgeMessage,
+  RecommendedWorkerCountConfig,
+  DAGHandoff,
 } from './entities/index.js';
 
 // =============================================================================
@@ -139,6 +159,24 @@ export type {
   SchedulerHandle,
   SchedulerProvider,
 } from './runtime/index.js';
+
+// =============================================================================
+// CHANNELS
+// =============================================================================
+
+export { InMemoryChannel } from './channels/index.js';
+export type { InMemoryChannelOptions } from './channels/index.js';
+
+// =============================================================================
+// CONTAINER
+// =============================================================================
+
+export { DagTask } from './container/DagTask.js';
+export { DagHost } from './container/DagHost.js';
+export type { DagHostOptions } from './container/DagHost.js';
+export { DagContainerBase } from './container/DagContainerBase.js';
+export type { DagContainerOptions } from './container/DagContainerBase.js';
+export { ForwardingInstrumentation } from './container/ForwardingInstrumentation.js';
 
 // =============================================================================
 // FUNCTIONS
@@ -193,6 +231,10 @@ export type { NodeStateInterface } from './NodeStateBase.js';
 // CONTRACTS (adapter-pattern interfaces)
 // =============================================================================
 
+export type { ChannelInterface } from './contracts/ChannelInterface.js';
+export type { DagContainerInterface } from './contracts/DagContainerInterface.js';
+export type { DagOutcomeInterface } from './contracts/DagOutcomeInterface.js';
+export type { DagTaskInterface } from './contracts/DagTaskInterface.js';
 export type { ExecuteOptionsInterface } from './contracts/ExecuteOptionsInterface.js';
 export type { Instrumentation } from './contracts/Instrumentation.js';
 export type { Chainable, NodeInterface } from './contracts/NodeInterface.js';

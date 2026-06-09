@@ -39,3 +39,23 @@ The complete `BookSearchScatterDAG`, the sub-DAG the Archivist places three time
 - **`bookSearchScatterBundle`.** The sub-DAG module exports a `DispatcherBundle` packaging the exact node set plus the sub-DAG; `dispatcher.registerBundle(bookSearchScatterBundle)` installs the nodes before the DAG, ahead of the parent.
 
 See this in action in the [Archivist live demo](./the-archivist).
+
+## Running in a container
+
+A scatter placement whose body is a DAG (rather than a single node) can run each clone's sub-DAG in an isolate. Add `container: "cpu"` to the scatter placement and bind a `DagContainerInterface` backend at dispatcher construction:
+
+```ts
+import { WorkerThreadContainer } from '@noocodex/dagonizer-executor-node';
+
+const dispatcher = new Dagonizer<AppState, AppServices>({
+  services,
+  containers: {
+    cpu: new WorkerThreadContainer({
+      registryModule: new URL('./registry.js', import.meta.url).href,
+      registryVersion: '1.0.0',
+    }),
+  },
+});
+```
+
+The scatter inbox, gather strategies, and outcome reducer are identical in both paths. See [Example 12: Worker pool](./12-workers) for a complete walkthrough, including the registry module that reconstructs the bundle inside the worker.

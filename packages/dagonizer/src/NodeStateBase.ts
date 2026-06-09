@@ -80,6 +80,15 @@ export interface NodeStateInterface {
   markTimedOut(): void;
 
   /**
+   * Reset the lifecycle to `pending`. Called by the dispatcher before
+   * re-entering a flow on resume when the prior run ended in a terminal
+   * state (failed, cancelled, timed_out) due to a crash or interrupt.
+   * Lifecycle is intentionally not captured in snapshots; this method
+   * resets it so `markRunning()` can transition `pending → running` again.
+   */
+  resetLifecycle(): void;
+
+  /**
    * Generic metadata for routing decisions and node communication.
    */
   readonly 'metadata': Readonly<Record<string, unknown>>;
@@ -126,6 +135,23 @@ export interface NodeStateInterface {
    * Collected warnings from all nodes.
    */
   readonly 'warnings': readonly NodeWarning[];
+
+  /**
+   * Serialize state to a JSON-safe snapshot for transport or checkpointing.
+   * Subclasses with extra fields override `snapshotData()` to add them.
+   */
+  snapshot(): JsonObject;
+
+  /**
+   * Apply a snapshot to this instance in place. Used by the container seam
+   * to rehydrate the child clone with the terminal state returned by a
+   * contained DAG execution, preserving the engine invariant
+   * `result.state === initialState`.
+   *
+   * Subclasses override to read domain-specific fields, calling
+   * `super.applySnapshot` to inherit the base behavior.
+   */
+  applySnapshot(snapshot: JsonObject): void;
 }
 
 /**
@@ -171,7 +197,11 @@ export class NodeStateBase implements NodeStateInterface {
   }
 
   clone(): NodeStateBase {
-    const cloned = new NodeStateBase();
+    // Instantiate the actual (sub)class so domain fields and the
+    // snapshotData/restoreData hooks survive clone-then-applySnapshot.
+    // State classes follow the no-arg constructor convention.
+    const Constructor = this.constructor as new () => NodeStateBase;
+    const cloned = new Constructor();
 
     // Lifecycle resets to `pending`, errors/warnings empty for fresh
     // sub-execution. Only metadata is preserved for data passing between
@@ -222,6 +252,10 @@ export class NodeStateBase implements NodeStateInterface {
 
   markTimedOut(): void {
     this.dispatch({ "type": 'timeout' }, 'timed_out');
+  }
+
+  resetLifecycle(): void {
+    this._lifecycle = DAGLifecycleMachine.initial();
   }
 
   get metadata(): Readonly<Record<string, unknown>> {
@@ -312,11 +346,12 @@ export class NodeStateBase implements NodeStateInterface {
   }
 
   /**
-   * Apply a snapshot to this instance. Called by `restore()`. Subclasses
-   * override to read domain-specific fields, calling `super.applySnapshot`
-   * to inherit the base behavior.
+   * Apply a snapshot to this instance. Called by `restore()` and by the
+   * container seam to rehydrate a child clone with terminal state returned
+   * by a contained DAG execution. Subclasses override to read domain-specific
+   * fields, calling `super.applySnapshot` to inherit the base behavior.
    */
-  protected applySnapshot(snapshot: JsonObject): void {
+  applySnapshot(snapshot: JsonObject): void {
     const metadata = snapshot['metadata'];
     if (metadata !== undefined && typeof metadata === 'object' && metadata !== null && !Array.isArray(metadata)) {
       this._metadata = structuredClone(metadata) as Record<string, unknown>;

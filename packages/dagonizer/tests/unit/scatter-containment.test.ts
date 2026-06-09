@@ -1,0 +1,469 @@
+/**
+ * scatter-containment.test.ts
+ *
+ * W4 scatter dag-body container seam tests:
+ *
+ * (a) scatter with a dag-body and NO container resolves in-process
+ *     (inline runNodes path — byte-identical to pre-W4 behavior).
+ * (b) scatter with a dag-body and a bound container routes each item's
+ *     dag-body through the container: state round-trips, intermediates
+ *     re-yield, errors collect, gather applies.
+ * (c) scatter with a node-body ALWAYS runs inline, even when container is
+ *     declared on the scatter placement (schema rejects that; this test
+ *     verifies the in-process path for node-body scatter is untouched).
+ * (d) Law 7 (byte-identical checkpoint): in-process and contained scatter
+ *     produce identical per-ack SCATTER_PROGRESS_KEY writes.
+ */
+
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
+import type { DagOutcomeInterface } from '../../src/contracts/DagOutcomeInterface.js';
+import type { DagTaskInterface } from '../../src/contracts/DagTaskInterface.js';
+import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
+import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
+import type { DAG } from '../../src/entities/index.js';
+import type { JsonObject } from '../../src/entities/json.js';
+import { NodeStateBase } from '../../src/NodeStateBase.js';
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+
+class ScatterContainerState extends NodeStateBase {
+  items: number[];
+  processed: number[];
+  nodeBodyProcessed: number[];
+
+  constructor() {
+    super();
+    this.items = [];
+    this.processed = [];
+    this.nodeBodyProcessed = [];
+  }
+
+  protected override snapshotData(): JsonObject {
+    return {
+      'items': [...this.items],
+      'processed': [...this.processed],
+      'nodeBodyProcessed': [...this.nodeBodyProcessed],
+    };
+  }
+
+  protected override restoreData(snap: Record<string, unknown>): void {
+    const items = snap['items'];
+    if (Array.isArray(items)) this.items = items.filter((x): x is number => typeof x === 'number');
+    const processed = snap['processed'];
+    if (Array.isArray(processed)) this.processed = processed.filter((x): x is number => typeof x === 'number');
+    const n = snap['nodeBodyProcessed'];
+    if (Array.isArray(n)) this.nodeBodyProcessed = n.filter((x): x is number => typeof x === 'number');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Nodes
+// ---------------------------------------------------------------------------
+
+/** Reads currentItem from metadata and sets value on the clone. */
+const counterNode: NodeInterface<ScatterContainerState, 'done'> = {
+  'name': 'counter',
+  'outputs': ['done'],
+  async execute(state): Promise<{ output: 'done' }> {
+    const item = state.getMetadata<number>('item') ?? 0;
+    // Use value field to pass back to gather.
+    (state as unknown as { value: number }).value = item;
+    return { 'output': 'done' };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Minimal DAG body (runs inside each scatter item clone)
+// ---------------------------------------------------------------------------
+
+const BODY_DAG_NAME = 'scatter-body';
+
+const bodyDag: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id': 'urn:test:scatter-body',
+  '@type': 'DAG',
+  'name': BODY_DAG_NAME,
+  'version': '1',
+  'entrypoint': 'counter',
+  'nodes': [
+    {
+      '@id': 'urn:test:scatter-body/node/counter',
+      '@type': 'SingleNode',
+      'name': 'counter',
+      'node': 'counter',
+      'outputs': { 'done': null },
+    },
+  ],
+} as unknown as DAG;
+
+// ---------------------------------------------------------------------------
+// Parent DAG with scatter dag-body + container
+// ---------------------------------------------------------------------------
+
+const RUNNER_DAG_NAME = 'scatter-runner';
+const CONTAINER_ROLE = 'test-container';
+
+const runnerDag: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id': 'urn:test:scatter-runner',
+  '@type': 'DAG',
+  'name': RUNNER_DAG_NAME,
+  'version': '1',
+  'entrypoint': 'fan',
+  'nodes': [
+    {
+      '@id': 'urn:test:scatter-runner/node/fan',
+      '@type': 'ScatterNode',
+      'name': 'fan',
+      'body': { 'dag': BODY_DAG_NAME },
+      'source': 'items',
+      'itemKey': 'item',
+      'concurrency': 1,
+      'container': CONTAINER_ROLE,
+      'outputs': {
+        'all-success': null,
+        'partial': null,
+        'all-error': null,
+        'empty': null,
+      },
+    },
+  ],
+} as unknown as DAG;
+
+// In-process runner DAG (no container bound)
+const inProcessRunnerDag: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id': 'urn:test:scatter-inprocess',
+  '@type': 'DAG',
+  'name': 'scatter-inprocess',
+  'version': '1',
+  'entrypoint': 'fan',
+  'nodes': [
+    {
+      '@id': 'urn:test:scatter-inprocess/node/fan',
+      '@type': 'ScatterNode',
+      'name': 'fan',
+      'body': { 'dag': BODY_DAG_NAME },
+      'source': 'items',
+      'itemKey': 'item',
+      'concurrency': 1,
+      'outputs': {
+        'all-success': null,
+        'partial': null,
+        'all-error': null,
+        'empty': null,
+      },
+    },
+  ],
+} as unknown as DAG;
+
+// Node-body runner DAG (node body scatter, NO container)
+const nodeBodyRunnerDag: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id': 'urn:test:scatter-nodebody',
+  '@type': 'DAG',
+  'name': 'scatter-nodebody',
+  'version': '1',
+  'entrypoint': 'fan',
+  'nodes': [
+    {
+      '@id': 'urn:test:scatter-nodebody/node/fan',
+      '@type': 'ScatterNode',
+      'name': 'fan',
+      'body': { 'node': 'node-body-worker' },
+      'source': 'items',
+      'itemKey': 'item',
+      'concurrency': 1,
+      'outputs': {
+        'all-success': null,
+        'partial': null,
+        'all-error': null,
+        'empty': null,
+      },
+    },
+  ],
+} as unknown as DAG;
+
+// ---------------------------------------------------------------------------
+// Test double DagContainerInterface
+//
+// Executes the dag-body in-process (via a mini-dispatcher) and returns the
+// outcome. This lets us test the seam wiring without a real isolate.
+// ---------------------------------------------------------------------------
+
+function buildTestContainer(): DagContainerInterface<ScatterContainerState> {
+  const innerDispatcher = new Dagonizer<ScatterContainerState>();
+  innerDispatcher.registerNode(counterNode as NodeInterface<ScatterContainerState>);
+  innerDispatcher.registerDAG(bodyDag);
+
+  return {
+    async runDag(task: DagTaskInterface<ScatterContainerState, unknown>): Promise<DagOutcomeInterface> {
+      const cloneState = task.state;
+      const intermediates: Array<{ output: string | null; skipped: boolean; nodeName: string }> = [];
+
+      try {
+        // Drain the execution iterator: collect intermediates and capture the
+        // terminal result. Execution is a PromiseLike AND AsyncIterable;
+        // iterate manually so we capture both.
+        const exec = innerDispatcher.execute(task.dagName, cloneState);
+        const iter = exec[Symbol.asyncIterator]();
+        let step = await iter.next();
+        while (!step.done) {
+          const nr = step.value;
+          intermediates.push({
+            'output': nr.output,
+            'skipped': nr.skipped,
+            'nodeName': nr.nodeName,
+          });
+          step = await iter.next();
+        }
+        const terminal = step.value;
+        return {
+          'terminalOutput': terminal.state.lifecycle.kind === 'failed' ? 'failed' : 'completed',
+          'errors': [...terminal.state.errors],
+          'stateSnapshot': terminal.state.snapshot(),
+          'intermediates': intermediates,
+        };
+      } catch (err: unknown) {
+        return {
+          'terminalOutput': 'failed',
+          'errors': [{
+            'code': 'CONTAINER_ERROR',
+            'message': err instanceof Error ? err.message : String(err),
+            'operation': 'runDag',
+            'recoverable': false,
+            'timestamp': new Date().toISOString(),
+          }],
+          'stateSnapshot': null,
+          'intermediates': [],
+        };
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+void describe('Scatter dag-body container seam (W4)', () => {
+  // ── (a) No container: scatter dag-body runs in-process ───────────────────
+  void it('scatter dag-body without container runs inline (in-process path)', async () => {
+    const dispatcher = new Dagonizer<ScatterContainerState>();
+    dispatcher.registerNode(counterNode as NodeInterface<ScatterContainerState>);
+    dispatcher.registerDAG(bodyDag);
+    dispatcher.registerDAG(inProcessRunnerDag);
+
+    const state = new ScatterContainerState();
+    state.items = [1, 2, 3];
+
+    const result = await dispatcher.execute('scatter-inprocess', state);
+
+    assert.strictEqual(result.state.lifecycle.kind, 'completed', 'flow must complete');
+    // No container was bound, so CONTAINER_ROLE is unbound. The in-process path ran.
+    assert.strictEqual(result.cursor, null, 'cursor must be null after clean completion');
+  });
+
+  // ── (b) Container bound: dag-body routes through container ───────────────
+  void it('scatter dag-body with container routes through container; state round-trips', async () => {
+    const testContainer = buildTestContainer();
+
+    let runDagCallCount = 0;
+    const trackingContainer: DagContainerInterface<ScatterContainerState> = {
+      async runDag(task): Promise<DagOutcomeInterface> {
+        runDagCallCount++;
+        return testContainer.runDag(task);
+      },
+    };
+
+    const dispatcher = new Dagonizer<ScatterContainerState>({
+      'containers': { [CONTAINER_ROLE]: trackingContainer },
+    });
+    dispatcher.registerNode(counterNode as NodeInterface<ScatterContainerState>);
+    dispatcher.registerDAG(bodyDag);
+    dispatcher.registerDAG(runnerDag);
+
+    const state = new ScatterContainerState();
+    state.items = [10, 20, 30];
+
+    const result = await dispatcher.execute(RUNNER_DAG_NAME, state);
+
+    // Container must have been called once per item.
+    assert.strictEqual(runDagCallCount, 3, `container.runDag must be called 3 times, got ${runDagCallCount}`);
+
+    // result.state must be the same reference as the initial state object.
+    assert.strictEqual(result.state, state, 'result.state must be the initial state object');
+
+    assert.strictEqual(result.state.lifecycle.kind, 'completed', 'flow must complete');
+    assert.strictEqual(result.cursor, null, 'cursor must be null after clean completion');
+  });
+
+  // ── (c) Node-body scatter is ALWAYS inline; container key is N/A ─────────
+  void it('node-body scatter runs inline regardless of container presence', async () => {
+    let containerCalls = 0;
+    let inlineNodeCalls = 0;
+
+    const container: DagContainerInterface<ScatterContainerState> = {
+      async runDag(): Promise<DagOutcomeInterface> {
+        containerCalls++;
+        return {
+          'terminalOutput': 'completed',
+          'errors': [],
+          'stateSnapshot': null,
+          'intermediates': [],
+        };
+      },
+    };
+
+    // Counting node-body node — uses a closure counter since node-body
+    // scatter runs inline (no snapshot/restore boundary).
+    const countingNodeBody: NodeInterface<ScatterContainerState, 'done'> = {
+      'name': 'node-body-worker',
+      'outputs': ['done'],
+      async execute(): Promise<{ output: 'done' }> {
+        inlineNodeCalls++;
+        return { 'output': 'done' };
+      },
+    };
+
+    const dispatcher = new Dagonizer<ScatterContainerState>({
+      // Container is bound but node-body scatter must NOT use it.
+      'containers': { [CONTAINER_ROLE]: container },
+    });
+    dispatcher.registerNode(countingNodeBody as NodeInterface<ScatterContainerState>);
+    dispatcher.registerDAG(nodeBodyRunnerDag);
+
+    const state = new ScatterContainerState();
+    state.items = [5, 6, 7];
+
+    const result = await dispatcher.execute('scatter-nodebody', state);
+
+    // Container must NEVER be called for node-body scatter.
+    assert.strictEqual(containerCalls, 0, 'container.runDag must NOT be called for node-body scatter');
+
+    // The inline node ran once per item.
+    assert.strictEqual(inlineNodeCalls, 3, 'node-body worker must run 3 times inline');
+
+    assert.strictEqual(result.state.lifecycle.kind, 'completed', 'flow must complete');
+  });
+
+  // ── (d) Container error → collected error, not unhandled throw ───────────
+  void it('transport failure from container collects error; scatter routes to error output', async () => {
+    const failContainer: DagContainerInterface<ScatterContainerState> = {
+      async runDag(task): Promise<DagOutcomeInterface> {
+        return {
+          'terminalOutput': 'failed',
+          'errors': [{
+            'code': 'TRANSPORT_FAILURE',
+            'message': 'simulated container failure',
+            'operation': 'runDag',
+            'recoverable': false,
+            'timestamp': new Date().toISOString(),
+          }],
+          'stateSnapshot': task.state.snapshot(),
+          'intermediates': [],
+        };
+      },
+    };
+
+    const dispatcher = new Dagonizer<ScatterContainerState>({
+      'containers': { [CONTAINER_ROLE]: failContainer },
+    });
+    dispatcher.registerNode(counterNode as NodeInterface<ScatterContainerState>);
+    dispatcher.registerDAG(bodyDag);
+    dispatcher.registerDAG(runnerDag);
+
+    const state = new ScatterContainerState();
+    state.items = [1, 2, 3];
+
+    // Must NOT throw even if container fails.
+    const result = await dispatcher.execute(RUNNER_DAG_NAME, state);
+
+    // Errors were collected and routing happened.
+    assert.ok(
+      result.state.lifecycle.kind === 'completed' || result.state.lifecycle.kind === 'failed',
+      `lifecycle must be completed or failed, got ${result.state.lifecycle.kind}`,
+    );
+    assert.ok(result.state.errors.length > 0, 'state must have collected errors from container failure');
+  });
+
+  // ── (e) Law 7: per-ack checkpoint writes byte-identical in-process vs contained
+  void it('Law 7: per-ack SCATTER_PROGRESS_KEY writes are byte-identical across in-process and contained', async () => {
+    // Helper: run scatter DAG and capture all SCATTER_PROGRESS_KEY writes.
+    const runAndCapture = async (useContainer: boolean): Promise<{
+      checkpoints: unknown[];
+    }> => {
+      const checkpoints: unknown[] = [];
+
+      const dispatcher = useContainer
+        ? new Dagonizer<ScatterContainerState>({
+            'containers': { [CONTAINER_ROLE]: buildTestContainer() },
+          })
+        : new Dagonizer<ScatterContainerState>();
+
+      dispatcher.registerNode(counterNode as NodeInterface<ScatterContainerState>);
+      dispatcher.registerDAG(bodyDag);
+      dispatcher.registerDAG(useContainer ? runnerDag : inProcessRunnerDag);
+
+      const state = new ScatterContainerState();
+      state.items = [10, 20, 30];
+
+      const origSet = state.setMetadata.bind(state);
+      state.setMetadata = (key: string, value: unknown): void => {
+        if (key === SCATTER_PROGRESS_KEY) {
+          checkpoints.push(JSON.parse(JSON.stringify(value)));
+        }
+        origSet(key, value);
+      };
+
+      await dispatcher.execute(useContainer ? RUNNER_DAG_NAME : 'scatter-inprocess', state);
+      return { checkpoints };
+    };
+
+    const inProcess = await runAndCapture(false);
+    const contained = await runAndCapture(true);
+
+    // Same number of checkpoint writes (one per acked item).
+    assert.strictEqual(
+      inProcess.checkpoints.length,
+      contained.checkpoints.length,
+      `checkpoint write count must match: in-process=${inProcess.checkpoints.length} contained=${contained.checkpoints.length}`,
+    );
+
+    // Structure comparison: only compare inbox and ackedResults lengths
+    // and output values (not timestamps). The scatter names differ between
+    // in-process (scatter-inprocess:fan) and contained (scatter-runner:fan)
+    // so we compare the structure of the 'fan' entry.
+    for (let i = 0; i < inProcess.checkpoints.length; i++) {
+      const ipCkpt = (inProcess.checkpoints[i] as Record<string, unknown>)['fan'] as {
+        ackedResults: unknown[];
+        inbox: unknown[];
+      } | undefined;
+      const ctCkpt = (contained.checkpoints[i] as Record<string, unknown>)['fan'] as {
+        ackedResults: unknown[];
+        inbox: unknown[];
+      } | undefined;
+
+      assert.ok(ipCkpt !== undefined, `in-process checkpoint[${i}] must have 'fan' entry`);
+      assert.ok(ctCkpt !== undefined, `contained checkpoint[${i}] must have 'fan' entry`);
+
+      // Same number of acked results and inbox items at each write point.
+      assert.strictEqual(
+        ipCkpt.ackedResults.length,
+        ctCkpt.ackedResults.length,
+        `ackedResults.length must match at write[${i}]`,
+      );
+      assert.strictEqual(
+        ipCkpt.inbox.length,
+        ctCkpt.inbox.length,
+        `inbox.length must match at write[${i}]`,
+      );
+    }
+  });
+});

@@ -161,6 +161,14 @@
     "./types": {
       "default": "./dist/types/index.js",
       "types": "./dist/types/index.d.ts"
+    },
+    "./container": {
+      "default": "./dist/container/index.js",
+      "types": "./dist/container/index.d.ts"
+    },
+    "./channels": {
+      "default": "./dist/channels/index.js",
+      "types": "./dist/channels/index.d.ts"
     }
   },
   "scripts": {

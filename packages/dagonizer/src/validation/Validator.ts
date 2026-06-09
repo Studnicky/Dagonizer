@@ -35,6 +35,10 @@ import { DAGErrorJSONSchema } from '../entities/errors/DAGErrorJSON.js';
 import type { DAGErrorJSON } from '../entities/errors/DAGErrorJSON.js';
 import { ExecutionResultSchema } from '../entities/execution/ExecutionResult.js';
 import type { ExecutionResult } from '../entities/execution/ExecutionResult.js';
+import type { BridgeMessage } from '../entities/executor/BridgeMessage.js';
+import { BridgeMessageSchema } from '../entities/executor/BridgeMessage.js';
+import type { DAGHandoff } from '../entities/handoff/DAGHandoff.js';
+import { DAGHandoffSchema } from '../entities/handoff/DAGHandoff.js';
 import { NodeSchema } from '../entities/node/Node.js';
 import type { Node } from '../entities/node/Node.js';
 import { NodeContextSchema } from '../entities/node/NodeContext.js';
@@ -123,6 +127,9 @@ export class Validator {
     };
   }
 
+  // Bridge protocol
+  static readonly bridgeMessage: EntityValidator<BridgeMessage> = Validator.compile('BridgeMessage', BridgeMessageSchema);
+
   // DAG: top-level definition
   static readonly dag:             EntityValidator<DAG>             = Validator.compile('DAG',             DAGSchema);
   static readonly singleNode:      EntityValidator<SingleNode>      = Validator.compile('SingleNode',      SingleNodeSchema);
@@ -149,4 +156,7 @@ export class Validator {
   static readonly checkpoint:       EntityValidator<CheckpointData>    = Validator.compile('CheckpointData',    CheckpointDataSchema);
   static readonly validationResult: EntityValidator<ValidationResult>  = Validator.compile('ValidationResult',  ValidationResultSchema);
   static readonly dagErrorJson:     EntityValidator<DAGErrorJSON>      = Validator.compile('DAGErrorJSON',      DAGErrorJSONSchema);
+
+  // Hand-off channels
+  static readonly dagHandoff: EntityValidator<DAGHandoff> = Validator.compile('DAGHandoff', DAGHandoffSchema);
 }
