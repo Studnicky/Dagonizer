@@ -28,8 +28,8 @@ function describeOutput(output: Output): string {
 
 // -- NodeType ----------------------------------------------------------------
 // Discriminate a placement type read from a DAG definition.
-function isParallelPlacement(type: NodeType): boolean {
-  return type === NodeType.PARALLEL;
+function isScatterPlacement(type: NodeType): boolean {
+  return type === NodeType.SCATTER;
 }
 
 // -- GatherStrategyName ------------------------------------------------------
@@ -68,7 +68,7 @@ function interpretScatterOutput(output: ScatterOutput): string {
 
 // Suppress unused variable warnings.
 void describeOutput;
-void isParallelPlacement;
+void isScatterPlacement;
 void isKnownGatherStrategy;
 void readCurrentItem;
 void fanOutGatherStrategy;

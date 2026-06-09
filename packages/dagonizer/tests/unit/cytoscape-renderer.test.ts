@@ -187,6 +187,130 @@ void describe('CytoscapeRenderer.render', () => {
   });
 });
 
+void describe('CytoscapeRenderer.render: containment coloring', () => {
+  void it('contained EmbeddedDAGNode carries data.container and dag-contained class; in-process does not', () => {
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:cy-worker',
+      '@type':    'DAG',
+      'name':       'cy-worker',
+      'version':    '1',
+      'entrypoint': 'plain',
+      'nodes': [
+        {
+          '@id':     'urn:noocodex:dag:cy-worker/node/plain',
+          '@type':   'SingleNode',
+          'name':    'plain',
+          'node':    'noop',
+          'outputs': { 'success': 'worker' },
+        },
+        {
+          '@id':       'urn:noocodex:dag:cy-worker/node/worker',
+          '@type':     'EmbeddedDAGNode',
+          'name':      'worker',
+          'dag':       'inner',
+          'container': 'cpu',
+          'outputs':   { 'success': null },
+        },
+      ],
+    };
+    const elements = CytoscapeRenderer.render(dag, {});
+
+    const workerNode = elements.find(
+      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'worker',
+    );
+    assert.ok(workerNode !== undefined, 'worker node must be present');
+    assert.equal(workerNode.data['container'], 'cpu', 'data.container must equal the role');
+    assert.ok(
+      typeof workerNode.classes === 'string' && workerNode.classes.includes('dag-contained'),
+      'dag-contained class must be present',
+    );
+    // shape class is also present alongside dag-contained
+    assert.ok(
+      typeof workerNode.classes === 'string' && workerNode.classes.includes('dag-embedded-dag'),
+      'dag-embedded-dag class must still be present',
+    );
+
+    const plainNode = elements.find(
+      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'plain',
+    );
+    assert.ok(plainNode !== undefined, 'plain node must be present');
+    assert.equal(plainNode.data['container'], undefined, 'in-process node must not have data.container');
+    assert.ok(
+      typeof plainNode.classes === 'string' && !plainNode.classes.includes('dag-contained'),
+      'in-process node must not have dag-contained class',
+    );
+  });
+
+  void it('contained dag-body ScatterNode carries data.container and dag-contained class', () => {
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:cy-scatter-worker',
+      '@type':    'DAG',
+      'name':       'cy-scatter-worker',
+      'version':    '1',
+      'entrypoint': 'fan',
+      'nodes': [{
+        '@id':       'urn:noocodex:dag:cy-scatter-worker/node/fan',
+        '@type':     'ScatterNode',
+        'name':      'fan',
+        'body':      { 'dag': 'item-dag' },
+        'source':    'items',
+        'gather':    { 'strategy': 'discard' },
+        'container': 'gpu',
+        'outputs':   { 'success': null },
+      }],
+    };
+    const elements = CytoscapeRenderer.render(dag, {});
+
+    const fanNode = elements.find(
+      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'fan',
+    );
+    assert.ok(fanNode !== undefined, 'fan node must be present');
+    assert.equal(fanNode.data.type, 'scatter');
+    assert.equal(fanNode.data['container'], 'gpu');
+    assert.ok(
+      typeof fanNode.classes === 'string' && fanNode.classes.includes('dag-contained'),
+    );
+    assert.ok(
+      typeof fanNode.classes === 'string' && fanNode.classes.includes('dag-scatter'),
+    );
+  });
+
+  void it('node-body ScatterNode does not carry data.container even if container field is set', () => {
+    // container on a node-body scatter is a validation error, but the renderer
+    // must not crash and must still emit the containment fields faithfully when
+    // the JSON has the field (schema validation is a separate concern).
+    // Here we test the normal case: a node-body scatter WITHOUT container.
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:cy-scatter-node',
+      '@type':    'DAG',
+      'name':       'cy-scatter-node',
+      'version':    '1',
+      'entrypoint': 'fan',
+      'nodes': [{
+        '@id':     'urn:noocodex:dag:cy-scatter-node/node/fan',
+        '@type':   'ScatterNode',
+        'name':    'fan',
+        'body':    { 'node': 'worker' },
+        'source':  'items',
+        'gather':  { 'strategy': 'discard' },
+        'outputs': { 'success': null },
+      }],
+    };
+    const elements = CytoscapeRenderer.render(dag, {});
+    const fanNode = elements.find(
+      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'fan',
+    );
+    assert.ok(fanNode !== undefined);
+    assert.equal(fanNode.data['container'], undefined);
+    assert.ok(
+      typeof fanNode.classes === 'string' && !fanNode.classes.includes('dag-contained'),
+    );
+  });
+});
+
 void describe('CytoscapeRenderer.render: TerminalNode', () => {
   void it('renders a completed TerminalNode with type=terminal and outcome=completed', () => {
     const terminal: TerminalNodePlacementInterface = {

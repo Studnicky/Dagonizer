@@ -18,8 +18,7 @@
  *   `state.scoutProviders = ['openlibrary','googlebooks','subject','wikipedia']`
  *   as the scatter source. Each clone receives one descriptor under the
  *   `currentItem` metadata key; `scoutDispatch` reads it and calls the
- *   matching scout logic. Concurrency 4 runs all four in parallel exactly
- *   as the old ParallelNode did.
+ *   matching scout logic. Concurrency 4 runs all four scouts concurrently.
  *
  *   `ScoutGatherStrategy` ('scout-merge') flat-merges each clone's
  *   `candidates` array and concatenates `failureCause` strings into the
@@ -419,11 +418,9 @@ export const scoutDispatch: NodeInterface<ArchivistState, 'success' | 'empty', A
 // Flat-merges each clone's `candidates` array and concatenates `failureCause`
 // strings into the parent state after all four scatter clones complete.
 //
-// This reproduces the shared-state accumulation that the old ParallelNode
-// provided: all four scouts wrote to the same `state.candidates` and
-// `state.failureCause` because they ran with a shared, concurrently-mutated
-// state object. Scatter clones are isolated; this strategy performs the
-// equivalent merge at gather time, with defined ordering (source-index order).
+// Each scatter clone is isolated and accumulates its own `candidates` and
+// `failureCause`; this gather strategy folds the clones into the parent at
+// gather time, with defined ordering (source-index order).
 
 class ScoutGatherStrategy extends GatherStrategy {
   readonly name = 'scout-merge';

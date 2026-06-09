@@ -60,6 +60,10 @@ Three renderers ship in `@noocodex/dagonizer/viz`. Each consumes a `DAG` and emi
 
 Routes render as labeled directed edges. Routes targeting `null` route to a synthetic `END([end])` terminator (one per DAG).
 
+### Containment coloring
+
+Placements bound to a `container` role (`EmbeddedDAGNode` or dag-body `ScatterNode` with a non-empty `container` field) receive the Mermaid `contained` class, emitted via a `classDef contained` rule at the end of the flowchart. The fill color is amber-orange (`#f59e0b`) to read visually as "offloaded / running in an isolate". The `@type`-specific shape is preserved — a contained `EmbeddedDAGNode` remains a subroutine shape; a contained `ScatterNode` remains a trapezoid. In-process placements are unstyled (Mermaid default). The `contained` class is only emitted when at least one contained placement exists in the DAG.
+
 **TerminalNode vs synthetic END.** A `TerminalNode` placement is declared explicitly in the DAG and renders as a named shape with an outcome suffix (`(completed)` or `(failed)`). The synthetic `END` node is implicit sugar emitted once when any non-terminal placement routes an output to `null`. Both can coexist in the same diagram: the `TerminalNode` shape represents the declared placement, and `END` captures the null routes from other placements. `TerminalNode` placements emit no outbound edges; they are leaf nodes by definition.
 
 ### Embedding in Markdown
@@ -101,6 +105,17 @@ Every node element carries a `data.type` field for stylesheet selectors.
 | `'terminal'` | synthetic `END` node | `data.synthetic: true` |
 
 User-declared `TerminalNode` placements and the synthetic `END` node both use `data.type === 'terminal'`. Distinguish them via `data.synthetic === true` (only set on the synthetic node) or `data.outcome` (only set on user-declared terminals).
+
+### Containment metadata
+
+Placements bound to a `container` role carry an additional `data.container` field (the role string, e.g. `'cpu'`) and the extra CSS class `dag-contained` alongside the type class (`dag-scatter`, `dag-embedded-dag`, etc.). In-process placements omit `data.container` entirely.
+
+Select contained nodes in Cytoscape stylesheets via:
+- `.dag-contained` — class selector, matches any contained placement regardless of type
+- `node[container]` — data selector, matches any node with a container role set
+- `node[container="cpu"]` — data selector, matches a specific role
+
+`CytoscapeGraph`'s built-in stylesheet applies an amber-orange border and label color (`#f59e0b`) to `.dag-contained` nodes so they are visually distinct from in-process placements out of the box. Subclasses that override `stylesheet()` should carry this rule forward or replace it with a custom containment style.
 
 ### Live rendering in the doc site
 

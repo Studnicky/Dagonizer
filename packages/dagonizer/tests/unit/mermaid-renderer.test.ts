@@ -142,6 +142,103 @@ void describe('MermaidRenderer.render: PhaseNode', () => {
   });
 });
 
+void describe('MermaidRenderer.render: containment coloring', () => {
+  void it('emits classDef contained and class assignment for a contained EmbeddedDAGNode', () => {
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:worker-test',
+      '@type':    'DAG',
+      'name':       'worker-test',
+      'version':    '1',
+      'entrypoint': 'in-process',
+      'nodes': [
+        {
+          '@id':       'urn:noocodex:dag:worker-test/node/in-process',
+          '@type':     'SingleNode',
+          'name':      'in-process',
+          'node':      'noop',
+          'outputs':   { 'success': 'worker-dag' },
+        },
+        {
+          '@id':       'urn:noocodex:dag:worker-test/node/worker-dag',
+          '@type':     'EmbeddedDAGNode',
+          'name':      'worker-dag',
+          'dag':       'cpu-dag',
+          'container': 'cpu',
+          'outputs':   { 'success': null },
+        },
+      ],
+    };
+    const out = MermaidRenderer.render(dag);
+    // classDef must be present
+    assert.match(out, /classDef contained fill:/u);
+    // class assignment for the contained node
+    assert.match(out, /class worker-dag contained/u);
+    // in-process node does NOT get the class
+    assert.doesNotMatch(out, /class in-process contained/u);
+    // shape is preserved: EmbeddedDAGNode stays subroutine [[...]]
+    assert.match(out, /worker-dag\[\[worker-dag\]\]/u);
+  });
+
+  void it('emits classDef contained and class assignment for a contained dag-body ScatterNode', () => {
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:scatter-worker',
+      '@type':    'DAG',
+      'name':       'scatter-worker',
+      'version':    '1',
+      'entrypoint': 'fan',
+      'nodes': [
+        {
+          '@id':       'urn:noocodex:dag:scatter-worker/node/fan',
+          '@type':     'ScatterNode',
+          'name':      'fan',
+          'body':      { 'dag': 'item-dag' },
+          'source':    'items',
+          'gather':    { 'strategy': 'discard' },
+          'container': 'cpu',
+          'outputs':   { 'success': null },
+        },
+        {
+          '@id':     'urn:noocodex:dag:scatter-worker/node/plain',
+          '@type':   'SingleNode',
+          'name':    'plain',
+          'node':    'noop',
+          'outputs': { 'success': null },
+        },
+      ],
+    };
+    const out = MermaidRenderer.render(dag);
+    assert.match(out, /classDef contained fill:/u);
+    assert.match(out, /class fan contained/u);
+    // ScatterNode shape is preserved: trapezoid [/.../]
+    assert.match(out, /fan\[\/fan\/\]/u);
+    // in-process node does NOT get the class
+    assert.doesNotMatch(out, /class plain contained/u);
+  });
+
+  void it('emits NO classDef when no placement has a container role', () => {
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:no-container',
+      '@type':    'DAG',
+      'name':       'no-container',
+      'version':    '1',
+      'entrypoint': 'step',
+      'nodes': [{
+        '@id':     'urn:noocodex:dag:no-container/node/step',
+        '@type':   'SingleNode',
+        'name':    'step',
+        'node':    'noop',
+        'outputs': { 'success': null },
+      }],
+    };
+    const out = MermaidRenderer.render(dag);
+    assert.doesNotMatch(out, /classDef contained/u);
+    assert.doesNotMatch(out, /class step contained/u);
+  });
+});
+
 void describe('MermaidRenderer.render: TerminalNode', () => {
   void it('renders a completed TerminalNode as a double-circle with outcome suffix', () => {
     const terminal: TerminalNodePlacementInterface = {

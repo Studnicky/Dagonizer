@@ -111,6 +111,78 @@ void describe('JsonLdRenderer.render', () => {
   });
 });
 
+void describe('JsonLdRenderer.render: containment', () => {
+  void it('EmbeddedDAGNode with container emits dag:container in the @graph entry', () => {
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:jld-worker',
+      '@type':    'DAG',
+      'name':       'jld-worker',
+      'version':    '1',
+      'entrypoint': 'invoke',
+      'nodes': [{
+        '@id':       'urn:noocodex:dag:jld-worker/node/invoke',
+        '@type':     'EmbeddedDAGNode',
+        'name':      'invoke',
+        'dag':       'cpu-dag',
+        'container': 'cpu',
+        'outputs':   { 'success': null },
+      }],
+    };
+    const doc = JsonLdRenderer.render(dag);
+    const entry = doc['@graph'].find((e) => e['@type'] === 'dag:EmbeddedDAGNode');
+    assert.ok(entry !== undefined, 'dag:EmbeddedDAGNode entry must be present');
+    assert.equal(entry['dag:container'], 'cpu', 'dag:container must reflect the container role');
+  });
+
+  void it('EmbeddedDAGNode without container omits dag:container from the @graph entry', () => {
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:jld-inprocess',
+      '@type':    'DAG',
+      'name':       'jld-inprocess',
+      'version':    '1',
+      'entrypoint': 'invoke',
+      'nodes': [{
+        '@id':     'urn:noocodex:dag:jld-inprocess/node/invoke',
+        '@type':   'EmbeddedDAGNode',
+        'name':    'invoke',
+        'dag':     'child',
+        'outputs': { 'success': null },
+      }],
+    };
+    const doc = JsonLdRenderer.render(dag);
+    const entry = doc['@graph'].find((e) => e['@type'] === 'dag:EmbeddedDAGNode');
+    assert.ok(entry !== undefined);
+    assert.equal(entry['dag:container'], undefined, 'in-process placement must not emit dag:container');
+  });
+
+  void it('ScatterNode with dag body and container emits dag:container', () => {
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:jld-scatter-worker',
+      '@type':    'DAG',
+      'name':       'jld-scatter-worker',
+      'version':    '1',
+      'entrypoint': 'fan',
+      'nodes': [{
+        '@id':       'urn:noocodex:dag:jld-scatter-worker/node/fan',
+        '@type':     'ScatterNode',
+        'name':      'fan',
+        'body':      { 'dag': 'item-dag' },
+        'source':    'items',
+        'gather':    { 'strategy': 'discard' },
+        'container': 'gpu',
+        'outputs':   { 'success': null },
+      }],
+    };
+    const doc = JsonLdRenderer.render(dag);
+    const entry = doc['@graph'].find((e) => e['@type'] === 'dag:ScatterNode');
+    assert.ok(entry !== undefined, 'dag:ScatterNode entry must be present');
+    assert.equal(entry['dag:container'], 'gpu');
+  });
+});
+
 void describe('JsonLdRenderer.render: TerminalNode', () => {
   void it('renders a completed TerminalNode with @type dag:TerminalNode and dag:outcome', () => {
     const terminal: TerminalNodePlacementInterface = {

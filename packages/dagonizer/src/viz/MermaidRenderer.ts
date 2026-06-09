@@ -16,6 +16,14 @@
  * `TerminalNode` placements render as their own distinct shapes and do
  * not emit edges (they are leaf placements; they end the flow).
  *
+ * Containment coloring: any placement with a non-empty `container` role
+ * (i.e. bound to a worker isolate) is assigned the Mermaid `contained`
+ * class, rendered via a `classDef contained` rule emitted once at the
+ * end of the flowchart. This changes only the fill/stroke color — the
+ * `@type`-specific shape (subroutine, trapezoid, etc.) is preserved.
+ * The color is the shared `WORKER_COLOR` constant from `internal.ts`
+ * so Mermaid and Cytoscape use the same token.
+ *
  * @example
  * ```ts
  * import { MermaidRenderer } from '@noocodex/dagonizer/viz';
@@ -31,11 +39,17 @@ import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 
+import { PlacementUtils, WORKER_COLOR } from './internal.js';
+
 type AnyPlacement = EmbeddedDAGNode | ScatterNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
 
 /**
  * Render a `DAG` as Mermaid `flowchart` source. Output is a complete
  * Mermaid block ready to embed in a Markdown ```mermaid fence.
+ *
+ * Placements bound to a `container` role receive the `contained` Mermaid
+ * class (worker color `WORKER_COLOR`). In-process placements are unstyled
+ * (Mermaid default). Select contained nodes in stylesheets via `.contained`.
  */
 export class MermaidRenderer {
   private constructor() { /* static class */ }
@@ -50,6 +64,7 @@ export class MermaidRenderer {
     lines.push(`  ${dag.entrypoint}`);
 
     let touchesTerminal = false;
+    const containedIds: string[] = [];
 
     for (const placement of dag.nodes as readonly AnyPlacement[]) {
       lines.push(`  ${MermaidRenderer.renderShape(placement)}`);
@@ -57,10 +72,25 @@ export class MermaidRenderer {
         if (edge.endsWith(MermaidRenderer.TERMINAL_ID)) touchesTerminal = true;
         lines.push(edge);
       }
+      // Track placements bound to a container role for class assignment below.
+      if (PlacementUtils.containerRole(placement) !== null) {
+        containedIds.push(placement.name);
+      }
     }
 
     if (touchesTerminal) {
       lines.push(`  ${MermaidRenderer.TERMINAL_ID}([end])`);
+    }
+
+    // Emit containment class assignments and the shared classDef.
+    // The classDef must follow all node/edge lines to be valid Mermaid.
+    if (containedIds.length > 0) {
+      // classDef uses amber-orange worker color (see WORKER_COLOR in internal.ts):
+      //   fill: worker amber, stroke: darker amber border, color: dark text for contrast.
+      lines.push(`  classDef contained fill:${WORKER_COLOR},stroke:#b45309,color:#1c1917`);
+      for (const id of containedIds) {
+        lines.push(`  class ${id} contained`);
+      }
     }
 
     return lines.join('\n');

@@ -158,17 +158,36 @@ export class CytoscapeRenderer {
     return state.elements;
   }
 
-  /** Render one placement as a Cytoscape node element with type-discriminated metadata. */
+  /**
+   * Render one placement as a Cytoscape node element with type-discriminated metadata.
+   *
+   * Containment: placements bound to a `container` role (worker/isolate) carry
+   * `data.container` (the role string) and the additional `dag-contained` class
+   * alongside the existing `dag-${kind}` class. In-process placements omit
+   * `data.container` entirely (honoring `exactOptionalPropertyTypes`).
+   *
+   * Consumer stylesheet selectors for contained nodes:
+   *   `.dag-contained`       — class selector, matches any contained placement
+   *   `node[container]`      — data selector, matches any node with a container role
+   *   `node[container="cpu"]` — data selector, matches a specific role
+   */
   private static placementNode(placement: PlacementEntry, id: string): CytoscapeNodeElement {
     const kind = CytoscapeRenderer.PLACEMENT_KIND[placement['@type']] ?? 'single';
+    const role = PlacementUtils.containerRole(placement);
+
+    // Build the base data object. `data.container` is added only when a role
+    // exists so the key is absent on in-process placements (exactOptionalPropertyTypes).
+    const baseData = role !== null
+      ? { "id": id, "label": CytoscapeRenderer.titleCase(placement.name), "type": kind, "container": role } as CytoscapeNodeElement['data']
+      : { "id": id, "label": CytoscapeRenderer.titleCase(placement.name), "type": kind } as CytoscapeNodeElement['data'];
+
+    // Append dag-contained class for stylesheet selection.
+    const classes = role !== null ? `dag-${kind} dag-contained` : `dag-${kind}`;
+
     const base = {
       "group": 'nodes' as const,
-      "data": {
-        "id":    id,
-        "label": CytoscapeRenderer.titleCase(placement.name),
-        "type":  kind,
-      } as CytoscapeNodeElement['data'],
-      "classes": `dag-${kind}`,
+      "data":    baseData,
+      "classes": classes,
     };
 
     switch (placement['@type']) {

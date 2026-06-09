@@ -55,6 +55,10 @@ Render a `DAG` as Mermaid `flowchart` source. The output is a complete Mermaid b
 
 Every output route renders as a labeled directed edge: `from -->|outcome| to`. Routes targeting `null` route to a synthetic `END` terminator (one per DAG, rendered as `END([end])`). Explicit `TerminalNode` placements render as their own distinct shapes and emit no edges.
 
+### Containment coloring
+
+Placements with a non-empty `container` role receive the Mermaid `contained` class (amber-orange fill, `#f59e0b`) via a `classDef contained` rule appended to the flowchart. The `@type`-derived shape is unchanged — only the color dimension signals containment. In-process placements receive no class. The `classDef` is omitted entirely when no contained placement exists.
+
 ### Example
 
 ```ts
@@ -236,6 +240,16 @@ interface RenderOptions {
 
 Note: `computeLayout` and `layoutOptions` are not options on `CytoscapeRenderer.render`. Positioning is performed by `CompositeLayout.compute` (async) or handled internally by `CytoscapeGraph`.
 
+### Containment metadata
+
+Placements bound to a `container` role (worker/isolate) carry:
+- `data.container` — the role string (e.g. `'cpu'`), present only when a role is set
+- CSS class `dag-contained` — appended alongside the type class (e.g. `'dag-scatter dag-contained'`)
+
+In-process placements omit `data.container` entirely and carry only the type class.
+
+Select contained nodes via `.dag-contained` (class selector) or `node[container]` / `node[container="<role>"]` (data selectors).
+
 ### Types
 
 ```ts
@@ -246,7 +260,8 @@ interface CytoscapeNodeElement {
   readonly data: {
     readonly id: string;
     readonly label: string;
-    readonly type: 'single' | 'parallel' | 'scatter' | 'embedded-dag' | 'terminal';
+    readonly type: 'single' | 'scatter' | 'embedded-dag' | 'terminal' | 'phase';
+    readonly container?: string;  // container role; present only on contained placements
     readonly [key: string]: unknown;
   };
   readonly classes?: string;

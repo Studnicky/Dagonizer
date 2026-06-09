@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+### Added
+
+The visualizer renders container-bound (worker) sub-DAG placements in a distinct amber-orange color (`#f59e0b`), distinguishing offloaded sub-DAGs from in-process ones.
+
+- **MermaidRenderer**: placements with a non-empty `container` role receive a `classDef contained fill:#f59e0b,...` rule (emitted once) and a `class <id> contained` assignment. The `@type`-specific shape is preserved; only the color changes.
+- **CytoscapeRenderer**: contained placements carry `data.container` (the role string) and the CSS class `dag-contained` alongside the existing type class. In-process placements omit `data.container` entirely. Select via `.dag-contained` or `node[container]`.
+- **CytoscapeGraph**: the built-in stylesheet adds a `node.dag-contained` rule that applies the amber-orange border and label color.
+- **JsonLdRenderer**: `container` is now included as `dag:container` in the JSON-LD output for `EmbeddedDAGNode` and dag-body `ScatterNode` placements when the field is present.
+
 ### Breaking
 
 **Fan-out is now expressed solely via `ScatterNode` + a required `gather`.** `ParallelNode` and all associated surface are removed. The following specific symbols are deleted:

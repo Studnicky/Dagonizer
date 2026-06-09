@@ -139,6 +139,8 @@ export class JsonLdRenderer {
         if (placement.stateMapping !== undefined) out['dag:stateMapping'] = placement.stateMapping;
         if (placement.gather !== undefined)      out['dag:gather']       = placement.gather;
         if (placement.reducer !== undefined)     out['dag:reducer']     = placement.reducer;
+        // container is a placement property mapped in DAG_CONTEXT; include when present.
+        if (placement.container !== undefined)   out['dag:container']   = placement.container;
         return out;
       }
       case 'EmbeddedDAGNode': {
@@ -148,6 +150,8 @@ export class JsonLdRenderer {
           'dag:dag':    JsonLdRenderer.dagIri(placement.dag),
         };
         if (placement.stateMapping !== undefined) out['dag:stateMapping'] = placement.stateMapping;
+        // container is a placement property mapped in DAG_CONTEXT; include when present.
+        if (placement.container !== undefined)   out['dag:container']   = placement.container;
         return out;
       }
       case 'TerminalNode':

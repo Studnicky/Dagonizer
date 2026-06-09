@@ -60,10 +60,7 @@ const dagJson = JSON.stringify({
     'SingleNode':  { '@id': 'https://noocodex.dev/ontology/dag/SingleNode' },
     'TerminalNode': { '@id': 'https://noocodex.dev/ontology/dag/TerminalNode' },
     'ScatterNode': { '@id': 'https://noocodex.dev/ontology/dag/ScatterNode' },
-    'ParallelNode': {
-      '@id': 'https://noocodex.dev/ontology/dag/ParallelNode',
-      '@context': { 'nodes': { '@id': 'https://noocodex.dev/ontology/dag/parallelNodes', '@container': '@list' } },
-    },
+    'EmbeddedDAGNode': { '@id': 'https://noocodex.dev/ontology/dag/EmbeddedDAGNode' },
   },
   '@id':        'urn:noocodex:dag:from-json',
   '@type':      'DAG',
