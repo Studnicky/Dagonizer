@@ -31,50 +31,13 @@
  * ```
  */
 
+import type { GatherExecution, GatherRecord } from '../contracts/GatherExecution.js';
 import type { StateAccessor } from '../contracts/StateAccessor.js';
 import type { GatherConfig } from '../entities/dag/GatherConfig.js';
 import { DAGError } from '../errors/DAGError.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-/**
- * Per-clone record produced by the scatter loop. Carries the source item
- * (or `undefined` for a singleton scatter), the routing output, the
- * terminal outcome of a DAG body (or `null` for a node body), and the
- * live clone state after the body ran.
- */
-export interface GatherRecord<TState extends NodeStateInterface> {
-  readonly index: number;
-  readonly item: unknown;
-  readonly output: string;
-  readonly terminalOutcome: 'completed' | 'failed' | null;
-  readonly cloneState: TState;
-}
-
-/**
- * Per-invocation context handed to `GatherStrategy.apply`. Carries:
- *
- *   - the live parent state object (mutated in place by the strategy)
- *   - the per-clone records produced by every scatter clone
- *   - the current dag/signal for any nested node invocation
- *   - the `StateAccessor` the dispatcher is configured with
- *   - `invokeNode`, the only way for `custom` strategies to dispatch
- *     a registered node back through the engine
- */
-export interface GatherExecution<TState extends NodeStateInterface> {
-  readonly state: TState;
-  /**
-   * Per-clone records. INVARIANT: ordered by source index (`record.index`
-   * ascending). The dispatcher's scatter loop builds them index-ordered across
-   * batches (`Promise.all` preserves per-batch order; restored items flow
-   * through the same index-ordered batch loop on resume). Strategies rely on
-   * this and must not re-sort.
-   */
-  readonly records: ReadonlyArray<GatherRecord<TState>>;
-  readonly dagName: string;
-  readonly signal: AbortSignal | null;
-  readonly accessor: StateAccessor;
-  invokeNode(nodeName: string): Promise<void>;
-}
+export type { GatherExecution, GatherRecord };
 
 /**
  * Extension point for gather strategies.
@@ -135,7 +98,7 @@ class MapGatherStrategy extends GatherStrategy {
     const mapping = config.mapping ?? {};
     for (const [clonePath, parentPath] of Object.entries(mapping)) {
       const value = accessor.get(record.cloneState, clonePath);
-      const existing = (accessor.get(state, parentPath) as unknown[] | undefined) ?? [];
+      const existing = accessor.get<readonly unknown[]>(state, parentPath) ?? [];
       accessor.set(state, parentPath, [...existing, value]);
     }
   }
@@ -156,7 +119,7 @@ class MapGatherStrategy extends GatherStrategy {
         // GatherExecution.records), so map directly without a re-sort.
         const values = execution.records
           .map((r) => execution.accessor.get(r.cloneState, clonePath));
-        const existing = (execution.accessor.get(execution.state, parentPath) as unknown[] | undefined) ?? [];
+        const existing = execution.accessor.get<readonly unknown[]>(execution.state, parentPath) ?? [];
         execution.accessor.set(execution.state, parentPath, [...existing, ...values]);
       }
     }
@@ -176,7 +139,7 @@ class AppendGatherStrategy extends GatherStrategy {
     const value = config.field !== undefined
       ? accessor.get(record.cloneState, config.field)
       : record.item;
-    const existing = (accessor.get(state, config.target) as unknown[] | undefined) ?? [];
+    const existing = accessor.get<readonly unknown[]>(state, config.target) ?? [];
     accessor.set(state, config.target, [...existing, value]);
   }
 
@@ -194,7 +157,7 @@ class AppendGatherStrategy extends GatherStrategy {
         ? execution.accessor.get(r.cloneState, config.field)
         : r.item,
     );
-    const existing = (execution.accessor.get(execution.state, target) as unknown[] | undefined) ?? [];
+    const existing = execution.accessor.get<readonly unknown[]>(execution.state, target) ?? [];
     execution.accessor.set(execution.state, target, [...existing, ...values]);
   }
 }
@@ -214,7 +177,7 @@ class PartitionGatherStrategy extends GatherStrategy {
     const value = config.field !== undefined
       ? accessor.get(record.cloneState, config.field)
       : record.item;
-    const existing = (accessor.get(state, targetPath) as unknown[] | undefined) ?? [];
+    const existing = accessor.get<readonly unknown[]>(state, targetPath) ?? [];
     accessor.set(state, targetPath, [...existing, value]);
   }
 
@@ -234,7 +197,7 @@ class PartitionGatherStrategy extends GatherStrategy {
           : r.item,
       );
       if (values.length > 0) {
-        const existing = (execution.accessor.get(execution.state, targetPath) as unknown[] | undefined) ?? [];
+        const existing = execution.accessor.get<readonly unknown[]>(execution.state, targetPath) ?? [];
         execution.accessor.set(execution.state, targetPath, [...existing, ...values]);
       }
     }
@@ -310,7 +273,7 @@ class CollectGatherStrategy extends GatherStrategy {
     const value = config.field !== undefined
       ? accessor.get(record.cloneState, config.field)
       : record.output;
-    const existing = (accessor.get(state, config.target) as unknown[] | undefined) ?? [];
+    const existing = accessor.get<readonly unknown[]>(state, config.target) ?? [];
     accessor.set(state, config.target, [...existing, value]);
   }
 
@@ -328,7 +291,7 @@ class CollectGatherStrategy extends GatherStrategy {
         ? execution.accessor.get(r.cloneState, config.field)
         : r.output,
     );
-    const existing = (execution.accessor.get(execution.state, target) as unknown[] | undefined) ?? [];
+    const existing = execution.accessor.get<readonly unknown[]>(execution.state, target) ?? [];
     execution.accessor.set(execution.state, target, [...existing, ...values]);
   }
 }

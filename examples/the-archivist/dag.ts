@@ -290,9 +290,8 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
     'error':   'compose-empty',
   }, {
     'outputs': {
-      'draft':    'draft',
-      'approved': 'approved',
-      'attempts': 'attempts',
+      'draft':         'draft',
+      'approvalState': 'approvalState',
     },
   })
   // #endregion embedded-dag-placements
@@ -329,7 +328,7 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
   // Canonical end-of-flow: every completed path (a composed answer or an
   // off-topic decline) routes to this one `TerminalNode(completed)` instead of
   // a bare `null` route. The flow ends explicitly, not by absence of a route.
-  .terminal('end', 'completed')
+  .terminal('end', { outcome: 'completed' })
   // #endregion terminal-placements
 
   .build();

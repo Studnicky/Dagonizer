@@ -307,7 +307,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     // The persisted ackedResults carry the per-clone mapping values so the
     // resume can reconstruct the gather contribution.
     for (const r of persistedEntry.ackedResults) {
-      assert.ok(r.mappingValues !== undefined, 'expected mappingValues persisted for map gather');
+      assert.ok(r.kind === 'map', 'expected mappingValues persisted for map gather');
       assert.equal(r.mappingValues['produced'], f(interruptState.items[r.index] as number));
     }
     // The parent results array must NOT carry the prior-run produced values

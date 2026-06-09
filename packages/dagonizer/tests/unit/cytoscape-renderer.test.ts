@@ -5,7 +5,7 @@ import type { TerminalNodePlacementInterface } from '../../src/entities/dag/Term
 import type { DAG } from '../../src/entities/index.js';
 import { DAG_CONTEXT } from '../../src/entities/index.js';
 import { CytoscapeRenderer } from '../../src/viz/CytoscapeRenderer.js';
-import type { CytoscapeNodeElement } from '../../src/viz/CytoscapeRenderer.js';
+import type { CytoscapeNodeElement, CytoscapeEdgeElement } from '../../src/viz/CytoscapeRenderer.js';
 import { RoleColorUtils } from '../../src/viz/internal.js';
 
 const isNode = (element: { group: 'nodes' | 'edges' }): element is CytoscapeNodeElement =>
@@ -30,7 +30,7 @@ void describe('CytoscapeRenderer.render', () => {
     };
     const elements = CytoscapeRenderer.render(dag, {});
     const nodes = elements.filter((entry) => entry.group === 'nodes');
-    const edges = elements.filter((entry) => entry.group === 'edges');
+    const edges = elements.filter((entry): entry is CytoscapeEdgeElement => entry.group === 'edges');
     assert.equal(nodes.length, 2);                          // greet + synthetic END
     assert.equal(edges.length, 1);
     assert.equal(edges[0]?.data.label, 'success');
@@ -75,7 +75,7 @@ void describe('CytoscapeRenderer.render', () => {
       ],
     };
     const elements = CytoscapeRenderer.render(dag, {});
-    const edge = elements.find((entry) => entry.group === 'edges' && entry.data.source === 'a');
+    const edge = elements.find((entry): entry is CytoscapeEdgeElement => entry.group === 'edges' && entry.data.source === 'a');
     assert.equal(edge?.data.target, 'b');
     const terminalEdges = elements.filter(
       (entry) => entry.group === 'edges' && entry.data.target === 'END',

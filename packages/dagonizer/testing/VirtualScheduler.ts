@@ -14,7 +14,7 @@ import type { SchedulerProvider } from '../dist/contracts/SchedulerProvider.js';
 class SchedulerAbortError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = 'SchedulerAbortError';
+    this.name = 'AbortError';
   }
 }
 
@@ -36,11 +36,12 @@ export class VirtualScheduler implements SchedulerProvider {
   /** Current virtual time in ms. */
   get virtualNow(): number { return this.#virtualNow; }
 
-  after(delayMs: number, signal?: AbortSignal): Promise<void> {
-    return this.at(this.#virtualNow + Math.max(0, delayMs), signal);
+  after(delayMs: number, options?: { signal?: AbortSignal }): Promise<void> {
+    return this.at(this.#virtualNow + Math.max(0, delayMs), options);
   }
 
-  at(atMs: number, signal?: AbortSignal): Promise<void> {
+  at(atMs: number, options?: { signal?: AbortSignal }): Promise<void> {
+    const signal = options?.signal;
     return new Promise<void>((resolve, reject) => {
       if (signal?.aborted === true) {
         reject(signal.reason instanceof Error ? signal.reason : new SchedulerAbortError('aborted'));
@@ -59,10 +60,11 @@ export class VirtualScheduler implements SchedulerProvider {
     });
   }
 
-  async *every(intervalMs: number, signal?: AbortSignal): AsyncIterable<void> {
+  async *every(intervalMs: number, options?: { signal?: AbortSignal }): AsyncIterable<void> {
+    const signal = options?.signal;
     while (signal?.aborted !== true) {
       try {
-        await this.after(intervalMs, signal);
+        await this.after(intervalMs, options);
       } catch {
         return;
       }

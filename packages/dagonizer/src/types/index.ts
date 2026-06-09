@@ -59,6 +59,8 @@ export type { NodeOutputInterface } from '../entities/node/NodeOutput.js';
 export type { NodeResultInterface } from '../entities/node/NodeResult.js';
 export type { ExecutionResultInterface, InterruptionInfo } from '../entities/execution/ExecutionResult.js';
 export type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
+export type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
+export type { PhaseNodePlacementInterface } from '../entities/dag/PhaseNode.js';
 
 // ---------------------------------------------------------------------------
 // Entity-derived types (FromSchema-derived TypeScript shapes)
@@ -116,7 +118,7 @@ export type { DagonizerOptionsInterface } from '../Dagonizer.js';
 export type { GatherExecution, GatherStrategy } from '../core/GatherStrategies.js';
 export type { OutcomeReducer } from '../core/OutcomeReducers.js';
 export type { DAGDeriverOptions } from '../derive/DAGDeriver.js';
-export type { DAGDeriverAnnotations, DAGDeriverEmbeddedDAG, DAGDeriverScatter, DAGDeriverTerminal } from '../derive/DAGDeriverAnnotations.js';
+export type { DAGDeriverAnnotations, DAGDeriverEmitTerminal, DAGDeriverEmbeddedDAG, DAGDeriverScatter, DAGDeriverTerminal } from '../derive/DAGDeriverAnnotations.js';
 export type { DagJsonLdDocument, JsonLdGraphEntry } from '../viz/JsonLdRenderer.js';
 export type {
   CytoscapeElement,
@@ -152,3 +154,58 @@ export type {
   JsonSchemaObject,
   JsonSchemaTypeName,
 } from '../entities/primitives/JsonSchema.js';
+
+// ---------------------------------------------------------------------------
+// Scatter / resume internals (public surface for consumers building resumable DAGs)
+// ---------------------------------------------------------------------------
+
+export type {
+  ScatterAckedResult,
+  ScatterInboxItem,
+  ScatterProgress,
+  StoredScatterProgress,
+} from '../Dagonizer.js';
+
+export type { DispatcherBundle } from '../Dagonizer.js';
+
+// ---------------------------------------------------------------------------
+// Checkpoint
+// ---------------------------------------------------------------------------
+
+export type { CaptureOptionsInterface } from '../checkpoint/Checkpoint.js';
+
+// ---------------------------------------------------------------------------
+// Container options
+// ---------------------------------------------------------------------------
+
+export type { DagContainerOptions } from '../container/DagContainerBase.js';
+export type { DagHostOptions } from '../container/DagHost.js';
+
+// ---------------------------------------------------------------------------
+// Channel options
+// ---------------------------------------------------------------------------
+
+export type { InMemoryChannelOptions } from '../channels/InMemoryChannel.js';
+
+// ---------------------------------------------------------------------------
+// Store options + contracts
+// ---------------------------------------------------------------------------
+
+export type { BaseStoreOptions } from '../store/BaseStore.js';
+export type { StoreErrorClassification } from '../store/StoreError.js';
+
+// ---------------------------------------------------------------------------
+// Contracts not yet in the contracts section above
+// ---------------------------------------------------------------------------
+
+export type { Instrumentation } from '../contracts/Instrumentation.js';
+export type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '../contracts/RemoteStore.js';
+export type { Snapshottable, StoreSnapshot, StoreSnapshotEntry } from '../contracts/Snapshottable.js';
+export type { Store } from '../contracts/Store.js';
+
+// ---------------------------------------------------------------------------
+// Core execution primitives
+// ---------------------------------------------------------------------------
+
+export type { GatherRecord } from '../core/GatherStrategies.js';
+export type { OutcomeRecord } from '../core/OutcomeReducers.js';

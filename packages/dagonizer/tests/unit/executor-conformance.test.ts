@@ -73,13 +73,14 @@ interface LoopbackWorker {
 class LoopbackContainer extends DagContainerBase<NodeStateInterface, LoopbackWorker> {
   constructor(registryModuleUrl: string, options: Partial<DagContainerOptions> = {}) {
     super({
-      'instrumentation': options.instrumentation,
+      ...DagContainerBase.defaultOptions,
       'poolSize': 1,
       'init': {
         'registryModule': registryModuleUrl,
         'registryVersion': CONFORMANCE_REGISTRY_VERSION,
         'servicesConfig': {} as JsonObject,
       },
+      ...(options.instrumentation !== undefined ? { 'instrumentation': options.instrumentation } : {}),
       ...(options.shutdownGraceMs !== undefined ? { 'shutdownGraceMs': options.shutdownGraceMs } : {}),
     });
   }

@@ -17,6 +17,7 @@ export type { DagHostOptions } from './DagHost.js';
 export { DagContainerBase } from './DagContainerBase.js';
 export type {
   DagContainerOptions,
+  InitMessageShape,
   InstrumentationSink,
   PoolEntry,
 } from './DagContainerBase.js';

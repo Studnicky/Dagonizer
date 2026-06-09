@@ -16,7 +16,7 @@ export type {
   ChatResponse,
   ChatResponseMessage,
   LlmAdapter,
-  OutputSchema,
+  LlmOutputSchema,
   PartialChatRequest,
   TokenUsage,
   ToolCall,
@@ -79,3 +79,5 @@ export type { EmbedderFactory } from './EmbedderRegistry.js';
 
 export { EmbedderCascade } from './EmbedderCascade.js';
 export type { EmbedderCascadePreference } from './EmbedderCascade.js';
+
+export { RetryableErrorPolicy } from './RetryableErrorPolicy.js';

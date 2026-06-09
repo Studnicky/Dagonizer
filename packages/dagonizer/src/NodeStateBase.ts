@@ -4,6 +4,7 @@ import type { NodeWarning } from './entities/node/NodeWarning.js';
 import { DAGError } from './errors/DAGError.js';
 import { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
 import type { DAGLifecycleState } from './lifecycle/DAGLifecycleState.js';
+import { Validator } from './validation/Validator.js';
 
 /**
  * Shared state flowing through all nodes in a flow.
@@ -25,7 +26,8 @@ export interface NodeStateInterface {
   clone(): NodeStateInterface;
 
   /**
-   * Collect an error in state.
+   * Collect an error in state. Normalises `context` to `{}` when absent so
+   * internal engine handling never null-checks the field.
    */
   collectError(error: NodeErrorInterface): void;
 
@@ -188,7 +190,7 @@ export interface NodeStateInterface {
 export class NodeStateBase implements NodeStateInterface {
   private readonly _errors: NodeErrorInterface[] = [];
   private _lifecycle: DAGLifecycleState = DAGLifecycleMachine.initial();
-  private _metadata: Record<string, unknown> = {};
+  private _metadata: Record<string, JsonValue> = {};
   private _retries: Record<string, number> = {};
   private readonly _warnings: NodeWarning[] = [];
 
@@ -196,11 +198,11 @@ export class NodeStateBase implements NodeStateInterface {
     // Canonical instantiation. Subclass to add domain-specific state.
   }
 
-  clone(): NodeStateBase {
+  clone(): this {
     // Instantiate the actual (sub)class so domain fields and the
     // snapshotData/restoreData hooks survive clone-then-applySnapshot.
     // State classes follow the no-arg constructor convention.
-    const Constructor = this.constructor as new () => NodeStateBase;
+    const Constructor = this.constructor as new () => this;
     const cloned = new Constructor();
 
     // Lifecycle resets to `pending`, errors/warnings empty for fresh
@@ -212,7 +214,8 @@ export class NodeStateBase implements NodeStateInterface {
   }
 
   collectError(error: NodeErrorInterface): void {
-    this._errors.push(error);
+    // Normalise context to {} so internal engine handling never null-checks.
+    this._errors.push({ ...error, 'context': error.context ?? {} });
   }
 
   collectWarning(warning: NodeWarning): void {
@@ -263,11 +266,16 @@ export class NodeStateBase implements NodeStateInterface {
   }
 
   setMetadata(key: string, value: unknown): void {
-    this._metadata[key] = value;
+    // Metadata is the JSON serialisation boundary; callers are responsible
+    // for passing JSON-serialisable values (enforced at snapshot time).
+    this._metadata[key] = value as JsonValue;
   }
 
   deleteMetadata(key: string): void {
-    delete this._metadata[key];
+    // Destructuring-rest reassignment avoids V8 dictionary-mode demotion
+    // that would occur with `delete this._metadata[key]`.
+    const { [key]: _removed, ...rest } = this._metadata;
+    this._metadata = rest;
   }
 
   recordAttempt(key: string): number {
@@ -281,7 +289,10 @@ export class NodeStateBase implements NodeStateInterface {
   }
 
   clearAttempts(key: string): void {
-    delete this._retries[key];
+    // Destructuring-rest reassignment avoids V8 dictionary-mode demotion
+    // that would occur with `delete this._retries[key]`.
+    const { [key]: _removed, ...rest } = this._retries;
+    this._retries = rest;
   }
 
   withinRetryBudget(key: string, maxAttempts: number): boolean {
@@ -318,9 +329,9 @@ export class NodeStateBase implements NodeStateInterface {
    */
   snapshot(): JsonObject {
     return {
-      'metadata': structuredClone(this._metadata) as JsonValue,
+      'metadata': structuredClone(this._metadata),
       'retries': structuredClone(this._retries) as JsonValue,
-      'warnings': this._warnings.map((w) => ({ ...w })) as unknown as JsonValue,
+      'warnings': this._warnings.map((w) => ({ ...w })) as JsonValue,
       ...this.snapshotData(),
     };
   }
@@ -370,17 +381,33 @@ export class NodeStateBase implements NodeStateInterface {
 
     const metadata = snapshot['metadata'];
     if (metadata !== undefined && typeof metadata === 'object' && metadata !== null && !Array.isArray(metadata)) {
-      this._metadata = structuredClone(metadata) as Record<string, unknown>;
+      // Cast: structuredClone returns JsonObject (readonly index); _metadata
+      // requires mutable Record<string,JsonValue>. The values are identical.
+      this._metadata = structuredClone(metadata) as Record<string, JsonValue>;
     }
     const retries = snapshot['retries'];
     if (retries !== undefined && typeof retries === 'object' && retries !== null && !Array.isArray(retries)) {
-      this._retries = structuredClone(retries) as Record<string, number>;
+      // Validate each entry is a number to guard against corrupted snapshots.
+      const validated: Record<string, number> = {};
+      for (const [k, v] of Object.entries(retries)) {
+        if (typeof v === 'number') {
+          validated[k] = v;
+        }
+      }
+      this._retries = validated;
     }
     const warnings = snapshot['warnings'];
     if (Array.isArray(warnings)) {
       for (const w of warnings) {
-        if (typeof w === 'object' && w !== null && !Array.isArray(w)) {
-          this._warnings.push(w as unknown as NodeWarning);
+        if (Validator.nodeWarning.is(w)) {
+          this._warnings.push(w);
+        } else {
+          this.collectWarning({
+            'code': 'SNAPSHOT_INVALID_WARNING',
+            'message': 'Snapshot contained an invalid warning entry; skipped.',
+            'operation': 'applySnapshot',
+            'timestamp': new Date().toISOString(),
+          });
         }
       }
     }

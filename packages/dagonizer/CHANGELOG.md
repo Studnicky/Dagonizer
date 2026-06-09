@@ -2,6 +2,71 @@
 
 ## [Unreleased]
 
+Codebase-wide audit-and-harden pass: function-signature normalisation,
+type-safety tightening, V8 shape stability, runtime robustness, public-export
+completion, and documentation accuracy. The suite grows from 534 to 573 tests.
+
+### Breaking — function signatures (required positional, optional trailing config)
+
+Every required argument is now positional; every optional argument lives in a
+single trailing `options` object.
+
+- **`DAGError` and subclasses (`ConfigurationError`, `ExecutionError`, `NotFoundError`, `ValidationError`).** `new XError(message, context, errorOptions)` → `new XError(message, { context, ...errorOptions })`; `DAGError` also takes `{ code }`. `context` is now a required-with-default field (`{}` when absent) for V8 hidden-class stability.
+- **`SchedulerHandle` / `SchedulerProvider` `after`/`at`/`every`.** Trailing `signal` positional → `options?: { signal?: AbortSignal }`. `RealTimeScheduler` and the test `VirtualScheduler` updated in lockstep.
+- **`RetryPolicy.run` / `RetryPolicy.getDelay`.** Trailing positional → `options?`. New static **`RetryPolicy.from(partial)`** factory centralises all defaults.
+- **`Tool.execute(input, options?: { signal? })`** and **`Embedder.embed(text, options?: { signal? })`** — signal moved into options (and now actually honoured during embed retries).
+- **`LlmError` constructor + `classifyHttp`** — trailing `cause` / `body` → options.
+- **`DAGBuilder.build(options?)`, `terminal(name, options?: { outcome? })`, `static fromNodes(name, version, entrypoint, nodes, options?)`** — `fromNodes` no longer buries its required arguments in an object.
+- **`DagOutcome.transportError(correlationId, options?: { code?, message? })`** (SC-12).
+- **`ContractRegistryValidator.validate(contracts, onWarning, options?: { entrypointName? })`**.
+- **`DagContainerError` constructor migrated to the options bag.**
+
+### Breaking — types and required fields
+
+- **`OutputSchema` adapter type renamed to `LlmOutputSchema`** — resolves the canonical-name collision with the `constants/Output` `OutputSchema` value.
+- **`NodeStateBase.clone()` now returns `this`** — preserves the concrete subclass type without a cast at call sites.
+- **`StateAccessor.get<T = unknown>(state, path): T | undefined`** — generic return removes the `as unknown[]` casts at every gather call site.
+- **`ScatterAckedResult` is now a discriminated union** (`kind: 'map' | 'field' | 'plain'`) — one hidden class per variant; affects checkpoint shape.
+- **`DAGLifecycleEvent` `cancel.reason` is required** (the `cancelled` state already required it; pass `''` for none).
+- **`MonadicNode.timeoutMs` is a required field defaulting to `0`** (0 = no timeout) — single hidden class for every node instance. The `NodeInterface.timeoutMs?` contract stays optional (external implementer boundary).
+- **`DagContainerOptions.instrumentation` and `shutdownGraceMs` are required.** Pass `new NoopInstrumentation()` / `DEFAULT_SHUTDOWN_GRACE_MS`, or spread `DagContainerBase.defaultOptions`.
+- **`BaseStoreOptions.namespace` is required** (`''` = no namespace; `BASE_STORE_DEFAULTS` provides it).
+- **`BridgeMessage` `abort.reason` narrowed to `'abort' | 'timeout'`** — `'timeout'` marks a run-level deadline; preserves `timed_out` vs `cancelled` classification across the transport (R2).
+- **`RegistryBundleInterface.destroy?(): Promise<void>` added** — `DagHost` calls it on shutdown (R4).
+
+### Fixed — runtime robustness
+
+- **R1 (data loss).** Scatter over an async-iterable source no longer acks-and-clears remaining items when the run is aborted mid-flight; the pull-loop checks `signal.aborted` and throws before the checkpoint is cleared, so `resume()` replays the unprocessed inbox. Covered by a new regression test.
+- **R2** abort-reason classification preserved across the container transport (`ChannelDispatch` / `DagHost.#handleAbort`).
+- **R3** `DagHost` message dispatch attaches `.catch()` instead of bare `void`; handler exceptions become `{ kind: 'error', code: 'INTERNAL_ERROR' }` channel messages rather than process-killing unhandled rejections.
+- **R4** `DagHost.#handleShutdown` destroys registered node resources via `bundle.destroy?.()`.
+- **R5** `BaseEmbedder` embed retries honour the abort signal (previously ran the full backoff budget after abort).
+- **R6** `DagContainerBase.runDag` forwards the real caught error message into the transport outcome.
+- **R7** concurrent scatter worker failures are accumulated, not last-write-wins.
+- **R8** `SCHEMA_VIOLATION` (HTTP 422) is no longer marked retryable.
+- **R9** the worker-shutdown grace `setTimeout` is cleared when the worker exits first.
+- **R10** `Scheduler.reset()` cancels the prior provider's in-flight timers.
+- Post-phase node failures now route to `onError` and instrumentation, not just a warning.
+
+### Fixed — type safety and V8 shape
+
+- `DAGNodeType` unified to `DAG['nodes'][number]` with `@type` discriminated guards, removing the `as unknown as …` casts in the dispatch table, `registerDAG`, and `DAGValidator`.
+- `NodeStateBase` snapshot/restore validate warnings (`Validator.nodeWarning`) and retry values instead of laundering through `as unknown`; `_metadata`/`_retries` use destructuring-rest removal instead of `delete` (avoids dictionary-mode).
+- `Validator` passes Ajv errors as a typed `{ ajvErrors }` context; `DAGLifecycleMachine` narrows with `Extract<…>` instead of `as never`.
+
+### Added
+
+- **Public-export completion:** `Chainable` (`./contracts`), `RetryableErrorPolicy` (`./adapter`), `InitMessageShape` (`./container`), the eight entity-narrowing interfaces (`./entities`), and 25 previously-internal public types (`./types`).
+- **`RetryPolicy.from(partial)`**, **`DagContainerBase.defaultOptions`**, **`BASE_STORE_DEFAULTS`**.
+- Defensive validation of empty/absent `choices` in `OpenAiCompatibleAdapter`.
+- 39 tests: the R1 regression, cross-container abort propagation, container pool lifecycle (`#waiters` park/unpark, transport-death eviction, destroy-under-flight, double-destroy), `ForwardingInstrumentation` hook routing, `VirtualScheduler`/`VirtualClock` controls, `LoopbackChannel` semantics, and de-vacuumed `DagConformance` laws 3/4/5.
+
+### Fixed — documentation
+
+- Removed stale `ParallelNode` / `parallel`-placement references from the concepts, reference, and guide pages.
+- Corrected the viz reference: all five `CytoscapeGraph` protected-hook signatures, the `CompositeLayout.compute` signature, and the per-role hashed-palette behaviour (replacing the single amber-`#f59e0b` claim); added the `'phase'` element type.
+- Rewrote three checkpoint "produced before this field was introduced" notes in present-state form.
+
 ### Breaking
 
 **Fan-out is now expressed solely via `ScatterNode` + a required `gather`.** `ParallelNode` and all associated surface are removed. The following specific symbols are deleted:

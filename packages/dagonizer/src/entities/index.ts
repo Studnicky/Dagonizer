@@ -24,13 +24,13 @@
 // ---------------------------------------------------------------------------
 
 export { SingleNodeSchema } from './dag/SingleNode.js';
-export type { SingleNode } from './dag/SingleNode.js';
+export type { SingleNode, SingleNodePlacementInterface } from './dag/SingleNode.js';
 
 export { TerminalNodeSchema } from './dag/TerminalNode.js';
-export type { TerminalNode } from './dag/TerminalNode.js';
+export type { TerminalNode, TerminalNodePlacementInterface } from './dag/TerminalNode.js';
 
 export { PhaseNodeSchema } from './dag/PhaseNode.js';
-export type { PhaseNode } from './dag/PhaseNode.js';
+export type { PhaseNode, PhaseNodePlacementInterface } from './dag/PhaseNode.js';
 
 export { GatherConfigSchema } from './dag/GatherConfig.js';
 export type { GatherConfig } from './dag/GatherConfig.js';
@@ -69,19 +69,19 @@ export { NodeSchema } from './node/Node.js';
 export type { Node } from './node/Node.js';
 
 export { NodeContextSchema } from './node/NodeContext.js';
-export type { NodeContext } from './node/NodeContext.js';
+export type { NodeContext, NodeContextInterface } from './node/NodeContext.js';
 
 export { NodeErrorSchema } from './node/NodeError.js';
-export type { NodeError } from './node/NodeError.js';
+export type { NodeError, NodeErrorInterface } from './node/NodeError.js';
 
 export { NodeWarningSchema } from './node/NodeWarning.js';
 export type { NodeWarning } from './node/NodeWarning.js';
 
 export { NodeOutputSchema } from './node/NodeOutput.js';
-export type { NodeOutput } from './node/NodeOutput.js';
+export type { NodeOutput, NodeOutputInterface } from './node/NodeOutput.js';
 
 export { NodeResultSchema } from './node/NodeResult.js';
-export type { NodeResult } from './node/NodeResult.js';
+export type { NodeResult, NodeResultInterface } from './node/NodeResult.js';
 
 export { NodeStateDataSchema } from './node/NodeStateData.js';
 export type { NodeStateData } from './node/NodeStateData.js';
@@ -91,7 +91,7 @@ export type { NodeStateData } from './node/NodeStateData.js';
 // ---------------------------------------------------------------------------
 
 export { ExecutionResultSchema } from './execution/ExecutionResult.js';
-export type { ExecutionResult, InterruptionInfo } from './execution/ExecutionResult.js';
+export type { ExecutionResult, ExecutionResultInterface, InterruptionInfo } from './execution/ExecutionResult.js';
 
 // ---------------------------------------------------------------------------
 // validation
@@ -159,6 +159,23 @@ export type { RecommendedWorkerCountConfig } from './executor/RecommendedWorkerC
 
 export { DAGHandoffSchema } from './handoff/DAGHandoff.js';
 export type { DAGHandoff } from './handoff/DAGHandoff.js';
+
+// ---------------------------------------------------------------------------
+// scatter (checkpoint wire shapes)
+// ---------------------------------------------------------------------------
+
+export {
+  ScatterInboxItemSchema,
+  ScatterAckedResultSchema,
+  ScatterProgressSchema,
+  StoredScatterProgressSchema,
+} from './scatter/ScatterProgress.js';
+export type {
+  ScatterInboxItem,
+  ScatterAckedResult,
+  ScatterProgress,
+  StoredScatterProgress,
+} from './scatter/ScatterProgress.js';
 
 // ---------------------------------------------------------------------------
 // json primitives

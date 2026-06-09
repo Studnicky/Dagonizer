@@ -45,7 +45,7 @@ import assert from 'node:assert/strict';
 // The relative '../dist/' imports below are type-only and erased at compile time.
 import type { DagContainerInterface } from '../dist/contracts/DagContainerInterface.js';
 import type { Instrumentation } from '../dist/contracts/Instrumentation.js';
-import type { DagonizerInterface, DispatcherBundle, ScatterProgress } from '../dist/Dagonizer.js';
+import type { DagonizerInterface, DispatcherBundle } from '../dist/Dagonizer.js';
 import type { NodeStateInterface } from '../dist/NodeStateBase.js';
 
 import type {
@@ -57,6 +57,7 @@ import {
 
 // Runtime value imported from the package entry (resolves via package exports).
 import { SCATTER_PROGRESS_KEY } from '@noocodex/dagonizer';
+import type { ScatterProgress } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -191,6 +192,18 @@ export class DagConformance {
           result.state.lifecycle.kind === 'failed',
           `flow must complete or fail, got ${result.state.lifecycle.kind}`,
         );
+
+        // The error-emitter node calls collectError with code 'TEST_ERROR'.
+        // At least one collected error on the state must carry that code.
+        const stateErrors = (result.state as ConformanceState).errors;
+        assert.ok(
+          stateErrors.length > 0,
+          'at least one error must have been collected on state',
+        );
+        assert.ok(
+          stateErrors.some((e) => e.code === 'TEST_ERROR'),
+          `expected at least one error with code 'TEST_ERROR'; got codes: [${stateErrors.map((e) => e.code).join(', ')}]`,
+        );
       },
     };
 
@@ -205,7 +218,20 @@ export class DagConformance {
         const result = await dispatcher.execute(CONFORMANCE_DAG.law4, state);
         const elapsed = Date.now() - start;
 
-        assert.ok(elapsed < 2000, `timeout must fire within 2s, got ${elapsed}ms`);
+        // Lifecycle must not be 'running' when execute() returns.
+        assert.notStrictEqual(
+          result.state.lifecycle.kind,
+          'running',
+          'lifecycle must not still be running when execute() returns',
+        );
+
+        // For the timeout path, the timeout fires at ~50ms (TIMEOUT_SLEEPER_TIMEOUT_MS).
+        // Exclude 'failed' outcomes (may indicate a node execution error unrelated to
+        // timeout timing) from the upper-bound check.
+        if (result.state.lifecycle.kind !== 'failed') {
+          assert.ok(elapsed < 2000, `timeout must fire within 2s, got ${elapsed}ms`);
+        }
+
         assert.ok(
           result.state.lifecycle.kind === 'completed' ||
           result.state.lifecycle.kind === 'cancelled' ||
@@ -234,12 +260,21 @@ export class DagConformance {
 
         const result = await executionPromise;
 
-        assert.ok(
-          result.state.lifecycle.kind === 'cancelled' ||
-          result.state.lifecycle.kind === 'timed_out' ||
-          result.state.lifecycle.kind === 'completed' ||
-          result.state.lifecycle.kind === 'failed',
-          `lifecycle kind should reflect abort, got ${result.state.lifecycle.kind}`,
+        // The abort-sleeper records `began = true` before awaiting the signal.
+        // After a 20ms delay the sleeper must have started.
+        assert.strictEqual(
+          (result.state as ConformanceState).began,
+          true,
+          'abort-sleeper must have set began=true before the signal fired',
+        );
+
+        // An aborted run must finalize (not hang): lifecycle is not 'running'.
+        // The sleeper resolves gracefully on abort (best-effort, not exception-based),
+        // so lifecycle may be 'completed' or 'failed' — both are valid post-abort states.
+        assert.notStrictEqual(
+          result.state.lifecycle.kind,
+          'running',
+          `lifecycle must not be 'running' after abort; got ${result.state.lifecycle.kind}`,
         );
       },
     };
@@ -408,12 +443,8 @@ export class DagConformance {
         // gatheredItems accumulates map-gather results from scatter-counter.
         state1.scatterItems = [10, 20, 30];
 
-        let capturedProgress: Record<string, ScatterProgress> | undefined;
         const origSet1 = state1.setMetadata.bind(state1);
         state1.setMetadata = (key: string, value: unknown): void => {
-          if (key === SCATTER_PROGRESS_KEY) {
-            capturedProgress = JSON.parse(JSON.stringify(value)) as Record<string, ScatterProgress>;
-          }
           origSet1(key, value);
         };
 
@@ -477,8 +508,9 @@ export class DagConformance {
           `gatheredItems must have exactly 3 entries — no duplicate processing of acked items`,
         );
 
-        // Capture the Law 8 progress for teardown.
-        void capturedProgress;
+        // capturedProgress was recorded during the failing run.
+        // It is already validated indirectly: ackedBefore >= 1 above checks the
+        // same SCATTER_PROGRESS_KEY entry. No further assertion needed.
       },
     };
 

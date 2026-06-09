@@ -30,8 +30,8 @@ import { NodeStateBase } from '../../src/NodeStateBase.js';
 class CounterState extends NodeStateBase {
   value = 0;
 
-  override clone(): CounterState {
-    const cloned = new CounterState();
+  override clone(): this {
+    const cloned = new (this.constructor as new () => this)();
     cloned.value = this.value;
     return cloned;
   }
@@ -175,6 +175,13 @@ void describe('Container seam — W1', () => {
   void it('bound container receives runDag call and outcome is applied to parent state', async () => {
     const warnings: string[] = [];
 
+    // Subclass to capture any contract warnings (should be none when role is bound).
+    class WatchDagonizer extends Dagonizer<CounterState> {
+      protected override onContractWarning(message: string) {
+        warnings.push(message);
+      }
+    }
+
     // Test double: a DagContainerInterface that delegates to a second Dagonizer instance.
     const fakeContainer: DagContainerInterface<CounterState> = {
       async runDag(task: DagTaskInterface<CounterState, unknown>): Promise<DagOutcomeInterface> {
@@ -204,10 +211,9 @@ void describe('Container seam — W1', () => {
       },
     };
 
-    const dispatcher = new Dagonizer<CounterState>({
+    const dispatcher = new WatchDagonizer({
       'containers': { 'isolated': fakeContainer },
     });
-    dispatcher['onContractWarning'] = (msg: string) => { warnings.push(msg); };
     dispatcher.registerNode(incrementNode);
     dispatcher.registerNode(terminalNode);
     dispatcher.registerDAG(childDAG);

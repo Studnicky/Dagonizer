@@ -35,7 +35,7 @@ export interface MemoryDigest {
   /** Total visitor queries issued across all runs. */
   readonly queryCount: number;
   /** Up to the last 10 distinct shortlisted books (most-recent first). */
-  readonly recentBooks: ReadonlyArray<{ readonly title: string; readonly author?: string }>;
+  readonly recentBooks: ReadonlyArray<{ readonly title: string; readonly author: string }>;
   /** Intent distribution: how many times each intent was classified. */
   readonly intentBreakdown: ReadonlyArray<{ readonly intent: string; readonly count: number }>;
   /** 1–2 sentence LLM-ready summary of the digest. */
@@ -98,8 +98,13 @@ export class ArchivistState extends NodeStateBase {
   shortlist: readonly Candidate[] = [];
   /** The Archivist's draft response. */
   draft = '';
-  /** Validation outcome. `null` if not yet validated. */
-  approved: boolean | null = null;
+  /**
+   * Validation lifecycle state for the current draft.
+   *   'pending'  — not yet validated (initial state, reset by preRunSetup)
+   *   'approved' — LLM validator accepted the draft
+   *   'rejected' — validator rejected (retry or salvage path follows)
+   */
+  approvalState: 'pending' | 'approved' | 'rejected' = 'pending';
   /**
    * Tool plan emitted by the LLM via `decideTools`. The DAG inspects
    * this to gate the optional scouts (web search runs only when the
@@ -174,8 +179,8 @@ export class ArchivistState extends NodeStateBase {
   };
 
   // #region clone
-  override clone(): ArchivistState {
-    const copy = new ArchivistState();
+  override clone(): this {
+    const copy = super.clone(); // new Constructor() + _metadata copy from base
     // scoutProviders is readonly and always the default value — no clone needed.
     copy.query        = this.query;
     copy.userLanguage = this.userLanguage;
@@ -184,7 +189,7 @@ export class ArchivistState extends NodeStateBase {
     copy.candidates = [...this.candidates];
     copy.shortlist  = [...this.shortlist];
     copy.draft      = this.draft;
-    copy.approved   = this.approved;
+    copy.approvalState = this.approvalState;
     copy.toolPlan     = [...this.toolPlan];
     copy.runId        = this.runId;
     copy.failureCause = this.failureCause;
@@ -226,7 +231,7 @@ export class ArchivistState extends NodeStateBase {
         "source": candidate.source,
       })) as unknown as JsonObject[],
       "draft":        this.draft,
-      "approved":     this.approved,
+      "approvalState": this.approvalState,
       "failureCause": this.failureCause,
       "recalledContext": {
         "priorIntents":        this.recalledContext.priorIntents as unknown as JsonObject[],
@@ -260,7 +265,10 @@ export class ArchivistState extends NodeStateBase {
     if (typeof snap['userLanguage'] === 'string') this.userLanguage = snap['userLanguage'];
     if (typeof snap['intent']       === 'string') this.intent       = snap['intent'] as ArchivistIntent;
     if (typeof snap['draft']        === 'string')  this.draft  = snap['draft'];
-    if (typeof snap['approved']    === 'boolean') this.approved = snap['approved'];
+    const approvalSnap = snap['approvalState'];
+    if (approvalSnap === 'pending' || approvalSnap === 'approved' || approvalSnap === 'rejected') {
+      this.approvalState = approvalSnap;
+    }
     if (typeof snap['failureCause'] === 'string') this.failureCause = snap['failureCause'];
     if (Array.isArray(snap['terms']))      this.terms      = snap['terms'] as string[];
     if (Array.isArray(snap['candidates'])) this.candidates = snap['candidates'] as unknown as Candidate[];

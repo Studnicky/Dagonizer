@@ -45,18 +45,45 @@ import type { DAG } from '../entities/dag/DAG.js';
 import { PlacementUtils, RoleColorUtils } from './internal.js';
 import type { PlacementEntry } from './internal.js';
 
+/**
+ * Data bag carried by every Cytoscape node element.
+ *
+ * The required fields (`id`, `label`, `type`) are always present.
+ * The optional fields cover all extra keys the renderer writes per
+ * placement kind, so consumers can read them in stylesheets/handlers
+ * without resorting to index access.
+ */
+export interface CytoscapeNodeData {
+  readonly id: string;
+  readonly label: string;
+  /** Placement kind; selector use: `node[type="scatter"]`. */
+  readonly type: 'single' | 'scatter' | 'embedded-dag' | 'terminal' | 'phase';
+  // ── Containment (EmbeddedDAGNode / dag-body ScatterNode with a container role) ──
+  readonly container?: string;
+  readonly containerColor?: string;
+  readonly containerStroke?: string;
+  readonly containerText?: string;
+  // ── Per-kind extras ──
+  readonly node?: string;       // SingleNode, PhaseNode
+  readonly dag?: string;        // EmbeddedDAGNode
+  readonly outcome?: string;    // TerminalNode
+  readonly phase?: string;      // PhaseNode
+  readonly body?: string;       // ScatterNode body ref
+  readonly source?: string;     // ScatterNode
+  readonly gather?: unknown;    // ScatterNode
+  readonly reducer?: string;    // ScatterNode
+  // ── Synthetic sink node (END) ──
+  readonly synthetic?: boolean;
+  // ── Compound graph parent id (set during recursive expansion) ──
+  readonly parent?: string;
+}
+
 /** A Cytoscape node element. */
 export interface CytoscapeNodeElement {
   readonly group: 'nodes';
-  readonly data: {
-    readonly id: string;
-    readonly label: string;
-    /** Placement kind; selector use: `node[type="scatter"]`. */
-    readonly type: 'single' | 'scatter' | 'embedded-dag' | 'terminal' | 'phase';
-    /** Free-form metadata consumers can read in stylesheets. */
-    readonly [key: string]: unknown;
-  };
-  readonly classes?: string;
+  readonly data: CytoscapeNodeData;
+  /** Always populated by the renderer; required so consumers can rely on it for stylesheet selection. */
+  readonly classes: string;
   /**
    * Pre-computed position from `CompositeLayout`. When present, callers should
    * use cytoscape's `preset` layout (which reads `position` from each element)
@@ -76,7 +103,8 @@ export interface CytoscapeEdgeElement {
     readonly label: string;
     readonly route: string;
   };
-  readonly classes?: string;
+  /** Always populated by the renderer; required so consumers can rely on it for stylesheet selection. */
+  readonly classes: string;
 }
 
 export type CytoscapeElement = CytoscapeNodeElement | CytoscapeEdgeElement;
@@ -95,9 +123,21 @@ export interface RenderOptions {
   readonly maxDepth?: number;
 }
 
+/** Default empty embedded-DAG registry used when none is supplied. */
+const DEFAULT_EMBEDDED_DAGS: ReadonlyMap<string, DAG> = new Map();
+
+/** Default max recursion depth for embedded-DAG inline expansion. */
+const DEFAULT_MAX_DEPTH = 6;
+
+/** Resolved render options — all fields required; defaults filled before first use. */
+interface ResolvedRenderOptions {
+  readonly embeddedDAGs: ReadonlyMap<string, DAG>;
+  readonly maxDepth: number;
+}
+
 interface RenderState {
   readonly elements: CytoscapeElement[];
-  readonly options:  RenderOptions;
+  readonly options:  ResolvedRenderOptions;
   touchesTerminal: boolean;
 }
 
@@ -107,9 +147,6 @@ export class CytoscapeRenderer {
 
   /** Synthetic terminator node id emitted once per DAG that has any null-route. */
   private static readonly END_ID = 'END';
-
-  /** Default embedded-DAG inline-expansion recursion cap (cycle / accidental-loop guard). */
-  private static readonly DEFAULT_MAX_DEPTH = 6;
 
   /**
    * Convert a kebab-case placement name to Title Case for display.
@@ -140,9 +177,13 @@ export class CytoscapeRenderer {
   };
 
   static render(dag: DAG, options: RenderOptions = {}): readonly CytoscapeElement[] {
+    const resolved: ResolvedRenderOptions = {
+      "embeddedDAGs": options.embeddedDAGs ?? DEFAULT_EMBEDDED_DAGS,
+      "maxDepth":     options.maxDepth     ?? DEFAULT_MAX_DEPTH,
+    };
     const state: RenderState = {
       "elements":        [],
-      "options":         options,
+      "options":         resolved,
       "touchesTerminal": false,
     };
     CytoscapeRenderer.renderInto(dag, '', undefined, state, 0, new Set<string>([dag.name]));
@@ -188,7 +229,7 @@ export class CytoscapeRenderer {
     // Build the base data object. Container keys are added only when a role
     // exists so the keys are absent on in-process placements (exactOptionalPropertyTypes).
     const baseLabel = CytoscapeRenderer.titleCase(placement.name);
-    const baseData = role !== null
+    const baseData: CytoscapeNodeData = role !== null
       ? (() => {
           const colors = RoleColorUtils.forRole(role);
           return {
@@ -199,9 +240,9 @@ export class CytoscapeRenderer {
             "containerColor":   colors.fill,
             "containerStroke":  colors.stroke,
             "containerText":    colors.text,
-          } as CytoscapeNodeElement['data'];
+          };
         })()
-      : { "id": id, "label": baseLabel, "type": kind } as CytoscapeNodeElement['data'];
+      : { "id": id, "label": baseLabel, "type": kind };
 
     // Append dag-contained class for stylesheet selection.
     const classes = role !== null ? `dag-${kind} dag-contained` : `dag-${kind}`;
@@ -224,7 +265,7 @@ export class CytoscapeRenderer {
             "body":        bodyRef,
             "source":      placement.source,
             "gather":      placement.gather,
-            "reducer":     placement.reducer,
+            ...(placement.reducer !== undefined ? { "reducer": placement.reducer } : {}),
           },
         };
       }
@@ -302,11 +343,11 @@ export class CytoscapeRenderer {
     // an inverted child order and a compound positioned above its own
     // predecessor.
     const embeddedEntryRewrite = new Map<string, string>();
-    const maxDepth = state.options.maxDepth ?? CytoscapeRenderer.DEFAULT_MAX_DEPTH;
+    const maxDepth = state.options.maxDepth;
     for (const placement of dag.nodes as readonly PlacementEntry[]) {
       const dagName = PlacementUtils.embeddedDagName(placement);
       if (dagName === null) continue;
-      const body = state.options.embeddedDAGs?.get(dagName);
+      const body = state.options.embeddedDAGs.get(dagName);
       if (body === undefined) continue;
       if (depth >= maxDepth) continue;
       if (visited.has(dagName)) continue;
@@ -324,11 +365,11 @@ export class CytoscapeRenderer {
       //    sub-DAG's full flow.
       const embedDagName = PlacementUtils.embeddedDagName(placement);
       const embeddedDagBody = embedDagName !== null
-        ? state.options.embeddedDAGs?.get(embedDagName)
+        ? state.options.embeddedDAGs.get(embedDagName)
         : undefined;
       const shouldExpand = embeddedDagBody !== undefined
         && embedDagName !== null
-        && depth < (state.options.maxDepth ?? CytoscapeRenderer.DEFAULT_MAX_DEPTH)
+        && depth < state.options.maxDepth
         && !visited.has(embedDagName);
 
       if (shouldExpand && embeddedDagBody !== undefined && embedDagName !== null) {

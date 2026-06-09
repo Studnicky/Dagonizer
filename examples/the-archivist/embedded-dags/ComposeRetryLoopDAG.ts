@@ -82,7 +82,7 @@ export const ComposeRetryLoopDAG: DAG = new DAGBuilder('compose-retry-loop', '1.
   // ── 3. composed ──────────────────────────────────────────────────────────
   // Canonical TerminalNode(completed): the single explicit exit of the compose
   // loop. No bare null end-of-flow routes.
-  .terminal('composed', 'completed')
+  .terminal('composed', { outcome: 'completed' })
 
   .build();
 

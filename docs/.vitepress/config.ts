@@ -77,6 +77,9 @@ const sidebar = [
       { text: 'Phase 08: Checkpoint + resume',      link: '/examples/08-checkpoint' },
       { text: 'Phase 09: Terminal placements',      link: '/examples/09-terminals' },
       { text: 'Phase 10: Shared state',             link: '/examples/10-shared-state' },
+      { text: 'Phase 11: Cross-host handoff',       link: '/examples/11-handoff' },
+      { text: 'Phase 12: Worker containers',        link: '/examples/12-workers' },
+      { text: 'Phase 13: Multi-backend dispatch',   link: '/examples/13-multibackend' },
     ],
   },
   {

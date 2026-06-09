@@ -4,12 +4,11 @@ import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import type { PhaseNodePlacementInterface } from '../entities/dag/PhaseNode.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
-import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 import { DAGError, ValidationError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-type DAGNodeType = EmbeddedDAGNode | ScatterNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
-type DAGNodeAtType = DAGNodeType['@type'];
+/** Canonical union of all DAG node placement types, derived from the wire shape. */
+type DAGNodeType = DAG['nodes'][number];
 
 export class DAGValidator {
   private constructor() { /* static class */ }
@@ -34,7 +33,7 @@ export class DAGValidator {
     }
 
     for (const node of dag.nodes) {
-      DAGValidator.validateDAGNode(node as DAGNodeType, nodes, dags, nodeNames, errors);
+      DAGValidator.validateDAGNode(node, nodes, dags, nodeNames, errors);
     }
 
     // Collect circular-reference candidates across BOTH sub-DAG edge kinds in
@@ -48,24 +47,26 @@ export class DAGValidator {
     }
   }
 
-  static validateDAGNode<TState extends NodeStateInterface, TServices>(
+  private static validateDAGNode<TState extends NodeStateInterface, TServices>(
     entry: DAGNodeType,
     nodes: Map<string, NodeInterface<TState, string, TServices>>,
     dags: Map<string, DAG>,
     nodeNames: Set<string>,
     errors: string[],
   ): void {
-    const validators: Readonly<Record<DAGNodeAtType, () => void>> = {
-      'EmbeddedDAGNode': () => DAGValidator.validateEmbeddedDAGNode(entry as EmbeddedDAGNode, dags, nodeNames, errors),
-      'ScatterNode':     () => DAGValidator.validateScatterNode(entry as ScatterNode, nodes, dags, nodeNames, errors),
-      'SingleNode':      () => DAGValidator.validateSingleNode(entry as SingleNodePlacementInterface, nodes, nodeNames, errors),
-      'TerminalNode':    () => { /* TerminalNode has no outputs to validate; schema pass is sufficient */ },
-      'PhaseNode':       () => DAGValidator.validatePhaseNode(entry as PhaseNodePlacementInterface, nodes, errors),
-    };
-    validators[entry['@type']]?.();
+    if (entry['@type'] === 'EmbeddedDAGNode') {
+      DAGValidator.validateEmbeddedDAGNode(entry, dags, nodeNames, errors);
+    } else if (entry['@type'] === 'ScatterNode') {
+      DAGValidator.validateScatterNode(entry, nodes, dags, nodeNames, errors);
+    } else if (entry['@type'] === 'SingleNode') {
+      DAGValidator.validateSingleNode(entry, nodes, nodeNames, errors);
+    } else if (entry['@type'] === 'PhaseNode') {
+      DAGValidator.validatePhaseNode(entry, nodes, errors);
+    }
+    // TerminalNode: no outputs to validate; schema pass is sufficient.
   }
 
-  static validatePhaseNode<TState extends NodeStateInterface, TServices>(
+  private static validatePhaseNode<TState extends NodeStateInterface, TServices>(
     phase: PhaseNodePlacementInterface,
     nodes: Map<string, NodeInterface<TState, string, TServices>>,
     errors: string[],
@@ -75,7 +76,7 @@ export class DAGValidator {
     }
   }
 
-  static validateSingleNode<TState extends NodeStateInterface, TServices>(
+  private static validateSingleNode<TState extends NodeStateInterface, TServices>(
     nodeConfig: SingleNodePlacementInterface,
     nodes: Map<string, NodeInterface<TState, string, TServices>>,
     nodeNames: Set<string>,
@@ -101,7 +102,7 @@ export class DAGValidator {
     }
   }
 
-  static validateEmbeddedDAGNode(
+  private static validateEmbeddedDAGNode(
     placement: EmbeddedDAGNode,
     dags: Map<string, DAG>,
     nodeNames: Set<string>,
@@ -118,7 +119,7 @@ export class DAGValidator {
     }
   }
 
-  static validateScatterNode<TState extends NodeStateInterface, TServices>(
+  private static validateScatterNode<TState extends NodeStateInterface, TServices>(
     scatter: ScatterNode,
     nodes: Map<string, NodeInterface<TState, string, TServices>>,
     dags: Map<string, DAG>,
@@ -178,7 +179,7 @@ export class DAGValidator {
    * `path` is the current DFS stack (back-edge ⇒ cycle); `visited` marks
    * fully-explored DAGs so shared sub-DAGs are not re-walked.
    */
-  static collectDAGReferences(
+  private static collectDAGReferences(
     dag: DAG,
     dags: Map<string, DAG>,
     visited: Set<string>,
@@ -186,14 +187,13 @@ export class DAGValidator {
     errors: string[],
   ): void {
     for (const rawNode of dag.nodes) {
-      const kind = (rawNode as { '@type': string })['@type'];
       let dagRef: string;
       let label: string;
-      if (kind === 'EmbeddedDAGNode') {
-        dagRef = (rawNode as unknown as EmbeddedDAGNode).dag;
+      if (rawNode['@type'] === 'EmbeddedDAGNode') {
+        dagRef = rawNode.dag;
         label = 'embedded-DAG';
-      } else if (kind === 'ScatterNode') {
-        const body = (rawNode as unknown as ScatterNode).body;
+      } else if (rawNode['@type'] === 'ScatterNode') {
+        const body = rawNode.body;
         if (!('dag' in body)) continue;
         dagRef = body.dag;
         label = 'scatter';

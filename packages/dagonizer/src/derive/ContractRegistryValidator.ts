@@ -85,7 +85,7 @@ export class ContractRegistryValidator {
    *
    * @param contracts - The full set of contracts derived from the node registry.
    * @param onWarning - Called for each dead-write warning (non-fatal).
-   * @param entrypointName - Optional entrypoint operation name. When supplied, that
+   * @param options.entrypointName - Optional entrypoint operation name. When supplied, that
    *   node's `hardRequired` paths are treated as external initial-state fields and
    *   are not checked for dangling reads.
    *
@@ -95,8 +95,9 @@ export class ContractRegistryValidator {
   static validate(
     contracts: readonly OperationContract[],
     onWarning: (message: string) => void,
-    entrypointName?: string,
+    options?: { entrypointName?: string },
   ): void {
+    const entrypointName = options?.entrypointName;
     const upstreamProducers = ContractRegistryValidator.buildUpstreamProducers(contracts);
 
     // The entrypoint's hardRequired paths are the flow's external initial

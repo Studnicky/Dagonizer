@@ -63,8 +63,12 @@ export class DAGLifecycleMachine {
       return state;
     }
 
-    const handler = DAGLifecycleMachine.TRANSITION_TABLE[state.kind as 'pending' | 'running'][event.type] as Handler<typeof state.kind & ('pending' | 'running'), EventType> | undefined;
-    return handler ? handler(state as never, event as never) : state;
+    type ActiveState = Extract<DAGLifecycleState, { kind: 'pending' | 'running' }>;
+    const activeState = state as ActiveState;
+    const handlerFn = DAGLifecycleMachine.TRANSITION_TABLE[activeState.kind][event.type] as
+      | ((state: ActiveState, event: DAGLifecycleEvent) => DAGLifecycleState)
+      | undefined;
+    return handlerFn ? handlerFn(activeState, event) : state;
   }
 
   /** True iff `state` has reached one of the four terminal kinds. */
@@ -119,7 +123,7 @@ export class DAGLifecycleMachine {
       'startedAt': state.startedAt,
       'finishedAt': event.at ?? Clock.monotonicMs(),
       'error': null,
-      'reason': event.reason ?? 'cancelled',
+      'reason': event.reason,
     };
   }
 

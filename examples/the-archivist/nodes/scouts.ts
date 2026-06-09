@@ -54,7 +54,6 @@ import type {
   GatherConfig,
   GatherExecution,
   NodeInterface,
-  NodeStateInterface,
 } from '@noocodex/dagonizer';
 
 /**
@@ -199,7 +198,7 @@ export const openLibraryScout: NodeInterface<ArchivistState, 'success' | 'empty'
     const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? SCOUT_TIMEOUT_MS);
     const signal = AbortSignal.any([context.signal, controller.signal]);
     try {
-      const rawCandidates = await tool.execute(toolInput as Parameters<typeof tool.execute>[0], signal);
+      const rawCandidates = await tool.execute(toolInput as Parameters<typeof tool.execute>[0], { signal });
       const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
       const firstTitle = rawCandidates[0]?.book.title ?? '(none)';
@@ -252,7 +251,7 @@ export const googleBooksScout: NodeInterface<ArchivistState, 'success' | 'empty'
     try {
       const tool = context.services.googleBooks;
       const langRestrict = UserLanguage.normalize(state.userLanguage);
-      const rawCandidates = await tool.execute({ query, "maxResults": args.maxResults ?? 8, "langRestrict": langRestrict }, signal);
+      const rawCandidates = await tool.execute({ query, "maxResults": args.maxResults ?? 8, "langRestrict": langRestrict }, { signal });
       const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
       const firstGbTitle = rawCandidates[0]?.book.title ?? '(none)';
@@ -306,7 +305,7 @@ export const subjectScout: NodeInterface<ArchivistState, 'success' | 'empty', Ar
     try {
       const tool = context.services.subjectSearch;
       const lang = UserLanguage.toIso6392(state.userLanguage);
-      const rawCandidates = await tool.execute({ subject, "limit": args.limit ?? 8, "lang": lang }, signal);
+      const rawCandidates = await tool.execute({ subject, "limit": args.limit ?? 8, "lang": lang }, { signal });
       const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
       const firstSubjectTitle = rawCandidates[0]?.book.title ?? '(none)';
@@ -355,7 +354,7 @@ export const wikipediaScout: NodeInterface<ArchivistState, 'success' | 'empty', 
       const tool = context.services.wikipediaSummary;
       const lang = UserLanguage.normalize(state.userLanguage);
       const wikiTitle = encodeURIComponent(query.replace(/\s+/gu, '_'));
-      const rawCandidates = await tool.execute({ query, "lang": lang }, signal);
+      const rawCandidates = await tool.execute({ query, "lang": lang }, { signal });
       const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
       const firstWikiTitle = rawCandidates[0]?.book.title ?? '(none)';
@@ -425,16 +424,16 @@ export const scoutDispatch: NodeInterface<ArchivistState, 'success' | 'empty', A
 class ScoutGatherStrategy extends GatherStrategy {
   readonly name = 'scout-merge';
 
-  async apply<TState extends NodeStateInterface>(
+  async apply<TState extends ArchivistState>(
     _config: GatherConfig,
     execution: GatherExecution<TState>,
   ): Promise<void> {
-    const parentState = execution.state as unknown as ArchivistState;
+    const parentState = execution.state;
     const merged: Candidate[] = [...parentState.candidates];
     let failureText = parentState.failureCause;
 
     for (const record of execution.records) {
-      const cloneState = record.cloneState as unknown as ArchivistState;
+      const cloneState = record.cloneState;
       // Flat-merge the clone's candidates into parent (order is source-index order
       // because GatherExecution.records is guaranteed source-index ordered).
       for (const candidate of cloneState.candidates) {

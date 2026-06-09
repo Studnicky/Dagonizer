@@ -145,6 +145,7 @@ void describe('Validator per-entity sub-validators', () => {
         'skippedNodes': [],
         'state': {},
         'interruptedAt': null,
+        'terminalOutcome': null,
       }),
       true,
     );

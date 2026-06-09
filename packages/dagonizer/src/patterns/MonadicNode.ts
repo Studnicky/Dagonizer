@@ -43,7 +43,7 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 
 export abstract class MonadicNode<
   TState extends NodeStateInterface = NodeStateInterface,
-  TOutput extends string = string,
+  TOutput extends string = 'success' | 'empty' | 'error',
   TServices = undefined,
 > implements NodeInterface<TState, TOutput, TServices> {
   /** Stable identifier used at registration with the dispatcher. */
@@ -59,11 +59,14 @@ export abstract class MonadicNode<
   readonly contract?: OperationContractFragment;
 
   /**
-   * Optional per-node wall-clock budget in milliseconds. When set, the
-   * engine schedules an abort after `timeoutMs` and the child signal is
-   * passed as `context.signal` to this node's `execute()` only.
+   * Per-node wall-clock budget in milliseconds. `0` means no timeout.
+   * Subclasses override to set a concrete budget. The engine reads
+   * `(node.timeoutMs ?? 0) > 0` to decide whether to schedule an abort;
+   * a zero value has no effect. The `NodeInterface` contract keeps this
+   * optional (external boundary); `MonadicNode` supplies the concrete
+   * required-with-default to keep V8 hidden-class stable.
    */
-  readonly timeoutMs?: number;
+  readonly timeoutMs: number = 0;
 
   /**
    * Execute the node, mutating state. Returns a result indicating which
@@ -81,10 +84,25 @@ export abstract class MonadicNode<
   /** Optional cleanup invoked when the dispatcher is destroyed. */
   destroy?(): Promise<void>;
 
-  /** Conventional routing-output token for the happy path. Override for non-standard ports. */
-  protected successPort(): TOutput { return 'success' as TOutput; }
-  /** Conventional routing-output token for the no-result path. */
-  protected emptyPort(): TOutput { return 'empty' as TOutput; }
-  /** Conventional routing-output token for the error path. */
-  protected errorPort(): TOutput { return 'error' as TOutput; }
+  /**
+   * Conventional routing-output token for the happy path.
+   * Returns the literal `'success'`; assignable to `TOutput` when
+   * `TOutput` includes `'success'` (true for all default-param subclasses).
+   * Override for non-standard ports where `TOutput` omits `'success'`.
+   */
+  protected successPort(): 'success' { return 'success'; }
+
+  /**
+   * Conventional routing-output token for the no-result path.
+   * Returns the literal `'empty'`; assignable to `TOutput` when
+   * `TOutput` includes `'empty'`. Override for non-standard ports.
+   */
+  protected emptyPort(): 'empty' { return 'empty'; }
+
+  /**
+   * Conventional routing-output token for the error path.
+   * Returns the literal `'error'`; assignable to `TOutput` when
+   * `TOutput` includes `'error'`. Override for non-standard ports.
+   */
+  protected errorPort(): 'error' { return 'error'; }
 }

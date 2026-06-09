@@ -184,8 +184,8 @@ export const BookSearchScatterDAG: DAG = new DAGBuilder('book-search-scatter', '
   // Both sub-DAG exits are canonical TerminalNode placements (no bare null
   // routes): `found` (completed) drives the parent EmbeddedDAGNode's 'success'
   // branch; `no-results` (failed) drives its 'error' branch.
-  .terminal('found', 'completed')
-  .terminal('no-results', 'failed')
+  .terminal('found', { outcome: 'completed' })
+  .terminal('no-results', { outcome: 'failed' })
 
   .build();
 

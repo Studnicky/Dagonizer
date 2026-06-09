@@ -55,8 +55,8 @@ export const gdprComplianceDAG: DAG = new DAGBuilder('gdpr-compliance', '1.0')
   })
 
   // ── Terminals ─────────────────────────────────────────────────────────────
-  .terminal('compliant', 'completed')
-  .terminal('violation', 'failed')
+  .terminal('compliant', { outcome: 'completed' })
+  .terminal('violation', { outcome: 'failed' })
 
   .build();
 // #endregion gdpr-compliance-dag

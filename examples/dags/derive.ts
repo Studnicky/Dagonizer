@@ -12,7 +12,7 @@
 
 import { DAGDeriver } from '@noocodex/dagonizer/derive';
 import { NodeStateBase } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 
 // ---------------------------------------------------------------------------
 // State

@@ -15,8 +15,12 @@ export interface StateAccessor {
   /**
    * Read the value at `path` on `state`. Returns `undefined` when the
    * path traverses a missing or non-object segment.
+   *
+   * The generic parameter `T` narrows the return type at the call site.
+   * The implementation performs a single cast at the return boundary;
+   * internal traversal stays `unknown` until the final segment.
    */
-  get(state: object, path: string): unknown;
+  get<T = unknown>(state: object, path: string): T | undefined;
 
   /**
    * Write `value` at `path` on `state`. Implementations must create

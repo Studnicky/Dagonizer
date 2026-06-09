@@ -27,7 +27,6 @@ import type { JsonObject } from '../entities/json.js';
 import type { NodeError } from '../entities/node/NodeError.js';
 
 import { DagOutcome } from './DagOutcome.js';
-import { DAG_CONTAINER_TRANSPORT } from './TransportErrorCode.js';
 
 // ---------------------------------------------------------------------------
 // Internal shapes
@@ -120,13 +119,19 @@ export class ChannelDispatch {
 
       this.#pending.set(correlationId, entry);
 
-      // Forward abort signal to the host.
+      // Forward abort signal to the host. R2: derive kind from signal.reason —
+      // a TimeoutError on the reason means the run-level deadline expired, so
+      // send 'timeout'; everything else is a caller-initiated cancel ('abort').
       const onAbort = (): void => {
         try {
+          const abortReason: 'abort' | 'timeout' =
+            signal.reason instanceof Error && signal.reason.name === 'TimeoutError'
+              ? 'timeout'
+              : 'abort';
           this.#channel.send({
             'kind': 'abort',
             'correlationId': correlationId,
-            'reason': 'abort',
+            'reason': abortReason,
           });
         } catch { /* fire-and-forget */ }
       };
@@ -148,11 +153,7 @@ export class ChannelDispatch {
         this.#channel.send({ 'kind': 'execute', 'request': request });
       } catch {
         // Send failure: resolve immediately as transport error.
-        settleOnce(DagOutcome.transportError(
-          correlationId,
-          DAG_CONTAINER_TRANSPORT,
-          `Transport failure for request ${correlationId}`,
-        ));
+        settleOnce(DagOutcome.transportError(correlationId));
       }
     });
   }
@@ -179,7 +180,7 @@ export class ChannelDispatch {
     // Snapshot entries before settling: settleOnce mutates #pending (delete).
     const entries = [...this.#pending.values()];
     for (const entry of entries) {
-      entry.settle(DagOutcome.transportError(entry.correlationId, code, message));
+      entry.settle(DagOutcome.transportError(entry.correlationId, { code, message }));
     }
     // settleOnce removes each entry; ensure the map is empty regardless.
     this.#pending.clear();
@@ -231,7 +232,7 @@ export class ChannelDispatch {
           // Request-scoped error: settle that specific pending entry.
           const entry = this.#pending.get(correlationId);
           if (entry !== undefined) {
-            entry.settle(DagOutcome.transportError(correlationId, msg.code, msg.message));
+            entry.settle(DagOutcome.transportError(correlationId, { "code": msg.code, "message": msg.message }));
           }
         } else {
           // Channel-scoped error (null correlationId): the host is in a bad state.

@@ -13,7 +13,7 @@ import {
   DAGBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 // #endregion imports
 
 // ---------------------------------------------------------------------------

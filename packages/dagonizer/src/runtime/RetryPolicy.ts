@@ -7,11 +7,14 @@
  *
  * Delay is scheduled via `Scheduler.current()` so tests can install a
  * `VirtualScheduler` and step through retries deterministically. Cancellation
- * is honored via `AbortSignal`; `run(task, signal)` aborts mid-wait when the
- * signal fires.
+ * is honored via `AbortSignal`; `run(task, { signal })` aborts mid-wait when
+ * the signal fires.
  *
  * Class extension is the canonical extension point: subclass `RetryPolicy`
  * and override `shouldRetry` / `getDelay` for custom behavior. No callbacks.
+ *
+ * Use `RetryPolicy.from(partial)` to construct from a
+ * `RetryPolicyOptionsInterface` partial; defaults are materialised once here.
  */
 
 import type { ErrorConstructorType } from '../contracts/ErrorConstructorType.js';
@@ -47,14 +50,14 @@ const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategyValue, BackoffComputerTy
 /**
  * Retry-with-backoff policy. Strategy enum (`CONSTANT`, `LINEAR`,
  * `EXPONENTIAL`, `DECORRELATED_JITTER`), `retryOn`/`abortOn` filters, and
- * a `run(task, signal)` execution loop.
+ * a `run(task, options)` execution loop.
  *
  * Delay waits are scheduled via `Scheduler.current()`; install
  * `VirtualScheduler` in tests to advance time deterministically.
  *
  * @example
  * ```ts
- * const policy = new RetryPolicy({
+ * const policy = RetryPolicy.from({
  *   maxAttempts: 3,
  *   strategy: BackoffStrategy.EXPONENTIAL,
  *   retryOn: [NetworkError],
@@ -64,7 +67,7 @@ const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategyValue, BackoffComputerTy
  * // Inside a node's execute():
  * const data = await policy.run(
  *   () => fetchRemote(url),
- *   context.signal,
+ *   { signal: context.signal },
  * );
  * ```
  */
@@ -90,11 +93,33 @@ export class RetryPolicy {
   }
 
   /**
+   * Materialise a complete `RetryPolicy` from a partial options object.
+   * All `DEFAULT_*` defaulting lives here; callers that supply a
+   * `RetryPolicyOptionsInterface` from external config should prefer this
+   * factory over `new RetryPolicy(options)` so the defaults are visible and
+   * centrally maintained.
+   */
+  static from(partial: RetryPolicyOptionsInterface): RetryPolicy {
+    const opts: RetryPolicyOptionsInterface = {
+      'maxAttempts': partial.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
+      'strategy': partial.strategy ?? BackoffStrategy.EXPONENTIAL,
+      'baseDelay': partial.baseDelay ?? DEFAULT_BASE_DELAY_MS,
+      'maxDelay': partial.maxDelay ?? DEFAULT_MAX_DELAY_MS,
+      'multiplier': partial.multiplier ?? DEFAULT_MULTIPLIER,
+      'jitterFactor': partial.jitterFactor ?? DEFAULT_JITTER_FACTOR,
+      ...(partial.retryOn !== undefined && { 'retryOn': partial.retryOn }),
+      ...(partial.abortOn !== undefined && { 'abortOn': partial.abortOn }),
+    };
+    return new RetryPolicy(opts);
+  }
+
+  /**
    * Compute the backoff delay (ms) for the given attempt number (1-based).
    * Override for custom backoff. The base implementation honors the
    * configured strategy + jitter.
    */
-  getDelay(attempt: number, _error: Error | null = null): number {
+  getDelay(attempt: number, options?: { error?: Error | null }): number {
+    void options; // reserved for subclass overrides; base implementation ignores error
     const computer = BACKOFF_COMPUTERS[this.strategy];
     if (computer === undefined) {
       throw new DAGError(`Unknown backoff strategy: ${this.strategy as string}`);
@@ -144,11 +169,12 @@ export class RetryPolicy {
 
   /**
    * Run `task` under this policy. Resolves with the function's result, or
-   * throws the last error after attempts are exhausted. Aborts when `signal`
-   * fires; the abort takes effect at the next decision point (after the
-   * current attempt or during the next wait).
+   * throws the last error after attempts are exhausted. Aborts when
+   * `options.signal` fires; the abort takes effect at the next decision
+   * point (after the current attempt or during the next wait).
    */
-  async run<T>(task: (attempt: number) => Promise<T> | T, signal?: AbortSignal): Promise<T> {
+  async run<T>(task: (attempt: number) => Promise<T> | T, options?: { signal?: AbortSignal }): Promise<T> {
+    const signal = options?.signal;
     let lastError: Error | null = null;
     let attempt = 0;
 
@@ -167,8 +193,8 @@ export class RetryPolicy {
           throw lastError;
         }
 
-        const delay = this.getDelay(attempt, lastError);
-        await RetryPolicy.sleep(delay, signal);
+        const delay = this.getDelay(attempt, { 'error': lastError });
+        await RetryPolicy.sleep(delay, signal !== undefined ? { signal } : undefined);
       }
     }
 
@@ -176,13 +202,14 @@ export class RetryPolicy {
   }
 
   /**
-   * Sleep `ms` via the installed `Scheduler`. Resolves early if `signal`
-   * aborts during the wait.
+   * Sleep `ms` via the installed `Scheduler`. Resolves early if
+   * `options.signal` aborts during the wait.
    */
-  private static async sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  private static async sleep(ms: number, options?: { signal?: AbortSignal }): Promise<void> {
     if (ms <= 0) return;
+    const signal = options?.signal;
     try {
-      await Scheduler.current().after(ms, signal);
+      await Scheduler.current().after(ms, options);
     } catch (err) {
       // Re-throw abort errors as the signal's reason for consistent error shape.
       if (signal?.aborted === true) {

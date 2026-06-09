@@ -21,7 +21,7 @@ import type { StateAccessor } from '../contracts/StateAccessor.js';
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
 export class DottedPathAccessor implements StateAccessor {
-  get(state: object, path: string): unknown {
+  get<T = unknown>(state: object, path: string): T | undefined {
     const parts = path.split('.');
     let current: unknown = state;
 
@@ -35,7 +35,7 @@ export class DottedPathAccessor implements StateAccessor {
       current = (current as Record<string, unknown>)[part];
     }
 
-    return current;
+    return current as T | undefined;
   }
 
   set(state: object, path: string, value: unknown): void {

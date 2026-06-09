@@ -145,7 +145,7 @@ void describe('TerminalNode: DAGBuilder.terminal()', () => {
   void it('produces a TerminalNode placement with outcome=failed', () => {
     const dag = new DAGBuilder('demo', '1')
       .node('a', makeNode('a', ['ok']), { 'ok': 'fail-end' })
-      .terminal('fail-end', 'failed')
+      .terminal('fail-end', { 'outcome': 'failed' })
       .build();
 
     const terminalPlacement = dag.nodes[1];
@@ -163,7 +163,7 @@ void describe('TerminalNode: execution with outcome=completed', () => {
 
     const dag = new DAGBuilder('term-completed', '1')
       .node('a', makeNode('a', ['ok']), { 'ok': 'end' })
-      .terminal('end', 'completed')
+      .terminal('end', { 'outcome': 'completed' })
       .build();
 
     dispatcher.registerDAG(dag);
@@ -190,7 +190,7 @@ void describe('TerminalNode: execution with outcome=failed', () => {
 
     const dag = new DAGBuilder('term-failed', '1')
       .node('a', makeNode('a', ['ok']), { 'ok': 'fail-end' })
-      .terminal('fail-end', 'failed')
+      .terminal('fail-end', { 'outcome': 'failed' })
       .build();
 
     dispatcher.registerDAG(dag);

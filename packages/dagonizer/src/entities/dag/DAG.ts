@@ -201,7 +201,7 @@ export const DAGSchema = {
   'type': 'object',
   'required': ['@context', '@id', '@type', 'name', 'version', 'entrypoint', 'nodes'],
   'properties': {
-    '@context': {},
+    '@context': { 'type': 'object' },
     '@id':      { 'type': 'string', 'minLength': 1 },
     '@type':    { 'type': 'string', 'const': 'DAG' },
     'name':       { 'type': 'string', 'minLength': 1 },

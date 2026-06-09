@@ -21,6 +21,6 @@ import type { ToolDefinition } from '../adapter/index.js';
 export interface Tool<TInput extends Record<string, unknown>, TOutput> {
   /** JSON-Schema-shaped declaration the LLM sees in its tool list. */
   readonly definition: ToolDefinition;
-  /** Invoke the tool. Long-running calls must honour `signal`. */
-  execute(input: TInput, signal?: AbortSignal): Promise<TOutput>;
+  /** Invoke the tool. Long-running calls must honour `options.signal`. */
+  execute(input: TInput, options?: { signal?: AbortSignal }): Promise<TOutput>;
 }

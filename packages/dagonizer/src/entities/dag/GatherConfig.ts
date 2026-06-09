@@ -42,6 +42,28 @@ export const GatherConfigSchema = {
     'customNode': { 'type': 'string' },
   },
   'additionalProperties': false,
+  'allOf': [
+    {
+      'if': { 'properties': { 'strategy': { 'const': 'append' } }, 'required': ['strategy'] },
+      'then': { 'required': ['target'] },
+    },
+    {
+      'if': { 'properties': { 'strategy': { 'const': 'collect' } }, 'required': ['strategy'] },
+      'then': { 'required': ['target'] },
+    },
+    {
+      'if': { 'properties': { 'strategy': { 'const': 'partition' } }, 'required': ['strategy'] },
+      'then': { 'required': ['partitions'] },
+    },
+    {
+      'if': { 'properties': { 'strategy': { 'const': 'map' } }, 'required': ['strategy'] },
+      'then': { 'required': ['mapping'] },
+    },
+    {
+      'if': { 'properties': { 'strategy': { 'const': 'custom' } }, 'required': ['strategy'] },
+      'then': { 'required': ['customNode'] },
+    },
+  ],
 } as const;
 
 /** TypeScript type derived from `GatherConfigSchema` via `json-schema-to-ts`. */

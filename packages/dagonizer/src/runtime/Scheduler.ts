@@ -43,8 +43,12 @@ export class Scheduler {
     _provider = provider;
   }
 
-  /** Reset to the default RealTimeScheduler. */
+  /**
+   * Reset to the default RealTimeScheduler. Cancels all in-flight timers on
+   * the current provider before replacing it (R10).
+   */
   static reset(): void {
+    _provider.cancelAll();
     _provider = new RealTimeScheduler();
   }
 }

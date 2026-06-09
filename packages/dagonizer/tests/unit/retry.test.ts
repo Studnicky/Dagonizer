@@ -105,7 +105,7 @@ void describe('RetryPolicy.run', () => {
     const controller = new AbortController();
     const p = new RetryPolicy({ "maxAttempts": 5, "baseDelay": 1000, "strategy": BackoffStrategy.CONSTANT, "jitterFactor": 0 });
 
-    const promise = p.run(() => { throw new TransientError(); }, controller.signal);
+    const promise = p.run(() => { throw new TransientError(); }, { 'signal': controller.signal });
     await new Promise<void>((r) => setImmediate(r));
     controller.abort(new Error('cancelled by test'));
     await assert.rejects(promise, /cancelled by test/);

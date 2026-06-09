@@ -36,15 +36,18 @@ export interface Embedder {
    * Embed a single text. Returns a `number[]` of length `dimensions`.
    * Throws `LlmError` on failure; the caller decides whether to retry
    * or fall back. Retry plumbing is provided by `BaseEmbedder`.
+   * The optional `signal` is threaded into the retry loop so in-flight
+   * waits abort promptly when the caller cancels.
    */
-  embed(text: string): Promise<readonly number[]>;
+  embed(text: string, options?: { signal?: AbortSignal }): Promise<readonly number[]>;
 
   /**
    * Batch convenience: embed multiple texts. Default implementation in
    * `BaseEmbedder` calls `embed()` in series; concrete adapters with
-   * native batch endpoints override.
+   * native batch endpoints override. Threads `signal` into each `embed()`
+   * call so the batch aborts cleanly.
    */
-  embedBatch(texts: readonly string[]): Promise<readonly (readonly number[])[]>;
+  embedBatch(texts: readonly string[], options?: { signal?: AbortSignal }): Promise<readonly (readonly number[])[]>;
 
   /**
    * Quick availability check. Returns true when this embedder can

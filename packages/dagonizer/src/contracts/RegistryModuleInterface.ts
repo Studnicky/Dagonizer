@@ -32,6 +32,13 @@ export interface RegistryBundleInterface {
    * The canonical name from `checkpoint/Checkpoint.ts` is used directly.
    */
   readonly restoreState: StateRestoreFnType<NodeStateInterface>;
+  /**
+   * R4: optional teardown hook. Called by DagHost on shutdown so node
+   * resources (DB connections, open handles, etc.) are released before the
+   * host process/thread exits. Implementations may be absent for bundles
+   * that have no teardown work.
+   */
+  destroy?(): Promise<void>;
 }
 
 /**

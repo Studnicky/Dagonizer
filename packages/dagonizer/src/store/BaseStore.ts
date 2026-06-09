@@ -22,20 +22,24 @@ import { StoreError } from './StoreError.js';
 
 export interface BaseStoreOptions {
   /**
-   * Optional key prefix. When set, every key passed to public methods
-   * is prefixed with `${namespace}:${key}` before reaching the
-   * `perform*` hooks. The snapshot captures keys in their qualified form,
-   * so two stores with different namespaces but the same backing can
-   * coexist without collisions.
+   * Key prefix applied to every public-API key before it reaches the
+   * `perform*` hooks. Use `''` (the default) for no prefix. Two stores
+   * with different namespaces but the same backing coexist without key
+   * collisions because the snapshot captures keys in their qualified form.
    */
-  readonly namespace?: string;
+  readonly namespace: string;
 }
+
+/** Default options. Spread into custom options to fill unset fields. */
+export const BASE_STORE_DEFAULTS: BaseStoreOptions = {
+  'namespace': '',
+};
 
 export abstract class BaseStore implements Store {
   readonly #namespace: string;
 
-  protected constructor(options: BaseStoreOptions = {}) {
-    this.#namespace = options.namespace ?? '';
+  protected constructor(options: BaseStoreOptions = BASE_STORE_DEFAULTS) {
+    this.#namespace = options.namespace;
   }
 
   /** Subclass identifier; recorded in snapshot envelopes. */

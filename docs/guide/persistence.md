@@ -153,7 +153,7 @@ const freshLog = new FactLog();
 await recalled.restoreStores({ log: freshLog });
 ```
 
-`CheckpointData.stores` is a **required** field. `Checkpoint.capture` always writes it: as an empty object `{}` when no stores are passed, or as a keyed map of `StoreSnapshot` envelopes when stores are supplied. `Checkpoint.load` rejects any payload that lacks the field: checkpoints produced before this field was introduced do not load.
+`CheckpointData.stores` is a **required** field. `Checkpoint.capture` always writes it: as an empty object `{}` when no stores are passed, or as a keyed map of `StoreSnapshot` envelopes when stores are supplied. Any checkpoint payload lacking a `stores` field is rejected by `Checkpoint.load`.
 
 ## Snapshot round-trip
 

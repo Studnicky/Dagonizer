@@ -127,7 +127,8 @@ export const BridgeMessageSchema = {
       'properties': {
         'kind':          { 'type': 'string', 'const': 'abort' },
         'correlationId': { 'type': 'string' },
-        'reason':        { 'type': 'string' },
+        // R2: 'abort' = caller-initiated cancel; 'timeout' = run-level deadline expired.
+        'reason':        { 'type': 'string', 'enum': ['abort', 'timeout'] },
       },
       'additionalProperties': false,
     },

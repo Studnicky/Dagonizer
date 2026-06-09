@@ -125,21 +125,21 @@ export interface CytoscapeGraphInterface {
 /**
  * Configuration for `CytoscapeGraph`.
  *
- * All fields are required inside the engine; the constructor accepts
- * `Partial<CytoscapeGraphOptions>` and fills defaults via the module-level
- * constants above so callers never have to provide them.
+ * All fields are optional; defaults are supplied by the module-level constants
+ * above. The constructor accepts this shape directly (no `Partial<>` wrapper)
+ * so the type is honest about what callers may omit.
  */
 export interface CytoscapeGraphOptions {
   /**
    * Registry of embedded-DAGs by name, passed to `CytoscapeRenderer` and
    * `CompositeLayout` for recursive expansion. Default: empty `Map`.
    */
-  readonly embeddedDAGs: ReadonlyMap<string, DAG>;
+  readonly embeddedDAGs?: ReadonlyMap<string, DAG>;
   /**
    * Layout tuning options forwarded to `CompositeLayout.compute`.
    * Default: `{}` (all tuning delegated to CompositeLayout's own defaults).
    */
-  readonly layoutOptions: CompositeLayoutOptions;
+  readonly layoutOptions?: CompositeLayoutOptions;
 }
 
 // ---------------------------------------------------------------------------
@@ -194,7 +194,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
     cytoscapeFactory: CytoscapeFactory,
     container: CytoscapeContainer,
     dag: DAG,
-    options: Partial<CytoscapeGraphOptions> = {},
+    options: CytoscapeGraphOptions = {},
   ) {
     this.cytoscapeFactory = cytoscapeFactory;
     this.container        = container;
@@ -567,7 +567,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
    * the box. `wheelSensitivity` is tuned down from the default to avoid
    * accidental viewport jumps on track-pad scroll.
    */
-  protected interactionDefaults(): Record<string, unknown> {
+  protected interactionDefaults(): Partial<cytoscape.CytoscapeOptions> {
     return {
       "userPanningEnabled":  true,
       "userZoomingEnabled":  true,

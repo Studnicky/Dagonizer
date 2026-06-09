@@ -46,9 +46,10 @@ function isKnownGatherStrategy(name: string): name is GatherStrategyName {
   return known.includes(name);
 }
 
-// Select the gather strategy for a fan-out that collects per-clone output
-// tokens into a target array on the parent state.
-const fanOutGatherStrategy: GatherStrategyName = GatherStrategyName.COLLECT;
+// Select the gather strategy for a fan-out that maps per-clone field values
+// into a target array on the parent state (one entry per source item, in
+// source-index order). Use COLLECT when aggregating output tokens instead.
+const fanOutGatherStrategy: GatherStrategyName = GatherStrategyName.MAP;
 
 // -- MetadataKey -------------------------------------------------------------
 // Read a reserved key off a node's metadata bag.

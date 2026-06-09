@@ -60,7 +60,7 @@ export const geoResolveDAG: DAG = new DAGBuilder('geo-resolve', '1.0')
     'fused': 'resolved',
   })
 
-  .terminal('resolved', 'completed')
+  .terminal('resolved', { outcome: 'completed' })
 
   .build();
 

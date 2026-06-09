@@ -105,10 +105,10 @@ export const recallMemories: ArchivistNode<'recalled'> = {
     // Most-recent first; we reverse since books are written in insertion
     // order (oldest run first). Slice to MAX_RECENT_BOOKS.
     const bookEntries = [...bookTitles.entries()].reverse().slice(0, MAX_RECENT_BOOKS);
-    const recentBooks: MemoryDigest['recentBooks'] = bookEntries.map(([iri, title]) => {
-      const author = bookAuthors.get(iri);
-      return author !== undefined ? { title, author } : { title };
-    });
+    const recentBooks: MemoryDigest['recentBooks'] = bookEntries.map(([iri, title]) => ({
+      title,
+      author: bookAuthors.get(iri) ?? '',
+    }));
 
     // ── Query 2: query count across all prior state graphs ───────────────
     // Collect every state graph IRI except the current run's graph.

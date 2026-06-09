@@ -34,15 +34,9 @@
  */
 
 import type { DAG } from '../entities/dag/DAG.js';
-import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-import type { PhaseNodePlacementInterface } from '../entities/dag/PhaseNode.js';
-import type { ScatterNode } from '../entities/dag/ScatterNode.js';
-import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
-import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 
 import { PlacementUtils, RoleColorUtils } from './internal.js';
-
-type AnyPlacement = EmbeddedDAGNode | ScatterNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
+import type { PlacementEntry } from './internal.js';
 
 /**
  * Render a `DAG` as Mermaid `flowchart` source. Output is a complete
@@ -71,7 +65,7 @@ export class MermaidRenderer {
     // Map from sanitized role token → original role string (for color lookup).
     const roleTokenToRole = new Map<string, string>();
 
-    for (const placement of dag.nodes as readonly AnyPlacement[]) {
+    for (const placement of dag.nodes as readonly PlacementEntry[]) {
       lines.push(`  ${MermaidRenderer.renderShape(placement)}`);
       for (const edge of MermaidRenderer.renderEdges(placement)) {
         if (edge.endsWith(MermaidRenderer.TERMINAL_ID)) touchesTerminal = true;
@@ -97,7 +91,8 @@ export class MermaidRenderer {
     for (const [token, ids] of roleToIds) {
       const role = roleTokenToRole.get(token);
       // roleTokenToRole is populated in lockstep with roleToIds; the key always exists.
-      const colors = RoleColorUtils.forRole(role as string);
+      if (role === undefined) continue;
+      const colors = RoleColorUtils.forRole(role);
       lines.push(`  classDef contained-${token} fill:${colors.fill},stroke:${colors.stroke},color:${colors.text}`);
       for (const id of ids) {
         lines.push(`  class ${id} contained-${token}`);
@@ -116,10 +111,14 @@ export class MermaidRenderer {
    * order of insertion. The `existingTokens` map is checked and mutated
    * in-place so the caller maintains consistent state across all placements
    * in one render pass.
+   *
+   * Accepts `Map` (not `ReadonlyMap`) because the caller passes a mutable
+   * map that it populates across the render pass; the method reads the map
+   * to detect token collisions and the caller writes back the resolved token.
    */
   private static sanitizeRole(
     role: string,
-    existingTokens: ReadonlyMap<string, string>,
+    existingTokens: Map<string, string>,
   ): string {
     const base = role.replace(/[^a-zA-Z0-9_]/gu, '_');
     // Check whether this base token is already taken by a DIFFERENT role.
@@ -141,7 +140,7 @@ export class MermaidRenderer {
   }
 
   /** Render a placement's Mermaid shape syntax (rectangle / trapezoid / double-circle / flag). */
-  private static renderShape(placement: AnyPlacement): string {
+  private static renderShape(placement: PlacementEntry): string {
     const label = MermaidRenderer.escapeLabel(placement.name);
     switch (placement['@type']) {
       case 'SingleNode':
@@ -168,7 +167,7 @@ export class MermaidRenderer {
   }
 
   /** Render a placement's outbound edges as `from -->|label| to` lines. */
-  private static renderEdges(placement: AnyPlacement): readonly string[] {
+  private static renderEdges(placement: PlacementEntry): readonly string[] {
     // TerminalNode placements are leaf placements; they have no outputs field.
     if (!('outputs' in placement)) return [];
     const lines: string[] = [];

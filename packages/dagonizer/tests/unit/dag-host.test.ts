@@ -91,8 +91,8 @@ async function sendInit(
 // Tests: init handshake
 // ---------------------------------------------------------------------------
 
-describe('DagHost — init handshake', () => {
-  it('replies ready with matching registryVersion on valid init', async () => {
+void describe('DagHost — init handshake', () => {
+  void it('replies ready with matching registryVersion on valid init', async () => {
     const { parentSide } = buildHostPair();
     const reply = await sendInit(parentSide);
 
@@ -103,7 +103,7 @@ describe('DagHost — init handshake', () => {
     }
   });
 
-  it('replies error with VERSION_MISMATCH when version does not match', async () => {
+  void it('replies error with VERSION_MISMATCH when version does not match', async () => {
     const { parentSide } = buildHostPair();
     const reply = await sendInit(parentSide, REGISTRY_MODULE_URL, '99.0.0');
 
@@ -115,7 +115,7 @@ describe('DagHost — init handshake', () => {
     }
   });
 
-  it('replies error when module cannot be resolved', async () => {
+  void it('replies error when module cannot be resolved', async () => {
     const { parentSide } = buildHostPair();
     const reply = await sendInit(parentSide, '/nonexistent/module-does-not-exist.js');
 
@@ -126,7 +126,7 @@ describe('DagHost — init handshake', () => {
     }
   });
 
-  it('replies error with INVALID_REGISTRY_MODULE for module without createBundle', async () => {
+  void it('replies error with INVALID_REGISTRY_MODULE for module without createBundle', async () => {
     const { parentSide } = buildHostPair();
     const reply = await sendInit(parentSide, INVALID_MODULE_URL);
 
@@ -145,8 +145,8 @@ describe('DagHost — init handshake', () => {
 // Tests: execute
 // ---------------------------------------------------------------------------
 
-describe('DagHost — execute returns result', () => {
-  it('runs a dag and returns result with terminalOutput + stateSnapshot + intermediates', async () => {
+void describe('DagHost — execute returns result', () => {
+  void it('runs a dag and returns result with terminalOutput + stateSnapshot + intermediates', async () => {
     const { parentSide } = buildHostPair();
 
     const ready = await sendInit(parentSide);
@@ -182,7 +182,7 @@ describe('DagHost — execute returns result', () => {
     }
   });
 
-  it('forwards intermediate messages for each node in the dag', async () => {
+  void it('forwards intermediate messages for each node in the dag', async () => {
     const { parentSide } = buildHostPair();
 
     const ready = await sendInit(parentSide);
@@ -220,7 +220,7 @@ describe('DagHost — execute returns result', () => {
     }
   });
 
-  it('returns result with terminalOutput failed on execution error', async () => {
+  void it('returns result with terminalOutput failed on execution error', async () => {
     const { parentSide } = buildHostPair();
 
     const ready = await sendInit(parentSide);
@@ -258,8 +258,8 @@ describe('DagHost — execute returns result', () => {
 // Tests: abort
 // ---------------------------------------------------------------------------
 
-describe('DagHost — abort', () => {
-  it('fires the AbortController; in-flight sleeper terminates before safety ceiling', async () => {
+void describe('DagHost — abort', () => {
+  void it('fires the AbortController; in-flight sleeper terminates before safety ceiling', async () => {
     const { parentSide } = buildHostPair();
 
     const ready = await sendInit(parentSide);
@@ -290,7 +290,7 @@ describe('DagHost — abort', () => {
     parentSide.send({
       'kind': 'abort',
       'correlationId': 'req-abort',
-      'reason': 'test-abort',
+      'reason': 'abort',
     });
 
     const result = await resultPromise;
@@ -306,8 +306,8 @@ describe('DagHost — abort', () => {
 // Tests: shutdown
 // ---------------------------------------------------------------------------
 
-describe('DagHost — shutdown', () => {
-  it('channel closes after shutdown message (no hang)', async () => {
+void describe('DagHost — shutdown', () => {
+  void it('channel closes after shutdown message (no hang)', async () => {
     const { parentSide } = buildHostPair();
 
     const ready = await sendInit(parentSide);
@@ -318,5 +318,63 @@ describe('DagHost — shutdown', () => {
     // Give the async shutdown time to process.
     await new Promise<void>((resolve) => setTimeout(resolve, 50));
     // No assertion beyond no-throw / no-hang.
+  });
+});
+
+// ---------------------------------------------------------------------------
+// G8 — execute before init returns NOT_INITIALIZED error
+// ---------------------------------------------------------------------------
+
+void describe('DagHost — execute before init (G8)', () => {
+  void it('replies error with NOT_INITIALIZED when execute arrives before init', async () => {
+    const { parentSide } = buildHostPair();
+
+    // DO NOT send init — send execute directly.
+    const replyPromise = nextMessage(parentSide);
+
+    const initialState = new NodeStateBase();
+    parentSide.send({
+      'kind': 'execute',
+      'request': {
+        'dagName': 'conformance-body-law1',
+        'placementPath': [],
+        'stateSnapshot': initialState.snapshot(),
+        'timeoutMs': null,
+        'correlationId': 'req-no-init',
+      },
+    });
+
+    const reply = await replyPromise;
+
+    assert.strictEqual(reply.kind, 'error', `expected error, got ${reply.kind}`);
+    if (reply.kind === 'error') {
+      assert.strictEqual(reply.code, 'NOT_INITIALIZED');
+      assert.strictEqual(reply.recoverable, false);
+      assert.strictEqual(reply.correlationId, 'req-no-init');
+    }
+  });
+
+  void it('can init successfully after a NOT_INITIALIZED execute attempt', async () => {
+    const { parentSide } = buildHostPair();
+
+    // First: send execute without init — consume the error.
+    const errorPromise = nextMessage(parentSide);
+    const initialState = new NodeStateBase();
+    parentSide.send({
+      'kind': 'execute',
+      'request': {
+        'dagName': 'conformance-body-law1',
+        'placementPath': [],
+        'stateSnapshot': initialState.snapshot(),
+        'timeoutMs': null,
+        'correlationId': 'req-pre-init-probe',
+      },
+    });
+    const errorReply = await errorPromise;
+    assert.strictEqual(errorReply.kind, 'error');
+
+    // Then: init should still succeed — the host is not in a terminal state.
+    const ready = await sendInit(parentSide);
+    assert.strictEqual(ready.kind, 'ready', `expected ready after recovery init, got ${ready.kind}`);
   });
 });

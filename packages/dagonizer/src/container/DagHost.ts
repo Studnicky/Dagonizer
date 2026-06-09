@@ -66,7 +66,20 @@ export class DagHost {
   /** Subscribe to inbound messages. Must be called once after construction. */
   start(): void {
     this.#channel.onMessage((raw) => {
-      void this.#handleMessage(raw);
+      // R3: catch unhandled rejections from message dispatch and forward them
+      // as a channel-scoped error rather than leaking an unhandled rejection.
+      this.#handleMessage(raw).catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        try {
+          this.#channel.send({
+            'kind': 'error',
+            'correlationId': null,
+            'code': 'INTERNAL_ERROR',
+            'message': `DagHost internal error: ${msg}`,
+            'recoverable': false,
+          });
+        } catch { /* channel closed — suppress */ }
+      });
     });
   }
 
@@ -94,7 +107,19 @@ export class DagHost {
         await this.#handleInit(message.registryModule, message.registryVersion, message.servicesConfig as JsonObject);
         break;
       case 'execute':
-        void this.#handleExecute(message.request.correlationId, message.request);
+        // R3: fire-and-forget with error capture so failures reach the caller.
+        this.#handleExecute(message.request.correlationId, message.request).catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err);
+          try {
+            this.#channel.send({
+              'kind': 'error',
+              'correlationId': message.request.correlationId,
+              'code': 'INTERNAL_ERROR',
+              'message': `DagHost execute error: ${msg}`,
+              'recoverable': false,
+            });
+          } catch { /* channel closed — suppress */ }
+        });
         break;
       case 'abort':
         this.#handleAbort(message.correlationId, message.reason);
@@ -338,10 +363,20 @@ export class DagHost {
   // abort
   // ---------------------------------------------------------------------------
 
-  #handleAbort(correlationId: string, reason: string): void {
+  #handleAbort(correlationId: string, reason: 'abort' | 'timeout'): void {
     const controller = this.#inflight.get(correlationId);
     if (controller !== undefined) {
-      controller.abort(new Error(reason));
+      // R2: reconstruct the appropriate error kind so lifecycle classification
+      // ('timed_out' vs 'cancelled') is preserved inside the host.
+      if (reason === 'timeout') {
+        // A TimeoutError-named error is the signal that a run-level deadline
+        // fired; the engine inspects error.name to classify the lifecycle.
+        const err = new Error('timeout');
+        err.name = 'TimeoutError';
+        controller.abort(err);
+      } else {
+        controller.abort(new Error('abort'));
+      }
     }
   }
 
@@ -355,6 +390,14 @@ export class DagHost {
       controller.abort(new Error('shutdown'));
     }
     this.#inflight.clear();
+
+    // R4: destroy registered node resources so open handles are released
+    // before the host process/thread exits.
+    if (this.#bundle !== null) {
+      try {
+        await this.#bundle.destroy?.();
+      } catch { /* suppress — teardown errors must not prevent channel close */ }
+    }
 
     this.#channel.close();
   }

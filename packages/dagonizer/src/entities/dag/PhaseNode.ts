@@ -50,11 +50,8 @@ export type PhaseNode = FromSchema<typeof PhaseNodeSchema>;
  * Carries no `outputs` map: phase placements are out-of-band and never
  * route to other placements. They reference a registered `NodeInterface`
  * by `node` and mutate state in place.
+ *
+ * This is a type alias for the schema-derived `PhaseNode` type.
+ * The alias is retained for API compatibility; prefer `PhaseNode` directly.
  */
-export interface PhaseNodePlacementInterface {
-  readonly '@id': string;
-  readonly '@type': 'PhaseNode';
-  readonly name: string;
-  readonly node: string;
-  readonly phase: 'pre' | 'post';
-}
+export type PhaseNodePlacementInterface = PhaseNode;

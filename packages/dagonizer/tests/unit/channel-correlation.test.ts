@@ -130,7 +130,7 @@ class SingleChannelContainer extends DagContainerBase<MinimalState, null> {
 
   constructor(channel: MessageChannelInterface, _options: Partial<DagContainerOptions> = {}) {
     super({
-      'instrumentation': undefined,
+      ...DagContainerBase.defaultOptions,
       'poolSize': 1,
       'init': NOOP_INIT,
     });
@@ -198,9 +198,9 @@ function startFakeHost(hostSide: MessageChannelInterface): void {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('channel-correlation: single subscription + correlationId demux', () => {
+void describe('channel-correlation: single subscription + correlationId demux', () => {
 
-  it('(a) exactly ONE underlying onMessage subscription regardless of request count', async () => {
+  void it('(a) exactly ONE underlying onMessage subscription regardless of request count', async () => {
     const [parentSide, hostSide] = LoopbackChannel.pair();
     const counting = new CountingChannel(parentSide);
     startFakeHost(hostSide);
@@ -237,7 +237,7 @@ describe('channel-correlation: single subscription + correlationId demux', () =>
     );
   });
 
-  it('(b) results correlate correctly — each request gets its own outcome', async () => {
+  void it('(b) results correlate correctly — each request gets its own outcome', async () => {
     const [parentSide, hostSide] = LoopbackChannel.pair();
     startFakeHost(hostSide);
 
@@ -260,7 +260,7 @@ describe('channel-correlation: single subscription + correlationId demux', () =>
     }
   });
 
-  it('(c) no cross-talk — correlationId routing delivers to the correct caller', async () => {
+  void it('(c) no cross-talk — correlationId routing delivers to the correct caller', async () => {
     // Drive two overlapping requests concurrently on the same channel.
     // The FakeHost delays the first response until after the second execute
     // is sent, verifying that each caller receives exactly its own response.

@@ -120,7 +120,7 @@ export const cartographerDAG: DAG = new DAGBuilder('cartographer', '1.0')
     'success': 'done',
   })
 
-  .terminal('done', 'completed')
+  .terminal('done', { outcome: 'completed' })
 
   .build();
 // #endregion cartographer-dag
@@ -286,9 +286,9 @@ export const eventPipelineDAG: DAG = new DAGBuilder('event-pipeline', '1.0')
   })
 
   // Terminals
-  .terminal('done',           'completed')
-  .terminal('rejected',       'failed')
-  .terminal('gdpr-violation', 'failed')
+  .terminal('done',           { outcome: 'completed' })
+  .terminal('rejected',       { outcome: 'failed' })
+  .terminal('gdpr-violation', { outcome: 'failed' })
 
   .build();
 // #endregion event-pipeline-dag

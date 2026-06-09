@@ -35,15 +35,15 @@ void describe('scatter/dag-body terminal-outcome propagation', () => {
     // Inner DAG: pass → terminal(failed). No collectError anywhere.
     const innerDag = new DAGBuilder('inner-fail', '1')
       .node('pass', passNode, { 'ok': 'end-fail' })
-      .terminal('end-fail', 'failed')
+      .terminal('end-fail', { 'outcome': 'failed' })
       .build();
     dispatcher.registerDAG(innerDag);
 
     // Parent DAG: embedded-DAG node, success/error routing to distinct terminals.
     const parentDag = new DAGBuilder('parent', '1')
       .embeddedDAG('run-inner', 'inner-fail', { 'success': 'end-ok', 'error': 'end-bad' })
-      .terminal('end-ok', 'completed')
-      .terminal('end-bad', 'failed')
+      .terminal('end-ok', { 'outcome': 'completed' })
+      .terminal('end-bad', { 'outcome': 'failed' })
       .build();
     dispatcher.registerDAG(parentDag);
 
@@ -62,14 +62,14 @@ void describe('scatter/dag-body terminal-outcome propagation', () => {
 
     const innerDag = new DAGBuilder('inner-ok', '1')
       .node('pass', passNode, { 'ok': 'end-ok' })
-      .terminal('end-ok', 'completed')
+      .terminal('end-ok', { 'outcome': 'completed' })
       .build();
     dispatcher.registerDAG(innerDag);
 
     const parentDag = new DAGBuilder('parent-ok', '1')
       .embeddedDAG('run-inner', 'inner-ok', { 'success': 'end-ok', 'error': 'end-bad' })
-      .terminal('end-ok', 'completed')
-      .terminal('end-bad', 'failed')
+      .terminal('end-ok', { 'outcome': 'completed' })
+      .terminal('end-bad', { 'outcome': 'failed' })
       .build();
     dispatcher.registerDAG(parentDag);
 
@@ -93,8 +93,8 @@ void describe('scatter/dag-body terminal-outcome propagation', () => {
 
     const parentDag = new DAGBuilder('parent-null', '1')
       .embeddedDAG('run-inner', 'inner-null', { 'success': 'end-ok', 'error': 'end-bad' })
-      .terminal('end-ok', 'completed')
-      .terminal('end-bad', 'failed')
+      .terminal('end-ok', { 'outcome': 'completed' })
+      .terminal('end-bad', { 'outcome': 'failed' })
       .build();
     dispatcher.registerDAG(parentDag);
 
@@ -112,7 +112,7 @@ void describe('scatter/dag-body terminal-outcome propagation', () => {
 
     const dag = new DAGBuilder('top', '1')
       .node('pass', passNode, { 'ok': 'end' })
-      .terminal('end', 'completed')
+      .terminal('end', { 'outcome': 'completed' })
       .build();
     dispatcher.registerDAG(dag);
 

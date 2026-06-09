@@ -49,8 +49,8 @@ class PrefixAccessor implements StateAccessor {
     this.#inner = new DottedPathAccessor();
   }
 
-  get(target: object, path: string): unknown {
-    return this.#inner.get(target, `${this.#prefix}.${path}`);
+  get<T = unknown>(target: object, path: string): T | undefined {
+    return this.#inner.get<T>(target, `${this.#prefix}.${path}`);
   }
 
   set(target: object, path: string, value: unknown): void {

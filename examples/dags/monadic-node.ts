@@ -34,7 +34,7 @@ abstract class LoggingNode<
   ): Promise<NodeOutputInterface<TOutput>> {
     const start = Date.now();
     const result = await this.run(state, context);
-    console.log(`[${this.name}] output=${result.output} elapsed=${Date.now() - start}ms`);
+    process.stdout.write(`[${this.name}] output=${result.output} elapsed=${Date.now() - start}ms\n`);
     return result;
   }
 

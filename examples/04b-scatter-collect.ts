@@ -46,7 +46,7 @@ process.stdout.write(`  candidates: ${state.candidates.length} collected (none d
 for (const candidate of state.candidates) {
   process.stdout.write(`    - ${candidate.provider}: score ${candidate.score}\n`);
 }
-process.stdout.write(`  chosen:     ${state.chosen ? `${state.chosen.provider} (score ${state.chosen.score})` : 'none'}\n`);
+process.stdout.write(`  chosen:     ${state.chosen.score >= 0 ? `${state.chosen.provider} (score ${state.chosen.score})` : 'none'}\n`);
 process.stdout.write('\nLesson: a map gather over a source appends each clone\'s produced\n');
 process.stdout.write('        field into a parent array; generate-and-select preserves\n');
 process.stdout.write('        data from every scatter clone.\n');

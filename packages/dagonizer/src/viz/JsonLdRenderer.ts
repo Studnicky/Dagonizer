@@ -25,30 +25,67 @@
  * ```
  */
 
+import type { FromSchema } from 'json-schema-to-ts';
+
 import type { DAG } from '../entities/dag/DAG.js';
-import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-import type { PhaseNodePlacementInterface } from '../entities/dag/PhaseNode.js';
-import type { ScatterNode } from '../entities/dag/ScatterNode.js';
-import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
-import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
+
+import type { PlacementEntry } from './internal.js';
 
 /** Stable JSON-LD vocabulary URI for the Dagonizer DAG vocabulary. */
 export const DAGONIZER_VOCAB = 'https://noocodex.dev/ontology/dagonizer/';
 
-type DAGNodeEntry = EmbeddedDAGNode | ScatterNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
+/**
+ * JSON Schema 2020-12 definition for the top-level JSON-LD document
+ * the renderer emits. The `@graph` array holds open-ended graph entries
+ * because JSON-LD graph entries carry arbitrary vocabulary-prefixed
+ * property keys (e.g. `dag:routes`, `dag:outcome`) that cannot be
+ * enumerated at the schema level. The top-level document shape is
+ * precise: `@context` is a string-to-string map and `@graph` is an
+ * array of objects that always carry `@id` and `@type` strings.
+ */
+export const DagJsonLdDocumentSchema = {
+  '$id':     'https://noocodex.dev/schemas/dagonizer/DagJsonLdDocument',
+  '$schema': 'https://json-schema.org/draft/2020-12/schema',
+  'type': 'object',
+  'required': ['@context', '@graph'],
+  'additionalProperties': false,
+  'properties': {
+    '@context': {
+      'type': 'object',
+      'additionalProperties': { 'type': 'string' },
+    },
+    '@graph': {
+      'type': 'array',
+      'items': {
+        'type': 'object',
+        'required': ['@id', '@type'],
+        'properties': {
+          '@id':   { 'type': 'string' },
+          '@type': { 'type': 'string' },
+        },
+        'additionalProperties': true,
+      },
+    },
+  },
+} as const;
 
-/** A single node entry in the rendered `@graph`. */
+/**
+ * A single node entry in the rendered `@graph`.
+ *
+ * JSON-LD graph entries carry arbitrary vocabulary-prefixed keys
+ * (e.g. `dag:routes`, `dag:name`, `dag:outcome`) that vary by
+ * placement type. The open index signature reflects this genuine
+ * wire-shape requirement; `@id` and `@type` are always present and
+ * precisely typed.
+ */
 export interface JsonLdGraphEntry {
   readonly '@id': string;
   readonly '@type': string;
   readonly [key: string]: unknown;
 }
 
-/** Full JSON-LD document the renderer emits. */
-export interface DagJsonLdDocument {
-  readonly '@context': Record<string, string>;
-  readonly '@graph': readonly JsonLdGraphEntry[];
-}
+/** Full JSON-LD document the renderer emits. Derived from `DagJsonLdDocumentSchema`. */
+export type DagJsonLdDocument = FromSchema<typeof DagJsonLdDocumentSchema>;
 
 /**
  * Render a `DAG` as JSON-LD. The output document has a stable
@@ -59,7 +96,7 @@ export class JsonLdRenderer {
   private constructor() { /* static class */ }
 
   /** Mapping from JSON-LD placement-discriminator to vocabulary-prefixed `@type`. */
-  private static readonly TYPE_BY_KIND: Readonly<Record<DAGNodeEntry['@type'], string>> = {
+  private static readonly TYPE_BY_KIND: Readonly<Record<PlacementEntry['@type'], string>> = {
     'SingleNode':      'dag:SingleNode',
     'ScatterNode':     'dag:ScatterNode',
     'EmbeddedDAGNode': 'dag:EmbeddedDAGNode',
@@ -68,7 +105,7 @@ export class JsonLdRenderer {
   };
 
   static render(dag: DAG): DagJsonLdDocument {
-    const placements = (dag.nodes as readonly DAGNodeEntry[]).map((placement) =>
+    const placements = (dag.nodes as readonly PlacementEntry[]).map((placement) =>
       JsonLdRenderer.renderPlacement(dag.name, placement),
     );
 
@@ -111,7 +148,7 @@ export class JsonLdRenderer {
   }
 
   /** Render one placement as a JSON-LD `@graph` entry. */
-  private static renderPlacement(dagName: string, placement: DAGNodeEntry): JsonLdGraphEntry {
+  private static renderPlacement(dagName: string, placement: PlacementEntry): JsonLdGraphEntry {
     const base = {
       '@id':      JsonLdRenderer.placementIri(dagName, placement.name),
       '@type':    JsonLdRenderer.TYPE_BY_KIND[placement['@type']],
@@ -126,6 +163,10 @@ export class JsonLdRenderer {
           'dag:node':   placement.node,
         };
       case 'ScatterNode': {
+        // ScatterNode carries several optional fields (source, itemKey, concurrency,
+        // stateMapping, gather, reducer, container). Build a mutable accumulator
+        // then freeze on return. The open index is required because JSON-LD
+        // property keys are arbitrary vocabulary-prefixed strings.
         const out: JsonLdGraphEntry & Record<string, unknown> = {
           ...base,
           'dag:routes': JsonLdRenderer.renderRoutes(dagName, placement.outputs),
@@ -133,17 +174,18 @@ export class JsonLdRenderer {
             ? { 'dag:node': placement.body.node }
             : { 'dag:dag': JsonLdRenderer.dagIri(placement.body.dag) },
         };
-        if (placement.source !== undefined)      out['dag:source']       = placement.source;
-        if (placement.itemKey !== undefined)     out['dag:itemKey']      = placement.itemKey;
-        if (placement.concurrency !== undefined) out['dag:concurrency']  = placement.concurrency;
+        if (placement.source !== undefined)       out['dag:source']       = placement.source;
+        if (placement.itemKey !== undefined)      out['dag:itemKey']      = placement.itemKey;
+        if (placement.concurrency !== undefined)  out['dag:concurrency']  = placement.concurrency;
         if (placement.stateMapping !== undefined) out['dag:stateMapping'] = placement.stateMapping;
-        if (placement.gather !== undefined)      out['dag:gather']       = placement.gather;
-        if (placement.reducer !== undefined)     out['dag:reducer']     = placement.reducer;
+        if (placement.gather !== undefined)       out['dag:gather']       = placement.gather;
+        if (placement.reducer !== undefined)      out['dag:reducer']      = placement.reducer;
         // container is a placement property mapped in DAG_CONTEXT; include when present.
-        if (placement.container !== undefined)   out['dag:container']   = placement.container;
+        if (placement.container !== undefined)    out['dag:container']    = placement.container;
         return out;
       }
       case 'EmbeddedDAGNode': {
+        // EmbeddedDAGNode may carry optional stateMapping and container fields.
         const out: JsonLdGraphEntry & Record<string, unknown> = {
           ...base,
           'dag:routes': JsonLdRenderer.renderRoutes(dagName, placement.outputs),
@@ -151,7 +193,7 @@ export class JsonLdRenderer {
         };
         if (placement.stateMapping !== undefined) out['dag:stateMapping'] = placement.stateMapping;
         // container is a placement property mapped in DAG_CONTEXT; include when present.
-        if (placement.container !== undefined)   out['dag:container']   = placement.container;
+        if (placement.container !== undefined)    out['dag:container']    = placement.container;
         return out;
       }
       case 'TerminalNode':

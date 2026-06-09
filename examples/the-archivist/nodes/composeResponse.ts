@@ -196,7 +196,7 @@ export const validateResponse: NodeInterface<
     if (antiHal.status === 'fail') {
       context.services.logger.warn(`validate-anti-hallucination: FAIL: ${antiHal.cause.trim()}`);
       state.failureCause += antiHal.cause;
-      state.approved = false;
+      state.approvalState = 'rejected';
       if (state.retriesFor('compose') >= MAX_COMPOSE_ATTEMPTS) {
         context.services.logger.warn('compose attempts exhausted (anti-hallucination)');
         return { "output": 'exhausted' };
@@ -206,7 +206,7 @@ export const validateResponse: NodeInterface<
     context.services.logger.info(`validate-anti-hallucination: PASS (${String(antiHal.count)} entities checked)`);
 
     const ok = await context.services.llm.validate(state.draft, state.shortlist);
-    state.approved = ok;
+    state.approvalState = ok ? 'approved' : 'rejected';
     if (ok) return { "output": 'approved' };
     if (state.retriesFor('compose') >= MAX_COMPOSE_ATTEMPTS) {
       context.services.logger.warn('compose attempts exhausted');

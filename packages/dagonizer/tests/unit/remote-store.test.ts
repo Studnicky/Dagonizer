@@ -27,7 +27,7 @@ class MockRemoteStore extends BaseStore implements RemoteStore {
 
   readonly #backing: Map<string, JsonValue>;
 
-  constructor(endpoint: RemoteStoreEndpoint, options: BaseStoreOptions = {}) {
+  constructor(endpoint: RemoteStoreEndpoint, options: BaseStoreOptions = { 'namespace': '' }) {
     super(options);
     this.endpoint = endpoint;
     this.#backing = new Map();

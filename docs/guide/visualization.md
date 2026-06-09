@@ -62,7 +62,7 @@ Routes render as labeled directed edges. Routes targeting `null` route to a synt
 
 ### Containment coloring
 
-Placements bound to a `container` role (`EmbeddedDAGNode` or dag-body `ScatterNode` with a non-empty `container` field) receive the Mermaid `contained` class, emitted via a `classDef contained` rule at the end of the flowchart. The fill color is amber-orange (`#f59e0b`) to read visually as "offloaded / running in an isolate". The `@type`-specific shape is preserved — a contained `EmbeddedDAGNode` remains a subroutine shape; a contained `ScatterNode` remains a trapezoid. In-process placements are unstyled (Mermaid default). The `contained` class is only emitted when at least one contained placement exists in the DAG.
+Placements bound to a `container` role (`EmbeddedDAGNode` or dag-body `ScatterNode` with a non-empty `container` field) each receive a per-role Mermaid class (`contained-<role>`) whose fill and stroke come from a deterministic palette keyed on the role string. A DAG with two distinct roles (e.g. `cpu` and `io`) emits two `classDef contained-cpu …` and `classDef contained-io …` rules with different colors, then assigns each placement to its role-specific class. The `@type`-specific shape is preserved — a contained `EmbeddedDAGNode` remains a subroutine shape; a contained `ScatterNode` remains a trapezoid. In-process placements are unstyled (Mermaid default). `classDef` rules are omitted entirely when no contained placement exists in the DAG.
 
 **TerminalNode vs synthetic END.** A `TerminalNode` placement is declared explicitly in the DAG and renders as a named shape with an outcome suffix (`(completed)` or `(failed)`). The synthetic `END` node is implicit sugar emitted once when any non-terminal placement routes an output to `null`. Both can coexist in the same diagram: the `TerminalNode` shape represents the declared placement, and `END` captures the null routes from other placements. `TerminalNode` placements emit no outbound edges; they are leaf nodes by definition.
 
@@ -103,6 +103,7 @@ Every node element carries a `data.type` field for stylesheet selectors.
 | `'embedded-dag'` | `EmbeddedDAGNode` placement | `data.dag`, `data.stateMapping` |
 | `'terminal'` | `TerminalNode` placement | `data.outcome: 'completed' \| 'failed'` |
 | `'terminal'` | synthetic `END` node | `data.synthetic: true` |
+| `'phase'` | `PhaseNode` placement | `data.phase: 'pre' \| 'post'`, `data.node` |
 
 User-declared `TerminalNode` placements and the synthetic `END` node both use `data.type === 'terminal'`. Distinguish them via `data.synthetic === true` (only set on the synthetic node) or `data.outcome` (only set on user-declared terminals).
 
@@ -115,11 +116,11 @@ Select contained nodes in Cytoscape stylesheets via:
 - `node[container]` — data selector, matches any node with a container role set
 - `node[container="cpu"]` — data selector, matches a specific role
 
-`CytoscapeGraph`'s built-in stylesheet applies an amber-orange border and label color (`#f59e0b`) to `.dag-contained` nodes so they are visually distinct from in-process placements out of the box. Subclasses that override `stylesheet()` should carry this rule forward or replace it with a custom containment style.
+`CytoscapeGraph`'s built-in stylesheet applies per-role colors to `.dag-contained` nodes via cytoscape `data(...)` mapping — `background-color: data(containerColor)`, `border-color: data(containerStroke)`, `color: data(containerText)` — so each distinct container role renders with its own palette. The colors are written to node data by `CytoscapeRenderer` and driven by the same `RoleColorUtils.forRole` palette as the Mermaid renderer. Subclasses that override `stylesheet()` should carry this rule forward or replace it with a custom containment style.
 
 ### Live rendering in the doc site
 
-The doc site renders DAGs via `CytoscapeGraph`, the package-shipped subclassable factory. `DagGraph.vue` (the doc site component) extends `CytoscapeGraph`; the `:dag` prop passes the `DAG` object directly and `CytoscapeGraph` builds elements, computes layout, and mounts cytoscape internally. Embedded DAGs render collapsed by default; pass `:expand-all="true"` to expand them all.
+The doc site renders DAGs via `CytoscapeGraph`, the package-shipped subclassable factory. `DagGraph.vue` (the doc site component) hosts a `CytoscapeGraph` instance; the `:dag` prop passes the `DAG` object directly and `CytoscapeGraph` builds elements, computes layout, and mounts cytoscape internally. Embedded DAGs render collapsed by default; pass `:expand-all="true"` to expand them all.
 
 <DagGraph :dag="dag" aria-label="Two-node demo DAG rendered via CytoscapeRenderer." />
 

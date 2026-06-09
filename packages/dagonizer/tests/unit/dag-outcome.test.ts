@@ -87,6 +87,36 @@ describe('DagOutcome.transportError — default shape', () => {
     // Must parse as a valid date (ISO 8601).
     assert.ok(!isNaN(Date.parse(error.timestamp)), `timestamp must be a valid ISO date; got: "${error.timestamp}"`);
   });
+
+  it('full shape deepStrictEqual (excluding timestamp)', () => {
+    const outcome = DagOutcome.transportError('corr-shape');
+    const error = outcome.errors[0];
+    assert.ok(error !== undefined, 'error must be present');
+
+    // Pin the full structural contract (timestamp excluded — non-deterministic).
+    assert.deepStrictEqual(
+      {
+        'terminalOutput': outcome.terminalOutput,
+        'stateSnapshot':  outcome.stateSnapshot,
+        'intermediates':  outcome.intermediates,
+        'errorCount':     outcome.errors.length,
+        'errorCode':      error.code,
+        'errorOperation': error.operation,
+        'errorRecoverable': error.recoverable,
+        'correlationIdInMessage': error.message.includes('corr-shape'),
+      },
+      {
+        'terminalOutput': 'failed',
+        'stateSnapshot':  null,
+        'intermediates':  [],
+        'errorCount':     1,
+        'errorCode':      DAG_CONTAINER_TRANSPORT,
+        'errorOperation': 'runDag',
+        'errorRecoverable': false,
+        'correlationIdInMessage': true,
+      },
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -95,7 +125,7 @@ describe('DagOutcome.transportError — default shape', () => {
 
 describe('DagOutcome.transportError — custom code override', () => {
   it('accepts DAG_CONTAINER_WORKER_DIED as the code', () => {
-    const outcome = DagOutcome.transportError('corr-w', DAG_CONTAINER_WORKER_DIED);
+    const outcome = DagOutcome.transportError('corr-w', { 'code': DAG_CONTAINER_WORKER_DIED });
     const error = outcome.errors[0];
     assert.ok(error !== undefined, 'error must be present');
     assert.strictEqual(error.code, DAG_CONTAINER_WORKER_DIED);
@@ -103,7 +133,7 @@ describe('DagOutcome.transportError — custom code override', () => {
   });
 
   it('accepts a custom code and message', () => {
-    const outcome = DagOutcome.transportError('corr-x', 'CUSTOM_CODE', 'custom message');
+    const outcome = DagOutcome.transportError('corr-x', { 'code': 'CUSTOM_CODE', 'message': 'custom message' });
     const error = outcome.errors[0];
     assert.ok(error !== undefined, 'error must be present');
     assert.strictEqual(error.code, 'CUSTOM_CODE');
@@ -148,7 +178,7 @@ describe('TransportErrorCode.isInfrastructureFailure', () => {
   });
 
   it('DAG_CONTAINER_WORKER_DIED outcome code is an infrastructure failure', () => {
-    const outcome = DagOutcome.transportError('corr-w', DAG_CONTAINER_WORKER_DIED);
+    const outcome = DagOutcome.transportError('corr-w', { 'code': DAG_CONTAINER_WORKER_DIED });
     const error = outcome.errors[0];
     assert.ok(error !== undefined, 'error must be present');
     assert.strictEqual(

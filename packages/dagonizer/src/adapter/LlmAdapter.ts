@@ -60,9 +60,9 @@ export type ToolChoice =
 /**
  * JSON-schema constraint on the model's text response. `kind: 'none'`
  * means "no constraint"; keeps the union shape monomorphic instead of
- * `OutputSchema | undefined`.
+ * `LlmOutputSchema | undefined`.
  */
-export type OutputSchema =
+export type LlmOutputSchema =
   | { readonly kind: 'none' }
   | { readonly kind: 'schema'; readonly schema: Record<string, unknown>; readonly id: string };
 
@@ -72,7 +72,7 @@ export type OutputSchema =
 // see complete values and never have to coalesce `??`.
 
 export const DEFAULT_TOOL_CHOICE: ToolChoice = { 'type': 'auto' };
-export const DEFAULT_OUTPUT_SCHEMA: OutputSchema = { 'kind': 'none' };
+export const DEFAULT_OUTPUT_SCHEMA: LlmOutputSchema = { 'kind': 'none' };
 export const DEFAULT_MAX_TOKENS = 512;
 export const DEFAULT_TEMPERATURE = 0.2;
 
@@ -84,7 +84,7 @@ export interface ChatRequest {
   readonly messages: readonly ChatMessage[];
   readonly tools: readonly ToolDefinition[];
   readonly toolChoice: ToolChoice;
-  readonly outputSchema: OutputSchema;
+  readonly outputSchema: LlmOutputSchema;
   readonly maxTokens: number;
   readonly temperature: number;
   readonly signal: AbortSignal;
@@ -122,7 +122,7 @@ export interface PartialChatRequest {
   readonly messages: readonly ChatMessage[];
   readonly tools?: readonly ToolDefinition[];
   readonly toolChoice?: ToolChoice;
-  readonly outputSchema?: OutputSchema;
+  readonly outputSchema?: LlmOutputSchema;
   readonly maxTokens?: number;
   readonly temperature?: number;
   readonly signal?: AbortSignal;

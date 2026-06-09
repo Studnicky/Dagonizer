@@ -8,7 +8,9 @@ import {
   DAG_CONTEXT,
   NodeStateBase,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface } from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import { GatherStrategyName } from '@noocodex/dagonizer/constants';
 
 // #region state
 export class ScrapeState extends NodeStateBase {
@@ -49,7 +51,7 @@ export const dag: DAG = {
       "itemKey":      'url',                           // metadata key each item is written under
       "concurrency":  2,                               // max clones in-flight simultaneously
       "gather": {
-        "strategy":   'partition',                     // route clones by their output key
+        "strategy":   GatherStrategyName.PARTITION,      // route clones by their output key
         "partitions": { "ok": 'succeeded', "fail": 'failed' },  // output key → state field name
       },
       // Aggregate outputs: reflect final distribution, not per-clone results.

@@ -8,12 +8,12 @@
 import type { StoreSnapshotEntry } from '../contracts/Snapshottable.js';
 import type { JsonValue } from '../entities/json.js';
 
-import { BaseStore, type BaseStoreOptions } from './BaseStore.js';
+import { BASE_STORE_DEFAULTS, BaseStore, type BaseStoreOptions } from './BaseStore.js';
 
 export class MemoryStore extends BaseStore {
   readonly #data: Map<string, JsonValue>;
 
-  constructor(options: BaseStoreOptions = {}) {
+  constructor(options: BaseStoreOptions = BASE_STORE_DEFAULTS) {
     super(options);
     this.#data = new Map<string, JsonValue>();
   }

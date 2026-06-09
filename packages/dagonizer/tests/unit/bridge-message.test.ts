@@ -53,7 +53,7 @@ const validExecuteNullTimeout: BridgeMessage = {
 const validAbort: BridgeMessage = {
   'kind': 'abort',
   'correlationId': 'req-1',
-  'reason': 'user-cancelled',
+  'reason': 'abort',
 };
 
 const validShutdown: BridgeMessage = {

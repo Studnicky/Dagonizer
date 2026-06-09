@@ -151,7 +151,7 @@ void describe('ContractRegistryValidator', () => {
       { 'name': 'b', 'hardRequired': ['missing-path'], 'produces': ['y'],   'outputs': ['success'] },
     ];
     assert.throws(
-      () => ContractRegistryValidator.validate(contracts, () => { /* no-op */ }, 'a'),
+      () => ContractRegistryValidator.validate(contracts, () => { /* no-op */ }, { 'entrypointName': 'a' }),
       (err: unknown) => {
         assert.ok(err instanceof DAGError);
         assert.ok(err.message.includes("hardRequires 'missing-path'"));
@@ -170,7 +170,7 @@ void describe('ContractRegistryValidator', () => {
       { 'name': 'b',    'hardRequired': ['x'],      'produces': ['done'],         'outputs': ['success'] },
     ];
     const warnings: string[] = [];
-    ContractRegistryValidator.validate(contracts, (msg) => { warnings.push(msg); }, 'root');
+    ContractRegistryValidator.validate(contracts, (msg) => { warnings.push(msg); }, { 'entrypointName': 'root' });
     // 'unused' is produced by 'a' but not required by anyone → dead-write warning
     const unusedWarning = warnings.find((w) => w.includes("'unused'"));
     assert.ok(unusedWarning !== undefined, `expected a dead-write warning for 'unused', got: ${JSON.stringify(warnings)}`);
@@ -185,7 +185,7 @@ void describe('ContractRegistryValidator', () => {
     const warnings: string[] = [];
     // 'x' is consumed by 'b'; no warning for 'x'.
     // 'y' is produced by 'b' but not required; will warn.
-    ContractRegistryValidator.validate(contracts, (msg) => { warnings.push(msg); }, 'a');
+    ContractRegistryValidator.validate(contracts, (msg) => { warnings.push(msg); }, { 'entrypointName': 'a' });
     const xWarning = warnings.find((w) => w.includes("'x'"));
     assert.equal(xWarning, undefined, "'x' is consumed so no dead-write warning expected");
   });
@@ -195,7 +195,7 @@ void describe('ContractRegistryValidator', () => {
       { 'name': 'root', 'hardRequired': [],       'produces': ['a-out'], 'outputs': ['success'] },
       { 'name': 'leaf', 'hardRequired': ['a-out'], 'produces': ['done'], 'outputs': ['success'] },
     ];
-    assert.doesNotThrow(() => ContractRegistryValidator.validate(contracts, () => { /* no-op */ }, 'root'));
+    assert.doesNotThrow(() => ContractRegistryValidator.validate(contracts, () => { /* no-op */ }, { 'entrypointName': 'root' }));
   });
 
   void it('does not flag entrypoint hardRequired as dangling reads', () => {
@@ -206,7 +206,7 @@ void describe('ContractRegistryValidator', () => {
       { 'name': 'b', 'hardRequired': ['x'],             'produces': ['y'], 'outputs': ['success'] },
     ];
     assert.doesNotThrow(
-      () => ContractRegistryValidator.validate(contracts, () => { /* no-op */ }, 'a'),
+      () => ContractRegistryValidator.validate(contracts, () => { /* no-op */ }, { 'entrypointName': 'a' }),
       'entrypoint hardRequired should not throw as dangling read',
     );
   });

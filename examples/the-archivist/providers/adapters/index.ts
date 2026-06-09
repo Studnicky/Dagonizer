@@ -13,7 +13,7 @@ export type {
   ChatRequest,
   ChatResponse,
   LlmAdapter,
-  OutputSchema,
+  LlmOutputSchema,
   ToolCall,
   ToolChoice,
   ToolDefinition,

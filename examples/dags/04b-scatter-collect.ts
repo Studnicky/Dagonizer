@@ -8,7 +8,9 @@ import {
   DAG_CONTEXT,
   NodeStateBase,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface } from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import { GatherStrategyName } from '@noocodex/dagonizer/constants';
 
 // #region state
 export interface Candidate {
@@ -17,11 +19,14 @@ export interface Candidate {
   score:    number;
 }
 
+/** Zero-value sentinel for an unset Candidate slot; score = -1 marks unset. */
+const EMPTY_CANDIDATE: Candidate = { provider: '', text: '', score: -1 };
+
 export class GenerateState extends NodeStateBase {
-  providers:  string[]    = [];   // source array; one clone per provider
-  candidate:  Candidate | null = null;  // per-clone produced field; the gather reads this off each clone
-  candidates: Candidate[] = [];   // map-gather target; produced candidates land here (parent)
-  chosen:     Candidate | null = null;  // the select node's winner
+  providers:  string[]   = [];                            // source array; one clone per provider
+  candidate:  Candidate  = { ...EMPTY_CANDIDATE };        // per-clone produced field; the gather reads this off each clone
+  candidates: Candidate[] = [];                           // map-gather target; produced candidates land here (parent)
+  chosen:     Candidate  = { ...EMPTY_CANDIDATE };        // the select node's winner; score -1 = no winner
 }
 // #endregion state
 
@@ -92,7 +97,7 @@ export const dag: DAG = {
       // parent.candidates in source-index order. Because `source` is set, a
       // map gather appends (N clones ⇒ array); produced data survives.
       "gather": {
-        "strategy": 'map',
+        "strategy": GatherStrategyName.MAP,
         "mapping":  { "candidate": 'candidates' },     // cloneField → parentPath
       },
       // Aggregate outputs from the default 'aggregate' reducer. All providers

@@ -164,8 +164,10 @@ export class DAGBuilder {
       '@type':   'SingleNode',
       name,
       'node':    dagNode.name,
+      // Generic erasure: TOutput is narrower than string; the entity schema stores string keys.
       'outputs': routes as Record<string, null | string>,
     });
+    // Generic erasure: the impl map stores the type-erased base; callers retrieve it untyped.
     this.#nodeImpls.set(name, dagNode as NodeInterface);
     if (this.#entrypoint === null) this.#entrypoint = name;
     return this;
@@ -204,17 +206,21 @@ export class DAGBuilder {
       '@type':   'ScatterNode',
       name,
       'source':  source,
+      // Generic erasure: the dag-branch is already narrowed by the `'dag' in body` guard;
+      // the node-branch cast drops TState/TOutput/TServices which the entity shape doesn't carry.
       'body':    'dag' in body ? { 'dag': body.dag } : { 'node': (body as NodeInterface<TState, TOutput, TServices>).name },
       'gather':  options.gather,
       'outputs': outputs,
     };
     if (options.itemKey !== undefined) scatterNode.itemKey = options.itemKey;
     if (options.concurrency !== undefined) scatterNode.concurrency = options.concurrency;
+    // ParentPath<TState> is structurally string; FromSchema index-signature requires Record<string,string>.
     if (options.inputs !== undefined) scatterNode.stateMapping = { 'input': options.inputs as Record<string, string> };
     if (options.reducer !== undefined) scatterNode.reducer = options.reducer;
     if (options.container !== undefined) scatterNode.container = options.container;
 
     if (!('dag' in body)) {
+      // Generic erasure: impl map stores type-erased base; callers retrieve it untyped.
       this.#nodeImpls.set(name, body as NodeInterface);
     }
 
@@ -255,6 +261,7 @@ export class DAGBuilder {
     };
     if (options.inputs !== undefined || options.outputs !== undefined) {
       const stateMapping: NonNullable<EmbeddedDAGNode['stateMapping']> = {};
+      // ParentPath<T> is structurally string; FromSchema index-signature requires Record<string,string>.
       if (options.inputs  !== undefined) stateMapping.input  = options.inputs  as Record<string, string>;
       if (options.outputs !== undefined) stateMapping.output = options.outputs as Record<string, string>;
       embeddedNode.stateMapping = stateMapping;
@@ -268,18 +275,20 @@ export class DAGBuilder {
 
   /**
    * Append a terminal node. When reached, the flow ends with the given
-   * `outcome`. `'completed'` is the default; the flow resolves cleanly.
+   * `outcome`. Defaults to `'completed'`; the flow resolves cleanly.
    * `'failed'` marks the state as failed before resolving.
    *
    * TerminalNodes have no routing (`outputs` map). They are placement-only
    * constructs with no backing `NodeInterface`.
+   *
+   * @param options.outcome - Terminal outcome; defaults to `'completed'`.
    */
-  terminal(name: string, outcome: 'completed' | 'failed' = 'completed'): this {
+  terminal(name: string, options?: { readonly outcome?: 'completed' | 'failed' }): this {
     const placement: TerminalNodePlacementInterface = {
       '@id':   this.#nodeId(name),
       '@type': 'TerminalNode',
       name,
-      outcome,
+      'outcome': options?.outcome ?? 'completed',
     };
     this.#nodes.push(placement);
     if (this.#entrypoint === null) this.#entrypoint = name;
@@ -310,6 +319,7 @@ export class DAGBuilder {
       phase,
     };
     this.#nodes.push(placement);
+    // Generic erasure: impl map stores type-erased base; callers retrieve it untyped.
     this.#nodeImpls.set(name, dagNode as NodeInterface);
     // Intentionally does NOT set entrypoint; phase placements are
     // out-of-band and never the main-loop entry.
@@ -323,12 +333,13 @@ export class DAGBuilder {
    * `contract` on its underlying `NodeInterface`, `build()` runs the same
    * dangling-read / dead-write validation that `DAGDeriver` runs at derive
    * time. Dangling reads throw `DAGError`; dead writes are routed to
-   * `onContractWarning` (no-op if omitted).
+   * `options.onContractWarning` (no-op if omitted).
    *
-   * @param onContractWarning - Optional callback for dead-write warnings. If
+   * @param options - Optional configuration.
+   * @param options.onContractWarning - Callback for dead-write warnings. If
    *   omitted, dead writes are silently no-oped. Dangling reads always throw.
    */
-  build(onContractWarning?: (message: string) => void): DAG {
+  build(options?: { readonly onContractWarning?: (message: string) => void }): DAG {
     if (this.#entrypoint === null) {
       throw new ConfigurationError(`DAGBuilder('${this.#name}'): cannot build DAG without an entrypoint; call .entrypoint() or add at least one node first`);
     }
@@ -353,8 +364,8 @@ export class DAGBuilder {
       const contracts = DAGDeriver.extractContracts(contractNodes);
       ContractRegistryValidator.validate(
         contracts,
-        onContractWarning ?? (() => { /* no-op */ }),
-        this.#entrypoint,
+        options?.onContractWarning ?? (() => { /* no-op */ }),
+        { 'entrypointName': this.#entrypoint },
       );
     }
 
@@ -369,28 +380,24 @@ export class DAGBuilder {
    * the resulting DAG. Use when your flow is linear and every node carries
    * a contract; drop into the fluent `.node()` API when the shape requires
    * manual placement (scatter, terminals, embedded-DAGs).
+   *
+   * @param name - DAG name.
+   * @param version - DAG version string.
+   * @param entrypoint - Name of the entrypoint node.
+   * @param nodes - Ordered registry of node implementations.
+   * @param options - Optional configuration.
+   * @param options.annotations - Optional deriver annotation overrides.
    */
-  static fromNodes(opts: {
-    readonly name: string;
-    readonly version: string;
-    readonly entrypoint: string;
-    readonly nodes: readonly NodeInterface[];
-    readonly annotations?: DAGDeriverAnnotations;
-  }): DAG {
-    const deriveOpts = opts.annotations !== undefined
-      ? {
-          'name':        opts.name,
-          'version':     opts.version,
-          'entrypoint':  opts.entrypoint,
-          'nodes':       opts.nodes,
-          'annotations': opts.annotations,
-        }
-      : {
-          'name':       opts.name,
-          'version':    opts.version,
-          'entrypoint': opts.entrypoint,
-          'nodes':      opts.nodes,
-        };
+  static fromNodes(
+    name: string,
+    version: string,
+    entrypoint: string,
+    nodes: readonly NodeInterface[],
+    options?: { readonly annotations?: DAGDeriverAnnotations },
+  ): DAG {
+    const deriveOpts = options?.annotations !== undefined
+      ? { name, version, entrypoint, nodes, 'annotations': options.annotations }
+      : { name, version, entrypoint, nodes };
     return DAGDeriver.derive(deriveOpts);
   }
 }

@@ -33,7 +33,8 @@ const G = globalThis as TimerGlobals;
 export class RealTimeScheduler implements SchedulerProvider {
   readonly #activeHandles = new Set<unknown>();
 
-  async after(delayMs: number, signal?: AbortSignal): Promise<void> {
+  async after(delayMs: number, options?: { signal?: AbortSignal }): Promise<void> {
+    const signal = options?.signal;
     return new Promise<void>((resolve, reject) => {
       if (signal?.aborted === true) {
         reject(ExecutionError.fromSignal(signal));
@@ -56,14 +57,15 @@ export class RealTimeScheduler implements SchedulerProvider {
     });
   }
 
-  async at(atMs: number, signal?: AbortSignal): Promise<void> {
-    return this.after(Math.max(0, atMs - Clock.monotonicMs()), signal);
+  async at(atMs: number, options?: { signal?: AbortSignal }): Promise<void> {
+    return this.after(Math.max(0, atMs - Clock.monotonicMs()), options);
   }
 
-  async *every(intervalMs: number, signal?: AbortSignal): AsyncIterable<void> {
+  async *every(intervalMs: number, options?: { signal?: AbortSignal }): AsyncIterable<void> {
+    const signal = options?.signal;
     while (signal?.aborted !== true) {
       try {
-        await this.after(intervalMs, signal);
+        await this.after(intervalMs, options);
       } catch {
         return;
       }

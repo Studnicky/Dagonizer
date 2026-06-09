@@ -43,9 +43,9 @@ Each yielded `NodeResultInterface<TState>` carries:
 | `output` | `string \| null` | Output name returned by the operation; `null` when no route was emitted |
 | `skipped` | `boolean` | `true` for an empty scatter source that bypassed execution |
 | `state` | `TState` | Reference to the shared state object (mutated in place) |
-| `intermediateResults` | `readonly NodeResultInterface<TState>[]` | Per-step results from composite nodes (parallel / scatter / embedded-DAG); `[]` for leaf nodes |
+| `intermediateResults` | `readonly NodeResultInterface<TState>[]` | Per-step results from composite nodes (scatter / embedded-DAG); `[]` for leaf nodes |
 
-For parallel and scatter placements, the iterator first yields intermediate results for each constituent node or clone, then yields the group result.
+For scatter and embedded-DAG placements, the iterator first yields intermediate results for each constituent clone or inner node, then yields the group result.
 
 Phase placements (`PhaseNode`) run out of band and do not yield through the iterator. They surface via `Instrumentation.phaseEnter` / `phaseExit` and are appended to `result.executedNodes`.
 

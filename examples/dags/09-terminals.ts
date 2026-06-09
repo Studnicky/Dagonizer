@@ -13,7 +13,8 @@ import {
   DAGBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface } from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 
 // ---------------------------------------------------------------------------
 // State
@@ -97,7 +98,7 @@ export const dag2 = new DAGBuilder('demo-explicit-completed', '1')
 export const dag3 = new DAGBuilder('demo-explicit-terminals', '1')
   .node('check', checkNode, { 'pass': 'end-ok', 'fail': 'end-fail' })
   .terminal('end-ok')
-  .terminal('end-fail', 'failed')
+  .terminal('end-fail', { outcome: 'failed' })
   .build();
 // #endregion terminal-failed
 
@@ -140,6 +141,6 @@ export const dag4 = new DAGBuilder('demo-embedded-dag-terminals', '1')
     'inputs': { 'shouldPass': 'shouldPass' },
   })
   .terminal('end-ok')
-  .terminal('end-fail', 'failed')
+  .terminal('end-fail', { outcome: 'failed' })
   .build();
 // #endregion embedded-terminals

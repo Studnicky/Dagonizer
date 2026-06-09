@@ -23,15 +23,30 @@ Adapter contracts live at the root of `src/contracts/` and ship through `@noocod
 
 ```ts
 import type {
+  // Core dispatcher contracts
+  ChannelInterface,
   CheckpointStore,
   ClockProvider,
+  DagContainerInterface,
+  DagOutcomeInterface,
+  DagTaskInterface,
   Embedder,
   ErrorConstructorType,
   ExecuteOptionsInterface,
+  GatherExecution,
+  GatherRecord,
   Instrumentation,
+  InstrumentationSink,
+  LlmAdapter,
+  LlmClient,
+  MessageChannelInterface,
   NodeInterface,
+  NodeInvoker,
   OperationContract,
   OperationContractFragment,
+  OutcomeRecord,
+  RegistryBundleInterface,
+  RegistryModuleInterface,
   RemoteStore,
   RemoteStoreEndpoint,
   RemoteStoreLease,
@@ -43,6 +58,7 @@ import type {
   Store,
   StoreSnapshot,
   StoreSnapshotEntry,
+  SystemInfoInterface,
 } from '@noocodex/dagonizer/contracts';
 ```
 
@@ -145,7 +161,7 @@ Hook surface the dispatcher invokes at execution boundaries. Plugins (`@noocodex
 |---|---|
 | `flowStart` | Before the entrypoint node runs |
 | `flowEnd` | After the loop drains (terminal or interrupted) |
-| `nodeStart` | Before each node's `execute()` call, including placements inside parallel and scatter clones |
+| `nodeStart` | Before each node's `execute()` call, including placements inside scatter clones and embedded-DAG bodies |
 | `nodeEnd` | After the node's result is recorded; `output` is `string \| null` (`null` = no route emitted) |
 | `phaseEnter` | Before a pre or post phase placement runs |
 | `phaseExit` | After a pre or post phase placement runs |
@@ -295,6 +311,143 @@ import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '@noocod
 
 See [Reference: Store](./store#interface-remotestore) for the full interface and
 [Shared state](../guide/shared-state#distributed-execution--remotestore) for the authoring guide.
+
+## DagContainerInterface
+
+```ts
+interface DagContainerInterface<TState extends NodeStateInterface = NodeStateInterface> {
+  runDag(task: DagTaskInterface<TState, unknown>): Promise<DagOutcomeInterface>;
+  destroy?(): Promise<void>;
+}
+```
+
+Adapter contract for running an embedded DAG in an isolate (worker thread, forked child, spawned process, Web Worker). Bound to the dispatcher via `DagonizerOptionsInterface.containers` keyed by logical role name. An unbound role falls back to in-process and fires `onContractWarning`.
+
+`runDag` must never throw. Transport failures, host crashes, and serialization errors are returned as collected errors in `DagOutcomeInterface.errors` with `recoverable: false`. The `TServices` parameter on the task is unconstrained (`unknown`) so the interface stays decoupled from the dispatcher's services bag.
+
+`destroy()` is optional. Implement it to release pool resources when the dispatcher shuts down.
+
+## ChannelInterface
+
+```ts
+interface ChannelInterface {
+  publish(handoff: DAGHandoff): Promise<void>;
+  destroy?(): Promise<void>;
+}
+```
+
+Adapter contract for publishing completed-DAG hand-off envelopes to a downstream transport (queue, message bus, or loopback store). Bound via `DagonizerOptionsInterface.channels` keyed by terminal placement name. Implementations must not throw out of the dispatcher; any internal transport error is the implementation's responsibility. `InMemoryChannel` in `@noocodex/dagonizer/channels` is the reference implementation.
+
+## MessageChannelInterface
+
+```ts
+interface MessageChannelInterface {
+  send(message: BridgeMessage): void;
+  onMessage(handler: (message: BridgeMessage) => void): void;
+  close(): void;
+}
+```
+
+Duplex channel contract between a parent dispatcher and a `DagHost`. `send` is fire-and-forget (does not throw). `onMessage` registers the inbound handler (replaces any previous handler). `close` severs both directions; outstanding send calls are silently dropped. Implementations include `LoopbackChannel` (in-memory, for testing), `MessagePortChannel` (worker threads), `IpcChannel` (child process), and `NdjsonChannel` (stdio, polyglot hosts).
+
+## RegistryModuleInterface / RegistryBundleInterface
+
+```ts
+interface RegistryModuleInterface {
+  createBundle(servicesConfig: JsonObject): Promise<RegistryBundleInterface>;
+}
+
+interface RegistryBundleInterface {
+  readonly bundle:          DispatcherBundle<NodeStateInterface, unknown>;
+  readonly services:        unknown;
+  readonly registryVersion: string;
+  readonly restoreState:    StateRestoreFnType<NodeStateInterface>;
+  destroy?():               Promise<void>;
+}
+```
+
+`RegistryModuleInterface` is the default export shape of a registry module loaded by `DagHost` via dynamic import. `createBundle` receives the opaque `servicesConfig` JSON from the `init` message and returns a fully initialised `RegistryBundleInterface`.
+
+`RegistryBundleInterface` bundles the node+DAG registry (`bundle`), the locally constructed services bag (`services`), the semantic version for the init ↔ ready handshake (`registryVersion`), and the state restore factory (`restoreState`). Services never cross the isolate boundary — each isolate constructs its own via its registry module.
+
+## InstrumentationSink
+
+```ts
+interface InstrumentationSink {
+  onInstrumentation(msg: BridgeMessage & { kind: 'instrumentation' }): void;
+}
+```
+
+Adapter contract for receiving forwarded instrumentation messages inside `ChannelDispatch.request()`. `DagContainerBase` constructs one per-request and passes it to `ChannelDispatch.request()`.
+
+## DagOutcomeInterface
+
+```ts
+interface DagOutcomeInterface {
+  readonly terminalOutput: string;
+  readonly errors:         readonly NodeError[];
+  readonly stateSnapshot:  JsonObject | null;
+  readonly intermediates:  readonly ExecutorIntermediate[];
+}
+```
+
+Result returned by `DagContainerInterface.runDag()` after an embedded DAG completes in an isolate. `terminalOutput` is the routing output the child resolved to. `stateSnapshot` is the terminal child state snapshot (`null` when the container cannot produce one, e.g. transport failure); the parent calls `cloneState.applySnapshot(stateSnapshot)` when non-null. `intermediates` are per-node results forwarded to the parent execution stream.
+
+## DagTaskInterface
+
+```ts
+interface DagTaskInterface<TState extends NodeStateInterface = NodeStateInterface, TServices = undefined> {
+  readonly dagName:        string;
+  readonly placementPath:  readonly string[];
+  readonly correlationId:  string;
+  readonly timeoutMs:      number | null;
+  readonly state:          TState;
+  readonly context:        NodeContextInterface<TServices>;
+  toRequest(): ExecutionRequest;
+}
+```
+
+Engine-side descriptor of a contained DAG execution. Carries a live seeded child clone (`state`) for the in-process path. Isolating containers call `toRequest()` to snapshot the clone into a wire-safe `ExecutionRequest`. `correlationId` is a dispatcher-monotonic id (no randomness). `timeoutMs` is `null` when no budget applies.
+
+## SystemInfoInterface
+
+```ts
+interface SystemInfoInterface {
+  recommendedWorkerCount(config: RecommendedWorkerCountConfig): number;
+}
+```
+
+Host-environment probe for pool sizing recommendations. Implementations are environment-specific (Node `os.availableParallelism()` + `os.totalmem()`; Web `navigator.hardwareConcurrency`). The recommended count follows the quadrascope formula: `clamp(parallelism − mainThreadReservation, fallbackWorkerCount, maximumWorkers)`, optionally further clamped by `memoryPerWorkerBytes`.
+
+## GatherExecution / GatherRecord / OutcomeRecord
+
+These contracts ship through `@noocodex/dagonizer/contracts` for use by custom gather strategy and outcome reducer implementations. See [Reference: Core](./core) for the full authoring guide.
+
+```ts
+import type { GatherExecution, GatherRecord, OutcomeRecord } from '@noocodex/dagonizer/contracts';
+```
+
+`GatherRecord<TState>` carries per-clone results from the scatter loop: `index`, `item`, `output`, `terminalOutcome`, and `cloneState`. `GatherExecution<TState>` is the invocation context handed to `GatherStrategy.apply`: it provides `records`, the live parent `state`, the `accessor`, and `invokeNode` (used by the `custom` strategy). `OutcomeRecord` is the per-clone summary handed to `OutcomeReducer.reduce`: `index`, `output`, and `terminalOutcome`.
+
+## LlmAdapter / LlmClient
+
+```ts
+interface LlmAdapter {
+  readonly id:           string;
+  readonly displayName:  string;
+  readonly capabilities: AdapterCapabilities;
+  chat(request: ChatRequest): Promise<ChatResponse>;
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  probe(): Promise<boolean>;
+}
+
+interface LlmClient {
+  chat(request: ChatRequest): Promise<ChatResponse>;
+}
+```
+
+`LlmAdapter` is the transport contract every LLM provider adapter implements. Provider packages extend `BaseAdapter` from `@noocodex/dagonizer/adapter` to inherit retry and error classification. `LlmClient` is the minimal chat surface pattern bases accept — any `LlmAdapter` satisfies it. Pattern bases that need capability metadata (e.g. tool-call support) accept the full `LlmAdapter` directly.
 
 ## Related guides
 

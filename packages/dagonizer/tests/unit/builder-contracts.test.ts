@@ -72,7 +72,7 @@ void describe('DAGBuilder.build() contract validation', () => {
     new DAGBuilder('dead-write', '1.0')
       .node('a', a, { 'success': 'b' })
       .node('b', b, { 'success': null })
-      .build((msg) => { warnings.push(msg); });
+      .build({ 'onContractWarning': (msg) => { warnings.push(msg); } });
 
     const deadWarning = warnings.find((w) => w.includes("'dead'"));
     assert.ok(deadWarning !== undefined, `expected dead-write warning for 'dead'; got: ${JSON.stringify(warnings)}`);
@@ -106,12 +106,7 @@ void describe('DAGBuilder.fromNodes()', () => {
       makeNode('save',  ['success'], { 'hardRequired': ['record'], 'produces': ['saved'] }),
     ];
 
-    const fromBuilder = DAGBuilder.fromNodes({
-      'name': 'pipeline',
-      'version': '1.0',
-      'entrypoint': 'fetch',
-      nodes,
-    });
+    const fromBuilder = DAGBuilder.fromNodes('pipeline', '1.0', 'fetch', nodes);
 
     const fromDeriver = DAGDeriver.derive({
       'name': 'pipeline',
@@ -126,12 +121,7 @@ void describe('DAGBuilder.fromNodes()', () => {
 
   void it('throws a DAGError when nodes is empty (no contracts to derive from)', () => {
     assert.throws(
-      () => DAGBuilder.fromNodes({
-        'name': 'empty',
-        'version': '1',
-        'entrypoint': 'a',
-        'nodes': [],
-      }),
+      () => DAGBuilder.fromNodes('empty', '1', 'a', []),
       (err: unknown) => {
         assert.ok(err instanceof DAGError, `expected DAGError, got ${String(err)}`);
         return true;
@@ -147,12 +137,7 @@ void describe('DAGBuilder.fromNodes()', () => {
       makeNode('helper', ['success']),
     ];
 
-    const dag = DAGBuilder.fromNodes({
-      'name': 'skip-no-contract',
-      'version': '1',
-      'entrypoint': 'a',
-      nodes,
-    });
+    const dag = DAGBuilder.fromNodes('skip-no-contract', '1', 'a', nodes);
 
     const names = dag.nodes.map((n) => n.name);
     assert.ok(!names.includes('helper'), `'helper' should be skipped; got: ${JSON.stringify(names)}`);

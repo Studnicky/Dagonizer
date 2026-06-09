@@ -143,7 +143,7 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
         'gather':  { 'strategy': 'flat-merge-test' },
         'reducer': 'any-success',
       })
-      .terminal('end', 'completed')
+      .terminal('end', { 'outcome': 'completed' })
       .build();
 
     dispatcher.registerDAG(dag);
@@ -190,8 +190,8 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
         'gather':  { 'strategy': 'discard' },
         'reducer': 'any-success',
       })
-      .terminal('ok',   'completed')
-      .terminal('fail', 'failed')
+      .terminal('ok',   { 'outcome': 'completed' })
+      .terminal('fail', { 'outcome': 'failed' })
       .build();
 
     dispatcher.registerDAG(dag);
@@ -216,7 +216,7 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
         'gather':  { 'strategy': 'flat-merge-test' },
         'reducer': 'any-success',
       })
-      .terminal('end', 'completed')
+      .terminal('end', { 'outcome': 'completed' })
       .build();
 
     const scatterNode = dag.nodes.find((n) => n['@type'] === 'ScatterNode');

@@ -5,7 +5,8 @@
  * An edge `A → B` exists iff some path in `A.produces` appears in
  * `B.hardRequired`. The dispatcher executes operations in topological
  * order; operations sharing a depth (no remaining unsatisfied
- * prerequisites) are wrapped in a `parallel` placement.
+ * prerequisites) are emitted as sequential `SingleNode` placements in
+ * bucket order.
  *
  * Two pieces of routing the data graph cannot express:
  *
@@ -116,7 +117,7 @@ export class DAGDeriver {
     // registration time: surface drift before the DAG is even built. Pass
     // entrypoint so the entrypoint's hardRequired (external initial state) are
     // not flagged as dangling reads.
-    ContractRegistryValidator.validate(contracts, (_msg) => { /* warnings surfaced at registerDAG time */ }, opts.entrypoint);
+    ContractRegistryValidator.validate(contracts, (_msg) => { /* warnings surfaced at registerDAG time */ }, { 'entrypointName': opts.entrypoint });
 
     // Operations referenced only as a gather step (the `customNode`
     // for a 'custom' strategy scatter) are emitted alongside the
@@ -215,7 +216,8 @@ export class DAGDeriver {
   /**
    * Topological sort by depth: every operation appears at the depth equal
    * to the longest path from a root. Operations sharing a depth become a
-   * single bucket and are wrapped in a `parallel` placement.
+   * single bucket, emitted as sequential `SingleNode` placements in
+   * bucket order.
    */
   static depthBuckets(
     contracts: readonly OperationContract[],

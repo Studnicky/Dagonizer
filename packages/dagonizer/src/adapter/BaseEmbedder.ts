@@ -77,7 +77,8 @@ export abstract class BaseEmbedder implements Embedder {
     return Promise.resolve(true);
   }
 
-  async embed(text: string): Promise<readonly number[]> {
+  async embed(text: string, options?: { signal?: AbortSignal }): Promise<readonly number[]> {
+    const runOptions = options?.signal !== undefined ? { 'signal': options.signal } : {};
     return this.#retry.run(async () => {
       try {
         return await this.performEmbed(text);
@@ -90,14 +91,14 @@ export abstract class BaseEmbedder implements Embedder {
             throw new LlmError(
               `quota exhausted; retry-after ${String(c.retryAfterMs)}ms exceeds ${String(MAX_QUOTA_WAIT_MS)}ms cap`,
               { ...c, 'retryable': false },
-              rawError,
+              { 'cause': rawError },
             );
           }
           throw rawError;
         }
-        throw new LlmError(LlmError.messageFrom(rawError), this.classify(rawError), rawError);
+        throw new LlmError(LlmError.messageFrom(rawError), this.classify(rawError), { 'cause': rawError });
       }
-    });
+    }, runOptions);
   }
 
   /**
@@ -105,10 +106,10 @@ export abstract class BaseEmbedder implements Embedder {
    * provider exposes a native batch endpoint override and post one
    * request for the whole batch.
    */
-  async embedBatch(texts: readonly string[]): Promise<readonly (readonly number[])[]> {
+  async embedBatch(texts: readonly string[], options?: { signal?: AbortSignal }): Promise<readonly (readonly number[])[]> {
     const results: (readonly number[])[] = [];
     for (const t of texts) {
-      results.push(await this.embed(t));
+      results.push(await this.embed(t, options));
     }
     return results;
   }

@@ -41,7 +41,7 @@ export const Classifications: Readonly<Record<LlmErrorReason, ErrorClassificatio
   'QUOTA_EXHAUSTED':      { 'reason': 'QUOTA_EXHAUSTED',      'retryable': true  },
   'CREDIT_EXHAUSTED':     { 'reason': 'CREDIT_EXHAUSTED',     'retryable': false },
   'TIMEOUT':              { 'reason': 'TIMEOUT',              'retryable': true  },
-  'SCHEMA_VIOLATION':     { 'reason': 'SCHEMA_VIOLATION',     'retryable': true  },
+  'SCHEMA_VIOLATION':     { 'reason': 'SCHEMA_VIOLATION',     'retryable': false },
   'NETWORK':              { 'reason': 'NETWORK',              'retryable': true  },
   'CONFIGURATION':        { 'reason': 'CONFIGURATION',        'retryable': false },
   'NO_ADAPTER_AVAILABLE': { 'reason': 'NO_ADAPTER_AVAILABLE', 'retryable': false },
@@ -51,8 +51,8 @@ export const Classifications: Readonly<Record<LlmErrorReason, ErrorClassificatio
 export class LlmError extends Error {
   readonly classification: ErrorClassification;
 
-  constructor(message: string, classification: ErrorClassification, cause?: unknown) {
-    super(message, cause !== undefined ? { cause } : undefined);
+  constructor(message: string, classification: ErrorClassification, options?: { cause?: unknown }) {
+    super(message, options?.cause !== undefined ? { 'cause': options.cause } : undefined);
     this.name = 'LlmError';
     this.classification = classification;
   }
@@ -62,13 +62,14 @@ export class LlmError extends Error {
    * adapters can lean on this and only override the cases their wire
    * format complicates.
    */
-  static classifyHttp(status: number, body?: string): ErrorClassification {
+  static classifyHttp(status: number, options?: { body?: string }): ErrorClassification {
     if (status === 401 || status === 403) return Classifications['AUTH_FAILED'];
     if (status === 404) return Classifications['MODEL_NOT_FOUND'];
     if (status === 402) return Classifications['CREDIT_EXHAUSTED'];
     if (status === 408 || status === 504) return Classifications['TIMEOUT'];
     if (status === 422) return Classifications['SCHEMA_VIOLATION'];
     if (status === 429) {
+      const body = options?.body;
       const retryAfter = body !== undefined ? LlmError.#extractRetryAfterSeconds(body) : undefined;
       if (retryAfter !== undefined) {
         return { 'reason': 'QUOTA_EXHAUSTED', 'retryable': true, 'retryAfterMs': retryAfter * 1000 };
@@ -82,7 +83,7 @@ export class LlmError extends Error {
   /** Wrap a `fetch()` rejection in an `LlmError` with NETWORK classification. */
   static fromNetworkError(err: unknown): LlmError {
     const message = err instanceof Error ? err.message : String(err);
-    return new LlmError(`network: ${message}`, Classifications['NETWORK'], err);
+    return new LlmError(`network: ${message}`, Classifications['NETWORK'], { 'cause': err });
   }
 
   /** Extract a human-readable message from any thrown value. */

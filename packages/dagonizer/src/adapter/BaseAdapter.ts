@@ -93,14 +93,14 @@ export abstract class BaseAdapter implements LlmAdapter {
           throw new LlmError(
             `quota exhausted; retry-after ${String(classification.retryAfterMs)}ms exceeds ${String(MAX_QUOTA_WAIT_MS)}ms cap`,
             { ...classification, 'retryable': false },
-            rawError,
+            { 'cause': rawError },
           );
         }
         // Rethrow as LlmError; RetryableErrorPolicy retries only when the
         // classification is retryable.
-        throw new LlmError(LlmError.messageFrom(rawError), classification, rawError);
+        throw new LlmError(LlmError.messageFrom(rawError), classification, { 'cause': rawError });
       }
-    }, request.signal);
+    }, { 'signal': request.signal });
   }
 
   /** Concrete adapter: perform the actual API call. */

@@ -25,7 +25,7 @@ export const ExecutionResultSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/ExecutionResult',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['cursor', 'executedNodes', 'skippedNodes', 'state', 'interruptedAt'],
+  'required': ['cursor', 'executedNodes', 'skippedNodes', 'state', 'interruptedAt', 'terminalOutcome'],
   'properties': {
     'cursor': { 'type': ['string', 'null'] },
     'executedNodes': { 'type': 'array', 'items': { 'type': 'string' } },

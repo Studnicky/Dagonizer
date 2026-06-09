@@ -111,8 +111,10 @@ export class RoleColorUtils {
   static forRole(role: string): RoleColors {
     const idx = RoleColorUtils.hashToPaletteIndex(role);
     const entry = RoleColorUtils.PALETTE[idx];
-    // PALETTE is a compile-time constant with 8 entries; idx is always 0–7.
-    const [fill, stroke] = entry as [string, string];
+    // PALETTE is a compile-time constant with 8 entries; hashToPaletteIndex
+    // returns idx via unsigned modulo of PALETTE.length, so idx is always 0–7.
+    if (entry === undefined) throw new Error(`RoleColorUtils: palette index ${idx} out of range`);
+    const [fill, stroke] = entry;
     return { fill, stroke, "text": RoleColorUtils.TEXT };
   }
 }

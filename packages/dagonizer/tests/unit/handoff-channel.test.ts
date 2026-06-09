@@ -35,8 +35,8 @@ import { Validator } from '../../src/validation/Validator.js';
 class HandoffState extends NodeStateBase {
   counter = 0;
 
-  override clone(): HandoffState {
-    const cloned = new HandoffState();
+  override clone(): this {
+    const cloned = new (this.constructor as new () => this)();
     cloned.counter = this.counter;
     return cloned;
   }

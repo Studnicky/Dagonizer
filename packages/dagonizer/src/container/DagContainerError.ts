@@ -9,8 +9,8 @@
 import { DAGError } from '../errors/DAGError.js';
 
 export class DagContainerError extends DAGError {
-  constructor(message: string, context?: Record<string, unknown>, options?: ErrorOptions) {
-    super(message, 'DAG_CONTAINER_ERROR', context, options);
+  constructor(message: string, options: { context?: Record<string, unknown>; cause?: Error } = {}) {
+    super(message, { ...options, "code": 'DAG_CONTAINER_ERROR' });
     this.name = 'DagContainerError';
   }
 }

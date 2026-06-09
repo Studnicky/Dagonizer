@@ -15,7 +15,7 @@ import { StoreError } from '../../src/store/StoreError.js';
 class PassThroughStore extends BaseStore {
   readonly #backing: Record<string, JsonValue>;
 
-  constructor(backing: Record<string, JsonValue>, options: BaseStoreOptions = {}) {
+  constructor(backing: Record<string, JsonValue>, options: BaseStoreOptions = { 'namespace': '' }) {
     super(options);
     this.#backing = backing;
   }

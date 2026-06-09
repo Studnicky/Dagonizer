@@ -58,6 +58,11 @@ export interface NodeOutputInterface<TOutput extends string = string>
    * Optional errors to collect in state.
    * Errors are accumulated, not thrown.
    * At flow completion, caller decides what to do with collected errors.
+   *
+   * Kept optional on this author-facing interface: the engine normalises
+   * absent `errors` to `[]` at the node-return boundary, so internal
+   * handling never null-checks the field. Node authors omit it when
+   * there are no errors to report; the engine supplies the default.
    */
   'errors'?: NodeErrorInterface[];
 

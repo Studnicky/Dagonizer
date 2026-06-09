@@ -41,10 +41,8 @@ export type TerminalNode = FromSchema<typeof TerminalNodeSchema>;
  * Unlike every other placement kind, TerminalNode carries no `outputs` map:
  * the engine captures `outcome` from the placement and calls
  * `state.markCompleted()` or `state.markFailed(...)` on exit.
+ *
+ * This is a type alias for the schema-derived `TerminalNode` type.
+ * The alias is retained for API compatibility; prefer `TerminalNode` directly.
  */
-export interface TerminalNodePlacementInterface {
-  readonly '@id': string;
-  readonly '@type': 'TerminalNode';
-  readonly name: string;
-  readonly outcome: 'completed' | 'failed';
-}
+export type TerminalNodePlacementInterface = TerminalNode;

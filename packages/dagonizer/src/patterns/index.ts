@@ -19,7 +19,7 @@
 
 export { MonadicNode } from './MonadicNode.js';
 
-export type { LlmClient } from './LlmClient.js';
+export type { LlmClient } from '../contracts/LlmClient.js';
 
 export type {
   Binding,
@@ -27,4 +27,4 @@ export type {
   SlotPattern,
   Term,
   TripleStore,
-} from './TripleStore.js';
+} from '../contracts/TripleStore.js';

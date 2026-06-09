@@ -40,7 +40,13 @@ export class InMemoryChannel implements ChannelInterface {
   async publish(handoff: DAGHandoff): Promise<void> {
     const clone = structuredClone(handoff) as DAGHandoff;
     this._published.push(clone);
-    await this.onPublished(clone);
+    try {
+      await this.onPublished(clone);
+    } catch {
+      // Subclass override errors must not corrupt channel state.
+      // The envelope is already recorded; swallow the override failure
+      // so publish() remains side-effect-safe for the dispatcher.
+    }
   }
 
   /**
@@ -48,6 +54,11 @@ export class InMemoryChannel implements ChannelInterface {
    * override to chain a downstream DAG: restore `handoff` state and call the
    * downstream dispatcher's `execute`. Receives the deep-cloned, stored
    * envelope (the same instance returned from `published`).
+   *
+   * Errors thrown from this hook are swallowed by `publish()`; the envelope
+   * is already appended to `published` before the hook fires. Override errors
+   * should be collected internally and surfaced through an observable property
+   * rather than re-thrown.
    */
   protected async onPublished(_handoff: DAGHandoff): Promise<void> { /* override */ }
 }

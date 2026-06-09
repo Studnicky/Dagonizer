@@ -25,9 +25,9 @@
  * DAG definitions: examples/dags/04-scatter.ts (reused), this file's dags block.
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
-import { DAG_CONTEXT } from '@noocodex/dagonizer';
+import { Dagonizer, DAG_CONTEXT } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
+import { GatherStrategyName } from '@noocodex/dagonizer/constants';
 
 import { ScrapeState, probe } from './dags/04-scatter.js';
 
@@ -84,7 +84,7 @@ const scrapeWithContainerDag: DAG = {
       // container: 'io',                        // ← uncomment + bind WorkerThreadContainer
       //                                         //   to route each item to a worker thread
       "gather": {
-        "strategy":   'partition',
+        "strategy":   GatherStrategyName.PARTITION,
         "partitions": { "ok": 'succeeded', "fail": 'failed' },
       },
       "outputs": { 'all-success': 'end', "partial": 'end', 'all-error': 'end', "empty": 'end' },

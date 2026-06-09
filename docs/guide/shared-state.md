@@ -299,7 +299,7 @@ await dispatcher.resume(dagName, restored, cursor);
 - **Incompatible snapshot**: `BaseStore.restore` throws `StoreError(INCOMPATIBLE_SNAPSHOT)` when `snapshot.type` or `snapshot.version` does not match the store instance's `snapshotType` or `snapshotVersion`. Schema migration is the plugin author's responsibility; `snapshotVersion` is the hook.
 - **Extra stores in restore map**: stores present in the map but absent from the checkpoint are a no-op. The consumer added a store that was not tracked at capture time; the engine accepts this silently.
 
-`CheckpointData.stores` is required in the schema. Checkpoints produced before stores support was added do not load.
+`CheckpointData.stores` is required in the schema. Any checkpoint payload lacking the field is rejected by `Checkpoint.load`.
 
 ## Distributed execution: `RemoteStore`
 

@@ -21,8 +21,10 @@ import {
   DAG_CONTEXT,
   NodeStateBase,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface } from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
+import { GatherStrategyName } from '@noocodex/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
 // State
@@ -130,7 +132,7 @@ export const dag: DAG = {
       "concurrency":  2,                           // run up to 2 items concurrently
       "container":    'cpu',                       // route each item through the worker container
       "gather": {
-        "strategy":   'append',                    // collect results into a state array
+        "strategy":   GatherStrategyName.APPEND,     // collect results into a state array
         "field":      'lastResult',                // scalar field on child state (per item)
         "target":     'results',                   // target array on parent state
       },

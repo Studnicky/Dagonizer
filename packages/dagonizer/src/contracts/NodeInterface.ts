@@ -44,6 +44,11 @@ export interface NodeInterface<
    * Omitting this field (or setting it to `undefined`) leaves the node
    * subject only to the run-level `deadlineMs` / `signal` from
    * `ExecuteOptionsInterface`.
+   *
+   * This field is intentionally optional on the contract (external boundary:
+   * consumer-implemented nodes are not required to carry a default). The
+   * concrete `MonadicNode` base class declares `timeoutMs: number = 0` for
+   * V8 hidden-class stability; the engine uses `(node.timeoutMs ?? 0) > 0`.
    */
   readonly 'timeoutMs'?: number;
 

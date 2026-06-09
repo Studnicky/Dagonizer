@@ -62,7 +62,7 @@ interface DAGDeriverOptions {
 
 Each port in `node.outputs` routes to the first successor at the next depth; `annotations.terminals` overrides individual ports. Operations at the same topological depth that need concurrent execution are expressed via `annotations.scatters` (scatter over a descriptor source with a dispatching body). When `annotations.scatters.<name>.strategy === 'custom'`, the referenced `customNode` is emitted as a registered single-node placement alongside the scatter so the dispatcher's `custom` gather strategy can resolve it.
 
-Throws `DAGError` when no node carries a `contract` field, when a terminal references a port outside the node's `outputs`, when two `emit` entries share a name but declare conflicting `outcome` values, when an `emit.name` collides with an existing operation name, when a partition outcome isn't in `outcomes`, when a parallel member appears in multiple groups, or when an operation appears in more than one of `scatters` / `embeddedDAGs` / `parallels`.
+Throws `DAGError` when no node carries a `contract` field, when a terminal references a port outside the node's `outputs`, when two `emit` entries share a name but declare conflicting `outcome` values, when an `emit.name` collides with an existing operation name, when a partition outcome isn't in `outcomes`, or when an operation appears in more than one of `scatters` / `embeddedDAGs`.
 
 ### `extractContracts(nodes)`
 
@@ -74,7 +74,7 @@ Adjacency map. An entry `A → B` exists iff some path in `A.produces` appears i
 
 ### `depthBuckets(contracts, edges)`
 
-Topological depth buckets. Operations sharing a depth share a bucket. Same data the renderer uses to decide which placements to wrap in a `parallel`.
+Topological depth buckets. Operations sharing a depth share a bucket. Useful for tooling that needs to inspect which operations are topologically concurrent before or after derivation.
 
 ---
 

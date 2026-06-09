@@ -86,7 +86,7 @@ Generate-collect pattern (one clone per source-array item):
 | `@id` | `string` | yes | Placement URN |
 | `@type` | `'ScatterNode'` | yes | Discriminator |
 | `name` | `string` | yes | Placement name |
-| `body` | `{ node: string }` | yes | Body: registered node name |
+| `body` | `{ node: string } \| { dag: string }` | yes | Body: `{ node }` dispatches one registered node per clone; `{ dag }` runs a full registered sub-DAG per clone (supports the `container` key for isolate dispatch). |
 | `outputs` | `Record<string, string \| null>` | yes | Routes for the reduced outcome |
 | `source` | `string` | yes | Dotted state-array path. One clone runs per item. |
 | `itemKey` | `string` | no | Metadata key bound to the current item per clone (default `'currentItem'`). |
@@ -94,6 +94,7 @@ Generate-collect pattern (one clone per source-array item):
 | `stateMapping` | `{ input?: Record<childKey, parentPath> }` | no | Seeds each clone: `input` copies parent fields into the clone before the body runs. Authored via the `inputs` builder option. |
 | `gather` | `GatherConfig` | **yes** | How produced clone state merges back into the parent. Use `{ strategy: 'discard' }` for side-effect-only fan-outs. |
 | `reducer` | `string` | no | Outcome reducer name. Defaults to `'aggregate'`. Built-in: `'aggregate'`, `'terminal'`, `'all-success'`, `'any-success'`. Custom reducers registered via `OutcomeReducers.register` are referenceable by name. |
+| `container` | `string` | no | Logical container role name for `{ dag }` bodies only. Bound at construction via `DagonizerOptionsInterface.containers`. An unbound role falls back to in-process and fires `onContractWarning`. Setting `container` on a `{ node }` body is a validation error. |
 
 `GatherConfig` is documented under [Gather configuration](#gather-configuration) below.
 

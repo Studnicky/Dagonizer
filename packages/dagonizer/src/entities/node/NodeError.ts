@@ -34,5 +34,13 @@ export type NodeError = FromSchema<typeof NodeErrorSchema>;
  * `Record<string, unknown>` for ergonomic access in TypeScript consumers.
  */
 export interface NodeErrorInterface extends Omit<NodeError, 'context'> {
+  /**
+   * Optional context bag for this error.
+   *
+   * Kept optional on this author-facing interface: `NodeStateBase.collectError`
+   * defaults absent `context` to `{}` before storing the error, so the engine
+   * never null-checks this field internally. Node authors omit it when there
+   * is no additional diagnostic data to attach.
+   */
   'context'?: Record<string, unknown>;
 }

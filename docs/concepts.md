@@ -42,10 +42,9 @@ The Archivist DAG has roughly ten placements covering classify, scout scatter, c
 
 A **placement** is one vertex in the DAG. Each placement has a name, a `@type` discriminator that selects the kind, and an `outputs` map that routes named outputs to the next placement (or `null` to end the path).
 
-Six kinds:
+Five kinds:
 
 - **`single`**: one registered node. The node returns one output name; the dispatcher follows the corresponding route.
-- **`parallel`**: a set of previously declared single placements that run concurrently via `Promise.all`. A combine strategy (`all-success`, `any-success`, `collect`) reduces individual outputs to one aggregate output.
 - **`scatter`**: isolates one state clone per item in a source array, runs a node body in each clone, merges produced clone state back into the parent via a `gather` config, and routes on the aggregate outcome via a `reducer`. This is the fork (generate-collect) pattern; a `ScatterNode` is always 1→N over a required `source`.
 - **`embedded`**: invokes a registered sub-DAG exactly once (cardinality 1) in an isolated state, then routes the parent on the child's terminal outcome (`success` or `error`). Optional `stateMapping` seeds the child from the parent before it runs and copies fields back after it completes. The Archivist's sub-DAG compositions are `EmbeddedDAGNode` placements.
 - **`terminal`**: named end state for explicit completion or failure. Use when a flow has more than one "done" semantics (for example, `accepted` versus `rejected`).
@@ -56,11 +55,10 @@ Six kinds:
 | Need | Kind |
 |------|------|
 | Sequential steps with conditional branching | `single` |
-| Multiple independent fetches that must all finish before proceeding | `parallel` |
 | Process every item in a collection, then aggregate | `scatter` |
 | Invoke a registered sub-DAG exactly once and route on its outcome | `embedded` |
 | Distinguish multiple terminal semantics | `terminal` |
-| Tag a stretch of nodes for telemetry | `phase` |
+| Attach a pre- or post-run lifecycle hook to the DAG | `phase` |
 
 ## State
 
@@ -161,6 +159,18 @@ gather: { strategy: 'append', target: 'results' }
 
 ```ts
 gather: { strategy: 'partition', partitions: { success: 'passed', error: 'failed' } }
+```
+
+**`collect`** requires `target` (dotted path) and an optional `field`. Collects each clone's output token (or `field` value when specified) into `target` in source-index order. Unlike `append`, `collect` preserves positional correspondence between source items and their collected values.
+
+```ts
+gather: { strategy: 'collect', target: 'outputTokens' }
+```
+
+**`discard`** is a no-op merge. Clones run for side-effects only; no clone state flows back to the parent. Use when the body node writes to an external store and the parent state needs no update.
+
+```ts
+gather: { strategy: 'discard' }
 ```
 
 **`custom`** requires `customNode: string`. The dispatcher stages the per-clone records under `state.metadata.gatherResults` and dispatches the named registered node. The Archivist's `mergeCandidates` node uses `custom` to deduplicate scout results by canonical book id.

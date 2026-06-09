@@ -57,7 +57,7 @@ Every output route renders as a labeled directed edge: `from -->|outcome| to`. R
 
 ### Containment coloring
 
-Placements with a non-empty `container` role receive the Mermaid `contained` class (amber-orange fill, `#f59e0b`) via a `classDef contained` rule appended to the flowchart. The `@type`-derived shape is unchanged — only the color dimension signals containment. In-process placements receive no class. The `classDef` is omitted entirely when no contained placement exists.
+Placements with a non-empty `container` role each receive a per-role Mermaid class (`contained-<role>`) whose fill and stroke come from `RoleColorUtils.forRole`. One `classDef contained-<role>` rule is emitted per distinct role that appears in the DAG, so two different roles produce two distinct fill/stroke colors. The `@type`-derived shape is unchanged — only the color dimension signals containment. In-process placements receive no class. `classDef` rules are omitted entirely when no contained placement exists.
 
 ### Example
 
@@ -188,18 +188,18 @@ Returns the `cytoscape.Core` after a successful `mount()`, or `null` if the grap
 
 | Hook | Signature | Purpose |
 |------|-----------|---------|
-| `buildElements` | `(dag: DAG, options: CytoscapeGraphOptions) => readonly CytoscapeElement[]` | Override to customize element construction. Default calls `CytoscapeRenderer.render`. |
-| `stylesheet` | `() => cytoscape.Stylesheet[]` | Override to supply a custom stylesheet. |
-| `presetLayout` | `(elements: readonly CytoscapeElement[]) => cytoscape.LayoutOptions` | Override to supply a preset (position-based) layout when positions are already computed. |
-| `interactionDefaults` | `() => cytoscape.CytoscapeOptions` | Override to customize pan/zoom/interaction defaults. |
-| `layoutRegistry` | `() => Record<string, cytoscape.LayoutOptions>` | Override to register named layout configurations. |
-| `applyLayout` | `(cy: cytoscape.Core) => Promise<void>` | Override to customize the layout application step. |
-| `enforceVisibility` | `(cy: cytoscape.Core) => void` | Override to enforce node/edge visibility rules after layout. |
-| `onReady` | `(cy: cytoscape.Core) => void` | Called after layout is applied. Override to attach event listeners or run post-mount logic. |
+| `buildElements` | `() => ReadonlyArray<cytoscape.ElementDefinition>` | Override to customize element construction. Default delegates to `CytoscapeRenderer.render`. |
+| `stylesheet` | `() => cytoscape.StylesheetStyle[]` | Override to supply a custom stylesheet. |
+| `presetLayout` | `() => cytoscape.PresetLayoutOptions` | Override to change the preset layout options passed to cytoscape. Default uses `preset` with `fit: true, padding: 60`. |
+| `interactionDefaults` | `() => Record<string, unknown>` | Override to customize pan/zoom/interaction defaults spread into the cytoscape constructor. |
+| `layoutRegistry` | `() => ReadonlyMap<string, DAG>` | Override to return the embedded-DAG subset used for layout. Default returns the full `embeddedDAGs` passed at construction. |
+| `applyLayout` | `(elements: ReadonlyArray<cytoscape.ElementDefinition>) => Promise<cytoscape.ElementDefinition[]>` | Override to customize the layout application step. Default calls `CompositeLayout.compute` and attaches positions to each node element. |
+| `enforceVisibility` | `(cy: cytoscape.Core) => void` | Override to replace the self-loop size-cache flush strategy. Default toggles `display` off then on in two `cy.batch()` calls. |
+| `onReady` | `(cy: cytoscape.Core) => void` | Called after mount and visibility sweep complete. Override to wire animation machines or event listeners. Default is a no-op. |
 
 ### Example: subclassing for doc animations
 
-The doc site's `AnimatedDagGraph` extends `CytoscapeGraph` and overrides `onReady` to attach execution-trace animation:
+The Archivist example's `ArchivistGraph` extends `CytoscapeGraph` and overrides `onReady` to attach execution-trace animation:
 
 ```ts
 <<< @/../examples/the-archivist/viz/ArchivistGraph.ts#cytoscape-graph-subclass
@@ -219,9 +219,8 @@ class CytoscapeRenderer {
 
 Renders a `DAG` as a Cytoscape elements array.
 
-- Every placement becomes a node element with a `type` field (`'single'` | `'parallel'` | `'scatter'` | `'embedded-dag'` | `'terminal'`) for per-type stylesheet selectors.
+- Every placement becomes a node element with a `type` field (`'single'` | `'scatter'` | `'embedded-dag'` | `'terminal'` | `'phase'`) for per-type stylesheet selectors.
 - Every output route becomes a labeled edge element.
-- Parallel children render with `parent: <parallelPlacementName>` for compound-graph rendering.
 - Embedded-DAG placements are expanded inline when their target DAG is supplied via `options.embeddedDAGs`, showing the full inner flow as a compound cluster.
 - Routes to `null` become edges to a synthetic `END` terminal node.
 
@@ -261,7 +260,10 @@ interface CytoscapeNodeElement {
     readonly id: string;
     readonly label: string;
     readonly type: 'single' | 'scatter' | 'embedded-dag' | 'terminal' | 'phase';
-    readonly container?: string;  // container role; present only on contained placements
+    readonly container?: string;         // container role; present only on contained placements
+    readonly containerColor?: string;    // per-role fill; present only on contained placements
+    readonly containerStroke?: string;   // per-role border; present only on contained placements
+    readonly containerText?: string;     // per-role label color; present only on contained placements
     readonly [key: string]: unknown;
   };
   readonly classes?: string;
@@ -283,16 +285,41 @@ interface CytoscapeEdgeElement {
 
 ## CompositeLayout
 
-Static class that computes positions for a Cytoscape element array using `@dagrejs/dagre`. `compute` is async: it lazy-loads dagre and applies the layout, then returns a `LayoutResult` with positioned elements.
+Static class that computes node positions for a `DAG` using `@dagrejs/dagre`. `compute` is async: it lazy-loads dagre, recursively lays out embedded-DAG sub-graphs bottom-up, and returns a `LayoutResult` with a position map and bounding-box dimensions.
 
 ```ts
 import { CompositeLayout } from '@noocodex/dagonizer/viz';
 
-const result = await CompositeLayout.compute(elements, options?);
-// result.elements: readonly CytoscapeElement[] with positions set
+const result = await CompositeLayout.compute(dag, embeddedDAGs?, options?);
+// result.positions: ReadonlyMap<string, { x: number; y: number }>
+// result.width:     number  (total bounding-box width)
+// result.height:    number  (total bounding-box height)
 ```
 
-`CytoscapeGraph.mount()` calls `CompositeLayout.compute` internally; direct use is for consumers managing their own cytoscape instances outside the factory.
+`CytoscapeGraph.mount()` calls `CompositeLayout.compute` internally via `applyLayout`; direct use is for consumers managing their own cytoscape instances outside the factory.
+
+```ts
+static async compute(
+  dag:          DAG,
+  embeddedDAGs: ReadonlyMap<string, DAG> = new Map(),
+  options:      CompositeLayoutOptions   = {},
+): Promise<LayoutResult>
+```
+
+`LayoutResult`:
+
+```ts
+interface LayoutResult {
+  readonly positions: ReadonlyMap<string, NodePosition>;
+  readonly width:     number;
+  readonly height:    number;
+}
+
+interface NodePosition {
+  readonly x: number;
+  readonly y: number;
+}
+```
 
 ---
 

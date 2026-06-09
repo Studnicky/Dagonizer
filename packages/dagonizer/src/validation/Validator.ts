@@ -17,24 +17,42 @@ import type { ErrorObject, ValidateFunction } from 'ajv';
 
 import { CheckpointDataSchema } from '../entities/checkpoint/CheckpointData.js';
 import type { CheckpointData } from '../entities/checkpoint/CheckpointData.js';
-import { DAGSchema } from '../entities/dag/DAG.js';
+import { GatherStrategySchema } from '../entities/constants/GatherStrategy.js';
+import type { GatherStrategyName } from '../entities/constants/GatherStrategy.js';
+import { MetadataKeySchema } from '../entities/constants/MetadataKey.js';
+import type { MetadataKey } from '../entities/constants/MetadataKey.js';
+import { NodeTypeSchema } from '../entities/constants/NodeType.js';
+import type { NodeType } from '../entities/constants/NodeType.js';
+import { OutputSchema } from '../entities/constants/Output.js';
+import type { Output } from '../entities/constants/Output.js';
+import { ScatterOutputSchema } from '../entities/constants/ScatterOutput.js';
+import type { ScatterOutput } from '../entities/constants/ScatterOutput.js';
 import type { DAG } from '../entities/dag/DAG.js';
-import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
+import { DAGSchema } from '../entities/dag/DAG.js';
 import { EmbeddedDAGNodeSchema } from '../entities/dag/EmbeddedDAGNode.js';
-import { PhaseNodeSchema } from '../entities/dag/PhaseNode.js';
+import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import type { PhaseNode } from '../entities/dag/PhaseNode.js';
-import type { ScatterNode } from '../entities/dag/ScatterNode.js';
+import { PhaseNodeSchema } from '../entities/dag/PhaseNode.js';
 import { ScatterNodeSchema } from '../entities/dag/ScatterNode.js';
-import { SingleNodeSchema } from '../entities/dag/SingleNode.js';
+import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNode } from '../entities/dag/SingleNode.js';
-import { TerminalNodeSchema } from '../entities/dag/TerminalNode.js';
+import { SingleNodeSchema } from '../entities/dag/SingleNode.js';
 import type { TerminalNode } from '../entities/dag/TerminalNode.js';
+import { TerminalNodeSchema } from '../entities/dag/TerminalNode.js';
 import { DAGErrorJSONSchema } from '../entities/errors/DAGErrorJSON.js';
 import type { DAGErrorJSON } from '../entities/errors/DAGErrorJSON.js';
 import { ExecutionResultSchema } from '../entities/execution/ExecutionResult.js';
 import type { ExecutionResult } from '../entities/execution/ExecutionResult.js';
 import type { BridgeMessage } from '../entities/executor/BridgeMessage.js';
 import { BridgeMessageSchema } from '../entities/executor/BridgeMessage.js';
+import { ExecutionRequestSchema } from '../entities/executor/ExecutionRequest.js';
+import type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js';
+import { ExecutionResponseSchema } from '../entities/executor/ExecutionResponse.js';
+import type { ExecutionResponse } from '../entities/executor/ExecutionResponse.js';
+import { ExecutorIntermediateSchema } from '../entities/executor/ExecutorIntermediate.js';
+import type { ExecutorIntermediate } from '../entities/executor/ExecutorIntermediate.js';
+import { RecommendedWorkerCountConfigSchema } from '../entities/executor/RecommendedWorkerCountConfig.js';
+import type { RecommendedWorkerCountConfig } from '../entities/executor/RecommendedWorkerCountConfig.js';
 import type { DAGHandoff } from '../entities/handoff/DAGHandoff.js';
 import { DAGHandoffSchema } from '../entities/handoff/DAGHandoff.js';
 import { NodeSchema } from '../entities/node/Node.js';
@@ -51,6 +69,20 @@ import { NodeStateDataSchema } from '../entities/node/NodeStateData.js';
 import type { NodeStateData } from '../entities/node/NodeStateData.js';
 import { NodeWarningSchema } from '../entities/node/NodeWarning.js';
 import type { NodeWarning } from '../entities/node/NodeWarning.js';
+import type { BackoffStrategyValue } from '../entities/runtime/BackoffStrategy.js';
+import { BackoffStrategySchema } from '../entities/runtime/BackoffStrategy.js';
+import type {
+  ScatterAckedResult,
+  ScatterInboxItem,
+  ScatterProgress,
+  StoredScatterProgress,
+} from '../entities/scatter/ScatterProgress.js';
+import {
+  ScatterAckedResultSchema,
+  ScatterInboxItemSchema,
+  ScatterProgressSchema,
+  StoredScatterProgressSchema,
+} from '../entities/scatter/ScatterProgress.js';
 import { DAGLifecycleStateSchema } from '../entities/state-machines/DAGLifecycleState.js';
 import type { DAGLifecycleStateData } from '../entities/state-machines/DAGLifecycleState.js';
 import { ValidationResultSchema } from '../entities/validation/ValidationResult.js';
@@ -100,7 +132,10 @@ export class Validator {
     const id = schema.$id;
     let compiled: ValidateFunction | undefined;
     if (id !== undefined) {
-      compiled = sharedAjv.getSchema(id) as ValidateFunction | undefined;
+      const cached = sharedAjv.getSchema(id);
+      if (typeof cached === 'function') {
+        compiled = cached as ValidateFunction;
+      }
     }
     if (compiled === undefined) {
       compiled = sharedAjv.compile(schema);
@@ -112,10 +147,10 @@ export class Validator {
       },
       validate(value): T {
         if (validator(value) === true) return value as T;
-        const ajvErrors = validator.errors ?? [];
+        const ajvErrors: readonly ErrorObject[] = validator.errors ?? [];
         throw new ValidationError(
           `Invalid ${name}:\n  - ${Validator.formatErrors(ajvErrors).join('\n  - ')}`,
-          { 'ajvErrors': ajvErrors as unknown as Record<string, unknown> },
+          { 'context': { ajvErrors } },
         );
       },
       errors(value): string[] | null {
@@ -156,4 +191,24 @@ export class Validator {
 
   // Hand-off channels
   static readonly dagHandoff: EntityValidator<DAGHandoff> = Validator.compile('DAGHandoff', DAGHandoffSchema);
+
+  // Executor container wire shapes (finding 3)
+  static readonly executionRequest:       EntityValidator<ExecutionRequest>        = Validator.compile('ExecutionRequest',        ExecutionRequestSchema);
+  static readonly executionResponse:      EntityValidator<ExecutionResponse>       = Validator.compile('ExecutionResponse',       ExecutionResponseSchema);
+  static readonly executorIntermediate:   EntityValidator<ExecutorIntermediate>    = Validator.compile('ExecutorIntermediate',    ExecutorIntermediateSchema);
+  static readonly recommendedWorkerCount: EntityValidator<RecommendedWorkerCountConfig> = Validator.compile('RecommendedWorkerCountConfig', RecommendedWorkerCountConfigSchema);
+
+  // Constant enum schemas (finding 4)
+  static readonly gatherStrategy: EntityValidator<GatherStrategyName> = Validator.compile('GatherStrategy', GatherStrategySchema);
+  static readonly scatterOutput:  EntityValidator<ScatterOutput>      = Validator.compile('ScatterOutput',  ScatterOutputSchema);
+  static readonly metadataKey:    EntityValidator<MetadataKey>        = Validator.compile('MetadataKey',    MetadataKeySchema);
+  static readonly output:         EntityValidator<Output>             = Validator.compile('Output',         OutputSchema);
+  static readonly nodeType:       EntityValidator<NodeType>           = Validator.compile('NodeType',       NodeTypeSchema);
+  static readonly backoffStrategy: EntityValidator<BackoffStrategyValue> = Validator.compile('BackoffStrategy', BackoffStrategySchema);
+
+  // Scatter progress checkpoint wire shapes (finding 2)
+  static readonly scatterInboxItem:       EntityValidator<ScatterInboxItem>       = Validator.compile('ScatterInboxItem',       ScatterInboxItemSchema);
+  static readonly scatterAckedResult:     EntityValidator<ScatterAckedResult>     = Validator.compile('ScatterAckedResult',     ScatterAckedResultSchema);
+  static readonly scatterProgress:        EntityValidator<ScatterProgress>        = Validator.compile('ScatterProgress',        ScatterProgressSchema);
+  static readonly storedScatterProgress:  EntityValidator<StoredScatterProgress>  = Validator.compile('StoredScatterProgress',  StoredScatterProgressSchema);
 }

@@ -59,9 +59,9 @@ void describe('Dagonizer accepts a custom StateAccessor', () => {
   void it('uses the supplied accessor for scatter source reads', async () => {
     let getCalls = 0;
     const trackingAccessor: StateAccessor = {
-      get(state: object, path: string): unknown {
+      get<T = unknown>(state: object, path: string): T | undefined {
         getCalls += 1;
-        return new DottedPathAccessor().get(state, path);
+        return new DottedPathAccessor().get<T>(state, path);
       },
       set(state: object, path: string, value: unknown): void {
         new DottedPathAccessor().set(state, path, value);

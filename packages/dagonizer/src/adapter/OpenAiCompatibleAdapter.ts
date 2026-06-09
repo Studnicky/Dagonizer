@@ -175,7 +175,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
 
     if (!res.ok) {
       const text = await res.text();
-      throw new LlmError(`${this.#config.displayName} ${String(res.status)}: ${text}`, LlmError.classifyHttp(res.status, text));
+      throw new LlmError(`${this.#config.displayName} ${String(res.status)}: ${text}`, LlmError.classifyHttp(res.status, { 'body': text }));
     }
 
     const payload = (await res.json()) as OpenAiResponseBody;
@@ -248,7 +248,13 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
   }
 
   #parseResponse(payload: OpenAiResponseBody): ChatResponse {
-    const choice = payload.choices?.[0];
+    if (payload.choices === undefined || payload.choices.length === 0) {
+      throw new LlmError(
+        `${this.#config.displayName}: response missing 'choices'`,
+        Classifications['SCHEMA_VIOLATION'],
+      );
+    }
+    const choice = payload.choices[0];
     const msg = choice?.message;
     const rawToolCalls = msg?.tool_calls ?? [];
     const toolCalls: ToolCall[] = rawToolCalls.map((tc) => ({
