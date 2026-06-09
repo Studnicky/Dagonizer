@@ -53,7 +53,6 @@ import type { DAG } from '../entities/dag/DAG.js';
 import { CompositeLayout } from './CompositeLayout.js';
 import type { CompositeLayoutOptions } from './CompositeLayout.js';
 import { CytoscapeRenderer } from './CytoscapeRenderer.js';
-import { WORKER_COLOR } from './internal.js';
 
 // ---------------------------------------------------------------------------
 // DI factory type
@@ -418,16 +417,17 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
       // ── Contained (worker/isolate) placements ─────────────────────────────
       // Applied to any placement with a `container` role (EmbeddedDAGNode or
       // dag-body ScatterNode bound to a worker isolate via DagContainerInterface).
-      // The shape from the `@type` rule above is preserved; only the border and
-      // background change to the shared WORKER_COLOR so contained nodes are
-      // visually distinct from in-process ones.
+      // The shape from the `@type` rule above is preserved; only the border,
+      // background, and text change — driven by per-node `data(...)` values
+      // written by CytoscapeRenderer.placementNode so each container role
+      // gets its own distinct color without enumerating roles in the stylesheet.
       // Selectable via `.dag-contained` (class) or `node[container]` (data).
       { "selector": 'node.dag-contained', "style": {
-        'background-color': '#1c1008',
-        'border-color':     WORKER_COLOR,
-        'border-width':     2,
-        'color':            WORKER_COLOR,
-        'text-outline-color': '#1c1008',
+        'background-color':   'data(containerColor)',
+        'border-color':       'data(containerStroke)',
+        'border-width':       2,
+        'color':              'data(containerText)',
+        'text-outline-color': 'data(containerColor)',
       } },
 
       // ── Kind-tagged styles ────────────────────────────────────────────────

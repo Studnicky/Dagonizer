@@ -4,8 +4,15 @@
 
 ### Added
 
-The visualizer renders container-bound (worker) sub-DAG placements in a distinct amber-orange color (`#f59e0b`), distinguishing offloaded sub-DAGs from in-process ones.
+The visualizer colors container-bound (worker) sub-DAG placements per container role — each distinct role (e.g. `cpu` thread pool vs `io` fork pool) receives its own stable, distinct hue — so multi-backend DAGs are visually separable at a glance.
 
+- **`RoleColorUtils.forRole(role)`** (`viz/internal`): deterministic per-role color triple `{fill, stroke, text}` derived from an FNV-1a hash of the role name mapped to a curated 8-hue palette. Same role string always yields the same colors; different roles yield visibly different fills. No `Math.random` / `Date.now`.
+- **MermaidRenderer**: instead of one shared `classDef contained`, emits one `classDef contained-<sanitizedRole>` per distinct role that appears in the DAG. Each classDef uses the role's fill/stroke from `RoleColorUtils`. A DAG with roles `cpu` and `io` emits two classDefs with two different fills.
+- **CytoscapeRenderer**: contained placements now carry `data.containerColor`, `data.containerStroke`, and `data.containerText` in addition to `data.container` (role string). All four keys are absent on in-process placements (`exactOptionalPropertyTypes` honored). Mermaid and Cytoscape use the same `RoleColorUtils` function so colors are consistent across renderers.
+- **CytoscapeGraph**: the `node.dag-contained` stylesheet rule reads colors via cytoscape `data(...)` mappings (`'background-color': 'data(containerColor)'` etc.) so each node paints with its own role color without enumerating roles in the stylesheet.
+- **Example 13** (`examples/13-multibackend.ts`): demonstrates a DAG with two distinct container roles (`cpu` → `WorkerThreadContainer` for scatter items; `io` → `ForkContainer` for the sum step). Prints the Mermaid output showing `classDef contained-cpu` and `classDef contained-io` with different fills, then executes the DAG over both real backends and prints results. Run with `pnpm example:13`.
+
+Previously:
 - **MermaidRenderer**: placements with a non-empty `container` role receive a `classDef contained fill:#f59e0b,...` rule (emitted once) and a `class <id> contained` assignment. The `@type`-specific shape is preserved; only the color changes.
 - **CytoscapeRenderer**: contained placements carry `data.container` (the role string) and the CSS class `dag-contained` alongside the existing type class. In-process placements omit `data.container` entirely. Select via `.dag-contained` or `node[container]`.
 - **CytoscapeGraph**: the built-in stylesheet adds a `node.dag-contained` rule that applies the amber-orange border and label color.

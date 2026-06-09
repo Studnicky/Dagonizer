@@ -40,6 +40,7 @@
     "example:10": "tsx examples/10-shared-state.ts",
     "example:11": "tsx examples/11-handoff.ts",
     "example:12": "tsc -p examples/tsconfig.workers.json && node examples/dist/12-workers.js",
+    "example:13": "tsc -p examples/tsconfig.multibackend.json && node examples/dist/13-multibackend.js",
     "example:derive": "tsx examples/derive.ts"
   },
   "devDependencies": {

@@ -17,12 +17,13 @@
  * not emit edges (they are leaf placements; they end the flow).
  *
  * Containment coloring: any placement with a non-empty `container` role
- * (i.e. bound to a worker isolate) is assigned the Mermaid `contained`
- * class, rendered via a `classDef contained` rule emitted once at the
- * end of the flowchart. This changes only the fill/stroke color — the
- * `@type`-specific shape (subroutine, trapezoid, etc.) is preserved.
- * The color is the shared `WORKER_COLOR` constant from `internal.ts`
- * so Mermaid and Cytoscape use the same token.
+ * (i.e. bound to a worker isolate) is assigned a Mermaid class specific
+ * to that role. One `classDef contained-<role>` rule is emitted per
+ * distinct role that appears in the DAG — different roles produce different
+ * fill/stroke colors (see `RoleColorUtils.forRole` in `internal.ts`). The
+ * `@type`-specific shape (subroutine, trapezoid, etc.) is preserved; only
+ * the color changes. A DAG with roles `cpu` and `io` emits two classDefs
+ * with two different fills.
  *
  * @example
  * ```ts
@@ -39,7 +40,7 @@ import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
 
-import { PlacementUtils, WORKER_COLOR } from './internal.js';
+import { PlacementUtils, RoleColorUtils } from './internal.js';
 
 type AnyPlacement = EmbeddedDAGNode | ScatterNode | SingleNodePlacementInterface | TerminalNodePlacementInterface | PhaseNodePlacementInterface;
 
@@ -47,9 +48,10 @@ type AnyPlacement = EmbeddedDAGNode | ScatterNode | SingleNodePlacementInterface
  * Render a `DAG` as Mermaid `flowchart` source. Output is a complete
  * Mermaid block ready to embed in a Markdown ```mermaid fence.
  *
- * Placements bound to a `container` role receive the `contained` Mermaid
- * class (worker color `WORKER_COLOR`). In-process placements are unstyled
- * (Mermaid default). Select contained nodes in stylesheets via `.contained`.
+ * Placements bound to a `container` role receive a per-role Mermaid class
+ * (`contained-<sanitizedRole>`) whose fill/stroke comes from
+ * `RoleColorUtils.forRole`. In-process placements are unstyled (Mermaid
+ * default). A DAG with two distinct roles emits two distinct classDefs.
  */
 export class MermaidRenderer {
   private constructor() { /* static class */ }
@@ -64,7 +66,10 @@ export class MermaidRenderer {
     lines.push(`  ${dag.entrypoint}`);
 
     let touchesTerminal = false;
-    const containedIds: string[] = [];
+    // Map from sanitized role token → list of placement names assigned that token.
+    const roleToIds = new Map<string, string[]>();
+    // Map from sanitized role token → original role string (for color lookup).
+    const roleTokenToRole = new Map<string, string>();
 
     for (const placement of dag.nodes as readonly AnyPlacement[]) {
       lines.push(`  ${MermaidRenderer.renderShape(placement)}`);
@@ -72,9 +77,14 @@ export class MermaidRenderer {
         if (edge.endsWith(MermaidRenderer.TERMINAL_ID)) touchesTerminal = true;
         lines.push(edge);
       }
-      // Track placements bound to a container role for class assignment below.
-      if (PlacementUtils.containerRole(placement) !== null) {
-        containedIds.push(placement.name);
+      // Track contained placements grouped by their sanitized role token.
+      const role = PlacementUtils.containerRole(placement);
+      if (role !== null) {
+        const token = MermaidRenderer.sanitizeRole(role, roleTokenToRole);
+        roleTokenToRole.set(token, role);
+        const ids = roleToIds.get(token) ?? [];
+        ids.push(placement.name);
+        roleToIds.set(token, ids);
       }
     }
 
@@ -82,18 +92,47 @@ export class MermaidRenderer {
       lines.push(`  ${MermaidRenderer.TERMINAL_ID}([end])`);
     }
 
-    // Emit containment class assignments and the shared classDef.
-    // The classDef must follow all node/edge lines to be valid Mermaid.
-    if (containedIds.length > 0) {
-      // classDef uses amber-orange worker color (see WORKER_COLOR in internal.ts):
-      //   fill: worker amber, stroke: darker amber border, color: dark text for contrast.
-      lines.push(`  classDef contained fill:${WORKER_COLOR},stroke:#b45309,color:#1c1917`);
-      for (const id of containedIds) {
-        lines.push(`  class ${id} contained`);
+    // Emit one classDef per distinct role, then assign each contained node
+    // to its role-specific class. classDefs follow all node/edge lines.
+    for (const [token, ids] of roleToIds) {
+      const role = roleTokenToRole.get(token);
+      // roleTokenToRole is populated in lockstep with roleToIds; the key always exists.
+      const colors = RoleColorUtils.forRole(role as string);
+      lines.push(`  classDef contained-${token} fill:${colors.fill},stroke:${colors.stroke},color:${colors.text}`);
+      for (const id of ids) {
+        lines.push(`  class ${id} contained-${token}`);
       }
     }
 
     return lines.join('\n');
+  }
+
+  /**
+   * Convert a role string to a valid Mermaid class identifier token
+   * (alphanumeric + underscore only).
+   *
+   * If two different roles sanitize to the same token, the second one is
+   * disambiguated with a numeric suffix (`_2`, `_3`, …) derived from the
+   * order of insertion. The `existingTokens` map is checked and mutated
+   * in-place so the caller maintains consistent state across all placements
+   * in one render pass.
+   */
+  private static sanitizeRole(
+    role: string,
+    existingTokens: ReadonlyMap<string, string>,
+  ): string {
+    const base = role.replace(/[^a-zA-Z0-9_]/gu, '_');
+    // Check whether this base token is already taken by a DIFFERENT role.
+    const existing = existingTokens.get(base);
+    if (existing === undefined || existing === role) return base;
+    // Collision: find the next free numbered variant.
+    let n = 2;
+    let candidate = `${base}_${n}`;
+    while (existingTokens.has(candidate) && existingTokens.get(candidate) !== role) {
+      n++;
+      candidate = `${base}_${n}`;
+    }
+    return candidate;
   }
 
   /** Escape a string for use inside a Mermaid double-quoted label. */

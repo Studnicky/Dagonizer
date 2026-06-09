@@ -6,6 +6,7 @@ import type { DAG } from '../../src/entities/index.js';
 import { DAG_CONTEXT } from '../../src/entities/index.js';
 import { CytoscapeRenderer } from '../../src/viz/CytoscapeRenderer.js';
 import type { CytoscapeNodeElement } from '../../src/viz/CytoscapeRenderer.js';
+import { RoleColorUtils } from '../../src/viz/internal.js';
 
 const isNode = (element: { group: 'nodes' | 'edges' }): element is CytoscapeNodeElement =>
   element.group === 'nodes';
@@ -188,7 +189,7 @@ void describe('CytoscapeRenderer.render', () => {
 });
 
 void describe('CytoscapeRenderer.render: containment coloring', () => {
-  void it('contained EmbeddedDAGNode carries data.container and dag-contained class; in-process does not', () => {
+  void it('contained EmbeddedDAGNode carries data.container, color data, and dag-contained class; in-process does not', () => {
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:cy-worker',
@@ -215,12 +216,16 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
       ],
     };
     const elements = CytoscapeRenderer.render(dag, {});
+    const cpuColors = RoleColorUtils.forRole('cpu');
 
     const workerNode = elements.find(
       (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'worker',
     );
     assert.ok(workerNode !== undefined, 'worker node must be present');
     assert.equal(workerNode.data['container'], 'cpu', 'data.container must equal the role');
+    assert.equal(workerNode.data['containerColor'],  cpuColors.fill,   'data.containerColor must match role fill');
+    assert.equal(workerNode.data['containerStroke'], cpuColors.stroke, 'data.containerStroke must match role stroke');
+    assert.equal(workerNode.data['containerText'],   cpuColors.text,   'data.containerText must match role text');
     assert.ok(
       typeof workerNode.classes === 'string' && workerNode.classes.includes('dag-contained'),
       'dag-contained class must be present',
@@ -235,14 +240,17 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
       (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'plain',
     );
     assert.ok(plainNode !== undefined, 'plain node must be present');
-    assert.equal(plainNode.data['container'], undefined, 'in-process node must not have data.container');
+    assert.equal(plainNode.data['container'],       undefined, 'in-process node must not have data.container');
+    assert.equal(plainNode.data['containerColor'],  undefined, 'in-process node must not have data.containerColor');
+    assert.equal(plainNode.data['containerStroke'], undefined, 'in-process node must not have data.containerStroke');
+    assert.equal(plainNode.data['containerText'],   undefined, 'in-process node must not have data.containerText');
     assert.ok(
       typeof plainNode.classes === 'string' && !plainNode.classes.includes('dag-contained'),
       'in-process node must not have dag-contained class',
     );
   });
 
-  void it('contained dag-body ScatterNode carries data.container and dag-contained class', () => {
+  void it('contained dag-body ScatterNode carries data.container, color data, and dag-contained class', () => {
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:cy-scatter-worker',
@@ -262,13 +270,17 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
       }],
     };
     const elements = CytoscapeRenderer.render(dag, {});
+    const gpuColors = RoleColorUtils.forRole('gpu');
 
     const fanNode = elements.find(
       (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'fan',
     );
     assert.ok(fanNode !== undefined, 'fan node must be present');
     assert.equal(fanNode.data.type, 'scatter');
-    assert.equal(fanNode.data['container'], 'gpu');
+    assert.equal(fanNode.data['container'],       'gpu');
+    assert.equal(fanNode.data['containerColor'],  gpuColors.fill);
+    assert.equal(fanNode.data['containerStroke'], gpuColors.stroke);
+    assert.equal(fanNode.data['containerText'],   gpuColors.text);
     assert.ok(
       typeof fanNode.classes === 'string' && fanNode.classes.includes('dag-contained'),
     );
@@ -277,7 +289,7 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
     );
   });
 
-  void it('node-body ScatterNode does not carry data.container even if container field is set', () => {
+  void it('node-body ScatterNode does not carry data.container or color data', () => {
     // container on a node-body scatter is a validation error, but the renderer
     // must not crash and must still emit the containment fields faithfully when
     // the JSON has the field (schema validation is a separate concern).
@@ -304,10 +316,107 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
       (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'fan',
     );
     assert.ok(fanNode !== undefined);
-    assert.equal(fanNode.data['container'], undefined);
+    assert.equal(fanNode.data['container'],       undefined);
+    assert.equal(fanNode.data['containerColor'],  undefined);
+    assert.equal(fanNode.data['containerStroke'], undefined);
+    assert.equal(fanNode.data['containerText'],   undefined);
     assert.ok(
       typeof fanNode.classes === 'string' && !fanNode.classes.includes('dag-contained'),
     );
+  });
+
+  void it('two placements with DIFFERENT roles get DIFFERENT containerColor values', () => {
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:cy-multi-role',
+      '@type':    'DAG',
+      'name':     'cy-multi-role',
+      'version':  '1',
+      'entrypoint': 'cpu-step',
+      'nodes': [
+        {
+          '@id':       'urn:noocodex:dag:cy-multi-role/node/cpu-step',
+          '@type':     'ScatterNode',
+          'name':      'cpu-step',
+          'body':      { 'dag': 'item-dag' },
+          'source':    'tasks',
+          'gather':    { 'strategy': 'discard' },
+          'container': 'cpu',
+          'outputs':   { 'all-success': 'io-step', 'partial': 'io-step', 'all-error': null, 'empty': null },
+        },
+        {
+          '@id':       'urn:noocodex:dag:cy-multi-role/node/io-step',
+          '@type':     'EmbeddedDAGNode',
+          'name':      'io-step',
+          'dag':       'io-dag',
+          'container': 'io',
+          'outputs':   { 'success': null },
+        },
+      ],
+    };
+    const elements = CytoscapeRenderer.render(dag, {});
+    const cpuColors = RoleColorUtils.forRole('cpu');
+    const ioColors  = RoleColorUtils.forRole('io');
+
+    const cpuNode = elements.find(
+      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'cpu-step',
+    );
+    const ioNode = elements.find(
+      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'io-step',
+    );
+
+    assert.ok(cpuNode !== undefined, 'cpu-step node must be present');
+    assert.ok(ioNode !== undefined,  'io-step node must be present');
+
+    assert.equal(cpuNode.data['containerColor'], cpuColors.fill);
+    assert.equal(ioNode.data['containerColor'],  ioColors.fill);
+    // Different roles → different colors
+    assert.notEqual(cpuNode.data['containerColor'], ioNode.data['containerColor']);
+  });
+
+  void it('two placements with the SAME role get the SAME containerColor value (grouping)', () => {
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:cy-same-role',
+      '@type':    'DAG',
+      'name':     'cy-same-role',
+      'version':  '1',
+      'entrypoint': 'a',
+      'nodes': [
+        {
+          '@id':       'urn:noocodex:dag:cy-same-role/node/a',
+          '@type':     'EmbeddedDAGNode',
+          'name':      'a',
+          'dag':       'inner-a',
+          'container': 'cpu',
+          'outputs':   { 'success': 'b' },
+        },
+        {
+          '@id':       'urn:noocodex:dag:cy-same-role/node/b',
+          '@type':     'EmbeddedDAGNode',
+          'name':      'b',
+          'dag':       'inner-b',
+          'container': 'cpu',
+          'outputs':   { 'success': null },
+        },
+      ],
+    };
+    const elements = CytoscapeRenderer.render(dag, {});
+    const cpuColors = RoleColorUtils.forRole('cpu');
+
+    const nodeA = elements.find(
+      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'a',
+    );
+    const nodeB = elements.find(
+      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'b',
+    );
+
+    assert.ok(nodeA !== undefined);
+    assert.ok(nodeB !== undefined);
+    // Both get the same color
+    assert.equal(nodeA.data['containerColor'], cpuColors.fill);
+    assert.equal(nodeB.data['containerColor'], cpuColors.fill);
+    assert.equal(nodeA.data['containerColor'], nodeB.data['containerColor']);
   });
 });
 

@@ -5,6 +5,7 @@ import type { TerminalNodePlacementInterface } from '../../src/entities/dag/Term
 import type { DAG } from '../../src/entities/index.js';
 import { DAG_CONTEXT } from '../../src/entities/index.js';
 import { MermaidRenderer } from '../../src/viz/MermaidRenderer.js';
+import { RoleColorUtils } from '../../src/viz/internal.js';
 
 void describe('MermaidRenderer.render', () => {
   void it('renders a single-node DAG with terminal', () => {
@@ -143,7 +144,7 @@ void describe('MermaidRenderer.render: PhaseNode', () => {
 });
 
 void describe('MermaidRenderer.render: containment coloring', () => {
-  void it('emits classDef contained and class assignment for a contained EmbeddedDAGNode', () => {
+  void it('emits per-role classDef and class assignment for a contained EmbeddedDAGNode', () => {
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:worker-test',
@@ -170,17 +171,20 @@ void describe('MermaidRenderer.render: containment coloring', () => {
       ],
     };
     const out = MermaidRenderer.render(dag);
-    // classDef must be present
-    assert.match(out, /classDef contained fill:/u);
-    // class assignment for the contained node
-    assert.match(out, /class worker-dag contained/u);
-    // in-process node does NOT get the class
+    // Per-role classDef must be present for role 'cpu'
+    assert.match(out, /classDef contained-cpu fill:/u);
+    // The fill must match RoleColorUtils.forRole('cpu')
+    const cpuColors = RoleColorUtils.forRole('cpu');
+    assert.match(out, new RegExp(`classDef contained-cpu fill:${cpuColors.fill}`, 'u'));
+    // class assignment for the contained node uses the per-role class
+    assert.match(out, /class worker-dag contained-cpu/u);
+    // in-process node does NOT get any class
     assert.doesNotMatch(out, /class in-process contained/u);
     // shape is preserved: EmbeddedDAGNode stays subroutine [[...]]
     assert.match(out, /worker-dag\[\[worker-dag\]\]/u);
   });
 
-  void it('emits classDef contained and class assignment for a contained dag-body ScatterNode', () => {
+  void it('emits per-role classDef and class assignment for a contained dag-body ScatterNode', () => {
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-worker',
@@ -209,8 +213,8 @@ void describe('MermaidRenderer.render: containment coloring', () => {
       ],
     };
     const out = MermaidRenderer.render(dag);
-    assert.match(out, /classDef contained fill:/u);
-    assert.match(out, /class fan contained/u);
+    assert.match(out, /classDef contained-cpu fill:/u);
+    assert.match(out, /class fan contained-cpu/u);
     // ScatterNode shape is preserved: trapezoid [/.../]
     assert.match(out, /fan\[\/fan\/\]/u);
     // in-process node does NOT get the class
@@ -236,6 +240,113 @@ void describe('MermaidRenderer.render: containment coloring', () => {
     const out = MermaidRenderer.render(dag);
     assert.doesNotMatch(out, /classDef contained/u);
     assert.doesNotMatch(out, /class step contained/u);
+  });
+
+  void it('emits TWO distinct classDefs for a DAG with two distinct container roles', () => {
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:multi-role',
+      '@type':    'DAG',
+      'name':     'multi-role',
+      'version':  '1',
+      'entrypoint': 'cpu-work',
+      'nodes': [
+        {
+          '@id':       'urn:noocodex:dag:multi-role/node/cpu-work',
+          '@type':     'ScatterNode',
+          'name':      'cpu-work',
+          'body':      { 'dag': 'item-dag' },
+          'source':    'tasks',
+          'gather':    { 'strategy': 'discard' },
+          'container': 'cpu',
+          'outputs':   { 'all-success': 'io-work', 'partial': 'io-work', 'all-error': null, 'empty': null },
+        },
+        {
+          '@id':       'urn:noocodex:dag:multi-role/node/io-work',
+          '@type':     'EmbeddedDAGNode',
+          'name':      'io-work',
+          'dag':       'io-dag',
+          'container': 'io',
+          'outputs':   { 'success': null },
+        },
+      ],
+    };
+    const out = MermaidRenderer.render(dag);
+
+    const cpuColors = RoleColorUtils.forRole('cpu');
+    const ioColors  = RoleColorUtils.forRole('io');
+
+    // Two distinct classDef lines
+    assert.match(out, /classDef contained-cpu fill:/u);
+    assert.match(out, /classDef contained-io fill:/u);
+    // Each uses the correct per-role fill
+    assert.match(out, new RegExp(`classDef contained-cpu fill:${cpuColors.fill}`, 'u'));
+    assert.match(out, new RegExp(`classDef contained-io fill:${ioColors.fill}`, 'u'));
+    // The two fills must be different (roles are distinct in the palette)
+    assert.notEqual(cpuColors.fill, ioColors.fill);
+    // Class assignments are role-specific
+    assert.match(out, /class cpu-work contained-cpu/u);
+    assert.match(out, /class io-work contained-io/u);
+    // Shapes are preserved
+    assert.match(out, /cpu-work\[\/cpu-work\/\]/u);
+    assert.match(out, /io-work\[\[io-work\]\]/u);
+  });
+
+  void it('assigns the SAME class to two placements with the SAME role (grouping)', () => {
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:same-role',
+      '@type':    'DAG',
+      'name':     'same-role',
+      'version':  '1',
+      'entrypoint': 'a',
+      'nodes': [
+        {
+          '@id':       'urn:noocodex:dag:same-role/node/a',
+          '@type':     'EmbeddedDAGNode',
+          'name':      'a',
+          'dag':       'inner-a',
+          'container': 'cpu',
+          'outputs':   { 'success': 'b' },
+        },
+        {
+          '@id':       'urn:noocodex:dag:same-role/node/b',
+          '@type':     'EmbeddedDAGNode',
+          'name':      'b',
+          'dag':       'inner-b',
+          'container': 'cpu',
+          'outputs':   { 'success': null },
+        },
+      ],
+    };
+    const out = MermaidRenderer.render(dag);
+    // Only ONE classDef for role cpu
+    const classDefMatches = out.match(/classDef contained-cpu/gu);
+    assert.equal(classDefMatches?.length, 1, 'exactly one classDef for role cpu');
+    // Both placements assigned the same class
+    assert.match(out, /class a contained-cpu/u);
+    assert.match(out, /class b contained-cpu/u);
+  });
+});
+
+void describe('RoleColorUtils.forRole', () => {
+  void it('returns the same colors for the same role (determinism)', () => {
+    const a = RoleColorUtils.forRole('cpu');
+    const b = RoleColorUtils.forRole('cpu');
+    assert.deepEqual(a, b);
+  });
+
+  void it('returns different fills for different roles (distinctness)', () => {
+    const cpu = RoleColorUtils.forRole('cpu');
+    const io  = RoleColorUtils.forRole('io');
+    assert.notEqual(cpu.fill, io.fill);
+  });
+
+  void it('returns hex strings for fill, stroke, and text', () => {
+    const c = RoleColorUtils.forRole('gpu');
+    assert.match(c.fill,   /^#[0-9a-f]{6}$/iu);
+    assert.match(c.stroke, /^#[0-9a-f]{6}$/iu);
+    assert.match(c.text,   /^#[0-9a-f]{6}$/iu);
   });
 });
 

@@ -42,7 +42,7 @@
 
 import type { DAG } from '../entities/dag/DAG.js';
 
-import { PlacementUtils } from './internal.js';
+import { PlacementUtils, RoleColorUtils } from './internal.js';
 import type { PlacementEntry } from './internal.js';
 
 /** A Cytoscape node element. */
@@ -161,25 +161,47 @@ export class CytoscapeRenderer {
   /**
    * Render one placement as a Cytoscape node element with type-discriminated metadata.
    *
-   * Containment: placements bound to a `container` role (worker/isolate) carry
-   * `data.container` (the role string) and the additional `dag-contained` class
-   * alongside the existing `dag-${kind}` class. In-process placements omit
-   * `data.container` entirely (honoring `exactOptionalPropertyTypes`).
+   * Containment: placements bound to a `container` role (worker/isolate) carry:
+   *   `data.container`       — the role string
+   *   `data.containerColor`  — per-role fill color (from `RoleColorUtils.forRole`)
+   *   `data.containerStroke` — per-role border color
+   *   `data.containerText`   — per-role label color
+   * and the additional `dag-contained` class alongside the existing `dag-${kind}`
+   * class. In-process placements omit all four container data keys entirely
+   * (honoring `exactOptionalPropertyTypes`).
+   *
+   * The stylesheet rule for `.dag-contained` reads the color via cytoscape
+   * `data(...)` mapping so each node paints with its own role color:
+   *   `'background-color': 'data(containerColor)'`
+   *   `'border-color':     'data(containerStroke)'`
+   *   `'color':            'data(containerText)'`
    *
    * Consumer stylesheet selectors for contained nodes:
-   *   `.dag-contained`       — class selector, matches any contained placement
-   *   `node[container]`      — data selector, matches any node with a container role
+   *   `.dag-contained`        — class selector, matches any contained placement
+   *   `node[container]`       — data selector, matches any node with a container role
    *   `node[container="cpu"]` — data selector, matches a specific role
    */
   private static placementNode(placement: PlacementEntry, id: string): CytoscapeNodeElement {
     const kind = CytoscapeRenderer.PLACEMENT_KIND[placement['@type']] ?? 'single';
     const role = PlacementUtils.containerRole(placement);
 
-    // Build the base data object. `data.container` is added only when a role
-    // exists so the key is absent on in-process placements (exactOptionalPropertyTypes).
+    // Build the base data object. Container keys are added only when a role
+    // exists so the keys are absent on in-process placements (exactOptionalPropertyTypes).
+    const baseLabel = CytoscapeRenderer.titleCase(placement.name);
     const baseData = role !== null
-      ? { "id": id, "label": CytoscapeRenderer.titleCase(placement.name), "type": kind, "container": role } as CytoscapeNodeElement['data']
-      : { "id": id, "label": CytoscapeRenderer.titleCase(placement.name), "type": kind } as CytoscapeNodeElement['data'];
+      ? (() => {
+          const colors = RoleColorUtils.forRole(role);
+          return {
+            "id":               id,
+            "label":            baseLabel,
+            "type":             kind,
+            "container":        role,
+            "containerColor":   colors.fill,
+            "containerStroke":  colors.stroke,
+            "containerText":    colors.text,
+          } as CytoscapeNodeElement['data'];
+        })()
+      : { "id": id, "label": baseLabel, "type": kind } as CytoscapeNodeElement['data'];
 
     // Append dag-contained class for stylesheet selection.
     const classes = role !== null ? `dag-${kind} dag-contained` : `dag-${kind}`;
