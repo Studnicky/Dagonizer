@@ -46,9 +46,9 @@ export abstract class ScoutNode<
       const raw = await context.services.tool.execute(input, { signal: context.signal });
       const items = this.normalize(raw);
       this.writeBack(state, items);
-      return NodeOutputBuilder.of(items.length === 0 ? this.emptyPort() : this.successPort());
+      return NodeOutputBuilder.of(items.length === 0 ? 'empty' : 'success');
     } catch {
-      return NodeOutputBuilder.of(this.errorPort());
+      return NodeOutputBuilder.of('error');
     }
   }
 }

@@ -215,13 +215,13 @@ export const openLibraryScout: NodeInterface<ArchivistState, 'success' | 'empty'
       // (this scout contributed nothing; the parallel siblings still run).
       if (context.signal.aborted) throw error;
       const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
-      state.collectError(NodeErrorBuilder.from({
-        "code":        'OPEN_LIBRARY_FAILED',
-        "message":     error instanceof Error ? error.message : String(error),
-        "operation":   'open-library-scout',
-        "recoverable": true,
-        "timestamp":   new Date().toISOString(),
-      }));
+      state.collectError(NodeErrorBuilder.from(
+        'OPEN_LIBRARY_FAILED',
+        error instanceof Error ? error.message : String(error),
+        'open-library-scout',
+        true,
+        new Date().toISOString(),
+      ));
       state.failureCause += `OpenLibrary: error: ${msg}. `;
       context.services.logger.warn(`openlibrary failed: ${String(error)}`);
       return NodeOutputBuilder.of('empty');
@@ -267,13 +267,13 @@ export const googleBooksScout: NodeInterface<ArchivistState, 'success' | 'empty'
       // External cancellation propagates; own timeout / network error → 'empty'.
       if (context.signal.aborted) throw error;
       const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
-      state.collectError(NodeErrorBuilder.from({
-        "code":        'GOOGLE_BOOKS_FAILED',
-        "message":     error instanceof Error ? error.message : String(error),
-        "operation":   'google-books-scout',
-        "recoverable": true,
-        "timestamp":   new Date().toISOString(),
-      }));
+      state.collectError(NodeErrorBuilder.from(
+        'GOOGLE_BOOKS_FAILED',
+        error instanceof Error ? error.message : String(error),
+        'google-books-scout',
+        true,
+        new Date().toISOString(),
+      ));
       state.failureCause += `Google Books: error: ${msg}. `;
       context.services.logger.warn(`google-books failed: ${String(error)}`);
       return NodeOutputBuilder.of('empty');
@@ -321,13 +321,13 @@ export const subjectScout: NodeInterface<ArchivistState, 'success' | 'empty', Ar
       // External cancellation propagates; own timeout / network error → 'empty'.
       if (context.signal.aborted) throw error;
       const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
-      state.collectError(NodeErrorBuilder.from({
-        "code":        'SUBJECT_SEARCH_FAILED',
-        "message":     error instanceof Error ? error.message : String(error),
-        "operation":   'subject-scout',
-        "recoverable": true,
-        "timestamp":   new Date().toISOString(),
-      }));
+      state.collectError(NodeErrorBuilder.from(
+        'SUBJECT_SEARCH_FAILED',
+        error instanceof Error ? error.message : String(error),
+        'subject-scout',
+        true,
+        new Date().toISOString(),
+      ));
       state.failureCause += `Subject search: error: ${msg}. `;
       context.services.logger.warn(`subject-search failed: ${String(error)}`);
       return NodeOutputBuilder.of('empty');
@@ -370,13 +370,13 @@ export const wikipediaScout: NodeInterface<ArchivistState, 'success' | 'empty', 
       // External cancellation propagates; own timeout / network error → 'empty'.
       if (context.signal.aborted) throw error;
       const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
-      state.collectError(NodeErrorBuilder.from({
-        "code":        'WIKIPEDIA_FAILED',
-        "message":     error instanceof Error ? error.message : String(error),
-        "operation":   'wikipedia-scout',
-        "recoverable": true,
-        "timestamp":   new Date().toISOString(),
-      }));
+      state.collectError(NodeErrorBuilder.from(
+        'WIKIPEDIA_FAILED',
+        error instanceof Error ? error.message : String(error),
+        'wikipedia-scout',
+        true,
+        new Date().toISOString(),
+      ));
       state.failureCause += `Wikipedia: error: ${msg}. `;
       context.services.logger.warn(`wikipedia failed: ${String(error)}`);
       return NodeOutputBuilder.of('empty');

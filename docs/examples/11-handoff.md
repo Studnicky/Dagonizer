@@ -10,7 +10,7 @@ seeAlso:
     description: 'run a scatter-dag-body over a real WorkerThreadContainer pool'
   - text: 'Reference: Entities, DAGHandoff'
     link: '../reference/entities'
-  - text: 'Reference: Contracts, ChannelInterface'
+  - text: 'Reference: Contracts, HandoffChannelInterface'
     link: '../reference/contracts'
 ---
 
@@ -41,9 +41,9 @@ This is the same pattern a serverless function handler uses across a real messag
 | `InMemoryChannel` | `@noocodex/dagonizer/channels` | Stores envelopes; calls the protected `onPublished` hook after each publish |
 | `InMemoryChannel.onPublished` | `@noocodex/dagonizer/channels` | Protected hook to override in a subclass to chain the downstream DAG |
 | `DAGHandoff` | `@noocodex/dagonizer/entities` | Wire-safe envelope with `stateSnapshot`, `terminalName`, `registryVersion`, `correlationId` |
-| `DagonizerOptionsInterface.channels` | `@noocodex/dagonizer` | Binds terminal names to `ChannelInterface` instances |
+| `DagonizerOptionsInterface.channels` | `@noocodex/dagonizer` | Binds terminal names to `HandoffChannelInterface` instances |
 
-The `channels` option is a `Record<terminalName, ChannelInterface>`. Terminals not listed follow the default path — no publish, the run completes normally.
+The `channels` option is a `Record<terminalName, HandoffChannelInterface>`. Terminals not listed follow the default path — no publish, the run completes normally.
 
 ## What it demonstrates
 
@@ -63,13 +63,13 @@ Source: [`examples/11-handoff.ts`](../../examples/11-handoff.ts)
 
 ## Extending to a real transport
 
-Replace `InMemoryChannel` with a class that implements `ChannelInterface` and sends to your queue:
+Replace `InMemoryChannel` with a class that implements `HandoffChannelInterface` and sends to your queue:
 
 ```ts
-import type { ChannelInterface } from '@noocodex/dagonizer/contracts';
+import type { HandoffChannelInterface } from '@noocodex/dagonizer/contracts';
 import type { DAGHandoff } from '@noocodex/dagonizer/entities';
 
-class MyQueueChannel implements ChannelInterface {
+class MyQueueChannel implements HandoffChannelInterface {
   async publish(handoff: DAGHandoff): Promise<void> {
     // Insert your SDK call here. Never throw — the dispatcher catches all errors.
     // Example: await client.send(serialize(handoff));

@@ -22,8 +22,8 @@ A registered `NodeInterface` (the consumer-implemented unit of work) is referenc
 | `SingleNode` | `SingleNodeSchema` | `SingleNode`, `SingleNodePlacementInterface<TOutput>` | Run one registered node; route per output |
 | `ScatterNode` | `ScatterNodeSchema` | `ScatterNode` | Isolate one clone per source-array item, run a body, fold clone state back through a required `gather`, route on aggregate outcome |
 | `EmbeddedDAGNode` | `EmbeddedDAGNodeSchema` | `EmbeddedDAGNode` | Invoke a registered sub-DAG exactly once (cardinality 1); route on the child's terminal outcome |
-| `TerminalNode` | `TerminalNodeSchema` | `TerminalNode`, `TerminalNodePlacementInterface` | End the flow with an explicit `outcome` |
-| `PhaseNode` | `PhaseNodeSchema` | `PhaseNode`, `PhaseNodePlacementInterface` | Pre/post lifecycle hook running outside the main loop |
+| `TerminalNode` | `TerminalNodeSchema` | `TerminalNode` | End the flow with an explicit `outcome` |
+| `PhaseNode` | `PhaseNodeSchema` | `PhaseNode` | Pre/post lifecycle hook running outside the main loop |
 
 Every schema's `$id` is `https://noocodex.dev/schemas/dagonizer/<TypeName>`.
 
@@ -42,7 +42,7 @@ import type { SingleNode, SingleNodePlacementInterface } from '@noocodex/dagoniz
   "@type":   "SingleNode",
   "name":    "greet",
   "node":    "greet",
-  "outputs": { "success": "next-node", "error": null }
+  "outputs": { "success": "next-node", "error": "done-error" }
 }
 ```
 
@@ -52,9 +52,9 @@ import type { SingleNode, SingleNodePlacementInterface } from '@noocodex/dagoniz
 | `@type` | `'SingleNode'` | yes | Discriminator |
 | `name` | `string` | yes | Placement name (unique within the DAG) |
 | `node` | `string` | yes | Registered `NodeInterface.name` to invoke |
-| `outputs` | `Record<string, string \| null>` | yes | Output port to next-placement name (or `null` to terminate the path) |
+| `outputs` | `Record<string, string>` | yes | Output port to next-placement name. All outputs must route to a named placement. |
 
-`SingleNodePlacementInterface<TOutput extends string>` narrows `outputs` to `Record<TOutput, null | string>` for compile-time exhaustiveness when `TOutput` is a literal union.
+`SingleNodePlacementInterface<TOutput extends string>` narrows `outputs` to `Record<TOutput, string>` for compile-time exhaustiveness when `TOutput` is a literal union.
 
 ---
 
@@ -140,7 +140,7 @@ import type { EmbeddedDAGNode } from '@noocodex/dagonizer/entities';
 
 ```ts
 import { TerminalNodeSchema } from '@noocodex/dagonizer/entities';
-import type { TerminalNode, TerminalNodePlacementInterface } from '@noocodex/dagonizer/entities';
+import type { TerminalNode } from '@noocodex/dagonizer/entities';
 ```
 
 ```json
@@ -167,7 +167,7 @@ No `outputs` map. Placement-only (no backing `NodeInterface`). On reach, the eng
 
 ```ts
 import { PhaseNodeSchema } from '@noocodex/dagonizer/entities';
-import type { PhaseNode, PhaseNodePlacementInterface } from '@noocodex/dagonizer/entities';
+import type { PhaseNode } from '@noocodex/dagonizer/entities';
 ```
 
 ```json
@@ -188,7 +188,7 @@ import type { PhaseNode, PhaseNodePlacementInterface } from '@noocodex/dagonizer
 | `node` | `string` | yes | Registered `NodeInterface.name` invoked at the phase boundary |
 | `phase` | `'pre' \| 'post'` | yes | Run before the entrypoint or after the main loop drains |
 
-No `outputs` map. Pre-phase placements run in DAG declaration order before the entrypoint; a thrown error aborts the run (lifecycle becomes `failed`, the main loop never executes). Post-phase placements run in declaration order on every exit path (completion, abort, timeout, terminal-failed, node throw); a thrown error is collected as a warning (code `POST_PHASE_FAILED`) and does not change the already-set lifecycle. Phase placements surface via `Instrumentation.phaseEnter` / `phaseExit`.
+No `outputs` map. Pre-phase placements run in DAG declaration order before the entrypoint; a thrown error aborts the run (lifecycle becomes `failed`, the main loop never executes). Post-phase placements run in declaration order on every exit path (completion, abort, timeout, terminal-failed, node throw); a thrown error is collected as a warning (code `POST_PHASE_FAILED`) and does not change the already-set lifecycle. Phase boundaries surface via the `onPhaseEnter` / `onPhaseExit` subclass hooks on `Dagonizer`.
 
 ---
 

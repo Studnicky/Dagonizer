@@ -53,6 +53,7 @@ import type { DAG } from '../entities/dag/DAG.js';
 import { CompositeLayout } from './CompositeLayout.js';
 import type { CompositeLayoutOptions } from './CompositeLayout.js';
 import { CytoscapeRenderer } from './CytoscapeRenderer.js';
+import type { CytoscapeElement } from './CytoscapeRenderer.js';
 
 // ---------------------------------------------------------------------------
 // DI factory type
@@ -91,6 +92,17 @@ const DEFAULT_EMBEDDED_DAGS: ReadonlyMap<string, DAG> = new Map();
 
 /** Default CompositeLayout options (all fields delegated to CompositeLayout defaults). */
 const DEFAULT_LAYOUT_OPTIONS: CompositeLayoutOptions = {};
+
+/**
+ * Canonical defaults for `CytoscapeGraphOptions`.
+ *
+ * Every field that has a default is present here. The constructor resolves
+ * all options in one spread: `{ ...CYTOSCAPE_GRAPH_DEFAULTS, ...options }`.
+ */
+const CYTOSCAPE_GRAPH_DEFAULTS = {
+  'embeddedDAGs': DEFAULT_EMBEDDED_DAGS,
+  'layoutOptions': DEFAULT_LAYOUT_OPTIONS,
+} as const;
 
 /**
  * Vertical gap below the laid-out graph at which the first layout-unpositioned
@@ -134,12 +146,12 @@ export interface CytoscapeGraphOptions {
    * Registry of embedded-DAGs by name, passed to `CytoscapeRenderer` and
    * `CompositeLayout` for recursive expansion. Default: empty `Map`.
    */
-  readonly embeddedDAGs?: ReadonlyMap<string, DAG>;
+  embeddedDAGs?: ReadonlyMap<string, DAG>;
   /**
    * Layout tuning options forwarded to `CompositeLayout.compute`.
    * Default: `{}` (all tuning delegated to CompositeLayout's own defaults).
    */
-  readonly layoutOptions?: CompositeLayoutOptions;
+  layoutOptions?: CompositeLayoutOptions;
 }
 
 // ---------------------------------------------------------------------------
@@ -196,11 +208,12 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
     dag: DAG,
     options: CytoscapeGraphOptions = {},
   ) {
+    const resolved = { ...CYTOSCAPE_GRAPH_DEFAULTS, ...options };
     this.cytoscapeFactory = cytoscapeFactory;
     this.container        = container;
     this.dag              = dag;
-    this.embeddedDAGs     = options.embeddedDAGs ?? DEFAULT_EMBEDDED_DAGS;
-    this.layoutOptions    = options.layoutOptions ?? DEFAULT_LAYOUT_OPTIONS;
+    this.embeddedDAGs     = resolved.embeddedDAGs;
+    this.layoutOptions    = resolved.layoutOptions;
     this.cyInstance       = null;
   }
 
@@ -233,7 +246,10 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
 
     const cy = this.cytoscapeFactory({
       "container": this.container,
-      "elements":  positioned,
+      // Cast to cytoscape.ElementDefinition[] at the boundary where cytoscape
+      // consumes the elements. CytoscapeElement is structurally compatible with
+      // ElementDefinition; the cast is isolated to this single call site.
+      "elements":  positioned as cytoscape.ElementDefinition[],
       "style":     this.stylesheet(),
       "layout":    this.presetLayout(),
       ...this.interactionDefaults(),
@@ -251,19 +267,22 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
    * Compute layout for `elements` via `CompositeLayout` and return a new array
    * with a `position` attached to every node element.
    *
-   * Nodes the layout engine does not position — the renderer's synthetic `END`
-   * sink is not a DAG placement, so `CompositeLayout` never assigns it
-   * coordinates — are placed below the laid-out graph at its horizontal centre,
-   * so they never collapse onto the preset layout's origin (0,0) and overlap
-   * the entrypoint.
+   * Accepts `ReadonlyArray<CytoscapeElement>` so the internal typed elements from
+   * `buildElements()` flow through without an intermediate cast. The cast to
+   * `cytoscape.ElementDefinition[]` is deferred to the `cytoscapeFactory` call
+   * in `mount()`.
+   *
+   * Nodes the layout engine does not position are placed below the laid-out
+   * graph at its horizontal centre so they never collapse onto the preset
+   * layout's origin (0,0) and overlap the entrypoint.
    *
    * Reused by `mount()` and by subclasses that re-layout after mutating the
    * element set (e.g. expanding an embedded-DAG). Uses `layoutRegistry()` so a
    * subclass can lay out against the same embedded-DAG subset it renders.
    */
   protected async applyLayout(
-    elements: ReadonlyArray<cytoscape.ElementDefinition>,
-  ): Promise<cytoscape.ElementDefinition[]> {
+    elements: ReadonlyArray<CytoscapeElement>,
+  ): Promise<CytoscapeElement[]> {
     const layout = await CompositeLayout.compute(
       this.dag,
       this.layoutRegistry(),
@@ -281,7 +300,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
 
     return elements.map((el) => {
       if (el.group !== 'nodes') return el;
-      const id = el.data?.['id'];
+      const id = el.data.id;
       if (typeof id !== 'string') return el;
       const pos = layout.positions.get(id);
       if (pos !== undefined) return { ...el, "position": { "x": pos.x, "y": pos.y } };
@@ -310,11 +329,16 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
    * Default implementation delegates to `CytoscapeRenderer.render`. Subclasses
    * may override to enrich elements (e.g. add `data.kind` from a node registry)
    * or replace them entirely.
+   *
+   * Returns `ReadonlyArray<CytoscapeElement>` so the internal typed elements
+   * flow through `applyLayout()` without a cast; the cast to
+   * `cytoscape.ElementDefinition[]` is deferred to the `cytoscapeFactory` call
+   * in `mount()`.
    */
-  protected buildElements(): ReadonlyArray<cytoscape.ElementDefinition> {
+  protected buildElements(): ReadonlyArray<CytoscapeElement> {
     return CytoscapeRenderer.render(this.dag, {
       "embeddedDAGs": this.embeddedDAGs,
-    }) as ReadonlyArray<cytoscape.ElementDefinition>;
+    });
   }
 
   /**

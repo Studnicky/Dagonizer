@@ -42,14 +42,14 @@ export {
 
 // ── Canonical adapter constants, base options, and shared base ─────────────
 export {
-  AdapterBase,
+  BaseAdapterCore,
   DEFAULT_BASE_DELAY_MS,
   DEFAULT_MAX_ATTEMPTS,
-} from './AdapterBase.js';
+} from './BaseAdapterCore.js';
 export type {
-  AdapterBaseOptions,
-  AdapterBaseOptionsResolved,
-} from './AdapterBase.js';
+  BaseAdapterCoreOptions,
+  BaseAdapterCoreOptionsResolved,
+} from './BaseAdapterCore.js';
 
 export { BaseAdapter } from './BaseAdapter.js';
 

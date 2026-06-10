@@ -54,7 +54,7 @@ export class ObservedArchivist extends Dagonizer<ArchivistState, ArchivistServic
   }
 
   /**
-   * Fires after the execution loop drains (terminal node, null route, error, or abort).
+   * Fires after the execution loop drains (terminal node, error, or abort).
    *
    * Extension point: call `StateProjection.capture(state)` here to flush the
    * per-run state graph into the memory store before `recordFindings` runs.
@@ -66,7 +66,7 @@ export class ObservedArchivist extends Dagonizer<ArchivistState, ArchivistServic
     result: ExecutionResultInterface<ArchivistState>,
   ): void {
     const executed = result.executedNodes.length;
-    const outcome  = result.terminalOutcome ?? result.interruptedAt?.reason ?? 'null-route';
+    const outcome  = result.terminalOutcome ?? result.interruptedAt?.reason ?? 'none';
     this.#logger.info(
       `[archivist:flow] end dag=${dagName} outcome=${outcome} executed=${String(executed)} lifecycle=${state.lifecycle.kind}`,
     );

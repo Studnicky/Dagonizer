@@ -21,8 +21,8 @@ import { Classifications, LlmError } from './LlmError.js';
 
 /** One entry in a cascade preference list. Canonical single type for all cascades. */
 export interface CascadePreference {
-  readonly provider: string;
-  readonly model: string;
+  provider: string;
+  model: string;
 }
 
 export abstract class BaseCascade<

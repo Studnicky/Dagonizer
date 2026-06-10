@@ -21,14 +21,14 @@
  */
 
 import { BaseEmbedder, Classifications, LlmError } from '@noocodex/dagonizer/adapter';
-import type { AdapterBaseOptions } from '@noocodex/dagonizer/adapter';
+import type { BaseAdapterCoreOptions } from '@noocodex/dagonizer/adapter';
 import type { AbortableOptionsInterface } from '@noocodex/dagonizer/contracts';
 
 const DEFAULT_MODEL = 'mistral-embed';
 const DEFAULT_DIMENSIONS = 1024;
 const ENDPOINT = 'https://api.mistral.ai/v1/embeddings';
 
-export interface MistralEmbedderOptions extends AdapterBaseOptions {
+export interface MistralEmbedderOptions extends BaseAdapterCoreOptions {
   /** Override the embedding model. Defaults to `mistral-embed`. */
   readonly model?: string;
   /** Override dimensions when targeting a non-`mistral-embed` model. */

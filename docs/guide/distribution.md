@@ -13,7 +13,7 @@ seeAlso:
     description: 'scatter-dag-body over a WorkerThreadContainer pool'
   - text: 'Reference: Contracts'
     link: '../reference/contracts'
-    description: 'DagContainerInterface, ChannelInterface, RegistryModuleInterface'
+    description: 'DagContainerInterface, HandoffChannelInterface, RegistryModuleInterface'
 ---
 
 # Distribution and cloud patterns
@@ -23,7 +23,7 @@ Dagonizer has two distribution scales. They solve different problems and compose
 | Scale | Mechanism | Compute ownership |
 |-------|-----------|-------------------|
 | **In-fleet containment** | `DagContainerInterface` backends (threads, child processes) | The dispatcher spawns and owns the isolates |
-| **Cross-host hand-off** | `DAGHandoff` envelope over a `ChannelInterface` | The envelope travels to a separate host; that host runs the next DAG |
+| **Cross-host hand-off** | `DAGHandoff` envelope over a `HandoffChannelInterface` | The envelope travels to a separate host; that host runs the next DAG |
 
 The DAG is always the unit of distribution. A single node never travels to a container or a remote host.
 
@@ -130,7 +130,7 @@ The `registryModule` path passed to a container backend is dynamically imported 
 
 ## Cross-host hand-off
 
-When a top-level DAG completes at a terminal placement bound to a `ChannelInterface`, the dispatcher publishes a `DAGHandoff` envelope to that channel. The envelope carries:
+When a top-level DAG completes at a terminal placement bound to a `HandoffChannelInterface`, the dispatcher publishes a `DAGHandoff` envelope to that channel. The envelope carries:
 
 - `dagName` — the name of the DAG that just completed
 - `terminalName` — the placement name of the terminal
@@ -181,14 +181,14 @@ A serverless function receives a `DAGHandoff` envelope, restores state, runs the
 
 ```ts
 import { Dagonizer } from '@noocodex/dagonizer';
-import type { ChannelInterface } from '@noocodex/dagonizer/contracts';
+import type { HandoffChannelInterface } from '@noocodex/dagonizer/contracts';
 import type { DAGHandoff } from '@noocodex/dagonizer/entities';
 
 import { AppState } from './state.js';
 import { buildServices } from './services.js';
 
 // A transport-specific channel stub — implement `publish` with your SDK call.
-class SqsChannel implements ChannelInterface {
+class SqsChannel implements HandoffChannelInterface {
   async publish(handoff: DAGHandoff): Promise<void> {
     // Insert your SQS / PubSub / SNS SDK call here.
     // Example: await sqsClient.send(new SendMessageCommand({ ... }));

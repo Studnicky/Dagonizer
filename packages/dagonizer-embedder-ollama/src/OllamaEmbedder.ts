@@ -23,7 +23,7 @@
  */
 
 import { BaseEmbedder, Classifications, LlmError } from '@noocodex/dagonizer/adapter';
-import type { AdapterBaseOptions } from '@noocodex/dagonizer/adapter';
+import type { BaseAdapterCoreOptions } from '@noocodex/dagonizer/adapter';
 import type { AbortableOptionsInterface } from '@noocodex/dagonizer/contracts';
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:11434';
@@ -47,7 +47,7 @@ const KNOWN_DIMENSIONS: Readonly<Record<string, number>> = {
   'snowflake-arctic-embed:latest': 1024,
 };
 
-export interface OllamaEmbedderOptions extends AdapterBaseOptions {
+export interface OllamaEmbedderOptions extends BaseAdapterCoreOptions {
   /** Override base URL when targeting a remote daemon or a proxy. */
   readonly baseUrl?: string;
   /**

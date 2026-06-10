@@ -51,13 +51,13 @@ export const childWork: NodeInterface<GateState, 'done'> = {
   "outputs": ['done'],
   async execute(state) {
     if (!state.shouldPass) {
-      state.collectError(NodeErrorBuilder.from({
-        "message":     'child-work failed deliberately',
-        "code":        'CHILD_ERR',
-        "operation":   'child-work',
-        "recoverable": false,
-        "timestamp":   new Date().toISOString(),
-      }));
+      state.collectError(NodeErrorBuilder.from(
+        'CHILD_ERR',
+        'child-work failed deliberately',
+        'child-work',
+        false,
+        new Date().toISOString(),
+      ));
     }
     return NodeOutputBuilder.of('done');
   },

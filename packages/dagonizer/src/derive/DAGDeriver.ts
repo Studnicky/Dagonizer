@@ -33,12 +33,11 @@
 
 import type { NodeInterface } from '../contracts/NodeInterface.js';
 import type { OperationContract } from '../contracts/OperationContract.js';
-import type { DAG } from '../entities/dag/DAG.js';
-import { DAG_CONTEXT } from '../entities/dag/DAG.js';
+import { DAG, DAG_CONTEXT } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
-import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
+import type { TerminalNode } from '../entities/dag/TerminalNode.js';
 import { DAGError } from '../errors/DAGError.js';
 import { NoopWarningEmitter } from '../runtime/NoopWarningEmitter.js';
 
@@ -50,20 +49,20 @@ import type {
   DAGDeriverEmbeddedDAG,
 } from './DAGDeriverAnnotations.js';
 
-type DAGNodeEntry = EmbeddedDAGNode | ScatterNode | SingleNodePlacementInterface | TerminalNodePlacementInterface;
+type DAGNodeEntry = EmbeddedDAGNode | ScatterNode | SingleNodePlacementInterface | TerminalNode;
 
 export interface DAGDeriverOptions {
-  readonly name: string;
-  readonly version: string;
-  readonly entrypoint: string;
+  name: string;
+  version: string;
+  entrypoint: string;
   /**
    * Node registry. Every node with a co-located `contract` field participates
    * in topology derivation; nodes without one still register but contribute no
    * derived edges. At least one node must declare a contract. Contracts are
    * single-source-of-truth on the node; there is no standalone contracts input.
    */
-  readonly nodes: readonly NodeInterface[];
-  readonly annotations?: DAGDeriverAnnotations;
+  nodes: NodeInterface[];
+  annotations?: DAGDeriverAnnotations;
 }
 
 export class DAGDeriver {
@@ -83,7 +82,7 @@ export class DAGDeriver {
       if (node.contract !== undefined) {
         result.push({
           "name": node.name,
-          "outputs": node.outputs,
+          "outputs": [...node.outputs],
           "hardRequired": node.contract.hardRequired,
           "produces": node.contract.produces,
         });
@@ -142,7 +141,7 @@ export class DAGDeriver {
 
     return {
       '@context': DAG_CONTEXT,
-      '@id':      `urn:noocodex:dag:${opts.name}`,
+      '@id':      DAG.id(opts.name),
       '@type':    'DAG',
       'name':       opts.name,
       'version':    opts.version,
@@ -343,8 +342,6 @@ export class DAGDeriver {
     dagName: string,
   ): DAGNodeEntry[] {
     const nodes: DAGNodeEntry[] = [];
-    const nodeId = (placementName: string): string =>
-      `urn:noocodex:dag:${dagName}/node/${placementName}`;
 
     // Collect all synthesized TerminalNode placements from `emit` annotations.
     // Keyed by placement name; populated incrementally as each operation is
@@ -368,16 +365,16 @@ export class DAGDeriver {
         }
 
         if (scatter !== undefined) {
-          nodes.push(DAGDeriver.renderScatterNode(name, scatter, succs, annotations, nodeId, emitCollector));
+          nodes.push(DAGDeriver.renderScatterNode(name, scatter, succs, annotations, dagName, emitCollector));
         } else if (embeddedDAG !== undefined) {
-          nodes.push(DAGDeriver.renderEmbeddedDAGNode(name, embeddedDAG, succs, annotations, nodeId, emitCollector));
+          nodes.push(DAGDeriver.renderEmbeddedDAGNode(name, embeddedDAG, succs, annotations, dagName, emitCollector));
         } else {
           const contract = contracts.get(name);
           if (contract === undefined) {
             throw new DAGError(`DAGDeriver: contract for '${name}' not found in registry`);
           }
           const single: SingleNodePlacementInterface = {
-            '@id':   nodeId(name),
+            '@id':   DAG.placementId(dagName, name),
             '@type': 'SingleNode',
             name,
             'node': name,
@@ -403,8 +400,8 @@ export class DAGDeriver {
           `DAGDeriver: emit terminal name '${emitName}' collides with an existing operation placement; choose a distinct name`,
         );
       }
-      const terminalNode: TerminalNodePlacementInterface = {
-        '@id':     nodeId(emitName),
+      const terminalNode: TerminalNode = {
+        '@id':     DAG.placementId(dagName, emitName),
         '@type':   'TerminalNode',
         'name':    emitName,
         'outcome': emit.outcome,
@@ -429,7 +426,7 @@ export class DAGDeriver {
     scatter: DAGDeriverScatter,
     successors: ReadonlySet<string>,
     annotations: DAGDeriverAnnotations,
-    nodeId: (n: string) => string,
+    dagName: string,
     emitCollector: Map<string, DAGDeriverEmitTerminal>,
   ): ScatterNode {
     const next0 = [...successors][0];
@@ -461,17 +458,18 @@ export class DAGDeriver {
       }
     }
 
-    let gather: ScatterNode['gather'];
-    if (scatter.strategy === 'custom') {
-      gather = { 'strategy': 'custom', 'customNode': scatter.customNode };
-    } else if (scatter.strategy === 'partition') {
-      gather = { 'strategy': 'partition', 'partitions': { ...scatter.partitions } };
-    } else {
-      gather = { 'strategy': 'append', 'target': scatter.target };
-    }
+    // Dispatch map over strategy → gather config. Exhaustive: TypeScript narrows
+    // `scatter` in each branch via the discriminated union on `DAGDeriverScatter['strategy']`.
+    type GatherResolver = (s: DAGDeriverScatter) => ScatterNode['gather'];
+    const gatherByStrategy: Record<DAGDeriverScatter['strategy'], GatherResolver> = {
+      'custom':    (s) => ({ 'strategy': 'custom',    'customNode':  (s as Extract<DAGDeriverScatter, { strategy: 'custom' }>).customNode }),
+      'partition': (s) => ({ 'strategy': 'partition', 'partitions':  { ...(s as Extract<DAGDeriverScatter, { strategy: 'partition' }>).partitions } }),
+      'append':    (s) => ({ 'strategy': 'append',    'target':      (s as Extract<DAGDeriverScatter, { strategy: 'append' }>).target }),
+    };
+    const gather: ScatterNode['gather'] = (gatherByStrategy[scatter.strategy] ?? (() => { throw new DAGError(`DAGDeriver: unknown scatter strategy '${scatter.strategy}'`); }))(scatter);
 
     const scatterNode: ScatterNode = {
-      '@id':     nodeId(name),
+      '@id':     DAG.placementId(dagName, name),
       '@type':   'ScatterNode',
       name,
       'body':    { 'node': scatter.node },
@@ -501,7 +499,7 @@ export class DAGDeriver {
     embeddedDAG: DAGDeriverEmbeddedDAG,
     successors: ReadonlySet<string>,
     annotations: DAGDeriverAnnotations,
-    nodeId: (n: string) => string,
+    dagName: string,
     emitCollector: Map<string, DAGDeriverEmitTerminal>,
   ): EmbeddedDAGNode {
     // CON-7/CON-11: Build stateMapping in the object literal (no post-construction
@@ -524,7 +522,7 @@ export class DAGDeriver {
       : undefined;
 
     const embeddedNode: EmbeddedDAGNode = {
-      '@id':   nodeId(name),
+      '@id':   DAG.placementId(dagName, name),
       '@type': 'EmbeddedDAGNode',
       name,
       'dag':   embeddedDAG.dag,

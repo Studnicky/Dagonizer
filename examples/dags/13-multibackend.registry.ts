@@ -12,6 +12,7 @@
  */
 
 import type { RegistryBundleInterface, RegistryModuleInterface } from '@noocodex/dagonizer/contracts';
+import { CheckpointRestoreAdapterFn } from '@noocodex/dagonizer/checkpoint';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 
 import { dag, squareItemDag, squareNode, sumNode, sumResultsDag, MultiBackendState } from './13-multibackend.js';
@@ -25,9 +26,7 @@ const registry: RegistryModuleInterface = {
       },
       "services":        undefined,
       "registryVersion": '1.0.0',
-      restoreState(snapshot: JsonObject) {
-        return MultiBackendState.restore(snapshot);
-      },
+      "restoreState":    CheckpointRestoreAdapterFn.fromFn((snapshot: JsonObject) => MultiBackendState.restore(snapshot)),
     };
   },
 };

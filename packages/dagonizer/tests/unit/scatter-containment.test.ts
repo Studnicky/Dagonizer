@@ -23,6 +23,7 @@ import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
+import type { ObserverRelay } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
@@ -237,7 +238,7 @@ function buildTestContainer(): DagContainerInterface<ScatterContainerState> {
   innerDispatcher.registerDAG(bodyDag);
 
   return {
-    async runDag(task: DagTaskInterface<ScatterContainerState, unknown>): Promise<DagOutcomeInterface> {
+    async runDag(task: DagTaskInterface<ScatterContainerState, unknown>, _options?: { readonly relay?: ObserverRelay }): Promise<DagOutcomeInterface> {
       const cloneState = task.state;
       const intermediates: Array<{ output: string | null; skipped: boolean; nodeName: string }> = [];
 
@@ -311,9 +312,9 @@ void describe('Scatter dag-body container seam (W4)', () => {
 
     let runDagCallCount = 0;
     const trackingContainer: DagContainerInterface<ScatterContainerState> = {
-      async runDag(task): Promise<DagOutcomeInterface> {
+      async runDag(task, options): Promise<DagOutcomeInterface> {
         runDagCallCount++;
-        return testContainer.runDag(task);
+        return testContainer.runDag(task, options);
       },
     };
 
@@ -345,7 +346,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
     let inlineNodeCalls = 0;
 
     const container: DagContainerInterface<ScatterContainerState> = {
-      async runDag(): Promise<DagOutcomeInterface> {
+      async runDag(_task, _options): Promise<DagOutcomeInterface> {
         containerCalls++;
         return {
           'terminalOutput': 'completed',
@@ -391,7 +392,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
   // ── (d) Container error → collected error, not unhandled throw ───────────
   void it('transport failure from container collects error; scatter routes to error output', async () => {
     const failContainer: DagContainerInterface<ScatterContainerState> = {
-      async runDag(task): Promise<DagOutcomeInterface> {
+      async runDag(task, _options): Promise<DagOutcomeInterface> {
         return {
           'terminalOutput': 'failed',
           'errors': [{

@@ -26,7 +26,6 @@ type DagreModule = typeof DagreDefault;
 import type { DAG } from '../entities/dag/DAG.js';
 
 import { PlacementUtils } from './internal.js';
-import type { PlacementEntry } from './internal.js';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -34,30 +33,30 @@ import type { PlacementEntry } from './internal.js';
 
 /** A 2-D position for a node in the Cytoscape canvas. */
 export interface NodePosition {
-  readonly x: number;
-  readonly y: number;
+  x: number;
+  y: number;
 }
 
 /** Result of laying out one DAG (or sub-DAG). */
 export interface LayoutResult {
   /** Positions keyed by fully-prefixed cytoscape node id. */
-  readonly positions: ReadonlyMap<string, NodePosition>;
+  positions: ReadonlyMap<string, NodePosition>;
   /** Total bounding-box width after layout. */
-  readonly width: number;
+  width: number;
   /** Total bounding-box height after layout. */
-  readonly height: number;
+  height: number;
 }
 
 /** Layout tuning knobs (all optional; sensible defaults apply). */
 export interface CompositeLayoutOptions {
   /** Vertical gap between ranks (dagre ranksep). Default 80. */
-  readonly rankSep?: number;
+  rankSep?: number;
   /** Horizontal gap between sibling nodes (dagre nodesep). Default 60. */
-  readonly nodeSep?: number;
+  nodeSep?: number;
   /** Default node render width for leaf nodes. Default 180. */
-  readonly nodeWidth?: number;
+  nodeWidth?: number;
   /** Default node render height for leaf nodes. Default 50. */
-  readonly nodeHeight?: number;
+  nodeHeight?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -65,19 +64,19 @@ export interface CompositeLayoutOptions {
 // ---------------------------------------------------------------------------
 
 interface BoundingBox {
-  readonly minX: number;
-  readonly minY: number;
-  readonly maxX: number;
-  readonly maxY: number;
-  readonly centerX: number;
-  readonly centerY: number;
-  readonly width: number;
-  readonly height: number;
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  centerX: number;
+  centerY: number;
+  width: number;
+  height: number;
 }
 
 interface Resolved {
-  readonly positions: Map<string, NodePosition>;
-  readonly bb: BoundingBox;
+  positions: Map<string, NodePosition>;
+  bb: BoundingBox;
 }
 
 // ---------------------------------------------------------------------------
@@ -176,7 +175,7 @@ export class CompositeLayout {
     // Sub-layout results for embedded-DAGs (keyed by placement.name).
     const subLayouts = new Map<string, Resolved>();
 
-    for (const placement of dag.nodes as readonly PlacementEntry[]) {
+    for (const placement of PlacementUtils.narrowNodes(dag)) {
       const dagName = PlacementUtils.embeddedDagName(placement);
       if (dagName === null) continue;
       if (visited.has(dagName)) continue;
@@ -215,7 +214,7 @@ export class CompositeLayout {
     // • all others use the default leaf size.
     const nodeSizes = new Map<string, { width: number; height: number }>();
 
-    for (const placement of dag.nodes as readonly PlacementEntry[]) {
+    for (const placement of PlacementUtils.narrowNodes(dag)) {
       let w: number;
       let h: number;
 
@@ -241,14 +240,13 @@ export class CompositeLayout {
       g.setNode(nodeId, { "width": w, "height": h });
     }
 
-    // Register edges. Skip null targets (terminals); no edge needed for layout.
-    for (const placement of dag.nodes as readonly PlacementEntry[]) {
+    // Register edges. All routes reference named placements in the DAG model.
+    for (const placement of PlacementUtils.narrowNodes(dag)) {
       if (!('outputs' in placement)) continue;
 
       const fromId = PlacementUtils.idIn(prefix, placement.name);
 
       for (const target of Object.values(placement.outputs)) {
-        if (target === null) continue;                       // terminal route
         const toId = PlacementUtils.idIn(prefix, target);
         if (g.hasNode(toId)) g.setEdge(fromId, toId);
       }
@@ -261,8 +259,12 @@ export class CompositeLayout {
 
     const positions = new Map<string, NodePosition>();
 
-    for (const placement of dag.nodes as readonly PlacementEntry[]) {
+    for (const placement of PlacementUtils.narrowNodes(dag)) {
       const nodeId = PlacementUtils.idIn(prefix, placement.name);
+      // dagre's graphlib types `g.node()` as `Label` (a plain object with no
+      // geometry properties). The actual runtime value is always `{x, y, width,
+      // height}` after `dagreLib.layout(g)` has run; the cast makes this
+      // accessible. `undefined` is returned for ids not present in the graph.
       const dagrePos = g.node(nodeId) as { x: number; y: number } | undefined;
       if (dagrePos === undefined) continue;
 

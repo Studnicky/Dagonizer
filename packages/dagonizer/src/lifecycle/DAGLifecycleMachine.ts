@@ -54,17 +54,22 @@ export class DAGLifecycleMachine {
     state: DAGLifecycleState,
     event: DAGLifecycleEvent,
   ): DAGLifecycleState {
-    if (
-      state.kind === 'completed'
-      || state.kind === 'failed'
-      || state.kind === 'cancelled'
-      || state.kind === 'timed_out'
-    ) {
+    // Terminal stickiness: delegate to `isTerminal` — the single source of
+    // truth for which kinds are terminal so the two sites never diverge.
+    if (DAGLifecycleMachine.isTerminal(state)) {
       return state;
     }
 
+    // TypeScript's control-flow analysis cannot infer that `isTerminal`
+    // eliminates the terminal variants; the cast to `ActiveState` is sound
+    // because the guard above returns early for every terminal kind.
     type ActiveState = Extract<DAGLifecycleState, { kind: 'pending' | 'running' }>;
     const activeState = state as ActiveState;
+    // The TRANSITION_TABLE is keyed on `ActiveState['kind']` × `EventType`,
+    // but the index signature returns `Handler<K,T> | undefined`. The wider
+    // cast to a plain `(state, event) => DAGLifecycleState` is necessary
+    // because the generic K/T are not propagatable through a dynamic index
+    // lookup; the shape is structurally identical at runtime.
     const handlerFn = DAGLifecycleMachine.TRANSITION_TABLE[activeState.kind][event.type] as
       | ((state: ActiveState, event: DAGLifecycleEvent) => DAGLifecycleState)
       | undefined;

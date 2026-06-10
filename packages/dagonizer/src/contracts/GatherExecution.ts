@@ -20,11 +20,11 @@ import type { StateAccessor } from './StateAccessor.js';
  * live clone state after the body ran.
  */
 export interface GatherRecord<TState extends NodeStateInterface> {
-  readonly index: number;
-  readonly item: unknown;
-  readonly output: string;
-  readonly terminalOutcome: 'completed' | 'failed' | null;
-  readonly cloneState: TState;
+  index: number;
+  item: unknown;
+  output: string;
+  terminalOutcome: 'completed' | 'failed' | null;
+  cloneState: TState;
 }
 
 /**
@@ -38,7 +38,7 @@ export interface GatherRecord<TState extends NodeStateInterface> {
  *     a registered node back through the engine
  */
 export interface GatherExecution<TState extends NodeStateInterface> {
-  readonly state: TState;
+  state: TState;
   /**
    * Per-clone records. INVARIANT: ordered by source index (`record.index`
    * ascending). The dispatcher's scatter loop builds them index-ordered across
@@ -46,9 +46,16 @@ export interface GatherExecution<TState extends NodeStateInterface> {
    * through the same index-ordered batch loop on resume). Strategies rely on
    * this and must not re-sort.
    */
-  readonly records: ReadonlyArray<GatherRecord<TState>>;
-  readonly dagName: string;
-  readonly signal: AbortSignal | null;
-  readonly accessor: StateAccessor;
-  readonly invoker: NodeInvoker;
+  records: GatherRecord<TState>[];
+  dagName: string;
+  /**
+   * The active abort signal for the scatter body, or `null` when the run
+   * has no cancellation signal. `null` is a deliberate sentinel meaning
+   * "no signal present" — distinct from the optional `signal?` pattern
+   * used elsewhere in the engine, where the field may simply be absent.
+   * Strategies and invokers check `signal !== null` before forwarding.
+   */
+  signal: AbortSignal | null;
+  accessor: StateAccessor;
+  invoker: NodeInvoker;
 }

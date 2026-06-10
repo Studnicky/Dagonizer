@@ -2,8 +2,8 @@
  * ExecutionResponse: wire-safe result returned from an isolating container
  * backend to the dispatcher after completing a whole embedded DAG.
  *
- * `terminalOutput` (renamed from `output` in the reference branch) is the
- * routing output the child DAG's terminal outcome resolved to.
+ * `terminalOutput` is the routing output the child DAG's terminal outcome
+ * resolved to.
  *
  * The NodeError shape is inlined here (same approach as NodeOutput which
  * inlines it). The standalone NodeErrorSchema is authoritative for that

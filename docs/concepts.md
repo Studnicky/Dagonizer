@@ -40,7 +40,7 @@ The Archivist DAG has roughly ten placements covering classify, scout scatter, c
 
 ## Placement
 
-A **placement** is one vertex in the DAG. Each placement has a name, a `@type` discriminator that selects the kind, and an `outputs` map that routes named outputs to the next placement (or `null` to end the path).
+A **placement** is one vertex in the DAG. Each placement has a name, a `@type` discriminator that selects the kind, and an `outputs` map that routes named outputs to the next placement. Flows terminate at an explicit `TerminalNode` placement.
 
 Five kinds:
 
@@ -82,7 +82,7 @@ Override `snapshotData()` and `restoreData()` to make domain fields checkpointab
 A **lifecycle** is the FSM behind each DAG execution: `pending → running → completed | failed | cancelled | timed_out`. `DAGLifecycleMachine` is the pure reducer; `NodeStateBase` owns the instance.
 
 - The dispatcher marks `running` when the flow starts.
-- It marks `completed` when every output routes to `null` without error.
+- It marks `completed` when the flow reaches a `TerminalNode` with `outcome: 'completed'` (the default).
 - It marks `failed` when a node throws (which should not happen, but the dispatcher guards the boundary), or when execution reaches a `TerminalNode` with `outcome: 'failed'`.
 - It marks `cancelled` when the composed `AbortSignal` fires before a deadline.
 - It marks `timed_out` when the `deadlineMs` timer fires.
@@ -123,7 +123,7 @@ When `cursor` is non-null, the execution stopped early. Pass it to `dispatcher.r
 
 ## Route
 
-A **route** is the directed edge in the DAG: an output name on one placement mapped to the name of the next placement (or `null`). The Archivist's classify-intent placement has four routes, one per output. The TypeScript compiler verifies that every declared output in the node's `TOutput` union appears in the placement's `outputs` map; an unwired output is a build error before `registerDAG` runs the same check at runtime.
+A **route** is the directed edge in the DAG: an output name on one placement mapped to the name of the next placement. The Archivist's classify-intent placement has four routes, one per output. The TypeScript compiler verifies that every declared output in the node's `TOutput` union appears in the placement's `outputs` map; an unwired output is a build error before `registerDAG` runs the same check at runtime.
 
 ## Cancellation
 

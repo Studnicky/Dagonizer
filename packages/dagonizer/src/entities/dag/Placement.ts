@@ -13,18 +13,18 @@
  */
 
 import type { EmbeddedDAGNode } from './EmbeddedDAGNode.js';
-import type { PhaseNodePlacementInterface } from './PhaseNode.js';
+import type { PhaseNode } from './PhaseNode.js';
 import type { ScatterNode } from './ScatterNode.js';
 import type { SingleNodePlacementInterface } from './SingleNode.js';
-import type { TerminalNodePlacementInterface } from './TerminalNode.js';
+import type { TerminalNode } from './TerminalNode.js';
 
 /** Canonical union of every node placement shape. Derived from `DAG['nodes'][number]`. */
 export type DAGNodeType =
   | EmbeddedDAGNode
   | ScatterNode
   | SingleNodePlacementInterface
-  | TerminalNodePlacementInterface
-  | PhaseNodePlacementInterface;
+  | TerminalNode
+  | PhaseNode;
 
 /**
  * Static type-guard class for DAG node placement discriminants.
@@ -51,13 +51,13 @@ export class Placement {
     return n['@type'] === 'SingleNode';
   }
 
-  /** Narrows `n` to `TerminalNodePlacementInterface` when `@type === 'TerminalNode'`. */
-  static isTerminal(n: DAGNodeType): n is TerminalNodePlacementInterface {
+  /** Narrows `n` to `TerminalNode` when `@type === 'TerminalNode'`. */
+  static isTerminal(n: DAGNodeType): n is TerminalNode {
     return n['@type'] === 'TerminalNode';
   }
 
-  /** Narrows `n` to `PhaseNodePlacementInterface` when `@type === 'PhaseNode'`. */
-  static isPhase(n: DAGNodeType): n is PhaseNodePlacementInterface {
+  /** Narrows `n` to `PhaseNode` when `@type === 'PhaseNode'`. */
+  static isPhase(n: DAGNodeType): n is PhaseNode {
     return n['@type'] === 'PhaseNode';
   }
 }

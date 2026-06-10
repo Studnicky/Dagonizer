@@ -30,6 +30,6 @@ export abstract class RecallContextNode<
     const rows = context.services.memory.select(pattern);
     const bindings = this.mapBindings(rows);
     this.applyRecall(state, bindings);
-    return NodeOutputBuilder.of(bindings.length === 0 ? this.emptyPort() : this.successPort());
+    return NodeOutputBuilder.of(bindings.length === 0 ? 'empty' : 'success');
   }
 }

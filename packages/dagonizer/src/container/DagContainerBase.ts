@@ -53,17 +53,20 @@ export interface PoolEntry<TWorker> {
 /** Default grace period (ms) before a shutdown worker is force-terminated. */
 export const DEFAULT_SHUTDOWN_GRACE_MS = 2000;
 
+/** Co-located defaults for `DagContainerOptions`. */
+const CONTAINER_DEFAULTS = { 'shutdownGraceMs': DEFAULT_SHUTDOWN_GRACE_MS } as const;
+
 export interface DagContainerOptions {
   /** Maximum number of pool entries (workers) to maintain. */
-  readonly poolSize: number;
+  poolSize: number;
   /** Init shape forwarded to each DagHost on first channel use. */
-  readonly init: InitMessageShape;
+  init: InitMessageShape;
   /**
    * Grace period (ms) before a shutting-down worker is force-terminated.
-   * Required. Pass `DEFAULT_SHUTDOWN_GRACE_MS` or a custom value.
-   * Use `DagContainerBase.defaultOptions` to spread ergonomic defaults.
+   * Defaults to `DEFAULT_SHUTDOWN_GRACE_MS` (2000 ms). Override by passing
+   * a custom value; omit to accept the default.
    */
-  readonly shutdownGraceMs: number;
+  shutdownGraceMs?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -93,16 +96,17 @@ export abstract class DagContainerBase<
   readonly #shutdownGraceMs: number;
 
   /**
-   * Ergonomic spread defaults for `DagContainerOptions`. Subclasses pass
-   * `{ ...DagContainerBase.defaultOptions, poolSize, init, ...overrides }` so
-   * the required `shutdownGraceMs` field is filled without forcing every
-   * subclass to import the default constant.
+   * Ergonomic spread defaults for `DagContainerOptions`. Subclasses may spread
+   * `{ ...DagContainerBase.defaultOptions, poolSize, init, ...overrides }` for
+   * explicit control; `shutdownGraceMs` is now optional and resolved from
+   * `CONTAINER_DEFAULTS` automatically when omitted.
    */
-  static readonly defaultOptions: Pick<DagContainerOptions, 'shutdownGraceMs'> = {
+  static readonly defaultOptions: Pick<Required<DagContainerOptions>, 'shutdownGraceMs'> = {
     "shutdownGraceMs": DEFAULT_SHUTDOWN_GRACE_MS,
   };
 
   constructor(options: DagContainerOptions) {
+    const { shutdownGraceMs } = { ...CONTAINER_DEFAULTS, ...options };
     this.#dispatches             = new WeakMap<MessageChannelInterface, ChannelDispatch>();
     this.#channelToEntry         = new WeakMap<MessageChannelInterface, PoolEntry<TWorker>>();
     this.#pool                   = [];
@@ -111,7 +115,7 @@ export abstract class DagContainerBase<
     this.#destroyed              = false;
     this.#poolSize               = options.poolSize;
     this.#init                   = options.init;
-    this.#shutdownGraceMs        = options.shutdownGraceMs;
+    this.#shutdownGraceMs        = shutdownGraceMs;
   }
 
   // ---------------------------------------------------------------------------
@@ -215,7 +219,8 @@ export abstract class DagContainerBase<
   // runDag
   // ---------------------------------------------------------------------------
 
-  async runDag(task: DagTaskInterface<TState, unknown>, relay?: ObserverRelay): Promise<DagOutcomeInterface> {
+  async runDag(task: DagTaskInterface<TState, unknown>, options?: { readonly relay?: ObserverRelay }): Promise<DagOutcomeInterface> {
+    const relay: ObserverRelay | null = options?.relay ?? null;
     let acquiredChannel: MessageChannelInterface | null = null;
 
     try {
@@ -224,7 +229,7 @@ export abstract class DagContainerBase<
       const dispatch = this.#dispatchFor(channel);
       const request = task.toRequest();
 
-      const outcome = await dispatch.request(request, task.context.signal, relay ?? null);
+      const outcome = await dispatch.request(request, task.context.signal, relay);
 
       return outcome;
     } catch (err) {
@@ -259,13 +264,13 @@ export abstract class DagContainerBase<
       snapshot.map((entry) => {
         // R9: capture the grace handle so we can cancel it when the worker
         // exits cleanly — avoids leaking a timer into the next event-loop tick.
-        let graceHandle: ReturnType<typeof setTimeout> | undefined;
+        let graceHandle: ReturnType<typeof setTimeout> | null = null;
         const gracePromise = new Promise<void>((resolve) => {
           graceHandle = setTimeout(resolve, this.#shutdownGraceMs);
         });
         return Promise.race([
           this.awaitWorkerExit(entry.worker).then(() => {
-            if (graceHandle !== undefined) clearTimeout(graceHandle);
+            if (graceHandle !== null) clearTimeout(graceHandle);
           }),
           gracePromise,
         ]).then(async () => {

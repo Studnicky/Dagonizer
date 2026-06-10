@@ -30,6 +30,6 @@ export abstract class RecordFindingsNode<
         context.services.memory.assert(q.subject, q.predicate, q.object, q.graph);
       }
     }
-    return NodeOutputBuilder.of(this.successPort());
+    return NodeOutputBuilder.of('success');
   }
 }

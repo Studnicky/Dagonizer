@@ -1,5 +1,5 @@
 /**
- * AdapterBase: shared lifecycle foundation for `BaseAdapter` and
+ * BaseAdapterCore: shared lifecycle foundation for `BaseAdapter` and
  * `BaseEmbedder`.
  *
  * Owns the retry plumbing (`RetryableErrorPolicy` with exponential
@@ -8,8 +8,8 @@
  * `classify()` implementation. Child classes add only the concerns
  * specific to their surface:
  *
- *   AdapterBase ─── BaseAdapter  → capabilities + chat() / performChat()
- *               └── BaseEmbedder → dimensions  + embed() / performEmbed()
+ *   BaseAdapterCore ─── BaseAdapter  → capabilities + chat() / performChat()
+ *                   └── BaseEmbedder → dimensions  + embed() / performEmbed()
  *
  * Constants and the shared options type live here so both subtypes
  * consume a single canonical name with a single canonical value.
@@ -26,41 +26,44 @@ export const DEFAULT_MAX_ATTEMPTS = 3;
 /** Canonical default: first retry delay in ms (adapter + embedder). */
 export const DEFAULT_BASE_DELAY_MS = 400;
 
-/** Partial options accepted by any `AdapterBase` subclass constructor. */
-export interface AdapterBaseOptions {
-  readonly maxAttempts?: number;
-  readonly baseDelayMs?: number;
+/** Fully-resolved options for `BaseAdapterCore` — no optional fields. */
+export interface BaseAdapterCoreOptionsResolved {
+  maxAttempts: number;
+  baseDelayMs: number;
 }
 
-/** Fully-resolved `AdapterBaseOptions` with no optional fields. */
-export interface AdapterBaseOptionsResolved {
-  readonly maxAttempts: number;
-  readonly baseDelayMs: number;
+/**
+ * Caller-facing options. Subclasses expose this (or an extension of it)
+ * to their own callers; every field falls back to `defaultOptions()`
+ * when omitted, so the base materialises a complete value in one place.
+ */
+export interface BaseAdapterCoreOptions {
+  maxAttempts?: number;
+  baseDelayMs?: number;
 }
 
-export abstract class AdapterBase {
+export abstract class BaseAdapterCore {
   readonly id: string;
   readonly displayName: string;
   readonly #retry: RetryableErrorPolicy;
 
   /**
-   * Returns a fully-resolved options object. Subclasses that receive a
-   * partial `options` from their own callers spread this as a base so
-   * the object handed to `super()` is always complete:
-   *
-   *   super(id, name, { ...AdapterBase.defaultOptions(), ...options });
+   * The canonical default options. Subclasses do not need to spread this
+   * themselves — the base constructor folds caller-supplied partials over
+   * it — but it is exposed for callers that want the default values.
    */
-  static defaultOptions(): AdapterBaseOptionsResolved {
+  static defaultOptions(): BaseAdapterCoreOptionsResolved {
     return { 'maxAttempts': DEFAULT_MAX_ATTEMPTS, 'baseDelayMs': DEFAULT_BASE_DELAY_MS };
   }
 
-  protected constructor(id: string, displayName: string, options: AdapterBaseOptions = {}) {
+  protected constructor(id: string, displayName: string, options: BaseAdapterCoreOptions = {}) {
+    const resolved: BaseAdapterCoreOptionsResolved = { ...BaseAdapterCore.defaultOptions(), ...options };
     this.id = id;
     this.displayName = displayName;
     this.#retry = new RetryableErrorPolicy({
-      'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
+      'maxAttempts': resolved.maxAttempts,
       'strategy':    BackoffStrategy.EXPONENTIAL,
-      'baseDelay':   options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS,
+      'baseDelay':   resolved.baseDelayMs,
     });
   }
 

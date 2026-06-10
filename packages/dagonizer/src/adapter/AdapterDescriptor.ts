@@ -20,9 +20,9 @@ import type { AdapterCapabilities } from './LlmAdapter.js';
  * the provider-specific model identifier.
  */
 export interface AdapterDescriptorShape {
-  readonly provider: string;
-  readonly model: string;
-  readonly capabilities: AdapterCapabilities;
+  provider: string;
+  model: string;
+  capabilities: AdapterCapabilities;
 }
 
 /**

@@ -34,15 +34,3 @@ export const TerminalNodeSchema = {
 /** TypeScript type derived from `TerminalNodeSchema` via `json-schema-to-ts`. */
 export type TerminalNode = FromSchema<typeof TerminalNodeSchema>;
 
-/**
- * Terminal node placement.
- * Ends the flow with an explicit outcome; no routing, no outputs.
- *
- * Unlike every other placement kind, TerminalNode carries no `outputs` map:
- * the engine captures `outcome` from the placement and calls
- * `state.markCompleted()` or `state.markFailed(...)` on exit.
- *
- * This is a type alias for the schema-derived `TerminalNode` type.
- * The alias is retained for API compatibility; prefer `TerminalNode` directly.
- */
-export type TerminalNodePlacementInterface = TerminalNode;

@@ -12,5 +12,5 @@
  */
 export interface AbortableOptionsInterface {
   /** Optional `AbortSignal` to cancel the operation. */
-  readonly signal?: AbortSignal;
+  signal?: AbortSignal;
 }

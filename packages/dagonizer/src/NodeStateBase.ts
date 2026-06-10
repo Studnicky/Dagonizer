@@ -236,6 +236,10 @@ export class NodeStateBase implements NodeStateInterface {
   }
 
   getMetadata<T>(key: string): T | undefined {
+    // Sound narrowing: `_metadata` values are `JsonValue` (JSON-safe by the
+    // `setMetadata` contract). The cast to `T | undefined` is the single
+    // permitted caller-trust boundary for metadata reads; callers are
+    // responsible for using the same type `T` they wrote via `setMetadata`.
     return this._metadata[key] as T | undefined;
   }
 
@@ -343,7 +347,14 @@ export class NodeStateBase implements NodeStateInterface {
   snapshot(): JsonObject {
     return {
       'metadata': structuredClone(this._metadata),
+      // Sound JSON-safe narrowing: `_retries` is `Record<string, number>`, a
+      // subset of `JsonValue`. TypeScript cannot derive this without the cast
+      // because `structuredClone` returns the same generic type, not a narrowed
+      // `JsonValue`.
       'retries': structuredClone(this._retries) as JsonValue,
+      // Sound JSON-safe narrowing: `NodeWarning` fields are all primitive
+      // strings/numbers (schema-derived). Spread copies them to a plain object;
+      // the resulting array of plain objects satisfies `JsonValue`.
       'warnings': this._warnings.map((w) => ({ ...w })) as JsonValue,
       ...this.snapshotData(),
     };
@@ -394,8 +405,9 @@ export class NodeStateBase implements NodeStateInterface {
 
     const metadata = snapshot['metadata'];
     if (metadata !== undefined && typeof metadata === 'object' && metadata !== null && !Array.isArray(metadata)) {
-      // Cast: structuredClone returns JsonObject (readonly index); _metadata
-      // requires mutable Record<string,JsonValue>. The values are identical.
+      // Cast: structuredClone<T> returns T where T is narrowed to JsonObject;
+      // Record<string,JsonValue> is structurally identical but TypeScript
+      // requires the explicit cast at the assignment site.
       this._metadata = structuredClone(metadata) as Record<string, JsonValue>;
     }
     const retries = snapshot['retries'];

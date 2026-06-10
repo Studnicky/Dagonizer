@@ -37,10 +37,20 @@ const DEFAULT_JITTER_FACTOR = 0.1;
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DECORRELATED_JITTER_MULTIPLIER = 3;
 
-/** Computes the raw (pre-jitter) delay in ms for a given attempt. */
-type BackoffComputerType = (attempt: number, baseDelay: number, multiplier: number) => number;
+/** Canonical defaults for `RetryPolicyOptionsInterface` numeric/strategy fields. */
+const RETRY_POLICY_DEFAULTS = {
+  'maxAttempts':  DEFAULT_MAX_ATTEMPTS,
+  'strategy':     BackoffStrategy.EXPONENTIAL as BackoffStrategyValue,
+  'baseDelay':    DEFAULT_BASE_DELAY_MS,
+  'maxDelay':     DEFAULT_MAX_DELAY_MS,
+  'multiplier':   DEFAULT_MULTIPLIER,
+  'jitterFactor': DEFAULT_JITTER_FACTOR,
+} as const;
 
-const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategyValue, BackoffComputerType>> = {
+/** Canonical default for `getDelay` options. */
+const GET_DELAY_DEFAULTS = { 'error': null } as const;
+
+const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategyValue, (attempt: number, baseDelay: number, multiplier: number) => number>> = {
   'constant': (_attempt, baseDelay) => baseDelay,
   'linear': (attempt, baseDelay) => baseDelay * attempt,
   'exponential': (attempt, baseDelay, multiplier) => baseDelay * Math.pow(multiplier, attempt - 1),
@@ -125,13 +135,14 @@ export class RetryPolicy {
     retryOn: readonly ErrorConstructorType[] | null;
     abortOn: readonly ErrorConstructorType[] | null;
   } {
+    const resolved = { ...RETRY_POLICY_DEFAULTS, ...partial };
     return {
-      'maxAttempts':  partial.maxAttempts  ?? DEFAULT_MAX_ATTEMPTS,
-      'strategy':     partial.strategy     ?? BackoffStrategy.EXPONENTIAL,
-      'baseDelay':    partial.baseDelay    ?? DEFAULT_BASE_DELAY_MS,
-      'maxDelay':     partial.maxDelay     ?? DEFAULT_MAX_DELAY_MS,
-      'multiplier':   partial.multiplier   ?? DEFAULT_MULTIPLIER,
-      'jitterFactor': partial.jitterFactor ?? DEFAULT_JITTER_FACTOR,
+      'maxAttempts':  resolved.maxAttempts,
+      'strategy':     resolved.strategy,
+      'baseDelay':    resolved.baseDelay,
+      'maxDelay':     resolved.maxDelay,
+      'multiplier':   resolved.multiplier,
+      'jitterFactor': resolved.jitterFactor,
       'retryOn':  partial.retryOn  !== undefined ? partial.retryOn  : null,
       'abortOn':  partial.abortOn  !== undefined ? partial.abortOn  : null,
     };
@@ -151,8 +162,8 @@ export class RetryPolicy {
    * Override for custom backoff. The base implementation honors the
    * configured strategy + jitter.
    */
-  getDelay(attempt: number, options?: { error?: Error | null }): number {
-    void options; // reserved for subclass overrides; base implementation ignores error
+  getDelay(attempt: number, options: { readonly error?: Error | null } = {}): number {
+    void { ...GET_DELAY_DEFAULTS, ...options }; // reserved for subclass overrides; base implementation ignores error
     const computer = BACKOFF_COMPUTERS[this.strategy];
     if (computer === undefined) {
       throw new DAGError(`Unknown backoff strategy: ${this.strategy as string}`);
@@ -234,7 +245,7 @@ export class RetryPolicy {
         }
 
         const delay = this.getDelay(attempt, { 'error': lastError });
-        await RetryPolicy.sleep(delay, signal !== undefined ? { signal } : undefined);
+        await RetryPolicy.sleep(delay, signal !== undefined ? { signal } : {});
       }
     }
 
@@ -245,9 +256,9 @@ export class RetryPolicy {
    * Sleep `ms` via the installed `Scheduler`. Resolves early if
    * `options.signal` aborts during the wait.
    */
-  private static async sleep(ms: number, options?: AbortableOptionsInterface): Promise<void> {
+  private static async sleep(ms: number, options: AbortableOptionsInterface = {}): Promise<void> {
     if (ms <= 0) return;
-    const signal = options?.signal;
+    const signal = options.signal;
     try {
       await Scheduler.current().after(ms, options);
     } catch (err) {

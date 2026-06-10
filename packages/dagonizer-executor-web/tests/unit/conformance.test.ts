@@ -31,6 +31,7 @@ import { Dagonizer } from '@noocodex/dagonizer';
 import type { DagonizerInterface, DispatcherBundle, NodeStateInterface } from '@noocodex/dagonizer';
 import { DagTask } from '@noocodex/dagonizer/container';
 import type { DagContainerInterface } from '@noocodex/dagonizer/contracts';
+import { Timeout } from '@noocodex/dagonizer/runtime';
 import {
   ConformanceRegistry,
   ConformanceState,
@@ -418,11 +419,11 @@ void describe('WebWorkerContainer P0 — busy-worker death wakes parked waiter',
     };
 
     const task1 = new DagTask(
-      'p0-dag', [], 'corr-1', null,
+      'p0-dag', [], 'corr-1', Timeout.none(),
       new ConformanceState(), context,
     );
     const task2 = new DagTask(
-      'p0-dag', [], 'corr-2', null,
+      'p0-dag', [], 'corr-2', Timeout.none(),
       new ConformanceState(), context,
     );
 

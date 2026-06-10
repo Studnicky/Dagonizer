@@ -1,8 +1,8 @@
 /**
  * Entity registry: JSON Schema + derived TS type per shape.
  *
- * Layout mirrors the nocturne `entities/` convention so the package can swap
- * in `@noocodex/jsontology` without restructuring:
+ * Entities are grouped by domain so each schema and its derived type live
+ * together:
  *
  *   dag/: DAG and its node-entry sub-shapes
  *   state-machines/: DAGLifecycleState wire shape
@@ -27,10 +27,10 @@ export { SingleNodeSchema } from './dag/SingleNode.js';
 export type { SingleNode, SingleNodePlacementInterface } from './dag/SingleNode.js';
 
 export { TerminalNodeSchema } from './dag/TerminalNode.js';
-export type { TerminalNode, TerminalNodePlacementInterface } from './dag/TerminalNode.js';
+export type { TerminalNode } from './dag/TerminalNode.js';
 
 export { PhaseNodeSchema } from './dag/PhaseNode.js';
-export type { PhaseNode, PhaseNodePlacementInterface } from './dag/PhaseNode.js';
+export type { PhaseNode } from './dag/PhaseNode.js';
 
 export { GatherConfigSchema } from './dag/GatherConfig.js';
 export type { GatherConfig } from './dag/GatherConfig.js';
@@ -41,8 +41,7 @@ export type { ScatterNode } from './dag/ScatterNode.js';
 export { EmbeddedDAGNodeSchema } from './dag/EmbeddedDAGNode.js';
 export type { EmbeddedDAGNode } from './dag/EmbeddedDAGNode.js';
 
-export { DAGSchema, DAG_CONTEXT } from './dag/DAG.js';
-export type { DAG } from './dag/DAG.js';
+export { DAGSchema, DAG_CONTEXT, DAG } from './dag/DAG.js';
 
 export { Placement } from './dag/Placement.js';
 export type { DAGNodeType } from './dag/Placement.js';
@@ -93,7 +92,7 @@ export type { NodeStateData } from './node/NodeStateData.js';
 // execution
 // ---------------------------------------------------------------------------
 
-export { ExecutionResultSchema } from './execution/ExecutionResult.js';
+export { ExecutionResultSchema, InterruptionInfoSchema } from './execution/ExecutionResult.js';
 export type { ExecutionResult, ExecutionResultInterface, InterruptionInfo } from './execution/ExecutionResult.js';
 
 // ---------------------------------------------------------------------------

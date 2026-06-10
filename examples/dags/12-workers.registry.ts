@@ -17,6 +17,7 @@
  */
 
 import type { RegistryBundleInterface, RegistryModuleInterface } from '@noocodex/dagonizer/contracts';
+import { CheckpointRestoreAdapterFn } from '@noocodex/dagonizer/checkpoint';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 
 import { dag, squareWorker, workerDag, WorkState } from './12-workers.js';
@@ -30,9 +31,7 @@ const registry: RegistryModuleInterface = {
       },
       "services":        undefined,
       "registryVersion": '1.0.0',
-      restoreState(snapshot: JsonObject) {
-        return WorkState.restore(snapshot);
-      },
+      "restoreState":    CheckpointRestoreAdapterFn.fromFn((snapshot: JsonObject) => WorkState.restore(snapshot)),
     };
   },
 };

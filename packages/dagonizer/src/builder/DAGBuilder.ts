@@ -17,20 +17,28 @@ import type { WarningEmitter } from '../contracts/WarningEmitter.js';
 import { ContractRegistryValidator } from '../derive/ContractRegistryValidator.js';
 import { DAGDeriver } from '../derive/DAGDeriver.js';
 import type { DAGDeriverAnnotations } from '../derive/DAGDeriverAnnotations.js';
-import type { DAG } from '../entities/dag/DAG.js';
-import { DAG_CONTEXT } from '../entities/dag/DAG.js';
+import { DAG, DAG_CONTEXT } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import type { GatherConfig } from '../entities/dag/GatherConfig.js';
-import type { PhaseNodePlacementInterface } from '../entities/dag/PhaseNode.js';
+import type { PhaseNode } from '../entities/dag/PhaseNode.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
-import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
+import type { TerminalNode } from '../entities/dag/TerminalNode.js';
 import { ConfigurationError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { NoopWarningEmitter } from '../runtime/NoopWarningEmitter.js';
 
 import type { Path } from './Path.js';
 import { ScatterOptions } from './ScatterOptions.js';
+
+/** Co-located defaults for `terminal()` options. */
+const TERMINAL_DEFAULTS = { 'outcome': 'completed' } as const satisfies { readonly outcome: 'completed' | 'failed' };
+
+/** Module-level singleton used as the default warning emitter for `build()`. */
+const DEFAULT_WARNING_EMITTER: WarningEmitter = new NoopWarningEmitter();
+
+/** Co-located defaults for `build()` options. */
+const BUILD_DEFAULTS = { 'warningEmitter': DEFAULT_WARNING_EMITTER } as const satisfies { readonly warningEmitter: WarningEmitter };
 
 /**
  * Progressive path typing: resolves to `Path<T>` when `T` is a concrete state
@@ -53,31 +61,31 @@ type ParentPath<T extends NodeStateInterface> =
  */
 export interface ScatterOptionsInterface<TState extends NodeStateInterface = NodeStateInterface> {
   /** Metadata key under which each item is written per clone. Defaults to `currentItem`. */
-  readonly itemKey?: string;
+  itemKey?: string;
   /** Maximum number of clones run concurrently. Defaults to item count. */
-  readonly concurrency?: number;
+  concurrency?: number;
   /**
    * Seed each clone before its body runs (becomes `stateMapping.input`); same
    * concept and orientation as `EmbeddedDAGNode` `inputs`: keys are child-state
    * keys, values are parent-state dotted paths (narrowed to `Path<TState>` when
    * `TState` is a concrete subtype).
    */
-  readonly inputs?: Partial<Record<string, ParentPath<TState>>>;
+  inputs?: Partial<Record<string, ParentPath<TState>>>;
   /**
    * Gather config: how produced clone state merges back into the parent.
    * Required — every scatter must declare the merge strategy. Declare
    * `{ strategy: 'discard' }` for side-effect-only fan-outs.
    */
-  readonly gather: GatherConfig;
+  gather: GatherConfig;
   /** Outcome reducer name. Defaults to `'aggregate'`. */
-  readonly reducer?: string;
+  reducer?: string;
   /**
    * Logical container role for scatter dag-body execution. The dispatcher
    * binds role names to `DagContainerInterface` instances at construction.
    * Honored only when the body is a `{dag: string}` body. A node body
    * with `container` set is a validation error.
    */
-  readonly container?: string;
+  container?: string;
 }
 
 /**
@@ -99,16 +107,16 @@ export interface TypedEmbeddedDAGOptionsInterface<
   TChildState extends NodeStateInterface = NodeStateInterface,
   TParentState extends NodeStateInterface = NodeStateInterface,
 > {
-  /** Input mapping: child-state key → parent-state dotted path. Copied into the child before the embedded-DAG runs. */
-  readonly inputs?:  Partial<Record<keyof TChildState & string, ParentPath<TParentState>>>;
-  /** Output mapping: parent-state dotted path → child-state dotted path. Copied back into the parent after it completes. */
-  readonly outputs?: Partial<Record<ParentPath<TParentState>, ParentPath<TChildState>>>;
+  /** Input mapping: child-state key → parent-state dotted path. Copied into the child before the embedded-DAG runs. A mapping covers only the keys it seeds; omit it entirely when no seeding is needed. */
+  inputs?:  Partial<Record<keyof TChildState & string, ParentPath<TParentState>>>;
+  /** Output mapping: parent-state dotted path → child-state dotted path. Copied back into the parent after it completes. A mapping covers only the keys it copies back; omit it entirely when none. */
+  outputs?: Partial<Record<ParentPath<TParentState>, ParentPath<TChildState>>>;
   /**
    * Logical container role for this embedded DAG execution. The dispatcher
    * binds role names to `DagContainerInterface` instances at construction.
    * When absent, the embedded DAG runs in-process.
    */
-  readonly container?: string;
+  container?: string;
 }
 
 /**
@@ -135,17 +143,15 @@ export class DAGBuilder {
   readonly #name: string;
   readonly #version: string;
   readonly #nodes: DAGNodeType[] = [];
-  readonly #nodeImpls: Map<string, NodeInterface> = new Map();
+  // Generic erasure: stores type-erased NodeInterface<NodeStateInterface, string, unknown>; all
+  // callers retrieve and use the impl through the type-erased base. The explicit type annotation
+  // avoids `as` casts at every assignment site — widening happens once at the declaration.
+  readonly #nodeImpls: Map<string, NodeInterface<NodeStateInterface, string, unknown>> = new Map();
   #entrypoint: string | null = null;
 
   constructor(name: string, version: string) {
     this.#name = name;
     this.#version = version;
-  }
-
-  /** Compute the placement `@id` URN. */
-  #nodeId(placementName: string): string {
-    return `urn:noocodex:dag:${this.#name}/node/${placementName}`;
   }
 
   /** Set (or override) the entrypoint node name. */
@@ -164,15 +170,14 @@ export class DAGBuilder {
     routes: Record<TOutput, string>,
   ): this {
     this.#nodes.push({
-      '@id':     this.#nodeId(name),
+      '@id':     DAG.placementId(this.#name, name),
       '@type':   'SingleNode',
       name,
       'node':    dagNode.name,
       // Generic erasure: TOutput is narrower than string; the entity schema stores string keys.
       'outputs': routes as Record<string, string>,
     });
-    // Generic erasure: the impl map stores the type-erased base; callers retrieve it untyped.
-    this.#nodeImpls.set(name, dagNode as NodeInterface);
+    this.#nodeImpls.set(name, dagNode as NodeInterface<NodeStateInterface, string, unknown>);
     if (this.#entrypoint === null) this.#entrypoint = name;
     return this;
   }
@@ -211,7 +216,7 @@ export class DAGBuilder {
     // container) remain optional and are spread only when the caller provides them.
     const resolved = ScatterOptions.from(options);
     const scatterNode: ScatterNode = {
-      '@id':     this.#nodeId(name),
+      '@id':     DAG.placementId(this.#name, name),
       '@type':   'ScatterNode',
       name,
       'source':  source,
@@ -235,8 +240,7 @@ export class DAGBuilder {
     };
 
     if (!('dag' in body)) {
-      // Generic erasure: impl map stores type-erased base; callers retrieve it untyped.
-      this.#nodeImpls.set(name, body as NodeInterface);
+      this.#nodeImpls.set(name, body as NodeInterface<NodeStateInterface, string, unknown>);
     }
 
     this.#nodes.push(scatterNode);
@@ -276,7 +280,7 @@ export class DAGBuilder {
         }
         : undefined;
     const embeddedNode: EmbeddedDAGNode = {
-      '@id':     this.#nodeId(name),
+      '@id':     DAG.placementId(this.#name, name),
       '@type':   'EmbeddedDAGNode',
       name,
       'dag':     dagName,
@@ -300,14 +304,15 @@ export class DAGBuilder {
    * TerminalNodes have no routing (`outputs` map). They are placement-only
    * constructs with no backing `NodeInterface`.
    *
-   * @param options.outcome - Terminal outcome; defaults to `'completed'`.
+   * @param options.outcome - Terminal outcome. Defaults to `'completed'`.
    */
-  terminal(name: string, options?: { readonly outcome?: 'completed' | 'failed' }): this {
-    const placement: TerminalNodePlacementInterface = {
-      '@id':   this.#nodeId(name),
+  terminal(name: string, options: { outcome?: 'completed' | 'failed' } = {}): this {
+    const { outcome } = { ...TERMINAL_DEFAULTS, ...options };
+    const placement: TerminalNode = {
+      '@id':   DAG.placementId(this.#name, name),
       '@type': 'TerminalNode',
       name,
-      'outcome': options?.outcome ?? 'completed',
+      outcome,
     };
     this.#nodes.push(placement);
     if (this.#entrypoint === null) this.#entrypoint = name;
@@ -330,8 +335,8 @@ export class DAGBuilder {
     phase: 'pre' | 'post',
     dagNode: NodeInterface<TState, TOutput, TServices>,
   ): this {
-    const placement: PhaseNodePlacementInterface = {
-      '@id':   this.#nodeId(name),
+    const placement: PhaseNode = {
+      '@id':   DAG.placementId(this.#name, name),
       '@type': 'PhaseNode',
       name,
       'node':  dagNode.name,
@@ -339,7 +344,7 @@ export class DAGBuilder {
     };
     this.#nodes.push(placement);
     // Generic erasure: impl map stores type-erased base; callers retrieve it untyped.
-    this.#nodeImpls.set(name, dagNode as NodeInterface);
+    this.#nodeImpls.set(name, dagNode as NodeInterface<NodeStateInterface, string, unknown>);
     // Intentionally does NOT set entrypoint; phase placements are
     // out-of-band and never the main-loop entry.
     return this;
@@ -354,17 +359,18 @@ export class DAGBuilder {
    * time. Dangling reads throw `DAGError`; dead writes are routed to
    * `options.warningEmitter` (no-op if omitted).
    *
-   * @param options - Optional configuration.
-   * @param options.warningEmitter - Receives dead-write warnings. If
-   *   omitted, dead writes are silently discarded. Dangling reads always throw.
+   * @param options - Build options.
+   * @param options.warningEmitter - Receives dead-write warnings. Defaults to
+   *   a no-op emitter; dead writes are silently discarded. Dangling reads always throw.
    */
-  build(options?: { readonly warningEmitter?: WarningEmitter }): DAG {
+  build(options: { warningEmitter?: WarningEmitter } = {}): DAG {
+    const { warningEmitter } = { ...BUILD_DEFAULTS, ...options };
     if (this.#entrypoint === null) {
       throw new ConfigurationError(`DAGBuilder('${this.#name}'): cannot build DAG without an entrypoint; call .entrypoint() or add at least one node first`);
     }
     const dag: DAG = {
       '@context': DAG_CONTEXT,
-      '@id':      `urn:noocodex:dag:${this.#name}`,
+      '@id':      DAG.id(this.#name),
       '@type':    'DAG',
       'name':       this.#name,
       'version':    this.#version,
@@ -383,7 +389,7 @@ export class DAGBuilder {
       const contracts = DAGDeriver.extractContracts(contractNodes);
       ContractRegistryValidator.validate(
         contracts,
-        options?.warningEmitter ?? new NoopWarningEmitter(),
+        warningEmitter,
         { 'entrypointName': this.#entrypoint },
       );
     }
@@ -411,10 +417,10 @@ export class DAGBuilder {
     name: string,
     version: string,
     entrypoint: string,
-    nodes: readonly NodeInterface[],
-    options?: { readonly annotations?: DAGDeriverAnnotations },
+    nodes: NodeInterface[],
+    options: { annotations?: DAGDeriverAnnotations } = {},
   ): DAG {
-    const deriveOpts = options?.annotations !== undefined
+    const deriveOpts = options.annotations !== undefined
       ? { name, version, entrypoint, nodes, 'annotations': options.annotations }
       : { name, version, entrypoint, nodes };
     return DAGDeriver.derive(deriveOpts);

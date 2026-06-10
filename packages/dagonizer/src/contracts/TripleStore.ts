@@ -17,27 +17,27 @@
 
 /** RDF-JS Term: NamedNode, Literal, BlankNode, or DefaultGraph. */
 export interface Term {
-  readonly termType: 'NamedNode' | 'Literal' | 'BlankNode' | 'DefaultGraph' | 'Variable' | 'Quad';
-  readonly value: string;
+  termType: 'NamedNode' | 'Literal' | 'BlankNode' | 'DefaultGraph' | 'Variable' | 'Quad';
+  value: string;
 }
 
 /** RDF-JS Quad: subject, predicate, object, graph. */
 export interface Quad {
-  readonly subject:   Term;
-  readonly predicate: Term;
-  readonly object:    Term;
-  readonly graph:     Term;
+  subject:   Term;
+  predicate: Term;
+  object:    Term;
+  graph:     Term;
 }
 
 /** One bound row from `select()`. Keys are pattern-variable names without the leading `?`. */
-export type Binding = Readonly<Record<string, Term>>;
+export type Binding = Record<string, Term>;
 
 /** Basic graph pattern. Slots may be a concrete Term or a `?name` variable. */
 export interface SlotPattern {
-  readonly subject?:   Term | string;
-  readonly predicate?: Term | string;
-  readonly object?:    Term | string;
-  readonly graph?:     Term | string;
+  subject?:   Term | string;
+  predicate?: Term | string;
+  object?:    Term | string;
+  graph?:     Term | string;
 }
 
 export interface TripleStore {

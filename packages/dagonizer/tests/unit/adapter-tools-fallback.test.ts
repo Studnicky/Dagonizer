@@ -1,12 +1,11 @@
 /**
- * Tests for ADP-1: shouldFallbackWithoutTools protected method replaces
- * the toolsFallback callback on OpenAiCompatibleConfig.
+ * Tests for `shouldFallbackWithoutTools` on `OpenAiCompatibleAdapter`.
  *
  * Verifies:
  *  - Default implementation returns false (no fallback)
  *  - Subclass override returning true triggers the tools-free retry path
  *  - Fallback is not triggered when request.tools is empty
- *  - OpenAiCompatibleConfig no longer accepts toolsFallback property
+ *  - OpenAiCompatibleConfig has no toolsFallback property
  */
 
 import assert from 'node:assert/strict';
@@ -27,6 +26,7 @@ const BASE_CONFIG: OpenAiCompatibleConfig = {
   'defaultModel': 'test-model',
   'tokenField': 'max_tokens',
   'extraHeaders': {},
+  'timeoutMs': 5_000,
 };
 
 function makeFakeResponse(content: string): Response {
@@ -80,7 +80,7 @@ class FallbackEnabledAdapter extends OpenAiCompatibleAdapter {
   }
 }
 
-void describe('OpenAiCompatibleAdapter shouldFallbackWithoutTools (ADP-1)', () => {
+void describe('OpenAiCompatibleAdapter shouldFallbackWithoutTools', () => {
   void it('default adapter does not fallback — SCHEMA_VIOLATION propagates', async () => {
     const adapter = new DefaultFallbackAdapter();
     let callCount = 0;

@@ -29,7 +29,6 @@ import type {
   ClockProvider,
   ErrorConstructorType,
   RetryPolicyOptionsInterface,
-  SchedulerHandle,
   SchedulerProvider,
   StateAccessor,
 } from '@noocodex/dagonizer/runtime';
@@ -82,10 +81,10 @@ Engine-owned monotonic timer. Static class; never instantiated.
 ### `Scheduler.current()`
 
 ```ts
-static current(): SchedulerHandle
+static current(): SchedulerProvider
 ```
 
-Returns the active scheduler handle. `RetryPolicy` calls `Scheduler.current().after(ms, signal)` for backoff delays.
+Returns the active scheduler. `RetryPolicy` calls `Scheduler.current().after(ms, signal)` for backoff delays.
 
 ### `Scheduler.configure(provider)`
 

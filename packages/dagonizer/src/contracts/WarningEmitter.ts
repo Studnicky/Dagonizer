@@ -1,9 +1,9 @@
 /**
  * WarningEmitter: typed contract for emitting diagnostic warnings.
  *
- * Wave 4 will replace the `onWarning: (message: string) => void` callbacks
- * in `ContractRegistryValidator` and `onContractWarning` call sites with
- * this contract, converting callback seams to injectable adapters.
+ * `ContractRegistryValidator` and warning-emitting call sites accept a
+ * `WarningEmitter` so consumers can inject any sink (logger, accumulator,
+ * no-op) without a callback seam.
  */
 export interface WarningEmitter {
   warn(message: string): void;

@@ -4,7 +4,8 @@
 
 Codebase-wide audit-and-harden pass: function-signature normalisation,
 type-safety tightening, V8 shape stability, runtime robustness, public-export
-completion, and documentation accuracy. The suite has 636 tests.
+completion, canonical-name enforcement, and documentation accuracy. The suite
+has 698 tests.
 
 ### Breaking — null route removed
 
@@ -19,20 +20,32 @@ Routing a node output to `null` (e.g. `.node('step', n, { ok: null })`) is no lo
 - **`JsonLdRenderer`**: `dag:target` is always an IRI string; no longer `null` for null routes.
 - **Migration**: replace every `.node(name, node, { output: null })` with `.node(name, node, { output: 'end' }).terminal('end')` (or any other terminal name).
 
+### Breaking — removed aliases and type shims
+
+One canonical name per symbol; back-compat aliases and placement-interface re-exports are removed.
+
+- **`SchedulerHandle` removed** — `SchedulerProvider` is the one scheduler contract. All call sites use `SchedulerProvider` directly.
+- **`PhaseNodePlacementInterface` removed** — use `PhaseNode`. **`TerminalNodePlacementInterface` removed** — use `TerminalNode`.
+- **`StateRestoreFnType` removed** — a checkpoint restore function is a `CheckpointRestoreAdapter`. Wrap a bare function with `CheckpointRestoreAdapterFn.fromFn(fn)`.
+- **`NodeErrorBuilder` and `NodeOutputBuilder`** are no longer exported from the `./types` subpath (a type-only barrel); they remain on the root `.` export.
+- **`MonadicNode`** no longer exposes `successPort()`/`emptyPort()`/`errorPort()` helpers — return the port literal (`'success'`/`'empty'`/`'error'`) directly.
+
 ### Breaking — function signatures (required positional, optional trailing config)
 
-Every required argument is now positional; every optional argument lives in a
+Every required argument is positional; every optional argument lives in a
 single trailing `options` object.
 
 - **`DAGError` and subclasses (`ConfigurationError`, `ExecutionError`, `NotFoundError`, `ValidationError`).** `new XError(message, context, errorOptions)` → `new XError(message, { context, ...errorOptions })`; `DAGError` also takes `{ code }`. `context` is now a required-with-default field (`{}` when absent) for V8 hidden-class stability.
-- **`SchedulerHandle` / `SchedulerProvider` `after`/`at`/`every`.** Trailing `signal` positional → `options?: { signal?: AbortSignal }`. `RealTimeScheduler` and the test `VirtualScheduler` updated in lockstep.
+- **`SchedulerProvider` `after`/`at`/`every`.** Trailing `signal` positional → `options?: { signal?: AbortSignal }`. `RealTimeScheduler` and the test `VirtualScheduler` updated in lockstep.
 - **`RetryPolicy.run` / `RetryPolicy.getDelay`.** Trailing positional → `options?`. New static **`RetryPolicy.from(partial)`** factory centralises all defaults.
 - **`Tool.execute(input, options?: { signal? })`** and **`Embedder.embed(text, options?: { signal? })`** — signal moved into options (and now actually honoured during embed retries).
 - **`LlmError` constructor + `classifyHttp`** — trailing `cause` / `body` → options.
 - **`DAGBuilder.build(options?)`, `terminal(name, options?: { outcome? })`, `static fromNodes(name, version, entrypoint, nodes, options?)`** — `fromNodes` no longer buries its required arguments in an object.
 - **`DagOutcome.transportError(correlationId, options?: { code?, message? })`** (SC-12).
-- **`ContractRegistryValidator.validate(contracts, onWarning, options?: { entrypointName? })`**.
+- **`ContractRegistryValidator.validate(contracts, warningEmitter, options?: { entrypointName? })`** — second argument is `WarningEmitter` (was `(message: string) => void`). `DAGBuilder.build({ warningEmitter? })` option renamed from `onContractWarning`.
+- **`NodeErrorBuilder.from(code, message, operation, recoverable, timestamp, options?)`** — required args are positional (previously a single partial object).
 - **`DagContainerError` constructor migrated to the options bag.**
+- **`DagContainerInterface.runDag(task, options?: { relay? })`** — trailing `relay` positional moved into the options object.
 
 ### Breaking — registry & validation
 
@@ -43,12 +56,12 @@ single trailing `options` object.
 
 - **`NodeError.context`** is required in both the `NodeErrorSchema` `required` array and the `NodeErrorInterface`. The inlined `NodeError` shapes in `NodeStateData`, `ExecutionResponse`, and `BridgeMessage` also require `context`.
 - **`NodeOutput.errors`** is required in both the `NodeOutputSchema` `required` array and the `NodeOutputInterface`. Both changes enforce V8 hidden-class stability across all node result shapes.
-- **`NodeErrorBuilder.from(partial)`** (new) constructs a complete `NodeError`, filling `context: {}` when absent. Ships through `.`, `./entities`, and `./types`.
+- **`NodeErrorBuilder.from`** constructs a complete `NodeError`, filling `context: {}` when absent. Ships through `.` and `./entities`.
 - **`NodeOutputBuilder.of`** constructs outputs with `errors: []` as the default. **`NodeOutputBuilder.errorsOf` is removed** — read `.errors` directly.
 
 ### Breaking — abort-signal arguments unified
 
-- **`AbortableOptionsInterface`** (`{ signal?: AbortSignal }`) is a new contract in `./contracts`. `CheckpointStore` (`save`/`load`/`delete`), `Embedder` (`embed`/`embedBatch`/`probe`/`connect`/`disconnect`), and `Snapshottable` (`snapshot`/`restore`) each accept a trailing `options?: AbortableOptionsInterface` instead of a positional `signal?`. `LlmAdapter` (`connect`/`disconnect`/`probe`) takes the same `options?: AbortableOptionsInterface` so its lifecycle is identical to `Embedder`. `SchedulerProvider`, `RealTimeScheduler`, `RetryPolicy`, and `Tool` use the named `AbortableOptionsInterface` for their options object.
+- **`AbortableOptionsInterface`** (`{ signal?: AbortSignal }`) is a contract in `./contracts`. `CheckpointStore` (`save`/`load`/`delete`), `Embedder` (`embed`/`embedBatch`/`probe`/`connect`/`disconnect`), and `Snapshottable` (`snapshot`/`restore`) each accept a trailing `options?: AbortableOptionsInterface` instead of a positional `signal?`. `LlmAdapter` (`connect`/`disconnect`/`probe`) takes the same `options?: AbortableOptionsInterface` so its lifecycle is identical to `Embedder`. `SchedulerProvider`, `RealTimeScheduler`, `RetryPolicy`, and `Tool` use the named `AbortableOptionsInterface` for their options object.
 
 ### Breaking — renamed contract & removed deprecated surface
 
@@ -57,13 +70,22 @@ single trailing `options` object.
 - **`@noocodex/dagonizer/patterns` `LlmClient` and `TripleStore` re-export modules removed.** `LlmClient` and `TripleStore` ship through `./contracts`.
 - **`./derive` no longer re-exports `OperationContract` / `OperationContractFragment`**; they ship through `./contracts`.
 
-### Breaking — adapter base-class consolidation
+### Breaking — adapter layer
 
-Shared adapter behaviour and config live on base classes; the concrete classes carry only what is unique.
+Shared adapter behaviour and config live on the canonical base class; concrete classes carry only what is unique.
 
-- **`AdapterBase`** (new, `./adapter`) owns the shared retry policy, `id`/`displayName`, the `connect`/`disconnect`/`probe` lifecycle, and the default `classify()`. `BaseAdapter` extends it and adds only `capabilities` + `chat`; `BaseEmbedder` extends it and adds only `dimensions` + `embed`/`embedBatch`.
-- **`BaseRegistry<TInstance>`** (new) owns the `register`/`has`/`resolve`/`list` registry behaviour; `EmbedderRegistry` and `LlmAdapterRegistry` extend it. **`BaseCascade`** (new) owns the sequential `select()` probe loop; `EmbedderCascade` and `LlmAdapterCascade` extend it.
-- **`AdapterBaseOptions`** is the one canonical adapter-options type; `BaseAdapterOptions` and `BaseEmbedderOptions` are removed. **`DEFAULT_MAX_ATTEMPTS`** and **`DEFAULT_BASE_DELAY_MS`** are the one canonical pair; `DEFAULT_EMBEDDER_MAX_ATTEMPTS` / `DEFAULT_EMBEDDER_BASE_DELAY_MS` are removed. **`CascadePreference`** is the one canonical cascade-preference type; `EmbedderCascadePreference` is removed.
+- **`AdapterBase` renamed to `BaseAdapterCore`** (`./adapter`) — the abstract root of the adapter stack owning the shared retry policy, `id`/`displayName`, the `connect`/`disconnect`/`probe` lifecycle, and the default `classify()`. `BaseAdapter` extends it and adds only `capabilities` + `chat`; `BaseEmbedder` extends it and adds only `dimensions` + `embed`/`embedBatch`.
+- **`AdapterBaseOptions` renamed `BaseAdapterCoreOptions`** — the partial `{ maxAttempts?; baseDelayMs? }` caller-facing type that consumers extend. **`AdapterBaseOptionsResolved` renamed `BaseAdapterCoreOptionsResolved`.** The `BaseAdapterCore` constructor accepts the partial `BaseAdapterCoreOptions` and resolves defaults internally via `{ ...BaseAdapterCore.defaultOptions(), ...options }`; subclasses pass their partial options through and do not spread `defaultOptions()` themselves.
+- **`BaseRegistry<TInstance>`** owns the `register`/`has`/`resolve`/`list` registry behaviour; `EmbedderRegistry` and `LlmAdapterRegistry` extend it. **`BaseCascade`** owns the sequential `select()` probe loop; `EmbedderCascade` and `LlmAdapterCascade` extend it.
+- **`BaseAdapterOptions` and `BaseEmbedderOptions` removed** — `BaseAdapterCoreOptionsResolved` is the one canonical resolved-options type. **`DEFAULT_MAX_ATTEMPTS`** and **`DEFAULT_BASE_DELAY_MS`** are the one canonical pair; `DEFAULT_EMBEDDER_MAX_ATTEMPTS` / `DEFAULT_EMBEDDER_BASE_DELAY_MS` are removed. **`CascadePreference`** is the one canonical cascade-preference type; `EmbedderCascadePreference` is removed.
+- **`OpenAiCompatibleConfig.timeoutMs` is optional**, defaulting to `DEFAULT_REQUEST_TIMEOUT_MS` (60 000 ms) resolved by spread in the constructor.
+- **`HttpTransport` `HttpRequestOptions<TResponse>` is generic**; `validate` is `(value: unknown) => TResponse`; `timeoutMs` and `maxRetries` are required-with-defaults.
+- **`ToolError` options `status` is optional**, defaulting to `null`. `reason` and `retryable` remain required positional arguments.
+
+### Breaking — store & container
+
+- **`Store.connect()` / `Store.disconnect()`** are required methods; `BaseStore` provides no-op defaults.
+- **`StoreError` extends `DAGError`** (code `STORE_ERROR`).
 
 ### Breaking — types and required fields
 
@@ -72,16 +94,32 @@ Shared adapter behaviour and config live on base classes; the concrete classes c
 - **`StateAccessor.get<T = unknown>(state, path): T | null`** — absent-path sentinel changed from `undefined` to `null` (`undefined` is for absent optional props; `null` is the explicit "no value" sentinel). Migration: replace `=== undefined` / `!= null` absence checks with `=== null`. Implementers change their return from `undefined` to `null`.
 - **`Store.get<T>(key): Promise<T | null>`** (and `BaseStore.performGet<T>`) — same null-sentinel change. Migration: absent-key callers that checked `=== undefined` must check `=== null`; `update(key, fn)` callback still receives `T | undefined` (unchanged).
 - **`GatherExecution.invokeNode(name): Promise<void>` removed; replaced by `readonly invoker: NodeInvoker`** — bare function property was a callback seam; swap all `execution.invokeNode(name)` call sites to `execution.invoker.invokeNode(name)`.
-- **`GatherExecution.invoker` is now a `NodeInvoker`** — `{ invokeNode(name): Promise<void> }`. Custom gather strategies that extended `GatherStrategy` and invoked `execution.invokeNode(...)` must change to `execution.invoker.invokeNode(...)`.
-- **`ContractRegistryValidator.validate(contracts, warningEmitter, options?)` — second argument is `WarningEmitter`** (was `(message: string) => void`). Migration: pass `new NoopWarningEmitter()` for no-ops, or a concrete `WarningEmitter` implementation. `DAGBuilder.build({ warningEmitter? })` option renamed from `onContractWarning`.
+- **`ContractRegistryValidator.validate` second argument is `WarningEmitter`** (was `(message: string) => void`). Pass `new NoopWarningEmitter()` for no-ops.
 - **`NoopWarningEmitter`** added to `./runtime` — the canonical no-op `WarningEmitter` for call sites that do not surface dead-write warnings.
 - **`ScatterAckedResult` is now a discriminated union** (`kind: 'map' | 'field' | 'plain'`) — one hidden class per variant; affects checkpoint shape.
 - **`DAGLifecycleEvent` `cancel.reason` is required** (the `cancelled` state already required it; pass `''` for none).
-- **`MonadicNode.timeoutMs` is a required field defaulting to `0`** (0 = no timeout) — single hidden class for every node instance. The `NodeInterface.timeoutMs?` contract stays optional (external implementer boundary).
-- **`DagContainerOptions.instrumentation` and `shutdownGraceMs` are required.** Pass `new NoopInstrumentation()` / `DEFAULT_SHUTDOWN_GRACE_MS`, or spread `DagContainerBase.defaultOptions`.
 - **`BaseStoreOptions.namespace` is required** (`''` = no namespace; `BASE_STORE_DEFAULTS` provides it).
 - **`BridgeMessage` `abort.reason` narrowed to `'abort' | 'timeout'`** — `'timeout'` marks a run-level deadline; preserves `timed_out` vs `cancelled` classification across the transport (R2).
 - **`RegistryBundleInterface.destroy?(): Promise<void>` added** — `DagHost` calls it on shutdown (R4).
+- **`RealTimeClockProvider` requires `performance.now()`** (Node 24+ / modern browsers); it no longer falls back to `Date.now()`.
+- **Scatter over an array source defaults to concurrency 1**, matching async-iterable sources. The previous unbounded-for-arrays default is removed. Pass `concurrency` explicitly for parallelism.
+
+### Breaking — Timeout value object
+
+`Timeout` reifies per-node and per-DAG-task execution timeouts as a typed value object. `Timeout.none()` is the single "no deadline" sentinel; `Timeout.ofMs(n)` expresses a millisecond budget; `Timeout.fromWire(n)` / `Timeout.toWire()` bridge the wire representation. `Timeout` ships through the root barrel (`.`) and `@noocodex/dagonizer/runtime`.
+
+- **`NodeInterface.timeout?: Timeout`** replaces `timeoutMs?: number`; absent means `Timeout.none()`.
+- **`MonadicNode.timeout: Timeout`** defaults to `Timeout.none()` (was `timeoutMs: number = 0`).
+- **`DagTask` / `DagTaskInterface` carry `timeout: Timeout`** (was `timeoutMs: number | null`).
+- **Wire shape unchanged**: `ExecutionRequest` / `BridgeMessage` retain `timeoutMs: number | null`; `DagTask.toRequest()` serialises via `Timeout.toWire()`.
+- HTTP/adapter request timeouts (`HttpRequestOptions.timeoutMs`, `OpenAiCompatibleConfig.timeoutMs`) are a separate always-present duration concept and remain plain `number`.
+
+### Breaking — data-shape types are mutable (compile-time only)
+
+`readonly` field modifiers and `ReadonlyArray<T>` / `Readonly<Record<...>>` are removed from data-shape declarations: entity and wire types, entity-narrowing interfaces, and options/config bags. This aligns declared shapes with the mutable shapes `FromSchema` produces and eliminates readonly↔mutable bridging casts at call sites. Class instance fields and `as const` on `*Schema` literals retain their immutability. This is a compile-time type change only with no runtime or V8 effect.
+
+- Consumers that pass a `readonly` array into a now-mutable field must copy the array (`[...x]`) at the call site.
+- Consumers that relied on readonly field modifiers for immutability guarantees must apply `Readonly<>` / `ReadonlyArray<>` at their own boundaries.
 
 ### Fixed — runtime robustness
 
@@ -102,25 +140,34 @@ Shared adapter behaviour and config live on base classes; the concrete classes c
 - `DAGNodeType` unified to `DAG['nodes'][number]` with `@type` discriminated guards, removing the `as unknown as …` casts in the dispatch table, `registerDAG`, and `DAGValidator`.
 - `NodeStateBase` snapshot/restore validate warnings (`Validator.nodeWarning`) and retry values instead of laundering through `as unknown`; `_metadata`/`_retries` use destructuring-rest removal instead of `delete` (avoids dictionary-mode).
 - `Validator` passes Ajv errors as a typed `{ ajvErrors }` context; `DAGLifecycleMachine` narrows with `Extract<…>` instead of `as never`.
+- Validator-narrowed boundary casts are documented at every ingest site; stale internal comments updated to present-state form throughout.
 
 ### Changed — required-with-defaults & schema-derived
 
-- **`ScatterOptions.from(partial)`** (new) materialises static scatter-placement defaults at build time: `itemKey` defaults to `'currentItem'`, `reducer` defaults to `'aggregate'`. Data-dependent defaults (`concurrency`, `inputs`, `container`) remain resolved at dispatch. `./builder` exports `ScatterOptions`, `SCATTER_ITEM_KEY_DEFAULT`, `SCATTER_REDUCER_DEFAULT`, and `ResolvedScatterOptions`.
-- **`InterruptionInfo`** is derived from a new `InterruptionInfoSchema` (JSON Schema 2020-12). The type is no longer hand-written.
+- **Engine-wide options resolution policy**: every options or config bag resolves through a co-located defaults object applied as both the default argument and a spread over caller input (`{ ...DEFAULTS, ...options }`). Defaulted fields are optional input, never required-of-caller. This is the canonical required-with-defaults form across the engine; each option type's defaulted fields are explicitly `?` in the type.
+- **`ScatterOptions.from(partial)`** materialises static scatter-placement defaults at build time: `itemKey` defaults to `'currentItem'`, `reducer` defaults to `'aggregate'`. Data-dependent defaults (`concurrency`, `inputs`, `container`) remain resolved at dispatch. `./builder` exports `ScatterOptions`, `SCATTER_ITEM_KEY_DEFAULT`, `SCATTER_REDUCER_DEFAULT`, and `ResolvedScatterOptions`.
+- **`InterruptionInfo`** is derived from `InterruptionInfoSchema` (JSON Schema 2020-12). The type is no longer hand-written.
+- **Dispatch maps replace switch/if-else chains** in `DagHost`, `ChannelDispatch`, `DAGDeriver`, `OpenAiCompatibleAdapter`, and the lifecycle/gather dispatch paths.
+- **`GatherStrategy.supportsIncremental`** flag replaces duck-typing of `applyIncremental` — strategies declare their incremental capability at definition time.
+- **`types/index.ts`** re-exports `GatherExecution`, `GatherRecord`, and `OutcomeRecord` from `./contracts`, their source of truth.
 
 ### Fixed — robustness & packaging
 
-- **OpenAI-compatible adapter**: LLM responses are validated against a new `OpenAiResponseBodySchema` compiled once via the shared Ajv instance. Malformed `tool_calls` raise `LlmError(SCHEMA_VIOLATION)` instead of an unclassified `UNKNOWN`.
-- **`HttpTransport.getJson`/`postJson`** accept an optional `validate` callback to check the response body shape before returning.
+- **OpenAI-compatible adapter**: LLM responses are validated against `OpenAiResponseBodySchema` compiled once via the shared Ajv instance. Malformed `tool_calls` raise `LlmError(SCHEMA_VIOLATION)` instead of an unclassified `UNKNOWN`.
+- **`HttpTransport.getJson`/`postJson`** accept a `validate` callback (`(value: unknown) => TResponse`) to check the response body shape before returning.
 - **`package.json` `exports`**: every subpath lists the `types` condition before `default` so TypeScript consumers resolve declarations correctly.
 - **`StoreError`** threads `cause` to `super` via a trailing `options?: { cause?: unknown }`, preserving the native error chain when wrapping a backing-store failure (previously the chain was dropped).
 
 ### Added
 
-- **Public-export completion:** `Chainable` (`./contracts`), `RetryableErrorPolicy` (`./adapter`), `InitMessageShape` (`./container`), the eight entity-narrowing interfaces (`./entities`), and 25 previously-internal public types (`./types`).
+- **`DAG.id(dagName)`** and **`DAG.placementId(dagName, placementName)`** static methods produce canonical placement URNs. Both ship through `./entities`.
+- **`SignalComposer.never()`** — a shared never-aborting `AbortSignal` for call sites that require a signal but never intend to cancel.
+- **`Validator.interruptionInfo`**, **`Validator.gatherConfig`**, **`Validator.openAiResponseBody`** — compiled validators for the corresponding schemas.
+- **`contracts/Chainable.ts`** — the `Chainable` utility type has its own dedicated file; the export name is unchanged.
+- **Public-export completion:** `RetryableErrorPolicy` (`./adapter`), `InitMessageShape` (`./container`), the eight entity-narrowing interfaces (`./entities`), and 25 previously-internal public types (`./types`).
 - **`RetryPolicy.from(partial)`**, **`DagContainerBase.defaultOptions`**, **`BASE_STORE_DEFAULTS`**.
 - Defensive validation of empty/absent `choices` in `OpenAiCompatibleAdapter`.
-- 39 tests: the R1 regression, cross-container abort propagation, container pool lifecycle (`#waiters` park/unpark, transport-death eviction, destroy-under-flight, double-destroy), `ForwardingInstrumentation` hook routing, `VirtualScheduler`/`VirtualClock` controls, `LoopbackChannel` semantics, and de-vacuumed `DagConformance` laws 3/4/5.
+- 62 tests: the R1 regression, cross-container abort propagation, container pool lifecycle (`#waiters` park/unpark, transport-death eviction, destroy-under-flight, double-destroy), `ForwardingInstrumentation` hook routing, `VirtualScheduler`/`VirtualClock` controls, `LoopbackChannel` semantics, de-vacuumed `DagConformance` laws 3/4/5, canonical placement URN methods, `SignalComposer.never`, `BaseAdapterCore` consolidation paths, scatter array concurrency default, and `CheckpointRestoreAdapterFn.fromFn` wrapping.
 
 ### Fixed — documentation
 
@@ -180,6 +227,7 @@ The visualizer colors container-bound (worker) sub-DAG placements per container 
 - **MermaidRenderer**: emits one `classDef contained-<sanitizedRole>` per distinct container role that appears in the DAG. Each classDef uses the role's fill/stroke from `RoleColorUtils`. A DAG with roles `cpu` and `io` emits two classDefs with two different fills.
 - **CytoscapeRenderer**: contained placements carry `data.containerColor`, `data.containerStroke`, and `data.containerText` in addition to `data.container` (role string). All four keys are absent on in-process placements (`exactOptionalPropertyTypes` honored). Mermaid and Cytoscape use the same `RoleColorUtils` function so colors are consistent across renderers.
 - **CytoscapeGraph**: the `node.dag-contained` stylesheet rule reads colors via cytoscape `data(...)` mappings (`'background-color': 'data(containerColor)'` etc.) so each node paints with its own role color without enumerating roles in the stylesheet.
+- **`CytoscapeNodeData.kind`** (`'deterministic' | 'non-deterministic'`): present on every node element for stylesheet selection via `node[kind="deterministic"]` / `node[kind="non-deterministic"]` selectors. Subclasses enrich or override the classification by overriding `buildElements()`.
 - **JsonLdRenderer**: `container` is included as `dag:container` in the JSON-LD output for `EmbeddedDAGNode` and dag-body `ScatterNode` placements when the field is present.
 - **Example 13** (`examples/13-multibackend.ts`): demonstrates a DAG with two distinct container roles (`cpu` → `WorkerThreadContainer` for scatter items; `io` → `ForkContainer` for the sum step). Prints the Mermaid output showing `classDef contained-cpu` and `classDef contained-io` with different fills, then executes the DAG over both real backends and prints results. Run with `pnpm example:13`.
 - **`gather` is now required on `ScatterNode`** (schema + builder + validator). Every scatter must declare the merge strategy. The `discard` gather strategy (`{ strategy: 'discard' }`) is the explicit declaration for side-effect-only fan-outs where no clone state flows back to the parent. Existing scatter DAGs with no gather must add `discard` (or the appropriate real merge strategy).

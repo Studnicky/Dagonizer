@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { TerminalNodePlacementInterface } from '../../src/entities/dag/TerminalNode.js';
+import type { TerminalNode } from '../../src/entities/dag/TerminalNode.js';
 import type { DAG } from '../../src/entities/index.js';
 import { DAG_CONTEXT } from '../../src/entities/index.js';
 import { CytoscapeRenderer } from '../../src/viz/CytoscapeRenderer.js';
@@ -456,7 +456,7 @@ void describe('CytoscapeRenderer.render: containment coloring', () => {
 
 void describe('CytoscapeRenderer.render: TerminalNode', () => {
   void it('renders a completed TerminalNode with type=terminal and outcome=completed', () => {
-    const terminal: TerminalNodePlacementInterface = {
+    const terminal: TerminalNode = {
       '@id':     'urn:noocodex:dag:ct/node/done',
       '@type':   'TerminalNode',
       'name':    'done',
@@ -494,7 +494,7 @@ void describe('CytoscapeRenderer.render: TerminalNode', () => {
   });
 
   void it('renders a failed TerminalNode with outcome=failed', () => {
-    const terminal: TerminalNodePlacementInterface = {
+    const terminal: TerminalNode = {
       '@id':     'urn:noocodex:dag:ct2/node/abort',
       '@type':   'TerminalNode',
       'name':    'abort',

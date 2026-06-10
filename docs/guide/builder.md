@@ -366,9 +366,9 @@ Post-phase placements run after the main loop drains. They run on every exit pat
 
 Pre-phase names appear at the start of `executedNodes`; post-phase names appear at the end (only when the placement completed successfully). Main-loop nodes appear in between.
 
-### Instrumentation
+### Phase hooks
 
-The dispatcher invokes `Instrumentation.phaseEnter(dagName, 'pre' | 'post', placementName, state)` immediately before each phase placement runs and `phaseExit(...)` immediately after. See [Observability](./observability).
+The dispatcher invokes `onPhaseEnter(dagName, 'pre' | 'post', placementName, state)` immediately before each phase placement runs and `onPhaseExit(...)` immediately after. Override these protected methods in a `Dagonizer` subclass to observe phase boundaries. See [Observability](./observability).
 
 ### Example
 

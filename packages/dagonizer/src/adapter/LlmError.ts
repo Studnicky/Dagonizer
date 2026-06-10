@@ -1,11 +1,11 @@
 /**
  * LlmError: error taxonomy + classifier helpers.
  *
- * Mirrors nocturne's `LLMInvocationError` (`adapters/llm/...
- * LLMInvocationError.ts:30–146`) trimmed to the categories the
- * Archivist's adapters surface. Every adapter classifies its
- * provider-native error into one of these reasons; the shared retry
- * wrapper then decides whether to retry based on the `retryable` flag.
+ * Defines the set of reasons an LLM invocation can fail and provides
+ * static helpers for classifying HTTP errors and network failures.
+ * Every adapter classifies its provider-native error into one of these
+ * reasons; the shared retry wrapper then decides whether to retry based
+ * on the `retryable` flag.
  */
 
 export type LlmErrorReason =

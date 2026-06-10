@@ -27,6 +27,7 @@ import type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js'
 import type { ExecutionResponse } from '../entities/executor/ExecutionResponse.js';
 import type { ExecutorIntermediate } from '../entities/executor/ExecutorIntermediate.js';
 import type { JsonObject } from '../entities/json.js';
+import { NodeErrorBuilder } from '../entities/node/NodeError.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { Validator } from '../validation/Validator.js';
 
@@ -99,41 +100,53 @@ export class DagHost {
       return;
     }
 
-    switch (message.kind) {
-      case 'init':
-        await this.#handleInit(message.registryModule, message.registryVersion, message.servicesConfig as JsonObject);
-        break;
-      case 'execute':
+    // Typed dispatch map: each handler receives the narrowed message. The
+    // 'execute' handler is fire-and-forget with error capture so failures
+    // reach the caller (R3). Unknown kinds send UNEXPECTED_MESSAGE.
+    type DispatchMessage = typeof message;
+    const dispatch: Partial<Record<DispatchMessage['kind'], (msg: DispatchMessage) => Promise<void> | void>> = {
+      'init': async (msg) => {
+        const m = msg as DispatchMessage & { kind: 'init' };
+        await this.#handleInit(m.registryModule, m.registryVersion, m.servicesConfig as JsonObject);
+      },
+      'execute': (msg) => {
+        const m = msg as DispatchMessage & { kind: 'execute' };
         // R3: fire-and-forget with error capture so failures reach the caller.
-        this.#handleExecute(message.request.correlationId, message.request).catch((err: unknown) => {
-          const msg = err instanceof Error ? err.message : String(err);
+        this.#handleExecute(m.request.correlationId, m.request).catch((err: unknown) => {
+          const errMsg = err instanceof Error ? err.message : String(err);
           try {
             this.#channel.send({
               'kind': 'error',
-              'correlationId': message.request.correlationId,
+              'correlationId': m.request.correlationId,
               'code': 'INTERNAL_ERROR',
-              'message': `DagHost execute error: ${msg}`,
+              'message': `DagHost execute error: ${errMsg}`,
               'recoverable': false,
             });
           } catch { /* channel closed — suppress */ }
         });
-        break;
-      case 'abort':
-        this.#handleAbort(message.correlationId, message.reason);
-        break;
-      case 'shutdown':
+      },
+      'abort': (msg) => {
+        const m = msg as DispatchMessage & { kind: 'abort' };
+        this.#handleAbort(m.correlationId, m.reason);
+      },
+      'shutdown': async () => {
         await this.#handleShutdown();
-        break;
-      default:
-        // DagHost receives only parent→host messages; host→parent messages are
-        // unexpected on this side but must not crash the host.
-        this.#channel.send({
-          'kind': 'error',
-          'correlationId': null,
-          'code': 'UNEXPECTED_MESSAGE',
-          'message': `DagHost received unexpected message kind: ${(message as { kind: string }).kind}`,
-          'recoverable': true,
-        });
+      },
+    };
+
+    const handler = dispatch[message.kind];
+    if (handler !== undefined) {
+      await handler(message);
+    } else {
+      // DagHost receives only parent→host messages; host→parent messages are
+      // unexpected on this side but must not crash the host.
+      this.#channel.send({
+        'kind': 'error',
+        'correlationId': null,
+        'code': 'UNEXPECTED_MESSAGE',
+        'message': `DagHost received unexpected message kind: ${message.kind}`,
+        'recoverable': true,
+      });
     }
   }
 
@@ -147,10 +160,14 @@ export class DagHost {
     servicesConfig: JsonObject,
   ): Promise<void> {
     try {
-      // Dynamic import is the module ingest boundary.
+      // Dynamic import is the module ingest boundary: the loaded module is
+      // unknown at compile time, so the cast to { default?: unknown } is the
+      // entry point for runtime narrowing that follows.
       const mod = await import(registryModule) as { default?: unknown };
 
-      // Runtime-narrow the default export via typeof checks.
+      // Runtime-narrow the default export via typeof checks before the cast.
+      // The guard below confirms `createBundle` is a function before the cast
+      // to RegistryModuleInterface, making the subsequent typed call safe.
       const registryInterface = mod.default;
       if (
         registryInterface === null ||
@@ -167,6 +184,7 @@ export class DagHost {
         return;
       }
 
+      // Cast is safe: the typeof guard above confirms createBundle exists as a function.
       const registry = registryInterface as RegistryModuleInterface;
       const bundle = await registry.createBundle(servicesConfig);
 
@@ -237,7 +255,7 @@ export class DagHost {
     bundle: RegistryBundleInterface,
   ): Promise<void> {
     const stateSnapshot = request.stateSnapshot as JsonObject;
-    const state = bundle.restoreState(stateSnapshot);
+    const state = bundle.restoreState.restore(stateSnapshot);
 
     // Set up timeout abort if specified.
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
@@ -313,14 +331,13 @@ export class DagHost {
       const collectedErrors = [
         ...state.errors,
         ...(terminalOutcome === null && lifecycle.kind !== 'completed'
-          ? [{
-            'code': 'DAG_EXECUTION_FAILED' as const,
-            'context': {} as Record<string, unknown>,
-            'message': `DAG '${request.dagName}' did not complete normally (lifecycle: ${lifecycle.kind})`,
-            'operation': request.dagName,
-            'recoverable': false,
-            'timestamp': new Date().toISOString(),
-          }]
+          ? [NodeErrorBuilder.from(
+            'DAG_EXECUTION_FAILED',
+            `DAG '${request.dagName}' did not complete normally (lifecycle: ${lifecycle.kind})`,
+            request.dagName,
+            false,
+            new Date().toISOString(),
+          )]
           : []),
       ];
 
@@ -339,14 +356,13 @@ export class DagHost {
       const response: ExecutionResponse = {
         'correlationId': correlationId,
         'terminalOutput': 'failed',
-        'errors': [{
-          'code': 'DAG_EXECUTION_FAILED',
-          'context': {},
-          'message': message,
-          'operation': request.dagName,
-          'recoverable': false,
-          'timestamp': new Date().toISOString(),
-        }],
+        'errors': [NodeErrorBuilder.from(
+          'DAG_EXECUTION_FAILED',
+          message,
+          request.dagName,
+          false,
+          new Date().toISOString(),
+        )],
         'stateSnapshot': state.snapshot(),
         'intermediates': [],
       };

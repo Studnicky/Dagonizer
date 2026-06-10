@@ -1,7 +1,7 @@
 /**
  * BaseEmbedder: abstract base every concrete embedder extends.
  *
- * Extends `AdapterBase` for shared lifecycle (retry policy,
+ * Extends `BaseAdapterCore` for shared lifecycle (retry policy,
  * `connect`/`disconnect`/`probe`, `classify`) and adds only what is
  * unique to the embedding surface: `dimensions` and the `embed()` /
  * `embedBatch()` envelope that calls the abstract `performEmbed()`.
@@ -21,29 +21,29 @@
 
 import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
 import type { Embedder } from '../contracts/Embedder.js';
+import { SignalComposer } from '../runtime/SignalComposer.js';
 
-import { AdapterBase, type AdapterBaseOptions } from './AdapterBase.js';
+import { BaseAdapterCore, type BaseAdapterCoreOptions } from './BaseAdapterCore.js';
 import { LlmError, MAX_QUOTA_WAIT_MS } from './LlmError.js';
 
-export abstract class BaseEmbedder extends AdapterBase implements Embedder {
+export abstract class BaseEmbedder extends BaseAdapterCore implements Embedder {
   readonly dimensions: number;
 
   protected constructor(
     id: string,
     displayName: string,
     dimensions: number,
-    options: AdapterBaseOptions = {},
+    options: BaseAdapterCoreOptions = {},
   ) {
     super(id, displayName, options);
     this.dimensions = dimensions;
   }
 
   async embed(text: string, options?: AbortableOptionsInterface): Promise<readonly number[]> {
-    const signal = options?.signal;
-    const runOptions = signal !== undefined ? { signal } : {};
+    const signal = options?.signal ?? SignalComposer.never();
     return this.retryPolicy.run(async () => {
       try {
-        return await this.performEmbed(text, signal ?? BaseEmbedder.#neverAbortingSignal());
+        return await this.performEmbed(text, signal);
       } catch (rawError) {
         // Already classified by performEmbed; don't double-wrap. Apply the
         // quota cap, then rethrow as-is.
@@ -60,7 +60,7 @@ export abstract class BaseEmbedder extends AdapterBase implements Embedder {
         }
         throw new LlmError(LlmError.messageFrom(rawError), this.classify(rawError), { 'cause': rawError });
       }
-    }, runOptions);
+    }, { signal });
   }
 
   /**
@@ -78,10 +78,4 @@ export abstract class BaseEmbedder extends AdapterBase implements Embedder {
 
   /** Concrete embedder: perform the actual API call. `signal` is always a valid AbortSignal. */
   protected abstract performEmbed(text: string, signal: AbortSignal): Promise<readonly number[]>;
-
-  /** A signal that never fires; materialised once per call so each call site
-   *  always receives an AbortSignal without allocating a persistent controller. */
-  static #neverAbortingSignal(): AbortSignal {
-    return new AbortController().signal;
-  }
 }

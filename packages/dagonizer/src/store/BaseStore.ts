@@ -28,19 +28,20 @@ export interface BaseStoreOptions {
    * with different namespaces but the same backing coexist without key
    * collisions because the snapshot captures keys in their qualified form.
    */
-  readonly namespace: string;
+  namespace?: string;
 }
 
 /** Default options. Spread into custom options to fill unset fields. */
-export const BASE_STORE_DEFAULTS: BaseStoreOptions = {
+export const BASE_STORE_DEFAULTS: Required<BaseStoreOptions> = {
   'namespace': '',
 };
 
 export abstract class BaseStore implements Store {
   readonly #namespace: string;
 
-  protected constructor(options: BaseStoreOptions = BASE_STORE_DEFAULTS) {
-    this.#namespace = options.namespace;
+  protected constructor(options: BaseStoreOptions = {}) {
+    const resolved = { ...BASE_STORE_DEFAULTS, ...options };
+    this.#namespace = resolved.namespace;
   }
 
   /** Subclass identifier; recorded in snapshot envelopes. */
@@ -87,7 +88,7 @@ export abstract class BaseStore implements Store {
   }
 
   async snapshot(_options?: AbortableOptionsInterface): Promise<StoreSnapshot> {
-    const entries = await this.performSnapshotEntries();
+    const entries = [...await this.performSnapshotEntries()];
     return {
       'version': this.snapshotVersion,
       'type':    this.snapshotType,

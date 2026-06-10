@@ -3,10 +3,11 @@
  * No side effects, no dispatcher, no execute.
  * Imported by examples/21-per-node-timeout.ts (the executable entry point).
  *
- * Demonstrates per-node timeoutMs: set directly on the NodeInterface object.
- * The engine reads `node.timeoutMs` and derives a child AbortController. When
- * the budget expires, the engine throws NodeTimeoutError, fires onError, and
- * marks the run failed (interruptedAt.reason === 'timeout').
+ * Demonstrates per-node timeout: set `timeout: Timeout.ofMs(n)` directly on
+ * the NodeInterface object. The engine reads `node.timeout` and derives a
+ * child AbortController. When the budget expires, the engine throws
+ * NodeTimeoutError, fires onError, and marks the run failed
+ * (interruptedAt.reason === 'timeout').
  *
  * The parent run-level signal is NOT aborted; per-node timeout is scoped to
  * that one node's execute() call only. Other nodes in the same run are
@@ -18,6 +19,7 @@ import {
   NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
+import { Timeout } from '@noocodex/dagonizer/runtime';
 import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 
 // ---------------------------------------------------------------------------
@@ -34,10 +36,10 @@ export class TaskState extends NodeStateBase {
 
 // #region fast-node
 export const fastNode: NodeInterface<TaskState, 'done'> = {
-  "name":      'fast-task',
-  "outputs":   ['done'],
+  "name":    'fast-task',
+  "outputs": ['done'],
   // Per-node timeout budget: 200 ms. This node resolves in ~0 ms → no timeout.
-  "timeoutMs": 200,
+  "timeout": Timeout.ofMs(200),
   async execute(state) {
     state.output = 'fast-done';
     return NodeOutputBuilder.of('done');
@@ -54,10 +56,10 @@ export const fastNode: NodeInterface<TaskState, 'done'> = {
 
 // #region slow-node
 export const slowNode: NodeInterface<TaskState, 'done'> = {
-  "name":      'slow-task',
-  "outputs":   ['done'],
+  "name":    'slow-task',
+  "outputs": ['done'],
   // Per-node timeout budget: 50 ms. The node tries to wait 5 s → NodeTimeoutError.
-  "timeoutMs": 50,
+  "timeout": Timeout.ofMs(50),
   async execute(_state, context) {
     // Await a 5-second delay, but honour context.signal so the engine's
     // per-node abort terminates the wait promptly at the 50 ms boundary.

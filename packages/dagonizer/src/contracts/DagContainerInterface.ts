@@ -32,7 +32,7 @@ export interface DagContainerInterface<
    * bag. Containers access only `task.state`, `task.toRequest()`, and
    * `task.context.signal` — they never read `task.context.services`.
    *
-   * The optional `relay` is an internal observer provided by the parent
+   * The optional `options.relay` is an internal observer provided by the parent
    * `Dagonizer` so that worker-side hook events (nodeStart, nodeEnd, error,
    * phaseEnter, phaseExit) are forwarded to the parent's protected hooks.
    * The container must forward this relay to its channel routing layer.
@@ -41,7 +41,7 @@ export interface DagContainerInterface<
    * errors are returned as collected errors in `DagOutcomeInterface.errors`
    * with `recoverable: false`.
    */
-  runDag(task: DagTaskInterface<TState, unknown>, relay?: ObserverRelay): Promise<DagOutcomeInterface>;
+  runDag(task: DagTaskInterface<TState, unknown>, options?: { readonly relay?: ObserverRelay }): Promise<DagOutcomeInterface>;
 
   /**
    * Release pool resources. Called by the dispatcher's `destroy()`. Optional:

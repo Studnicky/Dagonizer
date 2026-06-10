@@ -4,12 +4,12 @@ import type { ErrorConstructorType } from './ErrorConstructorType.js';
 
 /** Configuration options for `RetryPolicy`. */
 export interface RetryPolicyOptionsInterface {
-  readonly 'maxAttempts'?: number;
-  readonly 'strategy'?: BackoffStrategyValue;
-  readonly 'baseDelay'?: number;
-  readonly 'maxDelay'?: number;
-  readonly 'multiplier'?: number;
-  readonly 'jitterFactor'?: number;
-  readonly 'retryOn'?: readonly ErrorConstructorType[];
-  readonly 'abortOn'?: readonly ErrorConstructorType[];
+  maxAttempts?: number;
+  strategy?: BackoffStrategyValue;
+  baseDelay?: number;
+  maxDelay?: number;
+  multiplier?: number;
+  jitterFactor?: number;
+  retryOn?: ErrorConstructorType[];
+  abortOn?: ErrorConstructorType[];
 }

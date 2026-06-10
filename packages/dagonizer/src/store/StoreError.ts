@@ -6,44 +6,46 @@
  * `classification.reason` without instanceof checks.
  */
 
+import { DAGError } from '../errors/DAGError.js';
+
 export type StoreErrorClassification =
   | {
-      readonly reason:           'INCOMPATIBLE_SNAPSHOT';
-      readonly expectedType:     string;
-      readonly actualType:       string;
-      readonly expectedVersion:  number;
-      readonly actualVersion:    number;
+      reason:           'INCOMPATIBLE_SNAPSHOT';
+      expectedType:     string;
+      actualType:       string;
+      expectedVersion:  number;
+      actualVersion:    number;
     }
   | {
-      readonly reason: 'KEY_NOT_FOUND';
-      readonly key:    string;
+      reason: 'KEY_NOT_FOUND';
+      key:    string;
     }
   | {
-      readonly reason: 'BACKING_ERROR';
-      readonly cause:  Error;
+      reason: 'BACKING_ERROR';
+      cause:  Error;
     }
   | {
-      readonly reason:   'LEASE_DENIED';
-      readonly subject:  string;
+      reason:   'LEASE_DENIED';
+      subject:  string;
       /** Identifier of current lease holder (opaque; store-defined format). */
-      readonly holder:   string;
+      holder:   string;
     }
   | {
-      readonly reason:  'LEASE_EXPIRED';
-      readonly subject: string;
-      readonly token:   string;
+      reason:  'LEASE_EXPIRED';
+      subject: string;
+      token:   string;
     }
   | {
-      readonly reason:    'UNREACHABLE';
-      readonly endpoint:  string;
-      readonly cause:     Error;
+      reason:    'UNREACHABLE';
+      endpoint:  string;
+      cause:     Error;
     };
 
-export class StoreError extends Error {
+export class StoreError extends DAGError {
   readonly classification: StoreErrorClassification;
 
-  constructor(message: string, classification: StoreErrorClassification, options?: { cause?: unknown }) {
-    super(message, options?.cause !== undefined ? { 'cause': options.cause } : undefined);
+  constructor(message: string, classification: StoreErrorClassification, options?: { cause?: Error }) {
+    super(message, { 'code': 'STORE_ERROR', ...(options?.cause !== undefined && { 'cause': options.cause }) });
     this.name = 'StoreError';
     this.classification = classification;
   }

@@ -29,6 +29,7 @@ import type { JsonObject } from '../../src/entities/json.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 import {
   ConformanceRegistry,
   ConformanceState,
@@ -115,9 +116,9 @@ class TestLoopbackContainer extends DagContainerBase<NodeStateInterface, TestWor
 
 class MinimalTask implements DagTaskInterface<NodeStateInterface, undefined> {
   readonly dagName: string;
-  readonly placementPath: readonly string[];
+  readonly placementPath: string[];
   readonly correlationId: string;
-  readonly timeoutMs: number | null;
+  readonly timeout: Timeout;
   readonly state: NodeStateInterface;
   readonly context: NodeContextInterface<undefined>;
 
@@ -125,7 +126,7 @@ class MinimalTask implements DagTaskInterface<NodeStateInterface, undefined> {
     this.dagName = CONFORMANCE_DAG.law1;
     this.placementPath = [];
     this.correlationId = correlationId;
-    this.timeoutMs = null;
+    this.timeout = Timeout.none();
     this.state = new NodeStateBase();
     this.context = {
       'dagName': CONFORMANCE_DAG.law1,
@@ -138,9 +139,9 @@ class MinimalTask implements DagTaskInterface<NodeStateInterface, undefined> {
   toRequest() {
     return {
       'dagName': this.dagName,
-      'placementPath': this.placementPath as string[],
+      'placementPath': this.placementPath,
       'stateSnapshot': this.state.snapshot(),
-      'timeoutMs': this.timeoutMs,
+      'timeoutMs': this.timeout.toWire(),
       'correlationId': this.correlationId,
     };
   }
@@ -321,7 +322,7 @@ void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)'
         'dagName': CONFORMANCE_DAG.law1,
         'placementPath': [],
         'correlationId': 'con1-abort',
-        'timeoutMs': null,
+        'timeout': Timeout.none(),
         'state': new AbortableTask(),
         'context': {
           'dagName': CONFORMANCE_DAG.law1,
@@ -332,9 +333,9 @@ void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)'
         toRequest() {
           return {
             'dagName': this.dagName,
-            'placementPath': this.placementPath as string[],
+            'placementPath': this.placementPath,
             'stateSnapshot': this.state.snapshot(),
-            'timeoutMs': this.timeoutMs,
+            'timeoutMs': this.timeout.toWire(),
             'correlationId': this.correlationId,
           };
         },

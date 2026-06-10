@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { TerminalNodePlacementInterface } from '../../src/entities/dag/TerminalNode.js';
+import type { TerminalNode } from '../../src/entities/dag/TerminalNode.js';
 import type { DAG } from '../../src/entities/index.js';
 import { DAG_CONTEXT } from '../../src/entities/index.js';
 import { RoleColorUtils } from '../../src/viz/internal.js';
@@ -421,7 +421,7 @@ void describe('MermaidRenderer.render: TerminalNode', () => {
   });
 
   void it('TerminalNode emits no outbound edges', () => {
-    const terminalDone: TerminalNodePlacementInterface = {
+    const terminalDone: TerminalNode = {
       '@id':     'urn:noocodex:dag:t3/node/done',
       '@type':   'TerminalNode',
       'name':    'done',

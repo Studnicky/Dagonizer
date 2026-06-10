@@ -25,7 +25,7 @@ export abstract class ReduceNode<
     const items = this.readItems(state);
     const result = this.reduce(items);
     this.writeBack(state, result);
-    return NodeOutputBuilder.of(this.successPort());
+    return NodeOutputBuilder.of('success');
   }
 }
 

@@ -29,6 +29,7 @@ import type { FromSchema } from 'json-schema-to-ts';
 
 import type { DAG } from '../entities/dag/DAG.js';
 
+import { PlacementUtils } from './internal.js';
 import type { PlacementEntry } from './internal.js';
 
 /** Stable JSON-LD vocabulary URI for the Dagonizer DAG vocabulary. */
@@ -42,6 +43,12 @@ export const DAGONIZER_VOCAB = 'https://noocodex.dev/ontology/dagonizer/';
  * enumerated at the schema level. The top-level document shape is
  * precise: `@context` is a string-to-string map and `@graph` is an
  * array of objects that always carry `@id` and `@type` strings.
+ *
+ * This is a viz-specific output schema. It describes the document shape
+ * emitted by `JsonLdRenderer` and is not part of the entities taxonomy
+ * (i.e. it does not live under `src/entities/` and is not registered
+ * with `Validator`). It lives here because it characterises viz output,
+ * not DAG structure.
  */
 export const DagJsonLdDocumentSchema = {
   '$id':     'https://noocodex.dev/schemas/dagonizer/DagJsonLdDocument',
@@ -79,9 +86,9 @@ export const DagJsonLdDocumentSchema = {
  * precisely typed.
  */
 export interface JsonLdGraphEntry {
-  readonly '@id': string;
-  readonly '@type': string;
-  readonly [key: string]: unknown;
+  '@id': string;
+  '@type': string;
+  [key: string]: unknown;
 }
 
 /** Full JSON-LD document the renderer emits. Derived from `DagJsonLdDocumentSchema`. */
@@ -105,7 +112,7 @@ export class JsonLdRenderer {
   };
 
   static render(dag: DAG): DagJsonLdDocument {
-    const placements = (dag.nodes as readonly PlacementEntry[]).map((placement) =>
+    const placements = PlacementUtils.narrowNodes(dag).map((placement) =>
       JsonLdRenderer.renderPlacement(dag.name, placement),
     );
 

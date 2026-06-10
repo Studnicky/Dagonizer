@@ -42,7 +42,7 @@ import { SingleNodeSchema } from '@noocodex/dagonizer/entities';
 import type { SingleNode } from '@noocodex/dagonizer/entities';
 ```
 
-`outputs` is a `Record<string, string | null>`: each key is an output name, the value is the next node name or `null` to terminate.
+`outputs` is a `Record<string, string>`: each key is an output name, the value is the next placement name. Flows terminate at an explicit `TerminalNode` placement, not via a `null` output value.
 
 ---
 

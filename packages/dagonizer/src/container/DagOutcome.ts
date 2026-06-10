@@ -17,6 +17,7 @@
 import type { ExecutorIntermediate } from '../entities/executor/ExecutorIntermediate.js';
 import type { JsonObject } from '../entities/json.js';
 import type { NodeError } from '../entities/node/NodeError.js';
+import { NodeErrorBuilder } from '../entities/node/NodeError.js';
 
 import { DAG_CONTAINER_TRANSPORT } from './TransportErrorCode.js';
 
@@ -59,14 +60,13 @@ export class DagOutcome {
   ): DagOutcomeInterface {
     const code = options.code ?? DAG_CONTAINER_TRANSPORT;
     const message = options.message ?? `Transport failure for request ${correlationId}`;
-    const error: NodeError = {
-      'code': code,
-      'context': {},
-      'message': message,
-      'operation': 'runDag',
-      'recoverable': false,
-      'timestamp': new Date().toISOString(),
-    };
+    const error: NodeError = NodeErrorBuilder.from(
+      code,
+      message,
+      'runDag',
+      false,
+      new Date().toISOString(),
+    );
     return {
       'terminalOutput': 'failed',
       'errors': [error],

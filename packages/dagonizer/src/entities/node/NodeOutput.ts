@@ -99,7 +99,7 @@ export class NodeOutputBuilder {
    * @example
    * ```ts
    * return NodeOutputBuilder.of('success');
-   * return NodeOutputBuilder.of('error', { errors: [NodeErrorBuilder.from({ … })] });
+   * return NodeOutputBuilder.of('error', { errors: [NodeErrorBuilder.from('CODE', 'msg', 'op', false, new Date().toISOString())] });
    * ```
    */
   static of<TOutput extends string>(

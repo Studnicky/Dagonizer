@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { TerminalNodePlacementInterface } from '../../src/entities/dag/TerminalNode.js';
+import type { TerminalNode } from '../../src/entities/dag/TerminalNode.js';
 import type { DAG } from '../../src/entities/index.js';
 import { DAG_CONTEXT } from '../../src/entities/index.js';
 import { DAGONIZER_VOCAB, JsonLdRenderer } from '../../src/viz/JsonLdRenderer.js';
@@ -199,7 +199,7 @@ void describe('JsonLdRenderer.render: containment', () => {
 
 void describe('JsonLdRenderer.render: TerminalNode', () => {
   void it('renders a completed TerminalNode with @type dag:TerminalNode and dag:outcome', () => {
-    const terminalDone: TerminalNodePlacementInterface = {
+    const terminalDone: TerminalNode = {
       '@id':     'urn:noocodex:dag:jt/node/done',
       '@type':   'TerminalNode',
       'name':    'done',
@@ -233,7 +233,7 @@ void describe('JsonLdRenderer.render: TerminalNode', () => {
   });
 
   void it('renders a failed TerminalNode with dag:outcome=failed', () => {
-    const terminalAbort: TerminalNodePlacementInterface = {
+    const terminalAbort: TerminalNode = {
       '@id':     'urn:noocodex:dag:jt2/node/abort',
       '@type':   'TerminalNode',
       'name':    'abort',

@@ -26,6 +26,6 @@ export abstract class MemoryDigestNode<
   ): Promise<NodeOutputInterface<'success'>> {
     const digest = this.buildDigest(context.services.memory, state);
     this.applyDigest(state, digest);
-    return NodeOutputBuilder.of(this.successPort());
+    return NodeOutputBuilder.of('success');
   }
 }

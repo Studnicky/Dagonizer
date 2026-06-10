@@ -14,8 +14,8 @@
  */
 
 import type { DAG } from '../entities/dag/DAG.js';
-
-type NodeEntry = DAG['nodes'][number];
+import { Placement } from '../entities/dag/Placement.js';
+import type { DAGNodeType } from '../entities/dag/Placement.js';
 
 /**
  * Opt-in structural validator for authored DAG documents.
@@ -37,13 +37,6 @@ export class WellFormedValidator {
    *      (Null routes are schema-invalid and will have been rejected by
    *      `Validator.dag` before this point; this rule catches dangling string
    *      targets that name non-existent placements.)
-   *   2. Structural: ScatterNode must have a non-empty `source` field.
-   *   3. Structural: EmbeddedDAGNode must have a non-empty `dag` field.
-   *   4. Structural: TerminalNode `outcome` must be 'completed' or 'failed'.
-   *
-   * Rules 2–4 are belt-and-suspenders guards; the Ajv schema enforces them
-   * at load time. They are included for completeness when operating on
-   * already-validated values constructed programmatically.
    *
    * @param dag - A schema-validated DAG object.
    * @returns Array of human-readable violation messages. Empty = well-formed.
@@ -62,14 +55,12 @@ export class WellFormedValidator {
   }
 
   private static checkPlacement(
-    node: NodeEntry,
+    node: DAGNodeType,
     placementNames: ReadonlySet<string>,
     violations: string[],
   ): void {
-    const type = node['@type'];
-
     // TerminalNode has no outputs; only check outcome.
-    if (type === 'TerminalNode') {
+    if (Placement.isTerminal(node)) {
       const outcome = node.outcome;
       if (outcome !== 'completed' && outcome !== 'failed') {
         violations.push(
@@ -80,54 +71,28 @@ export class WellFormedValidator {
     }
 
     // PhaseNode has no outputs field (it is a lifecycle hook placement, not a routing placement).
-    if (type === 'PhaseNode') {
+    if (Placement.isPhase(node)) {
       return;
     }
 
-    // ScatterNode structural: source must be non-empty (schema enforces this; belt-and-suspenders).
-    if (type === 'ScatterNode') {
-      if (!node.source || node.source.length === 0) {
-        violations.push(
-          `Placement '${node.name}' (ScatterNode): 'source' is empty or missing. A ScatterNode requires a non-empty source field.`,
-        );
-      }
-    }
+    // SingleNode, ScatterNode, EmbeddedDAGNode: validate output route targets.
+    WellFormedValidator.checkOutputTargets(node, placementNames, violations);
+  }
 
-    // EmbeddedDAGNode structural: dag must be non-empty (schema enforces this; belt-and-suspenders).
-    if (type === 'EmbeddedDAGNode') {
-      if (!node.dag || node.dag.length === 0) {
+  /**
+   * Validate that every output route target names an existing placement.
+   * Applies to SingleNode, ScatterNode, and EmbeddedDAGNode.
+   */
+  private static checkOutputTargets(
+    node: DAGNodeType & { outputs: Record<string, string> },
+    placementNames: ReadonlySet<string>,
+    violations: string[],
+  ): void {
+    for (const [route, target] of Object.entries(node.outputs)) {
+      if (!placementNames.has(target)) {
         violations.push(
-          `Placement '${node.name}' (EmbeddedDAGNode): 'dag' is empty or missing. An EmbeddedDAGNode requires a non-empty dag reference.`,
+          `Placement '${node.name}': route '${route}' targets '${target}', which does not exist in this DAG's placements.`,
         );
-      }
-    }
-
-    // Nodes with outputs: apply target-resolution rules.
-    // Each branch narrows `node` to the concrete placement type so `outputs`
-    // is typed as `Record<string, string>` without a cast.
-    if (type === 'SingleNode') {
-      for (const [route, target] of Object.entries(node.outputs)) {
-        if (!placementNames.has(target)) {
-          violations.push(
-            `Placement '${node.name}': route '${route}' targets '${target}', which does not exist in this DAG's placements.`,
-          );
-        }
-      }
-    } else if (type === 'ScatterNode') {
-      for (const [route, target] of Object.entries(node.outputs)) {
-        if (!placementNames.has(target)) {
-          violations.push(
-            `Placement '${node.name}': route '${route}' targets '${target}', which does not exist in this DAG's placements.`,
-          );
-        }
-      }
-    } else if (type === 'EmbeddedDAGNode') {
-      for (const [route, target] of Object.entries(node.outputs)) {
-        if (!placementNames.has(target)) {
-          violations.push(
-            `Placement '${node.name}': route '${route}' targets '${target}', which does not exist in this DAG's placements.`,
-          );
-        }
       }
     }
   }

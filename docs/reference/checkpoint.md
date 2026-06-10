@@ -183,14 +183,15 @@ The parsed and validated checkpoint record. Serialize with `ckpt.toJson()`.
 
 ---
 
-## Type: `StateRestoreFnType<TState>`
+## Interface: `CheckpointRestoreAdapter<TState>`
 
 ```ts
-type StateRestoreFnType<TState extends NodeStateInterface> =
-  (snapshot: JsonObject) => TState;
+interface CheckpointRestoreAdapter<TState> {
+  restore(snapshot: JsonObject): TState;
+}
 ```
 
-Any function that maps a snapshot `JsonObject` to a `TState` instance. The typical form is `(snap) => MyState.restore(snap)`, where `MyState.restore` is inherited from `NodeStateBase`.
+Contract for restoring a state instance from a JSON snapshot. Wrap a plain function with `CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap))`. Ships from `@noocodex/dagonizer/checkpoint`.
 
 ---
 

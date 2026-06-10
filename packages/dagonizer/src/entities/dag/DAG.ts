@@ -214,3 +214,46 @@ export const DAGSchema = {
 
 /** TypeScript type derived from `DAGSchema` via `json-schema-to-ts`. */
 export type DAG = FromSchema<typeof DAGSchema>;
+
+/**
+ * Identity helpers for DAG documents.
+ *
+ * `DAG` is both the wire-shape type (derived from `DAGSchema`) and this
+ * frozen value namespace. TypeScript permits a `type` alias and a `const`
+ * with the same identifier because they live in separate declaration spaces.
+ *
+ * `DAG.id` and `DAG.placementId` produce the canonical URN identifiers used
+ * in `@id` fields of JSON-LD DAG documents.
+ */
+export const DAG = Object.freeze({
+  /**
+   * Returns the canonical URN for a DAG by name.
+   *
+   * @param dagName - The DAG `name` field value.
+   * @returns `urn:noocodex:dag:<dagName>`
+   *
+   * @example
+   * ```ts
+   * DAG.id('my-workflow'); // 'urn:noocodex:dag:my-workflow'
+   * ```
+   */
+  id(dagName: string): string {
+    return `urn:noocodex:dag:${dagName}`;
+  },
+
+  /**
+   * Returns the canonical URN for a node placement within a DAG.
+   *
+   * @param dagName - The DAG `name` field value.
+   * @param placementName - The placement `name` field value.
+   * @returns `urn:noocodex:dag:<dagName>/node/<placementName>`
+   *
+   * @example
+   * ```ts
+   * DAG.placementId('my-workflow', 'fetchData'); // 'urn:noocodex:dag:my-workflow/node/fetchData'
+   * ```
+   */
+  placementId(dagName: string, placementName: string): string {
+    return `urn:noocodex:dag:${dagName}/node/${placementName}`;
+  },
+});

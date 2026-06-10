@@ -2,9 +2,10 @@
  * NodeInvoker: typed contract for dispatching a registered node back
  * through the engine.
  *
- * Wave 4 will swap the bare `invokeNode` function property on
- * `GatherExecution` to this contract, removing the last callback seam
- * from the gather dispatch path.
+ * `GatherExecution.invoker` satisfies this contract; `custom`
+ * gather strategies call `invoker.invokeNode(name)` to dispatch a
+ * registered node back through the engine without a direct reference
+ * to the dispatcher.
  */
 export interface NodeInvoker {
   invokeNode(nodeName: string): Promise<void>;

@@ -15,6 +15,8 @@
 
 import type { ErrorObject, ValidateFunction } from 'ajv';
 
+import type { OpenAiResponseBody } from '../adapter/OpenAiResponseBody.js';
+import { OpenAiResponseBodySchema } from '../adapter/OpenAiResponseBody.js';
 import { CheckpointDataSchema } from '../entities/checkpoint/CheckpointData.js';
 import type { CheckpointData } from '../entities/checkpoint/CheckpointData.js';
 import { GatherStrategySchema } from '../entities/constants/GatherStrategy.js';
@@ -31,6 +33,8 @@ import type { DAG } from '../entities/dag/DAG.js';
 import { DAGSchema } from '../entities/dag/DAG.js';
 import { EmbeddedDAGNodeSchema } from '../entities/dag/EmbeddedDAGNode.js';
 import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
+import { GatherConfigSchema } from '../entities/dag/GatherConfig.js';
+import type { GatherConfig } from '../entities/dag/GatherConfig.js';
 import type { PhaseNode } from '../entities/dag/PhaseNode.js';
 import { PhaseNodeSchema } from '../entities/dag/PhaseNode.js';
 import { ScatterNodeSchema } from '../entities/dag/ScatterNode.js';
@@ -41,8 +45,8 @@ import type { TerminalNode } from '../entities/dag/TerminalNode.js';
 import { TerminalNodeSchema } from '../entities/dag/TerminalNode.js';
 import { DAGErrorJSONSchema } from '../entities/errors/DAGErrorJSON.js';
 import type { DAGErrorJSON } from '../entities/errors/DAGErrorJSON.js';
-import { ExecutionResultSchema } from '../entities/execution/ExecutionResult.js';
-import type { ExecutionResult } from '../entities/execution/ExecutionResult.js';
+import { ExecutionResultSchema, InterruptionInfoSchema } from '../entities/execution/ExecutionResult.js';
+import type { ExecutionResult, InterruptionInfo } from '../entities/execution/ExecutionResult.js';
 import type { BridgeMessage } from '../entities/executor/BridgeMessage.js';
 import { BridgeMessageSchema } from '../entities/executor/BridgeMessage.js';
 import { ExecutionRequestSchema } from '../entities/executor/ExecutionRequest.js';
@@ -182,6 +186,7 @@ export class Validator {
 
   // Execution + lifecycle wire shapes
   static readonly executionResult:   EntityValidator<ExecutionResult>      = Validator.compile('ExecutionResult',   ExecutionResultSchema);
+  static readonly interruptionInfo:  EntityValidator<InterruptionInfo>     = Validator.compile('InterruptionInfo',  InterruptionInfoSchema);
   static readonly dagLifecycleState: EntityValidator<DAGLifecycleStateData> = Validator.compile('DAGLifecycleState', DAGLifecycleStateSchema);
 
   // Persistence + reporting
@@ -197,6 +202,12 @@ export class Validator {
   static readonly executionResponse:      EntityValidator<ExecutionResponse>       = Validator.compile('ExecutionResponse',       ExecutionResponseSchema);
   static readonly executorIntermediate:   EntityValidator<ExecutorIntermediate>    = Validator.compile('ExecutorIntermediate',    ExecutorIntermediateSchema);
   static readonly recommendedWorkerCount: EntityValidator<RecommendedWorkerCountConfig> = Validator.compile('RecommendedWorkerCountConfig', RecommendedWorkerCountConfigSchema);
+
+  // DAG sub-entities
+  static readonly gatherConfig: EntityValidator<GatherConfig> = Validator.compile('GatherConfig', GatherConfigSchema);
+
+  // Adapter wire shapes
+  static readonly openAiResponseBody: EntityValidator<OpenAiResponseBody> = Validator.compile('OpenAiResponseBody', OpenAiResponseBodySchema);
 
   // Constant enum schemas
   static readonly gatherStrategy: EntityValidator<GatherStrategyName> = Validator.compile('GatherStrategy', GatherStrategySchema);

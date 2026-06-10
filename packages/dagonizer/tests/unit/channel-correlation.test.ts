@@ -43,6 +43,7 @@ import type { ExecutionRequest } from '../../src/entities/executor/ExecutionRequ
 import type { JsonObject } from '../../src/entities/json.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 
 // ---------------------------------------------------------------------------
@@ -98,7 +99,7 @@ function makeTask(correlationId: string, signal: AbortSignal): DagTaskInterface<
     'dagName': 'test-dag',
     'placementPath': [],
     'correlationId': correlationId,
-    'timeoutMs': null,
+    'timeout': Timeout.none(),
     'state': new MinimalState(),
     'context': {
       'dagName': 'test-dag',
@@ -391,7 +392,7 @@ void describe('worker observability: forwarded node events reach the parent obse
     };
 
     const ac = new AbortController();
-    const outcome = await container.runDag(makeTask('obs-1', ac.signal), relay);
+    const outcome = await container.runDag(makeTask('obs-1', ac.signal), { relay });
 
     assert.strictEqual(outcome.terminalOutput, 'done');
     assert.strictEqual(seen.length, 1, 'parent relay observes exactly one forwarded inner node');

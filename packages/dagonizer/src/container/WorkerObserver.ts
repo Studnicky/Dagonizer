@@ -19,6 +19,15 @@ import type { MessageChannelInterface } from '../contracts/MessageChannelInterfa
 import { Dagonizer } from '../Dagonizer.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
+/** Co-located defaults for `WorkerObserver.#emit()` options (schema-safe sentinels). */
+const EMIT_DEFAULTS = {
+  'phase': '' as 'pre' | 'post' | '',
+  'dagName': '',
+  'nodeName': '',
+  'output': null as string | null,
+  'message': '',
+} as const;
+
 export class WorkerObserver<
   TState extends NodeStateInterface = NodeStateInterface,
 > extends Dagonizer<TState, unknown> {
@@ -43,15 +52,23 @@ export class WorkerObserver<
     return [...this.#basePath, ...innerPath];
   }
 
+  /**
+   * Emit an instrumentation BridgeMessage on the channel. Required positional:
+   * `hook` and `composedPath`. Optional trailing bag for hook-specific fields;
+   * all default to schema-safe sentinels so the emitted message is always valid.
+   */
   #emit(
     hook: 'nodeStart' | 'nodeEnd' | 'error' | 'phaseEnter' | 'phaseExit' | 'contractWarning',
-    phase: '' | 'pre' | 'post',
-    dagName: string,
-    nodeName: string,
-    output: string | null,
-    message: string,
     composedPath: string[],
+    options: {
+      phase?: 'pre' | 'post' | '';
+      dagName?: string;
+      nodeName?: string;
+      output?: string | null;
+      message?: string;
+    } = {},
   ): void {
+    const { phase, dagName, nodeName, output, message } = { ...EMIT_DEFAULTS, ...options };
     try {
       this.#channel.send({
         'kind': 'instrumentation',
@@ -68,15 +85,15 @@ export class WorkerObserver<
   }
 
   protected override onNodeStart(nodeName: string, _state: TState, placementPath: readonly string[]): void {
-    this.#emit('nodeStart', '', '', nodeName, null, '', this.#composePath(placementPath));
+    this.#emit('nodeStart', this.#composePath(placementPath), { 'nodeName': nodeName });
   }
 
   protected override onNodeEnd(nodeName: string, output: string | null, _state: TState, placementPath: readonly string[]): void {
-    this.#emit('nodeEnd', '', '', nodeName, output, '', this.#composePath(placementPath));
+    this.#emit('nodeEnd', this.#composePath(placementPath), { 'nodeName': nodeName, 'output': output });
   }
 
   protected override onError(nodeName: string, error: Error, _state: TState, placementPath: readonly string[]): void {
-    this.#emit('error', '', '', nodeName, null, error.message, this.#composePath(placementPath));
+    this.#emit('error', this.#composePath(placementPath), { 'nodeName': nodeName, 'message': error.message });
   }
 
   protected override onPhaseEnter(
@@ -86,7 +103,7 @@ export class WorkerObserver<
     _state: TState,
     placementPath: readonly string[],
   ): void {
-    this.#emit('phaseEnter', phase, dagName, placementName, null, '', this.#composePath(placementPath));
+    this.#emit('phaseEnter', this.#composePath(placementPath), { 'phase': phase, 'dagName': dagName, 'nodeName': placementName });
   }
 
   protected override onPhaseExit(
@@ -96,10 +113,10 @@ export class WorkerObserver<
     _state: TState,
     placementPath: readonly string[],
   ): void {
-    this.#emit('phaseExit', phase, dagName, placementName, null, '', this.#composePath(placementPath));
+    this.#emit('phaseExit', this.#composePath(placementPath), { 'phase': phase, 'dagName': dagName, 'nodeName': placementName });
   }
 
   protected override onContractWarning(message: string): void {
-    this.#emit('contractWarning', '', '', '', null, message, []);
+    this.#emit('contractWarning', [], { 'message': message });
   }
 }

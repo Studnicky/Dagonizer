@@ -69,7 +69,7 @@ Dagonizer is a DAG dispatcher. The core loop is a `while` iterator over a node g
 
 An embedded DAG or scatter-dag-body placement may declare a logical `container` role. The dispatcher binds roles to `DagContainerInterface` backends (worker thread, forked child, cluster worker, spawned process, or Web Worker) at construction time. The DAG definition and node implementations are unchanged — the container decides where the sub-DAG executes, not how it is authored. An unbound role falls back to the in-process path and fires `contractWarning`; every DAG runs everywhere, degradation is visible.
 
-When a top-level DAG completes at a terminal placement that is bound to a `ChannelInterface`, the dispatcher publishes a `DAGHandoff` envelope to that channel. The envelope carries the terminal state snapshot, the terminal name, and a `registryVersion` for the receiving host's handshake. A receiver restores the envelope state and executes the next DAG in the chain using a plain `Dagonizer` instance — no orchestration runtime, no custom ingress adapter. Cross-host state pass-over is an envelope-in / envelope-out model; Dagonizer is the in-function runtime, not the orchestrator.
+When a top-level DAG completes at a terminal placement that is bound to a `HandoffChannelInterface`, the dispatcher publishes a `DAGHandoff` envelope to that channel. The envelope carries the terminal state snapshot, the terminal name, and a `registryVersion` for the receiving host's handshake. A receiver restores the envelope state and executes the next DAG in the chain using a plain `Dagonizer` instance — no orchestration runtime, no custom ingress adapter. Cross-host state pass-over is an envelope-in / envelope-out model; Dagonizer is the in-function runtime, not the orchestrator.
 
 The engine is domain-agnostic. The Archivist (LLM-agent bibliographic assistant) and the Cartographer (streaming multi-format data-orchestration / ETL, no LLM) both run on the identical dispatcher, lifecycle FSM, scatter/gather machinery, and checkpoint/resume mechanism. The difference is entirely in the node implementations; the engine is the same.
 
@@ -95,7 +95,7 @@ flowchart TB
   end
 ```
 
-**`single`**, the fundamental unit. One registered node; output name selects the next node (or `null` to terminate).
+**`single`**, the fundamental unit. One registered node; output name selects the next node. Flows terminate at an explicit `TerminalNode`.
 
 **`scatter`** isolates one state clone per item in a `source`, runs a node body in each clone, merges produced clone state back into the parent via a required `gather` strategy, and routes on the aggregate outcome via an outcome `reducer`. Gather strategies: `map`, `append`, `partition`, `custom`, `collect`, `discard`. Default reducer: `aggregate`. Declare `{ strategy: 'discard' }` for side-effect-only fan-outs. Heterogeneous fan-out (running different logic per item) is expressed by authoring the `source` as a descriptor array and writing a body node that dispatches on the item — the engine is indifferent to whether bodies are identical.
 
@@ -154,7 +154,7 @@ Timestamps are monotonic milliseconds from `Clock.monotonicMs()`. Use them for d
 5. For `EmbeddedDAGNode` and `ScatterNode` placements that declare a `container` role, the dispatcher resolves the bound `DagContainerInterface` and delegates the sub-DAG execution to that backend. The child state crosses the boundary as a snapshot; the backend runs the sub-DAG to completion and returns the terminal snapshot; the dispatcher applies it in-place and continues. An unbound role resolves to the in-process recursive path.
 6. Stops when routing produces `null` (normal completion) or when the signal fires (abort or timeout).
 7. Marks state `completed`, `cancelled`, or `timed_out` accordingly.
-8. For non-embedded runs: if the terminal placement name is bound in `channels`, builds a `DAGHandoff` envelope (by-value `stateSnapshot`, `correlationId`, `registryVersion`, `placementPath`) and publishes it to the bound `ChannelInterface`. A publish failure is collected as a `HANDOFF_PUBLISH_FAILED` error; it does not change the returned `ExecutionResult` or the terminal outcome.
+8. For non-embedded runs: if the terminal placement name is bound in `channels`, builds a `DAGHandoff` envelope (by-value `stateSnapshot`, `correlationId`, `registryVersion`, `placementPath`) and publishes it to the bound `HandoffChannelInterface`. A publish failure is collected as a `HANDOFF_PUBLISH_FAILED` error; it does not change the returned `ExecutionResult` or the terminal outcome.
 9. Returns `ExecutionResultInterface` with `cursor` (next node name or `null`), `executedNodes`, `skippedNodes`, and final `state`.
 
 `Execution` is both `PromiseLike` (awaitable) and `AsyncIterable` (iterable per node). Both modes share a single internal generator. The flow body runs exactly once.
@@ -242,7 +242,7 @@ Consumers extend these classes; the interface is what their subclasses implement
 
 What consumers implement to swap a backend or contribute behavior. Live at the root of `src/contracts/`. **Single source of truth**; never re-exported from sibling modules.
 
-Examples: `ClockProvider`, `SchedulerProvider`, `SchedulerHandle`, `NodeInterface`, `ExecuteOptionsInterface`, `RetryPolicyOptionsInterface`, `ErrorConstructorType`, `DagContainerInterface`, `ChannelInterface`, `RegistryModuleInterface`.
+Examples: `ClockProvider`, `SchedulerProvider`, `NodeInterface`, `ExecuteOptionsInterface`, `RetryPolicyOptionsInterface`, `ErrorConstructorType`, `DagContainerInterface`, `HandoffChannelInterface`, `RegistryModuleInterface`.
 
 A `runtime/` barrel re-exports an adapter contract for ergonomic co-import with the engine class. The source of the type stays in `contracts/`.
 
@@ -277,7 +277,7 @@ Every public surface ships through a `package.json` `exports` entry.
 | `./runtime` | `Clock`, `Scheduler`, `RetryPolicy`, `RealTimeScheduler`, `BackoffStrategy` |
 | `./builder` | `DAGBuilder` and its option interfaces |
 | `./validation` | `Validator` and `EntityValidator<T>` |
-| `./checkpoint` | `Checkpoint`, `StateRestoreFnType` |
+| `./checkpoint` | `Checkpoint`, `CheckpointRestoreAdapterFn` |
 | `./testing` | `VirtualClockProvider`, `VirtualScheduler` (test-only) |
 | `./adapter` | `LlmAdapter`, `BaseAdapter`, `OpenAiCompatibleAdapter`, `LlmAdapterCascade`, `LlmAdapterRegistry`, `BaseEmbedder`, `EmbedderCascade`, `EmbedderRegistry`, related types |
 | `./patterns` | `MonadicNode` base class, `LlmClient` and `TripleStore` service contracts for pattern plugins |
@@ -300,4 +300,4 @@ Class extension is the only extension mechanism. Zero callbacks. Zero function-p
 - **Nodes**: implement `NodeInterface<TState, TOutput>`. Nodes never throw; they route to a named output.
 - **Time and scheduling**: implement `ClockProvider` and `SchedulerProvider`. `Clock.configure()` and `Scheduler.configure()` install the provider. Production runs the default `RealTimeScheduler` and the wrapped `process.hrtime.bigint()`; tests install `VirtualClockProvider` and `VirtualScheduler` for deterministic time.
 - **Isolating compute**: implement `DagContainerInterface` to run an embedded DAG or scatter-dag-body in any isolate. Bind roles to backend instances at dispatcher construction via `options.containers`. The `@noocodex/dagonizer-executor-node` package ships `WorkerThreadContainer`, `ForkContainer`, `ClusterContainer`, and `SpawnContainer` for Node.js deployments.
-- **Cross-host egress**: implement `ChannelInterface` to publish `DAGHandoff` envelopes to any transport (queue, message bus, HTTP endpoint). Bind to terminal names at construction via `options.channels`. `InMemoryChannel` (from `./channels`) is the reference implementation for tests and demos.
+- **Cross-host egress**: implement `HandoffChannelInterface` to publish `DAGHandoff` envelopes to any transport (queue, message bus, HTTP endpoint). Bind to terminal names at construction via `options.channels`. `InMemoryChannel` (from `./channels`) is the reference implementation for tests and demos.

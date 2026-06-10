@@ -62,16 +62,16 @@ export interface Store extends Snapshottable {
   // snapshot() / restore() are inherited from Snapshottable.
 
   /**
-   * Optional lifecycle hook for stores that hold a connection.
-   * Engine callers use optional chaining: `await store.connect?.()`.
-   * Stores with no connection lifecycle may omit this method entirely.
+   * Lifecycle hook for stores that hold a connection. Called before first use.
+   * Stores with no connection lifecycle implement this as a no-op
+   * (the default in `BaseStore`).
    */
-  connect?(): Promise<void>;
+  connect(): Promise<void>;
 
   /**
-   * Optional lifecycle hook for stores that hold a connection.
-   * Engine callers use optional chaining: `await store.disconnect?.()`.
-   * Stores with no connection lifecycle may omit this method entirely.
+   * Lifecycle hook for stores that hold a connection. Called on teardown.
+   * Stores with no connection lifecycle implement this as a no-op
+   * (the default in `BaseStore`).
    */
-  disconnect?(): Promise<void>;
+  disconnect(): Promise<void>;
 }

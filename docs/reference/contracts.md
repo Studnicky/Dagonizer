@@ -24,12 +24,10 @@ Adapter contracts live at the root of `src/contracts/` and ship through `@noocod
 ```ts
 import type {
   // Core dispatcher contracts
-  ChannelInterface,
+  HandoffChannelInterface,
   CheckpointStore,
   ClockProvider,
   DagContainerInterface,
-  DagOutcomeInterface,
-  DagTaskInterface,
   Embedder,
   ErrorConstructorType,
   ExecuteOptionsInterface,
@@ -49,7 +47,6 @@ import type {
   RemoteStoreEndpoint,
   RemoteStoreLease,
   RetryPolicyOptionsInterface,
-  SchedulerHandle,
   SchedulerProvider,
   Snapshottable,
   StateAccessor,
@@ -59,6 +56,12 @@ import type {
   SystemInfoInterface,
   WarningEmitter,
 } from '@noocodex/dagonizer/contracts';
+
+// DagOutcomeInterface and DagTaskInterface ship through the root barrel
+import type {
+  DagOutcomeInterface,
+  DagTaskInterface,
+} from '@noocodex/dagonizer';
 ```
 
 `Chainable` is exported from the root barrel but is not part of `./contracts`. Source: `src/contracts/NodeInterface.ts`.
@@ -108,7 +111,7 @@ interface ClockProvider {
 
 Backend for the `Clock` singleton. Implement to swap time sources (typically in tests via `VirtualClockProvider` from `@noocodex/dagonizer/testing`).
 
-## SchedulerProvider / SchedulerHandle
+## SchedulerProvider
 
 ```ts
 interface SchedulerProvider {
@@ -117,16 +120,9 @@ interface SchedulerProvider {
   every(intervalMs: number, signal?: AbortSignal): AsyncIterable<void>;
   cancelAll(): void;
 }
-
-interface SchedulerHandle {
-  after(delayMs: number, signal?: AbortSignal): Promise<void>;
-  at(atMs: number, signal?: AbortSignal): Promise<void>;
-  every(intervalMs: number, signal?: AbortSignal): AsyncIterable<void>;
-  cancelAll(): void;
-}
 ```
 
-`SchedulerProvider` is the backend contract (implement to swap in a custom scheduler). `SchedulerHandle` is the public surface returned by `Scheduler.current()`. Same shape, separate type.
+`SchedulerProvider` is the backend contract; implement it to swap in a custom scheduler. `Scheduler.current()` returns the active `SchedulerProvider`. Production uses `RealTimeScheduler`; tests install `VirtualScheduler` from `@noocodex/dagonizer/testing`.
 
 ## StateAccessor
 
@@ -294,10 +290,10 @@ Adapter contract for running an embedded DAG in an isolate (worker thread, forke
 
 `destroy()` is optional. Implement it to release pool resources when the dispatcher shuts down.
 
-## ChannelInterface
+## HandoffChannelInterface
 
 ```ts
-interface ChannelInterface {
+interface HandoffChannelInterface {
   publish(handoff: DAGHandoff): Promise<void>;
   destroy?(): Promise<void>;
 }
@@ -328,7 +324,7 @@ interface RegistryBundleInterface {
   readonly bundle:          DispatcherBundle<NodeStateInterface, unknown>;
   readonly services:        unknown;
   readonly registryVersion: string;
-  readonly restoreState:    StateRestoreFnType<NodeStateInterface>;
+  readonly restoreState:    CheckpointRestoreAdapter<NodeStateInterface>;
   destroy?():               Promise<void>;
 }
 ```

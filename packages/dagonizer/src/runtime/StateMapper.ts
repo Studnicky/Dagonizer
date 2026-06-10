@@ -1,3 +1,15 @@
+/**
+ * StateMapper: translates fields between parent and child state objects
+ * during scatter/gather node execution.
+ *
+ * Internal engine class. Not exported through the `runtime/` barrel or
+ * any public subpath; it is consumed only by the dispatcher and the
+ * scatter implementation. Consumers do not interact with it directly.
+ *
+ * Uses a `StateAccessor` for dotted-path reads and writes so the mapping
+ * logic is decoupled from the concrete accessor implementation.
+ */
+
 import type { StateAccessor } from '../contracts/StateAccessor.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 

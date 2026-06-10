@@ -23,7 +23,7 @@
  *   recorder        — appends its node name to state.executedNodes; routes 'done'.
  *   mutator         — sets state.value = 99; routes 'done'.
  *   error-emitter   — collectError(...) into state.errors; routes 'error'.
- *   timeout-sleeper — declares timeoutMs; awaits the signal (times out).
+ *   timeout-sleeper — declares timeout budget; awaits the signal (times out).
  *   abort-sleeper   — records `began` marker, then awaits the signal (aborts).
  *   scatter-counter — reads currentItem from metadata; appends it to
  *                     state.scatterItems; routes 'done'. Used by Laws 7–8.
@@ -62,7 +62,7 @@ import type { NodeContextInterface } from '../dist/entities/node/NodeContext.js'
 import type { NodeOutputInterface } from '../dist/entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../dist/NodeStateBase.js';
 
-import { NodeStateBase } from '@noocodex/dagonizer';
+import { CheckpointRestoreAdapterFn, NodeStateBase, Timeout } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -196,7 +196,7 @@ const errorEmitterNode: NodeInterface<ConformanceState> = {
 const timeoutSleeperNode: NodeInterface<ConformanceState> = {
   'name': 'timeout-sleeper',
   'outputs': ['done'],
-  'timeoutMs': TIMEOUT_SLEEPER_TIMEOUT_MS,
+  'timeout': Timeout.ofMs(TIMEOUT_SLEEPER_TIMEOUT_MS),
   async execute(
     _state: ConformanceState,
     context: NodeContextInterface<undefined>,
@@ -515,7 +515,7 @@ export class ConformanceRegistry {
       },
       'services': undefined,
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
-      'restoreState': (snap: JsonObject) => restoreConformanceState(snap) as NodeStateInterface,
+      'restoreState': CheckpointRestoreAdapterFn.fromFn((snap: JsonObject) => restoreConformanceState(snap) as NodeStateInterface),
     };
   }
 }

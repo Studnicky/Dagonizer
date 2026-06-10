@@ -5,19 +5,20 @@
  * within the viz module only.
  */
 
+import type { DAG } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-import type { PhaseNodePlacementInterface } from '../entities/dag/PhaseNode.js';
+import type { PhaseNode } from '../entities/dag/PhaseNode.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
-import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
+import type { TerminalNode } from '../entities/dag/TerminalNode.js';
 
 /** 5-member union of every concrete placement shape. */
 export type PlacementEntry =
   | EmbeddedDAGNode
   | ScatterNode
   | SingleNodePlacementInterface
-  | TerminalNodePlacementInterface
-  | PhaseNodePlacementInterface;
+  | TerminalNode
+  | PhaseNode;
 
 /**
  * The three color tokens a contained placement carries.
@@ -27,9 +28,9 @@ export type PlacementEntry =
  * `text`   — label text color (light for dark fills, dark for light fills).
  */
 export interface RoleColors {
-  readonly fill:   string;
-  readonly stroke: string;
-  readonly text:   string;
+  fill:   string;
+  stroke: string;
+  text:   string;
 }
 
 /**
@@ -152,6 +153,18 @@ export class PlacementUtils {
       return placement.container ?? null;
     }
     return null;
+  }
+
+  /**
+   * Narrow `dag.nodes` to `PlacementEntry[]`.
+   *
+   * `DAG.nodes` is typed as `ReadonlyArray<object>` at the schema boundary so
+   * the engine core stays dependency-free. All renderer/layout callers in the
+   * viz module need the richer union type; this single cast is the one place
+   * that performs the narrowing so no consumer repeats it.
+   */
+  static narrowNodes(dag: DAG): PlacementEntry[] {
+    return dag.nodes as PlacementEntry[];
   }
 
   /** Build a placement-name id, optionally prefixed by an enclosing scope. */

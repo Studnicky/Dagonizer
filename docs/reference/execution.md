@@ -47,7 +47,7 @@ Each yielded `NodeResultInterface<TState>` carries:
 
 For scatter and embedded-DAG placements, the iterator first yields intermediate results for each constituent clone or inner node, then yields the group result.
 
-Phase placements (`PhaseNode`) run out of band and do not yield through the iterator. They surface via `Instrumentation.phaseEnter` / `phaseExit` and are appended to `result.executedNodes`.
+Phase placements (`PhaseNode`) run out of band and do not yield through the iterator. They surface via the `onPhaseEnter` / `onPhaseExit` subclass hooks on `Dagonizer` and are appended to `result.executedNodes`.
 
 ---
 

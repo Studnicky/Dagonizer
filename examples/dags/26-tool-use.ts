@@ -100,7 +100,7 @@ export const callLlm: NodeInterface<ToolUseState, 'tool_call' | 'text'> = {
       'messages': [
         { 'role': 'user', 'content': state.question, 'toolCallId': '', 'toolName': '' },
       ],
-      'tools':      tools,
+      'tools':      [...tools],
       'toolChoice': { 'type': 'required' },
     });
 

@@ -12,6 +12,7 @@
 import type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js';
 import type { NodeContextInterface } from '../entities/node/NodeContext.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
+import type { Timeout } from '../runtime/Timeout.js';
 
 // ---------------------------------------------------------------------------
 // DagTaskInterface (class-shape interface, lives in the same file as DagTask)
@@ -29,7 +30,7 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  * `placementPath` — nesting path of embedded-DAG placement names leading to
  *                   this execution (for instrumentation/observability).
  * `correlationId` — dispatcher-monotonic correlation id; no randomness.
- * `timeoutMs`     — timeout budget forwarded to the container; `null` = no limit.
+ * `timeout`       — per-task execution budget; `Timeout.none()` = no limit.
  * `state`         — live seeded child clone (TState).
  * `context`       — composed NodeContext including the abort signal.
  */
@@ -37,12 +38,12 @@ export interface DagTaskInterface<
   TState extends NodeStateInterface = NodeStateInterface,
   TServices = undefined,
 > {
-  readonly dagName: string;
-  readonly placementPath: readonly string[];
-  readonly correlationId: string;
-  readonly timeoutMs: number | null;
-  readonly state: TState;
-  readonly context: NodeContextInterface<TServices>;
+  dagName: string;
+  placementPath: string[];
+  correlationId: string;
+  timeout: Timeout;
+  state: TState;
+  context: NodeContextInterface<TServices>;
   /**
    * Materialise the wire form by snapshotting the live clone. Isolating
    * containers call this to obtain the `ExecutionRequest` they send across
@@ -57,9 +58,9 @@ export class DagTask<
   TServices = undefined,
 > implements DagTaskInterface<TState, TServices> {
   readonly dagName: string;
-  readonly placementPath: readonly string[];
+  readonly placementPath: string[];
   readonly correlationId: string;
-  readonly timeoutMs: number | null;
+  readonly timeout: Timeout;
   readonly state: TState;
   readonly context: NodeContextInterface<TServices>;
 
@@ -67,14 +68,14 @@ export class DagTask<
     dagName: string,
     placementPath: readonly string[],
     correlationId: string,
-    timeoutMs: number | null,
+    timeout: Timeout,
     state: TState,
     context: NodeContextInterface<TServices>,
   ) {
     this.dagName = dagName;
-    this.placementPath = placementPath;
+    this.placementPath = [...placementPath];
     this.correlationId = correlationId;
-    this.timeoutMs = timeoutMs;
+    this.timeout = timeout;
     this.state = state;
     this.context = context;
   }
@@ -88,7 +89,7 @@ export class DagTask<
       'dagName':       this.dagName,
       'placementPath': [...this.placementPath],
       'stateSnapshot': this.state.snapshot(),
-      'timeoutMs':     this.timeoutMs,
+      'timeoutMs':     this.timeout.toWire(),
       'correlationId': this.correlationId,
     };
   }

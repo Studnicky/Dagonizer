@@ -56,6 +56,14 @@ export abstract class GatherStrategy {
   abstract readonly name: string;
 
   /**
+   * Declares whether this strategy supports incremental folding.
+   * Strategies that implement `applyIncremental` set this to `true`;
+   * the dispatcher dispatches on this flag rather than duck-typing
+   * `applyIncremental !== undefined`.
+   */
+  readonly supportsIncremental: boolean = false;
+
+  /**
    * Apply the strategy in batch mode. Called once after all scatter clones
    * complete (or, for strategies that do not support `applyIncremental`, after
    * every clone regardless). Mutates `execution.state` in place; may invoke
@@ -71,8 +79,8 @@ export abstract class GatherStrategy {
    * Called after each clone body completes successfully, before the next clone
    * starts. Implementations mutate `state` in place.
    *
-   * When `undefined`, the dispatcher accumulates records and calls `apply` once
-   * all clones are done. Override in subclasses to enable streaming gather.
+   * Only called when `supportsIncremental === true`. Override this method and
+   * set `supportsIncremental = true` in the subclass to enable streaming gather.
    *
    * The `accessor` and `state` parameters mirror those in `GatherExecution`
    * and are provided directly to avoid constructing a full execution context
@@ -88,6 +96,7 @@ export abstract class GatherStrategy {
 
 class MapGatherStrategy extends GatherStrategy {
   readonly name = 'map';
+  override readonly supportsIncremental = true;
 
   override applyIncremental(
     config: GatherConfig,
@@ -128,6 +137,7 @@ class MapGatherStrategy extends GatherStrategy {
 
 class AppendGatherStrategy extends GatherStrategy {
   readonly name = 'append';
+  override readonly supportsIncremental = true;
 
   override applyIncremental(
     config: GatherConfig,
@@ -164,6 +174,7 @@ class AppendGatherStrategy extends GatherStrategy {
 
 class PartitionGatherStrategy extends GatherStrategy {
   readonly name = 'partition';
+  override readonly supportsIncremental = true;
 
   override applyIncremental(
     config: GatherConfig,
@@ -237,6 +248,7 @@ class CustomGatherStrategy extends GatherStrategy {
  */
 class DiscardGatherStrategy extends GatherStrategy {
   readonly name = 'discard';
+  override readonly supportsIncremental = true;
 
   // applyIncremental is a no-op: never accumulates any state.
   override applyIncremental(): void {
@@ -264,6 +276,7 @@ class DiscardGatherStrategy extends GatherStrategy {
  */
 class CollectGatherStrategy extends GatherStrategy {
   readonly name = 'collect';
+  override readonly supportsIncremental = true;
 
   override applyIncremental(
     config: GatherConfig,

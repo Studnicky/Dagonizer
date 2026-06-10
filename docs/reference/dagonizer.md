@@ -46,7 +46,7 @@ interface DagonizerOptionsInterface<TState extends NodeStateInterface = NodeStat
   readonly accessor?:         StateAccessor;
   readonly services?:         TServices;
   readonly containers?:       Readonly<Record<string, DagContainerInterface<TState>>>;
-  readonly channels?:         Readonly<Record<string, ChannelInterface>>;
+  readonly channels?:         Readonly<Record<string, HandoffChannelInterface>>;
   readonly registryVersion?:  string;
 }
 ```
@@ -56,7 +56,7 @@ interface DagonizerOptionsInterface<TState extends NodeStateInterface = NodeStat
 | `accessor` | `StateAccessor` | Path resolver for scatter source reads, gather writes, and state-mapping copies. Defaults to `DottedPathAccessor`. |
 | `services` | `TServices` | Typed services bag exposed to every node via `context.services`. Defaults to `undefined`. |
 | `containers` | `Readonly<Record<string, DagContainerInterface<TState>>>` | Named container backends keyed by logical role name. An unbound role falls back to in-process and fires `onContractWarning`. Defaults to an empty registry (all placements run in-process). |
-| `channels` | `Readonly<Record<string, ChannelInterface>>` | Named egress channels keyed by terminal placement name. When a non-embedded flow reaches a named terminal, the dispatcher builds a `DAGHandoff` envelope and calls `channel.publish(handoff)`. Unbound terminals do not publish. |
+| `channels` | `Readonly<Record<string, HandoffChannelInterface>>` | Named egress channels keyed by terminal placement name. When a non-embedded flow reaches a named terminal, the dispatcher builds a `DAGHandoff` envelope and calls `channel.publish(handoff)`. Unbound terminals do not publish. |
 | `registryVersion` | `string` | Registry version string included in every `DAGHandoff` envelope for receiver version-handshake validation. Defaults to `'0'`. |
 
 ---

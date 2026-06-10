@@ -53,7 +53,7 @@ Render a `DAG` as Mermaid `flowchart` source. The output is a complete Mermaid b
 | `terminal` (completed) | double-circle | `done(((done\n(completed))))` |
 | `terminal` (failed) | asymmetric flag | `fail>fail\n(failed)]` |
 
-Every output route renders as a labeled directed edge: `from -->|outcome| to`. Routes targeting `null` route to a synthetic `END` terminator (one per DAG, rendered as `END([end])`). Explicit `TerminalNode` placements render as their own distinct shapes and emit no edges.
+Every output route renders as a labeled directed edge: `from -->|outcome| to`. Flows terminate at explicit `TerminalNode` placements, which render as double-circle (completed) or asymmetric-flag (failed) shapes and emit no outbound edges.
 
 ### Containment coloring
 
@@ -68,13 +68,13 @@ Placements with a non-empty `container` role each receive a per-role Mermaid cla
 ```mermaid
 flowchart LR
   %% pipeline (v1.0)
-  classify
   classify[classify]
-  classify -->|off-topic| END
+  classify -->|off-topic| end_off_topic
   classify -->|success| plan
   plan[plan]
-  plan -->|success| END
-  END([end])
+  plan -->|success| end_done
+  end_off_topic(((end_off_topic\n(completed))))
+  end_done(((end_done\n(completed))))
 ```
 
 ### Combining with the dispatcher's read accessors

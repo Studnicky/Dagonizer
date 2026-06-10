@@ -19,7 +19,9 @@
  * but doesn't vary by domain: name, outputs, optional contract,
  * optional timeoutMs, optional validate/destroy hooks. Subclasses
  * declare what they need (`abstract readonly name`, `abstract readonly
- * outputs`, `abstract execute`) and inherit the rest.
+ * outputs`, `abstract execute`) and inherit the rest. Subclasses
+ * return output port literals directly in `execute()` — no indirection
+ * helpers are provided; return the string literal for V8 monomorphism.
  *
  * Pattern packages (rag, graph, flow) ship intermediate base classes
  * that extend this root and add their own dispatch loops. Consumers
@@ -40,6 +42,7 @@ import type { NodeContextInterface } from '../entities/node/NodeContext.js';
 import type { NodeOutputInterface } from '../entities/node/NodeOutput.js';
 import type { ValidationResult } from '../entities/validation/ValidationResult.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
+import { Timeout } from '../runtime/Timeout.js';
 
 export abstract class MonadicNode<
   TState extends NodeStateInterface = NodeStateInterface,
@@ -59,14 +62,13 @@ export abstract class MonadicNode<
   readonly contract?: OperationContractFragment;
 
   /**
-   * Per-node wall-clock budget in milliseconds. `0` means no timeout.
-   * Subclasses override to set a concrete budget. The engine reads
-   * `(node.timeoutMs ?? 0) > 0` to decide whether to schedule an abort;
-   * a zero value has no effect. The `NodeInterface` contract keeps this
-   * optional (external boundary); `MonadicNode` supplies the concrete
-   * required-with-default to keep V8 hidden-class stable.
+   * Per-node wall-clock budget. `Timeout.none()` means no time limit.
+   * Subclasses override to set a concrete budget via `Timeout.ofMs(n)`.
+   * The `NodeInterface` contract keeps this optional (external boundary);
+   * `MonadicNode` supplies the concrete required-with-default to keep
+   * V8 hidden-class stable.
    */
-  readonly timeoutMs: number = 0;
+  readonly timeout: Timeout = Timeout.none();
 
   /**
    * Execute the node, mutating state. Returns a result indicating which
@@ -84,30 +86,4 @@ export abstract class MonadicNode<
   /** Optional cleanup invoked when the dispatcher is destroyed. */
   destroy?(): Promise<void>;
 
-  /**
-   * Returns the concrete literal `'success'`. Use in `execute()` bodies
-   * where the output type includes `'success'`. Leaf nodes whose
-   * `execute()` emits only a fixed set of ports declare that set as
-   * the concrete `TOutput` (e.g. `'success'`) rather than a free
-   * generic, making this helper's return type directly assignable
-   * without any cast.
-   */
-  protected successPort(): 'success' { return 'success'; }
-
-  /**
-   * Returns the concrete literal `'empty'`. Use in `execute()` bodies
-   * where the output type includes `'empty'`. Fixed-port leaf nodes
-   * that route to this port declare `'success' | 'empty'` (or a
-   * subset) as their concrete `TOutput` rather than a free generic.
-   */
-  protected emptyPort(): 'empty' { return 'empty'; }
-
-  /**
-   * Returns the concrete literal `'error'`. Use in `execute()` bodies
-   * where the output type includes `'error'`. Fixed-port leaf nodes
-   * that route to this port declare `'success' | 'empty' | 'error'`
-   * (or a subset) as their concrete `TOutput` rather than a free
-   * generic.
-   */
-  protected errorPort(): 'error' { return 'error'; }
 }

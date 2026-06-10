@@ -20,13 +20,10 @@
  * error signal, causing the adapter to retry the request without tools.
  */
 
-import type { ValidateFunction } from 'ajv';
+import { Validator } from '../validation/Validator.js';
 
-import { sharedAjv } from '../validation/sharedAjv.js';
-import type { EntityValidator } from '../validation/Validator.js';
-
-import { DEFAULT_MAX_ATTEMPTS } from './AdapterBase.js';
 import { BaseAdapter } from './BaseAdapter.js';
+import { DEFAULT_BASE_DELAY_MS, DEFAULT_MAX_ATTEMPTS } from './BaseAdapterCore.js';
 import {
   ChatResponseMessageBuilder,
   ZERO_TOKEN_USAGE,
@@ -42,75 +39,43 @@ import type {
 } from './LlmAdapter.js';
 import { Classifications, LlmError } from './LlmError.js';
 import type { ErrorClassification } from './LlmError.js';
-import { OpenAiResponseBodySchema } from './OpenAiResponseBody.js';
 import type { OpenAiResponseBody } from './OpenAiResponseBody.js';
-
-const DEFAULT_TIMEOUT_MS = 60_000;
 
 /** Provider-specific configuration the subclass passes in. */
 export interface OpenAiCompatibleConfig {
-  readonly id: string;
-  readonly displayName: string;
-  readonly capabilities: AdapterCapabilities;
+  id: string;
+  displayName: string;
+  capabilities: AdapterCapabilities;
 
   /** Full chat-completions endpoint URL. */
-  readonly endpoint: string;
+  endpoint: string;
   /** Default model id when the consumer doesn't override. */
-  readonly defaultModel: string;
+  defaultModel: string;
   /** Token-cap field name. OpenAI: `max_tokens`. Groq + Cerebras: `max_completion_tokens`. */
-  readonly tokenField: 'max_tokens' | 'max_completion_tokens';
+  tokenField: 'max_tokens' | 'max_completion_tokens';
   /** Extra headers beyond Authorization + Content-Type. */
-  readonly extraHeaders: Readonly<Record<string, string>>;
+  extraHeaders: Record<string, string>;
 
-  /** Per-request timeout. Defaults to 60s. */
-  readonly timeoutMs?: number;
+  /** Per-request timeout in ms. Defaults to `DEFAULT_REQUEST_TIMEOUT_MS`. */
+  timeoutMs?: number;
 }
+
+/** Default per-request timeout (ms) applied when the config omits `timeoutMs`. */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+
+/** Config with `timeoutMs` materialised from the default. */
+type ResolvedOpenAiCompatibleConfig = OpenAiCompatibleConfig & { timeoutMs: number };
 
 /** Per-consumer options every OpenAI-compatible adapter accepts. */
 export interface OpenAiCompatibleAdapterOptions {
-  readonly model?: string;
-  readonly maxAttempts?: number;
+  model?: string;
+  maxAttempts?: number;
 }
-
-/**
- * Module-level validator compiled once from `OpenAiResponseBodySchema`.
- * Uses the shared Ajv instance — never builds a new Ajv.
- * On validation failure `#sendRequest` throws `LlmError(SCHEMA_VIOLATION)`.
- */
-const openAiResponseBodyValidator: EntityValidator<OpenAiResponseBody> = (() => {
-  const id = OpenAiResponseBodySchema.$id;
-  let compiled = typeof id === 'string' ? sharedAjv.getSchema(id) : undefined;
-  if (typeof compiled !== 'function') {
-    compiled = sharedAjv.compile(OpenAiResponseBodySchema);
-  }
-  const fn: ValidateFunction = compiled;
-  return {
-    is(value: unknown): value is OpenAiResponseBody { return fn(value) === true; },
-    validate(value: unknown): OpenAiResponseBody {
-      if (fn(value) === true) return value as OpenAiResponseBody;
-      const errs: string[] = (fn.errors ?? []).map((e) => {
-        const path = e.instancePath.length > 0 ? e.instancePath : '<root>';
-        return `${path}: ${e.message ?? 'invalid'}`;
-      });
-      throw new LlmError(
-        `OpenAI response body schema violation:\n  - ${errs.join('\n  - ')}`,
-        Classifications['SCHEMA_VIOLATION'],
-      );
-    },
-    errors(value: unknown): string[] | null {
-      if (fn(value) === true) return null;
-      return (fn.errors ?? []).map((e) => {
-        const path = e.instancePath.length > 0 ? e.instancePath : '<root>';
-        return `${path}: ${e.message ?? 'invalid'}`;
-      });
-    },
-  };
-})();
 
 export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
   readonly #apiKey: string;
   readonly #model: string;
-  readonly #config: OpenAiCompatibleConfig;
+  readonly #config: ResolvedOpenAiCompatibleConfig;
 
   protected constructor(
     apiKey: string,
@@ -121,11 +86,11 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
       config.id,
       config.displayName,
       config.capabilities,
-      { 'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS },
+      { 'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS, 'baseDelayMs': DEFAULT_BASE_DELAY_MS },
     );
     this.#apiKey = apiKey;
     this.#model = options.model ?? config.defaultModel;
-    this.#config = config;
+    this.#config = { ...config, 'timeoutMs': config.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS };
   }
 
   protected async performChat(request: ChatRequest): Promise<ChatResponse> {
@@ -173,17 +138,16 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
   }
 
   async #doRequest(request: ChatRequest): Promise<ChatResponse> {
-    return this.#sendRequest(request, this.#buildBody(request));
+    return this.#sendRequest(request, this.#buildBody(request, true));
   }
 
   async #doRequestWithoutTools(request: ChatRequest): Promise<ChatResponse> {
-    return this.#sendRequest(request, this.#buildBodyWithoutTools(request));
+    return this.#sendRequest(request, this.#buildBody(request, false));
   }
 
   async #sendRequest(request: ChatRequest, body: Record<string, unknown>): Promise<ChatResponse> {
     const controller = new AbortController();
-    const timeoutMs = this.#config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    const timeoutId = setTimeout(() => { controller.abort(new LlmError(`${this.#config.id} request timeout`, Classifications['TIMEOUT'])); }, timeoutMs);
+    const timeoutId = setTimeout(() => { controller.abort(new LlmError(`${this.#config.id} request timeout`, Classifications['TIMEOUT'])); }, this.#config.timeoutMs);
     const signal = AbortSignal.any([request.signal, controller.signal]);
 
     let res: Response;
@@ -210,11 +174,19 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
     }
 
     const rawBody: unknown = await res.json();
-    const payload = openAiResponseBodyValidator.validate(rawBody);
-    return this.#parseResponse(payload);
+    // Untrusted provider response: a schema failure is an upstream contract
+    // violation, surfaced as SCHEMA_VIOLATION (not a raw ValidationError).
+    if (!Validator.openAiResponseBody.is(rawBody)) {
+      const detail = Validator.openAiResponseBody.errors(rawBody) ?? [];
+      throw new LlmError(
+        `${this.#config.displayName}: response body schema violation:\n  - ${detail.join('\n  - ')}`,
+        Classifications['SCHEMA_VIOLATION'],
+      );
+    }
+    return this.#parseResponse(rawBody);
   }
 
-  #buildBody(request: ChatRequest): Record<string, unknown> {
+  #buildBody(request: ChatRequest, includeTools: boolean): Record<string, unknown> {
     const body: Record<string, unknown> = {
       'model': this.#model,
       'messages': request.messages.map((m) => this.#toMessage(m)),
@@ -222,25 +194,10 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
       [this.#config.tokenField]: request.maxTokens,
     };
 
-    if (request.tools.length > 0) {
+    if (includeTools && request.tools.length > 0) {
       body['tools'] = request.tools.map((t) => this.#toTool(t));
       body['tool_choice'] = this.#toToolChoice(request.toolChoice);
     } else if (request.outputSchema.kind === 'schema') {
-      body['response_format'] = { 'type': 'json_object' };
-    }
-
-    return body;
-  }
-
-  #buildBodyWithoutTools(request: ChatRequest): Record<string, unknown> {
-    const body: Record<string, unknown> = {
-      'model': this.#model,
-      'messages': request.messages.map((m) => this.#toMessage(m)),
-      'temperature': request.temperature,
-      [this.#config.tokenField]: request.maxTokens,
-    };
-
-    if (request.outputSchema.kind === 'schema') {
       body['response_format'] = { 'type': 'json_object' };
     }
 
@@ -271,12 +228,15 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
   }
 
   #toToolChoice(choice: ToolChoice): unknown {
-    switch (choice.type) {
-      case 'auto':     return 'auto';
-      case 'required': return 'required';
-      case 'none':     return 'none';
-      case 'tool':     return { 'type': 'function', 'function': { 'name': choice.name } };
+    const stringChoices: Readonly<Record<string, string>> = {
+      'auto':     'auto',
+      'required': 'required',
+      'none':     'none',
+    };
+    if (choice.type === 'tool') {
+      return { 'type': 'function', 'function': { 'name': choice.name } };
     }
+    return stringChoices[choice.type];
   }
 
   #parseResponse(payload: OpenAiResponseBody): ChatResponse {
@@ -290,7 +250,7 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
     const msg = choice?.message;
     const rawToolCalls = msg?.tool_calls ?? [];
     const toolCalls: ToolCall[] = rawToolCalls.map((tc) => {
-      // Schema validation at L190 guarantees tool_calls items match
+      // `Validator.openAiResponseBody` validates tool_calls items against
       // OpenAiToolCallSchema (id, type, function.name, function.arguments all
       // required strings). Guard here so a provider deviation surfaces as
       // SCHEMA_VIOLATION instead of a raw TypeError.

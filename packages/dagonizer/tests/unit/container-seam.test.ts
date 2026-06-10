@@ -18,6 +18,7 @@ import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { ObserverRelay } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
@@ -186,7 +187,7 @@ void describe('Container seam — W1', () => {
 
     // Test double: a DagContainerInterface that delegates to a second Dagonizer instance.
     const fakeContainer: DagContainerInterface<CounterState> = {
-      async runDag(task: DagTaskInterface<CounterState, unknown>): Promise<DagOutcomeInterface> {
+      async runDag(task: DagTaskInterface<CounterState, unknown>, _options?: { readonly relay?: ObserverRelay }): Promise<DagOutcomeInterface> {
         // Restore child clone from the snapshot in the task
         const request = task.toRequest();
         // stateSnapshot is JsonObject at the wire boundary; cast is safe here.

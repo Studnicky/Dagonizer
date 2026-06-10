@@ -19,7 +19,7 @@
  * const raw = JSON.parse(await storage.get('ckpt')) as unknown;
  * const ckpt = Checkpoint.load(raw);
  * const { dagName, state: restoredState, cursor } = ckpt.restoreState(
- *   (snap) => MyState.restore(snap),
+ *   CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap)),
  * );
  * const finalResult = await dispatcher.resume(dagName, restoredState, cursor);
  * ```
@@ -35,7 +35,7 @@
  *   const freshMemory = new MemoryStore();
  *   await ckpt2.restoreStores({ memory: freshMemory });
  *   const { dagName, state, cursor } = ckpt2.restoreState(
- *     (snap) => MyState.restore(snap),
+ *     CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap)),
  *   );
  *   await dispatcher.resume(dagName, state, cursor);
  * }
@@ -54,11 +54,12 @@ import type { NodeStateBase, NodeStateInterface } from '../NodeStateBase.js';
 import { Validator } from '../validation/Validator.js';
 
 /**
- * Restore-factory function signature. Still used by `RegistryBundleInterface`
- * as a bundle field; `CheckpointRestoreAdapterFn.fromFn(fn)` wraps it into the
- * adapter contract accepted by `Checkpoint.restoreState()`.
+ * Bare function signature for restoring state from a JSON snapshot.
+ * Used internally by `CheckpointRestoreAdapterFn`. Pass a function of this
+ * shape to `CheckpointRestoreAdapterFn.fromFn(fn)` to obtain an adapter
+ * that satisfies `CheckpointRestoreAdapter`.
  */
-export type StateRestoreFnType<TState extends NodeStateInterface>
+type StateRestoreFn<TState extends NodeStateInterface>
   = (snapshot: JsonObject) => TState;
 
 /**
@@ -77,9 +78,9 @@ export type StateRestoreFnType<TState extends NodeStateInterface>
  */
 export class CheckpointRestoreAdapterFn<TState extends NodeStateInterface>
   implements CheckpointRestoreAdapter<TState> {
-  readonly #fn: StateRestoreFnType<TState>;
+  readonly #fn: StateRestoreFn<TState>;
 
-  private constructor(fn: StateRestoreFnType<TState>) {
+  private constructor(fn: StateRestoreFn<TState>) {
     this.#fn = fn;
   }
 
@@ -93,7 +94,7 @@ export class CheckpointRestoreAdapterFn<TState extends NodeStateInterface>
    * instance; the typical pattern is `(snap) => MyState.restore(snap)`.
    */
   static fromFn<TState extends NodeStateInterface>(
-    fn: StateRestoreFnType<TState>,
+    fn: StateRestoreFn<TState>,
   ): CheckpointRestoreAdapterFn<TState> {
     return new CheckpointRestoreAdapterFn(fn);
   }
@@ -101,11 +102,11 @@ export class CheckpointRestoreAdapterFn<TState extends NodeStateInterface>
 
 /** Result of a successful `restoreState` call. */
 export interface RecalledCheckpoint<TState extends NodeStateInterface> {
-  readonly state: TState;
-  readonly dagName: string;
-  readonly cursor: string;
-  readonly executedNodes: readonly string[];
-  readonly skippedNodes: readonly string[];
+  state: TState;
+  dagName: string;
+  cursor: string;
+  executedNodes: string[];
+  skippedNodes: string[];
 }
 
 /** Options for `Checkpoint.capture`. */
@@ -116,7 +117,7 @@ export interface CaptureOptionsInterface {
    * `restoreStores()` on resume. Omit or leave empty to capture state
    * only.
    */
-  readonly stores?: Readonly<Record<string, Snapshottable>>;
+  stores?: Record<string, Snapshottable>;
 }
 
 /**
@@ -173,13 +174,18 @@ export class Checkpoint {
     const snapshots = await Promise.all(
       entries.map(async ([name, store]) => {
         const snap = await store.snapshot();
+        // Post-validation boundary: `store.snapshot()` returns `StoreSnapshot`
+        // (the contract return type). The tuple cast preserves the pair for
+        // later insertion into `StoreRecord` without losing the key.
         return [name, snap] as [string, StoreSnapshot];
       }),
     );
 
-    // Build the stores record in the schema-derived mutable shape.
-    // StoreSnapshot uses readonly entries; CheckpointData uses mutable.
-    // They are structurally identical at runtime; cast narrows the gap.
+    // Build the stores record in the schema-derived shape.
+    // `StoreSnapshot` is the contract type; `CheckpointData['stores'][string]`
+    // is the schema-derived type. Both have readonly fields; the cast bridges
+    // the nominal type gap between the json-schema-to-ts derivation and the
+    // hand-written contract without a structural difference at runtime.
     type StoreRecord = NonNullable<CheckpointData['stores']>;
     type StoreEntry  = StoreRecord[string];
     const stores: StoreRecord = {};
@@ -253,6 +259,11 @@ export class Checkpoint {
       throw new ValidationError(`Cannot restore from a CheckpointData with null cursor: the DAG had no resumable position`);
     }
     return {
+      // Post-validation boundary: `this.data` passed `Validator.checkpoint`
+      // at construction time, so `data.state` satisfies `JsonObject`. The
+      // schema-derived type carries `JsonObject` but TypeScript infers
+      // `CheckpointData['state']` as `Record<string, unknown>`; the cast is a
+      // safe narrowing to the structurally identical `JsonObject` alias.
       'state': adapter.restore(this.data.state as JsonObject),
       'dagName': this.data.dagName,
       'cursor': this.data.cursor,
@@ -294,9 +305,14 @@ export class Checkpoint {
 
     await Promise.all(
       Object.entries(checkpointStores).map(async ([name, snapshot]) => {
-        const store = stores[name];
-        // store is guaranteed present; missing keys were checked above.
-        if (store === undefined) return;
+        // `store` is guaranteed present: the `missingNames` check above throws
+        // for any checkpoint key absent from the `stores` map, so every key
+        // that reaches here has a matching entry.
+        const store = stores[name] as Snapshottable;
+        // Post-validation boundary: `snapshot` comes from `CheckpointData.stores`
+        // which is validated by `Validator.checkpoint` at load time. The
+        // schema-derived type is structurally identical to `StoreSnapshot`; the
+        // cast bridges the readonly/mutable gap in the generated types.
         await store.restore(snapshot as StoreSnapshot);
       }),
     );

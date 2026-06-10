@@ -7,8 +7,9 @@
  * Every `NodeError` carries `context` (required, defaults to `{}` when no
  * additional diagnostic data is available). One hidden class — V8 monomorphic.
  *
- * Construction routes through `NodeErrorBuilder.from(partial)` which fills
- * `context: {}` when the caller omits it, so authors never write boilerplate.
+ * Construction routes through `NodeErrorBuilder.from(code, message, operation,
+ * recoverable, timestamp, options?)` which fills `context: {}` when the caller
+ * omits it, so authors never write boilerplate.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
@@ -46,9 +47,8 @@ export interface NodeErrorInterface extends Omit<NodeError, 'context'> {
   /**
    * Diagnostic context bag for this error.
    *
-   * Always present. Callers with no additional data pass `{}`.
-   * `NodeErrorBuilder.from(partial)` fills `context: {}` when omitted so
-   * authors need not write it explicitly.
+   * Always present. Callers with no additional data omit the options bag;
+   * `NodeErrorBuilder.from` fills `context: {}` automatically.
    */
   'context': Record<string, unknown>;
 }
@@ -60,29 +60,28 @@ export interface NodeErrorInterface extends Omit<NodeError, 'context'> {
  * schema-derived `NodeError` type (per the canonical-names rule: when a type
  * and a value would share a name, rename the value to its real role).
  *
- * `NodeErrorBuilder.from(partial)` accepts the required fields plus an
- * optional `context`, returning a complete `NodeErrorInterface` with
- * `context` defaulting to `{}`. All required fields are positional; defaults
- * live in one place.
+ * Required fields are positional in their natural order. The optional
+ * `context` lives in the trailing options bag. `context` defaults to `{}`
+ * when the bag is omitted, so authors never write boilerplate.
  *
  * @example
  * ```ts
- * return NodeErrorBuilder.from({
- *   code: 'FETCH_FAILED',
- *   message: 'HTTP 503',
- *   operation: 'fetchUser',
- *   recoverable: true,
- *   timestamp: new Date().toISOString(),
- * });
+ * return NodeErrorBuilder.from(
+ *   'FETCH_FAILED',
+ *   'HTTP 503',
+ *   'fetchUser',
+ *   true,
+ *   new Date().toISOString(),
+ * );
  *
- * return NodeErrorBuilder.from({
- *   code: 'VALIDATION_ERROR',
- *   message: 'missing required field',
- *   operation: 'validate',
- *   recoverable: false,
- *   timestamp: new Date().toISOString(),
- *   context: { field: 'email', value: null },
- * });
+ * return NodeErrorBuilder.from(
+ *   'VALIDATION_ERROR',
+ *   'missing required field',
+ *   'validate',
+ *   false,
+ *   new Date().toISOString(),
+ *   { context: { field: 'email', value: null } },
+ * );
  * ```
  */
 export class NodeErrorBuilder {
@@ -90,22 +89,29 @@ export class NodeErrorBuilder {
 
   /**
    * Construct a complete `NodeErrorInterface`, defaulting `context` to `{}`.
+   *
+   * @param code - Error code (e.g. `'FETCH_FAILED'`).
+   * @param message - Human-readable error description.
+   * @param operation - Name of the operation that failed.
+   * @param recoverable - Whether the error allows the flow to continue.
+   * @param timestamp - ISO 8601 timestamp of the error.
+   * @param options - Optional bag; `context` defaults to `{}`.
    */
-  static from(partial: {
-    code: string;
-    message: string;
-    operation: string;
-    recoverable: boolean;
-    timestamp: string;
-    context?: Record<string, unknown>;
-  }): NodeErrorInterface {
+  static from(
+    code: string,
+    message: string,
+    operation: string,
+    recoverable: boolean,
+    timestamp: string,
+    options: { context?: Record<string, unknown> } = {},
+  ): NodeErrorInterface {
     return {
-      'code': partial.code,
-      'context': partial.context ?? {},
-      'message': partial.message,
-      'operation': partial.operation,
-      'recoverable': partial.recoverable,
-      'timestamp': partial.timestamp,
+      'code': code,
+      'context': options.context ?? {},
+      'message': message,
+      'operation': operation,
+      'recoverable': recoverable,
+      'timestamp': timestamp,
     };
   }
 }

@@ -61,7 +61,7 @@ export class MermaidRenderer {
     // Map from sanitized role token → original role string (for color lookup).
     const roleTokenToRole = new Map<string, string>();
 
-    for (const placement of dag.nodes as readonly PlacementEntry[]) {
+    for (const placement of PlacementUtils.narrowNodes(dag)) {
       lines.push(`  ${MermaidRenderer.renderShape(placement)}`);
       for (const edge of MermaidRenderer.renderEdges(placement)) {
         lines.push(edge);
@@ -81,7 +81,8 @@ export class MermaidRenderer {
     // to its role-specific class. classDefs follow all node/edge lines.
     for (const [token, ids] of roleToIds) {
       const role = roleTokenToRole.get(token);
-      // roleTokenToRole is populated in lockstep with roleToIds; the key always exists.
+      // roleTokenToRole is populated in lockstep with roleToIds; every token in
+      // roleToIds was inserted together with its original role in roleTokenToRole.
       if (role === undefined) continue;
       const colors = RoleColorUtils.forRole(role);
       lines.push(`  classDef contained-${token} fill:${colors.fill},stroke:${colors.stroke},color:${colors.text}`);

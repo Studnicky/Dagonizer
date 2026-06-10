@@ -61,7 +61,10 @@ const childDAG = DAGDeriver.derive({
   entrypoint: 'validate',
   nodes: [validate, transform],
   annotations: {
-    terminals: { validate: [{ outcome: 'error', emit: { name: 'validate-failed', outcome: 'failed' } }] },
+    terminals: {
+      validate:  [{ outcome: 'error', emit: { name: 'validate-failed', outcome: 'failed' } }],
+      transform: [{ outcome: 'success', emit: { name: 'transform-done', outcome: 'completed' } }],
+    },
   },
 });
 
@@ -80,6 +83,9 @@ const parentDAG = DAGDeriver.derive({
           output: { childResult: 'childResult' },
         },
       },
+    },
+    terminals: {
+      finalize: [{ outcome: 'success', emit: { name: 'finalize-done', outcome: 'completed' } }],
     },
   },
 });
@@ -188,7 +194,7 @@ const dag = DAGDeriver.derive({
 
 #### `emit` variant: inline TerminalNode synthesis
 
-Use `emit` to end a flow with an explicit `failed` or `completed` lifecycle outcome. The deriver materializes a [`TerminalNode`](../examples/09-terminals) placement and routes the operation's output port to it. `emit` is the only way to declare an explicit `failed` terminal in the deriver; null-routing a node to `null` drains the main loop and produces an implicit `completed` end.
+Use `emit` to end a flow with an explicit `failed` or `completed` lifecycle outcome. The deriver materializes a [`TerminalNode`](../examples/09-terminals) placement and routes the operation's output port to it. `emit` is the way to declare terminal outcomes in the deriver; leaf nodes with no downstream successor must use `emit` to declare their exit terminal.
 
 ```ts
 const classify: NodeInterface<S, 'success' | 'fail' | 'error'> = {

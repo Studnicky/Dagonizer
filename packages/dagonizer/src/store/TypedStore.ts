@@ -65,9 +65,9 @@ export class TypedStore<Schema extends { [K in keyof Schema]: JsonValue }> {
   async snapshot(options?: AbortableOptionsInterface): Promise<StoreSnapshot> { return this.#inner.snapshot(options); }
   async restore(snapshot: StoreSnapshot, options?: AbortableOptionsInterface): Promise<void> { await this.#inner.restore(snapshot, options); }
 
-  /** Connect/disconnect pass through — only delegated when the inner store exposes them. */
-  async connect(): Promise<void> { await this.#inner.connect?.(); }
-  async disconnect(): Promise<void> { await this.#inner.disconnect?.(); }
+  /** Connect/disconnect pass through to the underlying Store. */
+  async connect(): Promise<void> { await this.#inner.connect(); }
+  async disconnect(): Promise<void> { await this.#inner.disconnect(); }
 
   /** Access the underlying Store for operations TypedStore does not narrow. */
   get inner(): Store { return this.#inner; }

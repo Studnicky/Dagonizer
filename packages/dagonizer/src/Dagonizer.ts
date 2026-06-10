@@ -14,7 +14,7 @@ import type { OutcomeRecord } from './core/OutcomeReducers.js';
 import { ContractRegistryValidator } from './derive/ContractRegistryValidator.js';
 import type { DAG } from './entities/dag/DAG.js';
 import type { EmbeddedDAGNode } from './entities/dag/EmbeddedDAGNode.js';
-import type { PhaseNodePlacementInterface } from './entities/dag/PhaseNode.js';
+import type { PhaseNode } from './entities/dag/PhaseNode.js';
 import { Placement } from './entities/dag/Placement.js';
 import type { DAGNodeType } from './entities/dag/Placement.js';
 import type { ScatterNode } from './entities/dag/ScatterNode.js';
@@ -33,6 +33,7 @@ import { ScatterCheckpoint } from './runtime/ScatterCheckpoint.js';
 import { Scheduler } from './runtime/Scheduler.js';
 import { SignalComposer } from './runtime/SignalComposer.js';
 import { StateMapper } from './runtime/StateMapper.js';
+import { Timeout } from './runtime/Timeout.js';
 import { DAGValidator } from './validation/DAGValidator.js';
 import { Validator } from './validation/Validator.js';
 
@@ -41,6 +42,24 @@ const DEFAULT_STATE_ACCESSOR: StateAccessor = new DottedPathAccessor();
 
 /** Registry version used when the dispatcher is constructed without one. */
 const DEFAULT_REGISTRY_VERSION = '0';
+
+/** Default scatter concurrency when `scatter.concurrency` is not specified. */
+const DEFAULT_SCATTER_CONCURRENCY = 1;
+
+/**
+ * Canonical defaults for `DagonizerOptionsInterface`.
+ *
+ * Every field that has a default is present here. The constructor resolves
+ * all options in one spread: `{ ...DAGONIZER_OPTION_DEFAULTS, ...options }`.
+ * `services` is intentionally absent — it has no meaningful default and
+ * requires a type-unsafe cast at the assignment site regardless.
+ */
+const DAGONIZER_OPTION_DEFAULTS = {
+  'accessor': DEFAULT_STATE_ACCESSOR as StateAccessor,
+  'containers': {} as Readonly<Record<string, never>>,
+  'channels': {} as Readonly<Record<string, never>>,
+  'registryVersion': DEFAULT_REGISTRY_VERSION,
+} as const;
 
 /**
  * Reserved metadata key used by `executeScatter` to persist per-clone
@@ -54,11 +73,8 @@ const DEFAULT_REGISTRY_VERSION = '0';
  */
 export const SCATTER_PROGRESS_KEY = '__dagonizer_scatter_progress__';
 
-// Scatter progress types are defined in entities/scatter/ScatterProgress.ts
-// and re-exported below for public consumers. The hand-written duplicates
-// that used to live here have been replaced with the canonical schema-derived
-// types. See ScatterInboxItem, ScatterAckedResult, ScatterProgress, and
-// StoredScatterProgress in './entities/scatter/ScatterProgress.js'.
+// Scatter progress types originate in entities/scatter/ScatterProgress.ts;
+// re-exported here for public consumers.
 export type { ScatterAckedResult, ScatterInboxItem, ScatterProgress, StoredScatterProgress } from './entities/scatter/ScatterProgress.js';
 
 // ── Module-private adapter classes ───────────────────────────────────────────
@@ -138,14 +154,14 @@ export interface DagonizerOptionsInterface<TState extends NodeStateInterface = N
    * embedded-DAG state mapping. Defaults to a `DottedPathAccessor` that
    * walks `path.split('.')`.
    */
-  readonly accessor?: StateAccessor;
+  accessor?: StateAccessor;
   /**
    * Services bag exposed to every node via `context.services`. Construct
    * the dispatcher with `{ services: { logger, db, ... } }` and the same
    * reference flows into every `NodeInterface.execute(state, context)`
    * call.
    */
-  readonly services?: TServices;
+  services?: TServices;
   /**
    * Named container backends. Keys are logical role names declared on
    * `EmbeddedDAGNode.container` and `ScatterNode.container` (dag-body
@@ -155,7 +171,7 @@ export interface DagonizerOptionsInterface<TState extends NodeStateInterface = N
    * Containers are optional: an empty registry is the default and
    * means every placement runs in-process.
    */
-  readonly containers?: Readonly<Record<string, DagContainerInterface<TState>>>;
+  containers?: Record<string, DagContainerInterface<TState>>;
   /**
    * Named egress channels keyed by terminal placement name. When a
    * non-embedded run completes at a terminal whose name is bound here,
@@ -167,19 +183,18 @@ export interface DagonizerOptionsInterface<TState extends NodeStateInterface = N
    * terminals may route to different channels (`done` → queue,
    * `escalate` → DLQ).
    */
-  readonly channels?: Readonly<Record<string, HandoffChannelInterface>>;
+  channels?: Record<string, HandoffChannelInterface>;
   /**
    * Registry version string included in every `DAGHandoff` envelope.
    * Receivers use this for version-handshake validation. Defaults to
    * `DEFAULT_REGISTRY_VERSION` ('0') when not supplied.
    */
-  readonly registryVersion?: string;
+  registryVersion?: string;
 }
 
 
-// DAGNodeType and the Placement static class live in entities/dag/Placement.ts.
-// Re-export DAGNodeType so consumers who import from Dagonizer.ts continue to
-// find it here; Placement is exported directly via src/index.ts and src/types/index.ts.
+// DAGNodeType and Placement are re-exported here so consumers who import from
+// Dagonizer.ts find them alongside the dispatcher class.
 export type { DAGNodeType } from './entities/dag/Placement.js';
 export { Placement } from './entities/dag/Placement.js';
 
@@ -198,8 +213,8 @@ type DAGNodeAtType = DAGNodeType['@type'];
  * uses `dags: []`; a DAG-only bundle uses `nodes: []`).
  */
 export interface DispatcherBundle<TState extends NodeStateInterface, TServices = undefined> {
-  readonly nodes: readonly NodeInterface<TState, string, TServices>[];
-  readonly dags:  readonly DAG[];
+  nodes: NodeInterface<TState, string, TServices>[];
+  dags:  DAG[];
 }
 
 /**
@@ -286,7 +301,7 @@ type _InternalNodeResult<TState extends NodeStateInterface> = {
 };
 
 /** Engine-private execution context for `runNodes` and `runPostPhasesAndFinalize`. */
-type _RunOptions = { readonly embedded: boolean };
+type _RunOptions = { embedded: boolean };
 
 /**
  * Graph-based DAG dispatcher for state-machine-style multi-step
@@ -380,15 +395,16 @@ implements DagonizerInterface<TState, TServices> {
    * via `context.services`. Defaults to `undefined`.
    */
   constructor(options: DagonizerOptionsInterface<TState, TServices> = {}) {
-    this.accessor = options.accessor ?? DEFAULT_STATE_ACCESSOR;
+    const resolved = { ...DAGONIZER_OPTION_DEFAULTS, ...options };
+    this.accessor = resolved.accessor;
     // Cast required: options.services is `TServices | undefined`; when TServices
     // defaults to `undefined` this is sound. Consumers passing a non-undefined
     // TServices must supply the services value.
     this.services = options.services as TServices;
     this.stateMapper = new StateMapper<TState>(this.accessor);
-    this.containers = options.containers ?? {};
-    this.channels = options.channels ?? {};
-    this.registryVersion = options.registryVersion ?? DEFAULT_REGISTRY_VERSION;
+    this.containers = resolved.containers;
+    this.channels = resolved.channels;
+    this.registryVersion = resolved.registryVersion;
     this.dispatch = {
       'EmbeddedDAGNode': (entry, state, _dagName, signal, placementPath) => {
         // Placement.isEmbeddedDAG guard: @type === 'EmbeddedDAGNode' confirmed by
@@ -690,7 +706,7 @@ implements DagonizerInterface<TState, TServices> {
     // the consumer's `execute()` / `resume()` call.
     if (!runOptions.embedded) {
       const prePhases = dag.nodes.filter(
-        (n): n is PhaseNodePlacementInterface =>
+        (n): n is PhaseNode =>
           n['@type'] === 'PhaseNode' && n.phase === 'pre',
       );
       for (const phase of prePhases) {
@@ -718,11 +734,7 @@ implements DagonizerInterface<TState, TServices> {
     // Skip phase placements in the main loop; they are out-of-band and
     // never the entrypoint. If the consumer's fromStage / entrypoint happens
     // to name a phase placement, treat it as if the main loop is empty.
-    const isPhaseEntry = (name: string): boolean => {
-      const entry = this.nodeIndex.get(`${dagName}:${name}`);
-      return entry?.['@type'] === 'PhaseNode';
-    };
-    if (currentNodeName !== null && isPhaseEntry(currentNodeName)) {
+    if (currentNodeName !== null && this.isPhaseEntry(dagName, currentNodeName)) {
       currentNodeName = null;
       cursor = null;
     }
@@ -901,7 +913,7 @@ implements DagonizerInterface<TState, TServices> {
     }
 
     const postPhases = dag.nodes.filter(
-      (n): n is PhaseNodePlacementInterface =>
+      (n): n is PhaseNode =>
         n['@type'] === 'PhaseNode' && n.phase === 'post',
     );
     for (const phase of postPhases) {
@@ -968,7 +980,7 @@ implements DagonizerInterface<TState, TServices> {
    * when the node throws / times out.
    */
   private async executePhasePlacement(
-    phase: PhaseNodePlacementInterface,
+    phase: PhaseNode,
     state: TState,
     dagName: string,
     signal: AbortSignal | null,
@@ -1002,6 +1014,16 @@ implements DagonizerInterface<TState, TServices> {
       nodeName,
       'services': this.services,
     };
+  }
+
+  /**
+   * Returns true when the named placement in the given DAG is a `PhaseNode`.
+   * Phase placements are out-of-band lifecycle hooks; they are never valid
+   * entrypoints or resume targets for the main loop.
+   */
+  private isPhaseEntry(dagName: string, name: string): boolean {
+    const entry = this.nodeIndex.get(`${dagName}:${name}`);
+    return entry?.['@type'] === 'PhaseNode';
   }
 
   /**
@@ -1118,13 +1140,13 @@ implements DagonizerInterface<TState, TServices> {
         placement.dag,
         innerPath,
         correlationId,
-        null,
+        Timeout.none(),
         cloneState,
         context,
       );
 
       const relay = this.buildObserverRelay(state);
-      const outcome = await container.runDag(task, relay);
+      const outcome = await container.runDag(task, { relay });
 
       // Embedded DAG is cardinality-1 (not inbox-backed), so an infrastructure
       // failure does NOT throw — Law 3 requires host crash / transport loss to
@@ -1235,9 +1257,7 @@ implements DagonizerInterface<TState, TServices> {
     }
 
     const itemKey = scatter.itemKey ?? 'currentItem';
-    // Default concurrency: unbounded for arrays (backwards compat) — all items
-    // run concurrently unless scatter.concurrency is set.
-    const concurrencyLimit = scatter.concurrency ?? (Array.isArray(raw) ? raw.length : 1);
+    const concurrencyLimit = scatter.concurrency ?? DEFAULT_SCATTER_CONCURRENCY;
 
     // ── 2. Restore checkpoint (inbox model) ─────────────────────────────────
     // ScatterCheckpoint.read validates the raw metadata value at the boundary
@@ -1267,7 +1287,7 @@ implements DagonizerInterface<TState, TServices> {
     const gatherStrategy = scatter.gather !== undefined
       ? GatherStrategies.resolve(scatter.gather.strategy)
       : null;
-    const supportsIncremental = gatherStrategy?.applyIncremental !== undefined;
+    const supportsIncremental = gatherStrategy?.supportsIncremental === true;
 
     // Accumulate fresh records; used only by strategies without applyIncremental
     // and for the final outcome-reducer pass.
@@ -1474,13 +1494,13 @@ implements DagonizerInterface<TState, TServices> {
             scatter.body.dag,
             innerPath,
             correlationId,
-            null,
+            Timeout.none(),
             cloneState,
             context,
           );
 
           const scatterRelay = this.buildObserverRelay(state);
-          const outcome = await container.runDag(task, scatterRelay);
+          const outcome = await container.runDag(task, { 'relay': scatterRelay });
 
           // Infrastructure/transport failure (worker died, channel lost): the
           // child DAG never ran to a terminal. Throw so spawnWorker takes the
@@ -1583,7 +1603,7 @@ implements DagonizerInterface<TState, TServices> {
       // checkpoint write so the persisted state already reflects the fold.
       // This ensures any observer of the metadata write (e.g. tests, monitoring)
       // sees a consistent state: gather target updated, then checkpoint written.
-      if (supportsIncremental && scatter.gather !== undefined && gatherStrategy?.applyIncremental !== undefined) {
+      if (supportsIncremental && scatter.gather !== undefined && gatherStrategy !== null && gatherStrategy.applyIncremental !== undefined) {
         gatherStrategy.applyIncremental(scatter.gather, record, state, this.accessor);
       } else {
         // Accumulate for batch apply at the end.
@@ -1745,7 +1765,7 @@ implements DagonizerInterface<TState, TServices> {
     );
     return {
       state,
-      records,
+      'records': [...records],
       dagName,
       signal,
       'accessor': this.accessor,
@@ -1755,9 +1775,10 @@ implements DagonizerInterface<TState, TServices> {
 
 
   /**
-   * Wrap a node execute call with a per-node timeout when `dagNode.timeoutMs`
-   * is set. Derives a child `AbortController` from the run's signal, arms a
-   * Scheduler timer, and races the node's execute against a deadline rejection.
+   * Wrap a node execute call with a per-node timeout when `dagNode.timeout`
+   * carries a budget. Derives a child `AbortController` from the run's signal,
+   * arms a Scheduler timer, and races the node's execute against a deadline
+   * rejection.
    *
    * The child signal is passed to the node so signal-aware IO (fetch, retry)
    * also cancels. Nodes that do not observe the signal are hard-stopped by the
@@ -1771,9 +1792,10 @@ implements DagonizerInterface<TState, TServices> {
     parentSignal: AbortSignal | null,
     fn: (signal: AbortSignal) => Promise<TResult>,
   ): Promise<TResult> {
-    const { timeoutMs } = dagNode;
+    const timeout = dagNode.timeout ?? Timeout.none();
+    const ms = timeout.ms;
 
-    if (timeoutMs === undefined) {
+    if (ms === null) {
       // No per-node budget; pass parent signal through unchanged.
       const sig = parentSignal ?? Dagonizer.NEVER_ABORT_SIGNAL;
       return fn(sig);
@@ -1791,18 +1813,20 @@ implements DagonizerInterface<TState, TServices> {
       }
     }
 
-    const timeoutError = new NodeTimeoutError(dagNode.name, timeoutMs);
+    const timeoutError = new NodeTimeoutError(dagNode.name, ms);
 
     // Deadline race: resolves when time elapses (child not yet aborted),
     // rejects immediately if child is already aborted (parent propagation).
     // The Scheduler is swappable via VirtualScheduler in tests.
+    // `!` asserts definite assignment: the Promise constructor synchronously
+    // assigns `deadlineReject` before any await, so it is always set before use.
     let deadlineReject!: (reason: Error) => void;
     const deadlinePromise = new Promise<never>((_resolve, reject) => {
       deadlineReject = reject;
     });
 
     const schedulerPromise = Scheduler.current()
-      .after(timeoutMs, { 'signal': childCtrl.signal })
+      .after(ms, { 'signal': childCtrl.signal })
       .then(() => {
         childCtrl.abort(timeoutError);
         deadlineReject(timeoutError);
@@ -1932,7 +1956,7 @@ implements DagonizerInterface<TState, TServices> {
       const contracts = contractBearingNodes.map((node) => {
         const contract = node.contract;
         if (contract === undefined) return null;
-        return { 'name': node.name, 'outputs': node.outputs, 'hardRequired': contract.hardRequired, 'produces': contract.produces };
+        return { 'name': node.name, 'outputs': [...node.outputs], 'hardRequired': contract.hardRequired, 'produces': contract.produces };
       }).filter((c): c is Exclude<typeof c, null> => c !== null);
       try {
         ContractRegistryValidator.validate(

@@ -43,8 +43,6 @@ export class ScatterCheckpoint {
   ): void {
     const raw = state.getMetadata<StoredScatterProgress>(SCATTER_PROGRESS_KEY) ?? {};
     const next: Record<string, ScatterProgress> = { ...raw };
-    // Spread readonly arrays to mutable copies to satisfy ScatterProgress's
-    // schema-derived mutable array fields (FromSchema does not produce readonly).
     next[placementName] = { placementName, 'inbox': [...inbox], 'ackedResults': [...ackedResults] };
     state.setMetadata(SCATTER_PROGRESS_KEY, next);
   }

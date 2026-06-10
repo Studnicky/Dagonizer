@@ -1,7 +1,7 @@
 /**
  * BaseAdapter: abstract base every concrete LLM adapter extends.
  *
- * Extends `AdapterBase` for shared lifecycle (retry policy,
+ * Extends `BaseAdapterCore` for shared lifecycle (retry policy,
  * `connect`/`disconnect`/`probe`, `classify`) and adds only what is
  * unique to the LLM surface: `capabilities` and the `chat()` envelope
  * that calls the abstract `performChat()`.
@@ -15,36 +15,24 @@
  * QUOTA_EXHAUSTED). Honors `Retry-After` hints if the adapter surfaces
  * them through the `retryAfterMs` field on the classification.
  *
- * For QUOTA_EXHAUSTED: nocturne caps the wait at 10s and gives one
- * extra attempt; mirrored here via `MAX_QUOTA_WAIT_MS`.
+ * `QUOTA_EXHAUSTED` retry-after hints are only honored up to `MAX_QUOTA_WAIT_MS`;
+ * past that cap the adapter gives up immediately rather than blocking the caller.
  */
 
 import type { LlmAdapter } from '../contracts/LlmAdapter.js';
 
-import { AdapterBase, type AdapterBaseOptions } from './AdapterBase.js';
+import { BaseAdapterCore, type BaseAdapterCoreOptions } from './BaseAdapterCore.js';
 import type { AdapterCapabilities, ChatRequest, ChatResponse } from './LlmAdapter.js';
 import { LlmError, MAX_QUOTA_WAIT_MS } from './LlmError.js';
 
-export abstract class BaseAdapter extends AdapterBase implements LlmAdapter {
+export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapter {
   readonly capabilities: AdapterCapabilities;
-
-  /**
-   * Returns a fully-resolved options object with every field set to its
-   * canonical default. Subclasses that receive a partial `options` from
-   * their own callers spread this as a base so the object handed to
-   * `super()` is always complete:
-   *
-   *   super(id, name, caps, { ...BaseAdapter.defaultOptions(), ...options });
-   */
-  static override defaultOptions() {
-    return AdapterBase.defaultOptions();
-  }
 
   protected constructor(
     id: string,
     displayName: string,
     capabilities: AdapterCapabilities,
-    options: AdapterBaseOptions = {},
+    options: BaseAdapterCoreOptions = {},
   ) {
     super(id, displayName, options);
     this.capabilities = capabilities;
@@ -56,8 +44,8 @@ export abstract class BaseAdapter extends AdapterBase implements LlmAdapter {
         return await this.performChat(request);
       } catch (rawError) {
         const classification = this.classify(rawError);
-        // QUOTA_EXHAUSTED: honor retry-after hint only when short; else give up
-        // immediately (matches nocturne's `extractWithSchema.ts:26–27`).
+        // QUOTA_EXHAUSTED: honor retry-after hint only when short; cap prevents
+        // indefinitely-long waits when providers return aggressive Retry-After values.
         if (
           classification.reason === 'QUOTA_EXHAUSTED'
           && classification.retryable

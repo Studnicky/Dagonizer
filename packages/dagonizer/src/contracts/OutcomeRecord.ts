@@ -6,7 +6,7 @@
  * the information needed for routing; no clone state.
  */
 export interface OutcomeRecord {
-  readonly index: number;
-  readonly output: string;
-  readonly terminalOutcome: 'completed' | 'failed' | null;
+  index: number;
+  output: string;
+  terminalOutcome: 'completed' | 'failed' | null;
 }

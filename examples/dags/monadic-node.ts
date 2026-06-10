@@ -53,15 +53,15 @@ export class SearchCatalogueNode extends LoggingNode<CatalogueState, 'success' |
 
   protected async run(state: CatalogueState): Promise<NodeOutputInterface<'success' | 'empty' | 'error'>> {
     if (state.query.trim() === '') {
-      return NodeOutputBuilder.of(this.errorPort());
+      return NodeOutputBuilder.of('error');
     }
     // Stub: return a synthetic result set.
     state.results = [`${state.query} - Shelf A`, `${state.query} - Shelf B`];
 
     if (state.results.length === 0) {
-      return NodeOutputBuilder.of(this.emptyPort());
+      return NodeOutputBuilder.of('empty');
     }
-    return NodeOutputBuilder.of(this.successPort());
+    return NodeOutputBuilder.of('success');
   }
 }
 // #endregion monadic-node

@@ -31,6 +31,7 @@ class InjectableAdapter extends OpenAiCompatibleAdapter {
       'endpoint': 'https://example.com/v1/chat/completions',
       'defaultModel': 'test-model',
       'tokenField': 'max_tokens',
+      'timeoutMs': 5_000,
       'extraHeaders': {},
     });
     this.#rawBody = rawBody;

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface, Chainable  } from '../../src/contracts/NodeInterface.js';
+import type { Chainable } from '../../src/contracts/Chainable.js';
+import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
 import type { WarningEmitter } from '../../src/contracts/WarningEmitter.js';
 import { Dagonizer } from '../../src/Dagonizer.js';

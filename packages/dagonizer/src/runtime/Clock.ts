@@ -16,18 +16,13 @@
 
 import type { ClockProvider } from '../contracts/ClockProvider.js';
 
-type PerformanceLike = { now(): number };
-const PERF = (globalThis as { performance?: PerformanceLike }).performance;
+const PERF: { now(): number } = (globalThis as { performance: { now(): number } }).performance;
 
 class RealTimeClockProvider implements ClockProvider {
   hrtime(): bigint {
     // `performance.now()` returns fractional milliseconds; multiply to
     // nanoseconds and floor via BigInt construction.
-    if (PERF !== undefined) {
-      return BigInt(Math.floor(PERF.now() * 1_000_000));
-    }
-    // Last-resort fallback (no `performance` global): wall-clock ms in ns.
-    return BigInt(Date.now()) * 1_000_000n;
+    return BigInt(Math.floor(PERF.now() * 1_000_000));
   }
 }
 

@@ -2,7 +2,7 @@
 seeAlso:
   - text: 'Reference: Contracts'
     link: './contracts'
-    description: '`ChannelInterface`, `MessageChannelInterface`'
+    description: '`HandoffChannelInterface`, `MessageHandoffChannelInterface`'
   - text: 'Reference: Container'
     link: './container'
     description: 'pool-owning container base, `DagHost`'
@@ -27,10 +27,10 @@ import type { InMemoryChannelOptions } from '@noocodex/dagonizer/channels';
 
 ## Class: `InMemoryChannel`
 
-Local default and loopback `ChannelInterface` implementation. Stores every published `DAGHandoff` envelope in an in-memory array. Deep-clones each envelope on publish via `structuredClone` to ensure full serialization fidelity.
+Local default and loopback `HandoffChannelInterface` implementation. Stores every published `DAGHandoff` envelope in an in-memory array. Deep-clones each envelope on publish via `structuredClone` to ensure full serialization fidelity.
 
 ```ts
-class InMemoryChannel implements ChannelInterface {
+class InMemoryChannel implements HandoffChannelInterface {
   constructor(options?: InMemoryChannelOptions)
   get published(): readonly DAGHandoff[]
   async publish(handoff: DAGHandoff): Promise<void>
@@ -103,13 +103,13 @@ Constructor options for `InMemoryChannel`. Currently carries no fields. The type
 
 ## Implementing a real transport
 
-Replace `InMemoryChannel` with any class that implements `ChannelInterface`:
+Replace `InMemoryChannel` with any class that implements `HandoffChannelInterface`:
 
 ```ts
-import type { ChannelInterface } from '@noocodex/dagonizer/contracts';
+import type { HandoffChannelInterface } from '@noocodex/dagonizer/contracts';
 import type { DAGHandoff } from '@noocodex/dagonizer/entities';
 
-class SqsChannel implements ChannelInterface {
+class SqsChannel implements HandoffChannelInterface {
   async publish(handoff: DAGHandoff): Promise<void> {
     // Never throw: the dispatcher does not catch channel errors.
     try {
@@ -121,7 +121,7 @@ class SqsChannel implements ChannelInterface {
 }
 ```
 
-`ChannelInterface` ships through `@noocodex/dagonizer/contracts`. See [Guide: Distribution and cloud](../guide/distribution) for the serverless handler pattern and `registryVersion` handshake.
+`HandoffChannelInterface` ships through `@noocodex/dagonizer/contracts`. See [Guide: Distribution and cloud](../guide/distribution) for the serverless handler pattern and `registryVersion` handshake.
 
 ---
 
@@ -129,5 +129,5 @@ class SqsChannel implements ChannelInterface {
 
 - [Example 11: Loopback hand-off](../examples/11-handoff)
 - [Guide: Distribution and cloud](../guide/distribution)
-- [Reference: Contracts](./contracts) — `ChannelInterface`, `MessageChannelInterface`
+- [Reference: Contracts](./contracts) — `HandoffChannelInterface`, `MessageHandoffChannelInterface`
 - [Reference: Container](./container) — `DagContainerBase`, `DagHost`

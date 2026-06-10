@@ -30,7 +30,7 @@ import { DAG_CONTAINER_TRANSPORT } from '../../src/container/TransportErrorCode.
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
-import type { DispatcherBundle, ScatterProgress } from '../../src/Dagonizer.js';
+import type { DispatcherBundle, ObserverRelay, ScatterProgress } from '../../src/Dagonizer.js';
 import type { JsonObject } from '../../src/entities/json.js';
 import type { NodeError } from '../../src/entities/node/NodeError.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
@@ -277,11 +277,11 @@ class ReturnTransportErrorAfterOneContainer implements DagContainerInterface<Nod
     this.#callCount = 0;
   }
 
-  async runDag(task: DagTaskInterface<NodeStateInterface, unknown>): Promise<DagOutcomeInterface> {
+  async runDag(task: DagTaskInterface<NodeStateInterface, unknown>, options?: { readonly relay?: ObserverRelay }): Promise<DagOutcomeInterface> {
     this.#callCount += 1;
     if (this.#callCount === 1) {
       // First item: run for real so it acks.
-      return this.#inner.runDag(task);
+      return this.#inner.runDag(task, options);
     }
     // Subsequent items: RETURN a transport-error outcome (do NOT throw).
     const error: NodeError = {

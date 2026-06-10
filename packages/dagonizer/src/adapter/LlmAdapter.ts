@@ -1,13 +1,11 @@
 /**
- * LlmAdapter: provider-agnostic chat contract.
+ * LlmAdapter: provider-agnostic chat contract for one round-trip per call.
  *
- * Mirrors nocturne's `LLMAdapterInterface` (`adapters/llm/providers/
- * types/LLMAdapterInterface.ts:61–247`) but trimmed to the surface the
- * Archivist actually needs: one `chat()` round-trip per call, no
- * streaming, no per-adapter stats. Tools and structured-output run
- * through dedicated request fields; the provider implementation maps
- * them to its native wire format (Gemini's `functionDeclarations`,
- * Nano's `responseConstraint`, WebLLM's `response_format`).
+ * Defines the wire-format entities (schemas + TypeScript interfaces),
+ * the `ChatRequest` / `ChatResponse` shapes, request defaults, and the
+ * `ChatRequestBuilder`/`ChatResponseMessageBuilder` static factories.
+ * Tools and structured-output run through dedicated request fields; the
+ * provider implementation maps them to its native wire format.
  *
  * Every field on `ChatRequest` / `ChatResponse` is required; module-level
  * defaults fill the absent cases. This keeps V8 hidden classes
@@ -24,7 +22,9 @@
  *   └──────────────────────────────────────────────────────────────┘
  */
 
-// ── JSON Schema 2020-12 definitions (ADP-8) ──────────────────────────────────
+import { SignalComposer } from '../runtime/SignalComposer.js';
+
+// ── JSON Schema 2020-12 definitions ──────────────────────────────────────────
 //
 // Each wire-shape entity has a `*Schema` value so provider responses can be
 // validated at the JSON-ingest boundary before being narrowed to the
@@ -146,36 +146,36 @@ export const ChatResponseSchema = {
 
 /** A single message in a chat-style conversation. */
 export interface ChatMessage {
-  readonly role: 'system' | 'user' | 'assistant' | 'tool';
-  readonly content: string;
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string;
   /** Empty string for non-tool messages. Tool messages carry the call id. */
-  readonly toolCallId: string;
+  toolCallId: string;
   /** Empty string for non-tool messages. Tool messages carry the tool name. */
-  readonly toolName: string;
+  toolName: string;
 }
 
 /** Tool definition the model can choose to invoke. */
 export interface ToolDefinition {
-  readonly name: string;
-  readonly description: string;
+  name: string;
+  description: string;
   /** JSON Schema 2020-12; sent to the provider verbatim. */
-  readonly inputSchema: Record<string, unknown>;
-  readonly strict: boolean;
+  inputSchema: Record<string, unknown>;
+  strict: boolean;
 }
 
 /** Tool invocation emitted by the model. */
 export interface ToolCall {
-  readonly id: string;
-  readonly name: string;
-  readonly arguments: Record<string, unknown>;
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
 }
 
 /** How aggressively the model should pick a tool. */
 export type ToolChoice =
-  | { readonly type: 'auto' }
-  | { readonly type: 'required' }
-  | { readonly type: 'none' }
-  | { readonly type: 'tool';  readonly name: string };
+  | { type: 'auto' }
+  | { type: 'required' }
+  | { type: 'none' }
+  | { type: 'tool';  name: string };
 
 /**
  * JSON-schema constraint on the model's text response. `kind: 'none'`
@@ -183,8 +183,8 @@ export type ToolChoice =
  * `LlmOutputSchema | undefined`.
  */
 export type LlmOutputSchema =
-  | { readonly kind: 'none' }
-  | { readonly kind: 'schema'; readonly schema: Record<string, unknown>; readonly id: string };
+  | { kind: 'none' }
+  | { kind: 'schema'; schema: Record<string, unknown>; id: string };
 
 // ── Defaults ─────────────────────────────────────────────────────────────
 //
@@ -196,18 +196,24 @@ export const DEFAULT_OUTPUT_SCHEMA: LlmOutputSchema = { 'kind': 'none' };
 export const DEFAULT_MAX_TOKENS = 512;
 export const DEFAULT_TEMPERATURE = 0.2;
 
-/** A signal that never aborts; used when callers don't supply one. */
-const NEVER_ABORTING_SIGNAL: AbortSignal = new AbortController().signal;
+/** Canonical defaults for the four defaultable fields of `PartialChatRequest`. */
+const CHAT_REQUEST_DEFAULTS = {
+  'toolChoice':   DEFAULT_TOOL_CHOICE,
+  'outputSchema': DEFAULT_OUTPUT_SCHEMA,
+  'maxTokens':    DEFAULT_MAX_TOKENS,
+  'temperature':  DEFAULT_TEMPERATURE,
+} as const;
+
 
 /** One adapter call; every field always present. */
 export interface ChatRequest {
-  readonly messages: readonly ChatMessage[];
-  readonly tools: readonly ToolDefinition[];
-  readonly toolChoice: ToolChoice;
-  readonly outputSchema: LlmOutputSchema;
-  readonly maxTokens: number;
-  readonly temperature: number;
-  readonly signal: AbortSignal;
+  messages: ChatMessage[];
+  tools: ToolDefinition[];
+  toolChoice: ToolChoice;
+  outputSchema: LlmOutputSchema;
+  maxTokens: number;
+  temperature: number;
+  signal: AbortSignal;
 }
 
 /**
@@ -225,27 +231,28 @@ export class ChatRequestBuilder {
   /** Materialise a complete `ChatRequest` from a partial input by
    *  filling every absent field with its canonical default. */
   static from(partial: PartialChatRequest): ChatRequest {
+    const defaults = { ...CHAT_REQUEST_DEFAULTS, ...partial };
     return {
       'messages':     partial.messages,
-      'tools':        partial.tools        ?? [],
-      'toolChoice':   partial.toolChoice   ?? DEFAULT_TOOL_CHOICE,
-      'outputSchema': partial.outputSchema ?? DEFAULT_OUTPUT_SCHEMA,
-      'maxTokens':    partial.maxTokens    ?? DEFAULT_MAX_TOKENS,
-      'temperature':  partial.temperature  ?? DEFAULT_TEMPERATURE,
-      'signal':       partial.signal       ?? NEVER_ABORTING_SIGNAL,
+      'tools':        partial.tools ?? [],
+      'toolChoice':   defaults.toolChoice,
+      'outputSchema': defaults.outputSchema,
+      'maxTokens':    defaults.maxTokens,
+      'temperature':  defaults.temperature,
+      'signal':       partial.signal ?? SignalComposer.never(),
     };
   }
 }
 
 /** Loose-input shape for `ChatRequestBuilder.from`. Only `messages` is required. */
 export interface PartialChatRequest {
-  readonly messages: readonly ChatMessage[];
-  readonly tools?: readonly ToolDefinition[];
-  readonly toolChoice?: ToolChoice;
-  readonly outputSchema?: LlmOutputSchema;
-  readonly maxTokens?: number;
-  readonly temperature?: number;
-  readonly signal?: AbortSignal;
+  messages: ChatMessage[];
+  tools?: ToolDefinition[];
+  toolChoice?: ToolChoice;
+  outputSchema?: LlmOutputSchema;
+  maxTokens?: number;
+  temperature?: number;
+  signal?: AbortSignal;
 }
 
 /**
@@ -257,9 +264,9 @@ export interface PartialChatRequest {
  *   mixed: model emitted both prose and tool calls.
  */
 export type ChatResponseMessage =
-  | { readonly kind: 'text';  readonly content: string }
-  | { readonly kind: 'tools'; readonly toolCalls: readonly ToolCall[] }
-  | { readonly kind: 'mixed'; readonly content: string; readonly toolCalls: readonly ToolCall[] };
+  | { kind: 'text';  content: string }
+  | { kind: 'tools'; toolCalls: ToolCall[] }
+  | { kind: 'mixed'; content: string; toolCalls: ToolCall[] };
 
 /**
  * ChatResponseMessageBuilder: static factory for `ChatResponseMessage`
@@ -273,24 +280,24 @@ export class ChatResponseMessageBuilder {
   /** Build the right discriminated variant from content + tool calls. */
   static from(content: string, toolCalls: readonly ToolCall[]): ChatResponseMessage {
     if (toolCalls.length === 0) return { 'kind': 'text', content };
-    if (content.length === 0) return { 'kind': 'tools', toolCalls };
-    return { 'kind': 'mixed', content, toolCalls };
+    if (content.length === 0) return { 'kind': 'tools', 'toolCalls': [...toolCalls] };
+    return { 'kind': 'mixed', content, 'toolCalls': [...toolCalls] };
   }
 }
 
 /** Token usage. Always present; zero when the provider doesn't report. */
 export interface TokenUsage {
-  readonly promptTokens: number;
-  readonly completionTokens: number;
+  promptTokens: number;
+  completionTokens: number;
 }
 
 export const ZERO_TOKEN_USAGE: TokenUsage = { 'promptTokens': 0, 'completionTokens': 0 };
 
 /** What the adapter returns; every field always present. */
 export interface ChatResponse {
-  readonly message: ChatResponseMessage;
-  readonly finishReason: 'stop' | 'length' | 'tool_call' | 'error';
-  readonly usage: TokenUsage;
+  message: ChatResponseMessage;
+  finishReason: 'stop' | 'length' | 'tool_call' | 'error';
+  usage: TokenUsage;
 }
 
 /**
@@ -318,9 +325,9 @@ export interface ChatResponse {
  *             JSON-only mode (no schema).
  */
 export interface AdapterCapabilities {
-  readonly toolUse: 'full' | 'partial' | 'none';
-  readonly structuredOutput: boolean;
-  readonly jsonMode: boolean;
+  toolUse: 'full' | 'partial' | 'none';
+  structuredOutput: boolean;
+  jsonMode: boolean;
 }
 
 /**

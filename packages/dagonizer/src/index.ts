@@ -149,13 +149,13 @@ export {
   RealTimeScheduler,
   RetryPolicy,
   Scheduler,
+  Timeout,
 } from './runtime/index.js';
 export type {
   BackoffStrategyValue,
   ClockProvider,
   ErrorConstructorType,
   RetryPolicyOptionsInterface,
-  SchedulerHandle,
   SchedulerProvider,
 } from './runtime/index.js';
 
@@ -204,7 +204,7 @@ export type { OutcomeRecord } from './core/OutcomeReducers.js';
 // =============================================================================
 
 export { Checkpoint, CheckpointRestoreAdapterFn, MemoryCheckpointStore } from './checkpoint/index.js';
-export type { CaptureOptionsInterface, RecalledCheckpoint, StateRestoreFnType } from './checkpoint/index.js';
+export type { CaptureOptionsInterface, RecalledCheckpoint } from './checkpoint/index.js';
 
 // =============================================================================
 // STORE
@@ -229,7 +229,8 @@ export type { DagContainerInterface } from './contracts/DagContainerInterface.js
 export type { DagOutcomeInterface } from './container/DagOutcome.js';
 export type { DagTaskInterface } from './container/DagTask.js';
 export type { ExecuteOptionsInterface } from './contracts/ExecuteOptionsInterface.js';
-export type { Chainable, NodeInterface } from './contracts/NodeInterface.js';
+export type { Chainable } from './contracts/Chainable.js';
+export type { NodeInterface } from './contracts/NodeInterface.js';
 export type { OperationContractFragment } from './contracts/OperationContractFragment.js';
 export type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from './contracts/RemoteStore.js';
 export type { Snapshottable, StoreSnapshot, StoreSnapshotEntry } from './contracts/Snapshottable.js';
@@ -251,5 +252,3 @@ export type { NodeOutputInterface } from './entities/node/NodeOutput.js';
 export type { NodeResultInterface } from './entities/node/NodeResult.js';
 export type { ExecutionResultInterface } from './entities/execution/ExecutionResult.js';
 export type { SingleNodePlacementInterface } from './entities/dag/SingleNode.js';
-export type { TerminalNodePlacementInterface } from './entities/dag/TerminalNode.js';
-export type { PhaseNodePlacementInterface } from './entities/dag/PhaseNode.js';

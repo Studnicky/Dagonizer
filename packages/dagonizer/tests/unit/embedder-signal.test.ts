@@ -32,7 +32,7 @@ class SignalCapturingEmbedder extends BaseEmbedder {
 /** Rejects with an LlmError(TIMEOUT) when it sees a non-default signal. */
 class AbortingEmbedder extends BaseEmbedder {
   constructor() {
-    super('aborting', 'Aborting', 4, { 'maxAttempts': 1 });
+    super('aborting', 'Aborting', 4, { 'maxAttempts': 1, 'baseDelayMs': 0 });
   }
 
   protected override async performEmbed(_text: string, signal: AbortSignal): Promise<readonly number[]> {

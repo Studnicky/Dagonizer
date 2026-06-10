@@ -17,8 +17,8 @@ import type { AbortableOptionsInterface } from './AbortableOptionsInterface.js';
 
 /** Entry in a serialized snapshot envelope. */
 export interface StoreSnapshotEntry {
-  readonly key:   string;
-  readonly value: JsonValue;
+  key:   string;
+  value: JsonValue;
 }
 
 /**
@@ -26,9 +26,9 @@ export interface StoreSnapshotEntry {
  * (e.g. `'memory-store-v1'`) so resume code can refuse incompatible snapshots.
  */
 export interface StoreSnapshot {
-  readonly version: number;
-  readonly type:    string;
-  readonly entries: readonly StoreSnapshotEntry[];
+  version: number;
+  type:    string;
+  entries: StoreSnapshotEntry[];
 }
 
 /** A state container that can be captured into, and restored from, a `StoreSnapshot`. */

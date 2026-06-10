@@ -257,13 +257,13 @@ export const rankCandidates: ArchivistNode<'ranked' | 'retry' | 'salvage'> = {
       // flow. Emitting the candidates as "ranked" when ranking never completed
       // would be a fabricated result; rank-candidates-salvage owns the
       // deterministic-passthrough recovery.
-      state.collectError(NodeErrorBuilder.from({
-        'code':        'RANK_FAILED',
-        'message':     err instanceof Error ? err.message : String(err),
-        'operation':   'rank-candidates',
-        'recoverable': true,
-        'timestamp':   new Date().toISOString(),
-      }));
+      state.collectError(NodeErrorBuilder.from(
+        'RANK_FAILED',
+        err instanceof Error ? err.message : String(err),
+        'rank-candidates',
+        true,
+        new Date().toISOString(),
+      ));
       if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
         context.services.logger.warn(`rank-candidates: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
         return NodeOutputBuilder.of('retry');

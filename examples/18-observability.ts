@@ -61,7 +61,7 @@ class TracingDispatcher extends Dagonizer<PipelineState> {
     result: ExecutionResultInterface<PipelineState>,
   ): void {
     this.#lines.push(
-      `${this.#prefix} flowEnd    dag=${dagName} outcome=${result.terminalOutcome ?? 'null-route'} nodes=${String(result.executedNodes.length)}`,
+      `${this.#prefix} flowEnd    dag=${dagName} outcome=${result.terminalOutcome ?? result.interruptedAt?.reason ?? 'none'} nodes=${String(result.executedNodes.length)}`,
     );
   }
 

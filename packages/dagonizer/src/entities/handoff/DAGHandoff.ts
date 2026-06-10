@@ -14,34 +14,34 @@
 import type { FromSchema } from 'json-schema-to-ts';
 
 const byValueBranch = {
-  'type': 'object' as const,
-  'required': ['dagName', 'terminalName', 'terminalOutput', 'registryVersion', 'correlationId', 'placementPath', 'stateSnapshot'] as const,
+  'type': 'object',
+  'required': ['dagName', 'terminalName', 'terminalOutput', 'registryVersion', 'correlationId', 'placementPath', 'stateSnapshot'],
   'properties': {
-    'dagName':          { 'type': 'string' as const, 'minLength': 1 },
-    'terminalName':     { 'type': 'string' as const, 'minLength': 1 },
-    'terminalOutput':   { 'type': 'string' as const },
-    'registryVersion':  { 'type': 'string' as const },
-    'correlationId':    { 'type': 'string' as const, 'minLength': 1 },
-    'placementPath':    { 'type': 'array' as const, 'items': { 'type': 'string' as const } },
-    'stateSnapshot':    { 'type': 'object' as const },
+    'dagName':          { 'type': 'string', 'minLength': 1 },
+    'terminalName':     { 'type': 'string', 'minLength': 1 },
+    'terminalOutput':   { 'type': 'string' },
+    'registryVersion':  { 'type': 'string' },
+    'correlationId':    { 'type': 'string', 'minLength': 1 },
+    'placementPath':    { 'type': 'array', 'items': { 'type': 'string' } },
+    'stateSnapshot':    { 'type': 'object' },
   },
-  'additionalProperties': false as const,
-};
+  'additionalProperties': false,
+} as const;
 
 const byRefBranch = {
-  'type': 'object' as const,
-  'required': ['dagName', 'terminalName', 'terminalOutput', 'registryVersion', 'correlationId', 'placementPath', 'stateSnapshotRef'] as const,
+  'type': 'object',
+  'required': ['dagName', 'terminalName', 'terminalOutput', 'registryVersion', 'correlationId', 'placementPath', 'stateSnapshotRef'],
   'properties': {
-    'dagName':           { 'type': 'string' as const, 'minLength': 1 },
-    'terminalName':      { 'type': 'string' as const, 'minLength': 1 },
-    'terminalOutput':    { 'type': 'string' as const },
-    'registryVersion':   { 'type': 'string' as const },
-    'correlationId':     { 'type': 'string' as const, 'minLength': 1 },
-    'placementPath':     { 'type': 'array' as const, 'items': { 'type': 'string' as const } },
-    'stateSnapshotRef':  { 'type': 'string' as const, 'minLength': 1 },
+    'dagName':           { 'type': 'string', 'minLength': 1 },
+    'terminalName':      { 'type': 'string', 'minLength': 1 },
+    'terminalOutput':    { 'type': 'string' },
+    'registryVersion':   { 'type': 'string' },
+    'correlationId':     { 'type': 'string', 'minLength': 1 },
+    'placementPath':     { 'type': 'array', 'items': { 'type': 'string' } },
+    'stateSnapshotRef':  { 'type': 'string', 'minLength': 1 },
   },
-  'additionalProperties': false as const,
-};
+  'additionalProperties': false,
+} as const;
 
 export const DAGHandoffSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/DAGHandoff',

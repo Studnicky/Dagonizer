@@ -235,33 +235,38 @@ export class ChannelDispatch {
         const entry = this.#pending.get(msg.correlationId);
         if (entry === undefined || entry.relay === null) return;
         const { relay } = entry;
+        // Ajv-validated boundary: placementPath is confirmed an array of strings
+        // by the BridgeMessage schema; cast from schema-inferred type to the
+        // narrower readonly string[] used by ObserverRelay.
         const path = msg.placementPath as readonly string[];
-        switch (msg.hook) {
-          case 'nodeStart':
-            relay.onNodeStart(msg.nodeName, path);
-            break;
-          case 'nodeEnd':
-            relay.onNodeEnd(msg.nodeName, msg.output, path);
-            break;
-          case 'error':
-            relay.onError(msg.nodeName, new Error(msg.message), path);
-            break;
-          case 'phaseEnter':
-            if (msg.phase === 'pre' || msg.phase === 'post') {
-              relay.onPhaseEnter(msg.dagName, msg.phase, msg.nodeName, path);
+        // Dispatch map over switch: each hook handler is a closed-over function
+        // that forwards the instrumentation event to the relay.
+        type InstrMsg = typeof msg & { kind: 'instrumentation' };
+        const hookDispatch: Partial<Record<InstrMsg['hook'], (m: InstrMsg) => void>> = {
+          'nodeStart': (m) => {
+            relay.onNodeStart(m.nodeName, path);
+          },
+          'nodeEnd': (m) => {
+            relay.onNodeEnd(m.nodeName, m.output, path);
+          },
+          'error': (m) => {
+            relay.onError(m.nodeName, new Error(m.message), path);
+          },
+          'phaseEnter': (m) => {
+            if (m.phase === 'pre' || m.phase === 'post') {
+              relay.onPhaseEnter(m.dagName, m.phase, m.nodeName, path);
             }
-            break;
-          case 'phaseExit':
-            if (msg.phase === 'pre' || msg.phase === 'post') {
-              relay.onPhaseExit(msg.dagName, msg.phase, msg.nodeName, path);
+          },
+          'phaseExit': (m) => {
+            if (m.phase === 'pre' || m.phase === 'post') {
+              relay.onPhaseExit(m.dagName, m.phase, m.nodeName, path);
             }
-            break;
-          case 'contractWarning':
-            relay.onContractWarning(msg.message);
-            break;
-          default:
-            break;
-        }
+          },
+          'contractWarning': (m) => {
+            relay.onContractWarning(m.message);
+          },
+        };
+        hookDispatch[msg.hook]?.(msg as InstrMsg);
         break;
       }
 

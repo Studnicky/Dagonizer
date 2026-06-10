@@ -39,14 +39,20 @@ export const SCATTER_ITEM_KEY_DEFAULT = 'currentItem' as const;
 /** Default outcome-reducer name applied after all clones complete. */
 export const SCATTER_REDUCER_DEFAULT = 'aggregate' as const;
 
+/** Co-located defaults for the two statically-defaultable scatter fields. */
+const SCATTER_OPTION_DEFAULTS = {
+  'itemKey': SCATTER_ITEM_KEY_DEFAULT,
+  'reducer': SCATTER_REDUCER_DEFAULT,
+} as const;
+
 /**
  * Resolved `ScatterOptionsInterface` with `itemKey` and `reducer` guaranteed
  * present. All other optional fields retain their optionality.
  */
 export type ResolvedScatterOptions<TState extends NodeStateInterface> =
   ScatterOptionsInterface<TState> & {
-    readonly itemKey: string;
-    readonly reducer: string;
+    itemKey: string;
+    reducer: string;
   };
 
 /**
@@ -69,10 +75,17 @@ export class ScatterOptions {
   static from<TState extends NodeStateInterface>(
     partial: ScatterOptionsInterface<TState>,
   ): ResolvedScatterOptions<TState> {
+    // Resolve only the two statically-defaultable fields via spread; all other
+    // fields (concurrency, inputs, container, gather) pass through from partial.
+    const { itemKey, reducer } = {
+      ...SCATTER_OPTION_DEFAULTS,
+      ...(partial.itemKey !== undefined ? { 'itemKey': partial.itemKey } : {}),
+      ...(partial.reducer !== undefined ? { 'reducer': partial.reducer } : {}),
+    };
     return {
       ...partial,
-      'itemKey': partial.itemKey ?? SCATTER_ITEM_KEY_DEFAULT,
-      'reducer': partial.reducer ?? SCATTER_REDUCER_DEFAULT,
+      itemKey,
+      reducer,
     };
   }
 }

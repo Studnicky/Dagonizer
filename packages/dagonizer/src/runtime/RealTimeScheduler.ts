@@ -68,6 +68,11 @@ export class RealTimeScheduler implements SchedulerProvider {
       // Track the in-flight handle so a consumer `break` (which triggers the
       // generator's implicit `return`, not a throw) cancels the pending timer
       // immediately rather than leaving it to fire naturally after `intervalMs`.
+      // `unknown` is the correct type: `TimerGlobals.setTimeout` returns
+      // `unknown` (the return type differs between Node and the browser), and
+      // `clearTimeout` accepts `unknown` for the same reason. Using `unknown`
+      // keeps the type opaque and prevents callers from treating it as a number
+      // or `NodeJS.Timeout`.
       let pendingHandle: unknown;
       try {
         await new Promise<void>((resolve, reject) => {

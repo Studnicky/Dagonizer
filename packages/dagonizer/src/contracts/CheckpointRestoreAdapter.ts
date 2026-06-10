@@ -2,9 +2,10 @@
  * CheckpointRestoreAdapter: typed contract for restoring domain state
  * from a JSON snapshot.
  *
- * Wave 4 will replace `StateRestoreFnType` (`(snapshot: JsonObject) => TState`)
- * with this contract, converting the bare function type to an injectable
- * adapter that consumers implement as a class.
+ * Consumers implement this interface (typically as a static class) to
+ * rehydrate a `TState` instance from a `JsonObject` snapshot produced by
+ * `NodeStateBase.snapshot()`. Use `CheckpointRestoreAdapterFn.fromFn` from
+ * `checkpoint/Checkpoint.ts` to wrap a plain function in this contract.
  */
 
 import type { JsonObject } from '../entities/json.js';
