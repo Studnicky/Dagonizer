@@ -11,7 +11,6 @@
  *   registryVersion  — version for the init ↔ ready handshake
  *   servicesConfig   — opaque JSON passed to createBundle (default: {})
  *   poolSize         — number of processes (default: NodeSystemInfo)
- *   instrumentation  — forwarded to DagContainerBase
  *   command          — override spawn command (default: process.execPath)
  *   args             — override spawn args (default: [spawnEntry.js path])
  *   entryUrl         — override the default spawnEntry.js URL (for tests)
@@ -25,7 +24,6 @@ import type { ChildProcess } from 'node:child_process';
 import type { NodeStateInterface } from '@noocodex/dagonizer';
 import { DagContainerBase, DAG_CONTAINER_WORKER_DIED } from '@noocodex/dagonizer/container';
 import type { PoolEntry } from '@noocodex/dagonizer/container';
-import type { Instrumentation } from '@noocodex/dagonizer/contracts';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 import { RecommendedWorkerCountConfigDefault } from '@noocodex/dagonizer/entities';
 
@@ -41,7 +39,6 @@ export interface SpawnContainerOptions {
   readonly registryVersion: string;
   readonly servicesConfig?: JsonObject;
   readonly poolSize?: number;
-  readonly instrumentation?: Instrumentation;
   readonly command?: string;
   readonly args?: readonly string[];
   readonly entryUrl?: URL;
@@ -67,7 +64,6 @@ export class SpawnContainer extends DagContainerBase<NodeStateInterface, ChildPr
     const entryUrl = options.entryUrl ?? new URL('./spawnEntry.js', import.meta.url);
     super({
       ...DagContainerBase.defaultOptions,
-      'instrumentation': options.instrumentation ?? DagContainerBase.defaultOptions.instrumentation,
       'poolSize': options.poolSize ?? defaultPoolSize,
       'init': {
         'registryModule': options.registryModule,

@@ -36,7 +36,6 @@ import {
 import type {
   PoolEntry,
 } from '@noocodex/dagonizer/container';
-import type { Instrumentation } from '@noocodex/dagonizer/contracts';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 import { RecommendedWorkerCountConfigDefault } from '@noocodex/dagonizer/entities';
 
@@ -70,10 +69,6 @@ export interface WebWorkerContainerOptions {
    * from `navigator` when available, falling back to 2.
    */
   readonly poolSize?: number;
-  /**
-   * Instrumentation sink forwarded to DagContainerBase.
-   */
-  readonly instrumentation?: Instrumentation;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,7 +83,6 @@ export class WebWorkerContainer extends DagContainerBase<NodeStateInterface, Web
 
     super({
       ...DagContainerBase.defaultOptions,
-      'instrumentation': options.instrumentation ?? DagContainerBase.defaultOptions.instrumentation,
       'poolSize': poolSize,
       'init': {
         'registryModule': options.registryModule,

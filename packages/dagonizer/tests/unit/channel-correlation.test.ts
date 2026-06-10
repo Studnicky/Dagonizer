@@ -37,6 +37,7 @@ import type { DagContainerOptions, PoolEntry } from '../../src/container/DagCont
 import type { DagOutcomeInterface } from '../../src/contracts/DagOutcomeInterface.js';
 import type { DagTaskInterface } from '../../src/contracts/DagTaskInterface.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
+import type { ObserverRelay } from '../../src/Dagonizer.js';
 import type { BridgeMessage } from '../../src/entities/executor/BridgeMessage.js';
 import type { ExecutionRequest } from '../../src/entities/executor/ExecutionRequest.js';
 import type { JsonObject } from '../../src/entities/json.js';
@@ -327,6 +328,75 @@ void describe('channel-correlation: single subscription + correlationId demux', 
       `req-A: expected 'done-req-A', got '${outcomeA.terminalOutput}'`);
     assert.strictEqual(outcomeB.terminalOutput, 'done-req-B',
       `req-B: expected 'done-req-B', got '${outcomeB.terminalOutput}'`);
+  });
+
+});
+
+// ---------------------------------------------------------------------------
+// Worker observability: a node event forwarded from the worker/host side must
+// reach the PARENT dispatcher's observer relay (which the parent binds to its
+// own subclass hooks). This proves child/worker DAG nodes are observable via
+// the single canonical surface — `onNodeStart`/`onNodeEnd`/… on the subclass.
+// ---------------------------------------------------------------------------
+
+void describe('worker observability: forwarded node events reach the parent observer relay', () => {
+
+  void it('a worker-side nodeStart message invokes relay.onNodeStart with the composite placementPath', async () => {
+    const [parentSide, hostSide] = LoopbackChannel.pair();
+
+    // FakeHost: on execute, forward an inner node-start (exactly as DagHost's
+    // WorkerObserver does for a contained sub-DAG), then complete the request.
+    hostSide.onMessage((msg) => {
+      if (msg.kind === 'init') {
+        hostSide.send({ 'kind': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
+      } else if (msg.kind === 'execute') {
+        const { correlationId } = msg.request;
+        hostSide.send({
+          'kind': 'instrumentation',
+          'correlationId': correlationId,
+          'hook': 'nodeStart',
+          'phase': '',
+          'dagName': 'inner-dag',
+          'nodeName': 'inner-step',
+          'output': null,
+          'message': '',
+          'placementPath': ['scatter-placement', 'inner-step'],
+        });
+        hostSide.send({
+          'kind': 'result',
+          'response': {
+            'correlationId': correlationId,
+            'terminalOutput': 'done',
+            'errors': [],
+            'stateSnapshot': null,
+            'intermediates': [],
+          },
+        });
+      }
+    });
+
+    const container = new SingleChannelContainer(parentSide);
+
+    // The parent dispatcher binds its protected subclass hooks to a relay of
+    // exactly this shape (Dagonizer.buildObserverRelay); a recording stand-in
+    // proves the forwarded event lands on that surface.
+    const seen: Array<{ readonly node: string; readonly path: readonly string[] }> = [];
+    const relay: ObserverRelay = {
+      onNodeStart(node, path) { seen.push({ 'node': node, 'path': path }); },
+      onNodeEnd() { /* unused in this test */ },
+      onError() { /* unused in this test */ },
+      onPhaseEnter() { /* unused in this test */ },
+      onPhaseExit() { /* unused in this test */ },
+      onContractWarning() { /* unused in this test */ },
+    };
+
+    const ac = new AbortController();
+    const outcome = await container.runDag(makeTask('obs-1', ac.signal), relay);
+
+    assert.strictEqual(outcome.terminalOutput, 'done');
+    assert.strictEqual(seen.length, 1, 'parent relay observes exactly one forwarded inner node');
+    assert.strictEqual(seen[0]?.node, 'inner-step');
+    assert.deepStrictEqual(seen[0]?.path, ['scatter-placement', 'inner-step']);
   });
 
 });

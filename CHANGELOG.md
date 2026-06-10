@@ -4,6 +4,10 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 ## [Unreleased]
 
+### Removed
+
+- **`Instrumentation` plugin contract removed. ⚠ BREAKING.** `Instrumentation<TState>`, `InstrumentationSink`, `NoopInstrumentation`, and `ForwardingInstrumentation` are removed from all subpaths. The `instrumentation` field on `DagonizerOptionsInterface` and `DagContainerOptions` is removed. Observability is now exclusively via the protected `on*` hooks on `Dagonizer` subclasses (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`, `onPhaseEnter`, `onPhaseExit`, `onContractWarning`). For contained (worker/process) DAGs, `WorkerObserver` bridges events from the isolate through `ObserverRelay` to the parent dispatcher's protected hooks — no consumer change required for containment observability. **Migration:** delete any `instrumentation: new MyInstrumentation()` constructor argument; fold the hook logic into `protected override on*` methods on your `Dagonizer` subclass.
+
 ## [0.18.0] - 2026-06-09
 
 This release lands the DAG-containment / cross-host hand-off feature work together

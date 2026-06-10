@@ -8,7 +8,7 @@
  * Protocol responsibilities:
  *   init()    — send init, await ready; rejects on version mismatch or error.
  *   request() — send execute, await the correlated result; forwards abort +
- *               instrumentation per request.
+ *               observer relay hook calls per request.
  *
  * Transport-error contract: request() never throws. A closed channel, send
  * failure, or unroutable error message produces a transport-error DagOutcomeInterface.
@@ -18,8 +18,8 @@
  */
 
 
-import type { InstrumentationSink } from '../contracts/InstrumentationSink.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
+import type { ObserverRelay } from '../Dagonizer.js';
 import type { BridgeMessage } from '../entities/executor/BridgeMessage.js';
 import type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js';
 import type { JsonObject } from '../entities/json.js';
@@ -45,7 +45,7 @@ export type InitMessageShape = Omit<BridgeMessage & { kind: 'init' }, 'kind'>;
 interface PendingEntry {
   correlationId: string;
   settle: (outcome: DagOutcomeInterface) => void;
-  sink: InstrumentationSink;
+  relay: ObserverRelay | null;
   settled: boolean;
 }
 
@@ -101,13 +101,14 @@ export class ChannelDispatch {
 
   /**
    * Send execute, await the correlated result. `signal` is a required positional
-   * arg; `sink` receives forwarded instrumentation messages. Never throws —
+   * arg; `relay` receives forwarded worker hook events (nodeStart, nodeEnd, etc.)
+   * and may be null when no observer is bound. Never throws —
    * transport failures resolve to a transport-error DagOutcomeInterface.
    */
   request(
     request: ExecutionRequest,
     signal: AbortSignal,
-    sink: InstrumentationSink,
+    relay: ObserverRelay | null,
   ): Promise<DagOutcomeInterface> {
     const { correlationId } = request;
 
@@ -115,7 +116,7 @@ export class ChannelDispatch {
       const entry: PendingEntry = {
         'correlationId': correlationId,
         'settle': resolve,
-        'sink': sink,
+        'relay': relay,
         'settled': false,
       };
 
@@ -232,8 +233,31 @@ export class ChannelDispatch {
 
       case 'instrumentation': {
         const entry = this.#pending.get(msg.correlationId);
-        if (entry === undefined) return;
-        entry.sink.onInstrumentation(msg);
+        if (entry === undefined || entry.relay === null) return;
+        const { relay } = entry;
+        const path = msg.placementPath as readonly string[];
+        switch (msg.hook) {
+          case 'nodeStart':
+            relay.onNodeStart(msg.nodeName, path);
+            break;
+          case 'nodeEnd':
+            relay.onNodeEnd(msg.nodeName, msg.output, path);
+            break;
+          case 'error':
+            relay.onError(msg.nodeName, new Error(msg.message), path);
+            break;
+          case 'phaseEnter':
+            relay.onPhaseEnter(msg.dagName, msg.phase as 'pre' | 'post', msg.nodeName, path);
+            break;
+          case 'phaseExit':
+            relay.onPhaseExit(msg.dagName, msg.phase as 'pre' | 'post', msg.nodeName, path);
+            break;
+          case 'contractWarning':
+            relay.onContractWarning(msg.message);
+            break;
+          default:
+            break;
+        }
         break;
       }
 

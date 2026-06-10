@@ -7,7 +7,6 @@ import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { NoopInstrumentation } from '../../src/runtime/NoopInstrumentation.js';
 import { Validator } from '../../src/validation/Validator.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -44,25 +43,25 @@ const makeThrowingNode = (
   },
 });
 
-// Recording instrumentation captures phase hook invocations in order.
+// Recording Dagonizer subclass captures phase hook invocations in order.
 interface Call {
   readonly hook: string;
   readonly args: readonly unknown[];
 }
 
-class RecordingInstrumentation extends NoopInstrumentation<TrackingState> {
+class RecordingDagonizer extends Dagonizer<TrackingState> {
   readonly calls: Call[] = [];
 
-  override phaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TrackingState, placementPath: readonly string[]): void {
+  protected override onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TrackingState, placementPath: readonly string[]): void {
     this.calls.push({ 'hook': 'phaseEnter', 'args': [dagName, phase, placementName, state, placementPath] });
   }
-  override phaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TrackingState, placementPath: readonly string[]): void {
+  protected override onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TrackingState, placementPath: readonly string[]): void {
     this.calls.push({ 'hook': 'phaseExit', 'args': [dagName, phase, placementName, state, placementPath] });
   }
-  override flowStart(dagName: string, state: TrackingState): void {
+  protected override onFlowStart(dagName: string, state: TrackingState): void {
     this.calls.push({ 'hook': 'flowStart', 'args': [dagName, state] });
   }
-  override flowEnd(dagName: string, _state: TrackingState): void {
+  protected override onFlowEnd(dagName: string, _state: TrackingState): void {
     this.calls.push({ 'hook': 'flowEnd', 'args': [dagName] });
   }
 
@@ -328,12 +327,11 @@ void describe('PhaseNode placements: post-phase execution', () => {
   });
 });
 
-// ── 4. Instrumentation hooks ──────────────────────────────────────────────
+// ── 4. Subclass phase hooks ───────────────────────────────────────────────
 
-void describe('PhaseNode placements: instrumentation hooks', () => {
-  void it('phaseEnter / phaseExit fire with correct phase + placement name', async () => {
-    const instrumentation = new RecordingInstrumentation();
-    const dispatcher = new Dagonizer<TrackingState>({ instrumentation });
+void describe('PhaseNode placements: subclass phase hooks', () => {
+  void it('onPhaseEnter / onPhaseExit fire with correct phase + placement name', async () => {
+    const dispatcher = new RecordingDagonizer();
 
     dispatcher.registerNode(makeNode('setup', ['success']));
     dispatcher.registerNode(makeNode('entry', ['success']));
@@ -349,8 +347,8 @@ void describe('PhaseNode placements: instrumentation hooks', () => {
     dispatcher.registerDAG(dag);
     await dispatcher.execute('instr-phases', new TrackingState());
 
-    const enters = instrumentation.hooksOfType('phaseEnter');
-    const exits  = instrumentation.hooksOfType('phaseExit');
+    const enters = dispatcher.hooksOfType('phaseEnter');
+    const exits  = dispatcher.hooksOfType('phaseExit');
 
     assert.equal(enters.length, 2);
     assert.equal(exits.length, 2);

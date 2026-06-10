@@ -11,7 +11,6 @@
  *   registryVersion     — version for the init ↔ ready handshake
  *   servicesConfig      — opaque JSON passed to createBundle (default: {})
  *   poolSize            — number of workers (default: NodeSystemInfo)
- *   instrumentation     — forwarded to DagContainerBase
  *   resourceLimits      — per-worker V8 heap budget
  *   entryUrl            — override the default workerEntry.js URL (for tests)
  *
@@ -23,7 +22,6 @@ import { Worker } from 'node:worker_threads';
 import type { NodeStateInterface } from '@noocodex/dagonizer';
 import { DagContainerBase, DAG_CONTAINER_WORKER_DIED } from '@noocodex/dagonizer/container';
 import type { PoolEntry } from '@noocodex/dagonizer/container';
-import type { Instrumentation } from '@noocodex/dagonizer/contracts';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 import { RecommendedWorkerCountConfigDefault } from '@noocodex/dagonizer/entities';
 
@@ -48,7 +46,6 @@ export interface WorkerThreadContainerOptions {
   readonly registryVersion: string;
   readonly servicesConfig?: JsonObject;
   readonly poolSize?: number;
-  readonly instrumentation?: Instrumentation;
   readonly resourceLimits?: WorkerThreadResourceLimits;
   readonly entryUrl?: URL;
 }
@@ -69,7 +66,6 @@ export class WorkerThreadContainer extends DagContainerBase<NodeStateInterface, 
     });
     super({
       ...DagContainerBase.defaultOptions,
-      'instrumentation': options.instrumentation ?? DagContainerBase.defaultOptions.instrumentation,
       'poolSize': options.poolSize ?? defaultPoolSize,
       'init': {
         'registryModule': options.registryModule,

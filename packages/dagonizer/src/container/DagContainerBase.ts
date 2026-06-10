@@ -18,13 +18,10 @@
  */
 
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
-import type { Instrumentation } from '../contracts/Instrumentation.js';
-import type { InstrumentationSink } from '../contracts/InstrumentationSink.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
-import type { BridgeMessage } from '../entities/executor/BridgeMessage.js';
+import type { ObserverRelay } from '../Dagonizer.js';
 import type { JsonObject } from '../entities/json.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
-import { NoopInstrumentation } from '../runtime/NoopInstrumentation.js';
 
 import { ChannelDispatch } from './ChannelDispatch.js';
 import type { InitMessageShape } from './ChannelDispatch.js';
@@ -56,14 +53,7 @@ export interface PoolEntry<TWorker> {
 /** Default grace period (ms) before a shutdown worker is force-terminated. */
 export const DEFAULT_SHUTDOWN_GRACE_MS = 2000;
 
-export interface DagContainerOptions<TState extends NodeStateInterface = NodeStateInterface> {
-  /**
-   * Instrumentation sink parameterised by the state type. Pass
-   * `new NoopInstrumentation()` to suppress observability. Required —
-   * subclasses pass through without conditional spread.
-   * Use `DagContainerBase.defaultOptions` to spread ergonomic defaults.
-   */
-  readonly instrumentation: Instrumentation<TState>;
+export interface DagContainerOptions {
   /** Maximum number of pool entries (workers) to maintain. */
   readonly poolSize: number;
   /** Init shape forwarded to each DagHost on first channel use. */
@@ -85,9 +75,6 @@ export abstract class DagContainerBase<
   TWorker = unknown,
 > implements DagContainerInterface<TState> {
 
-  // Instrumentation sink parameterised by TState so no cast is needed in runDag.
-  protected readonly instrumentation: Instrumentation<TState>;
-
   // Channel → dispatch map. WeakMap so GC'd channels release their dispatches.
   readonly #dispatches: WeakMap<MessageChannelInterface, ChannelDispatch>;
   // Channel → pool entry reverse lookup. Used by releaseChannel and eviction.
@@ -108,21 +95,14 @@ export abstract class DagContainerBase<
   /**
    * Ergonomic spread defaults for `DagContainerOptions`. Subclasses pass
    * `{ ...DagContainerBase.defaultOptions, poolSize, init, ...overrides }` so
-   * the required `instrumentation` and `shutdownGraceMs` fields are filled
-   * without forcing every subclass to import `NoopInstrumentation` and the
-   * default constant.
-   *
-   * The `instrumentation` field is typed against the base `NodeStateInterface`
-   * so the spread is assignable to any `DagContainerOptions<TState>` (covariant
-   * in the state parameter for read-only hook methods).
+   * the required `shutdownGraceMs` field is filled without forcing every
+   * subclass to import the default constant.
    */
-  static readonly defaultOptions: Pick<DagContainerOptions<NodeStateInterface>, 'instrumentation' | 'shutdownGraceMs'> = {
-    "instrumentation": new NoopInstrumentation(),
+  static readonly defaultOptions: Pick<DagContainerOptions, 'shutdownGraceMs'> = {
     "shutdownGraceMs": DEFAULT_SHUTDOWN_GRACE_MS,
   };
 
-  constructor(options: DagContainerOptions<TState>) {
-    this.instrumentation         = options.instrumentation;
+  constructor(options: DagContainerOptions) {
     this.#dispatches             = new WeakMap<MessageChannelInterface, ChannelDispatch>();
     this.#channelToEntry         = new WeakMap<MessageChannelInterface, PoolEntry<TWorker>>();
     this.#pool                   = [];
@@ -235,7 +215,7 @@ export abstract class DagContainerBase<
   // runDag
   // ---------------------------------------------------------------------------
 
-  async runDag(task: DagTaskInterface<TState, unknown>): Promise<DagOutcomeInterface> {
+  async runDag(task: DagTaskInterface<TState, unknown>, relay?: ObserverRelay): Promise<DagOutcomeInterface> {
     let acquiredChannel: MessageChannelInterface | null = null;
 
     try {
@@ -244,8 +224,7 @@ export abstract class DagContainerBase<
       const dispatch = this.#dispatchFor(channel);
       const request = task.toRequest();
 
-      const sink = new InstrumentationSinkImpl(this.instrumentation, task.state);
-      const outcome = await dispatch.request(request, task.context.signal, sink);
+      const outcome = await dispatch.request(request, task.context.signal, relay ?? null);
 
       return outcome;
     } catch (err) {
@@ -425,58 +404,6 @@ export abstract class DagContainerBase<
     return dispatch;
   }
 
-}
-
-// ---------------------------------------------------------------------------
-// InstrumentationSinkImpl
-// ---------------------------------------------------------------------------
-
-/**
- * Concrete InstrumentationSink used by DagContainerBase.runDag().
- * Delegates to the DagContainerBase private fire helper via closure-free
- * construction: holds a reference to both the outer instance's fire method
- * and the task state so no callback is captured from outside the class.
- */
-class InstrumentationSinkImpl<TState extends NodeStateInterface> implements InstrumentationSink {
-  readonly #instrumentation: Instrumentation<TState>;
-  readonly #state: TState;
-
-  constructor(instrumentation: Instrumentation<TState>, state: TState) {
-    this.#instrumentation = instrumentation;
-    this.#state          = state;
-  }
-
-  onInstrumentation(msg: BridgeMessage & { kind: 'instrumentation' }): void {
-    const instr = this.#instrumentation;
-    const state = this.#state;
-    const path  = msg.placementPath;
-    switch (msg.hook) {
-      case 'nodeStart':
-        instr.nodeStart(msg.dagName, msg.nodeName, state, path);
-        break;
-      case 'nodeEnd':
-        instr.nodeEnd(msg.dagName, msg.nodeName, msg.output, state, path);
-        break;
-      case 'phaseEnter':
-        if (msg.phase !== '') {
-          instr.phaseEnter(msg.dagName, msg.phase, msg.nodeName, state, path);
-        }
-        break;
-      case 'phaseExit':
-        if (msg.phase !== '') {
-          instr.phaseExit(msg.dagName, msg.phase, msg.nodeName, state, path);
-        }
-        break;
-      case 'contractWarning':
-        instr.contractWarning(msg.message);
-        break;
-      case 'error':
-        instr.error(msg.dagName, msg.nodeName, new Error(msg.message), state, path);
-        break;
-      default:
-        break;
-    }
-  }
 }
 
 // Re-export transport error codes so subclasses can reference them in

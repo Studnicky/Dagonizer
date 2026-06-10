@@ -19,7 +19,7 @@ seeAlso:
 
 # Container
 
-DAG containment infrastructure: pool-owning base, isolate-side host runtime, value types, and instrumentation forwarding. Ships through `@noocodex/dagonizer/container`.
+DAG containment infrastructure: pool-owning base, isolate-side host runtime, and value types. Ships through `@noocodex/dagonizer/container`.
 
 ```ts
 import {
@@ -30,7 +30,6 @@ import {
   DagOutcome,
   DagTask,
   DEFAULT_SHUTDOWN_GRACE_MS,
-  ForwardingInstrumentation,
   TransportErrorCode,
   DAG_CONTAINER_TRANSPORT,
   DAG_CONTAINER_WORKER_DIED,
@@ -38,7 +37,6 @@ import {
 import type {
   DagOutcomeInterface,
   DagTaskInterface,
-  InstrumentationSink,
   PoolEntry,
 } from '@noocodex/dagonizer/container';
 ```
@@ -68,16 +66,15 @@ constructor(options: DagContainerOptions<TState>)
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `instrumentation` | `Instrumentation<TState>` | Observability sink. Pass `new NoopInstrumentation()` to suppress. |
 | `poolSize` | `number` | Maximum number of pool entries (workers) to maintain. |
 | `init` | `InitMessageShape` | Init payload forwarded to each `DagHost` on first channel use. |
 | `shutdownGraceMs` | `number` | Grace period in milliseconds before a shutting-down worker is force-terminated. Pass `DEFAULT_SHUTDOWN_GRACE_MS` (2000 ms) as a baseline. |
 
-`DagContainerBase.defaultOptions` provides ergonomic defaults for `instrumentation` and `shutdownGraceMs`:
+`DagContainerBase.defaultOptions` provides an ergonomic default for `shutdownGraceMs`:
 
 ```ts
 const container = new MyContainer({
-  ...DagContainerBase.defaultOptions,
+  ...DagContainerBase.defaultOptions,   // provides shutdownGraceMs default
   poolSize: 4,
   init: { registryModule: './my-registry.js', servicesConfig: {} },
 });
@@ -178,21 +175,6 @@ class DagOutcome implements DagOutcomeInterface
 | `errors` | `readonly NodeError[]` | Collected errors from the child run. |
 | `stateSnapshot` | `JsonObject \| null` | Terminal child state snapshot (`null` on transport failure). |
 | `intermediates` | `readonly ExecutorIntermediate[]` | Per-node results forwarded to the parent stream. |
-
----
-
-## Class: `ForwardingInstrumentation<TState>`
-
-`Instrumentation` implementation that forwards hook invocations as `instrumentation` `BridgeMessage`s over a channel. Used inside `DagHost` to relay observability back to the parent dispatcher.
-
-```ts
-class ForwardingInstrumentation<TState extends NodeStateInterface = NodeStateInterface>
-  implements Instrumentation<TState>
-
-constructor(channel: MessageChannelInterface, correlationId: string, basePath: readonly string[])
-```
-
-`basePath` is prepended to every forwarded `placementPath` so instrumentation from the body DAG carries the full composite path. `flowStart` and `flowEnd` are suppressed (the parent dispatcher owns flow-level hooks).
 
 ---
 

@@ -57,7 +57,7 @@ class TestLoopbackContainer extends DagContainerBase<NodeStateInterface, TestWor
   entriesCreated: number = 0;
   readonly #deathCallbacks: Array<() => void> = [];
 
-  constructor(poolSize: number, options: Partial<Pick<DagContainerOptions, 'instrumentation' | 'shutdownGraceMs'>> = {}) {
+  constructor(poolSize: number, options: Partial<Pick<DagContainerOptions, 'shutdownGraceMs'>> = {}) {
     super({
       ...DagContainerBase.defaultOptions,
       poolSize,

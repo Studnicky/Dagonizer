@@ -10,7 +10,7 @@
  * uses structuredClone on every message delivery. This proves:
  *   - The transport encoding is correct (no functions, no live references).
  *   - State round-trips through snapshot/transport/restore.
- *   - Instrumentation messages arrive at the parent with correct placementPath.
+ *   - Observer relay hook events arrive at the parent with correct placementPath.
  *
  * The ConformanceRegistry module URL (dist-testing/ConformanceRegistry.js) is
  * the registry module DagHost dynamic-imports on init.
@@ -28,7 +28,6 @@ import { DAG_CONTAINER_TRANSPORT } from '../../src/container/TransportErrorCode.
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
 import type { DagOutcomeInterface } from '../../src/contracts/DagOutcomeInterface.js';
 import type { DagTaskInterface } from '../../src/contracts/DagTaskInterface.js';
-import type { Instrumentation } from '../../src/contracts/Instrumentation.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
 import type { DispatcherBundle, ScatterProgress } from '../../src/Dagonizer.js';
@@ -80,7 +79,6 @@ class LoopbackContainer extends DagContainerBase<NodeStateInterface, LoopbackWor
         'registryVersion': CONFORMANCE_REGISTRY_VERSION,
         'servicesConfig': {} as JsonObject,
       },
-      ...(options.instrumentation !== undefined ? { 'instrumentation': options.instrumentation } : {}),
       ...(options.shutdownGraceMs !== undefined ? { 'shutdownGraceMs': options.shutdownGraceMs } : {}),
     });
   }
@@ -125,37 +123,25 @@ async function teardownPerLawContainers(): Promise<void> {
 // createDispatcherForLaw
 //
 // Called per-law by DagConformance.laws() internals (via dispatcherFor).
-// The containers argument comes from dispatcherFor: it is built by calling
-// harness.container (the sentinel, no instrumentation). We IGNORE the
-// containers argument here and create a fresh LoopbackContainer with the
-// law's instrumentation so that re-fired instrumentation hooks reach the
-// correct Instrumentation instance.
-//
-// This is intentional: for Law 6, the container must be constructed with
-// the instrumentation the law provides. Ignoring the containers arg and
-// building a fresh container per dispatcher call achieves this without
-// changing the DagConformance library.
+// Creates a fresh LoopbackContainer per dispatcher call and binds it to the
+// container role. The DagConformance harness passes an optional observer
+// factory; Law 6 uses this to wire a Dagonizer subclass whose hooks fire for
+// worker nodes. The harness interface now accepts an observerFactory instead
+// of an Instrumentation plugin.
 // ---------------------------------------------------------------------------
 
 function createDispatcherForLaw(
   bundle: DispatcherBundle<NodeStateInterface, undefined>,
   _containers: Readonly<Record<string, DagContainerInterface<NodeStateInterface>>>,
-  instrumentation?: Instrumentation,
 ): Dagonizer<NodeStateInterface, undefined> {
   // LoopbackContainer demand-grows its pool on first runDag(); no async init
   // needed in the synchronous factory. The base's acquireChannel loop handles
   // lazy entry creation and init on first use.
-  const container = new LoopbackContainer(
-    REGISTRY_MODULE_URL,
-    instrumentation !== undefined ? { instrumentation } : {},
-  );
+  const container = new LoopbackContainer(REGISTRY_MODULE_URL);
   perLawContainers.push(container);
 
   const containers = { [CONFORMANCE_CONTAINER_ROLE]: container } as Readonly<Record<string, DagContainerInterface<NodeStateInterface>>>;
-  const options = instrumentation !== undefined
-    ? { containers, instrumentation }
-    : { containers };
-  const dispatcher = new Dagonizer<NodeStateInterface, undefined>(options);
+  const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ containers });
   dispatcher.registerBundle(bundle);
   return dispatcher;
 }

@@ -32,7 +32,7 @@
  *   3  Errors collect and route; transport loss → collected error, never throw.
  *   4  timeoutMs honored host-side; terminates within 2s.
  *   5  Abort propagates best-effort; sleeper began is proven via state marker.
- *   6  Instrumentation fires on parent with correct placementPath.
+ *   6  Subclass hooks fire on parent with correct placementPath for worker nodes.
  *   7  Scatter checkpoint/resume bookkeeping byte-identical across in-process
  *      and contained backends.
  *   8  At-least-once under container failure: kill mid-scatter, assert resume
@@ -44,7 +44,6 @@ import assert from 'node:assert/strict';
 
 // The relative '../dist/' imports below are type-only and erased at compile time.
 import type { DagContainerInterface } from '../dist/contracts/DagContainerInterface.js';
-import type { Instrumentation } from '../dist/contracts/Instrumentation.js';
 import type { DagonizerInterface, DispatcherBundle } from '../dist/Dagonizer.js';
 import type { NodeStateInterface } from '../dist/NodeStateBase.js';
 
@@ -71,7 +70,6 @@ export interface DagConformanceHarnessInterface {
   createDispatcher(
     bundle: DispatcherBundle<NodeStateInterface, undefined>,
     containers: Readonly<Record<string, DagContainerInterface>>,
-    instrumentation?: Instrumentation,
   ): DagonizerInterface<NodeStateInterface, undefined>;
   /** Create a fresh ConformanceState. */
   createState(): ConformanceState;
@@ -124,13 +122,10 @@ export interface DagConformanceLawInterface {
 
 function dispatcherFor(
   harness: DagConformanceHarnessInterface,
-  instrumentation?: Instrumentation,
 ): DagonizerInterface<NodeStateInterface, undefined> {
   const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
   const containers = { [harness.containerRole]: harness.container } as Readonly<Record<string, DagContainerInterface>>;
-  return instrumentation !== undefined
-    ? harness.createDispatcher(bundle, containers, instrumentation)
-    : harness.createDispatcher(bundle, containers);
+  return harness.createDispatcher(bundle, containers);
 }
 
 // ---------------------------------------------------------------------------
@@ -279,45 +274,53 @@ export class DagConformance {
       },
     };
 
-    // ── Law 6: instrumentation fires parent-side with correct placementPath ──
+    // ── Law 6: subclass hooks fire parent-side with correct placementPath ─────
+    // Uses a Dagonizer subclass to observe hook events rather than an
+    // instrumentation plugin. The harness.createDispatcher returns a plain
+    // Dagonizer; we build a separate recording subclass to capture hook events.
     const law6: DagConformanceLawInterface = {
-      'name': 'Law 6: instrumentation fires with correct placementPath on parent dispatcher',
+      'name': 'Law 6: subclass hooks fire with correct placementPath on parent dispatcher',
       async run(): Promise<void> {
         const nodeStartNames: string[] = [];
         const nodeEndNames: string[] = [];
         const nodeStartPaths: string[][] = [];
 
-        const instrumentation: Instrumentation = {
-          flowStart() { /* no-op */ },
-          flowEnd() { /* no-op */ },
-          nodeStart(_dagName, nodeName, _state, placementPath) {
+        // Import Dagonizer as a value (dist/ resolves via package exports).
+        const { Dagonizer } = await import('@noocodex/dagonizer');
+
+        class RecordingDispatcher extends (Dagonizer as typeof Dagonizer<NodeStateInterface, undefined>) {
+          protected override onNodeStart(nodeName: string, _state: NodeStateInterface, placementPath: readonly string[]): void {
             nodeStartNames.push(nodeName);
             nodeStartPaths.push([...placementPath]);
-          },
-          nodeEnd(_dagName, nodeName) { nodeEndNames.push(nodeName); },
-          phaseEnter() { /* no-op */ },
-          phaseExit() { /* no-op */ },
-          contractWarning() { /* no-op */ },
-          error() { /* no-op */ },
-        };
+          }
+          protected override onNodeEnd(nodeName: string, _output: string | null, _state: NodeStateInterface, _placementPath: readonly string[]): void {
+            nodeEndNames.push(nodeName);
+          }
+        }
 
-        const dispatcher = dispatcherFor(harness, instrumentation);
+        const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
+        const container = harness.container;
+        const containers = { [harness.containerRole]: container } as Readonly<Record<string, DagContainerInterface>>;
+        const dispatcher = new RecordingDispatcher({ containers });
+        dispatcher.registerBundle(bundle as Parameters<typeof dispatcher.registerBundle>[0]);
+
         const state = harness.createState();
         await dispatcher.execute(CONFORMANCE_DAG.law6, state);
 
         assert.ok(
           nodeStartNames.includes('recorder'),
-          `nodeStart must fire for 'recorder', fired for: [${nodeStartNames.join(', ')}]`,
+          `onNodeStart must fire for 'recorder', fired for: [${nodeStartNames.join(', ')}]`,
         );
         assert.ok(
           nodeEndNames.includes('recorder'),
-          `nodeEnd must fire for 'recorder', fired for: [${nodeEndNames.join(', ')}]`,
+          `onNodeEnd must fire for 'recorder', fired for: [${nodeEndNames.join(', ')}]`,
         );
         // placementPath must be non-empty when forwarded from inside the container
-        const recorderStartPath = nodeStartPaths.find((_, i) => nodeStartNames[i] === 'recorder');
+        const recorderIndex = nodeStartNames.indexOf('recorder');
+        const recorderStartPath = recorderIndex >= 0 ? nodeStartPaths[recorderIndex] : undefined;
         assert.ok(
           recorderStartPath !== undefined && recorderStartPath.length > 0,
-          `placementPath for recorder nodeStart must be non-empty, got: ${JSON.stringify(recorderStartPath)}`,
+          `placementPath for recorder onNodeStart must be non-empty, got: ${JSON.stringify(recorderStartPath)}`,
         );
       },
     };

@@ -1,18 +1,18 @@
 ---
 title: 'Lifecycle phases'
-description: 'PhaseNode placements run before or after the main DAG loop. DAGBuilder.phase wires them in declaration order. Instrumentation.phaseEnter / phaseExit fire around each placement.'
+description: 'PhaseNode placements run before or after the main DAG loop. DAGBuilder.phase wires them in declaration order. onPhaseEnter / onPhaseExit hooks fire around each placement.'
 seeAlso:
   - text: 'DAGBuilder'
     link: './builder'
     description: '`.phase(name, "pre" | "post", node)` registers a phase placement'
   - text: 'Observability'
     link: './observability'
-    description: '`Instrumentation.phaseEnter` and `phaseExit` observe phase boundaries'
+    description: '`onPhaseEnter` and `onPhaseExit` observe phase boundaries'
 ---
 
 # Lifecycle phases
 
-`PhaseNode` placements run around the main DAG loop rather than inside it. They are registered like any other placement, mutate state, can throw, and are observed by the dispatcher hooks and the `Instrumentation` surface.
+`PhaseNode` placements run around the main DAG loop rather than inside it. They are registered like any other placement, mutate state, can throw, and are observed by the dispatcher's protected `on*` hooks.
 
 ## API surface
 
@@ -22,10 +22,8 @@ seeAlso:
 | `PhaseNodeSchema` | `@noocodex/dagonizer/entities` | The JSON Schema |
 | `PhaseNodePlacementInterface` | `@noocodex/dagonizer` | Compile-time narrowing of `PhaseNode` |
 | `DAGBuilder.phase(name, phase, nodeRef)` | `@noocodex/dagonizer/builder` | Fluent registration |
-| `Instrumentation.phaseEnter` | `@noocodex/dagonizer/contracts` | Fires before each phase placement |
-| `Instrumentation.phaseExit` | `@noocodex/dagonizer/contracts` | Fires after each phase placement |
-
-`Instrumentation.phaseEnter` and `phaseExit` are declared on the contract in `packages/dagonizer/src/contracts/Instrumentation.ts`.
+| `Dagonizer.onPhaseEnter` | `@noocodex/dagonizer` | Protected hook — fires before each phase placement |
+| `Dagonizer.onPhaseExit` | `@noocodex/dagonizer` | Protected hook — fires after each phase placement |
 
 ## Two arms
 
@@ -96,17 +94,17 @@ The hand-written JSON form is also accepted:
 
 At `registerDAG` time the engine verifies that every `PhaseNode.node` resolves to a registered node. A missing reference raises `DAGError`. The schema rejects an `outputs` field (no routing) and rejects any `phase` value outside `'pre' | 'post'`.
 
-## Instrumentation
+## Observability hooks
 
-For every phase placement the dispatcher invokes:
+For every phase placement the dispatcher calls the protected hooks on the `Dagonizer` subclass:
 
 ```ts
-instrumentation.phaseEnter(dagName, 'pre' | 'post', placementName, state, placementPath);
+this.onPhaseEnter(dagName, 'pre' | 'post', placementName, state, placementPath);
 // ... await node.execute(state, context)
-instrumentation.phaseExit(dagName,  'pre' | 'post', placementName, state, placementPath);
+this.onPhaseExit(dagName,  'pre' | 'post', placementName, state, placementPath);
 ```
 
-See [Observability](./observability) for the full instrumentation surface.
+See [Observability](./observability) for the full hook reference.
 
 ## Related reference
 

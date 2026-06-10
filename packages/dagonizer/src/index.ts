@@ -145,7 +145,6 @@ export type {
 export {
   BackoffStrategy,
   Clock,
-  NoopInstrumentation,
   RealTimeScheduler,
   RetryPolicy,
   Scheduler,
@@ -175,7 +174,6 @@ export { DagHost } from './container/DagHost.js';
 export type { DagHostOptions } from './container/DagHost.js';
 export { DagContainerBase } from './container/DagContainerBase.js';
 export type { DagContainerOptions } from './container/DagContainerBase.js';
-export { ForwardingInstrumentation } from './container/ForwardingInstrumentation.js';
 
 // =============================================================================
 // FUNCTIONS
@@ -230,7 +228,6 @@ export type { DagContainerInterface } from './contracts/DagContainerInterface.js
 export type { DagOutcomeInterface } from './contracts/DagOutcomeInterface.js';
 export type { DagTaskInterface } from './contracts/DagTaskInterface.js';
 export type { ExecuteOptionsInterface } from './contracts/ExecuteOptionsInterface.js';
-export type { Instrumentation } from './contracts/Instrumentation.js';
 export type { Chainable, NodeInterface } from './contracts/NodeInterface.js';
 export type { OperationContractFragment } from './contracts/OperationContractFragment.js';
 export type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from './contracts/RemoteStore.js';

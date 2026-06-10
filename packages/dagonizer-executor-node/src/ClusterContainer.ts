@@ -14,7 +14,6 @@
  *   registryVersion  — version for the init ↔ ready handshake
  *   servicesConfig   — opaque JSON passed to createBundle (default: {})
  *   poolSize         — number of cluster workers (default: NodeSystemInfo)
- *   instrumentation  — forwarded to DagContainerBase
  *   entryUrl         — override the default forkEntry.js URL (for tests)
  *
  * All properties initialised in constructor for V8 hidden-class stability.
@@ -26,7 +25,6 @@ import type { Worker } from 'node:cluster';
 import type { NodeStateInterface } from '@noocodex/dagonizer';
 import { DagContainerBase, DAG_CONTAINER_WORKER_DIED } from '@noocodex/dagonizer/container';
 import type { PoolEntry } from '@noocodex/dagonizer/container';
-import type { Instrumentation } from '@noocodex/dagonizer/contracts';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 import { RecommendedWorkerCountConfigDefault } from '@noocodex/dagonizer/entities';
 
@@ -42,7 +40,6 @@ export interface ClusterContainerOptions {
   readonly registryVersion: string;
   readonly servicesConfig?: JsonObject;
   readonly poolSize?: number;
-  readonly instrumentation?: Instrumentation;
   readonly entryUrl?: URL;
 }
 
@@ -62,7 +59,6 @@ export class ClusterContainer extends DagContainerBase<NodeStateInterface, Worke
     });
     super({
       ...DagContainerBase.defaultOptions,
-      'instrumentation': options.instrumentation ?? DagContainerBase.defaultOptions.instrumentation,
       'poolSize': options.poolSize ?? defaultPoolSize,
       'init': {
         'registryModule': options.registryModule,

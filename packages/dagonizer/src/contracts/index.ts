@@ -16,8 +16,6 @@ export type { LlmClient } from './LlmClient.js';
 export type { ClockProvider } from './ClockProvider.js';
 export type { ErrorConstructorType } from './ErrorConstructorType.js';
 export type { ExecuteOptionsInterface } from './ExecuteOptionsInterface.js';
-export type { Instrumentation } from './Instrumentation.js';
-export type { InstrumentationSink } from './InstrumentationSink.js';
 export type { Chainable, NodeInterface } from './NodeInterface.js';
 export type { NodeInvoker } from './NodeInvoker.js';
 export type { OperationContract } from './OperationContract.js';

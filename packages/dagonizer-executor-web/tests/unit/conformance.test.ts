@@ -16,13 +16,10 @@
  *   (2) Pool behavior — poolSize 2, 3 concurrent runDag calls → 3rd waits for a slot
  *   (3) destroy() — terminate called on every spawned worker
  *
- * Law 6 instrumentation note:
- *   DagContainerBase.runDag re-fires forwarded instrumentation via its own
- *   this.instrumentation field, which is set at construction time. For Law 6 to
- *   observe instrumentation on the parent dispatcher, the container must be
- *   constructed with the law's instrumentation — so createDispatcher creates a
- *   fresh WebWorkerContainer per law, injecting the instrumentation option.
- *   This mirrors the core package executor-conformance.test.ts pattern.
+ * Law 6 observer note:
+ *   DagConformance.laws() Law 6 builds a Dagonizer subclass inside the law
+ *   to capture hook events via protected overrides. The harness createDispatcher
+ *   no longer needs to wire an Instrumentation instance.
  */
 
 import assert from 'node:assert/strict';
@@ -33,7 +30,7 @@ import { URL } from 'node:url';
 import { Dagonizer } from '@noocodex/dagonizer';
 import type { DagonizerInterface, DispatcherBundle, NodeStateInterface } from '@noocodex/dagonizer';
 import { DagTask } from '@noocodex/dagonizer/container';
-import type { DagContainerInterface, Instrumentation } from '@noocodex/dagonizer/contracts';
+import type { DagContainerInterface } from '@noocodex/dagonizer/contracts';
 import {
   ConformanceRegistry,
   ConformanceState,
@@ -198,25 +195,15 @@ class FakeWebWorkerContainer extends WebWorkerContainer {
 // ---------------------------------------------------------------------------
 // buildContainer: factory for per-law FakeWebWorkerContainer
 //
-// Creates a fresh container with a FakeWorker pool size of 1. Injecting
-// instrumentation ensures that DagContainerBase.runDag re-fires forwarded
-// instrumentation messages via the law's instrumentation instance (necessary
-// for Law 6).
+// Creates a fresh container with a FakeWorker pool size of 1.
 // ---------------------------------------------------------------------------
 
-function buildContainer(instrumentation?: Instrumentation): FakeWebWorkerContainer {
-  const opts: WebWorkerContainerOptions = instrumentation !== undefined
-    ? {
-      'registryModule': conformanceRegistryUrl(),
-      'registryVersion': CONFORMANCE_REGISTRY_VERSION,
-      'poolSize': 1,
-      'instrumentation': instrumentation,
-    }
-    : {
-      'registryModule': conformanceRegistryUrl(),
-      'registryVersion': CONFORMANCE_REGISTRY_VERSION,
-      'poolSize': 1,
-    };
+function buildContainer(): FakeWebWorkerContainer {
+  const opts: WebWorkerContainerOptions = {
+    'registryModule': conformanceRegistryUrl(),
+    'registryVersion': CONFORMANCE_REGISTRY_VERSION,
+    'poolSize': 1,
+  };
   return new FakeWebWorkerContainer(opts);
 }
 
@@ -234,19 +221,13 @@ const harness: DagConformanceHarnessInterface = {
   'createDispatcher'(
     bundle: DispatcherBundle<NodeStateInterface, undefined>,
     _containers: Readonly<Record<string, DagContainerInterface>>,
-    instrumentation?: Instrumentation,
   ): DagonizerInterface<NodeStateInterface, undefined> {
-    // Create a fresh per-law container with the law's instrumentation so that
-    // DagContainerBase.runDag fires forwarded instrumentation on the correct
-    // instance (required for Law 6). Ignore the incoming _containers arg —
+    // Create a fresh per-law container. Ignore the incoming _containers arg —
     // the sentinel harness.container is only a placeholder.
-    const container = buildContainer(instrumentation);
+    const container = buildContainer();
     perLawContainers.push(container);
     const containers = { [CONFORMANCE_CONTAINER_ROLE]: container } as Readonly<Record<string, DagContainerInterface>>;
-    const opts = instrumentation !== undefined
-      ? { 'containers': containers, 'instrumentation': instrumentation }
-      : { 'containers': containers };
-    const dispatcher = new Dagonizer<NodeStateInterface, undefined>(opts);
+    const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ 'containers': containers });
     dispatcher.registerBundle(bundle);
     return dispatcher as DagonizerInterface<NodeStateInterface, undefined>;
   },

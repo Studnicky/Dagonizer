@@ -11,20 +11,18 @@
  *   abort    → fire AbortController for that correlationId
  *   shutdown → destroy registered nodes; close channel
  *
- * ForwardingInstrumentation is constructed per-execute, bound to the channel
- * and correlationId, and passed to the Dagonizer constructor for that run. This
- * means each execute creates a fresh Dagonizer with per-request instrumentation.
- * This is the correct wiring: a single Dagonizer per host lifetime would require
- * a mutable instrumentation slot (unsafe for concurrent executions); per-execute
- * construction is cheap and gives exact per-correlationId routing of instrumentation
- * messages without synchronisation.
+ * WorkerObserver is constructed per-execute, bound to the channel and
+ * correlationId. Its protected hook overrides post `instrumentation`
+ * BridgeMessages back to the parent. This is the correct wiring: a single
+ * WorkerObserver per host lifetime would require a mutable correlationId
+ * (unsafe for concurrent executions); per-execute construction is cheap and
+ * gives exact per-correlationId routing without synchronisation.
  *
  * All properties are initialised in constructor for V8 hidden-class stability.
  */
 
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
 import type { RegistryBundleInterface, RegistryModuleInterface } from '../contracts/RegistryModuleInterface.js';
-import { Dagonizer } from '../Dagonizer.js';
 import type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js';
 import type { ExecutionResponse } from '../entities/executor/ExecutionResponse.js';
 import type { ExecutorIntermediate } from '../entities/executor/ExecutorIntermediate.js';
@@ -32,7 +30,7 @@ import type { JsonObject } from '../entities/json.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { Validator } from '../validation/Validator.js';
 
-import { ForwardingInstrumentation } from './ForwardingInstrumentation.js';
+import { WorkerObserver } from './WorkerObserver.js';
 
 // ---------------------------------------------------------------------------
 // DagHostOptions
@@ -249,15 +247,16 @@ export class DagHost {
       }, request.timeoutMs);
     }
 
-    // ForwardingInstrumentation is constructed per-execute to route instrumentation
-    // messages with the correct correlationId. The request.placementPath is used as
-    // the basePath so that forwarded placementPaths are the full composite path
-    // (parent path + inner body path), making them non-empty on the parent side.
-    const forwarding = new ForwardingInstrumentation(this.#channel, correlationId, request.placementPath);
-    const dagonizer = new Dagonizer<NodeStateInterface, unknown>({
-      'services': bundle.services,
-      'instrumentation': forwarding,
-    });
+    // WorkerObserver is constructed per-execute to route hook events with the
+    // correct correlationId. The request.placementPath is used as the basePath
+    // so that forwarded placementPaths are the full composite path (parent path
+    // + inner body path), making them non-empty on the parent side.
+    const dagonizer = new WorkerObserver<NodeStateInterface>(
+      this.#channel,
+      correlationId,
+      request.placementPath,
+      { 'services': bundle.services },
+    );
     dagonizer.registerBundle(bundle.bundle);
 
     try {

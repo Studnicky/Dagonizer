@@ -35,8 +35,6 @@ import type {
   ExecuteOptionsInterface,
   GatherExecution,
   GatherRecord,
-  Instrumentation,
-  InstrumentationSink,
   LlmAdapter,
   LlmClient,
   MessageChannelInterface,
@@ -140,38 +138,6 @@ interface StateAccessor {
 ```
 
 Path resolver used for scatter source reads, state-mapping input copies, and gather writes. Default implementation: `DottedPathAccessor` in `runtime/`. Pass a custom implementation via `new Dagonizer({ accessor })`.
-
-## Instrumentation
-
-```ts
-interface Instrumentation<TState extends NodeStateInterface = NodeStateInterface> {
-  flowStart(dagName: string, state: TState): void;
-  flowEnd(dagName: string, state: TState, result: ExecutionResultInterface<TState>): void;
-  nodeStart(dagName: string, nodeName: string, state: TState, placementPath: readonly string[]): void;
-  nodeEnd(dagName: string, nodeName: string, output: string | null, state: TState, placementPath: readonly string[]): void;
-  phaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
-  phaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
-  contractWarning(message: string): void;
-  error(dagName: string, nodeName: string, error: Error, state: TState, placementPath: readonly string[]): void;
-}
-```
-
-Hook surface the dispatcher invokes at execution boundaries. Plugins (`@noocodex/dagonizer-tracing-otel`, custom metrics exporters) implement this to participate without subclassing `Dagonizer`.
-
-| Hook | Fires |
-|---|---|
-| `flowStart` | Before the entrypoint node runs |
-| `flowEnd` | After the loop drains (terminal or interrupted) |
-| `nodeStart` | Before each node's `execute()` call, including placements inside scatter clones and embedded-DAG bodies |
-| `nodeEnd` | After the node's result is recorded; `output` is `string \| null` (`null` = no route emitted) |
-| `phaseEnter` | Before a pre or post phase placement runs |
-| `phaseExit` | After a pre or post phase placement runs |
-| `contractWarning` | Non-fatal dangling-write warning from `ContractRegistryValidator` |
-| `error` | Any thrown error the dispatcher catches |
-
-`placementPath` is the ordered array of parent embedded-DAG placement names leading to the current node. For top-level nodes it is `[]`; for a node inside an `EmbeddedDAGNode` named `'search'` it is `['search']`. The full node id is `[...placementPath, nodeName].join('/')`.
-
-Implementations must not throw: an exception surfacing through a hook will abort the flow. Wrap any I/O in try/catch internally. Extend `NoopInstrumentation` from `@noocodex/dagonizer/runtime` to override only the hooks you need.
 
 ## Snapshottable
 
@@ -370,16 +336,6 @@ interface RegistryBundleInterface {
 `RegistryModuleInterface` is the default export shape of a registry module loaded by `DagHost` via dynamic import. `createBundle` receives the opaque `servicesConfig` JSON from the `init` message and returns a fully initialised `RegistryBundleInterface`.
 
 `RegistryBundleInterface` bundles the node+DAG registry (`bundle`), the locally constructed services bag (`services`), the semantic version for the init ↔ ready handshake (`registryVersion`), and the state restore factory (`restoreState`). Services never cross the isolate boundary — each isolate constructs its own via its registry module.
-
-## InstrumentationSink
-
-```ts
-interface InstrumentationSink {
-  onInstrumentation(msg: BridgeMessage & { kind: 'instrumentation' }): void;
-}
-```
-
-Adapter contract for receiving forwarded instrumentation messages inside `ChannelDispatch.request()`. `DagContainerBase` constructs one per-request and passes it to `ChannelDispatch.request()`.
 
 ## DagOutcomeInterface
 

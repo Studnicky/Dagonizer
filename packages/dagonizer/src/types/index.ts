@@ -201,7 +201,6 @@ export type { StoreErrorClassification } from '../store/StoreError.js';
 // Contracts not yet in the contracts section above
 // ---------------------------------------------------------------------------
 
-export type { Instrumentation } from '../contracts/Instrumentation.js';
 export type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '../contracts/RemoteStore.js';
 export type { Snapshottable, StoreSnapshot, StoreSnapshotEntry } from '../contracts/Snapshottable.js';
 export type { Store } from '../contracts/Store.js';

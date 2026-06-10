@@ -3,7 +3,6 @@ import { TransportErrorCode } from './container/TransportErrorCode.js';
 import type { ChannelInterface } from './contracts/ChannelInterface.js';
 import type { DagContainerInterface } from './contracts/DagContainerInterface.js';
 import type { ExecuteOptionsInterface } from './contracts/ExecuteOptionsInterface.js';
-import type { Instrumentation } from './contracts/Instrumentation.js';
 import type { NodeInterface } from './contracts/NodeInterface.js';
 import type { NodeInvoker } from './contracts/NodeInvoker.js';
 import type { StateAccessor } from './contracts/StateAccessor.js';
@@ -31,7 +30,6 @@ import { Execution } from './Execution.js';
 import { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
 import { DottedPathAccessor } from './runtime/DottedPathAccessor.js';
-import { NoopInstrumentation } from './runtime/NoopInstrumentation.js';
 import { ScatterCheckpoint } from './runtime/ScatterCheckpoint.js';
 import { Scheduler } from './runtime/Scheduler.js';
 import { SignalComposer } from './runtime/SignalComposer.js';
@@ -68,25 +66,37 @@ export type { ScatterAckedResult, ScatterInboxItem, ScatterProgress, StoredScatt
 
 /**
  * Routes contract warnings from `ContractRegistryValidator` to the
- * dispatcher's `onContractWarning` hook and instrumentation sink.
- * Constructed inside `Dagonizer.registerDAG` where both targets are in scope.
+ * dispatcher's `onContractWarning` hook.
+ * Constructed inside `Dagonizer.registerDAG` where the target is in scope.
  */
 class DispatcherWarningEmitter implements WarningEmitter {
   readonly #onContractWarning: (message: string) => void;
-  readonly #instrumentationWarn: (message: string) => void;
 
-  constructor(
-    onContractWarning: (message: string) => void,
-    instrumentationWarn: (message: string) => void,
-  ) {
+  constructor(onContractWarning: (message: string) => void) {
     this.#onContractWarning = onContractWarning;
-    this.#instrumentationWarn = instrumentationWarn;
   }
 
   warn(message: string): void {
     this.#onContractWarning(message);
-    this.#instrumentationWarn(message);
   }
+}
+
+/**
+ * Internal relay interface: callbacks the parent Dagonizer injects into a
+ * container so worker-side hook events flow to the parent's protected hooks.
+ * NOT exported from any public surface; it is internal plumbing only.
+ *
+ * `onFlowStart`/`onFlowEnd` are absent: those are top-level concerns owned
+ * by the parent's `execute()` call. The relay carries only the node/phase/error
+ * hooks that worker sub-DAGs need to forward.
+ */
+export interface ObserverRelay {
+  onNodeStart(nodeName: string, placementPath: readonly string[]): void;
+  onNodeEnd(nodeName: string, output: string | null, placementPath: readonly string[]): void;
+  onError(nodeName: string, error: Error, placementPath: readonly string[]): void;
+  onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, placementPath: readonly string[]): void;
+  onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, placementPath: readonly string[]): void;
+  onContractWarning(message: string): void;
 }
 
 /**
@@ -138,21 +148,10 @@ export interface DagonizerOptionsInterface<TState extends NodeStateInterface = N
    */
   readonly services?: TServices;
   /**
-   * Instrumentation hooks invoked at execution boundaries. Defaults
-   * to a `NoopInstrumentation`; every method is a no-op when not
-   * overridden. Plugins extend `NoopInstrumentation` and override the
-   * hooks they care about, then pass the instance through this option.
-   *
-   * The dispatcher's protected `on*` subclass hooks continue to fire
-   * alongside this surface; both surfaces coexist so a single consumer
-   * can mix subclass observability with plugin-supplied instrumentation.
-   */
-  readonly instrumentation?: Instrumentation;
-  /**
    * Named container backends. Keys are logical role names declared on
    * `EmbeddedDAGNode.container` and `ScatterNode.container` (dag-body
    * only). An unbound role resolves to in-process and fires
-   * `onContractWarning` + `instrumentation.contractWarning`.
+   * `onContractWarning`.
    *
    * Containers are optional: an empty registry is the default and
    * means every placement runs in-process.
@@ -162,7 +161,7 @@ export interface DagonizerOptionsInterface<TState extends NodeStateInterface = N
    * Named egress channels keyed by terminal placement name. When a
    * non-embedded run completes at a terminal whose name is bound here,
    * the dispatcher builds a `DAGHandoff` envelope and calls
-   * `channel.publish(handoff)` after `onFlowEnd`/`flowEnd`.
+   * `channel.publish(handoff)` after `onFlowEnd`.
    *
    * An unbound terminal (the default for all terminals) does not publish
    * and leaves the in-process path byte-identical to today. Different
@@ -295,13 +294,10 @@ type _RunOptions = { readonly embedded: boolean };
  * node execution.
  *
  * Subclass to attach observability by overriding `onFlowStart`, `onFlowEnd`,
- * `onNodeStart`, `onNodeEnd`, `onError`. Default implementations are no-ops.
- *
- * For composable observability (multiple observers, plugin-supplied
- * tracing/metrics), pass an `Instrumentation` implementation through the
- * `instrumentation` constructor option. The dispatcher fires both the
- * subclass `on*` hooks and the equivalent `instrumentation.*` methods at
- * every execution boundary, so subclass and plugin observers coexist.
+ * `onNodeStart`, `onNodeEnd`, `onError`, `onPhaseEnter`, `onPhaseExit`.
+ * Default implementations are no-ops. These hooks are the ONE canonical
+ * observability surface — they fire for both in-process nodes AND for
+ * nodes running inside worker/contained sub-DAGs (via the internal relay).
  *
  * Cancellation: pass `{ signal }` (and/or `{ deadlineMs }`) to `execute()`.
  * The dispatcher composes them via `AbortSignal.any()` and marks state
@@ -346,7 +342,6 @@ implements DagonizerInterface<TState, TServices> {
   // (TServices | undefined); when the caller passes undefined for a non-undefined
   // TServices the error surfaces at the call site, not here.
   private readonly services: TServices;
-  private readonly instrumentation: Instrumentation;
   private readonly stateMapper: StateMapper<TState>;
   private readonly containers: Readonly<Record<string, DagContainerInterface<TState>>>;
   private readonly channels: Readonly<Record<string, ChannelInterface>>;
@@ -391,7 +386,6 @@ implements DagonizerInterface<TState, TServices> {
     // defaults to `undefined` this is sound. Consumers passing a non-undefined
     // TServices must supply the services value.
     this.services = options.services as TServices;
-    this.instrumentation = options.instrumentation ?? new NoopInstrumentation();
     this.stateMapper = new StateMapper<TState>(this.accessor);
     this.containers = options.containers ?? {};
     this.channels = options.channels ?? {};
@@ -442,19 +436,33 @@ implements DagonizerInterface<TState, TServices> {
    * level of embedded-DAG nesting, and so on. Use it to disambiguate same-
    * named inner placements across multiple embedded-DAG instances. The
    * dispatcher always passes it; an override may take fewer arguments.
+   *
+   * This hook fires for BOTH in-process nodes AND for nodes running in
+   * worker/contained sub-DAGs (via the internal observer relay).
    */
   protected onNodeStart(_nodeName: string, _state: TState, _placementPath: readonly string[]): void { /* override */ }
   /**
    * Fires after a node completes successfully. See {@link onNodeStart} for
-   * `placementPath` semantics.
+   * `placementPath` semantics. Fires for in-process and worker nodes.
    */
   protected onNodeEnd(_nodeName: string, _output: string | null, _state: TState, _placementPath: readonly string[]): void { /* override */ }
   /**
    * Fires when the dispatcher catches an error from a node (or from the
    * abort/timeout machinery). See {@link onNodeStart} for `placementPath`
-   * semantics.
+   * semantics. Fires for in-process and worker nodes.
    */
   protected onError(_nodeName: string, _error: Error, _state: TState, _placementPath: readonly string[]): void { /* override */ }
+  /**
+   * Fires before a `pre` or `post` phase placement runs. `placementPath`
+   * follows the same semantics as `onNodeStart`. Fires for in-process and
+   * worker phases.
+   */
+  protected onPhaseEnter(_dagName: string, _phase: 'pre' | 'post', _placementName: string, _state: TState, _placementPath: readonly string[]): void { /* override */ }
+  /**
+   * Fires after a `pre` or `post` phase placement completes (success or
+   * collected error). See {@link onPhaseEnter}.
+   */
+  protected onPhaseExit(_dagName: string, _phase: 'pre' | 'post', _placementName: string, _state: TState, _placementPath: readonly string[]): void { /* override */ }
 
   /**
    * Called for each non-fatal contract warning surfaced during DAG
@@ -486,6 +494,39 @@ implements DagonizerInterface<TState, TServices> {
    */
   private nextCorrelationId(dagName: string): string {
     return `${dagName}:${++this.#correlationSeq}`;
+  }
+
+  /**
+   * Build an `ObserverRelay` bound to this dispatcher instance's protected
+   * hooks. The relay is passed to `container.runDag` so worker-side events
+   * flow back to the parent's `onNodeStart/onNodeEnd/onError/onPhaseEnter/onPhaseExit`.
+   *
+   * `onFlowStart`/`onFlowEnd` are deliberately excluded from the relay:
+   * those are top-level concerns owned by the parent's own `execute()` call.
+   */
+  private buildObserverRelay(state: TState): ObserverRelay {
+    // Bind to `this` so the relay holds a reference to the parent dispatcher.
+    // Captures `state` for the worker-side hooks that need it.
+    return {
+      'onNodeStart': (nodeName: string, placementPath: readonly string[]) => {
+        this.onNodeStart(nodeName, state, placementPath);
+      },
+      'onNodeEnd': (nodeName: string, output: string | null, placementPath: readonly string[]) => {
+        this.onNodeEnd(nodeName, output, state, placementPath);
+      },
+      'onError': (nodeName: string, error: Error, placementPath: readonly string[]) => {
+        this.onError(nodeName, error, state, placementPath);
+      },
+      'onPhaseEnter': (dagName: string, phase: 'pre' | 'post', placementName: string, placementPath: readonly string[]) => {
+        this.onPhaseEnter(dagName, phase, placementName, state, placementPath);
+      },
+      'onPhaseExit': (dagName: string, phase: 'pre' | 'post', placementName: string, placementPath: readonly string[]) => {
+        this.onPhaseExit(dagName, phase, placementName, state, placementPath);
+      },
+      'onContractWarning': (message: string) => {
+        this.onContractWarning(message);
+      },
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -612,7 +653,6 @@ implements DagonizerInterface<TState, TServices> {
       // running. The cursor is null because there is no DAG to resume.
       const error = new DAGError(`Unknown DAG: ${dagName}`);
       this.onError('<unknown>', error, state, placementPath);
-      this.instrumentation.error(dagName, '<unknown>', error, state, placementPath);
       if (!runOptions.embedded) {
         try { state.markFailed(error); } catch { /* state may already be terminal */ }
       }
@@ -622,7 +662,6 @@ implements DagonizerInterface<TState, TServices> {
       };
       if (!runOptions.embedded) {
         this.onFlowEnd(dagName, state, result);
-        this.instrumentation.flowEnd(dagName, state, result);
       }
       return result;
     }
@@ -640,7 +679,6 @@ implements DagonizerInterface<TState, TServices> {
       }
       state.markRunning();
       this.onFlowStart(dagName, state);
-      this.instrumentation.flowStart(dagName, state);
     }
 
     const executedNodes: string[] = [];
@@ -657,21 +695,20 @@ implements DagonizerInterface<TState, TServices> {
           n['@type'] === 'PhaseNode' && n.phase === 'pre',
       );
       for (const phase of prePhases) {
-        this.instrumentation.phaseEnter(dagName, 'pre', phase.name, state, placementPath);
+        this.onPhaseEnter(dagName, 'pre', phase.name, state, placementPath);
         try {
           await this.executePhasePlacement(phase, state, dagName, signal);
           executedNodes.push(phase.name);
         } catch (err) {
           const error = err instanceof Error ? err : new ExecutionError(String(err));
           this.onError(phase.name, error, state, placementPath);
-          this.instrumentation.error(dagName, phase.name, error, state, placementPath);
           try { state.markFailed(error); } catch { /* already terminal */ }
-          this.instrumentation.phaseExit(dagName, 'pre', phase.name, state, placementPath);
+          this.onPhaseExit(dagName, 'pre', phase.name, state, placementPath);
           const result = this.buildResult(null, executedNodes, skippedNodes, null, null, state);
           await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
           return result;
         }
-        this.instrumentation.phaseExit(dagName, 'pre', phase.name, state, placementPath);
+        this.onPhaseExit(dagName, 'pre', phase.name, state, placementPath);
       }
     }
 
@@ -695,7 +732,6 @@ implements DagonizerInterface<TState, TServices> {
       if (signal?.aborted) {
         const abortInfo = this.handleAbort(state, signal);
         this.onError(currentNodeName, abortInfo.error, state, placementPath);
-        this.instrumentation.error(dagName, currentNodeName, abortInfo.error, state, placementPath);
         const interruptedAt: InterruptionInfo = {
           'nodeName': currentNodeName,
           'reason':   abortInfo.reason,
@@ -710,7 +746,6 @@ implements DagonizerInterface<TState, TServices> {
       if (!node) {
         const error = new DAGError(`Unknown node: ${currentNodeName} in DAG ${dagName}`);
         this.onError(currentNodeName, error, state, placementPath);
-        this.instrumentation.error(dagName, currentNodeName, error, state, placementPath);
         if (!runOptions.embedded) {
           try { state.markFailed(error); } catch { /* already terminal */ }
         }
@@ -720,7 +755,6 @@ implements DagonizerInterface<TState, TServices> {
       }
 
       this.onNodeStart(node.name, state, placementPath);
-      this.instrumentation.nodeStart(dagName, node.name, state, placementPath);
 
       // TerminalNode is a no-op execution: capture outcome, synthesize result,
       // fire onNodeEnd, and break the loop. No call to executeDAGNode needed.
@@ -737,7 +771,6 @@ implements DagonizerInterface<TState, TServices> {
           'intermediateResults': [],
         };
         this.onNodeEnd(terminal.name, terminal.outcome, state, placementPath);
-        this.instrumentation.nodeEnd(dagName, terminal.name, terminal.outcome, state, placementPath);
         yield terminalResult;
         break mainLoop;
       }
@@ -748,7 +781,6 @@ implements DagonizerInterface<TState, TServices> {
       } catch (caughtError) {
         const error = caughtError instanceof Error ? caughtError : new ExecutionError(String(caughtError));
         this.onError(currentNodeName, error, state, placementPath);
-        this.instrumentation.error(dagName, currentNodeName, error, state, placementPath);
         let interruptedAt: InterruptionInfo | null = null;
         if (signal?.aborted) {
           // Run-level signal aborted: classify abort vs timeout via handleAbort.
@@ -798,7 +830,6 @@ implements DagonizerInterface<TState, TServices> {
       }
 
       this.onNodeEnd(node.name, nodeResult.output, state, placementPath);
-      this.instrumentation.nodeEnd(dagName, node.name, nodeResult.output, state, placementPath);
 
       yield nodeResult;
 
@@ -875,7 +906,7 @@ implements DagonizerInterface<TState, TServices> {
         n['@type'] === 'PhaseNode' && n.phase === 'post',
     );
     for (const phase of postPhases) {
-      this.instrumentation.phaseEnter(dagName, 'post', phase.name, state, placementPath);
+      this.onPhaseEnter(dagName, 'post', phase.name, state, placementPath);
       try {
         await this.executePhasePlacement(phase, state, dagName, null);
         result.executedNodes.push(phase.name);
@@ -884,7 +915,6 @@ implements DagonizerInterface<TState, TServices> {
         // Post-phase intentionally runs without the parent abort signal (null)
         // so lifecycle has already been set; collect as warning, not re-throw.
         this.onError(phase.name, error, state, placementPath);
-        this.instrumentation.error(dagName, phase.name, error, state, placementPath);
         state.collectWarning({
           'code':      'POST_PHASE_FAILED',
           'message':   `post-phase '${phase.name}' threw: ${error.message}`,
@@ -892,10 +922,9 @@ implements DagonizerInterface<TState, TServices> {
           'timestamp': new Date().toISOString(),
         });
       }
-      this.instrumentation.phaseExit(dagName, 'post', phase.name, state, placementPath);
+      this.onPhaseExit(dagName, 'post', phase.name, state, placementPath);
     }
     this.onFlowEnd(dagName, state, result);
-    this.instrumentation.flowEnd(dagName, state, result);
 
     // Hand-off channel publish: only for non-embedded top-level runs that
     // completed at a bound terminal. The in-process (no-channels) path is
@@ -924,7 +953,7 @@ implements DagonizerInterface<TState, TServices> {
             'recoverable': false,
             'timestamp': new Date().toISOString(),
           });
-          this.instrumentation.error(dagName, terminalNodeName, error, state, placementPath);
+          this.onError(terminalNodeName, error, state, placementPath);
         }
       }
     }
@@ -1094,7 +1123,8 @@ implements DagonizerInterface<TState, TServices> {
         context,
       );
 
-      const outcome = await container.runDag(task);
+      const relay = this.buildObserverRelay(state);
+      const outcome = await container.runDag(task, relay);
 
       // Embedded DAG is cardinality-1 (not inbox-backed), so an infrastructure
       // failure does NOT throw — Law 3 requires host crash / transport loss to
@@ -1449,7 +1479,8 @@ implements DagonizerInterface<TState, TServices> {
             context,
           );
 
-          const outcome = await container.runDag(task);
+          const scatterRelay = this.buildObserverRelay(state);
+          const outcome = await container.runDag(task, scatterRelay);
 
           // Infrastructure/transport failure (worker died, channel lost): the
           // child DAG never ran to a terminal. Throw so spawnWorker takes the
@@ -1900,10 +1931,7 @@ implements DagonizerInterface<TState, TServices> {
       try {
         ContractRegistryValidator.validate(
           contracts,
-          new DispatcherWarningEmitter(
-            (msg) => { this.onContractWarning(msg); },
-            (msg) => { this.instrumentation.contractWarning(msg); },
-          ),
+          new DispatcherWarningEmitter((msg) => { this.onContractWarning(msg); }),
           { 'entrypointName': dag.entrypoint },
         );
       } catch (err) {
@@ -1924,7 +1952,6 @@ implements DagonizerInterface<TState, TServices> {
       if (containerRole !== undefined && this.resolveContainer(containerRole) === null) {
         const msg = `DAG '${dag.name}' placement '${placement.name}' declares container role '${containerRole}' which is not bound; resolving to in-process`;
         this.onContractWarning(msg);
-        this.instrumentation.contractWarning(msg);
       }
     }
   }

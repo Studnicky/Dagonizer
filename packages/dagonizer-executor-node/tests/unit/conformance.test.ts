@@ -10,12 +10,9 @@
  * All backends use the ConformanceRegistry fixture at dist-test/tests/unit/fixtures/registry.js
  * as their registryModule so DagHost reconstructs the identical bundle.
  *
- * Law 6 instrumentation wiring: DagContainerBase relays forwarded instrumentation
- * messages through its own `this.instrumentation`. To reach the test's Instrumentation
- * instance, createDispatcher builds a FRESH container with the instrumentation passed in
- * as a constructor option each time it is called. The per-law container is destroyed in
- * the harness teardown hook. This is the same pattern used in the core W2 executor-
- * conformance.test.ts (LoopbackContainer per createDispatcherForLaw call).
+ * Law 6 observer relay wiring: DagConformance.laws() Law 6 uses a Dagonizer subclass
+ * built inside the law to observe hook events. The harness createDispatcher no longer
+ * needs to wire an Instrumentation instance.
  *
  * Law 8 (at-least-once under container failure):
  *   Real isolate death is exercised for ALL four backends. The mechanism is the
@@ -52,7 +49,7 @@ import { after, afterEach, describe, it } from 'node:test';
 
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '@noocodex/dagonizer';
 import type { DagonizerInterface, DispatcherBundle, NodeStateInterface, ScatterProgress } from '@noocodex/dagonizer';
-import type { DagContainerInterface, Instrumentation } from '@noocodex/dagonizer/contracts';
+import type { DagContainerInterface } from '@noocodex/dagonizer/contracts';
 import {
   ConformanceRegistry,
   ConformanceState,
@@ -160,17 +157,14 @@ interface Destroyable {
 
 // ---------------------------------------------------------------------------
 // ContainerFactory: typed factory signature for each backend.
-// Takes an optional instrumentation and returns a fresh container.
 // ---------------------------------------------------------------------------
 
-type ContainerFactory = (opts: { instrumentation?: Instrumentation }) => Destroyable & DagContainerInterface;
+type ContainerFactory = () => Destroyable & DagContainerInterface;
 
 // ---------------------------------------------------------------------------
 // buildHarness
 //
-// The harness creates a FRESH container per createDispatcher call so that
-// Law 6's instrumentation instance is carried into DagContainerBase, which
-// relays BridgeMessage instrumentation hooks through this.instrumentation.
+// The harness creates a FRESH container per createDispatcher call.
 // Each per-law container is tracked and destroyed in afterEach.
 // ---------------------------------------------------------------------------
 
@@ -179,8 +173,8 @@ function buildHarness(factory: ContainerFactory): DagConformanceHarnessInterface
   // Track containers created by factory so we can detect sentinel vs law-8 containers.
   const factoryCreated = new Set<DagContainerInterface>();
 
-  function makeContainer(opts: { instrumentation?: Instrumentation }): Destroyable & DagContainerInterface {
-    const c = factory(opts);
+  function makeContainer(): Destroyable & DagContainerInterface {
+    const c = factory();
     factoryCreated.add(c);
     perLaw.push(c);
     return c;
@@ -190,27 +184,22 @@ function buildHarness(factory: ContainerFactory): DagConformanceHarnessInterface
     createDispatcher(
       bundle: DispatcherBundle<NodeStateInterface, undefined>,
       passedContainers: Readonly<Record<string, DagContainerInterface>>,
-      instrumentation?: Instrumentation,
     ): DagonizerInterface<NodeStateInterface, undefined> {
       // Use the passed container only if it was NOT created by this harness's
       // factory (Law 8 provides KillAfterOneContainer / fresh container from
-      // outside the factory). For all other laws, build a fresh factory
-      // container so the instrumentation instance is wired in (Law 6 needs this).
+      // outside the factory). For all other laws, build a fresh factory container.
       const passedContainer = passedContainers[CONFORMANCE_CONTAINER_ROLE];
       let container: DagContainerInterface;
       if (passedContainer !== undefined && !factoryCreated.has(passedContainer)) {
         // Law 8: use the caller-supplied container directly.
         container = passedContainer;
       } else {
-        // Laws 1–7, 9: build a fresh container with the law's instrumentation.
-        container = makeContainer(instrumentation !== undefined ? { 'instrumentation': instrumentation } : {});
+        // Laws 1–7, 9: build a fresh container.
+        container = makeContainer();
       }
 
       const containers = { [CONFORMANCE_CONTAINER_ROLE]: container } as Readonly<Record<string, DagContainerInterface>>;
-      const opts = instrumentation !== undefined
-        ? { 'containers': containers, 'instrumentation': instrumentation }
-        : { 'containers': containers };
-      const dispatcher = new Dagonizer<NodeStateInterface, undefined>(opts);
+      const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ 'containers': containers });
       dispatcher.registerBundle(bundle);
       return dispatcher as unknown as DagonizerInterface<NodeStateInterface, undefined>;
     },
@@ -231,9 +220,12 @@ function buildHarness(factory: ContainerFactory): DagConformanceHarnessInterface
 
     'containerRole': CONFORMANCE_CONTAINER_ROLE,
 
-    // Sentinel container: used only by laws that bypass createDispatcher.
-    // The suite's laws all go through createDispatcher; this is a no-op stub.
-    'container': makeContainer({}),
+    // Sentinel container: used by Law 6 which bypasses createDispatcher and
+    // wires its own RecordingDispatcher. Created lazily per teardown cycle so
+    // it is never destroyed before the law that uses it runs.
+    get 'container'(): Destroyable & DagContainerInterface {
+      return makeContainer();
+    },
 
     async teardown(): Promise<void> {
       for (const c of perLaw.splice(0)) {
@@ -250,13 +242,12 @@ function buildHarness(factory: ContainerFactory): DagConformanceHarnessInterface
 void describe('DAG Container Conformance — WorkerThreadContainer (Laws 1–9)', () => {
   const allContainers: Destroyable[] = [];
 
-  const factory: ContainerFactory = (opts) => {
+  const factory: ContainerFactory = () => {
     const c = new WorkerThreadContainer({
       'registryModule': registryUrl(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/workerEntry.js', import.meta.url),
-      ...(opts.instrumentation !== undefined ? { 'instrumentation': opts.instrumentation } : {}),
     });
     allContainers.push(c);
     return c;
@@ -291,10 +282,17 @@ void describe('DAG Container Conformance — WorkerThreadContainer (Laws 1–9)'
     return { failingContainer, freshContainer };
   };
 
-  const harness = {
-    ...buildHarness(factory),
-    interruptMidScatter,
-  };
+  // Use Object.defineProperties to preserve the `container` getter from buildHarness.
+  // Plain spread `{ ...buildHarness(factory) }` evaluates the getter once and copies
+  // the value — the sentinel container becomes the same destroyed instance for all laws.
+  const baseHarness = buildHarness(factory);
+  const harness = Object.defineProperties(
+    Object.create(null) as DagConformanceHarnessInterface & { 'interruptMidScatter': typeof interruptMidScatter },
+    {
+      ...Object.getOwnPropertyDescriptors(baseHarness),
+      'interruptMidScatter': { 'value': interruptMidScatter, 'writable': true, 'enumerable': true, 'configurable': true },
+    },
+  );
 
   afterEach(async () => {
     await harness.teardown();
@@ -419,13 +417,12 @@ void describe('WorkerThreadContainer — silent worker death (Law 4 backstop + L
 void describe('DAG Container Conformance — ForkContainer (Laws 1–9 including Law 8)', () => {
   const allContainers: Destroyable[] = [];
 
-  const factory: ContainerFactory = (opts) => {
+  const factory: ContainerFactory = () => {
     const c = new ForkContainer({
       'registryModule': registryUrl(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/forkEntry.js', import.meta.url),
-      ...(opts.instrumentation !== undefined ? { 'instrumentation': opts.instrumentation } : {}),
     });
     allContainers.push(c);
     return c;
@@ -457,10 +454,17 @@ void describe('DAG Container Conformance — ForkContainer (Laws 1–9 including
     return { failingContainer, freshContainer };
   };
 
-  const harness = {
-    ...buildHarness(factory),
-    interruptMidScatter,
-  };
+  // Use Object.defineProperties to preserve the `container` getter from buildHarness.
+  // Plain spread `{ ...buildHarness(factory) }` evaluates the getter once and copies
+  // the value — the sentinel container becomes the same destroyed instance for all laws.
+  const baseHarness = buildHarness(factory);
+  const harness = Object.defineProperties(
+    Object.create(null) as DagConformanceHarnessInterface & { 'interruptMidScatter': typeof interruptMidScatter },
+    {
+      ...Object.getOwnPropertyDescriptors(baseHarness),
+      'interruptMidScatter': { 'value': interruptMidScatter, 'writable': true, 'enumerable': true, 'configurable': true },
+    },
+  );
 
   afterEach(async () => {
     await harness.teardown();
@@ -484,13 +488,12 @@ void describe('DAG Container Conformance — ForkContainer (Laws 1–9 including
 void describe('DAG Container Conformance — SpawnContainer (Laws 1–9 including Law 8)', () => {
   const allContainers: Destroyable[] = [];
 
-  const factory: ContainerFactory = (opts) => {
+  const factory: ContainerFactory = () => {
     const c = new SpawnContainer({
       'registryModule': registryUrl(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/spawnEntry.js', import.meta.url),
-      ...(opts.instrumentation !== undefined ? { 'instrumentation': opts.instrumentation } : {}),
     });
     allContainers.push(c);
     return c;
@@ -522,10 +525,17 @@ void describe('DAG Container Conformance — SpawnContainer (Laws 1–9 includin
     return { failingContainer, freshContainer };
   };
 
-  const harness = {
-    ...buildHarness(factory),
-    interruptMidScatter,
-  };
+  // Use Object.defineProperties to preserve the `container` getter from buildHarness.
+  // Plain spread `{ ...buildHarness(factory) }` evaluates the getter once and copies
+  // the value — the sentinel container becomes the same destroyed instance for all laws.
+  const baseHarness = buildHarness(factory);
+  const harness = Object.defineProperties(
+    Object.create(null) as DagConformanceHarnessInterface & { 'interruptMidScatter': typeof interruptMidScatter },
+    {
+      ...Object.getOwnPropertyDescriptors(baseHarness),
+      'interruptMidScatter': { 'value': interruptMidScatter, 'writable': true, 'enumerable': true, 'configurable': true },
+    },
+  );
 
   afterEach(async () => {
     await harness.teardown();
@@ -561,13 +571,12 @@ void describe('DAG Container Conformance — SpawnContainer (Laws 1–9 includin
 void describe('DAG Container Conformance — ClusterContainer (Laws 1–9 including Law 8, single instance)', () => {
   const allContainers: Destroyable[] = [];
 
-  const factory: ContainerFactory = (opts) => {
+  const factory: ContainerFactory = () => {
     const c = new ClusterContainer({
       'registryModule': registryUrl(),
       'registryVersion': CONFORMANCE_REGISTRY_VERSION,
       'poolSize': 1,
       'entryUrl': new URL('../../src/forkEntry.js', import.meta.url),
-      ...(opts.instrumentation !== undefined ? { 'instrumentation': opts.instrumentation } : {}),
     });
     allContainers.push(c);
     return c;
@@ -600,10 +609,17 @@ void describe('DAG Container Conformance — ClusterContainer (Laws 1–9 includ
     return { failingContainer, freshContainer };
   };
 
-  const harness = {
-    ...buildHarness(factory),
-    interruptMidScatter,
-  };
+  // Use Object.defineProperties to preserve the `container` getter from buildHarness.
+  // Plain spread `{ ...buildHarness(factory) }` evaluates the getter once and copies
+  // the value — the sentinel container becomes the same destroyed instance for all laws.
+  const baseHarness = buildHarness(factory);
+  const harness = Object.defineProperties(
+    Object.create(null) as DagConformanceHarnessInterface & { 'interruptMidScatter': typeof interruptMidScatter },
+    {
+      ...Object.getOwnPropertyDescriptors(baseHarness),
+      'interruptMidScatter': { 'value': interruptMidScatter, 'writable': true, 'enumerable': true, 'configurable': true },
+    },
+  );
 
   afterEach(async () => {
     await harness.teardown();

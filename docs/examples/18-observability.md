@@ -1,24 +1,20 @@
 ---
 title: 'Example 18: Observability'
-description: 'Two observability surfaces side-by-side: subclass hooks (onFlowStart, onFlowEnd, onNodeStart, onNodeEnd, onError) and the NoopInstrumentation plugin. Both coexist on the same dispatcher instance.'
+description: 'Subclass hooks — the single observability surface. Override onFlowStart, onFlowEnd, onNodeStart, onNodeEnd, onError, onPhaseEnter, onPhaseExit, and onContractWarning on a Dagonizer subclass.'
 seeAlso:
   - text: 'Observability guide'
     link: '../guide/observability'
-    description: 'full hook reference, instrumentation plugin API, and metrics patterns'
+    description: 'full hook reference and metrics patterns'
   - text: 'Example 20: Streaming'
     link: './20-streaming'
     description: 'async-iterable execution API: per-node progress events'
-  - text: 'Reference: Contracts, Instrumentation'
-    link: '../reference/contracts'
+  - text: 'Reference: Dagonizer'
+    link: '../reference/dagonizer'
 ---
 
 # Example 18: Observability
 
-Two ways to observe a `Dagonizer` run, shown side-by-side on the same two-node pipeline (`validate → transform`):
-
-**(a) Subclass hooks.** Extend `Dagonizer` and override `onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`. The class owns the observer; no extra objects are required.
-
-**(b) Instrumentation plugin.** Extend `NoopInstrumentation` and override only the hooks you need. Pass the instance via the `instrumentation:` constructor option. The dispatcher fires both the subclass hooks and the instrumentation hooks at every boundary — the two surfaces coexist.
+Subclass hooks are the sole observability surface. Extend `Dagonizer` and override the protected hook methods — no extra objects, no plugin contract.
 
 ## Code
 
@@ -26,10 +22,10 @@ Two ways to observe a `Dagonizer` run, shown side-by-side on the same two-node p
 
 ## What it demonstrates
 
-- **Subclass hook surface.** Override the protected lifecycle methods on `Dagonizer`. The five hooks receive the same arguments regardless of which execution path fired them: `onFlowStart(dagName, state)`, `onFlowEnd(dagName, state, result)`, `onNodeStart(dagName, nodeName, state)`, `onNodeEnd(dagName, nodeName, state, result)`, `onError(dagName, nodeName, state, error)`.
-- **`NoopInstrumentation` plugin.** Import from `@noocodex/dagonizer`. Extend it and override only the hooks relevant to your observer. The base class provides empty implementations for all hooks, so you only write what you need.
-- **`instrumentation` option.** Pass a `NoopInstrumentation` subclass instance as `instrumentation:` in the `Dagonizer` constructor. The dispatcher calls both the subclass hooks and the instrumentation hooks at each boundary — they are additive, not exclusive.
-- **Coexistence.** Both surfaces receive every event. The subclass hook runs first; the instrumentation hook runs after. Use the subclass for the primary observer that owns the dispatcher; use `instrumentation` for a secondary observer (metrics, tracing, logging middleware) injected from outside.
+- **Subclass hook surface.** Override the protected lifecycle methods on `Dagonizer`. All eight hooks receive strongly-typed state and placement context: `onFlowStart(dagName, state)`, `onFlowEnd(dagName, state, result)`, `onNodeStart(nodeName, state, placementPath)`, `onNodeEnd(nodeName, output, state, placementPath)`, `onError(nodeName, error, state, placementPath)`, `onPhaseEnter(dagName, phase, placementName, state, placementPath)`, `onPhaseExit(dagName, phase, placementName, state, placementPath)`, `onContractWarning(message)`.
+- **`placementPath` ancestry.** Empty for top-level nodes; carries the ordered list of parent embedded-DAG placement names for nested nodes. Use `[...placementPath, nodeName].join('/')` for a fully-qualified node id.
+- **Worker/container transparency.** For nodes running in isolates (worker threads, child processes), `WorkerObserver` bridges events through an `ObserverRelay` back to the parent dispatcher's protected hooks. The `placementPath` starts with the outer placement name so inner nodes are identifiable even when they share names across placements.
+- **Multi-observer composition.** To combine logging, tracing, and metrics, write each concern into the subclass body. No multiplexer is required.
 
 ## Run
 
