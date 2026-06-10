@@ -103,10 +103,26 @@ export class WellFormedValidator {
     }
 
     // Nodes with outputs: apply target-resolution rules.
-    if (type === 'SingleNode' || type === 'ScatterNode' || type === 'EmbeddedDAGNode') {
-      const outputs = node.outputs as Record<string, string>;
-
-      for (const [route, target] of Object.entries(outputs)) {
+    // Each branch narrows `node` to the concrete placement type so `outputs`
+    // is typed as `Record<string, string>` without a cast.
+    if (type === 'SingleNode') {
+      for (const [route, target] of Object.entries(node.outputs)) {
+        if (!placementNames.has(target)) {
+          violations.push(
+            `Placement '${node.name}': route '${route}' targets '${target}', which does not exist in this DAG's placements.`,
+          );
+        }
+      }
+    } else if (type === 'ScatterNode') {
+      for (const [route, target] of Object.entries(node.outputs)) {
+        if (!placementNames.has(target)) {
+          violations.push(
+            `Placement '${node.name}': route '${route}' targets '${target}', which does not exist in this DAG's placements.`,
+          );
+        }
+      }
+    } else if (type === 'EmbeddedDAGNode') {
+      for (const [route, target] of Object.entries(node.outputs)) {
         if (!placementNames.has(target)) {
           violations.push(
             `Placement '${node.name}': route '${route}' targets '${target}', which does not exist in this DAG's placements.`,

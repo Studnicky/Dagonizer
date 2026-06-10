@@ -6,6 +6,7 @@
 
 import {
   DAGBuilder,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
 import type { NodeInterface } from '@noocodex/dagonizer/contracts';
@@ -27,7 +28,7 @@ export const ingest: NodeInterface<PipelineState, 'done'> = {
   "outputs": ['done'],
   async execute(state) {
     state.items.push('raw-data');
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -36,7 +37,7 @@ export const enrich: NodeInterface<PipelineState, 'done'> = {
   "outputs": ['done'],
   async execute(state) {
     state.items.push('enriched-data');
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -45,7 +46,7 @@ export const persist: NodeInterface<PipelineState, 'done'> = {
   "outputs": ['done'],
   async execute(state) {
     state.items.push('persisted');
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 

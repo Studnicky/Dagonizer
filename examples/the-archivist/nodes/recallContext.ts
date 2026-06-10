@@ -38,6 +38,8 @@ import type { RecalledContext } from '../ArchivistState.ts';
 import type { Candidate } from '../entities/Book.ts';
 import { BOOK_NS, GRAPH_MEMORY, MemoryStore, STATE_GRAPH_PREFIX, stateGraphIri } from '../memory/MemoryStore.ts';
 
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
+
 import type { ArchivistNode } from './ArchivistNode.ts';
 import { jaccard, tokenise } from './textUtils.ts';
 
@@ -309,6 +311,6 @@ export const recallContext: ArchivistNode<'recalled'> = {
       context.services.logger.info('recall-context: no prior context found');
     }
 
-    return { 'output': 'recalled' };
+    return NodeOutputBuilder.of('recalled');
   },
 };

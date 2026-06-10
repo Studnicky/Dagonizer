@@ -24,10 +24,10 @@ import { fileURLToPath } from 'node:url';
 import { DagContainerBase } from '../../src/container/DagContainerBase.js';
 import type { DagContainerOptions, PoolEntry } from '../../src/container/DagContainerBase.js';
 import { DagHost } from '../../src/container/DagHost.js';
+import type { DagOutcomeInterface } from '../../src/container/DagOutcome.js';
+import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import { DAG_CONTAINER_TRANSPORT } from '../../src/container/TransportErrorCode.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
-import type { DagOutcomeInterface } from '../../src/contracts/DagOutcomeInterface.js';
-import type { DagTaskInterface } from '../../src/contracts/DagTaskInterface.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
 import type { DispatcherBundle, ScatterProgress } from '../../src/Dagonizer.js';
@@ -286,6 +286,7 @@ class ReturnTransportErrorAfterOneContainer implements DagContainerInterface<Nod
     // Subsequent items: RETURN a transport-error outcome (do NOT throw).
     const error: NodeError = {
       'code': DAG_CONTAINER_TRANSPORT,
+      'context': {},
       'message': `simulated transport loss for request ${task.correlationId}`,
       'operation': 'runDag',
       'recoverable': false,

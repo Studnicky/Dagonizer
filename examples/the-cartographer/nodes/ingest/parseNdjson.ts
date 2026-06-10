@@ -12,7 +12,7 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region parse-ndjson-node
 export const parseNdjson: NodeInterface<CartographerState, 'map-fields' | 'invalid', CartographerServices> = {
@@ -35,10 +35,10 @@ export const parseNdjson: NodeInterface<CartographerState, 'map-fields' | 'inval
       }
     }
     if (records.length === 0) {
-      return { 'output': 'invalid' };
+      return NodeOutputBuilder.of('invalid');
     }
     state.parsedRecords = records;
-    return { 'output': 'map-fields' };
+    return NodeOutputBuilder.of('map-fields');
   },
 };
 // #endregion parse-ndjson-node

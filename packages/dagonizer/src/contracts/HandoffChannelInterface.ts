@@ -1,11 +1,16 @@
 /**
- * ChannelInterface: adapter contract for publishing completed-DAG hand-off
- * envelopes to a downstream transport.
+ * HandoffChannelInterface: adapter contract for publishing completed-DAG
+ * hand-off envelopes to a downstream transport.
  *
- * Implementations provide `publish(handoff)` to deliver the envelope to a
- * queue, message bus, or loopback store. Channels MUST NOT throw out of the
- * dispatcher; transport errors are the channel's responsibility to collect
- * or log internally.
+ * Distinct from `MessageChannelInterface` (the duplex bridge used for
+ * parent ↔ DagHost worker communication). `HandoffChannelInterface` is
+ * the one-way egress surface that fires after a top-level flow completes
+ * at a bound terminal and delivers the serialised state to a queue,
+ * message bus, or loopback store.
+ *
+ * Implementations provide `publish(handoff)` to deliver the envelope.
+ * Channels MUST NOT throw out of the dispatcher; transport errors are
+ * the channel's responsibility to collect or log internally.
  *
  * `destroy()` is optional. Implement it to release pool resources (open
  * connections, worker threads, etc.) when the dispatcher shuts down.
@@ -13,7 +18,7 @@
 
 import type { DAGHandoff } from '../entities/handoff/DAGHandoff.js';
 
-export interface ChannelInterface {
+export interface HandoffChannelInterface {
   /**
    * Publish a completed-DAG hand-off envelope to the underlying transport.
    * Must not throw out of the dispatcher; any internal transport error is

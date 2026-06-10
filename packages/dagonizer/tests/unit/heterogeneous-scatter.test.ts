@@ -69,23 +69,23 @@ const dispatchNode: NodeInterface<HeterogeneousState, 'success' | 'empty'> = {
     switch (provider) {
       case 'alpha': {
         state.providerResult = 'result-from-alpha';
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       }
       case 'beta': {
         state.providerResult = 'result-from-beta';
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       }
       case 'gamma': {
         state.providerResult = 'result-from-gamma';
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       }
       case 'delta': {
         // delta returns empty — no results from this provider.
         state.failMessages = [...state.failMessages, 'delta: no results'];
-        return { 'output': 'empty' };
+        return { 'errors': [], 'output': 'empty' };
       }
       default: {
-        return { 'output': 'empty' };
+        return { 'errors': [], 'output': 'empty' };
       }
     }
   },
@@ -179,7 +179,7 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
       'name': 'empty-dispatch',
       'outputs': ['success', 'empty'],
       async execute() {
-        return { 'output': 'empty' };
+        return { 'errors': [], 'output': 'empty' };
       },
     };
     dispatcher.registerNode(emptyDispatch);

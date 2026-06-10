@@ -4,6 +4,7 @@
  */
 
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
 
 import { FlowNode } from './FlowNode.js';
 
@@ -24,7 +25,7 @@ export abstract class ReduceNode<
     const items = this.readItems(state);
     const result = this.reduce(items);
     this.writeBack(state, result);
-    return { 'output': this.successPort() };
+    return NodeOutputBuilder.of(this.successPort());
   }
 }
 

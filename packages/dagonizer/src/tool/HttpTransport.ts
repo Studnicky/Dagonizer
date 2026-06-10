@@ -22,6 +22,18 @@ export interface HttpRequestOptions {
   readonly timeoutMs?: number;
   /** Maximum retry attempts on transient errors. Defaults to 2 (3 total tries). */
   readonly maxRetries?: number;
+  /**
+   * Optional shape validator applied to the parsed JSON body before it is
+   * returned to the caller. When supplied, the validator is called with the
+   * raw parsed value; if it throws or returns `false`, `parseJson` rethrows
+   * as `ToolError(PARSE_ERROR)`. When absent, shape-validation is the
+   * caller's responsibility.
+   *
+   * Accepts any callable that either (a) narrows the value to `TResponse`
+   * and returns it, or (b) throws on invalid input. Compatible with
+   * `EntityValidator<T>.validate` from `@noocodex/dagonizer/validation`.
+   */
+  readonly validate?: (value: unknown) => unknown;
 }
 
 const DEFAULT_TIMEOUT_MS  = 30_000;
@@ -34,7 +46,7 @@ export class HttpTransport {
   /** GET → parsed JSON. Throws `ToolError` on failure. */
   static async getJson<TResponse>(url: string, options: HttpRequestOptions = {}): Promise<TResponse> {
     const response = await HttpTransport.request(url, { 'method': 'GET' }, options);
-    return HttpTransport.parseJson<TResponse>(response);
+    return HttpTransport.parseJson<TResponse>(response, options);
   }
 
   /** POST a JSON body → parsed JSON. Throws `ToolError` on failure. */
@@ -52,7 +64,7 @@ export class HttpTransport {
       },
       options,
     );
-    return HttpTransport.parseJson<TResponse>(response);
+    return HttpTransport.parseJson<TResponse>(response, options);
   }
 
   /**
@@ -119,12 +131,24 @@ export class HttpTransport {
     throw lastError ?? new ToolError(`request failed after ${String(maxRetries)} retries: ${url}`, { 'reason': 'UNKNOWN', 'retryable': false });
   }
 
-  private static async parseJson<TResponse>(response: Response): Promise<TResponse> {
+  private static async parseJson<TResponse>(response: Response, options: HttpRequestOptions = {}): Promise<TResponse> {
+    let parsed: unknown;
     try {
-      return await response.json() as TResponse;
+      parsed = await response.json();
     } catch (err) {
       throw new ToolError('failed to parse JSON response', { 'reason': 'PARSE_ERROR', 'retryable': false, 'cause': err });
     }
+    if (options.validate !== undefined) {
+      try {
+        return options.validate(parsed) as TResponse;
+      } catch (err) {
+        throw new ToolError(
+          `response body failed shape validation: ${err instanceof Error ? err.message : String(err)}`,
+          { 'reason': 'PARSE_ERROR', 'retryable': false, 'cause': err },
+        );
+      }
+    }
+    return parsed as TResponse;
   }
 
   private static classifyStatus(status: number): { reason: ToolErrorReason; retryable: boolean } {

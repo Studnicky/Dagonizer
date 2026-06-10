@@ -30,12 +30,12 @@ export type { DAGErrorInterface } from '../errors/DAGError.js';
 // Adapter contracts
 // ---------------------------------------------------------------------------
 
-export type { ChannelInterface } from '../contracts/ChannelInterface.js';
+export type { HandoffChannelInterface } from '../contracts/HandoffChannelInterface.js';
 export type { CheckpointStore } from '../contracts/CheckpointStore.js';
 export type { ClockProvider } from '../contracts/ClockProvider.js';
 export type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
-export type { DagOutcomeInterface } from '../contracts/DagOutcomeInterface.js';
-export type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
+export type { DagOutcomeInterface } from '../container/DagOutcome.js';
+export type { DagTaskInterface } from '../container/DagTask.js';
 export type { ErrorConstructorType } from '../contracts/ErrorConstructorType.js';
 export type { ExecuteOptionsInterface } from '../contracts/ExecuteOptionsInterface.js';
 export type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
@@ -54,6 +54,7 @@ export type { SystemInfoInterface } from '../contracts/SystemInfoInterface.js';
 // ---------------------------------------------------------------------------
 
 export type { NodeContextInterface } from '../entities/node/NodeContext.js';
+export { NodeErrorBuilder } from '../entities/node/NodeError.js';
 export type { NodeErrorInterface } from '../entities/node/NodeError.js';
 export { NodeOutputBuilder } from '../entities/node/NodeOutput.js';
 export type { NodeOutputInterface } from '../entities/node/NodeOutput.js';

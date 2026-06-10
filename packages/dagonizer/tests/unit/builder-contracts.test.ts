@@ -26,7 +26,7 @@ function makeNode(
   const base: NodeInterface<NodeStateBase, string> = {
     name,
     outputs,
-    async execute() { return { 'output': outputs[0] ?? 'success' }; },
+    async execute() { return { 'errors': [], 'output': outputs[0] ?? 'success' }; },
   };
   if (contract !== undefined) {
     return { ...base, contract };
@@ -107,18 +107,24 @@ void describe('DAGBuilder.build() contract validation', () => {
 void describe('DAGBuilder.fromNodes()', () => {
   void it('produces the same DAG as the equivalent DAGDeriver.derive({ nodes }) call', () => {
     const nodes: NodeInterface<NodeStateBase, string>[] = [
-      makeNode('fetch', ['success'], { 'hardRequired': ['url'],   'produces': ['raw'] }),
-      makeNode('parse', ['success'], { 'hardRequired': ['raw'],   'produces': ['record'] }),
+      makeNode('fetch', ['success'], { 'hardRequired': ['url'],    'produces': ['raw'] }),
+      makeNode('parse', ['success'], { 'hardRequired': ['raw'],    'produces': ['record'] }),
       makeNode('save',  ['success'], { 'hardRequired': ['record'], 'produces': ['saved'] }),
     ];
+    const annotations = {
+      'terminals': {
+        'save': [{ 'outcome': 'success', 'emit': { 'name': 'pipeline-end', 'outcome': 'completed' as const } }],
+      },
+    };
 
-    const fromBuilder = DAGBuilder.fromNodes('pipeline', '1.0', 'fetch', nodes);
+    const fromBuilder = DAGBuilder.fromNodes('pipeline', '1.0', 'fetch', nodes, { annotations });
 
     const fromDeriver = DAGDeriver.derive({
       'name': 'pipeline',
       'version': '1.0',
       'entrypoint': 'fetch',
       nodes,
+      annotations,
     });
 
     // Structural deep-equal: both should produce identical DAG documents.
@@ -142,8 +148,13 @@ void describe('DAGBuilder.fromNodes()', () => {
       // no contract; should be silently skipped
       makeNode('helper', ['success']),
     ];
+    const annotations = {
+      'terminals': {
+        'b': [{ 'outcome': 'success', 'emit': { 'name': 'skip-end', 'outcome': 'completed' as const } }],
+      },
+    };
 
-    const dag = DAGBuilder.fromNodes('skip-no-contract', '1', 'a', nodes);
+    const dag = DAGBuilder.fromNodes('skip-no-contract', '1', 'a', nodes, { annotations });
 
     const names = dag.nodes.map((n) => n.name);
     assert.ok(!names.includes('helper'), `'helper' should be skipped; got: ${JSON.stringify(names)}`);

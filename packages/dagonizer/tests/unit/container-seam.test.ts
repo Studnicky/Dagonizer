@@ -13,9 +13,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { DagOutcomeInterface } from '../../src/container/DagOutcome.js';
+import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
-import type { DagOutcomeInterface } from '../../src/contracts/DagOutcomeInterface.js';
-import type { DagTaskInterface } from '../../src/contracts/DagTaskInterface.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -55,14 +55,14 @@ const incrementNode: NodeInterface<CounterState, 'success'> = {
   'outputs': ['success'],
   async execute(state) {
     state.value += 10;
-    return { 'output': 'success' };
+    return { 'errors': [], 'output': 'success' };
   },
 };
 
 const terminalNode: NodeInterface<CounterState, 'completed'> = {
   'name': 'done-node',
   'outputs': ['completed'],
-  async execute() { return { 'output': 'completed' }; },
+  async execute() { return { 'errors': [], 'output': 'completed' }; },
 };
 
 // ---------------------------------------------------------------------------

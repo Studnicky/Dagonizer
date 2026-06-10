@@ -7,6 +7,7 @@
  */
 
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
 import type { TripleStore } from '@noocodex/dagonizer/patterns';
 
 import { GraphNode, type GraphServices } from './GraphNode.js';
@@ -25,6 +26,6 @@ export abstract class MemoryDigestNode<
   ): Promise<NodeOutputInterface<'success'>> {
     const digest = this.buildDigest(context.services.memory, state);
     this.applyDigest(state, digest);
-    return { 'output': this.successPort() };
+    return NodeOutputBuilder.of(this.successPort());
   }
 }

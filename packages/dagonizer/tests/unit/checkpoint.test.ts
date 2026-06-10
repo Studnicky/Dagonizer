@@ -34,7 +34,7 @@ void describe('NodeStateBase snapshot/restore', () => {
   void it('preserves metadata and warnings; errors are excluded; resets lifecycle to pending', () => {
     const s = new NodeStateBase();
     s.setMetadata('k', { 'nested': [1, 2] });
-    s.collectError({ 'code': 'E', 'message': 'm', 'operation': 'op',
+    s.collectError({ 'code': 'E', 'context': {}, 'message': 'm', 'operation': 'op',
       'recoverable': false, 'timestamp': '2026-05-13T00:00:00Z' });
     s.markRunning();
 
@@ -68,7 +68,7 @@ void describe('cursor on ExecutionResultInterface', () => {
     const op: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'op',
       'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     dispatcher.registerNode(op);
     dispatcher.registerDAG({
@@ -101,7 +101,7 @@ void describe('cursor on ExecutionResultInterface', () => {
         await new Promise<void>((_resolve, reject) => {
           context.signal.addEventListener('abort', () => { reject(context.signal.reason); }, { 'once': true });
         });
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(op);
@@ -143,7 +143,7 @@ void describe('Checkpoint round-trip', () => {
       async execute(state) {
         state.count++;
         state.log.push(`tick:${state.count}`);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(inc);
@@ -201,7 +201,7 @@ void describe('Checkpoint round-trip', () => {
     const op: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'op',
       'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     dispatcher.registerNode(op);
     dispatcher.registerDAG({

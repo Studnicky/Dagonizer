@@ -7,6 +7,7 @@
 import {
   BackoffStrategy,
   DAG_CONTEXT,
+  NodeOutputBuilder,
   NodeStateBase,
   RetryPolicy,
 } from '@noocodex/dagonizer';
@@ -65,9 +66,9 @@ export const fetchNode: NodeInterface<FetchState, 'success' | 'error'> = {
       // maxAttempts is reached. The options bag passes context.signal so
       // an abort cancels the wait between retries immediately.
       state.result = await policy.run(() => downstream.call(), { signal: context.signal });
-      return { 'output': 'success' };
+      return NodeOutputBuilder.of('success');
     } catch {
-      return { 'output': 'error' };
+      return NodeOutputBuilder.of('error');
     }
   },
 };

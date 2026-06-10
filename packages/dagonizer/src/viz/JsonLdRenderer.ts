@@ -135,13 +135,13 @@ export class JsonLdRenderer {
    */
   private static renderRoutes(
     dagName: string,
-    outputs: Readonly<Record<string, string | null>>,
-  ): readonly { readonly 'dag:output': string; readonly 'dag:target': string | null }[] {
-    const routes: { readonly 'dag:output': string; readonly 'dag:target': string | null }[] = [];
+    outputs: Readonly<Record<string, string>>,
+  ): readonly { readonly 'dag:output': string; readonly 'dag:target': string }[] {
+    const routes: { readonly 'dag:output': string; readonly 'dag:target': string }[] = [];
     for (const [output, target] of Object.entries(outputs)) {
       routes.push({
         'dag:output': output,
-        'dag:target': target === null ? null : JsonLdRenderer.placementIri(dagName, target),
+        'dag:target': JsonLdRenderer.placementIri(dagName, target),
       });
     }
     return routes;

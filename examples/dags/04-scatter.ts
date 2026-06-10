@@ -6,6 +6,7 @@
 
 import {
   DAG_CONTEXT,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
@@ -28,7 +29,7 @@ export const probe: NodeInterface<ScrapeState, 'ok' | 'fail'> = {
     // Each item is written to state under the itemKey ('url') before execute.
     const url = state.getMetadata<string>('url') ?? '';
     // Fake probe: even-length URLs succeed, odd-length fail.
-    return { "output": url.length % 2 === 0 ? 'ok' : 'fail' };
+    return NodeOutputBuilder.of(url.length % 2 === 0 ? 'ok' : 'fail');
   },
 };
 // #endregion worker-node

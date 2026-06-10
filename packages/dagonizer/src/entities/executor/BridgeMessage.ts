@@ -26,7 +26,7 @@ import type { FromSchema } from 'json-schema-to-ts';
 
 const InlineNodeErrorShape = {
   'type': 'object',
-  'required': ['code', 'message', 'operation', 'recoverable', 'timestamp'],
+  'required': ['code', 'context', 'message', 'operation', 'recoverable', 'timestamp'],
   'properties': {
     'code':        { 'type': 'string' },
     'context':     { 'type': 'object' },

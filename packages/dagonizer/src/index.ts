@@ -65,6 +65,7 @@ export type { EntityValidator } from './validation/index.js';
 
 export {
   Placement,
+  NodeErrorBuilder,
   NodeOutputBuilder,
   ScatterNodeSchema,
   EmbeddedDAGNodeSchema,
@@ -223,10 +224,10 @@ export type { NodeStateInterface } from './NodeStateBase.js';
 // CONTRACTS (adapter-pattern interfaces)
 // =============================================================================
 
-export type { ChannelInterface } from './contracts/ChannelInterface.js';
+export type { HandoffChannelInterface } from './contracts/HandoffChannelInterface.js';
 export type { DagContainerInterface } from './contracts/DagContainerInterface.js';
-export type { DagOutcomeInterface } from './contracts/DagOutcomeInterface.js';
-export type { DagTaskInterface } from './contracts/DagTaskInterface.js';
+export type { DagOutcomeInterface } from './container/DagOutcome.js';
+export type { DagTaskInterface } from './container/DagTask.js';
 export type { ExecuteOptionsInterface } from './contracts/ExecuteOptionsInterface.js';
 export type { Chainable, NodeInterface } from './contracts/NodeInterface.js';
 export type { OperationContractFragment } from './contracts/OperationContractFragment.js';

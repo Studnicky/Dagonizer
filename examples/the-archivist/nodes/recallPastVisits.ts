@@ -12,6 +12,8 @@
 
 import { MemoryStore, STATE_GRAPH_PREFIX, stateGraphIri } from '../memory/MemoryStore.ts';
 
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
+
 import type { ArchivistNode } from './ArchivistNode.ts';
 
 const dagVisitorQuery = MemoryStore.dagIri('visitorQuery');
@@ -85,6 +87,6 @@ export const recallPastVisits: ArchivistNode<'recalled'> = {
         `recall: ${String(recentQueries.length)} prior queries, ${String(titles.size)} prior titles (across ${String(recentQueries.length)} state graphs)`,
       );
     }
-    return { 'output': 'recalled' };
+    return NodeOutputBuilder.of('recalled');
   },
 };

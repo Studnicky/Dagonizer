@@ -24,7 +24,7 @@ import { NodeStateBase } from '../../src/NodeStateBase.js';
 const passNode: NodeInterface<NodeStateBase> = {
   'name': 'pass',
   'outputs': ['ok'],
-  async execute() { return { 'output': 'ok' }; },
+  async execute() { return { 'errors': [], 'output': 'ok' }; },
 };
 
 void describe('scatter/dag-body terminal-outcome propagation', () => {

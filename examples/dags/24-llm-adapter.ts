@@ -9,7 +9,7 @@
  * calls the selected adapter and routes on the response kind.
  */
 
-import { DAG_CONTEXT, NodeStateBase } from '@noocodex/dagonizer';
+import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
 import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 import type { LlmAdapter } from '@noocodex/dagonizer/adapter';
@@ -45,14 +45,14 @@ export const chat: NodeInterface<ChatAdapterState, 'text' | 'tools'> = {
     state.finishReason = response.finishReason;
     if (response.message.kind === 'text') {
       state.response = response.message.content;
-      return { 'output': 'text' };
+      return NodeOutputBuilder.of('text');
     }
     // tools or mixed: surface the first tool call name as the response text
     const calls = response.message.kind === 'mixed'
       ? response.message.toolCalls
       : response.message.toolCalls;
     state.response = `tool_call:${calls[0]?.name ?? 'unknown'}`;
-    return { 'output': 'tools' };
+    return NodeOutputBuilder.of('tools');
   },
 };
 
@@ -62,7 +62,7 @@ export const handleText: NodeInterface<ChatAdapterState, 'done'> = {
   async execute(state) {
     // Slot for downstream text-processing logic; identity pass-through here
     process.stdout.write(`  [handleText] response="${state.response}"\n`);
-    return { 'output': 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -71,7 +71,7 @@ export const handleTools: NodeInterface<ChatAdapterState, 'done'> = {
   'outputs': ['done'],
   async execute(state) {
     process.stdout.write(`  [handleTools] tool dispatched: ${state.response}\n`);
-    return { 'output': 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 

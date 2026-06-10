@@ -133,7 +133,7 @@ void describe('TST-17: DAGHandoff stateSnapshotRef publishing path', () => {
     const noop: NodeInterface<NodeStateBase, 'done'> = {
       'name': 'noop',
       'outputs': ['done'],
-      async execute() { return { 'output': 'done' }; },
+      async execute() { return { 'errors': [], 'output': 'done' }; },
     };
 
     const dag: DAG = {
@@ -211,7 +211,7 @@ void describe('TST-18: registerBundle unbound-role warning idempotency', () => {
     const noop: NodeInterface<NodeStateBase, 'done'> = {
       'name': 'noop-bundle',
       'outputs': ['done'],
-      async execute() { return { 'output': 'done' }; },
+      async execute() { return { 'errors': [], 'output': 'done' }; },
     };
 
     // DAG with a scatter placement declaring an unbound container role.
@@ -266,7 +266,7 @@ void describe('TST-18: registerBundle unbound-role warning idempotency', () => {
     const noop: NodeInterface<NodeStateBase, 'done'> = {
       'name': 'noop-unbound',
       'outputs': ['done'],
-      async execute() { return { 'output': 'done' }; },
+      async execute() { return { 'errors': [], 'output': 'done' }; },
     };
     dispatcher.registerNode(noop);
 
@@ -496,7 +496,7 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
             }, { 'once': true });
           });
         }
-        return { 'output': 'done' };
+        return { 'errors': [], 'output': 'done' };
       },
     };
 

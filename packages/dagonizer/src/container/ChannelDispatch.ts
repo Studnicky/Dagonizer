@@ -247,10 +247,14 @@ export class ChannelDispatch {
             relay.onError(msg.nodeName, new Error(msg.message), path);
             break;
           case 'phaseEnter':
-            relay.onPhaseEnter(msg.dagName, msg.phase as 'pre' | 'post', msg.nodeName, path);
+            if (msg.phase === 'pre' || msg.phase === 'post') {
+              relay.onPhaseEnter(msg.dagName, msg.phase, msg.nodeName, path);
+            }
             break;
           case 'phaseExit':
-            relay.onPhaseExit(msg.dagName, msg.phase as 'pre' | 'post', msg.nodeName, path);
+            if (msg.phase === 'pre' || msg.phase === 'post') {
+              relay.onPhaseExit(msg.dagName, msg.phase, msg.nodeName, path);
+            }
             break;
           case 'contractWarning':
             relay.onContractWarning(msg.message);

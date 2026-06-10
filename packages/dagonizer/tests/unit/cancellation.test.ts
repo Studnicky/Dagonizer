@@ -17,7 +17,7 @@ void describe('Dagonizer AbortSignal cancellation', () => {
           const t = setTimeout(resolve, 1000);
           context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { "once": true });
         });
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(slowNode);
@@ -52,7 +52,7 @@ void describe('Dagonizer AbortSignal cancellation', () => {
     const firstNode: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'first',
       'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     const secondNode: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'second',
@@ -61,13 +61,13 @@ void describe('Dagonizer AbortSignal cancellation', () => {
         // Trip the controller before this node returns so the next iteration
         // observes `signal.aborted` BEFORE running the downstream stage.
         controller.abort(new Error('mid-flow cancel'));
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     const thirdNode: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'third',
       'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     dispatcher.registerNode(firstNode);
     dispatcher.registerNode(secondNode);
@@ -109,7 +109,7 @@ void describe('Dagonizer AbortSignal cancellation', () => {
           const t = setTimeout(resolve, 5000);
           context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { "once": true });
         });
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(slowNode);
@@ -145,7 +145,7 @@ void describe('Dagonizer AbortSignal cancellation', () => {
       async execute(_state, context) {
         seen.dag = context.dagName;
         seen.node = context.nodeName;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(op);
@@ -194,7 +194,7 @@ void describe('Dagonizer extension hooks', () => {
     const op: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'op',
       'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     dispatcher.registerNode(op);
     dispatcher.registerDAG({

@@ -14,6 +14,7 @@
  * Modeled directly on `BaseAdapter` in `src/adapter/BaseAdapter.ts`.
  */
 
+import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
 import type { StoreSnapshot, StoreSnapshotEntry } from '../contracts/Snapshottable.js';
 import type { Store } from '../contracts/Store.js';
 import type { JsonValue } from '../entities/json.js';
@@ -85,7 +86,7 @@ export abstract class BaseStore implements Store {
     return next;
   }
 
-  async snapshot(_signal?: AbortSignal): Promise<StoreSnapshot> {
+  async snapshot(_options?: AbortableOptionsInterface): Promise<StoreSnapshot> {
     const entries = await this.performSnapshotEntries();
     return {
       'version': this.snapshotVersion,
@@ -94,7 +95,7 @@ export abstract class BaseStore implements Store {
     };
   }
 
-  async restore(incoming: StoreSnapshot, _signal?: AbortSignal): Promise<void> {
+  async restore(incoming: StoreSnapshot, _options?: AbortableOptionsInterface): Promise<void> {
     if (incoming.type !== this.snapshotType || incoming.version !== this.snapshotVersion) {
       throw new StoreError(
         `incompatible snapshot: expected ${this.snapshotType} v${String(this.snapshotVersion)}, ` +

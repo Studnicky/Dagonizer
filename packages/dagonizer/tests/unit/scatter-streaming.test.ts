@@ -101,7 +101,7 @@ void describe('Scatter: array source backward compatibility', () => {
     let calls = 0;
     const worker: NodeInterface<StreamState, 'success'> = {
       'name': 'worker', 'outputs': ['success'],
-      async execute() { calls++; return { 'output': 'success' }; },
+      async execute() { calls++; return { 'errors': [], 'output': 'success' }; },
     };
     dispatcher.registerNode(worker);
     dispatcher.registerDAG(makeScatterDag('arr-compat',
@@ -129,7 +129,7 @@ void describe('Scatter: array source backward compatibility', () => {
         // Yield to allow other workers to start before decrementing.
         await new Promise<void>((r) => setImmediate(r));
         current--;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -152,7 +152,7 @@ void describe('Scatter: AsyncIterable source', () => {
     const dispatcher = new Dagonizer<StreamState>();
     const worker: NodeInterface<StreamState, 'success'> = {
       'name': 'worker', 'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     dispatcher.registerNode(worker);
     dispatcher.registerDAG(makeScatterDag('async-source',
@@ -199,7 +199,7 @@ void describe('Scatter: AsyncIterable source', () => {
         // is broken; with correct backpressure the next pull happens only AFTER
         // this item completes.
         await new Promise<void>((r) => setImmediate(r));
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -246,7 +246,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
       async execute(state) {
         calls++;
         seenItems.push(state.getMetadata<number>('item') ?? -1);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -294,7 +294,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
       'name': 'worker', 'outputs': ['success'],
       async execute(state) {
         processedItems.push(state.getMetadata<number>('item') ?? -1);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -347,7 +347,7 @@ void describe('Scatter: resume mid-stream (AsyncIterable source)', () => {
       async execute(state) {
         calls++;
         processedValues.push(state.getMetadata<number>('item') ?? -1);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -414,7 +414,7 @@ void describe('Scatter: incremental gather', () => {
       async execute(state) {
         const item = state.getMetadata<number>('item') ?? 0;
         state.produced = item * 2;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -474,7 +474,7 @@ void describe('Scatter: incremental gather', () => {
 
     const worker: NodeInterface<StreamState, 'success'> = {
       'name': 'worker', 'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     dispatcher.registerNode(worker);
     dispatcher.registerDAG(makeScatterDag('incr-append',
@@ -508,7 +508,7 @@ void describe('Scatter: incremental gather', () => {
       'name': 'worker', 'outputs': ['success', 'error'],
       async execute(state) {
         const item = state.getMetadata<number>('item') ?? 0;
-        return { 'output': item % 2 === 1 ? 'success' : 'error' };
+        return { 'errors': [], 'output': item % 2 === 1 ? 'success' : 'error' };
       },
     };
     dispatcher.registerNode(worker);
@@ -565,7 +565,7 @@ void describe('Scatter: incremental gather', () => {
 
     const worker: NodeInterface<StreamState, 'success'> = {
       'name': 'worker', 'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     // Custom gather node: reads gatherResults from metadata.
     const customGather: NodeInterface<StreamState, 'success'> = {
@@ -576,7 +576,7 @@ void describe('Scatter: incremental gather', () => {
         for (const r of records) {
           if (typeof r.item === 'number') state.processed.push(r.item);
         }
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -638,7 +638,7 @@ void describe('Scatter: progress shape (inbox model)', () => {
 
     const worker: NodeInterface<StreamState, 'success'> = {
       'name': 'worker', 'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     dispatcher.registerNode(worker);
     dispatcher.registerDAG(makeScatterDag('progress-shape',

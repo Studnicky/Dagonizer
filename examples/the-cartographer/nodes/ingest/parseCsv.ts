@@ -12,7 +12,7 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region parse-csv-node
 /** Split one CSV line into cells, honouring double-quoted fields. */
@@ -53,7 +53,7 @@ export const parseCsv: NodeInterface<CartographerState, 'map-fields' | 'invalid'
     const lines = text.split('\n').filter((l) => l.length > 0);
     const headerLine = lines[0];
     if (headerLine === undefined) {
-      return { 'output': 'invalid' };
+      return NodeOutputBuilder.of('invalid');
     }
     const header = splitCsvLine(headerLine);
     const records: Array<Record<string, unknown>> = [];
@@ -66,7 +66,7 @@ export const parseCsv: NodeInterface<CartographerState, 'map-fields' | 'invalid'
       records.push(record);
     }
     state.parsedRecords = records;
-    return { 'output': 'map-fields' };
+    return NodeOutputBuilder.of('map-fields');
   },
 };
 // #endregion parse-csv-node

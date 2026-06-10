@@ -21,6 +21,7 @@
 
 import {
   DAG_CONTEXT,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
@@ -66,7 +67,7 @@ export const collectA: NodeInterface<PipelineState, 'done'> = {
   "outputs": ['done'],
   async execute(state) {
     state.items.push('alpha');
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -75,7 +76,7 @@ export const collectB: NodeInterface<PipelineState, 'done'> = {
   "outputs": ['done'],
   async execute(state) {
     state.items.push('beta');
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -84,7 +85,7 @@ export const collectC: NodeInterface<PipelineState, 'done'> = {
   "outputs": ['done'],
   async execute(state) {
     state.items.push('gamma');
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 // #endregion node-collect
@@ -96,7 +97,7 @@ export const summarize: NodeInterface<PipelineState, 'done'> = {
   "outputs": ['done'],
   async execute(state) {
     state.summary = `processed ${state.items.length} item(s): ${state.items.join(', ')}`;
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 // #endregion node-summarize

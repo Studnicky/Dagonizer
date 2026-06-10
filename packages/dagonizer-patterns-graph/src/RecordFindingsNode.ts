@@ -8,6 +8,7 @@
 
 import type { Quad } from '@noocodex/dagonizer/patterns';
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
 
 import { GraphNode, type GraphServices } from './GraphNode.js';
 
@@ -29,6 +30,6 @@ export abstract class RecordFindingsNode<
         context.services.memory.assert(q.subject, q.predicate, q.object, q.graph);
       }
     }
-    return { 'output': this.successPort() };
+    return NodeOutputBuilder.of(this.successPort());
   }
 }

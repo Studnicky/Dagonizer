@@ -15,6 +15,7 @@ import { MonadicNode } from '@noocodex/dagonizer/patterns';
 import type { Tool } from '@noocodex/dagonizer/tool';
 import type { NodeContextInterface, NodeOutputInterface } from '@noocodex/dagonizer';
 import type { NodeStateInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
 
 export interface ScoutServices<TInput extends Record<string, unknown>, TOutput> {
   readonly tool: Tool<TInput, TOutput>;
@@ -45,9 +46,9 @@ export abstract class ScoutNode<
       const raw = await context.services.tool.execute(input, { signal: context.signal });
       const items = this.normalize(raw);
       this.writeBack(state, items);
-      return { 'output': items.length === 0 ? this.emptyPort() : this.successPort() };
+      return NodeOutputBuilder.of(items.length === 0 ? this.emptyPort() : this.successPort());
     } catch {
-      return { 'output': this.errorPort() };
+      return NodeOutputBuilder.of(this.errorPort());
     }
   }
 }

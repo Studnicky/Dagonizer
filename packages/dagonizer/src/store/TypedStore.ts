@@ -26,6 +26,7 @@
  * await typed.set('count', 'wrong');       // TS error
  */
 
+import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
 import type { StoreSnapshot } from '../contracts/Snapshottable.js';
 import type { Store } from '../contracts/Store.js';
 import type { JsonValue } from '../entities/json.js';
@@ -61,8 +62,8 @@ export class TypedStore<Schema extends { [K in keyof Schema]: JsonValue }> {
   }
 
   /** Snapshot/restore pass through to the underlying Store. */
-  async snapshot(signal?: AbortSignal): Promise<StoreSnapshot> { return this.#inner.snapshot(signal); }
-  async restore(snapshot: StoreSnapshot, signal?: AbortSignal): Promise<void> { await this.#inner.restore(snapshot, signal); }
+  async snapshot(options?: AbortableOptionsInterface): Promise<StoreSnapshot> { return this.#inner.snapshot(options); }
+  async restore(snapshot: StoreSnapshot, options?: AbortableOptionsInterface): Promise<void> { await this.#inner.restore(snapshot, options); }
 
   /** Connect/disconnect pass through — only delegated when the inner store exposes them. */
   async connect(): Promise<void> { await this.#inner.connect?.(); }

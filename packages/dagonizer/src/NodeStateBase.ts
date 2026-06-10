@@ -22,12 +22,14 @@ import { Validator } from './validation/Validator.js';
 export interface NodeStateInterface {
   /**
    * Clone state for isolated execution (scatter clones).
+   * Returns `this` so the concrete type is preserved across the interface
+   * without requiring a cast at every call site.
    */
-  clone(): NodeStateInterface;
+  clone(): this;
 
   /**
-   * Collect an error in state. Normalises `context` to `{}` when absent so
-   * internal engine handling never null-checks the field.
+   * Collect an error in state. `context` is required on `NodeErrorInterface`
+   * and always present; the engine stores errors without additional normalisation.
    */
   collectError(error: NodeErrorInterface): void;
 
@@ -221,8 +223,8 @@ export class NodeStateBase implements NodeStateInterface {
   }
 
   collectError(error: NodeErrorInterface): void {
-    // Normalise context to {} so internal engine handling never null-checks.
-    this._errors.push({ ...error, 'context': error.context ?? {} });
+    // context is required on NodeErrorInterface; spread to a stable shape.
+    this._errors.push({ ...error });
   }
 
   collectWarning(warning: NodeWarning): void {

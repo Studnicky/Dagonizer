@@ -24,6 +24,7 @@
 
 import {
   DAG_CONTEXT,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
@@ -80,7 +81,7 @@ export const squareNode: NodeInterface<MultiBackendState, 'done'> = {
   async execute(state) {
     const task = state.getMetadata<number>('task') ?? 0;
     state.lastResult = task * task;
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -90,7 +91,7 @@ export const sumNode: NodeInterface<MultiBackendState, 'done'> = {
   "outputs": ['done'],
   async execute(state) {
     state.total = state.results.reduce((acc, n) => acc + n, 0);
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 // #endregion nodes

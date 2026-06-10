@@ -6,20 +6,21 @@
  * map vanishes when the process exits.
  */
 
+import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
 import type { CheckpointStore } from '../contracts/CheckpointStore.js';
 
 export class MemoryCheckpointStore implements CheckpointStore {
   readonly #entries = new Map<string, string>();
 
-  async save(key: string, json: string, _signal?: AbortSignal): Promise<void> {
+  async save(key: string, json: string, _options?: AbortableOptionsInterface): Promise<void> {
     this.#entries.set(key, json);
   }
 
-  async load(key: string, _signal?: AbortSignal): Promise<string | null> {
+  async load(key: string, _options?: AbortableOptionsInterface): Promise<string | null> {
     return this.#entries.get(key) ?? null;
   }
 
-  async delete(key: string, _signal?: AbortSignal): Promise<void> {
+  async delete(key: string, _options?: AbortableOptionsInterface): Promise<void> {
     this.#entries.delete(key);
   }
 

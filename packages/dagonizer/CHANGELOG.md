@@ -4,7 +4,7 @@
 
 Codebase-wide audit-and-harden pass: function-signature normalisation,
 type-safety tightening, V8 shape stability, runtime robustness, public-export
-completion, and documentation accuracy. The suite grows from 534 to 573 tests.
+completion, and documentation accuracy. The suite has 636 tests.
 
 ### Breaking — null route removed
 
@@ -12,7 +12,7 @@ Routing a node output to `null` (e.g. `.node('step', n, { ok: null })`) is no lo
 
 - **JSON schema**: `outputs` `additionalProperties` type changed from `['string', 'null']` to `'string'` in `SingleNode`, `ScatterNode`, and `EmbeddedDAGNode` schemas. `Validator.dag.is()` now rejects any DAG whose outputs map contains a `null` value.
 - **`DAGBuilder`**: route maps are now `Record<TOutput, string>` (not `null | string`). Pass a named terminal and route to it.
-- **`DAGDeriver`**: leaf nodes with no declared successor now route to a synthesised `TerminalNode` named `'completed'`. The implicit terminal is visible in `dag.nodes` and fires `onNodeStart`/`onNodeEnd` hooks.
+- **`DAGDeriver`**: explicit-TerminalNode-only. When a declared output port or scatter outcome has no successor and no terminal annotation, `DAGDeriver` throws `DAGError` naming the placement and the unrouted port. Authors must declare an explicit terminal via `annotations.terminals`. There is no implicit terminal synthesis.
 - **`WellFormedValidator`**: the null-route violation rule is removed; the schema now rejects null routes upstream.
 - **`ExecutionResult.terminalOutcome`**: always set to the `TerminalNode`'s `outcome` field when a terminal is reached. `null` only on error or abort exits where no `TerminalNode` was reached.
 - **`MermaidRenderer`**: no longer emits a synthetic `END([end])` node. Every terminal renders under its actual placement name.
@@ -33,6 +33,37 @@ single trailing `options` object.
 - **`DagOutcome.transportError(correlationId, options?: { code?, message? })`** (SC-12).
 - **`ContractRegistryValidator.validate(contracts, onWarning, options?: { entrypointName? })`**.
 - **`DagContainerError` constructor migrated to the options bag.**
+
+### Breaking — registry & validation
+
+- **`Dagonizer.registerNode` and `registerDAG`** throw `DAGError` when a name is already registered. The registry is append-only; no silent overwrite.
+- **Sub-DAG cycle detection removed from `DAGValidator`.** The append-only registry combined with the rule that every `EmbeddedDAGNode`/`ScatterNode` body must reference an already-registered DAG makes sub-DAG references backward-only, so the reference graph is structurally acyclic. Explicit cycle detection is unnecessary and is no longer present.
+
+### Breaking — monomorphic NodeError / NodeOutput
+
+- **`NodeError.context`** is required in both the `NodeErrorSchema` `required` array and the `NodeErrorInterface`. The inlined `NodeError` shapes in `NodeStateData`, `ExecutionResponse`, and `BridgeMessage` also require `context`.
+- **`NodeOutput.errors`** is required in both the `NodeOutputSchema` `required` array and the `NodeOutputInterface`. Both changes enforce V8 hidden-class stability across all node result shapes.
+- **`NodeErrorBuilder.from(partial)`** (new) constructs a complete `NodeError`, filling `context: {}` when absent. Ships through `.`, `./entities`, and `./types`.
+- **`NodeOutputBuilder.of`** constructs outputs with `errors: []` as the default. **`NodeOutputBuilder.errorsOf` is removed** — read `.errors` directly.
+
+### Breaking — abort-signal arguments unified
+
+- **`AbortableOptionsInterface`** (`{ signal?: AbortSignal }`) is a new contract in `./contracts`. `CheckpointStore` (`save`/`load`/`delete`), `Embedder` (`embed`/`embedBatch`/`probe`/`connect`/`disconnect`), and `Snapshottable` (`snapshot`/`restore`) each accept a trailing `options?: AbortableOptionsInterface` instead of a positional `signal?`. `LlmAdapter` (`connect`/`disconnect`/`probe`) takes the same `options?: AbortableOptionsInterface` so its lifecycle is identical to `Embedder`. `SchedulerProvider`, `RealTimeScheduler`, `RetryPolicy`, and `Tool` use the named `AbortableOptionsInterface` for their options object.
+
+### Breaking — renamed contract & removed deprecated surface
+
+- **`ChannelInterface` renamed to `HandoffChannelInterface`** — distinguishes the completed-DAG hand-off publish channel from the duplex `MessageChannelInterface`.
+- **`DagOutcomeInterface` and `DagTaskInterface`** ship through the `./container` subpath only. The `./contracts` re-exports and forwarder modules are removed.
+- **`@noocodex/dagonizer/patterns` `LlmClient` and `TripleStore` re-export modules removed.** `LlmClient` and `TripleStore` ship through `./contracts`.
+- **`./derive` no longer re-exports `OperationContract` / `OperationContractFragment`**; they ship through `./contracts`.
+
+### Breaking — adapter base-class consolidation
+
+Shared adapter behaviour and config live on base classes; the concrete classes carry only what is unique.
+
+- **`AdapterBase`** (new, `./adapter`) owns the shared retry policy, `id`/`displayName`, the `connect`/`disconnect`/`probe` lifecycle, and the default `classify()`. `BaseAdapter` extends it and adds only `capabilities` + `chat`; `BaseEmbedder` extends it and adds only `dimensions` + `embed`/`embedBatch`.
+- **`BaseRegistry<TInstance>`** (new) owns the `register`/`has`/`resolve`/`list` registry behaviour; `EmbedderRegistry` and `LlmAdapterRegistry` extend it. **`BaseCascade`** (new) owns the sequential `select()` probe loop; `EmbedderCascade` and `LlmAdapterCascade` extend it.
+- **`AdapterBaseOptions`** is the one canonical adapter-options type; `BaseAdapterOptions` and `BaseEmbedderOptions` are removed. **`DEFAULT_MAX_ATTEMPTS`** and **`DEFAULT_BASE_DELAY_MS`** are the one canonical pair; `DEFAULT_EMBEDDER_MAX_ATTEMPTS` / `DEFAULT_EMBEDDER_BASE_DELAY_MS` are removed. **`CascadePreference`** is the one canonical cascade-preference type; `EmbedderCascadePreference` is removed.
 
 ### Breaking — types and required fields
 
@@ -71,6 +102,18 @@ single trailing `options` object.
 - `DAGNodeType` unified to `DAG['nodes'][number]` with `@type` discriminated guards, removing the `as unknown as …` casts in the dispatch table, `registerDAG`, and `DAGValidator`.
 - `NodeStateBase` snapshot/restore validate warnings (`Validator.nodeWarning`) and retry values instead of laundering through `as unknown`; `_metadata`/`_retries` use destructuring-rest removal instead of `delete` (avoids dictionary-mode).
 - `Validator` passes Ajv errors as a typed `{ ajvErrors }` context; `DAGLifecycleMachine` narrows with `Extract<…>` instead of `as never`.
+
+### Changed — required-with-defaults & schema-derived
+
+- **`ScatterOptions.from(partial)`** (new) materialises static scatter-placement defaults at build time: `itemKey` defaults to `'currentItem'`, `reducer` defaults to `'aggregate'`. Data-dependent defaults (`concurrency`, `inputs`, `container`) remain resolved at dispatch. `./builder` exports `ScatterOptions`, `SCATTER_ITEM_KEY_DEFAULT`, `SCATTER_REDUCER_DEFAULT`, and `ResolvedScatterOptions`.
+- **`InterruptionInfo`** is derived from a new `InterruptionInfoSchema` (JSON Schema 2020-12). The type is no longer hand-written.
+
+### Fixed — robustness & packaging
+
+- **OpenAI-compatible adapter**: LLM responses are validated against a new `OpenAiResponseBodySchema` compiled once via the shared Ajv instance. Malformed `tool_calls` raise `LlmError(SCHEMA_VIOLATION)` instead of an unclassified `UNKNOWN`.
+- **`HttpTransport.getJson`/`postJson`** accept an optional `validate` callback to check the response body shape before returning.
+- **`package.json` `exports`**: every subpath lists the `types` condition before `default` so TypeScript consumers resolve declarations correctly.
+- **`StoreError`** threads `cause` to `super` via a trailing `options?: { cause?: unknown }`, preserving the native error chain when wrapping a backing-store failure (previously the chain was dropped).
 
 ### Added
 

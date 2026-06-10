@@ -86,6 +86,7 @@ const validResultNullSnapshot: BridgeMessage = {
     'terminalOutput': 'failed',
     'errors': [{
       'code': 'ERR',
+      'context': {},
       'message': 'something failed',
       'operation': 'dag',
       'recoverable': false,

@@ -29,7 +29,7 @@ void describe('Dagonizer services container', () => {
       async execute(state, context) {
         context.services.logger.entries.push(`hit:${context.services.client.url}`);
         state.out = context.services.client.url;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
 
@@ -67,7 +67,7 @@ void describe('Dagonizer services container', () => {
       'outputs': ['success'],
       async execute(state, context) {
         state.out = context.services;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
 

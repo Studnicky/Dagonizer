@@ -10,6 +10,7 @@
  */
 
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
 
 import { LlmDispatchNode, type RagServices } from './LlmDispatchNode.js';
 
@@ -26,6 +27,6 @@ export abstract class ComposeNode<
     const response = await this.dispatch(state, context);
     const draft = response.message.kind === 'tools' ? '' : response.message.content;
     this.applyDraft(state, draft);
-    return { 'output': this.successPort() };
+    return NodeOutputBuilder.of(this.successPort());
   }
 }

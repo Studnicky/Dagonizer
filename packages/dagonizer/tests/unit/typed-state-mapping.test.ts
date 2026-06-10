@@ -41,7 +41,7 @@ class ParentState extends NodeStateBase {
 const terminal: NodeInterface<NodeStateBase, 'success'> = {
   'name': 'terminal',
   'outputs': ['success'],
-  async execute() { return { 'output': 'success' }; },
+  async execute() { return { 'errors': [], 'output': 'success' }; },
 };
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -141,7 +141,7 @@ void describe('DAGBuilder.embeddedDAG: runtime execute with typed mapping', () =
       async execute(state) {
         // result = length of payload (deterministic, easy to assert)
         state.result = state.payload.length;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
 

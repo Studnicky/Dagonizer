@@ -1,5 +1,5 @@
 /**
- * InMemoryChannel: local default and loopback `ChannelInterface` implementation.
+ * InMemoryChannel: local default and loopback `HandoffChannelInterface` implementation.
  *
  * Stores every published envelope in an in-memory array. The array is
  * accessed via the `published` readonly getter. Envelopes are deep-cloned on
@@ -15,7 +15,7 @@
  * object. V8 shape: all fields initialised in constructor in declaration order.
  */
 
-import type { ChannelInterface } from '../contracts/ChannelInterface.js';
+import type { HandoffChannelInterface } from '../contracts/HandoffChannelInterface.js';
 import type { DAGHandoff } from '../entities/handoff/DAGHandoff.js';
 
 /**
@@ -25,21 +25,21 @@ import type { DAGHandoff } from '../entities/handoff/DAGHandoff.js';
  */
 export type InMemoryChannelOptions = Record<string, never>;
 
-export class InMemoryChannel implements ChannelInterface {
-  private readonly _published: DAGHandoff[];
+export class InMemoryChannel implements HandoffChannelInterface {
+  #published: DAGHandoff[];
 
   constructor(_options: InMemoryChannelOptions = {}) {
-    this._published = [];
+    this.#published = [];
   }
 
   /** All published envelopes in publish order (deep-cloned on entry). */
   get published(): readonly DAGHandoff[] {
-    return this._published;
+    return this.#published;
   }
 
   async publish(handoff: DAGHandoff): Promise<void> {
-    const clone = structuredClone(handoff) as DAGHandoff;
-    this._published.push(clone);
+    const clone = structuredClone(handoff);
+    this.#published.push(clone);
     try {
       await this.onPublished(clone);
     } catch {

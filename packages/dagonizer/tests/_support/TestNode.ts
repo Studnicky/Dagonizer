@@ -35,7 +35,7 @@ export class TestNode {
       outputs,
       async execute(state) {
         const output = exec !== undefined ? await exec(state) : defaultOutput;
-        return { output };
+        return { 'errors': [], output };
       },
     };
   }
@@ -59,7 +59,7 @@ export class TestNode {
       name,
       outputs,
       contract,
-      async execute() { return { 'output': defaultOutput }; },
+      async execute() { return { 'errors': [], 'output': defaultOutput }; },
     };
   }
 }

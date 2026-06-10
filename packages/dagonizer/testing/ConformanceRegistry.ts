@@ -164,7 +164,7 @@ const recorderNode: NodeInterface<ConformanceState> = {
   'outputs': ['done'],
   async execute(state: ConformanceState): Promise<NodeOutputInterface<'done'>> {
     state.executedNodes.push('recorder');
-    return { 'output': 'done' };
+    return { 'errors': [], 'output': 'done' };
   },
 };
 
@@ -173,7 +173,7 @@ const mutatorNode: NodeInterface<ConformanceState> = {
   'outputs': ['done'],
   async execute(state: ConformanceState): Promise<NodeOutputInterface<'done'>> {
     state.value = 99;
-    return { 'output': 'done' };
+    return { 'errors': [], 'output': 'done' };
   },
 };
 
@@ -183,12 +183,13 @@ const errorEmitterNode: NodeInterface<ConformanceState> = {
   async execute(state: ConformanceState): Promise<NodeOutputInterface<'error'>> {
     state.collectError({
       'code': 'TEST_ERROR',
+      'context': {},
       'message': 'conformance law error',
       'operation': 'error-emitter',
       'recoverable': true,
       'timestamp': new Date().toISOString(),
     });
-    return { 'output': 'error' };
+    return { 'errors': [], 'output': 'error' };
   },
 };
 
@@ -201,7 +202,7 @@ const timeoutSleeperNode: NodeInterface<ConformanceState> = {
     context: NodeContextInterface<undefined>,
   ): Promise<NodeOutputInterface<'done'>> {
     await sleepUntilAborted(context.signal, SLEEPER_SAFETY_CEILING_MS);
-    return { 'output': 'done' };
+    return { 'errors': [], 'output': 'done' };
   },
 };
 
@@ -214,7 +215,7 @@ const abortSleeperNode: NodeInterface<ConformanceState> = {
   ): Promise<NodeOutputInterface<'done'>> {
     state.began = true;
     await sleepUntilAborted(context.signal, SLEEPER_SAFETY_CEILING_MS);
-    return { 'output': 'done' };
+    return { 'errors': [], 'output': 'done' };
   },
 };
 
@@ -229,7 +230,7 @@ const scatterCounterNode: NodeInterface<ConformanceState> = {
   'outputs': ['done'],
   async execute(state: ConformanceState): Promise<NodeOutputInterface<'done'>> {
     state.value += 1;
-    return { 'output': 'done' };
+    return { 'errors': [], 'output': 'done' };
   },
 };
 

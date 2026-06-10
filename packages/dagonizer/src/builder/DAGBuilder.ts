@@ -30,6 +30,7 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
 import { NoopWarningEmitter } from '../runtime/NoopWarningEmitter.js';
 
 import type { Path } from './Path.js';
+import { ScatterOptions } from './ScatterOptions.js';
 
 /**
  * Progressive path typing: resolves to `Path<T>` when `T` is a concrete state
@@ -204,6 +205,11 @@ export class DAGBuilder {
     outputs: Record<string, string>,
     options: ScatterOptionsInterface<TState>,
   ): this {
+    // Materialise static defaults (itemKey, reducer) at build time so the produced
+    // ScatterNode always carries them. Fields whose defaults are data-dependent at
+    // runtime (concurrency) or whose absence is semantically meaningful (inputs,
+    // container) remain optional and are spread only when the caller provides them.
+    const resolved = ScatterOptions.from(options);
     const scatterNode: ScatterNode = {
       '@id':     this.#nodeId(name),
       '@type':   'ScatterNode',
@@ -212,17 +218,20 @@ export class DAGBuilder {
       // Generic erasure: the dag-branch is already narrowed by the `'dag' in body` guard;
       // the node-branch cast drops TState/TOutput/TServices which the entity shape doesn't carry.
       'body':    'dag' in body ? { 'dag': body.dag } : { 'node': (body as NodeInterface<TState, TOutput, TServices>).name },
-      'gather':  options.gather,
+      'gather':  resolved.gather,
       // outputs: Record<string, string> satisfies ScatterNode['outputs'].
       'outputs': outputs as Record<string, string>,
-      // Optional fields are spread at construction (never assigned post-construction) so the
-      // node is born with its final shape — no V8 hidden-class transition on the build path.
-      ...(options.itemKey !== undefined ? { 'itemKey': options.itemKey } : {}),
-      ...(options.concurrency !== undefined ? { 'concurrency': options.concurrency } : {}),
+      // itemKey and reducer: always present — materialised from resolved defaults.
+      'itemKey': resolved.itemKey,
+      'reducer': resolved.reducer,
+      // Optional fields spread at construction — no post-construction shape mutation.
+      // concurrency: left optional — default is source.length at runtime (data-dependent).
+      ...(resolved.concurrency !== undefined ? { 'concurrency': resolved.concurrency } : {}),
+      // stateMapping.input: left optional — absence means "no clone seeding" (semantically meaningful).
       // ParentPath<TState> is structurally string; FromSchema index-signature requires Record<string,string>.
-      ...(options.inputs !== undefined ? { 'stateMapping': { 'input': options.inputs as Record<string, string> } } : {}),
-      ...(options.reducer !== undefined ? { 'reducer': options.reducer } : {}),
-      ...(options.container !== undefined ? { 'container': options.container } : {}),
+      ...(resolved.inputs !== undefined ? { 'stateMapping': { 'input': resolved.inputs as Record<string, string> } } : {}),
+      // container: left optional — absence means "run in-process" (semantically meaningful).
+      ...(resolved.container !== undefined ? { 'container': resolved.container } : {}),
     };
 
     if (!('dag' in body)) {

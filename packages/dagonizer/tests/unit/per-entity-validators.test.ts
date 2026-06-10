@@ -21,7 +21,7 @@ void describe('Validator per-entity sub-validators', () => {
   });
 
   void it('Validator.nodeOutput accepts a minimal output', () => {
-    assert.equal(Validator.nodeOutput.is({ 'output': 'success' }), true);
+    assert.equal(Validator.nodeOutput.is({ 'errors': [], 'output': 'success' }), true);
   });
 
   void it('Validator.scatterNode accepts a node-body scatter placement', () => {

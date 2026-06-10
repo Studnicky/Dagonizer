@@ -18,9 +18,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { DagOutcomeInterface } from '../../src/container/DagOutcome.js';
+import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
-import type { DagOutcomeInterface } from '../../src/contracts/DagOutcomeInterface.js';
-import type { DagTaskInterface } from '../../src/contracts/DagTaskInterface.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -77,11 +77,11 @@ class ScatterContainerState extends NodeStateBase {
 const counterNode: NodeInterface<ScatterContainerState, 'done'> = {
   'name': 'counter',
   'outputs': ['done'],
-  async execute(state): Promise<{ output: 'done' }> {
+  async execute(state) {
     const item = state.getMetadata<number>('item') ?? 0;
     // value is a declared field on ScatterContainerState; no cast required.
     state.value = item;
-    return { 'output': 'done' };
+    return { 'errors': [], 'output': 'done' };
   },
 };
 
@@ -269,6 +269,7 @@ function buildTestContainer(): DagContainerInterface<ScatterContainerState> {
           'terminalOutput': 'failed',
           'errors': [{
             'code': 'CONTAINER_ERROR',
+            'context': {},
             'message': err instanceof Error ? err.message : String(err),
             'operation': 'runDag',
             'recoverable': false,
@@ -360,9 +361,9 @@ void describe('Scatter dag-body container seam (W4)', () => {
     const countingNodeBody: NodeInterface<ScatterContainerState, 'done'> = {
       'name': 'node-body-worker',
       'outputs': ['done'],
-      async execute(): Promise<{ output: 'done' }> {
+      async execute() {
         inlineNodeCalls++;
-        return { 'output': 'done' };
+        return { 'errors': [], 'output': 'done' };
       },
     };
 
@@ -395,6 +396,7 @@ void describe('Scatter dag-body container seam (W4)', () => {
           'terminalOutput': 'failed',
           'errors': [{
             'code': 'TRANSPORT_FAILURE',
+            'context': {},
             'message': 'simulated container failure',
             'operation': 'runDag',
             'recoverable': false,

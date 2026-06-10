@@ -44,7 +44,7 @@ async function makeAbortedResult(): Promise<ReturnType<typeof Dagonizer.prototyp
           reject(context.signal.reason);
         }, { 'once': true });
       });
-      return { 'output': 'done' };
+      return { 'errors': [], 'output': 'done' };
     },
   };
   dispatcher.registerNode(slow);

@@ -19,7 +19,7 @@ import type { NodeStateBase } from '../../src/NodeStateBase.js';
 const noop: NodeInterface<NodeStateBase, 'success'> = {
   'name': 'noop',
   'outputs': ['success'],
-  async execute() { return { 'output': 'success' }; },
+  async execute() { return { 'errors': [], 'output': 'success' }; },
 };
 
 void describe('Builder container key', () => {

@@ -315,6 +315,7 @@ export class DagHost {
         ...(terminalOutcome === null && lifecycle.kind !== 'completed'
           ? [{
             'code': 'DAG_EXECUTION_FAILED' as const,
+            'context': {} as Record<string, unknown>,
             'message': `DAG '${request.dagName}' did not complete normally (lifecycle: ${lifecycle.kind})`,
             'operation': request.dagName,
             'recoverable': false,
@@ -340,6 +341,7 @@ export class DagHost {
         'terminalOutput': 'failed',
         'errors': [{
           'code': 'DAG_EXECUTION_FAILED',
+          'context': {},
           'message': message,
           'operation': request.dagName,
           'recoverable': false,

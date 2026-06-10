@@ -1,15 +1,11 @@
 /**
- * Scatter progress wire shapes: canonical JSON Schema 2020-12 definitions
- * for the entities persisted to checkpoint metadata under `SCATTER_PROGRESS_KEY`.
- *
- * These types mirror the hand-written interfaces in `Dagonizer.ts` exactly so
- * Wave 3 can swap the import and delete the hand-written declarations without
- * touching call sites.
+ * Scatter progress wire shapes: JSON Schema 2020-12 definitions for the
+ * entities persisted to checkpoint metadata under `SCATTER_PROGRESS_KEY`.
  *
  * Shape summary:
- *   ScatterInboxItem     — one item pulled from the source but not yet acked.
- *   ScatterAckedResult   — one successfully completed item; discriminated on `kind`.
- *   ScatterProgress      — per-placement resume bookkeeping (inbox + ackedResults).
+ *   ScatterInboxItem      — one item pulled from the source but not yet acked.
+ *   ScatterAckedResult    — one successfully completed item; discriminated on `kind`.
+ *   ScatterProgress       — per-placement resume bookkeeping (inbox + ackedResults).
  *   StoredScatterProgress — map keyed by placement name stored in metadata.
  */
 

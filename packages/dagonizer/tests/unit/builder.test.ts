@@ -9,12 +9,12 @@ import type { NodeStateBase } from '../../src/NodeStateBase.js';
 const greet: NodeInterface<NodeStateBase, 'success'> = {
   'name': 'greet',
   'outputs': ['success'],
-  async execute() { return { 'output': 'success' }; },
+  async execute() { return { 'errors': [], 'output': 'success' }; },
 };
 const plan: NodeInterface<NodeStateBase, 'success' | 'error'> = {
   'name': 'plan',
   'outputs': ['success', 'error'],
-  async execute() { return { 'output': 'success' }; },
+  async execute() { return { 'errors': [], 'output': 'success' }; },
 };
 
 void describe('DAGBuilder', () => {

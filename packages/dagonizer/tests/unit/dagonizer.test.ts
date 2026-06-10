@@ -55,7 +55,10 @@ void describe('Dagonizer single-node routing', () => {
 
   void it('marks state failed when node returns unwired output', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('rogue', ['success', 'mystery'], () => 'mystery'));
+    // Node declares only 'success'; at runtime it returns 'phantom' (not in
+    // the placement routing map) — exercises the unwired-output error path
+    // without requiring a second registration.
+    dispatcher.registerNode(makeNode('rogue', ['success'], () => 'phantom'));
 
     const dag: DAG = {
       '@context': DAG_CONTEXT,
@@ -66,16 +69,12 @@ void describe('Dagonizer single-node routing', () => {
       'entrypoint': 'rogue',
       'nodes': [
         { '@id': 'urn:noocodex:dag:rogue/node/rogue', '@type': 'SingleNode',
-          'name': 'rogue', 'node': 'rogue', 'outputs': { 'success': 'end', 'mystery': 'end' } },
+          'name': 'rogue', 'node': 'rogue', 'outputs': { 'success': 'end' } },
         { '@id': 'urn:noocodex:dag:rogue/node/end', '@type': 'TerminalNode',
           'name': 'end', 'outcome': 'completed' },
       ],
     };
     dispatcher.registerDAG(dag);
-
-    // Force the rogue node to return an output that has no wiring by
-    // replacing the registered node after DAG validation passes.
-    dispatcher.registerNode(makeNode('rogue', ['success'], () => 'phantom'));
 
     const result = await dispatcher.execute('rogue', new NodeStateBase());
     assert.equal(result.state.lifecycle.kind, 'failed');
@@ -101,7 +100,7 @@ void describe('Dagonizer scatter (source-based fork)', () => {
         const item = state.getMetadata<number>('item');
         if (item === undefined) throw new Error('no item');
         seen.push(item);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     });
 
@@ -174,7 +173,7 @@ void describe('Dagonizer embedded-DAG (nested sub-DAG)', () => {
       async execute(state) {
         const s = state as NestState;
         s.result = (s.childValue ?? 0) + 1;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     });
     dispatcher.registerNode(makeNode('done', ['success'], () => 'success'));
@@ -300,10 +299,69 @@ void describe('Dagonizer validation', () => {
     const bad: NodeInterface<NodeStateBase> = {
       'name': 'bad',
       'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
       validate() { return { 'valid': false, 'errors': ['bad config'] }; },
     };
     assert.throws(() => dispatcher.registerNode(bad), DAGError);
+  });
+
+  void it('single node registration succeeds', () => {
+    const dispatcher = new Dagonizer<NodeStateBase>();
+    assert.doesNotThrow(() => {
+      dispatcher.registerNode(makeNode('once', ['success'], () => 'success'));
+    });
+  });
+
+  void it('registering two nodes with the same name throws DAGError', () => {
+    const dispatcher = new Dagonizer<NodeStateBase>();
+    dispatcher.registerNode(makeNode('dup', ['success'], () => 'success'));
+    assert.throws(
+      () => dispatcher.registerNode(makeNode('dup', ['success'], () => 'success')),
+      DAGError,
+    );
+  });
+
+  void it('single DAG registration succeeds', () => {
+    const dispatcher = new Dagonizer<NodeStateBase>();
+    dispatcher.registerNode(makeNode('op', ['success'], () => 'success'));
+
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:once',
+      '@type':    'DAG',
+      'name': 'once',
+      'version': '1',
+      'entrypoint': 'op',
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:once/node/op', '@type': 'SingleNode',
+          'name': 'op', 'node': 'op', 'outputs': { 'success': 'end' } },
+        { '@id': 'urn:noocodex:dag:once/node/end', '@type': 'TerminalNode',
+          'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+    assert.doesNotThrow(() => { dispatcher.registerDAG(dag); });
+  });
+
+  void it('registering two DAGs with the same name throws DAGError', () => {
+    const dispatcher = new Dagonizer<NodeStateBase>();
+    dispatcher.registerNode(makeNode('op2', ['success'], () => 'success'));
+
+    const dag: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:dup-dag',
+      '@type':    'DAG',
+      'name': 'dup-dag',
+      'version': '1',
+      'entrypoint': 'op2',
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:dup-dag/node/op2', '@type': 'SingleNode',
+          'name': 'op2', 'node': 'op2', 'outputs': { 'success': 'end' } },
+        { '@id': 'urn:noocodex:dag:dup-dag/node/end', '@type': 'TerminalNode',
+          'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+    dispatcher.registerDAG(dag);
+    assert.throws(() => dispatcher.registerDAG(dag), DAGError);
   });
 });
 

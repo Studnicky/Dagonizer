@@ -17,6 +17,7 @@
  * `RetryPolicyOptionsInterface` partial; defaults are materialised once here.
  */
 
+import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
 import type { ErrorConstructorType } from '../contracts/ErrorConstructorType.js';
 import type { RetryPolicyOptionsInterface } from '../contracts/RetryPolicyOptionsInterface.js';
 import {
@@ -205,7 +206,7 @@ export class RetryPolicy {
    * `options.signal` fires; the abort takes effect at the next decision
    * point (after the current attempt or during the next wait).
    */
-  async run<T>(task: (attempt: number) => Promise<T> | T, options?: { signal?: AbortSignal }): Promise<T> {
+  async run<T>(task: (attempt: number) => Promise<T> | T, options?: AbortableOptionsInterface): Promise<T> {
     const signal = options?.signal;
     let lastError: Error | null = null;
     let attempt = 0;
@@ -244,7 +245,7 @@ export class RetryPolicy {
    * Sleep `ms` via the installed `Scheduler`. Resolves early if
    * `options.signal` aborts during the wait.
    */
-  private static async sleep(ms: number, options?: { signal?: AbortSignal }): Promise<void> {
+  private static async sleep(ms: number, options?: AbortableOptionsInterface): Promise<void> {
     if (ms <= 0) return;
     const signal = options?.signal;
     try {

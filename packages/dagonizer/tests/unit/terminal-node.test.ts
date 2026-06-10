@@ -43,7 +43,7 @@ const makeNode = (
 ): NodeInterface<NodeStateBase> => ({
   name,
   outputs,
-  async execute() { return { 'output': outputs[0] as string }; },
+  async execute() { return { 'errors': [], 'output': outputs[0] as string }; },
 });
 
 const makeErrorNode = (
@@ -53,13 +53,14 @@ const makeErrorNode = (
   'outputs': ['done'],
   async execute(state) {
     state.collectError({
-      'message':     'node failed',
       'code':        'ERR',
+      'context':     {},
+      'message':     'node failed',
       'operation':   name,
       'recoverable': false,
       'timestamp':   new Date().toISOString(),
     });
-    return { 'output': 'done' };
+    return { 'errors': [], 'output': 'done' };
   },
 });
 

@@ -30,6 +30,7 @@ import type {
   RegistryBundleInterface,
   RegistryModuleInterface,
 } from '@noocodex/dagonizer/contracts';
+import { NodeOutputBuilder } from '@noocodex/dagonizer/entities';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 import { ConformanceRegistry } from '@noocodex/dagonizer/testing';
 import type { ConformanceState } from '@noocodex/dagonizer/testing';
@@ -56,7 +57,7 @@ const scatterKillerNode: NodeInterface<ConformanceState> = {
       process.exit(7);
     }
     state.value += 1;
-    return { 'output': 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 

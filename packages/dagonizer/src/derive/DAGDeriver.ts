@@ -260,23 +260,16 @@ export class DAGDeriver {
   }
 
   /**
-   * Implicit terminal name synthesized when a port has no derived successor
-   * and no explicit terminal annotation. Flows must end at a TerminalNode;
-   * when the deriver cannot find one, it materialises this placeholder.
-   */
-  private static readonly IMPLICIT_TERMINAL_NAME = 'completed';
-
-  /**
    * Resolve the `outputs` map for a placement.
    *
    * Every port in `declaredOutputs` auto-wires to the first derived
    * successor. When no successor exists and the port has no terminal
-   * annotation, an implicit `completed` TerminalNode is synthesized via
-   * `emitCollector` and the port routes to it. Terminal annotations override
-   * individual ports; a terminal whose `outcome` doesn't appear in
-   * `declaredOutputs` is a routing-shape mismatch and throws `DAGError`.
-   * The same resolver runs for `SingleNode` (contract outputs) and
-   * `EmbeddedDAGNode` (embeddedDAG outputs).
+   * annotation, a `DAGError` is thrown — the author must declare an
+   * explicit `TerminalNode` route via `annotations.terminals`. Terminal
+   * annotations override individual ports; a terminal whose `outcome`
+   * doesn't appear in `declaredOutputs` is a routing-shape mismatch and
+   * also throws `DAGError`. The same resolver runs for `SingleNode`
+   * (contract outputs) and `EmbeddedDAGNode` (embeddedDAG outputs).
    */
   private static resolveOutputs(
     name: string,
@@ -313,12 +306,9 @@ export class DAGDeriver {
       } else if (defaultSuccessor !== undefined) {
         out[port] = defaultSuccessor;
       } else {
-        // No successor and no terminal annotation: synthesize an implicit completed terminal.
-        DAGDeriver.collectEmit(
-          { 'name': DAGDeriver.IMPLICIT_TERMINAL_NAME, 'outcome': 'completed' },
-          emitCollector,
+        throw new DAGError(
+          `DAGDeriver: operation '${name}' output port '${port}' has no successor and no terminal annotation; declare an explicit TerminalNode route via annotations.terminals`,
         );
-        out[port] = DAGDeriver.IMPLICIT_TERMINAL_NAME;
       }
     }
     return out;
@@ -465,12 +455,9 @@ export class DAGDeriver {
       } else if (next0 !== undefined) {
         outputs[outcome] = next0;
       } else {
-        // No successor: synthesize an implicit completed terminal.
-        DAGDeriver.collectEmit(
-          { 'name': DAGDeriver.IMPLICIT_TERMINAL_NAME, 'outcome': 'completed' },
-          emitCollector,
+        throw new DAGError(
+          `DAGDeriver: scatter '${name}' outcome '${outcome}' has no successor and no terminal annotation; declare an explicit TerminalNode route via annotations.terminals`,
         );
-        outputs[outcome] = DAGDeriver.IMPLICIT_TERMINAL_NAME;
       }
     }
 

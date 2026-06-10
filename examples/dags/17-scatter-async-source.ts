@@ -31,6 +31,7 @@
 
 import {
   DAG_CONTEXT,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
@@ -84,7 +85,7 @@ export const consume: NodeInterface<AsyncSourceState, 'done'> = {
     const raw = state.getMetadata<string>('stream-item') ?? '?';
     state.item = `[processed:${raw}]`;
     eventLog.push(`process  ${raw}`);
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 // #endregion worker-node

@@ -12,6 +12,9 @@
 
 import type { JsonValue } from '../entities/json.js';
 
+import type { AbortableOptionsInterface } from './AbortableOptionsInterface.js';
+
+
 /** Entry in a serialized snapshot envelope. */
 export interface StoreSnapshotEntry {
   readonly key:   string;
@@ -31,17 +34,17 @@ export interface StoreSnapshot {
 /** A state container that can be captured into, and restored from, a `StoreSnapshot`. */
 export interface Snapshottable {
   /**
-   * Capture the entire state as a typed envelope. `signal` is available for
-   * implementations backed by remote or async stores that support cancellation;
-   * in-process implementations may ignore it.
+   * Capture the entire state as a typed envelope. `options.signal` is
+   * available for implementations backed by remote or async stores that
+   * support cancellation; in-process implementations may ignore it.
    */
-  snapshot(signal?: AbortSignal): Promise<StoreSnapshot>;
+  snapshot(options?: AbortableOptionsInterface): Promise<StoreSnapshot>;
 
   /**
    * Repopulate from a snapshot. Implementations validate `snapshot.type` and
-   * `snapshot.version` before applying entries. `signal` is available for
-   * implementations backed by remote or async stores; in-process implementations
-   * may ignore it.
+   * `snapshot.version` before applying entries. `options.signal` is available
+   * for implementations backed by remote or async stores; in-process
+   * implementations may ignore it.
    */
-  restore(snapshot: StoreSnapshot, signal?: AbortSignal): Promise<void>;
+  restore(snapshot: StoreSnapshot, options?: AbortableOptionsInterface): Promise<void>;
 }

@@ -49,6 +49,8 @@ import type { ArchivistServices } from '../services.ts';
 import {
   GatherStrategies,
   GatherStrategy,
+  NodeErrorBuilder,
+  NodeOutputBuilder,
 } from '@noocodex/dagonizer';
 import type {
   GatherConfig,
@@ -158,7 +160,7 @@ export const openLibraryScout: NodeInterface<ArchivistState, 'success' | 'empty'
   "outputs":   ['success', 'empty'],
   async execute(state, context) {
     const planned = state.toolPlan.find((call) => call.name === 'web_search_books');
-    if (planned === undefined) return { "output": 'empty' };
+    if (planned === undefined) return NodeOutputBuilder.of('empty');
     const args = planned.arguments as {
       query?: string;
       isbn?: string;
@@ -190,7 +192,7 @@ export const openLibraryScout: NodeInterface<ArchivistState, 'success' | 'empty'
         ? args.query
         : state.terms.join(' ');
       const query = unquote(rawQuery);
-      if (query.length === 0) return { "output": 'empty' };
+      if (query.length === 0) return NodeOutputBuilder.of('empty');
       toolInput = { "query": query, limit, lang };
       logDimension = `q=${encodeURIComponent(query)}`;
     }
@@ -207,22 +209,22 @@ export const openLibraryScout: NodeInterface<ArchivistState, 'success' | 'empty'
       if (candidates.length === 0) {
         state.failureCause += `OpenLibrary: 0 hits for (${logDimension}). `;
       }
-      return { "output": candidates.length > 0 ? 'success' : 'empty' };
+      return NodeOutputBuilder.of(candidates.length > 0 ? 'success' : 'empty');
     } catch (error) {
       // External cancellation propagates; own timeout / network error → 'empty'
       // (this scout contributed nothing; the parallel siblings still run).
       if (context.signal.aborted) throw error;
       const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
-      state.collectError({
+      state.collectError(NodeErrorBuilder.from({
         "code":        'OPEN_LIBRARY_FAILED',
         "message":     error instanceof Error ? error.message : String(error),
         "operation":   'open-library-scout',
         "recoverable": true,
         "timestamp":   new Date().toISOString(),
-      });
+      }));
       state.failureCause += `OpenLibrary: error: ${msg}. `;
       context.services.logger.warn(`openlibrary failed: ${String(error)}`);
-      return { "output": 'empty' };
+      return NodeOutputBuilder.of('empty');
     } finally {
       clearTimeout(handle);
     }
@@ -239,13 +241,13 @@ export const googleBooksScout: NodeInterface<ArchivistState, 'success' | 'empty'
   "outputs":   ['success', 'empty'],
   async execute(state, context) {
     const planned = state.toolPlan.find((call) => call.name === 'google_books_search');
-    if (planned === undefined) return { "output": 'empty' };
+    if (planned === undefined) return NodeOutputBuilder.of('empty');
     const args = planned.arguments as { query?: string; maxResults?: number };
     const rawQuery = typeof args.query === 'string' && args.query.length > 0
       ? args.query
       : state.terms.join(' ');
     const query = unquote(rawQuery);
-    if (query.length === 0) return { "output": 'empty' };
+    if (query.length === 0) return NodeOutputBuilder.of('empty');
     const controller = new AbortController();
     const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? SCOUT_TIMEOUT_MS);
     const signal = AbortSignal.any([context.signal, controller.signal]);
@@ -260,21 +262,21 @@ export const googleBooksScout: NodeInterface<ArchivistState, 'success' | 'empty'
       if (candidates.length === 0) {
         state.failureCause += `Google Books: 0 hits for "${query}". `;
       }
-      return { "output": candidates.length > 0 ? 'success' : 'empty' };
+      return NodeOutputBuilder.of(candidates.length > 0 ? 'success' : 'empty');
     } catch (error) {
       // External cancellation propagates; own timeout / network error → 'empty'.
       if (context.signal.aborted) throw error;
       const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
-      state.collectError({
+      state.collectError(NodeErrorBuilder.from({
         "code":        'GOOGLE_BOOKS_FAILED',
         "message":     error instanceof Error ? error.message : String(error),
         "operation":   'google-books-scout',
         "recoverable": true,
         "timestamp":   new Date().toISOString(),
-      });
+      }));
       state.failureCause += `Google Books: error: ${msg}. `;
       context.services.logger.warn(`google-books failed: ${String(error)}`);
-      return { "output": 'empty' };
+      return NodeOutputBuilder.of('empty');
     } finally {
       clearTimeout(handle);
     }
@@ -290,7 +292,7 @@ export const subjectScout: NodeInterface<ArchivistState, 'success' | 'empty', Ar
   "outputs":   ['success', 'empty'],
   async execute(state, context) {
     const planned = state.toolPlan.find((call) => call.name === 'subject_search');
-    if (planned === undefined) return { "output": 'empty' };
+    if (planned === undefined) return NodeOutputBuilder.of('empty');
     const args = planned.arguments as { subject?: string; limit?: number };
     // Subject shaping: LCSH subject facet performs best with a single focused
     // term. Pick the longest term from state.terms (most-specific heuristic).
@@ -299,7 +301,7 @@ export const subjectScout: NodeInterface<ArchivistState, 'success' | 'empty', Ar
       ? args.subject
       : pickSubjectTerm(state.terms);
     const subject = unquote(rawSubject);
-    if (subject.length === 0) return { "output": 'empty' };
+    if (subject.length === 0) return NodeOutputBuilder.of('empty');
     const controller = new AbortController();
     const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? SCOUT_TIMEOUT_MS);
     const signal = AbortSignal.any([context.signal, controller.signal]);
@@ -314,21 +316,21 @@ export const subjectScout: NodeInterface<ArchivistState, 'success' | 'empty', Ar
       if (candidates.length === 0) {
         state.failureCause += `Subject search: 0 hits for "${subject}". `;
       }
-      return { "output": candidates.length > 0 ? 'success' : 'empty' };
+      return NodeOutputBuilder.of(candidates.length > 0 ? 'success' : 'empty');
     } catch (error) {
       // External cancellation propagates; own timeout / network error → 'empty'.
       if (context.signal.aborted) throw error;
       const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
-      state.collectError({
+      state.collectError(NodeErrorBuilder.from({
         "code":        'SUBJECT_SEARCH_FAILED',
         "message":     error instanceof Error ? error.message : String(error),
         "operation":   'subject-scout',
         "recoverable": true,
         "timestamp":   new Date().toISOString(),
-      });
+      }));
       state.failureCause += `Subject search: error: ${msg}. `;
       context.services.logger.warn(`subject-search failed: ${String(error)}`);
-      return { "output": 'empty' };
+      return NodeOutputBuilder.of('empty');
     } finally {
       clearTimeout(handle);
     }
@@ -347,7 +349,7 @@ export const wikipediaScout: NodeInterface<ArchivistState, 'success' | 'empty', 
     // titles best. Prefer the first capitalised term (proper noun heuristic
     // e.g. "Neuromancer", "Philip K. Dick". Fall back to joining all terms.
     const query = pickWikipediaQuery(state.terms).trim();
-    if (query.length === 0) return { "output": 'empty' };
+    if (query.length === 0) return NodeOutputBuilder.of('empty');
     const controller = new AbortController();
     const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? SCOUT_TIMEOUT_MS);
     const signal = AbortSignal.any([context.signal, controller.signal]);
@@ -363,21 +365,21 @@ export const wikipediaScout: NodeInterface<ArchivistState, 'success' | 'empty', 
       if (candidates.length === 0) {
         state.failureCause += `Wikipedia: 0 hits for "${query}". `;
       }
-      return { "output": candidates.length > 0 ? 'success' : 'empty' };
+      return NodeOutputBuilder.of(candidates.length > 0 ? 'success' : 'empty');
     } catch (error) {
       // External cancellation propagates; own timeout / network error → 'empty'.
       if (context.signal.aborted) throw error;
       const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
-      state.collectError({
+      state.collectError(NodeErrorBuilder.from({
         "code":        'WIKIPEDIA_FAILED',
         "message":     error instanceof Error ? error.message : String(error),
         "operation":   'wikipedia-scout',
         "recoverable": true,
         "timestamp":   new Date().toISOString(),
-      });
+      }));
       state.failureCause += `Wikipedia: error: ${msg}. `;
       context.services.logger.warn(`wikipedia failed: ${String(error)}`);
-      return { "output": 'empty' };
+      return NodeOutputBuilder.of('empty');
     } finally {
       clearTimeout(handle);
     }
@@ -407,7 +409,7 @@ export const scoutDispatch: NodeInterface<ArchivistState, 'success' | 'empty', A
       case 'wikipedia':   return wikipediaScout.execute(state, context);
       default:
         context.services.logger.warn(`scout-dispatch: unknown provider '${String(provider)}'`);
-        return { "output": 'empty' };
+        return NodeOutputBuilder.of('empty');
     }
   },
 };

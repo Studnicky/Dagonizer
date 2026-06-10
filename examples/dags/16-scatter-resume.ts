@@ -21,6 +21,7 @@
 
 import {
   DAG_CONTEXT,
+  NodeOutputBuilder,
   NodeStateBase,
   SCATTER_PROGRESS_KEY,
 } from '@noocodex/dagonizer';
@@ -117,7 +118,7 @@ export const process_job: NodeInterface<ResumeState, 'done'> = {
     ) {
       ctl.abort(new Error(`abort after ${observable.abortAfter} items`));
     }
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 // #endregion worker-node

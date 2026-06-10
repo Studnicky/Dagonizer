@@ -15,6 +15,7 @@
 
 import {
   DAGBuilder,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
 import type { NodeInterface } from '@noocodex/dagonizer/contracts';
@@ -39,7 +40,7 @@ export const fastNode: NodeInterface<TaskState, 'done'> = {
   "timeoutMs": 200,
   async execute(state) {
     state.output = 'fast-done';
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 // #endregion fast-node
@@ -68,7 +69,7 @@ export const slowNode: NodeInterface<TaskState, 'done'> = {
         { "once": true },
       );
     });
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 // #endregion slow-node

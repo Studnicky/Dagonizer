@@ -42,8 +42,8 @@ export type StoreErrorClassification =
 export class StoreError extends Error {
   readonly classification: StoreErrorClassification;
 
-  constructor(message: string, classification: StoreErrorClassification) {
-    super(message);
+  constructor(message: string, classification: StoreErrorClassification, options?: { cause?: unknown }) {
+    super(message, options?.cause !== undefined ? { 'cause': options.cause } : undefined);
     this.name = 'StoreError';
     this.classification = classification;
   }

@@ -23,6 +23,7 @@ import {
   DAG_CONTEXT,
   Dagonizer,
   GatherStrategies,
+  NodeOutputBuilder,
   NodeStateBase,
   OutcomeReducers,
 } from '@noocodex/dagonizer';
@@ -51,7 +52,7 @@ const score: NodeInterface<RankingState, 'success' | 'error'> = {
     const item = state.getMetadata<string>('item') ?? '';
     // Synthetic score: proportional to string length
     state.candidate = { title: item, score: item.length };
-    return { output: 'success' };
+    return NodeOutputBuilder.of('success');
   },
 };
 

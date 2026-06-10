@@ -8,7 +8,7 @@
  * Tool and routes on the result.
  */
 
-import { DAG_CONTEXT, NodeStateBase } from '@noocodex/dagonizer';
+import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
 import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 import type { LlmAdapter, ToolCall } from '@noocodex/dagonizer/adapter';
@@ -113,7 +113,7 @@ export const callLlm: NodeInterface<ToolUseState, 'tool_call' | 'text'> = {
         state.dispatchedTool = firstCall.name;
         // Store as serialized text for codec demo path (codec handles prose too)
         state.toolCallRaw = JSON.stringify({ tool_calls: [{ name: firstCall.name, arguments: firstCall.arguments }] });
-        return { 'output': 'tool_call' };
+        return NodeOutputBuilder.of('tool_call');
       }
     }
 
@@ -124,13 +124,13 @@ export const callLlm: NodeInterface<ToolUseState, 'tool_call' | 'text'> = {
       const calls: ToolCall[] = ToolCallCodec.decode(response.message.content, 'demo');
       if (calls.length > 0 && calls[0] !== undefined) {
         state.dispatchedTool = calls[0].name;
-        return { 'output': 'tool_call' };
+        return NodeOutputBuilder.of('tool_call');
       }
     }
 
     // No tool call produced — treat as plain text answer
     state.finalAnswer = response.message.kind === 'text' ? response.message.content : '(no text)';
-    return { 'output': 'text' };
+    return NodeOutputBuilder.of('text');
   },
 };
 
@@ -144,20 +144,20 @@ export const dispatchTool: NodeInterface<ToolUseState, 'done' | 'error'> = {
 
     if (calls.length === 0) {
       state.finalAnswer = 'Error: could not decode tool call from adapter response.';
-      return { 'output': 'error' };
+      return NodeOutputBuilder.of('error');
     }
 
     const call = calls[0] as ToolCall;
     const tool = state.registry.resolve(call.name);
     if (tool === null) {
       state.finalAnswer = `Error: unknown tool "${call.name}"`;
-      return { 'output': 'error' };
+      return NodeOutputBuilder.of('error');
     }
 
     const result = await tool.execute(call.arguments);
     state.toolResult = result;
     state.finalAnswer = `Tool "${call.name}" returned: ${JSON.stringify(result)}`;
-    return { 'output': 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -166,7 +166,7 @@ export const onText: NodeInterface<ToolUseState, 'done'> = {
   'outputs': ['done'],
   async execute(state) {
     process.stdout.write(`  [onText] direct answer: "${state.finalAnswer}"\n`);
-    return { 'output': 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -175,7 +175,7 @@ export const onToolDone: NodeInterface<ToolUseState, 'done'> = {
   'outputs': ['done'],
   async execute(state) {
     process.stdout.write(`  [onToolDone] tool="${state.dispatchedTool}" result=${JSON.stringify(state.toolResult)}\n`);
-    return { 'output': 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -184,7 +184,7 @@ export const onToolError: NodeInterface<ToolUseState, 'done'> = {
   'outputs': ['done'],
   async execute(state) {
     process.stdout.write(`  [onToolError] ${state.finalAnswer}\n`);
-    return { 'output': 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 

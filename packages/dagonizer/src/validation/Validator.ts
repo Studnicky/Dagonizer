@@ -134,7 +134,7 @@ export class Validator {
     if (id !== undefined) {
       const cached = sharedAjv.getSchema(id);
       if (typeof cached === 'function') {
-        compiled = cached as ValidateFunction;
+        compiled = cached;
       }
     }
     if (compiled === undefined) {
@@ -192,13 +192,13 @@ export class Validator {
   // Hand-off channels
   static readonly dagHandoff: EntityValidator<DAGHandoff> = Validator.compile('DAGHandoff', DAGHandoffSchema);
 
-  // Executor container wire shapes (finding 3)
+  // Executor container wire shapes
   static readonly executionRequest:       EntityValidator<ExecutionRequest>        = Validator.compile('ExecutionRequest',        ExecutionRequestSchema);
   static readonly executionResponse:      EntityValidator<ExecutionResponse>       = Validator.compile('ExecutionResponse',       ExecutionResponseSchema);
   static readonly executorIntermediate:   EntityValidator<ExecutorIntermediate>    = Validator.compile('ExecutorIntermediate',    ExecutorIntermediateSchema);
   static readonly recommendedWorkerCount: EntityValidator<RecommendedWorkerCountConfig> = Validator.compile('RecommendedWorkerCountConfig', RecommendedWorkerCountConfigSchema);
 
-  // Constant enum schemas (finding 4)
+  // Constant enum schemas
   static readonly gatherStrategy: EntityValidator<GatherStrategyName> = Validator.compile('GatherStrategy', GatherStrategySchema);
   static readonly scatterOutput:  EntityValidator<ScatterOutput>      = Validator.compile('ScatterOutput',  ScatterOutputSchema);
   static readonly metadataKey:    EntityValidator<MetadataKey>        = Validator.compile('MetadataKey',    MetadataKeySchema);
@@ -206,7 +206,7 @@ export class Validator {
   static readonly nodeType:       EntityValidator<NodeType>           = Validator.compile('NodeType',       NodeTypeSchema);
   static readonly backoffStrategy: EntityValidator<BackoffStrategyValue> = Validator.compile('BackoffStrategy', BackoffStrategySchema);
 
-  // Scatter progress checkpoint wire shapes (finding 2)
+  // Scatter progress checkpoint wire shapes
   static readonly scatterInboxItem:       EntityValidator<ScatterInboxItem>       = Validator.compile('ScatterInboxItem',       ScatterInboxItemSchema);
   static readonly scatterAckedResult:     EntityValidator<ScatterAckedResult>     = Validator.compile('ScatterAckedResult',     ScatterAckedResultSchema);
   static readonly scatterProgress:        EntityValidator<ScatterProgress>        = Validator.compile('ScatterProgress',        ScatterProgressSchema);

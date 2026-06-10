@@ -6,6 +6,7 @@
 
 import {
   DAG_CONTEXT,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
@@ -32,7 +33,7 @@ export const increment: NodeInterface<IncrementState, 'success'> = {
   "outputs": ['success'],
   async execute(state) {
     state.payload = state.payload + 1;
-    return { "output": 'success' };
+    return NodeOutputBuilder.of('success');
   },
 };
 

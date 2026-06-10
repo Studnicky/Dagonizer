@@ -7,6 +7,7 @@
 import {
   DAG_CONTEXT,
   Dagonizer,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
 import type { NodeInterface } from '@noocodex/dagonizer/contracts';
@@ -20,7 +21,7 @@ export const echo: NodeInterface<NodeStateBase, 'success'> = {
   'outputs': ['success'],
   async execute(state) {
     state.setMetadata('seen', true);
-    return { 'output': 'success' };
+    return NodeOutputBuilder.of('success');
   },
 };
 

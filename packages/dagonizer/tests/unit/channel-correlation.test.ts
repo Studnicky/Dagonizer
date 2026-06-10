@@ -34,8 +34,8 @@ import { describe, it } from 'node:test';
 
 import { DagContainerBase } from '../../src/container/DagContainerBase.js';
 import type { DagContainerOptions, PoolEntry } from '../../src/container/DagContainerBase.js';
-import type { DagOutcomeInterface } from '../../src/contracts/DagOutcomeInterface.js';
-import type { DagTaskInterface } from '../../src/contracts/DagTaskInterface.js';
+import type { DagOutcomeInterface } from '../../src/container/DagOutcome.js';
+import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import type { ObserverRelay } from '../../src/Dagonizer.js';
 import type { BridgeMessage } from '../../src/entities/executor/BridgeMessage.js';

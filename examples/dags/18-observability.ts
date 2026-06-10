@@ -6,6 +6,7 @@
 
 import {
   DAGBuilder,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
 import type { NodeInterface } from '@noocodex/dagonizer/contracts';
@@ -27,7 +28,7 @@ export const validate: NodeInterface<PipelineState, 'ok' | 'invalid'> = {
   "outputs": ['ok', 'invalid'],
   async execute(state) {
     state.value = 1;
-    return { "output": 'ok' };
+    return NodeOutputBuilder.of('ok');
   },
 };
 
@@ -36,7 +37,7 @@ export const transform: NodeInterface<PipelineState, 'done'> = {
   "outputs": ['done'],
   async execute(state) {
     state.value = state.value * 10;
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 

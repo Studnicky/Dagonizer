@@ -7,6 +7,8 @@
 import {
   DAG_CONTEXT,
   DAGBuilder,
+  NodeErrorBuilder,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
@@ -28,7 +30,7 @@ export const stepA: NodeInterface<GateState, 'ok'> = {
   "name":    'step-a',
   "outputs": ['ok'],
   async execute(_state) {
-    return { "output": 'ok' };
+    return NodeOutputBuilder.of('ok');
   },
 };
 
@@ -36,7 +38,7 @@ export const checkNode: NodeInterface<GateState, 'pass' | 'fail'> = {
   "name":    'check',
   "outputs": ['pass', 'fail'],
   async execute(state) {
-    return { "output": state.shouldPass ? 'pass' : 'fail' };
+    return NodeOutputBuilder.of(state.shouldPass ? 'pass' : 'fail');
   },
 };
 
@@ -49,15 +51,15 @@ export const childWork: NodeInterface<GateState, 'done'> = {
   "outputs": ['done'],
   async execute(state) {
     if (!state.shouldPass) {
-      state.collectError({
+      state.collectError(NodeErrorBuilder.from({
         "message":     'child-work failed deliberately',
         "code":        'CHILD_ERR',
         "operation":   'child-work',
         "recoverable": false,
         "timestamp":   new Date().toISOString(),
-      });
+      }));
     }
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -85,7 +87,22 @@ export const dag2 = new DAGBuilder('demo-explicit-terminals', '1')
 // #endregion terminal-failed
 
 // ---------------------------------------------------------------------------
-// Pattern 3: EmbeddedDAGNode routing to explicit terminals
+// Pattern 3: Single explicit failed terminal
+// ---------------------------------------------------------------------------
+
+// #region terminal-single-failed
+// A node that always routes 'fail' to a TerminalNode whose outcome is 'failed'.
+// Demonstrates the minimal single-terminal failed pattern (as opposed to dag2
+// which shows the dual-terminal pass/fail case).
+export const dag3 = new DAGBuilder('demo-explicit-failed', '1')
+  .node('check', checkNode, { 'pass': 'end-ok', 'fail': 'end-fail' })
+  .terminal('end-ok')
+  .terminal('end-fail', { outcome: 'failed' })
+  .build();
+// #endregion terminal-single-failed
+
+// ---------------------------------------------------------------------------
+// Pattern 4: EmbeddedDAGNode routing to explicit terminals
 // ---------------------------------------------------------------------------
 
 // #region embedded-terminals
@@ -114,7 +131,7 @@ export const childDAG: DAG = {
   ],
 };
 
-export const dag3 = new DAGBuilder('demo-embedded-dag-terminals', '1')
+export const dag4 = new DAGBuilder('demo-embedded-dag-terminals', '1')
   .embeddedDAG<GateState, GateState>('run', 'child-for-terminals', {
     'success': 'end-ok',
     'error':   'end-fail',

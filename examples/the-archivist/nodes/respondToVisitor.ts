@@ -18,6 +18,7 @@
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
 import type { NodeInterface } from '@noocodex/dagonizer';
 
 /** Per-node compose deadline + total attempts before salvage. */
@@ -29,7 +30,7 @@ export const respondToVisitor: NodeInterface<ArchivistState, 'success', Archivis
   "outputs": ['success'],
   async execute(state, context) {
     context.services.logger.info(`responded with ${String(state.shortlist.length)} candidates`);
-    return { "output": 'success' };
+    return NodeOutputBuilder.of('success');
   },
 };
 
@@ -38,7 +39,7 @@ export const declineOffTopic: NodeInterface<ArchivistState, 'success', Archivist
   "outputs": ['success'],
   async execute(state) {
     state.draft = "I only help with finding and identifying books. What title or topic interests you?";
-    return { "output": 'success' };
+    return NodeOutputBuilder.of('success');
   },
 };
 
@@ -74,16 +75,16 @@ export const composeEmptyResponse: NodeInterface<ArchivistState, 'drafted' | 're
       state.draft = await context.services.llm.composeEmptyResponse(state.query, state.failureCause, conversation, signal);
       state.clearAttempts(context.nodeName);
       context.services.logger.info('compose-empty: LLM response composed');
-      return { "output": 'drafted' };
+      return NodeOutputBuilder.of('drafted');
     } catch (err) {
       if (context.signal.aborted) throw err;
       if (state.withinRetryBudget(context.nodeName, EMPTY_RETRY_BUDGET)) {
         context.services.logger.warn(`compose-empty: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(EMPTY_RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
-        return { "output": 'retry' };
+        return NodeOutputBuilder.of('retry');
       }
       state.clearAttempts(context.nodeName);
       context.services.logger.warn(`compose-empty: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
-      return { "output": 'salvage' };
+      return NodeOutputBuilder.of('salvage');
     } finally {
       clearTimeout(handle);
     }

@@ -125,7 +125,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
           controller.abort(new Error('test-abort'));
         }
         state.processed.push(state.getMetadata<number>('item') ?? -1);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
 
@@ -183,7 +183,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
       'outputs': ['success'],
       async execute(state) {
         state.processed.push(state.getMetadata<number>('item') ?? -1);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     resumeDispatcher.registerNode(resumeWorker);
@@ -253,7 +253,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
       'outputs': ['success'],
       async execute(state) {
         state.processed.push(state.getMetadata<number>('item') ?? -1);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -308,7 +308,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
           controller.abort(new Error('abort-at-5'));
         }
         state.processed.push(item);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -355,7 +355,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
         const item = state.getMetadata<number>('item') ?? -1;
         resumeItems.push(item);
         state.processed.push(item);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     resumeDispatcher.registerNode(resumeWorker);

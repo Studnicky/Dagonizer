@@ -87,88 +87,88 @@
   ],
   "exports": {
     ".": {
-      "default": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
     "./adapter": {
-      "default": "./dist/adapter/index.js",
-      "types": "./dist/adapter/index.d.ts"
+      "types": "./dist/adapter/index.d.ts",
+      "default": "./dist/adapter/index.js"
     },
     "./patterns": {
-      "default": "./dist/patterns/index.js",
-      "types": "./dist/patterns/index.d.ts"
+      "types": "./dist/patterns/index.d.ts",
+      "default": "./dist/patterns/index.js"
     },
     "./tool": {
-      "default": "./dist/tool/index.js",
-      "types": "./dist/tool/index.d.ts"
+      "types": "./dist/tool/index.d.ts",
+      "default": "./dist/tool/index.js"
     },
     "./errors": {
-      "default": "./dist/errors/index.js",
-      "types": "./dist/errors/index.d.ts"
+      "types": "./dist/errors/index.d.ts",
+      "default": "./dist/errors/index.js"
     },
     "./constants": {
-      "default": "./dist/constants.js",
-      "types": "./dist/constants.d.ts"
+      "types": "./dist/constants.d.ts",
+      "default": "./dist/constants.js"
     },
     "./lifecycle": {
-      "default": "./dist/lifecycle/index.js",
-      "types": "./dist/lifecycle/index.d.ts"
+      "types": "./dist/lifecycle/index.d.ts",
+      "default": "./dist/lifecycle/index.js"
     },
     "./runtime": {
-      "default": "./dist/runtime/index.js",
-      "types": "./dist/runtime/index.d.ts"
+      "types": "./dist/runtime/index.d.ts",
+      "default": "./dist/runtime/index.js"
     },
     "./builder": {
-      "default": "./dist/builder/index.js",
-      "types": "./dist/builder/index.d.ts"
+      "types": "./dist/builder/index.d.ts",
+      "default": "./dist/builder/index.js"
     },
     "./validation": {
-      "default": "./dist/validation/index.js",
-      "types": "./dist/validation/index.d.ts"
+      "types": "./dist/validation/index.d.ts",
+      "default": "./dist/validation/index.js"
     },
     "./entities": {
-      "default": "./dist/entities/index.js",
-      "types": "./dist/entities/index.d.ts"
+      "types": "./dist/entities/index.d.ts",
+      "default": "./dist/entities/index.js"
     },
     "./checkpoint": {
-      "default": "./dist/checkpoint/index.js",
-      "types": "./dist/checkpoint/index.d.ts"
+      "types": "./dist/checkpoint/index.d.ts",
+      "default": "./dist/checkpoint/index.js"
     },
     "./testing": {
-      "default": "./dist-testing/index.js",
-      "types": "./dist-testing/index.d.ts"
+      "types": "./dist-testing/index.d.ts",
+      "default": "./dist-testing/index.js"
     },
     "./contracts": {
-      "default": "./dist/contracts/index.js",
-      "types": "./dist/contracts/index.d.ts"
+      "types": "./dist/contracts/index.d.ts",
+      "default": "./dist/contracts/index.js"
     },
     "./core": {
-      "default": "./dist/core/index.js",
-      "types": "./dist/core/index.d.ts"
+      "types": "./dist/core/index.d.ts",
+      "default": "./dist/core/index.js"
     },
     "./derive": {
-      "default": "./dist/derive/index.js",
-      "types": "./dist/derive/index.d.ts"
+      "types": "./dist/derive/index.d.ts",
+      "default": "./dist/derive/index.js"
     },
     "./viz": {
-      "default": "./dist/viz/index.js",
-      "types": "./dist/viz/index.d.ts"
+      "types": "./dist/viz/index.d.ts",
+      "default": "./dist/viz/index.js"
     },
     "./store": {
-      "default": "./dist/store/index.js",
-      "types": "./dist/store/index.d.ts"
+      "types": "./dist/store/index.d.ts",
+      "default": "./dist/store/index.js"
     },
     "./types": {
-      "default": "./dist/types/index.js",
-      "types": "./dist/types/index.d.ts"
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/types/index.js"
     },
     "./container": {
-      "default": "./dist/container/index.js",
-      "types": "./dist/container/index.d.ts"
+      "types": "./dist/container/index.d.ts",
+      "default": "./dist/container/index.js"
     },
     "./channels": {
-      "default": "./dist/channels/index.js",
-      "types": "./dist/channels/index.d.ts"
+      "types": "./dist/channels/index.d.ts",
+      "default": "./dist/channels/index.js"
     }
   },
   "scripts": {

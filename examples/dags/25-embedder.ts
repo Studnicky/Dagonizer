@@ -8,7 +8,7 @@
  * similarity between their vectors.
  */
 
-import { DAG_CONTEXT, NodeStateBase } from '@noocodex/dagonizer';
+import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
 import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 import type { Embedder } from '@noocodex/dagonizer/adapter';
@@ -62,7 +62,7 @@ export const embed: NodeInterface<EmbedderState, 'done'> = {
     state.vectorA = vecA;
     state.vectorB = vecB;
     state.similarity = cosineSimilarity(vecA, vecB);
-    return { 'output': 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -71,7 +71,7 @@ export const report: NodeInterface<EmbedderState, 'done'> = {
   'outputs': ['done'],
   async execute(state) {
     process.stdout.write(`  similarity("${state.textA}", "${state.textB}") = ${state.similarity.toFixed(4)}\n`);
-    return { 'output': 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 

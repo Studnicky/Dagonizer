@@ -1,11 +1,10 @@
 /**
  * BaseEmbedder: abstract base every concrete embedder extends.
  *
- * Owns the retry plumbing (Dagonizer's `RetryPolicy` with exponential
- * backoff) and the embed-call envelope. Concrete embedders implement
- * `performEmbed()` (the raw transport call) and may override
- * `classify()` to map a provider-native error into the shared
- * `LlmError` taxonomy.
+ * Extends `AdapterBase` for shared lifecycle (retry policy,
+ * `connect`/`disconnect`/`probe`, `classify`) and adds only what is
+ * unique to the embedding surface: `dimensions` and the `embed()` /
+ * `embedBatch()` envelope that calls the abstract `performEmbed()`.
  *
  *   Embedder contract → BaseEmbedder ┐
  *                                    ├─ embed() → retry-wrapped performEmbed()
@@ -20,66 +19,29 @@
  * the error taxonomy stay shared across the two surfaces.
  */
 
+import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
 import type { Embedder } from '../contracts/Embedder.js';
-import { BackoffStrategy } from '../runtime/index.js';
 
-import { Classifications, LlmError, MAX_QUOTA_WAIT_MS, type ErrorClassification } from './LlmError.js';
-import { RetryableErrorPolicy } from './RetryableErrorPolicy.js';
+import { AdapterBase, type AdapterBaseOptions } from './AdapterBase.js';
+import { LlmError, MAX_QUOTA_WAIT_MS } from './LlmError.js';
 
-export const DEFAULT_EMBEDDER_MAX_ATTEMPTS = 3;
-export const DEFAULT_EMBEDDER_BASE_DELAY_MS = 400;
-
-export interface BaseEmbedderOptions {
-  readonly maxAttempts?: number;
-  readonly baseDelayMs?: number;
-}
-
-export abstract class BaseEmbedder implements Embedder {
-  readonly id: string;
-  readonly displayName: string;
+export abstract class BaseEmbedder extends AdapterBase implements Embedder {
   readonly dimensions: number;
-  readonly #retry: RetryableErrorPolicy;
 
   protected constructor(
     id: string,
     displayName: string,
     dimensions: number,
-    options: BaseEmbedderOptions = {},
+    options: AdapterBaseOptions = {},
   ) {
-    this.id = id;
-    this.displayName = displayName;
+    super(id, displayName, options);
     this.dimensions = dimensions;
-    this.#retry = new RetryableErrorPolicy({
-      'maxAttempts': options.maxAttempts ?? DEFAULT_EMBEDDER_MAX_ATTEMPTS,
-      'strategy':    BackoffStrategy.EXPONENTIAL,
-      'baseDelay':   options.baseDelayMs ?? DEFAULT_EMBEDDER_BASE_DELAY_MS,
-    });
   }
 
-  /** No-op default. Subclasses with a session lifecycle override. */
-  async connect(_signal?: AbortSignal): Promise<void> {
-    return Promise.resolve();
-  }
-
-  /** No-op default. Subclasses with a session lifecycle override. */
-  async disconnect(_signal?: AbortSignal): Promise<void> {
-    return Promise.resolve();
-  }
-
-  /**
-   * Default availability probe. Returns true; the embedder assumes it
-   * can run unless the concrete subclass knows better. Subclasses with
-   * meaningful availability constraints (API key presence, runtime
-   * feature detect, local model warmth) override and surface their own
-   * check. Must never throw; return false instead.
-   */
-  async probe(_signal?: AbortSignal): Promise<boolean> {
-    return Promise.resolve(true);
-  }
-
-  async embed(text: string, signal?: AbortSignal): Promise<readonly number[]> {
+  async embed(text: string, options?: AbortableOptionsInterface): Promise<readonly number[]> {
+    const signal = options?.signal;
     const runOptions = signal !== undefined ? { signal } : {};
-    return this.#retry.run(async () => {
+    return this.retryPolicy.run(async () => {
       try {
         return await this.performEmbed(text, signal ?? BaseEmbedder.#neverAbortingSignal());
       } catch (rawError) {
@@ -106,10 +68,10 @@ export abstract class BaseEmbedder implements Embedder {
    * provider exposes a native batch endpoint override and post one
    * request for the whole batch.
    */
-  async embedBatch(texts: readonly string[], signal?: AbortSignal): Promise<readonly (readonly number[])[]> {
+  async embedBatch(texts: readonly string[], options?: AbortableOptionsInterface): Promise<readonly (readonly number[])[]> {
     const results: (readonly number[])[] = [];
     for (const t of texts) {
-      results.push(await this.embed(t, signal));
+      results.push(await this.embed(t, options));
     }
     return results;
   }
@@ -122,11 +84,4 @@ export abstract class BaseEmbedder implements Embedder {
   static #neverAbortingSignal(): AbortSignal {
     return new AbortController().signal;
   }
-
-  /** Map a provider-native error into the shared classification. */
-  protected classify(error: unknown): ErrorClassification {
-    if (error instanceof LlmError) return error.classification;
-    return Classifications['UNKNOWN'];
-  }
 }
-

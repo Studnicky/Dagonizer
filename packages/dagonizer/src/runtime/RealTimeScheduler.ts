@@ -13,6 +13,7 @@
  * build (Vite, esbuild, Rollup) without polyfills or aliases.
  */
 
+import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
 import type { SchedulerProvider } from '../contracts/SchedulerProvider.js';
 import { ExecutionError } from '../errors/DAGError.js';
 
@@ -33,7 +34,7 @@ const G = globalThis as TimerGlobals;
 export class RealTimeScheduler implements SchedulerProvider {
   readonly #activeHandles = new Set<unknown>();
 
-  async after(delayMs: number, options?: { signal?: AbortSignal }): Promise<void> {
+  async after(delayMs: number, options?: AbortableOptionsInterface): Promise<void> {
     const signal = options?.signal;
     return new Promise<void>((resolve, reject) => {
       if (signal?.aborted === true) {
@@ -57,11 +58,11 @@ export class RealTimeScheduler implements SchedulerProvider {
     });
   }
 
-  async at(atMs: number, options?: { signal?: AbortSignal }): Promise<void> {
+  async at(atMs: number, options?: AbortableOptionsInterface): Promise<void> {
     return this.after(Math.max(0, atMs - Clock.monotonicMs()), options);
   }
 
-  async *every(intervalMs: number, options?: { signal?: AbortSignal }): AsyncIterable<void> {
+  async *every(intervalMs: number, options?: AbortableOptionsInterface): AsyncIterable<void> {
     const signal = options?.signal;
     while (signal?.aborted !== true) {
       // Track the in-flight handle so a consumer `break` (which triggers the

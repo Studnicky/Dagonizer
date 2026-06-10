@@ -48,7 +48,7 @@ void describe('BaseEmbedder signal threading (ADP-3 + ADP-7)', () => {
   void it('performEmbed receives the caller signal when one is provided', async () => {
     const embedder = new SignalCapturingEmbedder();
     const controller = new AbortController();
-    await embedder.embed('hello', controller.signal);
+    await embedder.embed('hello', { "signal": controller.signal });
     assert.equal(embedder.capturedSignals.length, 1);
     assert.strictEqual(embedder.capturedSignals[0], controller.signal);
   });
@@ -65,7 +65,7 @@ void describe('BaseEmbedder signal threading (ADP-3 + ADP-7)', () => {
   void it('embedBatch threads signal into each embed call', async () => {
     const embedder = new SignalCapturingEmbedder();
     const controller = new AbortController();
-    const results = await embedder.embedBatch(['a', 'b', 'c'], controller.signal);
+    const results = await embedder.embedBatch(['a', 'b', 'c'], { "signal": controller.signal });
     assert.equal(results.length, 3);
     assert.equal(embedder.capturedSignals.length, 3);
     for (const sig of embedder.capturedSignals) {
@@ -87,7 +87,7 @@ void describe('BaseEmbedder signal threading (ADP-3 + ADP-7)', () => {
     // An already-aborted signal may surface as AbortError (from the retry-policy
     // abort check) or as LlmError(TIMEOUT) from performEmbed — both are correct.
     await assert.rejects(
-      () => embedder.embed('hello', controller.signal),
+      () => embedder.embed('hello', { "signal": controller.signal }),
       (err: unknown): boolean => {
         return err instanceof LlmError || (err instanceof DOMException && err.name === 'AbortError') || (err instanceof Error && err.name === 'AbortError');
       },

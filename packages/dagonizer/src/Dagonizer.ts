@@ -1,8 +1,8 @@
 import { DagTask } from './container/DagTask.js';
 import { TransportErrorCode } from './container/TransportErrorCode.js';
-import type { ChannelInterface } from './contracts/ChannelInterface.js';
 import type { DagContainerInterface } from './contracts/DagContainerInterface.js';
 import type { ExecuteOptionsInterface } from './contracts/ExecuteOptionsInterface.js';
+import type { HandoffChannelInterface } from './contracts/HandoffChannelInterface.js';
 import type { NodeInterface } from './contracts/NodeInterface.js';
 import type { NodeInvoker } from './contracts/NodeInvoker.js';
 import type { StateAccessor } from './contracts/StateAccessor.js';
@@ -22,7 +22,6 @@ import type { SingleNodePlacementInterface } from './entities/dag/SingleNode.js'
 import type { ExecutionResultInterface, InterruptionInfo } from './entities/execution/ExecutionResult.js';
 import type { DAGHandoff } from './entities/handoff/DAGHandoff.js';
 import type { NodeContextInterface } from './entities/node/NodeContext.js';
-import { NodeOutputBuilder } from './entities/node/NodeOutput.js';
 import type { NodeResultInterface } from './entities/node/NodeResult.js';
 import type { ScatterAckedResult, ScatterInboxItem } from './entities/scatter/ScatterProgress.js';
 import { DAGError, ExecutionError, NodeTimeoutError, ValidationError } from './errors/index.js';
@@ -168,7 +167,7 @@ export interface DagonizerOptionsInterface<TState extends NodeStateInterface = N
    * terminals may route to different channels (`done` → queue,
    * `escalate` → DLQ).
    */
-  readonly channels?: Readonly<Record<string, ChannelInterface>>;
+  readonly channels?: Readonly<Record<string, HandoffChannelInterface>>;
   /**
    * Registry version string included in every `DAGHandoff` envelope.
    * Receivers use this for version-handshake validation. Defaults to
@@ -344,7 +343,7 @@ implements DagonizerInterface<TState, TServices> {
   private readonly services: TServices;
   private readonly stateMapper: StateMapper<TState>;
   private readonly containers: Readonly<Record<string, DagContainerInterface<TState>>>;
-  private readonly channels: Readonly<Record<string, ChannelInterface>>;
+  private readonly channels: Readonly<Record<string, HandoffChannelInterface>>;
   private readonly registryVersion: string;
   #correlationSeq = 0;
 
@@ -948,6 +947,7 @@ implements DagonizerInterface<TState, TServices> {
           const error = err instanceof Error ? err : new Error(String(err));
           state.collectError({
             'code': 'HANDOFF_PUBLISH_FAILED',
+            'context': {},
             'message': `Channel publish failed for terminal '${terminalNodeName}': ${error.message}`,
             'operation': terminalNodeName,
             'recoverable': false,
@@ -983,7 +983,7 @@ implements DagonizerInterface<TState, TServices> {
       const context = this.buildContext(dagName, phase.name, nodeSignal);
       return node.execute(state, context);
     });
-    for (const err of NodeOutputBuilder.errorsOf(result)) state.collectError(err);
+    for (const err of result.errors) state.collectError(err);
   }
 
   /**
@@ -1439,7 +1439,7 @@ implements DagonizerInterface<TState, TServices> {
           const context = this.buildContext(dagName, scatter.name, nodeSignal);
           return dagNode.execute(cloneState, context);
         });
-        for (const err of NodeOutputBuilder.errorsOf(opResult)) cloneState.collectError(err);
+        for (const err of opResult.errors) cloneState.collectError(err);
         output = opResult.output;
       } else {
         // DAG body — may run in-process or through a bound container.
@@ -1671,8 +1671,8 @@ implements DagonizerInterface<TState, TServices> {
       const syntheticRecords: GatherRecord<TState>[] = [];
       for (const acked of ackedResults) {
         if (freshIndices.has(acked.index)) continue; // already in allFreshRecords
-        // SC-1: clone() returns `this` — no cast needed after node-state cluster applies SC-1.
-        const syntheticClone = state.clone() as TState;
+        // clone() returns `this` — TState preserved without a cast.
+        const syntheticClone = state.clone();
         // SC-8: switch on `kind` discriminant instead of checking optional fields.
         if (acked.kind === 'map') {
           for (const [clonePath, val] of Object.entries(acked.mappingValues)) {
@@ -1847,7 +1847,7 @@ implements DagonizerInterface<TState, TServices> {
       return dagNode.execute(state, context);
     });
 
-    for (const error of NodeOutputBuilder.errorsOf(opResult)) state.collectError(error);
+    for (const error of opResult.errors) state.collectError(error);
 
     const nextStage = nodeConfig.outputs[opResult.output];
 
@@ -1888,6 +1888,8 @@ implements DagonizerInterface<TState, TServices> {
   /**
    * Register a DAG configuration.
    *
+   * Throws `DAGError` immediately when a DAG with the same name is already registered.
+   *
    * Runs two validation passes:
    * 1. Schema pass: `Validator.dag.validate(dag)` checks structure (required fields, valid
    *    `type` and `strategy` enumerations).
@@ -1896,6 +1898,10 @@ implements DagonizerInterface<TState, TServices> {
    *    entry in the placement's `outputs` map.
    */
   registerDAG(dag: DAG): void {
+    if (this.dags.has(dag.name)) {
+      throw new DAGError(`DAG '${dag.name}' is already registered`);
+    }
+
     // Schema pre-pass: catches malformed JSON (missing fields, wrong
     // node `type`, gather strategy mismatch) before semantic validation
     // surfaces node/DAG cross-references.
@@ -1996,10 +2002,15 @@ implements DagonizerInterface<TState, TServices> {
    * (`NodeInterface<TState, 'success' | 'error', TServices>`) and stores
    * them widened to `NodeInterface<TState, string, TServices>`; narrow
    * wide is sound covariantly on both `outputs` and the result `output`.
+   *
+   * Throws `DAGError` when a node with the same name is already registered.
    */
   registerNode<TOutput extends string>(
     node: NodeInterface<TState, TOutput, TServices>,
   ): void {
+    if (this.nodes.has(node.name)) {
+      throw new DAGError(`Node '${node.name}' is already registered`);
+    }
     if (node.validate) {
       const result = node.validate();
 

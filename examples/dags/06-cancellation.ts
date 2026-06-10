@@ -6,6 +6,7 @@
 
 import {
   DAG_CONTEXT,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
@@ -35,7 +36,7 @@ export const slow: NodeInterface<NodeStateBase, 'success'> = {
         { "once": true },
       );
     });
-    return { "output": 'success' };
+    return NodeOutputBuilder.of('success');
   },
 };
 // #endregion node-cancellation-aware

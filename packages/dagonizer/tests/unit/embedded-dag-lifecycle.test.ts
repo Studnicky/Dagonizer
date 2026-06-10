@@ -41,7 +41,7 @@ const makeNode = (
 ): NodeInterface<NodeStateBase> => ({
   name,
   outputs,
-  async execute() { return { 'output': outputs[0] as string }; },
+  async execute() { return { 'errors': [], 'output': outputs[0] as string }; },
 });
 
 // ── Child DAG (two nodes: start → finish) ────────────────────────────────

@@ -23,7 +23,8 @@
  */
 
 import { BaseEmbedder, Classifications, LlmError } from '@noocodex/dagonizer/adapter';
-import type { BaseEmbedderOptions } from '@noocodex/dagonizer/adapter';
+import type { AdapterBaseOptions } from '@noocodex/dagonizer/adapter';
+import type { AbortableOptionsInterface } from '@noocodex/dagonizer/contracts';
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = 'nomic-embed-text';
@@ -46,7 +47,7 @@ const KNOWN_DIMENSIONS: Readonly<Record<string, number>> = {
   'snowflake-arctic-embed:latest': 1024,
 };
 
-export interface OllamaEmbedderOptions extends BaseEmbedderOptions {
+export interface OllamaEmbedderOptions extends AdapterBaseOptions {
   /** Override base URL when targeting a remote daemon or a proxy. */
   readonly baseUrl?: string;
   /**
@@ -119,7 +120,7 @@ export class OllamaEmbedder extends BaseEmbedder {
    * cascade routes around the embedder. Symmetric with
    * `OllamaApiAdapter.probe`.
    */
-  override async probe(): Promise<boolean> {
+  override async probe(_options?: AbortableOptionsInterface): Promise<boolean> {
     const controller = new AbortController();
     const timer = setTimeout(() => { controller.abort(); }, PROBE_TIMEOUT_MS);
     try {

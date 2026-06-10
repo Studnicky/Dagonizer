@@ -32,6 +32,8 @@
 import type { MemoryDigest } from '../ArchivistState.ts';
 import { MemoryStore, STATE_GRAPH_PREFIX, stateGraphIri } from '../memory/MemoryStore.ts';
 
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
+
 import type { ArchivistNode } from './ArchivistNode.ts';
 
 const dagTitle        = MemoryStore.dagIri('title');
@@ -177,6 +179,6 @@ export const recallMemories: ArchivistNode<'recalled'> = {
       `recall-memories: ${String(bookTitles.size)} books, ${String(queryCount)} prior queries, ${String(intentBreakdown.length)} intent types`,
     );
 
-    return { 'output': 'recalled' };
+    return NodeOutputBuilder.of('recalled');
   },
 };

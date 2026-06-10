@@ -19,6 +19,7 @@
 
 import {
   DAG_CONTEXT,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
@@ -69,7 +70,7 @@ export const tag: NodeInterface<GatherDemoState, 'done'> = {
     // we use the output token alone; the `sideEffects` field records it
     // via the `collect` run where state IS merged back.
     state.sideEffects = [...state.sideEffects, `tagged:${item}`];
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 // #endregion worker-node

@@ -15,6 +15,8 @@ import type {
   ChatResponse,
 } from '../adapter/LlmAdapter.js';
 
+import type { AbortableOptionsInterface } from './AbortableOptionsInterface.js';
+
 /** Implemented by every LLM provider adapter. */
 export interface LlmAdapter {
   readonly id: string;
@@ -26,10 +28,15 @@ export interface LlmAdapter {
    * Adapters that don't need a session implement a no-op; `BaseAdapter`
    * provides a default empty implementation so consumers don't branch
    * on `connect` vs `undefined`.
+   * `options.signal` cancels a long-running connect (e.g. model download).
    */
-  connect(): Promise<void>;
-  /** Tear down any per-session state. No-op default on `BaseAdapter`. */
-  disconnect(): Promise<void>;
+  connect(options?: AbortableOptionsInterface): Promise<void>;
+  /**
+   * Tear down any per-session state. No-op default on `BaseAdapter`.
+   * `options.signal` can interrupt teardown when the caller needs
+   * a time-bounded shutdown.
+   */
+  disconnect(options?: AbortableOptionsInterface): Promise<void>;
   /**
    * Quick availability check. Returns true when this adapter can plausibly
    * serve a chat call right now (credentials present, runtime backend
@@ -40,6 +47,7 @@ export interface LlmAdapter {
    * `BaseAdapter` ships a default that returns true; concrete adapters
    * override with a real probe (e.g. credential check, HEAD request,
    * `navigator.ml` feature detect).
+   * `options.signal` aborts a long-running probe (e.g. HEAD request).
    */
-  probe(): Promise<boolean>;
+  probe(options?: AbortableOptionsInterface): Promise<boolean>;
 }

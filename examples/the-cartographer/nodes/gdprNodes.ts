@@ -17,7 +17,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { Consent, GdprRedactor, GeoCoarsener, Jurisdictions } from '../services.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region gdpr-nodes
 
@@ -36,7 +36,7 @@ export const consentGate: NodeInterface<CartographerState, 'classify', Cartograp
       'lawfulBasis':   state.raw.lawfulBasis,
       'jurisdiction':  state.geoContext.jurisdiction,
     };
-    return { 'output': 'classify' };
+    return NodeOutputBuilder.of('classify');
   },
 };
 
@@ -53,7 +53,7 @@ export const classifyPii: NodeInterface<CartographerState, 'redact', Cartographe
       'personalDataFields':  classification.personalDataFields,
       'sensitiveDataFields': classification.sensitiveDataFields,
     };
-    return { 'output': 'redact' };
+    return NodeOutputBuilder.of('redact');
   },
 };
 
@@ -66,7 +66,7 @@ export const redactPii: NodeInterface<CartographerState, 'ok' | 'violation', Car
     }
     // Genuine violation: special-category data with no lawful basis (rare drop).
     if (!GdprRedactor.hasLawfulBasis(state.raw.lawfulBasis, state.raw.specialCategory)) {
-      return { 'output': 'violation' };
+      return NodeOutputBuilder.of('violation');
     }
 
     const juris = Jurisdictions.forCountry(state.geoContext.country);
@@ -99,7 +99,7 @@ export const redactPii: NodeInterface<CartographerState, 'ok' | 'violation', Car
     }
 
     state.gdprResult = result;
-    return { 'output': 'ok' };
+    return NodeOutputBuilder.of('ok');
   },
 };
 // #endregion gdpr-nodes

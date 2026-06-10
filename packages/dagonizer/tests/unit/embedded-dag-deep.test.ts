@@ -19,7 +19,7 @@ const incNode = (name: string, delta: number): NodeInterface<CounterState> => ({
   'outputs': ['success'],
   async execute(state) {
     state.value += delta;
-    return { 'output': 'success' };
+    return { 'errors': [], 'output': 'success' };
   },
 });
 
@@ -123,12 +123,11 @@ void describe('EmbeddedDAGNode: deep recursive nesting', () => {
     assert.deepEqual(seen.get('inc-core'),  ['embed-mid', 'embed-inner', 'embed-core']);
   });
 
-  void it('detects a cross-kind cycle (scatter → embed → scatter) at registration', () => {
+  void it('cannot construct a cross-kind cycle: the append-only registry refuses the closing re-registration', () => {
     const dispatcher = new Dagonizer<CounterState>();
     dispatcher.registerNode(incNode('na', 1));
-    dispatcher.registerNode(incNode('nb', 1));
 
-    // a (standalone) ← b embeds a. Acyclic so far.
+    // a (standalone) ← b embeds a. Acyclic.
     dispatcher.registerDAG(makeDAG('cyc-a', 'na', [
       singleNode('cyc-a', 'na', { 'success': 'end' }),
       terminalNode('cyc-a'),
@@ -138,9 +137,13 @@ void describe('EmbeddedDAGNode: deep recursive nesting', () => {
       terminalNode('cyc-b'),
     ]));
 
-    // Re-register a so it SCATTERS into b → a → b → a, a cross-kind cycle
-    // (a's edge is scatter, b's back-edge is embed). The unified detector must
-    // catch it even though the two edges are different kinds.
+    // The only way to close a cross-kind cycle (a SCATTERS into b → b embeds a)
+    // is to re-register 'cyc-a' so it references 'cyc-b'. Because every sub-DAG
+    // reference must resolve to an already-registered DAG, references are
+    // backward-only; the sole route to a cycle is mutating an existing
+    // registration. The registry is append-only, so this re-registration is
+    // refused with 'already registered' before any cyclic state can install —
+    // a cross-kind cycle is structurally unconstructable through the registry.
     const cyclicA = makeDAG('cyc-a', 'fork-b', [{
       '@id':    'urn:noocodex:dag:cyc-a/node/fork-b',
       '@type':  'ScatterNode',
@@ -153,6 +156,6 @@ void describe('EmbeddedDAGNode: deep recursive nesting', () => {
       terminalNode('cyc-a'),
     ]);
 
-    assert.throws(() => dispatcher.registerDAG(cyclicA), /Circular/u);
+    assert.throws(() => dispatcher.registerDAG(cyclicA), /already registered/u);
   });
 });

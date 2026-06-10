@@ -10,7 +10,7 @@ import { NodeStateBase } from '../../src/NodeStateBase.js';
 const node = (name: string, outputs: readonly string[]): NodeInterface<NodeStateBase> => ({
   name,
   outputs,
-  async execute() { return { 'output': outputs[0] as string }; },
+  async execute() { return { 'errors': [], 'output': outputs[0] as string }; },
 });
 
 const makeDAG = (name: string, entrypoint: string, nodes: DAG['nodes']): DAG => ({

@@ -98,7 +98,7 @@ void describe('per-node timeoutMs', () => {
             _reject(context.signal.reason);
           }, { 'once': true });
         });
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
 
@@ -154,7 +154,7 @@ void describe('per-node timeoutMs', () => {
         await new Promise<never>((_resolve, _reject) => {
           context.signal.addEventListener('abort', () => { _reject(context.signal.reason); }, { 'once': true });
         });
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
 
@@ -195,7 +195,7 @@ void describe('per-node timeoutMs', () => {
       'name': 'fast',
       'outputs': ['done'],
       async execute() {
-        return { 'output': 'done' };
+        return { 'errors': [], 'output': 'done' };
       },
     };
 
@@ -222,7 +222,7 @@ void describe('per-node timeoutMs', () => {
         await new Promise<never>((_resolve, _reject) => {
           context.signal.addEventListener('abort', () => { _reject(context.signal.reason); }, { 'once': true });
         });
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
 

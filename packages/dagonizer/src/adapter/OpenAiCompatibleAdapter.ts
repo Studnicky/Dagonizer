@@ -20,6 +20,12 @@
  * error signal, causing the adapter to retry the request without tools.
  */
 
+import type { ValidateFunction } from 'ajv';
+
+import { sharedAjv } from '../validation/sharedAjv.js';
+import type { EntityValidator } from '../validation/Validator.js';
+
+import { DEFAULT_MAX_ATTEMPTS } from './AdapterBase.js';
 import { BaseAdapter } from './BaseAdapter.js';
 import {
   ChatResponseMessageBuilder,
@@ -36,9 +42,10 @@ import type {
 } from './LlmAdapter.js';
 import { Classifications, LlmError } from './LlmError.js';
 import type { ErrorClassification } from './LlmError.js';
+import { OpenAiResponseBodySchema } from './OpenAiResponseBody.js';
+import type { OpenAiResponseBody } from './OpenAiResponseBody.js';
 
 const DEFAULT_TIMEOUT_MS = 60_000;
-const DEFAULT_MAX_ATTEMPTS = 3;
 
 /** Provider-specific configuration the subclass passes in. */
 export interface OpenAiCompatibleConfig {
@@ -65,25 +72,40 @@ export interface OpenAiCompatibleAdapterOptions {
   readonly maxAttempts?: number;
 }
 
-interface OpenAiToolCallShape {
-  readonly id: string;
-  readonly type: 'function';
-  readonly function: { readonly name: string; readonly arguments: string };
-}
-
-interface OpenAiResponseBody {
-  choices?: ReadonlyArray<{
-    message?: {
-      content?: string | null;
-      tool_calls?: readonly OpenAiToolCallShape[];
-    };
-    finish_reason?: string;
-  }>;
-  usage?: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
+/**
+ * Module-level validator compiled once from `OpenAiResponseBodySchema`.
+ * Uses the shared Ajv instance — never builds a new Ajv.
+ * On validation failure `#sendRequest` throws `LlmError(SCHEMA_VIOLATION)`.
+ */
+const openAiResponseBodyValidator: EntityValidator<OpenAiResponseBody> = (() => {
+  const id = OpenAiResponseBodySchema.$id;
+  let compiled = typeof id === 'string' ? sharedAjv.getSchema(id) : undefined;
+  if (typeof compiled !== 'function') {
+    compiled = sharedAjv.compile(OpenAiResponseBodySchema);
+  }
+  const fn: ValidateFunction = compiled;
+  return {
+    is(value: unknown): value is OpenAiResponseBody { return fn(value) === true; },
+    validate(value: unknown): OpenAiResponseBody {
+      if (fn(value) === true) return value as OpenAiResponseBody;
+      const errs: string[] = (fn.errors ?? []).map((e) => {
+        const path = e.instancePath.length > 0 ? e.instancePath : '<root>';
+        return `${path}: ${e.message ?? 'invalid'}`;
+      });
+      throw new LlmError(
+        `OpenAI response body schema violation:\n  - ${errs.join('\n  - ')}`,
+        Classifications['SCHEMA_VIOLATION'],
+      );
+    },
+    errors(value: unknown): string[] | null {
+      if (fn(value) === true) return null;
+      return (fn.errors ?? []).map((e) => {
+        const path = e.instancePath.length > 0 ? e.instancePath : '<root>';
+        return `${path}: ${e.message ?? 'invalid'}`;
+      });
+    },
   };
-}
+})();
 
 export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
   readonly #apiKey: string;
@@ -187,7 +209,8 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
       throw new LlmError(`${this.#config.displayName} ${String(res.status)}: ${text}`, LlmError.classifyHttp(res.status, { 'body': text }));
     }
 
-    const payload = (await res.json()) as OpenAiResponseBody;
+    const rawBody: unknown = await res.json();
+    const payload = openAiResponseBodyValidator.validate(rawBody);
     return this.#parseResponse(payload);
   }
 
@@ -266,11 +289,28 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
     const choice = payload.choices[0];
     const msg = choice?.message;
     const rawToolCalls = msg?.tool_calls ?? [];
-    const toolCalls: ToolCall[] = rawToolCalls.map((tc) => ({
-      'id': tc.id,
-      'name': tc.function.name,
-      'arguments': this.#parseJson(tc.function.arguments),
-    }));
+    const toolCalls: ToolCall[] = rawToolCalls.map((tc) => {
+      // Schema validation at L190 guarantees tool_calls items match
+      // OpenAiToolCallSchema (id, type, function.name, function.arguments all
+      // required strings). Guard here so a provider deviation surfaces as
+      // SCHEMA_VIOLATION instead of a raw TypeError.
+      if (
+        typeof tc.id !== 'string'
+        || tc.function === undefined
+        || typeof tc.function.name !== 'string'
+        || typeof tc.function.arguments !== 'string'
+      ) {
+        throw new LlmError(
+          `${this.#config.displayName}: malformed tool_calls entry — missing id, function.name, or function.arguments`,
+          Classifications['SCHEMA_VIOLATION'],
+        );
+      }
+      return {
+        'id': tc.id,
+        'name': tc.function.name,
+        'arguments': this.#parseJson(tc.function.arguments),
+      };
+    });
     const text = msg?.content ?? '';
     const finishReason = toolCalls.length > 0
       ? 'tool_call'

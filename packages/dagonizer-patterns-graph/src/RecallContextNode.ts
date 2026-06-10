@@ -9,6 +9,7 @@
 
 import type { Binding, SlotPattern } from '@noocodex/dagonizer/patterns';
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
 
 import { GraphNode, type GraphServices } from './GraphNode.js';
 
@@ -29,6 +30,6 @@ export abstract class RecallContextNode<
     const rows = context.services.memory.select(pattern);
     const bindings = this.mapBindings(rows);
     this.applyRecall(state, bindings);
-    return { 'output': (bindings.length === 0 ? this.emptyPort() : this.successPort()) };
+    return NodeOutputBuilder.of(bindings.length === 0 ? this.emptyPort() : this.successPort());
   }
 }

@@ -9,7 +9,7 @@ export class StateMapper<TState extends NodeStateInterface> {
   }
 
   createChild(parentState: TState, inputMapping: Record<string, string>): TState {
-    const childState = parentState.clone() as TState;
+    const childState = parentState.clone();
     for (const [childKey, parentKey] of Object.entries(inputMapping)) {
       this.#accessor.set(childState, childKey, this.#accessor.get(parentState, parentKey));
     }

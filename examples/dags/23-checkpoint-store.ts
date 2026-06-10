@@ -8,6 +8,7 @@
 
 import {
   DAG_CONTEXT,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
@@ -50,7 +51,7 @@ function makeStageNode(stageName: string): NodeInterface<PipelineState, 'success
       state.stage = stageName;
       state.tally++;
       state.trail.push(stageName);
-      return { output: 'success' };
+      return NodeOutputBuilder.of('success');
     },
   };
 }

@@ -18,7 +18,7 @@ import type { NodeStateBase } from '../../src/NodeStateBase.js';
 const bodyNode: NodeInterface<NodeStateBase, 'success'> = {
   'name': 'body-node',
   'outputs': ['success'],
-  async execute() { return { 'output': 'success' }; },
+  async execute() { return { 'errors': [], 'output': 'success' }; },
 };
 
 // A ScatterNode with a node body AND a container key — this is a validation error.

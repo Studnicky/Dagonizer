@@ -19,6 +19,7 @@
 
 import {
   DAG_CONTEXT,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
@@ -74,7 +75,7 @@ export const squareWorker: NodeInterface<WorkState, 'done'> = {
     // strategy reads this field from the child clone and appends it to
     // state.results on the parent after all items complete.
     state.lastResult = task * task;
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 // #endregion worker-node

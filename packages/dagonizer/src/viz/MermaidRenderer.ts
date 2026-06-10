@@ -11,8 +11,8 @@
  *   terminal (completed) → double-circle: `nodeName(((name\n(completed))))`
  *   terminal (failed)    → asymmetric flag: `nodeName>name\n(failed)]`
  *
- * Output routes render as labeled edges. Routes targeting `null` render
- * as edges to a synthetic `END` terminator (one per DAG). Explicit
+ * Output routes render as labeled edges. All routes must target named
+ * placements — null routes are not permitted in the DAG model. Explicit
  * `TerminalNode` placements render as their own distinct shapes and do
  * not emit edges (they are leaf placements; they end the flow).
  *
@@ -50,16 +50,12 @@ import type { PlacementEntry } from './internal.js';
 export class MermaidRenderer {
   private constructor() { /* static class */ }
 
-  /** Synthetic terminator node ID emitted once per DAG that has any null-route. */
-  private static readonly TERMINAL_ID = 'END';
-
   static render(dag: DAG): string {
     const lines: string[] = [];
     lines.push('flowchart LR');
     lines.push(`  %% ${dag.name} (v${dag.version})`);
     lines.push(`  ${dag.entrypoint}`);
 
-    let touchesTerminal = false;
     // Map from sanitized role token → list of placement names assigned that token.
     const roleToIds = new Map<string, string[]>();
     // Map from sanitized role token → original role string (for color lookup).
@@ -68,7 +64,6 @@ export class MermaidRenderer {
     for (const placement of dag.nodes as readonly PlacementEntry[]) {
       lines.push(`  ${MermaidRenderer.renderShape(placement)}`);
       for (const edge of MermaidRenderer.renderEdges(placement)) {
-        if (edge.endsWith(MermaidRenderer.TERMINAL_ID)) touchesTerminal = true;
         lines.push(edge);
       }
       // Track contained placements grouped by their sanitized role token.
@@ -80,10 +75,6 @@ export class MermaidRenderer {
         ids.push(placement.name);
         roleToIds.set(token, ids);
       }
-    }
-
-    if (touchesTerminal) {
-      lines.push(`  ${MermaidRenderer.TERMINAL_ID}([end])`);
     }
 
     // Emit one classDef per distinct role, then assign each contained node
@@ -172,9 +163,8 @@ export class MermaidRenderer {
     if (!('outputs' in placement)) return [];
     const lines: string[] = [];
     for (const [outputName, target] of Object.entries(placement.outputs)) {
-      const dest = target ?? MermaidRenderer.TERMINAL_ID;
       const labelText = MermaidRenderer.escapeLabel(outputName);
-      lines.push(`  ${placement.name} -->|${labelText}| ${dest}`);
+      lines.push(`  ${placement.name} -->|${labelText}| ${target}`);
     }
     return lines;
   }

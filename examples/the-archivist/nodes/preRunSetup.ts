@@ -20,6 +20,8 @@
  */
 
 // #region pre-phase-setup
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
+
 import type { ArchivistNode } from './ArchivistNode.ts';
 
 export const preRunSetup: ArchivistNode<'ready'> = {
@@ -44,7 +46,7 @@ export const preRunSetup: ArchivistNode<'ready'> = {
       `pre-run-setup: runId=${runId} query="${state.query.slice(0, 60)}"`,
     );
 
-    return Promise.resolve({ 'output': 'ready' });
+    return Promise.resolve(NodeOutputBuilder.of('ready'));
   },
 };
 // #endregion pre-phase-setup

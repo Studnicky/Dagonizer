@@ -6,6 +6,7 @@
 
 import {
   DAG_CONTEXT,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
@@ -54,7 +55,7 @@ export const provider: NodeInterface<GenerateState, 'success'> = {
       "text":     `answer from ${name}`,
       score,
     };
-    return { "output": 'success' };
+    return NodeOutputBuilder.of('success');
   },
 };
 // #endregion provider-node
@@ -65,13 +66,13 @@ export const select: NodeInterface<GenerateState, 'selected' | 'none'> = {
   "name": 'select',
   "outputs": ['selected', 'none'],
   async execute(state) {
-    if (state.candidates.length === 0) return { "output": 'none' };
+    if (state.candidates.length === 0) return NodeOutputBuilder.of('none');
     let best = state.candidates[0]!;
     for (const candidate of state.candidates) {
       if (candidate.score > best.score) best = candidate;
     }
     state.chosen = best;
-    return { "output": 'selected' };
+    return NodeOutputBuilder.of('selected');
   },
 };
 // #endregion select-node

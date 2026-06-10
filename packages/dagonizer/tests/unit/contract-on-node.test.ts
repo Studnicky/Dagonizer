@@ -28,7 +28,7 @@ function makeNode(
   const base: NodeInterface<NodeStateBase, string> = {
     name,
     outputs,
-    async execute() { return { 'output': outputs[0] ?? 'success' }; },
+    async execute() { return { 'errors': [], 'output': outputs[0] ?? 'success' }; },
   };
   if (contract !== undefined) {
     return { ...base, contract };
@@ -52,6 +52,11 @@ void describe('DAGDeriver.derive with co-located contracts', () => {
       'version': '1',
       'entrypoint': 'a',
       nodes,
+      'annotations': {
+        'terminals': {
+          'c': [{ 'outcome': 'success', 'emit': { 'name': 'chain-end', 'outcome': 'completed' } }],
+        },
+      },
     });
 
     assert.equal(dag.name, 'node-chain');
@@ -59,7 +64,7 @@ void describe('DAGDeriver.derive with co-located contracts', () => {
     assert.equal(dag['@type'], 'DAG');
 
     const names = dag.nodes.map((node) => node.name);
-    assert.deepEqual(names, ['a', 'b', 'c', 'completed']);
+    assert.deepEqual(names, ['a', 'b', 'c', 'chain-end']);
 
     const a = dag.nodes[0];
     if (a !== undefined && a['@type'] === 'SingleNode') {
@@ -70,7 +75,7 @@ void describe('DAGDeriver.derive with co-located contracts', () => {
 
     const c = dag.nodes[2];
     if (c !== undefined && c['@type'] === 'SingleNode') {
-      assert.equal(c.outputs['success'], 'completed');
+      assert.equal(c.outputs['success'], 'chain-end');
     } else {
       assert.fail('expected third node to be SingleNode');
     }
@@ -88,6 +93,11 @@ void describe('DAGDeriver.derive with co-located contracts', () => {
       'version': '1',
       'entrypoint': 'a',
       nodes,
+      'annotations': {
+        'terminals': {
+          'b': [{ 'outcome': 'success', 'emit': { 'name': 'skip-end', 'outcome': 'completed' } }],
+        },
+      },
     });
 
     const names = dag.nodes.map((n) => n.name);
@@ -250,6 +260,11 @@ void describe('Dagonizer.onContractWarning hook', () => {
       'version': '1',
       'entrypoint': 'root',
       "nodes": [rootNode, aNode, bNode],
+      'annotations': {
+        'terminals': {
+          'b': [{ 'outcome': 'success', 'emit': { 'name': 'warn-end', 'outcome': 'completed' } }],
+        },
+      },
     });
 
     dispatcher.registerDAG(dag);
@@ -274,7 +289,7 @@ void describe('Chainable<A, B> type helper', () => {
         'hardRequired': ['url'] as const,
         'produces': ['raw'] as const,
       },
-      async execute() { return { 'output': 'success' as const }; },
+      async execute() { return { 'errors': [], 'output': 'success' as const }; },
     } satisfies NodeInterface;
 
     const _parseNode = {
@@ -284,7 +299,7 @@ void describe('Chainable<A, B> type helper', () => {
         'hardRequired': ['raw'] as const,
         'produces': ['record'] as const,
       },
-      async execute() { return { 'output': 'success' as const }; },
+      async execute() { return { 'errors': [], 'output': 'success' as const }; },
     } satisfies NodeInterface;
 
     // This type assertion compiles only when Chainable<_fetchNode, _parseNode> = true.
@@ -308,11 +323,23 @@ void describe('registerDAG: embedded/scatter placement contracts', () => {
     // The sub-DAG the embedded placement runs.
     const work     = makeNode('work',     ['success'],          { 'hardRequired': ['mid'],   'produces': ['out'] });
 
-    const child = DAGDeriver.derive({ 'name': 'sub', 'version': '1', 'entrypoint': 'work', 'nodes': [work] });
+    const child = DAGDeriver.derive({
+      'name': 'sub', 'version': '1', 'entrypoint': 'work', 'nodes': [work],
+      'annotations': {
+        'terminals': {
+          'work': [{ 'outcome': 'success', 'emit': { 'name': 'sub-end', 'outcome': 'completed' } }],
+        },
+      },
+    });
     const parent = DAGDeriver.derive({
       'name': 'parent', 'version': '1', 'entrypoint': 'prepare',
       'nodes': [prepare, invoke, finalize],
-      'annotations': { 'embeddedDAGs': { 'invoke': { 'dag': 'sub', 'outputs': ['success', 'error'] } } },
+      'annotations': {
+        'embeddedDAGs': { 'invoke': { 'dag': 'sub', 'outputs': ['success', 'error'] } },
+        'terminals': {
+          'finalize': [{ 'outcome': 'success', 'emit': { 'name': 'parent-end', 'outcome': 'completed' } }],
+        },
+      },
     });
 
     for (const n of [prepare, invoke, finalize, work]) d.registerNode(n);

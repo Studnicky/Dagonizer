@@ -43,52 +43,40 @@ export class WorkerObserver<
     return [...this.#basePath, ...innerPath];
   }
 
-  protected override onNodeStart(nodeName: string, _state: TState, placementPath: readonly string[]): void {
+  #emit(
+    hook: 'nodeStart' | 'nodeEnd' | 'error' | 'phaseEnter' | 'phaseExit' | 'contractWarning',
+    phase: '' | 'pre' | 'post',
+    dagName: string,
+    nodeName: string,
+    output: string | null,
+    message: string,
+    composedPath: string[],
+  ): void {
     try {
       this.#channel.send({
         'kind': 'instrumentation',
         'correlationId': this.#correlationId,
-        'hook': 'nodeStart',
-        'phase': '',
-        'dagName': '',
+        'hook': hook,
+        'phase': phase,
+        'dagName': dagName,
         'nodeName': nodeName,
-        'output': null,
-        'message': '',
-        'placementPath': this.#composePath(placementPath),
+        'output': output,
+        'message': message,
+        'placementPath': composedPath,
       });
     } catch { /* channel closed — suppress */ }
+  }
+
+  protected override onNodeStart(nodeName: string, _state: TState, placementPath: readonly string[]): void {
+    this.#emit('nodeStart', '', '', nodeName, null, '', this.#composePath(placementPath));
   }
 
   protected override onNodeEnd(nodeName: string, output: string | null, _state: TState, placementPath: readonly string[]): void {
-    try {
-      this.#channel.send({
-        'kind': 'instrumentation',
-        'correlationId': this.#correlationId,
-        'hook': 'nodeEnd',
-        'phase': '',
-        'dagName': '',
-        'nodeName': nodeName,
-        'output': output,
-        'message': '',
-        'placementPath': this.#composePath(placementPath),
-      });
-    } catch { /* channel closed — suppress */ }
+    this.#emit('nodeEnd', '', '', nodeName, output, '', this.#composePath(placementPath));
   }
 
   protected override onError(nodeName: string, error: Error, _state: TState, placementPath: readonly string[]): void {
-    try {
-      this.#channel.send({
-        'kind': 'instrumentation',
-        'correlationId': this.#correlationId,
-        'hook': 'error',
-        'phase': '',
-        'dagName': '',
-        'nodeName': nodeName,
-        'output': null,
-        'message': error.message,
-        'placementPath': this.#composePath(placementPath),
-      });
-    } catch { /* channel closed — suppress */ }
+    this.#emit('error', '', '', nodeName, null, error.message, this.#composePath(placementPath));
   }
 
   protected override onPhaseEnter(
@@ -98,19 +86,7 @@ export class WorkerObserver<
     _state: TState,
     placementPath: readonly string[],
   ): void {
-    try {
-      this.#channel.send({
-        'kind': 'instrumentation',
-        'correlationId': this.#correlationId,
-        'hook': 'phaseEnter',
-        'phase': phase,
-        'dagName': dagName,
-        'nodeName': placementName,
-        'output': null,
-        'message': '',
-        'placementPath': this.#composePath(placementPath),
-      });
-    } catch { /* channel closed — suppress */ }
+    this.#emit('phaseEnter', phase, dagName, placementName, null, '', this.#composePath(placementPath));
   }
 
   protected override onPhaseExit(
@@ -120,34 +96,10 @@ export class WorkerObserver<
     _state: TState,
     placementPath: readonly string[],
   ): void {
-    try {
-      this.#channel.send({
-        'kind': 'instrumentation',
-        'correlationId': this.#correlationId,
-        'hook': 'phaseExit',
-        'phase': phase,
-        'dagName': dagName,
-        'nodeName': placementName,
-        'output': null,
-        'message': '',
-        'placementPath': this.#composePath(placementPath),
-      });
-    } catch { /* channel closed — suppress */ }
+    this.#emit('phaseExit', phase, dagName, placementName, null, '', this.#composePath(placementPath));
   }
 
   protected override onContractWarning(message: string): void {
-    try {
-      this.#channel.send({
-        'kind': 'instrumentation',
-        'correlationId': this.#correlationId,
-        'hook': 'contractWarning',
-        'phase': '',
-        'dagName': '',
-        'nodeName': '',
-        'output': null,
-        'message': message,
-        'placementPath': [],
-      });
-    } catch { /* channel closed — suppress */ }
+    this.#emit('contractWarning', '', '', '', null, message, []);
   }
 }

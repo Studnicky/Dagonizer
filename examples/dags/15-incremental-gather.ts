@@ -20,6 +20,7 @@ import {
   DAG_CONTEXT,
   GatherStrategies,
   GatherStrategy,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
@@ -59,7 +60,7 @@ export const shout: NodeInterface<IncrementalState, 'done'> = {
     // `processed` off each clone and appends it to the parent's `results`.
     // (A map gather appends one entry per clone; keep the source field scalar.)
     state.processed = word.toUpperCase();
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 // #endregion worker-node

@@ -3,6 +3,7 @@
  */
 
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
 
 import { FlowNode } from './FlowNode.js';
 
@@ -22,7 +23,7 @@ export abstract class SelectNode<
     const items = this.readItems(state);
     const next = this.transform(items);
     this.writeBack(state, next);
-    return { 'output': next.length === 0 ? this.emptyPort() : this.successPort() };
+    return NodeOutputBuilder.of(next.length === 0 ? this.emptyPort() : this.successPort());
   }
 }
 

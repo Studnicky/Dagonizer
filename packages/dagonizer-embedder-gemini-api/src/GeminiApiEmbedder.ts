@@ -19,13 +19,14 @@
  */
 
 import { BaseEmbedder, Classifications, LlmError } from '@noocodex/dagonizer/adapter';
-import type { BaseEmbedderOptions } from '@noocodex/dagonizer/adapter';
+import type { AdapterBaseOptions } from '@noocodex/dagonizer/adapter';
+import type { AbortableOptionsInterface } from '@noocodex/dagonizer/contracts';
 
 const DEFAULT_MODEL = 'text-embedding-004';
 const DEFAULT_DIMENSIONS = 768;
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 
-export interface GeminiApiEmbedderOptions extends BaseEmbedderOptions {
+export interface GeminiApiEmbedderOptions extends AdapterBaseOptions {
   /** Override the embedding model. Defaults to `text-embedding-004`. */
   readonly model?: string;
   /** Override dimensions when targeting a non-`text-embedding-004` model. */
@@ -96,7 +97,7 @@ export class GeminiApiEmbedder extends BaseEmbedder {
    * Probe true when a non-empty API key was supplied. Never throws.
    * Symmetric with `GeminiApiAdapter.probe`.
    */
-  override async probe(): Promise<boolean> {
+  override async probe(_options?: AbortableOptionsInterface): Promise<boolean> {
     return Promise.resolve(this.#apiKey.length > 0);
   }
 }

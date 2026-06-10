@@ -6,6 +6,7 @@
 
 import {
   DAGBuilder,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
 import type { NodeInterface } from '@noocodex/dagonizer/contracts';
@@ -35,7 +36,7 @@ export const preSetup: NodeInterface<PhaseState, 'ready'> = {
   async execute(state) {
     state.executionLog.push('pre-setup');
     state.seedValue = 42;
-    return { "output": 'ready' };
+    return NodeOutputBuilder.of('ready');
   },
 };
 // #endregion pre-phase-node
@@ -50,7 +51,7 @@ export const compute: NodeInterface<PhaseState, 'done'> = {
   async execute(state) {
     state.executionLog.push('compute');
     state.result = `computed:${String(state.seedValue * 2)}`;
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -68,7 +69,7 @@ export const postAudit: NodeInterface<PhaseState, 'audited'> = {
     state.executionLog.push('post-audit');
     // State is already finalized; this is the last observer.
     state.executionLog.push(`final-result:${state.result}`);
-    return { "output": 'audited' };
+    return NodeOutputBuilder.of('audited');
   },
 };
 // #endregion post-phase-node

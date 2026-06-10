@@ -79,7 +79,7 @@ void describe('Dagonizer accepts a custom StateAccessor', () => {
       async execute(state) {
         const item = state.getMetadata<number>('item') ?? 0;
         state.results.push(item * 2);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
 

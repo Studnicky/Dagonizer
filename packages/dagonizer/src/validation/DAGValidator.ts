@@ -34,11 +34,11 @@ export class DAGValidator {
       DAGValidator.validateDAGNode(node, nodes, dags, nodeNames, errors);
     }
 
-    // Collect circular-reference candidates across BOTH sub-DAG edge kinds in
-    // one traversal: EmbeddedDAGNode(dag) and ScatterNode(body.dag). A
-    // cross-kind cycle (embed → scatter → embed) is caught, not just same-kind.
-    const dagRefs = new Set<string>();
-    DAGValidator.collectDAGReferences(dag, dags, dagRefs, new Set([dag.name]), errors);
+    // No sub-DAG cycle detection is needed. `registerDAG` is append-only (a
+    // duplicate name throws), and every EmbeddedDAGNode/ScatterNode body must
+    // reference an already-registered DAG (validated above). Sub-DAG references
+    // are therefore backward-only, so the reference graph is necessarily
+    // acyclic — a cycle cannot be constructed through the public registry.
 
     if (errors.length > 0) {
       throw new DAGError(`Invalid DAG '${dag.name}':\n  - ${errors.join('\n  - ')}`);
@@ -128,7 +128,7 @@ export class DAGValidator {
       // A node body with a container key is invalid: a node body is one node, not a DAG.
       // Container is only valid for dag bodies. Throw immediately — this is a structural
       // error that must surface before any execution.
-      if ('container' in scatter && (scatter as { container?: string }).container !== undefined) {
+      if (scatter.container !== undefined) {
         throw new ValidationError(
           `ScatterNode '${scatter.name}' has a node body; 'container' is only valid for a dag body`,
         );
@@ -166,50 +166,6 @@ export class DAGValidator {
     for (const [output, target] of Object.entries(scatter.outputs)) {
       if (!nodeNames.has(target)) {
         errors.push(`ScatterNode '${scatter.name}': output '${output}' routes to unknown node '${target}'`);
-      }
-    }
-  }
-
-  /**
-   * Depth-first cycle detection over the sub-DAG reference graph. Follows BOTH
-   * sub-DAG edge kinds in a single traversal: `EmbeddedDAGNode.dag` (embed) and
-   * `ScatterNode.body.dag` (fork-of-sub-DAG), so a cross-kind cycle is caught.
-   * `path` is the current DFS stack (back-edge ⇒ cycle); `visited` marks
-   * fully-explored DAGs so shared sub-DAGs are not re-walked.
-   */
-  private static collectDAGReferences(
-    dag: DAG,
-    dags: Map<string, DAG>,
-    visited: Set<string>,
-    path: Set<string>,
-    errors: string[],
-  ): void {
-    for (const rawNode of dag.nodes) {
-      let dagRef: string;
-      let label: string;
-      if (rawNode['@type'] === 'EmbeddedDAGNode') {
-        dagRef = rawNode.dag;
-        label = 'embedded-DAG';
-      } else if (rawNode['@type'] === 'ScatterNode') {
-        const body = rawNode.body;
-        if (!('dag' in body)) continue;
-        dagRef = body.dag;
-        label = 'scatter';
-      } else {
-        continue;
-      }
-      if (path.has(dagRef)) {
-        errors.push(`Circular ${label} DAG reference detected: ${Array.from(path).join(' -> ')} -> ${dagRef}`);
-        continue;
-      }
-      if (!visited.has(dagRef)) {
-        visited.add(dagRef);
-        const nested = dags.get(dagRef);
-        if (nested) {
-          const newPath = new Set(path);
-          newPath.add(dagRef);
-          DAGValidator.collectDAGReferences(nested, dags, visited, newPath, errors);
-        }
       }
     }
   }

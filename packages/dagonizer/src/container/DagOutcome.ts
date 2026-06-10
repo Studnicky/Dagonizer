@@ -61,6 +61,7 @@ export class DagOutcome {
     const message = options.message ?? `Transport failure for request ${correlationId}`;
     const error: NodeError = {
       'code': code,
+      'context': {},
       'message': message,
       'operation': 'runDag',
       'recoverable': false,

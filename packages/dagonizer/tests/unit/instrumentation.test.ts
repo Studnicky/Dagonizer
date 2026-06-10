@@ -177,6 +177,11 @@ void describe('Dagonizer subclass hooks contract', () => {
       'version':    '1',
       'entrypoint': 'root',
       'nodes':      [rootNode, aNode, bNode],
+      'annotations': {
+        'terminals': {
+          'b': [{ 'outcome': 'success', 'emit': { 'name': 'inst-warn-end', 'outcome': 'completed' } }],
+        },
+      },
     });
     dispatcher.registerDAG(dag);
 

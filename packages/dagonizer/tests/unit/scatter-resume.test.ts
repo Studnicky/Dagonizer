@@ -59,7 +59,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
         calls++;
         const item = state.getMetadata<number>('item') ?? 0;
         state.setMetadata('processedItem', item);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -106,7 +106,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
         if (idx === 3) {
           throw new Error('simulated mid-flight failure');
         }
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -158,7 +158,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'outputs': ['success'],
       async execute() {
         calls++;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -208,7 +208,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'name': 'worker',
       'outputs': ['success'],
       async execute() {
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -277,7 +277,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           throw new Error('simulated mid-flight failure');
         }
         state.produced = f(item);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     interruptDispatcher.registerNode(interruptingWorker);
@@ -337,7 +337,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
         resumeRunCount++;
         const item = state.getMetadata<number>('item') ?? 0;
         state.produced = f(item);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     resumeDispatcher.registerNode(resumeWorker);
@@ -373,7 +373,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'outputs': ['success'],
       async execute() {
         aCalls++;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     const workerB: NodeInterface<ScatterState, 'success'> = {
@@ -381,7 +381,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'outputs': ['success'],
       async execute() {
         bCalls++;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(workerA);
@@ -465,7 +465,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'name': 'worker',
       'outputs': ['success'],
       async execute() {
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -501,7 +501,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
       'outputs': ['success'],
       async execute() {
         calls++;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -567,7 +567,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
             reject(context.signal.reason);
           }, { 'once': true });
         });
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);

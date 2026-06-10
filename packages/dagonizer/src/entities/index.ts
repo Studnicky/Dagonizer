@@ -74,7 +74,7 @@ export type { Node } from './node/Node.js';
 export { NodeContextSchema } from './node/NodeContext.js';
 export type { NodeContext, NodeContextInterface } from './node/NodeContext.js';
 
-export { NodeErrorSchema } from './node/NodeError.js';
+export { NodeErrorBuilder, NodeErrorSchema } from './node/NodeError.js';
 export type { NodeError, NodeErrorInterface } from './node/NodeError.js';
 
 export { NodeWarningSchema } from './node/NodeWarning.js';

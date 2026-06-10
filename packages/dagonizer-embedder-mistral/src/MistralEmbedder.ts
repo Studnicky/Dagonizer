@@ -21,13 +21,14 @@
  */
 
 import { BaseEmbedder, Classifications, LlmError } from '@noocodex/dagonizer/adapter';
-import type { BaseEmbedderOptions } from '@noocodex/dagonizer/adapter';
+import type { AdapterBaseOptions } from '@noocodex/dagonizer/adapter';
+import type { AbortableOptionsInterface } from '@noocodex/dagonizer/contracts';
 
 const DEFAULT_MODEL = 'mistral-embed';
 const DEFAULT_DIMENSIONS = 1024;
 const ENDPOINT = 'https://api.mistral.ai/v1/embeddings';
 
-export interface MistralEmbedderOptions extends BaseEmbedderOptions {
+export interface MistralEmbedderOptions extends AdapterBaseOptions {
   /** Override the embedding model. Defaults to `mistral-embed`. */
   readonly model?: string;
   /** Override dimensions when targeting a non-`mistral-embed` model. */
@@ -99,7 +100,7 @@ export class MistralEmbedder extends BaseEmbedder {
    * Probe true when a non-empty API key was supplied. Never throws.
    * Symmetric with `MistralApiAdapter.probe`.
    */
-  override async probe(): Promise<boolean> {
+  override async probe(_options?: AbortableOptionsInterface): Promise<boolean> {
     return Promise.resolve(this.#apiKey.length > 0);
   }
 }

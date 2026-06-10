@@ -6,6 +6,7 @@
 
 import {
   DAGBuilder,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
 import type { NodeInterface } from '@noocodex/dagonizer/contracts';
@@ -34,7 +35,7 @@ export const stepA: NodeInterface<NodeStateBase, 'done', Services> = {
       const existing = current?.split(',').filter(Boolean) ?? [];
       return [...existing, 'step-a'].join(',');
     });
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -46,7 +47,7 @@ export const stepB: NodeInterface<NodeStateBase, 'done', Services> = {
       const existing = current?.split(',').filter(Boolean) ?? [];
       return [...existing, 'step-b'].join(',');
     });
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -58,7 +59,7 @@ export const childStep: NodeInterface<NodeStateBase, 'done', Services> = {
       const existing = current?.split(',').filter(Boolean) ?? [];
       return [...existing, 'child-step'].join(',');
     });
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 

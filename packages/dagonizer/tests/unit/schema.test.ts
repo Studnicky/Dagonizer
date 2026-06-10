@@ -140,7 +140,7 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
     const op: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'op',
       'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     dispatcher.registerNode(op);
 
@@ -160,7 +160,7 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
     const op: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'op',
       'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     dispatcher.registerNode(op);
 

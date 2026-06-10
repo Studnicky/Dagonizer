@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { InMemoryChannel } from '../../src/channels/InMemoryChannel.js';
-import type { ChannelInterface } from '../../src/contracts/ChannelInterface.js';
+import type { HandoffChannelInterface } from '../../src/contracts/HandoffChannelInterface.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -60,7 +60,7 @@ const incrementNode: NodeInterface<HandoffState, 'next'> = {
   'outputs': ['next'],
   async execute(state) {
     state.counter += 1;
-    return { 'output': 'next' };
+    return { 'errors': [], 'output': 'next' };
   },
 };
 
@@ -68,7 +68,7 @@ const noopNode: NodeInterface<HandoffState, 'done'> = {
   'name': 'noop',
   'outputs': ['done'],
   async execute() {
-    return { 'output': 'done' };
+    return { 'errors': [], 'output': 'done' };
   },
 };
 
@@ -203,7 +203,7 @@ void describe('handoff-channel: unbound terminal', () => {
 
 void describe('handoff-channel: publish failure', () => {
   void it('collects HANDOFF_PUBLISH_FAILED when channel.publish rejects', async () => {
-    const failingChannel: ChannelInterface = {
+    const failingChannel: HandoffChannelInterface = {
       async publish() {
         throw new Error('transport down');
       },

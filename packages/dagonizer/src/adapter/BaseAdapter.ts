@@ -1,14 +1,14 @@
 /**
- * BaseAdapter: abstract base every concrete adapter extends.
+ * BaseAdapter: abstract base every concrete LLM adapter extends.
  *
- * Owns the retry plumbing (Dagonizer's `RetryPolicy` with exponential
- * backoff) and the chat-call envelope. Concrete adapters implement
- * `performChat()` (the raw transport call) and `classify()` which
- * maps a provider-native error into the shared `LlmError` taxonomy.
+ * Extends `AdapterBase` for shared lifecycle (retry policy,
+ * `connect`/`disconnect`/`probe`, `classify`) and adds only what is
+ * unique to the LLM surface: `capabilities` and the `chat()` envelope
+ * that calls the abstract `performChat()`.
  *
- *   Adapter contract → BaseAdapter ┐
- *                                  ├─ chat() → retry-wrapped performChat()
- *                                  └─ classify(err) returns retryable/non-retryable
+ *   LlmAdapter contract → BaseAdapter ┐
+ *                                     ├─ chat() → retry-wrapped performChat()
+ *                                     └─ classify(err) returns retryable/non-retryable
  *
  * The retry wrapper rethrows non-retryable errors immediately and
  * loops with exponential backoff for retryable ones (NETWORK, TIMEOUT,
@@ -19,33 +19,14 @@
  * extra attempt; mirrored here via `MAX_QUOTA_WAIT_MS`.
  */
 
-
 import type { LlmAdapter } from '../contracts/LlmAdapter.js';
-import { BackoffStrategy } from '../runtime/index.js';
 
+import { AdapterBase, type AdapterBaseOptions } from './AdapterBase.js';
 import type { AdapterCapabilities, ChatRequest, ChatResponse } from './LlmAdapter.js';
-import { Classifications, LlmError, MAX_QUOTA_WAIT_MS, type ErrorClassification } from './LlmError.js';
-import { RetryableErrorPolicy } from './RetryableErrorPolicy.js';
+import { LlmError, MAX_QUOTA_WAIT_MS } from './LlmError.js';
 
-export const DEFAULT_MAX_ATTEMPTS = 3;
-export const DEFAULT_BASE_DELAY_MS = 400;
-
-export interface BaseAdapterOptions {
-  readonly maxAttempts?: number;
-  readonly baseDelayMs?: number;
-}
-
-/** Complete, filled `BaseAdapterOptions` with no optional fields. */
-export interface BaseAdapterOptionsResolved {
-  readonly maxAttempts: number;
-  readonly baseDelayMs: number;
-}
-
-export abstract class BaseAdapter implements LlmAdapter {
-  readonly id: string;
-  readonly displayName: string;
+export abstract class BaseAdapter extends AdapterBase implements LlmAdapter {
   readonly capabilities: AdapterCapabilities;
-  readonly #retry: RetryableErrorPolicy;
 
   /**
    * Returns a fully-resolved options object with every field set to its
@@ -55,49 +36,22 @@ export abstract class BaseAdapter implements LlmAdapter {
    *
    *   super(id, name, caps, { ...BaseAdapter.defaultOptions(), ...options });
    */
-  static defaultOptions(): BaseAdapterOptionsResolved {
-    return { 'maxAttempts': DEFAULT_MAX_ATTEMPTS, 'baseDelayMs': DEFAULT_BASE_DELAY_MS };
+  static override defaultOptions() {
+    return AdapterBase.defaultOptions();
   }
 
   protected constructor(
     id: string,
     displayName: string,
     capabilities: AdapterCapabilities,
-    options: BaseAdapterOptions = {},
+    options: AdapterBaseOptions = {},
   ) {
-    this.id = id;
-    this.displayName = displayName;
+    super(id, displayName, options);
     this.capabilities = capabilities;
-    this.#retry = new RetryableErrorPolicy({
-      'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
-      'strategy':    BackoffStrategy.EXPONENTIAL,
-      'baseDelay':   options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS,
-    });
-  }
-
-  /** No-op default. Subclasses with a session lifecycle override. */
-  async connect(): Promise<void> {
-    return Promise.resolve();
-  }
-
-  /** No-op default. Subclasses with a session lifecycle override. */
-  async disconnect(): Promise<void> {
-    return Promise.resolve();
-  }
-
-  /**
-   * Default availability probe. Returns true; the adapter assumes it
-   * can run unless the concrete subclass knows better. Subclasses with
-   * meaningful availability constraints (API key presence, runtime
-   * feature detect, local model warmth) override and surface their own
-   * check. Must never throw; return false instead.
-   */
-  async probe(): Promise<boolean> {
-    return Promise.resolve(true);
   }
 
   async chat(request: ChatRequest): Promise<ChatResponse> {
-    return this.#retry.run(async () => {
+    return this.retryPolicy.run(async () => {
       try {
         return await this.performChat(request);
       } catch (rawError) {
@@ -125,11 +79,4 @@ export abstract class BaseAdapter implements LlmAdapter {
 
   /** Concrete adapter: perform the actual API call. */
   protected abstract performChat(request: ChatRequest): Promise<ChatResponse>;
-
-  /** Map a provider-native error into the shared classification. */
-  protected classify(error: unknown): ErrorClassification {
-    if (error instanceof LlmError) return error.classification;
-    return Classifications['UNKNOWN'];
-  }
 }
-

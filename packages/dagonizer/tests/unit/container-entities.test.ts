@@ -143,6 +143,7 @@ void describe('ExecutionResponse schema', () => {
       ...validResponse,
       'errors': [{
         'code': 'ERR_TRANSPORT',
+        'context': {},
         'message': 'timeout',
         'operation': 'runDag',
         'recoverable': false,

@@ -28,7 +28,7 @@ const makeNode = (
     } else {
       state.trace.push(name);
     }
-    return { 'output': outputs[0] as string };
+    return { 'errors': [], 'output': outputs[0] as string };
   },
 });
 
@@ -262,7 +262,7 @@ void describe('PhaseNode placements: post-phase execution', () => {
             reject(new Error('aborted'));
           }, { 'once': true });
         });
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     });
 
