@@ -85,24 +85,29 @@ export abstract class MonadicNode<
   destroy?(): Promise<void>;
 
   /**
-   * Conventional routing-output token for the happy path.
-   * Returns the literal `'success'`; assignable to `TOutput` when
-   * `TOutput` includes `'success'` (true for all default-param subclasses).
-   * Override for non-standard ports where `TOutput` omits `'success'`.
+   * Returns the concrete literal `'success'`. Use in `execute()` bodies
+   * where the output type includes `'success'`. Leaf nodes whose
+   * `execute()` emits only a fixed set of ports declare that set as
+   * the concrete `TOutput` (e.g. `'success'`) rather than a free
+   * generic, making this helper's return type directly assignable
+   * without any cast.
    */
   protected successPort(): 'success' { return 'success'; }
 
   /**
-   * Conventional routing-output token for the no-result path.
-   * Returns the literal `'empty'`; assignable to `TOutput` when
-   * `TOutput` includes `'empty'`. Override for non-standard ports.
+   * Returns the concrete literal `'empty'`. Use in `execute()` bodies
+   * where the output type includes `'empty'`. Fixed-port leaf nodes
+   * that route to this port declare `'success' | 'empty'` (or a
+   * subset) as their concrete `TOutput` rather than a free generic.
    */
   protected emptyPort(): 'empty' { return 'empty'; }
 
   /**
-   * Conventional routing-output token for the error path.
-   * Returns the literal `'error'`; assignable to `TOutput` when
-   * `TOutput` includes `'error'`. Override for non-standard ports.
+   * Returns the concrete literal `'error'`. Use in `execute()` bodies
+   * where the output type includes `'error'`. Fixed-port leaf nodes
+   * that route to this port declare `'success' | 'empty' | 'error'`
+   * (or a subset) as their concrete `TOutput` rather than a free
+   * generic.
    */
   protected errorPort(): 'error' { return 'error'; }
 }

@@ -25,7 +25,12 @@ single trailing `options` object.
 
 - **`OutputSchema` adapter type renamed to `LlmOutputSchema`** — resolves the canonical-name collision with the `constants/Output` `OutputSchema` value.
 - **`NodeStateBase.clone()` now returns `this`** — preserves the concrete subclass type without a cast at call sites.
-- **`StateAccessor.get<T = unknown>(state, path): T | undefined`** — generic return removes the `as unknown[]` casts at every gather call site.
+- **`StateAccessor.get<T = unknown>(state, path): T | null`** — absent-path sentinel changed from `undefined` to `null` (`undefined` is for absent optional props; `null` is the explicit "no value" sentinel). Migration: replace `=== undefined` / `!= null` absence checks with `=== null`. Implementers change their return from `undefined` to `null`.
+- **`Store.get<T>(key): Promise<T | null>`** (and `BaseStore.performGet<T>`) — same null-sentinel change. Migration: absent-key callers that checked `=== undefined` must check `=== null`; `update(key, fn)` callback still receives `T | undefined` (unchanged).
+- **`GatherExecution.invokeNode(name): Promise<void>` removed; replaced by `readonly invoker: NodeInvoker`** — bare function property was a callback seam; swap all `execution.invokeNode(name)` call sites to `execution.invoker.invokeNode(name)`.
+- **`GatherExecution.invoker` is now a `NodeInvoker`** — `{ invokeNode(name): Promise<void> }`. Custom gather strategies that extended `GatherStrategy` and invoked `execution.invokeNode(...)` must change to `execution.invoker.invokeNode(...)`.
+- **`ContractRegistryValidator.validate(contracts, warningEmitter, options?)` — second argument is `WarningEmitter`** (was `(message: string) => void`). Migration: pass `new NoopWarningEmitter()` for no-ops, or a concrete `WarningEmitter` implementation. `DAGBuilder.build({ warningEmitter? })` option renamed from `onContractWarning`.
+- **`NoopWarningEmitter`** added to `./runtime` — the canonical no-op `WarningEmitter` for call sites that do not surface dead-write warnings.
 - **`ScatterAckedResult` is now a discriminated union** (`kind: 'map' | 'field' | 'plain'`) — one hidden class per variant; affects checkpoint shape.
 - **`DAGLifecycleEvent` `cancel.reason` is required** (the `cancelled` state already required it; pass `''` for none).
 - **`MonadicNode.timeoutMs` is a required field defaulting to `0`** (0 = no timeout) — single hidden class for every node instance. The `NodeInterface.timeoutMs?` contract stays optional (external implementer boundary).

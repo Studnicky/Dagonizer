@@ -64,6 +64,8 @@ export type { EntityValidator } from './validation/index.js';
 // =============================================================================
 
 export {
+  Placement,
+  NodeOutputBuilder,
   ScatterNodeSchema,
   EmbeddedDAGNodeSchema,
   GatherConfigSchema,
@@ -95,6 +97,7 @@ export {
   DAGHandoffSchema,
 } from './entities/index.js';
 export type {
+  DAGNodeType,
   ScatterNode,
   EmbeddedDAGNode,
   GatherConfig,

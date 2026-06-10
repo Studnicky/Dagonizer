@@ -50,7 +50,7 @@ export abstract class BaseStore implements Store {
 
   // ── Public Store contract (delegates to protected hooks) ─────────────
 
-  async get<T extends JsonValue>(key: string): Promise<T | undefined> {
+  async get<T extends JsonValue>(key: string): Promise<T | null> {
     return this.performGet<T>(this.qualifyKey(key));
   }
 
@@ -78,7 +78,8 @@ export abstract class BaseStore implements Store {
    */
   async update<T extends JsonValue>(key: string, fn: (current: T | undefined) => T): Promise<T> {
     const qualified = this.qualifyKey(key);
-    const current   = await this.performGet<T>(qualified);
+    const raw       = await this.performGet<T>(qualified);
+    const current   = raw === null ? undefined : raw;
     const next      = fn(current);
     await this.performSet<T>(qualified, next);
     return next;
@@ -122,7 +123,7 @@ export abstract class BaseStore implements Store {
 
   // ── Plugin author hooks ─────────────────────────────────────────────
 
-  protected abstract performGet<T extends JsonValue>(qualifiedKey: string): Promise<T | undefined>;
+  protected abstract performGet<T extends JsonValue>(qualifiedKey: string): Promise<T | null>;
   protected abstract performSet<T extends JsonValue>(qualifiedKey: string, value: T): Promise<void>;
   protected abstract performHas(qualifiedKey: string): Promise<boolean>;
   protected abstract performDelete(qualifiedKey: string): Promise<boolean>;

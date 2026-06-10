@@ -253,8 +253,8 @@ void describe('Scatter: resume mid-stream (array source)', () => {
         'placementName': 'fan',
         'inbox': [],
         'ackedResults': [
-          { 'index': 0, 'item': 10, 'output': 'success' },
-          { 'index': 1, 'item': 20, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 0, 'item': 10, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 1, 'item': 20, 'output': 'success' },
         ],
       },
     });
@@ -300,7 +300,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
         'placementName': 'fan',
         'inbox': [{ 'index': 1, 'item': 2 }],  // item 1 (value=2) was in-flight
         'ackedResults': [
-          { 'index': 0, 'item': 1, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 0, 'item': 1, 'output': 'success' },
         ],
       },
     });
@@ -365,8 +365,8 @@ void describe('Scatter: resume mid-stream (AsyncIterable source)', () => {
         'placementName': 'fan',
         'inbox': [{ 'index': 2, 'item': 30 }],
         'ackedResults': [
-          { 'index': 0, 'item': 10, 'output': 'success' },
-          { 'index': 1, 'item': 20, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 0, 'item': 10, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 1, 'item': 20, 'output': 'success' },
         ],
       },
     });

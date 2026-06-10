@@ -4,7 +4,31 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **PAT-1: free `TOutput` generic removed from fixed-port leaf nodes** in `dagonizer-patterns-flow`, `-rag`, and `-graph`. `ReduceNode`, `SelectNode`, `ComposeNode`, `ScoutNode`, `MemoryDigestNode`, `RecallContextNode`, and `RecordFindingsNode` each emits a statically known set of ports; those nodes now declare a concrete output type (`'success'`, `'success' | 'empty'`, or `'success' | 'empty' | 'error'`) instead of a free `TOutput extends string` parameter. The previous free generic caused TS2322 (`'string' is not assignable to type 'TOutput'`) in every pattern package; the removal makes the `execute()` return types provably sound without any cast. All in-package subclasses (`DedupeByKeyNode`, `GroupByFieldNode`, `MergeReducerNode`, `PickByScoreNode`, `SortByNode`, and the four `ComposeNode` leaves) are updated in lockstep to drop the now-absent type argument.
+- **PAT-2: `ScoutNode.execute` passes `{ signal }` options object to `Tool.execute`** instead of a bare `AbortSignal`. `Tool.execute` signature is `(input, options?: { signal?: AbortSignal })`; the previous call site passed `context.signal` directly, producing TS2559 (`Type 'AbortSignal' has no properties in common with type '{ signal?: AbortSignal }'`).
+- **PAT-3: `MonadicNode.successPort/emptyPort/errorPort` JSDoc updated** to state that these helpers return concrete literals; fixed-port leaf nodes should declare a concrete output type rather than a free generic, making the helpers directly assignable.
+
 ### Added
+
+- **`Placement` static class** in `src/entities/dag/Placement.ts`. Provides five type-guard static methods — `isEmbeddedDAG`, `isScatter`, `isSingle`, `isTerminal`, `isPhase` — that narrow `DAGNodeType` via `@type` discriminant. Replaces five freestanding `export function is*` guards that previously lived in `Dagonizer.ts`. Exported from `./types`, `./entities`, and the root barrel.
+- **`DAGNodeType` canonical union** exported from `src/entities/dag/Placement.ts`. Previously a local alias in `Dagonizer.ts` and independently re-declared in `DAGBuilder.ts` and `DAGValidator.ts`. Both local declarations replaced with an import from the canonical source.
+- **`NodeOutputBuilder` static class** in `src/entities/node/NodeOutput.ts`. Provides `NodeOutputBuilder.of(output, options?)` (constructs a `NodeOutputInterface` with `errors: []` by default) and `NodeOutputBuilder.errorsOf(result)` (normalises the optional `errors` field to `[]` at the engine boundary). Replaces three `result.errors ?? []` null-check guards at `executeSingleNode`, `executeScatter`, and `executePhasePlacement` call sites. Named `NodeOutputBuilder` to avoid the identifier collision with the schema-derived `NodeOutput` type. Exported from `./types`, `./entities`, and the root barrel.
+- **`ScatterCheckpoint.read(state, placementName)` static method.** Reads the stored scatter progress map and validates it with `Validator.storedScatterProgress` at the metadata ingest boundary. A corrupt or migrated checkpoint now throws `ValidationError` close to the read site rather than propagating type mismatches silently into the scatter loop. `Dagonizer.executeScatter` uses `ScatterCheckpoint.read` in place of the direct `getMetadata` call.
+- **Canonical scatter progress types** (`ScatterInboxItem`, `ScatterAckedResult`, `ScatterProgress`, `StoredScatterProgress`) from `src/entities/scatter/ScatterProgress.ts` replace the hand-written interfaces that previously lived in `Dagonizer.ts`. `Dagonizer.ts` and `ScatterCheckpoint.ts` import from the entity module; `Dagonizer.ts` re-exports the types for backward-compatible public consumers.
+
+### Changed
+
+- **`Dagonizer` inbox iterator** typed as `AsyncIterator<ScatterInboxItem, undefined>`. The second type parameter declares the done-branch value as `undefined`, eliminating the `undefined as unknown as ScatterInboxItem` double cast at both done-branch return sites.
+- **`NodeStateBase.setMetadata`** implementation comment clarifies that the `value as JsonValue` cast is the single permitted ingest point at this boundary; the parameter remains `unknown` because schema-derived scatter progress types carry `item: unknown` payload fields.
+- **`_InternalNodeResult<TState>` and `_RunOptions`** converted from `interface` declarations to `type` aliases in `Dagonizer.ts`. Both are engine-private; using leading-underscore `type` aliases removes them from the fourth-pattern taxonomy drift identified in CORE-7.
+
+### Fixed
+
+- **`DAGBuilder` node-union drift.** Local `type DAGNodeType = EmbeddedDAGNode | ScatterNode | ...` replaced with `import type { DAGNodeType } from '../entities/dag/Placement.js'` so the builder's internal union tracks the canonical definition automatically.
+
+- **`DAGValidator` node-union drift.** Local `type DAGNodeType = DAG['nodes'][number]` replaced with `import type { DAGNodeType } from '../entities/dag/Placement.js'`.
 
 - **`DAGValidator` static class** in `src/validation/DAGValidator.ts`. All semantic validation logic (`validateDAGConfig`, `validateDAGNode`, `validatePhaseNode`, `validateSingleNode`, `validateParallelNode`, `validateEmbeddedDAGNode`, `validateScatterNode`, `collectDAGReferences`) extracted from `Dagonizer` into a dedicated static class. `Dagonizer.registerDAG` delegates to `DAGValidator.validateDAGConfig`.
 - **`StateMapper<TState>` class** in `src/runtime/StateMapper.ts`. `createChild(parentState, inputMapping?)` and `mapOutput(childState, parentState, output?)` extracted from `Dagonizer` instance methods. `Dagonizer` holds a `StateMapper` constructed with its `StateAccessor`.

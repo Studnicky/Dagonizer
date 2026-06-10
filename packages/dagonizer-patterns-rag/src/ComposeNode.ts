@@ -15,15 +15,14 @@ import { LlmDispatchNode, type RagServices } from './LlmDispatchNode.js';
 
 export abstract class ComposeNode<
   TState extends NodeStateInterface,
-  TOutput extends string = 'success',
-> extends LlmDispatchNode<TState, TOutput> {
+> extends LlmDispatchNode<TState, 'success'> {
   /** Write the generated draft back to state. */
   protected abstract applyDraft(state: TState, draft: string): void;
 
   override async execute(
     state: TState,
     context: NodeContextInterface<RagServices>,
-  ): Promise<NodeOutputInterface<TOutput>> {
+  ): Promise<NodeOutputInterface<'success'>> {
     const response = await this.dispatch(state, context);
     const draft = response.message.kind === 'tools' ? '' : response.message.content;
     this.applyDraft(state, draft);

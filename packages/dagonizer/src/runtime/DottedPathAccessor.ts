@@ -21,21 +21,24 @@ import type { StateAccessor } from '../contracts/StateAccessor.js';
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
 export class DottedPathAccessor implements StateAccessor {
-  get<T = unknown>(state: object, path: string): T | undefined {
+  get<T = unknown>(state: object, path: string): T | null {
     const parts = path.split('.');
     let current: unknown = state;
 
     for (const part of parts) {
       if (current === null || current === undefined) {
-        return undefined;
+        return null;
       }
       if (part === '' || FORBIDDEN_KEYS.has(part)) {
-        return undefined;
+        return null;
       }
       current = (current as Record<string, unknown>)[part];
     }
 
-    return current as T | undefined;
+    if (current === undefined) {
+      return null;
+    }
+    return current as T;
   }
 
   set(state: object, path: string, value: unknown): void {

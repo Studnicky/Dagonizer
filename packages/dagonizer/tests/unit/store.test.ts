@@ -23,8 +23,9 @@ class PassThroughStore extends BaseStore {
   protected get snapshotType(): string    { return 'pass-through-store'; }
   protected get snapshotVersion(): number { return 1; }
 
-  protected async performGet<T extends JsonValue>(key: string): Promise<T | undefined> {
-    return this.#backing[key] as T | undefined;
+  protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {
+    const value = this.#backing[key];
+    return value === undefined ? null : (value as T);
   }
 
   protected async performSet<T extends JsonValue>(key: string, value: T): Promise<void> {
@@ -70,7 +71,7 @@ void describe('MemoryStore', () => {
     const deleted = await store.delete('greeting');
     assert.equal(deleted, true);
     assert.equal(await store.has('greeting'), false);
-    assert.equal(await store.get('greeting'), undefined);
+    assert.equal(await store.get('greeting'), null);
   });
 
   void it('delete returns false for a key that does not exist', async () => {

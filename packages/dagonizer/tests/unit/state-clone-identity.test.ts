@@ -33,8 +33,8 @@ class DomainState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 const metadataAccessor: StateAccessor = {
-  get<T = unknown>(state: NodeStateBase, key: string): T | undefined {
-    return state.getMetadata<T>(key);
+  get<T = unknown>(state: NodeStateBase, key: string): T | null {
+    return state.getMetadata<T>(key) ?? null;
   },
   set(state: NodeStateBase, key: string, value: unknown): void {
     state.setMetadata(key, value);

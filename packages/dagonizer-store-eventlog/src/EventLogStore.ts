@@ -55,7 +55,7 @@ export class EventLogStore extends BaseStore {
   readonly #syncOnAppend: boolean;
   #handle: FileHandle | null;
 
-  constructor(options: EventLogStoreOptions = {}) {
+  constructor(options: EventLogStoreOptions = { 'namespace': '' }) {
     super(options);
     this.#log = [];
     this.#filePath = options.filePath ?? '';
@@ -115,8 +115,8 @@ export class EventLogStore extends BaseStore {
 
   // ── Protected perform* hooks ──────────────────────────────────────────────
 
-  protected async performGet<T extends JsonValue>(key: string): Promise<T | undefined> {
-    return this.#latest<T>(key);
+  protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {
+    return this.#latest<T>(key) ?? null;
   }
 
   protected async performSet<T extends JsonValue>(key: string, value: T): Promise<void> {

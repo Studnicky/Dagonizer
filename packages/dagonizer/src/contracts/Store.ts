@@ -45,7 +45,7 @@ import type { Snapshottable } from './Snapshottable.js';
  * at every call site. The engine never uses `unknown` here.
  */
 export interface Store extends Snapshottable {
-  get<T extends JsonValue>(key: string): Promise<T | undefined>;
+  get<T extends JsonValue>(key: string): Promise<T | null>;
   set<T extends JsonValue>(key: string, value: T): Promise<void>;
   has(key: string): Promise<boolean>;
   delete(key: string): Promise<boolean>;

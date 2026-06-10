@@ -5,7 +5,9 @@ import type { DagContainerInterface } from './contracts/DagContainerInterface.js
 import type { ExecuteOptionsInterface } from './contracts/ExecuteOptionsInterface.js';
 import type { Instrumentation } from './contracts/Instrumentation.js';
 import type { NodeInterface } from './contracts/NodeInterface.js';
+import type { NodeInvoker } from './contracts/NodeInvoker.js';
 import type { StateAccessor } from './contracts/StateAccessor.js';
+import type { WarningEmitter } from './contracts/WarningEmitter.js';
 import { GatherStrategies } from './core/GatherStrategies.js';
 import type { GatherExecution, GatherRecord } from './core/GatherStrategies.js';
 import { OutcomeReducers } from './core/OutcomeReducers.js';
@@ -14,13 +16,16 @@ import { ContractRegistryValidator } from './derive/ContractRegistryValidator.js
 import type { DAG } from './entities/dag/DAG.js';
 import type { EmbeddedDAGNode } from './entities/dag/EmbeddedDAGNode.js';
 import type { PhaseNodePlacementInterface } from './entities/dag/PhaseNode.js';
+import { Placement } from './entities/dag/Placement.js';
+import type { DAGNodeType } from './entities/dag/Placement.js';
 import type { ScatterNode } from './entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from './entities/dag/SingleNode.js';
-import type { TerminalNodePlacementInterface } from './entities/dag/TerminalNode.js';
 import type { ExecutionResultInterface, InterruptionInfo } from './entities/execution/ExecutionResult.js';
 import type { DAGHandoff } from './entities/handoff/DAGHandoff.js';
 import type { NodeContextInterface } from './entities/node/NodeContext.js';
+import { NodeOutputBuilder } from './entities/node/NodeOutput.js';
 import type { NodeResultInterface } from './entities/node/NodeResult.js';
+import type { ScatterAckedResult, ScatterInboxItem } from './entities/scatter/ScatterProgress.js';
 import { DAGError, ExecutionError, NodeTimeoutError, ValidationError } from './errors/index.js';
 import { Execution } from './Execution.js';
 import { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
@@ -52,68 +57,64 @@ const DEFAULT_REGISTRY_VERSION = '0';
  */
 export const SCATTER_PROGRESS_KEY = '__dagonizer_scatter_progress__';
 
+// Scatter progress types are defined in entities/scatter/ScatterProgress.ts
+// and re-exported below for public consumers. The hand-written duplicates
+// that used to live here have been replaced with the canonical schema-derived
+// types. See ScatterInboxItem, ScatterAckedResult, ScatterProgress, and
+// StoredScatterProgress in './entities/scatter/ScatterProgress.js'.
+export type { ScatterAckedResult, ScatterInboxItem, ScatterProgress, StoredScatterProgress } from './entities/scatter/ScatterProgress.js';
+
+// ── Module-private adapter classes ───────────────────────────────────────────
+
 /**
- * A single item that has been pulled from the scatter source but whose
- * body has not yet completed successfully. Persisted in the durable inbox
- * so that a crash/resume can reprocess in-flight items without re-reading
- * the original source (critical for streaming / `AsyncIterable` sources
- * where the source cannot be rewound).
+ * Routes contract warnings from `ContractRegistryValidator` to the
+ * dispatcher's `onContractWarning` hook and instrumentation sink.
+ * Constructed inside `Dagonizer.registerDAG` where both targets are in scope.
  */
-export interface ScatterInboxItem {
-  /** Sequential index assigned when the item was pulled from the source. */
-  readonly index: number;
-  /**
-   * The actual item payload. Persisted here so resume does not need to
-   * re-read the source by index.
-   */
-  readonly item: unknown;
+class DispatcherWarningEmitter implements WarningEmitter {
+  readonly #onContractWarning: (message: string) => void;
+  readonly #instrumentationWarn: (message: string) => void;
+
+  constructor(
+    onContractWarning: (message: string) => void,
+    instrumentationWarn: (message: string) => void,
+  ) {
+    this.#onContractWarning = onContractWarning;
+    this.#instrumentationWarn = instrumentationWarn;
+  }
+
+  warn(message: string): void {
+    this.#onContractWarning(message);
+    this.#instrumentationWarn(message);
+  }
 }
 
 /**
- * A successfully completed (acked) scatter item. Discriminated union keyed on
- * `kind` — each variant carries exactly the gather-persistence values needed
- * for its strategy, with no optional fields inside the engine.
- *
- * `map`   — map strategy: `mappingValues` carries per-clone-path snapshots.
- * `field` — append/partition with a `field`: `fieldValue` carries the resolved
- *           field value from the clone.
- * `plain` — append/partition without a `field` (value is `item` itself); no
- *           extra fields.
- *
- * `item` is present in all variants: the original source payload, persisted so
- * the `GatherRecord` can be reconstructed on resume without re-reading the
- * source (critical for non-rewindable `AsyncIterable` sources).
+ * Dispatches a registered node back through the engine for `custom` gather
+ * strategies. Constructed inside `Dagonizer.buildGatherExecution` where the
+ * dispatcher context is in scope. Receives the resolve and execute in-process
+ * closures that bridge the private dispatcher members — this is in-process
+ * composition, not a dispatch callback seam.
  */
-export type ScatterAckedResult =
-  | { readonly kind: 'map';   readonly index: number; readonly item: unknown; readonly output: string; readonly mappingValues: Readonly<Record<string, unknown>> }
-  | { readonly kind: 'field'; readonly index: number; readonly item: unknown; readonly output: string; readonly fieldValue: unknown }
-  | { readonly kind: 'plain'; readonly index: number; readonly item: unknown; readonly output: string };
+class GatherNodeInvoker implements NodeInvoker {
+  readonly #resolve: (nodeName: string) => boolean;
+  readonly #execute: (nodeName: string) => Promise<void>;
 
-/**
- * Per-placement scatter progress entry. Keyed by `placementName` inside
- * the metadata's `StoredScatterProgress` map.
- *
- * **Inbox model (durable-work-queue checkpoint):**
- * - `inbox`       — items pulled from the source but not yet acked (body not
- *                   complete). Reprocessed first on resume.
- * - `ackedResults`— items whose body completed successfully. Acked items are
- *                   never reprocessed; their results are reconstructed
- *                   synthetically from the persisted values.
- */
-export interface ScatterProgress {
-  readonly placementName: string;
-  /** Un-acked (in-flight / pending) items at the time of the checkpoint. */
-  readonly inbox: readonly ScatterInboxItem[];
-  /** Successfully completed items with their gather contribution values. */
-  readonly ackedResults: readonly ScatterAckedResult[];
+  constructor(
+    resolve: (nodeName: string) => boolean,
+    execute: (nodeName: string) => Promise<void>,
+  ) {
+    this.#resolve = resolve;
+    this.#execute = execute;
+  }
+
+  async invokeNode(nodeName: string): Promise<void> {
+    if (!this.#resolve(nodeName)) {
+      throw new DAGError(`Unknown custom node: ${nodeName}`);
+    }
+    await this.#execute(nodeName);
+  }
 }
-
-/**
- * The actual stored shape under `metadata[SCATTER_PROGRESS_KEY]`. Keyed
- * by `ScatterNode.name` so multiple scatter placements in the same flow
- * do not collide.
- */
-export type StoredScatterProgress = Readonly<Record<string, ScatterProgress>>;
 
 /**
  * Constructor options for `Dagonizer`.
@@ -178,45 +179,13 @@ export interface DagonizerOptionsInterface<TState extends NodeStateInterface = N
 }
 
 
-/**
- * The canonical union of every node placement shape that may appear inside a
- * `DAG`. Derived from the schema so it stays in sync with `DAGSchema`
- * automatically — no hand-maintained union.
- *
- * Exported so consumers that need exhaustive node-type handling (e.g.
- * validation, visualization) can import the canonical type rather than
- * reconstructing it themselves.
- */
-export type DAGNodeType = DAG['nodes'][number];
+// DAGNodeType and the Placement static class live in entities/dag/Placement.ts.
+// Re-export DAGNodeType so consumers who import from Dagonizer.ts continue to
+// find it here; Placement is exported directly via src/index.ts and src/types/index.ts.
+export type { DAGNodeType } from './entities/dag/Placement.js';
+export { Placement } from './entities/dag/Placement.js';
+
 type DAGNodeAtType = DAGNodeType['@type'];
-
-// ── @type discriminated type guards ──────────────────────────────────────────
-// Use these instead of manual `as` casts when narrowing from `DAGNodeType`.
-
-/** Narrows `n` to `EmbeddedDAGNode` when `@type === 'EmbeddedDAGNode'`. */
-export function isEmbeddedDAGNode(n: DAGNodeType): n is EmbeddedDAGNode {
-  return n['@type'] === 'EmbeddedDAGNode';
-}
-
-/** Narrows `n` to `ScatterNode` when `@type === 'ScatterNode'`. */
-export function isScatterNode(n: DAGNodeType): n is ScatterNode {
-  return n['@type'] === 'ScatterNode';
-}
-
-/** Narrows `n` to `SingleNodePlacementInterface` when `@type === 'SingleNode'`. */
-export function isSingleNode(n: DAGNodeType): n is SingleNodePlacementInterface {
-  return n['@type'] === 'SingleNode';
-}
-
-/** Narrows `n` to `TerminalNodePlacementInterface` when `@type === 'TerminalNode'`. */
-export function isTerminalNode(n: DAGNodeType): n is TerminalNodePlacementInterface {
-  return n['@type'] === 'TerminalNode';
-}
-
-/** Narrows `n` to `PhaseNodePlacementInterface` when `@type === 'PhaseNode'`. */
-export function isPhaseNode(n: DAGNodeType): n is PhaseNodePlacementInterface {
-  return n['@type'] === 'PhaseNode';
-}
 
 /**
  * A coherent bundle of nodes + DAGs that register together.
@@ -312,15 +281,14 @@ export interface DagonizerInterface<
   registerBundle(bundle: DispatcherBundle<TState, TServices>): void;
 }
 
-interface InternalNodeResultInterface<TState extends NodeStateInterface> {
+/** Engine-private result envelope returned by every node executor method. */
+type _InternalNodeResult<TState extends NodeStateInterface> = {
   'nextStage': null | string;
   'result': NodeResultInterface<TState>;
-}
+};
 
-/** Internal execution context for `runNodes` and `runPostPhasesAndFinalize`. */
-interface RunOptions {
-  readonly embedded: boolean;
-}
+/** Engine-private execution context for `runNodes` and `runPostPhasesAndFinalize`. */
+type _RunOptions = { readonly embedded: boolean };
 
 /**
  * Graph-based DAG dispatcher for state-machine-style multi-step
@@ -399,7 +367,7 @@ implements DagonizerInterface<TState, TServices> {
     dagName: string,
     signal: AbortSignal | null,
     placementPath: readonly string[],
-  ) => Promise<InternalNodeResultInterface<TState>>>>;
+  ) => Promise<_InternalNodeResult<TState>>>>;
 
   /**
    * Construct a dispatcher. Subclass and override the protected hooks
@@ -426,30 +394,30 @@ implements DagonizerInterface<TState, TServices> {
     this.registryVersion = options.registryVersion ?? DEFAULT_REGISTRY_VERSION;
     this.dispatch = {
       'EmbeddedDAGNode': (entry, state, _dagName, signal, placementPath) => {
-        // isEmbeddedDAGNode guard: @type === 'EmbeddedDAGNode' confirmed by
+        // Placement.isEmbeddedDAG guard: @type === 'EmbeddedDAGNode' confirmed by
         // the dispatch table key; guard makes the narrowing explicit.
-        if (!isEmbeddedDAGNode(entry)) throw new DAGError(`Dispatch type mismatch: expected EmbeddedDAGNode`);
+        if (!Placement.isEmbeddedDAG(entry)) throw new DAGError(`Dispatch type mismatch: expected EmbeddedDAGNode`);
         return this.executeEmbeddedDAG(entry, state, signal, placementPath);
       },
       'ScatterNode': (entry, state, dagName, signal, placementPath) => {
-        if (!isScatterNode(entry)) throw new DAGError(`Dispatch type mismatch: expected ScatterNode`);
+        if (!Placement.isScatter(entry)) throw new DAGError(`Dispatch type mismatch: expected ScatterNode`);
         return this.executeScatter(entry, state, dagName, signal, placementPath);
       },
       'SingleNode': (entry, state, dagName, signal) => {
-        if (!isSingleNode(entry)) throw new DAGError(`Dispatch type mismatch: expected SingleNode`);
+        if (!Placement.isSingle(entry)) throw new DAGError(`Dispatch type mismatch: expected SingleNode`);
         return this.executeSingleNode(entry, state, dagName, signal);
       },
       // TerminalNode / PhaseNode are handled before executeDAGNode in runNodes;
       // these branches are unreachable in normal operation but keep the dispatch
       // table exhaustive over the node `@type` union.
       'TerminalNode': (entry, state) => {
-        if (!isTerminalNode(entry)) throw new DAGError(`Dispatch type mismatch: expected TerminalNode`);
+        if (!Placement.isTerminal(entry)) throw new DAGError(`Dispatch type mismatch: expected TerminalNode`);
         return Promise.resolve({ 'nextStage': null, 'result': {
           'output': entry.outcome, 'skipped': false, 'nodeName': entry.name, state, 'intermediateResults': [],
         } });
       },
       'PhaseNode': (entry, state) => {
-        if (!isPhaseNode(entry)) throw new DAGError(`Dispatch type mismatch: expected PhaseNode`);
+        if (!Placement.isPhase(entry)) throw new DAGError(`Dispatch type mismatch: expected PhaseNode`);
         return Promise.resolve({ 'nextStage': null, 'result': {
           'output': entry.phase, 'skipped': true, 'nodeName': entry.name, state, 'intermediateResults': [],
         } });
@@ -629,7 +597,7 @@ implements DagonizerInterface<TState, TServices> {
     state: TState,
     fromStage: string | null,
     options: ExecuteOptionsInterface,
-    runOptions: RunOptions = { 'embedded': false },
+    runOptions: _RunOptions = { 'embedded': false },
     placementPath: readonly string[] = [],
   ): AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void> {
     const dag = this.dags.get(dagName);
@@ -752,7 +720,7 @@ implements DagonizerInterface<TState, TServices> {
 
       // TerminalNode is a no-op execution: capture outcome, synthesize result,
       // fire onNodeEnd, and break the loop. No call to executeDAGNode needed.
-      if (isTerminalNode(node)) {
+      if (Placement.isTerminal(node)) {
         const terminal = node;
         terminalOutcome = terminal.outcome;
         terminalNodeName = terminal.name;
@@ -770,7 +738,7 @@ implements DagonizerInterface<TState, TServices> {
         break mainLoop;
       }
 
-      let nodeOutcome: InternalNodeResultInterface<TState>;
+      let nodeOutcome: _InternalNodeResult<TState>;
       try {
         nodeOutcome = await this.executeDAGNode(node, state, dagName, signal, placementPath);
       } catch (caughtError) {
@@ -890,7 +858,7 @@ implements DagonizerInterface<TState, TServices> {
     dagName: string,
     state: TState,
     result: ExecutionResultInterface<TState>,
-    runOptions: RunOptions,
+    runOptions: _RunOptions,
     terminalNodeName: string | null,
     placementPath: readonly string[] = [],
   ): Promise<void> {
@@ -982,7 +950,7 @@ implements DagonizerInterface<TState, TServices> {
       const context = this.buildContext(dagName, phase.name, nodeSignal);
       return node.execute(state, context);
     });
-    for (const err of (result.errors ?? [])) state.collectError(err);
+    for (const err of NodeOutputBuilder.errorsOf(result)) state.collectError(err);
   }
 
   /**
@@ -1079,7 +1047,7 @@ implements DagonizerInterface<TState, TServices> {
     state: TState,
     signal: AbortSignal | null,
     placementPath: readonly string[],
-  ): Promise<InternalNodeResultInterface<TState>> {
+  ): Promise<_InternalNodeResult<TState>> {
     const inputMapping = placement.stateMapping?.input ?? {};
     const outputMapping = placement.stateMapping?.output ?? {};
     const innerPath: readonly string[] = [...placementPath, placement.name];
@@ -1211,7 +1179,7 @@ implements DagonizerInterface<TState, TServices> {
     dagName: string,
     signal: AbortSignal | null,
     placementPath: readonly string[],
-  ): Promise<InternalNodeResultInterface<TState>> {
+  ): Promise<_InternalNodeResult<TState>> {
     // ── 1. Resolve source ────────────────────────────────────────────────────
     const raw = this.accessor.get(state, scatter.source);
 
@@ -1238,8 +1206,10 @@ implements DagonizerInterface<TState, TServices> {
     const concurrencyLimit = scatter.concurrency ?? (Array.isArray(raw) ? raw.length : 1);
 
     // ── 2. Restore checkpoint (inbox model) ─────────────────────────────────
-    const storedProgress =
-      (state.getMetadata<StoredScatterProgress>(SCATTER_PROGRESS_KEY) ?? {})[scatter.name];
+    // ScatterCheckpoint.read validates the raw metadata value at the boundary
+    // so corrupt or migrated checkpoints throw ValidationError here rather
+    // than causing silent type mismatches deep in the scatter loop.
+    const storedProgress = ScatterCheckpoint.read(state, scatter.name);
 
     // Mutable inbox: items pulled but not yet acked.
     // Seed from checkpoint on resume, drain first.
@@ -1283,14 +1253,16 @@ implements DagonizerInterface<TState, TServices> {
     // Priority source: inbox items from a prior run come first.
     // inbox items were already pulled from the source; their payloads are stored.
     let inboxPos = 0;
-    const inboxIter: AsyncIterator<ScatterInboxItem> = {
-      next(): Promise<IteratorResult<ScatterInboxItem>> {
+    // AsyncIterator<ScatterInboxItem, undefined>: the second type param declares
+    // that the done-branch value is `undefined`, so no cast is needed there.
+    const inboxIter: AsyncIterator<ScatterInboxItem, undefined> = {
+      next(): Promise<IteratorResult<ScatterInboxItem, undefined>> {
         if (inboxPos >= inbox.length) {
-          return Promise.resolve({ 'value': undefined as unknown as ScatterInboxItem, 'done': true });
+          return Promise.resolve({ 'value': undefined, 'done': true });
         }
         const entry = inbox[inboxPos++];
         if (entry === undefined) {
-          return Promise.resolve({ 'value': undefined as unknown as ScatterInboxItem, 'done': true });
+          return Promise.resolve({ 'value': undefined, 'done': true });
         }
         return Promise.resolve({ 'value': entry, 'done': false });
       },
@@ -1414,6 +1386,10 @@ implements DagonizerInterface<TState, TServices> {
         state,
         scatter.stateMapping?.input ?? {},
       );
+      // item must be JSON-serialisable: scatter sources are checkpointed to
+      // metadata (SCATTER_PROGRESS_KEY) and require JSON-safe values at
+      // snapshot time. The engine contract requires callers to provide
+      // JSON-safe scatter sources for checkpointing to succeed.
       cloneState.setMetadata(itemKey, item);
       cloneState.setMetadata('itemIndex', itemIndex);
 
@@ -1429,7 +1405,7 @@ implements DagonizerInterface<TState, TServices> {
           const context = this.buildContext(dagName, scatter.name, nodeSignal);
           return dagNode.execute(cloneState, context);
         });
-        for (const err of (opResult.errors ?? [])) cloneState.collectError(err);
+        for (const err of NodeOutputBuilder.errorsOf(opResult)) cloneState.collectError(err);
         output = opResult.output;
       } else {
         // DAG body — may run in-process or through a bound container.
@@ -1723,21 +1699,22 @@ implements DagonizerInterface<TState, TServices> {
     dagName: string,
     signal: AbortSignal | null,
   ): GatherExecution<TState> {
-    const dispatcher = this;
+    const invoker = new GatherNodeInvoker(
+      (nodeName) => this.nodes.has(nodeName),
+      async (nodeName) => {
+        const dagNode = this.nodes.get(nodeName);
+        if (dagNode === undefined) return;
+        const context = this.buildContext(dagName, nodeName, signal);
+        await dagNode.execute(state, context);
+      },
+    );
     return {
       state,
       records,
       dagName,
       signal,
-      'accessor': dispatcher.accessor,
-      async invokeNode(nodeName: string): Promise<void> {
-        const dagNode = dispatcher.nodes.get(nodeName);
-        if (!dagNode) {
-          throw new DAGError(`Unknown custom node: ${nodeName}`);
-        }
-        const context = dispatcher.buildContext(dagName, nodeName, signal);
-        await dagNode.execute(state, context);
-      },
+      'accessor': this.accessor,
+      invoker,
     };
   }
 
@@ -1823,7 +1800,7 @@ implements DagonizerInterface<TState, TServices> {
     state: TState,
     dagName: string,
     signal: AbortSignal | null,
-  ): Promise<InternalNodeResultInterface<TState>> {
+  ): Promise<_InternalNodeResult<TState>> {
     const dagNode = this.nodes.get(nodeConfig.node);
 
     if (!dagNode) {
@@ -1835,7 +1812,7 @@ implements DagonizerInterface<TState, TServices> {
       return dagNode.execute(state, context);
     });
 
-    for (const error of (opResult.errors ?? [])) state.collectError(error);
+    for (const error of NodeOutputBuilder.errorsOf(opResult)) state.collectError(error);
 
     const nextStage = nodeConfig.outputs[opResult.output];
 
@@ -1864,7 +1841,7 @@ implements DagonizerInterface<TState, TServices> {
     dagName: string,
     signal: AbortSignal | null,
     placementPath: readonly string[],
-  ): Promise<InternalNodeResultInterface<TState>> {
+  ): Promise<_InternalNodeResult<TState>> {
     const handler = this.dispatch[entry['@type']];
     if (handler === undefined) {
       throw new DAGError(`Unknown node type: ${entry['@type']}`);
@@ -1904,8 +1881,8 @@ implements DagonizerInterface<TState, TServices> {
     // its output would be flagged as a dangling read.
     const contractBearingNodes = dag.nodes
       .map((placement) => {
-        if (isSingleNode(placement)) return this.nodes.get(placement.node);
-        if (isEmbeddedDAGNode(placement) || isScatterNode(placement)) return this.nodes.get(placement.name);
+        if (Placement.isSingle(placement)) return this.nodes.get(placement.node);
+        if (Placement.isEmbeddedDAG(placement) || Placement.isScatter(placement)) return this.nodes.get(placement.name);
         return undefined;
       })
       .filter((node): node is NodeInterface<TState, string, TServices> => node?.contract !== undefined);
@@ -1917,10 +1894,14 @@ implements DagonizerInterface<TState, TServices> {
         return { 'name': node.name, 'outputs': node.outputs, 'hardRequired': contract.hardRequired, 'produces': contract.produces };
       }).filter((c): c is Exclude<typeof c, null> => c !== null);
       try {
-        ContractRegistryValidator.validate(contracts, (msg) => {
-          this.onContractWarning(msg);
-          this.instrumentation.contractWarning(msg);
-        }, { 'entrypointName': dag.entrypoint });
+        ContractRegistryValidator.validate(
+          contracts,
+          new DispatcherWarningEmitter(
+            (msg) => { this.onContractWarning(msg); },
+            (msg) => { this.instrumentation.contractWarning(msg); },
+          ),
+          { 'entrypointName': dag.entrypoint },
+        );
       } catch (err) {
         throw err instanceof Error ? err : new DAGError(String(err));
       }

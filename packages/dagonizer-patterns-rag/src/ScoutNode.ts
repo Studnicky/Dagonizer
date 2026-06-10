@@ -25,8 +25,7 @@ export abstract class ScoutNode<
   TInput extends Record<string, unknown>,
   TToolOutput,
   TItem,
-  TOutput extends string = 'success' | 'empty' | 'error',
-> extends MonadicNode<TState, TOutput, ScoutServices<TInput, TToolOutput>> {
+> extends MonadicNode<TState, 'success' | 'empty' | 'error', ScoutServices<TInput, TToolOutput>> {
   /** Build the input the tool's `run()` expects, from state. */
   protected abstract buildInput(state: TState): TInput;
 
@@ -40,10 +39,10 @@ export abstract class ScoutNode<
   async execute(
     state: TState,
     context: NodeContextInterface<ScoutServices<TInput, TToolOutput>>,
-  ): Promise<NodeOutputInterface<TOutput>> {
+  ): Promise<NodeOutputInterface<'success' | 'empty' | 'error'>> {
     const input = this.buildInput(state);
     try {
-      const raw = await context.services.tool.execute(input, context.signal);
+      const raw = await context.services.tool.execute(input, { signal: context.signal });
       const items = this.normalize(raw);
       this.writeBack(state, items);
       return { 'output': items.length === 0 ? this.emptyPort() : this.successPort() };

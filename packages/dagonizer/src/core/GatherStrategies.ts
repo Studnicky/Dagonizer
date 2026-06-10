@@ -212,7 +212,9 @@ class CustomGatherStrategy extends GatherStrategy {
     execution: GatherExecution<TState>,
   ): Promise<void> {
     if (config.customNode === undefined) return;
-    // Expose a plain projection of records; no cloneState in metadata.
+    // Expose a plain projection of records for the custom gather node to read.
+    // Items must be JSON-serialisable (scatter sources are checkpointed);
+    // the engine contract requires callers to provide JSON-safe scatter sources.
     execution.state.setMetadata(
       'gatherResults',
       execution.records.map((r) => ({
@@ -221,7 +223,7 @@ class CustomGatherStrategy extends GatherStrategy {
         'output': r.output,
       })),
     );
-    await execution.invokeNode(config.customNode);
+    await execution.invoker.invokeNode(config.customNode);
   }
 }
 

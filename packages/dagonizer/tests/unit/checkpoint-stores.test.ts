@@ -121,9 +121,9 @@ void describe('Checkpoint.capture + restoreStores: two stores', () => {
     await recalled.restoreStores({ 'memory': freshMemory, 'audit': freshAudit });
 
     assert.equal(await freshMemory.get('x'), 1);
-    assert.equal(await freshMemory.get('event'), undefined, 'audit entry should not bleed into memory');
+    assert.equal(await freshMemory.get('event'), null, 'audit entry should not bleed into memory');
     assert.equal(await freshAudit.get('event'), 'login');
-    assert.equal(await freshAudit.get('x'), undefined, 'memory entry should not bleed into audit');
+    assert.equal(await freshAudit.get('x'), null, 'memory entry should not bleed into audit');
   });
 });
 

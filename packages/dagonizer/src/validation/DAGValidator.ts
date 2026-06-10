@@ -2,13 +2,11 @@ import type { NodeInterface } from '../contracts/NodeInterface.js';
 import type { DAG } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import type { PhaseNodePlacementInterface } from '../entities/dag/PhaseNode.js';
+import type { DAGNodeType } from '../entities/dag/Placement.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import { DAGError, ValidationError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
-
-/** Canonical union of all DAG node placement types, derived from the wire shape. */
-type DAGNodeType = DAG['nodes'][number];
 
 export class DAGValidator {
   private constructor() { /* static class */ }

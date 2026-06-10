@@ -22,7 +22,7 @@
  * const inner  = new MemoryStore();
  * const typed  = new TypedStore<AppSchema>(inner);
  * await typed.set('count', 42);            // ok
- * const n = await typed.get('count');      // n: number | undefined
+ * const n = await typed.get('count');      // n: number | null
  * await typed.set('count', 'wrong');       // TS error
  */
 
@@ -37,7 +37,7 @@ export class TypedStore<Schema extends { [K in keyof Schema]: JsonValue }> {
     this.#inner = inner;
   }
 
-  async get<K extends keyof Schema & string>(key: K): Promise<Schema[K] | undefined> {
+  async get<K extends keyof Schema & string>(key: K): Promise<Schema[K] | null> {
     return this.#inner.get<Schema[K]>(key);
   }
 

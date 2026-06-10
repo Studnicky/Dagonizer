@@ -53,7 +53,7 @@ export class RdfStore extends BaseStore implements TripleStore {
   readonly #subjectPrefix:  string;
   readonly #valuePredicate: string;
 
-  constructor(options: RdfStoreOptions = {}) {
+  constructor(options: RdfStoreOptions = { 'namespace': '' }) {
     super({ namespace: options.namespace ?? '' });
     this.#quads          = [];
     this.#subjectPrefix  = options.subjectPrefix  ?? DEFAULT_SUBJECT_PREFIX;
@@ -81,8 +81,8 @@ export class RdfStore extends BaseStore implements TripleStore {
     return next;
   }
 
-  protected async performGet<T extends JsonValue>(key: string): Promise<T | undefined> {
-    return this.#readValue<T>(this.#keyToSubject(key));
+  protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {
+    return this.#readValue<T>(this.#keyToSubject(key)) ?? null;
   }
 
   protected async performSet<T extends JsonValue>(key: string, value: T): Promise<void> {

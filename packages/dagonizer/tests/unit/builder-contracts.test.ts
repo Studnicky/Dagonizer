@@ -4,9 +4,15 @@ import { describe, it } from 'node:test';
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
+import type { WarningEmitter } from '../../src/contracts/WarningEmitter.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
+
+class CollectingWarningEmitter implements WarningEmitter {
+  readonly collected: string[] = [];
+  warn(message: string): void { this.collected.push(message); }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -64,22 +70,22 @@ void describe('DAGBuilder.build() contract validation', () => {
     );
   });
 
-  void it('fires onContractWarning when a node produces a path no downstream consumer needs', () => {
+  void it('emits warn() on warningEmitter when a node produces a path no downstream consumer needs', () => {
     const a = makeNode('a', ['success'], { 'hardRequired': ['input'], 'produces': ['used', 'dead'] });
     const b = makeNode('b', ['success'], { 'hardRequired': ['used'],  'produces': ['done'] });
 
-    const warnings: string[] = [];
+    const emitter = new CollectingWarningEmitter();
     new DAGBuilder('dead-write', '1.0')
       .node('a', a, { 'success': 'b' })
       .node('b', b, { 'success': null })
-      .build({ 'onContractWarning': (msg) => { warnings.push(msg); } });
+      .build({ 'warningEmitter': emitter });
 
-    const deadWarning = warnings.find((w) => w.includes("'dead'"));
-    assert.ok(deadWarning !== undefined, `expected dead-write warning for 'dead'; got: ${JSON.stringify(warnings)}`);
+    const deadWarning = emitter.collected.find((w) => w.includes("'dead'"));
+    assert.ok(deadWarning !== undefined, `expected dead-write warning for 'dead'; got: ${JSON.stringify(emitter.collected)}`);
     assert.ok(deadWarning.includes('produces'), `warning should mention produces; got: ${deadWarning}`);
   });
 
-  void it('silently no-ops on dead writes when onContractWarning is omitted', () => {
+  void it('silently no-ops on dead writes when warningEmitter is omitted', () => {
     const a = makeNode('a', ['success'], { 'hardRequired': ['input'], 'produces': ['used', 'dead'] });
     const b = makeNode('b', ['success'], { 'hardRequired': ['used'],  'produces': ['done'] });
 

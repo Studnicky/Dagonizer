@@ -44,6 +44,9 @@ export type { EmbeddedDAGNode } from './dag/EmbeddedDAGNode.js';
 export { DAGSchema, DAG_CONTEXT } from './dag/DAG.js';
 export type { DAG } from './dag/DAG.js';
 
+export { Placement } from './dag/Placement.js';
+export type { DAGNodeType } from './dag/Placement.js';
+
 // ---------------------------------------------------------------------------
 // state-machines
 // ---------------------------------------------------------------------------
@@ -77,7 +80,7 @@ export type { NodeError, NodeErrorInterface } from './node/NodeError.js';
 export { NodeWarningSchema } from './node/NodeWarning.js';
 export type { NodeWarning } from './node/NodeWarning.js';
 
-export { NodeOutputSchema } from './node/NodeOutput.js';
+export { NodeOutputSchema, NodeOutputBuilder } from './node/NodeOutput.js';
 export type { NodeOutput, NodeOutputInterface } from './node/NodeOutput.js';
 
 export { NodeResultSchema } from './node/NodeResult.js';

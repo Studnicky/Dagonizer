@@ -96,7 +96,14 @@ export interface NodeStateInterface {
   readonly 'metadata': Readonly<Record<string, unknown>>;
 
   /**
-   * Set a metadata value.
+   * Set a metadata value. The value must be JSON-serialisable so the snapshot
+   * boundary (`snapshot()`) can serialise it without error. Non-JSON values
+   * (class instances, functions, cyclic objects) fail at snapshot time.
+   *
+   * The parameter type is `unknown` at the interface level because the schema-
+   * derived scatter progress types carry `item: unknown` in their payload
+   * fields (JSON Schema does not constrain item types). Callers are responsible
+   * for ensuring values are JSON-safe before calling this method.
    */
   setMetadata(key: string, value: unknown): void;
 
@@ -266,8 +273,12 @@ export class NodeStateBase implements NodeStateInterface {
   }
 
   setMetadata(key: string, value: unknown): void {
-    // Metadata is the JSON serialisation boundary; callers are responsible
-    // for passing JSON-serialisable values (enforced at snapshot time).
+    // Metadata is the JSON serialisation boundary. The cast is the single
+    // permitted ingest point: callers must supply JSON-serialisable values,
+    // enforced by convention (schema-derived types + engine discipline) rather
+    // than at the TypeScript type level (scatter items carry `unknown` payloads
+    // in their schema-derived types, making a strict `JsonValue` parameter
+    // break legitimate engine write sites).
     this._metadata[key] = value as JsonValue;
   }
 

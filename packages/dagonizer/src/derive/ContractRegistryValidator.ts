@@ -18,6 +18,7 @@
  */
 
 import type { OperationContract } from '../contracts/OperationContract.js';
+import type { WarningEmitter } from '../contracts/WarningEmitter.js';
 import { DAGError } from '../errors/DAGError.js';
 
 export class ContractRegistryValidator {
@@ -84,7 +85,7 @@ export class ContractRegistryValidator {
    * Validate a contract set for dangling reads and dead writes.
    *
    * @param contracts - The full set of contracts derived from the node registry.
-   * @param onWarning - Called for each dead-write warning (non-fatal).
+   * @param warningEmitter - Receives each dead-write warning (non-fatal).
    * @param options.entrypointName - Optional entrypoint operation name. When supplied, that
    *   node's `hardRequired` paths are treated as external initial-state fields and
    *   are not checked for dangling reads.
@@ -94,7 +95,7 @@ export class ContractRegistryValidator {
    */
   static validate(
     contracts: readonly OperationContract[],
-    onWarning: (message: string) => void,
+    warningEmitter: WarningEmitter,
     options?: { entrypointName?: string },
   ): void {
     const entrypointName = options?.entrypointName;
@@ -135,7 +136,7 @@ export class ContractRegistryValidator {
     for (const contract of contracts) {
       for (const path of contract.produces) {
         if (!allRequired.has(path)) {
-          onWarning(
+          warningEmitter.warn(
             `ContractRegistryValidator: node '${contract.name}' produces '${path}' but no node in the registry hardRequires it`,
           );
         }

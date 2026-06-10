@@ -5,12 +5,12 @@
  * `GatherRecord<TState>` carries per-clone results from the scatter loop.
  * `GatherExecution<TState>` is the invocation context handed to
  * `GatherStrategy.apply`; it gives strategies read access to per-clone
- * records, the live parent state, and the `invokeNode` seam (Wave 4 will
- * swap that seam to a `NodeInvoker` contract).
+ * records, the live parent state, and the `invoker` seam.
  */
 
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
+import type { NodeInvoker } from './NodeInvoker.js';
 import type { StateAccessor } from './StateAccessor.js';
 
 /**
@@ -34,7 +34,7 @@ export interface GatherRecord<TState extends NodeStateInterface> {
  *   - the per-clone records produced by every scatter clone
  *   - the current dag/signal for any nested node invocation
  *   - the `StateAccessor` the dispatcher is configured with
- *   - `invokeNode`, the only way for `custom` strategies to dispatch
+ *   - `invoker`, the only way for `custom` strategies to dispatch
  *     a registered node back through the engine
  */
 export interface GatherExecution<TState extends NodeStateInterface> {
@@ -50,5 +50,5 @@ export interface GatherExecution<TState extends NodeStateInterface> {
   readonly dagName: string;
   readonly signal: AbortSignal | null;
   readonly accessor: StateAccessor;
-  invokeNode(nodeName: string): Promise<void>;
+  readonly invoker: NodeInvoker;
 }

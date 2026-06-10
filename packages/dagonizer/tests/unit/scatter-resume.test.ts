@@ -183,8 +183,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
         'placementName': 'fan',
         'inbox': [],
         'ackedResults': [
-          { 'index': 0, 'item': 10, 'output': 'success' },
-          { 'index': 1, 'item': 20, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 0, 'item': 10, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 1, 'item': 20, 'output': 'success' },
         ],
       },
     });
@@ -235,8 +235,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
         'placementName': 'fan',
         'inbox': [],
         'ackedResults': [
-          { 'index': 0, 'item': 11, 'output': 'success' },
-          { 'index': 1, 'item': 22, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 0, 'item': 11, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 1, 'item': 22, 'output': 'success' },
         ],
       },
     });
@@ -413,14 +413,14 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'fanA': {
         'placementName': 'fanA',
         'inbox': [],
-        'ackedResults': [{ 'index': 0, 'item': 100, 'output': 'success' }],
+        'ackedResults': [{ 'kind': 'plain' as const, 'index': 0, 'item': 100, 'output': 'success' }],
       },
       'fanB': {
         'placementName': 'fanB',
         'inbox': [],
         'ackedResults': [
-          { 'index': 0, 'item': 1, 'output': 'success' },
-          { 'index': 2, 'item': 3, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 0, 'item': 1, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 2, 'item': 3, 'output': 'success' },
         ],
       },
     });
@@ -527,8 +527,8 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
         'placementName': 'fan',
         'inbox': [],
         'ackedResults': [
-          { 'index': 0, 'item': 7, 'output': 'success' },
-          { 'index': 1, 'item': 14, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 0, 'item': 7, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 1, 'item': 14, 'output': 'success' },
         ],
       },
     });
@@ -585,7 +585,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
       'fan': {
         'placementName': 'fan',
         'inbox': [],
-        'ackedResults': [{ 'index': 0, 'item': 1, 'output': 'success' }],
+        'ackedResults': [{ 'kind': 'plain' as const, 'index': 0, 'item': 1, 'output': 'success' }],
       },
     });
 
