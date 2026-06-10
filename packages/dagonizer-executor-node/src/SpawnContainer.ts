@@ -66,7 +66,8 @@ export class SpawnContainer extends DagContainerBase<NodeStateInterface, ChildPr
     // a local binding (super() must be the first statement).
     const entryUrl = options.entryUrl ?? new URL('./spawnEntry.js', import.meta.url);
     super({
-      'instrumentation': options.instrumentation,
+      ...DagContainerBase.defaultOptions,
+      'instrumentation': options.instrumentation ?? DagContainerBase.defaultOptions.instrumentation,
       'poolSize': options.poolSize ?? defaultPoolSize,
       'init': {
         'registryModule': options.registryModule,

@@ -50,13 +50,22 @@ const probeItemDag: DAG = {
       '@type': 'SingleNode',
       "name":    'probe',
       "node":    'probe',
-      "outputs": { "ok": 'item-end', "fail": 'item-end' },
+      // Route to distinct TerminalNodes so the parent scatter sees
+      // 'success' (completed) vs 'error' (failed) per clone — enabling
+      // the partition gather to split URLs into succeeded/failed.
+      "outputs": { "ok": 'item-ok', "fail": 'item-fail' },
     },
     {
-      '@id':     'urn:noocodex:dag:probe-item/node/item-end',
+      '@id':     'urn:noocodex:dag:probe-item/node/item-ok',
       '@type':   'TerminalNode',
-      "name":    'item-end',
+      "name":    'item-ok',
       "outcome": 'completed',
+    },
+    {
+      '@id':     'urn:noocodex:dag:probe-item/node/item-fail',
+      '@type':   'TerminalNode',
+      "name":    'item-fail',
+      "outcome": 'failed',
     },
   ],
 };
@@ -84,8 +93,10 @@ const scrapeWithContainerDag: DAG = {
       // container: 'io',                        // ← uncomment + bind WorkerThreadContainer
       //                                         //   to route each item to a worker thread
       "gather": {
+        // dag-body scatter outputs 'success'/'error' per clone (not the inner
+        // node's 'ok'/'fail'); partition on those aggregate output tokens.
         "strategy":   GatherStrategyName.PARTITION,
-        "partitions": { "ok": 'succeeded', "fail": 'failed' },
+        "partitions": { "success": 'succeeded', "error": 'failed' },
       },
       "outputs": { 'all-success': 'end', "partial": 'end', 'all-error': 'end', "empty": 'end' },
     },

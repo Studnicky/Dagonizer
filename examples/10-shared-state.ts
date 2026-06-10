@@ -18,6 +18,7 @@ import {
   Dagonizer,
   NodeStateBase,
 } from '@noocodex/dagonizer';
+import { CheckpointRestoreAdapterFn } from '@noocodex/dagonizer/checkpoint';
 import {
   MemoryStore,
   stepA,
@@ -100,7 +101,7 @@ import type { Services } from './dags/10-shared-state.js';
     resumeDispatcher.registerDAG(parentDag);
 
     const { dagName, state, cursor } = ckpt2.restoreState(
-      (snap) => NodeStateBase.restore(snap),
+      CheckpointRestoreAdapterFn.fromFn((snap) => NodeStateBase.restore(snap)),
     );
     await resumeDispatcher.resume(dagName, state, cursor);
 

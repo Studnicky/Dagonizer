@@ -68,7 +68,8 @@ export class WorkerThreadContainer extends DagContainerBase<NodeStateInterface, 
       'maximumWorkers': 8,
     });
     super({
-      'instrumentation': options.instrumentation,
+      ...DagContainerBase.defaultOptions,
+      'instrumentation': options.instrumentation ?? DagContainerBase.defaultOptions.instrumentation,
       'poolSize': options.poolSize ?? defaultPoolSize,
       'init': {
         'registryModule': options.registryModule,
