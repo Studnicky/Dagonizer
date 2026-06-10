@@ -18,8 +18,6 @@
  */
 
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
-import type { DagOutcomeInterface } from '../contracts/DagOutcomeInterface.js';
-import type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
 import type { Instrumentation } from '../contracts/Instrumentation.js';
 import type { InstrumentationSink } from '../contracts/InstrumentationSink.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
@@ -32,7 +30,9 @@ import { ChannelDispatch } from './ChannelDispatch.js';
 import type { InitMessageShape } from './ChannelDispatch.js';
 import { DagContainerError } from './DagContainerError.js';
 import { DagOutcome } from './DagOutcome.js';
-import { DAG_CONTAINER_WORKER_DIED } from './TransportErrorCode.js';
+import type { DagOutcomeInterface } from './DagOutcome.js';
+import type { DagTaskInterface } from './DagTask.js';
+import { DAG_CONTAINER_TRANSPORT, DAG_CONTAINER_WORKER_DIED } from './TransportErrorCode.js';
 
 // ---------------------------------------------------------------------------
 // PoolEntry
@@ -56,13 +56,14 @@ export interface PoolEntry<TWorker> {
 /** Default grace period (ms) before a shutdown worker is force-terminated. */
 export const DEFAULT_SHUTDOWN_GRACE_MS = 2000;
 
-export interface DagContainerOptions {
+export interface DagContainerOptions<TState extends NodeStateInterface = NodeStateInterface> {
   /**
-   * Instrumentation sink. Pass `new NoopInstrumentation()` to suppress
-   * observability. Required — subclasses pass through without conditional spread.
+   * Instrumentation sink parameterised by the state type. Pass
+   * `new NoopInstrumentation()` to suppress observability. Required —
+   * subclasses pass through without conditional spread.
    * Use `DagContainerBase.defaultOptions` to spread ergonomic defaults.
    */
-  readonly instrumentation: Instrumentation;
+  readonly instrumentation: Instrumentation<TState>;
   /** Maximum number of pool entries (workers) to maintain. */
   readonly poolSize: number;
   /** Init shape forwarded to each DagHost on first channel use. */
@@ -84,8 +85,8 @@ export abstract class DagContainerBase<
   TWorker = unknown,
 > implements DagContainerInterface<TState> {
 
-  // Instrumentation sink (public for subclass read via protected accessor).
-  protected readonly instrumentation: Instrumentation;
+  // Instrumentation sink parameterised by TState so no cast is needed in runDag.
+  protected readonly instrumentation: Instrumentation<TState>;
 
   // Channel → dispatch map. WeakMap so GC'd channels release their dispatches.
   readonly #dispatches: WeakMap<MessageChannelInterface, ChannelDispatch>;
@@ -96,7 +97,9 @@ export abstract class DagContainerBase<
   // Entries available for immediate checkout.
   readonly #free: PoolEntry<TWorker>[];
   // Promises waiting for a free slot to become available.
-  readonly #waiters: Array<() => void>;
+  // Each entry carries both a resolve (wake) and reject (abort) so a fired
+  // signal can eject a parked waiter without waiting for a free slot.
+  readonly #waiters: Array<{ resolve: () => void; reject: (err: Error) => void }>;
   #destroyed: boolean;
   readonly #poolSize: number;
   readonly #init: InitMessageShape;
@@ -108,13 +111,17 @@ export abstract class DagContainerBase<
    * the required `instrumentation` and `shutdownGraceMs` fields are filled
    * without forcing every subclass to import `NoopInstrumentation` and the
    * default constant.
+   *
+   * The `instrumentation` field is typed against the base `NodeStateInterface`
+   * so the spread is assignable to any `DagContainerOptions<TState>` (covariant
+   * in the state parameter for read-only hook methods).
    */
-  static readonly defaultOptions: Pick<DagContainerOptions, 'instrumentation' | 'shutdownGraceMs'> = {
+  static readonly defaultOptions: Pick<DagContainerOptions<NodeStateInterface>, 'instrumentation' | 'shutdownGraceMs'> = {
     "instrumentation": new NoopInstrumentation(),
     "shutdownGraceMs": DEFAULT_SHUTDOWN_GRACE_MS,
   };
 
-  constructor(options: DagContainerOptions) {
+  constructor(options: DagContainerOptions<TState>) {
     this.instrumentation         = options.instrumentation;
     this.#dispatches             = new WeakMap<MessageChannelInterface, ChannelDispatch>();
     this.#channelToEntry         = new WeakMap<MessageChannelInterface, PoolEntry<TWorker>>();
@@ -164,13 +171,19 @@ export abstract class DagContainerBase<
    * lazy-inits channels on first use, and parks the caller if no slot is
    * available. Returns only after the channel has passed the init handshake.
    *
+   * @param signal - AbortSignal from the calling task. If the signal fires
+   *   while the caller is parked in the waiter queue, the parked promise
+   *   rejects immediately with a DagContainerError('aborted') so the caller
+   *   is not stranded until an unrelated slot frees.
+   *
    * Correctness note: after waking from a wait, the loop re-checks #destroyed
    * and #free rather than assuming a specific state, so evictions and concurrent
    * destroys are handled uniformly.
    */
-  protected async acquireChannel(): Promise<MessageChannelInterface> {
+  protected async acquireChannel(signal: AbortSignal): Promise<MessageChannelInterface> {
     while (true) {
       if (this.#destroyed) throw new DagContainerError('container destroyed');
+      if (signal.aborted) throw new DagContainerError('aborted');
 
       const free = this.#free.pop();
       if (free !== undefined) {
@@ -190,7 +203,7 @@ export abstract class DagContainerBase<
         return fresh.channel;
       }
 
-      await this.#waitForSlot();
+      await this.#waitForSlot(signal);
       // Loop re-checks: #destroyed? eviction shrank pool? another entry freed?
     }
   }
@@ -226,12 +239,12 @@ export abstract class DagContainerBase<
     let acquiredChannel: MessageChannelInterface | null = null;
 
     try {
-      acquiredChannel = await this.acquireChannel();
+      acquiredChannel = await this.acquireChannel(task.context.signal);
       const channel = acquiredChannel;
       const dispatch = this.#dispatchFor(channel);
       const request = task.toRequest();
 
-      const sink = new InstrumentationSinkImpl(this.instrumentation, task.state as TState);
+      const sink = new InstrumentationSinkImpl(this.instrumentation, task.state);
       const outcome = await dispatch.request(request, task.context.signal, sink);
 
       return outcome;
@@ -277,6 +290,12 @@ export abstract class DagContainerBase<
           }),
           gracePromise,
         ]).then(async () => {
+          // CON-2: fail all in-flight ChannelDispatch entries before closing the
+          // channel so concurrent runDag() callers awaiting dispatch.request()
+          // resolve with a transport-error outcome instead of hanging forever.
+          // The death path (onTransportDeath) calls failChannel too; making graceful
+          // destroy consistent with the death path prevents the one-way gap.
+          this.failChannel(entry.channel, DAG_CONTAINER_TRANSPORT, 'container destroyed');
           try { this.terminateWorker(entry.worker); } catch { /* suppress */ }
           try { entry.channel.close(); } catch { /* suppress */ }
         });
@@ -352,24 +371,45 @@ export abstract class DagContainerBase<
     this.#wakeWaiter();
   }
 
-  /** Park the caller until a slot becomes available (free or pool shrank). */
-  #waitForSlot(): Promise<void> {
-    return new Promise<void>((resolve) => {
-      this.#waiters.push(resolve);
+  /**
+   * Park the caller until a slot becomes available (free or pool shrank).
+   *
+   * If `signal` fires while the caller is parked, the waiter entry is removed
+   * from the queue and the promise rejects with DagContainerError('aborted').
+   * The abort listener is always removed in a finally block to prevent leaks.
+   */
+  #waitForSlot(signal: AbortSignal): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const entry = { resolve, reject };
+      this.#waiters.push(entry);
+
+      const onAbort = (): void => {
+        const idx = this.#waiters.indexOf(entry);
+        if (idx !== -1) this.#waiters.splice(idx, 1);
+        reject(new DagContainerError('aborted'));
+      };
+      signal.addEventListener('abort', onAbort, { 'once': true });
+
+      // Wrap resolve so we always clean up the abort listener.
+      const originalResolve = entry.resolve;
+      entry.resolve = (): void => {
+        signal.removeEventListener('abort', onAbort);
+        originalResolve();
+      };
     });
   }
 
   /** Wake the oldest parked acquirer, if any. */
   #wakeWaiter(): void {
     const waiter = this.#waiters.shift();
-    if (waiter !== undefined) waiter();
+    if (waiter !== undefined) waiter.resolve();
   }
 
   /** Wake every parked acquirer. Used by destroy(). */
   #wakeAllWaiters(): void {
     while (this.#waiters.length > 0) {
       const waiter = this.#waiters.shift();
-      if (waiter !== undefined) waiter();
+      if (waiter !== undefined) waiter.resolve();
     }
   }
 
@@ -439,11 +479,10 @@ class InstrumentationSinkImpl<TState extends NodeStateInterface> implements Inst
   }
 }
 
-// Re-export DAG_CONTAINER_WORKER_DIED so subclasses can reference it in
-// attachDeathListeners without a separate import of TransportErrorCode.
-export { DAG_CONTAINER_WORKER_DIED };
+// Re-export transport error codes so subclasses can reference them in
+// attachDeathListeners and other seams without a separate import.
+export { DAG_CONTAINER_TRANSPORT, DAG_CONTAINER_WORKER_DIED };
 
 // Convenience re-exports so subclass files need only one import from this module.
 export type { InitMessageShape };
-export type { InstrumentationSink };
 export type { JsonObject };

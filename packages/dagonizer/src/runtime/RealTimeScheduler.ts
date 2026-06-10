@@ -64,10 +64,39 @@ export class RealTimeScheduler implements SchedulerProvider {
   async *every(intervalMs: number, options?: { signal?: AbortSignal }): AsyncIterable<void> {
     const signal = options?.signal;
     while (signal?.aborted !== true) {
+      // Track the in-flight handle so a consumer `break` (which triggers the
+      // generator's implicit `return`, not a throw) cancels the pending timer
+      // immediately rather than leaving it to fire naturally after `intervalMs`.
+      let pendingHandle: unknown;
       try {
-        await this.after(intervalMs, options);
+        await new Promise<void>((resolve, reject) => {
+          if (signal?.aborted === true) {
+            reject(new Error('aborted'));
+            return;
+          }
+          pendingHandle = G.setTimeout(() => {
+            this.#activeHandles.delete(pendingHandle);
+            signal?.removeEventListener('abort', onAbort);
+            resolve();
+          }, Math.max(0, intervalMs));
+          this.#activeHandles.add(pendingHandle);
+          const onAbort = (): void => {
+            this.#activeHandles.delete(pendingHandle);
+            G.clearTimeout(pendingHandle);
+            signal?.removeEventListener('abort', onAbort);
+            reject(new Error('aborted'));
+          };
+          signal?.addEventListener('abort', onAbort, { 'once': true });
+        });
       } catch {
         return;
+      } finally {
+        // Clear the timer if the consumer broke the for-await loop before the
+        // timer fired (pendingHandle was already deleted on normal completion).
+        if (pendingHandle !== undefined && this.#activeHandles.has(pendingHandle)) {
+          this.#activeHandles.delete(pendingHandle);
+          G.clearTimeout(pendingHandle);
+        }
       }
       yield;
     }

@@ -57,12 +57,12 @@ export abstract class BaseEmbedder implements Embedder {
   }
 
   /** No-op default. Subclasses with a session lifecycle override. */
-  async connect(): Promise<void> {
+  async connect(_signal?: AbortSignal): Promise<void> {
     return Promise.resolve();
   }
 
   /** No-op default. Subclasses with a session lifecycle override. */
-  async disconnect(): Promise<void> {
+  async disconnect(_signal?: AbortSignal): Promise<void> {
     return Promise.resolve();
   }
 
@@ -73,21 +73,21 @@ export abstract class BaseEmbedder implements Embedder {
    * feature detect, local model warmth) override and surface their own
    * check. Must never throw; return false instead.
    */
-  async probe(): Promise<boolean> {
+  async probe(_signal?: AbortSignal): Promise<boolean> {
     return Promise.resolve(true);
   }
 
-  async embed(text: string, options?: { signal?: AbortSignal }): Promise<readonly number[]> {
-    const runOptions = options?.signal !== undefined ? { 'signal': options.signal } : {};
+  async embed(text: string, signal?: AbortSignal): Promise<readonly number[]> {
+    const runOptions = signal !== undefined ? { signal } : {};
     return this.#retry.run(async () => {
       try {
-        return await this.performEmbed(text);
+        return await this.performEmbed(text, signal ?? BaseEmbedder.#neverAbortingSignal());
       } catch (rawError) {
         // Already classified by performEmbed; don't double-wrap. Apply the
         // quota cap, then rethrow as-is.
         if (rawError instanceof LlmError) {
           const c = rawError.classification;
-          if (c.reason === 'QUOTA_EXHAUSTED' && c.retryAfterMs !== undefined && c.retryAfterMs > MAX_QUOTA_WAIT_MS) {
+          if (c.reason === 'QUOTA_EXHAUSTED' && c.retryable && c.retryAfterMs !== null && c.retryAfterMs > MAX_QUOTA_WAIT_MS) {
             throw new LlmError(
               `quota exhausted; retry-after ${String(c.retryAfterMs)}ms exceeds ${String(MAX_QUOTA_WAIT_MS)}ms cap`,
               { ...c, 'retryable': false },
@@ -106,16 +106,22 @@ export abstract class BaseEmbedder implements Embedder {
    * provider exposes a native batch endpoint override and post one
    * request for the whole batch.
    */
-  async embedBatch(texts: readonly string[], options?: { signal?: AbortSignal }): Promise<readonly (readonly number[])[]> {
+  async embedBatch(texts: readonly string[], signal?: AbortSignal): Promise<readonly (readonly number[])[]> {
     const results: (readonly number[])[] = [];
     for (const t of texts) {
-      results.push(await this.embed(t, options));
+      results.push(await this.embed(t, signal));
     }
     return results;
   }
 
-  /** Concrete embedder: perform the actual API call. */
-  protected abstract performEmbed(text: string): Promise<readonly number[]>;
+  /** Concrete embedder: perform the actual API call. `signal` is always a valid AbortSignal. */
+  protected abstract performEmbed(text: string, signal: AbortSignal): Promise<readonly number[]>;
+
+  /** A signal that never fires; materialised once per call so each call site
+   *  always receives an AbortSignal without allocating a persistent controller. */
+  static #neverAbortingSignal(): AbortSignal {
+    return new AbortController().signal;
+  }
 
   /** Map a provider-native error into the shared classification. */
   protected classify(error: unknown): ErrorClassification {

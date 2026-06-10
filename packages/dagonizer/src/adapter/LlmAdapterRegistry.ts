@@ -13,8 +13,9 @@
  * lookups return `null` so the cascade can record the miss and move on.
  */
 
+import type { LlmAdapter } from '../contracts/LlmAdapter.js';
+
 import { AdapterDescriptor, type AdapterDescriptorShape } from './AdapterDescriptor.js';
-import type { LlmAdapter } from './LlmAdapter.js';
 import { Classifications, LlmError } from './LlmError.js';
 
 /** Zero-arg constructor for an adapter; built fresh per `resolve()`. */

@@ -36,10 +36,9 @@ export interface Embedder {
    * Embed a single text. Returns a `number[]` of length `dimensions`.
    * Throws `LlmError` on failure; the caller decides whether to retry
    * or fall back. Retry plumbing is provided by `BaseEmbedder`.
-   * The optional `signal` is threaded into the retry loop so in-flight
-   * waits abort promptly when the caller cancels.
+   * The optional `signal` aborts in-flight requests and retry-loop waits.
    */
-  embed(text: string, options?: { signal?: AbortSignal }): Promise<readonly number[]>;
+  embed(text: string, signal?: AbortSignal): Promise<readonly number[]>;
 
   /**
    * Batch convenience: embed multiple texts. Default implementation in
@@ -47,7 +46,7 @@ export interface Embedder {
    * native batch endpoints override. Threads `signal` into each `embed()`
    * call so the batch aborts cleanly.
    */
-  embedBatch(texts: readonly string[], options?: { signal?: AbortSignal }): Promise<readonly (readonly number[])[]>;
+  embedBatch(texts: readonly string[], signal?: AbortSignal): Promise<readonly (readonly number[])[]>;
 
   /**
    * Quick availability check. Returns true when this embedder can
@@ -59,7 +58,7 @@ export interface Embedder {
    * `BaseEmbedder` ships a default that returns true; concrete adapters
    * override with a real probe (e.g. credential check, HEAD request).
    */
-  probe(): Promise<boolean>;
+  probe(signal?: AbortSignal): Promise<boolean>;
 
   /**
    * Bring up any per-session state (model download, websocket
@@ -67,8 +66,8 @@ export interface Embedder {
    * `BaseEmbedder` provides a default empty implementation so consumers
    * don't branch on `connect` vs `undefined`.
    */
-  connect(): Promise<void>;
+  connect(signal?: AbortSignal): Promise<void>;
 
   /** Tear down any per-session state. No-op default on `BaseEmbedder`. */
-  disconnect(): Promise<void>;
+  disconnect(signal?: AbortSignal): Promise<void>;
 }

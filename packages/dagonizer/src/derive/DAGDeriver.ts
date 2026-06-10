@@ -462,8 +462,8 @@ export class DAGDeriver {
       'itemKey': scatter.itemKey,
       'gather':  gather,
       'outputs': outputs,
+      ...(scatter.concurrency !== undefined ? { 'concurrency': scatter.concurrency } : {}),
     };
-    if (scatter.concurrency !== undefined) scatterNode.concurrency = scatter.concurrency;
     return scatterNode;
   }
 
@@ -487,6 +487,25 @@ export class DAGDeriver {
     nodeId: (n: string) => string,
     emitCollector: Map<string, DAGDeriverEmitTerminal>,
   ): EmbeddedDAGNode {
+    // CON-7/CON-11: Build stateMapping in the object literal (no post-construction
+    // assignment). The annotation allows a subset of state keys (Partial<Record<K,V>>
+    // with exactOptionalPropertyTypes: present keys always have string values, absent
+    // keys are simply omitted). The casts to Record<string,string> are safe because:
+    //   spread of Partial<Record<K,string>> with exactOptionalPropertyTypes → object
+    //   whose every present key has a string value; the wire shape
+    //   { [key: string]: string } is structurally satisfied at runtime. The Partial
+    //   is required at the annotation level so callers supply only the keys they
+    //   need to map (requiring all keys would force mapping every state property).
+    const mapping = embeddedDAG.stateMapping;
+    const stateMapping: EmbeddedDAGNode['stateMapping'] = (
+      mapping !== undefined && (mapping.input !== undefined || mapping.output !== undefined)
+    )
+      ? {
+          ...(mapping.input  !== undefined ? { 'input':  { ...mapping.input  } as Record<string, string> } : {}),
+          ...(mapping.output !== undefined ? { 'output': { ...mapping.output } as Record<string, string> } : {}),
+        }
+      : undefined;
+
     const embeddedNode: EmbeddedDAGNode = {
       '@id':   nodeId(name),
       '@type': 'EmbeddedDAGNode',
@@ -500,19 +519,8 @@ export class DAGDeriver {
         annotations,
         emitCollector,
       ),
+      ...(stateMapping !== undefined ? { 'stateMapping': stateMapping } : {}),
     };
-
-    const mapping = embeddedDAG.stateMapping;
-    if (mapping?.input !== undefined || mapping?.output !== undefined) {
-      const stateMapping: EmbeddedDAGNode['stateMapping'] = {};
-      if (mapping?.input !== undefined) {
-        stateMapping.input = { ...(mapping.input as Record<string, string>) };
-      }
-      if (mapping?.output !== undefined) {
-        stateMapping.output = { ...(mapping.output as Record<string, string>) };
-      }
-      embeddedNode.stateMapping = stateMapping;
-    }
 
     return embeddedNode;
   }

@@ -108,9 +108,10 @@ export class HttpTransport {
         }
       }
 
-      // Exponential backoff before next attempt.
+      // Exponential backoff before next attempt. Abort-aware: if the caller
+      // cancels during the sleep, reject immediately rather than hanging.
       const delay = BASE_BACKOFF_MS * 2 ** attempt;
-      await new Promise<void>((resolve) => setTimeout(resolve, delay));
+      await HttpTransport.#abortAwareSleep(delay, options.signal);
       attempt++;
     }
 
@@ -131,5 +132,26 @@ export class HttpTransport {
     if (status >= 500)  return { 'reason': 'HTTP_5XX',   'retryable': true };
     if (status >= 400)  return { 'reason': 'HTTP_4XX',   'retryable': false };
     return { 'reason': 'UNKNOWN', 'retryable': false };
+  }
+
+  /**
+   * Sleep for `ms` milliseconds, but abort immediately if `signal` fires.
+   * On abort, rejects with a non-retryable `ToolError` so the retry loop
+   * does not hang until the timeout expires.
+   */
+  static async #abortAwareSleep(ms: number, signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted === true) {
+      throw new ToolError('request aborted during backoff', { 'reason': 'UNKNOWN', 'retryable': false });
+    }
+    return new Promise<void>((resolve, reject) => {
+      const timerId = setTimeout(resolve, ms);
+      if (signal === undefined) return;
+      const onAbort = (): void => {
+        clearTimeout(timerId);
+        signal.removeEventListener('abort', onAbort);
+        reject(new ToolError('request aborted during backoff', { 'reason': 'UNKNOWN', 'retryable': false }));
+      };
+      signal.addEventListener('abort', onAbort, { 'once': true });
+    });
   }
 }

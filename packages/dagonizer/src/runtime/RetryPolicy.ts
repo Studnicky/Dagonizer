@@ -43,8 +43,14 @@ const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategyValue, BackoffComputerTy
   'constant': (_attempt, baseDelay) => baseDelay,
   'linear': (attempt, baseDelay) => baseDelay * attempt,
   'exponential': (attempt, baseDelay, multiplier) => baseDelay * Math.pow(multiplier, attempt - 1),
-  'decorrelated-jitter': (_attempt, baseDelay) =>
-    Math.random() * (baseDelay * DECORRELATED_JITTER_MULTIPLIER - baseDelay) + baseDelay,
+  // Jitter range is [baseDelay, baseDelay * DECORRELATED_JITTER_MULTIPLIER].
+  // When baseDelay >= maxDelay the range collapses to [baseDelay, baseDelay];
+  // getDelay() then clamps the result to maxDelay, keeping it in [0, maxDelay].
+  'decorrelated-jitter': (_attempt, baseDelay) => {
+    const lo = baseDelay;
+    const hi = baseDelay * DECORRELATED_JITTER_MULTIPLIER;
+    return Math.random() * Math.max(0, hi - lo) + lo;
+  },
 };
 
 /**
@@ -81,36 +87,62 @@ export class RetryPolicy {
   readonly retryOn: readonly ErrorConstructorType[] | null;
   readonly abortOn: readonly ErrorConstructorType[] | null;
 
+  /**
+   * All defaulting is centralised in `RetryPolicy.materialise()`. The
+   * constructor receives the output of that helper (or a caller-supplied
+   * partial that also passes through materialise) so there is exactly one
+   * place where `DEFAULT_*` constants are applied.
+   *
+   * External callers should prefer `RetryPolicy.from(partial)` so the
+   * defaults are applied uniformly. Subclasses may call `super(options)`
+   * after materialising their own defaults via their own `from()` override.
+   */
   constructor(options: RetryPolicyOptionsInterface = {}) {
-    this.maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
-    this.strategy = options.strategy ?? BackoffStrategy.EXPONENTIAL;
-    this.baseDelay = options.baseDelay ?? DEFAULT_BASE_DELAY_MS;
-    this.maxDelay = options.maxDelay ?? DEFAULT_MAX_DELAY_MS;
-    this.multiplier = options.multiplier ?? DEFAULT_MULTIPLIER;
-    this.jitterFactor = options.jitterFactor ?? DEFAULT_JITTER_FACTOR;
-    this.retryOn = options.retryOn ?? null;
-    this.abortOn = options.abortOn ?? null;
+    const m = RetryPolicy.materialise(options);
+    this.maxAttempts = m.maxAttempts;
+    this.strategy    = m.strategy;
+    this.baseDelay   = m.baseDelay;
+    this.maxDelay    = m.maxDelay;
+    this.multiplier  = m.multiplier;
+    this.jitterFactor = m.jitterFactor;
+    this.retryOn     = m.retryOn;
+    this.abortOn     = m.abortOn;
+  }
+
+  /**
+   * Single source of truth for `DEFAULT_*` application. Returns a complete
+   * options object with every optional field filled in. Both the constructor
+   * and `from()` delegate here so the two paths cannot diverge.
+   */
+  private static materialise(partial: RetryPolicyOptionsInterface): {
+    maxAttempts: number;
+    strategy: BackoffStrategyValue;
+    baseDelay: number;
+    maxDelay: number;
+    multiplier: number;
+    jitterFactor: number;
+    retryOn: readonly ErrorConstructorType[] | null;
+    abortOn: readonly ErrorConstructorType[] | null;
+  } {
+    return {
+      'maxAttempts':  partial.maxAttempts  ?? DEFAULT_MAX_ATTEMPTS,
+      'strategy':     partial.strategy     ?? BackoffStrategy.EXPONENTIAL,
+      'baseDelay':    partial.baseDelay    ?? DEFAULT_BASE_DELAY_MS,
+      'maxDelay':     partial.maxDelay     ?? DEFAULT_MAX_DELAY_MS,
+      'multiplier':   partial.multiplier   ?? DEFAULT_MULTIPLIER,
+      'jitterFactor': partial.jitterFactor ?? DEFAULT_JITTER_FACTOR,
+      'retryOn':  partial.retryOn  !== undefined ? partial.retryOn  : null,
+      'abortOn':  partial.abortOn  !== undefined ? partial.abortOn  : null,
+    };
   }
 
   /**
    * Materialise a complete `RetryPolicy` from a partial options object.
-   * All `DEFAULT_*` defaulting lives here; callers that supply a
-   * `RetryPolicyOptionsInterface` from external config should prefer this
-   * factory over `new RetryPolicy(options)` so the defaults are visible and
-   * centrally maintained.
+   * Delegates to `RetryPolicy.materialise()` so all `DEFAULT_*` defaulting
+   * lives in one place.
    */
   static from(partial: RetryPolicyOptionsInterface): RetryPolicy {
-    const opts: RetryPolicyOptionsInterface = {
-      'maxAttempts': partial.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
-      'strategy': partial.strategy ?? BackoffStrategy.EXPONENTIAL,
-      'baseDelay': partial.baseDelay ?? DEFAULT_BASE_DELAY_MS,
-      'maxDelay': partial.maxDelay ?? DEFAULT_MAX_DELAY_MS,
-      'multiplier': partial.multiplier ?? DEFAULT_MULTIPLIER,
-      'jitterFactor': partial.jitterFactor ?? DEFAULT_JITTER_FACTOR,
-      ...(partial.retryOn !== undefined && { 'retryOn': partial.retryOn }),
-      ...(partial.abortOn !== undefined && { 'abortOn': partial.abortOn }),
-    };
-    return new RetryPolicy(opts);
+    return new RetryPolicy(partial);
   }
 
   /**
@@ -185,7 +217,14 @@ export class RetryPolicy {
       attempt++;
 
       try {
-        return await task(attempt);
+        const result = await task(attempt);
+        // Detect abort that raced with task completion: if the signal fired
+        // while `task` was executing but before `await` returned control here,
+        // treat it as an abort rather than a successful result.
+        if (signal?.aborted === true) {
+          throw ExecutionError.fromSignal(signal);
+        }
+        return result;
       } catch (error) {
         lastError = error instanceof Error ? error : new ExecutionError(String(error));
 

@@ -13,9 +13,11 @@
  * `extends OpenAiCompatibleAdapter` and pass the provider-specific
  * fields via the constructor options.
  *
- * The optional `toolsFallback` hook lets adapters whose models don't
- * uniformly support `tools` retry as plain chat when the provider
- * signals tools-unsupported (Cerebras does this).
+ * Tool-fallback behavior is controlled by overriding
+ * `shouldFallbackWithoutTools(error)` on a concrete subclass (returns
+ * false by default). Providers whose models don't uniformly support
+ * `tools` (e.g. Cerebras) override to return true on their specific
+ * error signal, causing the adapter to retry the request without tools.
  */
 
 import { BaseAdapter } from './BaseAdapter.js';
@@ -52,12 +54,6 @@ export interface OpenAiCompatibleConfig {
   readonly tokenField: 'max_tokens' | 'max_completion_tokens';
   /** Extra headers beyond Authorization + Content-Type. */
   readonly extraHeaders: Readonly<Record<string, string>>;
-  /**
-   * Optional fallback for providers whose models don't uniformly
-   * support `tools`. Returns `true` if the adapter should retry the
-   * request without `tools` after seeing this error.
-   */
-  readonly toolsFallback?: (error: unknown) => boolean;
 
   /** Per-request timeout. Defaults to 60s. */
   readonly timeoutMs?: number;
@@ -114,12 +110,25 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
     try {
       return await this.#doRequest(request);
     } catch (err) {
-      const fallback = this.#config.toolsFallback;
-      if (fallback !== undefined && fallback(err) && request.tools.length > 0) {
+      if (this.shouldFallbackWithoutTools(err) && request.tools.length > 0) {
         return this.#doRequestWithoutTools(request);
       }
       throw err;
     }
+  }
+
+  /**
+   * Override in a concrete subclass to enable the tools-fallback path.
+   * Return `true` when the given error signals that the provider refused
+   * the request because of tool definitions (e.g. Cerebras' 400 on
+   * models that don't support function calling). The base implementation
+   * always returns `false` — no fallback by default.
+   *
+   * Called only when `request.tools` is non-empty; callers don't need to
+   * re-check that guard in their override.
+   */
+  protected shouldFallbackWithoutTools(_error: unknown): boolean {
+    return false;
   }
 
   /**
@@ -276,6 +285,14 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
   }
 
   #parseJson(raw: string): Record<string, unknown> {
-    try { return JSON.parse(raw) as Record<string, unknown>; } catch { return {}; }
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch (cause) {
+      throw new LlmError(
+        `${this.#config.displayName}: malformed tool-call arguments — ${raw.slice(0, 120)}`,
+        Classifications['SCHEMA_VIOLATION'],
+        { cause },
+      );
+    }
   }
 }

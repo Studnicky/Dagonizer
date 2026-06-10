@@ -24,6 +24,126 @@
  *   └──────────────────────────────────────────────────────────────┘
  */
 
+// ── JSON Schema 2020-12 definitions (ADP-8) ──────────────────────────────────
+//
+// Each wire-shape entity has a `*Schema` value so provider responses can be
+// validated at the JSON-ingest boundary before being narrowed to the
+// TypeScript type. Fields that are not JSON-expressible (AbortSignal) appear
+// only on the TypeScript interface, not in the schema.
+//
+// Types are kept as hand-written interfaces rather than `FromSchema<>` because
+// `inputSchema`/`arguments` are `Record<string, unknown>` — any JSON object —
+// which `json-schema-to-ts` would widen to `Record<string, unknown>` anyway.
+// The schemas are the runtime validation artifacts; the interfaces remain the
+// TypeScript types.
+
+export const ChatMessageSchema = {
+  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/ChatMessage',
+  '$schema': 'https://json-schema.org/draft/2020-12/schema',
+  'type': 'object',
+  'required': ['role', 'content', 'toolCallId', 'toolName'],
+  'properties': {
+    'role': { 'type': 'string', 'enum': ['system', 'user', 'assistant', 'tool'] },
+    'content': { 'type': 'string' },
+    'toolCallId': { 'type': 'string' },
+    'toolName': { 'type': 'string' },
+  },
+  'additionalProperties': false,
+} as const;
+
+export const ToolDefinitionSchema = {
+  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/ToolDefinition',
+  '$schema': 'https://json-schema.org/draft/2020-12/schema',
+  'type': 'object',
+  'required': ['name', 'description', 'inputSchema', 'strict'],
+  'properties': {
+    'name': { 'type': 'string', 'minLength': 1 },
+    'description': { 'type': 'string' },
+    'inputSchema': { 'type': 'object' },
+    'strict': { 'type': 'boolean' },
+  },
+  'additionalProperties': false,
+} as const;
+
+export const ToolCallSchema = {
+  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/ToolCall',
+  '$schema': 'https://json-schema.org/draft/2020-12/schema',
+  'type': 'object',
+  'required': ['id', 'name', 'arguments'],
+  'properties': {
+    'id': { 'type': 'string', 'minLength': 1 },
+    'name': { 'type': 'string', 'minLength': 1 },
+    'arguments': { 'type': 'object' },
+  },
+  'additionalProperties': false,
+} as const;
+
+export const TokenUsageSchema = {
+  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/TokenUsage',
+  '$schema': 'https://json-schema.org/draft/2020-12/schema',
+  'type': 'object',
+  'required': ['promptTokens', 'completionTokens'],
+  'properties': {
+    'promptTokens': { 'type': 'number', 'minimum': 0 },
+    'completionTokens': { 'type': 'number', 'minimum': 0 },
+  },
+  'additionalProperties': false,
+} as const;
+
+/**
+ * JSON Schema for `ChatResponseMessage` discriminated union. Validates the
+ * JSON-expressible fields of what a provider returns (text, tools, or mixed).
+ */
+export const ChatResponseMessageSchema = {
+  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/ChatResponseMessage',
+  '$schema': 'https://json-schema.org/draft/2020-12/schema',
+  'oneOf': [
+    {
+      'type': 'object',
+      'required': ['kind', 'content'],
+      'properties': { 'kind': { 'const': 'text' }, 'content': { 'type': 'string' } },
+      'additionalProperties': false,
+    },
+    {
+      'type': 'object',
+      'required': ['kind', 'toolCalls'],
+      'properties': {
+        'kind': { 'const': 'tools' },
+        'toolCalls': { 'type': 'array', 'items': ToolCallSchema },
+      },
+      'additionalProperties': false,
+    },
+    {
+      'type': 'object',
+      'required': ['kind', 'content', 'toolCalls'],
+      'properties': {
+        'kind': { 'const': 'mixed' },
+        'content': { 'type': 'string' },
+        'toolCalls': { 'type': 'array', 'items': ToolCallSchema },
+      },
+      'additionalProperties': false,
+    },
+  ],
+} as const;
+
+/**
+ * JSON Schema for `ChatResponse` — the JSON-expressible portion of what the
+ * adapter returns. Validates at the JSON-ingest boundary before the
+ * TypeScript type is asserted.
+ */
+export const ChatResponseSchema = {
+  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/ChatResponse',
+  '$schema': 'https://json-schema.org/draft/2020-12/schema',
+  'type': 'object',
+  'required': ['message', 'finishReason', 'usage'],
+  'properties': {
+    'message': ChatResponseMessageSchema,
+    'finishReason': { 'type': 'string', 'enum': ['stop', 'length', 'tool_call', 'error'] },
+    'usage': TokenUsageSchema,
+  },
+  'additionalProperties': false,
+} as const;
+
 /** A single message in a chat-style conversation. */
 export interface ChatMessage {
   readonly role: 'system' | 'user' | 'assistant' | 'tool';
@@ -203,31 +323,8 @@ export interface AdapterCapabilities {
   readonly jsonMode: boolean;
 }
 
-/** Implemented by every provider. */
-export interface LlmAdapter {
-  readonly id: string;
-  readonly displayName: string;
-  readonly capabilities: AdapterCapabilities;
-  chat(request: ChatRequest): Promise<ChatResponse>;
-  /**
-   * Bring up any per-session state (model download, websocket handshake).
-   * Adapters that don't need a session implement a no-op; `BaseAdapter`
-   * provides a default empty implementation so consumers don't branch
-   * on `connect` vs `undefined`.
-   */
-  connect(): Promise<void>;
-  /** Tear down any per-session state. No-op default on `BaseAdapter`. */
-  disconnect(): Promise<void>;
-  /**
-   * Quick availability check. Returns true when this adapter can plausibly
-   * serve a chat call right now (credentials present, runtime backend
-   * reachable, model available). Implementations MUST NOT throw on
-   * transport failure; return false so a cascade can route around the
-   * adapter and try the next preference.
-   *
-   * `BaseAdapter` ships a default that returns true; concrete adapters
-   * override with a real probe (e.g. credential check, HEAD request,
-   * `navigator.ml` feature detect).
-   */
-  probe(): Promise<boolean>;
-}
+/**
+ * Re-exported from `src/contracts/LlmAdapter.ts` — single source of truth.
+ * `./adapter` consumers continue to import `LlmAdapter` from this module.
+ */
+export type { LlmAdapter } from '../contracts/LlmAdapter.js';

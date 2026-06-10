@@ -30,12 +30,18 @@ export interface StoreSnapshot {
 
 /** A state container that can be captured into, and restored from, a `StoreSnapshot`. */
 export interface Snapshottable {
-  /** Capture the entire state as a typed envelope. */
-  snapshot(): Promise<StoreSnapshot>;
+  /**
+   * Capture the entire state as a typed envelope. `signal` is available for
+   * implementations backed by remote or async stores that support cancellation;
+   * in-process implementations may ignore it.
+   */
+  snapshot(signal?: AbortSignal): Promise<StoreSnapshot>;
 
   /**
    * Repopulate from a snapshot. Implementations validate `snapshot.type` and
-   * `snapshot.version` before applying entries.
+   * `snapshot.version` before applying entries. `signal` is available for
+   * implementations backed by remote or async stores; in-process implementations
+   * may ignore it.
    */
-  restore(snapshot: StoreSnapshot): Promise<void>;
+  restore(snapshot: StoreSnapshot, signal?: AbortSignal): Promise<void>;
 }

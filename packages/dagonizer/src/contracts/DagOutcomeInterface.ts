@@ -1,23 +1,13 @@
 /**
- * DagOutcomeInterface: result returned by a `DagContainerInterface.runDag()`
- * call after an embedded DAG completes in an isolate.
+ * DagOutcomeInterface: forwarded from its canonical location in
+ * src/container/DagOutcome.ts (entity-narrowing interface taxonomy).
  *
- * `terminalOutput`  — the routing output the child DAG resolved to (e.g. `'success'` | `'error'`).
- * `errors`          — collected errors from the child run (never thrown; always collected).
- * `stateSnapshot`   — terminal child state snapshot; `null` when the container cannot
- *                     produce a snapshot (e.g. transport failure). Parent calls
- *                     `cloneState.applySnapshot(stateSnapshot)` when non-null.
- * `intermediates`   — per-node results from the child DAG, forwarded to the parent
- *                     execution stream as intermediate yields.
+ * This file is kept for backwards compatibility of the `./contracts` subpath.
+ * The canonical definition lives alongside the `DagOutcome` factory class, per
+ * the entity-narrowing interface taxonomy documented in CLAUDE.md.
+ *
+ * @deprecated Import from `@noocodex/dagonizer/container` or
+ *   `@noocodex/dagonizer/contracts` — both resolve to the same type.
  */
 
-import type { ExecutorIntermediate } from '../entities/executor/ExecutorIntermediate.js';
-import type { JsonObject } from '../entities/json.js';
-import type { NodeError } from '../entities/node/NodeError.js';
-
-export interface DagOutcomeInterface {
-  readonly terminalOutput: string;
-  readonly errors: readonly NodeError[];
-  readonly stateSnapshot: JsonObject | null;
-  readonly intermediates: readonly ExecutorIntermediate[];
-}
+export type { DagOutcomeInterface } from '../container/DagOutcome.js';

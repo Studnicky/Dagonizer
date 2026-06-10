@@ -33,10 +33,20 @@ export interface RegistryBundleInterface {
    */
   readonly restoreState: StateRestoreFnType<NodeStateInterface>;
   /**
-   * R4: optional teardown hook. Called by DagHost on shutdown so node
-   * resources (DB connections, open handles, etc.) are released before the
-   * host process/thread exits. Implementations may be absent for bundles
-   * that have no teardown work.
+   * Optional teardown hook. Called by `DagHost` on shutdown before the host
+   * process/thread exits, so node resources (DB connections, file handles, etc.)
+   * are released cleanly.
+   *
+   * Extension contract: this is a legitimate optional seam. Bundles that open no
+   * long-lived resources may omit `destroy` entirely — `DagHost` uses optional
+   * chaining (`this.#bundle.destroy?.()`) and suppresses errors so a missing or
+   * throwing `destroy` never blocks channel close. Implementations MUST NOT throw
+   * exceptions that they want the host to observe; wrap all teardown in try/catch
+   * internally and resolve regardless of teardown outcome.
+   *
+   * Rationale for remaining optional: requiring a no-op implementation on every
+   * bundle would add mandatory boilerplate for the common case (no teardown work)
+   * and would make simple in-test bundles more verbose without correctness benefit.
    */
   destroy?(): Promise<void>;
 }

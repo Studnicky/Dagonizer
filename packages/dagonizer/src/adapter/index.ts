@@ -25,12 +25,18 @@ export type {
 } from './LlmAdapter.js';
 
 export {
+  ChatMessageSchema,
   ChatRequestBuilder,
   ChatResponseMessageBuilder,
+  ChatResponseMessageSchema,
+  ChatResponseSchema,
   DEFAULT_MAX_TOKENS,
   DEFAULT_OUTPUT_SCHEMA,
   DEFAULT_TEMPERATURE,
   DEFAULT_TOOL_CHOICE,
+  TokenUsageSchema,
+  ToolCallSchema,
+  ToolDefinitionSchema,
   ZERO_TOKEN_USAGE,
 } from './LlmAdapter.js';
 
@@ -39,7 +45,7 @@ export {
   DEFAULT_BASE_DELAY_MS,
   DEFAULT_MAX_ATTEMPTS,
 } from './BaseAdapter.js';
-export type { BaseAdapterOptions } from './BaseAdapter.js';
+export type { BaseAdapterOptions, BaseAdapterOptionsResolved } from './BaseAdapter.js';
 
 export { OpenAiCompatibleAdapter } from './OpenAiCompatibleAdapter.js';
 export type {

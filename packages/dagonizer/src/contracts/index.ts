@@ -5,8 +5,10 @@ export type { MessageChannelInterface } from './MessageChannelInterface.js';
 export type { RegistryBundleInterface, RegistryModuleInterface } from './RegistryModuleInterface.js';
 export type { SystemInfoInterface } from './SystemInfoInterface.js';
 export type { DagContainerInterface } from './DagContainerInterface.js';
-export type { DagOutcomeInterface } from './DagOutcomeInterface.js';
-export type { DagTaskInterface } from './DagTaskInterface.js';
+// CON-13: DagOutcomeInterface canonical location → container/DagOutcome.ts
+export type { DagOutcomeInterface } from '../container/DagOutcome.js';
+// CON-13: DagTaskInterface canonical location → container/DagTask.ts
+export type { DagTaskInterface } from '../container/DagTask.js';
 export type { Embedder } from './Embedder.js';
 export type { GatherExecution, GatherRecord } from './GatherExecution.js';
 export type { LlmAdapter } from './LlmAdapter.js';

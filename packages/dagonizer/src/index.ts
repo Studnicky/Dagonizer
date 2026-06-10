@@ -204,7 +204,7 @@ export type { OutcomeRecord } from './core/OutcomeReducers.js';
 // CHECKPOINT
 // =============================================================================
 
-export { Checkpoint, MemoryCheckpointStore } from './checkpoint/index.js';
+export { Checkpoint, CheckpointRestoreAdapterFn, MemoryCheckpointStore } from './checkpoint/index.js';
 export type { CaptureOptionsInterface, RecalledCheckpoint, StateRestoreFnType } from './checkpoint/index.js';
 
 // =============================================================================
@@ -237,31 +237,11 @@ export type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from './contr
 export type { Snapshottable, StoreSnapshot, StoreSnapshotEntry } from './contracts/Snapshottable.js';
 export type { Store } from './contracts/Store.js';
 
-// =============================================================================
-// ADAPTER: LLM adapter contract, registry, and cascade selector
-// =============================================================================
-
-export {
-  AdapterDescriptor,
-  BaseEmbedder,
-  Classifications,
-  EmbedderCascade,
-  EmbedderRegistry,
-  LlmAdapterCascade,
-  LlmAdapterRegistry,
-  LlmError,
-} from './adapter/index.js';
-export type {
-  AdapterDescriptorShape,
-  AdapterFactory,
-  BaseEmbedderOptions,
-  CascadePreference,
-  Embedder,
-  EmbedderCascadePreference,
-  EmbedderFactory,
-  ErrorClassification,
-  LlmErrorReason,
-} from './adapter/index.js';
+// Adapter infrastructure ships exclusively via @noocodex/dagonizer/adapter.
+// See: AdapterDescriptor, BaseAdapter, BaseEmbedder, Classifications,
+//      EmbedderCascade, EmbedderRegistry, LlmAdapterCascade,
+//      LlmAdapterRegistry, LlmError (and their types).
+// Breaking change in 0.18.0 — migrate root-barrel imports to the subpath.
 
 // =============================================================================
 // ENTITY-NARROWING INTERFACES (colocated with entity)

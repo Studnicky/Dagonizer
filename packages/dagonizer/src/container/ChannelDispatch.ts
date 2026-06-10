@@ -18,7 +18,6 @@
  */
 
 
-import type { DagOutcomeInterface } from '../contracts/DagOutcomeInterface.js';
 import type { InstrumentationSink } from '../contracts/InstrumentationSink.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
 import type { BridgeMessage } from '../entities/executor/BridgeMessage.js';
@@ -27,17 +26,20 @@ import type { JsonObject } from '../entities/json.js';
 import type { NodeError } from '../entities/node/NodeError.js';
 
 import { DagOutcome } from './DagOutcome.js';
+import type { DagOutcomeInterface } from './DagOutcome.js';
 
 // ---------------------------------------------------------------------------
 // Internal shapes
 // ---------------------------------------------------------------------------
 
-/** Shape of the init message sent to DagHost. */
-export interface InitMessageShape {
-  readonly registryModule: string;
-  readonly registryVersion: string;
-  readonly servicesConfig: JsonObject;
-}
+/**
+ * Shape of the init message sent to DagHost. Derived from the 'init' branch of
+ * BridgeMessage so it cannot drift from the canonical schema definition.
+ * Extracting `& { kind: 'init' }` narrows BridgeMessage to the init discriminant
+ * and then omits the `kind` field (which the init sender does not supply as a
+ * separate argument — it is added by ChannelDispatch.init() internally).
+ */
+export type InitMessageShape = Omit<BridgeMessage & { kind: 'init' }, 'kind'>;
 
 /** Per-request correlation entry. */
 interface PendingEntry {
@@ -210,6 +212,15 @@ export class ChannelDispatch {
         const correlationId = msg.response.correlationId;
         const entry = this.#pending.get(correlationId);
         if (entry === undefined) return;
+        // Protocol-boundary narrowing: BridgeMessage's 'result' branch carries
+        // inline schema copies (InlineNodeErrorShape, InlineExecutionResponseShape)
+        // that are structurally identical to the canonical NodeError and JsonObject
+        // types but produce distinct FromSchema derivations. Ajv has validated the
+        // wire message, so these casts are safe:
+        //   errors: same required fields/types as NodeErrorSchema; only nominal gap.
+        //   stateSnapshot: schema { type: ['object', 'null'] } → Ajv-validated JSON
+        //     object, values confirmed JSON-compatible by the validator; safe to narrow
+        //     from { [k: string]: unknown } | null to JsonObject | null.
         entry.settle({
           'terminalOutput': msg.response.terminalOutput,
           'errors': msg.response.errors as readonly NodeError[],

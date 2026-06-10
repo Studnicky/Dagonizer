@@ -66,7 +66,7 @@ import {
   LlmAdapterCascade,
   LlmAdapterRegistry,
   LlmError,
-} from '@noocodex/dagonizer';
+} from '@noocodex/dagonizer/adapter';
 import { ExecutionError, NodeTimeoutError } from '@noocodex/dagonizer/errors';
 import type { AdapterCapabilities } from '@noocodex/dagonizer/adapter';
 import type { Embedder } from '@noocodex/dagonizer/contracts';

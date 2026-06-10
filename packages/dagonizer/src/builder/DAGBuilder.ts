@@ -211,13 +211,15 @@ export class DAGBuilder {
       'body':    'dag' in body ? { 'dag': body.dag } : { 'node': (body as NodeInterface<TState, TOutput, TServices>).name },
       'gather':  options.gather,
       'outputs': outputs,
+      // Optional fields are spread at construction (never assigned post-construction) so the
+      // node is born with its final shape — no V8 hidden-class transition on the build path.
+      ...(options.itemKey !== undefined ? { 'itemKey': options.itemKey } : {}),
+      ...(options.concurrency !== undefined ? { 'concurrency': options.concurrency } : {}),
+      // ParentPath<TState> is structurally string; FromSchema index-signature requires Record<string,string>.
+      ...(options.inputs !== undefined ? { 'stateMapping': { 'input': options.inputs as Record<string, string> } } : {}),
+      ...(options.reducer !== undefined ? { 'reducer': options.reducer } : {}),
+      ...(options.container !== undefined ? { 'container': options.container } : {}),
     };
-    if (options.itemKey !== undefined) scatterNode.itemKey = options.itemKey;
-    if (options.concurrency !== undefined) scatterNode.concurrency = options.concurrency;
-    // ParentPath<TState> is structurally string; FromSchema index-signature requires Record<string,string>.
-    if (options.inputs !== undefined) scatterNode.stateMapping = { 'input': options.inputs as Record<string, string> };
-    if (options.reducer !== undefined) scatterNode.reducer = options.reducer;
-    if (options.container !== undefined) scatterNode.container = options.container;
 
     if (!('dag' in body)) {
       // Generic erasure: impl map stores type-erased base; callers retrieve it untyped.
@@ -252,21 +254,24 @@ export class DAGBuilder {
     outputs: Record<'success' | 'error', null | string>,
     options: TypedEmbeddedDAGOptionsInterface<TChildState, TParentState> = {},
   ): this {
+    // ParentPath<T> is structurally string; FromSchema index-signature requires Record<string,string>.
+    const stateMapping: NonNullable<EmbeddedDAGNode['stateMapping']> | undefined =
+      options.inputs !== undefined || options.outputs !== undefined
+        ? {
+          ...(options.inputs  !== undefined ? { 'input':  options.inputs  as Record<string, string> } : {}),
+          ...(options.outputs !== undefined ? { 'output': options.outputs as Record<string, string> } : {}),
+        }
+        : undefined;
     const embeddedNode: EmbeddedDAGNode = {
       '@id':     this.#nodeId(name),
       '@type':   'EmbeddedDAGNode',
       name,
       'dag':     dagName,
       outputs,
+      // Optional fields spread at construction — no post-construction shape mutation.
+      ...(stateMapping !== undefined ? { 'stateMapping': stateMapping } : {}),
+      ...(options.container !== undefined ? { 'container': options.container } : {}),
     };
-    if (options.inputs !== undefined || options.outputs !== undefined) {
-      const stateMapping: NonNullable<EmbeddedDAGNode['stateMapping']> = {};
-      // ParentPath<T> is structurally string; FromSchema index-signature requires Record<string,string>.
-      if (options.inputs  !== undefined) stateMapping.input  = options.inputs  as Record<string, string>;
-      if (options.outputs !== undefined) stateMapping.output = options.outputs as Record<string, string>;
-      embeddedNode.stateMapping = stateMapping;
-    }
-    if (options.container !== undefined) embeddedNode.container = options.container;
 
     this.#nodes.push(embeddedNode);
     if (this.#entrypoint === null) this.#entrypoint = name;

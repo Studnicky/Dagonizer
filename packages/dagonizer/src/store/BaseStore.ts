@@ -85,7 +85,7 @@ export abstract class BaseStore implements Store {
     return next;
   }
 
-  async snapshot(): Promise<StoreSnapshot> {
+  async snapshot(_signal?: AbortSignal): Promise<StoreSnapshot> {
     const entries = await this.performSnapshotEntries();
     return {
       'version': this.snapshotVersion,
@@ -94,7 +94,7 @@ export abstract class BaseStore implements Store {
     };
   }
 
-  async restore(incoming: StoreSnapshot): Promise<void> {
+  async restore(incoming: StoreSnapshot, _signal?: AbortSignal): Promise<void> {
     if (incoming.type !== this.snapshotType || incoming.version !== this.snapshotVersion) {
       throw new StoreError(
         `incompatible snapshot: expected ${this.snapshotType} v${String(this.snapshotVersion)}, ` +

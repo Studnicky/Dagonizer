@@ -42,6 +42,7 @@
  * ```
  */
 
+import type { CheckpointRestoreAdapter } from '../contracts/CheckpointRestoreAdapter.js';
 import type { CheckpointStore } from '../contracts/CheckpointStore.js';
 import type { Snapshottable, StoreSnapshot } from '../contracts/Snapshottable.js';
 import { CHECKPOINT_DATA_VERSION } from '../entities/checkpoint/CheckpointData.js';
@@ -53,16 +54,50 @@ import type { NodeStateBase, NodeStateInterface } from '../NodeStateBase.js';
 import { Validator } from '../validation/Validator.js';
 
 /**
- * Restore-factory shape passed to `restoreState`. Any function that maps a
- * snapshot to a state instance satisfies it:
- *
- *   ckpt.restoreState((snap) => MyState.restore(snap))
- *
- * The factory form is what carries the concrete type through generic
- * inference; a class reference loses the type when passed directly.
+ * Restore-factory function signature. Still used by `RegistryBundleInterface`
+ * as a bundle field; `CheckpointRestoreAdapterFn.fromFn(fn)` wraps it into the
+ * adapter contract accepted by `Checkpoint.restoreState()`.
  */
 export type StateRestoreFnType<TState extends NodeStateInterface>
   = (snapshot: JsonObject) => TState;
+
+/**
+ * Concrete `CheckpointRestoreAdapter` backed by a plain function.
+ *
+ * Use `CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap))` to
+ * wrap an inline lambda for `Checkpoint.restoreState()` without giving up the
+ * ergonomics of arrow-function syntax.
+ *
+ * @example
+ * ```ts
+ * const { state, dagName, cursor } = ckpt.restoreState(
+ *   CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap)),
+ * );
+ * ```
+ */
+export class CheckpointRestoreAdapterFn<TState extends NodeStateInterface>
+  implements CheckpointRestoreAdapter<TState> {
+  readonly #fn: StateRestoreFnType<TState>;
+
+  private constructor(fn: StateRestoreFnType<TState>) {
+    this.#fn = fn;
+  }
+
+  restore(snapshot: JsonObject): TState {
+    return this.#fn(snapshot);
+  }
+
+  /**
+   * Wrap a plain restore function in a `CheckpointRestoreAdapter`.
+   * The function receives a `JsonObject` snapshot and must return a `TState`
+   * instance; the typical pattern is `(snap) => MyState.restore(snap)`.
+   */
+  static fromFn<TState extends NodeStateInterface>(
+    fn: StateRestoreFnType<TState>,
+  ): CheckpointRestoreAdapterFn<TState> {
+    return new CheckpointRestoreAdapterFn(fn);
+  }
+}
 
 /** Result of a successful `restoreState` call. */
 export interface RecalledCheckpoint<TState extends NodeStateInterface> {
@@ -203,21 +238,22 @@ export class Checkpoint {
   }
 
   /**
-   * Rehydrate the state from this checkpoint via the supplied factory.
+   * Rehydrate the state from this checkpoint via the supplied adapter.
    * Returns the rehydrated state, dag name, cursor, and execution history.
-   * The factory maps a snapshot `JsonObject` to a `TState` instance;
-   * typically `(snap) => MyState.restore(snap)`.
+   *
+   * Pass a `CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap))`
+   * to wrap an inline lambda in the adapter contract.
    *
    * Throws `ValidationError` when `this.data.cursor === null`.
    */
   restoreState<TState extends NodeStateInterface>(
-    restoreFn: StateRestoreFnType<TState>,
+    adapter: CheckpointRestoreAdapter<TState>,
   ): RecalledCheckpoint<TState> {
     if (this.data.cursor === null) {
       throw new ValidationError(`Cannot restore from a CheckpointData with null cursor: the DAG had no resumable position`);
     }
     return {
-      'state': restoreFn(this.data.state as JsonObject),
+      'state': adapter.restore(this.data.state as JsonObject),
       'dagName': this.data.dagName,
       'cursor': this.data.cursor,
       'executedNodes': [...this.data.executedNodes],

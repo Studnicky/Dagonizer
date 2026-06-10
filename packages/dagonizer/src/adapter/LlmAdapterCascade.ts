@@ -20,7 +20,8 @@
  *     surfaced in the failure message so misconfiguration is debuggable.
  */
 
-import type { LlmAdapter } from './LlmAdapter.js';
+import type { LlmAdapter } from '../contracts/LlmAdapter.js';
+
 import type { LlmAdapterRegistry } from './LlmAdapterRegistry.js';
 import { Classifications, LlmError } from './LlmError.js';
 

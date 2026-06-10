@@ -98,9 +98,9 @@ class TestLoopbackContainer extends DagContainerBase<NodeStateInterface, TestWor
     if (cb !== undefined) cb();
   }
 
-  /** Expose acquireChannel for direct test use. */
+  /** Expose acquireChannel for direct test use. Uses a never-aborting signal. */
   acquireForTest(): Promise<MessageChannelInterface> {
-    return this.acquireChannel();
+    return this.acquireChannel(new AbortController().signal);
   }
 
   /** Expose releaseChannel for direct test use. */
@@ -297,6 +297,104 @@ void describe('DagContainerBase — destroy() under parked runDag() (G3)', () =>
       assert.ok(outcome.errors.length > 0, 'must carry at least one error');
     } finally {
       // Second destroy — covered by G4 but also needed for cleanup safety.
+      try { await container.destroy(); } catch { /* suppress: already destroyed */ }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// G5 — CON-1: aborting the task signal unparks a parked waiter immediately
+// ---------------------------------------------------------------------------
+
+void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)', () => {
+  void it('aborting the task signal resolves runDag() as transport-error without waiting for a free slot', async () => {
+    const container = new TestLoopbackContainer(1);
+    try {
+      // Occupy the sole slot so the next runDag() parks.
+      const _ch1 = await container.acquireForTest();
+
+      const controller = new AbortController();
+
+      // Create a task whose signal we can fire.
+      class AbortableTask extends NodeStateBase {}
+      const abortTask: DagTaskInterface<NodeStateInterface, undefined> = {
+        'dagName': CONFORMANCE_DAG.law1,
+        'placementPath': [],
+        'correlationId': 'con1-abort',
+        'timeoutMs': null,
+        'state': new AbortableTask(),
+        'context': {
+          'dagName': CONFORMANCE_DAG.law1,
+          'nodeName': '',
+          'services': undefined,
+          'signal': controller.signal,
+        },
+        toRequest() {
+          return {
+            'dagName': this.dagName,
+            'placementPath': this.placementPath as string[],
+            'stateSnapshot': this.state.snapshot(),
+            'timeoutMs': this.timeoutMs,
+            'correlationId': this.correlationId,
+          };
+        },
+      };
+
+      const start = Date.now();
+      const runDagPromise = container.runDag(abortTask);
+
+      // Let the waiter park.
+      await new Promise<void>((r) => setImmediate(r));
+
+      // Abort — must unblock the parked waiter immediately (no free slot).
+      controller.abort();
+
+      const outcome = await runDagPromise;
+      const elapsed = Date.now() - start;
+
+      // Must resolve without waiting for the slot (well under the 2s grace period).
+      assert.ok(elapsed < 1000,
+        `parked runDag must resolve promptly after abort; elapsed=${elapsed}ms`);
+      assert.strictEqual(outcome.terminalOutput, 'failed',
+        'aborted parked runDag must return a failed outcome');
+      assert.ok(outcome.errors.length > 0, 'must carry at least one error');
+    } finally {
+      try { await container.destroy(); } catch { /* suppress */ }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// G6 — CON-2: destroy() fails in-flight dispatch.request() promises
+// ---------------------------------------------------------------------------
+
+void describe('DagContainerBase — destroy() fails in-flight dispatch promises (CON-2)', () => {
+  void it('destroy() while a runDag() is awaiting dispatch.request() resolves with transport-error', async () => {
+    // Use a 1-slot container where the single slot is occupied but the channel
+    // has been acquired and a request sent (so ChannelDispatch has a pending entry).
+    // Then destroy() must fail the pending entry before closing the channel.
+    const container = new TestLoopbackContainer(1);
+    try {
+      // First acquire + initialize the slot (ensures the channel handshake completes).
+      const state1 = new ConformanceState();
+      const dispatcher = buildDispatcher(container);
+      await dispatcher.execute(CONFORMANCE_DAG.law1, state1);
+
+      // Start a new runDag() — this time the slow DAG (law5 = abort-sleeper) so
+      // the dispatch.request() is in flight while we call destroy().
+      const state2 = new ConformanceState();
+      const inflightPromise = dispatcher.execute(CONFORMANCE_DAG.law5, state2);
+
+      // Allow the execute message to travel through the channel to DagHost before
+      // calling destroy (so ChannelDispatch has a pending entry).
+      await new Promise<void>((r) => setTimeout(r, 30));
+
+      // destroy() must fail the in-flight pending entry, not hang.
+      const destroyPromise = container.destroy();
+      const [result] = await Promise.all([inflightPromise, destroyPromise]);
+
+      assert.ok(result !== undefined, 'in-flight runDag must resolve (not hang)');
+    } finally {
       try { await container.destroy(); } catch { /* suppress: already destroyed */ }
     }
   });

@@ -20,12 +20,16 @@ export type LlmErrorReason =
   | 'NO_ADAPTER_AVAILABLE'
   | 'UNKNOWN';
 
-export interface ErrorClassification {
-  readonly reason: LlmErrorReason;
-  readonly retryable: boolean;
-  /** Suggested next attempt delay in ms (provider may surface Retry-After). */
-  readonly retryAfterMs?: number;
-}
+/**
+ * Classification of an LLM error. Discriminated union on `retryable`:
+ *   - Retryable classifications carry `retryAfterMs: number | null`
+ *     (`null` means no provider hint; the caller uses its own backoff).
+ *   - Non-retryable classifications omit `retryAfterMs` entirely so
+ *     call sites never need to coalesce a value that has no meaning.
+ */
+export type ErrorClassification =
+  | { readonly reason: LlmErrorReason; readonly retryable: true;  readonly retryAfterMs: number | null }
+  | { readonly reason: LlmErrorReason; readonly retryable: false };
 
 /**
  * Cap on how long a `QUOTA_EXHAUSTED` `Retry-After` hint is honored. Past this,
@@ -34,15 +38,15 @@ export interface ErrorClassification {
  */
 export const MAX_QUOTA_WAIT_MS = 10_000;
 
-/** Mark a fact-of-life classification. Used by adapters that already know. */
+/** Canonical classification constants. Retryable entries carry `retryAfterMs: null` (no provider hint). */
 export const Classifications: Readonly<Record<LlmErrorReason, ErrorClassification>> = {
   'AUTH_FAILED':          { 'reason': 'AUTH_FAILED',          'retryable': false },
   'MODEL_NOT_FOUND':      { 'reason': 'MODEL_NOT_FOUND',      'retryable': false },
-  'QUOTA_EXHAUSTED':      { 'reason': 'QUOTA_EXHAUSTED',      'retryable': true  },
+  'QUOTA_EXHAUSTED':      { 'reason': 'QUOTA_EXHAUSTED',      'retryable': true,  'retryAfterMs': null },
   'CREDIT_EXHAUSTED':     { 'reason': 'CREDIT_EXHAUSTED',     'retryable': false },
-  'TIMEOUT':              { 'reason': 'TIMEOUT',              'retryable': true  },
+  'TIMEOUT':              { 'reason': 'TIMEOUT',              'retryable': true,  'retryAfterMs': null },
   'SCHEMA_VIOLATION':     { 'reason': 'SCHEMA_VIOLATION',     'retryable': false },
-  'NETWORK':              { 'reason': 'NETWORK',              'retryable': true  },
+  'NETWORK':              { 'reason': 'NETWORK',              'retryable': true,  'retryAfterMs': null },
   'CONFIGURATION':        { 'reason': 'CONFIGURATION',        'retryable': false },
   'NO_ADAPTER_AVAILABLE': { 'reason': 'NO_ADAPTER_AVAILABLE', 'retryable': false },
   'UNKNOWN':              { 'reason': 'UNKNOWN',              'retryable': false },
@@ -74,7 +78,7 @@ export class LlmError extends Error {
       if (retryAfter !== undefined) {
         return { 'reason': 'QUOTA_EXHAUSTED', 'retryable': true, 'retryAfterMs': retryAfter * 1000 };
       }
-      return Classifications['QUOTA_EXHAUSTED'];
+      return Classifications['QUOTA_EXHAUSTED']; // retryAfterMs: null (no hint)
     }
     if (status >= 500 && status < 600) return Classifications['NETWORK'];
     return Classifications['UNKNOWN'];

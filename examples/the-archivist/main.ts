@@ -37,7 +37,7 @@ import { GeminiNanoAdapter }  from '@noocodex/dagonizer-adapter-gemini-nano';
 import { OllamaApiAdapter }   from '@noocodex/dagonizer-adapter-ollama';
 import { WebLlmAdapter }      from '@noocodex/dagonizer-adapter-web-llm';
 
-import { LlmAdapterCascade, LlmAdapterRegistry } from '@noocodex/dagonizer';
+import { LlmAdapterCascade, LlmAdapterRegistry } from '@noocodex/dagonizer/adapter';
 import type { AdapterCapabilities } from '@noocodex/dagonizer/adapter';
 
 import { GoogleBooksTool }       from '@noocodex/dagonizer-tool-googlebooks';

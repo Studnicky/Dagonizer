@@ -1,39 +1,13 @@
 /**
- * DagTaskInterface: engine-side descriptor of a contained DAG execution.
+ * DagTaskInterface: forwarded from its canonical location in
+ * src/container/DagTask.ts (class-shape interface taxonomy).
  *
- * Carries a LIVE seeded child clone (`state`) so the in-process path can
- * execute against it directly. Isolating containers (worker threads, forks,
- * spawned processes) call `toRequest()` to snapshot the clone into a
- * wire-safe `ExecutionRequest`.
+ * This file is kept for backwards compatibility of the `./contracts` subpath.
+ * The canonical definition lives alongside the `DagTask` class, per the
+ * class-shape interface taxonomy documented in CLAUDE.md.
  *
- * `dagName`       — name of the registered DAG to run.
- * `placementPath` — nesting path of embedded-DAG placement names leading to
- *                   this execution (for instrumentation/observability).
- * `correlationId` — dispatcher-monotonic correlation id; no randomness.
- * `timeoutMs`     — timeout budget forwarded to the container; `null` = no limit.
- * `state`         — live seeded child clone (TState).
- * `context`       — composed NodeContext including the abort signal.
+ * @deprecated Import from `@noocodex/dagonizer/container` or
+ *   `@noocodex/dagonizer/contracts` — both resolve to the same type.
  */
 
-import type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js';
-import type { NodeContextInterface } from '../entities/node/NodeContext.js';
-import type { NodeStateInterface } from '../NodeStateBase.js';
-
-export interface DagTaskInterface<
-  TState extends NodeStateInterface = NodeStateInterface,
-  TServices = undefined,
-> {
-  readonly dagName: string;
-  readonly placementPath: readonly string[];
-  readonly correlationId: string;
-  readonly timeoutMs: number | null;
-  readonly state: TState;
-  readonly context: NodeContextInterface<TServices>;
-  /**
-   * Materialise the wire form by snapshotting the live clone. Isolating
-   * containers call this to obtain the `ExecutionRequest` they send across
-   * the transport boundary. In-process containers ignore it and execute
-   * against `state` directly.
-   */
-  toRequest(): ExecutionRequest;
-}
+export type { DagTaskInterface } from '../container/DagTask.js';

@@ -96,9 +96,9 @@ export class ContractRegistryValidator {
   static validate(
     contracts: readonly OperationContract[],
     warningEmitter: WarningEmitter,
-    options?: { entrypointName?: string },
+    options: { entrypointName?: string } = {},
   ): void {
-    const entrypointName = options?.entrypointName;
+    const entrypointName = options.entrypointName;
     const upstreamProducers = ContractRegistryValidator.buildUpstreamProducers(contracts);
 
     // The entrypoint's hardRequired paths are the flow's external initial

@@ -25,7 +25,6 @@
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
 import type { RegistryBundleInterface, RegistryModuleInterface } from '../contracts/RegistryModuleInterface.js';
 import { Dagonizer } from '../Dagonizer.js';
-import type { DispatcherBundle } from '../Dagonizer.js';
 import type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js';
 import type { ExecutionResponse } from '../entities/executor/ExecutionResponse.js';
 import type { ExecutorIntermediate } from '../entities/executor/ExecutorIntermediate.js';
@@ -259,7 +258,7 @@ export class DagHost {
       'services': bundle.services,
       'instrumentation': forwarding,
     });
-    dagonizer.registerBundle(bundle.bundle as DispatcherBundle<NodeStateInterface, unknown>);
+    dagonizer.registerBundle(bundle.bundle);
 
     try {
       const execution = dagonizer.execute(request.dagName, state, {

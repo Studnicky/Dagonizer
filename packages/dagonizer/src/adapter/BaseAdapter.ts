@@ -20,9 +20,10 @@
  */
 
 
+import type { LlmAdapter } from '../contracts/LlmAdapter.js';
 import { BackoffStrategy } from '../runtime/index.js';
 
-import type { AdapterCapabilities, ChatRequest, ChatResponse, LlmAdapter } from './LlmAdapter.js';
+import type { AdapterCapabilities, ChatRequest, ChatResponse } from './LlmAdapter.js';
 import { Classifications, LlmError, MAX_QUOTA_WAIT_MS, type ErrorClassification } from './LlmError.js';
 import { RetryableErrorPolicy } from './RetryableErrorPolicy.js';
 
@@ -34,11 +35,29 @@ export interface BaseAdapterOptions {
   readonly baseDelayMs?: number;
 }
 
+/** Complete, filled `BaseAdapterOptions` with no optional fields. */
+export interface BaseAdapterOptionsResolved {
+  readonly maxAttempts: number;
+  readonly baseDelayMs: number;
+}
+
 export abstract class BaseAdapter implements LlmAdapter {
   readonly id: string;
   readonly displayName: string;
   readonly capabilities: AdapterCapabilities;
   readonly #retry: RetryableErrorPolicy;
+
+  /**
+   * Returns a fully-resolved options object with every field set to its
+   * canonical default. Subclasses that receive a partial `options` from
+   * their own callers spread this as a base so the object handed to
+   * `super()` is always complete:
+   *
+   *   super(id, name, caps, { ...BaseAdapter.defaultOptions(), ...options });
+   */
+  static defaultOptions(): BaseAdapterOptionsResolved {
+    return { 'maxAttempts': DEFAULT_MAX_ATTEMPTS, 'baseDelayMs': DEFAULT_BASE_DELAY_MS };
+  }
 
   protected constructor(
     id: string,
@@ -83,11 +102,12 @@ export abstract class BaseAdapter implements LlmAdapter {
         return await this.performChat(request);
       } catch (rawError) {
         const classification = this.classify(rawError);
-        // QUOTA_EXHAUSTED: honor retry-after only when short; else give up
+        // QUOTA_EXHAUSTED: honor retry-after hint only when short; else give up
         // immediately (matches nocturne's `extractWithSchema.ts:26–27`).
         if (
           classification.reason === 'QUOTA_EXHAUSTED'
-          && classification.retryAfterMs !== undefined
+          && classification.retryable
+          && classification.retryAfterMs !== null
           && classification.retryAfterMs > MAX_QUOTA_WAIT_MS
         ) {
           throw new LlmError(
