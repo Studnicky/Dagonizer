@@ -100,6 +100,22 @@ export class CompositeLayout {
   private static readonly MARGIN = 60;
 
   /**
+   * Extra padding added to each compound node's dagre size beyond the
+   * sub-layout bounding box. Cytoscape renders a compound container border
+   * that extends OUTSIDE the children's positions by the compound's CSS
+   * `padding` (defaulting to 14 px in the stylesheet). Without adding this
+   * buffer, sibling nodes abut the compound's visual border and overlap it
+   * when dagre spaces nodes using only the raw sub-layout dimensions.
+   *
+   * The value is intentionally generous (50 px per side → 100 px total per
+   * axis) to account for:
+   *   - cytoscape compound padding (14–22 px per side in the stylesheet)
+   *   - edge arrowheads and label pills that extend outside the node body
+   *   - deep nesting where the compound's border-width adds up
+   */
+  private static readonly COMPOUND_PADDING = 100;
+
+  /**
    * Compute positions for every node in `dag`, expanding embedded-DAGs
    * from `embeddedDAGs` recursively.
    *
@@ -206,8 +222,11 @@ export class CompositeLayout {
       if (PlacementUtils.embeddedDagName(placement) !== null) {
         const sub = subLayouts.get(placement.name);
         if (sub !== undefined) {
-          w = sub.bb.width;
-          h = sub.bb.height;
+          // Add COMPOUND_PADDING to each side so dagre reserves space for the
+          // cytoscape compound border that extends outside the sub-layout BB,
+          // preventing sibling nodes from overlapping the compound's visual box.
+          w = sub.bb.width  + CompositeLayout.COMPOUND_PADDING;
+          h = sub.bb.height + CompositeLayout.COMPOUND_PADDING;
         } else {
           w = nodeWidth;
           h = nodeHeight;

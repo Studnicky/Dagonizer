@@ -429,6 +429,34 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
         'color':              'data(containerText)',
         'text-outline-color': 'data(containerColor)',
       } },
+      // Contained compound parents: when a contained placement also becomes a
+      // compound (i.e. it is expanded inline as an embedded-DAG), the `node:parent`
+      // rule above overrides the background-color and border-color back to the
+      // default dark theme. This rule re-applies the role colors with higher
+      // specificity so the compound container is visibly distinct.
+      { "selector": 'node.dag-contained:parent', "style": {
+        'background-color':   'data(containerColor)',
+        'background-opacity': 0.18,
+        'border-color':       'data(containerStroke)',
+        'border-width':       2.5,
+        'border-style':       'dashed',
+        'color':              'data(containerText)',
+        'text-outline-color': 'data(containerColor)',
+      } },
+      // Edges inside a container-bound (worker) compound. The renderer applies
+      // the `route-in-worker` class to every edge emitted while recursing into
+      // a placement that has a `container` role. These edges are styled dashed
+      // with an amber tone to signal "runs in a worker / remote context".
+      // The color is intentionally fixed (not per-role) so all worker-internal
+      // edges read consistently regardless of which role the compound uses.
+      { "selector": 'edge.route-in-worker', "style": {
+        'line-style':         'dashed',
+        'line-color':         '#d97706',
+        'target-arrow-color': '#d97706',
+        'color':              '#d97706',
+        'text-border-color':  '#d97706',
+        'width':              1.4,
+      } },
 
       // ── Kind-tagged styles ────────────────────────────────────────────────
       { "selector": 'node[kind="deterministic"]', "style": {

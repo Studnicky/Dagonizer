@@ -139,6 +139,12 @@ interface RenderState {
   readonly elements: CytoscapeElement[];
   readonly options:  ResolvedRenderOptions;
   touchesTerminal: boolean;
+  /**
+   * True when the current recursion is inside a container-bound (worker)
+   * compound. Edges emitted while this flag is set receive the
+   * `route-in-worker` class so the stylesheet can style them distinctly.
+   */
+  inContainedCompound: boolean;
 }
 
 /** Render a `DAG` as Cytoscape elements. */
@@ -182,9 +188,10 @@ export class CytoscapeRenderer {
       "maxDepth":     options.maxDepth     ?? DEFAULT_MAX_DEPTH,
     };
     const state: RenderState = {
-      "elements":        [],
-      "options":         resolved,
-      "touchesTerminal": false,
+      "elements":             [],
+      "options":              resolved,
+      "touchesTerminal":      false,
+      "inContainedCompound":  false,
     };
     CytoscapeRenderer.renderInto(dag, '', undefined, state, 0, new Set<string>([dag.name]));
 
@@ -387,10 +394,16 @@ export class CytoscapeRenderer {
         state.elements.push(labelled);
 
         // Recurse: render every node of the embedded-DAG with `parent: myId`.
+        // If this placement is container-bound (worker/isolate), mark the state so
+        // edges emitted inside receive the `route-in-worker` class.
         const innerPrefix = PlacementUtils.idIn(prefix, placement.name);
         const innerVisited = new Set(visited);
         innerVisited.add(embedDagName);
+        const placementRole = PlacementUtils.containerRole(placement);
+        const wasContained = state.inContainedCompound;
+        if (placementRole !== null) state.inContainedCompound = true;
         CytoscapeRenderer.renderInto(embeddedDagBody, innerPrefix, myId, state, depth + 1, innerVisited);
+        state.inContainedCompound = wasContained;
 
         // External outputs from this placement (after the embedded-DAG completes)
         // Rewrite the SOURCE from the compound to the matching inner
@@ -445,13 +458,22 @@ export class CytoscapeRenderer {
         // entrypoint child so dagre lays the compound out top-down
         // with the entry visually at the top.
         const rewrittenTarget = CytoscapeRenderer.rewriteToEmbeddedEntry(edge.data.target, prefix, embeddedEntryRewrite);
+        // Worker-edge class: edges inside a container-bound compound receive
+        // `route-in-worker` so the stylesheet can style them distinctly (dashed,
+        // role-colored) to signal "runs in a worker context".
+        const workerClass = state.inContainedCompound ? ' route-in-worker' : '';
         if (rewrittenTarget !== edge.data.target) {
           state.elements.push({
             ...edge,
+            "classes": `${edge.classes}${workerClass}`,
             "data": { ...edge.data, "target": rewrittenTarget, "id": `${edge.data.source}__${edge.data.route}__${rewrittenTarget}` },
           });
         } else {
-          state.elements.push(edge);
+          state.elements.push(
+            workerClass !== ''
+              ? { ...edge, "classes": `${edge.classes}${workerClass}` }
+              : edge,
+          );
         }
       }
     }
