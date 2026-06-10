@@ -4,6 +4,29 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-06-09
+
+This release lands the DAG-containment / cross-host hand-off feature work together
+with a whole-package audit-and-hardening pass (the 11 operating principles plus
+abort/transport/error hardening). It contains breaking API changes (0.x policy);
+migrate using the guide below.
+
+### Breaking Changes — migration guide
+
+- **`Store.get` / `StateAccessor.get` return `T | null`** (was `T | undefined`) for an absent key/path. Replace `=== undefined` absent-checks on these results with `=== null`.
+- **Adapter infrastructure ships only via `@noocodex/dagonizer/adapter`.** `AdapterDescriptor`, `BaseEmbedder`, `Classifications`, `EmbedderCascade`, `EmbedderRegistry`, `LlmAdapterCascade`, `LlmAdapterRegistry`, and `LlmError` are no longer on the root barrel — import them from `@noocodex/dagonizer/adapter`.
+- **`OpenAiCompatibleConfig.toolsFallback` removed.** Override `protected shouldFallbackWithoutTools(error)` on your adapter subclass instead.
+- **`Embedder.embed`/`embedBatch` take a trailing `signal?: AbortSignal`** (not `{ signal }`); `performEmbed(text, signal)` gains a required signal; `probe`/`connect`/`disconnect` take an optional trailing `signal?`.
+- **`ErrorClassification` is a discriminated union** on `retryable`; retryable variants carry `retryAfterMs: number | null`. Replace `retryAfterMs !== undefined` with `retryable && retryAfterMs !== null`.
+- **`Checkpoint.restoreState(adapter)`** takes a `CheckpointRestoreAdapter<TState>`. Wrap an inline function with `CheckpointRestoreAdapterFn.fromFn(fn)`.
+- **`GatherExecution` exposes `invoker: NodeInvoker`** (not an `invokeNode` function); custom `GatherStrategy.apply` calls `execution.invoker.invokeNode(name)`.
+- **`DAGBuilder.build({ warningEmitter })`** replaces the `onContractWarning` callback option; `ContractRegistryValidator` takes a `WarningEmitter` (pass `NoopWarningEmitter` for none).
+- **Type guards moved to the `Placement` static class** (`Placement.isScatter(n)`, …); the freestanding `isScatterNode`/`isEmbeddedDAGNode`/… exports are removed.
+- **`DAGError` and subclasses type `cause` as `Error`** (was `unknown`); pass an `Error` instance as `cause`.
+- **Pattern leaf nodes drop the free `TOutput` parameter** (they declare concrete output); subclasses passing a `TOutput` type argument remove it.
+- **`Store.connect`/`disconnect` are optional**; invoke via `store.connect?.()`.
+- **`CHECKPOINT_DATA_VERSION` is `'2'`** — checkpoints written by older versions do not resume (intentional 0.x breakage).
+
 ### Changed
 
 - **ADP-1: `toolsFallback` callback removed from `OpenAiCompatibleConfig`. ⚠ BREAKING.** The `toolsFallback?: (error: unknown) => boolean` property is removed. Concrete subclasses that need the retry-without-tools path override the new `protected shouldFallbackWithoutTools(error: unknown): boolean` method (default returns `false`). **Migration:** delete `toolsFallback` from any config object literal; add `protected override shouldFallbackWithoutTools(error: unknown): boolean { return <your predicate>; }` to your `extends OpenAiCompatibleAdapter` subclass.
