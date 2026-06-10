@@ -22,8 +22,9 @@ const helperDAG: DAG = {
       '@type': 'SingleNode',
       'name':  'step',
       'node':  'step',
-      'outputs': { 'done': null },
+      'outputs': { 'done': 'end' },
     },
+    { '@id': 'urn:noocodex:dag:helper/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
@@ -55,8 +56,9 @@ void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
           '@type': 'EmbeddedDAGNode',
           'name':  'run-helper',
           'dag':   'helper',
-          'outputs': { 'success': null, 'error': null },
+          'outputs': { 'success': 'end', 'error': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:null-parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
 
@@ -95,7 +97,7 @@ void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
           '@type': 'SingleNode',
           'name':  'after',
           'node':  'after',
-          'outputs': { 'done': null },
+          'outputs': { 'done': 'end' },
         },
         {
           '@id':   'urn:noocodex:dag:mixed-parent/node/run-helper',
@@ -104,9 +106,10 @@ void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
           'dag':   'helper',
           'outputs': {
             'error':   'after',  // routes to a parent placement
-            'success': null,     // terminate-completed
+            'success': 'end',     // terminate-completed
           },
         },
+        { '@id': 'urn:noocodex:dag:mixed-parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
 
@@ -145,7 +148,7 @@ void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
           '@type': 'SingleNode',
           'name':  'terminal',
           'node':  'terminal',
-          'outputs': { 'done': null },
+          'outputs': { 'done': 'end' },
         },
         {
           '@id':   'urn:noocodex:dag:valid-parent/node/run-helper',
@@ -157,6 +160,7 @@ void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
             'error':   'terminal',
           },
         },
+        { '@id': 'urn:noocodex:dag:valid-parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
 
@@ -170,7 +174,8 @@ void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
       'version':    '1',
       'entrypoint': 'step',
       'nodes': [
-        { 'type': 'single', 'name': 'step', 'node': 'step', 'outputs': { 'done': null } },
+        { 'type': 'single', 'name': 'step', 'node': 'step', 'outputs': { 'done': 'end' } },
+        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     assert.throws(() => Validator.dag.validate(flatDag));

@@ -29,12 +29,13 @@ void describe('Dagonizer scatter gather strategies', () => {
         'fan',
         'items',
         classify,
-        { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+        { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         {
           'itemKey': 'item',
           'gather':  { 'strategy': 'partition', 'partitions': { 'even': 'evens', 'odd': 'odds' } },
         },
       )
+      .terminal('end')
       .build();
     dispatcher.registerDAG(dag);
 
@@ -74,12 +75,13 @@ void describe('Dagonizer scatter gather strategies', () => {
         'fan',
         'items',
         cls,
-        { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+        { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         {
           'itemKey': 'item',
           'gather':  { 'strategy': 'custom', 'customNode': 'merge' },
         },
       )
+      .terminal('end')
       .build();
     dispatcher.registerDAG(dag);
 
@@ -111,12 +113,13 @@ void describe('Dagonizer scatter gather strategies', () => {
         'fan',
         'items',
         passThrough,
-        { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+        { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         {
           'itemKey': 'item',
           'gather':  { 'strategy': 'append', 'target': 'out' },
         },
       )
+      .terminal('end')
       .build();
     dispatcher.registerDAG(dag);
 
@@ -155,7 +158,7 @@ void describe('Dagonizer scatter gather strategies', () => {
         'fan',
         'items',
         produce,
-        { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+        { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         {
           'itemKey': 'item',
           'gather': {
@@ -164,6 +167,7 @@ void describe('Dagonizer scatter gather strategies', () => {
           },
         },
       )
+      .terminal('end')
       .build();
     dispatcher.registerDAG(dag);
 
@@ -198,12 +202,13 @@ void describe('Dagonizer scatter gather strategies', () => {
         'fan',
         'items',
         slow,
-        { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+        { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         {
           'concurrency': 2,
           'gather':      { 'strategy': 'append', 'target': 'out' },
         },
       )
+      .terminal('end')
       .build();
     dispatcher.registerDAG(dag);
 

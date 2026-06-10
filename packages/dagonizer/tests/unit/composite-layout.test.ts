@@ -7,7 +7,7 @@ import { CompositeLayout } from '../../src/viz/CompositeLayout.js';
 
 // ── Helper: build a minimal DAG ────────────────────────────────────────────
 
-function singleNode(name: string, outputs: Record<string, string | null>): DAG['nodes'][0] {
+function singleNode(name: string, outputs: Record<string, string>): DAG['nodes'][0] {
   return {
     '@id':    `urn:noocodex:dag:test/node/${name}`,
     '@type':  'SingleNode',
@@ -36,7 +36,8 @@ void describe('CompositeLayout.compute', () => {
     const dag = makeDAG('linear', 'A', [
       singleNode('A', { "next": 'B' }),
       singleNode('B', { "next": 'C' }),
-      singleNode('C', { "done": null }),
+      singleNode('C', { "done": 'end' }),
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
     ]);
 
     const { positions } = await CompositeLayout.compute(dag);
@@ -57,11 +58,13 @@ void describe('CompositeLayout.compute', () => {
     // inner DAGs: each has two leaf nodes
     const innerA = makeDAG('innerA', 'a1', [
       singleNode('a1', { "go": 'a2' }),
-      singleNode('a2', { "done": null }),
+      singleNode('a2', { "done": 'end' }),
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
     ]);
     const innerB = makeDAG('innerB', 'b1', [
       singleNode('b1', { "go": 'b2' }),
-      singleNode('b2', { "done": null }),
+      singleNode('b2', { "done": 'end' }),
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
     ]);
 
     // outer DAG: embedA then embedB in sequence
@@ -78,8 +81,9 @@ void describe('CompositeLayout.compute', () => {
         '@type':  'EmbeddedDAGNode',
         'name':   'embedB',
         'dag':    'innerB',
-        'outputs': { "done": null },
+        'outputs': { "done": 'end', "error": 'end' },
       },
+      { '@id': 'urn:noocodex:dag:outer2/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
     ]);
 
     const embeddedDAGs = new Map<string, DAG>([['innerA', innerA], ['innerB', innerB]]);
@@ -123,7 +127,8 @@ void describe('CompositeLayout.compute', () => {
     const innerDAG = makeDAG('inner', 'entry-node', [
       singleNode('entry-node',  { "go": 'middle-node' }),
       singleNode('middle-node', { "go": 'exit-node' }),
-      singleNode('exit-node',   { "done": null }),
+      singleNode('exit-node',   { "done": 'end' }),
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
     ]);
 
     // outer DAG: before → ScatterNode(body.dag=inner) → after
@@ -136,7 +141,8 @@ void describe('CompositeLayout.compute', () => {
         'dag':    'inner',
         'outputs': { "done": 'after' },
       },
-      singleNode('after', { "done": null }),
+      singleNode('after', { "done": 'end' }),
+      { '@id': 'urn:noocodex:dag:outer/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
     ]);
 
     const embeddedDAGs = new Map<string, DAG>([['inner', innerDAG]]);

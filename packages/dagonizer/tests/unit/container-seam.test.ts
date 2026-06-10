@@ -106,12 +106,13 @@ const parentDAG: DAG = {
       '@type':   'EmbeddedDAGNode',
       'name':    'embed',
       'dag':     'child',
-      'outputs': { 'success': null, 'error': null },
+      'outputs': { 'success': 'end', 'error': 'end' },
       'stateMapping': {
         'input':  { 'value': 'value' },
         'output': { 'value': 'value' },
       },
     },
+    { '@id': 'urn:noocodex:dag:parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
@@ -130,12 +131,13 @@ const parentContainerDAG: DAG = {
       'name':      'embed',
       'dag':       'child',
       'container': 'isolated',
-      'outputs':   { 'success': null, 'error': null },
+      'outputs':   { 'success': 'end', 'error': 'end' },
       'stateMapping': {
         'input':  { 'value': 'value' },
         'output': { 'value': 'value' },
       },
     },
+    { '@id': 'urn:noocodex:dag:parent-c/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
@@ -166,7 +168,7 @@ void describe('Container seam — W1', () => {
     const result = await dispatcher.execute('parent', state);
     assert.equal(result.state.value, 10);
     assert.equal(result.state === state, true, 'result.state === initialState');
-    assert.equal(result.terminalOutcome, null);
+    assert.equal(result.terminalOutcome, 'completed');
     // Should have intermediates (the child's increment node)
     assert.ok(result.executedNodes.includes('embed'));
   });

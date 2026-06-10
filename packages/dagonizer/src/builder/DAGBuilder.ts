@@ -120,8 +120,11 @@ export interface TypedEmbeddedDAGOptionsInterface<
  * @example
  * ```ts
  * const dag = new DAGBuilder('pipeline', '1.0')
- *   .node('validate', validateNode, { valid: 'process', invalid: null })
- *   .node('process',  processNode,  { success: null, error: null })
+ *   .node('validate', validateNode, { valid: 'process', invalid: 'end-invalid' })
+ *   .node('process',  processNode,  { success: 'end', error: 'end-fail' })
+ *   .terminal('end')
+ *   .terminal('end-invalid')
+ *   .terminal('end-fail', { outcome: 'failed' })
  *   .build();
  *
  * dispatcher.registerDAG(dag);
@@ -157,7 +160,7 @@ export class DAGBuilder {
   node<TState extends NodeStateInterface, TOutput extends string, TServices = undefined>(
     name: string,
     dagNode: NodeInterface<TState, TOutput, TServices>,
-    routes: Record<TOutput, null | string>,
+    routes: Record<TOutput, string>,
   ): this {
     this.#nodes.push({
       '@id':     this.#nodeId(name),
@@ -165,7 +168,7 @@ export class DAGBuilder {
       name,
       'node':    dagNode.name,
       // Generic erasure: TOutput is narrower than string; the entity schema stores string keys.
-      'outputs': routes as Record<string, null | string>,
+      'outputs': routes as Record<string, string>,
     });
     // Generic erasure: the impl map stores the type-erased base; callers retrieve it untyped.
     this.#nodeImpls.set(name, dagNode as NodeInterface);
@@ -189,7 +192,7 @@ export class DAGBuilder {
    * @example
    * ```ts
    * builder.scatter('generate', 'providers', generateNode,
-   *   { 'all-success': 'select', 'partial': 'select', 'all-error': null, 'empty': null },
+   *   { 'all-success': 'select', 'partial': 'select', 'all-error': 'end-fail', 'empty': 'end' },
    *   { gather: { strategy: 'map', mapping: { candidate: 'candidates' } } },
    * );
    * ```
@@ -198,7 +201,7 @@ export class DAGBuilder {
     name: string,
     source: string,
     body: NodeInterface<TState, TOutput, TServices> | { readonly dag: string },
-    outputs: Record<string, null | string>,
+    outputs: Record<string, string>,
     options: ScatterOptionsInterface<TState>,
   ): this {
     const scatterNode: ScatterNode = {
@@ -210,7 +213,8 @@ export class DAGBuilder {
       // the node-branch cast drops TState/TOutput/TServices which the entity shape doesn't carry.
       'body':    'dag' in body ? { 'dag': body.dag } : { 'node': (body as NodeInterface<TState, TOutput, TServices>).name },
       'gather':  options.gather,
-      'outputs': outputs,
+      // outputs: Record<string, string> satisfies ScatterNode['outputs'].
+      'outputs': outputs as Record<string, string>,
       // Optional fields are spread at construction (never assigned post-construction) so the
       // node is born with its final shape — no V8 hidden-class transition on the build path.
       ...(options.itemKey !== undefined ? { 'itemKey': options.itemKey } : {}),
@@ -240,7 +244,7 @@ export class DAGBuilder {
    * @example
    * ```ts
    * builder.embeddedDAG<ChildState, ParentState>('invoke', 'child-dag',
-   *   { success: 'next', error: null },
+   *   { success: 'next', error: 'end-fail' },
    *   { inputs: { payload: 'user.name' }, outputs: { 'user.age': 'result' } },
    * );
    * ```
@@ -251,7 +255,7 @@ export class DAGBuilder {
   >(
     name: string,
     dagName: string,
-    outputs: Record<'success' | 'error', null | string>,
+    outputs: Record<'success' | 'error', string>,
     options: TypedEmbeddedDAGOptionsInterface<TChildState, TParentState> = {},
   ): this {
     // ParentPath<T> is structurally string; FromSchema index-signature requires Record<string,string>.
@@ -267,7 +271,8 @@ export class DAGBuilder {
       '@type':   'EmbeddedDAGNode',
       name,
       'dag':     dagName,
-      outputs,
+      // Record<'success'|'error', string> satisfies EmbeddedDAGNode['outputs']: Record<string, string>.
+      'outputs': outputs as Record<string, string>,
       // Optional fields spread at construction — no post-construction shape mutation.
       ...(stateMapping !== undefined ? { 'stateMapping': stateMapping } : {}),
       ...(options.container !== undefined ? { 'container': options.container } : {}),

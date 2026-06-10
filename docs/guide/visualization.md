@@ -26,7 +26,8 @@ const dag: DAG = {
   entrypoint: 'a',
   nodes: [
     { '@id': 'urn:noocodex:dag:demo/node/a', '@type': 'SingleNode', name: 'a', node: 'noop', outputs: { success: 'b' } },
-    { '@id': 'urn:noocodex:dag:demo/node/b', '@type': 'SingleNode', name: 'b', node: 'noop', outputs: { success: null } },
+    { '@id': 'urn:noocodex:dag:demo/node/b', '@type': 'SingleNode', name: 'b', node: 'noop', outputs: { success: 'end' } },
+    { '@id': 'urn:noocodex:dag:demo/node/end', '@type': 'TerminalNode', name: 'end', outcome: 'completed' },
   ],
 };
 </script>
@@ -58,13 +59,13 @@ Three renderers ship in `@noocodex/dagonizer/viz`. Each consumes a `DAG` and emi
 | `terminal` (completed) | double-circle | `done(((done\n(completed))))` |
 | `terminal` (failed) | asymmetric flag | `abort>abort\n(failed)]` |
 
-Routes render as labeled directed edges. Routes targeting `null` route to a synthetic `END([end])` terminator (one per DAG).
+Routes render as labeled directed edges.
 
 ### Containment coloring
 
 Placements bound to a `container` role (`EmbeddedDAGNode` or dag-body `ScatterNode` with a non-empty `container` field) each receive a per-role Mermaid class (`contained-<role>`) whose fill and stroke come from a deterministic palette keyed on the role string. A DAG with two distinct roles (e.g. `cpu` and `io`) emits two `classDef contained-cpu …` and `classDef contained-io …` rules with different colors, then assigns each placement to its role-specific class. The `@type`-specific shape is preserved — a contained `EmbeddedDAGNode` remains a subroutine shape; a contained `ScatterNode` remains a trapezoid. In-process placements are unstyled (Mermaid default). `classDef` rules are omitted entirely when no contained placement exists in the DAG.
 
-**TerminalNode vs synthetic END.** A `TerminalNode` placement is declared explicitly in the DAG and renders as a named shape with an outcome suffix (`(completed)` or `(failed)`). The synthetic `END` node is implicit sugar emitted once when any non-terminal placement routes an output to `null`. Both can coexist in the same diagram: the `TerminalNode` shape represents the declared placement, and `END` captures the null routes from other placements. `TerminalNode` placements emit no outbound edges; they are leaf nodes by definition.
+**TerminalNode rendering.** A `TerminalNode` placement renders as a named shape with an outcome suffix (`(completed)` or `(failed)`). Completed terminals use a double-circle shape; failed terminals use an asymmetric flag. `TerminalNode` placements emit no outbound edges; they are leaf nodes by definition.
 
 ### Embedding in Markdown
 

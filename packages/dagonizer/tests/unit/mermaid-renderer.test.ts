@@ -21,14 +21,16 @@ void describe('MermaidRenderer.render', () => {
         '@type':  'SingleNode',
         'name':   'greet',
         'node':   'greet',
-        'outputs': { 'success': null },
-      }],
+        'outputs': { 'success': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:mini/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     };
     const out = MermaidRenderer.render(dag);
     assert.match(out, /flowchart LR/u);
     assert.match(out, /greet\[greet\]/u);
-    assert.match(out, /greet -->\|success\| END/u);
-    assert.match(out, /END\(\[end\]\)/u);
+    assert.match(out, /greet -->\|success\| end/u);
+    assert.match(out, /end\(\(\(end/u);
   });
 
   void it('renders a ScatterNode as a trapezoid', () => {
@@ -46,13 +48,15 @@ void describe('MermaidRenderer.render', () => {
         'body':   { 'node': 'worker' },
         'source': 'items',
         'gather': { 'strategy': 'partition', 'partitions': { 'success': 'collected', 'error': 'errors' } },
-        'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
-      }],
+        'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:fan/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     };
     const out = MermaidRenderer.render(dag);
     // ScatterNode renders as trapezoid: name[/label/]
     assert.match(out, /fan\[\/fan\/\]/u);
-    assert.match(out, /fan -->\|all-success\| END/u);
+    assert.match(out, /fan -->\|all-success\| end/u);
   });
 
   void it('renders an EmbeddedDAGNode as a subroutine', () => {
@@ -69,7 +73,9 @@ void describe('MermaidRenderer.render', () => {
         'name':  'enrich',
         'dag':   'inner',
         'outputs': { 'success': 'next', 'error': 'next' },
-      }],
+      },
+        { '@id': 'urn:noocodex:dag:deep/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     };
     const out = MermaidRenderer.render(dag);
     // EmbeddedDAGNode renders as a subroutine shape: name[[label]]
@@ -92,7 +98,7 @@ void describe('MermaidRenderer.render: PhaseNode', () => {
           '@type':  'SingleNode',
           'name':   'step',
           'node':   'step',
-          'outputs': { 'success': null },
+          'outputs': { 'success': 'end' },
         },
         {
           '@id':   'urn:noocodex:dag:ph/node/setup',
@@ -101,6 +107,7 @@ void describe('MermaidRenderer.render: PhaseNode', () => {
           'node':  'setup-worker',
           'phase': 'pre',
         },
+        { '@id': 'urn:noocodex:dag:ph/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     const out = MermaidRenderer.render(dag);
@@ -127,7 +134,7 @@ void describe('MermaidRenderer.render: PhaseNode', () => {
           '@type':  'SingleNode',
           'name':   'step',
           'node':   'step',
-          'outputs': { 'success': null },
+          'outputs': { 'success': 'end' },
         },
         {
           '@id':   'urn:noocodex:dag:ph2/node/teardown',
@@ -136,6 +143,7 @@ void describe('MermaidRenderer.render: PhaseNode', () => {
           'node':  'teardown-worker',
           'phase': 'post',
         },
+        { '@id': 'urn:noocodex:dag:ph2/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     const out = MermaidRenderer.render(dag);
@@ -166,8 +174,9 @@ void describe('MermaidRenderer.render: containment coloring', () => {
           'name':      'worker-dag',
           'dag':       'cpu-dag',
           'container': 'cpu',
-          'outputs':   { 'success': null },
+          'outputs':   { 'success': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:worker-test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     const out = MermaidRenderer.render(dag);
@@ -201,15 +210,16 @@ void describe('MermaidRenderer.render: containment coloring', () => {
           'source':    'items',
           'gather':    { 'strategy': 'discard' },
           'container': 'cpu',
-          'outputs':   { 'success': null },
+          'outputs':   { 'success': 'end' },
         },
         {
           '@id':     'urn:noocodex:dag:scatter-worker/node/plain',
           '@type':   'SingleNode',
           'name':    'plain',
           'node':    'noop',
-          'outputs': { 'success': null },
+          'outputs': { 'success': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:scatter-worker/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     const out = MermaidRenderer.render(dag);
@@ -234,8 +244,10 @@ void describe('MermaidRenderer.render: containment coloring', () => {
         '@type':   'SingleNode',
         'name':    'step',
         'node':    'noop',
-        'outputs': { 'success': null },
-      }],
+        'outputs': { 'success': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:no-container/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     };
     const out = MermaidRenderer.render(dag);
     assert.doesNotMatch(out, /classDef contained/u);
@@ -259,7 +271,7 @@ void describe('MermaidRenderer.render: containment coloring', () => {
           'source':    'tasks',
           'gather':    { 'strategy': 'discard' },
           'container': 'cpu',
-          'outputs':   { 'all-success': 'io-work', 'partial': 'io-work', 'all-error': null, 'empty': null },
+          'outputs':   { 'all-success': 'io-work', 'partial': 'io-work', 'all-error': 'end', 'empty': 'end' },
         },
         {
           '@id':       'urn:noocodex:dag:multi-role/node/io-work',
@@ -267,8 +279,9 @@ void describe('MermaidRenderer.render: containment coloring', () => {
           'name':      'io-work',
           'dag':       'io-dag',
           'container': 'io',
-          'outputs':   { 'success': null },
+          'outputs':   { 'success': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:multi-role/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     const out = MermaidRenderer.render(dag);
@@ -315,8 +328,9 @@ void describe('MermaidRenderer.render: containment coloring', () => {
           'name':      'b',
           'dag':       'inner-b',
           'container': 'cpu',
-          'outputs':   { 'success': null },
+          'outputs':   { 'success': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:same-role/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     const out = MermaidRenderer.render(dag);
@@ -352,12 +366,6 @@ void describe('RoleColorUtils.forRole', () => {
 
 void describe('MermaidRenderer.render: TerminalNode', () => {
   void it('renders a completed TerminalNode as a double-circle with outcome suffix', () => {
-    const terminal: TerminalNodePlacementInterface = {
-      '@id':     'urn:noocodex:dag:t/node/done',
-      '@type':   'TerminalNode',
-      'name':    'done',
-      'outcome': 'completed',
-    };
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:t',
@@ -373,7 +381,7 @@ void describe('MermaidRenderer.render: TerminalNode', () => {
           'node':   'step',
           'outputs': { 'success': 'done' },
         },
-        terminal,
+        { '@id': 'urn:noocodex:dag:t/node/done', '@type': 'TerminalNode', 'name': 'done', 'outcome': 'completed' },
       ],
     };
     const out = MermaidRenderer.render(dag);
@@ -381,17 +389,11 @@ void describe('MermaidRenderer.render: TerminalNode', () => {
     assert.match(out, /done\(\(\(.*\)\)\)/u);
     // outcome suffix present in label
     assert.match(out, /completed/u);
-    // no synthetic END node (no null routes)
-    assert.doesNotMatch(out, /END\(\[end\]\)/u);
+    // edge connects to the TerminalNode
+    assert.match(out, /step -->\|success\| done/u);
   });
 
   void it('renders a failed TerminalNode as an asymmetric flag with outcome suffix', () => {
-    const terminal: TerminalNodePlacementInterface = {
-      '@id':     'urn:noocodex:dag:t2/node/abort',
-      '@type':   'TerminalNode',
-      'name':    'abort',
-      'outcome': 'failed',
-    };
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:t2',
@@ -407,19 +409,19 @@ void describe('MermaidRenderer.render: TerminalNode', () => {
           'node':   'step',
           'outputs': { 'error': 'abort' },
         },
-        terminal,
+        { '@id': 'urn:noocodex:dag:t2/node/abort', '@type': 'TerminalNode', 'name': 'abort', 'outcome': 'failed' },
       ],
     };
     const out = MermaidRenderer.render(dag);
     // asymmetric flag shape: name>label]
     assert.match(out, /abort>/u);
     assert.match(out, /\(failed\)/u);
-    // no synthetic END
-    assert.doesNotMatch(out, /END\(\[end\]\)/u);
+    // edge connects to the TerminalNode
+    assert.match(out, /step -->\|error\| abort/u);
   });
 
   void it('TerminalNode emits no outbound edges', () => {
-    const terminal: TerminalNodePlacementInterface = {
+    const terminalDone: TerminalNodePlacementInterface = {
       '@id':     'urn:noocodex:dag:t3/node/done',
       '@type':   'TerminalNode',
       'name':    'done',
@@ -440,7 +442,7 @@ void describe('MermaidRenderer.render: TerminalNode', () => {
           'node':   'step',
           'outputs': { 'success': 'done' },
         },
-        terminal,
+        terminalDone,
       ],
     };
     const out = MermaidRenderer.render(dag);
@@ -451,13 +453,7 @@ void describe('MermaidRenderer.render: TerminalNode', () => {
     assert.match(firstEdge, /step -->\|success\| done/u);
   });
 
-  void it('coexists with a null route: synthetic END and explicit TerminalNode both present', () => {
-    const terminal: TerminalNodePlacementInterface = {
-      '@id':     'urn:noocodex:dag:t4/node/done',
-      '@type':   'TerminalNode',
-      'name':    'done',
-      'outcome': 'completed',
-    };
+  void it('two TerminalNodes in the same DAG both render with correct shapes', () => {
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:t4',
@@ -471,18 +467,21 @@ void describe('MermaidRenderer.render: TerminalNode', () => {
           '@type':  'SingleNode',
           'name':   'step',
           'node':   'step',
-          'outputs': { 'success': 'done', 'error': null },
+          'outputs': { 'success': 'done', 'error': 'abort' },
         },
-        terminal,
+        { '@id': 'urn:noocodex:dag:t4/node/done',  '@type': 'TerminalNode', 'name': 'done',  'outcome': 'completed' },
+        { '@id': 'urn:noocodex:dag:t4/node/abort', '@type': 'TerminalNode', 'name': 'abort', 'outcome': 'failed' },
       ],
     };
     const out = MermaidRenderer.render(dag);
-    // explicit TerminalNode is present as double-circle
+    // completed TerminalNode renders as double-circle
     assert.match(out, /done\(\(\(.*\)\)\)/u);
-    // synthetic END is also present (because of the null route on 'error')
-    assert.match(out, /END\(\[end\]\)/u);
-    // the null route goes to END, the named route goes to done
-    assert.match(out, /step -->\|error\| END/u);
+    // failed TerminalNode renders as asymmetric flag
+    assert.match(out, /abort>/u);
+    // both edges are present
     assert.match(out, /step -->\|success\| done/u);
+    assert.match(out, /step -->\|error\| abort/u);
+    // no synthetic END
+    assert.doesNotMatch(out, /END\(\[end\]\)/u);
   });
 });

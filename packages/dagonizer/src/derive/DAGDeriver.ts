@@ -260,15 +260,23 @@ export class DAGDeriver {
   }
 
   /**
+   * Implicit terminal name synthesized when a port has no derived successor
+   * and no explicit terminal annotation. Flows must end at a TerminalNode;
+   * when the deriver cannot find one, it materialises this placeholder.
+   */
+  private static readonly IMPLICIT_TERMINAL_NAME = 'completed';
+
+  /**
    * Resolve the `outputs` map for a placement.
    *
    * Every port in `declaredOutputs` auto-wires to the first derived
-   * successor (`null` if none). Terminal annotations override
+   * successor. When no successor exists and the port has no terminal
+   * annotation, an implicit `completed` TerminalNode is synthesized via
+   * `emitCollector` and the port routes to it. Terminal annotations override
    * individual ports; a terminal whose `outcome` doesn't appear in
-   * `declaredOutputs` is a routing-shape mismatch and throws
-   * `DAGError`. The same resolver runs for `SingleNode` (contract
-   * outputs) and `EmbeddedDAGNode` (embeddedDAG outputs) so both placements
-   * fail fast on out-of-band terminals with the same error shape.
+   * `declaredOutputs` is a routing-shape mismatch and throws `DAGError`.
+   * The same resolver runs for `SingleNode` (contract outputs) and
+   * `EmbeddedDAGNode` (embeddedDAG outputs).
    */
   private static resolveOutputs(
     name: string,
@@ -277,8 +285,8 @@ export class DAGDeriver {
     successors: ReadonlySet<string>,
     annotations: DAGDeriverAnnotations,
     emitCollector: Map<string, DAGDeriverEmitTerminal>,
-  ): Record<string, string | null> {
-    const overrides = new Map<string, string | null>();
+  ): Record<string, string> {
+    const overrides = new Map<string, string>();
     const terminals = annotations.terminals?.[name] ?? [];
     const declared = new Set(declaredOutputs);
 
@@ -296,10 +304,22 @@ export class DAGDeriver {
       }
     }
 
-    const defaultNext = [...successors][0] ?? null;
-    const out: Record<string, string | null> = {};
+    const defaultSuccessor = [...successors][0];
+    const out: Record<string, string> = {};
     for (const port of declaredOutputs) {
-      out[port] = overrides.has(port) ? overrides.get(port) ?? null : defaultNext;
+      if (overrides.has(port)) {
+        const target = overrides.get(port);
+        if (target !== undefined) out[port] = target;
+      } else if (defaultSuccessor !== undefined) {
+        out[port] = defaultSuccessor;
+      } else {
+        // No successor and no terminal annotation: synthesize an implicit completed terminal.
+        DAGDeriver.collectEmit(
+          { 'name': DAGDeriver.IMPLICIT_TERMINAL_NAME, 'outcome': 'completed' },
+          emitCollector,
+        );
+        out[port] = DAGDeriver.IMPLICIT_TERMINAL_NAME;
+      }
     }
     return out;
   }
@@ -422,8 +442,8 @@ export class DAGDeriver {
     nodeId: (n: string) => string,
     emitCollector: Map<string, DAGDeriverEmitTerminal>,
   ): ScatterNode {
-    const next0 = [...successors][0] ?? null;
-    const outcomeOverrides = new Map<string, string | null>();
+    const next0 = [...successors][0];
+    const outcomeOverrides = new Map<string, string>();
     for (const terminal of annotations.terminals?.[name] ?? []) {
       if (!scatter.outcomes.includes(terminal.outcome)) {
         throw new DAGError(
@@ -437,11 +457,21 @@ export class DAGDeriver {
         outcomeOverrides.set(terminal.outcome, terminal.target);
       }
     }
-    const outputs: Record<string, string | null> = {};
+    const outputs: Record<string, string> = {};
     for (const outcome of scatter.outcomes) {
-      outputs[outcome] = outcomeOverrides.has(outcome)
-        ? outcomeOverrides.get(outcome) ?? null
-        : next0;
+      if (outcomeOverrides.has(outcome)) {
+        const target = outcomeOverrides.get(outcome);
+        if (target !== undefined) outputs[outcome] = target;
+      } else if (next0 !== undefined) {
+        outputs[outcome] = next0;
+      } else {
+        // No successor: synthesize an implicit completed terminal.
+        DAGDeriver.collectEmit(
+          { 'name': DAGDeriver.IMPLICIT_TERMINAL_NAME, 'outcome': 'completed' },
+          emitCollector,
+        );
+        outputs[outcome] = DAGDeriver.IMPLICIT_TERMINAL_NAME;
+      }
     }
 
     let gather: ScatterNode['gather'];

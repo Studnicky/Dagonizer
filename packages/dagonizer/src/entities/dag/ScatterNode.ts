@@ -67,7 +67,7 @@ export const ScatterNodeSchema = {
     'reducer': { 'type': 'string', 'minLength': 1 },
     'outputs': {
       'type': 'object',
-      'additionalProperties': { 'type': ['string', 'null'] },
+      'additionalProperties': { 'type': 'string' },
     },
     // Logical container role. Honored only for dag-body scatter.
     // A node-body scatter with container set is a validation error.

@@ -59,7 +59,7 @@ void describe('DAGDeriver.derive with co-located contracts', () => {
     assert.equal(dag['@type'], 'DAG');
 
     const names = dag.nodes.map((node) => node.name);
-    assert.deepEqual(names, ['a', 'b', 'c']);
+    assert.deepEqual(names, ['a', 'b', 'c', 'completed']);
 
     const a = dag.nodes[0];
     if (a !== undefined && a['@type'] === 'SingleNode') {
@@ -70,7 +70,7 @@ void describe('DAGDeriver.derive with co-located contracts', () => {
 
     const c = dag.nodes[2];
     if (c !== undefined && c['@type'] === 'SingleNode') {
-      assert.equal(c.outputs['success'], null);
+      assert.equal(c.outputs['success'], 'completed');
     } else {
       assert.fail('expected third node to be SingleNode');
     }

@@ -65,7 +65,8 @@ const linearDAG: DAG = {
     { '@id': 'urn:noocodex:dag:linear/node/b', '@type': 'SingleNode',
       'name': 'b', 'node': 'b', 'outputs': { 'success': 'c' } },
     { '@id': 'urn:noocodex:dag:linear/node/c', '@type': 'SingleNode',
-      'name': 'c', 'node': 'c', 'outputs': { 'success': null } },
+      'name': 'c', 'node': 'c', 'outputs': { 'success': 'end' } },
+    { '@id': 'urn:noocodex:dag:linear/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
@@ -86,7 +87,8 @@ void describe('Instrumentation contract', () => {
       'entrypoint': 'only',
       'nodes': [
         { '@id': 'urn:noocodex:dag:noop-default/node/only', '@type': 'SingleNode',
-          'name': 'only', 'node': 'only', 'outputs': { 'success': null } },
+          'name': 'only', 'node': 'only', 'outputs': { 'success': 'end' } },
+        { '@id': 'urn:noocodex:dag:noop-default/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -109,8 +111,8 @@ void describe('Instrumentation contract', () => {
 
     const nodeStartNames = instrumentation.hooksOfType('nodeStart').map((c) => c.args[1] as string);
     const nodeEndNames   = instrumentation.hooksOfType('nodeEnd').map((c) => c.args[1] as string);
-    assert.deepEqual(nodeStartNames, ['a', 'b', 'c']);
-    assert.deepEqual(nodeEndNames,   ['a', 'b', 'c']);
+    assert.deepEqual(nodeStartNames, ['a', 'b', 'c', 'end']);
+    assert.deepEqual(nodeEndNames,   ['a', 'b', 'c', 'end']);
 
     // Per-hook dagName carried correctly
     for (const call of instrumentation.hooksOfType('nodeStart')) {
@@ -132,7 +134,8 @@ void describe('Instrumentation contract', () => {
       'entrypoint': 'child-only',
       'nodes': [
         { '@id': 'urn:noocodex:dag:inst-child/node/child-only', '@type': 'SingleNode',
-          'name': 'child-only', 'node': 'child-only', 'outputs': { 'success': null } },
+          'name': 'child-only', 'node': 'child-only', 'outputs': { 'success': 'end' } },
+        { '@id': 'urn:noocodex:dag:inst-child/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
 
@@ -149,7 +152,8 @@ void describe('Instrumentation contract', () => {
           'name': 'parent-entry', 'node': 'parent-entry', 'outputs': { 'success': 'run-child' } },
         { '@id': 'urn:noocodex:dag:inst-parent/node/run-child', '@type': 'EmbeddedDAGNode',
           'name': 'run-child', 'dag': 'inst-child',
-          'outputs': { 'success': null, 'error': null } },
+          'outputs': { 'success': 'end', 'error': 'end' } },
+        { '@id': 'urn:noocodex:dag:inst-parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
 
@@ -212,7 +216,8 @@ void describe('Instrumentation contract', () => {
       'entrypoint': 'boom',
       'nodes': [
         { '@id': 'urn:noocodex:dag:inst-err/node/boom', '@type': 'SingleNode',
-          'name': 'boom', 'node': 'boom', 'outputs': { 'success': null } },
+          'name': 'boom', 'node': 'boom', 'outputs': { 'success': 'end' } },
+        { '@id': 'urn:noocodex:dag:inst-err/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -251,7 +256,8 @@ void describe('Instrumentation contract', () => {
       'entrypoint': 'a',
       'nodes': [
         { '@id': 'urn:noocodex:dag:inst-throw/node/a', '@type': 'SingleNode',
-          'name': 'a', 'node': 'a', 'outputs': { 'success': null } },
+          'name': 'a', 'node': 'a', 'outputs': { 'success': 'end' } },
+        { '@id': 'urn:noocodex:dag:inst-throw/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);

@@ -73,7 +73,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           'name': 'fan', 'body': { 'node': 'worker' },
           'source': 'items', 'itemKey': 'item',
           'gather': { 'strategy': 'append', 'target': 'processed' },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
+        { '@id': 'urn:noocodex:dag:scatter-clean/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -119,7 +120,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           'name': 'fan', 'body': { 'node': 'worker' },
           'source': 'items', 'itemKey': 'item', 'concurrency': 1,
           'gather': { 'strategy': 'append', 'target': 'processed' },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
+        { '@id': 'urn:noocodex:dag:scatter-interrupt/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -170,7 +172,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           'name': 'fan', 'body': { 'node': 'worker' },
           'source': 'items', 'itemKey': 'item', 'concurrency': 1,
           'gather': { 'strategy': 'append', 'target': 'processed' },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
+        { '@id': 'urn:noocodex:dag:scatter-resume/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -219,7 +222,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           'name': 'fan', 'body': { 'node': 'worker' },
           'source': 'items', 'itemKey': 'item', 'concurrency': 1,
           'gather': { 'strategy': 'append', 'target': 'processed' },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
+        { '@id': 'urn:noocodex:dag:scatter-aggregate/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -287,7 +291,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           'name': 'fan', 'body': { 'node': 'producer' },
           'source': 'items', 'itemKey': 'item', 'concurrency': 1,
           'gather': { 'strategy': 'map', 'mapping': { 'produced': 'results' } },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
+        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     });
     interruptDispatcher.registerDAG(mapDag('scatter-map-interrupt'));
@@ -396,7 +401,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           'name': 'fanB', 'body': { 'node': 'workerB' },
           'source': 'items2', 'itemKey': 'item', 'concurrency': 1,
           'gather': { 'strategy': 'append', 'target': 'processed2' },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
+        { '@id': 'urn:noocodex:dag:scatter-twin/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -473,7 +479,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           'name': 'fan', 'body': { 'node': 'worker' },
           'source': 'items', 'itemKey': 'item', 'concurrency': 3,
           'gather': { 'strategy': 'append', 'target': 'processed' },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
+        { '@id': 'urn:noocodex:dag:scatter-batched/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -510,7 +517,8 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
           'gather': { 'strategy': 'append', 'target': 'processed' },
           'outputs': { 'all-success': 'tail', 'partial': 'tail', 'all-error': 'tail', 'empty': 'tail' } },
         { '@id': 'urn:noocodex:dag:scatter-ckpt/node/tail', '@type': 'SingleNode',
-          'name': 'tail', 'node': 'worker', 'outputs': { 'success': null } },
+          'name': 'tail', 'node': 'worker', 'outputs': { 'success': 'end' } },
+        { '@id': 'urn:noocodex:dag:scatter-ckpt/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -573,7 +581,8 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
           'name': 'fan', 'body': { 'node': 'worker' },
           'source': 'items', 'itemKey': 'item', 'concurrency': 1,
           'gather': { 'strategy': 'append', 'target': 'processed' },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
+        { '@id': 'urn:noocodex:dag:scatter-e2e/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);

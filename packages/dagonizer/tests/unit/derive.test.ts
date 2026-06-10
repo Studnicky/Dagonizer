@@ -39,7 +39,7 @@ void describe('DAGDeriver.derive', () => {
     assert.ok(dag['@id'].startsWith('urn:noocodex:dag:'));
     assert.ok(dag['@context'] !== undefined);
     const names = dag.nodes.map((node) => node.name);
-    assert.deepEqual(names, ['a', 'b', 'c']);
+    assert.deepEqual(names, ['a', 'b', 'c', 'completed']);
     const a = dag.nodes[0];
     if (a !== undefined && a['@type'] === 'SingleNode') {
       assert.equal(a.outputs['success'], 'b');
@@ -309,8 +309,10 @@ void describe('DAGDeriver.derive', () => {
     assert.ok(invoke !== undefined, 'invoke placement is emitted');
     if (invoke !== undefined && invoke['@type'] === 'EmbeddedDAGNode') {
       assert.equal(invoke.dag, 'plugin:parse');
-      assert.equal(invoke.outputs['success'], null);  // no successor
-      assert.equal(invoke.outputs['error'],   null);
+      // No successor node declared in contracts; DAGDeriver synthesizes an implicit
+      // TerminalNode named 'completed' and routes all leaf outputs to it.
+      assert.equal(invoke.outputs['success'], 'completed');
+      assert.equal(invoke.outputs['error'],   'completed');
     } else {
       assert.fail('expected invoke placement to be EmbeddedDAGNode');
     }

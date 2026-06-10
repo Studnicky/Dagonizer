@@ -98,7 +98,8 @@ const parseNode: NodeInterface<NodeStateBase, 'success'> = {
 // Throws DAGError: node 'parse' hardRequires 'data' but no upstream node produces it.
 new DAGBuilder('pipeline', '1.0')
   .node('fetch', fetchNode, { success: 'parse' })
-  .node('parse', parseNode, { success: null })
+  .node('parse', parseNode, { success: 'end' })
+  .terminal('end')
   .build();
 ```
 
@@ -109,7 +110,8 @@ const emitter: WarningEmitter = { warn(message) { console.warn('[contract]', mes
 
 const dag = new DAGBuilder('pipeline', '1.0')
   .node('fetch', fetchNode, { success: 'parse' })
-  .node('parse', parseNode, { success: null })
+  .node('parse', parseNode, { success: 'end' })
+  .terminal('end')
   .build({ warningEmitter: emitter });
 ```
 
@@ -138,14 +140,15 @@ Equivalent fluent form:
 const dag = new DAGBuilder('pipeline', '1.0')
   .node('fetch', fetchNode, { success: 'parse' })
   .node('parse', parseNode, { success: 'save'  })
-  .node('save',  saveNode,  { success: null     })
+  .node('save',  saveNode,  { success: 'end'   })
+  .terminal('end')
   .build();
 ```
 
 `DAGBuilder.fromNodes()` delegates to `DAGDeriver.derive({ nodes })`, the same deriver that powers contract-first topology. Use it when the shape is linear and all nodes carry contracts. Drop into the fluent `.node()` API when you need:
 
 - Scatter placements (node body or sub-DAG body)
-- Terminal routes to `null` mid-flow
+- Multiple named terminal placements with distinct outcomes
 - Explicit entrypoint overrides
 - Non-contract nodes that still appear in the placement list
 
@@ -158,12 +161,13 @@ const dag = new DAGBuilder('pipeline', '1.0')
 ```ts
 const dag = new DAGBuilder('notify', '1')
   .scatter('fan-out', 'targets', notifyNode,
-    { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+    { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
     {
       gather:      { strategy: 'discard' },
       concurrency: 10,
     },
   )
+  .terminal('end')
   .build();
 ```
 
@@ -173,14 +177,15 @@ Heterogeneous fan-out — running different logic per item — is expressed by a
 // state.scoutProviders = ['openlibrary', 'googlebooks', 'wikipedia']
 const dag = new DAGBuilder('search', '1')
   .scatter('scout', 'scoutProviders', scoutDispatchNode,
-    { 'any-success': 'merge', 'all-error': null, 'empty': null },
+    { 'any-success': 'merge', 'all-error': 'end', 'empty': 'end' },
     {
       gather:      { strategy: 'collect', target: 'scoutResults' },
       reducer:     'any-success',
       concurrency: 3,
     },
   )
-  .node('merge', mergeNode, { success: null })
+  .node('merge', mergeNode, { success: 'end' })
+  .terminal('end')
   .build();
 ```
 
@@ -193,13 +198,14 @@ Each source item gets one clone. After all clones finish, the `gather.mapping` w
 ```ts
 const dag = new DAGBuilder('batch', '1')
   .scatter('generate', 'providers', generateNode,
-    { 'all-success': 'select', 'partial': 'select', 'all-error': null, 'empty': null },
+    { 'all-success': 'select', 'partial': 'select', 'all-error': 'end', 'empty': 'end' },
     {
       gather:      { strategy: 'map', mapping: { 'candidate': 'candidates' } },
       concurrency: 4,
     },
   )
-  .node('select', selectNode, { success: null })
+  .node('select', selectNode, { success: 'end' })
+  .terminal('end')
   .build();
 ```
 
@@ -207,7 +213,7 @@ const dag = new DAGBuilder('batch', '1')
 
 ```ts
 scatter('process-items', 'items', processNode,
-  { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+  { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
   {
     gather: { strategy: 'partition', partitions: { success: 'processed', error: 'failed' } },
     concurrency: 4,
@@ -265,7 +271,8 @@ const dag = new DAGBuilder('parent', '1')
       outputs: { 'user.age': 'result' },   // parent path ← child key
     },
   )
-  .node('finalize', finalizeNode, { success: null })
+  .node('finalize', finalizeNode, { success: 'end' })
+  .terminal('end')
   .build();
 ```
 
@@ -276,7 +283,7 @@ embeddedDAG<TChildState extends NodeStateInterface = NodeStateInterface,
             TParentState extends NodeStateInterface = NodeStateInterface>(
   name:    string,
   dagName: string,
-  outputs: Record<'success' | 'error', null | string>,
+  outputs: Record<'success' | 'error', string>,
   options?: TypedEmbeddedDAGOptionsInterface<TChildState, TParentState>,
 ): this
 ```
@@ -290,29 +297,19 @@ embeddedDAG<TChildState extends NodeStateInterface = NodeStateInterface,
 
 Supply `TChildState` and `TParentState` to narrow path strings at compile time; both default to `NodeStateInterface`, which accepts any string.
 
-## `.terminal(name, outcome?)`
+## `.terminal(name, options?)`
 
 ```ts
-.terminal(name: string, outcome: 'completed' | 'failed' = 'completed'): this
+.terminal(name: string, options?: { outcome?: 'completed' | 'failed' }): this
 ```
 
-Appends a `TerminalNode` placement. When the engine reaches it, the flow ends with the declared `outcome`. The default is `'completed'`. Passing `'failed'` marks the state as failed before resolving.
+Appends a `TerminalNode` placement. When the engine reaches it, the flow ends with the declared `outcome`. The default is `'completed'`. Passing `{ outcome: 'failed' }` marks the state as failed before resolving.
 
-TerminalNodes carry no `outputs` map. They are placement-only constructs with no backing `NodeInterface`.
-
-### When to use an explicit terminal versus a null route
-
-A null route (`{ ok: null }`) is the shortest form and is sufficient when the endpoint has no semantic meaning beyond "done." It is sugar for an implicit `completed` terminal.
-
-Use `.terminal(name)` when:
-
-- The endpoint name carries meaning (`end-ok`, `response-sent`) and you want it visible in the visualisation.
-- The outcome is `'failed'`. Null routes always mean `completed`; there is no null-route shorthand for a failed outcome.
-- Multiple branches converge at named endpoints and legibility matters.
+TerminalNodes carry no `outputs` map. They are placement-only constructs with no backing `NodeInterface`. Every output of every node in a DAG must route to another named node — a `TerminalNode` placement is the only valid flow endpoint.
 
 ### Routing embedded-DAG outputs to a terminal placement
 
-An `EmbeddedDAGNode` placement may target a named terminal directly:
+An `EmbeddedDAGNode` placement targets named terminals directly:
 
 ```ts
 const dag = new DAGBuilder('parent', '1')
@@ -321,11 +318,11 @@ const dag = new DAGBuilder('parent', '1')
     error:   'end-fail',
   })
   .terminal('end-ok')
-  .terminal('end-fail', 'failed')
+  .terminal('end-fail', { outcome: 'failed' })
   .build();
 ```
 
-When the child DAG exits with a failed terminal, the `error` output arrives at `end-fail`, which marks the parent flow `failed`. Without a named terminal, the author would need a dedicated SingleNode to call `state.markFailed()`. The terminal collapses that to one `.terminal(name, 'failed')` call.
+When the child DAG exits with a failed terminal, the `error` output arrives at `end-fail`, which marks the parent flow `failed`. Without a named terminal, the author would need a dedicated SingleNode to call `state.markFailed()`. The terminal collapses that to one `.terminal(name, { outcome: 'failed' })` call.
 
 ### Example, two explicit terminals
 
@@ -379,9 +376,10 @@ The dispatcher invokes `Instrumentation.phaseEnter(dagName, 'pre' | 'post', plac
 import { DAGBuilder } from '@noocodex/dagonizer/builder';
 
 const dag = new DAGBuilder('with-phases', '1')
-  .node('process', processNode, { success: null })
+  .node('process', processNode, { success: 'end' })
   .phase('warm-cache', 'pre',  warmCacheNode)
   .phase('flush-logs', 'post', flushLogsNode)
+  .terminal('end')
   .build();
 ```
 
@@ -392,8 +390,9 @@ By default the first added node is the entrypoint. Override explicitly:
 ```ts
 new DAGBuilder('dag', '1')
   .node('setup', setupNode, { success: 'main' })
-  .node('main', mainNode, { success: null })
+  .node('main', mainNode, { success: 'end' })
   .entrypoint('main')  // skip setup during a resume, for example
+  .terminal('end')
   .build();
 ```
 

@@ -31,8 +31,10 @@ void describe('Dagonizer AbortSignal cancellation', () => {
       'nodes': [{
         '@id':   'urn:noocodex:dag:cancel/node/slow',
         '@type': 'SingleNode',
-        'name':  'slow', 'node': 'slow', 'outputs': { 'success': null },
-      }],
+        'name':  'slow', 'node': 'slow', 'outputs': { 'success': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:cancel/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     });
 
     const controller = new AbortController();
@@ -83,7 +85,8 @@ void describe('Dagonizer AbortSignal cancellation', () => {
         { '@id': 'urn:noocodex:dag:mid-cancel/node/b', '@type': 'SingleNode',
           'name': 'b', 'node': 'second', 'outputs': { 'success': 'c' } },
         { '@id': 'urn:noocodex:dag:mid-cancel/node/c', '@type': 'SingleNode',
-          'name': 'c', 'node': 'third', 'outputs': { 'success': null } },
+          'name': 'c', 'node': 'third', 'outputs': { 'success': 'end' } },
+        { '@id': 'urn:noocodex:dag:mid-cancel/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     });
 
@@ -120,8 +123,10 @@ void describe('Dagonizer AbortSignal cancellation', () => {
       'nodes': [{
         '@id':   'urn:noocodex:dag:t/node/slow',
         '@type': 'SingleNode',
-        'name':  'slow', 'node': 'slow', 'outputs': { 'success': null },
-      }],
+        'name':  'slow', 'node': 'slow', 'outputs': { 'success': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:t/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     });
 
     const state = new NodeStateBase();
@@ -154,8 +159,10 @@ void describe('Dagonizer AbortSignal cancellation', () => {
       'nodes': [{
         '@id':   'urn:noocodex:dag:inspect-dag/node/s1',
         '@type': 'SingleNode',
-        'name':  's1', 'node': 'inspect', 'outputs': { 'success': null },
-      }],
+        'name':  's1', 'node': 'inspect', 'outputs': { 'success': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:inspect-dag/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     });
     const result = await dispatcher.execute('inspect-dag', new NodeStateBase());
     assert.equal(seen.dag, 'inspect-dag');
@@ -201,7 +208,8 @@ void describe('Dagonizer extension hooks', () => {
         { '@id': 'urn:noocodex:dag:hooked/node/a', '@type': 'SingleNode',
           'name': 'a', 'node': 'op', 'outputs': { 'success': 'b' } },
         { '@id': 'urn:noocodex:dag:hooked/node/b', '@type': 'SingleNode',
-          'name': 'b', 'node': 'op', 'outputs': { 'success': null } },
+          'name': 'b', 'node': 'op', 'outputs': { 'success': 'end' } },
+        { '@id': 'urn:noocodex:dag:hooked/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     });
     await dispatcher.execute('hooked', new NodeStateBase());
@@ -211,6 +219,8 @@ void describe('Dagonizer extension hooks', () => {
       'stage:end:a:success',
       'stage:start:b',
       'stage:end:b:success',
+      'stage:start:end',
+      'stage:end:end:completed',
       'flow:end:hooked',
     ]);
   });
@@ -241,8 +251,10 @@ void describe('Dagonizer extension hooks', () => {
       'nodes': [{
         '@id':   'urn:noocodex:dag:err/node/s',
         '@type': 'SingleNode',
-        'name':  's', 'node': 'boom', 'outputs': { 'success': null },
-      }],
+        'name':  's', 'node': 'boom', 'outputs': { 'success': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:err/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     });
     const result = await dispatcher.execute('err', new NodeStateBase());
     assert.equal(result.cursor, 's');

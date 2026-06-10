@@ -66,8 +66,9 @@ const leafDAG: DAG = {
       '@type': 'SingleNode',
       'name':  'leaf-step',
       'node':  'leaf-step',
-      'outputs': { 'done': null },
+      'outputs': { 'done': 'end' },
     },
+    { '@id': 'urn:noocodex:dag:pp-leaf/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
@@ -92,8 +93,9 @@ const middleDAG: DAG = {
       '@type': 'EmbeddedDAGNode',
       'name':  'run-leaf',
       'dag':   'pp-leaf',
-      'outputs': { 'success': null, 'error': null },
+      'outputs': { 'success': 'end', 'error': 'end' },
     },
+    { '@id': 'urn:noocodex:dag:pp-middle/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
@@ -120,8 +122,9 @@ const parentDAG: DAG = {
       '@type': 'EmbeddedDAGNode',
       'name':  'run-middle',
       'dag':   'pp-middle',
-      'outputs': { 'success': null, 'error': null },
+      'outputs': { 'success': 'end', 'error': 'end' },
     },
+    { '@id': 'urn:noocodex:dag:pp-parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
@@ -202,8 +205,9 @@ void describe('Instrumentation placementPath threading', () => {
           '@type': 'SingleNode',
           'name':  'inner-step',
           'node':  'inner-step',
-          'outputs': { 'done': null },
+          'outputs': { 'done': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:pp-shared-inner/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
 
@@ -227,8 +231,9 @@ void describe('Instrumentation placementPath threading', () => {
           '@type': 'EmbeddedDAGNode',
           'name':  'second-embed',
           'dag':   'pp-shared-inner',
-          'outputs': { 'success': null, 'error': null },
+          'outputs': { 'success': 'end', 'error': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:pp-two-instances/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
 

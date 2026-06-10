@@ -16,20 +16,14 @@
  *
  * TerminalNode placements render with `data.type === 'terminal'` and carry
  * `data.outcome` ('completed' | 'failed') so stylesheets can color them
- * differently. The synthetic `END` node (emitted when any null route exists)
- * also uses `data.type === 'terminal'` but is distinguished by
- * `data.synthetic === true`.
+ * differently. Flows end exclusively via explicit TerminalNode placements;
+ * there are no synthetic END nodes.
  *
  * Compound rendering:
  *   • Embedded-DAG placements, when their target DAG is supplied via the
  *     `embeddedDAGs` registry, expand RECURSIVELY: every inner node renders
  *     with the placement as `parent`, so the user sees the actual flow
  *     inside the cluster; no shortcuts, no opaque boxes.
- *
- * Routes targeting `null` become edges to a synthetic `END` node so
- * the live runner can highlight termination explicitly. END edges
- * inside a parallel or embedded-DAG cluster are suppressed (the parent
- * placement's own edges carry the collected/terminal route out).
  *
  * Layout positioning is a separate concern handled by `CompositeLayout`.
  * This renderer returns elements WITHOUT positions; callers that need
@@ -72,8 +66,6 @@ export interface CytoscapeNodeData {
   readonly source?: string;     // ScatterNode
   readonly gather?: unknown;    // ScatterNode
   readonly reducer?: string;    // ScatterNode
-  // ── Synthetic sink node (END) ──
-  readonly synthetic?: boolean;
   // ── Compound graph parent id (set during recursive expansion) ──
   readonly parent?: string;
 }
@@ -138,7 +130,6 @@ interface ResolvedRenderOptions {
 interface RenderState {
   readonly elements: CytoscapeElement[];
   readonly options:  ResolvedRenderOptions;
-  touchesTerminal: boolean;
   /**
    * True when the current recursion is inside a container-bound (worker)
    * compound. Edges emitted while this flag is set receive the
@@ -150,9 +141,6 @@ interface RenderState {
 /** Render a `DAG` as Cytoscape elements. */
 export class CytoscapeRenderer {
   private constructor() { /* static class */ }
-
-  /** Synthetic terminator node id emitted once per DAG that has any null-route. */
-  private static readonly END_ID = 'END';
 
   /**
    * Convert a kebab-case placement name to Title Case for display.
@@ -190,19 +178,9 @@ export class CytoscapeRenderer {
     const state: RenderState = {
       "elements":             [],
       "options":              resolved,
-      "touchesTerminal":      false,
       "inContainedCompound":  false,
     };
     CytoscapeRenderer.renderInto(dag, '', undefined, state, 0, new Set<string>([dag.name]));
-
-    if (state.touchesTerminal) {
-      state.elements.push({
-        "group": 'nodes',
-        "data":  { "id": CytoscapeRenderer.END_ID, "label": 'End', "type": 'terminal', "synthetic": true },
-        "classes": 'dag-terminal',
-      });
-    }
-
     return state.elements;
   }
 
@@ -304,13 +282,11 @@ export class CytoscapeRenderer {
     fromId: string,
     prefix: string,
   ): readonly CytoscapeEdgeElement[] {
-    // TerminalNode placements are leaf placements; they have no outputs field.
+    // TerminalNode and PhaseNode placements are leaf placements; they have no outputs field.
     if (!('outputs' in placement)) return [];
     const edges: CytoscapeEdgeElement[] = [];
-    for (const [output, target] of Object.entries(placement.outputs)) {
-      const destId = target === null
-        ? PlacementUtils.idIn(prefix, CytoscapeRenderer.END_ID)
-        : PlacementUtils.idIn(prefix, target);
+    for (const [output, target] of Object.entries(placement.outputs as Record<string, string>)) {
+      const destId = PlacementUtils.idIn(prefix, target);
       edges.push({
         "group": 'edges',
         "data": {
@@ -320,7 +296,7 @@ export class CytoscapeRenderer {
           "label":  output,
           "route":  output,
         },
-        "classes": `route-${output}${target === null ? ' route-terminal' : ''}`,
+        "classes": `route-${output}`,
       });
     }
     return edges;
@@ -410,17 +386,12 @@ export class CytoscapeRenderer {
         // terminal/leaf child(ren) so dagre ranks the exits at the bottom
         // of the compound rather than aggregating from the compound's
         // geometric center. Mapping:
-        //   • output named 'error' | 'failed' → inner TerminalNode(failed)
-        //     placements
+        //   • output named 'error' | 'failed' → inner TerminalNode(failed) placements
         //   • all other outputs → inner TerminalNode(completed) placements
-        //     AND null-route leaves (those exit via the natural-end path)
         // If no matching inner leaf is found for an output, fall through
         // to the compound source (original behavior).
         const innerLeaves = CytoscapeRenderer.collectExitLeaves(embeddedDagBody, innerPrefix);
         for (const edge of CytoscapeRenderer.placementEdges(placement, myId, prefix)) {
-          if (edge.data.target === PlacementUtils.idIn(prefix, CytoscapeRenderer.END_ID)) {
-            state.touchesTerminal = true;
-          }
           const isErrorRoute = edge.data.route === 'error' || edge.data.route === 'failed';
           const candidateSources = isErrorRoute ? innerLeaves.failed : innerLeaves.completed;
           if (candidateSources.length > 0) {
@@ -445,14 +416,6 @@ export class CytoscapeRenderer {
       state.elements.push(enriched);
 
       for (const edge of CytoscapeRenderer.placementEdges(placement, myId, prefix)) {
-        const endId = PlacementUtils.idIn(prefix, CytoscapeRenderer.END_ID);
-        // Inside an expanded embedded-DAG (prefix non-empty), `null` targets
-        // refer to the embedded-DAG's terminus, not the parent's END. The
-        // compound parent's own placementEdges carry the real external
-        // routing; drop these internal terminal markers so cytoscape
-        // doesn't try to wire an edge to a non-existent prefixed END.
-        if (prefix !== '' && edge.data.target === endId) continue;
-        if (edge.data.target === endId) state.touchesTerminal = true;
         // Entry-point rewrite: if this edge targets an embedded-DAG
         // placement at this level, retarget to that placement's
         // entrypoint child so dagre lays the compound out top-down
@@ -502,9 +465,7 @@ export class CytoscapeRenderer {
    * can rewrite the parent placement's outgoing edges to originate from
    * them. Two categories:
    *   • `failed`: TerminalNode placements with outcome 'failed'
-   *   • `completed`: TerminalNode placements with outcome 'completed' PLUS
-   *                   placements with at least one `null` route (natural
-   *                   end-of-flow; counts as completed in v0.11 semantics)
+   *   • `completed`: TerminalNode placements with outcome 'completed'
    * Each id is returned prefixed with the parent placement path.
    */
   private static collectExitLeaves(
@@ -514,20 +475,10 @@ export class CytoscapeRenderer {
     const completed: string[] = [];
     const failed: string[] = [];
     for (const placement of body.nodes as readonly PlacementEntry[]) {
+      if (placement['@type'] !== 'TerminalNode') continue;
       const placementId = PlacementUtils.idIn(innerPrefix, placement.name);
-      if (placement['@type'] === 'TerminalNode') {
-        if (placement.outcome === 'failed') failed.push(placementId);
-        else completed.push(placementId);
-        continue;
-      }
-      if ('outputs' in placement) {
-        for (const target of Object.values(placement.outputs)) {
-          if (target === null) {
-            completed.push(placementId);
-            break;
-          }
-        }
-      }
+      if (placement.outcome === 'failed') failed.push(placementId);
+      else completed.push(placementId);
     }
     return { completed, failed };
   }

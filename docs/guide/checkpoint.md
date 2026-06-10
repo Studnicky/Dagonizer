@@ -27,7 +27,8 @@ const dag: DAG = {
   nodes: [
     { '@id': 'urn:noocodex:dag:count/node/a', '@type': 'SingleNode', name: 'a', node: 'inc', outputs: { success: 'b' } },
     { '@id': 'urn:noocodex:dag:count/node/b', '@type': 'SingleNode', name: 'b', node: 'inc', outputs: { success: 'c' } },
-    { '@id': 'urn:noocodex:dag:count/node/c', '@type': 'SingleNode', name: 'c', node: 'inc', outputs: { success: null } },
+    { '@id': 'urn:noocodex:dag:count/node/c', '@type': 'SingleNode', name: 'c', node: 'inc', outputs: { success: 'end' } },
+    { '@id': 'urn:noocodex:dag:count/node/end', '@type': 'TerminalNode', name: 'end', outcome: 'completed' },
   ],
 };
 </script>

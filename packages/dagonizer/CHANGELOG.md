@@ -6,6 +6,19 @@ Codebase-wide audit-and-harden pass: function-signature normalisation,
 type-safety tightening, V8 shape stability, runtime robustness, public-export
 completion, and documentation accuracy. The suite grows from 534 to 573 tests.
 
+### Breaking — null route removed
+
+Routing a node output to `null` (e.g. `.node('step', n, { ok: null })`) is no longer valid. Every flow branch must end at an explicit named `TerminalNode` placement.
+
+- **JSON schema**: `outputs` `additionalProperties` type changed from `['string', 'null']` to `'string'` in `SingleNode`, `ScatterNode`, and `EmbeddedDAGNode` schemas. `Validator.dag.is()` now rejects any DAG whose outputs map contains a `null` value.
+- **`DAGBuilder`**: route maps are now `Record<TOutput, string>` (not `null | string`). Pass a named terminal and route to it.
+- **`DAGDeriver`**: leaf nodes with no declared successor now route to a synthesised `TerminalNode` named `'completed'`. The implicit terminal is visible in `dag.nodes` and fires `onNodeStart`/`onNodeEnd` hooks.
+- **`WellFormedValidator`**: the null-route violation rule is removed; the schema now rejects null routes upstream.
+- **`ExecutionResult.terminalOutcome`**: always set to the `TerminalNode`'s `outcome` field when a terminal is reached. `null` only on error or abort exits where no `TerminalNode` was reached.
+- **`MermaidRenderer`**: no longer emits a synthetic `END([end])` node. Every terminal renders under its actual placement name.
+- **`JsonLdRenderer`**: `dag:target` is always an IRI string; no longer `null` for null routes.
+- **Migration**: replace every `.node(name, node, { output: null })` with `.node(name, node, { output: 'end' }).terminal('end')` (or any other terminal name).
+
 ### Breaking — function signatures (required positional, optional trailing config)
 
 Every required argument is now positional; every optional argument lives in a

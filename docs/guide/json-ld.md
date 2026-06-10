@@ -101,7 +101,8 @@ import { Dagonizer, DAGBuilder } from '@noocodex/dagonizer';
 
 // Author the DAG via the builder
 const original = new DAGBuilder('demo', '1')
-  .node('transform', transformNode, { success: null })
+  .node('transform', transformNode, { success: 'end' })
+  .terminal('end')
   .build();
 
 // Serialize → JSON string

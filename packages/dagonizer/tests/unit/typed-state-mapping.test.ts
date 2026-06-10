@@ -75,7 +75,7 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
           'outputs': { 'result': 'result' },
         },
       )
-      .node('end', terminal, { 'success': null })
+      .node('end', terminal, { 'success': 'end' })
       .build();
 
     const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNode;
@@ -87,7 +87,7 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
   void it('inputs-only produces EmbeddedDAGNode with stateMapping.input and no output', () => {
     const dag = new DAGBuilder('test-inputs', '1')
       .embeddedDAG<ChildState, ChildState>('invoke', 'child-dag',
-        { 'success': null, 'error': null },
+        { 'success': 'end', 'error': 'end' },
         { 'inputs': { 'result': 'result' } },
       )
       .build();
@@ -100,7 +100,7 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
   void it('outputs-only produces EmbeddedDAGNode with stateMapping.output and no input', () => {
     const dag = new DAGBuilder('test-outputs', '1')
       .embeddedDAG<ChildState, ChildState>('invoke', 'child-dag',
-        { 'success': null, 'error': null },
+        { 'success': 'end', 'error': 'end' },
         { 'outputs': { 'result': 'result' } },
       )
       .build();
@@ -112,7 +112,7 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
 
   void it('omitting options produces no stateMapping on the node', () => {
     const dag = new DAGBuilder('test-no-mapping', '1')
-      .embeddedDAG('invoke', 'child-dag', { 'success': null, 'error': null })
+      .embeddedDAG('invoke', 'child-dag', { 'success': 'end', 'error': 'end' })
       .build();
 
     const embeddedPlacement = dag.nodes[0] as EmbeddedDAGNode;
@@ -122,7 +122,7 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
   void it('empty options object produces no stateMapping', () => {
     const dag = new DAGBuilder('test-empty-opts', '1')
       .embeddedDAG<ChildState, ChildState>('invoke', 'child-dag',
-        { 'success': null, 'error': null },
+        { 'success': 'end', 'error': 'end' },
         {},
       )
       .build();
@@ -151,7 +151,8 @@ void describe('DAGBuilder.embeddedDAG: runtime execute with typed mapping', () =
 
     // Child DAG: just runs child-node and terminates.
     const childDag = new DAGBuilder('child', '1')
-      .node('child-node', childNode, { 'success': null })
+      .node('child-node', childNode, { 'success': 'child-done' })
+      .terminal('child-done')
       .build();
     dispatcher.registerDAG(childDag);
 
@@ -166,7 +167,7 @@ void describe('DAGBuilder.embeddedDAG: runtime execute with typed mapping', () =
           'outputs': { 'result': 'result' },
         },
       )
-      .node('end', terminal, { 'success': null })
+      .terminal('end')
       .build();
     dispatcher.registerDAG(parentDag);
 
@@ -194,17 +195,18 @@ void describe('DAGBuilder.embeddedDAG: runtime execute with typed mapping', () =
     dispatcher.registerNode(terminal);
 
     const childDag = new DAGBuilder('compat-child', '1')
-      .node('terminal', terminal, { 'success': null })
+      .node('terminal', terminal, { 'success': 'compat-child-done' })
+      .terminal('compat-child-done')
       .build();
     dispatcher.registerDAG(childDag);
 
     // No generic; defaults to NodeStateInterface; paths are loose `string`.
     const parentDag = new DAGBuilder('compat-parent', '1')
       .embeddedDAG('run', 'compat-child',
-        { 'success': 'end', 'error': 'end' },
+        { 'success': 'compat-end', 'error': 'compat-end' },
         { 'outputs': { 'dest': 'src' } },
       )
-      .node('end', terminal, { 'success': null })
+      .terminal('compat-end')
       .build();
     dispatcher.registerDAG(parentDag);
 
@@ -232,7 +234,7 @@ void describe('DAGBuilder.embeddedDAG: Path<TState> narrowing', () => {
   void it('runtime smoke: typed generic embeddedDAG builds the correct wire-shape node', () => {
     const dag = new DAGBuilder('path-test', '1')
       .embeddedDAG<ChildState, ParentState>('invoke', 'child-dag',
-        { 'success': null, 'error': null },
+        { 'success': 'end', 'error': 'end' },
         {
           'inputs':  { 'payload': 'user.age' },
           'outputs': { 'user.age': 'result' },

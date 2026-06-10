@@ -25,7 +25,7 @@ const noop: NodeInterface<NodeStateBase, 'success'> = {
 void describe('Builder container key', () => {
   void it('scatter with container option emits container property on placement', () => {
     const dag = new DAGBuilder('scatter-c', '1')
-      .scatter('fan-out', 'items', { 'dag': 'child-dag' }, { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null }, {
+      .scatter('fan-out', 'items', { 'dag': 'child-dag' }, { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' }, {
         'container': 'cpu',
         'gather': { 'strategy': 'discard' },
       })
@@ -39,7 +39,7 @@ void describe('Builder container key', () => {
 
   void it('scatter without container option has no container property', () => {
     const dag = new DAGBuilder('scatter-nc', '1')
-      .scatter('fan-out', 'items', noop, { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null }, {
+      .scatter('fan-out', 'items', noop, { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' }, {
         'gather': { 'strategy': 'discard' },
       })
       .build();
@@ -52,7 +52,7 @@ void describe('Builder container key', () => {
 
   void it('embeddedDAG with container option emits container property on placement', () => {
     const dag = new DAGBuilder('embed-c', '1')
-      .embeddedDAG('invoke', 'child-dag', { 'success': null, 'error': null }, {
+      .embeddedDAG('invoke', 'child-dag', { 'success': 'end', 'error': 'end' }, {
         'container': 'isolated',
       })
       .build();
@@ -65,7 +65,7 @@ void describe('Builder container key', () => {
 
   void it('embeddedDAG without container option has no container property', () => {
     const dag = new DAGBuilder('embed-nc', '1')
-      .embeddedDAG('invoke', 'child-dag', { 'success': null, 'error': null })
+      .embeddedDAG('invoke', 'child-dag', { 'success': 'end', 'error': 'end' })
       .build();
 
     const placement = dag.nodes[0];
@@ -76,7 +76,7 @@ void describe('Builder container key', () => {
 
   void it('node() placement has no container property', () => {
     const dag = new DAGBuilder('node-nc', '1')
-      .node('noop', noop, { 'success': null })
+      .node('noop', noop, { 'success': 'end' })
       .build();
 
     const placement = dag.nodes[0];

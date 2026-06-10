@@ -2,9 +2,8 @@
  * WellFormedValidator: opt-in structural validator for authored DAG documents.
  *
  * Operates on an already-narrowed `DAG` (Ajv-validated wire shape). Inspects
- * placement structure to flag authoring anti-patterns that the Ajv schema
- * intentionally permits (null routes are valid engine input) but that authors
- * should avoid in canonical DAGs.
+ * placement structure to flag authoring errors that the type system cannot fully
+ * catch (e.g. dangling route targets).
  *
  * Use from a CI lint script or a linting step in your authoring pipeline.
  * Never called by the runtime (Dagonizer.registerDAG stays unchanged).
@@ -22,6 +21,10 @@ type NodeEntry = DAG['nodes'][number];
  * Opt-in structural validator for authored DAG documents.
  * Returns an array of human-readable violation messages; empty = well-formed.
  * Pure function: no Ajv, no I/O, no side effects.
+ *
+ * Called after `Validator.dag` has accepted the document. Checks semantic
+ * constraints that the schema cannot express (e.g. route targets must name
+ * real placements in the same DAG).
  */
 export class WellFormedValidator {
   private constructor() { /* static class */ }
@@ -30,14 +33,15 @@ export class WellFormedValidator {
    * Check a DAG for well-formedness violations.
    *
    * Rules applied:
-   *   1. No bare null flow-ends. A null route target is always a violation.
-   *      Replace null routes with an explicit TerminalNode placement.
-   *   2. All non-null output targets must resolve to a placement name in dag.nodes.
-   *   3. Structural: ScatterNode must have a non-empty `source` field.
-   *   4. Structural: EmbeddedDAGNode must have a non-empty `dag` field.
-   *   5. Structural: TerminalNode `outcome` must be 'completed' or 'failed'.
+   *   1. All output targets must resolve to a placement name in dag.nodes.
+   *      (Null routes are schema-invalid and will have been rejected by
+   *      `Validator.dag` before this point; this rule catches dangling string
+   *      targets that name non-existent placements.)
+   *   2. Structural: ScatterNode must have a non-empty `source` field.
+   *   3. Structural: EmbeddedDAGNode must have a non-empty `dag` field.
+   *   4. Structural: TerminalNode `outcome` must be 'completed' or 'failed'.
    *
-   * Rules 3–5 are belt-and-suspenders guards; the Ajv schema enforces them
+   * Rules 2–4 are belt-and-suspenders guards; the Ajv schema enforces them
    * at load time. They are included for completeness when operating on
    * already-validated values constructed programmatically.
    *
@@ -98,22 +102,15 @@ export class WellFormedValidator {
       }
     }
 
-    // Nodes with outputs: apply null-route and target-resolution rules.
+    // Nodes with outputs: apply target-resolution rules.
     if (type === 'SingleNode' || type === 'ScatterNode' || type === 'EmbeddedDAGNode') {
-      const outputs = node.outputs as Record<string, string | null>;
+      const outputs = node.outputs as Record<string, string>;
 
       for (const [route, target] of Object.entries(outputs)) {
-        if (target === null) {
+        if (!placementNames.has(target)) {
           violations.push(
-            `Placement '${node.name}': route '${route}' targets null. Route to a TerminalNode instead of a bare null end-of-flow.`,
+            `Placement '${node.name}': route '${route}' targets '${target}', which does not exist in this DAG's placements.`,
           );
-        } else {
-          // Non-null target must name an existing placement.
-          if (!placementNames.has(target)) {
-            violations.push(
-              `Placement '${node.name}': route '${route}' targets '${target}', which does not exist in this DAG's placements.`,
-            );
-          }
         }
       }
     }

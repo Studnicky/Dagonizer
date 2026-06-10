@@ -97,7 +97,7 @@ const DAGNodeEntrySchema = {
         'node':    { 'type': 'string', 'minLength': 1 },
         'outputs': {
           'type': 'object',
-          'additionalProperties': { 'type': ['string', 'null'] },
+          'additionalProperties': { 'type': 'string' },
         },
       },
       'additionalProperties': false,
@@ -139,7 +139,7 @@ const DAGNodeEntrySchema = {
         'reducer':     { 'type': 'string', 'minLength': 1 },
         'outputs': {
           'type': 'object',
-          'additionalProperties': { 'type': ['string', 'null'] },
+          'additionalProperties': { 'type': 'string' },
         },
         'container': { 'type': 'string', 'minLength': 1 },
       },
@@ -155,7 +155,7 @@ const DAGNodeEntrySchema = {
         'dag':   { 'type': 'string', 'minLength': 1 },
         'outputs': {
           'type': 'object',
-          'additionalProperties': { 'type': ['string', 'null'] },
+          'additionalProperties': { 'type': 'string' },
         },
         'stateMapping': {
           'type': 'object',

@@ -30,15 +30,15 @@
  *
  * DAGs (one per law, each containing EmbeddedDAGNode or ScatterNode placements
  * with container: CONFORMANCE_CONTAINER_ROLE):
- *   law1-dag       — recorder → done → null
- *   law2-dag       — mutator → done → null
- *   law3-dag       — error-emitter → error → null
- *   law4-dag       — timeout-sleeper → done → null
- *   law5-dag       — abort-sleeper → done → null
- *   law6-dag       — recorder → done → null
+ *   law1-dag       — recorder → done → end (TerminalNode)
+ *   law2-dag       — mutator → done → end (TerminalNode)
+ *   law3-dag       — error-emitter → error → end (TerminalNode)
+ *   law4-dag       — timeout-sleeper → done → end (TerminalNode)
+ *   law5-dag       — abort-sleeper → done → end (TerminalNode)
+ *   law6-dag       — recorder → done → end (TerminalNode)
  *   law7-dag       — ScatterNode: source=scatterItems, dag-body=scatter-item-body, container=test-container
  *   law8-dag       — same shape as law7 (same scatter structure, exercised via interrupt/resume)
- *   law9-dag       — mutator → done → null   (same DAG shape; tests round-trip)
+ *   law9-dag       — mutator → done → end (TerminalNode)   (same DAG shape; tests round-trip)
  *
  * The parent-level runner DAGs wrap each inner DAG via an EmbeddedDAGNode
  * placement so the container is exercised. Each placement carries
@@ -276,7 +276,13 @@ function singleNodeDag(dagName: string, nodeName: string, output: string): DAG {
         '@type': 'SingleNode',
         'name': nodeName,
         'node': nodeName,
-        'outputs': { [output]: null },
+        'outputs': { [output]: 'end' },
+      },
+      {
+        '@id': `urn:conformance:dag:${dagName}/node/end`,
+        '@type': 'TerminalNode',
+        'name': 'end',
+        'outcome': 'completed',
       },
     ],
   } as unknown as DAG;
@@ -292,9 +298,11 @@ function singleNodeDag(dagName: string, nodeName: string, output: string): DAG {
  * This is required so conformance law assertions on parent state reflect
  * mutations made inside the contained execution.
  */
-function embeddingDag(runnerName: string, childDagName: string, outputs: string[]): DAG {
-  const outputMap: Record<string, null> = {};
-  for (const o of outputs) outputMap[o] = null;
+function embeddingDag(runnerName: string, childDagName: string, _outputs: string[]): DAG {
+  // All embedded DAG outputs route to a shared 'end' TerminalNode.
+  // The _outputs parameter names the possible outcomes of the child DAG (e.g. 'done', 'error');
+  // each is routed to the parent's terminal placement.
+  const outputMap: Record<string, string> = { 'done': 'end', 'error': 'end' };
 
   return {
     '@context': DAG_CONTEXT,
@@ -320,6 +328,12 @@ function embeddingDag(runnerName: string, childDagName: string, outputs: string[
             'began': 'began',
           },
         },
+      },
+      {
+        '@id': `urn:conformance:dag:${runnerName}/node/end`,
+        '@type': 'TerminalNode',
+        'name': 'end',
+        'outcome': 'completed',
       },
     ],
   } as unknown as DAG;
@@ -349,7 +363,13 @@ function scatterItemBodyDag(): DAG {
         '@type': 'SingleNode',
         'name': 'scatter-counter',
         'node': 'scatter-counter',
-        'outputs': { 'done': null },
+        'outputs': { 'done': 'end' },
+      },
+      {
+        '@id': `urn:conformance:dag:${SCATTER_ITEM_BODY_DAG}/node/end`,
+        '@type': 'TerminalNode',
+        'name': 'end',
+        'outcome': 'completed',
       },
     ],
   } as unknown as DAG;
@@ -382,11 +402,17 @@ function scatterDag(runnerName: string): DAG {
         'container': CONFORMANCE_CONTAINER_ROLE,
         'gather': { 'strategy': 'map', 'mapping': { 'value': 'gatheredItems' } },
         'outputs': {
-          'all-success': null,
-          'partial': null,
-          'all-error': null,
-          'empty': null,
+          'all-success': 'end',
+          'partial': 'end',
+          'all-error': 'end',
+          'empty': 'end',
         },
+      },
+      {
+        '@id': `urn:conformance:dag:${runnerName}/node/end`,
+        '@type': 'TerminalNode',
+        'name': 'end',
+        'outcome': 'completed',
       },
     ],
   } as unknown as DAG;

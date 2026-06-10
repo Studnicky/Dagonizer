@@ -74,8 +74,9 @@ const makeAbortDag = (name: string, concurrency: number): DAG => ({
       'itemKey':     'item',
       'concurrency': concurrency,
       'gather':      { 'strategy': 'append', 'target': 'processed' },
-      'outputs':     { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+      'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
     },
+    { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 });
 
@@ -205,8 +206,9 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
           'itemKey':     'item',
           'concurrency': 2,
           'gather':      { 'strategy': 'append', 'target': 'processed' },
-          'outputs':     { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:abort-async-resume/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     resumeDispatcher.registerDAG(resumeDag);
@@ -329,8 +331,9 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
           'itemKey':     'item',
           'concurrency': 1,
           'gather':      { 'strategy': 'append', 'target': 'processed' },
-          'outputs':     { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:exactly-once-abort/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(abortDag);

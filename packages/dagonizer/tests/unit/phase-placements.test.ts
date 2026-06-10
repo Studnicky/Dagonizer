@@ -124,7 +124,7 @@ void describe('PhaseNode placements: schema validation', () => {
       'name':  'setup',
       'node':  'setup-node',
       'phase': 'pre',
-      'outputs': { 'success': null },
+      'outputs': { 'success': 'end' },
     };
     assert.equal(Validator.phaseNode.is(bad), false);
   });
@@ -150,8 +150,9 @@ void describe('PhaseNode placements: schema validation', () => {
           '@type': 'SingleNode',
           'name':  'a',
           'node':  'a',
-          'outputs': { 'success': null },
+          'outputs': { 'success': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:demo/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     assert.equal(Validator.dag.is(dag), true);
@@ -169,8 +170,9 @@ void describe('PhaseNode placements: pre-phase execution', () => {
     dispatcher.registerNode(makeNode('entry', ['success']));
 
     const dag = new DAGBuilder('pre-runs-first', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': null })
+      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
       .phase('setup', 'pre', makeNode('setup-node', ['success']))
+      .terminal('end')
       .build();
 
     dispatcher.registerDAG(dag);
@@ -186,8 +188,9 @@ void describe('PhaseNode placements: pre-phase execution', () => {
     dispatcher.registerNode(makeNode('entry', ['success']));
 
     const dag = new DAGBuilder('pre-aborts', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': null })
+      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
       .phase('boom', 'pre', makeThrowingNode('boom-pre', 'pre-phase fail'))
+      .terminal('end')
       .build();
 
     dispatcher.registerDAG(dag);
@@ -206,10 +209,11 @@ void describe('PhaseNode placements: pre-phase execution', () => {
     dispatcher.registerNode(makeNode('entry', ['success']));
 
     const dag = new DAGBuilder('multi-pre', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': null })
+      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
       .phase('p1', 'pre', makeNode('p1', ['success']))
       .phase('p2', 'pre', makeNode('p2', ['success']))
       .phase('p3', 'pre', makeNode('p3', ['success']))
+      .terminal('end')
       .build();
 
     dispatcher.registerDAG(dag);
@@ -228,8 +232,9 @@ void describe('PhaseNode placements: post-phase execution', () => {
     dispatcher.registerNode(makeNode('teardown', ['success'], (s) => { s.trace.push('post-teardown'); }));
 
     const dag = new DAGBuilder('post-success', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': null })
+      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
       .phase('teardown', 'post', makeNode('teardown', ['success']))
+      .terminal('end')
       .build();
 
     dispatcher.registerDAG(dag);
@@ -263,8 +268,9 @@ void describe('PhaseNode placements: post-phase execution', () => {
     });
 
     const dag = new DAGBuilder('post-abort', '1')
-      .node('slow', makeNode('slow', ['success']), { 'success': null })
+      .node('slow', makeNode('slow', ['success']), { 'success': 'end' })
       .phase('teardown', 'post', makeNode('teardown', ['success']))
+      .terminal('end')
       .build();
 
     dispatcher.registerDAG(dag);
@@ -285,8 +291,9 @@ void describe('PhaseNode placements: post-phase execution', () => {
     dispatcher.registerNode(makeThrowingNode('boom-post', 'post-phase fail'));
 
     const dag = new DAGBuilder('post-throws', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': null })
+      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
       .phase('boom', 'post', makeThrowingNode('boom-post', 'post-phase fail'))
+      .terminal('end')
       .build();
 
     dispatcher.registerDAG(dag);
@@ -307,10 +314,11 @@ void describe('PhaseNode placements: post-phase execution', () => {
     dispatcher.registerNode(makeNode('p3', ['success'], (s) => { s.trace.push('p3'); }));
 
     const dag = new DAGBuilder('multi-post', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': null })
+      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
       .phase('p1', 'post', makeNode('p1', ['success']))
       .phase('p2', 'post', makeNode('p2', ['success']))
       .phase('p3', 'post', makeNode('p3', ['success']))
+      .terminal('end')
       .build();
 
     dispatcher.registerDAG(dag);
@@ -332,9 +340,10 @@ void describe('PhaseNode placements: instrumentation hooks', () => {
     dispatcher.registerNode(makeNode('teardown', ['success']));
 
     const dag = new DAGBuilder('instr-phases', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': null })
+      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
       .phase('setup', 'pre', makeNode('setup', ['success']))
       .phase('teardown', 'post', makeNode('teardown', ['success']))
+      .terminal('end')
       .build();
 
     dispatcher.registerDAG(dag);
@@ -368,15 +377,16 @@ void describe('PhaseNode placements: executedNodes ordering', () => {
     dispatcher.registerNode(makeNode('entry', ['success']));
 
     const dag = new DAGBuilder('ordering', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': null })
+      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
       .phase('setup', 'pre', makeNode('setup', ['success']))
       .phase('teardown', 'post', makeNode('teardown', ['success']))
+      .terminal('end')
       .build();
 
     dispatcher.registerDAG(dag);
 
     const result = await dispatcher.execute('ordering', new TrackingState());
-    assert.deepEqual(result.executedNodes, ['setup', 'entry', 'teardown']);
+    assert.deepEqual(result.executedNodes, ['setup', 'entry', 'end', 'teardown']);
   });
 });
 
@@ -400,7 +410,7 @@ void describe('PhaseNode placements: registration validation', () => {
           '@type': 'SingleNode',
           'name':  'entry',
           'node':  'entry',
-          'outputs': { 'success': null },
+          'outputs': { 'success': 'end' },
         },
         {
           '@id':   'urn:noocodex:dag:bad-phase/node/missing',
@@ -409,6 +419,7 @@ void describe('PhaseNode placements: registration validation', () => {
           'node':  'not-registered',
           'phase': 'pre',
         },
+        { '@id': 'urn:noocodex:dag:bad-phase/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     assert.throws(() => dispatcher.registerDAG(dag), /unknown registered node: not-registered/);

@@ -100,8 +100,10 @@ void describe('Dagonizer accepts a custom StateAccessor', () => {
         'source': 'items',
         'itemKey': 'item',
         'gather': { 'strategy': 'append', 'target': 'collected' },
-        'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
-      }],
+        'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:fan-test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     };
     dispatcher.registerDAG(dag);
 

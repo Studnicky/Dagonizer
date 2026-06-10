@@ -25,7 +25,8 @@ void describe('Execution streaming (async-iterable)', () => {
     dispatcher.registerNode(node('b', ['success']));
     dispatcher.registerDAG(makeDAG('linear', 'a', [
       { '@id': 'urn:noocodex:dag:linear/node/a', '@type': 'SingleNode', 'name': 'a', 'node': 'a', 'outputs': { 'success': 'b' } },
-      { '@id': 'urn:noocodex:dag:linear/node/b', '@type': 'SingleNode', 'name': 'b', 'node': 'b', 'outputs': { 'success': null } },
+      { '@id': 'urn:noocodex:dag:linear/node/b', '@type': 'SingleNode', 'name': 'b', 'node': 'b', 'outputs': { 'success': 'end' } },
+      { '@id': 'urn:noocodex:dag:linear/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
     ]));
 
     const exec = dispatcher.execute('linear', new NodeStateBase());
@@ -33,11 +34,11 @@ void describe('Execution streaming (async-iterable)', () => {
     for await (const stage of exec) seen.push(stage.nodeName);
 
     // Each node surfaced as its own stage, in execution order.
-    assert.deepEqual(seen, ['a', 'b']);
+    assert.deepEqual(seen, ['a', 'b', 'end']);
     // Awaiting the already-iterated Execution returns the cached final result.
     const final = await exec;
     assert.equal(final.state.lifecycle.kind, 'completed');
-    assert.deepEqual(final.executedNodes, ['a', 'b']);
+    assert.deepEqual(final.executedNodes, ['a', 'b', 'end']);
   });
 
   void it('streams a composite node’s intermediate results before the node itself', async () => {
@@ -46,11 +47,13 @@ void describe('Execution streaming (async-iterable)', () => {
     dispatcher.registerNode(node('inner', ['success']));
 
     dispatcher.registerDAG(makeDAG('child', 'inner', [
-      { '@id': 'urn:noocodex:dag:child/node/inner', '@type': 'SingleNode', 'name': 'inner', 'node': 'inner', 'outputs': { 'success': null } },
+      { '@id': 'urn:noocodex:dag:child/node/inner', '@type': 'SingleNode', 'name': 'inner', 'node': 'inner', 'outputs': { 'success': 'child-end' } },
+      { '@id': 'urn:noocodex:dag:child/node/child-end', '@type': 'TerminalNode', 'name': 'child-end', 'outcome': 'completed' },
     ]));
     dispatcher.registerDAG(makeDAG('outer', 'start', [
       { '@id': 'urn:noocodex:dag:outer/node/start', '@type': 'SingleNode', 'name': 'start', 'node': 'start', 'outputs': { 'success': 'embed' } },
-      { '@id': 'urn:noocodex:dag:outer/node/embed', '@type': 'EmbeddedDAGNode', 'name': 'embed', 'dag': 'child', 'outputs': { 'success': null, 'error': null } },
+      { '@id': 'urn:noocodex:dag:outer/node/embed', '@type': 'EmbeddedDAGNode', 'name': 'embed', 'dag': 'child', 'outputs': { 'success': 'outer-end', 'error': 'outer-end' } },
+      { '@id': 'urn:noocodex:dag:outer/node/outer-end', '@type': 'TerminalNode', 'name': 'outer-end', 'outcome': 'completed' },
     ]));
 
     const seen: string[] = [];
@@ -59,6 +62,7 @@ void describe('Execution streaming (async-iterable)', () => {
     // The embedded-DAG's inner step streams as its own stage (prefixed with the
     // placement name), BEFORE the embed placement's own result, proving nested
     // intermediate results flow through the stream incrementally.
-    assert.deepEqual(seen, ['start', 'embed.inner', 'embed']);
+    // The child's TerminalNode also streams as an intermediate stage.
+    assert.deepEqual(seen, ['start', 'embed.inner', 'embed.child-end', 'embed', 'outer-end']);
   });
 });

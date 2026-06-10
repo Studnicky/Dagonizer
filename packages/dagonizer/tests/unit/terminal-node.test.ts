@@ -124,6 +124,24 @@ void describe('TerminalNode: schema validation', () => {
     };
     assert.equal(Validator.dag.is(dag), true);
   });
+
+  void it('rejects a SingleNode whose output value is null (null routes are schema-invalid)', () => {
+    const bad: unknown = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:demo',
+      '@type':    'DAG',
+      'name':       'demo',
+      'version':    '1',
+      'entrypoint': 's',
+      'nodes': [{
+        '@id':   'urn:noocodex:dag:demo/node/s',
+        '@type': 'SingleNode',
+        'name':  's', 'node': 's',
+        'outputs': { 'done': null },
+      }],
+    };
+    assert.equal(Validator.dag.is(bad), false, 'null route must fail schema validation');
+  });
 });
 
 // ── 2. Builder ────────────────────────────────────────────────────────────
@@ -203,9 +221,9 @@ void describe('TerminalNode: execution with outcome=failed', () => {
   });
 });
 
-// ── 5. Embedded-DAG routing to null is now legal ───────────────────────────────
+// ── 5. Embedded-DAG routing to explicit TerminalNode ─────────────────────────
 
-void describe('TerminalNode: embedded-DAG routing to null is legal', () => {
+void describe('TerminalNode: embedded-DAG routing to explicit TerminalNode', () => {
   const childDAG: DAG = {
     '@context': DAG_CONTEXT,
     '@id':      'urn:noocodex:dag:child-tn',
@@ -219,12 +237,18 @@ void describe('TerminalNode: embedded-DAG routing to null is legal', () => {
         '@type': 'SingleNode',
         'name':  'child-step',
         'node':  'child-step',
-        'outputs': { 'done': null },
+        'outputs': { 'done': 'end' },
+      },
+      {
+        '@id':     'urn:noocodex:dag:child-tn/node/end',
+        '@type':   'TerminalNode',
+        'name':    'end',
+        'outcome': 'completed',
       },
     ],
   };
 
-  void it('doesNotThrow at registerDAG and completes cleanly', async () => {
+  void it('registers and executes cleanly when child ends at an explicit TerminalNode', async () => {
     const dispatcher = new CountingDagonizer<NodeStateBase>();
     dispatcher.registerNode(makeNode('parent-entry', ['next']));
     dispatcher.registerNode(makeNode('child-step', ['done']));
@@ -250,7 +274,13 @@ void describe('TerminalNode: embedded-DAG routing to null is legal', () => {
           '@type': 'EmbeddedDAGNode',
           'name':  'run-child',
           'dag':   'child-tn',
-          'outputs': { 'success': null, 'error': null },
+          'outputs': { 'success': 'end', 'error': 'end' },
+        },
+        {
+          '@id':     'urn:noocodex:dag:parent-tn/node/end',
+          '@type':   'TerminalNode',
+          'name':    'end',
+          'outcome': 'completed',
         },
       ],
     };
@@ -269,24 +299,6 @@ void describe('TerminalNode: embedded-DAG routing to null is legal', () => {
 // ── 6. Embedded-DAG routing to a TerminalNode ─────────────────────────────────
 
 void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placements', () => {
-  const makeChildDAG = (emitError: boolean): DAG => ({
-    '@context': DAG_CONTEXT,
-    '@id':      'urn:noocodex:dag:child-explicit',
-    '@type':    'DAG',
-    'name':       'child-explicit',
-    'version':    '1',
-    'entrypoint': 'child-work',
-    'nodes': [
-      {
-        '@id':   'urn:noocodex:dag:child-explicit/node/child-work',
-        '@type': 'SingleNode',
-        'name':  'child-work',
-        'node':  emitError ? 'child-work-err' : 'child-work-ok',
-        'outputs': { 'done': null },
-      },
-    ],
-  });
-
   const buildParentWithTerminals = (): DAG => ({
     '@context': DAG_CONTEXT,
     '@id':      'urn:noocodex:dag:parent-explicit',
@@ -335,8 +347,10 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
           '@type': 'SingleNode',
           'name':  'child-work',
           'node':  'child-work-ok',
-          'outputs': { 'done': null },
+          'outputs': { 'done': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:child-explicit/node/end', '@type': 'TerminalNode',
+          'name': 'end', 'outcome': 'completed' },
       ],
     };
     dispatcher.registerDAG(childOk);
@@ -365,8 +379,10 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
           '@type': 'SingleNode',
           'name':  'child-work',
           'node':  'child-work-err',
-          'outputs': { 'done': null },
+          'outputs': { 'done': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:child-explicit/node/end', '@type': 'TerminalNode',
+          'name': 'end', 'outcome': 'completed' },
       ],
     };
     dispatcher2.registerDAG(childErr);
@@ -375,10 +391,5 @@ void describe('TerminalNode: embedded-DAG routes to explicit TerminalNode placem
     const state = new NodeStateBase();
     const result = await dispatcher2.execute('parent-explicit', state);
     assert.equal(result.state.lifecycle.kind, 'failed', 'routes to end-fail → failed');
-  });
-
-  void it('makeChildDAG is defined (smoke test for helper)', () => {
-    const dag = makeChildDAG(false);
-    assert.equal(dag.name, 'child-explicit');
   });
 });

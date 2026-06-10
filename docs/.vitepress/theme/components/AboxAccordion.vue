@@ -56,49 +56,6 @@ function fmtWeight(weight: number, unit: string): string {
   if (unit === 'oz') return `${weight}oz`;
   return `${weight} ${unit}`;
 }
-
-// ── Blob + object URL helpers (browser-only) ─────────────────────────────────
-function makeBlob(payload: unknown): Blob {
-  return new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-}
-
-function downloadPayload(payload: unknown, filename: string): void {
-  if (import.meta.env.SSR) return;
-  const blob = makeBlob(payload);
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  // Defer revoke to allow the click to register
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-}
-
-function openPayload(payload: unknown): void {
-  if (import.meta.env.SSR) return;
-  const blob = makeBlob(payload);
-  const url = URL.createObjectURL(blob);
-  const win = window.open(url, '_blank');
-  // Revoke after the new tab has loaded (best-effort)
-  if (win !== null) {
-    win.addEventListener('load', () => URL.revokeObjectURL(url), { once: true });
-  } else {
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
-  }
-}
-
-function beforeFilename(entity: AboxEntity): string {
-  const scanPart = entity.before !== undefined
-    ? `scan${entity.before.body.scanSeq}`
-    : `scan${entity.after.scanSeq}`;
-  return `${entity.after.shipmentId}-${scanPart}-before.json`;
-}
-
-function afterFilename(entity: AboxEntity): string {
-  return `${entity.after.shipmentId}-scan${entity.after.scanSeq}-after.json`;
-}
 </script>
 
 <template>
@@ -136,38 +93,6 @@ function afterFilename(entity: AboxEntity): string {
 
       <!-- Expanded content -->
       <div v-if="openId === entity.id" class="abox-body">
-
-        <!-- Payload action bar -->
-        <div class="abox-payload-bar">
-          <span class="abox-payload-label">Before (CanonicalEvent)</span>
-          <div class="abox-payload-actions">
-            <button
-              type="button"
-              class="abox-btn abox-btn--sm"
-              :disabled="entity.before === undefined"
-              @click="entity.before !== undefined && downloadPayload(entity.before, beforeFilename(entity))"
-            >download</button>
-            <button
-              type="button"
-              class="abox-btn abox-btn--sm"
-              :disabled="entity.before === undefined"
-              @click="entity.before !== undefined && openPayload(entity.before)"
-            >open</button>
-          </div>
-          <span class="abox-payload-label">After (EnrichedShipment)</span>
-          <div class="abox-payload-actions">
-            <button
-              type="button"
-              class="abox-btn abox-btn--sm"
-              @click="downloadPayload(entity.after, afterFilename(entity))"
-            >download</button>
-            <button
-              type="button"
-              class="abox-btn abox-btn--sm"
-              @click="openPayload(entity.after)"
-            >open</button>
-          </div>
-        </div>
 
         <!-- Two-column before→after layout -->
         <div class="abox-cols">

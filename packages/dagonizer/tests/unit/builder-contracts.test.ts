@@ -45,7 +45,7 @@ void describe('DAGBuilder.build() contract validation', () => {
 
     const dag = new DAGBuilder('valid-chain', '1.0')
       .node('produce', produce, { 'success': 'consume' })
-      .node('consume', consume, { 'success': null })
+      .node('consume', consume, { 'success': 'end' })
       .build();
 
     assert.equal(dag.name, 'valid-chain');
@@ -60,7 +60,7 @@ void describe('DAGBuilder.build() contract validation', () => {
     assert.throws(
       () => new DAGBuilder('bad-chain', '1.0')
         .node('a', a, { 'success': 'b' })
-        .node('b', b, { 'success': null })
+        .node('b', b, { 'success': 'end' })
         .build(),
       (err: unknown) => {
         assert.ok(err instanceof DAGError, `expected DAGError, got ${String(err)}`);
@@ -77,7 +77,7 @@ void describe('DAGBuilder.build() contract validation', () => {
     const emitter = new CollectingWarningEmitter();
     new DAGBuilder('dead-write', '1.0')
       .node('a', a, { 'success': 'b' })
-      .node('b', b, { 'success': null })
+      .node('b', b, { 'success': 'end' })
       .build({ 'warningEmitter': emitter });
 
     const deadWarning = emitter.collected.find((w) => w.includes("'dead'"));
@@ -93,7 +93,7 @@ void describe('DAGBuilder.build() contract validation', () => {
     assert.doesNotThrow(() =>
       new DAGBuilder('silent-dead-write', '1.0')
         .node('a', a, { 'success': 'b' })
-        .node('b', b, { 'success': null })
+        .node('b', b, { 'success': 'end' })
         .build(),
     );
   });

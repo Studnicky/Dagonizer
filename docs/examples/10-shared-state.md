@@ -32,13 +32,15 @@ const stepB = { ...noop, name: 'step-b' };
 const childStep = { ...noop, name: 'child-step' };
 
 const childDag = new DAGBuilder('sub-flow', '1')
-  .node('child-step', childStep, { done: null })
+  .node('child-step', childStep, { done: 'child-end' })
+  .terminal('child-end')
   .build();
 
 const parentDag = new DAGBuilder('main-flow', '1')
   .node('step-a', stepA, { done: 'run-child' })
   .embeddedDAG('run-child', 'sub-flow', { success: 'step-b', error: 'step-b' })
-  .node('step-b', stepB, { done: null })
+  .node('step-b', stepB, { done: 'end' })
+  .terminal('end')
   .build();
 
 const sharedStateRegistry = new Map([['sub-flow', childDag]]);

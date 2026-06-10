@@ -20,12 +20,14 @@ void describe('JsonLdRenderer.render', () => {
         '@type':  'SingleNode',
         'name':   'greet',
         'node':   'greet',
-        'outputs': { 'success': null },
-      }],
+        'outputs': { 'success': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:mini/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     };
     const doc = JsonLdRenderer.render(dag);
     assert.equal(doc['@context']['dag'], DAGONIZER_VOCAB);
-    assert.equal(doc['@graph'].length, 2);
+    assert.equal(doc['@graph'].length, 3);
     const root = doc['@graph'][0];
     assert.equal(root?.['@id'], 'urn:dagonizer:mini');
     assert.equal(root?.['@type'], 'dag:DAG');
@@ -49,8 +51,10 @@ void describe('JsonLdRenderer.render', () => {
         'itemKey':     'item',
         'concurrency': 3,
         'gather':      { 'strategy': 'append', 'target': 'collected' },
-        'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
-      }],
+        'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:scrape/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     };
     const doc = JsonLdRenderer.render(dag);
     const fan = doc['@graph'].find((entry) => entry['@type'] === 'dag:ScatterNode');
@@ -63,7 +67,7 @@ void describe('JsonLdRenderer.render', () => {
     assert.equal(fan?.['dag:source'], 'items');
   });
 
-  void it('routes targeting null serialize as null targets', () => {
+  void it('routes serialize as IRI targets', () => {
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:one',
@@ -76,13 +80,15 @@ void describe('JsonLdRenderer.render', () => {
         '@type':  'SingleNode',
         'name':   'a',
         'node':   'n',
-        'outputs': { 'success': null },
-      }],
+        'outputs': { 'success': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:one/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     };
     const doc = JsonLdRenderer.render(dag);
     const placement = doc['@graph'].find((entry) => entry['@type'] === 'dag:SingleNode');
-    const routes = (placement?.['dag:routes'] ?? []) as ReadonlyArray<{ 'dag:target': string | null }>;
-    assert.equal(routes[0]?.['dag:target'], null);
+    const routes = (placement?.['dag:routes'] ?? []) as ReadonlyArray<{ 'dag:target': string }>;
+    assert.equal(routes[0]?.['dag:target'], 'urn:dagonizer:one#end');
   });
 
   void it('renders EmbeddedDAGNode with cross-DAG IRI reference', () => {
@@ -100,7 +106,9 @@ void describe('JsonLdRenderer.render', () => {
         'dag':          'child',
         'stateMapping': { 'input': { 'input': 'x' }, 'output': { 'b': 'y' } },
         'outputs': { 'success': 'next', 'error': 'next' },
-      }],
+      },
+        { '@id': 'urn:noocodex:dag:parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     };
     const doc = JsonLdRenderer.render(dag);
     const sub = doc['@graph'].find((entry) => entry['@type'] === 'dag:EmbeddedDAGNode');
@@ -126,8 +134,10 @@ void describe('JsonLdRenderer.render: containment', () => {
         'name':      'invoke',
         'dag':       'cpu-dag',
         'container': 'cpu',
-        'outputs':   { 'success': null },
-      }],
+        'outputs':   { 'success': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:jld-worker/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     };
     const doc = JsonLdRenderer.render(dag);
     const entry = doc['@graph'].find((e) => e['@type'] === 'dag:EmbeddedDAGNode');
@@ -148,8 +158,10 @@ void describe('JsonLdRenderer.render: containment', () => {
         '@type':   'EmbeddedDAGNode',
         'name':    'invoke',
         'dag':     'child',
-        'outputs': { 'success': null },
-      }],
+        'outputs': { 'success': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:jld-inprocess/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     };
     const doc = JsonLdRenderer.render(dag);
     const entry = doc['@graph'].find((e) => e['@type'] === 'dag:EmbeddedDAGNode');
@@ -173,8 +185,10 @@ void describe('JsonLdRenderer.render: containment', () => {
         'source':    'items',
         'gather':    { 'strategy': 'discard' },
         'container': 'gpu',
-        'outputs':   { 'success': null },
-      }],
+        'outputs':   { 'success': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:jld-scatter-worker/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     };
     const doc = JsonLdRenderer.render(dag);
     const entry = doc['@graph'].find((e) => e['@type'] === 'dag:ScatterNode');
@@ -185,7 +199,7 @@ void describe('JsonLdRenderer.render: containment', () => {
 
 void describe('JsonLdRenderer.render: TerminalNode', () => {
   void it('renders a completed TerminalNode with @type dag:TerminalNode and dag:outcome', () => {
-    const terminal: TerminalNodePlacementInterface = {
+    const terminalDone: TerminalNodePlacementInterface = {
       '@id':     'urn:noocodex:dag:jt/node/done',
       '@type':   'TerminalNode',
       'name':    'done',
@@ -206,7 +220,7 @@ void describe('JsonLdRenderer.render: TerminalNode', () => {
           'node':   'step',
           'outputs': { 'success': 'done' },
         },
-        terminal,
+        terminalDone,
       ],
     };
     const doc = JsonLdRenderer.render(dag);
@@ -219,7 +233,7 @@ void describe('JsonLdRenderer.render: TerminalNode', () => {
   });
 
   void it('renders a failed TerminalNode with dag:outcome=failed', () => {
-    const terminal: TerminalNodePlacementInterface = {
+    const terminalAbort: TerminalNodePlacementInterface = {
       '@id':     'urn:noocodex:dag:jt2/node/abort',
       '@type':   'TerminalNode',
       'name':    'abort',
@@ -240,7 +254,7 @@ void describe('JsonLdRenderer.render: TerminalNode', () => {
           'node':   'step',
           'outputs': { 'error': 'abort' },
         },
-        terminal,
+        terminalAbort,
       ],
     };
     const doc = JsonLdRenderer.render(dag);
@@ -250,13 +264,7 @@ void describe('JsonLdRenderer.render: TerminalNode', () => {
     assert.equal(entry['dag:routes'], undefined);
   });
 
-  void it('coexists: null route emits dag:routes with null target; explicit TerminalNode emits no dag:routes', () => {
-    const terminal: TerminalNodePlacementInterface = {
-      '@id':     'urn:noocodex:dag:jt3/node/done',
-      '@type':   'TerminalNode',
-      'name':    'done',
-      'outcome': 'completed',
-    };
+  void it('two TerminalNodes in the same DAG both appear in @graph with no dag:routes', () => {
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:jt3',
@@ -270,21 +278,31 @@ void describe('JsonLdRenderer.render: TerminalNode', () => {
           '@type':  'SingleNode',
           'name':   'step',
           'node':   'step',
-          'outputs': { 'success': 'done', 'error': null },
+          'outputs': { 'success': 'done', 'error': 'abort' },
         },
-        terminal,
+        { '@id': 'urn:noocodex:dag:jt3/node/done',  '@type': 'TerminalNode', 'name': 'done',  'outcome': 'completed' },
+        { '@id': 'urn:noocodex:dag:jt3/node/abort', '@type': 'TerminalNode', 'name': 'abort', 'outcome': 'failed' },
       ],
     };
     const doc = JsonLdRenderer.render(dag);
-    // SingleNode has dag:routes with the null target
+    // Both TerminalNode entries appear in @graph
+    const termEntries = doc['@graph'].filter((e) => e['@type'] === 'dag:TerminalNode');
+    assert.equal(termEntries.length, 2, 'both TerminalNodes must be in @graph');
+    // Neither emits dag:routes
+    for (const entry of termEntries) {
+      assert.equal(entry['dag:routes'], undefined);
+    }
+    // Outcomes are correct
+    const doneEntry = termEntries.find((e) => e['@id'] === 'urn:dagonizer:jt3#done');
+    const abortEntry = termEntries.find((e) => e['@id'] === 'urn:dagonizer:jt3#abort');
+    assert.equal(doneEntry?.['dag:outcome'], 'completed');
+    assert.equal(abortEntry?.['dag:outcome'], 'failed');
+    // Routes from step point to IRI targets (not null)
     const stepEntry = doc['@graph'].find((e) => e['@type'] === 'dag:SingleNode');
-    const routes = (stepEntry?.['dag:routes'] ?? []) as ReadonlyArray<{ 'dag:output': string; 'dag:target': string | null }>;
+    const routes = (stepEntry?.['dag:routes'] ?? []) as ReadonlyArray<{ 'dag:output': string; 'dag:target': string }>;
+    const successRoute = routes.find((r) => r['dag:output'] === 'success');
     const errorRoute = routes.find((r) => r['dag:output'] === 'error');
-    assert.equal(errorRoute?.['dag:target'], null);
-    // TerminalNode has no dag:routes
-    const termEntry = doc['@graph'].find((e) => e['@type'] === 'dag:TerminalNode');
-    assert.ok(termEntry !== undefined);
-    assert.equal(termEntry['dag:routes'], undefined);
-    assert.equal(termEntry['dag:outcome'], 'completed');
+    assert.equal(successRoute?.['dag:target'], 'urn:dagonizer:jt3#done');
+    assert.equal(errorRoute?.['dag:target'], 'urn:dagonizer:jt3#abort');
   });
 });

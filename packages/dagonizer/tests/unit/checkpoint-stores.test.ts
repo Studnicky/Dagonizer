@@ -60,8 +60,9 @@ async function makeAbortedResult(): Promise<ReturnType<typeof Dagonizer.prototyp
       },
       {
         '@id': 'urn:noocodex:dag:store-test/node/b', '@type': 'SingleNode',
-        'name': 'b', 'node': 'slow', 'outputs': { 'done': null },
+        'name': 'b', 'node': 'slow', 'outputs': { 'done': 'end' },
       },
+      { '@id': 'urn:noocodex:dag:store-test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
     ],
   });
 

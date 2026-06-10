@@ -321,13 +321,17 @@ type _RunOptions = { readonly embedded: boolean };
  * dispatcher.registerDAG({
  *   '@context': DAG_CONTEXT, '@id': 'urn:noocodex:dag:demo', '@type': 'DAG',
  *   name: 'demo', version: '1', entrypoint: 'increment',
- *   nodes: [{ '@id': 'urn:noocodex:dag:demo/node/increment', '@type': 'SingleNode',
- *             name: 'increment', node: 'increment', outputs: { done: null } }],
+ *   nodes: [
+ *     { '@id': 'urn:noocodex:dag:demo/node/increment', '@type': 'SingleNode',
+ *       name: 'increment', node: 'increment', outputs: { done: 'end' } },
+ *     { '@id': 'urn:noocodex:dag:demo/node/end', '@type': 'TerminalNode',
+ *       name: 'end', outcome: 'completed' },
+ *   ],
  * });
  *
  * const result = await dispatcher.execute('demo', new MyState());
  * // result.state.value === 1
- * // result.cursor === null (completed)
+ * // result.cursor === null (completed via TerminalNode)
  * ```
  */
 export class Dagonizer<TState extends NodeStateInterface, TServices = undefined>
@@ -808,7 +812,7 @@ implements DagonizerInterface<TState, TServices> {
           state.markFailed(new DAGError(`Flow terminated at '${executedNodes[executedNodes.length - 1] ?? '<unknown>'}' with outcome=failed`));
         } catch { /* state may already be terminal */ }
       } else {
-        // terminalOutcome === 'completed' OR null (ran out of work naturally)
+        // terminalOutcome === 'completed'; flows always end at a TerminalNode.
         try { state.markCompleted(); } catch { /* state may already be terminal */ }
       }
     }

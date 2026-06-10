@@ -6,8 +6,8 @@
  *
  * Compile-time consumers may use `SingleNodePlacementInterface<TOutput>` for
  * exhaustiveness-checked output routing. The schema itself is necessarily
- * generic-free: `outputs` is a `Record<string, string | null>` at the JSON
- * boundary.
+ * generic-free: `outputs` is a `Record<string, string>` at the JSON boundary.
+ * All output routes must target named placements; null routes are not permitted.
  *
  * Naming: the placement interface is distinct from `NodeInterface` (the adapter
  * contract consumers implement). A "node" is the registered unit of work; a
@@ -28,7 +28,7 @@ export const SingleNodeSchema = {
     'node':  { 'type': 'string', 'minLength': 1 },
     'outputs': {
       'type': 'object',
-      'additionalProperties': { 'type': ['string', 'null'] },
+      'additionalProperties': { 'type': 'string' },
     },
   },
   'additionalProperties': false,
@@ -49,13 +49,14 @@ export type SingleNode = FromSchema<typeof SingleNodeSchema>;
 export interface SingleNodePlacementInterface<TOutput extends string = string>
   extends Omit<SingleNode, 'outputs'> {
   /**
-   * Output routing - maps node outputs to next nodes.
+   * Output routing - maps node outputs to next placement names.
    * Key: output name from node (e.g., 'success', 'error', 'retry')
-   * Value: next node name, or null to end flow on this path
+   * Value: next placement name — must target a named placement in the DAG.
+   *        To end a branch, route to a named TerminalNode placement.
    *
    * All node outputs must be wired (validated at registration).
    * When `TOutput` is narrowed, TypeScript will compile-fail any missing
    * routes.
    */
-  'outputs': Record<TOutput, null | string>;
+  'outputs': Record<TOutput, string>;
 }

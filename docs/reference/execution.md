@@ -69,7 +69,7 @@ If the iterator has already been consumed, the cached result is returned; the ge
 | `cursor` | `string \| null` | Next node to run on resume; `null` when the flow completed |
 | `executedNodes` | `string[]` | Nodes that ran (in order), including pre/post phase placements |
 | `skippedNodes` | `string[]` | Nodes skipped (empty scatter source) |
-| `terminalOutcome` | `'completed' \| 'failed' \| null` | Outcome declared by the `TerminalNode` placement the flow exited through; `null` for null-route, error, or abort exits |
+| `terminalOutcome` | `'completed' \| 'failed' \| null` | Outcome declared by the `TerminalNode` placement the flow exited through; `null` on error or abort exits (no `TerminalNode` reached) |
 | `interruptedAt` | `InterruptionInfo \| null` | Cancellation telemetry; `null` on clean exits |
 
 `InterruptionInfo`:

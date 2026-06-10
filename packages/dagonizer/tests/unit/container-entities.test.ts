@@ -202,13 +202,21 @@ void describe('Validator.dag validates a well-formed DAG literal', () => {
       'name': 'cte-smoke',
       'version': '1',
       'entrypoint': 'step',
-      'nodes': [{
-        '@id': 'urn:noocodex:dag:cte-smoke/node/step',
-        '@type': 'SingleNode',
-        'name': 'step',
-        'node': 'step',
-        'outputs': { 'done': null },
-      }],
+      'nodes': [
+        {
+          '@id': 'urn:noocodex:dag:cte-smoke/node/step',
+          '@type': 'SingleNode',
+          'name': 'step',
+          'node': 'step',
+          'outputs': { 'done': 'end' },
+        },
+        {
+          '@id': 'urn:noocodex:dag:cte-smoke/node/end',
+          '@type': 'TerminalNode',
+          'name': 'end',
+          'outcome': 'completed',
+        },
+      ],
     };
     assert.ok(Validator.dag.is(minimalDag), 'Validator.dag.is must return true for a valid DAG');
   });

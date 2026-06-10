@@ -66,8 +66,10 @@ function buildSingleNodeDag(
       '@type': 'SingleNode',
       'name':  'stage',
       'node':  node.name,
-      'outputs': { [output]: null },
-    }],
+      'outputs': { [output]: 'end' },
+    },
+    { '@id': `urn:noocodex:dag:${dagName}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+    ],
   });
 }
 

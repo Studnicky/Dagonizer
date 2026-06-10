@@ -2,9 +2,12 @@
  * WellFormedValidator: unit tests for DAG well-formedness rules.
  *
  * Rules tested:
- *   1. No bare null flow-ends (null routes always require a TerminalNode).
- *   2. All non-null targets must resolve to a placement name in dag.nodes.
- *   3. Structural guards: ScatterNode source, EmbeddedDAGNode dag, TerminalNode outcome.
+ *   1. All output targets must resolve to a placement name in dag.nodes.
+ *   2. Structural guards: ScatterNode source, EmbeddedDAGNode dag, TerminalNode outcome.
+ *
+ * Note: null routes are schema-invalid and are rejected by Validator.dag (Ajv)
+ * before WellFormedValidator ever sees the document. WellFormedValidator only
+ * receives schema-valid DAGs (outputs values are strings, never null).
  */
 
 import assert from 'node:assert/strict';
@@ -12,13 +15,14 @@ import { describe, it } from 'node:test';
 
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/dag/DAG.js';
+import { Validator } from '../../src/validation/Validator.js';
 import { WellFormedValidator } from '../../src/validation/WellFormedValidator.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeSingleNodePlacement(name: string, outputs: Record<string, string | null>): DAG['nodes'][number] {
+function makeSingleNodePlacement(name: string, outputs: Record<string, string>): DAG['nodes'][number] {
   return {
     '@id':   `urn:noocodex:dag:test/node/${name}`,
     '@type': 'SingleNode',
@@ -76,29 +80,48 @@ void describe('WellFormedValidator', () => {
     assert.equal(violations.length, 0);
   });
 
-  // ── Rule 1: null route → violation ──────────────────────────────────────
+  // ── Null routes are schema-invalid — rejected before WellFormedValidator ─
 
-  void it('reports a violation when a placement routes to null', () => {
-    const dag = baseDAG([
-      makeSingleNodePlacement('start', { 'done': null }),
-    ]);
-    const violations = WellFormedValidator.check(dag);
-    assert.equal(violations.length, 1);
-    // Violation message names the placement, the route, and the remedy.
-    assert.match((violations[0] ?? ''), /placement 'start'/i);
-    assert.match((violations[0] ?? ''), /route 'done'/i);
-    assert.match((violations[0] ?? ''), /TerminalNode/i);
+  void it('Validator.dag rejects a DAG whose output value is null', () => {
+    // Build the object as unknown — the whole point is it fails schema validation.
+    const bad = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:test',
+      '@type':    'DAG',
+      'name':     'test',
+      'version':  '1',
+      'entrypoint': 'start',
+      'nodes': [{
+        '@id':   'urn:noocodex:dag:test/node/start',
+        '@type': 'SingleNode',
+        'name':  'start',
+        'node':  'start',
+        'outputs': { 'done': null },
+      }],
+    } as unknown as DAG;
+    assert.equal(Validator.dag.is(bad), false, 'null output must not satisfy the schema');
   });
 
-  void it('reports one violation per null route on the same placement', () => {
-    const dag = baseDAG([
-      makeSingleNodePlacement('start', { 'ok': null, 'fail': null }),
-    ]);
-    const violations = WellFormedValidator.check(dag);
-    assert.equal(violations.length, 2);
+  void it('Validator.dag rejects a DAG with multiple null output values', () => {
+    const bad = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:test',
+      '@type':    'DAG',
+      'name':     'test',
+      'version':  '1',
+      'entrypoint': 'start',
+      'nodes': [{
+        '@id':   'urn:noocodex:dag:test/node/start',
+        '@type': 'SingleNode',
+        'name':  'start',
+        'node':  'start',
+        'outputs': { 'ok': null, 'fail': null },
+      }],
+    } as unknown as DAG;
+    assert.equal(Validator.dag.is(bad), false, 'null outputs must not satisfy the schema');
   });
 
-  // ── Rule 2: dangling target → violation ──────────────────────────────────
+  // ── Rule 1: dangling target → violation ──────────────────────────────────
 
   void it('reports a violation when an output targets a non-existent placement', () => {
     const dag = baseDAG([
@@ -119,17 +142,7 @@ void describe('WellFormedValidator', () => {
     assert.equal(violations.length, 2);
   });
 
-  // ── Combined: null AND dangling in same DAG ───────────────────────────────
-
-  void it('reports violations for both null routes and dangling targets together', () => {
-    const dag = baseDAG([
-      makeSingleNodePlacement('start', { 'ok': null, 'fail': 'nowhere' }),
-    ]);
-    const violations = WellFormedValidator.check(dag);
-    assert.equal(violations.length, 2);
-  });
-
-  // ── Rule 3: ScatterNode checks ────────────────────────────────────────────
+  // ── Rule 2: ScatterNode checks ────────────────────────────────────────────
 
   void it('reports no violation for a well-formed ScatterNode', () => {
     const dag = baseDAG([
@@ -148,7 +161,7 @@ void describe('WellFormedValidator', () => {
     assert.equal(violations.length, 0);
   });
 
-  // ── Rule 3: EmbeddedDAGNode checks ───────────────────────────────────────
+  // ── Rule 2: EmbeddedDAGNode checks ───────────────────────────────────────
 
   void it('reports no violation for a well-formed EmbeddedDAGNode', () => {
     const dag = baseDAG([
@@ -200,9 +213,9 @@ void describe('WellFormedValidator', () => {
 
   void it('reports violations only for offending placements in a mixed DAG', () => {
     const dag = baseDAG([
-      makeSingleNodePlacement('a', { 'ok': 'b' }),                // clean
-      makeSingleNodePlacement('b', { 'ok': null }),                // VIOLATION: null route
-      makeSingleNodePlacement('c', { 'ok': 'a' }),                 // clean (c not reachable, but structurally fine)
+      makeSingleNodePlacement('a', { 'ok': 'b' }),                          // clean
+      makeSingleNodePlacement('b', { 'ok': 'nowhere' }),                    // VIOLATION: dangling target
+      makeSingleNodePlacement('c', { 'ok': 'a' }),                          // clean
     ]);
     const violations = WellFormedValidator.check(dag);
     assert.equal(violations.length, 1);

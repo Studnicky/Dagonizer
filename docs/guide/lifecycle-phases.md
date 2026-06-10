@@ -70,10 +70,11 @@ import { DAGBuilder } from '@noocodex/dagonizer/builder';
 
 const dag = new DAGBuilder('pipeline', '1')
   .node('ingest', ingestNode, { success: 'process' })
-  .node('process', processNode, { success: null })
+  .node('process', processNode, { success: 'end' })
   .phase('warm-cache',  'pre',  warmCacheNode)
   .phase('flush-logs',  'post', flushLogsNode)
   .phase('close-db',    'post', closeDbNode)
+  .terminal('end')
   .build();
 ```
 

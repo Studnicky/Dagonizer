@@ -78,8 +78,10 @@ void describe('cursor on ExecutionResultInterface', () => {
       'name': 'clean', 'version': '1', 'entrypoint': 's',
       'nodes': [{
         '@id': 'urn:noocodex:dag:clean/node/s', '@type': 'SingleNode',
-        'name': 's', 'node': 'op', 'outputs': { 'success': null },
-      }],
+        'name': 's', 'node': 'op', 'outputs': { 'success': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:clean/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     });
     const result = await dispatcher.execute('clean', new NodeStateBase());
     assert.equal(result.cursor, null);
@@ -112,7 +114,8 @@ void describe('cursor on ExecutionResultInterface', () => {
         { '@id': 'urn:noocodex:dag:two/node/a', '@type': 'SingleNode',
           'name': 'a', 'node': 'op', 'outputs': { 'success': 'b' } },
         { '@id': 'urn:noocodex:dag:two/node/b', '@type': 'SingleNode',
-          'name': 'b', 'node': 'op', 'outputs': { 'success': null } },
+          'name': 'b', 'node': 'op', 'outputs': { 'success': 'end' } },
+        { '@id': 'urn:noocodex:dag:two/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     });
     const ctl = new AbortController();
@@ -155,7 +158,8 @@ void describe('Checkpoint round-trip', () => {
         { '@id': 'urn:noocodex:dag:count/node/b', '@type': 'SingleNode',
           'name': 'b', 'node': 'inc', 'outputs': { 'success': 'c' } },
         { '@id': 'urn:noocodex:dag:count/node/c', '@type': 'SingleNode',
-          'name': 'c', 'node': 'inc', 'outputs': { 'success': null } },
+          'name': 'c', 'node': 'inc', 'outputs': { 'success': 'end' } },
+        { '@id': 'urn:noocodex:dag:count/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -207,8 +211,10 @@ void describe('Checkpoint round-trip', () => {
       'name': 'done', 'version': '1', 'entrypoint': 's',
       'nodes': [{
         '@id': 'urn:noocodex:dag:done/node/s', '@type': 'SingleNode',
-        'name': 's', 'node': 'op', 'outputs': { 'success': null },
-      }],
+        'name': 's', 'node': 'op', 'outputs': { 'success': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:done/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     });
     const result = await dispatcher.execute('done', new NodeStateBase());
     await assert.rejects(() => Checkpoint.capture('done', result), DAGError);
@@ -218,10 +224,12 @@ void describe('Checkpoint round-trip', () => {
     assert.throws(() => Checkpoint.load({ 'version': '1' }), ValidationError);
   });
 
-  void it('restoreState throws ValidationError on null cursor', async () => {
+  void it('restoreState throws ValidationError when checkpoint cursor is null (completed run)', async () => {
+    // A completed run stores cursor=null in CheckpointData (no resumable position).
+    // restoreState must reject this because there is no node to resume from.
     const data = {
       'version': '2', 'dagName': 'x', 'cursor': null,
-      'state': {}, 'executedNodes': [], 'skippedNodes': [], 'stores': {},
+      'state': {}, 'executedNodes': ['a', 'b'], 'skippedNodes': [], 'stores': {},
     };
     const ckpt = Checkpoint.load(data);
     assert.throws(() => ckpt.restoreState(CheckpointRestoreAdapterFn.fromFn((snap) => NodeStateBase.restore(snap))), ValidationError);

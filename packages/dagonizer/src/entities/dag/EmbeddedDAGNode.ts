@@ -28,7 +28,7 @@ export const EmbeddedDAGNodeSchema = {
     'dag':   { 'type': 'string', 'minLength': 1 },
     'outputs': {
       'type': 'object',
-      'additionalProperties': { 'type': ['string', 'null'] },
+      'additionalProperties': { 'type': 'string' },
     },
     'stateMapping': {
       'type': 'object',

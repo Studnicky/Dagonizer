@@ -183,35 +183,29 @@ The bottom two rows are imperative patterns. A node that recursively dispatches 
 
 ## Terminal placements
 
-Every DAG branch must end somewhere. Two forms exist.
-
-**Null route (implicit terminal)**. Route an output to `null`:
+Every DAG branch must end at a named `TerminalNode` placement. Declare one with `.terminal(name, options?)`:
 
 ```ts
-.node('finalize', finalizeNode, { success: null })
+.node('finalize', finalizeNode, { success: 'end' })
+.terminal('end')
 ```
 
-A null route is sugar for "this branch ends with `outcome: completed`." No explicit placement is emitted. Use this when the endpoint has no semantic meaning beyond "done."
-
-**Named terminal (`TerminalNode`)**. Declare an explicit placement:
+`.terminal(name, options?)` emits a `TerminalNode` placement. When the engine reaches it, the flow ends with the declared `outcome` (`'completed'` by default). To mark a branch as `failed`, pass `{ outcome: 'failed' }`:
 
 ```ts
 .node('check', checkNode, { pass: 'end-ok', fail: 'end-fail' })
 .terminal('end-ok')
-.terminal('end-fail', 'failed')
+.terminal('end-fail', { outcome: 'failed' })
 ```
 
-`.terminal(name, outcome?)` emits a `TerminalNode` placement. When the engine reaches it, the flow ends with the declared `outcome` (`'completed'` by default, `'failed'` when specified). Named terminals serve two purposes:
+Named terminals appear as discrete nodes in the visualisation. Use descriptive names (`end-ok`, `response-sent`, `workflow-failed`) when the endpoint name carries meaning.
 
-1. **Diagram legibility**. The placement appears as a named terminus in the visualisation, which matters when the endpoint name is semantically meaningful (`end-ok`, `response-sent`, `workflow-failed`).
-2. **Explicit failed outcome**. Null routes always mean `completed`. To mark a branch as `failed`, declare a named terminal with `outcome: 'failed'`. There is no null-route shorthand for a failed outcome.
-
-An `EmbeddedDAGNode` placement may target a named terminal directly. This is the idiomatic way to surface a child DAG's error as a `failed` lifecycle in the parent:
+An `EmbeddedDAGNode` placement targets named terminals directly. This is the idiomatic way to surface a child DAG's error as a `failed` lifecycle in the parent:
 
 ```ts
 .embeddedDAG('run-child', 'child-dag', { success: 'end-ok', error: 'end-fail' })
 .terminal('end-ok')
-.terminal('end-fail', 'failed')
+.terminal('end-fail', { outcome: 'failed' })
 ```
 
 See [DAGBuilder, `.terminal()`](./builder#terminal-name-outcome) and [Phase 09, Terminal placements](../examples/09-terminals) for runnable examples.

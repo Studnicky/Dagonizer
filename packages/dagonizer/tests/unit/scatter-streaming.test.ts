@@ -87,8 +87,9 @@ const makeScatterDag = (
       'itemKey': 'item',
       ...(options.concurrency !== undefined ? { 'concurrency': options.concurrency } : {}),
       'gather': gatherStrategy,
-      'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+      'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
     },
+    { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 });
 
@@ -434,8 +435,9 @@ void describe('Scatter: incremental gather', () => {
           'itemKey': 'item',
           'concurrency': 1,
           'gather': { 'strategy': 'map', 'mapping': { 'produced': 'mappedResults' } },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -530,8 +532,9 @@ void describe('Scatter: incremental gather', () => {
             'strategy': 'partition',
             'partitions': { 'success': 'partition_success', 'error': 'partition_error' },
           },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -595,8 +598,9 @@ void describe('Scatter: incremental gather', () => {
           'itemKey': 'item',
           'concurrency': 2,
           'gather': { 'strategy': 'custom', 'customNode': 'customGather' },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);

@@ -222,8 +222,10 @@ void describe('Dagonizer.getDAG / listDAGs / getNode / listNodes', () => {
       'nodes': [{
         '@id':   'urn:noocodex:dag:demo/node/greet',
         '@type': 'SingleNode',
-        'name':  'greet', 'node': 'greet', 'outputs': { 'done': null },
-      }],
+        'name':  'greet', 'node': 'greet', 'outputs': { 'done': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:demo/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     };
     dispatcher.registerDAG(dag);
 
@@ -257,8 +259,10 @@ const makeSingleNodeDAG = (dagName: string, nodeName: string): DAG => ({
     '@type':   'SingleNode',
     'name':    nodeName,
     'node':    nodeName,
-    'outputs': { 'done': null },
-  }],
+    'outputs': { 'done': 'end' },
+  },
+        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
 });
 
 void describe('Dagonizer.registerBundle', () => {

@@ -94,7 +94,7 @@ export class DAGValidator {
     }
 
     for (const [output, target] of Object.entries(nodeConfig.outputs)) {
-      if (target !== null && !nodeNames.has(target)) {
+      if (!nodeNames.has(target)) {
         errors.push(`Node '${nodeConfig.name}': output '${output}' routes to unknown node '${target}'`);
       }
     }
@@ -111,7 +111,7 @@ export class DAGValidator {
     }
 
     for (const [output, target] of Object.entries(placement.outputs)) {
-      if (target !== null && !nodeNames.has(target)) {
+      if (!nodeNames.has(target)) {
         errors.push(`EmbeddedDAGNode '${placement.name}': output '${output}' routes to unknown node '${target}'`);
       }
     }
@@ -164,7 +164,7 @@ export class DAGValidator {
     }
 
     for (const [output, target] of Object.entries(scatter.outputs)) {
-      if (target !== null && !nodeNames.has(target)) {
+      if (!nodeNames.has(target)) {
         errors.push(`ScatterNode '${scatter.name}': output '${output}' routes to unknown node '${target}'`);
       }
     }

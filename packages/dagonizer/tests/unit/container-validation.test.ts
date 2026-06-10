@@ -39,12 +39,13 @@ const invalidDAG: DAG = {
       'gather':    { 'strategy': 'discard' },
       'container': 'cpu',
       'outputs':   {
-        'all-success': null,
-        'partial':     null,
-        'all-error':   null,
-        'empty':       null,
+        'all-success': 'end',
+        'partial': 'end',
+        'all-error': 'end',
+        'empty': 'end',
       },
-    } as DAG['nodes'][number],
+    },
+    { '@id': 'urn:noocodex:dag:invalid/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
@@ -66,12 +67,13 @@ const validDagBodyDAG: DAG = {
       'gather':    { 'strategy': 'discard' },
       'container': 'cpu',
       'outputs':   {
-        'all-success': null,
-        'partial':     null,
-        'all-error':   null,
-        'empty':       null,
+        'all-success': 'end',
+        'partial': 'end',
+        'all-error': 'end',
+        'empty': 'end',
       },
-    } as DAG['nodes'][number],
+    },
+    { '@id': 'urn:noocodex:dag:valid-dag-body/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
@@ -88,8 +90,9 @@ const childDAG: DAG = {
       '@type':   'SingleNode',
       'name':    'body-node',
       'node':    'body-node',
-      'outputs': { 'success': null },
+      'outputs': { 'success': 'end' },
     },
+    { '@id': 'urn:noocodex:dag:child/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 

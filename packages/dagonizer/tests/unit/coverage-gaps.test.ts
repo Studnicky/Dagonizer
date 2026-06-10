@@ -232,8 +232,9 @@ void describe('TST-18: registerBundle unbound-role warning idempotency', () => {
           'itemKey': 'item',
           'concurrency': 1,
           'gather': { 'strategy': 'discard' },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:warn-test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     });
 
@@ -283,8 +284,9 @@ void describe('TST-18: registerBundle unbound-role warning idempotency', () => {
           '@type': 'SingleNode',
           'name': 'noop-unbound',
           'node': 'noop-unbound',
-          'outputs': { 'done': null },
+          'outputs': { 'done': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:inner-worker/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(innerDag);
@@ -308,8 +310,9 @@ void describe('TST-18: registerBundle unbound-role warning idempotency', () => {
           'concurrency': 1,
           'gather': { 'strategy': 'discard' },
           'container': 'unbound-worker-role',
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:unbound-role-test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     });
 
@@ -511,8 +514,9 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
           '@type': 'SingleNode',
           'name': 'counter',
           'node': 'counter',
-          'outputs': { 'done': null },
+          'outputs': { 'done': 'end' },
         },
+        { '@id': 'urn:test:abort-body-dag/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     });
 
@@ -535,12 +539,13 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
           'concurrency': 1,
           'gather': { 'strategy': 'discard' },
           'outputs': {
-            'all-success': null,
-            'partial': null,
-            'all-error': null,
-            'empty': null,
+            'all-success': 'end',
+            'partial': 'end',
+            'all-error': 'end',
+            'empty': 'end',
           },
         },
+        { '@id': 'urn:test:abort-parent-dag/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     });
 
