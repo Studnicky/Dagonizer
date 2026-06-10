@@ -56,7 +56,7 @@ export class MistralEmbedder extends BaseEmbedder {
     this.#model = model;
   }
 
-  protected async performEmbed(text: string): Promise<readonly number[]> {
+  protected async performEmbed(text: string, signal: AbortSignal): Promise<readonly number[]> {
     let res: Response;
     try {
       res = await fetch(ENDPOINT, {
@@ -66,12 +66,13 @@ export class MistralEmbedder extends BaseEmbedder {
           'Authorization': `Bearer ${this.#apiKey}`,
         },
         'body': JSON.stringify({ 'model': this.#model, 'input': [text] }),
+        signal,
       });
     } catch (err) {
       throw new LlmError(
         `Mistral embed network error: ${err instanceof Error ? err.message : String(err)}`,
         Classifications['NETWORK'],
-        err,
+        { 'cause': err },
       );
     }
 
@@ -79,7 +80,7 @@ export class MistralEmbedder extends BaseEmbedder {
       const body = await res.text();
       throw new LlmError(
         `Mistral embed failed: ${String(res.status)} ${body}`,
-        LlmError.classifyHttp(res.status, body),
+        LlmError.classifyHttp(res.status, { 'body': body }),
       );
     }
 

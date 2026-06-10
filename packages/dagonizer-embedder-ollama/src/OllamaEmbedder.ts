@@ -77,19 +77,20 @@ export class OllamaEmbedder extends BaseEmbedder {
     this.#model = model;
   }
 
-  protected async performEmbed(text: string): Promise<readonly number[]> {
+  protected async performEmbed(text: string, signal: AbortSignal): Promise<readonly number[]> {
     let res: Response;
     try {
       res = await fetch(`${this.#baseUrl}/api/embeddings`, {
         'method': 'POST',
         'headers': { 'Content-Type': 'application/json' },
         'body': JSON.stringify({ 'model': this.#model, 'prompt': text }),
+        signal,
       });
     } catch (err) {
       throw new LlmError(
         `Ollama embed network error: ${err instanceof Error ? err.message : String(err)}`,
         Classifications['NETWORK'],
-        err,
+        { 'cause': err },
       );
     }
 
@@ -97,7 +98,7 @@ export class OllamaEmbedder extends BaseEmbedder {
       const body = await res.text();
       throw new LlmError(
         `Ollama embed failed: ${String(res.status)} ${body}`,
-        LlmError.classifyHttp(res.status, body),
+        LlmError.classifyHttp(res.status, { 'body': body }),
       );
     }
 

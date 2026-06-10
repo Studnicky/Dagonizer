@@ -36,7 +36,6 @@ import {
   CerebrasApiAdapter,
   GeminiApiAdapter,
   GeminiNanoAdapter,
-  detectGeminiNano,
   GroqApiAdapter,
   MistralApiAdapter,
   OllamaApiAdapter,
@@ -45,7 +44,6 @@ import {
   WebLlmAdapter,
   detectOllama,
   listOllamaModels,
-  detectWebGpu,
   type GeminiNanoAvailability,
   type WebLlmInitReport,
 } from './adapters/index.ts';
@@ -202,7 +200,7 @@ export async function detectBackends(inputs: DetectionInputs = {}): Promise<read
   const keys = inputs.apiKeys ?? {};
   const out: BackendAvailability[] = [];
 
-  const nanoStatus: GeminiNanoAvailability = await detectGeminiNano();
+  const nanoStatus: GeminiNanoAvailability = await GeminiNanoAdapter.detect();
   out.push({
     'id': 'gemini-nano',
     'displayName': 'Browser built-in LanguageModel (on-device)',
@@ -226,7 +224,7 @@ export async function detectBackends(inputs: DetectionInputs = {}): Promise<read
     'hint': 'Paste a free Google AI Studio key. Nothing leaves your browser except the request itself.',
   });
 
-  const webGpu = detectWebGpu();
+  const webGpu = WebLlmAdapter.detectWebGpu();
   out.push({
     'id': 'web-llm',
     'displayName': 'WebLLM (Phi-3.5 in-browser)',
@@ -456,7 +454,6 @@ export {
   CerebrasApiAdapter,
   GeminiApiAdapter,
   GeminiNanoAdapter,
-  detectGeminiNano,
   GroqApiAdapter,
   MistralApiAdapter,
   OllamaApiAdapter,
@@ -465,7 +462,6 @@ export {
   WebLlmAdapter,
   detectOllama,
   listOllamaModels,
-  detectWebGpu,
 } from './adapters/index.ts';
 export { MobileDetection } from './MobileDetection.ts';
 export type { GeminiNanoAvailability, WebLlmInitReport };

@@ -30,7 +30,7 @@ export { CerebrasApiAdapter }       from '@noocodex/dagonizer-adapter-cerebras';
 export type { CerebrasApiAdapterOptions } from '@noocodex/dagonizer-adapter-cerebras';
 export { GeminiApiAdapter }         from '@noocodex/dagonizer-adapter-gemini-api';
 export type { GeminiApiAdapterOptions } from '@noocodex/dagonizer-adapter-gemini-api';
-export { GeminiNanoAdapter, detectGeminiNano } from '@noocodex/dagonizer-adapter-gemini-nano';
+export { GeminiNanoAdapter } from '@noocodex/dagonizer-adapter-gemini-nano';
 export type { GeminiNanoAvailability } from '@noocodex/dagonizer-adapter-gemini-nano';
 export { GroqApiAdapter }           from '@noocodex/dagonizer-adapter-groq';
 export type { GroqApiAdapterOptions } from '@noocodex/dagonizer-adapter-groq';
@@ -43,7 +43,7 @@ export { OpenRouterApiAdapter }     from '@noocodex/dagonizer-adapter-openrouter
 export type { OpenRouterApiAdapterOptions } from '@noocodex/dagonizer-adapter-openrouter';
 export { StubAdapter }              from '@noocodex/dagonizer-adapter-stub';
 export type { StubAdapterOptions }  from '@noocodex/dagonizer-adapter-stub';
-export { WebLlmAdapter, detectWebGpu } from '@noocodex/dagonizer-adapter-web-llm';
+export { WebLlmAdapter } from '@noocodex/dagonizer-adapter-web-llm';
 export type { WebLlmAdapterOptions, WebLlmInitReport } from '@noocodex/dagonizer-adapter-web-llm';
 
 // Archivist-grounded stub subclass. Stays in the example since it depends

@@ -34,7 +34,6 @@ import {
   DAG_CONTAINER_WORKER_DIED,
 } from '@noocodex/dagonizer/container';
 import type {
-  DagContainerOptions,
   PoolEntry,
 } from '@noocodex/dagonizer/container';
 import type { Instrumentation } from '@noocodex/dagonizer/contracts';
@@ -87,17 +86,16 @@ export class WebWorkerContainer extends DagContainerBase<NodeStateInterface, Web
     const poolSize = options.poolSize ?? WebWorkerContainer.#resolvePoolSize();
     const servicesConfig: JsonObject = options.servicesConfig ?? {};
 
-    const baseOptions: DagContainerOptions = {
-      'instrumentation': options.instrumentation,
+    super({
+      ...DagContainerBase.defaultOptions,
+      'instrumentation': options.instrumentation ?? DagContainerBase.defaultOptions.instrumentation,
       'poolSize': poolSize,
       'init': {
         'registryModule': options.registryModule,
         'registryVersion': options.registryVersion,
         'servicesConfig': servicesConfig,
       },
-    };
-
-    super(baseOptions);
+    });
   }
 
   // ---------------------------------------------------------------------------

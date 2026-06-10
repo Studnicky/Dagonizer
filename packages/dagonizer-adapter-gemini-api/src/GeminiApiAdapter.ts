@@ -100,7 +100,7 @@ export class GeminiApiAdapter extends BaseAdapter {
 
     if (!res.ok) {
       const text = await res.text();
-      throw new LlmError(`Gemini REST ${String(res.status)}: ${text}`, LlmError.classifyHttp(res.status, text));
+      throw new LlmError(`Gemini REST ${String(res.status)}: ${text}`, LlmError.classifyHttp(res.status, { 'body': text }));
     }
 
     const payload = (await res.json()) as GeminiResponseBody;
