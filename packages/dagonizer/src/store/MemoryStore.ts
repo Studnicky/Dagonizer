@@ -29,14 +29,19 @@ export class MemoryStore extends BaseStore {
    */
   override async update<T extends JsonValue>(key: string, fn: (current: T | undefined) => T): Promise<T> {
     const qualified = this.qualifyKey(key);
-    const current   = this.#data.get(qualified) as T | undefined;
-    const next      = fn(current);
+    // Map<string, JsonValue>.get() returns JsonValue | undefined; the caller's
+    // generic T extends JsonValue so the narrowing cast is safe by contract.
+    const raw       = this.#data.get(qualified) as T | undefined;
+    const next      = fn(raw);
     this.#data.set(qualified, next);
     return next;
   }
 
-  protected async performGet<T extends JsonValue>(key: string): Promise<T | undefined> {
-    return this.#data.get(key) as T | undefined;
+  protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {
+    const value = this.#data.get(key);
+    // Map<string, JsonValue>.get() returns JsonValue | undefined; the undefined
+    // case is handled by the ternary above; T extends JsonValue so the cast is safe.
+    return value === undefined ? null : (value as T);
   }
 
   protected async performSet<T extends JsonValue>(key: string, value: T): Promise<void> {

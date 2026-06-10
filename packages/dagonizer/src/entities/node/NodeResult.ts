@@ -43,5 +43,5 @@ export type NodeResult = FromSchema<typeof NodeResultSchema>;
 export interface NodeResultInterface<TState extends NodeStateInterface>
   extends Omit<NodeResult, 'state'> {
   'state': TState;
-  'intermediateResults': readonly NodeResultInterface<TState>[];
+  'intermediateResults': NodeResultInterface<TState>[];
 }

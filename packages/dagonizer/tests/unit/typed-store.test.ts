@@ -28,7 +28,7 @@ void describe('TypedStore', () => {
 
     await typed.set('count', 42);
     const n = await typed.get('count');
-    // n is inferred as number | undefined; no explicit <T> at the call site.
+    // n is inferred as number | null; no explicit <T> at the call site.
     assert.equal(n, 42);
 
     await typed.set('label', 'hello');

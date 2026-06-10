@@ -14,6 +14,7 @@
  * Modeled directly on `BaseAdapter` in `src/adapter/BaseAdapter.ts`.
  */
 
+import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
 import type { StoreSnapshot, StoreSnapshotEntry } from '../contracts/Snapshottable.js';
 import type { Store } from '../contracts/Store.js';
 import type { JsonValue } from '../entities/json.js';
@@ -22,20 +23,25 @@ import { StoreError } from './StoreError.js';
 
 export interface BaseStoreOptions {
   /**
-   * Optional key prefix. When set, every key passed to public methods
-   * is prefixed with `${namespace}:${key}` before reaching the
-   * `perform*` hooks. The snapshot captures keys in their qualified form,
-   * so two stores with different namespaces but the same backing can
-   * coexist without collisions.
+   * Key prefix applied to every public-API key before it reaches the
+   * `perform*` hooks. Use `''` (the default) for no prefix. Two stores
+   * with different namespaces but the same backing coexist without key
+   * collisions because the snapshot captures keys in their qualified form.
    */
-  readonly namespace?: string;
+  namespace?: string;
 }
+
+/** Default options. Spread into custom options to fill unset fields. */
+export const BASE_STORE_DEFAULTS: Required<BaseStoreOptions> = {
+  'namespace': '',
+};
 
 export abstract class BaseStore implements Store {
   readonly #namespace: string;
 
   protected constructor(options: BaseStoreOptions = {}) {
-    this.#namespace = options.namespace ?? '';
+    const resolved = { ...BASE_STORE_DEFAULTS, ...options };
+    this.#namespace = resolved.namespace;
   }
 
   /** Subclass identifier; recorded in snapshot envelopes. */
@@ -46,7 +52,7 @@ export abstract class BaseStore implements Store {
 
   // ── Public Store contract (delegates to protected hooks) ─────────────
 
-  async get<T extends JsonValue>(key: string): Promise<T | undefined> {
+  async get<T extends JsonValue>(key: string): Promise<T | null> {
     return this.performGet<T>(this.qualifyKey(key));
   }
 
@@ -74,14 +80,15 @@ export abstract class BaseStore implements Store {
    */
   async update<T extends JsonValue>(key: string, fn: (current: T | undefined) => T): Promise<T> {
     const qualified = this.qualifyKey(key);
-    const current   = await this.performGet<T>(qualified);
+    const raw       = await this.performGet<T>(qualified);
+    const current   = raw === null ? undefined : raw;
     const next      = fn(current);
     await this.performSet<T>(qualified, next);
     return next;
   }
 
-  async snapshot(): Promise<StoreSnapshot> {
-    const entries = await this.performSnapshotEntries();
+  async snapshot(_options?: AbortableOptionsInterface): Promise<StoreSnapshot> {
+    const entries = [...await this.performSnapshotEntries()];
     return {
       'version': this.snapshotVersion,
       'type':    this.snapshotType,
@@ -89,7 +96,7 @@ export abstract class BaseStore implements Store {
     };
   }
 
-  async restore(incoming: StoreSnapshot): Promise<void> {
+  async restore(incoming: StoreSnapshot, _options?: AbortableOptionsInterface): Promise<void> {
     if (incoming.type !== this.snapshotType || incoming.version !== this.snapshotVersion) {
       throw new StoreError(
         `incompatible snapshot: expected ${this.snapshotType} v${String(this.snapshotVersion)}, ` +
@@ -118,7 +125,7 @@ export abstract class BaseStore implements Store {
 
   // ── Plugin author hooks ─────────────────────────────────────────────
 
-  protected abstract performGet<T extends JsonValue>(qualifiedKey: string): Promise<T | undefined>;
+  protected abstract performGet<T extends JsonValue>(qualifiedKey: string): Promise<T | null>;
   protected abstract performSet<T extends JsonValue>(qualifiedKey: string, value: T): Promise<void>;
   protected abstract performHas(qualifiedKey: string): Promise<boolean>;
   protected abstract performDelete(qualifiedKey: string): Promise<boolean>;

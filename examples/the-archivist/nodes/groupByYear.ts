@@ -12,6 +12,8 @@
  * promise true at the data level.
  */
 
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
+
 import type { Candidate } from '../entities/Book.ts';
 
 import type { ArchivistNode } from './ArchivistNode.ts';
@@ -23,7 +25,7 @@ export const groupByYear: ArchivistNode<'ordered'> = {
   async execute(state, context) {
     if (state.candidates.length === 0) {
       context.services.logger.info('group-by-year: nothing to reorder');
-      return { 'output': 'ordered' };
+      return NodeOutputBuilder.of('ordered');
     }
     const indexed = state.candidates.map((candidate, position) => ({ candidate, position }));
     indexed.sort((a, b) => {
@@ -45,6 +47,6 @@ export const groupByYear: ArchivistNode<'ordered'> = {
       const lastYear  = last.book.firstPublishYear  !== undefined ? String(last.book.firstPublishYear)  : '?';
       context.services.logger.info(`group-by-year: ${String(ordered.length)} works (${firstYear} → ${lastYear})`);
     }
-    return { 'output': 'ordered' };
+    return NodeOutputBuilder.of('ordered');
   },
 };

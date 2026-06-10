@@ -20,6 +20,8 @@
  */
 
 // #region pre-phase-setup
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
+
 import type { ArchivistNode } from './ArchivistNode.ts';
 
 export const preRunSetup: ArchivistNode<'ready'> = {
@@ -38,13 +40,13 @@ export const preRunSetup: ArchivistNode<'ready'> = {
     // Clear any draft from a prior interrupted execution so a resumed run
     // does not accidentally serve stale content.
     state.draft = '';
-    state.approved = null;
+    state.approvalState = 'pending';
 
     context.services.logger.info(
       `pre-run-setup: runId=${runId} query="${state.query.slice(0, 60)}"`,
     );
 
-    return Promise.resolve({ 'output': 'ready' });
+    return Promise.resolve(NodeOutputBuilder.of('ready'));
   },
 };
 // #endregion pre-phase-setup

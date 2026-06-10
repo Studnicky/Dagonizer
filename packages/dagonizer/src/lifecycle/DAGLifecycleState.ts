@@ -35,5 +35,5 @@ export type DAGLifecycleEvent =
   | { type: 'start'; at?: number }
   | { type: 'succeed'; at?: number }
   | { type: 'fail'; error: Error; at?: number }
-  | { type: 'cancel'; reason?: string; at?: number }
+  | { type: 'cancel'; reason: string; at?: number }
   | { type: 'timeout'; at?: number };

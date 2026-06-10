@@ -3,6 +3,13 @@
  *
  * Errors accumulate in state; they do not stop the flow.
  * At flow completion the caller decides what to do with them.
+ *
+ * Every `NodeError` carries `context` (required, defaults to `{}` when no
+ * additional diagnostic data is available). One hidden class — V8 monomorphic.
+ *
+ * Construction routes through `NodeErrorBuilder.from(code, message, operation,
+ * recoverable, timestamp, options?)` which fills `context: {}` when the caller
+ * omits it, so authors never write boilerplate.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
@@ -11,7 +18,7 @@ export const NodeErrorSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/NodeError',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['code', 'message', 'operation', 'recoverable', 'timestamp'],
+  'required': ['code', 'context', 'message', 'operation', 'recoverable', 'timestamp'],
   'properties': {
     'code': { 'type': 'string' },
     'context': { 'type': 'object' },
@@ -32,7 +39,79 @@ export type NodeError = FromSchema<typeof NodeErrorSchema>;
  * Extends the `NodeError` entity with a narrowed `context` type. The entity
  * uses `{ type: 'object' }` (opaque JSON object); the interface narrows it to
  * `Record<string, unknown>` for ergonomic access in TypeScript consumers.
+ *
+ * `context` is required — always present, defaults to `{}` when no additional
+ * diagnostic data is available. One hidden class across all instances.
  */
 export interface NodeErrorInterface extends Omit<NodeError, 'context'> {
-  'context'?: Record<string, unknown>;
+  /**
+   * Diagnostic context bag for this error.
+   *
+   * Always present. Callers with no additional data omit the options bag;
+   * `NodeErrorBuilder.from` fills `context: {}` automatically.
+   */
+  'context': Record<string, unknown>;
+}
+
+/**
+ * Static factory for `NodeErrorInterface`.
+ *
+ * Named `NodeErrorBuilder` to avoid the identifier collision with the
+ * schema-derived `NodeError` type (per the canonical-names rule: when a type
+ * and a value would share a name, rename the value to its real role).
+ *
+ * Required fields are positional in their natural order. The optional
+ * `context` lives in the trailing options bag. `context` defaults to `{}`
+ * when the bag is omitted, so authors never write boilerplate.
+ *
+ * @example
+ * ```ts
+ * return NodeErrorBuilder.from(
+ *   'FETCH_FAILED',
+ *   'HTTP 503',
+ *   'fetchUser',
+ *   true,
+ *   new Date().toISOString(),
+ * );
+ *
+ * return NodeErrorBuilder.from(
+ *   'VALIDATION_ERROR',
+ *   'missing required field',
+ *   'validate',
+ *   false,
+ *   new Date().toISOString(),
+ *   { context: { field: 'email', value: null } },
+ * );
+ * ```
+ */
+export class NodeErrorBuilder {
+  private constructor() { /* static class */ }
+
+  /**
+   * Construct a complete `NodeErrorInterface`, defaulting `context` to `{}`.
+   *
+   * @param code - Error code (e.g. `'FETCH_FAILED'`).
+   * @param message - Human-readable error description.
+   * @param operation - Name of the operation that failed.
+   * @param recoverable - Whether the error allows the flow to continue.
+   * @param timestamp - ISO 8601 timestamp of the error.
+   * @param options - Optional bag; `context` defaults to `{}`.
+   */
+  static from(
+    code: string,
+    message: string,
+    operation: string,
+    recoverable: boolean,
+    timestamp: string,
+    options: { context?: Record<string, unknown> } = {},
+  ): NodeErrorInterface {
+    return {
+      'code': code,
+      'context': options.context ?? {},
+      'message': message,
+      'operation': operation,
+      'recoverable': recoverable,
+      'timestamp': timestamp,
+    };
+  }
 }

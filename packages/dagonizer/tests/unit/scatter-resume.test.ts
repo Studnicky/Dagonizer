@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Checkpoint } from '../../src/checkpoint/Checkpoint.js';
+import { Checkpoint, CheckpointRestoreAdapterFn } from '../../src/checkpoint/Checkpoint.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
 import type { ScatterProgress } from '../../src/Dagonizer.js';
@@ -59,7 +59,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
         calls++;
         const item = state.getMetadata<number>('item') ?? 0;
         state.setMetadata('processedItem', item);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -73,7 +73,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           'name': 'fan', 'body': { 'node': 'worker' },
           'source': 'items', 'itemKey': 'item',
           'gather': { 'strategy': 'append', 'target': 'processed' },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
+        { '@id': 'urn:noocodex:dag:scatter-clean/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -105,7 +106,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
         if (idx === 3) {
           throw new Error('simulated mid-flight failure');
         }
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -119,7 +120,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           'name': 'fan', 'body': { 'node': 'worker' },
           'source': 'items', 'itemKey': 'item', 'concurrency': 1,
           'gather': { 'strategy': 'append', 'target': 'processed' },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
+        { '@id': 'urn:noocodex:dag:scatter-interrupt/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -156,7 +158,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'outputs': ['success'],
       async execute() {
         calls++;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -170,7 +172,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           'name': 'fan', 'body': { 'node': 'worker' },
           'source': 'items', 'itemKey': 'item', 'concurrency': 1,
           'gather': { 'strategy': 'append', 'target': 'processed' },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
+        { '@id': 'urn:noocodex:dag:scatter-resume/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -183,8 +186,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
         'placementName': 'fan',
         'inbox': [],
         'ackedResults': [
-          { 'index': 0, 'item': 10, 'output': 'success' },
-          { 'index': 1, 'item': 20, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 0, 'item': 10, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 1, 'item': 20, 'output': 'success' },
         ],
       },
     });
@@ -205,7 +208,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'name': 'worker',
       'outputs': ['success'],
       async execute() {
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -219,7 +222,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           'name': 'fan', 'body': { 'node': 'worker' },
           'source': 'items', 'itemKey': 'item', 'concurrency': 1,
           'gather': { 'strategy': 'append', 'target': 'processed' },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
+        { '@id': 'urn:noocodex:dag:scatter-aggregate/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -235,8 +239,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
         'placementName': 'fan',
         'inbox': [],
         'ackedResults': [
-          { 'index': 0, 'item': 11, 'output': 'success' },
-          { 'index': 1, 'item': 22, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 0, 'item': 11, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 1, 'item': 22, 'output': 'success' },
         ],
       },
     });
@@ -273,7 +277,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           throw new Error('simulated mid-flight failure');
         }
         state.produced = f(item);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     interruptDispatcher.registerNode(interruptingWorker);
@@ -287,7 +291,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           'name': 'fan', 'body': { 'node': 'producer' },
           'source': 'items', 'itemKey': 'item', 'concurrency': 1,
           'gather': { 'strategy': 'map', 'mapping': { 'produced': 'results' } },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
+        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     });
     interruptDispatcher.registerDAG(mapDag('scatter-map-interrupt'));
@@ -307,7 +312,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     // The persisted ackedResults carry the per-clone mapping values so the
     // resume can reconstruct the gather contribution.
     for (const r of persistedEntry.ackedResults) {
-      assert.ok(r.mappingValues !== undefined, 'expected mappingValues persisted for map gather');
+      assert.ok(r.kind === 'map', 'expected mappingValues persisted for map gather');
       assert.equal(r.mappingValues['produced'], f(interruptState.items[r.index] as number));
     }
     // The parent results array must NOT carry the prior-run produced values
@@ -332,7 +337,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
         resumeRunCount++;
         const item = state.getMetadata<number>('item') ?? 0;
         state.produced = f(item);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     resumeDispatcher.registerNode(resumeWorker);
@@ -368,7 +373,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'outputs': ['success'],
       async execute() {
         aCalls++;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     const workerB: NodeInterface<ScatterState, 'success'> = {
@@ -376,7 +381,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'outputs': ['success'],
       async execute() {
         bCalls++;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(workerA);
@@ -396,7 +401,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           'name': 'fanB', 'body': { 'node': 'workerB' },
           'source': 'items2', 'itemKey': 'item', 'concurrency': 1,
           'gather': { 'strategy': 'append', 'target': 'processed2' },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
+        { '@id': 'urn:noocodex:dag:scatter-twin/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -413,14 +419,14 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'fanA': {
         'placementName': 'fanA',
         'inbox': [],
-        'ackedResults': [{ 'index': 0, 'item': 100, 'output': 'success' }],
+        'ackedResults': [{ 'kind': 'plain' as const, 'index': 0, 'item': 100, 'output': 'success' }],
       },
       'fanB': {
         'placementName': 'fanB',
         'inbox': [],
         'ackedResults': [
-          { 'index': 0, 'item': 1, 'output': 'success' },
-          { 'index': 2, 'item': 3, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 0, 'item': 1, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 2, 'item': 3, 'output': 'success' },
         ],
       },
     });
@@ -459,7 +465,7 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       'name': 'worker',
       'outputs': ['success'],
       async execute() {
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -473,7 +479,8 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           'name': 'fan', 'body': { 'node': 'worker' },
           'source': 'items', 'itemKey': 'item', 'concurrency': 3,
           'gather': { 'strategy': 'append', 'target': 'processed' },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
+        { '@id': 'urn:noocodex:dag:scatter-batched/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -494,7 +501,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
       'outputs': ['success'],
       async execute() {
         calls++;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -510,7 +517,8 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
           'gather': { 'strategy': 'append', 'target': 'processed' },
           'outputs': { 'all-success': 'tail', 'partial': 'tail', 'all-error': 'tail', 'empty': 'tail' } },
         { '@id': 'urn:noocodex:dag:scatter-ckpt/node/tail', '@type': 'SingleNode',
-          'name': 'tail', 'node': 'worker', 'outputs': { 'success': null } },
+          'name': 'tail', 'node': 'worker', 'outputs': { 'success': 'end' } },
+        { '@id': 'urn:noocodex:dag:scatter-ckpt/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -527,8 +535,8 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
         'placementName': 'fan',
         'inbox': [],
         'ackedResults': [
-          { 'index': 0, 'item': 7, 'output': 'success' },
-          { 'index': 1, 'item': 14, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 0, 'item': 7, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 1, 'item': 14, 'output': 'success' },
         ],
       },
     });
@@ -559,7 +567,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
             reject(context.signal.reason);
           }, { 'once': true });
         });
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -573,7 +581,8 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
           'name': 'fan', 'body': { 'node': 'worker' },
           'source': 'items', 'itemKey': 'item', 'concurrency': 1,
           'gather': { 'strategy': 'append', 'target': 'processed' },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null } },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' } },
+        { '@id': 'urn:noocodex:dag:scatter-e2e/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -585,7 +594,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
       'fan': {
         'placementName': 'fan',
         'inbox': [],
-        'ackedResults': [{ 'index': 0, 'item': 1, 'output': 'success' }],
+        'ackedResults': [{ 'kind': 'plain' as const, 'index': 0, 'item': 1, 'output': 'success' }],
       },
     });
 
@@ -600,7 +609,7 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
     const round = ckpt.toJson();
     const parsed = JSON.parse(round) as unknown;
     const ckpt2 = Checkpoint.load(parsed);
-    const { 'state': rehydrated, cursor, dagName } = ckpt2.restoreState((snap) => ScatterState.restore(snap));
+    const { 'state': rehydrated, cursor, dagName } = ckpt2.restoreState(CheckpointRestoreAdapterFn.fromFn((snap) => ScatterState.restore(snap)));
     assert.equal(cursor, 'fan');
 
     const stored = rehydrated.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);

@@ -32,6 +32,8 @@
 import type { Candidate } from '../entities/Book.ts';
 import { BOOK_NS, GRAPH_MEMORY, MemoryStore, RUN_NS, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';
 
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
+
 import type { ArchivistNode } from './ArchivistNode.ts';
 import { cosineSimilarity, jaccard, tokenise } from './textUtils.ts';
 
@@ -152,7 +154,7 @@ export const recallCandidates: ArchivistNode<'recalled'> = {
         ? 'no similar prior runs (cosine >= 0.70)'
         : 'no similar prior runs (Jaccard >= 0.35, embedder unreachable)';
       context.services.logger.info(`recall-candidates: ${reason}`);
-      return { 'output': 'recalled' };
+      return NodeOutputBuilder.of('recalled');
     }
 
     // ── Collect shortlisted book IRIs from matching runs ──────────────
@@ -213,6 +215,6 @@ export const recallCandidates: ArchivistNode<'recalled'> = {
       `recall-candidates: ${String(priorCandidates.length)} prior shortlisted books from ${String(matchingRunIris.length)} similar prior runs (${detail})`,
     );
 
-    return { 'output': 'recalled' };
+    return NodeOutputBuilder.of('recalled');
   },
 };

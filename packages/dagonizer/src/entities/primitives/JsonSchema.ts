@@ -29,87 +29,87 @@ export type JsonSchemaTypeName =
 
 export interface JsonSchemaObject {
   // ── Core: identifiers and references ────────────────────────────
-  readonly $schema?: string;
-  readonly $id?: string;
-  readonly $ref?: string;
-  readonly $defs?: { readonly [name: string]: JsonSchema };
-  readonly $anchor?: string;
-  readonly $dynamicAnchor?: string;
-  readonly $dynamicRef?: string;
-  readonly $vocabulary?: { readonly [uri: string]: boolean };
-  readonly $comment?: string;
+  $schema?: string;
+  $id?: string;
+  $ref?: string;
+  $defs?: { [name: string]: JsonSchema };
+  $anchor?: string;
+  $dynamicAnchor?: string;
+  $dynamicRef?: string;
+  $vocabulary?: { [uri: string]: boolean };
+  $comment?: string;
 
   // ── Applicators: composition ────────────────────────────────────
-  readonly allOf?: readonly JsonSchema[];
-  readonly anyOf?: readonly JsonSchema[];
-  readonly oneOf?: readonly JsonSchema[];
-  readonly not?: JsonSchema;
+  allOf?: JsonSchema[];
+  anyOf?: JsonSchema[];
+  oneOf?: JsonSchema[];
+  not?: JsonSchema;
 
   // ── Applicators: conditional ────────────────────────────────────
-  readonly if?: JsonSchema;
-  readonly then?: JsonSchema;
-  readonly else?: JsonSchema;
+  if?: JsonSchema;
+  then?: JsonSchema;
+  else?: JsonSchema;
 
   // ── Applicators: objects ────────────────────────────────────────
-  readonly properties?: { readonly [name: string]: JsonSchema };
-  readonly patternProperties?: { readonly [regex: string]: JsonSchema };
-  readonly additionalProperties?: JsonSchema;
-  readonly propertyNames?: JsonSchema;
-  readonly unevaluatedProperties?: JsonSchema;
-  readonly dependentSchemas?: { readonly [name: string]: JsonSchema };
+  properties?: { [name: string]: JsonSchema };
+  patternProperties?: { [regex: string]: JsonSchema };
+  additionalProperties?: JsonSchema;
+  propertyNames?: JsonSchema;
+  unevaluatedProperties?: JsonSchema;
+  dependentSchemas?: { [name: string]: JsonSchema };
 
   // ── Applicators: arrays ─────────────────────────────────────────
-  readonly prefixItems?: readonly JsonSchema[];
-  readonly items?: JsonSchema;
-  readonly contains?: JsonSchema;
-  readonly unevaluatedItems?: JsonSchema;
+  prefixItems?: JsonSchema[];
+  items?: JsonSchema;
+  contains?: JsonSchema;
+  unevaluatedItems?: JsonSchema;
 
   // ── Validation: any instance ────────────────────────────────────
-  readonly type?: JsonSchemaTypeName | readonly JsonSchemaTypeName[];
-  readonly enum?: readonly unknown[];
-  readonly const?: unknown;
+  type?: JsonSchemaTypeName | JsonSchemaTypeName[];
+  enum?: unknown[];
+  const?: unknown;
 
   // ── Validation: numbers ─────────────────────────────────────────
-  readonly multipleOf?: number;
-  readonly maximum?: number;
-  readonly exclusiveMaximum?: number;
-  readonly minimum?: number;
-  readonly exclusiveMinimum?: number;
+  multipleOf?: number;
+  maximum?: number;
+  exclusiveMaximum?: number;
+  minimum?: number;
+  exclusiveMinimum?: number;
 
   // ── Validation: strings ─────────────────────────────────────────
-  readonly maxLength?: number;
-  readonly minLength?: number;
-  readonly pattern?: string;
+  maxLength?: number;
+  minLength?: number;
+  pattern?: string;
 
   // ── Validation: arrays ──────────────────────────────────────────
-  readonly maxItems?: number;
-  readonly minItems?: number;
-  readonly uniqueItems?: boolean;
-  readonly maxContains?: number;
-  readonly minContains?: number;
+  maxItems?: number;
+  minItems?: number;
+  uniqueItems?: boolean;
+  maxContains?: number;
+  minContains?: number;
 
   // ── Validation: objects ─────────────────────────────────────────
-  readonly maxProperties?: number;
-  readonly minProperties?: number;
-  readonly required?: readonly string[];
-  readonly dependentRequired?: { readonly [name: string]: readonly string[] };
+  maxProperties?: number;
+  minProperties?: number;
+  required?: string[];
+  dependentRequired?: { [name: string]: string[] };
 
   // ── Format (annotation by default in 2020-12) ───────────────────
-  readonly format?: string;
+  format?: string;
 
   // ── Content ─────────────────────────────────────────────────────
-  readonly contentEncoding?: string;
-  readonly contentMediaType?: string;
-  readonly contentSchema?: JsonSchema;
+  contentEncoding?: string;
+  contentMediaType?: string;
+  contentSchema?: JsonSchema;
 
   // ── Meta-data ───────────────────────────────────────────────────
-  readonly title?: string;
-  readonly description?: string;
-  readonly default?: unknown;
-  readonly deprecated?: boolean;
-  readonly readOnly?: boolean;
-  readonly writeOnly?: boolean;
-  readonly examples?: readonly unknown[];
+  title?: string;
+  description?: string;
+  default?: unknown;
+  deprecated?: boolean;
+  readOnly?: boolean;
+  writeOnly?: boolean;
+  examples?: unknown[];
 }
 
 export type JsonSchema = JsonSchemaObject | boolean;

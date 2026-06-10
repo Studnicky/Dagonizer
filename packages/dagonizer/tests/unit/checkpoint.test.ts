@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
-import { Checkpoint } from '../../src/checkpoint/Checkpoint.js';
+import { Checkpoint, CheckpointRestoreAdapterFn } from '../../src/checkpoint/Checkpoint.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -31,16 +31,21 @@ class CountingState extends NodeStateBase {
 }
 
 void describe('NodeStateBase snapshot/restore', () => {
-  void it('preserves metadata, errors, warnings; resets lifecycle to pending', () => {
+  void it('preserves metadata and warnings; errors are excluded; resets lifecycle to pending', () => {
     const s = new NodeStateBase();
     s.setMetadata('k', { 'nested': [1, 2] });
-    s.collectError({ 'code': 'E', 'message': 'm', 'operation': 'op',
+    s.collectError({ 'code': 'E', 'context': {}, 'message': 'm', 'operation': 'op',
       'recoverable': false, 'timestamp': '2026-05-13T00:00:00Z' });
     s.markRunning();
 
     const restored = NodeStateBase.restore(s.snapshot());
     assert.deepEqual(restored.getMetadata('k'), { 'nested': [1, 2] });
-    assert.equal(restored.errors.length, 1);
+    // Errors are intentionally NOT captured in the snapshot — they flow via
+    // outcome.errors as the single authoritative channel (matching lifecycle
+    // which is also excluded). Checkpointed errors are diagnostic; domain
+    // state (metadata, retries, warnings, subclass fields) is what matters for
+    // deterministic resume.
+    assert.equal(restored.errors.length, 0);
     assert.equal(restored.lifecycle.kind, 'pending');
   });
 
@@ -63,7 +68,7 @@ void describe('cursor on ExecutionResultInterface', () => {
     const op: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'op',
       'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     dispatcher.registerNode(op);
     dispatcher.registerDAG({
@@ -73,8 +78,10 @@ void describe('cursor on ExecutionResultInterface', () => {
       'name': 'clean', 'version': '1', 'entrypoint': 's',
       'nodes': [{
         '@id': 'urn:noocodex:dag:clean/node/s', '@type': 'SingleNode',
-        'name': 's', 'node': 'op', 'outputs': { 'success': null },
-      }],
+        'name': 's', 'node': 'op', 'outputs': { 'success': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:clean/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     });
     const result = await dispatcher.execute('clean', new NodeStateBase());
     assert.equal(result.cursor, null);
@@ -82,15 +89,19 @@ void describe('cursor on ExecutionResultInterface', () => {
 
   void it('is the next node on abort', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
+    // nodeReady resolves once the node body starts executing (signal received).
+    let resolveNodeReady!: () => void;
+    const nodeReady = new Promise<void>((r) => { resolveNodeReady = r; });
+
     const op: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'op',
       'outputs': ['success'],
       async execute(_state, context) {
-        await new Promise<void>((resolve, reject) => {
-          const t = setTimeout(resolve, 1000);
-          context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { 'once': true });
+        resolveNodeReady();
+        await new Promise<void>((_resolve, reject) => {
+          context.signal.addEventListener('abort', () => { reject(context.signal.reason); }, { 'once': true });
         });
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(op);
@@ -103,12 +114,16 @@ void describe('cursor on ExecutionResultInterface', () => {
         { '@id': 'urn:noocodex:dag:two/node/a', '@type': 'SingleNode',
           'name': 'a', 'node': 'op', 'outputs': { 'success': 'b' } },
         { '@id': 'urn:noocodex:dag:two/node/b', '@type': 'SingleNode',
-          'name': 'b', 'node': 'op', 'outputs': { 'success': null } },
+          'name': 'b', 'node': 'op', 'outputs': { 'success': 'end' } },
+        { '@id': 'urn:noocodex:dag:two/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     });
     const ctl = new AbortController();
-    setTimeout(() => ctl.abort(new Error('stop')), 25);
-    const result = await dispatcher.execute('two', new NodeStateBase(), { 'signal': ctl.signal });
+    // Start execution, then abort immediately once the node body is suspended.
+    const execution = dispatcher.execute('two', new NodeStateBase(), { 'signal': ctl.signal });
+    // Wait for node to signal it is running, then abort deterministically.
+    nodeReady.then(() => { ctl.abort(new Error('stop')); });
+    const result = await execution;
     assert.equal(result.cursor, 'a');
     assert.equal(result.executedNodes.length, 0);
   });
@@ -128,7 +143,7 @@ void describe('Checkpoint round-trip', () => {
       async execute(state) {
         state.count++;
         state.log.push(`tick:${state.count}`);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(inc);
@@ -143,7 +158,8 @@ void describe('Checkpoint round-trip', () => {
         { '@id': 'urn:noocodex:dag:count/node/b', '@type': 'SingleNode',
           'name': 'b', 'node': 'inc', 'outputs': { 'success': 'c' } },
         { '@id': 'urn:noocodex:dag:count/node/c', '@type': 'SingleNode',
-          'name': 'c', 'node': 'inc', 'outputs': { 'success': null } },
+          'name': 'c', 'node': 'inc', 'outputs': { 'success': 'end' } },
+        { '@id': 'urn:noocodex:dag:count/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -171,7 +187,7 @@ void describe('Checkpoint round-trip', () => {
     const round = ckpt.toJson();
     const parsed = JSON.parse(round) as unknown;
     const ckpt2 = Checkpoint.load(parsed);
-    const { state, dagName, cursor } = ckpt2.restoreState((snap) => CountingState.restore(snap));
+    const { state, dagName, cursor } = ckpt2.restoreState(CheckpointRestoreAdapterFn.fromFn((snap) => CountingState.restore(snap)));
     assert.equal(state.count, 1);
     assert.equal(cursor, 'b');
     const resumed = await dispatcher.resume(dagName, state, cursor);
@@ -185,7 +201,7 @@ void describe('Checkpoint round-trip', () => {
     const op: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'op',
       'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     dispatcher.registerNode(op);
     dispatcher.registerDAG({
@@ -195,8 +211,10 @@ void describe('Checkpoint round-trip', () => {
       'name': 'done', 'version': '1', 'entrypoint': 's',
       'nodes': [{
         '@id': 'urn:noocodex:dag:done/node/s', '@type': 'SingleNode',
-        'name': 's', 'node': 'op', 'outputs': { 'success': null },
-      }],
+        'name': 's', 'node': 'op', 'outputs': { 'success': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:done/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     });
     const result = await dispatcher.execute('done', new NodeStateBase());
     await assert.rejects(() => Checkpoint.capture('done', result), DAGError);
@@ -206,12 +224,27 @@ void describe('Checkpoint round-trip', () => {
     assert.throws(() => Checkpoint.load({ 'version': '1' }), ValidationError);
   });
 
-  void it('restoreState throws ValidationError on null cursor', async () => {
+  void it('restoreState throws ValidationError when checkpoint cursor is null (completed run)', async () => {
+    // A completed run stores cursor=null in CheckpointData (no resumable position).
+    // restoreState must reject this because there is no node to resume from.
     const data = {
       'version': '2', 'dagName': 'x', 'cursor': null,
-      'state': {}, 'executedNodes': [], 'skippedNodes': [], 'stores': {},
+      'state': {}, 'executedNodes': ['a', 'b'], 'skippedNodes': [], 'stores': {},
     };
     const ckpt = Checkpoint.load(data);
-    assert.throws(() => ckpt.restoreState((snap) => NodeStateBase.restore(snap)), ValidationError);
+    assert.throws(() => ckpt.restoreState(CheckpointRestoreAdapterFn.fromFn((snap) => NodeStateBase.restore(snap))), ValidationError);
+  });
+
+  void it('CheckpointRestoreAdapterFn.fromFn wraps a restore function in the adapter contract', () => {
+    const data = {
+      'version': '2', 'dagName': 'wrap-test', 'cursor': 'node-b',
+      'state': { 'count': 5 }, 'executedNodes': ['node-a'], 'skippedNodes': [], 'stores': {},
+    };
+    const ckpt = Checkpoint.load(data);
+    const adapter = CheckpointRestoreAdapterFn.fromFn((snap) => CountingState.restore(snap));
+    const { dagName, cursor, state } = ckpt.restoreState(adapter);
+    assert.equal(dagName, 'wrap-test');
+    assert.equal(cursor, 'node-b');
+    assert.equal(state.count, 5);
   });
 });

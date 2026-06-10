@@ -179,6 +179,6 @@ export class WebLlmAdapter extends BaseAdapter {
 
   #classifyWebLlmError(err: unknown): LlmError {
     const message = err instanceof Error ? err.message : String(err);
-    return new LlmError(message, Classifications['UNKNOWN'], err);
+    return new LlmError(message, Classifications['UNKNOWN'], { 'cause': err });
   }
 }

@@ -13,7 +13,7 @@ export type {
   ChatRequest,
   ChatResponse,
   LlmAdapter,
-  OutputSchema,
+  LlmOutputSchema,
   ToolCall,
   ToolChoice,
   ToolDefinition,
@@ -43,7 +43,7 @@ export { OpenRouterApiAdapter }     from '@noocodex/dagonizer-adapter-openrouter
 export type { OpenRouterApiAdapterOptions } from '@noocodex/dagonizer-adapter-openrouter';
 export { StubAdapter }              from '@noocodex/dagonizer-adapter-stub';
 export type { StubAdapterOptions }  from '@noocodex/dagonizer-adapter-stub';
-export { WebLlmAdapter, detectWebGpu } from '@noocodex/dagonizer-adapter-web-llm';
+export { WebLlmAdapter } from '@noocodex/dagonizer-adapter-web-llm';
 export type { WebLlmAdapterOptions, WebLlmInitReport } from '@noocodex/dagonizer-adapter-web-llm';
 
 // Archivist-grounded stub subclass. Stays in the example since it depends

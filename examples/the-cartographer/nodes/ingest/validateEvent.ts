@@ -23,7 +23,7 @@ import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 import type { CanonicalEvent } from '../../entities/CanonicalEvent.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region validate-event-node
 function lawfulBasis(value: unknown): CanonicalEvent['body']['lawfulBasis'] {
@@ -149,7 +149,7 @@ export const validateEvent: NodeInterface<CartographerState, 'validated', Cartog
     }
 
     state.ingestedEvents = events;
-    return { 'output': 'validated' };
+    return NodeOutputBuilder.of('validated');
   },
 };
 // #endregion validate-event-node

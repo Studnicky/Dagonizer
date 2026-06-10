@@ -19,7 +19,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import type { CanonicalEvent } from '../entities/CanonicalEvent.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region parse-event-node
 /** A non-empty status for kinds whose source status string may be sparse. */
@@ -41,7 +41,7 @@ export const parseEvent: NodeInterface<CartographerState, 'parsed' | 'invalid', 
     }
     const event = state.getMetadata<CanonicalEvent>('canonical-event');
     if (event === null || event === undefined || !event.shipmentId) {
-      return { 'output': 'invalid' };
+      return NodeOutputBuilder.of('invalid');
     }
     state.canonical = event;
     const b = event.body;
@@ -78,7 +78,7 @@ export const parseEvent: NodeInterface<CartographerState, 'parsed' | 'invalid', 
       'disruptionReason':    b.disruptionReason,
     };
 
-    return { 'output': 'parsed' };
+    return NodeOutputBuilder.of('parsed');
   },
 };
 // #endregion parse-event-node

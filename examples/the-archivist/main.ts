@@ -24,7 +24,6 @@ import { archivistBundle } from './dag.ts';
 import { UserLanguage } from './language/UserLanguage.ts';
 import { bookSearchScatterBundle } from './embedded-dags/BookSearchScatterDAG.ts';
 import { composeRetryLoopBundle } from './embedded-dags/ComposeRetryLoopDAG.ts';
-import { ArchivistInstrumentation } from './instrumentation/ArchivistInstrumentation.ts';
 import { ConsoleLogger, type LogEvent } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { ObservedArchivist } from './ObservedArchivist.ts';
@@ -37,7 +36,7 @@ import { GeminiNanoAdapter }  from '@noocodex/dagonizer-adapter-gemini-nano';
 import { OllamaApiAdapter }   from '@noocodex/dagonizer-adapter-ollama';
 import { WebLlmAdapter }      from '@noocodex/dagonizer-adapter-web-llm';
 
-import { LlmAdapterCascade, LlmAdapterRegistry } from '@noocodex/dagonizer';
+import { LlmAdapterCascade, LlmAdapterRegistry } from '@noocodex/dagonizer/adapter';
 import type { AdapterCapabilities } from '@noocodex/dagonizer/adapter';
 
 import { GoogleBooksTool }       from '@noocodex/dagonizer-tool-googlebooks';
@@ -163,9 +162,9 @@ const services: ArchivistServices = {
 };
 
 // ObservedArchivist: a Dagonizer subclass that wires every lifecycle hook to
-// the logger. ArchivistInstrumentation adds the composable telemetry surface.
+// the logger via protected hook overrides (the sole observability surface).
 const dispatcher = new ObservedArchivist(
-  { services, 'instrumentation': new ArchivistInstrumentation(logger) },
+  { services },
   logger,
 );
 // #endregion wire-services

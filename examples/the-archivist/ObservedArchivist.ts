@@ -3,11 +3,13 @@
  * Archivist's logger (and, optionally, to RdfProvObserver / StateProjection).
  *
  * Demonstrates the subclass observability surface of the dispatcher:
- *   onFlowStart   – logs DAG entry; where RdfProvObserver.recordFlowStart would be called
- *   onFlowEnd     – logs outcome + executed-node count; where StateProjection.capture would flush
- *   onNodeStart   – logs node name + placement path
- *   onNodeEnd     – logs node name + output routing decision
- *   onError       – logs error message and class
+ *   onFlowStart       – logs DAG entry; where RdfProvObserver.recordFlowStart would be called
+ *   onFlowEnd         – logs outcome + executed-node count; where StateProjection.capture would flush
+ *   onNodeStart       – logs node name + placement path
+ *   onNodeEnd         – logs node name + output routing decision
+ *   onError           – logs error message and class
+ *   onPhaseEnter      – logs phase entry (pre/post)
+ *   onPhaseExit       – logs phase exit (pre/post)
  *   onContractWarning – surfaces dead-write warnings from DAG derivation
  *
  * Constructor accepts the same `DagonizerOptionsInterface` as the base, plus
@@ -32,7 +34,7 @@ export class ObservedArchivist extends Dagonizer<ArchivistState, ArchivistServic
   readonly #logger: ObservabilityLogger;
 
   constructor(
-    options: DagonizerOptionsInterface<ArchivistServices>,
+    options: DagonizerOptionsInterface<ArchivistState, ArchivistServices>,
     logger: ObservabilityLogger,
   ) {
     super(options);
@@ -52,7 +54,7 @@ export class ObservedArchivist extends Dagonizer<ArchivistState, ArchivistServic
   }
 
   /**
-   * Fires after the execution loop drains (terminal node, null route, error, or abort).
+   * Fires after the execution loop drains (terminal node, error, or abort).
    *
    * Extension point: call `StateProjection.capture(state)` here to flush the
    * per-run state graph into the memory store before `recordFindings` runs.
@@ -64,7 +66,7 @@ export class ObservedArchivist extends Dagonizer<ArchivistState, ArchivistServic
     result: ExecutionResultInterface<ArchivistState>,
   ): void {
     const executed = result.executedNodes.length;
-    const outcome  = result.terminalOutcome ?? result.interruptedAt?.reason ?? 'null-route';
+    const outcome  = result.terminalOutcome ?? result.interruptedAt?.reason ?? 'none';
     this.#logger.info(
       `[archivist:flow] end dag=${dagName} outcome=${outcome} executed=${String(executed)} lifecycle=${state.lifecycle.kind}`,
     );
@@ -133,6 +135,35 @@ export class ObservedArchivist extends Dagonizer<ArchivistState, ArchivistServic
       `[archivist:error] ${path}${nodeName} threw ${error.constructor.name}: ${error.message}`,
     );
     // RdfProvObserver.recordError(nodeName, error) — surface in prov graph here
+  }
+
+  /**
+   * Fires before a `pre` or `post` phase placement runs.
+   *
+   * `phase` is the literal string `'pre'` or `'post'`; `placementName` is
+   * the placement's `name` field in the DAG definition.
+   */
+  protected override onPhaseEnter(
+    dagName: string,
+    phase: 'pre' | 'post',
+    placementName: string,
+    _state: ArchivistState,
+    _placementPath: readonly string[],
+  ): void {
+    this.#logger.info(`[archivist:phase] enter dag=${dagName} phase=${phase} placement=${placementName}`);
+  }
+
+  /**
+   * Fires after a `pre` or `post` phase placement completes.
+   */
+  protected override onPhaseExit(
+    dagName: string,
+    phase: 'pre' | 'post',
+    placementName: string,
+    _state: ArchivistState,
+    _placementPath: readonly string[],
+  ): void {
+    this.#logger.info(`[archivist:phase] exit dag=${dagName} phase=${phase} placement=${placementName}`);
   }
 
   /**

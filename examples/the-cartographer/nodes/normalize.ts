@@ -27,7 +27,7 @@ import {
   Units,
 } from '../services.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region normalize-node
 export const normalize: NodeInterface<CartographerState, 'normalized' | 'rejected', CartographerServices> = {
@@ -41,7 +41,7 @@ export const normalize: NodeInterface<CartographerState, 'normalized' | 'rejecte
 
     const epochMs = TimeNormalizer.toEpochMs(raw.rawTimestamp);
     if (!isFinite(epochMs) || epochMs <= 0) {
-      return { 'output': 'rejected' };
+      return NodeOutputBuilder.of('rejected');
     }
 
     const dispatchEpochMs = TimeNormalizer.toEpochMs(raw.rawDispatchAt);
@@ -95,7 +95,7 @@ export const normalize: NodeInterface<CartographerState, 'normalized' | 'rejecte
       'disruptionReason': raw.disruptionReason,
     };
 
-    return { 'output': 'normalized' };
+    return NodeOutputBuilder.of('normalized');
   },
 };
 // #endregion normalize-node

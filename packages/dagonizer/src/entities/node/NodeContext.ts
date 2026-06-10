@@ -41,14 +41,14 @@ export type NodeContext = FromSchema<typeof NodeContextSchema>;
  */
 export interface NodeContextInterface<TServices = undefined> extends NodeContext {
   /** AbortSignal: fires when the caller aborts or the deadline expires. */
-  readonly 'signal': AbortSignal;
+  'signal': AbortSignal;
   /** Name of the DAG being executed. */
-  readonly 'dagName': string;
+  'dagName': string;
   /** Name of the current node. */
-  readonly 'nodeName': string;
+  'nodeName': string;
   /**
    * Services bag handed to the dispatcher at construction. `undefined`
    * when the dispatcher was constructed without a services option.
    */
-  readonly 'services': TServices;
+  'services': TServices;
 }

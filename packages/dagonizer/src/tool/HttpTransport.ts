@@ -15,34 +15,60 @@
 
 import { ToolError, type ToolErrorReason } from './ToolError.js';
 
-export interface HttpRequestOptions {
-  readonly signal?: AbortSignal;
-  readonly headers?: Readonly<Record<string, string>>;
-  /** Per-request deadline. Defaults to 30 seconds. */
-  readonly timeoutMs?: number;
-  /** Maximum retry attempts on transient errors. Defaults to 2 (3 total tries). */
-  readonly maxRetries?: number;
+/** Named return type for HTTP status classification. */
+export interface HttpStatusClassification {
+  reason: ToolErrorReason;
+  retryable: boolean;
+}
+
+export interface HttpRequestOptions<TResponse = unknown> {
+  signal?: AbortSignal;
+  headers?: Record<string, string>;
+  /** Per-request deadline in ms. */
+  timeoutMs: number;
+  /** Maximum retry attempts on transient errors (3 total tries at default 2). */
+  maxRetries: number;
+  /**
+   * Optional shape validator applied to the parsed JSON body before it is
+   * returned to the caller. When supplied, the validator is called with the
+   * raw parsed value; if it throws or returns `false`, `parseJson` rethrows
+   * as `ToolError(PARSE_ERROR)`. When absent, shape-validation is the
+   * caller's responsibility.
+   *
+   * Accepts any callable that either (a) narrows the value to `TResponse`
+   * and returns it, or (b) throws on invalid input. Compatible with
+   * `EntityValidator<T>.validate` from `@noocodex/dagonizer/validation`.
+   */
+  validate?: (value: unknown) => TResponse;
 }
 
 const DEFAULT_TIMEOUT_MS  = 30_000;
 const DEFAULT_MAX_RETRIES = 2;
 const BASE_BACKOFF_MS     = 400;
 
+/** Canonical defaults for the two defaultable fields of `HttpRequestOptions`. */
+const HTTP_REQUEST_DEFAULTS = {
+  'timeoutMs':  DEFAULT_TIMEOUT_MS,
+  'maxRetries': DEFAULT_MAX_RETRIES,
+} as const;
+
 export class HttpTransport {
   private constructor() { /* static class */ }
 
   /** GET → parsed JSON. Throws `ToolError` on failure. */
-  static async getJson<TResponse>(url: string, options: HttpRequestOptions = {}): Promise<TResponse> {
-    const response = await HttpTransport.request(url, { 'method': 'GET' }, options);
-    return HttpTransport.parseJson<TResponse>(response);
+  static async getJson<TResponse>(url: string, options: Partial<HttpRequestOptions<TResponse>> = {}): Promise<TResponse> {
+    const resolved = HttpTransport.resolveOptions(options);
+    const response = await HttpTransport.request(url, { 'method': 'GET' }, resolved);
+    return HttpTransport.parseJson<TResponse>(response, resolved);
   }
 
   /** POST a JSON body → parsed JSON. Throws `ToolError` on failure. */
   static async postJson<TResponse>(
     url: string,
     body: unknown,
-    options: HttpRequestOptions = {},
+    options: Partial<HttpRequestOptions<TResponse>> = {},
   ): Promise<TResponse> {
+    const resolved = HttpTransport.resolveOptions(options);
     const response = await HttpTransport.request(
       url,
       {
@@ -50,9 +76,21 @@ export class HttpTransport {
         'body':    JSON.stringify(body),
         'headers': { 'content-type': 'application/json' },
       },
-      options,
+      resolved,
     );
-    return HttpTransport.parseJson<TResponse>(response);
+    return HttpTransport.parseJson<TResponse>(response, resolved);
+  }
+
+  /** Merge caller-supplied partial options with the module defaults. */
+  private static resolveOptions<TResponse>(options: Partial<HttpRequestOptions<TResponse>>): HttpRequestOptions<TResponse> {
+    const resolved = { ...HTTP_REQUEST_DEFAULTS, ...options };
+    return {
+      'timeoutMs':  resolved.timeoutMs,
+      'maxRetries': resolved.maxRetries,
+      ...(options.signal   !== undefined ? { 'signal':   options.signal }   : {}),
+      ...(options.headers  !== undefined ? { 'headers':  options.headers }  : {}),
+      ...(options.validate !== undefined ? { 'validate': options.validate } : {}),
+    };
   }
 
   /**
@@ -60,24 +98,25 @@ export class HttpTransport {
    * transient failures with exponential backoff. Returns the raw
    * `Response` for callers that need the body unparsed.
    */
-  static async request(url: string, init: RequestInit, options: HttpRequestOptions = {}): Promise<Response> {
-    const timeoutMs  = options.timeoutMs  ?? DEFAULT_TIMEOUT_MS;
-    const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
+  static async request(url: string, init: RequestInit, options: Partial<HttpRequestOptions> = {}): Promise<Response> {
+    const resolved = HttpTransport.resolveOptions(options);
+    const timeoutMs  = resolved.timeoutMs;
+    const maxRetries = resolved.maxRetries;
 
     let attempt = 0;
     let lastError: ToolError | null = null;
 
     while (attempt <= maxRetries) {
       const controller = new AbortController();
-      const timeoutId  = setTimeout(() => controller.abort(new ToolError('timeout', { 'reason': 'TIMEOUT', 'retryable': true })), timeoutMs);
-      const signal = AbortSignal.any([controller.signal, ...(options.signal !== undefined ? [options.signal] : [])]);
+      const timeoutId  = setTimeout(() => controller.abort(new ToolError('timeout', { 'reason': 'TIMEOUT', 'retryable': true, 'status': null })), timeoutMs);
+      const signal = AbortSignal.any([controller.signal, ...(resolved.signal !== undefined ? [resolved.signal] : [])]);
 
       const headers: Record<string, string> = {};
       if (init.headers !== undefined) {
         for (const [k, v] of Object.entries(init.headers)) headers[k] = String(v);
       }
-      if (options.headers !== undefined) {
-        for (const [k, v] of Object.entries(options.headers)) headers[k] = v;
+      if (resolved.headers !== undefined) {
+        for (const [k, v] of Object.entries(resolved.headers)) headers[k] = v;
       }
 
       try {
@@ -100,36 +139,70 @@ export class HttpTransport {
         } else {
           const isAbort  = (err instanceof DOMException && err.name === 'AbortError')
             || (err instanceof Error && err.name === 'AbortError');
-          const callerAbort = options.signal?.aborted === true;
+          const callerAbort = resolved.signal?.aborted === true;
           const reason: ToolErrorReason = callerAbort ? 'UNKNOWN' : isAbort ? 'TIMEOUT' : 'NETWORK';
           const retryable = !callerAbort && reason !== 'UNKNOWN';
-          lastError = new ToolError(`${reason.toLowerCase()} fetching ${url}`, { reason, retryable, 'cause': err });
+          lastError = new ToolError(`${reason.toLowerCase()} fetching ${url}`, { reason, retryable, 'status': null, 'cause': err });
           if (!retryable || attempt === maxRetries) throw lastError;
         }
       }
 
-      // Exponential backoff before next attempt.
+      // Exponential backoff before next attempt. Abort-aware: if the caller
+      // cancels during the sleep, reject immediately rather than hanging.
       const delay = BASE_BACKOFF_MS * 2 ** attempt;
-      await new Promise<void>((resolve) => setTimeout(resolve, delay));
+      await HttpTransport.#abortAwareSleep(delay, resolved.signal);
       attempt++;
     }
 
     // Loop exits via throw; this is unreachable but TypeScript needs it.
-    throw lastError ?? new ToolError(`request failed after ${String(maxRetries)} retries: ${url}`, { 'reason': 'UNKNOWN', 'retryable': false });
+    throw lastError ?? new ToolError(`request failed after ${String(maxRetries)} retries: ${url}`, { 'reason': 'UNKNOWN', 'retryable': false, 'status': null });
   }
 
-  private static async parseJson<TResponse>(response: Response): Promise<TResponse> {
+  private static async parseJson<TResponse>(response: Response, options: HttpRequestOptions<TResponse>): Promise<TResponse> {
+    let parsed: unknown;
     try {
-      return await response.json() as TResponse;
+      parsed = await response.json();
     } catch (err) {
-      throw new ToolError('failed to parse JSON response', { 'reason': 'PARSE_ERROR', 'retryable': false, 'cause': err });
+      throw new ToolError('failed to parse JSON response', { 'reason': 'PARSE_ERROR', 'retryable': false, 'status': null, 'cause': err });
     }
+    if (options.validate !== undefined) {
+      try {
+        return options.validate(parsed);
+      } catch (err) {
+        throw new ToolError(
+          `response body failed shape validation: ${err instanceof Error ? err.message : String(err)}`,
+          { 'reason': 'PARSE_ERROR', 'retryable': false, 'status': null, 'cause': err },
+        );
+      }
+    }
+    return parsed as TResponse;
   }
 
-  private static classifyStatus(status: number): { reason: ToolErrorReason; retryable: boolean } {
+  private static classifyStatus(status: number): HttpStatusClassification {
     if (status === 429) return { 'reason': 'RATE_LIMIT', 'retryable': true };
     if (status >= 500)  return { 'reason': 'HTTP_5XX',   'retryable': true };
     if (status >= 400)  return { 'reason': 'HTTP_4XX',   'retryable': false };
     return { 'reason': 'UNKNOWN', 'retryable': false };
+  }
+
+  /**
+   * Sleep for `ms` milliseconds, but abort immediately if `signal` fires.
+   * On abort, rejects with a non-retryable `ToolError` so the retry loop
+   * does not hang until the timeout expires.
+   */
+  static async #abortAwareSleep(ms: number, signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted === true) {
+      throw new ToolError('request aborted during backoff', { 'reason': 'UNKNOWN', 'retryable': false, 'status': null });
+    }
+    return new Promise<void>((resolve, reject) => {
+      const timerId = setTimeout(resolve, ms);
+      if (signal === undefined) return;
+      const onAbort = (): void => {
+        clearTimeout(timerId);
+        signal.removeEventListener('abort', onAbort);
+        reject(new ToolError('request aborted during backoff', { 'reason': 'UNKNOWN', 'retryable': false, 'status': null }));
+      };
+      signal.addEventListener('abort', onAbort, { 'once': true });
+    });
   }
 }

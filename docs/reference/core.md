@@ -9,12 +9,12 @@ seeAlso:
   - text: 'Reference: Dagonizer'
 
     link: './dagonizer'
-    description: 'wires `ParallelCombiners.resolve`, `GatherStrategies.resolve`, and `OutcomeReducers.resolve`'
+    description: 'wires `GatherStrategies.resolve` and `OutcomeReducers.resolve`'
 
   - text: 'Reference: Entities'
 
     link: './entities'
-    description: '`GatherConfig`, `ParallelCombine`'
+    description: '`GatherConfig`, `GatherStrategyName`'
 ---
 
 # Core
@@ -23,57 +23,13 @@ Pluggable execution primitives. Ship through `@noocodex/dagonizer/core`.
 
 ```ts
 import {
-  ParallelCombiner,
-  ParallelCombiners,
   GatherStrategy,
   GatherStrategies,
   OutcomeReducer,
   OutcomeReducers,
 } from '@noocodex/dagonizer/core';
-import type { ParallelResult, GatherExecution, GatherRecord, OutcomeRecord } from '@noocodex/dagonizer/core';
+import type { GatherExecution, GatherRecord, OutcomeRecord } from '@noocodex/dagonizer/core';
 ```
-
-## ParallelCombiner
-
-Abstract class. Subclass and override `combine`; register the instance with `ParallelCombiners.register`.
-
-```ts
-abstract class ParallelCombiner {
-  abstract readonly name: string;
-  abstract combine(
-    outputs: readonly string[],
-    results: readonly ParallelResult[],
-    state: NodeStateInterface,
-  ): string;
-}
-
-interface ParallelResult {
-  readonly opResult: { readonly output: string };
-  readonly node: { readonly name: string };
-}
-```
-
-The dispatcher resolves a combiner by `name` (the placement's `combine` field) and calls `.combine(...)` once every concurrent node has reported. Combiners may mutate `state` (e.g. via `state.setMetadata(...)`) to expose per-node data to downstream nodes.
-
-### Defaults
-
-- `all-success`. Returns `'success'` iff every node reported `'success'`, else `'error'`.
-- `any-success`. Returns `'success'` iff any node reported `'success'`, else `'error'`.
-- `collect`. Writes `Record<nodeName, output>` to `state.metadata.parallelOutputs` and returns `'success'`.
-
-## ParallelCombiners
-
-Static registry.
-
-```ts
-class ParallelCombiners {
-  static register(combiner: ParallelCombiner): void;
-  static resolve(name: string): ParallelCombiner;          // throws DAGError on unknown name
-  static list(): readonly string[];
-}
-```
-
-`register` is last-write-wins on `name`. `resolve` throws `DAGError` when the combiner is not registered.
 
 ## GatherStrategy
 
@@ -89,7 +45,7 @@ abstract class GatherStrategy {
 }
 ```
 
-The dispatcher resolves a strategy by `name` (the `GatherConfig.strategy` field) and calls `.apply(...)` once every scatter clone has reported. Strategies mutate `execution.state` in place; the `custom` strategy uses `execution.invokeNode(name)` to dispatch a registered node back through the engine.
+The dispatcher resolves a strategy by `name` (the `GatherConfig.strategy` field) and calls `.apply(...)` once every scatter clone has reported. Strategies mutate `execution.state` in place; the `custom` strategy uses `execution.invoker.invokeNode(name)` to dispatch a registered node back through the engine.
 
 ### GatherRecord
 
@@ -114,18 +70,20 @@ interface GatherExecution<TState extends NodeStateInterface> {
   readonly dagName: string;
   readonly signal: AbortSignal | null;
   readonly accessor: StateAccessor;
-  invokeNode(nodeName: string): Promise<void>;
+  readonly invoker: NodeInvoker;
 }
 ```
 
-Per-invocation context handed to the strategy. `state` is the live parent state; `records` carries per-clone results in source-index order; `accessor` is the dispatcher's configured `StateAccessor`.
+Per-invocation context handed to the strategy. `state` is the live parent state; `records` carries per-clone results in source-index order; `accessor` is the dispatcher's configured `StateAccessor`; `invoker` carries `invokeNode(nodeName)` for the `custom` strategy.
 
 ### Defaults
 
 - `map`. For each `cloneFieldPath → parentPath` in `config.mapping`: one clone writes a scalar; N clones append in source-index order.
 - `append`. Flatten the clone's `field` (or the source item when `field` is absent) across all records into `config.target`. Throws `DAGError` when `target` is missing.
 - `partition`. For each `[outputToken, path]` in `config.partitions`, append the matching records to that path.
-- `custom`. Sets `state.metadata.gatherResults` to the per-clone records (without `cloneState`) and invokes the registered node at `config.customNode` via `execution.invokeNode`.
+- `collect`. Collect each clone's output token (or `field` value when `field` is set) into `config.target` in source-index order. Throws `DAGError` when `target` is missing.
+- `discard`. No-op. Nothing is written to parent state. Use for side-effect-only fan-outs where no clone state flows back.
+- `custom`. Sets `state.metadata.gatherResults` to the per-clone records (without `cloneState`) and invokes the registered node at `config.customNode` via `execution.invoker.invokeNode`.
 
 ## GatherStrategies
 
@@ -139,7 +97,7 @@ class GatherStrategies {
 }
 ```
 
-Same semantics as `ParallelCombiners`. Register replaces last-write-wins on `name`.
+Last-write-wins on `name`. `resolve` throws `DAGError` when the strategy is not registered.
 
 ## OutcomeReducer
 
@@ -168,6 +126,8 @@ interface OutcomeRecord {
 
 - `aggregate`. Counts records where `output === 'success'`. Returns `'empty'` (no records), `'all-success'` (all succeed), `'all-error'` (none succeed), or `'partial'` (mixed).
 - `terminal`. Singleton semantics (no `source`). Routes `'error'` when the single clone's `terminalOutcome === 'failed'` or `output === 'error'`; otherwise routes `'success'`.
+- `all-success`. Routes `'success'` when every clone output equals `'success'`; otherwise routes `'error'`. Returns `'error'` for empty record sets.
+- `any-success`. Routes `'success'` when at least one clone output equals `'success'`; otherwise routes `'error'`. Returns `'error'` for empty record sets.
 
 ## OutcomeReducers
 
@@ -181,10 +141,10 @@ class OutcomeReducers {
 }
 ```
 
-Same semantics as `ParallelCombiners`.
+Last-write-wins on `name`. `resolve` throws `DAGError` when the reducer is not registered.
 
 ## Related guides
 
-- [DAGBuilder](../guide/builder): placements that use `combine` and `gather.strategy`
+- [DAGBuilder](../guide/builder): placements that use `gather.strategy` and `reducer`
 - [State accessors](../guide/state-accessor): strategies receive the dispatcher's `accessor`
-- [Reference: Entities](./entities#constant-valuetype-pairs): `GatherStrategyName`, `ParallelCombine`, `ScatterOutput`, and `MetadataKey` are exported from `@noocodex/dagonizer/constants`
+- [Reference: Entities](./entities#constant-valuetype-pairs): `GatherStrategyName`, `ScatterOutput`, and `MetadataKey` are exported from `@noocodex/dagonizer/constants`

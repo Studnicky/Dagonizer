@@ -11,9 +11,10 @@
 // #region imports
 import {
   DAGBuilder,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 // #endregion imports
 
 // ---------------------------------------------------------------------------
@@ -36,7 +37,7 @@ export const classify: NodeInterface<ChatState, 'on_topic' | 'off_topic'> = {
   "outputs": ['on_topic', 'off_topic'],
   async execute(state) {
     state.topic = state.input.toLowerCase().includes('weather') ? 'off_topic' : 'on_topic';
-    return { "output": state.topic };
+    return NodeOutputBuilder.of(state.topic);
   },
 };
 
@@ -47,7 +48,7 @@ export const respond: NodeInterface<ChatState, 'success'> = {
     state.reply = state.topic === 'on_topic'
       ? `Echo: ${state.input}`
       : `I only talk about coding, not the weather.`;
-    return { "output": 'success' };
+    return NodeOutputBuilder.of('success');
   },
 };
 // #endregion nodes

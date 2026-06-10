@@ -11,6 +11,7 @@
  */
 
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
 
 import { LlmDispatchNode, type RagServices } from './LlmDispatchNode.js';
 
@@ -38,6 +39,6 @@ export abstract class DecisionNode<
     const content = response.message.kind === 'tools' ? '' : response.message.content;
     const choice = this.parseChoice(content);
     this.applyChoice(state, choice);
-    return { 'output': this.routeFor(choice) };
+    return NodeOutputBuilder.of(this.routeFor(choice));
   }
 }

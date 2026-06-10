@@ -2,18 +2,17 @@
  * 09-terminals/dags: pure module — state, nodes, and DAG consts.
  * No side effects, no dispatcher, no execute.
  * Imported by examples/09-terminals.ts (the executable entry point).
- *
- * NOTE: dag1 deliberately retains a bare null route to demonstrate the
- * implicit-terminal pattern. It is excluded from the lint-example-dags
- * registry so the linter can flag null routes everywhere else.
  */
 
 import {
   DAG_CONTEXT,
   DAGBuilder,
+  NodeErrorBuilder,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface } from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 
 // ---------------------------------------------------------------------------
 // State
@@ -31,7 +30,7 @@ export const stepA: NodeInterface<GateState, 'ok'> = {
   "name":    'step-a',
   "outputs": ['ok'],
   async execute(_state) {
-    return { "output": 'ok' };
+    return NodeOutputBuilder.of('ok');
   },
 };
 
@@ -39,11 +38,11 @@ export const checkNode: NodeInterface<GateState, 'pass' | 'fail'> = {
   "name":    'check',
   "outputs": ['pass', 'fail'],
   async execute(state) {
-    return { "output": state.shouldPass ? 'pass' : 'fail' };
+    return NodeOutputBuilder.of(state.shouldPass ? 'pass' : 'fail');
   },
 };
 
-// Child DAG work node: used in pattern 4. Reads `shouldPass`, which the
+// Child DAG work node: used in pattern 3. Reads `shouldPass`, which the
 // ScatterNode projection seeds onto the clone from parent state before the
 // child DAG body runs (a state clone carries metadata, not subclass fields;
 // projection is how parent data reaches the clone).
@@ -52,54 +51,55 @@ export const childWork: NodeInterface<GateState, 'done'> = {
   "outputs": ['done'],
   async execute(state) {
     if (!state.shouldPass) {
-      state.collectError({
-        "message":     'child-work failed deliberately',
-        "code":        'CHILD_ERR',
-        "operation":   'child-work',
-        "recoverable": false,
-        "timestamp":   new Date().toISOString(),
-      });
+      state.collectError(NodeErrorBuilder.from(
+        'CHILD_ERR',
+        'child-work failed deliberately',
+        'child-work',
+        false,
+        new Date().toISOString(),
+      ));
     }
-    return { "output": 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
 // ---------------------------------------------------------------------------
-// Pattern 1: Implicit terminal via null route
-//
-// NOTE: dag1 deliberately retains a bare null route to demonstrate the
-// implicit-terminal pattern. It is excluded from the lint-example-dags
-// registry so the linter can flag null routes everywhere else.
-// ---------------------------------------------------------------------------
-
-// #region null-route
-export const dag1 = new DAGBuilder('demo-null-route', '1')
-  .node('step-a', stepA, { 'ok': null })
-  .build();
-// #endregion null-route
-
-// ---------------------------------------------------------------------------
-// Pattern 2: Explicit completed terminal
+// Pattern 1: Explicit completed terminal
 // ---------------------------------------------------------------------------
 
 // #region terminal-completed
-export const dag2 = new DAGBuilder('demo-explicit-completed', '1')
+export const dag1 = new DAGBuilder('demo-explicit-completed', '1')
   .node('step-a', stepA, { 'ok': 'end' })
   .terminal('end')  // outcome defaults to 'completed'
   .build();
 // #endregion terminal-completed
 
 // ---------------------------------------------------------------------------
-// Pattern 3: Explicit failed terminal (two terminals)
+// Pattern 2: Explicit failed terminal (two terminals)
 // ---------------------------------------------------------------------------
 
 // #region terminal-failed
-export const dag3 = new DAGBuilder('demo-explicit-terminals', '1')
+export const dag2 = new DAGBuilder('demo-explicit-terminals', '1')
   .node('check', checkNode, { 'pass': 'end-ok', 'fail': 'end-fail' })
   .terminal('end-ok')
-  .terminal('end-fail', 'failed')
+  .terminal('end-fail', { outcome: 'failed' })
   .build();
 // #endregion terminal-failed
+
+// ---------------------------------------------------------------------------
+// Pattern 3: Single explicit failed terminal
+// ---------------------------------------------------------------------------
+
+// #region terminal-single-failed
+// A node that always routes 'fail' to a TerminalNode whose outcome is 'failed'.
+// Demonstrates the minimal single-terminal failed pattern (as opposed to dag2
+// which shows the dual-terminal pass/fail case).
+export const dag3 = new DAGBuilder('demo-explicit-failed', '1')
+  .node('check', checkNode, { 'pass': 'end-ok', 'fail': 'end-fail' })
+  .terminal('end-ok')
+  .terminal('end-fail', { outcome: 'failed' })
+  .build();
+// #endregion terminal-single-failed
 
 // ---------------------------------------------------------------------------
 // Pattern 4: EmbeddedDAGNode routing to explicit terminals
@@ -140,6 +140,6 @@ export const dag4 = new DAGBuilder('demo-embedded-dag-terminals', '1')
     'inputs': { 'shouldPass': 'shouldPass' },
   })
   .terminal('end-ok')
-  .terminal('end-fail', 'failed')
+  .terminal('end-fail', { outcome: 'failed' })
   .build();
 // #endregion embedded-terminals

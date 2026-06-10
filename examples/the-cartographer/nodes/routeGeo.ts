@@ -15,7 +15,7 @@
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region route-geo-node
 export const routeGeo: NodeInterface<CartographerState, 'has-geo' | 'needs-geo', CartographerServices> = {
@@ -39,10 +39,10 @@ export const routeGeo: NodeInterface<CartographerState, 'has-geo' | 'needs-geo',
 
     if (hasResolvedGeo) {
       state.routing = { ...state.routing, 'geoLookupSkipped': true, 'geoLookupRun': false };
-      return { 'output': 'has-geo' };
+      return NodeOutputBuilder.of('has-geo');
     }
     state.routing = { ...state.routing, 'geoLookupRun': true, 'geoLookupSkipped': false };
-    return { 'output': 'needs-geo' };
+    return NodeOutputBuilder.of('needs-geo');
   },
 };
 // #endregion route-geo-node

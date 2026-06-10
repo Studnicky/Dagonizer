@@ -6,9 +6,11 @@
 
 import {
   DAG_CONTEXT,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface } from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 
 // ---------------------------------------------------------------------------
 // State: fields live on the same class; inputs / outputs control which
@@ -31,7 +33,7 @@ export const increment: NodeInterface<IncrementState, 'success'> = {
   "outputs": ['success'],
   async execute(state) {
     state.payload = state.payload + 1;
-    return { "output": 'success' };
+    return NodeOutputBuilder.of('success');
   },
 };
 

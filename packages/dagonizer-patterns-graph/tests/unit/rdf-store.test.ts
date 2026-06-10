@@ -42,7 +42,7 @@ void describe('RdfStore: Store contract (reified key-value)', () => {
     await store.set<boolean>('flag', true);
     assert.equal(await store.delete('flag'), true);
     assert.equal(await store.has('flag'), false);
-    assert.equal(await store.get<boolean>('flag'), undefined);
+    assert.equal(await store.get<boolean>('flag'), null);
     assert.equal(await store.delete('flag'), false);
   });
 
@@ -262,7 +262,7 @@ void describe('RdfStore: restore()', () => {
     })();
 
     await store.restore(snap);
-    assert.equal(await store.get<number>('old'), undefined);
+    assert.equal(await store.get<number>('old'), null);
     assert.equal(await store.get<number>('new'), 2);
   });
 

@@ -16,7 +16,7 @@ import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 import type { SourcePayload } from '../../entities/SourcePayload.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region select-source-node
 const FORMAT_ROUTE: Readonly<Record<SourcePayload['format'], 'json' | 'csv' | 'gz'>> = {
@@ -34,10 +34,10 @@ export const selectSource: NodeInterface<CartographerState, 'json' | 'csv' | 'gz
     }
     const item = state.getMetadata<SourcePayload>('source');
     if (item === null || item === undefined || !item.sourceId || !item.payload) {
-      return { 'output': 'invalid' };
+      return NodeOutputBuilder.of('invalid');
     }
     state.currentSource = item;
-    return { 'output': FORMAT_ROUTE[item.format] };
+    return NodeOutputBuilder.of(FORMAT_ROUTE[item.format]);
   },
 };
 // #endregion select-source-node

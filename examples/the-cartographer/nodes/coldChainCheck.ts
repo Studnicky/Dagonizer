@@ -12,7 +12,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { ColdChain } from '../services.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region cold-chain-check-node
 export const coldChainCheck: NodeInterface<CartographerState, 'checked', CartographerServices> = {
@@ -24,7 +24,7 @@ export const coldChainCheck: NodeInterface<CartographerState, 'checked', Cartogr
     }
     const b = state.canonical.body;
     state.coldChainBreach = ColdChain.breached(b.tempC, b.shockG);
-    return { 'output': 'checked' };
+    return NodeOutputBuilder.of('checked');
   },
 };
 // #endregion cold-chain-check-node

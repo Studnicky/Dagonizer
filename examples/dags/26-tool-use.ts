@@ -1,0 +1,245 @@
+/**
+ * 26-tool-use/dags: pure module — state, tool, nodes, and DAG const.
+ * No side effects, no dispatcher, no execute.
+ * Imported by examples/26-tool-use.ts (the executable entry point).
+ *
+ * Demonstrates: Tool<TInput, TOutput> definition, ToolCallCodec.decode for
+ * text-channel tool-call extraction, and a DAG node that dispatches to the
+ * Tool and routes on the result.
+ */
+
+import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import type { LlmAdapter, ToolCall } from '@noocodex/dagonizer/adapter';
+import { ChatRequestBuilder, ToolCallCodec } from '@noocodex/dagonizer/adapter';
+import type { Tool } from '@noocodex/dagonizer/tool';
+
+// ---------------------------------------------------------------------------
+// Tool: calculator — adds two numbers
+// ---------------------------------------------------------------------------
+
+export interface CalcInput extends Record<string, unknown> {
+  readonly a: number;
+  readonly b: number;
+}
+
+export interface CalcOutput {
+  readonly result: number;
+}
+
+export const calculatorTool: Tool<CalcInput, CalcOutput> = {
+  'definition': {
+    'name':        'calculator',
+    'description': 'Add two numbers. Returns { result: number }.',
+    'inputSchema': {
+      '$schema':    'https://json-schema.org/draft/2020-12/schema',
+      'type':       'object',
+      'required':   ['a', 'b'],
+      'properties': {
+        'a': { 'type': 'number' },
+        'b': { 'type': 'number' },
+      },
+    },
+    'strict': true,
+  },
+  async execute(input, _options) {
+    return Promise.resolve({ 'result': input.a + input.b });
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Tool registry (simple map; no framework needed for the dispatch pattern)
+// ---------------------------------------------------------------------------
+
+type AnyTool = Tool<Record<string, unknown>, unknown>;
+
+export class ToolRegistry {
+  readonly #tools = new Map<string, AnyTool>();
+
+  register(tool: AnyTool): void {
+    this.#tools.set(tool.definition.name, tool);
+  }
+
+  resolve(name: string): AnyTool | null {
+    return this.#tools.get(name) ?? null;
+  }
+
+  definitions(): readonly (typeof calculatorTool.definition)[] {
+    return [...this.#tools.values()].map((t) => t.definition);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// State
+// ---------------------------------------------------------------------------
+
+export class ToolUseState extends NodeStateBase {
+  adapter: LlmAdapter | null = null;
+  registry: ToolRegistry = new ToolRegistry();
+  question: string = '';
+  toolCallRaw: string = '';          // raw text from adapter (codec input)
+  dispatchedTool: string = '';       // name of the tool that was called
+  toolResult: unknown = null;        // output from Tool.execute()
+  finalAnswer: string = '';
+}
+
+// ---------------------------------------------------------------------------
+// Nodes
+// ---------------------------------------------------------------------------
+
+/** Call the adapter; inspect the response for tool calls. */
+export const callLlm: NodeInterface<ToolUseState, 'tool_call' | 'text'> = {
+  'name': 'callLlm',
+  'outputs': ['tool_call', 'text'],
+  async execute(state) {
+    if (state.adapter === null) throw new Error('callLlm: adapter not set');
+
+    const tools = state.registry.definitions();
+    const request = ChatRequestBuilder.from({
+      'messages': [
+        { 'role': 'user', 'content': state.question, 'toolCallId': '', 'toolName': '' },
+      ],
+      'tools':      [...tools],
+      'toolChoice': { 'type': 'required' },
+    });
+
+    const response = await state.adapter.chat(request);
+
+    if (response.message.kind === 'tools') {
+      // Native tool_calls channel: adapter returned structured ToolCall[]
+      const firstCall = response.message.toolCalls[0];
+      if (firstCall !== undefined) {
+        state.dispatchedTool = firstCall.name;
+        // Store as serialized text for codec demo path (codec handles prose too)
+        state.toolCallRaw = JSON.stringify({ tool_calls: [{ name: firstCall.name, arguments: firstCall.arguments }] });
+        return NodeOutputBuilder.of('tool_call');
+      }
+    }
+
+    if (response.message.kind === 'text') {
+      // Text-channel fallback: adapter returned prose with embedded tool JSON.
+      // ToolCallCodec.decode extracts { tool_calls: [...] } from arbitrary prose.
+      state.toolCallRaw = response.message.content;
+      const calls: ToolCall[] = ToolCallCodec.decode(response.message.content, 'demo');
+      if (calls.length > 0 && calls[0] !== undefined) {
+        state.dispatchedTool = calls[0].name;
+        return NodeOutputBuilder.of('tool_call');
+      }
+    }
+
+    // No tool call produced — treat as plain text answer
+    state.finalAnswer = response.message.kind === 'text' ? response.message.content : '(no text)';
+    return NodeOutputBuilder.of('text');
+  },
+};
+
+/** Dispatch the tool call to the registered Tool and collect the result. */
+export const dispatchTool: NodeInterface<ToolUseState, 'done' | 'error'> = {
+  'name': 'dispatchTool',
+  'outputs': ['done', 'error'],
+  async execute(state) {
+    // Decode from raw text (works for both native JSON and prose-wrapped)
+    const calls: ToolCall[] = ToolCallCodec.decode(state.toolCallRaw, 'dispatch');
+
+    if (calls.length === 0) {
+      state.finalAnswer = 'Error: could not decode tool call from adapter response.';
+      return NodeOutputBuilder.of('error');
+    }
+
+    const call = calls[0] as ToolCall;
+    const tool = state.registry.resolve(call.name);
+    if (tool === null) {
+      state.finalAnswer = `Error: unknown tool "${call.name}"`;
+      return NodeOutputBuilder.of('error');
+    }
+
+    const result = await tool.execute(call.arguments);
+    state.toolResult = result;
+    state.finalAnswer = `Tool "${call.name}" returned: ${JSON.stringify(result)}`;
+    return NodeOutputBuilder.of('done');
+  },
+};
+
+export const onText: NodeInterface<ToolUseState, 'done'> = {
+  'name': 'onText',
+  'outputs': ['done'],
+  async execute(state) {
+    process.stdout.write(`  [onText] direct answer: "${state.finalAnswer}"\n`);
+    return NodeOutputBuilder.of('done');
+  },
+};
+
+export const onToolDone: NodeInterface<ToolUseState, 'done'> = {
+  'name': 'onToolDone',
+  'outputs': ['done'],
+  async execute(state) {
+    process.stdout.write(`  [onToolDone] tool="${state.dispatchedTool}" result=${JSON.stringify(state.toolResult)}\n`);
+    return NodeOutputBuilder.of('done');
+  },
+};
+
+export const onToolError: NodeInterface<ToolUseState, 'done'> = {
+  'name': 'onToolError',
+  'outputs': ['done'],
+  async execute(state) {
+    process.stdout.write(`  [onToolError] ${state.finalAnswer}\n`);
+    return NodeOutputBuilder.of('done');
+  },
+};
+
+// ---------------------------------------------------------------------------
+// DAG
+// ---------------------------------------------------------------------------
+
+export const dag: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id':      'urn:noocodex:dag:tool-use-demo',
+  '@type':    'DAG',
+  'name':       'tool-use-demo',
+  'version':    '1',
+  'entrypoint': 'callLlm',
+  'nodes': [
+    {
+      '@id':   'urn:noocodex:dag:tool-use-demo/node/callLlm',
+      '@type': 'SingleNode',
+      'name':    'callLlm',
+      'node':    'callLlm',
+      'outputs': { 'tool_call': 'dispatchTool', 'text': 'onText' },
+    },
+    {
+      '@id':   'urn:noocodex:dag:tool-use-demo/node/dispatchTool',
+      '@type': 'SingleNode',
+      'name':    'dispatchTool',
+      'node':    'dispatchTool',
+      'outputs': { 'done': 'onToolDone', 'error': 'onToolError' },
+    },
+    {
+      '@id':   'urn:noocodex:dag:tool-use-demo/node/onText',
+      '@type': 'SingleNode',
+      'name':    'onText',
+      'node':    'onText',
+      'outputs': { 'done': 'end' },
+    },
+    {
+      '@id':   'urn:noocodex:dag:tool-use-demo/node/onToolDone',
+      '@type': 'SingleNode',
+      'name':    'onToolDone',
+      'node':    'onToolDone',
+      'outputs': { 'done': 'end' },
+    },
+    {
+      '@id':   'urn:noocodex:dag:tool-use-demo/node/onToolError',
+      '@type': 'SingleNode',
+      'name':    'onToolError',
+      'node':    'onToolError',
+      'outputs': { 'done': 'end' },
+    },
+    {
+      '@id':    'urn:noocodex:dag:tool-use-demo/node/end',
+      '@type':  'TerminalNode',
+      'name':     'end',
+      'outcome':  'completed',
+    },
+  ],
+};

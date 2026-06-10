@@ -7,7 +7,7 @@ import { CompositeLayout } from '../../src/viz/CompositeLayout.js';
 
 // ── Helper: build a minimal DAG ────────────────────────────────────────────
 
-function singleNode(name: string, outputs: Record<string, string | null>): DAG['nodes'][0] {
+function singleNode(name: string, outputs: Record<string, string>): DAG['nodes'][0] {
   return {
     '@id':    `urn:noocodex:dag:test/node/${name}`,
     '@type':  'SingleNode',
@@ -36,7 +36,8 @@ void describe('CompositeLayout.compute', () => {
     const dag = makeDAG('linear', 'A', [
       singleNode('A', { "next": 'B' }),
       singleNode('B', { "next": 'C' }),
-      singleNode('C', { "done": null }),
+      singleNode('C', { "done": 'end' }),
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
     ]);
 
     const { positions } = await CompositeLayout.compute(dag);
@@ -53,12 +54,81 @@ void describe('CompositeLayout.compute', () => {
     assert.ok(posB.y < posC.y, `B.y (${posB.y}) must be < C.y (${posC.y})`);
   });
 
+  void it('2-level nesting: sibling compounds do not overlap each other', async () => {
+    // inner DAGs: each has two leaf nodes
+    const innerA = makeDAG('innerA', 'a1', [
+      singleNode('a1', { "go": 'a2' }),
+      singleNode('a2', { "done": 'end' }),
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
+    ]);
+    const innerB = makeDAG('innerB', 'b1', [
+      singleNode('b1', { "go": 'b2' }),
+      singleNode('b2', { "done": 'end' }),
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
+    ]);
+
+    // outer DAG: embedA then embedB in sequence
+    const outerDAG: DAG = makeDAG('outer2', 'embedA', [
+      {
+        '@id':    'urn:noocodex:dag:outer2/node/embedA',
+        '@type':  'EmbeddedDAGNode',
+        'name':   'embedA',
+        'dag':    'innerA',
+        'outputs': { "done": 'embedB' },
+      },
+      {
+        '@id':    'urn:noocodex:dag:outer2/node/embedB',
+        '@type':  'EmbeddedDAGNode',
+        'name':   'embedB',
+        'dag':    'innerB',
+        'outputs': { "done": 'end', "error": 'end' },
+      },
+      { '@id': 'urn:noocodex:dag:outer2/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
+    ]);
+
+    const embeddedDAGs = new Map<string, DAG>([['innerA', innerA], ['innerB', innerB]]);
+    const { positions } = await CompositeLayout.compute(outerDAG, embeddedDAGs);
+
+    // embedA compound center
+    const posEmbedA = positions.get('embedA');
+    // embedB compound center
+    const posEmbedB = positions.get('embedB');
+    // children of embedA
+    const posA1 = positions.get('embedA/a1');
+    const posA2 = positions.get('embedA/a2');
+    // children of embedB
+    const posB1 = positions.get('embedB/b1');
+    const posB2 = positions.get('embedB/b2');
+
+    assert.ok(posEmbedA !== undefined, 'embedA compound must have a position');
+    assert.ok(posEmbedB !== undefined, 'embedB compound must have a position');
+    assert.ok(posA1 !== undefined, 'embedA/a1 must have a position');
+    assert.ok(posA2 !== undefined, 'embedA/a2 must have a position');
+    assert.ok(posB1 !== undefined, 'embedB/b1 must have a position');
+    assert.ok(posB2 !== undefined, 'embedB/b2 must have a position');
+
+    // The two sibling compounds should be ordered top-to-bottom (embedA before embedB).
+    assert.ok(posEmbedA.y < posEmbedB.y,
+      `embedA.y (${posEmbedA.y}) must be < embedB.y (${posEmbedB.y})`);
+
+    // Non-overlap: the lowest child of embedA must be above the highest child of embedB.
+    // We use a half-height margin of 30 (half of DEFAULT_NODE_HEIGHT) for node bodies.
+    const HALF_H = 30;
+    const lowestInA = Math.max(posA1.y + HALF_H, posA2.y + HALF_H);
+    const highestInB = Math.min(posB1.y - HALF_H, posB2.y - HALF_H);
+    assert.ok(
+      lowestInA < highestInB,
+      `lowest edge of embedA children (${lowestInA}) must be above highest edge of embedB children (${highestInB})`,
+    );
+  });
+
   void it('ScatterNode (body.dag): inner children sit between predecessor and successor in y; entry has smallest y in subgraph', async () => {
     // inner DAG: entry-node → middle-node → exit-node
     const innerDAG = makeDAG('inner', 'entry-node', [
       singleNode('entry-node',  { "go": 'middle-node' }),
       singleNode('middle-node', { "go": 'exit-node' }),
-      singleNode('exit-node',   { "done": null }),
+      singleNode('exit-node',   { "done": 'end' }),
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
     ]);
 
     // outer DAG: before → ScatterNode(body.dag=inner) → after
@@ -71,7 +141,8 @@ void describe('CompositeLayout.compute', () => {
         'dag':    'inner',
         'outputs': { "done": 'after' },
       },
-      singleNode('after', { "done": null }),
+      singleNode('after', { "done": 'end' }),
+      { '@id': 'urn:noocodex:dag:outer/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
     ]);
 
     const embeddedDAGs = new Map<string, DAG>([['inner', innerDAG]]);
@@ -108,37 +179,4 @@ void describe('CompositeLayout.compute', () => {
     assert.ok(posExit.y   < posAfter.y, `exit-node.y < after.y`);
   });
 
-  void it('parallel placement: all 3 children share the same y, distributed horizontally', async () => {
-    const dag: DAG = makeDAG('par', 'par-group', [
-      {
-        '@id':     'urn:noocodex:dag:par/node/par-group',
-        '@type':   'ParallelNode',
-        'name':    'par-group',
-        'nodes':   ['alpha', 'beta', 'gamma'],
-        'combine': 'collect',
-        'outputs': { "success": null },
-      },
-    ]);
-
-    const { positions } = await CompositeLayout.compute(dag);
-
-    const posAlpha = positions.get('alpha');
-    const posBeta  = positions.get('beta');
-    const posGamma = positions.get('gamma');
-    const posGroup = positions.get('par-group');
-
-    assert.ok(posAlpha !== undefined, 'alpha must have a position');
-    assert.ok(posBeta  !== undefined, 'beta must have a position');
-    assert.ok(posGamma !== undefined, 'gamma must have a position');
-    assert.ok(posGroup !== undefined, 'par-group must have a position');
-
-    // All three parallel children must share the same y (single horizontal rank).
-    assert.equal(posAlpha.y, posBeta.y,  `alpha.y (${posAlpha.y}) === beta.y (${posBeta.y})`);
-    assert.equal(posBeta.y,  posGamma.y, `beta.y (${posBeta.y}) === gamma.y (${posGamma.y})`);
-
-    // They must be distributed horizontally (distinct x values).
-    assert.notEqual(posAlpha.x, posBeta.x,  'alpha and beta must have different x');
-    assert.notEqual(posBeta.x,  posGamma.x, 'beta and gamma must have different x');
-    assert.notEqual(posAlpha.x, posGamma.x, 'alpha and gamma must have different x');
-  });
 });

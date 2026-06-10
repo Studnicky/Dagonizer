@@ -15,7 +15,7 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region reverse-geocode-node
 export const reverseGeocode: NodeInterface<CartographerState, 'geocoded', CartographerServices> = {
@@ -31,7 +31,7 @@ export const reverseGeocode: NodeInterface<CartographerState, 'geocoded', Cartog
       context.signal,
     );
     state.routing = { ...state.routing, 'reverseGeocodeRun': true };
-    return { 'output': 'geocoded' };
+    return NodeOutputBuilder.of('geocoded');
   },
 };
 // #endregion reverse-geocode-node

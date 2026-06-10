@@ -6,9 +6,12 @@
 
 import {
   DAG_CONTEXT,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface } from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import { GatherStrategyName } from '@noocodex/dagonizer/constants';
 
 // #region state
 export class ScrapeState extends NodeStateBase {
@@ -26,7 +29,7 @@ export const probe: NodeInterface<ScrapeState, 'ok' | 'fail'> = {
     // Each item is written to state under the itemKey ('url') before execute.
     const url = state.getMetadata<string>('url') ?? '';
     // Fake probe: even-length URLs succeed, odd-length fail.
-    return { "output": url.length % 2 === 0 ? 'ok' : 'fail' };
+    return NodeOutputBuilder.of(url.length % 2 === 0 ? 'ok' : 'fail');
   },
 };
 // #endregion worker-node
@@ -49,7 +52,7 @@ export const dag: DAG = {
       "itemKey":      'url',                           // metadata key each item is written under
       "concurrency":  2,                               // max clones in-flight simultaneously
       "gather": {
-        "strategy":   'partition',                     // route clones by their output key
+        "strategy":   GatherStrategyName.PARTITION,      // route clones by their output key
         "partitions": { "ok": 'succeeded', "fail": 'failed' },  // output key → state field name
       },
       // Aggregate outputs: reflect final distribution, not per-clone results.

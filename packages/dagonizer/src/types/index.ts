@@ -30,17 +30,34 @@ export type { DAGErrorInterface } from '../errors/DAGError.js';
 // Adapter contracts
 // ---------------------------------------------------------------------------
 
+export type { CheckpointRestoreAdapter } from '../contracts/CheckpointRestoreAdapter.js';
 export type { CheckpointStore } from '../contracts/CheckpointStore.js';
 export type { ClockProvider } from '../contracts/ClockProvider.js';
+export type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
+export type { Embedder } from '../contracts/Embedder.js';
+export type { HandoffChannelInterface } from '../contracts/HandoffChannelInterface.js';
+export type { DagOutcomeInterface } from '../container/DagOutcome.js';
+export type { DagTaskInterface } from '../container/DagTask.js';
 export type { ErrorConstructorType } from '../contracts/ErrorConstructorType.js';
 export type { ExecuteOptionsInterface } from '../contracts/ExecuteOptionsInterface.js';
-export type { Chainable, NodeInterface } from '../contracts/NodeInterface.js';
+export type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
+export type { Chainable } from '../contracts/Chainable.js';
+export type { NodeInterface } from '../contracts/NodeInterface.js';
 export type { OperationContract } from '../contracts/OperationContract.js';
 export type { OperationContractFragment } from '../contracts/OperationContractFragment.js';
+export type { RegistryBundleInterface, RegistryModuleInterface } from '../contracts/RegistryModuleInterface.js';
 export type { RetryPolicyOptionsInterface } from '../contracts/RetryPolicyOptionsInterface.js';
-export type { SchedulerHandle } from '../contracts/SchedulerHandle.js';
+export type { LlmAdapter } from '../contracts/LlmAdapter.js';
+export type { LlmClient } from '../contracts/LlmClient.js';
+export type { NodeInvoker } from '../contracts/NodeInvoker.js';
 export type { SchedulerProvider } from '../contracts/SchedulerProvider.js';
 export type { StateAccessor } from '../contracts/StateAccessor.js';
+export type { SystemInfoInterface } from '../contracts/SystemInfoInterface.js';
+export type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '../contracts/RemoteStore.js';
+export type { Snapshottable, StoreSnapshot, StoreSnapshotEntry } from '../contracts/Snapshottable.js';
+export type { Store } from '../contracts/Store.js';
+export type { Binding, Quad, SlotPattern, Term, TripleStore } from '../contracts/TripleStore.js';
+export type { WarningEmitter } from '../contracts/WarningEmitter.js';
 
 // ---------------------------------------------------------------------------
 // Entity-narrowing interfaces
@@ -59,9 +76,10 @@ export type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js
 
 export type { DAG } from '../entities/dag/DAG.js';
 export type { GatherConfig } from '../entities/dag/GatherConfig.js';
+export { Placement } from '../entities/dag/Placement.js';
+export type { DAGNodeType } from '../entities/dag/Placement.js';
 export type { ScatterNode } from '../entities/dag/ScatterNode.js';
 export type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-export type { ParallelNode } from '../entities/dag/ParallelNode.js';
 export type { SingleNode } from '../entities/dag/SingleNode.js';
 
 
@@ -76,6 +94,12 @@ export type { NodeWarning } from '../entities/node/NodeWarning.js';
 export type { ExecutionResult } from '../entities/execution/ExecutionResult.js';
 export type { ValidationResult } from '../entities/validation/ValidationResult.js';
 export type { DAGErrorJSON } from '../entities/errors/DAGErrorJSON.js';
+export type { DAGHandoff } from '../entities/handoff/DAGHandoff.js';
+export type { BridgeMessage } from '../entities/executor/BridgeMessage.js';
+export type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js';
+export type { ExecutionResponse } from '../entities/executor/ExecutionResponse.js';
+export type { ExecutorIntermediate } from '../entities/executor/ExecutorIntermediate.js';
+export type { RecommendedWorkerCountConfig } from '../entities/executor/RecommendedWorkerCountConfig.js';
 export type { CheckpointData } from '../entities/checkpoint/CheckpointData.js';
 export type { DAGLifecycleStateData } from '../entities/state-machines/DAGLifecycleState.js';
 export type { BackoffStrategyValue } from '../entities/runtime/BackoffStrategy.js';
@@ -101,11 +125,12 @@ export type { ScatterOptionsInterface, TypedEmbeddedDAGOptionsInterface } from '
 
 export type { Execution } from '../Execution.js';
 export type { DagonizerOptionsInterface } from '../Dagonizer.js';
-export type { ParallelResult, ParallelCombiner } from '../core/ParallelCombiners.js';
-export type { GatherExecution, GatherStrategy } from '../core/GatherStrategies.js';
+export type { GatherExecution, GatherRecord } from '../contracts/GatherExecution.js';
+export type { GatherStrategy } from '../core/GatherStrategies.js';
+export type { OutcomeRecord } from '../contracts/OutcomeRecord.js';
 export type { OutcomeReducer } from '../core/OutcomeReducers.js';
 export type { DAGDeriverOptions } from '../derive/DAGDeriver.js';
-export type { DAGDeriverAnnotations, DAGDeriverEmbeddedDAG, DAGDeriverScatter, DAGDeriverTerminal } from '../derive/DAGDeriverAnnotations.js';
+export type { DAGDeriverAnnotations, DAGDeriverEmitTerminal, DAGDeriverEmbeddedDAG, DAGDeriverScatter, DAGDeriverTerminal } from '../derive/DAGDeriverAnnotations.js';
 export type { DagJsonLdDocument, JsonLdGraphEntry } from '../viz/JsonLdRenderer.js';
 export type {
   CytoscapeElement,
@@ -123,7 +148,7 @@ export type { EntityValidator } from '../validation/Validator.js';
 // Checkpoint
 // ---------------------------------------------------------------------------
 
-export type { RecalledCheckpoint, StateRestoreFnType } from '../checkpoint/Checkpoint.js';
+export type { RecalledCheckpoint } from '../checkpoint/Checkpoint.js';
 
 // ---------------------------------------------------------------------------
 // JSON primitives
@@ -141,3 +166,42 @@ export type {
   JsonSchemaObject,
   JsonSchemaTypeName,
 } from '../entities/primitives/JsonSchema.js';
+
+// ---------------------------------------------------------------------------
+// Scatter / resume internals (public surface for consumers building resumable DAGs)
+// ---------------------------------------------------------------------------
+
+export type {
+  ScatterAckedResult,
+  ScatterInboxItem,
+  ScatterProgress,
+  StoredScatterProgress,
+} from '../entities/scatter/ScatterProgress.js';
+
+export type { DispatcherBundle } from '../Dagonizer.js';
+
+// ---------------------------------------------------------------------------
+// Checkpoint
+// ---------------------------------------------------------------------------
+
+export type { CaptureOptionsInterface } from '../checkpoint/Checkpoint.js';
+
+// ---------------------------------------------------------------------------
+// Container options
+// ---------------------------------------------------------------------------
+
+export type { DagContainerOptions } from '../container/DagContainerBase.js';
+export type { DagHostOptions } from '../container/DagHost.js';
+
+// ---------------------------------------------------------------------------
+// Channel options
+// ---------------------------------------------------------------------------
+
+export type { InMemoryChannelOptions } from '../channels/InMemoryChannel.js';
+
+// ---------------------------------------------------------------------------
+// Store options + contracts
+// ---------------------------------------------------------------------------
+
+export type { BaseStoreOptions } from '../store/BaseStore.js';
+export type { StoreErrorClassification } from '../store/StoreError.js';

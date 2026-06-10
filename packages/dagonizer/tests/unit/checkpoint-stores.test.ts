@@ -22,21 +22,29 @@ import { StoreError } from '../../src/store/StoreError.js';
 
 // ── Shared test fixture ─────────────────────────────────────────────────────
 
-/** Minimal abortable dispatcher + single-node DAG that pauses on abort. */
+/**
+ * Minimal abortable dispatcher + two-node DAG. The node signals readiness
+ * before waiting for its abort signal — the caller aborts immediately once
+ * the node is suspended, giving a deterministic interruption without any
+ * real timer dependencies.
+ */
 async function makeAbortedResult(): Promise<ReturnType<typeof Dagonizer.prototype.execute>> {
   const dispatcher = new Dagonizer<NodeStateBase>();
+
+  let resolveNodeReady!: () => void;
+  const nodeReady = new Promise<void>((r) => { resolveNodeReady = r; });
+
   const slow: NodeInterface<NodeStateBase, 'done'> = {
     'name': 'slow',
     'outputs': ['done'],
     async execute(_state, context) {
-      await new Promise<void>((resolve, reject) => {
-        const t = setTimeout(resolve, 1000);
+      resolveNodeReady();
+      await new Promise<void>((_resolve, reject) => {
         context.signal.addEventListener('abort', () => {
-          clearTimeout(t);
           reject(context.signal.reason);
         }, { 'once': true });
       });
-      return { 'output': 'done' };
+      return { 'errors': [], 'output': 'done' };
     },
   };
   dispatcher.registerNode(slow);
@@ -52,14 +60,17 @@ async function makeAbortedResult(): Promise<ReturnType<typeof Dagonizer.prototyp
       },
       {
         '@id': 'urn:noocodex:dag:store-test/node/b', '@type': 'SingleNode',
-        'name': 'b', 'node': 'slow', 'outputs': { 'done': null },
+        'name': 'b', 'node': 'slow', 'outputs': { 'done': 'end' },
       },
+      { '@id': 'urn:noocodex:dag:store-test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
     ],
   });
 
   const ctl = new AbortController();
-  setTimeout(() => { ctl.abort(new Error('pause')); }, 20);
-  const result = await dispatcher.execute('store-test', new NodeStateBase(), { 'signal': ctl.signal });
+  const execution = dispatcher.execute('store-test', new NodeStateBase(), { 'signal': ctl.signal });
+  // Abort deterministically once the node body is suspended, no wall-clock wait.
+  nodeReady.then(() => { ctl.abort(new Error('pause')); });
+  const result = await execution;
   // Ensure we have a cursor so Checkpoint.capture can proceed.
   assert.ok(result.cursor !== null, 'Expected aborted result to have a cursor');
   return result;
@@ -121,9 +132,9 @@ void describe('Checkpoint.capture + restoreStores: two stores', () => {
     await recalled.restoreStores({ 'memory': freshMemory, 'audit': freshAudit });
 
     assert.equal(await freshMemory.get('x'), 1);
-    assert.equal(await freshMemory.get('event'), undefined, 'audit entry should not bleed into memory');
+    assert.equal(await freshMemory.get('event'), null, 'audit entry should not bleed into memory');
     assert.equal(await freshAudit.get('event'), 'login');
-    assert.equal(await freshAudit.get('x'), undefined, 'memory entry should not bleed into audit');
+    assert.equal(await freshAudit.get('x'), null, 'memory entry should not bleed into audit');
   });
 });
 

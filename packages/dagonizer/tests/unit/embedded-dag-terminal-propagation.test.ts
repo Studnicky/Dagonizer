@@ -24,7 +24,7 @@ import { NodeStateBase } from '../../src/NodeStateBase.js';
 const passNode: NodeInterface<NodeStateBase> = {
   'name': 'pass',
   'outputs': ['ok'],
-  async execute() { return { 'output': 'ok' }; },
+  async execute() { return { 'errors': [], 'output': 'ok' }; },
 };
 
 void describe('scatter/dag-body terminal-outcome propagation', () => {
@@ -35,15 +35,15 @@ void describe('scatter/dag-body terminal-outcome propagation', () => {
     // Inner DAG: pass → terminal(failed). No collectError anywhere.
     const innerDag = new DAGBuilder('inner-fail', '1')
       .node('pass', passNode, { 'ok': 'end-fail' })
-      .terminal('end-fail', 'failed')
+      .terminal('end-fail', { 'outcome': 'failed' })
       .build();
     dispatcher.registerDAG(innerDag);
 
     // Parent DAG: embedded-DAG node, success/error routing to distinct terminals.
     const parentDag = new DAGBuilder('parent', '1')
       .embeddedDAG('run-inner', 'inner-fail', { 'success': 'end-ok', 'error': 'end-bad' })
-      .terminal('end-ok', 'completed')
-      .terminal('end-bad', 'failed')
+      .terminal('end-ok', { 'outcome': 'completed' })
+      .terminal('end-bad', { 'outcome': 'failed' })
       .build();
     dispatcher.registerDAG(parentDag);
 
@@ -62,14 +62,14 @@ void describe('scatter/dag-body terminal-outcome propagation', () => {
 
     const innerDag = new DAGBuilder('inner-ok', '1')
       .node('pass', passNode, { 'ok': 'end-ok' })
-      .terminal('end-ok', 'completed')
+      .terminal('end-ok', { 'outcome': 'completed' })
       .build();
     dispatcher.registerDAG(innerDag);
 
     const parentDag = new DAGBuilder('parent-ok', '1')
       .embeddedDAG('run-inner', 'inner-ok', { 'success': 'end-ok', 'error': 'end-bad' })
-      .terminal('end-ok', 'completed')
-      .terminal('end-bad', 'failed')
+      .terminal('end-ok', { 'outcome': 'completed' })
+      .terminal('end-bad', { 'outcome': 'failed' })
       .build();
     dispatcher.registerDAG(parentDag);
 
@@ -81,27 +81,28 @@ void describe('scatter/dag-body terminal-outcome propagation', () => {
     assert.ok(result.executedNodes.includes('end-ok'));
   });
 
-  void it('inner null-route exit (no terminal hit) leaves terminalOutcome null and routes via errors check', async () => {
+  void it('inner TerminalNode(completed) without errors routes parent to success (default propagation)', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(passNode);
 
-    // Inner DAG exits via null route (no explicit terminal).
+    // Inner DAG exits via TerminalNode(completed) with no errors.
     const innerDag = new DAGBuilder('inner-null', '1')
-      .node('pass', passNode, { 'ok': null })
+      .node('pass', passNode, { 'ok': 'inner-done' })
+      .terminal('inner-done', { 'outcome': 'completed' })
       .build();
     dispatcher.registerDAG(innerDag);
 
-    const parentDag = new DAGBuilder('parent-null', '1')
+    const parentDag = new DAGBuilder('parent-completed', '1')
       .embeddedDAG('run-inner', 'inner-null', { 'success': 'end-ok', 'error': 'end-bad' })
-      .terminal('end-ok', 'completed')
-      .terminal('end-bad', 'failed')
+      .terminal('end-ok', { 'outcome': 'completed' })
+      .terminal('end-bad', { 'outcome': 'failed' })
       .build();
     dispatcher.registerDAG(parentDag);
 
     const state = new NodeStateBase();
-    const result = await dispatcher.execute('parent-null', state);
+    const result = await dispatcher.execute('parent-completed', state);
 
-    // Parent routes via success (no errors, no inner terminal failed).
+    // Inner TerminalNode(completed) + no errors → parent routes via success.
     assert.equal(result.state.lifecycle.kind, 'completed');
     assert.ok(result.executedNodes.includes('end-ok'));
   });
@@ -112,7 +113,7 @@ void describe('scatter/dag-body terminal-outcome propagation', () => {
 
     const dag = new DAGBuilder('top', '1')
       .node('pass', passNode, { 'ok': 'end' })
-      .terminal('end', 'completed')
+      .terminal('end', { 'outcome': 'completed' })
       .build();
     dispatcher.registerDAG(dag);
 
@@ -120,16 +121,18 @@ void describe('scatter/dag-body terminal-outcome propagation', () => {
     assert.equal(result.terminalOutcome, 'completed');
   });
 
-  void it('top-level execute() returns terminalOutcome=null when no terminal placement hit', async () => {
+  void it('top-level execute() returns terminalOutcome matching the TerminalNode outcome field', async () => {
+    // Every flow ends at an explicit TerminalNode; terminalOutcome reflects its declared outcome.
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(passNode);
 
-    const dag = new DAGBuilder('top-null', '1')
-      .node('pass', passNode, { 'ok': null })
+    const dag = new DAGBuilder('top-with-terminal', '1')
+      .node('pass', passNode, { 'ok': 'flow-end' })
+      .terminal('flow-end', { 'outcome': 'completed' })
       .build();
     dispatcher.registerDAG(dag);
 
-    const result = await dispatcher.execute('top-null', new NodeStateBase());
-    assert.equal(result.terminalOutcome, null);
+    const result = await dispatcher.execute('top-with-terminal', new NodeStateBase());
+    assert.equal(result.terminalOutcome, 'completed');
   });
 });

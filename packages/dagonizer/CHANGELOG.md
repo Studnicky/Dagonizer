@@ -1,5 +1,293 @@
 # @noocodex/dagonizer
 
+## [Unreleased]
+
+Codebase-wide audit-and-harden pass: function-signature normalisation,
+type-safety tightening, V8 shape stability, runtime robustness, public-export
+completion, canonical-name enforcement, and documentation accuracy. The suite
+has 698 tests.
+
+### Breaking — null route removed
+
+Routing a node output to `null` (e.g. `.node('step', n, { ok: null })`) is no longer valid. Every flow branch must end at an explicit named `TerminalNode` placement.
+
+- **JSON schema**: `outputs` `additionalProperties` type changed from `['string', 'null']` to `'string'` in `SingleNode`, `ScatterNode`, and `EmbeddedDAGNode` schemas. `Validator.dag.is()` now rejects any DAG whose outputs map contains a `null` value.
+- **`DAGBuilder`**: route maps are now `Record<TOutput, string>` (not `null | string`). Pass a named terminal and route to it.
+- **`DAGDeriver`**: explicit-TerminalNode-only. When a declared output port or scatter outcome has no successor and no terminal annotation, `DAGDeriver` throws `DAGError` naming the placement and the unrouted port. Authors must declare an explicit terminal via `annotations.terminals`. There is no implicit terminal synthesis.
+- **`WellFormedValidator`**: the null-route violation rule is removed; the schema now rejects null routes upstream.
+- **`ExecutionResult.terminalOutcome`**: always set to the `TerminalNode`'s `outcome` field when a terminal is reached. `null` only on error or abort exits where no `TerminalNode` was reached.
+- **`MermaidRenderer`**: no longer emits a synthetic `END([end])` node. Every terminal renders under its actual placement name.
+- **`JsonLdRenderer`**: `dag:target` is always an IRI string; no longer `null` for null routes.
+- **Migration**: replace every `.node(name, node, { output: null })` with `.node(name, node, { output: 'end' }).terminal('end')` (or any other terminal name).
+
+### Breaking — removed aliases and type shims
+
+One canonical name per symbol; back-compat aliases and placement-interface re-exports are removed.
+
+- **`SchedulerHandle` removed** — `SchedulerProvider` is the one scheduler contract. All call sites use `SchedulerProvider` directly.
+- **`PhaseNodePlacementInterface` removed** — use `PhaseNode`. **`TerminalNodePlacementInterface` removed** — use `TerminalNode`.
+- **`StateRestoreFnType` removed** — a checkpoint restore function is a `CheckpointRestoreAdapter`. Wrap a bare function with `CheckpointRestoreAdapterFn.fromFn(fn)`.
+- **`NodeErrorBuilder` and `NodeOutputBuilder`** are no longer exported from the `./types` subpath (a type-only barrel); they remain on the root `.` export.
+- **`MonadicNode`** no longer exposes `successPort()`/`emptyPort()`/`errorPort()` helpers — return the port literal (`'success'`/`'empty'`/`'error'`) directly.
+
+### Breaking — function signatures (required positional, optional trailing config)
+
+Every required argument is positional; every optional argument lives in a
+single trailing `options` object.
+
+- **`DAGError` and subclasses (`ConfigurationError`, `ExecutionError`, `NotFoundError`, `ValidationError`).** `new XError(message, context, errorOptions)` → `new XError(message, { context, ...errorOptions })`; `DAGError` also takes `{ code }`. `context` is now a required-with-default field (`{}` when absent) for V8 hidden-class stability.
+- **`SchedulerProvider` `after`/`at`/`every`.** Trailing `signal` positional → `options?: { signal?: AbortSignal }`. `RealTimeScheduler` and the test `VirtualScheduler` updated in lockstep.
+- **`RetryPolicy.run` / `RetryPolicy.getDelay`.** Trailing positional → `options?`. New static **`RetryPolicy.from(partial)`** factory centralises all defaults.
+- **`Tool.execute(input, options?: { signal? })`** and **`Embedder.embed(text, options?: { signal? })`** — signal moved into options (and now actually honoured during embed retries).
+- **`LlmError` constructor + `classifyHttp`** — trailing `cause` / `body` → options.
+- **`DAGBuilder.build(options?)`, `terminal(name, options?: { outcome? })`, `static fromNodes(name, version, entrypoint, nodes, options?)`** — `fromNodes` no longer buries its required arguments in an object.
+- **`DagOutcome.transportError(correlationId, options?: { code?, message? })`** (SC-12).
+- **`ContractRegistryValidator.validate(contracts, warningEmitter, options?: { entrypointName? })`** — second argument is `WarningEmitter` (was `(message: string) => void`). `DAGBuilder.build({ warningEmitter? })` option renamed from `onContractWarning`.
+- **`NodeErrorBuilder.from(code, message, operation, recoverable, timestamp, options?)`** — required args are positional (previously a single partial object).
+- **`DagContainerError` constructor migrated to the options bag.**
+- **`DagContainerInterface.runDag(task, options?: { relay? })`** — trailing `relay` positional moved into the options object.
+
+### Breaking — registry & validation
+
+- **`Dagonizer.registerNode` and `registerDAG`** throw `DAGError` when a name is already registered. The registry is append-only; no silent overwrite.
+- **Sub-DAG cycle detection removed from `DAGValidator`.** The append-only registry combined with the rule that every `EmbeddedDAGNode`/`ScatterNode` body must reference an already-registered DAG makes sub-DAG references backward-only, so the reference graph is structurally acyclic. Explicit cycle detection is unnecessary and is no longer present.
+
+### Breaking — monomorphic NodeError / NodeOutput
+
+- **`NodeError.context`** is required in both the `NodeErrorSchema` `required` array and the `NodeErrorInterface`. The inlined `NodeError` shapes in `NodeStateData`, `ExecutionResponse`, and `BridgeMessage` also require `context`.
+- **`NodeOutput.errors`** is required in both the `NodeOutputSchema` `required` array and the `NodeOutputInterface`. Both changes enforce V8 hidden-class stability across all node result shapes.
+- **`NodeErrorBuilder.from`** constructs a complete `NodeError`, filling `context: {}` when absent. Ships through `.` and `./entities`.
+- **`NodeOutputBuilder.of`** constructs outputs with `errors: []` as the default. **`NodeOutputBuilder.errorsOf` is removed** — read `.errors` directly.
+
+### Breaking — abort-signal arguments unified
+
+- **`AbortableOptionsInterface`** (`{ signal?: AbortSignal }`) is a contract in `./contracts`. `CheckpointStore` (`save`/`load`/`delete`), `Embedder` (`embed`/`embedBatch`/`probe`/`connect`/`disconnect`), and `Snapshottable` (`snapshot`/`restore`) each accept a trailing `options?: AbortableOptionsInterface` instead of a positional `signal?`. `LlmAdapter` (`connect`/`disconnect`/`probe`) takes the same `options?: AbortableOptionsInterface` so its lifecycle is identical to `Embedder`. `SchedulerProvider`, `RealTimeScheduler`, `RetryPolicy`, and `Tool` use the named `AbortableOptionsInterface` for their options object.
+
+### Breaking — renamed contract & removed deprecated surface
+
+- **`ChannelInterface` renamed to `HandoffChannelInterface`** — distinguishes the completed-DAG hand-off publish channel from the duplex `MessageChannelInterface`.
+- **`DagOutcomeInterface` and `DagTaskInterface`** ship through the `./container` subpath only. The `./contracts` re-exports and forwarder modules are removed.
+- **`@noocodex/dagonizer/patterns` `LlmClient` and `TripleStore` re-export modules removed.** `LlmClient` and `TripleStore` ship through `./contracts`.
+- **`./derive` no longer re-exports `OperationContract` / `OperationContractFragment`**; they ship through `./contracts`.
+
+### Breaking — adapter layer
+
+Shared adapter behaviour and config live on the canonical base class; concrete classes carry only what is unique.
+
+- **`AdapterBase` renamed to `BaseAdapterCore`** (`./adapter`) — the abstract root of the adapter stack owning the shared retry policy, `id`/`displayName`, the `connect`/`disconnect`/`probe` lifecycle, and the default `classify()`. `BaseAdapter` extends it and adds only `capabilities` + `chat`; `BaseEmbedder` extends it and adds only `dimensions` + `embed`/`embedBatch`.
+- **`AdapterBaseOptions` renamed `BaseAdapterCoreOptions`** — the partial `{ maxAttempts?; baseDelayMs? }` caller-facing type that consumers extend. **`AdapterBaseOptionsResolved` renamed `BaseAdapterCoreOptionsResolved`.** The `BaseAdapterCore` constructor accepts the partial `BaseAdapterCoreOptions` and resolves defaults internally via `{ ...BaseAdapterCore.defaultOptions(), ...options }`; subclasses pass their partial options through and do not spread `defaultOptions()` themselves.
+- **`BaseRegistry<TInstance>`** owns the `register`/`has`/`resolve`/`list` registry behaviour; `EmbedderRegistry` and `LlmAdapterRegistry` extend it. **`BaseCascade`** owns the sequential `select()` probe loop; `EmbedderCascade` and `LlmAdapterCascade` extend it.
+- **`BaseAdapterOptions` and `BaseEmbedderOptions` removed** — `BaseAdapterCoreOptionsResolved` is the one canonical resolved-options type. **`DEFAULT_MAX_ATTEMPTS`** and **`DEFAULT_BASE_DELAY_MS`** are the one canonical pair; `DEFAULT_EMBEDDER_MAX_ATTEMPTS` / `DEFAULT_EMBEDDER_BASE_DELAY_MS` are removed. **`CascadePreference`** is the one canonical cascade-preference type; `EmbedderCascadePreference` is removed.
+- **`OpenAiCompatibleConfig.timeoutMs` is optional**, defaulting to `DEFAULT_REQUEST_TIMEOUT_MS` (60 000 ms) resolved by spread in the constructor.
+- **`HttpTransport` `HttpRequestOptions<TResponse>` is generic**; `validate` is `(value: unknown) => TResponse`; `timeoutMs` and `maxRetries` are required-with-defaults.
+- **`ToolError` options `status` is optional**, defaulting to `null`. `reason` and `retryable` remain required positional arguments.
+
+### Breaking — store & container
+
+- **`Store.connect()` / `Store.disconnect()`** are required methods; `BaseStore` provides no-op defaults.
+- **`StoreError` extends `DAGError`** (code `STORE_ERROR`).
+
+### Breaking — types and required fields
+
+- **`OutputSchema` adapter type renamed to `LlmOutputSchema`** — resolves the canonical-name collision with the `constants/Output` `OutputSchema` value.
+- **`NodeStateBase.clone()` now returns `this`** — preserves the concrete subclass type without a cast at call sites.
+- **`StateAccessor.get<T = unknown>(state, path): T | null`** — absent-path sentinel changed from `undefined` to `null` (`undefined` is for absent optional props; `null` is the explicit "no value" sentinel). Migration: replace `=== undefined` / `!= null` absence checks with `=== null`. Implementers change their return from `undefined` to `null`.
+- **`Store.get<T>(key): Promise<T | null>`** (and `BaseStore.performGet<T>`) — same null-sentinel change. Migration: absent-key callers that checked `=== undefined` must check `=== null`; `update(key, fn)` callback still receives `T | undefined` (unchanged).
+- **`GatherExecution.invokeNode(name): Promise<void>` removed; replaced by `readonly invoker: NodeInvoker`** — bare function property was a callback seam; swap all `execution.invokeNode(name)` call sites to `execution.invoker.invokeNode(name)`.
+- **`ContractRegistryValidator.validate` second argument is `WarningEmitter`** (was `(message: string) => void`). Pass `new NoopWarningEmitter()` for no-ops.
+- **`NoopWarningEmitter`** added to `./runtime` — the canonical no-op `WarningEmitter` for call sites that do not surface dead-write warnings.
+- **`ScatterAckedResult` is now a discriminated union** (`kind: 'map' | 'field' | 'plain'`) — one hidden class per variant; affects checkpoint shape.
+- **`DAGLifecycleEvent` `cancel.reason` is required** (the `cancelled` state already required it; pass `''` for none).
+- **`BaseStoreOptions.namespace` is required** (`''` = no namespace; `BASE_STORE_DEFAULTS` provides it).
+- **`BridgeMessage` `abort.reason` narrowed to `'abort' | 'timeout'`** — `'timeout'` marks a run-level deadline; preserves `timed_out` vs `cancelled` classification across the transport (R2).
+- **`RegistryBundleInterface.destroy?(): Promise<void>` added** — `DagHost` calls it on shutdown (R4).
+- **`RealTimeClockProvider` requires `performance.now()`** (Node 24+ / modern browsers); it no longer falls back to `Date.now()`.
+- **Scatter over an array source defaults to concurrency 1**, matching async-iterable sources. The previous unbounded-for-arrays default is removed. Pass `concurrency` explicitly for parallelism.
+
+### Breaking — Timeout value object
+
+`Timeout` reifies per-node and per-DAG-task execution timeouts as a typed value object. `Timeout.none()` is the single "no deadline" sentinel; `Timeout.ofMs(n)` expresses a millisecond budget; `Timeout.fromWire(n)` / `Timeout.toWire()` bridge the wire representation. `Timeout` ships through the root barrel (`.`) and `@noocodex/dagonizer/runtime`.
+
+- **`NodeInterface.timeout?: Timeout`** replaces `timeoutMs?: number`; absent means `Timeout.none()`.
+- **`MonadicNode.timeout: Timeout`** defaults to `Timeout.none()` (was `timeoutMs: number = 0`).
+- **`DagTask` / `DagTaskInterface` carry `timeout: Timeout`** (was `timeoutMs: number | null`).
+- **Wire shape unchanged**: `ExecutionRequest` / `BridgeMessage` retain `timeoutMs: number | null`; `DagTask.toRequest()` serialises via `Timeout.toWire()`.
+- HTTP/adapter request timeouts (`HttpRequestOptions.timeoutMs`, `OpenAiCompatibleConfig.timeoutMs`) are a separate always-present duration concept and remain plain `number`.
+
+### Breaking — data-shape types are mutable (compile-time only)
+
+`readonly` field modifiers and `ReadonlyArray<T>` / `Readonly<Record<...>>` are removed from data-shape declarations: entity and wire types, entity-narrowing interfaces, and options/config bags. This aligns declared shapes with the mutable shapes `FromSchema` produces and eliminates readonly↔mutable bridging casts at call sites. Class instance fields and `as const` on `*Schema` literals retain their immutability. This is a compile-time type change only with no runtime or V8 effect.
+
+- Consumers that pass a `readonly` array into a now-mutable field must copy the array (`[...x]`) at the call site.
+- Consumers that relied on readonly field modifiers for immutability guarantees must apply `Readonly<>` / `ReadonlyArray<>` at their own boundaries.
+
+### Fixed — runtime robustness
+
+- **R1 (data loss).** Scatter over an async-iterable source no longer acks-and-clears remaining items when the run is aborted mid-flight; the pull-loop checks `signal.aborted` and throws before the checkpoint is cleared, so `resume()` replays the unprocessed inbox. Covered by a new regression test.
+- **R2** abort-reason classification preserved across the container transport (`ChannelDispatch` / `DagHost.#handleAbort`).
+- **R3** `DagHost` message dispatch attaches `.catch()` instead of bare `void`; handler exceptions become `{ kind: 'error', code: 'INTERNAL_ERROR' }` channel messages rather than process-killing unhandled rejections.
+- **R4** `DagHost.#handleShutdown` destroys registered node resources via `bundle.destroy?.()`.
+- **R5** `BaseEmbedder` embed retries honour the abort signal (previously ran the full backoff budget after abort).
+- **R6** `DagContainerBase.runDag` forwards the real caught error message into the transport outcome.
+- **R7** concurrent scatter worker failures are accumulated, not last-write-wins.
+- **R8** `SCHEMA_VIOLATION` (HTTP 422) is no longer marked retryable.
+- **R9** the worker-shutdown grace `setTimeout` is cleared when the worker exits first.
+- **R10** `Scheduler.reset()` cancels the prior provider's in-flight timers.
+- Post-phase node failures now route to `onError` and instrumentation, not just a warning.
+
+### Fixed — type safety and V8 shape
+
+- `DAGNodeType` unified to `DAG['nodes'][number]` with `@type` discriminated guards, removing the `as unknown as …` casts in the dispatch table, `registerDAG`, and `DAGValidator`.
+- `NodeStateBase` snapshot/restore validate warnings (`Validator.nodeWarning`) and retry values instead of laundering through `as unknown`; `_metadata`/`_retries` use destructuring-rest removal instead of `delete` (avoids dictionary-mode).
+- `Validator` passes Ajv errors as a typed `{ ajvErrors }` context; `DAGLifecycleMachine` narrows with `Extract<…>` instead of `as never`.
+- Validator-narrowed boundary casts are documented at every ingest site; stale internal comments updated to present-state form throughout.
+
+### Changed — required-with-defaults & schema-derived
+
+- **Engine-wide options resolution policy**: every options or config bag resolves through a co-located defaults object applied as both the default argument and a spread over caller input (`{ ...DEFAULTS, ...options }`). Defaulted fields are optional input, never required-of-caller. This is the canonical required-with-defaults form across the engine; each option type's defaulted fields are explicitly `?` in the type.
+- **`ScatterOptions.from(partial)`** materialises static scatter-placement defaults at build time: `itemKey` defaults to `'currentItem'`, `reducer` defaults to `'aggregate'`. Data-dependent defaults (`concurrency`, `inputs`, `container`) remain resolved at dispatch. `./builder` exports `ScatterOptions`, `SCATTER_ITEM_KEY_DEFAULT`, `SCATTER_REDUCER_DEFAULT`, and `ResolvedScatterOptions`.
+- **`InterruptionInfo`** is derived from `InterruptionInfoSchema` (JSON Schema 2020-12). The type is no longer hand-written.
+- **Dispatch maps replace switch/if-else chains** in `DagHost`, `ChannelDispatch`, `DAGDeriver`, `OpenAiCompatibleAdapter`, and the lifecycle/gather dispatch paths.
+- **`GatherStrategy.supportsIncremental`** flag replaces duck-typing of `applyIncremental` — strategies declare their incremental capability at definition time.
+- **`types/index.ts`** re-exports `GatherExecution`, `GatherRecord`, and `OutcomeRecord` from `./contracts`, their source of truth.
+
+### Fixed — robustness & packaging
+
+- **OpenAI-compatible adapter**: LLM responses are validated against `OpenAiResponseBodySchema` compiled once via the shared Ajv instance. Malformed `tool_calls` raise `LlmError(SCHEMA_VIOLATION)` instead of an unclassified `UNKNOWN`.
+- **`HttpTransport.getJson`/`postJson`** accept a `validate` callback (`(value: unknown) => TResponse`) to check the response body shape before returning.
+- **`package.json` `exports`**: every subpath lists the `types` condition before `default` so TypeScript consumers resolve declarations correctly.
+- **`StoreError`** threads `cause` to `super` via a trailing `options?: { cause?: unknown }`, preserving the native error chain when wrapping a backing-store failure (previously the chain was dropped).
+
+### Added
+
+- **`DAG.id(dagName)`** and **`DAG.placementId(dagName, placementName)`** static methods produce canonical placement URNs. Both ship through `./entities`.
+- **`SignalComposer.never()`** — a shared never-aborting `AbortSignal` for call sites that require a signal but never intend to cancel.
+- **`Validator.interruptionInfo`**, **`Validator.gatherConfig`**, **`Validator.openAiResponseBody`** — compiled validators for the corresponding schemas.
+- **`contracts/Chainable.ts`** — the `Chainable` utility type has its own dedicated file; the export name is unchanged.
+- **Public-export completion:** `RetryableErrorPolicy` (`./adapter`), `InitMessageShape` (`./container`), the eight entity-narrowing interfaces (`./entities`), and 25 previously-internal public types (`./types`).
+- **`RetryPolicy.from(partial)`**, **`DagContainerBase.defaultOptions`**, **`BASE_STORE_DEFAULTS`**.
+- Defensive validation of empty/absent `choices` in `OpenAiCompatibleAdapter`.
+- 62 tests: the R1 regression, cross-container abort propagation, container pool lifecycle (`#waiters` park/unpark, transport-death eviction, destroy-under-flight, double-destroy), `ForwardingInstrumentation` hook routing, `VirtualScheduler`/`VirtualClock` controls, `LoopbackChannel` semantics, de-vacuumed `DagConformance` laws 3/4/5, canonical placement URN methods, `SignalComposer.never`, `BaseAdapterCore` consolidation paths, scatter array concurrency default, and `CheckpointRestoreAdapterFn.fromFn` wrapping.
+
+### Fixed — documentation
+
+- Removed stale `ParallelNode` / `parallel`-placement references from the concepts, reference, and guide pages.
+- Corrected the viz reference: all five `CytoscapeGraph` protected-hook signatures, the `CompositeLayout.compute` signature, and the per-role hashed-palette behaviour (replacing the single amber-`#f59e0b` claim); added the `'phase'` element type.
+- Rewrote three checkpoint "produced before this field was introduced" notes in present-state form.
+
+### Breaking
+
+**Fan-out is now expressed solely via `ScatterNode` + a required `gather`.** `ParallelNode` and all associated surface are removed. The following specific symbols are deleted:
+
+- **`ParallelNode` placement type removed.** DAGs with `'@type': 'ParallelNode'` fail schema validation and dispatch.
+- **`ParallelCombine` constant removed.** `import { ParallelCombine } from '@noocodex/dagonizer/constants'` no longer resolves.
+- **`ParallelCombiners` registry removed.** `import { ParallelCombiners } from '@noocodex/dagonizer/core'` no longer resolves.
+- **`DAGBuilder.parallel()` removed.** Call sites that used `.parallel(name, nodes, combine, routes)` must be rewritten as `.scatter(name, source, body, routes, { gather, reducer })`.
+- **`MetadataKey.PARALLEL_OUTPUTS` removed.** The `'parallelOutputs'` metadata key is no longer written by the engine. Migrate consumers reading `state.getMetadata('parallelOutputs')` to the scatter gather result written to the `target` key declared in `GatherConfig`.
+- **`NodeType.PARALLEL` removed.** The `'parallel'` node type string is no longer in the schema enum or the `NodeType` const.
+- **`DAGDeriverAnnotations.parallels` removed.** The `parallels` annotation key and `DAGDeriverParallel` interface are deleted. Use the `scatters` annotation to express same-depth fan-outs.
+- **`Validator.parallelNode` removed.** The per-entity validator for `ParallelNode` is no longer present on the `Validator` class.
+
+**Migration: `ParallelNode` → `ScatterNode`**
+
+A parallel group of N named nodes becomes a `ScatterNode` over an N-element descriptor source with a body node that dispatches on the `currentItem` metadata key:
+
+```ts
+// Before (removed):
+.parallel('probe-group', ['probe-a', 'probe-b'], 'all-success', { success: 'next', error: null })
+
+// After:
+// state.probeDescriptors = ['probe-a', 'probe-b']
+.scatter('probe-group', 'probeDescriptors', probeDispatchNode,
+  { 'all-success': 'next', 'all-error': null, 'partial': null, 'empty': null },
+  {
+    gather:  { strategy: 'collect', target: 'probeResults' },
+    reducer: 'all-success',
+    concurrency: 2,
+  },
+)
+```
+
+One-to-one mapping for `combine` modes:
+
+| Old `combine` | New scatter `reducer` | New scatter `gather.strategy` |
+|---|---|---|
+| `'all-success'` | `'all-success'` | `'collect'` or `'discard'` |
+| `'any-success'` | `'any-success'` | `'collect'` or `'discard'` |
+| `'collect'` | `'aggregate'` | `'collect'` (writes per-clone output tokens in source-index order to `target`) |
+| side-effect only | `'aggregate'` | `'discard'` (no clone state written back) |
+
+`gather` is required on every `ScatterNode`. Use `{ strategy: 'discard' }` for fan-outs where no clone state flows back to the parent.
+
+### Added
+
+The visualizer colors container-bound (worker) sub-DAG placements per container role — each distinct role (e.g. `cpu` thread pool vs `io` fork pool) receives its own stable, distinct hue — so multi-backend DAGs are visually separable at a glance.
+
+- **`RoleColorUtils.forRole(role)`** (`viz/internal`): deterministic per-role color triple `{fill, stroke, text}` derived from an FNV-1a hash of the role name mapped to a curated 8-hue palette. Same role string always yields the same colors; different roles yield visibly different fills. No `Math.random` / `Date.now`.
+- **MermaidRenderer**: emits one `classDef contained-<sanitizedRole>` per distinct container role that appears in the DAG. Each classDef uses the role's fill/stroke from `RoleColorUtils`. A DAG with roles `cpu` and `io` emits two classDefs with two different fills.
+- **CytoscapeRenderer**: contained placements carry `data.containerColor`, `data.containerStroke`, and `data.containerText` in addition to `data.container` (role string). All four keys are absent on in-process placements (`exactOptionalPropertyTypes` honored). Mermaid and Cytoscape use the same `RoleColorUtils` function so colors are consistent across renderers.
+- **CytoscapeGraph**: the `node.dag-contained` stylesheet rule reads colors via cytoscape `data(...)` mappings (`'background-color': 'data(containerColor)'` etc.) so each node paints with its own role color without enumerating roles in the stylesheet.
+- **`CytoscapeNodeData.kind`** (`'deterministic' | 'non-deterministic'`): present on every node element for stylesheet selection via `node[kind="deterministic"]` / `node[kind="non-deterministic"]` selectors. Subclasses enrich or override the classification by overriding `buildElements()`.
+- **JsonLdRenderer**: `container` is included as `dag:container` in the JSON-LD output for `EmbeddedDAGNode` and dag-body `ScatterNode` placements when the field is present.
+- **Example 13** (`examples/13-multibackend.ts`): demonstrates a DAG with two distinct container roles (`cpu` → `WorkerThreadContainer` for scatter items; `io` → `ForkContainer` for the sum step). Prints the Mermaid output showing `classDef contained-cpu` and `classDef contained-io` with different fills, then executes the DAG over both real backends and prints results. Run with `pnpm example:13`.
+- **`gather` is now required on `ScatterNode`** (schema + builder + validator). Every scatter must declare the merge strategy. The `discard` gather strategy (`{ strategy: 'discard' }`) is the explicit declaration for side-effect-only fan-outs where no clone state flows back to the parent. Existing scatter DAGs with no gather must add `discard` (or the appropriate real merge strategy).
+- **`discard` gather strategy** (`GatherStrategies`): a no-op `GatherStrategy` for side-effect-only scatters. `apply` and `applyIncremental` both no-op; nothing is written to parent state. Registered in `GatherStrategies` at module load.
+- **`collect` gather strategy** (`GatherStrategies`): collects each clone's output token (or its `field` value when `field` is set) into a target collection on the parent in source-index order. Requires `target`. Mirrors the `CollectCombiner` intent for scatter: per-clone result array keyed by source index, appended in index order.
+- **`all-success` outcome reducer** (`OutcomeReducers`): routes `'success'` when every clone output equals `'success'`, otherwise routes `'error'`. Returns `'error'` for empty record sets.
+- **`any-success` outcome reducer** (`OutcomeReducers`): routes `'success'` when at least one clone output equals `'success'`, otherwise routes `'error'`. Returns `'error'` for empty record sets.
+- **`'collect'` and `'discard'`** added to `GatherStrategySchema.enum` and `GatherStrategyName` const.
+- **`ChannelInterface`** (`./contracts`): adapter contract for publishing completed-DAG hand-off envelopes to a downstream transport. Implementations provide `publish(handoff: DAGHandoff): Promise<void>` and an optional `destroy()`. Channels must not throw out of the dispatcher; the dispatcher wraps every publish call in a try/catch.
+- **`DAGHandoff` entity** (`./entities`): JSON Schema 2020-12 envelope (`DAGHandoffSchema`) and `FromSchema`-derived `DAGHandoff` type. A `oneOf` discriminates between `stateSnapshot` (by-value, full `JsonObject`) and `stateSnapshotRef` (by-reference URI string) so exactly one is present. Common fields: `dagName`, `terminalName`, `terminalOutput`, `registryVersion`, `correlationId`, `placementPath`. `additionalProperties: false` on both branches.
+- **`InMemoryChannel`** (`./channels`): default loopback `ChannelInterface` implementation. Stores published envelopes in an in-memory array (deep-cloned via `structuredClone` for full serialization fidelity) exposed via `published: readonly DAGHandoff[]`. Extension is by subclass (zero callbacks): override the protected `onPublished(handoff)` hook — awaited after each envelope is recorded — to chain a downstream DAG.
+- **`./channels` subpath**: public submodule exporting `InMemoryChannel` and `InMemoryChannelOptions`.
+- **`channels` option** on `DagonizerOptionsInterface`: `Readonly<Record<string, ChannelInterface>>` keyed by terminal placement name. When a non-embedded top-level run completes at a terminal whose name is bound in `channels`, the dispatcher builds a `DAGHandoff` envelope (by-value `stateSnapshot`) and calls `channel.publish(handoff)` after `onFlowEnd`/`flowEnd`. Different terminals route to different channels (`done` → queue, `escalate` → DLQ). An unbound terminal follows the in-process path with no publish. Defaults to `{}`.
+- **`registryVersion` option** on `DagonizerOptionsInterface`: registry version string included in every `DAGHandoff` envelope for cross-host version handshake. Defaults to `'0'` when not supplied.
+- **`Dagonizer.destroy()` cascades to bound containers and channels**: after destroying every registered node, `destroy()` calls the optional `destroy()` on each bound `DagContainerInterface` (worker/child pools) and then each bound `ChannelInterface`. Teardown order is nodes → containers → channels.
+- **Publish failure handling**: if `channel.publish` throws, the dispatcher collects a `HANDOFF_PUBLISH_FAILED` error (recoverable: false) via `state.collectError` and fires `instrumentation.error`. The returned `ExecutionResult` and `terminalOutcome` are unchanged — a failed publish does not rewrite the run result.
+- **`Validator.dagHandoff`**: `EntityValidator<DAGHandoff>` compiled from `DAGHandoffSchema` at module load via the existing `Validator.compile(...)` pattern.
+- **DAG containment seam**: `container` placement key on `EmbeddedDAGNode` and `ScatterNode` (dag-body only). Attaching `container: 'roleName'` to an embedded-DAG or scatter-dag-body placement routes that sub-DAG to a registered `DagContainerInterface` backend (worker thread, fork, Web Worker, etc.) instead of the in-process engine. `SingleNode` and scatter node-body placements carry no `container` key and no routing change.
+- **`DagContainerInterface`** (`./contracts`): adapter contract for running a whole DAG in an isolate. Implementors provide `runDag(task: DagTaskInterface): Promise<DagOutcomeInterface>` and an optional `destroy()`.
+- **`DagTaskInterface` / `DagOutcomeInterface`** (`./contracts`): wire contracts between the dispatcher and container backends. `DagTask` (`./container`) is the engine-side implementation carrying live clone state plus `toRequest()` for wire serialisation.
+- **`containers` option** on `DagonizerOptionsInterface`: `Readonly<Record<string, DagContainerInterface<TState>>>`. Roles declared in placements but absent from this map resolve to in-process and emit a `contractWarning`.
+- **`ExecutionRequest` / `ExecutionResponse` / `ExecutorIntermediate` entities** (`./entities`): JSON Schema 2020-12 wire shapes for cross-isolate DAG execution; `FromSchema`-derived TypeScript types exported from `./entities` and `./types`.
+- **`./container` subpath**: public submodule exporting `DagTask`, `DagHost`, `DagContainerBase`, `DagContainerOptions`, `PoolEntry`, `DagContainerError`, `DEFAULT_SHUTDOWN_GRACE_MS`, `ForwardingInstrumentation`, `DagOutcome`, the transport-error codes (`DAG_CONTAINER_TRANSPORT`, `DAG_CONTAINER_WORKER_DIED`), and the `TransportErrorCode` discriminator.
+- **`applySnapshot(snapshot: JsonObject): void`** on `NodeStateInterface` and `NodeStateBase`: promoted from `protected` to `public` so container backends can rehydrate terminal state from an `ExecutionResponse.stateSnapshot`.
+- **`snapshot(): JsonObject`** on `NodeStateInterface`: made explicit in the interface contract.
+- **`BridgeMessage` protocol** (`./entities`): kind-discriminated oneOf JSON Schema for the parent↔DagHost channel. Parent→host: `init`, `execute`, `abort`, `shutdown`. Host→parent: `ready`, `result`, `intermediate`, `instrumentation`, `error`, `log`. The `execute` branch carries an `ExecutionRequest` with `correlationId`. The `result` branch uses `terminalOutput`. `Validator.bridgeMessage` validates at the channel boundary.
+- **`BridgeMessageBuilder`** (`./entities`): static factory for `BridgeMessage` values. `BridgeMessageBuilder.invalid(code, message)` builds a channel-scoped error message (`correlationId: null`) for init failures, transport setup errors, and invalid message receipts at the channel boundary.
+- **`DagHost`** (`./container`): isolate-side runtime. Receives `init` (dynamic-imports registry module, version-handshakes, replies `ready`), `execute` (restores state, runs whole DAG via per-execute `Dagonizer`, streams `intermediate` messages, replies `result`), `abort` (fires per-request `AbortController`), `shutdown` (closes channel). `ForwardingInstrumentation` is constructed per-execute with the request's `placementPath` as `basePath` so forwarded instrumentation messages carry the full composite path.
+- **`DagContainerBase`** (`./container`): abstract pool-owning base implementing `DagContainerInterface`. Owns the full worker-pool lifecycle: demand-based pool growth, semaphore waiting, lazy init, death-detection eviction, and graceful shutdown. Subclasses implement four abstract seams only: `createEntry()` (construct worker + channel), `attachDeathListeners(entry)` (wire death events → `onTransportDeath`), `terminateWorker(worker)` (force-kill), and `awaitWorkerExit(worker)` (resolve on exit). Pass `{ instrumentation, poolSize, init }` to `super()`. `acquireChannel()` / `releaseChannel()` / `failChannel()` / `onTransportDeath()` are concrete base implementations, not subclass responsibilities.
+- **`ForwardingInstrumentation`** (`./container`): `Instrumentation` implementation for DagHost. Suppresses `flowStart`/`flowEnd`; forwards `nodeStart`, `nodeEnd`, `phaseEnter`, `phaseExit`, `contractWarning`, `error` as `instrumentation` BridgeMessages. Takes a required `basePath` positional prepended to all forwarded `placementPath` values (pass `[]` for a top-level host with no parent placement context).
+- **`DagOutcome`** (`./container`): static factory (`noun.verb()`) for `DagOutcomeInterface` values. `DagOutcome.transportError(correlationId, code?, message?)` builds the collected-error outcome (`terminalOutput: 'failed'` plus one unrecoverable `runDag` `NodeError`) the transport layer returns when a DAG never reaches a terminal. `ChannelDispatch` and `DagContainerBase` are the call sites.
+- **`MessageChannelInterface`** (`./contracts`): duplex channel contract (`send`, `onMessage`, `close`).
+- **`InstrumentationSink`** (`./contracts`): adapter contract for receiving forwarded instrumentation messages inside `ChannelDispatch.request()`. Implementors provide `onInstrumentation(msg)`. `DagContainerBase` constructs a concrete `InstrumentationSinkImpl` per request.
+- **`RegistryModuleInterface` / `RegistryBundleInterface`** (`./contracts`): default-export contract for dynamically-importable registry modules. `createBundle(servicesConfig)` returns a `RegistryBundleInterface` with `bundle`, `services`, `registryVersion`, `restoreState`.
+- **`SystemInfoInterface`** (`./contracts`): `recommendedWorkerCount(config)` contract for container backends.
+- **`RecommendedWorkerCountConfig` entity** (`./entities`): JSON Schema and defaults for worker count heuristics.
+- **`LoopbackChannel`** (`./testing`): in-memory duplex channel pair using `structuredClone` + `setImmediate` for full serialization testing. `LoopbackChannel.pair()` returns two connected sides.
+- **`ConformanceRegistry`** (`./testing`): DAG-level law fixtures. Body DAGs (`conformance-body-law1`–`law9`) and runner DAGs (`conformance-runner-law1`–`law9`) using `EmbeddedDAGNode` with `stateMapping.output`. Nodes record observations through state (not closures) for snapshot round-trip fidelity. `ConformanceRegistry.bundle()` returns the `RegistryBundleInterface` plus `RegistryModuleInterface` default export for DagHost dynamic-import.
+- **`DagConformance`** (`./testing`): backend-agnostic conformance law suite (Laws 1–9). `DagConformance.laws(harness)` returns `DagConformanceLawInterface[]` for any `DagConformanceHarnessInterface`. Laws cover: node execute with state surface, state mutation visibility, error collect-and-route, timeout, abort propagation, instrumentation placementPath, scatter checkpoint byte-identity across backends, at-least-once under container failure (Law 8, harness-gated), and state round-trip fixed point. `DagConformanceHarnessInterface` gains optional `createInProcessDispatcher` (Law 7) and `interruptMidScatter` (Law 8) hooks.
+- **Scatter dag-body containment**: `executeScatter` in `Dagonizer` routes each scatter item's dag-body through a bound `DagContainerInterface` when `scatter.container` is set and the container resolves to non-null. Node-body scatter items always run inline. Per-ack checkpoint writes (`SCATTER_PROGRESS_KEY`) are byte-identical between in-process and contained paths. `ConformanceRegistry` adds `scatterCounterNode`, `scatterItemBodyDag` (dag-body for scatter law items), and `scatterDag` runner factory with map-gather `{ value → gatheredItems }`.
+- **`NodeStateInterface.resetLifecycle()`**: resets the lifecycle discriminated union to `pending`. Called by the dispatcher before re-entering a flow on resume when the prior run ended in a terminal state (failed/cancelled/timed_out) due to a crash or interrupt. Lifecycle is not captured in snapshots; this method is the engine's mechanism for re-entering execution on a state that survived a crash.
+- **`DagHost` synthetic-error guard** narrowed: the `DAG_EXECUTION_FAILED` synthetic error is only emitted when `terminalOutcome === null` AND `state.errors.length === 0` AND `lifecycle.kind !== 'completed'`. DAGs that complete without a `TerminalNode` (lifecycle `completed`, `terminalOutcome null`) no longer receive a spurious `recoverable: false` error that caused contained scatter items to route to `'error'` output instead of `'success'`.
+
+### Changed
+
+- **Archivist scout fan-outs converted to scatter.** The `reviews-scatter`, `describe-scatter` (in `the-archivist/dag.ts`), and `book-search-scatter` (in `BookSearchScatterDAG.ts`) fan-outs now use `ScatterNode` with a descriptor source (`state.scoutProviders = ['openlibrary','googlebooks','subject','wikipedia']`), a single `scoutDispatch` body node that dispatches on the `currentItem` metadata key to the matching scout logic, the `scout-merge` gather strategy that flat-merges `candidates` and `failureCause` from all four clone states, and the `any-success` outcome reducer. Concurrency is 4. The four individual per-source node placements are removed; behavior is preserved.
+- **`GatherConfig.strategy` is now an open `string`.** The schema constraint was widened from a closed enum to `{ type: 'string', minLength: 1 }`. Custom gather strategies registered via `GatherStrategies.register(...)` can now be referenced by name in DAG author expressions without a type error. Unknown names are caught at runtime by `GatherStrategies.resolve(name)`.
+- **`examples/dags/parallel-combiner.ts` recast as scatter-extension demo.** The file now demonstrates `TopNGatherStrategy` (custom `GatherStrategy`) and `ThresholdReducer` (custom `OutcomeReducer`) as the scatter extension points.
+- **`examples/dags/constants-usage.ts`** replaces the `ParallelCombine.ALL_SUCCESS` snippet with `GatherStrategyName.COLLECT` to showcase the current fan-out vocabulary.
+
+### Fixed
+
+- **`NodeStateBase.clone()` subclass identity**: `clone()` now instantiates the concrete subclass via `this.constructor` rather than hardcoding `new NodeStateBase()`. Domain state survives the `clone()→applySnapshot()` round-trip on embedded-DAG and scatter (including contained/worker) paths without requiring a hand-written `clone()` override in every subclass. The `as TState` cast in `StateMapper.createChild` is now truthful at runtime.
+
+- **EventEmitter listener accumulation on reused pooled workers**: `DagContainerBase.runDag` previously called `channel.onMessage(handler)` on every request, accumulating O(N) transport listeners on a shared channel and triggering Node's `MaxListenersExceededWarning` when a worker handled more than 10 scatter items. Replaced per-request listener registration with `ChannelDispatch` — a single-subscription `correlationId` correlator that installs exactly one `channel.onMessage` handler per channel lifetime and demuxes responses via a `Map<correlationId, resolver>`. Channel implementations (`MessagePortChannel`, `IpcChannel`, `NdjsonChannel`, `PostMessageChannel`, `LoopbackChannel`) are updated to enforce replace semantics on `onMessage` (the underlying transport listener is installed once in the constructor; subsequent `onMessage` calls replace the delegated handler, never re-subscribe). A regression test (`channel-correlation.test.ts`) asserts exactly one subscription regardless of request count, correct per-request result correlation, and no cross-talk under out-of-order delivery.
+
+- **Worker/child death no longer hangs the in-flight request**: when a pooled container worker or child died without sending a result or error (terminate, OOM via `resourceLimits`, segfault, `process.exit`, killed tab), nothing failed the pending `ChannelDispatch` entry, so `runDag` hung forever and `executeScatter`'s pool drain never resolved. Added `ChannelDispatch.failAll(code, message)` — settles every pending entry with a transport-error `DagOutcomeInterface` and rejects an in-flight init; the channel-scoped (`correlationId: null`) error path is factored to call it, so there is one code path that fails all pending work. `DagContainerBase.failChannel(channel, code, message)` is the protected hook backends call from their transport-death listeners. This is death detection, not a blind timer, so legitimately long-running DAGs are never killed. The transport-error codes (`DAG_CONTAINER_TRANSPORT`, `DAG_CONTAINER_WORKER_DIED`) and the `TransportErrorCode.isInfrastructureFailure(code)` discriminator are canonical exports from `./container`.
+
+- **Contained scatter preserves at-least-once on infrastructure failure (Law 8)**: a contained scatter dag-body whose `container.runDag` returned a transport-error outcome (the DAG never ran to a terminal because the worker died or the channel was lost) was previously acked anyway, removed from the inbox, and wiped from the checkpoint — silently losing the item. `executeScatter`'s contained branch now throws an `ExecutionError` when the outcome carries an infrastructure-failure code, so the pool-error path fires, the item is left un-acked, and the throw precedes `ScatterCheckpoint.clear` — a resume on a healthy container reprocesses exactly the lost item. A legitimate body that ran and routed to its `error` output (a real terminal) still acks as before. The cardinality-1 embedded-DAG branch keeps routing an infrastructure failure to its `error` output (never throws), per Law 3.
+
 ## 0.17.0
 
 ### Minor Changes
@@ -116,92 +404,6 @@
 ### Patch Changes
 
 - 40f8abf: Archivist demo: `rank-candidates` no longer aborts the whole embedded-DAG when its LLM call exceeds the per-node timeout. Signal is propagated through `llm.rankCandidates` so the LLM call is actually cancelled, the default timeout is raised to 90s for on-device backends, and any abort/timeout leaves `state.candidates` intact (with their original scout-supplied scores) so the compose step sees real books instead of an empty shortlist.
-
-## [unreleased]
-
-### Changed
-
-- docs: full site audit and rewrite. Reorders sidebar (Demos before Guide,
-  Plugins as its own tier). Replaces Mermaid blocks that depict DAGs with
-  `<DagGraph>` driven by `CytoscapeRenderer.render(dag)`; loads code samples
-  from `examples/` via VitePress region imports so the source files are
-  the documentation source of truth. Renames `reference/operations.md` to
-  `reference/nodes.md`. Adds `Phase 10: Shared state` example page.
-  Surfaces previously-orphaned `Lifecycle phases` and `Plugins` pages
-  in the sidebar. Registers `DagGraph` globally in the theme. Scrubs
-  em-dashes and AI-isms across every sidebar-linked page.
-- **BREAKING:** Renamed `DeepDAGNode` placement kind to `EmbeddedDAGNode`. The
-  JSON-LD discriminator `@type` value changes from `'DeepDAGNode'` to
-  `'EmbeddedDAGNode'`. Schema `$id` updates from
-  `https://noocodex.dev/schemas/dagonizer/DeepDAGNode` to
-  `https://noocodex.dev/schemas/dagonizer/EmbeddedDAGNode`. The
-  `DAG_CONTEXT` IRI entry renames to `${NS}EmbeddedDAGNode`. The builder
-  method `DAGBuilder.deepDAG()` becomes `DAGBuilder.embeddedDAG()`. All
-  `Deep*` / `Sub*` identifiers in the public surface (`DeepDAGOptionsInterface`,
-  `TypedDeepDAGOptionsInterface`, `DeepDAGNodeInterface`, `DeepDAGNodeSchema`,
-  `DAGDeriverSubDAG`, `DAGDeriverAnnotations.subDAGs`) rename to the
-  corresponding `Embedded*` / `embeddedDAGs` form. `Validator.deepDAGNode`
-  becomes `Validator.embeddedDAGNode`. The `CytoscapeRenderer` option
-  `deepDags` renames to `embeddedDAGs`. Existing DAG JSON loaded via
-  `Dagonizer.load(json)` must rewrite the `@type` value before it will
-  validate. The terminology "deep-DAG" / "sub-DAG" is replaced by
-  "embedded-DAG" throughout the prose, JSDoc, and documentation.
-
-### Added
-
-- `PhaseNode` placement: lifecycle-attached pre/post tasks that run
-  around the main DAG loop. `phase: 'pre'` placements execute in DAG
-  declaration order before the entrypoint; an error aborts the run
-  (lifecycle becomes `failed`, the main loop never executes).
-  `phase: 'post'` placements execute in DAG declaration order after the
-  main loop drains on every exit path (completion, abort, timeout,
-  terminal-failed, node throw); errors are collected as warnings on
-  state (code `POST_PHASE_FAILED`) and do not change the already-set
-  lifecycle. Pre-phase names appear at the start of
-  `ExecutionResult.executedNodes`; post-phase names appear at the end
-  (only when the placement completed successfully). The dispatcher
-  invokes `Instrumentation.phaseEnter` / `phaseExit` around every phase
-  placement.
-- New entity exports: `PhaseNodeSchema`, `PhaseNode`,
-  `PhaseNodePlacementInterface`. Re-exported through the root barrel
-  and the `./entities` subpath. `Validator.phaseNode` available on the
-  unified validator.
-- `DAGBuilder.phase(name, 'pre' | 'post', node)`: fluent API for
-  declaring lifecycle-attached placements. Does not set the
-  entrypoint; phase placements are out-of-band and never the
-  main-loop entry.
-- `Instrumentation` contract: composable observability surface invoked at
-  the same execution boundaries as the protected `on*` subclass hooks.
-  Methods: `flowStart`, `flowEnd`, `nodeStart`, `nodeEnd`, `phaseEnter`,
-  `phaseExit`, `contractWarning`, `error`. Install a custom
-  implementation via `new Dagonizer({ instrumentation })`; defaults to
-  a `NoopInstrumentation`. Both surfaces fire; subclass `on*` hooks
-  coexist with plugin-supplied instrumentation. Hooks MUST NOT throw;
-  thrown errors abort the surrounding flow.
-- `NoopInstrumentation`: the default base. Plugins extend it and
-  override only the hooks they care about; un-overridden hooks remain
-  no-ops, preserving V8 hidden-class stability and zero overhead.
-- New exports from the root barrel: `Instrumentation` type and
-  `NoopInstrumentation` class. Also re-exported through
-  `./contracts` and `./runtime` subpaths.
-- `DagonizerOptionsInterface.instrumentation`: optional constructor
-  field. When omitted, the dispatcher installs a `NoopInstrumentation`.
-- Resumable fan-out: `FanOutNode` records per-item progress under a
-  reserved metadata key (`FAN_OUT_PROGRESS_KEY ===
-'__dagonizer_fan_out_progress__'`) keyed by placement `name`. On resume,
-  items whose indices appear in `completedIndices` are skipped; their
-  outputs are rehydrated from the persisted `itemResults` for the
-  aggregate-output and fan-in stages. Progress writes happen once per
-  batch (not per item) to keep concurrent item promises race-free. The
-  placement's entry is cleared before fan-in runs so subsequent re-runs
-  of the same fan-out start clean. Index semantics are strict: positions
-  refer to the source array at resume time, not at checkpoint time;
-  consumers must treat the source as immutable while a fan-out
-  checkpoint is live, or clear the entry under
-  `FAN_OUT_PROGRESS_KEY[fanOut.name]` before resume when the source has
-  changed.
-- New exports from the root barrel: `FAN_OUT_PROGRESS_KEY`,
-  `FanOutProgress`, `StoredFanOutProgress`.
 
 ## 0.10.0
 

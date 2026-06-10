@@ -12,7 +12,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { Customs } from '../services.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region customs-dwell-node
 export const customsDwell: NodeInterface<CartographerState, 'dwelled', CartographerServices> = {
@@ -23,7 +23,7 @@ export const customsDwell: NodeInterface<CartographerState, 'dwelled', Cartograp
       throw new Error('Aborted');
     }
     state.customsDwellHours = Customs.dwellHours(state.canonical.body.customsStatus);
-    return { 'output': 'dwelled' };
+    return NodeOutputBuilder.of('dwelled');
   },
 };
 // #endregion customs-dwell-node

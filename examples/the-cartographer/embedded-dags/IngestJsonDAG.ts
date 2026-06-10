@@ -48,8 +48,8 @@ export const ingestJsonDAG: DAG = new DAGBuilder('ingest-json', '1.0')
   })
 
   // Terminals
-  .terminal('ingested', 'completed')
-  .terminal('rejected', 'failed')
+  .terminal('ingested', { outcome: 'completed' })
+  .terminal('rejected', { outcome: 'failed' })
 
   .build();
 

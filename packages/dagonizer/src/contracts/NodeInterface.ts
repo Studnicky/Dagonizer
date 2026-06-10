@@ -3,6 +3,7 @@ import type { NodeContextInterface } from '../entities/node/NodeContext.js';
 import type { NodeOutputInterface } from '../entities/node/NodeOutput.js';
 import type { ValidationResult } from '../entities/validation/ValidationResult.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
+import type { Timeout } from '../runtime/Timeout.js';
 
 import type { OperationContractFragment } from './OperationContractFragment.js';
 
@@ -32,20 +33,27 @@ export interface NodeInterface<
   destroy?(): Promise<void>;
 
   /**
-   * Optional per-node wall-clock budget in milliseconds.
+   * Optional per-node wall-clock budget.
    *
    * When set, the engine derives a child `AbortController` from the run's
-   * signal and schedules an abort after `timeoutMs`. The child signal is
-   * passed as `context.signal` to this node's `execute()` call only;
+   * signal and schedules an abort after the budget elapses. The child signal
+   * is passed as `context.signal` to this node's `execute()` call only;
    * other nodes in the same run are unaffected. On expiry the engine throws
-   * a `NodeTimeoutError` wrapped as a `DAGError`, fires `onError`, and
-   * marks the run failed.
+   * a `NodeTimeoutError` wrapped as a `DAGError`, fires `onError`, and marks
+   * the run failed.
    *
-   * Omitting this field (or setting it to `undefined`) leaves the node
-   * subject only to the run-level `deadlineMs` / `signal` from
-   * `ExecuteOptionsInterface`.
+   * Absent (or `Timeout.none()`) — the node is subject only to the run-level
+   * `deadlineMs` / `signal` from `ExecuteOptionsInterface`.
+   *
+   * Set `Timeout.ofMs(n)` for a per-node wall-clock budget of `n` ms.
+   *
+   * This field is intentionally optional on the contract (external boundary:
+   * consumer-implemented nodes are not required to carry a default). The
+   * concrete `MonadicNode` base class declares `timeout: Timeout = Timeout.none()`
+   * for V8 hidden-class stability; the engine treats an absent field as
+   * `Timeout.none()`.
    */
-  readonly 'timeoutMs'?: number;
+  timeout?: Timeout;
 
   /**
    * Execute the node, mutating state.
@@ -84,36 +92,3 @@ export interface NodeInterface<
    */
   validate?(): ValidationResult;
 }
-
-/**
- * Chainable<A, B>: compile-time proof that B's hardRequired set is
- * satisfied by A's produces set. Resolves to `true` when chainable,
- * `never` otherwise. Use in test helpers and contract authoring to
- * surface drift at the type layer.
- *
- * Most useful when nodes are typed with `as const` literal-tuple contracts:
- *
- * ```ts
- * const fetchNode = {
- *   name: 'fetch',
- *   outputs: ['success'] as const,
- *   contract: { hardRequired: ['url'] as const, produces: ['raw'] as const },
- *   async execute(state, ctx) { return { output: 'success' }; },
- * } satisfies NodeInterface;
- *
- * const parseNode = {
- *   name: 'parse',
- *   outputs: ['success'] as const,
- *   contract: { hardRequired: ['raw'] as const, produces: ['record'] as const },
- *   async execute(state, ctx) { return { output: 'success' }; },
- * } satisfies NodeInterface;
- *
- * type Check = Chainable<typeof fetchNode, typeof parseNode>; // true
- * ```
- */
-export type Chainable<
-  A extends NodeInterface & { readonly contract: OperationContractFragment },
-  B extends NodeInterface & { readonly contract: OperationContractFragment },
-> = B['contract']['hardRequired'][number] extends A['contract']['produces'][number]
-  ? true
-  : never;

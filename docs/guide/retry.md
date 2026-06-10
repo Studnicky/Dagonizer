@@ -82,7 +82,7 @@ All strategies apply `jitterFactor` (default `0.1`, plus or minus 10%) to spread
 class NetworkError extends Error {}
 class AuthError extends Error {}
 
-const policy = new RetryPolicy({
+const policy = RetryPolicy.from({
   maxAttempts: 5,
   strategy: BackoffStrategy.EXPONENTIAL,
   retryOn: [NetworkError],    // only retry these
@@ -102,7 +102,7 @@ Precedence:
 `policy.run(task, context.signal)` checks the signal before each attempt. During a backoff wait, if the signal fires the wait resolves with the abort reason (thrown). A cancelled flow stops cleanly mid-retry:
 
 ```ts
-const policy = new RetryPolicy({ maxAttempts: 10, baseDelay: 1000 });
+const policy = RetryPolicy.from({ maxAttempts: 10, baseDelay: 1000 });
 // If context.signal aborts during a 1 s sleep, run() throws immediately.
 await policy.run(task, context.signal);
 ```

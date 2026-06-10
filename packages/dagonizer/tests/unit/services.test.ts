@@ -29,7 +29,7 @@ void describe('Dagonizer services container', () => {
       async execute(state, context) {
         context.services.logger.entries.push(`hit:${context.services.client.url}`);
         state.out = context.services.client.url;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
 
@@ -45,8 +45,10 @@ void describe('Dagonizer services container', () => {
       'nodes': [{
         '@id':   'urn:noocodex:dag:svc/node/use-services',
         '@type': 'SingleNode',
-        'name':  'use-services', 'node': 'use-services', 'outputs': { 'success': null },
-      }],
+        'name':  'use-services', 'node': 'use-services', 'outputs': { 'success': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:svc/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     };
     dispatcher.registerDAG(dag);
 
@@ -65,7 +67,7 @@ void describe('Dagonizer services container', () => {
       'outputs': ['success'],
       async execute(state, context) {
         state.out = context.services;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
 
@@ -81,8 +83,10 @@ void describe('Dagonizer services container', () => {
       'nodes': [{
         '@id':   'urn:noocodex:dag:svc-default/node/check-undefined',
         '@type': 'SingleNode',
-        'name':  'check-undefined', 'node': 'check-undefined', 'outputs': { 'success': null },
-      }],
+        'name':  'check-undefined', 'node': 'check-undefined', 'outputs': { 'success': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:svc-default/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     });
 
     const result = await dispatcher.execute('svc-default', new S());

@@ -34,21 +34,21 @@ export class GrpcStore extends BaseStore implements RemoteStore {
   // ── RemoteStore distributed contract ─────────────────────────────────────
 
   override async connect(): Promise<void> {
-    console.log(`[GrpcStore] connect -> ${this.endpoint.url}`);
+    process.stdout.write(`[GrpcStore] connect -> ${this.endpoint.url}\n`);
   }
 
   override async disconnect(): Promise<void> {
-    console.log(`[GrpcStore] disconnect -> ${this.endpoint.url}`);
+    process.stdout.write(`[GrpcStore] disconnect -> ${this.endpoint.url}\n`);
   }
 
   async health(timeoutMs: number): Promise<boolean> {
-    console.log(`[GrpcStore] health probe (timeout=${timeoutMs}ms)`);
+    process.stdout.write(`[GrpcStore] health probe (timeout=${timeoutMs}ms)\n`);
     // Stub: always healthy in the example.
     return true;
   }
 
   async acquireLease(subject: string, ttlMs: number, maxWaitMs: number): Promise<RemoteStoreLease> {
-    console.log(`[GrpcStore] acquireLease subject=${subject} ttl=${ttlMs}ms maxWait=${maxWaitMs}ms`);
+    process.stdout.write(`[GrpcStore] acquireLease subject=${subject} ttl=${ttlMs}ms maxWait=${maxWaitMs}ms\n`);
     return {
       token:     `token:${subject}:${Date.now()}`,
       expiresAt: Date.now() + ttlMs,
@@ -57,7 +57,7 @@ export class GrpcStore extends BaseStore implements RemoteStore {
   }
 
   async releaseLease(lease: RemoteStoreLease): Promise<void> {
-    console.log(`[GrpcStore] releaseLease token=${lease.token}`);
+    process.stdout.write(`[GrpcStore] releaseLease token=${lease.token}\n`);
   }
 
   // ── BaseStore abstract hooks ──────────────────────────────────────────────
@@ -65,8 +65,9 @@ export class GrpcStore extends BaseStore implements RemoteStore {
   protected get snapshotType(): string    { return 'grpc-store'; }
   protected get snapshotVersion(): number { return 1; }
 
-  protected async performGet<T extends JsonValue>(key: string): Promise<T | undefined> {
-    return this.#data.get(key) as T | undefined;
+  protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {
+    const value = this.#data.get(key);
+    return value === undefined ? null : (value as T);
   }
 
   protected async performSet<T extends JsonValue>(key: string, value: T): Promise<void> {

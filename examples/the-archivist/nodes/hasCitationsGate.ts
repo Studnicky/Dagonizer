@@ -15,6 +15,8 @@
  * dereferencing typed fields.
  */
 
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
+
 import { MemoryStore, stateGraphIri } from '../memory/MemoryStore.ts';
 
 import type { ArchivistNode } from './ArchivistNode.ts';
@@ -39,7 +41,7 @@ export const hasCitationsGate: ArchivistNode<'pass' | 'fail'> = {
       if (state.failureCause.trim().length === 0) {
         state.failureCause = 'No candidates found after searching all available sources. ';
       }
-      return { 'output': 'fail' };
+      return NodeOutputBuilder.of('fail');
     }
     for (const row of shortlisted) {
       const book = row['book'];
@@ -53,12 +55,12 @@ export const hasCitationsGate: ArchivistNode<'pass' | 'fail'> = {
         context.services.logger.info(
           `gate pass: ${String(shortlisted.length)} shortlisted in state graph, ≥1 sourced`,
         );
-        return { 'output': 'pass' };
+        return NodeOutputBuilder.of('pass');
       }
     }
     if (state.failureCause.trim().length === 0) {
       state.failureCause = 'No candidates found after searching all available sources. ';
     }
-    return { 'output': 'fail' };
+    return NodeOutputBuilder.of('fail');
   },
 };

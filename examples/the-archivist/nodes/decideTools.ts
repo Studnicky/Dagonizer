@@ -35,6 +35,8 @@ import { GoogleBooksTool } from '@noocodex/dagonizer-tool-googlebooks';
 import { OpenLibrarySearchTool } from '@noocodex/dagonizer-tool-openlibrary';
 import { SubjectSearchTool } from '@noocodex/dagonizer-tool-openlibrary';
 
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
+
 import type { ArchivistNode } from './ArchivistNode.ts';
 
 /**
@@ -225,7 +227,7 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools' | 'retry' | 'salvag
       state.clearAttempts(context.nodeName);
       context.services.logger.info(`decide-tools: deterministic shortcut "${shortcut.pattern}"`);
       context.services.logger.info(`tool plan: ${shortcut.calls.map((c) => c.name).join(', ')}`);
-      return { 'output': 'tools' };
+      return NodeOutputBuilder.of('tools');
     }
 
     const isFullCatalog = FULL_CATALOG_INTENTS.has(state.intent);
@@ -283,11 +285,11 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools' | 'retry' | 'salvag
         context.services.logger.info(
           `tool plan: ${calls.map((c) => c.name).join(', ')}`,
         );
-        return { 'output': 'tools' };
+        return NodeOutputBuilder.of('tools');
       }
 
       state.failureCause += 'Tool plan: no tools selected. ';
-      return { 'output': 'no-tools' };
+      return NodeOutputBuilder.of('no-tools');
     } catch (err) {
       // External cancellation / run deadline propagates unchanged.
       if (context.signal.aborted) throw err;
@@ -295,11 +297,11 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools' | 'retry' | 'salvag
       // minimal-plan fallback lives in decide-tools-salvage, not here.
       if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
         context.services.logger.warn(`decide-tools: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
-        return { 'output': 'retry' };
+        return NodeOutputBuilder.of('retry');
       }
       state.clearAttempts(context.nodeName);
       context.services.logger.warn(`decide-tools: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
-      return { 'output': 'salvage' };
+      return NodeOutputBuilder.of('salvage');
     } finally {
       clearTimeout(handle);
     }

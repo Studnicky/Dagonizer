@@ -18,7 +18,7 @@ import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 import { FieldMappings } from '../../services.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region map-fields-node
 export const mapFields: NodeInterface<CartographerState, 'coerce-types', CartographerServices> = {
@@ -37,7 +37,7 @@ export const mapFields: NodeInterface<CartographerState, 'coerce-types', Cartogr
       return out;
     });
     state.mappedRecords = mapped;
-    return { 'output': 'coerce-types' };
+    return NodeOutputBuilder.of('coerce-types');
   },
 };
 // #endregion map-fields-node

@@ -16,13 +16,15 @@
  */
 
 export { MermaidRenderer } from './MermaidRenderer.js';
-export { JsonLdRenderer, DAGONIZER_VOCAB } from './JsonLdRenderer.js';
+export { JsonLdRenderer, DAGONIZER_VOCAB, DagJsonLdDocumentSchema } from './JsonLdRenderer.js';
 export type { DagJsonLdDocument, JsonLdGraphEntry } from './JsonLdRenderer.js';
 export { CytoscapeRenderer } from './CytoscapeRenderer.js';
 export type {
   CytoscapeElement,
+  CytoscapeNodeData,
   CytoscapeNodeElement,
   CytoscapeEdgeElement,
+  RenderOptions,
 } from './CytoscapeRenderer.js';
 export { CompositeLayout } from './CompositeLayout.js';
 export type {

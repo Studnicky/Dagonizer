@@ -23,7 +23,7 @@ import { computed, nextTick, onMounted, ref } from 'vue';
 import { CartographerState } from '../../../../examples/the-cartographer/CartographerState.ts';
 import type { JourneyInsights, RegionInsights } from '../../../../examples/the-cartographer/CartographerState.ts';
 import type { CartographerServices } from '../../../../examples/the-cartographer/CartographerServices.ts';
-import { cartographerDAG, cartographerBundle, eventPipelineDAG } from '../../../../examples/the-cartographer/dag.ts';
+import { cartographerWorkersDAG, cartographerWorkersBundle, eventPipelineDAG } from '../../../../examples/the-cartographer/dag.ts';
 import { canonicalizeDAG, canonicalizeBundle } from '../../../../examples/the-cartographer/embedded-dags/CanonicalizeDAG.ts';
 import { ingestSourceDAG, ingestSourceBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestSourceDAG.ts';
 import { ingestJsonDAG, ingestJsonBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestJsonDAG.ts';
@@ -34,10 +34,13 @@ import { gdprComplianceDAG, gdprComplianceBundle } from '../../../../examples/th
 import { orderEnrichmentDAG, orderEnrichmentBundle } from '../../../../examples/the-cartographer/embedded-dags/OrderEnrichmentDAG.ts';
 import { GeoResolvers } from '../../../../examples/the-cartographer/services/GeoResolvers.ts';
 import type { EnrichedShipment } from '../../../../examples/the-cartographer/entities/EnrichedShipment.ts';
+import type { CanonicalEvent } from '../../../../examples/the-cartographer/entities/CanonicalEvent.ts';
 
 import { ObservedDagonizer } from './ObservedDagonizer.ts';
 import DagGraph from './DagGraph.vue';
 import PanesTabs from './PanesTabs.vue';
+import AboxAccordion from './AboxAccordion.vue';
+import type { AboxEntity } from './AboxAccordion.vue';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type TraceEvent =
@@ -74,6 +77,8 @@ const feedContainerRef = ref<HTMLElement | null>(null);
 
 // Finished state snapshot (set after execution completes).
 const records = ref<EnrichedShipment[]>([]);
+/** Pre-stream canonical events captured in onFlowEnd (the before payloads). */
+const canonicalEvents = ref<CanonicalEvent[]>([]);
 const insightsMap = ref<Map<string, RegionInsights>>(new Map());
 const journeysMap = ref<Map<string, JourneyInsights>>(new Map());
 
@@ -124,32 +129,27 @@ const savings = computed(() => {
 });
 
 /**
- * Primary before/after record: one that ran BOTH geo-resolve AND redaction so all
- * transformation stages have data to show.
+ * ABox entities: pairs each EnrichedShipment (after) with its CanonicalEvent
+ * (before) by matching shipmentId + scanSeq. The before payload is optional —
+ * when no match is found the accordion still renders the after payload only.
  */
-const primarySample = computed<EnrichedShipment | null>(() => {
-  return (
-    records.value.find(
-      (r) => r.routing.geoLookupRun && r.redactionApplied && r.continent !== 'Unmapped',
-    ) ??
-    records.value.find((r) => r.routing.geoLookupRun && r.continent !== 'Unmapped') ??
-    records.value.find((r) => r.redactionApplied) ??
-    records.value[0] ??
-    null
-  );
-});
+const aboxEntities = computed<AboxEntity[]>(() => {
+  // Build a lookup map keyed by "shipmentId::scanSeq" for O(1) pairing.
+  const beforeMap = new Map<string, CanonicalEvent>();
+  for (const ev of canonicalEvents.value) {
+    const key = `${ev.shipmentId}::${ev.body.scanSeq}`;
+    // If duplicates exist, prefer the one whose epochMs matches (first wins).
+    if (!beforeMap.has(key)) {
+      beforeMap.set(key, ev);
+    }
+  }
 
-/**
- * Secondary "skipped" record: one that SKIPPED geo or redaction, to make branching tangible.
- */
-const skippedSample = computed<EnrichedShipment | null>(() => {
-  return (
-    records.value.find(
-      (r) =>
-        r !== primarySample.value &&
-        (r.routing.geoLookupSkipped || r.routing.redactionSkipped),
-    ) ?? null
-  );
+  return records.value.map<AboxEntity>((after) => {
+    const key = `${after.shipmentId}::${after.scanSeq}`;
+    const before = beforeMap.get(key);
+    const label = `${after.shipmentId} · scan ${after.scanSeq} · ${after.eventType} · ${after.continent}`;
+    return { 'id': key, label, before, after };
+  });
 });
 
 /** Continent insights as a sorted array for display. */
@@ -241,6 +241,7 @@ async function run(): Promise<void> {
   errorMessage.value = null;
   trace.value = [];
   records.value = [];
+  canonicalEvents.value = [];
   insightsMap.value = new Map();
   journeysMap.value = new Map();
   streamFeed.value = [];
@@ -303,6 +304,8 @@ async function run(): Promise<void> {
     },
     onFlowEnd(_dagName: string, state: CartographerState) {
       records.value = [...state.records];
+      // Capture pre-stream payload for the Before/After accordion.
+      canonicalEvents.value = [...state.canonicalEvents];
       insightsMap.value = new Map(state.insights);
       journeysMap.value = new Map(state.journeys);
       progressPct.value = 100;
@@ -323,7 +326,7 @@ async function run(): Promise<void> {
   dispatcher.registerBundle(ingestCsvBundle);
   dispatcher.registerBundle(ingestNdjsonGzBundle);
   dispatcher.registerBundle(ingestSourceBundle);
-  dispatcher.registerBundle(cartographerBundle);
+  dispatcher.registerBundle(cartographerWorkersBundle);
 
   const state = new CartographerState();
   state.eventCount = 16; // browser-friendly: small N so the demo completes quickly
@@ -351,6 +354,7 @@ async function run(): Promise<void> {
 function reset(): void {
   if (isRunning.value) return;
   records.value = [];
+  canonicalEvents.value = [];
   insightsMap.value = new Map();
   journeysMap.value = new Map();
   trace.value = [];
@@ -570,7 +574,7 @@ onMounted(() => {
             <div class="graph-pane">
               <DagGraph
                 ref="dagGraph"
-                :dag="cartographerDAG"
+                :dag="cartographerWorkersDAG"
                 :embedded-d-a-gs="embeddedDagRegistry"
                 :expand-all="true"
                 aria-label="Cartographer DAG live execution"
@@ -578,7 +582,7 @@ onMounted(() => {
             </div>
           </template>
 
-          <!-- Before / After tab: 6-stage transformation walkthrough + routing tables -->
+          <!-- Before / After tab: ABox accordion list — one entity per processed event -->
           <template #before-after>
             <div class="cr-panels-pane">
 
@@ -586,332 +590,18 @@ onMounted(() => {
                 <p class="cr-placeholder">Run the pipeline to see the before / after transformations.</p>
               </template>
 
-              <template v-else-if="primarySample">
-                <!-- ── Record header ────────────────────────────────────── -->
-                <div class="cr-ba-header">
-                  <span class="cr-ba-header-id">{{ primarySample.shipmentId }}</span>
-                  <span class="cr-ba-header-meta">scan #{{ primarySample.scanSeq }} · {{ primarySample.eventType }} · {{ primarySample.serviceTier }} / {{ primarySample.sizeTier }}</span>
+              <template v-else-if="aboxEntities.length > 0">
+                <p class="cr-ba-intro">
+                  {{ aboxEntities.length }} ABox entities — click a row to inspect its
+                  pre-stream (CanonicalEvent) and post-stream (EnrichedShipment) payloads side by side.
+                </p>
+                <div class="cr-ba-list">
+                  <AboxAccordion :entities="aboxEntities" />
                 </div>
-
-                <!-- ── Stage 1: Normalize ─────────────────────────────── -->
-                <h5 class="cr-section-head">1 — normalize</h5>
-                <div class="cr-stage-grid">
-                  <div class="cr-sg-row">
-                    <span class="cr-sg-label">Timestamp</span>
-                    <span class="cr-sg-before mono">raw string</span>
-                    <span class="cr-sg-arrow">→</span>
-                    <span class="cr-sg-after mono">{{ primarySample.epochMs }}ms · {{ primarySample.localIso || '—' }} ({{ primarySample.utcOffset || 'UTC' }})</span>
-                  </div>
-                  <div class="cr-sg-row">
-                    <span class="cr-sg-label">Carrier</span>
-                    <span class="cr-sg-before mono">alias string</span>
-                    <span class="cr-sg-arrow">→</span>
-                    <span class="cr-sg-after mono">canonical ID + name</span>
-                  </div>
-                  <div class="cr-sg-row">
-                    <span class="cr-sg-label">Country</span>
-                    <span class="cr-sg-before mono">free-text</span>
-                    <span class="cr-sg-arrow">→</span>
-                    <span class="cr-sg-after mono">ISO-3: {{ primarySample.country }}</span>
-                  </div>
-                  <div class="cr-sg-row">
-                    <span class="cr-sg-label">Weight</span>
-                    <span class="cr-sg-before mono">lb / kg / oz</span>
-                    <span class="cr-sg-arrow">→</span>
-                    <span class="cr-sg-after mono">grams (normalised)</span>
-                  </div>
-                </div>
-
-                <!-- ── Stage 2: Geo-resolve ───────────────────────────── -->
-                <h5 class="cr-section-head">2 — geo-resolve</h5>
-                <template v-if="primarySample.routing.geoLookupRun">
-                  <div class="cr-stage-grid">
-                    <div class="cr-sg-row">
-                      <span class="cr-sg-label">Coordinates</span>
-                      <span class="cr-sg-before mono">{{ primarySample.lat.toFixed(4) }}, {{ primarySample.lng.toFixed(4) }}</span>
-                      <span class="cr-sg-arrow">→</span>
-                      <span class="cr-sg-after mono">{{ primarySample.continent }} / {{ primarySample.country }} / {{ primarySample.region || '—' }}</span>
-                    </div>
-                    <div class="cr-sg-row">
-                      <span class="cr-sg-label">Hub</span>
-                      <span class="cr-sg-before mono">—</span>
-                      <span class="cr-sg-arrow">→</span>
-                      <span class="cr-sg-after mono">{{ primarySample.hub || '—' }}</span>
-                    </div>
-                    <div class="cr-sg-row">
-                      <span class="cr-sg-label">Jurisdiction</span>
-                      <span class="cr-sg-before mono">unknown</span>
-                      <span class="cr-sg-arrow">→</span>
-                      <span class="cr-sg-after mono">{{ primarySample.jurisdiction }}</span>
-                    </div>
-                    <div class="cr-sg-row">
-                      <span class="cr-sg-label">Modalities</span>
-                      <span class="cr-sg-before mono">—</span>
-                      <span class="cr-sg-arrow">→</span>
-                      <span class="cr-sg-after mono">{{ primarySample.routing.geoModalities.join(' + ') || 'offline-gps' }}</span>
-                    </div>
-                    <div class="cr-sg-row">
-                      <span class="cr-sg-label">Confidence</span>
-                      <span class="cr-sg-before mono">—</span>
-                      <span class="cr-sg-arrow">→</span>
-                      <span class="cr-sg-after mono">{{ (primarySample.routing.geoConfidence * 100).toFixed(0) }}%</span>
-                    </div>
-                    <div class="cr-sg-row">
-                      <span class="cr-sg-label">Reverse-geocode</span>
-                      <span class="cr-sg-before mono">—</span>
-                      <span class="cr-sg-arrow">→</span>
-                      <span :class="['cr-sg-after', primarySample.routing.reverseGeocodeRun ? 'cr-tag--ran' : 'cr-tag--skipped']">
-                        {{ primarySample.routing.reverseGeocodeRun ? 'ran' : 'skipped' }}
-                      </span>
-                    </div>
-                    <div class="cr-sg-row">
-                      <span class="cr-sg-label">IP-geolocate</span>
-                      <span class="cr-sg-before mono">—</span>
-                      <span class="cr-sg-arrow">→</span>
-                      <span :class="['cr-sg-after', primarySample.routing.ipGeolocateRun ? 'cr-tag--ran' : 'cr-tag--skipped']">
-                        {{ primarySample.routing.ipGeolocateRun ? 'ran' : 'skipped' }}
-                      </span>
-                    </div>
-                  </div>
-                </template>
-                <template v-else>
-                  <p class="cr-placeholder cr-placeholder--inline">Geo-resolve skipped — source pre-resolved location.</p>
-                </template>
-
-                <!-- ── Stage 3: Classify ──────────────────────────────── -->
-                <h5 class="cr-section-head">3 — classify</h5>
-                <div class="cr-stage-grid">
-                  <div class="cr-sg-row">
-                    <span class="cr-sg-label">Status → eventType</span>
-                    <span class="cr-sg-before mono">raw status</span>
-                    <span class="cr-sg-arrow">→</span>
-                    <span class="cr-sg-after mono">{{ primarySample.eventType }}</span>
-                  </div>
-                  <div class="cr-sg-row">
-                    <span class="cr-sg-label">Service tier</span>
-                    <span class="cr-sg-before mono">weight + dist</span>
-                    <span class="cr-sg-arrow">→</span>
-                    <span class="cr-sg-after mono">{{ primarySample.serviceTier }}</span>
-                  </div>
-                  <div class="cr-sg-row">
-                    <span class="cr-sg-label">Size tier</span>
-                    <span class="cr-sg-before mono">weight grams</span>
-                    <span class="cr-sg-arrow">→</span>
-                    <span class="cr-sg-after mono">{{ primarySample.sizeTier }}</span>
-                  </div>
-                </div>
-
-                <!-- ── Stage 4: Pricing ───────────────────────────────── -->
-                <h5 class="cr-section-head">4 — pricing</h5>
-                <template v-if="primarySample.routing.pricingRun">
-                  <div class="cr-stage-grid">
-                    <div class="cr-sg-row">
-                      <span class="cr-sg-label">Basket → subtotal</span>
-                      <span class="cr-sg-before mono">line items</span>
-                      <span class="cr-sg-arrow">→</span>
-                      <span class="cr-sg-after mono">{{ usdFromMinor(primarySample.subtotalUsdMinor) }} USD</span>
-                    </div>
-                    <div class="cr-sg-row">
-                      <span class="cr-sg-label">Currency</span>
-                      <span class="cr-sg-before mono">local</span>
-                      <span class="cr-sg-arrow">→</span>
-                      <span class="cr-sg-after mono">USD (FX-normalised)</span>
-                    </div>
-                  </div>
-                </template>
-                <template v-else>
-                  <p class="cr-placeholder cr-placeholder--inline">Pricing skipped for this event kind.</p>
-                </template>
-
-                <!-- ── Stage 5: Shipping + ETA ───────────────────────── -->
-                <h5 class="cr-section-head">5 — shipping + eta</h5>
-                <template v-if="primarySample.routing.etaRun">
-                  <div class="cr-stage-grid">
-                    <div class="cr-sg-row">
-                      <span class="cr-sg-label">Distance</span>
-                      <span class="cr-sg-before mono">leg coords</span>
-                      <span class="cr-sg-arrow">→</span>
-                      <span class="cr-sg-after mono">{{ primarySample.distanceKm.toFixed(1) }} km</span>
-                    </div>
-                    <div class="cr-sg-row">
-                      <span class="cr-sg-label">Shipping cost</span>
-                      <span class="cr-sg-before mono">distance × tier rate</span>
-                      <span class="cr-sg-arrow">→</span>
-                      <span class="cr-sg-after mono">{{ usdFromMinor(primarySample.shippingUsdMinor) }} USD</span>
-                    </div>
-                    <div class="cr-sg-row">
-                      <span class="cr-sg-label">Transit</span>
-                      <span class="cr-sg-before mono">haversine</span>
-                      <span class="cr-sg-arrow">→</span>
-                      <span class="cr-sg-after mono">{{ primarySample.transitHours.toFixed(1) }}h</span>
-                    </div>
-                    <div class="cr-sg-row">
-                      <span class="cr-sg-label">On-time / delay</span>
-                      <span class="cr-sg-before mono">promised ETA</span>
-                      <span class="cr-sg-arrow">→</span>
-                      <span :class="['cr-sg-after', primarySample.onTime ? 'cr-tag--ran' : 'cr-tag--skipped']">
-                        {{ primarySample.onTime ? 'on-time' : `${primarySample.delayHours.toFixed(1)}h late` }}
-                      </span>
-                    </div>
-                  </div>
-                </template>
-                <template v-else>
-                  <p class="cr-placeholder cr-placeholder--inline">ETA skipped for this event kind.</p>
-                </template>
-
-                <!-- ── Stage 6: GDPR redaction ───────────────────────── -->
-                <h5 class="cr-section-head">6 — gdpr redaction</h5>
-                <template v-if="primarySample.redactionApplied">
-                  <div class="cr-stage-grid">
-                    <div class="cr-sg-row">
-                      <span class="cr-sg-label">Name</span>
-                      <span class="cr-sg-before mono">raw PII</span>
-                      <span class="cr-sg-arrow">→</span>
-                      <span class="cr-sg-after mono">{{ primarySample.redactedSample.recipientName || '[redacted]' }}</span>
-                    </div>
-                    <div class="cr-sg-row">
-                      <span class="cr-sg-label">Email</span>
-                      <span class="cr-sg-before mono">raw PII</span>
-                      <span class="cr-sg-arrow">→</span>
-                      <span class="cr-sg-after mono">{{ primarySample.redactedSample.recipientEmail || '[redacted]' }}</span>
-                    </div>
-                    <div class="cr-sg-row">
-                      <span class="cr-sg-label">Phone</span>
-                      <span class="cr-sg-before mono">raw PII</span>
-                      <span class="cr-sg-arrow">→</span>
-                      <span class="cr-sg-after mono">{{ primarySample.redactedSample.recipientPhone || '[redacted]' }}</span>
-                    </div>
-                    <div class="cr-sg-row">
-                      <span class="cr-sg-label">Jurisdiction</span>
-                      <span class="cr-sg-before mono">derived</span>
-                      <span class="cr-sg-arrow">→</span>
-                      <span class="cr-sg-after mono">{{ primarySample.jurisdiction }}</span>
-                    </div>
-                    <div class="cr-sg-row">
-                      <span class="cr-sg-label">Coords coarsened</span>
-                      <span class="cr-sg-before mono">exact lat/lng</span>
-                      <span class="cr-sg-arrow">→</span>
-                      <span :class="['cr-sg-after', primarySample.coordsCoarsened ? 'cr-tag--ran' : 'cr-tag--skipped']">
-                        {{ primarySample.coordsCoarsened ? 'yes — grid centroid' : 'no — kept exact' }}
-                      </span>
-                    </div>
-                  </div>
-                </template>
-                <template v-else>
-                  <p class="cr-placeholder cr-placeholder--inline">Redaction skipped — consent valid or PII absent.</p>
-                </template>
-
-                <!-- ── Pipeline routing for this record ─────────────── -->
-                <h5 class="cr-section-head">pipeline routing — this record</h5>
-                <div class="cr-routing-grid">
-                  <div class="cr-routing-row">
-                    <span class="cr-routing-label">Lane</span>
-                    <span class="cr-routing-val mono">{{ primarySample.routing.path }}</span>
-                  </div>
-                  <div class="cr-routing-row">
-                    <span class="cr-routing-label">Geo-resolve</span>
-                    <span :class="['cr-routing-val', primarySample.routing.geoLookupRun ? 'cr-tag--ran' : 'cr-tag--skipped']">
-                      {{ primarySample.routing.geoLookupRun ? 'ran' : 'skipped' }}
-                    </span>
-                  </div>
-                  <div class="cr-routing-row">
-                    <span class="cr-routing-label">IP-geolocate</span>
-                    <span :class="['cr-routing-val', primarySample.routing.ipGeolocateRun ? 'cr-tag--ran' : 'cr-tag--skipped']">
-                      {{ primarySample.routing.ipGeolocateRun ? 'ran' : 'skipped' }}
-                    </span>
-                  </div>
-                  <div class="cr-routing-row">
-                    <span class="cr-routing-label">Redaction</span>
-                    <span :class="['cr-routing-val', primarySample.routing.redactionRun ? 'cr-tag--ran' : 'cr-tag--skipped']">
-                      {{ primarySample.routing.redactionRun ? 'ran' : 'skipped' }}
-                    </span>
-                  </div>
-                  <div class="cr-routing-row">
-                    <span class="cr-routing-label">Pricing</span>
-                    <span :class="['cr-routing-val', primarySample.routing.pricingRun ? 'cr-tag--ran' : 'cr-tag--skipped']">
-                      {{ primarySample.routing.pricingRun ? 'ran' : 'skipped' }}
-                    </span>
-                  </div>
-                  <div class="cr-routing-row">
-                    <span class="cr-routing-label">ETA</span>
-                    <span :class="['cr-routing-val', primarySample.routing.etaRun ? 'cr-tag--ran' : 'cr-tag--skipped']">
-                      {{ primarySample.routing.etaRun ? 'ran' : 'skipped' }}
-                    </span>
-                  </div>
-                  <div class="cr-routing-row">
-                    <span class="cr-routing-label">Cold chain</span>
-                    <span :class="['cr-routing-val', primarySample.routing.coldChainRun ? 'cr-tag--ran' : 'cr-tag--skipped']">
-                      {{ primarySample.routing.coldChainRun ? 'ran' : 'skipped' }}
-                    </span>
-                  </div>
-                  <div class="cr-routing-row">
-                    <span class="cr-routing-label">Customs dwell</span>
-                    <span :class="['cr-routing-val', primarySample.routing.customsDwellRun ? 'cr-tag--ran' : 'cr-tag--skipped']">
-                      {{ primarySample.routing.customsDwellRun ? 'ran' : 'skipped' }}
-                    </span>
-                  </div>
-                </div>
-
-                <!-- ── Second example: skipped branches ─────────────── -->
-                <template v-if="skippedSample">
-                  <div class="cr-ba-header cr-ba-header--secondary">
-                    <span class="cr-ba-header-id">{{ skippedSample.shipmentId }}</span>
-                    <span class="cr-ba-header-meta">scan #{{ skippedSample.scanSeq }} — branching contrast</span>
-                  </div>
-                  <div class="cr-routing-grid">
-                    <div class="cr-routing-row">
-                      <span class="cr-routing-label">Lane</span>
-                      <span class="cr-routing-val mono">{{ skippedSample.routing.path }}</span>
-                    </div>
-                    <div class="cr-routing-row">
-                      <span class="cr-routing-label">Geo-resolve</span>
-                      <span :class="['cr-routing-val', skippedSample.routing.geoLookupRun ? 'cr-tag--ran' : 'cr-tag--skipped']">
-                        {{ skippedSample.routing.geoLookupRun ? 'ran' : 'skipped' }}
-                      </span>
-                    </div>
-                    <div class="cr-routing-row">
-                      <span class="cr-routing-label">IP-geolocate</span>
-                      <span :class="['cr-routing-val', skippedSample.routing.ipGeolocateRun ? 'cr-tag--ran' : 'cr-tag--skipped']">
-                        {{ skippedSample.routing.ipGeolocateRun ? 'ran' : 'skipped' }}
-                      </span>
-                    </div>
-                    <div class="cr-routing-row">
-                      <span class="cr-routing-label">Redaction</span>
-                      <span :class="['cr-routing-val', skippedSample.routing.redactionRun ? 'cr-tag--ran' : 'cr-tag--skipped']">
-                        {{ skippedSample.routing.redactionRun ? 'ran' : 'skipped' }}
-                      </span>
-                    </div>
-                    <div class="cr-routing-row">
-                      <span class="cr-routing-label">Pricing</span>
-                      <span :class="['cr-routing-val', skippedSample.routing.pricingRun ? 'cr-tag--ran' : 'cr-tag--skipped']">
-                        {{ skippedSample.routing.pricingRun ? 'ran' : 'skipped' }}
-                      </span>
-                    </div>
-                    <div class="cr-routing-row">
-                      <span class="cr-routing-label">ETA</span>
-                      <span :class="['cr-routing-val', skippedSample.routing.etaRun ? 'cr-tag--ran' : 'cr-tag--skipped']">
-                        {{ skippedSample.routing.etaRun ? 'ran' : 'skipped' }}
-                      </span>
-                    </div>
-                    <div class="cr-routing-row">
-                      <span class="cr-routing-label">Cold chain</span>
-                      <span :class="['cr-routing-val', skippedSample.routing.coldChainRun ? 'cr-tag--ran' : 'cr-tag--skipped']">
-                        {{ skippedSample.routing.coldChainRun ? 'ran' : 'skipped' }}
-                      </span>
-                    </div>
-                    <div class="cr-routing-row">
-                      <span class="cr-routing-label">Customs dwell</span>
-                      <span :class="['cr-routing-val', skippedSample.routing.customsDwellRun ? 'cr-tag--ran' : 'cr-tag--skipped']">
-                        {{ skippedSample.routing.customsDwellRun ? 'ran' : 'skipped' }}
-                      </span>
-                    </div>
-                  </div>
-                </template>
-
               </template>
 
-              <template v-else-if="isDone">
-                <p class="cr-placeholder">No qualifying records found in this run.</p>
+              <template v-else>
+                <p class="cr-placeholder">No records found in this run.</p>
               </template>
 
             </div>
@@ -1630,5 +1320,25 @@ onMounted(() => {
   background: var(--vp-c-bg);
   border: 1px solid var(--vp-c-divider);
   border-radius: 6px;
+}
+
+/* ── Before/After accordion intro line ──────────────────────────────────── */
+.cr-ba-intro {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  color: var(--vp-c-text-3);
+  line-height: 1.5;
+}
+
+/* ── Scrollable accordion host within the panels pane ───────────────────── */
+.cr-ba-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+  background: var(--vp-c-bg);
+  scrollbar-width: thin;
+  scrollbar-color: var(--vp-c-divider) transparent;
 }
 </style>

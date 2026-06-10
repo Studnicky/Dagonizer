@@ -26,7 +26,8 @@ const dag: DAG = {
   entrypoint: 'a',
   nodes: [
     { '@id': 'urn:noocodex:dag:demo/node/a', '@type': 'SingleNode', name: 'a', node: 'noop', outputs: { success: 'b' } },
-    { '@id': 'urn:noocodex:dag:demo/node/b', '@type': 'SingleNode', name: 'b', node: 'noop', outputs: { success: null } },
+    { '@id': 'urn:noocodex:dag:demo/node/b', '@type': 'SingleNode', name: 'b', node: 'noop', outputs: { success: 'end' } },
+    { '@id': 'urn:noocodex:dag:demo/node/end', '@type': 'TerminalNode', name: 'end', outcome: 'completed' },
   ],
 };
 </script>
@@ -55,13 +56,16 @@ Three renderers ship in `@noocodex/dagonizer/viz`. Each consumes a `DAG` and emi
 | `single`  | rectangle     | `greet[greet]` |
 | `scatter` | trapezoid     | `scout[/scout/]` |
 | `embedded-dag` | subroutine | `invoke[[invoke]]` |
-| `parallel`| subgraph      | `subgraph group["group (parallel)"]` ... `end` |
 | `terminal` (completed) | double-circle | `done(((done\n(completed))))` |
 | `terminal` (failed) | asymmetric flag | `abort>abort\n(failed)]` |
 
-Routes render as labeled directed edges. Routes targeting `null` route to a synthetic `END([end])` terminator (one per DAG).
+Routes render as labeled directed edges.
 
-**TerminalNode vs synthetic END.** A `TerminalNode` placement is declared explicitly in the DAG and renders as a named shape with an outcome suffix (`(completed)` or `(failed)`). The synthetic `END` node is implicit sugar emitted once when any non-terminal placement routes an output to `null`. Both can coexist in the same diagram: the `TerminalNode` shape represents the declared placement, and `END` captures the null routes from other placements. `TerminalNode` placements emit no outbound edges; they are leaf nodes by definition.
+### Containment coloring
+
+Placements bound to a `container` role (`EmbeddedDAGNode` or dag-body `ScatterNode` with a non-empty `container` field) each receive a per-role Mermaid class (`contained-<role>`) whose fill and stroke come from a deterministic palette keyed on the role string. A DAG with two distinct roles (e.g. `cpu` and `io`) emits two `classDef contained-cpu …` and `classDef contained-io …` rules with different colors, then assigns each placement to its role-specific class. The `@type`-specific shape is preserved — a contained `EmbeddedDAGNode` remains a subroutine shape; a contained `ScatterNode` remains a trapezoid. In-process placements are unstyled (Mermaid default). `classDef` rules are omitted entirely when no contained placement exists in the DAG.
+
+**TerminalNode rendering.** A `TerminalNode` placement renders as a named shape with an outcome suffix (`(completed)` or `(failed)`). Completed terminals use a double-circle shape; failed terminals use an asymmetric flag. `TerminalNode` placements emit no outbound edges; they are leaf nodes by definition.
 
 ### Embedding in Markdown
 
@@ -98,15 +102,26 @@ Every node element carries a `data.type` field for stylesheet selectors.
 | `'single'` | `SingleNode` placement | `data.node` |
 | `'scatter'` | `ScatterNode` placement | `data.body`, `data.source`, `data.gather`, etc. |
 | `'embedded-dag'` | `EmbeddedDAGNode` placement | `data.dag`, `data.stateMapping` |
-| `'parallel'` | `ParallelNode` placement | `data.combine`, `data.children` |
 | `'terminal'` | `TerminalNode` placement | `data.outcome: 'completed' \| 'failed'` |
 | `'terminal'` | synthetic `END` node | `data.synthetic: true` |
+| `'phase'` | `PhaseNode` placement | `data.phase: 'pre' \| 'post'`, `data.node` |
 
 User-declared `TerminalNode` placements and the synthetic `END` node both use `data.type === 'terminal'`. Distinguish them via `data.synthetic === true` (only set on the synthetic node) or `data.outcome` (only set on user-declared terminals).
 
+### Containment metadata
+
+Placements bound to a `container` role carry an additional `data.container` field (the role string, e.g. `'cpu'`) and the extra CSS class `dag-contained` alongside the type class (`dag-scatter`, `dag-embedded-dag`, etc.). In-process placements omit `data.container` entirely.
+
+Select contained nodes in Cytoscape stylesheets via:
+- `.dag-contained` — class selector, matches any contained placement regardless of type
+- `node[container]` — data selector, matches any node with a container role set
+- `node[container="cpu"]` — data selector, matches a specific role
+
+`CytoscapeGraph`'s built-in stylesheet applies per-role colors to `.dag-contained` nodes via cytoscape `data(...)` mapping — `background-color: data(containerColor)`, `border-color: data(containerStroke)`, `color: data(containerText)` — so each distinct container role renders with its own palette. The colors are written to node data by `CytoscapeRenderer` and driven by the same `RoleColorUtils.forRole` palette as the Mermaid renderer. Subclasses that override `stylesheet()` should carry this rule forward or replace it with a custom containment style.
+
 ### Live rendering in the doc site
 
-The doc site renders DAGs via `CytoscapeGraph`, the package-shipped subclassable factory. `DagGraph.vue` (the doc site component) extends `CytoscapeGraph`; the `:dag` prop passes the `DAG` object directly and `CytoscapeGraph` builds elements, computes layout, and mounts cytoscape internally. Embedded DAGs render collapsed by default; pass `:expand-all="true"` to expand them all.
+The doc site renders DAGs via `CytoscapeGraph`, the package-shipped subclassable factory. `DagGraph.vue` (the doc site component) hosts a `CytoscapeGraph` instance; the `:dag` prop passes the `DAG` object directly and `CytoscapeGraph` builds elements, computes layout, and mounts cytoscape internally. Embedded DAGs render collapsed by default; pass `:expand-all="true"` to expand them all.
 
 <DagGraph :dag="dag" aria-label="Two-node demo DAG rendered via CytoscapeRenderer." />
 
