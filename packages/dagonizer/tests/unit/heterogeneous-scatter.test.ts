@@ -12,7 +12,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
@@ -102,30 +102,34 @@ class FlatMergeGather extends GatherStrategy {
     _config: GatherConfig,
     execution: GatherExecution<TState>,
   ): Promise<void> {
-    const parent = execution.state as unknown as HeterogeneousState;
-    const merged: string[] = [...parent.results];
-    const mergedFails: string[] = [...parent.failMessages];
+    const { state, accessor, records } = execution;
 
-    for (const record of execution.records) {
-      const cloneState = record.cloneState as unknown as HeterogeneousState;
-      if (cloneState.providerResult.length > 0) {
-        merged.push(cloneState.providerResult);
+    const existingResults   = accessor.get<string[]>(state, 'results')     ?? [];
+    const existingFails     = accessor.get<string[]>(state, 'failMessages') ?? [];
+    const merged: string[]     = [...existingResults];
+    const mergedFails: string[] = [...existingFails];
+
+    for (const record of records) {
+      const result = accessor.get<string>(record.cloneState, 'providerResult') ?? '';
+      if (result.length > 0) {
+        merged.push(result);
       }
-      for (const msg of cloneState.failMessages) {
+      const cloneFails = accessor.get<string[]>(record.cloneState, 'failMessages') ?? [];
+      for (const msg of cloneFails) {
         mergedFails.push(msg);
       }
     }
 
-    parent.results      = merged;
-    parent.failMessages = mergedFails;
+    accessor.set(state, 'results',      merged);
+    accessor.set(state, 'failMessages', mergedFails);
   }
 }
-
-GatherStrategies.register(new FlatMergeGather());
 
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 void describe('heterogeneous scatter (descriptor source + dispatching body)', () => {
+  beforeEach(() => { GatherStrategies.register(new FlatMergeGather()); });
+  afterEach(() => { GatherStrategies.unregister('flat-merge-test'); });
   void it('fans out to all four providers concurrently and collects per-provider results', async () => {
     const dispatcher = new Dagonizer<HeterogeneousState>();
     dispatcher.registerNode(dispatchNode);

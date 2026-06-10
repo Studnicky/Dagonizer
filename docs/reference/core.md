@@ -45,7 +45,7 @@ abstract class GatherStrategy {
 }
 ```
 
-The dispatcher resolves a strategy by `name` (the `GatherConfig.strategy` field) and calls `.apply(...)` once every scatter clone has reported. Strategies mutate `execution.state` in place; the `custom` strategy uses `execution.invokeNode(name)` to dispatch a registered node back through the engine.
+The dispatcher resolves a strategy by `name` (the `GatherConfig.strategy` field) and calls `.apply(...)` once every scatter clone has reported. Strategies mutate `execution.state` in place; the `custom` strategy uses `execution.invoker.invokeNode(name)` to dispatch a registered node back through the engine.
 
 ### GatherRecord
 
@@ -70,11 +70,11 @@ interface GatherExecution<TState extends NodeStateInterface> {
   readonly dagName: string;
   readonly signal: AbortSignal | null;
   readonly accessor: StateAccessor;
-  invokeNode(nodeName: string): Promise<void>;
+  readonly invoker: NodeInvoker;
 }
 ```
 
-Per-invocation context handed to the strategy. `state` is the live parent state; `records` carries per-clone results in source-index order; `accessor` is the dispatcher's configured `StateAccessor`.
+Per-invocation context handed to the strategy. `state` is the live parent state; `records` carries per-clone results in source-index order; `accessor` is the dispatcher's configured `StateAccessor`; `invoker` carries `invokeNode(nodeName)` for the `custom` strategy.
 
 ### Defaults
 
@@ -83,7 +83,7 @@ Per-invocation context handed to the strategy. `state` is the live parent state;
 - `partition`. For each `[outputToken, path]` in `config.partitions`, append the matching records to that path.
 - `collect`. Collect each clone's output token (or `field` value when `field` is set) into `config.target` in source-index order. Throws `DAGError` when `target` is missing.
 - `discard`. No-op. Nothing is written to parent state. Use for side-effect-only fan-outs where no clone state flows back.
-- `custom`. Sets `state.metadata.gatherResults` to the per-clone records (without `cloneState`) and invokes the registered node at `config.customNode` via `execution.invokeNode`.
+- `custom`. Sets `state.metadata.gatherResults` to the per-clone records (without `cloneState`) and invokes the registered node at `config.customNode` via `execution.invoker.invokeNode`.
 
 ## GatherStrategies
 

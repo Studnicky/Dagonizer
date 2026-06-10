@@ -72,12 +72,13 @@ When the node declares a narrow `TOutput` union, `.node()` enforces exhaustive r
 When the underlying `NodeInterface` carries a `contract` field (`hardRequired` plus `produces`), `build()` runs the same dangling-read and dead-write validation that `DAGDeriver` runs at derive time. Drift fails at build time, not run time.
 
 - **Dangling read**. A non-entrypoint node declares `hardRequired: ['foo']` but no upstream node produces `'foo'`. Throws `DAGError`.
-- **Dead write**. A node declares `produces: ['bar']` but no downstream node `hardRequires` `'bar'`. Fires the `onContractWarning` callback (non-fatal).
+- **Dead write**. A node declares `produces: ['bar']` but no downstream node `hardRequires` `'bar'`. Calls `warningEmitter.warn` (non-fatal).
 
 ```ts
 import { DAGBuilder, DAGError } from '@noocodex/dagonizer';
 import type { NodeInterface } from '@noocodex/dagonizer';
 import type { NodeStateBase } from '@noocodex/dagonizer';
+import type { WarningEmitter } from '@noocodex/dagonizer/contracts';
 
 const fetchNode: NodeInterface<NodeStateBase, 'success'> = {
   name: 'fetch',
@@ -101,20 +102,20 @@ new DAGBuilder('pipeline', '1.0')
   .build();
 ```
 
-Pass an `onContractWarning` callback to capture dead writes:
+Pass a `warningEmitter` to capture dead writes:
 
 ```ts
+const emitter: WarningEmitter = { warn(message) { console.warn('[contract]', message); } };
+
 const dag = new DAGBuilder('pipeline', '1.0')
   .node('fetch', fetchNode, { success: 'parse' })
   .node('parse', parseNode, { success: null })
-  .build((message) => {
-    console.warn('[contract]', message);
-  });
+  .build({ warningEmitter: emitter });
 ```
 
 Placements added via `.scatter()` with a `{ dag }` body do not receive a `NodeInterface` and are not tracked in the impl registry; they are silently skipped during contract validation, preventing false-positive dangling-read errors for node names declared elsewhere.
 
-The `onContractWarning` hook on `build()` fires at construction time and is local to the builder call. When the resulting DAG is registered with a `Dagonizer` subclass, the dispatcher's `onContractWarning` hook fires again at `registerDAG` time if the nodes carry co-located contracts. See [Contract-derived flows](./derive) and [Reference, contracts](../reference/contracts).
+The `warningEmitter` passed to `build()` fires at construction time and is local to the builder call. When the resulting DAG is registered with a `Dagonizer` subclass, the dispatcher's `onContractWarning` hook fires again at `registerDAG` time if the nodes carry co-located contracts. See [Contract-derived flows](./derive) and [Reference, contracts](../reference/contracts).
 
 ## `DAGBuilder.fromNodes()`, the linear shortcut
 
@@ -246,6 +247,8 @@ scatter<TState extends NodeStateInterface, TOutput extends string, TServices = u
 Arrays contribute `${number}` and `${number}.${ElementPath}` paths. The depth cap is 8 levels; deeper nesting falls back to `string`. The type is exported from the `@noocodex/dagonizer/builder` subpath.
 
 When `body` is a `NodeInterface`, the impl is registered automatically and the placement emits `body: { node: body.name }`.
+
+When `body` is `{ dag: 'name' }`, the placement runs a full registered sub-DAG per clone. Pair with the `container` key on the raw scatter entity to dispatch each clone to an isolate (worker thread, child process). See [Distribution and cloud](./distribution) for the `DagContainerBase` authoring guide and the `DagonizerOptionsInterface.containers` binding.
 
 For patterns where nodes across multiple scatter placements accumulate to shared mutable state (agent memory, audit log), see [Shared state](./shared-state).
 

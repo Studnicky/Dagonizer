@@ -225,7 +225,7 @@ resume(
 ): Execution<TState>
 ```
 
-Identical to `execute()` but begins at `fromStage` instead of the DAG's entrypoint. The caller is responsible for rehydrating `state` (typically via `Checkpoint.load(raw).restoreState(fn)`) before calling.
+Identical to `execute()` but begins at `fromStage` instead of the DAG's entrypoint. The caller is responsible for rehydrating `state` (typically via `Checkpoint.load(raw).restoreState(CheckpointRestoreAdapterFn.fromFn(fn))`) before calling.
 
 <<< @/../examples/the-archivist/runArchivist.ts#resume-run
 

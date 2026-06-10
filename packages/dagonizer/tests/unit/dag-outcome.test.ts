@@ -27,95 +27,46 @@ import {
 // ---------------------------------------------------------------------------
 
 describe('DagOutcome.transportError — default shape', () => {
-  it('returns terminalOutput: "failed"', () => {
-    const outcome = DagOutcome.transportError('corr-123');
-    assert.strictEqual(outcome.terminalOutput, 'failed');
-  });
-
-  it('carries exactly one error', () => {
-    const outcome = DagOutcome.transportError('corr-123');
-    assert.strictEqual(outcome.errors.length, 1);
-  });
-
-  it('error.recoverable is false', () => {
-    const outcome = DagOutcome.transportError('corr-123');
-    const error = outcome.errors[0];
-    assert.ok(error !== undefined, 'error must be present');
-    assert.strictEqual(error.recoverable, false);
-  });
-
-  it('error.code is DAG_CONTAINER_TRANSPORT by default', () => {
-    const outcome = DagOutcome.transportError('corr-123');
-    const error = outcome.errors[0];
-    assert.ok(error !== undefined, 'error must be present');
-    assert.strictEqual(error.code, DAG_CONTAINER_TRANSPORT);
-  });
-
-  it('error.operation is "runDag"', () => {
-    const outcome = DagOutcome.transportError('corr-123');
-    const error = outcome.errors[0];
-    assert.ok(error !== undefined, 'error must be present');
-    assert.strictEqual(error.operation, 'runDag');
-  });
-
-  it('stateSnapshot is null', () => {
-    const outcome = DagOutcome.transportError('corr-123');
-    assert.strictEqual(outcome.stateSnapshot, null);
-  });
-
-  it('intermediates is an empty array', () => {
-    const outcome = DagOutcome.transportError('corr-123');
-    assert.deepStrictEqual(outcome.intermediates, []);
-  });
-
-  it('error.message interpolates correlationId', () => {
-    const correlationId = 'corr-abc-456';
+  it('pins the full structural contract (excluding timestamp)', () => {
+    const correlationId = 'corr-shape';
     const outcome = DagOutcome.transportError(correlationId);
     const error = outcome.errors[0];
     assert.ok(error !== undefined, 'error must be present');
-    assert.ok(
-      error.message.includes(correlationId),
-      `default message must include correlationId; got: "${error.message}"`,
+
+    // All structural fields in one assertion: terminalOutput, stateSnapshot,
+    // intermediates, error count, code, operation, recoverable, message.
+    assert.deepStrictEqual(
+      {
+        'terminalOutput':          outcome.terminalOutput,
+        'stateSnapshot':           outcome.stateSnapshot,
+        'intermediates':           outcome.intermediates,
+        'errorCount':              outcome.errors.length,
+        'errorCode':               error.code,
+        'errorOperation':          error.operation,
+        'errorRecoverable':        error.recoverable,
+        'correlationIdInMessage':  error.message.includes(correlationId),
+      },
+      {
+        'terminalOutput':          'failed',
+        'stateSnapshot':           null,
+        'intermediates':           [],
+        'errorCount':              1,
+        'errorCode':               DAG_CONTAINER_TRANSPORT,
+        'errorOperation':          'runDag',
+        'errorRecoverable':        false,
+        'correlationIdInMessage':  true,
+      },
     );
   });
 
-  it('error.timestamp is a non-empty ISO string', () => {
+  it('error.timestamp is a non-empty valid ISO 8601 date string', () => {
     const outcome = DagOutcome.transportError('corr-123');
     const error = outcome.errors[0];
     assert.ok(error !== undefined, 'error must be present');
-    assert.ok(typeof error.timestamp === 'string' && error.timestamp.length > 0, 'timestamp must be a non-empty string');
-    // Must parse as a valid date (ISO 8601).
-    assert.ok(!isNaN(Date.parse(error.timestamp)), `timestamp must be a valid ISO date; got: "${error.timestamp}"`);
-  });
-
-  it('full shape deepStrictEqual (excluding timestamp)', () => {
-    const outcome = DagOutcome.transportError('corr-shape');
-    const error = outcome.errors[0];
-    assert.ok(error !== undefined, 'error must be present');
-
-    // Pin the full structural contract (timestamp excluded — non-deterministic).
-    assert.deepStrictEqual(
-      {
-        'terminalOutput': outcome.terminalOutput,
-        'stateSnapshot':  outcome.stateSnapshot,
-        'intermediates':  outcome.intermediates,
-        'errorCount':     outcome.errors.length,
-        'errorCode':      error.code,
-        'errorOperation': error.operation,
-        'errorRecoverable': error.recoverable,
-        'correlationIdInMessage': error.message.includes('corr-shape'),
-      },
-      {
-        'terminalOutput': 'failed',
-        'stateSnapshot':  null,
-        'intermediates':  [],
-        'errorCount':     1,
-        'errorCode':      DAG_CONTAINER_TRANSPORT,
-        'errorOperation': 'runDag',
-        'errorRecoverable': false,
-        'correlationIdInMessage': true,
-      },
-    );
+    assert.ok(typeof error.timestamp === 'string' && error.timestamp.length > 0,
+      'timestamp must be a non-empty string');
+    assert.ok(!isNaN(Date.parse(error.timestamp)),
+      `timestamp must be valid ISO 8601; got: "${error.timestamp}"`);
   });
 });
 

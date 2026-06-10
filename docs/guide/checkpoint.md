@@ -45,7 +45,7 @@ const dag: DAG = {
 | `Checkpoint.recall(store, key)` | `@noocodex/dagonizer/checkpoint` | Reads + parses + validates from a `CheckpointStore` |
 | `ckpt.toJson()` | instance method | Serializes to a JSON string |
 | `ckpt.persist(store, key)` | instance method | Writes via a `CheckpointStore` |
-| `ckpt.restoreState(fn)` | instance method | Rehydrates `{ dagName, state, cursor }` |
+| `ckpt.restoreState(adapter)` | instance method | Rehydrates `{ dagName, state, cursor }` |
 | `ckpt.restoreStores(map)` | instance method | Restores named stores (any `Snapshottable`) from the envelope |
 | `dispatcher.resume(dagName, state, fromStage, options?)` | `@noocodex/dagonizer` | Resumes the flow at `fromStage`; `options` accepts the same `ExecuteOptionsInterface` as `execute` |
 
@@ -73,7 +73,7 @@ When a DAG stops early (cancellation, timeout, error), `result.cursor` holds the
 
 <<< @/../examples/08-checkpoint.ts#recall
 
-`Checkpoint.load(raw)` validates the unknown value against `CheckpointDataSchema` (Ajv 2020-12) before touching any fields. An invalid or stale payload throws `ValidationError`. `ckpt.restoreState(fn)` receives a factory that maps the snapshot `JsonObject` to a `TState` instance; that is the boundary where domain state classes plug in.
+`Checkpoint.load(raw)` validates the unknown value against `CheckpointDataSchema` (Ajv 2020-12) before touching any fields. An invalid or stale payload throws `ValidationError`. `ckpt.restoreState(adapter)` accepts a `CheckpointRestoreAdapter<TState>`; wrap a plain factory function with `CheckpointRestoreAdapterFn.fromFn(fn)` from `@noocodex/dagonizer/checkpoint`.
 
 ## Resuming execution
 
@@ -133,7 +133,7 @@ class PipelineState extends NodeStateBase {
 `CheckpointStore` is the adapter contract for persistence backends. `ckpt.persist(store, key)` and `Checkpoint.recall(store, key)` compose the codec with a store so save and resume become a single call per side.
 
 ```ts
-import { Checkpoint, MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
+import { Checkpoint, CheckpointRestoreAdapterFn, MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
 
 const store = new MemoryCheckpointStore();
 
@@ -142,7 +142,9 @@ await ckpt.persist(store, 'ckpt:my-dag');
 
 const recalled = await Checkpoint.recall(store, 'ckpt:my-dag');
 if (recalled !== null) {
-  const { dagName, state, cursor } = recalled.restoreState((snap) => MyState.restore(snap));
+  const { dagName, state, cursor } = recalled.restoreState(
+    CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap)),
+  );
   await dispatcher.resume(dagName, state, cursor);
 }
 ```

@@ -219,46 +219,73 @@ export class ArchivistState extends NodeStateBase {
       "query":        this.query,
       "userLanguage": this.userLanguage,
       "intent":       this.intent,
-      "terms":      [...this.terms],
-      "candidates": this.candidates.map((candidate) => ({
-        "book":   { ...candidate.book, "authors": [...candidate.book.authors] },
-        "score":  candidate.score,
-        "source": candidate.source,
-      })) as unknown as JsonObject[],
-      "shortlist":  this.shortlist.map((candidate) => ({
-        "book":   { ...candidate.book, "authors": [...candidate.book.authors] },
-        "score":  candidate.score,
-        "source": candidate.source,
-      })) as unknown as JsonObject[],
+      "terms":        [...this.terms],
+      "candidates":   this.candidates.map(ArchivistState.candidateToJson),
+      "shortlist":    this.shortlist.map(ArchivistState.candidateToJson),
       "draft":        this.draft,
       "approvalState": this.approvalState,
       "failureCause": this.failureCause,
       "recalledContext": {
-        "priorIntents":        this.recalledContext.priorIntents as unknown as JsonObject[],
-        "recentCandidates":    this.recalledContext.recentCandidates.map((c) => ({
-          "book":   { ...c.book, "authors": [...c.book.authors] },
-          "score":  c.score,
-          "source": c.source,
-        })) as unknown as JsonObject[],
-        "similarPriorQueries": this.recalledContext.similarPriorQueries as unknown as JsonObject[],
+        "priorIntents":        this.recalledContext.priorIntents.map(ArchivistState.priorIntentToJson),
+        "recentCandidates":    this.recalledContext.recentCandidates.map(ArchivistState.candidateToJson),
+        "similarPriorQueries": this.recalledContext.similarPriorQueries.map(ArchivistState.priorQueryToJson),
         "summary":             this.recalledContext.summary,
       },
-      "priorCandidates": this.priorCandidates.map((candidate) => ({
-        "book":   { ...candidate.book, "authors": [...candidate.book.authors] },
-        "score":  candidate.score,
-        "source": candidate.source,
-        "notes":  candidate.notes ?? {},
-      })) as unknown as JsonObject[],
-      "conversation": this.conversation as unknown as JsonObject[],
+      "priorCandidates": this.priorCandidates.map(ArchivistState.candidateToJson),
+      "conversation": this.conversation.map(ArchivistState.turnToJson),
       "memoryDigest": {
         "bookCount":       this.memoryDigest.bookCount,
         "queryCount":      this.memoryDigest.queryCount,
-        "recentBooks":     this.memoryDigest.recentBooks as unknown as JsonObject[],
-        "intentBreakdown": this.memoryDigest.intentBreakdown as unknown as JsonObject[],
+        "recentBooks":     this.memoryDigest.recentBooks.map((b) => ({ "title": b.title, "author": b.author })),
+        "intentBreakdown": this.memoryDigest.intentBreakdown.map((i) => ({ "intent": i.intent, "count": i.count })),
         "summary":         this.memoryDigest.summary,
       },
     };
   }
+
+  // #region snapshot-helpers
+  private static candidateToJson(c: Candidate): JsonObject {
+    const book: JsonObject = {
+      "isbn":    c.book.isbn,
+      "title":   c.book.title,
+      "authors": [...c.book.authors],
+      "price":   { "amount": c.book.price.amount, "currency": c.book.price.currency },
+      ...(c.book.summary !== undefined          ? { "summary": c.book.summary }                 : {}),
+      ...(c.book.firstPublishYear !== undefined ? { "firstPublishYear": c.book.firstPublishYear } : {}),
+      ...(c.book.subjects !== undefined         ? { "subjects": [...c.book.subjects] }          : {}),
+      ...(c.book.publishers !== undefined       ? { "publishers": [...c.book.publishers] }      : {}),
+      ...(c.book.inStock !== undefined          ? { "inStock": c.book.inStock }                 : {}),
+      ...(c.book.languages !== undefined        ? { "languages": [...c.book.languages] }        : {}),
+    };
+    // notes values are Record<string, unknown>; serialize only JSON-safe primitives.
+    const notesOut: JsonObject = c.notes !== undefined
+      ? Object.fromEntries(
+          Object.entries(c.notes).filter(([, v]) =>
+            v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean',
+          ),
+        ) as JsonObject
+      : {};
+    return {
+      "book":   book,
+      "score":  c.score,
+      "source": c.source,
+      ...(c.reason !== undefined ? { "reason": c.reason } : {}),
+      ...(c.notes !== undefined  ? { "notes": notesOut }  : {}),
+    };
+  }
+
+  private static priorIntentToJson(p: RecalledContext['priorIntents'][number]): JsonObject {
+    return { "query": p.query, "intent": p.intent, "ts": p.ts };
+  }
+
+  private static priorQueryToJson(q: RecalledContext['similarPriorQueries'][number]): JsonObject {
+    return { "query": q.query, "ts": q.ts };
+  }
+
+  private static turnToJson(t: ConversationTurn): JsonObject {
+    return { "role": t.role, "text": t.text, "ts": t.ts };
+  }
+  // #endregion snapshot-helpers
 
   protected override restoreData(snap: JsonObject): void {
     if (typeof snap['query']        === 'string') this.query        = snap['query'];

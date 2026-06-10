@@ -49,7 +49,7 @@ void describe('ForwardingInstrumentation — all-six-hook routing (G6)', () => {
     }
   });
 
-  void it('nodeEnd forwards as instrumentation with hook=nodeEnd and output', () => {
+  void it('nodeEnd forwards as instrumentation with hook=nodeEnd and all populated fields', () => {
     const ch = new CollectingChannel();
     const fi = new ForwardingInstrumentation(ch, CORR, BASE);
     fi.nodeEnd('my-dag', 'my-node', 'success', state, ['child']);
@@ -60,11 +60,15 @@ void describe('ForwardingInstrumentation — all-six-hook routing (G6)', () => {
     assert.strictEqual(msg.kind, 'instrumentation');
     if (msg.kind === 'instrumentation') {
       assert.strictEqual(msg.hook, 'nodeEnd');
+      assert.strictEqual(msg.correlationId, CORR);
+      assert.strictEqual(msg.dagName, 'my-dag');
+      assert.strictEqual(msg.nodeName, 'my-node');
       assert.strictEqual(msg.output, 'success');
+      assert.deepStrictEqual(msg.placementPath, ['parent-embed', 'child']);
     }
   });
 
-  void it('phaseEnter forwards as instrumentation with hook=phaseEnter and phase', () => {
+  void it('phaseEnter forwards as instrumentation with hook=phaseEnter and all populated fields', () => {
     const ch = new CollectingChannel();
     const fi = new ForwardingInstrumentation(ch, CORR, []);
     fi.phaseEnter('dag', 'pre', 'placement', state, []);
@@ -75,12 +79,16 @@ void describe('ForwardingInstrumentation — all-six-hook routing (G6)', () => {
     assert.strictEqual(msg.kind, 'instrumentation');
     if (msg.kind === 'instrumentation') {
       assert.strictEqual(msg.hook, 'phaseEnter');
-      assert.strictEqual(msg.phase, 'pre');
+      assert.strictEqual(msg.correlationId, CORR);
+      assert.strictEqual(msg.dagName, 'dag');
       assert.strictEqual(msg.nodeName, 'placement');
+      assert.strictEqual(msg.phase, 'pre');
+      assert.strictEqual(msg.output, null);
+      assert.deepStrictEqual(msg.placementPath, []);
     }
   });
 
-  void it('phaseExit forwards as instrumentation with hook=phaseExit and phase=post', () => {
+  void it('phaseExit forwards as instrumentation with hook=phaseExit and all populated fields', () => {
     const ch = new CollectingChannel();
     const fi = new ForwardingInstrumentation(ch, CORR, []);
     fi.phaseExit('dag', 'post', 'placement', state, []);
@@ -91,7 +99,12 @@ void describe('ForwardingInstrumentation — all-six-hook routing (G6)', () => {
     assert.strictEqual(msg.kind, 'instrumentation');
     if (msg.kind === 'instrumentation') {
       assert.strictEqual(msg.hook, 'phaseExit');
+      assert.strictEqual(msg.correlationId, CORR);
+      assert.strictEqual(msg.dagName, 'dag');
+      assert.strictEqual(msg.nodeName, 'placement');
       assert.strictEqual(msg.phase, 'post');
+      assert.strictEqual(msg.output, null);
+      assert.deepStrictEqual(msg.placementPath, []);
     }
   });
 

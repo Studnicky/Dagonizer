@@ -242,17 +242,21 @@ void describe('PhaseNode placements: post-phase execution', () => {
   void it('post-phase runs after the main loop on the abort path', async () => {
     const dispatcher = new Dagonizer<TrackingState>();
     dispatcher.registerNode(makeNode('teardown', ['success'], (s) => { s.trace.push('post-teardown'); }));
-    // Slow node we can pre-abort
+
+    // Slow node that signals readiness once suspended, then waits for abort.
+    // Using a readiness promise avoids any wall-clock dependency.
+    let resolveNodeReady!: () => void;
+    const nodeReady = new Promise<void>((r) => { resolveNodeReady = r; });
+
     dispatcher.registerNode({
       'name': 'slow',
       'outputs': ['success'],
       async execute(_state, ctx) {
-        await new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(() => resolve(), 10_000);
+        resolveNodeReady();
+        await new Promise<void>((_resolve, reject) => {
           ctx.signal.addEventListener('abort', () => {
-            clearTimeout(timer);
             reject(new Error('aborted'));
-          });
+          }, { 'once': true });
         });
         return { 'output': 'success' };
       },
@@ -268,8 +272,8 @@ void describe('PhaseNode placements: post-phase execution', () => {
     const controller = new AbortController();
     const state = new TrackingState();
     const exec = dispatcher.execute('post-abort', state, { 'signal': controller.signal });
-    // Abort almost immediately
-    setTimeout(() => controller.abort(), 10);
+    // Abort deterministically once the node body is provably suspended.
+    nodeReady.then(() => { controller.abort(); });
     const result = await exec;
     assert.equal(['cancelled', 'failed'].includes(result.state.lifecycle.kind), true);
     assert.ok(state.trace.includes('post-teardown'), 'post-phase ran on abort path');

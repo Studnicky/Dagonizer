@@ -51,11 +51,17 @@ function stubFactory(capture: Capture): typeof cytoscape {
   };
   const factory = (config: cytoscape.CytoscapeOptions): cytoscape.Core => {
     capture.config = config;
+    // Constructs intentionally-invalid input: fakeCore omits the full cytoscape.Core surface;
+    // only the methods called by CytoscapeGraph (batch + nodes) are implemented.
     return fakeCore as unknown as cytoscape.Core;
   };
+  // Constructs intentionally-invalid input: the factory function signature narrows to
+  // typeof cytoscape (DOM factory) for injection without a real DOM environment.
   return factory as unknown as typeof cytoscape;
 }
 
+// Constructs intentionally-invalid input: fakeContainer stands in for a DOM element;
+// cytoscape.CytoscapeOptions['container'] is an HTMLElement in a real DOM context.
 const fakeContainer = {} as unknown as NonNullable<cytoscape.CytoscapeOptions['container']>;
 
 /** Read the elements array passed to the stub factory as plain records. */

@@ -42,7 +42,7 @@ Nodes typed `NodeInterface<PipelineState, TOutput>` access `state.items`, `state
 
 ## Snapshot and restore
 
-The Archivist demo carries a rich state object: `query`, `terms`, `candidates`, `shortlist`, `draft`, `recalledContext`, `memoryDigest`. The `snapshotData` and `restoreData` overrides serialise every domain field to a JSON-safe shape and rehydrate from a previously captured snapshot:
+The Archivist demo carries a rich state object: `query`, `terms`, `candidates`, `shortlist`, `draft`, `recalledContext`, `memoryDigest`. The `snapshotData` and `restoreData` overrides serialise every domain field to a JSON-safe shape and rehydrate from a captured snapshot:
 
 <<< @/../examples/the-archivist/ArchivistState.ts#snapshot-restore
 
@@ -103,6 +103,7 @@ When `restoreData()` is overridden, `restore()` calls `applySnapshot()` which ca
 
 ```ts
 import { NodeStateBase, Dagonizer, Checkpoint, DAG_CONTEXT } from '@noocodex/dagonizer';
+import { CheckpointRestoreAdapterFn } from '@noocodex/dagonizer/checkpoint';
 import type { JsonObject, NodeInterface, DAG } from '@noocodex/dagonizer';
 
 class CountState extends NodeStateBase {
@@ -160,7 +161,7 @@ const partial = await exec;
 const ckpt = await Checkpoint.capture('count', partial);
 const ckpt2 = Checkpoint.load(JSON.parse(ckpt.toJson()) as unknown);
 const { state: s2, dagName, cursor } = ckpt2.restoreState(
-  (snap) => CountState.restore(snap),
+  CheckpointRestoreAdapterFn.fromFn((snap) => CountState.restore(snap)),
 );
 const final = await dispatcher.resume(dagName, s2, cursor);
 // final.state.count === 3, final.state.log.length === 3

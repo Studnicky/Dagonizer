@@ -20,6 +20,16 @@ npx tsx examples/11-handoff.ts           # DAGHandoff envelope: two DAGs chained
 npx tsx examples/derive.ts               # DAGDeriver: contract-derived DAG + embeddedDAGs annotation (renders ScatterNode)
 ```
 
+Pure-module reference files (no side effects beyond registry calls; import and inspect):
+
+```bash
+# examples/dags/scatter-extensions.ts  — TopNGatherStrategy + ThresholdReducer: custom gather + outcome-reducer
+# examples/dags/state-accessor.ts      — PrefixAccessor: custom StateAccessor adapter contract
+# examples/dags/store-remote.ts        — GrpcStore: custom RemoteStore (BaseStore subclass with gRPC stub)
+# examples/dags/monadic-node.ts        — monadic node pattern: Err/Ok union result type
+# examples/dags/virtual-clock.ts       — VirtualClockProvider + VirtualScheduler for deterministic time in tests
+```
+
 Worker examples require a compile step before running:
 ```bash
 # 12-workers: ScatterNode over a real worker-thread pool

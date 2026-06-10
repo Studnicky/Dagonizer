@@ -83,12 +83,10 @@ let failures = 0;
 async function check(name: string, fn: () => Promise<void>): Promise<void> {
   try {
     await fn();
-    // eslint-disable-next-line no-console
-  console.log(`✓ ${name}`);
+    process.stdout.write(`✓ ${name}\n`);
   } catch (err) {
     failures++;
-    // eslint-disable-next-line no-console
-  console.error(`✗ ${name}\n  ${err instanceof Error ? err.message : String(err)}`);
+    process.stderr.write(`✗ ${name}\n  ${err instanceof Error ? err.message : String(err)}\n`);
   }
 }
 
@@ -156,9 +154,7 @@ await check('Adapters expose capabilities metadata', async () => {
 });
 
 if (failures > 0) {
-  // eslint-disable-next-line no-console
-  console.error(`\n${String(failures)} smoke check${failures === 1 ? '' : 's'} failed.`);
+  process.stderr.write(`\n${String(failures)} smoke check${failures === 1 ? '' : 's'} failed.\n`);
   process.exit(1);
 }
-// eslint-disable-next-line no-console
-console.log(`\nAll smoke checks passed.`);
+process.stdout.write(`\nAll smoke checks passed.\n`);

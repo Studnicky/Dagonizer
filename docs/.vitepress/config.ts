@@ -141,7 +141,9 @@ const sidebar = [
       { text: 'Store',      link: '/reference/store' },
       { text: 'Entities',   link: '/reference/entities' },
       { text: 'Testing',    link: '/reference/testing' },
-      { text: 'Errors',     link: '/reference/errors' },
+      { text: 'Container', link: '/reference/container' },
+      { text: 'Channels',  link: '/reference/channels' },
+      { text: 'Errors',    link: '/reference/errors' },
     ],
   },
 ];
@@ -156,7 +158,7 @@ const SITE_URL = `https://studnicky.github.io${SITE_BASE}`;
 const SITE_ICON = `${SITE_URL}dagonizer-icon.svg`;
 const SITE_OG_IMAGE = `${SITE_URL}og-image.png`;
 const SITE_THEME_COLOR = '#22e8ff';
-const SITE_KEYWORDS = 'dagonizer, dag, workflow, orchestration, dispatcher, node.js, typescript, flow, pipeline, state-machine, scatter, embedded-dag, parallel, checkpoint, abortable, deterministic resume, mermaid visualization, json schema, retry policy, cancellation, async-iterable, contract-derived flow';
+const SITE_KEYWORDS = 'dagonizer, dag, workflow, orchestration, dispatcher, node.js, typescript, flow, pipeline, state-machine, scatter-gather, embedded-dag, checkpoint, abortable, deterministic resume, mermaid visualization, json schema, retry policy, cancellation, async-iterable, contract-derived flow';
 const SITE_AUTHOR_NAME = 'Andrew Studnicky';
 const SITE_AUTHOR_URL = 'https://github.com/Studnicky';
 const SITE_REPO       = 'https://github.com/Studnicky/Dagonizer';
@@ -173,6 +175,8 @@ export default withMermaid(defineConfig({
   appearance: false,
   cleanUrls: true,
   lastUpdated: true,
+  // Exclude plans/** from the built site (audit ledger + stale plans docs).
+  srcExclude: ['plans/**'],
   head: [
     /* Favicon stack. The SVG is the canonical icon (modern browsers,
        crisp at every size). The PNG variants stay as fallbacks for

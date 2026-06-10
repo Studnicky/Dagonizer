@@ -30,14 +30,23 @@ import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 // ── test state ────────────────────────────────────────────────────────────────
 
+/** Union type for scatter source fields: array (array-mode) or async iterable (streaming mode). */
+type ScatterSource<T> = T[] | AsyncIterable<T>;
+
 class AbortState extends NodeStateBase {
+  /** Scatter source: array or async-iterable. Non-array form is not snapshotted. */
+  items: ScatterSource<number> = [];
   processed: number[] = [];
 
   protected override snapshotData(): JsonObject {
-    return { 'processed': [...this.processed] };
+    // items may be an AsyncIterable at runtime; only array form is JSON-serialisable.
+    const itemsSnap = Array.isArray(this.items) ? [...this.items] : [];
+    return { 'items': itemsSnap, 'processed': [...this.processed] };
   }
 
   protected override restoreData(snap: JsonObject): void {
+    const iv = snap['items'];
+    if (Array.isArray(iv)) this.items = iv.filter((x): x is number => typeof x === 'number');
     const v = snap['processed'];
     if (Array.isArray(v)) {
       this.processed = v.filter((x): x is number => typeof x === 'number');
@@ -130,7 +139,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
         yield i;
       }
     }
-    (state as unknown as Record<string, unknown>)['items'] = makeSource();
+    state.items = makeSource();
 
     const result = await dispatcher.execute('abort-async-50', state, { 'signal': controller.signal });
 
@@ -213,9 +222,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     // Copy already-processed items so aggregate is correct.
     resumeState.processed = [...result.state.processed];
     // Provide full array source for index-stable resume.
-    resumeState.setMetadata('items', Array.from({ 'length': TOTAL_ITEMS }, (_, i) => i + 1));
-    (resumeState as unknown as Record<string, unknown>)['items'] =
-      Array.from({ 'length': TOTAL_ITEMS }, (_, i) => i + 1);
+    resumeState.items = Array.from({ 'length': TOTAL_ITEMS }, (_, i) => i + 1);
 
     const resumeResult = await resumeDispatcher.resume('abort-async-resume', resumeState, 'fan');
 
@@ -255,7 +262,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     async function* lazySource(): AsyncGenerator<number> {
       for (let i = 1; i <= 10; i++) yield i;
     }
-    (state as unknown as Record<string, unknown>)['items'] = lazySource();
+    state.items = lazySource();
 
     // Abort before execution starts.
     const ctl = new AbortController();
@@ -329,8 +336,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     dispatcher.registerDAG(abortDag);
 
     const state = new AbortState();
-    (state as unknown as Record<string, unknown>)['items'] =
-      Array.from({ 'length': TOTAL_ITEMS }, (_, i) => i + 1);
+    state.items = Array.from({ 'length': TOTAL_ITEMS }, (_, i) => i + 1);
 
     const partial = await dispatcher.execute('exactly-once-abort', state, { 'signal': controller.signal });
 
@@ -359,8 +365,7 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
       resumeState.setMetadata(SCATTER_PROGRESS_KEY, checkpoint);
     }
     resumeState.processed = [...partial.state.processed];
-    (resumeState as unknown as Record<string, unknown>)['items'] =
-      Array.from({ 'length': TOTAL_ITEMS }, (_, i) => i + 1);
+    resumeState.items = Array.from({ 'length': TOTAL_ITEMS }, (_, i) => i + 1);
 
     const resumeResult = await resumeDispatcher.resume('exactly-once-abort', resumeState, 'fan');
 

@@ -214,11 +214,11 @@ A **checkpoint** records the position and state of an in-flight flow so it can r
 - **Cursor**: the name of the next node to run. Set on `ExecutionResultInterface.cursor` when execution stops early. `null` means the flow ran to completion.
 - **State snapshot**: `NodeStateBase.snapshot()` returns a `JsonObject` containing metadata, warnings, and the retry budget. Engine errors are excluded from snapshots; they flow via `outcome.errors`. Domain-specific fields are captured by overriding `snapshotData()`.
 
-Resume is a new execution. `dispatcher.resume(dagName, state, cursor)` starts a new lifecycle run from `pending`, identical to `execute()` except it begins at `cursor` instead of the entrypoint. The checkpoint's `executedNodes` and `skippedNodes` are available from `ckpt.restoreState(fn)` for inspection; they are not replayed.
+Resume is a new execution. `dispatcher.resume(dagName, state, cursor)` starts a new lifecycle run from `pending`, identical to `execute()` except it begins at `cursor` instead of the entrypoint. The checkpoint's `executedNodes` and `skippedNodes` are available from the `RecalledCheckpoint` returned by `ckpt.restoreState(adapter)` for inspection; they are not replayed.
 
 `Checkpoint.capture(dagName, result)` builds a `Checkpoint` instance from an execution result. It throws if `result.cursor` is `null`.
 
-`Checkpoint.load(raw).restoreState(factory)` validates the persisted data against `CheckpointDataSchema` and rehydrates a state instance via the factory function.
+`Checkpoint.load(raw).restoreState(CheckpointRestoreAdapterFn.fromFn(factory))` validates the persisted data against `CheckpointDataSchema` and rehydrates a state instance via the factory. `CheckpointRestoreAdapterFn` ships from `@noocodex/dagonizer/checkpoint`.
 
 The package does not provide a persistence backend. Serialize the checkpoint as JSON (`ckpt.toJson()`) and store it wherever your infrastructure requires.
 

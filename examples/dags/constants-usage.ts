@@ -35,15 +35,7 @@ function isScatterPlacement(type: NodeType): boolean {
 // -- GatherStrategyName ------------------------------------------------------
 // Validate a config value against the known gather strategies.
 function isKnownGatherStrategy(name: string): name is GatherStrategyName {
-  const known: readonly string[] = [
-    GatherStrategyName.APPEND,
-    GatherStrategyName.COLLECT,
-    GatherStrategyName.CUSTOM,
-    GatherStrategyName.DISCARD,
-    GatherStrategyName.MAP,
-    GatherStrategyName.PARTITION,
-  ];
-  return known.includes(name);
+  return (Object.values(GatherStrategyName) as readonly string[]).includes(name);
 }
 
 // Select the gather strategy for a fan-out that maps per-clone field values

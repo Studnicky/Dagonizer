@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
@@ -10,32 +9,12 @@ import type { ExecutionResultInterface } from '../../src/entities/execution/Exec
 import type { DAG } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { NoopInstrumentation } from '../../src/runtime/NoopInstrumentation.js';
+import { TestNode } from '../_support/TestNode.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-const makeNode = (
-  name: string,
-  outputs: readonly string[],
-  exec?: (state: NodeStateBase) => Promise<string> | string,
-): NodeInterface<NodeStateBase> => ({
-  name,
-  outputs,
-  async execute(state) {
-    const output = exec ? await exec(state) : outputs[0] as string;
-    return { output };
-  },
-});
-
-const makeNodeWithContract = (
-  name: string,
-  outputs: readonly string[],
-  contract: OperationContractFragment,
-): NodeInterface<NodeStateBase, string> => ({
-  name,
-  outputs,
-  contract,
-  async execute() { return { 'output': outputs[0] ?? 'success' }; },
-});
+const makeNode             = TestNode.make;
+const makeNodeWithContract = TestNode.withContract;
 
 // Recording instrumentation captures every hook invocation in order so
 // tests can assert on the full call sequence rather than aggregate counts.

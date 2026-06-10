@@ -1,21 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
-
-const makeNode = (
-  name: string,
-  outputs: readonly string[],
-): NodeInterface<NodeStateBase> => ({
-  name,
-  outputs,
-  async execute() { return { 'output': outputs[0] as string }; },
-});
+import { TestNode } from '../_support/TestNode.js';
 
 // ── Sub-DAG used as a reusable component ─────────────────────────────────────
 const helperDAG: DAG = {
@@ -39,8 +30,8 @@ const helperDAG: DAG = {
 void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
   void it('accepts scatter placement with success → null (sugar for terminate-completed)', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('step', ['done']));
-    dispatcher.registerNode(makeNode('entry', ['next']));
+    dispatcher.registerNode(TestNode.make('step', ['done']));
+    dispatcher.registerNode(TestNode.make('entry', ['next']));
     dispatcher.registerDAG(helperDAG);
 
     // Parent DAG where the scatter (dag body) routes 'success' → null (terminate-completed)
@@ -78,9 +69,9 @@ void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
 
   void it('accepts scatter with mixed null and explicit-target routes', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('step', ['done']));
-    dispatcher.registerNode(makeNode('entry', ['next']));
-    dispatcher.registerNode(makeNode('after', ['done']));
+    dispatcher.registerNode(TestNode.make('step', ['done']));
+    dispatcher.registerNode(TestNode.make('entry', ['next']));
+    dispatcher.registerNode(TestNode.make('after', ['done']));
 
     dispatcher.registerDAG(helperDAG);
 
@@ -128,9 +119,9 @@ void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
 
   void it('accepts valid scatter placements where all outputs route to parent placements', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('step', ['done']));
-    dispatcher.registerNode(makeNode('entry', ['next']));
-    dispatcher.registerNode(makeNode('terminal', ['done']));
+    dispatcher.registerNode(TestNode.make('step', ['done']));
+    dispatcher.registerNode(TestNode.make('entry', ['next']));
+    dispatcher.registerNode(TestNode.make('terminal', ['done']));
     dispatcher.registerDAG(helperDAG);
 
     // All scatter outputs route to a real parent placement; no nulls

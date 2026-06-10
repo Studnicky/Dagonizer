@@ -193,9 +193,27 @@ void describe('Executor entity schemas are registered in sharedAjv', () => {
   });
 });
 
-// Suppress unused import warning — Validator is imported to ensure it's exercised
-void describe('Validator class remains importable', () => {
-  void it('Validator.dag is defined', () => {
-    assert.ok(Validator.dag !== undefined);
+void describe('Validator.dag validates a well-formed DAG literal', () => {
+  void it('Validator.dag.is accepts a minimal valid DAG and returns true', () => {
+    const minimalDag: unknown = {
+      '@context': { '@version': 1.1 },
+      '@id': 'urn:noocodex:dag:cte-smoke',
+      '@type': 'DAG',
+      'name': 'cte-smoke',
+      'version': '1',
+      'entrypoint': 'step',
+      'nodes': [{
+        '@id': 'urn:noocodex:dag:cte-smoke/node/step',
+        '@type': 'SingleNode',
+        'name': 'step',
+        'node': 'step',
+        'outputs': { 'done': null },
+      }],
+    };
+    assert.ok(Validator.dag.is(minimalDag), 'Validator.dag.is must return true for a valid DAG');
+  });
+
+  void it('Validator.dag.is rejects an object missing required fields', () => {
+    assert.ok(!Validator.dag.is({ '@type': 'DAG' }), 'incomplete DAG must fail is() check');
   });
 });

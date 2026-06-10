@@ -141,7 +141,8 @@ When a top-level DAG completes at a terminal placement bound to a `ChannelInterf
 - `placementPath` — nesting path for instrumentation
 
 ```ts
-import { Dagonizer, InMemoryChannel } from '@noocodex/dagonizer';
+import { Dagonizer } from '@noocodex/dagonizer';
+import { InMemoryChannel } from '@noocodex/dagonizer/channels';
 import type { DAGHandoff } from '@noocodex/dagonizer/entities';
 
 // Extension via subclass (zero callbacks). Override the protected onPublished

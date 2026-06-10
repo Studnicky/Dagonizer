@@ -33,9 +33,8 @@ import { fuseGeo } from '../nodes/geo/fuseGeo.ts';
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
-import type { DispatcherBundle } from '@noocodex/dagonizer';
+import type { DAG, DispatcherBundle } from '@noocodex/dagonizer';
 import { DAGBuilder } from '@noocodex/dagonizer/builder';
-import type { DAG } from '@noocodex/dagonizer/entities';
 
 export const geoResolveDAG: DAG = new DAGBuilder('geo-resolve', '1.0')
 

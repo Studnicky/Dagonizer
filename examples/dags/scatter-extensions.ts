@@ -40,8 +40,8 @@ class TopNGatherStrategy extends GatherStrategy {
     const target = config.target ?? 'topCandidates';
     const n = 3;
     const all = execution.records.map((r) =>
-      execution.accessor.get(r.cloneState, 'candidate') as ScoredCandidate | undefined,
-    ).filter((c): c is ScoredCandidate => c !== undefined);
+      execution.accessor.get<ScoredCandidate>(r.cloneState, 'candidate'),
+    ).filter((c): c is ScoredCandidate => c !== null);
     const sorted = [...all].sort((a, b) => b.score - a.score).slice(0, n);
     execution.accessor.set(execution.state, target, sorted);
   }

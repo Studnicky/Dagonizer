@@ -27,6 +27,7 @@ import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Validator } from '../../src/validation/Validator.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -36,12 +37,15 @@ class ScatterContainerState extends NodeStateBase {
   items: number[];
   processed: number[];
   nodeBodyProcessed: number[];
+  /** Written by counterNode: carries the scatter item value back to the gather step. */
+  value: number;
 
   constructor() {
     super();
     this.items = [];
     this.processed = [];
     this.nodeBodyProcessed = [];
+    this.value = 0;
   }
 
   protected override snapshotData(): JsonObject {
@@ -49,6 +53,7 @@ class ScatterContainerState extends NodeStateBase {
       'items': [...this.items],
       'processed': [...this.processed],
       'nodeBodyProcessed': [...this.nodeBodyProcessed],
+      'value': this.value,
     };
   }
 
@@ -59,6 +64,8 @@ class ScatterContainerState extends NodeStateBase {
     if (Array.isArray(processed)) this.processed = processed.filter((x): x is number => typeof x === 'number');
     const n = snap['nodeBodyProcessed'];
     if (Array.isArray(n)) this.nodeBodyProcessed = n.filter((x): x is number => typeof x === 'number');
+    const v = snap['value'];
+    if (typeof v === 'number') this.value = v;
   }
 }
 
@@ -72,8 +79,8 @@ const counterNode: NodeInterface<ScatterContainerState, 'done'> = {
   'outputs': ['done'],
   async execute(state): Promise<{ output: 'done' }> {
     const item = state.getMetadata<number>('item') ?? 0;
-    // Use value field to pass back to gather.
-    (state as unknown as { value: number }).value = item;
+    // value is a declared field on ScatterContainerState; no cast required.
+    state.value = item;
     return { 'output': 'done' };
   },
 };
@@ -84,7 +91,7 @@ const counterNode: NodeInterface<ScatterContainerState, 'done'> = {
 
 const BODY_DAG_NAME = 'scatter-body';
 
-const bodyDag: DAG = {
+const bodyDag: DAG = Validator.dag.validate({
   '@context': DAG_CONTEXT,
   '@id': 'urn:test:scatter-body',
   '@type': 'DAG',
@@ -100,7 +107,7 @@ const bodyDag: DAG = {
       'outputs': { 'done': null },
     },
   ],
-} as unknown as DAG;
+});
 
 // ---------------------------------------------------------------------------
 // Parent DAG with scatter dag-body + container
@@ -109,7 +116,7 @@ const bodyDag: DAG = {
 const RUNNER_DAG_NAME = 'scatter-runner';
 const CONTAINER_ROLE = 'test-container';
 
-const runnerDag: DAG = {
+const runnerDag: DAG = Validator.dag.validate({
   '@context': DAG_CONTEXT,
   '@id': 'urn:test:scatter-runner',
   '@type': 'DAG',
@@ -135,10 +142,10 @@ const runnerDag: DAG = {
       },
     },
   ],
-} as unknown as DAG;
+});
 
 // In-process runner DAG (no container bound)
-const inProcessRunnerDag: DAG = {
+const inProcessRunnerDag: DAG = Validator.dag.validate({
   '@context': DAG_CONTEXT,
   '@id': 'urn:test:scatter-inprocess',
   '@type': 'DAG',
@@ -163,10 +170,10 @@ const inProcessRunnerDag: DAG = {
       },
     },
   ],
-} as unknown as DAG;
+});
 
 // Node-body runner DAG (node body scatter, NO container)
-const nodeBodyRunnerDag: DAG = {
+const nodeBodyRunnerDag: DAG = Validator.dag.validate({
   '@context': DAG_CONTEXT,
   '@id': 'urn:test:scatter-nodebody',
   '@type': 'DAG',
@@ -191,7 +198,7 @@ const nodeBodyRunnerDag: DAG = {
       },
     },
   ],
-} as unknown as DAG;
+});
 
 // ---------------------------------------------------------------------------
 // Test double DagContainerInterface

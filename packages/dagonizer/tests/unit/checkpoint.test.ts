@@ -87,13 +87,17 @@ void describe('cursor on ExecutionResultInterface', () => {
 
   void it('is the next node on abort', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
+    // nodeReady resolves once the node body starts executing (signal received).
+    let resolveNodeReady!: () => void;
+    const nodeReady = new Promise<void>((r) => { resolveNodeReady = r; });
+
     const op: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'op',
       'outputs': ['success'],
       async execute(_state, context) {
-        await new Promise<void>((resolve, reject) => {
-          const t = setTimeout(resolve, 1000);
-          context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { 'once': true });
+        resolveNodeReady();
+        await new Promise<void>((_resolve, reject) => {
+          context.signal.addEventListener('abort', () => { reject(context.signal.reason); }, { 'once': true });
         });
         return { 'output': 'success' };
       },
@@ -112,8 +116,11 @@ void describe('cursor on ExecutionResultInterface', () => {
       ],
     });
     const ctl = new AbortController();
-    setTimeout(() => ctl.abort(new Error('stop')), 25);
-    const result = await dispatcher.execute('two', new NodeStateBase(), { 'signal': ctl.signal });
+    // Start execution, then abort immediately once the node body is suspended.
+    const execution = dispatcher.execute('two', new NodeStateBase(), { 'signal': ctl.signal });
+    // Wait for node to signal it is running, then abort deterministically.
+    nodeReady.then(() => { ctl.abort(new Error('stop')); });
+    const result = await execution;
     assert.equal(result.cursor, 'a');
     assert.equal(result.executedNodes.length, 0);
   });

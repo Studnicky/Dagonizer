@@ -122,7 +122,9 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
     };
     dispatcher.registerNode(op);
 
-    // Missing @context, @id, @type; fails schema pre-pass before semantic check.
+    // Constructs intentionally-invalid input: missing @context, @id, @type so the
+    // schema pre-pass rejects it before the semantic check. The cast is necessary
+    // because the object deliberately omits required DAG fields.
     const bad = { 'name': 'x', 'entrypoint': 's', 'nodes': [
       { '@id': 'urn:x', '@type': 'SingleNode', 'name': 's', 'node': 'op', 'outputs': { 'success': null } },
     ] } as unknown as DAG;

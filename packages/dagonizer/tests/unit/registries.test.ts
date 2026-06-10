@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import {
   GatherStrategies,
   GatherStrategy,
@@ -13,21 +12,13 @@ import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG, GatherConfig } from '../../src/entities/index.js';
 import type { NodeStateBase, NodeStateInterface } from '../../src/NodeStateBase.js';
+import { TestNode } from '../_support/TestNode.js';
 
-const makeNode = (
-  name: string,
-  outputs: readonly string[],
-  exec: (state: NodeStateBase) => Promise<string> | string,
-): NodeInterface<NodeStateBase> => ({
-  name,
-  outputs,
-  async execute(state) {
-    const output = await exec(state);
-    return { output };
-  },
-});
+const makeNode = TestNode.make;
 
 void describe('GatherStrategies registry', () => {
+  afterEach(() => { GatherStrategies.reset(); });
+
   void it('lists default strategies on first import', () => {
     const names = GatherStrategies.list();
     assert.ok(names.includes('map'));
@@ -60,9 +51,34 @@ void describe('GatherStrategies registry', () => {
     const strategy = GatherStrategies.resolve('top-one');
     assert.equal(strategy.name, 'top-one');
   });
+
+  void it('unregister removes the named strategy; resolve throws afterward', () => {
+    class TempGather extends GatherStrategy {
+      readonly name = 'temp-gather';
+      async apply(): Promise<void> { /* no-op */ }
+    }
+    GatherStrategies.register(new TempGather());
+    assert.equal(GatherStrategies.resolve('temp-gather').name, 'temp-gather');
+    GatherStrategies.unregister('temp-gather');
+    assert.throws(() => GatherStrategies.resolve('temp-gather'));
+  });
+
+  void it('reset restores only the built-in strategies', () => {
+    class ExtraGather extends GatherStrategy {
+      readonly name = 'extra';
+      async apply(): Promise<void> { /* no-op */ }
+    }
+    GatherStrategies.register(new ExtraGather());
+    assert.ok(GatherStrategies.list().includes('extra'));
+    GatherStrategies.reset();
+    assert.ok(!GatherStrategies.list().includes('extra'), 'extra must be gone after reset');
+    assert.ok(GatherStrategies.list().includes('map'), 'built-ins must survive reset');
+  });
 });
 
 void describe('OutcomeReducers registry', () => {
+  afterEach(() => { OutcomeReducers.reset(); });
+
   void it('lists default reducers on first import', () => {
     const names = OutcomeReducers.list();
     assert.ok(names.includes('aggregate'));
@@ -158,6 +174,29 @@ void describe('OutcomeReducers registry', () => {
     ];
     assert.equal(reducer.reduce(records), 'all-success');
   });
+
+  void it('unregister removes the named reducer; resolve throws afterward', () => {
+    class TempReducer extends OutcomeReducer {
+      readonly name = 'temp-reducer';
+      reduce(): string { return 'done'; }
+    }
+    OutcomeReducers.register(new TempReducer());
+    assert.equal(OutcomeReducers.resolve('temp-reducer').name, 'temp-reducer');
+    OutcomeReducers.unregister('temp-reducer');
+    assert.throws(() => OutcomeReducers.resolve('temp-reducer'));
+  });
+
+  void it('reset restores only the built-in reducers', () => {
+    class ExtraReducer extends OutcomeReducer {
+      readonly name = 'extra-reducer';
+      reduce(): string { return 'done'; }
+    }
+    OutcomeReducers.register(new ExtraReducer());
+    assert.ok(OutcomeReducers.list().includes('extra-reducer'));
+    OutcomeReducers.reset();
+    assert.ok(!OutcomeReducers.list().includes('extra-reducer'), 'extra must be gone after reset');
+    assert.ok(OutcomeReducers.list().includes('aggregate'), 'built-ins must survive reset');
+  });
 });
 
 void describe('Dagonizer.getDAG / listDAGs / getNode / listNodes', () => {
@@ -203,7 +242,7 @@ void describe('Dagonizer.getDAG / listDAGs / getNode / listNodes', () => {
     assert.equal(dispatcher.listNodes().length, 2);
   });
 
-  afterEach(() => { /* no shared state to clean */ });
+  // No shared state: each test creates its own Dagonizer instance.
 });
 
 const makeSingleNodeDAG = (dagName: string, nodeName: string): DAG => ({

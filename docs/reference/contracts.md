@@ -59,6 +59,7 @@ import type {
   StoreSnapshot,
   StoreSnapshotEntry,
   SystemInfoInterface,
+  WarningEmitter,
 } from '@noocodex/dagonizer/contracts';
 ```
 
@@ -427,7 +428,7 @@ These contracts ship through `@noocodex/dagonizer/contracts` for use by custom g
 import type { GatherExecution, GatherRecord, OutcomeRecord } from '@noocodex/dagonizer/contracts';
 ```
 
-`GatherRecord<TState>` carries per-clone results from the scatter loop: `index`, `item`, `output`, `terminalOutcome`, and `cloneState`. `GatherExecution<TState>` is the invocation context handed to `GatherStrategy.apply`: it provides `records`, the live parent `state`, the `accessor`, and `invokeNode` (used by the `custom` strategy). `OutcomeRecord` is the per-clone summary handed to `OutcomeReducer.reduce`: `index`, `output`, and `terminalOutcome`.
+`GatherRecord<TState>` carries per-clone results from the scatter loop: `index`, `item`, `output`, `terminalOutcome`, and `cloneState`. `GatherExecution<TState>` is the invocation context handed to `GatherStrategy.apply`: it provides `records`, the live parent `state`, the `accessor`, and `invoker` (a `NodeInvoker`; used by the `custom` strategy via `invoker.invokeNode(name)`). `OutcomeRecord` is the per-clone summary handed to `OutcomeReducer.reduce`: `index`, `output`, and `terminalOutcome`.
 
 ## LlmAdapter / LlmClient
 
@@ -448,6 +449,36 @@ interface LlmClient {
 ```
 
 `LlmAdapter` is the transport contract every LLM provider adapter implements. Provider packages extend `BaseAdapter` from `@noocodex/dagonizer/adapter` to inherit retry and error classification. `LlmClient` is the minimal chat surface pattern bases accept — any `LlmAdapter` satisfies it. Pattern bases that need capability metadata (e.g. tool-call support) accept the full `LlmAdapter` directly.
+
+## WarningEmitter
+
+```ts
+interface WarningEmitter {
+  warn(message: string): void;
+}
+```
+
+Typed contract for emitting diagnostic warnings without introducing a callback seam. Accepted by `DAGBuilder.build({ warningEmitter })` to surface dead-write warnings detected during contract validation at build time. The `NoopWarningEmitter` from `@noocodex/dagonizer/runtime` is the default when no emitter is passed.
+
+```ts
+import type { WarningEmitter } from '@noocodex/dagonizer/contracts';
+
+const emitter: WarningEmitter = {
+  warn(message) { console.warn('[contract]', message); },
+};
+
+const dag = builder.build({ warningEmitter: emitter });
+```
+
+## NodeInvoker
+
+```ts
+interface NodeInvoker {
+  invokeNode(nodeName: string): Promise<void>;
+}
+```
+
+Typed contract for dispatching a registered node back through the engine. Lives on `GatherExecution.invoker`; used exclusively by `custom` gather strategies to invoke the registered node named in `GatherConfig.customNode`. Custom strategies access it via `execution.invoker.invokeNode(name)`.
 
 ## Related guides
 

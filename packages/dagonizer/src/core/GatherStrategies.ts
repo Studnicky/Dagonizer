@@ -298,6 +298,16 @@ class CollectGatherStrategy extends GatherStrategy {
   }
 }
 
+/** Built-in strategy instances; used by `GatherStrategies.reset()`. */
+const BUILTIN_STRATEGIES: ReadonlyArray<GatherStrategy> = [
+  new AppendGatherStrategy(),
+  new CollectGatherStrategy(),
+  new CustomGatherStrategy(),
+  new DiscardGatherStrategy(),
+  new MapGatherStrategy(),
+  new PartitionGatherStrategy(),
+];
+
 /**
  * Static registry of `GatherStrategy` instances. Defaults register at
  * module load. Consumers add more via `GatherStrategies.register`.
@@ -305,14 +315,9 @@ class CollectGatherStrategy extends GatherStrategy {
 export class GatherStrategies {
   private constructor() { /* static class */ }
 
-  private static readonly registry = new Map<string, GatherStrategy>([
-    ['append', new AppendGatherStrategy()],
-    ['collect', new CollectGatherStrategy()],
-    ['custom', new CustomGatherStrategy()],
-    ['discard', new DiscardGatherStrategy()],
-    ['map', new MapGatherStrategy()],
-    ['partition', new PartitionGatherStrategy()],
-  ]);
+  private static readonly registry = new Map<string, GatherStrategy>(
+    BUILTIN_STRATEGIES.map((s) => [s.name, s]),
+  );
 
   /**
    * Register a strategy. Replaces any prior registration with the same
@@ -320,6 +325,27 @@ export class GatherStrategies {
    */
   static register(strategy: GatherStrategy): void {
     GatherStrategies.registry.set(strategy.name, strategy);
+  }
+
+  /**
+   * Remove a previously registered strategy by name. No-op if the name is
+   * not present. Used in test `afterEach` to undo `register` calls and
+   * prevent cross-test pollution of the global registry.
+   */
+  static unregister(name: string): void {
+    GatherStrategies.registry.delete(name);
+  }
+
+  /**
+   * Reset the registry to the four built-in strategies, discarding any
+   * consumer-registered entries. Used in test `afterEach` to restore a clean
+   * baseline.
+   */
+  static reset(): void {
+    GatherStrategies.registry.clear();
+    for (const s of BUILTIN_STRATEGIES) {
+      GatherStrategies.registry.set(s.name, s);
+    }
   }
 
   /**

@@ -135,13 +135,12 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
 void describe('DAGBuilder.embeddedDAG: runtime execute with typed mapping', () => {
   void it('inputs + outputs mappings propagate state correctly across the embedded-DAG boundary', async () => {
     // Child node reads cloneState.payload and writes cloneState.result.
-    const childNode: NodeInterface<NodeStateBase, 'success'> = {
+    const childNode: NodeInterface<ChildState, 'success'> = {
       'name': 'child-node',
       'outputs': ['success'],
       async execute(state) {
-        const s = state as unknown as ChildState;
         // result = length of payload (deterministic, easy to assert)
-        s.result = s.payload.length;
+        state.result = state.payload.length;
         return { 'output': 'success' };
       },
     };

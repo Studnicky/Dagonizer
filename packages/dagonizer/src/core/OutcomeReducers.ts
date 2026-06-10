@@ -113,6 +113,14 @@ class AnySuccessOutcomeReducer extends OutcomeReducer {
   }
 }
 
+/** Built-in reducer instances; used by `OutcomeReducers.reset()`. */
+const BUILTIN_REDUCERS: ReadonlyArray<OutcomeReducer> = [
+  new AggregateOutcomeReducer(),
+  new AllSuccessOutcomeReducer(),
+  new AnySuccessOutcomeReducer(),
+  new TerminalOutcomeReducer(),
+];
+
 /**
  * Static registry of `OutcomeReducer` instances. Defaults register at
  * module load. Consumers add more via `OutcomeReducers.register`.
@@ -120,12 +128,9 @@ class AnySuccessOutcomeReducer extends OutcomeReducer {
 export class OutcomeReducers {
   private constructor() { /* static class */ }
 
-  private static readonly registry = new Map<string, OutcomeReducer>([
-    ['aggregate',   new AggregateOutcomeReducer()],
-    ['all-success', new AllSuccessOutcomeReducer()],
-    ['any-success', new AnySuccessOutcomeReducer()],
-    ['terminal',    new TerminalOutcomeReducer()],
-  ]);
+  private static readonly registry = new Map<string, OutcomeReducer>(
+    BUILTIN_REDUCERS.map((r) => [r.name, r]),
+  );
 
   /**
    * Register a reducer. Replaces any prior registration with the same
@@ -133,6 +138,27 @@ export class OutcomeReducers {
    */
   static register(reducer: OutcomeReducer): void {
     OutcomeReducers.registry.set(reducer.name, reducer);
+  }
+
+  /**
+   * Remove a previously registered reducer by name. No-op if the name is
+   * not present. Used in test `afterEach` to undo `register` calls and
+   * prevent cross-test pollution of the global registry.
+   */
+  static unregister(name: string): void {
+    OutcomeReducers.registry.delete(name);
+  }
+
+  /**
+   * Reset the registry to the four built-in reducers, discarding any
+   * consumer-registered entries. Used in test `afterEach` to restore a clean
+   * baseline.
+   */
+  static reset(): void {
+    OutcomeReducers.registry.clear();
+    for (const r of BUILTIN_REDUCERS) {
+      OutcomeReducers.registry.set(r.name, r);
+    }
   }
 
   /**

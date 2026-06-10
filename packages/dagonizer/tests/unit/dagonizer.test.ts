@@ -10,19 +10,9 @@ import {
   DAGError,
 } from '../../src/errors/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { TestNode } from '../_support/TestNode.js';
 
-const makeNode = (
-  name: string,
-  outputs: readonly string[],
-  exec: (state: NodeStateBase) => Promise<string> | string,
-): NodeInterface<NodeStateBase> => ({
-  name,
-  outputs,
-  async execute(state) {
-    const output = await exec(state);
-    return { output };
-  },
-});
+const makeNode = TestNode.make;
 
 void describe('Dagonizer single-node routing', () => {
   void it('routes per output and terminates on null', async () => {

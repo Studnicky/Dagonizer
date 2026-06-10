@@ -213,6 +213,8 @@ const harnessRaw = {
   },
 };
 
+// Constructs intentionally-invalid input (at the type level): harnessRaw's src/ Execution<T> brand
+// diverges from the dist/-compiled DagConformanceHarnessInterface brand; runtime shapes are identical.
 const laws = DagConformance.laws(harnessRaw as unknown as Parameters<typeof DagConformance.laws>[0]);
 
 // ---------------------------------------------------------------------------

@@ -54,6 +54,7 @@ import type {
   GatherConfig,
   GatherExecution,
   NodeInterface,
+  NodeStateInterface,
 } from '@noocodex/dagonizer';
 
 /**
@@ -424,16 +425,18 @@ export const scoutDispatch: NodeInterface<ArchivistState, 'success' | 'empty', A
 class ScoutGatherStrategy extends GatherStrategy {
   readonly name = 'scout-merge';
 
-  async apply<TState extends ArchivistState>(
+  async apply(
     _config: GatherConfig,
-    execution: GatherExecution<TState>,
+    execution: GatherExecution<NodeStateInterface>,
   ): Promise<void> {
-    const parentState = execution.state;
+    // This strategy is registered for use with ArchivistState exclusively;
+    // the cast is safe because only ArchivistState DAGs register 'scout-merge'.
+    const parentState = execution.state as ArchivistState;
     const merged: Candidate[] = [...parentState.candidates];
     let failureText = parentState.failureCause;
 
     for (const record of execution.records) {
-      const cloneState = record.cloneState;
+      const cloneState = record.cloneState as ArchivistState;
       // Flat-merge the clone's candidates into parent (order is source-index order
       // because GatherExecution.records is guaranteed source-index ordered).
       for (const candidate of cloneState.candidates) {

@@ -23,7 +23,7 @@ const accessor = new DottedPathAccessor();
 const state = new ArchiveState();
 state.catalogue = { shelves: { fiction: 'Shelf A' } };
 
-// Read a nested value by dotted path; returns `undefined` on a miss.
+// Read a nested value by dotted path; returns `null` on a miss.
 export const shelf = accessor.get(state, 'catalogue.shelves.fiction');
 // shelf === 'Shelf A'
 // #endregion dotted-get
@@ -49,7 +49,7 @@ class PrefixAccessor implements StateAccessor {
     this.#inner = new DottedPathAccessor();
   }
 
-  get<T = unknown>(target: object, path: string): T | undefined {
+  get<T = unknown>(target: object, path: string): T | null {
     return this.#inner.get<T>(target, `${this.#prefix}.${path}`);
   }
 

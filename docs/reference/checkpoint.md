@@ -114,15 +114,25 @@ Persist this checkpoint to a `CheckpointStore` under `key`. Composes `toJson` + 
 
 ---
 
-### `ckpt.restoreState(restoreFn)`
+### `ckpt.restoreState(adapter)`
 
 ```ts
 restoreState<TState extends NodeStateInterface>(
-  restoreFn: StateRestoreFnType<TState>,
+  adapter: CheckpointRestoreAdapter<TState>,
 ): RecalledCheckpoint<TState>
 ```
 
-Rehydrate the state from this checkpoint via the supplied factory. Returns the rehydrated state, dag name, cursor, and execution history. Pass the result to `dispatcher.resume`.
+Rehydrate the state from this checkpoint via the supplied adapter. Returns the rehydrated state, dag name, cursor, and execution history. Pass the result to `dispatcher.resume`.
+
+`CheckpointRestoreAdapter<TState>` is an interface with a single `restore(snap: JsonObject): TState` method. For a quick inline factory, wrap a plain function with `CheckpointRestoreAdapterFn.fromFn(fn)` from `@noocodex/dagonizer/checkpoint`:
+
+```ts
+import { CheckpointRestoreAdapterFn } from '@noocodex/dagonizer/checkpoint';
+
+const { dagName, state, cursor } = ckpt.restoreState(
+  CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap)),
+);
+```
 
 ```ts
 <<< @/../examples/08-checkpoint.ts#recall

@@ -51,7 +51,7 @@ export const fetchNode: NodeInterface<FetchState, 'success' | 'error'> = {
   'outputs': ['success', 'error'],
   async execute(state, context) {
     // #region policy-config
-    const policy = new RetryPolicy({
+    const policy = RetryPolicy.from({
       'maxAttempts':  5,
       'strategy':     BackoffStrategy.EXPONENTIAL,  // 50ms → 100ms → 200ms → …
       'baseDelay':    50,

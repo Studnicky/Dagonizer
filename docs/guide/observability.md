@@ -23,7 +23,7 @@ Two surfaces fire at every execution boundary: the protected `on*` hooks on `Dag
 |--------|--------|------|
 | `Dagonizer.on*` | `@noocodex/dagonizer` | Protected hooks: `onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`, `onContractWarning` |
 | `Instrumentation<TState>` | `@noocodex/dagonizer/contracts` | Vendor-neutral hook surface |
-| `NoopInstrumentation<TState>` | `@noocodex/dagonizer` | No-op base for selective override |
+| `NoopInstrumentation<TState>` | `@noocodex/dagonizer/runtime` | No-op base for selective override |
 | `DagonizerOptionsInterface.instrumentation` | `@noocodex/dagonizer` | Constructor slot for the contract |
 
 ## The six subclass hooks

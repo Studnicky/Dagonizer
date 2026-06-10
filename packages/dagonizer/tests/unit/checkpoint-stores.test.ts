@@ -22,17 +22,25 @@ import { StoreError } from '../../src/store/StoreError.js';
 
 // ── Shared test fixture ─────────────────────────────────────────────────────
 
-/** Minimal abortable dispatcher + single-node DAG that pauses on abort. */
+/**
+ * Minimal abortable dispatcher + two-node DAG. The node signals readiness
+ * before waiting for its abort signal — the caller aborts immediately once
+ * the node is suspended, giving a deterministic interruption without any
+ * real timer dependencies.
+ */
 async function makeAbortedResult(): Promise<ReturnType<typeof Dagonizer.prototype.execute>> {
   const dispatcher = new Dagonizer<NodeStateBase>();
+
+  let resolveNodeReady!: () => void;
+  const nodeReady = new Promise<void>((r) => { resolveNodeReady = r; });
+
   const slow: NodeInterface<NodeStateBase, 'done'> = {
     'name': 'slow',
     'outputs': ['done'],
     async execute(_state, context) {
-      await new Promise<void>((resolve, reject) => {
-        const t = setTimeout(resolve, 1000);
+      resolveNodeReady();
+      await new Promise<void>((_resolve, reject) => {
         context.signal.addEventListener('abort', () => {
-          clearTimeout(t);
           reject(context.signal.reason);
         }, { 'once': true });
       });
@@ -58,8 +66,10 @@ async function makeAbortedResult(): Promise<ReturnType<typeof Dagonizer.prototyp
   });
 
   const ctl = new AbortController();
-  setTimeout(() => { ctl.abort(new Error('pause')); }, 20);
-  const result = await dispatcher.execute('store-test', new NodeStateBase(), { 'signal': ctl.signal });
+  const execution = dispatcher.execute('store-test', new NodeStateBase(), { 'signal': ctl.signal });
+  // Abort deterministically once the node body is suspended, no wall-clock wait.
+  nodeReady.then(() => { ctl.abort(new Error('pause')); });
+  const result = await execution;
   // Ensure we have a cursor so Checkpoint.capture can proceed.
   assert.ok(result.cursor !== null, 'Expected aborted result to have a cursor');
   return result;

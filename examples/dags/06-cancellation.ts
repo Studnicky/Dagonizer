@@ -23,6 +23,10 @@ export const slow: NodeInterface<NodeStateBase, 'success'> = {
     // Wrap the delay in a manual Promise that listens for abort. If the node
     // ignores context.signal, cancellation would not take effect until the
     // current node finishes, even if the signal fires.
+    //
+    // When composing multiple signals (e.g. a per-operation timeout plus the
+    // dispatcher's signal), prefer `AbortSignal.any([sigA, sigB])` — it fires
+    // as soon as the first of the two aborts. Do not manually chain listeners.
     await new Promise<void>((resolve, reject) => {
       const t = setTimeout(resolve, 5_000);
       context.signal.addEventListener(

@@ -65,8 +65,9 @@ export class GrpcStore extends BaseStore implements RemoteStore {
   protected get snapshotType(): string    { return 'grpc-store'; }
   protected get snapshotVersion(): number { return 1; }
 
-  protected async performGet<T extends JsonValue>(key: string): Promise<T | undefined> {
-    return this.#data.get(key) as T | undefined;
+  protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {
+    const value = this.#data.get(key);
+    return value === undefined ? null : (value as T);
   }
 
   protected async performSet<T extends JsonValue>(key: string, value: T): Promise<void> {

@@ -100,9 +100,11 @@ function makeTask(correlationId: string, signal: AbortSignal): DagTaskInterface<
     'timeoutMs': null,
     'state': new MinimalState(),
     'context': {
+      'dagName': 'test-dag',
+      'nodeName': 'test-node',
       'signal': signal,
       'services': undefined,
-    } as unknown as NodeContextInterface<undefined>,
+    } as NodeContextInterface<undefined>,
     toRequest(): ExecutionRequest {
       return request;
     },

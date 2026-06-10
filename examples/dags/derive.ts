@@ -93,7 +93,7 @@ export const finalize: NodeInterface<PipelineState, 'success'> = {
 // #region contracts
 export const childDAG = DAGDeriver.derive({
   "name":       'plugin:transform',
-  "version":    '1.0',
+  "version":    '1',
   "entrypoint": 'validate',
   "nodes":      [validate, transform],
   "annotations": {
@@ -117,7 +117,7 @@ export const childDAG = DAGDeriver.derive({
 // terminal overrides would route the error port elsewhere if needed.
 export const parentDAG = DAGDeriver.derive({
   "name":       'parent',
-  "version":    '1.0',
+  "version":    '1',
   "entrypoint": 'prepare',
   "nodes":      [prepare, invokePlugin, finalize],
   // #region annotations
