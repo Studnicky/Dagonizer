@@ -26,17 +26,10 @@
  * ```
  */
 
+import type { OutcomeRecord } from '../contracts/OutcomeRecord.js';
 import { DAGError } from '../errors/DAGError.js';
 
-/**
- * Per-clone summary passed to `OutcomeReducer.reduce`. Contains only
- * the information needed for routing; no clone state.
- */
-export interface OutcomeRecord {
-  readonly index: number;
-  readonly output: string;
-  readonly terminalOutcome: 'completed' | 'failed' | null;
-}
+export type { OutcomeRecord };
 
 /**
  * Extension point for outcome reducers.
@@ -93,16 +86,51 @@ class TerminalOutcomeReducer extends OutcomeReducer {
 }
 
 /**
+ * `all-success`: routes `'success'` when every clone output === `'success'`,
+ * otherwise routes `'error'`, evaluated over the scatter clone records.
+ *
+ * Returns `'error'` for an empty record set (no clones → not all success).
+ */
+class AllSuccessOutcomeReducer extends OutcomeReducer {
+  readonly name = 'all-success';
+  reduce(records: ReadonlyArray<OutcomeRecord>): string {
+    if (records.length === 0) return 'error';
+    return records.every((r) => r.output === 'success') ? 'success' : 'error';
+  }
+}
+
+/**
+ * `any-success`: routes `'success'` when at least one clone output === `'success'`,
+ * otherwise routes `'error'`, evaluated over the scatter clone records.
+ *
+ * Returns `'error'` for an empty record set (no clones → none succeeded).
+ */
+class AnySuccessOutcomeReducer extends OutcomeReducer {
+  readonly name = 'any-success';
+  reduce(records: ReadonlyArray<OutcomeRecord>): string {
+    if (records.length === 0) return 'error';
+    return records.some((r) => r.output === 'success') ? 'success' : 'error';
+  }
+}
+
+/** Built-in reducer instances; used by `OutcomeReducers.reset()`. */
+const BUILTIN_REDUCERS: ReadonlyArray<OutcomeReducer> = [
+  new AggregateOutcomeReducer(),
+  new AllSuccessOutcomeReducer(),
+  new AnySuccessOutcomeReducer(),
+  new TerminalOutcomeReducer(),
+];
+
+/**
  * Static registry of `OutcomeReducer` instances. Defaults register at
  * module load. Consumers add more via `OutcomeReducers.register`.
  */
 export class OutcomeReducers {
   private constructor() { /* static class */ }
 
-  private static readonly registry = new Map<string, OutcomeReducer>([
-    ['aggregate', new AggregateOutcomeReducer()],
-    ['terminal', new TerminalOutcomeReducer()],
-  ]);
+  private static readonly registry = new Map<string, OutcomeReducer>(
+    BUILTIN_REDUCERS.map((r) => [r.name, r]),
+  );
 
   /**
    * Register a reducer. Replaces any prior registration with the same
@@ -110,6 +138,27 @@ export class OutcomeReducers {
    */
   static register(reducer: OutcomeReducer): void {
     OutcomeReducers.registry.set(reducer.name, reducer);
+  }
+
+  /**
+   * Remove a previously registered reducer by name. No-op if the name is
+   * not present. Used in test `afterEach` to undo `register` calls and
+   * prevent cross-test pollution of the global registry.
+   */
+  static unregister(name: string): void {
+    OutcomeReducers.registry.delete(name);
+  }
+
+  /**
+   * Reset the registry to the four built-in reducers, discarding any
+   * consumer-registered entries. Used in test `afterEach` to restore a clean
+   * baseline.
+   */
+  static reset(): void {
+    OutcomeReducers.registry.clear();
+    for (const r of BUILTIN_REDUCERS) {
+      OutcomeReducers.registry.set(r.name, r);
+    }
   }
 
   /**

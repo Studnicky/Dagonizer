@@ -8,14 +8,14 @@
 
 import type { Quad } from '@noocodex/dagonizer/patterns';
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
 
 import { GraphNode, type GraphServices } from './GraphNode.js';
 
 export abstract class RecordFindingsNode<
   TState extends NodeStateInterface,
   TEntity,
-  TOutput extends string = 'success',
-> extends GraphNode<TState, TOutput> {
+> extends GraphNode<TState, 'success'> {
   protected abstract selectEntities(state: TState): readonly TEntity[];
   protected abstract toQuads(entity: TEntity): readonly Quad[];
 
@@ -23,13 +23,13 @@ export abstract class RecordFindingsNode<
   async execute(
     state: TState,
     context: NodeContextInterface<GraphServices>,
-  ): Promise<NodeOutputInterface<TOutput>> {
+  ): Promise<NodeOutputInterface<'success'>> {
     const entities = this.selectEntities(state);
     for (const entity of entities) {
       for (const q of this.toQuads(entity)) {
         context.services.memory.assert(q.subject, q.predicate, q.object, q.graph);
       }
     }
-    return { 'output': this.successPort() };
+    return NodeOutputBuilder.of('success');
   }
 }

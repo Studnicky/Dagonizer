@@ -20,9 +20,9 @@ void describe('DottedPathAccessor', () => {
     assert.equal(accessor.get({ 'a': { 'b': { 'c': 42 } } }, 'a.b.c'), 42);
   });
 
-  void it('returns undefined for a missing path', () => {
+  void it('returns null for a missing path', () => {
     const accessor = new DottedPathAccessor();
-    assert.equal(accessor.get({}, 'a.b.c'), undefined);
+    assert.equal(accessor.get({}, 'a.b.c'), null);
   });
 
   void it('writes a top-level field', () => {
@@ -48,10 +48,10 @@ void describe('DottedPathAccessor', () => {
     assert.equal((Object.prototype as Record<string, unknown>)['polluted'], undefined);
   });
 
-  void it('returns undefined for a path that walks a prototype key', () => {
+  void it('returns null for a path that walks a prototype key', () => {
     const accessor = new DottedPathAccessor();
-    assert.equal(accessor.get({ 'a': 1 }, '__proto__'), undefined);
-    assert.equal(accessor.get({ 'a': 1 }, 'a.constructor'), undefined);
+    assert.equal(accessor.get({ 'a': 1 }, '__proto__'), null);
+    assert.equal(accessor.get({ 'a': 1 }, 'a.constructor'), null);
   });
 });
 
@@ -59,9 +59,9 @@ void describe('Dagonizer accepts a custom StateAccessor', () => {
   void it('uses the supplied accessor for scatter source reads', async () => {
     let getCalls = 0;
     const trackingAccessor: StateAccessor = {
-      get(state: object, path: string): unknown {
+      get<T = unknown>(state: object, path: string): T | null {
         getCalls += 1;
-        return new DottedPathAccessor().get(state, path);
+        return new DottedPathAccessor().get<T>(state, path);
       },
       set(state: object, path: string, value: unknown): void {
         new DottedPathAccessor().set(state, path, value);
@@ -79,7 +79,7 @@ void describe('Dagonizer accepts a custom StateAccessor', () => {
       async execute(state) {
         const item = state.getMetadata<number>('item') ?? 0;
         state.results.push(item * 2);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
 
@@ -100,8 +100,10 @@ void describe('Dagonizer accepts a custom StateAccessor', () => {
         'source': 'items',
         'itemKey': 'item',
         'gather': { 'strategy': 'append', 'target': 'collected' },
-        'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
-      }],
+        'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+      },
+        { '@id': 'urn:noocodex:dag:fan-test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
     };
     dispatcher.registerDAG(dag);
 

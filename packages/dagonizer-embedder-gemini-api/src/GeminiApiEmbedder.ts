@@ -19,13 +19,14 @@
  */
 
 import { BaseEmbedder, Classifications, LlmError } from '@noocodex/dagonizer/adapter';
-import type { BaseEmbedderOptions } from '@noocodex/dagonizer/adapter';
+import type { BaseAdapterCoreOptions } from '@noocodex/dagonizer/adapter';
+import type { AbortableOptionsInterface } from '@noocodex/dagonizer/contracts';
 
 const DEFAULT_MODEL = 'text-embedding-004';
 const DEFAULT_DIMENSIONS = 768;
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 
-export interface GeminiApiEmbedderOptions extends BaseEmbedderOptions {
+export interface GeminiApiEmbedderOptions extends BaseAdapterCoreOptions {
   /** Override the embedding model. Defaults to `text-embedding-004`. */
   readonly model?: string;
   /** Override dimensions when targeting a non-`text-embedding-004` model. */
@@ -55,7 +56,7 @@ export class GeminiApiEmbedder extends BaseEmbedder {
     this.#model = model;
   }
 
-  protected async performEmbed(text: string): Promise<readonly number[]> {
+  protected async performEmbed(text: string, signal: AbortSignal): Promise<readonly number[]> {
     const url = `${ENDPOINT}/${encodeURIComponent(this.#model)}:embedContent?key=${encodeURIComponent(this.#apiKey)}`;
     let res: Response;
     try {
@@ -63,12 +64,13 @@ export class GeminiApiEmbedder extends BaseEmbedder {
         'method': 'POST',
         'headers': { 'Content-Type': 'application/json' },
         'body': JSON.stringify({ 'content': { 'parts': [{ 'text': text }] } }),
+        signal,
       });
     } catch (err) {
       throw new LlmError(
         `Gemini embed network error: ${err instanceof Error ? err.message : String(err)}`,
         Classifications['NETWORK'],
-        err,
+        { 'cause': err },
       );
     }
 
@@ -76,7 +78,7 @@ export class GeminiApiEmbedder extends BaseEmbedder {
       const body = await res.text();
       throw new LlmError(
         `Gemini embed failed: ${String(res.status)} ${body}`,
-        LlmError.classifyHttp(res.status, body),
+        LlmError.classifyHttp(res.status, { 'body': body }),
       );
     }
 
@@ -95,7 +97,7 @@ export class GeminiApiEmbedder extends BaseEmbedder {
    * Probe true when a non-empty API key was supplied. Never throws.
    * Symmetric with `GeminiApiAdapter.probe`.
    */
-  override async probe(): Promise<boolean> {
+  override async probe(_options?: AbortableOptionsInterface): Promise<boolean> {
     return Promise.resolve(this.#apiKey.length > 0);
   }
 }

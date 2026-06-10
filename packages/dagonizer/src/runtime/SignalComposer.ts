@@ -14,7 +14,14 @@
 import type { ExecuteOptionsInterface } from '../contracts/ExecuteOptionsInterface.js';
 
 /**
- * Compose an `AbortSignal` from caller-supplied cancellation options.
+ * Cached never-aborting signal. Lazily initialised by `SignalComposer.never()`.
+ * A single instance serves all callers; it is safe to share because it never
+ * aborts and carries no per-call identity.
+ */
+let neverSignal: AbortSignal | null = null;
+
+/**
+ * Fold caller-supplied cancellation options into a single `AbortSignal`.
  *
  * @example
  * ```ts
@@ -26,6 +33,21 @@ import type { ExecuteOptionsInterface } from '../contracts/ExecuteOptionsInterfa
  */
 export class SignalComposer {
   private constructor() { /* static class */ }
+
+  /**
+   * Returns a cached `AbortSignal` that never aborts. Used by the dispatcher
+   * when building a node's context from options that supply neither `signal`
+   * nor `deadlineMs`, so every node context always has a valid signal.
+   *
+   * The signal is created once on the first call and reused on all subsequent
+   * calls; the underlying `AbortController` is intentionally never aborted.
+   */
+  static never(): AbortSignal {
+    if (neverSignal === null) {
+      neverSignal = new AbortController().signal;
+    }
+    return neverSignal;
+  }
 
   /**
    * Returns the composed `AbortSignal`, or `null` when neither

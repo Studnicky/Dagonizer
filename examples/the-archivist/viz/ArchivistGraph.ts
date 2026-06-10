@@ -29,11 +29,9 @@
  */
 
 // #region cytoscape-graph-subclass
-import type cytoscape from 'cytoscape';
-
 import { CytoscapeGraph }  from '@noocodex/dagonizer/viz';
 import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
-import type { CytoscapeGraphOptions } from '@noocodex/dagonizer/viz';
+import type { CytoscapeElement, CytoscapeGraphOptions } from '@noocodex/dagonizer/viz';
 import { NODE_KINDS } from '../nodes/ArchivistNode.ts';
 
 /**
@@ -55,16 +53,14 @@ export class ArchivistGraph extends CytoscapeGraph {
    * Render the DAG elements and enrich each node's `data.kind` from
    * `NODE_KINDS`. Nodes absent from the registry are emitted unchanged.
    */
-  protected override buildElements(): ReadonlyArray<cytoscape.ElementDefinition> {
+  protected override buildElements(): ReadonlyArray<CytoscapeElement> {
     const raw = CytoscapeRenderer.render(this.dag, {
       embeddedDAGs: this.embeddedDAGs,
-    }) as ReadonlyArray<cytoscape.ElementDefinition>;
+    });
 
     return raw.map((el) => {
       if (el.group !== 'nodes') return el;
-      const data = el.data as { id?: string; node?: string };
-      const nodeName = data.node ?? data.id;
-      if (nodeName === undefined) return el;
+      const nodeName = el.data.node ?? el.data.id;
       const kind = NODE_KINDS[nodeName];
       if (kind === undefined) return el;
       return { ...el, data: { ...el.data, kind } };

@@ -8,6 +8,7 @@
  */
 
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
 
 import { FlowNode } from './FlowNode.js';
 
@@ -29,6 +30,6 @@ export abstract class RespondNode<
     _context: NodeContextInterface<undefined>,
   ): Promise<NodeOutputInterface<'success'>> {
     this.emit(state, this.extractDraft(state));
-    return { 'output': 'success' };
+    return NodeOutputBuilder.of('success');
   }
 }

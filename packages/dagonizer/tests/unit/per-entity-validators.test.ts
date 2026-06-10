@@ -21,7 +21,7 @@ void describe('Validator per-entity sub-validators', () => {
   });
 
   void it('Validator.nodeOutput accepts a minimal output', () => {
-    assert.equal(Validator.nodeOutput.is({ 'output': 'success' }), true);
+    assert.equal(Validator.nodeOutput.is({ 'errors': [], 'output': 'success' }), true);
   });
 
   void it('Validator.scatterNode accepts a node-body scatter placement', () => {
@@ -33,9 +33,24 @@ void describe('Validator per-entity sub-validators', () => {
         'body':   { 'node': 'scoutOne' },
         'source': 'tasks',
         'gather': { 'strategy': 'append', 'target': 'results' },
-        'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+        'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
       }),
       true,
+    );
+  });
+
+  void it('Validator.scatterNode rejects a scatter with null output values', () => {
+    assert.equal(
+      Validator.scatterNode.is({
+        '@id':    'urn:noocodex:dag:pipeline/node/scout',
+        '@type':  'ScatterNode',
+        'name':   'scout',
+        'body':   { 'node': 'scoutOne' },
+        'source': 'tasks',
+        'gather': { 'strategy': 'append', 'target': 'results' },
+        'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+      }),
+      false,
     );
   });
 
@@ -46,9 +61,22 @@ void describe('Validator per-entity sub-validators', () => {
         '@type':  'EmbeddedDAGNode',
         'name':   'enrich',
         'dag':    'enrichment',
-        'outputs': { 'success': null, 'error': null },
+        'outputs': { 'success': 'end', 'error': 'end' },
       }),
       true,
+    );
+  });
+
+  void it('Validator.embeddedDAGNode rejects null output values', () => {
+    assert.equal(
+      Validator.embeddedDAGNode.is({
+        '@id':    'urn:noocodex:dag:pipeline/node/enrich',
+        '@type':  'EmbeddedDAGNode',
+        'name':   'enrich',
+        'dag':    'enrichment',
+        'outputs': { 'success': null, 'error': null },
+      }),
+      false,
     );
   });
 
@@ -60,7 +88,7 @@ void describe('Validator per-entity sub-validators', () => {
         'name':   'transform',
         'body':   { 'node': 'transformNode' },
         'gather': { 'strategy': 'map', 'mapping': { 'result': 'output' } },
-        'outputs': { 'success': null, 'error': null },
+        'outputs': { 'success': 'end', 'error': 'end' },
       }),
       false,
     );
@@ -78,7 +106,7 @@ void describe('Validator per-entity sub-validators', () => {
           'strategy':   'partition',
           'partitions': { 'even': 'evens', 'odd': 'odds' },
         },
-        'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+        'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
       }),
       true,
     );
@@ -93,7 +121,7 @@ void describe('Validator per-entity sub-validators', () => {
         'body':   { 'node': 'processOne' },
         'source': 'items',
         'gather': { 'strategy': 'custom', 'customNode': 'mergeNode' },
-        'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+        'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
       }),
       true,
     );
@@ -105,7 +133,7 @@ void describe('Validator per-entity sub-validators', () => {
         '@id':    'urn:noocodex:dag:pipeline/node/broken',
         '@type':  'ScatterNode',
         'name':   'broken',
-        'outputs': { 'success': null },
+        'outputs': { 'success': 'end' },
       }),
       ValidationError,
     );
@@ -118,13 +146,26 @@ void describe('Validator per-entity sub-validators', () => {
         '@type':  'ScatterNode',
         'name':   'broken',
         'body':   { 'unknown': 'x' },
-        'outputs': { 'success': null },
+        'outputs': { 'success': 'end' },
       }),
       false,
     );
   });
 
-  void it('Validator.singleNode accepts a placement', () => {
+  void it('Validator.singleNode accepts a placement with string output targets', () => {
+    assert.equal(
+      Validator.singleNode.is({
+        '@id':   'urn:noocodex:dag:pipeline/node/greet',
+        '@type': 'SingleNode',
+        'name':  'greet',
+        'node':  'greet',
+        'outputs': { 'done': 'end' },
+      }),
+      true,
+    );
+  });
+
+  void it('Validator.singleNode rejects a placement with null output values', () => {
     assert.equal(
       Validator.singleNode.is({
         '@id':   'urn:noocodex:dag:pipeline/node/greet',
@@ -133,21 +174,7 @@ void describe('Validator per-entity sub-validators', () => {
         'node':  'greet',
         'outputs': { 'done': null },
       }),
-      true,
-    );
-  });
-
-  void it('Validator.parallelNode accepts a parallel placement', () => {
-    assert.equal(
-      Validator.parallelNode.is({
-        '@id':     'urn:noocodex:dag:pipeline/node/group',
-        '@type':   'ParallelNode',
-        'name':    'group',
-        'nodes':   ['a', 'b'],
-        'combine': 'all-success',
-        'outputs': { 'success': null, 'error': null },
-      }),
-      true,
+      false,
     );
   });
 
@@ -159,6 +186,7 @@ void describe('Validator per-entity sub-validators', () => {
         'skippedNodes': [],
         'state': {},
         'interruptedAt': null,
+        'terminalOutcome': null,
       }),
       true,
     );

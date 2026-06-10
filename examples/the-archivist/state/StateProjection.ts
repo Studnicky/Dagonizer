@@ -52,8 +52,8 @@ export class StateProjection {
     store.assert(run, dag('visitorQuery'), MemoryStore.lit.str(state.query), graph);
     store.assert(run, dag('intent'),       MemoryStore.lit.str(state.intent), graph);
     store.assert(run, dag('draft'),        MemoryStore.lit.str(state.draft), graph);
-    if (state.approved !== null) {
-      store.assert(run, dag('approved'), MemoryStore.lit.bool(state.approved), graph);
+    if (state.approvalState !== 'pending') {
+      store.assert(run, dag('approved'), MemoryStore.lit.bool(state.approvalState === 'approved'), graph);
     }
 
     // Compose attempts counter (from the conceptual-root retry budget)

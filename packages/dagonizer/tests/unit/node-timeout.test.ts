@@ -1,7 +1,7 @@
 /**
  * Per-node timeout tests.
  *
- * Verifies that a node's `timeoutMs` field causes the engine to pass a
+ * Verifies that a node's `timeout` field causes the engine to pass a
  * scoped child signal, race the execute against a deadline, and surface a
  * `NodeTimeoutError` through the `onError` hook.
  *
@@ -19,7 +19,7 @@
  *   // Start a concurrent advance loop
  *   const advancer = (async () => {
  *     await tick(); // let node execute start
- *     sched.advance(timeoutMs + 1);
+ *     sched.advance(budgetMs + 1);
  *     await tick(); // flush .then() microtasks
  *     sched.runAll();
  *     await tick(); // flush abort/race microtasks
@@ -37,6 +37,7 @@ import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import { NodeTimeoutError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
 
 // ---------------------------------------------------------------------------
@@ -66,8 +67,10 @@ function buildSingleNodeDag(
       '@type': 'SingleNode',
       'name':  'stage',
       'node':  node.name,
-      'outputs': { [output]: null },
-    }],
+      'outputs': { [output]: 'end' },
+    },
+    { '@id': `urn:noocodex:dag:${dagName}/node/end`, '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+    ],
   });
 }
 
@@ -75,10 +78,10 @@ function buildSingleNodeDag(
 // Tests
 // ---------------------------------------------------------------------------
 
-void describe('per-node timeoutMs', () => {
+void describe('per-node timeout', () => {
   afterEach(() => { Scheduler.reset(); });
 
-  void it('aborts the node signal and rejects after timeoutMs elapses', async () => {
+  void it('aborts the node signal and rejects after budget elapses', async () => {
     const sched = new VirtualScheduler();
     Scheduler.configure(sched);
 
@@ -87,7 +90,7 @@ void describe('per-node timeoutMs', () => {
     const slowNode: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'slow',
       'outputs': ['success'],
-      'timeoutMs': 500,
+      'timeout': Timeout.ofMs(500),
       async execute(_state, context) {
         receivedSignal = context.signal;
         // Suspend indefinitely; the per-node deadline race wins.
@@ -96,7 +99,7 @@ void describe('per-node timeoutMs', () => {
             _reject(context.signal.reason);
           }, { 'once': true });
         });
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
 
@@ -147,12 +150,12 @@ void describe('per-node timeoutMs', () => {
     const slowNode: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'tardy',
       'outputs': ['success'],
-      'timeoutMs': 200,
+      'timeout': Timeout.ofMs(200),
       async execute(_state, context) {
         await new Promise<never>((_resolve, _reject) => {
           context.signal.addEventListener('abort', () => { _reject(context.signal.reason); }, { 'once': true });
         });
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
 
@@ -185,7 +188,7 @@ void describe('per-node timeoutMs', () => {
     assert.equal(tErr.timeoutMs, 200);
   });
 
-  void it('nodes without timeoutMs complete normally', async () => {
+  void it('nodes without timeout complete normally', async () => {
     const sched = new VirtualScheduler();
     Scheduler.configure(sched);
 
@@ -193,7 +196,7 @@ void describe('per-node timeoutMs', () => {
       'name': 'fast',
       'outputs': ['done'],
       async execute() {
-        return { 'output': 'done' };
+        return { 'errors': [], 'output': 'done' };
       },
     };
 
@@ -208,19 +211,19 @@ void describe('per-node timeoutMs', () => {
     assert.equal(result.interruptedAt, null);
   });
 
-  void it('run-level signal abort still cancels a node with timeoutMs', async () => {
+  void it('run-level signal abort still cancels a node with timeout', async () => {
     const sched = new VirtualScheduler();
     Scheduler.configure(sched);
 
     const slowNode: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'slow-cancel',
       'outputs': ['success'],
-      'timeoutMs': 60_000, // very long node budget; run-level cancel wins
+      'timeout': Timeout.ofMs(60_000), // very long node budget; run-level cancel wins
       async execute(_state, context) {
         await new Promise<never>((_resolve, _reject) => {
           context.signal.addEventListener('abort', () => { _reject(context.signal.reason); }, { 'once': true });
         });
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
 

@@ -8,7 +8,7 @@
 
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region validate-coords-node
 export const validateCoords: NodeInterface<CartographerState, 'valid' | 'rejected', CartographerServices> = {
@@ -20,7 +20,7 @@ export const validateCoords: NodeInterface<CartographerState, 'valid' | 'rejecte
     }
     const { latitude, longitude } = state.raw;
     const isValid = latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180;
-    return { 'output': isValid ? 'valid' : 'rejected' };
+    return NodeOutputBuilder.of(isValid ? 'valid' : 'rejected');
   },
 };
 // #endregion validate-coords-node

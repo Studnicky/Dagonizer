@@ -88,7 +88,7 @@ void describe('Scheduler + VirtualScheduler', () => {
     const sched = new VirtualScheduler();
     Scheduler.configure(sched);
     const controller = new AbortController();
-    const promise = Scheduler.current().at(100, controller.signal);
+    const promise = Scheduler.current().at(100, { 'signal': controller.signal });
     controller.abort(new Error('aborted by test'));
     await assert.rejects(promise, /aborted by test/);
   });

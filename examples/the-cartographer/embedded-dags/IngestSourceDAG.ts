@@ -34,9 +34,8 @@ import { ingestNdjsonGzDAG } from './IngestNdjsonGzDAG.ts';
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
-import type { DispatcherBundle } from '@noocodex/dagonizer';
+import type { DAG, DispatcherBundle } from '@noocodex/dagonizer';
 import { DAGBuilder } from '@noocodex/dagonizer/builder';
-import type { DAG } from '@noocodex/dagonizer/entities';
 
 export const ingestSourceDAG: DAG = new DAGBuilder('ingest-source', '1.0')
 
@@ -79,8 +78,8 @@ export const ingestSourceDAG: DAG = new DAGBuilder('ingest-source', '1.0')
   })
 
   // Terminals
-  .terminal('ingested', 'completed')
-  .terminal('rejected', 'failed')
+  .terminal('ingested', { outcome: 'completed' })
+  .terminal('rejected', { outcome: 'failed' })
 
   .build();
 

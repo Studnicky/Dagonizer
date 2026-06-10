@@ -9,7 +9,7 @@ import { CytoscapeGraph } from '../../src/viz/CytoscapeGraph.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-function singleNode(name: string, outputs: Record<string, string | null>): DAG['nodes'][0] {
+function singleNode(name: string, outputs: Record<string, string>): DAG['nodes'][0] {
   return {
     '@id':    `urn:noocodex:dag:test/node/${name}`,
     '@type':  'SingleNode',
@@ -51,11 +51,17 @@ function stubFactory(capture: Capture): typeof cytoscape {
   };
   const factory = (config: cytoscape.CytoscapeOptions): cytoscape.Core => {
     capture.config = config;
+    // Constructs intentionally-invalid input: fakeCore omits the full cytoscape.Core surface;
+    // only the methods called by CytoscapeGraph (batch + nodes) are implemented.
     return fakeCore as unknown as cytoscape.Core;
   };
+  // Constructs intentionally-invalid input: the factory function signature narrows to
+  // typeof cytoscape (DOM factory) for injection without a real DOM environment.
   return factory as unknown as typeof cytoscape;
 }
 
+// Constructs intentionally-invalid input: fakeContainer stands in for a DOM element;
+// cytoscape.CytoscapeOptions['container'] is an HTMLElement in a real DOM context.
 const fakeContainer = {} as unknown as NonNullable<cytoscape.CytoscapeOptions['container']>;
 
 /** Read the elements array passed to the stub factory as plain records. */
@@ -77,7 +83,8 @@ void describe('CytoscapeGraph.mount', () => {
     const dag = makeDAG('linear', 'A', [
       singleNode('A', { "next": 'B' }),
       singleNode('B', { "next": 'C' }),
-      singleNode('C', { "done": null }),
+      singleNode('C', { "done": 'end' }),
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
     ]);
 
     const capture: Capture = { "config": null, "batchCalls": 0 };
@@ -100,7 +107,8 @@ void describe('CytoscapeGraph.mount', () => {
     const dag = makeDAG('linear', 'A', [
       singleNode('A', { "next": 'B' }),
       singleNode('B', { "next": 'C' }),
-      singleNode('C', { "done": null }),
+      singleNode('C', { "done": 'end' }),
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
     ]);
 
     const capture: Capture = { "config": null, "batchCalls": 0 };
@@ -117,7 +125,10 @@ void describe('CytoscapeGraph.mount', () => {
   });
 
   void it('stylesheet uses explicit numeric node sizing — never the string "label"', async () => {
-    const dag = makeDAG('mini', 'A', [singleNode('A', { "done": null })]);
+    const dag = makeDAG('mini', 'A', [
+      singleNode('A', { "done": 'end' }),
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
+    ]);
     const capture: Capture = { "config": null, "batchCalls": 0 };
     const graph = new CytoscapeGraph(stubFactory(capture), fakeContainer, dag);
     await graph.mount();
@@ -139,7 +150,8 @@ void describe('CytoscapeGraph.mount', () => {
   void it('self-loop (retry-to-self) node still renders and enforceVisibility does not throw', async () => {
     // 'retry' route targets the node itself → a cytoscape self-loop edge.
     const dag = makeDAG('retry', 'work', [
-      singleNode('work', { "success": null, "retry": 'work' }),
+      singleNode('work', { "success": 'end', "retry": 'work' }),
+      { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
     ]);
 
     const capture: Capture = { "config": null, "batchCalls": 0 };

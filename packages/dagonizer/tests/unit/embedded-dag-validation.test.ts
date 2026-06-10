@@ -1,21 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
-
-const makeNode = (
-  name: string,
-  outputs: readonly string[],
-): NodeInterface<NodeStateBase> => ({
-  name,
-  outputs,
-  async execute() { return { 'output': outputs[0] as string }; },
-});
+import { TestNode } from '../_support/TestNode.js';
 
 // ── Sub-DAG used as a reusable component ─────────────────────────────────────
 const helperDAG: DAG = {
@@ -31,16 +22,17 @@ const helperDAG: DAG = {
       '@type': 'SingleNode',
       'name':  'step',
       'node':  'step',
-      'outputs': { 'done': null },
+      'outputs': { 'done': 'end' },
     },
+    { '@id': 'urn:noocodex:dag:helper/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
 void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
   void it('accepts scatter placement with success → null (sugar for terminate-completed)', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('step', ['done']));
-    dispatcher.registerNode(makeNode('entry', ['next']));
+    dispatcher.registerNode(TestNode.make('step', ['done']));
+    dispatcher.registerNode(TestNode.make('entry', ['next']));
     dispatcher.registerDAG(helperDAG);
 
     // Parent DAG where the scatter (dag body) routes 'success' → null (terminate-completed)
@@ -64,8 +56,9 @@ void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
           '@type': 'EmbeddedDAGNode',
           'name':  'run-helper',
           'dag':   'helper',
-          'outputs': { 'success': null, 'error': null },
+          'outputs': { 'success': 'end', 'error': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:null-parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
 
@@ -78,9 +71,9 @@ void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
 
   void it('accepts scatter with mixed null and explicit-target routes', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('step', ['done']));
-    dispatcher.registerNode(makeNode('entry', ['next']));
-    dispatcher.registerNode(makeNode('after', ['done']));
+    dispatcher.registerNode(TestNode.make('step', ['done']));
+    dispatcher.registerNode(TestNode.make('entry', ['next']));
+    dispatcher.registerNode(TestNode.make('after', ['done']));
 
     dispatcher.registerDAG(helperDAG);
 
@@ -104,7 +97,7 @@ void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
           '@type': 'SingleNode',
           'name':  'after',
           'node':  'after',
-          'outputs': { 'done': null },
+          'outputs': { 'done': 'end' },
         },
         {
           '@id':   'urn:noocodex:dag:mixed-parent/node/run-helper',
@@ -113,9 +106,10 @@ void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
           'dag':   'helper',
           'outputs': {
             'error':   'after',  // routes to a parent placement
-            'success': null,     // terminate-completed
+            'success': 'end',     // terminate-completed
           },
         },
+        { '@id': 'urn:noocodex:dag:mixed-parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
 
@@ -128,9 +122,9 @@ void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
 
   void it('accepts valid scatter placements where all outputs route to parent placements', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode(makeNode('step', ['done']));
-    dispatcher.registerNode(makeNode('entry', ['next']));
-    dispatcher.registerNode(makeNode('terminal', ['done']));
+    dispatcher.registerNode(TestNode.make('step', ['done']));
+    dispatcher.registerNode(TestNode.make('entry', ['next']));
+    dispatcher.registerNode(TestNode.make('terminal', ['done']));
     dispatcher.registerDAG(helperDAG);
 
     // All scatter outputs route to a real parent placement; no nulls
@@ -154,7 +148,7 @@ void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
           '@type': 'SingleNode',
           'name':  'terminal',
           'node':  'terminal',
-          'outputs': { 'done': null },
+          'outputs': { 'done': 'end' },
         },
         {
           '@id':   'urn:noocodex:dag:valid-parent/node/run-helper',
@@ -166,6 +160,7 @@ void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
             'error':   'terminal',
           },
         },
+        { '@id': 'urn:noocodex:dag:valid-parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
 
@@ -179,7 +174,8 @@ void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
       'version':    '1',
       'entrypoint': 'step',
       'nodes': [
-        { 'type': 'single', 'name': 'step', 'node': 'step', 'outputs': { 'done': null } },
+        { 'type': 'single', 'name': 'step', 'node': 'step', 'outputs': { 'done': 'end' } },
+        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     assert.throws(() => Validator.dag.validate(flatDag));

@@ -57,7 +57,7 @@ export const orderEnrichmentDAG: DAG = new DAGBuilder('order-enrichment', '1.0')
   })
 
   // Terminal
-  .terminal('enriched', 'completed')
+  .terminal('enriched', { outcome: 'completed' })
 
   .build();
 

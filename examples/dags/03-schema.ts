@@ -5,10 +5,12 @@
  */
 
 import {
+  DAG_CONTEXT,
   Dagonizer,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 
 // ---------------------------------------------------------------------------
 // Node
@@ -19,7 +21,7 @@ export const echo: NodeInterface<NodeStateBase, 'success'> = {
   'outputs': ['success'],
   async execute(state) {
     state.setMetadata('seen', true);
-    return { 'output': 'success' };
+    return NodeOutputBuilder.of('success');
   },
 };
 
@@ -27,7 +29,7 @@ export const echo: NodeInterface<NodeStateBase, 'success'> = {
 // Canonical JSON-LD DAG as a JSON string (the wire format).
 //
 // Note the required JSON-LD fields:
-//   '@context': the DAG_CONTEXT object (serialised as an inline object)
+//   '@context': the DAG_CONTEXT constant (imported from '@noocodex/dagonizer')
 //   '@id':      a URN uniquely identifying this DAG document
 //   '@type':    must be the string literal 'DAG'
 //
@@ -37,34 +39,7 @@ export const echo: NodeInterface<NodeStateBase, 'success'> = {
 
 // #region dag-literal
 const dagJson = JSON.stringify({
-  '@context': {
-    '@version': 1.1,
-    'name':        { '@id': 'https://noocodex.dev/ontology/dag/name' },
-    'version':     { '@id': 'https://noocodex.dev/ontology/dag/version' },
-    'entrypoint':  { '@id': 'https://noocodex.dev/ontology/dag/entrypoint' },
-    'nodes':       { '@id': 'https://noocodex.dev/ontology/dag/nodes', '@container': '@set' },
-    'outputs':     { '@id': 'https://noocodex.dev/ontology/dag/outputs' },
-    'node':        { '@id': 'https://noocodex.dev/ontology/dag/node' },
-    'dag':         { '@id': 'https://noocodex.dev/ontology/dag/dag' },
-    'combine':     { '@id': 'https://noocodex.dev/ontology/dag/combine' },
-    'body':        { '@id': 'https://noocodex.dev/ontology/dag/body' },
-    'source':      { '@id': 'https://noocodex.dev/ontology/dag/source' },
-    'itemKey':     { '@id': 'https://noocodex.dev/ontology/dag/itemKey' },
-    'concurrency': { '@id': 'https://noocodex.dev/ontology/dag/concurrency' },
-    'projection':  { '@id': 'https://noocodex.dev/ontology/dag/projection' },
-    'gather':      { '@id': 'https://noocodex.dev/ontology/dag/gather' },
-    'reducer':     { '@id': 'https://noocodex.dev/ontology/dag/reducer' },
-    'outcome':     { '@id': 'https://noocodex.dev/ontology/dag/outcome' },
-    'DAG':         { '@id': 'https://noocodex.dev/ontology/dag/DAG' },
-    'Placement':   { '@id': 'https://noocodex.dev/ontology/dag/Placement' },
-    'SingleNode':  { '@id': 'https://noocodex.dev/ontology/dag/SingleNode' },
-    'TerminalNode': { '@id': 'https://noocodex.dev/ontology/dag/TerminalNode' },
-    'ScatterNode': { '@id': 'https://noocodex.dev/ontology/dag/ScatterNode' },
-    'ParallelNode': {
-      '@id': 'https://noocodex.dev/ontology/dag/ParallelNode',
-      '@context': { 'nodes': { '@id': 'https://noocodex.dev/ontology/dag/parallelNodes', '@container': '@list' } },
-    },
-  },
+  '@context': DAG_CONTEXT,
   '@id':        'urn:noocodex:dag:from-json',
   '@type':      'DAG',
   'name':       'from-json',

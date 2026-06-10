@@ -7,23 +7,32 @@
 import {
   BackoffStrategy,
   DAG_CONTEXT,
+  NodeOutputBuilder,
   NodeStateBase,
   RetryPolicy,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface } from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 
 // ---------------------------------------------------------------------------
-// Simulated flaky downstream: throws twice, succeeds on third attempt
+// Simulated flaky downstream: class encapsulates mutable attempt counter
+// so it can be reset between test runs without mutable module-level state.
 // ---------------------------------------------------------------------------
 
 export class TransientError extends Error { constructor() { super('transient'); } }
 
-export let flakyAttempts = 0;
-export const flakyDownstream = async (): Promise<string> => {
-  flakyAttempts++;
-  if (flakyAttempts < 3) throw new TransientError();
-  return 'OK';
-};
+/** Stub downstream that throws twice then succeeds; counter is per-instance. */
+export class FlakyDownstream {
+  #attempts = 0;
+
+  get attempts(): number { return this.#attempts; }
+
+  async call(): Promise<string> {
+    this.#attempts++;
+    if (this.#attempts < 3) throw new TransientError();
+    return 'OK';
+  }
+}
 
 // ---------------------------------------------------------------------------
 // State
@@ -43,7 +52,7 @@ export const fetchNode: NodeInterface<FetchState, 'success' | 'error'> = {
   'outputs': ['success', 'error'],
   async execute(state, context) {
     // #region policy-config
-    const policy = new RetryPolicy({
+    const policy = RetryPolicy.from({
       'maxAttempts':  5,
       'strategy':     BackoffStrategy.EXPONENTIAL,  // 50ms → 100ms → 200ms → …
       'baseDelay':    50,
@@ -51,14 +60,15 @@ export const fetchNode: NodeInterface<FetchState, 'success' | 'error'> = {
       'retryOn':      [TransientError],             // only retry on this error class
     });
     // #endregion policy-config
+    const downstream = new FlakyDownstream();
     try {
-      // policy.run() re-invokes flakyDownstream until it succeeds or
-      // maxAttempts is reached. It passes context.signal so an abort
-      // cancels the wait between retries immediately.
-      state.result = await policy.run(flakyDownstream, context.signal);
-      return { 'output': 'success' };
+      // policy.run() re-invokes downstream.call() until it succeeds or
+      // maxAttempts is reached. The options bag passes context.signal so
+      // an abort cancels the wait between retries immediately.
+      state.result = await policy.run(() => downstream.call(), { signal: context.signal });
+      return NodeOutputBuilder.of('success');
     } catch {
-      return { 'output': 'error' };
+      return NodeOutputBuilder.of('error');
     }
   },
 };

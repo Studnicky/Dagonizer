@@ -36,7 +36,7 @@ export class SqliteStore extends BaseStore {
   readonly #db: DatabaseSync;
   readonly #tableName: string;
 
-  constructor(path: string, options: SqliteStoreOptions = {}) {
+  constructor(path: string, options: SqliteStoreOptions = { 'namespace': '' }) {
     super(options);
     this.#db = options.database !== undefined
       ? new DatabaseSync(path, options.database)
@@ -81,11 +81,11 @@ export class SqliteStore extends BaseStore {
     return next;
   }
 
-  protected async performGet<T extends JsonValue>(key: string): Promise<T | undefined> {
+  protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {
     const row = this.#db
       .prepare(`SELECT value FROM ${this.#tableName} WHERE key = ?`)
       .get(key) as KvRow | undefined;
-    if (row === undefined) return undefined;
+    if (row === undefined) return null;
     return JSON.parse(row.value) as T;
   }
 

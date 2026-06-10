@@ -23,7 +23,8 @@
  */
 
 import { BaseEmbedder, Classifications, LlmError } from '@noocodex/dagonizer/adapter';
-import type { BaseEmbedderOptions } from '@noocodex/dagonizer/adapter';
+import type { BaseAdapterCoreOptions } from '@noocodex/dagonizer/adapter';
+import type { AbortableOptionsInterface } from '@noocodex/dagonizer/contracts';
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = 'nomic-embed-text';
@@ -46,7 +47,7 @@ const KNOWN_DIMENSIONS: Readonly<Record<string, number>> = {
   'snowflake-arctic-embed:latest': 1024,
 };
 
-export interface OllamaEmbedderOptions extends BaseEmbedderOptions {
+export interface OllamaEmbedderOptions extends BaseAdapterCoreOptions {
   /** Override base URL when targeting a remote daemon or a proxy. */
   readonly baseUrl?: string;
   /**
@@ -77,19 +78,20 @@ export class OllamaEmbedder extends BaseEmbedder {
     this.#model = model;
   }
 
-  protected async performEmbed(text: string): Promise<readonly number[]> {
+  protected async performEmbed(text: string, signal: AbortSignal): Promise<readonly number[]> {
     let res: Response;
     try {
       res = await fetch(`${this.#baseUrl}/api/embeddings`, {
         'method': 'POST',
         'headers': { 'Content-Type': 'application/json' },
         'body': JSON.stringify({ 'model': this.#model, 'prompt': text }),
+        signal,
       });
     } catch (err) {
       throw new LlmError(
         `Ollama embed network error: ${err instanceof Error ? err.message : String(err)}`,
         Classifications['NETWORK'],
-        err,
+        { 'cause': err },
       );
     }
 
@@ -97,7 +99,7 @@ export class OllamaEmbedder extends BaseEmbedder {
       const body = await res.text();
       throw new LlmError(
         `Ollama embed failed: ${String(res.status)} ${body}`,
-        LlmError.classifyHttp(res.status, body),
+        LlmError.classifyHttp(res.status, { 'body': body }),
       );
     }
 
@@ -118,7 +120,7 @@ export class OllamaEmbedder extends BaseEmbedder {
    * cascade routes around the embedder. Symmetric with
    * `OllamaApiAdapter.probe`.
    */
-  override async probe(): Promise<boolean> {
+  override async probe(_options?: AbortableOptionsInterface): Promise<boolean> {
     const controller = new AbortController();
     const timer = setTimeout(() => { controller.abort(); }, PROBE_TIMEOUT_MS);
     try {

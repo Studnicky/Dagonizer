@@ -189,9 +189,9 @@ export class GeminiNanoAdapter extends BaseAdapter {
     const message = err instanceof Error ? err.message : String(err);
     const msg = message.toLowerCase();
     if (msg.includes('schema') || msg.includes('constraint')) {
-      return new LlmError(message, Classifications['SCHEMA_VIOLATION'], err);
+      return new LlmError(message, Classifications['SCHEMA_VIOLATION'], { 'cause': err });
     }
-    if (msg.includes('quota')) return new LlmError(message, Classifications['QUOTA_EXHAUSTED'], err);
-    return new LlmError(message, Classifications['UNKNOWN'], err);
+    if (msg.includes('quota')) return new LlmError(message, Classifications['QUOTA_EXHAUSTED'], { 'cause': err });
+    return new LlmError(message, Classifications['UNKNOWN'], { 'cause': err });
   }
 }

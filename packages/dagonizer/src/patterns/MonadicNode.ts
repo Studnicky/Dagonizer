@@ -19,7 +19,9 @@
  * but doesn't vary by domain: name, outputs, optional contract,
  * optional timeoutMs, optional validate/destroy hooks. Subclasses
  * declare what they need (`abstract readonly name`, `abstract readonly
- * outputs`, `abstract execute`) and inherit the rest.
+ * outputs`, `abstract execute`) and inherit the rest. Subclasses
+ * return output port literals directly in `execute()` — no indirection
+ * helpers are provided; return the string literal for V8 monomorphism.
  *
  * Pattern packages (rag, graph, flow) ship intermediate base classes
  * that extend this root and add their own dispatch loops. Consumers
@@ -40,10 +42,11 @@ import type { NodeContextInterface } from '../entities/node/NodeContext.js';
 import type { NodeOutputInterface } from '../entities/node/NodeOutput.js';
 import type { ValidationResult } from '../entities/validation/ValidationResult.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
+import { Timeout } from '../runtime/Timeout.js';
 
 export abstract class MonadicNode<
   TState extends NodeStateInterface = NodeStateInterface,
-  TOutput extends string = string,
+  TOutput extends string = 'success' | 'empty' | 'error',
   TServices = undefined,
 > implements NodeInterface<TState, TOutput, TServices> {
   /** Stable identifier used at registration with the dispatcher. */
@@ -59,11 +62,13 @@ export abstract class MonadicNode<
   readonly contract?: OperationContractFragment;
 
   /**
-   * Optional per-node wall-clock budget in milliseconds. When set, the
-   * engine schedules an abort after `timeoutMs` and the child signal is
-   * passed as `context.signal` to this node's `execute()` only.
+   * Per-node wall-clock budget. `Timeout.none()` means no time limit.
+   * Subclasses override to set a concrete budget via `Timeout.ofMs(n)`.
+   * The `NodeInterface` contract keeps this optional (external boundary);
+   * `MonadicNode` supplies the concrete required-with-default to keep
+   * V8 hidden-class stable.
    */
-  readonly timeoutMs?: number;
+  readonly timeout: Timeout = Timeout.none();
 
   /**
    * Execute the node, mutating state. Returns a result indicating which
@@ -81,10 +86,4 @@ export abstract class MonadicNode<
   /** Optional cleanup invoked when the dispatcher is destroyed. */
   destroy?(): Promise<void>;
 
-  /** Conventional routing-output token for the happy path. Override for non-standard ports. */
-  protected successPort(): TOutput { return 'success' as TOutput; }
-  /** Conventional routing-output token for the no-result path. */
-  protected emptyPort(): TOutput { return 'empty' as TOutput; }
-  /** Conventional routing-output token for the error path. */
-  protected errorPort(): TOutput { return 'error' as TOutput; }
 }

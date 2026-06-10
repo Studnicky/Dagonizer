@@ -42,11 +42,11 @@ Nodes typed `NodeInterface<PipelineState, TOutput>` access `state.items`, `state
 
 ## Snapshot and restore
 
-The Archivist demo carries a rich state object: `query`, `terms`, `candidates`, `shortlist`, `draft`, `recalledContext`, `memoryDigest`. The `snapshotData` and `restoreData` overrides serialise every domain field to a JSON-safe shape and rehydrate from a previously captured snapshot:
+The Archivist demo carries a rich state object: `query`, `terms`, `candidates`, `shortlist`, `draft`, `recalledContext`, `memoryDigest`. The `snapshotData` and `restoreData` overrides serialise every domain field to a JSON-safe shape and rehydrate from a captured snapshot:
 
 <<< @/../examples/the-archivist/ArchivistState.ts#snapshot-restore
 
-`snapshotData()` returns a `JsonObject`. The base class merges it with the base snapshot (metadata, lifecycle, errors, warnings) and serialises the result. `restoreData()` receives the merged snapshot; it reads only the domain fields and assigns them onto the instance with the type guards visible above. The base class restores the lifecycle separately, then calls `restoreData()` to repopulate the domain shape.
+`snapshotData()` returns a `JsonObject`. The base class merges it with the base snapshot (metadata, retries, warnings) and serialises the result. Lifecycle and engine errors are intentionally excluded: lifecycle resets to `pending` on resume, and errors flow via `outcome.errors`. `restoreData()` receives the merged snapshot; it reads only the domain fields and assigns them onto the instance with the type guards visible above.
 
 Two invariants the override must hold:
 
@@ -103,6 +103,7 @@ When `restoreData()` is overridden, `restore()` calls `applySnapshot()` which ca
 
 ```ts
 import { NodeStateBase, Dagonizer, Checkpoint, DAG_CONTEXT } from '@noocodex/dagonizer';
+import { CheckpointRestoreAdapterFn } from '@noocodex/dagonizer/checkpoint';
 import type { JsonObject, NodeInterface, DAG } from '@noocodex/dagonizer';
 
 class CountState extends NodeStateBase {
@@ -139,7 +140,8 @@ const dag: DAG = {
   nodes: [
     { '@id': 'urn:noocodex:dag:count/node/a', '@type': 'SingleNode', name: 'a', node: 'tick', outputs: { success: 'b' } },
     { '@id': 'urn:noocodex:dag:count/node/b', '@type': 'SingleNode', name: 'b', node: 'tick', outputs: { success: 'c' } },
-    { '@id': 'urn:noocodex:dag:count/node/c', '@type': 'SingleNode', name: 'c', node: 'tick', outputs: { success: null } },
+    { '@id': 'urn:noocodex:dag:count/node/c', '@type': 'SingleNode', name: 'c', node: 'tick', outputs: { success: 'end' } },
+    { '@id': 'urn:noocodex:dag:count/node/end', '@type': 'TerminalNode', name: 'end', outcome: 'completed' },
   ],
 };
 
@@ -160,7 +162,7 @@ const partial = await exec;
 const ckpt = await Checkpoint.capture('count', partial);
 const ckpt2 = Checkpoint.load(JSON.parse(ckpt.toJson()) as unknown);
 const { state: s2, dagName, cursor } = ckpt2.restoreState(
-  (snap) => CountState.restore(snap),
+  CheckpointRestoreAdapterFn.fromFn((snap) => CountState.restore(snap)),
 );
 const final = await dispatcher.resume(dagName, s2, cursor);
 // final.state.count === 3, final.state.log.length === 3

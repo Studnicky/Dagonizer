@@ -82,7 +82,8 @@ const definition: ToolDefinition = {
 
 export const SubjectSearchTool: Tool<SubjectSearchInput, readonly Candidate[]> = {
   definition,
-  async execute(input, signal) {
+  async execute(input, options) {
+    const signal = options?.signal;
     const limit = Math.max(1, Math.min(20, input.limit ?? 8));
     const params = new URLSearchParams({
       'subject': input.subject,

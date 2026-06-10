@@ -16,6 +16,7 @@
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
 import type { NodeInterface } from '@noocodex/dagonizer';
 
 /** Cap on naive split terms; matches the old in-catch fallback. */
@@ -36,7 +37,7 @@ export const extractQuerySalvage: NodeInterface<ArchivistState, 'done', Archivis
       .filter((t) => t.length > 2)
       .slice(0, MAX_NAIVE_TERMS);
     context.services.logger.info(`extract-query-salvage: naive term split → [${state.terms.join(', ')}]`);
-    return { 'output': 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -51,7 +52,7 @@ export const decideToolsSalvage: NodeInterface<ArchivistState, 'done', Archivist
   async execute(state, context) {
     state.toolPlan = [{ 'name': 'web_search_books', 'arguments': {} }];
     context.services.logger.info('decide-tools-salvage: minimal tool plan (web_search_books)');
-    return { 'output': 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -66,7 +67,7 @@ export const classifyIntentSalvage: NodeInterface<ArchivistState, 'done', Archiv
   async execute(state, context) {
     state.intent = 'search';
     context.services.logger.info('classify-intent-salvage: defaulting intent → search');
-    return { 'output': 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -82,7 +83,7 @@ export const rankCandidatesSalvage: NodeInterface<ArchivistState, 'done', Archiv
     context.services.logger.info(
       `rank-candidates-salvage: passing ${String(state.candidates.length)} candidates through unranked`,
     );
-    return { 'output': 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -101,7 +102,7 @@ export const composeResponseSalvage: NodeInterface<ArchivistState, 'done', Archi
   async execute(state, context) {
     state.draft = COMPOSE_SALVAGE_DRAFT;
     context.services.logger.warn('compose-salvage: emitting canned acknowledgement after retry budget exhausted');
-    return { 'output': 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -120,7 +121,7 @@ export const composeEmptyResponseSalvage: NodeInterface<ArchivistState, 'done', 
   async execute(state, context) {
     state.draft = EMPTY_SALVAGE_DRAFT;
     context.services.logger.warn('compose-empty-salvage: emitting canned empty-result acknowledgement after retry budget exhausted');
-    return { 'output': 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 
@@ -138,6 +139,6 @@ export const composeMemoryResponseSalvage: NodeInterface<ArchivistState, 'done',
   async execute(state, context) {
     state.draft = MEMORY_SALVAGE_DRAFT;
     context.services.logger.warn('compose-memory-salvage: emitting canned acknowledgement after retry budget exhausted');
-    return { 'output': 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };

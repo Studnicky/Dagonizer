@@ -11,8 +11,8 @@
  */
 
 import { DAGDeriver } from '@noocodex/dagonizer/derive';
-import { NodeStateBase } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 
 // ---------------------------------------------------------------------------
 // State
@@ -35,7 +35,7 @@ export const prepare: NodeInterface<PipelineState, 'success'> = {
   "contract": { "hardRequired": ['input'], "produces": ['intermediate'] },
   async execute(state) {
     state.intermediate = state.input.toUpperCase();
-    return { "output": 'success' };
+    return NodeOutputBuilder.of('success');
   },
 };
 
@@ -44,8 +44,8 @@ export const validate: NodeInterface<PipelineState, 'success' | 'error'> = {
   "outputs": ['success', 'error'],
   "contract": { "hardRequired": ['intermediate'], "produces": ['validated'] },
   async execute(state) {
-    if (state.intermediate.length === 0) return { "output": 'error' };
-    return { "output": 'success' };
+    if (state.intermediate.length === 0) return NodeOutputBuilder.of('error');
+    return NodeOutputBuilder.of('success');
   },
 };
 
@@ -55,7 +55,7 @@ export const transform: NodeInterface<PipelineState, 'success'> = {
   "contract": { "hardRequired": ['validated'], "produces": ['childResult'] },
   async execute(state) {
     state.childResult = `[${state.intermediate}]`;
-    return { "output": 'success' };
+    return NodeOutputBuilder.of('success');
   },
 };
 
@@ -69,7 +69,7 @@ export const invokePlugin: NodeInterface<PipelineState, 'success' | 'error'> = {
   "outputs": ['success', 'error'],
   "contract": { "hardRequired": ['intermediate'], "produces": ['childResult'] },
   async execute() {
-    return { "output": 'success' };
+    return NodeOutputBuilder.of('success');
   },
 };
 
@@ -79,7 +79,7 @@ export const finalize: NodeInterface<PipelineState, 'success'> = {
   "contract": { "hardRequired": ['childResult'], "produces": ['final'] },
   async execute(state) {
     state.final = `done: ${state.childResult}`;
-    return { "output": 'success' };
+    return NodeOutputBuilder.of('success');
   },
 };
 
@@ -93,7 +93,7 @@ export const finalize: NodeInterface<PipelineState, 'success'> = {
 // #region contracts
 export const childDAG = DAGDeriver.derive({
   "name":       'plugin:transform',
-  "version":    '1.0',
+  "version":    '1',
   "entrypoint": 'validate',
   "nodes":      [validate, transform],
   "annotations": {
@@ -117,7 +117,7 @@ export const childDAG = DAGDeriver.derive({
 // terminal overrides would route the error port elsewhere if needed.
 export const parentDAG = DAGDeriver.derive({
   "name":       'parent',
-  "version":    '1.0',
+  "version":    '1',
   "entrypoint": 'prepare',
   "nodes":      [prepare, invokePlugin, finalize],
   // #region annotations

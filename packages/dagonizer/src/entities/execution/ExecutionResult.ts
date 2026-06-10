@@ -21,11 +21,33 @@ import type { FromSchema } from 'json-schema-to-ts';
 
 import type { NodeStateInterface } from '../../NodeStateBase.js';
 
+/**
+ * JSON Schema 2020-12 definition for `InterruptionInfo`.
+ * Structured cancellation telemetry: the node active when the flow was
+ * interrupted and the reason discriminant ('abort' | 'timeout'). Clean
+ * exits (completed, terminal, configuration error, node throw) are
+ * represented by `interruptedAt: null` on `ExecutionResultSchema`.
+ */
+export const InterruptionInfoSchema = {
+  '$id': 'https://noocodex.dev/schemas/dagonizer/InterruptionInfo',
+  '$schema': 'https://json-schema.org/draft/2020-12/schema',
+  'type': 'object',
+  'required': ['nodeName', 'reason'],
+  'properties': {
+    'nodeName': { 'type': 'string', 'minLength': 1 },
+    'reason':   { 'type': 'string', 'enum': ['abort', 'timeout'] },
+  },
+  'additionalProperties': false,
+} as const;
+
+/** TypeScript type derived from `InterruptionInfoSchema` via `json-schema-to-ts`. */
+export type InterruptionInfo = FromSchema<typeof InterruptionInfoSchema>;
+
 export const ExecutionResultSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/ExecutionResult',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['cursor', 'executedNodes', 'skippedNodes', 'state', 'interruptedAt'],
+  'required': ['cursor', 'executedNodes', 'skippedNodes', 'state', 'interruptedAt', 'terminalOutcome'],
   'properties': {
     'cursor': { 'type': ['string', 'null'] },
     'executedNodes': { 'type': 'array', 'items': { 'type': 'string' } },
@@ -40,31 +62,12 @@ export const ExecutionResultSchema = {
     'interruptedAt': {
       'oneOf': [
         { 'type': 'null' },
-        {
-          'type': 'object',
-          'required': ['nodeName', 'reason'],
-          'properties': {
-            'nodeName': { 'type': 'string', 'minLength': 1 },
-            'reason':   { 'type': 'string', 'enum': ['abort', 'timeout'] },
-          },
-          'additionalProperties': false,
-        },
+        InterruptionInfoSchema,
       ],
     },
   },
   'additionalProperties': false,
 } as const;
-
-/**
- * Structured cancellation telemetry. When a flow exits via abort or
- * timeout, `InterruptionInfo` records the node that was current when
- * the signal fired and the reason discriminant. Clean exits (completed,
- * terminal, configuration error, node throw) carry `interruptedAt: null`.
- */
-export interface InterruptionInfo {
-  readonly nodeName: string;
-  readonly reason:   'abort' | 'timeout';
-}
 
 /** TypeScript type derived from `ExecutionResultSchema` via `json-schema-to-ts`. */
 export type ExecutionResult = FromSchema<typeof ExecutionResultSchema>;

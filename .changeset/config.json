@@ -17,6 +17,8 @@
     "@noocodex/dagonizer-embedder-gemini-api",
     "@noocodex/dagonizer-embedder-mistral",
     "@noocodex/dagonizer-embedder-ollama",
+    "@noocodex/dagonizer-executor-node",
+    "@noocodex/dagonizer-executor-web",
     "@noocodex/dagonizer-patterns-flow",
     "@noocodex/dagonizer-patterns-graph",
     "@noocodex/dagonizer-patterns-rag",

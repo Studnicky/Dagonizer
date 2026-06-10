@@ -29,6 +29,7 @@ import { UserLanguage } from '../language/UserLanguage.ts';
 import type { ArchivistServices } from '../services.ts';
 import { CanonicalId } from '@noocodex/dagonizer-tool-openlibrary';
 
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
 import type { NodeInterface } from '@noocodex/dagonizer';
 
 const SHORTLIST_LIMIT = 5;
@@ -46,7 +47,7 @@ export const mergeCandidates: NodeInterface<ArchivistState, 'ranked' | 'empty', 
         state.failureCause = 'No candidates found after searching all available sources. ';
       }
       context.services.logger.info('merge: live scouts returned 0, no prior memory candidates; routing empty');
-      return { "output": 'empty' };
+      return NodeOutputBuilder.of('empty');
     }
 
     // ── Build the combined pool ────────────────────────────────────────────
@@ -95,7 +96,7 @@ export const mergeCandidates: NodeInterface<ArchivistState, 'ranked' | 'empty', 
     if (ranked.length === 0 && state.failureCause.trim().length === 0) {
       state.failureCause = 'No candidates found after searching all available sources. ';
     }
-    return { "output": ranked.length > 0 ? 'ranked' : 'empty' };
+    return NodeOutputBuilder.of(ranked.length > 0 ? 'ranked' : 'empty');
     // #endregion merge-aggregation
   },
 };

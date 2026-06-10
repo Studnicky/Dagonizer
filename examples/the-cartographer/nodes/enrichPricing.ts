@@ -13,7 +13,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { PricingCatalog } from '../services.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region enrich-pricing-node
 export const enrichPricing: NodeInterface<CartographerState, 'priced', CartographerServices> = {
@@ -24,7 +24,7 @@ export const enrichPricing: NodeInterface<CartographerState, 'priced', Cartograp
       throw new Error('Aborted');
     }
     state.pricedOrder = PricingCatalog.order(state.normalized.lineItems);
-    return { 'output': 'priced' };
+    return NodeOutputBuilder.of('priced');
   },
 };
 // #endregion enrich-pricing-node

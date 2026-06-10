@@ -1,7 +1,7 @@
 /**
  * scouts: data-acquisition nodes for the Archivist's multi-source scatter.
  *
- * Three scouts, each wrapping one external tool:
+ * Four scouts, each wrapping one external tool:
  *
  *   openLibraryScout:  OpenLibrary `web_search_books` call; LLM-gated
  *                       via `state.toolPlan` (tool name: web_search_books).
@@ -12,6 +12,17 @@
  *   wikipediaScout:    Wikipedia `page/summary` enrichment; runs even
  *                       without a toolPlan entry, using `state.terms` as the
  *                       query, unless terms is empty.
+ *
+ * Scatter dispatch:
+ *   `scoutDispatch` is the single scatter body node. The DAG seeds
+ *   `state.scoutProviders = ['openlibrary','googlebooks','subject','wikipedia']`
+ *   as the scatter source. Each clone receives one descriptor under the
+ *   `currentItem` metadata key; `scoutDispatch` reads it and calls the
+ *   matching scout logic. Concurrency 4 runs all four scouts concurrently.
+ *
+ *   `ScoutGatherStrategy` ('scout-merge') flat-merges each clone's
+ *   `candidates` array and concatenates `failureCause` strings into the
+ *   parent state after all four clones complete.
  *
  * All four are non-deterministic (network + possible model-supplied args).
  * Each appends to `state.candidates` so the downstream merge step can
@@ -35,7 +46,18 @@ import type { Candidate } from '../entities/Book.ts';
 import { UserLanguage } from '../language/UserLanguage.ts';
 import type { ArchivistServices } from '../services.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import {
+  GatherStrategies,
+  GatherStrategy,
+  NodeErrorBuilder,
+  NodeOutputBuilder,
+} from '@noocodex/dagonizer';
+import type {
+  GatherConfig,
+  GatherExecution,
+  NodeInterface,
+  NodeStateInterface,
+} from '@noocodex/dagonizer';
 
 /**
  * Filter scout-returned candidates down to those in the visitor's
@@ -138,7 +160,7 @@ export const openLibraryScout: NodeInterface<ArchivistState, 'success' | 'empty'
   "outputs":   ['success', 'empty'],
   async execute(state, context) {
     const planned = state.toolPlan.find((call) => call.name === 'web_search_books');
-    if (planned === undefined) return { "output": 'empty' };
+    if (planned === undefined) return NodeOutputBuilder.of('empty');
     const args = planned.arguments as {
       query?: string;
       isbn?: string;
@@ -170,7 +192,7 @@ export const openLibraryScout: NodeInterface<ArchivistState, 'success' | 'empty'
         ? args.query
         : state.terms.join(' ');
       const query = unquote(rawQuery);
-      if (query.length === 0) return { "output": 'empty' };
+      if (query.length === 0) return NodeOutputBuilder.of('empty');
       toolInput = { "query": query, limit, lang };
       logDimension = `q=${encodeURIComponent(query)}`;
     }
@@ -179,7 +201,7 @@ export const openLibraryScout: NodeInterface<ArchivistState, 'success' | 'empty'
     const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? SCOUT_TIMEOUT_MS);
     const signal = AbortSignal.any([context.signal, controller.signal]);
     try {
-      const rawCandidates = await tool.execute(toolInput as Parameters<typeof tool.execute>[0], signal);
+      const rawCandidates = await tool.execute(toolInput as Parameters<typeof tool.execute>[0], { signal });
       const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
       const firstTitle = rawCandidates[0]?.book.title ?? '(none)';
@@ -187,22 +209,22 @@ export const openLibraryScout: NodeInterface<ArchivistState, 'success' | 'empty'
       if (candidates.length === 0) {
         state.failureCause += `OpenLibrary: 0 hits for (${logDimension}). `;
       }
-      return { "output": candidates.length > 0 ? 'success' : 'empty' };
+      return NodeOutputBuilder.of(candidates.length > 0 ? 'success' : 'empty');
     } catch (error) {
       // External cancellation propagates; own timeout / network error → 'empty'
       // (this scout contributed nothing; the parallel siblings still run).
       if (context.signal.aborted) throw error;
       const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
-      state.collectError({
-        "code":        'OPEN_LIBRARY_FAILED',
-        "message":     error instanceof Error ? error.message : String(error),
-        "operation":   'open-library-scout',
-        "recoverable": true,
-        "timestamp":   new Date().toISOString(),
-      });
+      state.collectError(NodeErrorBuilder.from(
+        'OPEN_LIBRARY_FAILED',
+        error instanceof Error ? error.message : String(error),
+        'open-library-scout',
+        true,
+        new Date().toISOString(),
+      ));
       state.failureCause += `OpenLibrary: error: ${msg}. `;
       context.services.logger.warn(`openlibrary failed: ${String(error)}`);
-      return { "output": 'empty' };
+      return NodeOutputBuilder.of('empty');
     } finally {
       clearTimeout(handle);
     }
@@ -219,20 +241,20 @@ export const googleBooksScout: NodeInterface<ArchivistState, 'success' | 'empty'
   "outputs":   ['success', 'empty'],
   async execute(state, context) {
     const planned = state.toolPlan.find((call) => call.name === 'google_books_search');
-    if (planned === undefined) return { "output": 'empty' };
+    if (planned === undefined) return NodeOutputBuilder.of('empty');
     const args = planned.arguments as { query?: string; maxResults?: number };
     const rawQuery = typeof args.query === 'string' && args.query.length > 0
       ? args.query
       : state.terms.join(' ');
     const query = unquote(rawQuery);
-    if (query.length === 0) return { "output": 'empty' };
+    if (query.length === 0) return NodeOutputBuilder.of('empty');
     const controller = new AbortController();
     const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? SCOUT_TIMEOUT_MS);
     const signal = AbortSignal.any([context.signal, controller.signal]);
     try {
       const tool = context.services.googleBooks;
       const langRestrict = UserLanguage.normalize(state.userLanguage);
-      const rawCandidates = await tool.execute({ query, "maxResults": args.maxResults ?? 8, "langRestrict": langRestrict }, signal);
+      const rawCandidates = await tool.execute({ query, "maxResults": args.maxResults ?? 8, "langRestrict": langRestrict }, { signal });
       const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
       const firstGbTitle = rawCandidates[0]?.book.title ?? '(none)';
@@ -240,21 +262,21 @@ export const googleBooksScout: NodeInterface<ArchivistState, 'success' | 'empty'
       if (candidates.length === 0) {
         state.failureCause += `Google Books: 0 hits for "${query}". `;
       }
-      return { "output": candidates.length > 0 ? 'success' : 'empty' };
+      return NodeOutputBuilder.of(candidates.length > 0 ? 'success' : 'empty');
     } catch (error) {
       // External cancellation propagates; own timeout / network error → 'empty'.
       if (context.signal.aborted) throw error;
       const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
-      state.collectError({
-        "code":        'GOOGLE_BOOKS_FAILED',
-        "message":     error instanceof Error ? error.message : String(error),
-        "operation":   'google-books-scout',
-        "recoverable": true,
-        "timestamp":   new Date().toISOString(),
-      });
+      state.collectError(NodeErrorBuilder.from(
+        'GOOGLE_BOOKS_FAILED',
+        error instanceof Error ? error.message : String(error),
+        'google-books-scout',
+        true,
+        new Date().toISOString(),
+      ));
       state.failureCause += `Google Books: error: ${msg}. `;
       context.services.logger.warn(`google-books failed: ${String(error)}`);
-      return { "output": 'empty' };
+      return NodeOutputBuilder.of('empty');
     } finally {
       clearTimeout(handle);
     }
@@ -270,7 +292,7 @@ export const subjectScout: NodeInterface<ArchivistState, 'success' | 'empty', Ar
   "outputs":   ['success', 'empty'],
   async execute(state, context) {
     const planned = state.toolPlan.find((call) => call.name === 'subject_search');
-    if (planned === undefined) return { "output": 'empty' };
+    if (planned === undefined) return NodeOutputBuilder.of('empty');
     const args = planned.arguments as { subject?: string; limit?: number };
     // Subject shaping: LCSH subject facet performs best with a single focused
     // term. Pick the longest term from state.terms (most-specific heuristic).
@@ -279,14 +301,14 @@ export const subjectScout: NodeInterface<ArchivistState, 'success' | 'empty', Ar
       ? args.subject
       : pickSubjectTerm(state.terms);
     const subject = unquote(rawSubject);
-    if (subject.length === 0) return { "output": 'empty' };
+    if (subject.length === 0) return NodeOutputBuilder.of('empty');
     const controller = new AbortController();
     const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? SCOUT_TIMEOUT_MS);
     const signal = AbortSignal.any([context.signal, controller.signal]);
     try {
       const tool = context.services.subjectSearch;
       const lang = UserLanguage.toIso6392(state.userLanguage);
-      const rawCandidates = await tool.execute({ subject, "limit": args.limit ?? 8, "lang": lang }, signal);
+      const rawCandidates = await tool.execute({ subject, "limit": args.limit ?? 8, "lang": lang }, { signal });
       const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
       const firstSubjectTitle = rawCandidates[0]?.book.title ?? '(none)';
@@ -294,21 +316,21 @@ export const subjectScout: NodeInterface<ArchivistState, 'success' | 'empty', Ar
       if (candidates.length === 0) {
         state.failureCause += `Subject search: 0 hits for "${subject}". `;
       }
-      return { "output": candidates.length > 0 ? 'success' : 'empty' };
+      return NodeOutputBuilder.of(candidates.length > 0 ? 'success' : 'empty');
     } catch (error) {
       // External cancellation propagates; own timeout / network error → 'empty'.
       if (context.signal.aborted) throw error;
       const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
-      state.collectError({
-        "code":        'SUBJECT_SEARCH_FAILED',
-        "message":     error instanceof Error ? error.message : String(error),
-        "operation":   'subject-scout',
-        "recoverable": true,
-        "timestamp":   new Date().toISOString(),
-      });
+      state.collectError(NodeErrorBuilder.from(
+        'SUBJECT_SEARCH_FAILED',
+        error instanceof Error ? error.message : String(error),
+        'subject-scout',
+        true,
+        new Date().toISOString(),
+      ));
       state.failureCause += `Subject search: error: ${msg}. `;
       context.services.logger.warn(`subject-search failed: ${String(error)}`);
-      return { "output": 'empty' };
+      return NodeOutputBuilder.of('empty');
     } finally {
       clearTimeout(handle);
     }
@@ -327,7 +349,7 @@ export const wikipediaScout: NodeInterface<ArchivistState, 'success' | 'empty', 
     // titles best. Prefer the first capitalised term (proper noun heuristic
     // e.g. "Neuromancer", "Philip K. Dick". Fall back to joining all terms.
     const query = pickWikipediaQuery(state.terms).trim();
-    if (query.length === 0) return { "output": 'empty' };
+    if (query.length === 0) return NodeOutputBuilder.of('empty');
     const controller = new AbortController();
     const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? SCOUT_TIMEOUT_MS);
     const signal = AbortSignal.any([context.signal, controller.signal]);
@@ -335,7 +357,7 @@ export const wikipediaScout: NodeInterface<ArchivistState, 'success' | 'empty', 
       const tool = context.services.wikipediaSummary;
       const lang = UserLanguage.normalize(state.userLanguage);
       const wikiTitle = encodeURIComponent(query.replace(/\s+/gu, '_'));
-      const rawCandidates = await tool.execute({ query, "lang": lang }, signal);
+      const rawCandidates = await tool.execute({ query, "lang": lang }, { signal });
       const candidates = filterByLanguage(rawCandidates, state.userLanguage);
       state.candidates = [...state.candidates, ...candidates];
       const firstWikiTitle = rawCandidates[0]?.book.title ?? '(none)';
@@ -343,23 +365,96 @@ export const wikipediaScout: NodeInterface<ArchivistState, 'success' | 'empty', 
       if (candidates.length === 0) {
         state.failureCause += `Wikipedia: 0 hits for "${query}". `;
       }
-      return { "output": candidates.length > 0 ? 'success' : 'empty' };
+      return NodeOutputBuilder.of(candidates.length > 0 ? 'success' : 'empty');
     } catch (error) {
       // External cancellation propagates; own timeout / network error → 'empty'.
       if (context.signal.aborted) throw error;
       const msg = error instanceof Error ? error.message.slice(0, 100) : String(error).slice(0, 100);
-      state.collectError({
-        "code":        'WIKIPEDIA_FAILED',
-        "message":     error instanceof Error ? error.message : String(error),
-        "operation":   'wikipedia-scout',
-        "recoverable": true,
-        "timestamp":   new Date().toISOString(),
-      });
+      state.collectError(NodeErrorBuilder.from(
+        'WIKIPEDIA_FAILED',
+        error instanceof Error ? error.message : String(error),
+        'wikipedia-scout',
+        true,
+        new Date().toISOString(),
+      ));
       state.failureCause += `Wikipedia: error: ${msg}. `;
       context.services.logger.warn(`wikipedia failed: ${String(error)}`);
-      return { "output": 'empty' };
+      return NodeOutputBuilder.of('empty');
     } finally {
       clearTimeout(handle);
     }
   },
 };
+
+// #region scout-dispatch
+// ── Scout dispatch: single scatter body ─────────────────────────────────────
+// Reads the provider descriptor from the `currentItem` metadata key (written
+// by the scatter engine per clone) and dispatches to the matching scout logic.
+// This is the heterogeneous-fan-out-as-data pattern: the four providers become
+// a source array on state; the body branches on the item value. The four
+// individual scout implementations above remain the underlying logic.
+
+/** Provider descriptor type used as scatter source items. */
+export type ScoutProvider = 'openlibrary' | 'googlebooks' | 'subject' | 'wikipedia';
+
+export const scoutDispatch: NodeInterface<ArchivistState, 'success' | 'empty', ArchivistServices> = {
+  "name":    'scout-dispatch',
+  "outputs": ['success', 'empty'],
+  async execute(state, context) {
+    const provider = state.getMetadata<ScoutProvider>('currentItem');
+    switch (provider) {
+      case 'openlibrary': return openLibraryScout.execute(state, context);
+      case 'googlebooks': return googleBooksScout.execute(state, context);
+      case 'subject':     return subjectScout.execute(state, context);
+      case 'wikipedia':   return wikipediaScout.execute(state, context);
+      default:
+        context.services.logger.warn(`scout-dispatch: unknown provider '${String(provider)}'`);
+        return NodeOutputBuilder.of('empty');
+    }
+  },
+};
+// #endregion scout-dispatch
+
+// #region scout-gather-strategy
+// ── ScoutGatherStrategy ('scout-merge') ─────────────────────────────────────
+// Flat-merges each clone's `candidates` array and concatenates `failureCause`
+// strings into the parent state after all four scatter clones complete.
+//
+// Each scatter clone is isolated and accumulates its own `candidates` and
+// `failureCause`; this gather strategy folds the clones into the parent at
+// gather time, with defined ordering (source-index order).
+
+class ScoutGatherStrategy extends GatherStrategy {
+  readonly name = 'scout-merge';
+
+  async apply(
+    _config: GatherConfig,
+    execution: GatherExecution<NodeStateInterface>,
+  ): Promise<void> {
+    // This strategy is registered for use with ArchivistState exclusively;
+    // the cast is safe because only ArchivistState DAGs register 'scout-merge'.
+    const parentState = execution.state as ArchivistState;
+    const merged: Candidate[] = [...parentState.candidates];
+    let failureText = parentState.failureCause;
+
+    for (const record of execution.records) {
+      const cloneState = record.cloneState as ArchivistState;
+      // Flat-merge the clone's candidates into parent (order is source-index order
+      // because GatherExecution.records is guaranteed source-index ordered).
+      for (const candidate of cloneState.candidates) {
+        merged.push(candidate);
+      }
+      // Concatenate failure text (empty when the scout succeeded).
+      if (cloneState.failureCause.length > 0) {
+        failureText += cloneState.failureCause;
+      }
+    }
+
+    parentState.candidates = merged;
+    parentState.failureCause = failureText;
+  }
+}
+
+GatherStrategies.register(new ScoutGatherStrategy());
+// GatherStrategies.resolve('scout-merge') now works in any scatter placement.
+// #endregion scout-gather-strategy

@@ -100,7 +100,8 @@ const definition: ToolDefinition = {
 
 export const GoogleBooksTool: Tool<GoogleBooksInput, readonly Candidate[]> = {
   definition,
-  async execute(input, signal) {
+  async execute(input, options) {
+    const signal = options?.signal;
     const max = Math.max(GOOGLE_BOOKS_MIN_RESULTS, Math.min(GOOGLE_BOOKS_MAX_RESULTS, input.maxResults ?? GOOGLE_BOOKS_DEFAULT_RESULTS));
     const params = new URLSearchParams({ 'q': input.query, 'maxResults': String(max) });
     if (input.orderBy !== undefined) params.set('orderBy', input.orderBy);

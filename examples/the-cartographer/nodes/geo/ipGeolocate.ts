@@ -16,7 +16,7 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region ip-geolocate-node
 export const ipGeolocate: NodeInterface<CartographerState, 'geolocated', CartographerServices> = {
@@ -31,7 +31,7 @@ export const ipGeolocate: NodeInterface<CartographerState, 'geolocated', Cartogr
       context.signal,
     );
     state.routing = { ...state.routing, 'ipGeolocateRun': true };
-    return { 'output': 'geolocated' };
+    return NodeOutputBuilder.of('geolocated');
   },
 };
 // #endregion ip-geolocate-node

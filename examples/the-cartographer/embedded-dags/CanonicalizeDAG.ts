@@ -50,8 +50,8 @@ export const canonicalizeDAG: DAG = new DAGBuilder('canonicalize', '1.0')
   })
 
   // Terminals
-  .terminal('canonical', 'completed')
-  .terminal('rejected',  'failed')
+  .terminal('canonical', { outcome: 'completed' })
+  .terminal('rejected',  { outcome: 'failed' })
 
   .build();
 

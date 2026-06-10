@@ -9,14 +9,14 @@
 
 import type { Binding, SlotPattern } from '@noocodex/dagonizer/patterns';
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
 
 import { GraphNode, type GraphServices } from './GraphNode.js';
 
 export abstract class RecallContextNode<
   TState extends NodeStateInterface,
   TBinding,
-  TOutput extends string = 'success' | 'empty',
-> extends GraphNode<TState, TOutput> {
+> extends GraphNode<TState, 'success' | 'empty'> {
   protected abstract buildQuery(state: TState): SlotPattern;
   protected abstract mapBindings(rows: readonly Binding[]): readonly TBinding[];
   protected abstract applyRecall(state: TState, bindings: readonly TBinding[]): void;
@@ -25,11 +25,11 @@ export abstract class RecallContextNode<
   async execute(
     state: TState,
     context: NodeContextInterface<GraphServices>,
-  ): Promise<NodeOutputInterface<TOutput>> {
+  ): Promise<NodeOutputInterface<'success' | 'empty'>> {
     const pattern = this.buildQuery(state);
     const rows = context.services.memory.select(pattern);
     const bindings = this.mapBindings(rows);
     this.applyRecall(state, bindings);
-    return { 'output': bindings.length === 0 ? this.emptyPort() : this.successPort() };
+    return NodeOutputBuilder.of(bindings.length === 0 ? 'empty' : 'success');
   }
 }

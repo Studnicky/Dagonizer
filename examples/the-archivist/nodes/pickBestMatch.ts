@@ -20,6 +20,8 @@
 
 import type { Candidate } from '../entities/Book.ts';
 
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
+
 import type { ArchivistNode } from './ArchivistNode.ts';
 import { jaccard, tokenise as wordSet } from './textUtils.ts';
 
@@ -32,7 +34,7 @@ export const pickBestMatch: ArchivistNode<'picked'> = {
   execute(state, context) {
     if (state.candidates.length === 0) {
       context.services.logger.info('pick-best-match: no candidates');
-      return Promise.resolve({ 'output': 'picked' });
+      return Promise.resolve(NodeOutputBuilder.of('picked'));
     }
 
     const queryWords = wordSet(state.query);
@@ -63,6 +65,6 @@ export const pickBestMatch: ArchivistNode<'picked'> = {
         : ''),
     );
 
-    return Promise.resolve({ 'output': 'picked' });
+    return Promise.resolve(NodeOutputBuilder.of('picked'));
   },
 };

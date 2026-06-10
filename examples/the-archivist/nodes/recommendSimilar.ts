@@ -20,6 +20,8 @@
 import type { Binding } from '../memory/MemoryStore.ts';
 import { MemoryStore, STATE_GRAPH_PREFIX, stateGraphIri } from '../memory/MemoryStore.ts';
 
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
+
 import type { ArchivistNode } from './ArchivistNode.ts';
 
 const dagInShortlist  = MemoryStore.dagIri('inShortlist');
@@ -43,7 +45,7 @@ export const recommendSimilar: ArchivistNode<'seeded' | 'empty'> = {
       .filter((g) => g.value.startsWith(STATE_GRAPH_PREFIX) && g.value !== currentGraph);
     if (graphs.length === 0) {
       context.services.logger.info('recommend-similar: no prior state graphs');
-      return { 'output': 'empty' };
+      return NodeOutputBuilder.of('empty');
     }
 
     // Order graphs by their `dag:runTimestamp` literal so we pick the
@@ -131,10 +133,10 @@ export const recommendSimilar: ArchivistNode<'seeded' | 'empty'> = {
       context.services.logger.info(
         `recommend-similar: anchored on "${priorTitle ?? '<untitled>'}" (${String(subjects.length)} subjects)`,
       );
-      return { 'output': 'seeded' };
+      return NodeOutputBuilder.of('seeded');
     }
 
     context.services.logger.info('recommend-similar: no prior shortlist with usable metadata');
-    return { 'output': 'empty' };
+    return NodeOutputBuilder.of('empty');
   },
 };

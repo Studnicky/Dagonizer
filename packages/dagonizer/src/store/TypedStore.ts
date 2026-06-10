@@ -22,10 +22,11 @@
  * const inner  = new MemoryStore();
  * const typed  = new TypedStore<AppSchema>(inner);
  * await typed.set('count', 42);            // ok
- * const n = await typed.get('count');      // n: number | undefined
+ * const n = await typed.get('count');      // n: number | null
  * await typed.set('count', 'wrong');       // TS error
  */
 
+import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
 import type { StoreSnapshot } from '../contracts/Snapshottable.js';
 import type { Store } from '../contracts/Store.js';
 import type { JsonValue } from '../entities/json.js';
@@ -37,7 +38,7 @@ export class TypedStore<Schema extends { [K in keyof Schema]: JsonValue }> {
     this.#inner = inner;
   }
 
-  async get<K extends keyof Schema & string>(key: K): Promise<Schema[K] | undefined> {
+  async get<K extends keyof Schema & string>(key: K): Promise<Schema[K] | null> {
     return this.#inner.get<Schema[K]>(key);
   }
 
@@ -61,10 +62,10 @@ export class TypedStore<Schema extends { [K in keyof Schema]: JsonValue }> {
   }
 
   /** Snapshot/restore pass through to the underlying Store. */
-  async snapshot(): Promise<StoreSnapshot> { return this.#inner.snapshot(); }
-  async restore(snapshot: StoreSnapshot): Promise<void> { await this.#inner.restore(snapshot); }
+  async snapshot(options?: AbortableOptionsInterface): Promise<StoreSnapshot> { return this.#inner.snapshot(options); }
+  async restore(snapshot: StoreSnapshot, options?: AbortableOptionsInterface): Promise<void> { await this.#inner.restore(snapshot, options); }
 
-  /** Connect/disconnect pass through. */
+  /** Connect/disconnect pass through to the underlying Store. */
   async connect(): Promise<void> { await this.#inner.connect(); }
   async disconnect(): Promise<void> { await this.#inner.disconnect(); }
 

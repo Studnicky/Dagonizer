@@ -7,7 +7,7 @@
  */
 export interface OperationContractFragment {
   /** Field paths the operation requires to be present on state to run. */
-  readonly hardRequired: readonly string[];
+  hardRequired: string[];
   /** Field paths the operation writes to state on success. */
-  readonly produces: readonly string[];
+  produces: string[];
 }

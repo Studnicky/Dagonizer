@@ -7,7 +7,7 @@
  *
  * The engine consumes a `RemoteStore` through the `Store` surface; the
  * extra methods are observability + coordination primitives the
- * dispatcher can use when distributed execution is wired in (post-v0.11).
+ * dispatcher uses when distributed execution is active.
  */
 
 import type { Store } from './Store.js';
@@ -15,12 +15,12 @@ import type { Store } from './Store.js';
 /** Identity + capability descriptor for a remote store. */
 export interface RemoteStoreEndpoint {
   /** Stable identifier for the remote endpoint (URL, gRPC target, etc.). */
-  readonly url: string;
+  url: string;
   /**
    * Region/zone hint for placement decisions.
    * Default value at construction: `''` (no region constraint).
    */
-  readonly region: string;
+  region: string;
 }
 
 /**
@@ -29,11 +29,11 @@ export interface RemoteStoreEndpoint {
  */
 export interface RemoteStoreLease {
   /** Opaque token the store recognises on `releaseLease` / write checks. */
-  readonly token:     string;
+  token:     string;
   /** Monotonic ms timestamp the lease expires at (exclusive). */
-  readonly expiresAt: number;
+  expiresAt: number;
   /** Subject the lease is scoped to (e.g. a key namespace or DAG run id). */
-  readonly subject:   string;
+  subject:   string;
 }
 
 /** RemoteStore: distributed shared-state contract. */

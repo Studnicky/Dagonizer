@@ -41,7 +41,7 @@ const makeNode = (
 ): NodeInterface<NodeStateBase> => ({
   name,
   outputs,
-  async execute() { return { 'output': outputs[0] as string }; },
+  async execute() { return { 'errors': [], 'output': outputs[0] as string }; },
 });
 
 // ── Child DAG (two nodes: start → finish) ────────────────────────────────
@@ -66,8 +66,9 @@ const childDAG: DAG = {
       '@type': 'SingleNode',
       'name':  'child-finish',
       'node':  'child-finish',
-      'outputs': { 'done': null },
+      'outputs': { 'done': 'end' },
     },
+    { '@id': 'urn:noocodex:dag:child/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
@@ -100,8 +101,9 @@ const parentDAG: DAG = {
       '@type': 'SingleNode',
       'name':  'parent-end',
       'node':  'parent-end',
-      'outputs': { 'done': null },
+      'outputs': { 'done': 'end' },
     },
+    { '@id': 'urn:noocodex:dag:parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
@@ -196,6 +198,7 @@ void describe('Embedded-DAG lifecycle scoping', () => {
     assert.ok(result.executedNodes.includes('parent-entry'), 'parent-entry executed');
     assert.ok(result.executedNodes.includes('run-child'),    'run-child (scatter) executed');
     assert.ok(result.executedNodes.includes('parent-end'),   'parent-end executed');
-    assert.equal(result.executedNodes.length, 3, 'exactly 3 parent-level nodes recorded');
+    assert.ok(result.executedNodes.includes('end'),          'terminal end executed');
+    assert.equal(result.executedNodes.length, 4, 'exactly 4 parent-level nodes recorded (3 + terminal)');
   });
 });

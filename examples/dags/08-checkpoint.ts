@@ -6,9 +6,11 @@
 
 import {
   DAG_CONTEXT,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface } from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
@@ -49,7 +51,7 @@ export const inc: NodeInterface<CountingState, 'success'> = {
   async execute(state) {
     state.count++;
     state.log.push(`tick:${state.count}`);
-    return { "output": 'success' };
+    return NodeOutputBuilder.of('success');
   },
 };
 

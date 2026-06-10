@@ -19,7 +19,7 @@ void describe('SqliteStore: basic operations', () => {
     const deleted = await store.delete('greeting');
     assert.equal(deleted, true);
     assert.equal(await store.has('greeting'), false);
-    assert.equal(await store.get<string>('greeting'), undefined);
+    assert.equal(await store.get<string>('greeting'), null);
 
     await store.disconnect();
   });
@@ -160,7 +160,7 @@ void describe('SqliteStore: disconnect', () => {
 
 void describe('SqliteStore: custom tableName', () => {
   void it('custom tableName works as backing table', async () => {
-    const store = new SqliteStore(':memory:', { 'tableName': 'app_kv' });
+    const store = new SqliteStore(':memory:', { 'namespace': '', 'tableName': 'app_kv' });
 
     await store.set<number>('count', 7);
     assert.equal(await store.get<number>('count'), 7);

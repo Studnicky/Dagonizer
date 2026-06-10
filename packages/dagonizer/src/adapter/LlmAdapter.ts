@@ -1,13 +1,11 @@
 /**
- * LlmAdapter: provider-agnostic chat contract.
+ * LlmAdapter: provider-agnostic chat contract for one round-trip per call.
  *
- * Mirrors nocturne's `LLMAdapterInterface` (`adapters/llm/providers/
- * types/LLMAdapterInterface.ts:61–247`) but trimmed to the surface the
- * Archivist actually needs: one `chat()` round-trip per call, no
- * streaming, no per-adapter stats. Tools and structured-output run
- * through dedicated request fields; the provider implementation maps
- * them to its native wire format (Gemini's `functionDeclarations`,
- * Nano's `responseConstraint`, WebLLM's `response_format`).
+ * Defines the wire-format entities (schemas + TypeScript interfaces),
+ * the `ChatRequest` / `ChatResponse` shapes, request defaults, and the
+ * `ChatRequestBuilder`/`ChatResponseMessageBuilder` static factories.
+ * Tools and structured-output run through dedicated request fields; the
+ * provider implementation maps them to its native wire format.
  *
  * Every field on `ChatRequest` / `ChatResponse` is required; module-level
  * defaults fill the absent cases. This keeps V8 hidden classes
@@ -24,47 +22,169 @@
  *   └──────────────────────────────────────────────────────────────┘
  */
 
+import { SignalComposer } from '../runtime/SignalComposer.js';
+
+// ── JSON Schema 2020-12 definitions ──────────────────────────────────────────
+//
+// Each wire-shape entity has a `*Schema` value so provider responses can be
+// validated at the JSON-ingest boundary before being narrowed to the
+// TypeScript type. Fields that are not JSON-expressible (AbortSignal) appear
+// only on the TypeScript interface, not in the schema.
+//
+// Types are kept as hand-written interfaces rather than `FromSchema<>` because
+// `inputSchema`/`arguments` are `Record<string, unknown>` — any JSON object —
+// which `json-schema-to-ts` would widen to `Record<string, unknown>` anyway.
+// The schemas are the runtime validation artifacts; the interfaces remain the
+// TypeScript types.
+
+export const ChatMessageSchema = {
+  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/ChatMessage',
+  '$schema': 'https://json-schema.org/draft/2020-12/schema',
+  'type': 'object',
+  'required': ['role', 'content', 'toolCallId', 'toolName'],
+  'properties': {
+    'role': { 'type': 'string', 'enum': ['system', 'user', 'assistant', 'tool'] },
+    'content': { 'type': 'string' },
+    'toolCallId': { 'type': 'string' },
+    'toolName': { 'type': 'string' },
+  },
+  'additionalProperties': false,
+} as const;
+
+export const ToolDefinitionSchema = {
+  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/ToolDefinition',
+  '$schema': 'https://json-schema.org/draft/2020-12/schema',
+  'type': 'object',
+  'required': ['name', 'description', 'inputSchema', 'strict'],
+  'properties': {
+    'name': { 'type': 'string', 'minLength': 1 },
+    'description': { 'type': 'string' },
+    'inputSchema': { 'type': 'object' },
+    'strict': { 'type': 'boolean' },
+  },
+  'additionalProperties': false,
+} as const;
+
+export const ToolCallSchema = {
+  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/ToolCall',
+  '$schema': 'https://json-schema.org/draft/2020-12/schema',
+  'type': 'object',
+  'required': ['id', 'name', 'arguments'],
+  'properties': {
+    'id': { 'type': 'string', 'minLength': 1 },
+    'name': { 'type': 'string', 'minLength': 1 },
+    'arguments': { 'type': 'object' },
+  },
+  'additionalProperties': false,
+} as const;
+
+export const TokenUsageSchema = {
+  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/TokenUsage',
+  '$schema': 'https://json-schema.org/draft/2020-12/schema',
+  'type': 'object',
+  'required': ['promptTokens', 'completionTokens'],
+  'properties': {
+    'promptTokens': { 'type': 'number', 'minimum': 0 },
+    'completionTokens': { 'type': 'number', 'minimum': 0 },
+  },
+  'additionalProperties': false,
+} as const;
+
+/**
+ * JSON Schema for `ChatResponseMessage` discriminated union. Validates the
+ * JSON-expressible fields of what a provider returns (text, tools, or mixed).
+ */
+export const ChatResponseMessageSchema = {
+  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/ChatResponseMessage',
+  '$schema': 'https://json-schema.org/draft/2020-12/schema',
+  'oneOf': [
+    {
+      'type': 'object',
+      'required': ['kind', 'content'],
+      'properties': { 'kind': { 'const': 'text' }, 'content': { 'type': 'string' } },
+      'additionalProperties': false,
+    },
+    {
+      'type': 'object',
+      'required': ['kind', 'toolCalls'],
+      'properties': {
+        'kind': { 'const': 'tools' },
+        'toolCalls': { 'type': 'array', 'items': ToolCallSchema },
+      },
+      'additionalProperties': false,
+    },
+    {
+      'type': 'object',
+      'required': ['kind', 'content', 'toolCalls'],
+      'properties': {
+        'kind': { 'const': 'mixed' },
+        'content': { 'type': 'string' },
+        'toolCalls': { 'type': 'array', 'items': ToolCallSchema },
+      },
+      'additionalProperties': false,
+    },
+  ],
+} as const;
+
+/**
+ * JSON Schema for `ChatResponse` — the JSON-expressible portion of what the
+ * adapter returns. Validates at the JSON-ingest boundary before the
+ * TypeScript type is asserted.
+ */
+export const ChatResponseSchema = {
+  '$id': 'https://noocodex.dev/schemas/dagonizer/adapter/ChatResponse',
+  '$schema': 'https://json-schema.org/draft/2020-12/schema',
+  'type': 'object',
+  'required': ['message', 'finishReason', 'usage'],
+  'properties': {
+    'message': ChatResponseMessageSchema,
+    'finishReason': { 'type': 'string', 'enum': ['stop', 'length', 'tool_call', 'error'] },
+    'usage': TokenUsageSchema,
+  },
+  'additionalProperties': false,
+} as const;
+
 /** A single message in a chat-style conversation. */
 export interface ChatMessage {
-  readonly role: 'system' | 'user' | 'assistant' | 'tool';
-  readonly content: string;
+  role: 'system' | 'user' | 'assistant' | 'tool';
+  content: string;
   /** Empty string for non-tool messages. Tool messages carry the call id. */
-  readonly toolCallId: string;
+  toolCallId: string;
   /** Empty string for non-tool messages. Tool messages carry the tool name. */
-  readonly toolName: string;
+  toolName: string;
 }
 
 /** Tool definition the model can choose to invoke. */
 export interface ToolDefinition {
-  readonly name: string;
-  readonly description: string;
+  name: string;
+  description: string;
   /** JSON Schema 2020-12; sent to the provider verbatim. */
-  readonly inputSchema: Record<string, unknown>;
-  readonly strict: boolean;
+  inputSchema: Record<string, unknown>;
+  strict: boolean;
 }
 
 /** Tool invocation emitted by the model. */
 export interface ToolCall {
-  readonly id: string;
-  readonly name: string;
-  readonly arguments: Record<string, unknown>;
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
 }
 
 /** How aggressively the model should pick a tool. */
 export type ToolChoice =
-  | { readonly type: 'auto' }
-  | { readonly type: 'required' }
-  | { readonly type: 'none' }
-  | { readonly type: 'tool';  readonly name: string };
+  | { type: 'auto' }
+  | { type: 'required' }
+  | { type: 'none' }
+  | { type: 'tool';  name: string };
 
 /**
  * JSON-schema constraint on the model's text response. `kind: 'none'`
  * means "no constraint"; keeps the union shape monomorphic instead of
- * `OutputSchema | undefined`.
+ * `LlmOutputSchema | undefined`.
  */
-export type OutputSchema =
-  | { readonly kind: 'none' }
-  | { readonly kind: 'schema'; readonly schema: Record<string, unknown>; readonly id: string };
+export type LlmOutputSchema =
+  | { kind: 'none' }
+  | { kind: 'schema'; schema: Record<string, unknown>; id: string };
 
 // ── Defaults ─────────────────────────────────────────────────────────────
 //
@@ -72,22 +192,28 @@ export type OutputSchema =
 // see complete values and never have to coalesce `??`.
 
 export const DEFAULT_TOOL_CHOICE: ToolChoice = { 'type': 'auto' };
-export const DEFAULT_OUTPUT_SCHEMA: OutputSchema = { 'kind': 'none' };
+export const DEFAULT_OUTPUT_SCHEMA: LlmOutputSchema = { 'kind': 'none' };
 export const DEFAULT_MAX_TOKENS = 512;
 export const DEFAULT_TEMPERATURE = 0.2;
 
-/** A signal that never aborts; used when callers don't supply one. */
-const NEVER_ABORTING_SIGNAL: AbortSignal = new AbortController().signal;
+/** Canonical defaults for the four defaultable fields of `PartialChatRequest`. */
+const CHAT_REQUEST_DEFAULTS = {
+  'toolChoice':   DEFAULT_TOOL_CHOICE,
+  'outputSchema': DEFAULT_OUTPUT_SCHEMA,
+  'maxTokens':    DEFAULT_MAX_TOKENS,
+  'temperature':  DEFAULT_TEMPERATURE,
+} as const;
+
 
 /** One adapter call; every field always present. */
 export interface ChatRequest {
-  readonly messages: readonly ChatMessage[];
-  readonly tools: readonly ToolDefinition[];
-  readonly toolChoice: ToolChoice;
-  readonly outputSchema: OutputSchema;
-  readonly maxTokens: number;
-  readonly temperature: number;
-  readonly signal: AbortSignal;
+  messages: ChatMessage[];
+  tools: ToolDefinition[];
+  toolChoice: ToolChoice;
+  outputSchema: LlmOutputSchema;
+  maxTokens: number;
+  temperature: number;
+  signal: AbortSignal;
 }
 
 /**
@@ -105,27 +231,28 @@ export class ChatRequestBuilder {
   /** Materialise a complete `ChatRequest` from a partial input by
    *  filling every absent field with its canonical default. */
   static from(partial: PartialChatRequest): ChatRequest {
+    const defaults = { ...CHAT_REQUEST_DEFAULTS, ...partial };
     return {
       'messages':     partial.messages,
-      'tools':        partial.tools        ?? [],
-      'toolChoice':   partial.toolChoice   ?? DEFAULT_TOOL_CHOICE,
-      'outputSchema': partial.outputSchema ?? DEFAULT_OUTPUT_SCHEMA,
-      'maxTokens':    partial.maxTokens    ?? DEFAULT_MAX_TOKENS,
-      'temperature':  partial.temperature  ?? DEFAULT_TEMPERATURE,
-      'signal':       partial.signal       ?? NEVER_ABORTING_SIGNAL,
+      'tools':        partial.tools ?? [],
+      'toolChoice':   defaults.toolChoice,
+      'outputSchema': defaults.outputSchema,
+      'maxTokens':    defaults.maxTokens,
+      'temperature':  defaults.temperature,
+      'signal':       partial.signal ?? SignalComposer.never(),
     };
   }
 }
 
 /** Loose-input shape for `ChatRequestBuilder.from`. Only `messages` is required. */
 export interface PartialChatRequest {
-  readonly messages: readonly ChatMessage[];
-  readonly tools?: readonly ToolDefinition[];
-  readonly toolChoice?: ToolChoice;
-  readonly outputSchema?: OutputSchema;
-  readonly maxTokens?: number;
-  readonly temperature?: number;
-  readonly signal?: AbortSignal;
+  messages: ChatMessage[];
+  tools?: ToolDefinition[];
+  toolChoice?: ToolChoice;
+  outputSchema?: LlmOutputSchema;
+  maxTokens?: number;
+  temperature?: number;
+  signal?: AbortSignal;
 }
 
 /**
@@ -137,9 +264,9 @@ export interface PartialChatRequest {
  *   mixed: model emitted both prose and tool calls.
  */
 export type ChatResponseMessage =
-  | { readonly kind: 'text';  readonly content: string }
-  | { readonly kind: 'tools'; readonly toolCalls: readonly ToolCall[] }
-  | { readonly kind: 'mixed'; readonly content: string; readonly toolCalls: readonly ToolCall[] };
+  | { kind: 'text';  content: string }
+  | { kind: 'tools'; toolCalls: ToolCall[] }
+  | { kind: 'mixed'; content: string; toolCalls: ToolCall[] };
 
 /**
  * ChatResponseMessageBuilder: static factory for `ChatResponseMessage`
@@ -153,24 +280,24 @@ export class ChatResponseMessageBuilder {
   /** Build the right discriminated variant from content + tool calls. */
   static from(content: string, toolCalls: readonly ToolCall[]): ChatResponseMessage {
     if (toolCalls.length === 0) return { 'kind': 'text', content };
-    if (content.length === 0) return { 'kind': 'tools', toolCalls };
-    return { 'kind': 'mixed', content, toolCalls };
+    if (content.length === 0) return { 'kind': 'tools', 'toolCalls': [...toolCalls] };
+    return { 'kind': 'mixed', content, 'toolCalls': [...toolCalls] };
   }
 }
 
 /** Token usage. Always present; zero when the provider doesn't report. */
 export interface TokenUsage {
-  readonly promptTokens: number;
-  readonly completionTokens: number;
+  promptTokens: number;
+  completionTokens: number;
 }
 
 export const ZERO_TOKEN_USAGE: TokenUsage = { 'promptTokens': 0, 'completionTokens': 0 };
 
 /** What the adapter returns; every field always present. */
 export interface ChatResponse {
-  readonly message: ChatResponseMessage;
-  readonly finishReason: 'stop' | 'length' | 'tool_call' | 'error';
-  readonly usage: TokenUsage;
+  message: ChatResponseMessage;
+  finishReason: 'stop' | 'length' | 'tool_call' | 'error';
+  usage: TokenUsage;
 }
 
 /**
@@ -198,36 +325,13 @@ export interface ChatResponse {
  *             JSON-only mode (no schema).
  */
 export interface AdapterCapabilities {
-  readonly toolUse: 'full' | 'partial' | 'none';
-  readonly structuredOutput: boolean;
-  readonly jsonMode: boolean;
+  toolUse: 'full' | 'partial' | 'none';
+  structuredOutput: boolean;
+  jsonMode: boolean;
 }
 
-/** Implemented by every provider. */
-export interface LlmAdapter {
-  readonly id: string;
-  readonly displayName: string;
-  readonly capabilities: AdapterCapabilities;
-  chat(request: ChatRequest): Promise<ChatResponse>;
-  /**
-   * Bring up any per-session state (model download, websocket handshake).
-   * Adapters that don't need a session implement a no-op; `BaseAdapter`
-   * provides a default empty implementation so consumers don't branch
-   * on `connect` vs `undefined`.
-   */
-  connect(): Promise<void>;
-  /** Tear down any per-session state. No-op default on `BaseAdapter`. */
-  disconnect(): Promise<void>;
-  /**
-   * Quick availability check. Returns true when this adapter can plausibly
-   * serve a chat call right now (credentials present, runtime backend
-   * reachable, model available). Implementations MUST NOT throw on
-   * transport failure; return false so a cascade can route around the
-   * adapter and try the next preference.
-   *
-   * `BaseAdapter` ships a default that returns true; concrete adapters
-   * override with a real probe (e.g. credential check, HEAD request,
-   * `navigator.ml` feature detect).
-   */
-  probe(): Promise<boolean>;
-}
+/**
+ * Re-exported from `src/contracts/LlmAdapter.ts` — single source of truth.
+ * `./adapter` consumers continue to import `LlmAdapter` from this module.
+ */
+export type { LlmAdapter } from '../contracts/LlmAdapter.js';
