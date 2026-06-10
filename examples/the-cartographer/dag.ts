@@ -292,6 +292,83 @@ export const eventPipelineDAG: DAG = new DAGBuilder('event-pipeline', '1.0')
   .build();
 // #endregion event-pipeline-dag
 
+// ── DAG 1b: cartographer-workers (container variant) ─────────────────────────
+
+// #region cartographer-workers-dag
+/**
+ * cartographerWorkersDAG: the same top-level orchestration as cartographerDAG
+ * with one difference — the `process-events` scatter binds `container: 'cpu'`
+ * so each canonical-event enrichment body runs inside a WorkerThreadContainer
+ * instead of in-process. The ingestion fan-in (ingest-sources scatter) still
+ * runs in-process; only the CPU-bound enrichment is offloaded.
+ *
+ * Used by runCartographer.ts when launched with `--workers` (or CARTO_WORKERS=1).
+ * The companion registry module (workers/eventPipelineRegistry.ts, compiled to
+ * workers/eventPipelineRegistry.js) reconstructs the event-pipeline bundle
+ * inside each worker thread.
+ */
+export const cartographerWorkersDAG: DAG = new DAGBuilder('cartographer', '1.0')
+
+  .phase('seed', 'pre', seedEvents)
+
+  .scatter(
+    'ingest-sources',
+    'sources',
+    { 'dag': 'ingest-source' },
+    {
+      'all-success': 'merge-events',
+      'partial':     'merge-events',
+      'all-error':   'merge-events',
+      'empty':       'merge-events',
+    },
+    {
+      'itemKey':     'source',
+      'concurrency': 4,
+      'gather': {
+        'strategy': 'append',
+        'field':    'ingestedEvents',
+        'target':   'ingestBuckets',
+      },
+    },
+  )
+
+  .node('merge-events', mergeEvents, {
+    'merged': 'process-events',
+  })
+
+  // Streaming enrichment — container: 'cpu' routes each event's enrichment
+  // body to a WorkerThreadContainer (real worker threads) instead of in-process.
+  .scatter(
+    'process-events',
+    'canonicalEvents',
+    { 'dag': 'event-pipeline' },
+    {
+      'all-success': 'summarize',
+      'partial':     'summarize',
+      'all-error':   'summarize',
+      'empty':       'summarize',
+    },
+    {
+      'itemKey':     'canonical-event',
+      'concurrency': 16,
+      'container':   'cpu',
+      'gather': {
+        'strategy': 'append',
+        'field':    'enriched',
+        'target':   'records',
+      },
+    },
+  )
+
+  .node('summarize', summarizeInsights, {
+    'success': 'done',
+  })
+
+  .terminal('done', { outcome: 'completed' })
+
+  .build();
+// #endregion cartographer-workers-dag
+
 // ── Bundle registration ───────────────────────────────────────────────────────
 
 // #region dispatcher-bundle
@@ -317,5 +394,29 @@ export const cartographerBundle: DispatcherBundle<CartographerState, Cartographe
     summarizeInsights,
   ],
   'dags': [eventPipelineDAG, cartographerDAG],
+};
+
+/**
+ * cartographerWorkersBundle: same nodes as cartographerBundle, but the DAG is
+ * cartographerWorkersDAG (which binds container: 'cpu' on process-events).
+ * Used by runCartographer.ts when `--workers` is active.
+ */
+export const cartographerWorkersBundle: DispatcherBundle<CartographerState, CartographerServices> = {
+  'nodes': [
+    seedEvents,
+    mergeEvents,
+    parseEvent,
+    routeGeo,
+    applyGeo,
+    validateCoords,
+    routeKind,
+    coldChainCheck,
+    customsDwell,
+    enrichLeg,
+    routeRedaction,
+    aggregateEvent,
+    summarizeInsights,
+  ],
+  'dags': [eventPipelineDAG, cartographerWorkersDAG],
 };
 // #endregion dispatcher-bundle

@@ -1,0 +1,29 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist",
+    "noEmit": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true
+  },
+  "include": [
+    "runCartographer.ts",
+    "dag.ts",
+    "CartographerState.ts",
+    "CartographerServices.ts",
+    "services.ts",
+    "tz-lookup.d.ts",
+    "workers/eventPipelineRegistry.ts",
+    "contracts/**/*.ts",
+    "embedded-dags/**/*.ts",
+    "entities/**/*.ts",
+    "nodes/**/*.ts",
+    "services/**/*.ts",
+    "data/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist", "__smoke__", "dag-validate.ts", "record-geo-fixtures.ts"]
+}

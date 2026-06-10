@@ -72,6 +72,25 @@
  *   { type: 'single', name, node: nodeImpl.name, outputs: routes }
  *   object that the hand-written literal used. build() returns a plain
  *   DAG: identical wire shape, same Dagonizer.load() call.
+ *
+ * DAG containment (WorkerThreadContainer) — why the archivist stays in-process:
+ *   The container/worker feature is most natural for CPU-bound, self-contained
+ *   per-item work: pure data transforms that only read from state and write a
+ *   result back (see the-cartographer, which routes its canonical-event enrichment
+ *   sub-DAG through a WorkerThreadContainer — haversine, GDPR redaction, pricing
+ *   and ETA are pure arithmetic on serialisable data).
+ *
+ *   The archivist's scatter items (the four scout providers) are LLM / network
+ *   bound: each clone calls a live language model and external book APIs. Workers
+ *   cannot share the LLM provider instance (it is not serialisable), and each
+ *   scatter item's payload — prompt context, live API credentials, LLM adapter
+ *   state — crosses the worker message channel as structured-clone, which drops
+ *   functions, closures, class instances, and streams.
+ *
+ *   Worker containment suits CPU / data DAGs. LLM-cascade DAGs — where nodes
+ *   carry network clients, streaming responses, and rich provider objects — run
+ *   in-process and rely on async concurrency (Promise.all, scatter concurrency)
+ *   rather than OS-level thread isolation for parallelism.
  */
 
 
