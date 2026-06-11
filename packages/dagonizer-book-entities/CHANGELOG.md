@@ -1,5 +1,12 @@
 # @noocodex/dagonizer-book-entities
 
+## [unreleased]
+
+### Changed
+
+- `CanonicalId` is now a sealed static class (`private constructor`); direct instantiation is a compile error.
+- `Candidate.source` type changed from the no-op `'web-search' | string` union to `string` (honest type).
+
 ## 0.19.0
 
 ## 0.17.0

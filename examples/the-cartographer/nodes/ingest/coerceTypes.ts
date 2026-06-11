@@ -19,7 +19,10 @@ import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 import { TimeNormalizer } from '../../services.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region coerce-types-node
 const NUMERIC_FIELDS = [
@@ -30,35 +33,38 @@ const NUMERIC_FIELDS = [
 
 const BOOLEAN_FIELDS = ['marketingConsent', 'delivered'] as const;
 
-function toNumber(value: unknown): number {
-  if (typeof value === 'number') return value;
-  if (typeof value === 'string') {
-    const n = Number(value);
-    return isFinite(n) ? n : 0;
+export class CoerceTypesNode implements NodeInterface<CartographerState, 'validate-event', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'coerce-types';
+  readonly 'outputs' = ['validate-event'] as const;
+
+  private static toNumber(value: unknown): number {
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+      const n = Number(value);
+      return isFinite(n) ? n : 0;
+    }
+    return 0;
   }
-  return 0;
-}
 
-function toBoolean(value: unknown): boolean {
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'string') return value === 'true' || value === '1';
-  return false;
-}
+  private static toBoolean(value: unknown): boolean {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value === 'true' || value === '1';
+    return false;
+  }
 
-export const coerceTypes: NodeInterface<CartographerState, 'validate-event', CartographerServices> = {
-  'name': 'coerce-types',
-  'outputs': ['validate-event'],
-  async execute(state, context) {
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'validate-event'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
     const coerced: Array<Record<string, unknown>> = state.mappedRecords.map((rec) => {
       const out: Record<string, unknown> = { ...rec };
       for (const field of NUMERIC_FIELDS) {
-        if (field in out) out[field] = toNumber(out[field]);
+        if (field in out) out[field] = CoerceTypesNode.toNumber(out[field]);
       }
       for (const field of BOOLEAN_FIELDS) {
-        if (field in out) out[field] = toBoolean(out[field]);
+        if (field in out) out[field] = CoerceTypesNode.toBoolean(out[field]);
       }
       // Timestamp string → epoch ms (kept alongside the raw string).
       if ('epochRaw' in out) {
@@ -76,6 +82,6 @@ export const coerceTypes: NodeInterface<CartographerState, 'validate-event', Car
     });
     state.mappedRecords = coerced;
     return NodeOutputBuilder.of('validate-event');
-  },
-};
+  }
+}
 // #endregion coerce-types-node

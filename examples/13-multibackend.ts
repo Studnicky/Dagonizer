@@ -32,7 +32,7 @@ import { Dagonizer } from '@noocodex/dagonizer';
 import { MermaidRenderer } from '@noocodex/dagonizer/viz';
 import { ForkContainer, WorkerThreadContainer } from '@noocodex/dagonizer-executor-node';
 
-import { dag, squareItemDag, squareNode, sumNode, sumResultsDag, MultiBackendState } from './dags/13-multibackend.js';
+import { dag, squareItemDag, SquareNode, SumNode, sumResultsDag, MultiBackendState } from './dags/13-multibackend.js';
 
 // ---------------------------------------------------------------------------
 // Part 1: Mermaid render — demonstrates per-role color classDefs
@@ -78,8 +78,8 @@ const dispatcher = new Dagonizer<MultiBackendState>({
     "io":  ioContainer,   // ForkContainer: handles the EmbeddedDAGNode
   },
 });
-dispatcher.registerNode(squareNode);
-dispatcher.registerNode(sumNode);
+dispatcher.registerNode(new SquareNode());
+dispatcher.registerNode(new SumNode());
 dispatcher.registerDAG(squareItemDag);
 dispatcher.registerDAG(sumResultsDag);
 dispatcher.registerDAG(dag);

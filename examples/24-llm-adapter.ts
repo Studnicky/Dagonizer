@@ -28,7 +28,7 @@ import {
 import type { ChatRequest, ChatResponse } from '@noocodex/dagonizer/adapter';
 import { StubAdapter } from '@noocodex/dagonizer-adapter-stub';
 
-import { ChatAdapterState, chat, handleText, handleTools, dag } from './dags/24-llm-adapter.js';
+import { ChatAdapterState, ChatNode, HandleTextNode, HandleToolsNode, dag } from './dags/24-llm-adapter.js';
 
 // ---------------------------------------------------------------------------
 // 1. Subclass StubAdapter: primary adapter that is intentionally unavailable.
@@ -108,9 +108,9 @@ process.stdout.write(`  Cascade preferences: stub-primary (skipped, probe=false)
 // ---------------------------------------------------------------------------
 
 const dispatcher = new Dagonizer<ChatAdapterState>();
-dispatcher.registerNode(chat);
-dispatcher.registerNode(handleText);
-dispatcher.registerNode(handleTools);
+dispatcher.registerNode(new ChatNode());
+dispatcher.registerNode(new HandleTextNode());
+dispatcher.registerNode(new HandleToolsNode());
 dispatcher.registerDAG(dag);
 
 const state = new ChatAdapterState();

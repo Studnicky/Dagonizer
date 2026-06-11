@@ -17,13 +17,19 @@
 
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region aggregate-event-node
-export const aggregateEvent: NodeInterface<CartographerState, 'done', CartographerServices> = {
-  'name': 'aggregate-event',
-  'outputs': ['done'],
-  async execute(state, context) {
+export class AggregateEventNode implements NodeInterface<CartographerState, 'done', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'aggregate-event';
+  readonly 'outputs' = ['done'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'done'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -83,6 +89,6 @@ export const aggregateEvent: NodeInterface<CartographerState, 'done', Cartograph
     };
 
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 // #endregion aggregate-event-node

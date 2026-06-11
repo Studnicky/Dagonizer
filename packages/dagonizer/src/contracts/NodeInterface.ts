@@ -33,27 +33,23 @@ export interface NodeInterface<
   destroy?(): Promise<void>;
 
   /**
-   * Optional per-node wall-clock budget.
+   * Per-node wall-clock budget. Every node carries this field; use
+   * `Timeout.none()` for nodes that have no per-node timeout.
    *
-   * When set, the engine derives a child `AbortController` from the run's
-   * signal and schedules an abort after the budget elapses. The child signal
-   * is passed as `context.signal` to this node's `execute()` call only;
-   * other nodes in the same run are unaffected. On expiry the engine throws
-   * a `NodeTimeoutError` wrapped as a `DAGError`, fires `onError`, and marks
-   * the run failed.
+   * When the budget is active (`Timeout.ofMs(n)`), the engine derives a child
+   * `AbortController` from the run's signal and schedules an abort after `n` ms.
+   * The child signal is passed as `context.signal` to this node's `execute()`
+   * call only; other nodes in the same run are unaffected. On expiry the engine
+   * throws a `NodeTimeoutError`, fires `onError`, and marks the run failed.
    *
-   * Absent (or `Timeout.none()`) — the node is subject only to the run-level
-   * `deadlineMs` / `signal` from `ExecuteOptionsInterface`.
+   * `Timeout.none()` means no per-node budget; the node is subject only to the
+   * run-level `deadlineMs` / `signal` from `ExecuteOptionsInterface`.
    *
-   * Set `Timeout.ofMs(n)` for a per-node wall-clock budget of `n` ms.
-   *
-   * This field is intentionally optional on the contract (external boundary:
-   * consumer-implemented nodes are not required to carry a default). The
-   * concrete `MonadicNode` base class declares `timeout: Timeout = Timeout.none()`
-   * for V8 hidden-class stability; the engine treats an absent field as
-   * `Timeout.none()`.
+   * `MonadicNode` declares `readonly timeout: Timeout = Timeout.none()` as the
+   * V8-stable required-with-default. Nodes that do not extend `MonadicNode` must
+   * declare `readonly timeout = Timeout.none();` explicitly.
    */
-  timeout?: Timeout;
+  readonly 'timeout': Timeout;
 
   /**
    * Execute the node, mutating state.
@@ -76,15 +72,24 @@ export interface NodeInterface<
   readonly 'outputs': readonly TOutput[];
 
   /**
-   * Optional data-flow declaration. When present, DAGDeriver can derive
-   * topology from a node registry without a separate contract array;
-   * registration-time validation cross-checks producers and consumers.
+   * Data-flow declaration for `DAGDeriver`. Every node carries a contract;
+   * nodes that do not participate in derivation use `EMPTY_CONTRACT_FRAGMENT`
+   * (both arrays empty). The deriver skips fragments where
+   * `hardRequired.length === 0 && produces.length === 0`, so these nodes
+   * contribute no derived edges.
    *
    * The node's own `name` and `outputs` fields complete the full
-   * OperationContract surface; the fragment carries only the fields
+   * `OperationContract` surface; the fragment carries only the fields
    * the deriver uses to wire edges.
+   *
+   * Concrete base class `MonadicNode` declares
+   * `readonly contract: OperationContractFragment = EMPTY_CONTRACT_FRAGMENT`
+   * as the V8-stable required-with-default. Implementors that do not extend
+   * `MonadicNode` must declare `contract` explicitly; import
+   * `EMPTY_CONTRACT_FRAGMENT` from `contracts/OperationContractFragment.js`
+   * for the no-derivation case.
    */
-  readonly 'contract'?: OperationContractFragment;
+  readonly 'contract': OperationContractFragment;
 
   /**
    * Validate node configuration.

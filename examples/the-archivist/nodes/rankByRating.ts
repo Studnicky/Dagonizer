@@ -17,17 +17,23 @@
  * so the merge node can soft-gate downstream.
  */
 
+import { NodeOutputBuilder,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+
 import type { Candidate } from '../entities/Book.ts';
+import type { ArchivistState } from '../ArchivistState.ts';
+import type { ArchivistServices } from '../services.ts';
 
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
+export class RankByRatingNode implements NodeInterface<ArchivistState, 'ranked', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'rank-by-rating';
+  readonly outputs = ['ranked'] as const;
 
-import type { ArchivistNode } from './ArchivistNode.ts';
-
-export const rankByRating: ArchivistNode<'ranked'> = {
-  'name':    'rank-by-rating',
-  'kind':    'deterministic',
-  'outputs': ['ranked'],
-  execute(state, context) {
+  execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     if (state.candidates.length === 0) {
       context.services.logger.info('rank-by-rating: no candidates');
       return Promise.resolve(NodeOutputBuilder.of('ranked'));
@@ -55,10 +61,13 @@ export const rankByRating: ArchivistNode<'ranked'> = {
     context.services.logger.info(
       `rank-by-rating: ${String(ranked.length)} ranked` +
       (top !== undefined
-        ? ` (top score ${top.score.toFixed(3)}: "${top.book.title}")`
+        ? ` (top score ${top.score.toFixed(3)}: "${top.book.identity.title}")`
         : ''),
     );
 
     return Promise.resolve(NodeOutputBuilder.of('ranked'));
-  },
-};
+  }
+}
+
+/** Backward-compatible const export for existing bundle/DAG references. */
+export const rankByRating = new RankByRatingNode();

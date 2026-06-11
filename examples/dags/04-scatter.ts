@@ -8,9 +8,10 @@ import {
   DAG_CONTEXT,
   NodeOutputBuilder,
   NodeStateBase,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
 } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import type { DAG, NodeInterface} from '@noocodex/dagonizer';
 import { GatherStrategyName } from '@noocodex/dagonizer/constants';
 
 // #region state
@@ -22,16 +23,19 @@ export class ScrapeState extends NodeStateBase {
 // #endregion state
 
 // #region worker-node
-export const probe: NodeInterface<ScrapeState, 'ok' | 'fail'> = {
-  "name": 'probe',
-  "outputs": ['ok', 'fail'],
-  async execute(state) {
+export class ProbeNode implements NodeInterface<ScrapeState, 'ok' | 'fail'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'probe';
+  readonly outputs = ['ok', 'fail'] as const;
+
+  async execute(state: ScrapeState) {
     // Each item is written to state under the itemKey ('url') before execute.
     const url = state.getMetadata<string>('url') ?? '';
     // Fake probe: even-length URLs succeed, odd-length fail.
     return NodeOutputBuilder.of(url.length % 2 === 0 ? 'ok' : 'fail');
-  },
-};
+  }
+}
 // #endregion worker-node
 
 // #region scatter-placement

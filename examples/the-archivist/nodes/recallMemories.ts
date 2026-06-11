@@ -29,12 +29,16 @@
  *   recall result (the digest will have bookCount === 0).
  */
 
+import { NodeOutputBuilder,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+
 import type { MemoryDigest } from '../ArchivistState.ts';
-import { MemoryStore, STATE_GRAPH_PREFIX, stateGraphIri } from '../memory/MemoryStore.ts';
-
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
-
-import type { ArchivistNode } from './ArchivistNode.ts';
+import type { ArchivistState } from '../ArchivistState.ts';
+import type { ArchivistServices } from '../services.ts';
+import { MemoryStore, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';
 
 const dagTitle        = MemoryStore.dagIri('title');
 const dagAuthor       = MemoryStore.dagIri('author');
@@ -43,34 +47,41 @@ const dagIntent       = MemoryStore.dagIri('intent');
 
 const MAX_RECENT_BOOKS = 10;
 
-function buildSummary(
-  bookTitles: Map<string, string>,
-  queryCount: number,
-  recentBooks: MemoryDigest['recentBooks'],
-  intentBreakdown: MemoryDigest['intentBreakdown'],
-): string {
-  if (bookTitles.size === 0) return 'My shelves are fresh; no books have been recorded yet.';
-  const parts: string[] = [
-    `${String(bookTitles.size)} distinct book${bookTitles.size === 1 ? '' : 's'} recorded across ${String(queryCount)} prior ${queryCount === 1 ? 'session' : 'sessions'}.`,
-  ];
-  if (recentBooks.length > 0) {
-    const titleList = recentBooks.slice(0, 3).map((b) => `"${b.title}"`).join(', ');
-    parts.push(`Most recent: ${titleList}.`);
+/**
+ * MemorySummarizer: pure summary builder for recall-memories output.
+ */
+class MemorySummarizer {
+  static buildSummary(
+    bookTitles: Map<string, string>,
+    queryCount: number,
+    recentBooks: MemoryDigest['recentBooks'],
+    intentBreakdown: MemoryDigest['intentBreakdown'],
+  ): string {
+    if (bookTitles.size === 0) return 'My shelves are fresh; no books have been recorded yet.';
+    const parts: string[] = [
+      `${String(bookTitles.size)} distinct book${bookTitles.size === 1 ? '' : 's'} recorded across ${String(queryCount)} prior ${queryCount === 1 ? 'session' : 'sessions'}.`,
+    ];
+    if (recentBooks.length > 0) {
+      const titleList = recentBooks.slice(0, 3).map((b) => `"${b.title}"`).join(', ');
+      parts.push(`Most recent: ${titleList}.`);
+    }
+    const topIntent = intentBreakdown[0];
+    if (topIntent !== undefined) {
+      parts.push(`Most common intent: ${topIntent.intent} (${String(topIntent.count)} time${topIntent.count === 1 ? '' : 's'}).`);
+    }
+    return parts.join(' ');
   }
-  const topIntent = intentBreakdown[0];
-  if (topIntent !== undefined) {
-    parts.push(`Most common intent: ${topIntent.intent} (${String(topIntent.count)} time${topIntent.count === 1 ? '' : 's'}).`);
-  }
-  return parts.join(' ');
 }
 
-export const recallMemories: ArchivistNode<'recalled'> = {
-  'name':    'recall-memories',
-  'kind':    'non-deterministic',
-  'outputs': ['recalled'],
-  async execute(state, context) {
+export class RecallMemoriesNode implements NodeInterface<ArchivistState, 'recalled', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'recall-memories';
+  readonly outputs = ['recalled'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const memory = context.services.memory;
-    const currentGraphIri = state.runId !== '' ? stateGraphIri(state.runId).value : null;
+    const currentGraphIri = state.runId !== '' ? MemoryStore.stateGraphIri(state.runId).value : null;
 
     // ── Query 1: distinct books in the default graph ─────────────────────
     // recordFindings writes <book> dag:title "<title>" with no named graph
@@ -152,7 +163,7 @@ export const recallMemories: ArchivistNode<'recalled'> = {
       .map(([intent, count]) => ({ intent, count }));
 
     // ── Build LLM-ready summary ───────────────────────────────────────────
-    let summary = buildSummary(bookTitles, queryCount, recentBooks, intentBreakdown);
+    let summary = MemorySummarizer.buildSummary(bookTitles, queryCount, recentBooks, intentBreakdown);
 
     // If the visitor's current query is a short pronoun-acceptance and the
     // last archivist turn mentioned a book, boost the summary so the compose
@@ -180,5 +191,8 @@ export const recallMemories: ArchivistNode<'recalled'> = {
     );
 
     return NodeOutputBuilder.of('recalled');
-  },
-};
+  }
+}
+
+/** Backward-compatible const export for existing bundle/DAG references. */
+export const recallMemories = new RecallMemoriesNode();

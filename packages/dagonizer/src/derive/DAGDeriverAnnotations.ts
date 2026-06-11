@@ -54,20 +54,33 @@ export type DAGDeriverTerminal =
   | { outcome: string; emit: DAGDeriverEmitTerminal };
 
 /**
+ * Sentinel value for `DAGDeriverScatterBase.concurrency` meaning "unbounded —
+ * let the engine default resolve concurrency at execution time". The deriver
+ * omits `concurrency` from the rendered `ScatterNode` when this value is set,
+ * deferring to the dispatcher's `DEFAULT_SCATTER_CONCURRENCY`.
+ */
+export const DEFAULT_SCATTER_CONCURRENCY = 0;
+
+/**
  * Common fields every scatter annotation carries regardless of strategy.
  * The per-item kind is a registered node.
  */
 interface DAGDeriverScatterBase {
   /** Dotted path on state to the source array. */
-  source:       string;
+  source:      string;
   /** Metadata key the per-item executions read for the current item. */
-  itemKey:      string;
+  itemKey:     string;
   /** Registered node name invoked once per item in the source array. */
-  node:         string;
-  /** Concurrency cap; defaults to source array length when omitted. */
-  concurrency?: number;
+  node:        string;
+  /**
+   * Concurrency cap for the scatter. `DEFAULT_SCATTER_CONCURRENCY` (0) means
+   * unbounded — the deriver omits `concurrency` from the rendered `ScatterNode`
+   * and the engine uses its own runtime default. Set to a positive integer to
+   * pin a fixed cap.
+   */
+  concurrency: number;
   /** Scatter outcome names the dispatcher routes on. */
-  outcomes:     string[];
+  outcomes:    string[];
 }
 
 /**

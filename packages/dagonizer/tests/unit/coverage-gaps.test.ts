@@ -17,13 +17,16 @@ import { describe, it } from 'node:test';
 
 import { Checkpoint } from '../../src/checkpoint/Checkpoint.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGHandoff } from '../../src/entities/handoff/DAGHandoff.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
+import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { SignalComposer } from '../../src/runtime/SignalComposer.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
 import { Validator } from '../../src/validation/Validator.js';
@@ -130,11 +133,13 @@ void describe('TST-17: DAGHandoff stateSnapshotRef publishing path', () => {
       }
     }
 
-    const noop: NodeInterface<NodeStateBase, 'done'> = {
-      'name': 'noop',
-      'outputs': ['done'],
-      async execute() { return { 'errors': [], 'output': 'done' }; },
-    };
+    class NoopNode implements NodeInterface<NodeStateBase, 'done'> {
+      readonly name = 'noop';
+      readonly outputs = ['done'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute() { return { 'errors': [], 'output': 'done' as const }; }
+    }
 
     const dag: DAG = {
       '@context': DAG_CONTEXT,
@@ -163,7 +168,7 @@ void describe('TST-17: DAGHandoff stateSnapshotRef publishing path', () => {
     const dispatcher = new Dagonizer<NodeStateBase>({
       'channels': { 'done-terminal': new ByRefChannel() },
     });
-    dispatcher.registerNode(noop);
+    dispatcher.registerNode(new NoopNode());
     dispatcher.registerDAG(dag);
 
     await dispatcher.execute('ref-handoff', new NodeStateBase());
@@ -208,11 +213,14 @@ void describe('TST-18: registerBundle unbound-role warning idempotency', () => {
 
     const dispatcher = new WarningCapture();
 
-    const noop: NodeInterface<NodeStateBase, 'done'> = {
-      'name': 'noop-bundle',
-      'outputs': ['done'],
-      async execute() { return { 'errors': [], 'output': 'done' }; },
-    };
+    class NoopBundleNode implements NodeInterface<NodeStateBase, 'done'> {
+      readonly name = 'noop-bundle';
+      readonly outputs = ['done'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute() { return { 'errors': [], 'output': 'done' as const }; }
+    }
+    const noop = new NoopBundleNode();
 
     // DAG with a scatter placement declaring an unbound container role.
     const dag: DAG = Validator.dag.validate({
@@ -263,12 +271,14 @@ void describe('TST-18: registerBundle unbound-role warning idempotency', () => {
 
     const dispatcher = new CapturingDispatcher();
 
-    const noop: NodeInterface<NodeStateBase, 'done'> = {
-      'name': 'noop-unbound',
-      'outputs': ['done'],
-      async execute() { return { 'errors': [], 'output': 'done' }; },
-    };
-    dispatcher.registerNode(noop);
+    class NoopUnboundNode implements NodeInterface<NodeStateBase, 'done'> {
+      readonly name = 'noop-unbound';
+      readonly outputs = ['done'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute() { return { 'errors': [], 'output': 'done' as const }; }
+    }
+    dispatcher.registerNode(new NoopUnboundNode());
 
     // Register a minimal inner DAG so the semantic validator accepts the dag-body reference.
     const innerDag: DAG = {
@@ -480,10 +490,12 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
     const secondReady = new Promise<void>((r) => { resolveSecondReady = r; });
     let callCount = 0;
 
-    const counterNode: NodeInterface<ScatterAbortState, 'done'> = {
-      'name': 'counter',
-      'outputs': ['done'],
-      async execute(state, context) {
+    class CounterNode implements NodeInterface<ScatterAbortState, 'done'> {
+      readonly name = 'counter';
+      readonly outputs = ['done'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(state: ScatterAbortState, context: NodeContextInterface) {
         callCount++;
         const item = state.getMetadata<number>('item') ?? 0;
         state.value = item;
@@ -496,9 +508,9 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
             }, { 'once': true });
           });
         }
-        return { 'errors': [], 'output': 'done' };
-      },
-    };
+        return { 'errors': [], 'output': 'done' as const };
+      }
+    }
 
     const bodyDagName = 'abort-body-dag';
     const bodyDag: DAG = Validator.dag.validate({
@@ -550,7 +562,7 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
     });
 
     const dispatcher = new Dagonizer<ScatterAbortState>();
-    dispatcher.registerNode(counterNode);
+    dispatcher.registerNode(new CounterNode());
     dispatcher.registerDAG(bodyDag);
     dispatcher.registerDAG(parentDag);
 

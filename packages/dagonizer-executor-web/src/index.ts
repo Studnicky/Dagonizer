@@ -28,9 +28,10 @@ export {
 export type { PostMessageEndpoint } from './PostMessageChannel.js';
 
 export {
+  DEFAULT_WEB_PROBES,
   WebSystemInfo,
 } from './WebSystemInfo.js';
-export type { WebSystemInfoProbes } from './WebSystemInfo.js';
+export type { WebNavigatorProbes, WebSystemInfoProbes } from './WebSystemInfo.js';
 
 export {
   WebWorkerContainer,

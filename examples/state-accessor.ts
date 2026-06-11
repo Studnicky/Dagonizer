@@ -12,42 +12,14 @@
  *   2. The same operations through PrefixAccessor.
  *   3. A Dagonizer constructed with the custom accessor (accessor option).
  *
- * DAG definition (state, accessors, wired dispatcher): examples/dags/state-accessor.ts
+ * DAG definition (ArchiveState, PrefixAccessor, accessors): examples/dags/state-accessor.ts
  *
  * Run: npx tsx examples/state-accessor.ts
  */
 
-import { NodeStateBase } from '@noocodex/dagonizer';
-import { DottedPathAccessor } from '@noocodex/dagonizer/runtime';
-import type { StateAccessor } from '@noocodex/dagonizer/contracts';
 import { Dagonizer } from '@noocodex/dagonizer';
-
-// ── PrefixAccessor: custom StateAccessor that namespaces every key ───────────
-
-class PrefixAccessor implements StateAccessor {
-  readonly #prefix: string;
-  readonly #inner: DottedPathAccessor;
-
-  constructor(prefix: string) {
-    this.#prefix = prefix;
-    this.#inner  = new DottedPathAccessor();
-  }
-
-  get<T = unknown>(target: object, path: string): T | null {
-    return this.#inner.get<T>(target, `${this.#prefix}.${path}`);
-  }
-
-  set(target: object, path: string, value: unknown): void {
-    this.#inner.set(target, `${this.#prefix}.${path}`, value);
-  }
-}
-
-// ── Shared state shape ───────────────────────────────────────────────────────
-
-class ArchiveState extends NodeStateBase {
-  catalogue: Record<string, Record<string, string>> = {};
-  archivist: Record<string, Record<string, string>> = {};
-}
+import { DottedPathAccessor } from '@noocodex/dagonizer/runtime';
+import { ArchiveState, PrefixAccessor } from './dags/state-accessor.js';
 
 process.stdout.write('\n=== StateAccessor: DottedPathAccessor + PrefixAccessor ===\n\n');
 

@@ -1,7 +1,10 @@
-import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { DecisionNode } from '../src/index.js';
+import { test } from 'node:test';
+
 import type { ChatResponse } from '@noocodex/dagonizer/adapter';
+
+import { DecisionNode } from '../src/index.js';
+
 
 class TestState {
   intent: 'yes' | 'no' = 'no';

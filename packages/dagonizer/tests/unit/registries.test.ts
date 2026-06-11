@@ -74,6 +74,34 @@ void describe('GatherStrategies registry', () => {
     assert.ok(!GatherStrategies.list().includes('extra'), 'extra must be gone after reset');
     assert.ok(GatherStrategies.list().includes('map'), 'built-ins must survive reset');
   });
+
+  void it('register throws when the name is already registered', () => {
+    class DupeGather extends GatherStrategy {
+      readonly name = 'dupe-gather';
+      async apply(): Promise<void> { /* no-op */ }
+    }
+    GatherStrategies.register(new DupeGather());
+    assert.throws(
+      () => GatherStrategies.register(new DupeGather()),
+      /already registered/,
+    );
+  });
+
+  void it('replace() overwrites an existing registration without throwing', () => {
+    class V1Gather extends GatherStrategy {
+      readonly name = 'v-gather';
+      async apply(): Promise<void> { /* v1 */ }
+    }
+    class V2Gather extends GatherStrategy {
+      readonly name = 'v-gather';
+      async apply(): Promise<void> { /* v2 */ }
+    }
+    GatherStrategies.register(new V1Gather());
+    // replace() must NOT throw
+    GatherStrategies.replace(new V2Gather());
+    const resolved = GatherStrategies.resolve('v-gather');
+    assert.ok(resolved instanceof V2Gather, 'replace must install V2');
+  });
 });
 
 void describe('OutcomeReducers registry', () => {
@@ -196,6 +224,34 @@ void describe('OutcomeReducers registry', () => {
     OutcomeReducers.reset();
     assert.ok(!OutcomeReducers.list().includes('extra-reducer'), 'extra must be gone after reset');
     assert.ok(OutcomeReducers.list().includes('aggregate'), 'built-ins must survive reset');
+  });
+
+  void it('register throws when the name is already registered', () => {
+    class DupeReducer extends OutcomeReducer {
+      readonly name = 'dupe-reducer';
+      reduce(): string { return 'done'; }
+    }
+    OutcomeReducers.register(new DupeReducer());
+    assert.throws(
+      () => OutcomeReducers.register(new DupeReducer()),
+      /already registered/,
+    );
+  });
+
+  void it('replace() overwrites an existing registration without throwing', () => {
+    class V1Reducer extends OutcomeReducer {
+      readonly name = 'v-reducer';
+      reduce(): string { return 'v1'; }
+    }
+    class V2Reducer extends OutcomeReducer {
+      readonly name = 'v-reducer';
+      reduce(): string { return 'v2'; }
+    }
+    OutcomeReducers.register(new V1Reducer());
+    // replace() must NOT throw
+    OutcomeReducers.replace(new V2Reducer());
+    const resolved = OutcomeReducers.resolve('v-reducer');
+    assert.ok(resolved instanceof V2Reducer, 'replace must install V2');
   });
 });
 

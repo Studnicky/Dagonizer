@@ -10,9 +10,11 @@ import {
   NodeOutputBuilder,
   NodeStateBase,
   RetryPolicy,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
 } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import type { DAG, NodeInterface} from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Simulated flaky downstream: class encapsulates mutable attempt counter
@@ -47,10 +49,13 @@ export class FetchState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // #region retry-node
-export const fetchNode: NodeInterface<FetchState, 'success' | 'error'> = {
-  'name': 'fetch',
-  'outputs': ['success', 'error'],
-  async execute(state, context) {
+export class FetchNode implements NodeInterface<FetchState, 'success' | 'error'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'fetch';
+  readonly outputs = ['success', 'error'] as const;
+
+  async execute(state: FetchState, context: NodeContextInterface) {
     // #region policy-config
     const policy = RetryPolicy.from({
       'maxAttempts':  5,
@@ -70,8 +75,8 @@ export const fetchNode: NodeInterface<FetchState, 'success' | 'error'> = {
     } catch {
       return NodeOutputBuilder.of('error');
     }
-  },
-};
+  }
+}
 // #endregion retry-node
 
 // ---------------------------------------------------------------------------

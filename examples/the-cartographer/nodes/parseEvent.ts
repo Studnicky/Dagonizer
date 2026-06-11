@@ -19,23 +19,29 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import type { CanonicalEvent } from '../entities/CanonicalEvent.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region parse-event-node
-/** A non-empty status for kinds whose source status string may be sparse. */
-function statusFor(event: CanonicalEvent): string {
-  const s = event.body.status;
-  if (s.length > 0) return s;
-  if (event.kind === 'delivery-confirmation') return 'delivered';
-  if (event.kind === 'customs-event') return event.body.customsStatus === 'held' ? 'customs hold' : 'customs cleared';
-  if (event.kind === 'sensor-reading') return 'sensor reading';
-  return 'in transit';
-}
+export class ParseEventNode implements NodeInterface<CartographerState, 'parsed' | 'invalid', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'parse';
+  readonly 'outputs' = ['parsed', 'invalid'] as const;
 
-export const parseEvent: NodeInterface<CartographerState, 'parsed' | 'invalid', CartographerServices> = {
-  'name': 'parse',
-  'outputs': ['parsed', 'invalid'],
-  async execute(state, context) {
+  /** A non-empty status for kinds whose source status string may be sparse. */
+  private static statusFor(event: CanonicalEvent): string {
+    const s = event.body.status;
+    if (s.length > 0) return s;
+    if (event.kind === 'delivery-confirmation') return 'delivered';
+    if (event.kind === 'customs-event') return event.body.customsStatus === 'held' ? 'customs hold' : 'customs cleared';
+    if (event.kind === 'sensor-reading') return 'sensor reading';
+    return 'in transit';
+  }
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'parsed' | 'invalid'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -51,7 +57,7 @@ export const parseEvent: NodeInterface<CartographerState, 'parsed' | 'invalid', 
       'scanSeq':             b.scanSeq,
       'rawTimestamp':        b.rawTimestamp,
       'rawDispatchAt':       b.rawDispatchAt,
-      'rawStatus':           statusFor(event),
+      'rawStatus':           ParseEventNode.statusFor(event),
       'carrier':             b.carrier,
       'ipAddress':           b.ipAddress,
       'latitude':            b.latitude,
@@ -79,6 +85,6 @@ export const parseEvent: NodeInterface<CartographerState, 'parsed' | 'invalid', 
     };
 
     return NodeOutputBuilder.of('parsed');
-  },
-};
+  }
+}
 // #endregion parse-event-node

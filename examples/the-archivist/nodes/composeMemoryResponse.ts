@@ -12,19 +12,26 @@
  * (a deterministic recovery node); no engine `timeoutMs` crutch.
  */
 
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
+import { NodeOutputBuilder,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
 
-import type { ArchivistNode } from './ArchivistNode.ts';
+import type { ArchivistState } from '../ArchivistState.ts';
+import type { ArchivistServices } from '../services.ts';
 import { COMPOSE_TIMEOUT_MS } from './composeResponse.ts';
 
 /** Total attempts (initial + retries) before routing to salvage. */
 const RETRY_BUDGET = 3;
 
-export const composeMemoryResponse: ArchivistNode<'drafted' | 'retry' | 'salvage'> = {
-  'name':      'compose-memory-response',
-  'kind':      'non-deterministic',
-  'outputs':   ['drafted', 'retry', 'salvage'],
-  async execute(state, context) {
+export class ComposeMemoryResponseNode implements NodeInterface<ArchivistState, 'drafted' | 'retry' | 'salvage', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'compose-memory-response';
+  readonly outputs = ['drafted', 'retry', 'salvage'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const recalledSummary = state.recalledContext.summary.length > 0
       ? state.recalledContext.summary
       : undefined;
@@ -58,5 +65,8 @@ export const composeMemoryResponse: ArchivistNode<'drafted' | 'retry' | 'salvage
     } finally {
       clearTimeout(handle);
     }
-  },
-};
+  }
+}
+
+/** Backward-compatible const export for existing bundle/DAG references. */
+export const composeMemoryResponse = new ComposeMemoryResponseNode();

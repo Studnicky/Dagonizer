@@ -11,50 +11,24 @@
  * state. TopNGatherStrategy collects the top-3 by score into state.topCandidates.
  * ThresholdReducer gates success on >= 75% of clones returning 'success'.
  *
- * DAG definition (GatherStrategy + OutcomeReducer registrations): examples/dags/scatter-extensions.ts
+ * DAG definition (GatherStrategy + OutcomeReducer registrations, ScoreNode, RankingState): examples/dags/scatter-extensions.ts
  *
  * Run: npx tsx examples/scatter-extensions.ts
  */
 
 // Import triggers the registry.register calls for 'top-n' and 'threshold-75'.
-import './dags/scatter-extensions.js';
+import {
+  RankingState,
+  ScoreNode,
+} from './dags/scatter-extensions.js';
 
 import {
   DAG_CONTEXT,
   Dagonizer,
   GatherStrategies,
-  NodeOutputBuilder,
-  NodeStateBase,
   OutcomeReducers,
 } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
-
-// ── Domain state ─────────────────────────────────────────────────────────────
-
-interface ScoredCandidate {
-  readonly title: string;
-  readonly score: number;
-}
-
-class RankingState extends NodeStateBase {
-  items: string[]              = [];
-  candidate: ScoredCandidate   = { title: '', score: 0 };
-  topCandidates: ScoredCandidate[] = [];
-}
-
-// ── Worker node: produces a scored candidate from each item ──────────────────
-
-const score: NodeInterface<RankingState, 'success' | 'error'> = {
-  name:    'score',
-  outputs: ['success', 'error'],
-  async execute(state) {
-    const item = state.getMetadata<string>('item') ?? '';
-    // Synthetic score: proportional to string length
-    state.candidate = { title: item, score: item.length };
-    return NodeOutputBuilder.of('success');
-  },
-};
 
 // ── DAG: scatter over items, gather with 'top-n', reduce with 'threshold-75' ─
 
@@ -104,7 +78,7 @@ process.stdout.write(`Registered outcome reducers:  ${OutcomeReducers.list().joi
 // ── Run ──────────────────────────────────────────────────────────────────────
 
 const dispatcher = new Dagonizer<RankingState>();
-dispatcher.registerNode(score);
+dispatcher.registerNode(new ScoreNode());
 dispatcher.registerDAG(dag);
 
 const state = new RankingState();

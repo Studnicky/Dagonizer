@@ -20,15 +20,12 @@
 import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
 import type { ErrorConstructorType } from '../contracts/ErrorConstructorType.js';
 import type { RetryPolicyOptionsInterface } from '../contracts/RetryPolicyOptionsInterface.js';
-import {
-  BackoffStrategy,
-  type BackoffStrategyValue,
-} from '../entities/runtime/BackoffStrategy.js';
+import { BackoffStrategy } from '../entities/runtime/BackoffStrategy.js';
 import { DAGError, ExecutionError } from '../errors/DAGError.js';
 
 import { Scheduler } from './Scheduler.js';
 
-export { BackoffStrategy, type BackoffStrategyValue };
+export { BackoffStrategy };
 
 const DEFAULT_BASE_DELAY_MS = 1000;
 const DEFAULT_MAX_DELAY_MS = 30_000;
@@ -40,17 +37,17 @@ const DECORRELATED_JITTER_MULTIPLIER = 3;
 /** Canonical defaults for `RetryPolicyOptionsInterface` numeric/strategy fields. */
 const RETRY_POLICY_DEFAULTS = {
   'maxAttempts':  DEFAULT_MAX_ATTEMPTS,
-  'strategy':     BackoffStrategy.EXPONENTIAL as BackoffStrategyValue,
+  'strategy':     BackoffStrategy.EXPONENTIAL as BackoffStrategy,
   'baseDelay':    DEFAULT_BASE_DELAY_MS,
   'maxDelay':     DEFAULT_MAX_DELAY_MS,
   'multiplier':   DEFAULT_MULTIPLIER,
   'jitterFactor': DEFAULT_JITTER_FACTOR,
+  'retryOn':      [] as readonly ErrorConstructorType[],
+  'abortOn':      [] as readonly ErrorConstructorType[],
 } as const;
 
-/** Canonical default for `getDelay` options. */
-const GET_DELAY_DEFAULTS = { 'error': null } as const;
 
-const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategyValue, (attempt: number, baseDelay: number, multiplier: number) => number>> = {
+const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategy, (attempt: number, baseDelay: number, multiplier: number) => number>> = {
   'constant': (_attempt, baseDelay) => baseDelay,
   'linear': (attempt, baseDelay) => baseDelay * attempt,
   'exponential': (attempt, baseDelay, multiplier) => baseDelay * Math.pow(multiplier, attempt - 1),
@@ -90,70 +87,53 @@ const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategyValue, (attempt: number,
  */
 export class RetryPolicy {
   readonly maxAttempts: number;
-  readonly strategy: BackoffStrategyValue;
+  readonly strategy: BackoffStrategy;
   readonly baseDelay: number;
   readonly maxDelay: number;
   readonly multiplier: number;
   readonly jitterFactor: number;
-  readonly retryOn: readonly ErrorConstructorType[] | null;
-  readonly abortOn: readonly ErrorConstructorType[] | null;
-
   /**
-   * All defaulting is centralised in `RetryPolicy.materialise()`. The
-   * constructor receives the output of that helper (or a caller-supplied
-   * partial that also passes through materialise) so there is exactly one
-   * place where `DEFAULT_*` constants are applied.
+   * Filter: error types that may be retried. Empty array (`[]`) means "no
+   * filter — retry any error type". A non-empty array means "retry only
+   * errors that are instances of one of these constructors".
    *
-   * External callers should prefer `RetryPolicy.from(partial)` so the
-   * defaults are applied uniformly. Subclasses may call `super(options)`
-   * after materialising their own defaults via their own `from()` override.
+   * Stored as a required field with an `[]` default. No `null` sentinel;
+   * `length === 0` is the canonical "no filter" representation.
    */
-  constructor(options: RetryPolicyOptionsInterface = {}) {
-    const m = RetryPolicy.materialise(options);
-    this.maxAttempts = m.maxAttempts;
-    this.strategy    = m.strategy;
-    this.baseDelay   = m.baseDelay;
-    this.maxDelay    = m.maxDelay;
-    this.multiplier  = m.multiplier;
-    this.jitterFactor = m.jitterFactor;
-    this.retryOn     = m.retryOn;
-    this.abortOn     = m.abortOn;
-  }
+  readonly retryOn: readonly ErrorConstructorType[];
+  /**
+   * Filter: error types that abort retrying immediately. Empty array (`[]`)
+   * means "no abort filter". A non-empty array causes any matching error to
+   * be re-thrown without further attempts, regardless of `retryOn`.
+   */
+  readonly abortOn: readonly ErrorConstructorType[];
 
   /**
-   * Single source of truth for `DEFAULT_*` application. Returns a complete
-   * options object with every optional field filled in. Both the constructor
-   * and `from()` delegate here so the two paths cannot diverge.
+   * Single canonical construction path. Use `RetryPolicy.from(partial)` to
+   * build an instance; all defaults are applied there. Subclasses may call
+   * `super(options)` after materialising their own defaults via their own
+   * `from()` override.
+   *
+   * Constructor is `protected` (not public) to prevent direct `new RetryPolicy()`
+   * from external callers. External callers use `RetryPolicy.from(partial)`.
    */
-  private static materialise(partial: RetryPolicyOptionsInterface): {
-    maxAttempts: number;
-    strategy: BackoffStrategyValue;
-    baseDelay: number;
-    maxDelay: number;
-    multiplier: number;
-    jitterFactor: number;
-    retryOn: readonly ErrorConstructorType[] | null;
-    abortOn: readonly ErrorConstructorType[] | null;
-  } {
-    const resolved = { ...RETRY_POLICY_DEFAULTS, ...partial };
-    return {
-      'maxAttempts':  resolved.maxAttempts,
-      'strategy':     resolved.strategy,
-      'baseDelay':    resolved.baseDelay,
-      'maxDelay':     resolved.maxDelay,
-      'multiplier':   resolved.multiplier,
-      'jitterFactor': resolved.jitterFactor,
-      'retryOn':  partial.retryOn  !== undefined ? partial.retryOn  : null,
-      'abortOn':  partial.abortOn  !== undefined ? partial.abortOn  : null,
-    };
+  protected constructor(options: RetryPolicyOptionsInterface = {}) {
+    const resolved = { ...RETRY_POLICY_DEFAULTS, ...options };
+    this.maxAttempts  = resolved.maxAttempts;
+    this.strategy     = resolved.strategy;
+    this.baseDelay    = resolved.baseDelay;
+    this.maxDelay     = resolved.maxDelay;
+    this.multiplier   = resolved.multiplier;
+    this.jitterFactor = resolved.jitterFactor;
+    this.retryOn      = resolved.retryOn;
+    this.abortOn      = resolved.abortOn;
   }
 
   /**
    * Materialise a complete `RetryPolicy` from a partial options object.
-   * Delegates to `RetryPolicy.materialise()` so all `DEFAULT_*` defaulting
-   * lives in one place.
+   * Single canonical creation path; all `DEFAULT_*` defaulting lives here.
    */
-  static from(partial: RetryPolicyOptionsInterface): RetryPolicy {
+  static from(partial: RetryPolicyOptionsInterface = {}): RetryPolicy {
     return new RetryPolicy(partial);
   }
 
@@ -163,7 +143,8 @@ export class RetryPolicy {
    * configured strategy + jitter.
    */
   getDelay(attempt: number, options: { readonly error?: Error | null } = {}): number {
-    void { ...GET_DELAY_DEFAULTS, ...options }; // reserved for subclass overrides; base implementation ignores error
+    // `options.error` is reserved for subclass overrides; the base implementation ignores it.
+    void options;
     const computer = BACKOFF_COMPUTERS[this.strategy];
     if (computer === undefined) {
       throw new DAGError(`Unknown backoff strategy: ${this.strategy as string}`);
@@ -191,7 +172,8 @@ export class RetryPolicy {
       return false;
     }
 
-    if (this.abortOn !== null) {
+    // abortOn: non-empty list means "abort on any matching error type".
+    if (this.abortOn.length > 0) {
       for (const ErrorType of this.abortOn) {
         if (error instanceof ErrorType) {
           return false;
@@ -199,7 +181,9 @@ export class RetryPolicy {
       }
     }
 
-    if (this.retryOn !== null) {
+    // retryOn: non-empty list means "retry only matching error types".
+    // Empty list means "retry all error types" (no filter).
+    if (this.retryOn.length > 0) {
       for (const ErrorType of this.retryOn) {
         if (error instanceof ErrorType) {
           return true;

@@ -71,7 +71,7 @@
  *   DAGBuilder.node(placementName, nodeImpl, routes) emits the same
  *   { type: 'single', name, node: nodeImpl.name, outputs: routes }
  *   object that the hand-written literal used. build() returns a plain
- *   DAG: identical wire shape, same Dagonizer.load() call.
+ *   DAG: identical wire shape, same DAGDocument.load() call.
  *
  * DAG containment (WorkerThreadContainer) — why the archivist stays in-process:
  *   The container/worker feature is most natural for CPU-bound, self-contained
@@ -113,7 +113,7 @@ import { classifyIntentSalvage, composeEmptyResponseSalvage, composeMemoryRespon
 import { declineOffTopic, respondToVisitor, composeEmptyResponse } from './nodes/respondToVisitor.ts';
 import { scoutDispatch } from './nodes/scouts.ts';
 
-import { DAGBuilder } from '@noocodex/dagonizer/builder';
+import { DAGBuilder } from '@noocodex/dagonizer';
 import type { DispatcherBundle } from '@noocodex/dagonizer';
 import type { ArchivistServices } from './services.ts';
 import type { ArchivistState } from './ArchivistState.ts';

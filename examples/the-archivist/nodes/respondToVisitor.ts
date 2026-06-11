@@ -15,33 +15,42 @@
  */
 
 
+import { NodeOutputBuilder,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
-
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
 
 /** Per-node compose deadline + total attempts before salvage. */
 const EMPTY_TIMEOUT_MS = 60_000;
 const EMPTY_RETRY_BUDGET = 2;
 
-export const respondToVisitor: NodeInterface<ArchivistState, 'success', ArchivistServices> = {
-  "name": 'respond-to-visitor',
-  "outputs": ['success'],
-  async execute(state, context) {
+export class RespondToVisitorNode implements NodeInterface<ArchivistState, 'success', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'respond-to-visitor';
+  readonly outputs = ['success'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     context.services.logger.info(`responded with ${String(state.shortlist.length)} candidates`);
     return NodeOutputBuilder.of('success');
-  },
-};
+  }
+}
 
-export const declineOffTopic: NodeInterface<ArchivistState, 'success', ArchivistServices> = {
-  "name": 'decline-off-topic',
-  "outputs": ['success'],
-  async execute(state) {
+export class DeclineOffTopicNode implements NodeInterface<ArchivistState, 'success', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'decline-off-topic';
+  readonly outputs = ['success'] as const;
+
+  async execute(state: ArchivistState, _context: NodeContextInterface<ArchivistServices>) {
     state.draft = "I only help with finding and identifying books. What title or topic interests you?";
     return NodeOutputBuilder.of('success');
-  },
-};
+  }
+}
 
 /**
  * LLM-driven empty-result response node.
@@ -57,10 +66,13 @@ export const declineOffTopic: NodeInterface<ArchivistState, 'success', Archivist
  * salvage edge; not in this node's catch. No in-node `RetryPolicy`, no engine
  * `timeoutMs` crutch.
  */
-export const composeEmptyResponse: NodeInterface<ArchivistState, 'drafted' | 'retry' | 'salvage', ArchivistServices> = {
-  "name":      'compose-empty',
-  "outputs":   ['drafted', 'retry', 'salvage'],
-  async execute(state, context) {
+export class ComposeEmptyResponseNode implements NodeInterface<ArchivistState, 'drafted' | 'retry' | 'salvage', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'compose-empty';
+  readonly outputs = ['drafted', 'retry', 'salvage'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     state.collectWarning({
       "code":      'EMPTY_SHORTLIST',
       "message":   'no candidates after merge; composing empty response',
@@ -88,5 +100,10 @@ export const composeEmptyResponse: NodeInterface<ArchivistState, 'drafted' | 're
     } finally {
       clearTimeout(handle);
     }
-  },
-};
+  }
+}
+
+/** Backward-compatible const exports for existing bundle/DAG references. */
+export const respondToVisitor = new RespondToVisitorNode();
+export const declineOffTopic = new DeclineOffTopicNode();
+export const composeEmptyResponse = new ComposeEmptyResponseNode();

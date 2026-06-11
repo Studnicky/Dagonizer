@@ -99,8 +99,8 @@ What consumers implement to swap a backend or contribute behavior.
 Live at the root of `src/contracts/`, **single source of truth**, never
 re-exported from sibling modules.
 
-Examples: `ClockProvider`, `SchedulerProvider`, `SchedulerHandle`,
-`NodeInterface`, `ExecuteOptionsInterface`, `RetryPolicyOptionsInterface`,
+Examples: `ClockProvider`, `SchedulerProvider`, `NodeInterface`,
+`ExecuteOptionsInterface`, `RetryPolicyOptionsInterface`,
 `ErrorConstructorType`.
 
 A `runtime/` barrel may re-export an adapter contract for ergonomic
@@ -146,8 +146,17 @@ Every public surface ships through a `package.json` `exports` entry:
 | `./runtime` | `Clock`, `Scheduler`, `RetryPolicy`, `RealTimeScheduler`, `BackoffStrategy` |
 | `./builder` | `DAGBuilder` and its option interfaces |
 | `./validation` | `Validator` and `EntityValidator<T>` |
-| `./checkpoint` | `Checkpoint`, `StateRestoreFnType` |
+| `./checkpoint` | `Checkpoint`, cursor serialization |
 | `./testing` | `VirtualClockProvider`, `VirtualScheduler` (test-only) |
+| `./adapter` | LLM adapter contract surface: `BaseAdapter`, `OpenAiCompatibleAdapter`, `LlmAdapterRegistry`, chat/tool schemas + `FromSchema` types, capability descriptors |
+| `./patterns` | Pattern-tier base classes consumers extend (`MonadicNode` and pattern node bases) |
+| `./tool` | Tool contract surface: `Tool`, `HttpTransport`, `ToolError` |
+| `./core` | Pluggable execution primitives: `GatherStrategies`, `GatherStrategy`, `OutcomeReducers` |
+| `./derive` | Contract-derived flow generation: `DAGDeriver`, `OperationContract` |
+| `./viz` | DAG visualization: `CytoscapeRenderer`, `MermaidRenderer` |
+| `./store` | Shared key-value store: `Store`, `BaseStore` |
+| `./container` | Embedded-DAG container surface: `DagContainerBase`, channel dispatch, transport contracts |
+| `./channels` | `InMemoryChannel` and its options |
 
 Adding a new top-level concept? Add a subpath. Do not silently expand
 the root barrel.

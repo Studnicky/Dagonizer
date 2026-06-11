@@ -246,16 +246,16 @@ export class ArchivistState extends NodeStateBase {
   // #region snapshot-helpers
   private static candidateToJson(c: Candidate): JsonObject {
     const book: JsonObject = {
-      "isbn":    c.book.isbn,
-      "title":   c.book.title,
-      "authors": [...c.book.authors],
-      "price":   { "amount": c.book.price.amount, "currency": c.book.price.currency },
-      ...(c.book.summary !== undefined          ? { "summary": c.book.summary }                 : {}),
-      ...(c.book.firstPublishYear !== undefined ? { "firstPublishYear": c.book.firstPublishYear } : {}),
-      ...(c.book.subjects !== undefined         ? { "subjects": [...c.book.subjects] }          : {}),
-      ...(c.book.publishers !== undefined       ? { "publishers": [...c.book.publishers] }      : {}),
-      ...(c.book.inStock !== undefined          ? { "inStock": c.book.inStock }                 : {}),
-      ...(c.book.languages !== undefined        ? { "languages": [...c.book.languages] }        : {}),
+      "isbn":    c.book.identity.isbn,
+      "title":   c.book.identity.title,
+      "authors": [...c.book.identity.authors],
+      "price":   { "amount": c.book.availability.price.amount, "currency": c.book.availability.price.currency },
+      ...(c.book.publication.summary !== undefined          ? { "summary": c.book.publication.summary }                 : {}),
+      ...(c.book.publication.firstPublishYear !== undefined ? { "firstPublishYear": c.book.publication.firstPublishYear } : {}),
+      ...(c.book.publication.subjects.length > 0           ? { "subjects": [...c.book.publication.subjects] }          : {}),
+      ...(c.book.publication.publishers.length > 0         ? { "publishers": [...c.book.publication.publishers] }      : {}),
+      ...(c.book.availability.inStock !== undefined         ? { "inStock": c.book.availability.inStock }                 : {}),
+      ...(c.book.publication.languages.length > 0          ? { "languages": [...c.book.publication.languages] }        : {}),
     };
     // notes values are Record<string, unknown>; serialize only JSON-safe primitives.
     const notesOut: JsonObject = c.notes !== undefined

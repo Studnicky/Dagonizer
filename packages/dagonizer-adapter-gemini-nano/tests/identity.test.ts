@@ -1,5 +1,6 @@
-import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { test } from 'node:test';
+
 import { GeminiNanoAdapter } from '../src/index.js';
 
 interface MutableGlobal {
@@ -33,8 +34,8 @@ void test('GeminiNanoAdapter.probe returns false when window.LanguageModel is ab
 
 void test('GeminiNanoAdapter.probe returns true when availability() reports "available"', async () => {
   installLanguageModel({
-    availability: async () => Promise.resolve('available'),
-    create: async () => Promise.resolve({ prompt: async () => Promise.resolve(''), destroy: () => {} }),
+    "availability": async () => Promise.resolve('available'),
+    "create": async () => Promise.resolve({ "prompt": async () => Promise.resolve(''), "destroy": () => {} }),
   });
   const a = new GeminiNanoAdapter();
   try {
@@ -46,8 +47,8 @@ void test('GeminiNanoAdapter.probe returns true when availability() reports "ava
 
 void test('GeminiNanoAdapter.probe returns false when availability() reports "downloadable"', async () => {
   installLanguageModel({
-    availability: async () => Promise.resolve('downloadable'),
-    create: async () => Promise.resolve({ prompt: async () => Promise.resolve(''), destroy: () => {} }),
+    "availability": async () => Promise.resolve('downloadable'),
+    "create": async () => Promise.resolve({ "prompt": async () => Promise.resolve(''), "destroy": () => {} }),
   });
   const a = new GeminiNanoAdapter();
   try {
@@ -59,8 +60,8 @@ void test('GeminiNanoAdapter.probe returns false when availability() reports "do
 
 void test('GeminiNanoAdapter.probe does not throw when availability() rejects', async () => {
   installLanguageModel({
-    availability: async () => Promise.reject(new Error('boom')),
-    create: async () => Promise.resolve({ prompt: async () => Promise.resolve(''), destroy: () => {} }),
+    "availability": async () => Promise.reject(new Error('boom')),
+    "create": async () => Promise.resolve({ "prompt": async () => Promise.resolve(''), "destroy": () => {} }),
   });
   const a = new GeminiNanoAdapter();
   try {

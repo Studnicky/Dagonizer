@@ -73,7 +73,7 @@ import { NodeStateDataSchema } from '../entities/node/NodeStateData.js';
 import type { NodeStateData } from '../entities/node/NodeStateData.js';
 import { NodeWarningSchema } from '../entities/node/NodeWarning.js';
 import type { NodeWarning } from '../entities/node/NodeWarning.js';
-import type { BackoffStrategyValue } from '../entities/runtime/BackoffStrategy.js';
+import type { BackoffStrategy } from '../entities/runtime/BackoffStrategy.js';
 import { BackoffStrategySchema } from '../entities/runtime/BackoffStrategy.js';
 import type {
   ScatterAckedResult,
@@ -215,7 +215,7 @@ export class Validator {
   static readonly metadataKey:    EntityValidator<MetadataKey>        = Validator.compile('MetadataKey',    MetadataKeySchema);
   static readonly output:         EntityValidator<Output>             = Validator.compile('Output',         OutputSchema);
   static readonly nodeType:       EntityValidator<NodeType>           = Validator.compile('NodeType',       NodeTypeSchema);
-  static readonly backoffStrategy: EntityValidator<BackoffStrategyValue> = Validator.compile('BackoffStrategy', BackoffStrategySchema);
+  static readonly backoffStrategy: EntityValidator<BackoffStrategy> = Validator.compile('BackoffStrategy', BackoffStrategySchema);
 
   // Scatter progress checkpoint wire shapes
   static readonly scatterInboxItem:       EntityValidator<ScatterInboxItem>       = Validator.compile('ScatterInboxItem',       ScatterInboxItemSchema);

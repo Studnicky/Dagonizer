@@ -21,9 +21,10 @@ import {
   DAG_CONTEXT,
   NodeOutputBuilder,
   NodeStateBase,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
 } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import type { DAG, NodeInterface} from '@noocodex/dagonizer';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 import { GatherStrategyName } from '@noocodex/dagonizer/constants';
 
@@ -65,10 +66,13 @@ export class WorkState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // #region worker-node
-export const squareWorker: NodeInterface<WorkState, 'done'> = {
-  "name":    'squareWorker',
-  "outputs": ['done'],
-  async execute(state) {
+export class SquareWorkerNode implements NodeInterface<WorkState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'squareWorker';
+  readonly outputs = ['done'] as const;
+
+  async execute(state: WorkState) {
     // Each scatter item is written to metadata under the itemKey ('task').
     const task = state.getMetadata<number>('task') ?? 0;
     // Store the per-item result in a scalar field. The 'append' gather
@@ -76,8 +80,8 @@ export const squareWorker: NodeInterface<WorkState, 'done'> = {
     // state.results on the parent after all items complete.
     state.lastResult = task * task;
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 // #endregion worker-node
 
 // ---------------------------------------------------------------------------

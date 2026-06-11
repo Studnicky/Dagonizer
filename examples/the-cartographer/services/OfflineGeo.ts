@@ -19,7 +19,7 @@ import CONTINENT_MAP_RAW from '../data/country-continents.json' with { type: 'js
 import type { GeoCandidate } from '../entities/GeoCandidate.ts';
 
 // Static JSON import: assert the shape with a narrow cast at the boundary only.
-const CONTINENT_MAP = CONTINENT_MAP_RAW as unknown as Record<string, string>;
+const CONTINENT_MAP = CONTINENT_MAP_RAW as Record<string, string>;
 
 // #region offline-geo
 export class OfflineGeo {

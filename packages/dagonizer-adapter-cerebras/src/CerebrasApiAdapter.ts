@@ -12,10 +12,8 @@
 import { LlmError, OpenAiCompatibleAdapter } from '@noocodex/dagonizer/adapter';
 import type { OpenAiCompatibleAdapterOptions } from '@noocodex/dagonizer/adapter';
 
-export interface CerebrasApiAdapterOptions extends OpenAiCompatibleAdapterOptions {}
-
 export class CerebrasApiAdapter extends OpenAiCompatibleAdapter {
-  constructor(apiKey: string, options: CerebrasApiAdapterOptions = {}) {
+  constructor(apiKey: string, options: OpenAiCompatibleAdapterOptions = {}) {
     super(
       apiKey,
       {

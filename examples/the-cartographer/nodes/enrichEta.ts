@@ -14,13 +14,19 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { EtaEstimator } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region enrich-eta-node
-export const enrichEta: NodeInterface<CartographerState, 'eta-estimated', CartographerServices> = {
-  'name': 'enrich-eta',
-  'outputs': ['eta-estimated'],
-  async execute(state, context) {
+export class EnrichEtaNode implements NodeInterface<CartographerState, 'eta-estimated', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'enrich-eta';
+  readonly 'outputs' = ['eta-estimated'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'eta-estimated'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -34,6 +40,6 @@ export const enrichEta: NodeInterface<CartographerState, 'eta-estimated', Cartog
       norm.disruptionHours,
     );
     return NodeOutputBuilder.of('eta-estimated');
-  },
-};
+  }
+}
 // #endregion enrich-eta-node

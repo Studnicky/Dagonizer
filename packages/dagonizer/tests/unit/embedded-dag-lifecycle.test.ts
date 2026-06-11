@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { ExecutionResultInterface } from '../../src/entities/execution/ExecutionResult.js';
 import type { DAG } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 
 // ── Observer subclass ─────────────────────────────────────────────────────
 
@@ -41,6 +43,8 @@ const makeNode = (
 ): NodeInterface<NodeStateBase> => ({
   name,
   outputs,
+  'contract': EMPTY_CONTRACT_FRAGMENT,
+  'timeout': Timeout.none(),
   async execute() { return { 'errors': [], 'output': outputs[0] as string }; },
 });
 

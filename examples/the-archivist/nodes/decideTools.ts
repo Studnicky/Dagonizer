@@ -31,13 +31,14 @@
  * the same query text so all scouts run.
  */
 
-import { GoogleBooksTool } from '@noocodex/dagonizer-tool-googlebooks';
-import { OpenLibrarySearchTool } from '@noocodex/dagonizer-tool-openlibrary';
-import { SubjectSearchTool } from '@noocodex/dagonizer-tool-openlibrary';
+import { NodeOutputBuilder,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
 
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
-
-import type { ArchivistNode } from './ArchivistNode.ts';
+import type { ArchivistState } from '../ArchivistState.ts';
+import type { ArchivistServices } from '../services.ts';
 
 /**
  * Intents that require the full three-source catalog.
@@ -49,41 +50,6 @@ const FULL_CATALOG_INTENTS = new Set(['find-reviews', 'lookup-author', 'recommen
 const FULL_CATALOG_TOOL_NAMES = ['web_search_books', 'google_books_search', 'subject_search'] as const;
 
 type ToolCall = { readonly name: string; readonly arguments: Record<string, unknown> };
-
-/**
- * Safety-net post-processor: for full-catalog intents, ensure the tool plan
- * contains all three primary sources. Missing tools are appended using the
- * same query string the LLM chose (or the raw visitor query as fallback).
- */
-function enforceFullCatalog(
-  calls: readonly ToolCall[],
-  query: string,
-): readonly ToolCall[] {
-  // Derive the preferred query from the first tool call that has one.
-  const firstQuery = calls.find((c) => typeof c.arguments['query'] === 'string')?.arguments['query'] as string | undefined;
-  const fallbackQuery = firstQuery ?? query;
-
-  const names = new Set(calls.map((c) => c.name));
-  const additions: ToolCall[] = [];
-
-  if (!names.has('web_search_books')) {
-    additions.push({ 'name': 'web_search_books',   'arguments': { 'query': fallbackQuery, 'limit': 8 } });
-  }
-  if (!names.has('google_books_search')) {
-    additions.push({ 'name': 'google_books_search', 'arguments': { 'query': fallbackQuery, 'maxResults': 8 } });
-  }
-  if (!names.has('subject_search')) {
-    additions.push({ 'name': 'subject_search',      'arguments': { 'subject': fallbackQuery, 'limit': 8 } });
-  }
-
-  return additions.length > 0 ? [...calls, ...additions] : calls;
-}
-
-/** Per-node timeout: generous for Gemini Nano's constrained-output path (20-60 s typical). */
-const NODE_TIMEOUT_MS = 30_000;
-
-/** Total attempts (initial + retries) before routing to salvage. */
-const RETRY_BUDGET = 2;
 
 /**
  * Result of a deterministic-shortcut pattern match. `null` when no
@@ -114,114 +80,157 @@ const FULL_SCOUT_PLAN: readonly ToolCall[] = [
 ];
 
 /**
- * Detect whether the visitor query matches one of the deterministic
- * shortcut patterns. Returns the populated tool plan when a pattern
- * fires; otherwise `null`. The LLM call is bypassed only when this
- * returns non-null.
- *
- *   - isbn-lookup          → direct OpenLibrary ISBN lookup
- *   - author-lookup        → full 4-scout plan with typed author arg
- *   - quoted-single-title  → wikipedia first then web_search_books
- *   - topic-or-subject     → subject_search + web_search_books with typed subject arg
- *   - catalog-browsing     → full 4-scout plan
+ * ShortcutMatcher: deterministic pattern matching for common query shapes.
+ * Static methods only; no instance state.
  */
-function matchShortcut(query: string, intent: string): ShortcutMatch | null {
-  const trimmed = query.trim();
-  if (trimmed.length === 0) return null;
+export class ShortcutMatcher {
+  /**
+   * Safety-net post-processor: for full-catalog intents, ensure the tool plan
+   * contains all three primary sources. Missing tools are appended using the
+   * same query string the LLM chose (or the raw visitor query as fallback).
+   */
+  static enforceFullCatalog(
+    calls: readonly ToolCall[],
+    query: string,
+  ): readonly ToolCall[] {
+    // Derive the preferred query from the first tool call that has one.
+    const firstQuery = calls.find((c) => typeof c.arguments['query'] === 'string')?.arguments['query'] as string | undefined;
+    const fallbackQuery = firstQuery ?? query;
 
-  // 0. ISBN-10 / ISBN-13 detection. Both formats (with or without hyphens).
-  //    OpenLibrary's ?q= field handles both as a high-priority identifier lookup.
-  const isbnMatch = trimmed.match(ISBN_RE);
-  if (isbnMatch !== null) {
-    const isbn = isbnMatch[1] ?? isbnMatch[0];
-    return {
-      'pattern': 'isbn-lookup',
-      'calls': [
-        { 'name': 'web_search_books', 'arguments': { 'isbn': isbn, 'limit': 1 } },
-      ],
-    };
+    const names = new Set(calls.map((c) => c.name));
+    const additions: ToolCall[] = [];
+
+    if (!names.has('web_search_books')) {
+      additions.push({ 'name': 'web_search_books',   'arguments': { 'query': fallbackQuery, 'limit': 8 } });
+    }
+    if (!names.has('google_books_search')) {
+      additions.push({ 'name': 'google_books_search', 'arguments': { 'query': fallbackQuery, 'maxResults': 8 } });
+    }
+    if (!names.has('subject_search')) {
+      additions.push({ 'name': 'subject_search',      'arguments': { 'subject': fallbackQuery, 'limit': 8 } });
+    }
+
+    return additions.length > 0 ? [...calls, ...additions] : calls;
   }
 
-  // 1. Author lookup: either an explicit "by X Y" pattern OR
-  //    lookup-author intent with a multi-word capitalised proper noun.
-  //    Carry the captured author name as a typed arg so the scout uses
-  //    OpenLibrary's ?author= axis instead of falling back to keyword query.
-  const authorMatch = trimmed.match(AUTHOR_HINT_RE);
-  if (authorMatch !== null ||
-      (intent === 'lookup-author' && PROPER_NOUN_RE.test(trimmed))) {
-    const authorName = authorMatch !== null
-      ? (authorMatch[1] ?? '')
-      : (trimmed.match(PROPER_NOUN_RE)?.[1] ?? trimmed);
-    return {
-      'pattern': 'author-lookup',
-      'calls': [
-        { 'name': 'web_search_books',    'arguments': { 'author': authorName, 'limit': SHORTCUT_LIMIT } },
-        { 'name': 'google_books_search', 'arguments': { 'author': authorName, 'maxResults': SHORTCUT_LIMIT } },
-        { 'name': 'subject_search',      'arguments': { 'limit': SHORTCUT_LIMIT } },
-        { 'name': 'wikipedia_summary',   'arguments': { 'query': authorName } },
-      ],
-    };
-  }
+  /**
+   * Detect whether the visitor query matches one of the deterministic
+   * shortcut patterns. Returns the populated tool plan when a pattern
+   * fires; otherwise `null`. The LLM call is bypassed only when this
+   * returns non-null.
+   *
+   *   - isbn-lookup          → direct OpenLibrary ISBN lookup
+   *   - author-lookup        → full 4-scout plan with typed author arg
+   *   - quoted-single-title  → wikipedia first then web_search_books
+   *   - topic-or-subject     → subject_search + web_search_books with typed subject arg
+   *   - catalog-browsing     → full 4-scout plan
+   */
+  static match(query: string, intent: string): ShortcutMatch | null {
+    const trimmed = query.trim();
+    if (trimmed.length === 0) return null;
 
-  // 2. Quoted single title: "X Y Z" style; route to wikipedia first.
-  if (QUOTED_TITLE_RE.test(trimmed)) {
-    return {
-      'pattern': 'quoted-single-title',
-      'calls': [
-        { 'name': 'wikipedia_summary',  'arguments': {} },
-        { 'name': 'web_search_books',   'arguments': { 'limit': SHORTCUT_LIMIT } },
-      ],
-    };
-  }
-
-  // 2b. describe-book intent with exactly one capitalised multi-word phrase.
-  if (intent === 'describe-book') {
-    const matches = trimmed.match(new RegExp(PROPER_NOUN_RE.source, 'gu'));
-    if (matches !== null && matches.length === 1) {
+    // 0. ISBN-10 / ISBN-13 detection. Both formats (with or without hyphens).
+    //    OpenLibrary's ?q= field handles both as a high-priority identifier lookup.
+    const isbnMatch = trimmed.match(ISBN_RE);
+    if (isbnMatch !== null) {
+      const isbn = isbnMatch[1] ?? isbnMatch[0];
       return {
-        'pattern': 'single-title-describe',
+        'pattern': 'isbn-lookup',
+        'calls': [
+          { 'name': 'web_search_books', 'arguments': { 'isbn': isbn, 'limit': 1 } },
+        ],
+      };
+    }
+
+    // 1. Author lookup: either an explicit "by X Y" pattern OR
+    //    lookup-author intent with a multi-word capitalised proper noun.
+    //    Carry the captured author name as a typed arg so the scout uses
+    //    OpenLibrary's ?author= axis instead of falling back to keyword query.
+    const authorMatch = trimmed.match(AUTHOR_HINT_RE);
+    if (authorMatch !== null ||
+        (intent === 'lookup-author' && PROPER_NOUN_RE.test(trimmed))) {
+      const authorName = authorMatch !== null
+        ? (authorMatch[1] ?? '')
+        : (trimmed.match(PROPER_NOUN_RE)?.[1] ?? trimmed);
+      return {
+        'pattern': 'author-lookup',
+        'calls': [
+          { 'name': 'web_search_books',    'arguments': { 'author': authorName, 'limit': SHORTCUT_LIMIT } },
+          { 'name': 'google_books_search', 'arguments': { 'author': authorName, 'maxResults': SHORTCUT_LIMIT } },
+          { 'name': 'subject_search',      'arguments': { 'limit': SHORTCUT_LIMIT } },
+          { 'name': 'wikipedia_summary',   'arguments': { 'query': authorName } },
+        ],
+      };
+    }
+
+    // 2. Quoted single title: "X Y Z" style; route to wikipedia first.
+    if (QUOTED_TITLE_RE.test(trimmed)) {
+      return {
+        'pattern': 'quoted-single-title',
         'calls': [
           { 'name': 'wikipedia_summary',  'arguments': {} },
           { 'name': 'web_search_books',   'arguments': { 'limit': SHORTCUT_LIMIT } },
         ],
       };
     }
-  }
 
-  // 3. Topic / subject: "books about X" etc.
-  //    Capture the topic term and pass it as a typed subject arg so scouts
-  //    use OpenLibrary's ?subject= axis and the subject facet directly.
-  const topicMatch = trimmed.match(TOPIC_RE);
-  if (topicMatch !== null) {
-    const topicTerm = (topicMatch[1] ?? '').trim();
-    return {
-      'pattern': 'topic-or-subject',
-      'calls': [
-        { 'name': 'subject_search',   'arguments': { 'subject': topicTerm, 'limit': SHORTCUT_LIMIT } },
-        { 'name': 'web_search_books', 'arguments': { 'subject': topicTerm, 'limit': SHORTCUT_LIMIT } },
-      ],
-    };
-  }
+    // 2b. describe-book intent with exactly one capitalised multi-word phrase.
+    if (intent === 'describe-book') {
+      const matches = trimmed.match(new RegExp(PROPER_NOUN_RE.source, 'gu'));
+      if (matches !== null && matches.length === 1) {
+        return {
+          'pattern': 'single-title-describe',
+          'calls': [
+            { 'name': 'wikipedia_summary',  'arguments': {} },
+            { 'name': 'web_search_books',   'arguments': { 'limit': SHORTCUT_LIMIT } },
+          ],
+        };
+      }
+    }
 
-  // 4. Catalog browsing: "do you have...", "show me...", "recommend..."
-  if (BROWSING_RE.test(trimmed)) {
-    return { 'pattern': 'catalog-browsing', 'calls': FULL_SCOUT_PLAN };
-  }
+    // 3. Topic / subject: "books about X" etc.
+    //    Capture the topic term and pass it as a typed subject arg so scouts
+    //    use OpenLibrary's ?subject= axis and the subject facet directly.
+    const topicMatch = trimmed.match(TOPIC_RE);
+    if (topicMatch !== null) {
+      const topicTerm = (topicMatch[1] ?? '').trim();
+      return {
+        'pattern': 'topic-or-subject',
+        'calls': [
+          { 'name': 'subject_search',   'arguments': { 'subject': topicTerm, 'limit': SHORTCUT_LIMIT } },
+          { 'name': 'web_search_books', 'arguments': { 'subject': topicTerm, 'limit': SHORTCUT_LIMIT } },
+        ],
+      };
+    }
 
-  return null;
+    // 4. Catalog browsing: "do you have...", "show me...", "recommend..."
+    if (BROWSING_RE.test(trimmed)) {
+      return { 'pattern': 'catalog-browsing', 'calls': FULL_SCOUT_PLAN };
+    }
+
+    return null;
+  }
 }
 
-export const decideTools: ArchivistNode<'tools' | 'no-tools' | 'retry' | 'salvage'> = {
-  'name': 'decide-tools',
-  'kind': 'non-deterministic',
-  'outputs': ['tools', 'no-tools', 'retry', 'salvage'],
-  async execute(state, context) {
+/** Per-node timeout: generous for Gemini Nano's constrained-output path (20-60 s typical). */
+const NODE_TIMEOUT_MS = 30_000;
+
+/** Total attempts (initial + retries) before routing to salvage. */
+const RETRY_BUDGET = 2;
+
+export class DecideToolsNode implements NodeInterface<ArchivistState, 'tools' | 'no-tools' | 'retry' | 'salvage', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'decide-tools';
+  readonly outputs = ['tools', 'no-tools', 'retry', 'salvage'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     // ── Deterministic shortcut prelude ────────────────────────────────────
     // Pattern-match common query shapes (author lookup, single quoted title,
     // "books about X", catalog browsing). When a pattern fires, populate
     // state.toolPlan directly and skip the LLM round-trip. The existing
     // safety nets only fire on LLM-path output, so shortcuts don't need them.
-    const shortcut = matchShortcut(state.query, state.intent);
+    const shortcut = ShortcutMatcher.match(state.query, state.intent);
     if (shortcut !== null) {
       state.toolPlan = shortcut.calls;
       state.clearAttempts(context.nodeName);
@@ -232,8 +241,8 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools' | 'retry' | 'salvag
 
     const isFullCatalog = FULL_CATALOG_INTENTS.has(state.intent);
     const available = isFullCatalog
-      ? [OpenLibrarySearchTool.definition, GoogleBooksTool.definition, SubjectSearchTool.definition]
-      : [OpenLibrarySearchTool.definition, SubjectSearchTool.definition];
+      ? [context.services.webSearch.definition, context.services.googleBooks.definition, context.services.subjectSearch.definition]
+      : [context.services.webSearch.definition, context.services.subjectSearch.definition];
 
     const controller = new AbortController();
     const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? NODE_TIMEOUT_MS);
@@ -249,7 +258,7 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools' | 'retry' | 'salvag
       // all scouts run across all sources.
       if (isFullCatalog) {
         const hadCount = calls.length;
-        calls = enforceFullCatalog(calls, state.query);
+        calls = ShortcutMatcher.enforceFullCatalog(calls, state.query);
         if (calls.length > hadCount) {
           const added = calls.slice(hadCount).map((c) => c.name);
           context.services.logger.info(`decideTools safety-net added: ${added.join(', ')}`);
@@ -305,13 +314,13 @@ export const decideTools: ArchivistNode<'tools' | 'no-tools' | 'retry' | 'salvag
     } finally {
       clearTimeout(handle);
     }
-  },
-};
+  }
+}
+
+/** Backward-compatible const export for existing bundle/DAG references. */
+export const decideTools = new DecideToolsNode();
 
 // Export tool names list for tests / documentation.
 export { FULL_CATALOG_TOOL_NAMES };
 
-// Export the shortcut matcher for unit tests; algorithmic guarantee, no
-// runtime services needed to exercise the pattern set.
-export { matchShortcut };
 export type { ShortcutMatch };

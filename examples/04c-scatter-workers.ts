@@ -29,7 +29,7 @@ import { Dagonizer, DAG_CONTEXT } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
 import { GatherStrategyName } from '@noocodex/dagonizer/constants';
 
-import { ScrapeState, probe } from './dags/04-scatter.js';
+import { ScrapeState, ProbeNode } from './dags/04-scatter.js';
 
 // ---------------------------------------------------------------------------
 // Sub-DAG: the body the ScatterNode dispatches per item.
@@ -114,7 +114,7 @@ const scrapeWithContainerDag: DAG = {
 // ---------------------------------------------------------------------------
 
 const dispatcher = new Dagonizer<ScrapeState>();
-dispatcher.registerNode(probe);
+dispatcher.registerNode(new ProbeNode());
 dispatcher.registerDAG(probeItemDag);
 dispatcher.registerDAG(scrapeWithContainerDag);
 

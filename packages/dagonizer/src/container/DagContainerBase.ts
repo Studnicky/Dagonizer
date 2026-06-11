@@ -18,6 +18,8 @@
  */
 
 import type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
+import type { DagOutcomeInterface } from '../contracts/DagOutcomeInterface.js';
+import type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
 import type { ObserverRelay } from '../Dagonizer.js';
 import type { JsonObject } from '../entities/json.js';
@@ -27,8 +29,6 @@ import { ChannelDispatch } from './ChannelDispatch.js';
 import type { InitMessageShape } from './ChannelDispatch.js';
 import { DagContainerError } from './DagContainerError.js';
 import { DagOutcome } from './DagOutcome.js';
-import type { DagOutcomeInterface } from './DagOutcome.js';
-import type { DagTaskInterface } from './DagTask.js';
 import { DAG_CONTAINER_TRANSPORT, DAG_CONTAINER_WORKER_DIED } from './TransportErrorCode.js';
 
 // ---------------------------------------------------------------------------
@@ -53,8 +53,17 @@ export interface PoolEntry<TWorker> {
 /** Default grace period (ms) before a shutdown worker is force-terminated. */
 export const DEFAULT_SHUTDOWN_GRACE_MS = 2000;
 
-/** Co-located defaults for `DagContainerOptions`. */
-const CONTAINER_DEFAULTS = { 'shutdownGraceMs': DEFAULT_SHUTDOWN_GRACE_MS } as const;
+/**
+ * Module-level defaults for `DagContainerOptions`, following the codebase
+ * `*_DEFAULTS` constant convention (cf. `BASE_STORE_DEFAULTS`). Subclasses
+ * may spread this constant to fill optional fields without repeating values.
+ */
+export const DAG_CONTAINER_DEFAULTS = {
+  'shutdownGraceMs': DEFAULT_SHUTDOWN_GRACE_MS,
+} as const;
+
+/** @internal Alias used by the constructor spread; keep in sync with DAG_CONTAINER_DEFAULTS. */
+const CONTAINER_DEFAULTS = DAG_CONTAINER_DEFAULTS;
 
 export interface DagContainerOptions {
   /** Maximum number of pool entries (workers) to maintain. */
@@ -96,14 +105,14 @@ export abstract class DagContainerBase<
   readonly #shutdownGraceMs: number;
 
   /**
-   * Ergonomic spread defaults for `DagContainerOptions`. Subclasses may spread
+   * Ergonomic spread defaults for `DagContainerOptions`. Sources from the
+   * module-level `DAG_CONTAINER_DEFAULTS` constant. Subclasses may spread
    * `{ ...DagContainerBase.defaultOptions, poolSize, init, ...overrides }` for
-   * explicit control; `shutdownGraceMs` is now optional and resolved from
-   * `CONTAINER_DEFAULTS` automatically when omitted.
+   * explicit control; `shutdownGraceMs` is optional and resolved from
+   * `DAG_CONTAINER_DEFAULTS` automatically when omitted.
    */
-  static readonly defaultOptions: Pick<Required<DagContainerOptions>, 'shutdownGraceMs'> = {
-    "shutdownGraceMs": DEFAULT_SHUTDOWN_GRACE_MS,
-  };
+  static readonly defaultOptions: Pick<Required<DagContainerOptions>, 'shutdownGraceMs'> =
+    DAG_CONTAINER_DEFAULTS;
 
   constructor(options: DagContainerOptions) {
     const { shutdownGraceMs } = { ...CONTAINER_DEFAULTS, ...options };

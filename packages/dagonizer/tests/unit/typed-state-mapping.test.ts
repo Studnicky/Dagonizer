@@ -18,9 +18,11 @@ import { describe, it } from 'node:test';
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { TypedEmbeddedDAGOptionsInterface } from '../../src/builder/DAGBuilder.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { EmbeddedDAGNode } from '../../src/entities/dag/EmbeddedDAGNode.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 
 // ── Domain child state ────────────────────────────────────────────────────────
 
@@ -38,11 +40,14 @@ class ParentState extends NodeStateBase {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const terminal: NodeInterface<NodeStateBase, 'success'> = {
-  'name': 'terminal',
-  'outputs': ['success'],
-  async execute() { return { 'errors': [], 'output': 'success' }; },
-};
+class TerminalNode implements NodeInterface<NodeStateBase, 'success'> {
+  readonly name = 'terminal';
+  readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  async execute(_state: NodeStateBase) { return { 'errors': [], 'output': 'success' as const }; }
+}
+const terminal = new TerminalNode();
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -135,15 +140,18 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
 void describe('DAGBuilder.embeddedDAG: runtime execute with typed mapping', () => {
   void it('inputs + outputs mappings propagate state correctly across the embedded-DAG boundary', async () => {
     // Child node reads cloneState.payload and writes cloneState.result.
-    const childNode: NodeInterface<ChildState, 'success'> = {
-      'name': 'child-node',
-      'outputs': ['success'],
-      async execute(state) {
+    class ChildNodeImpl implements NodeInterface<ChildState, 'success'> {
+      readonly name = 'child-node';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(state: ChildState) {
         // result = length of payload (deterministic, easy to assert)
         state.result = state.payload.length;
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    const childNode = new ChildNodeImpl();
 
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(childNode);

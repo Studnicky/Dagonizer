@@ -36,8 +36,8 @@ export type { ClockProvider } from '../contracts/ClockProvider.js';
 export type { DagContainerInterface } from '../contracts/DagContainerInterface.js';
 export type { Embedder } from '../contracts/Embedder.js';
 export type { HandoffChannelInterface } from '../contracts/HandoffChannelInterface.js';
-export type { DagOutcomeInterface } from '../container/DagOutcome.js';
-export type { DagTaskInterface } from '../container/DagTask.js';
+export type { DagOutcomeInterface } from '../contracts/DagOutcomeInterface.js';
+export type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
 export type { ErrorConstructorType } from '../contracts/ErrorConstructorType.js';
 export type { ExecuteOptionsInterface } from '../contracts/ExecuteOptionsInterface.js';
 export type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
@@ -76,7 +76,6 @@ export type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js
 
 export type { DAG } from '../entities/dag/DAG.js';
 export type { GatherConfig } from '../entities/dag/GatherConfig.js';
-export { Placement } from '../entities/dag/Placement.js';
 export type { DAGNodeType } from '../entities/dag/Placement.js';
 export type { ScatterNode } from '../entities/dag/ScatterNode.js';
 export type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
@@ -102,7 +101,7 @@ export type { ExecutorIntermediate } from '../entities/executor/ExecutorIntermed
 export type { RecommendedWorkerCountConfig } from '../entities/executor/RecommendedWorkerCountConfig.js';
 export type { CheckpointData } from '../entities/checkpoint/CheckpointData.js';
 export type { DAGLifecycleStateData } from '../entities/state-machines/DAGLifecycleState.js';
-export type { BackoffStrategyValue } from '../entities/runtime/BackoffStrategy.js';
+export type { BackoffStrategy } from '../entities/runtime/BackoffStrategy.js';
 
 // ---------------------------------------------------------------------------
 // Lifecycle FSM types

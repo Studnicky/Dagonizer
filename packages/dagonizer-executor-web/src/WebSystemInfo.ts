@@ -1,35 +1,41 @@
 /**
  * WebSystemInfo: SystemInfoInterface for browser/Web Worker environments.
  *
- * Constructor DI: the host environment probes (`hardwareConcurrency`,
- * `crossOriginIsolated`) are injected so this class is fully testable in
- * Node.js without browser globals. Consumers construct:
+ * Probes `navigator.hardwareConcurrency` via an injectable `WebNavigatorProbes`
+ * bag for deterministic testing. Delegates the clamp formula to
+ * `SystemInfo.recommendedWorkerCount` from the core package; this class owns
+ * only the environment probing.
  *
- *   new WebSystemInfo({
- *     hardwareConcurrency: navigator.hardwareConcurrency,
- *     crossOriginIsolated: crossOriginIsolated,
- *   })
- *
- * For tests: inject the numeric values directly.
- *
- * Formula (quadrascope SystemInfo pattern):
- *   recommended = clamp(
- *     hardwareConcurrency − mainThreadReservation,
- *     fallbackWorkerCount,
- *     maximumWorkers,
- *   )
- *
- * Memory-based clamping is not applicable in the browser (no memory API);
- * `memoryPerWorkerBytes` is accepted and ignored for interface compatibility.
+ * Memory-based clamping is not applicable in the browser (no free-memory API);
+ * `freeMemoryBytes` is always passed as `null` so the core formula skips it
+ * regardless of `memoryPerWorkerBytes`.
  *
  * All properties initialised in constructor for V8 shape stability.
  */
 
 import type { SystemInfoInterface } from '@noocodex/dagonizer/contracts';
+import { SystemInfo } from '@noocodex/dagonizer/entities';
 import type { RecommendedWorkerCountConfig } from '@noocodex/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
-// WebSystemInfoProbes
+// WebNavigatorProbes: injectable navigator probe surface
+// ---------------------------------------------------------------------------
+
+/**
+ * Injectable navigator probes for `WebSystemInfo`.
+ * Mirrors `OsServices` in `NodeSystemInfo`: a typed boundary object so tests
+ * inject fake values without touching browser globals.
+ */
+export interface WebNavigatorProbes {
+  /**
+   * Number of logical processors available to the browser context.
+   * Maps to `navigator.hardwareConcurrency`.
+   */
+  readonly hardwareConcurrency: number;
+}
+
+// ---------------------------------------------------------------------------
+// WebSystemInfoProbes: constructor DI bag (kept for backwards compat)
 // ---------------------------------------------------------------------------
 
 /**
@@ -43,13 +49,27 @@ export interface WebSystemInfoProbes {
    * Maps to `navigator.hardwareConcurrency`.
    */
   readonly hardwareConcurrency?: number;
-  /**
-   * Whether the context is cross-origin isolated (SharedArrayBuffer available).
-   * Not used in the worker-count formula; reserved for future SharedArrayBuffer
-   * fast-path detection. Defaults to false.
-   */
-  readonly crossOriginIsolated?: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// DEFAULT_WEB_PROBES: production default reads real navigator
+// ---------------------------------------------------------------------------
+
+/**
+ * Production default: reads `navigator.hardwareConcurrency` once.
+ * Accessed via `globalThis` to avoid a DOM-lib type dependency.
+ * Returns 1 when the property is absent or non-positive (restricted contexts).
+ */
+function readNavigatorHardwareConcurrency(): number {
+  const nav = (globalThis as Record<string, unknown>)['navigator'];
+  if (nav === null || nav === undefined) { return 1; }
+  const hc = (nav as Record<string, unknown>)['hardwareConcurrency'];
+  return (typeof hc === 'number' && hc > 0) ? hc : 1;
+}
+
+export const DEFAULT_WEB_PROBES: WebNavigatorProbes = {
+  get 'hardwareConcurrency'(): number { return readNavigatorHardwareConcurrency(); },
+};
 
 // ---------------------------------------------------------------------------
 // WebSystemInfo
@@ -57,30 +77,18 @@ export interface WebSystemInfoProbes {
 
 export class WebSystemInfo implements SystemInfoInterface {
   readonly #hardwareConcurrency: number;
-  readonly #crossOriginIsolated: boolean;
 
   constructor(probes: WebSystemInfoProbes = {}) {
     // Safe fallback: 1 when probe is absent, zero, or negative.
     this.#hardwareConcurrency = (probes.hardwareConcurrency !== undefined && probes.hardwareConcurrency > 0)
       ? probes.hardwareConcurrency
       : 1;
-    this.#crossOriginIsolated = probes.crossOriginIsolated ?? false;
-  }
-
-  /**
-   * Whether the browser context supports SharedArrayBuffer
-   * (cross-origin isolated). Reserved for future use.
-   */
-  get crossOriginIsolated(): boolean {
-    return this.#crossOriginIsolated;
   }
 
   recommendedWorkerCount(config: RecommendedWorkerCountConfig): number {
-    const raw = this.#hardwareConcurrency - config.mainThreadReservation;
-    // maximumWorkers is a hard cap: it wins over fallbackWorkerCount when the
-    // two conflict (a pool must never exceed its configured ceiling).
-    // Floor at 1: a zero- or negative-result pool parks every caller forever.
-    const clamped = Math.max(1, Math.min(config.maximumWorkers, Math.max(raw, config.fallbackWorkerCount)));
-    return clamped;
+    return SystemInfo.recommendedWorkerCount(config, {
+      'parallelism': this.#hardwareConcurrency,
+      'freeMemoryBytes': null,
+    });
   }
 }

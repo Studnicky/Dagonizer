@@ -19,8 +19,11 @@
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
 
 type IntentOutput =
   | 'lookup-author'
@@ -39,10 +42,12 @@ const NODE_TIMEOUT_MS = 30_000;
 /** Total attempts (initial + retries) before routing to salvage. */
 const RETRY_BUDGET = 2;
 
-export const classifyIntent: NodeInterface<ArchivistState, IntentOutput, ArchivistServices> = {
-  "name": 'classify-intent',
-  "outputs": ['lookup-author', 'find-reviews', 'describe-book', 'recommend-similar', 'recall-memories', 'on-topic', 'off-topic', 'retry', 'salvage'],
-  async execute(state, context) {
+export class ClassifyIntentNode implements NodeInterface<ArchivistState, IntentOutput, ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'classify-intent';
+  readonly outputs = ['lookup-author', 'find-reviews', 'describe-book', 'recommend-similar', 'recall-memories', 'on-topic', 'off-topic', 'retry', 'salvage'] as const;
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const summary = state.recalledContext.summary.length > 0
       ? state.recalledContext.summary
       : undefined;
@@ -81,6 +86,9 @@ export const classifyIntent: NodeInterface<ArchivistState, IntentOutput, Archivi
     } finally {
       clearTimeout(handle);
     }
-  },
-};
+  }
+}
 // #endregion node-class
+
+/** Backward-compatible const export for existing bundle/DAG references. */
+export const classifyIntent = new ClassifyIntentNode();

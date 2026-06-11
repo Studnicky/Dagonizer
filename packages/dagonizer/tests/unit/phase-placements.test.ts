@@ -3,10 +3,12 @@ import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/index.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 import { Validator } from '../../src/validation/Validator.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -22,6 +24,8 @@ const makeNode = (
 ): NodeInterface<TrackingState> => ({
   name,
   outputs,
+  'contract': EMPTY_CONTRACT_FRAGMENT,
+  'timeout': Timeout.none(),
   async execute(state) {
     if (side) {
       await side(state);
@@ -38,6 +42,8 @@ const makeThrowingNode = (
 ): NodeInterface<TrackingState> => ({
   name,
   'outputs': ['success'],
+  'contract': EMPTY_CONTRACT_FRAGMENT,
+  'timeout': Timeout.none(),
   async execute() {
     throw new Error(message);
   },
@@ -255,6 +261,8 @@ void describe('PhaseNode placements: post-phase execution', () => {
     dispatcher.registerNode({
       'name': 'slow',
       'outputs': ['success'],
+      'contract': EMPTY_CONTRACT_FRAGMENT,
+      'timeout': Timeout.none(),
       async execute(_state, ctx) {
         resolveNodeReady();
         await new Promise<void>((_resolve, reject) => {

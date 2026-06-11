@@ -2,11 +2,11 @@
  * GatherStrategies: pluggable strategy registry that decides how the
  * dispatcher merges scatter clone results back into the parent state.
  *
- * A `GatherStrategy` is a class with a `name`, an `apply` method (batch
- * gather — called after all clones complete), and an optional
- * `applyIncremental` method (fold a single record into parent state as it
- * arrives). Strategies that implement `applyIncremental` produce results
- * progressively; strategies that do not accumulate records and call `apply`
+ * A `GatherStrategy` is a class with a `name` and an `apply` method (batch
+ * gather — called after all clones complete). Strategies that extend
+ * `IncrementalGatherStrategy` also implement `applyIncremental` to fold each
+ * completed record into parent state as it arrives, producing results
+ * progressively. Batch-only strategies accumulate records and call `apply`
  * at the end.
  *
  * Four defaults register at module load: `map`, `append`, `partition`,
@@ -42,10 +42,9 @@ export type { GatherExecution, GatherRecord };
 /**
  * Extension point for gather strategies.
  *
- * Subclass and override `apply`. Optionally override `applyIncremental` for
- * streaming gather — the dispatcher calls it after each clone completes when
- * the strategy supports it, enabling results to fold into parent state
- * progressively without waiting for all clones to finish.
+ * Subclass and override `apply` for batch gather — called after all scatter
+ * clones complete. For incremental (per-clone) folding, extend
+ * `IncrementalGatherStrategy` instead and override `applyIncremental`.
  *
  * The class registers in `GatherStrategies` under its `name`; the dispatcher
  * resolves it via `GatherStrategies.resolve(name)` when all scatter clones
@@ -57,9 +56,10 @@ export abstract class GatherStrategy {
 
   /**
    * Declares whether this strategy supports incremental folding.
-   * Strategies that implement `applyIncremental` set this to `true`;
-   * the dispatcher dispatches on this flag rather than duck-typing
-   * `applyIncremental !== undefined`.
+   * Batch-only strategies (the default) set this to `false`; incremental
+   * strategies extend `IncrementalGatherStrategy` which overrides this to `true`.
+   * The dispatcher checks `instanceof IncrementalGatherStrategy` — this field
+   * is informational and may be used by consumers for documentation/introspection.
    */
   readonly supportsIncremental: boolean = false;
 
@@ -74,19 +74,55 @@ export abstract class GatherStrategy {
     execution: GatherExecution<TState>,
   ): Promise<void>;
 
+}
+
+/**
+ * Base class for gather strategies that support incremental folding.
+ *
+ * Extend this class (instead of `GatherStrategy` directly) to enable
+ * per-clone incremental folding: the dispatcher narrows to this type
+ * and calls `applyIncremental` after each clone completes, without needing
+ * an optional-method presence check.
+ *
+ * `supportsIncremental` is permanently `true` here; subclasses MUST NOT
+ * override it back to `false`. The batch `apply` method MUST still be
+ * implemented for compatibility with dispatchers that use the batch path.
+ *
+ * @example
+ * ```ts
+ * class TopNGather extends IncrementalGatherStrategy {
+ *   readonly name = 'top-n';
+ *   applyIncremental(config, record, state, accessor) {
+ *     // fold one record into state
+ *   }
+ *   async apply(config, execution) {
+ *     // batch fallback: call applyIncremental for each record
+ *     for (const record of execution.records) {
+ *       this.applyIncremental(config, record, execution.state, execution.accessor);
+ *     }
+ *   }
+ * }
+ * GatherStrategies.register(new TopNGather());
+ * ```
+ */
+export abstract class IncrementalGatherStrategy extends GatherStrategy {
+  /** Always `true`; incremental strategies declare this at the class level. */
+  override readonly supportsIncremental = true;
+
   /**
    * Apply the strategy incrementally for a single record as it arrives.
    * Called after each clone body completes successfully, before the next clone
    * starts. Implementations mutate `state` in place.
    *
-   * Only called when `supportsIncremental === true`. Override this method and
-   * set `supportsIncremental = true` in the subclass to enable streaming gather.
+   * Every `IncrementalGatherStrategy` subclass must implement this method.
+   * The dispatcher narrows to `IncrementalGatherStrategy` via `instanceof`
+   * and calls this method directly — no optional-method presence check needed.
    *
    * The `accessor` and `state` parameters mirror those in `GatherExecution`
    * and are provided directly to avoid constructing a full execution context
    * for every incremental fold.
    */
-  applyIncremental?(
+  abstract applyIncremental(
     config: GatherConfig,
     record: GatherRecord<NodeStateInterface>,
     state: NodeStateInterface,
@@ -94,11 +130,10 @@ export abstract class GatherStrategy {
   ): void;
 }
 
-class MapGatherStrategy extends GatherStrategy {
+class MapGatherStrategy extends IncrementalGatherStrategy {
   readonly name = 'map';
-  override readonly supportsIncremental = true;
 
-  override applyIncremental(
+  applyIncremental(
     config: GatherConfig,
     record: GatherRecord<NodeStateInterface>,
     state: NodeStateInterface,
@@ -135,17 +170,18 @@ class MapGatherStrategy extends GatherStrategy {
   }
 }
 
-class AppendGatherStrategy extends GatherStrategy {
+class AppendGatherStrategy extends IncrementalGatherStrategy {
   readonly name = 'append';
-  override readonly supportsIncremental = true;
 
-  override applyIncremental(
+  applyIncremental(
     config: GatherConfig,
     record: GatherRecord<NodeStateInterface>,
     state: NodeStateInterface,
     accessor: StateAccessor,
   ): void {
-    if (config.target === undefined) return;
+    if (config.target === undefined) {
+      throw new DAGError('Gather append strategy requires target path');
+    }
     const value = config.field !== undefined
       ? accessor.get(record.cloneState, config.field)
       : record.item;
@@ -172,11 +208,10 @@ class AppendGatherStrategy extends GatherStrategy {
   }
 }
 
-class PartitionGatherStrategy extends GatherStrategy {
+class PartitionGatherStrategy extends IncrementalGatherStrategy {
   readonly name = 'partition';
-  override readonly supportsIncremental = true;
 
-  override applyIncremental(
+  applyIncremental(
     config: GatherConfig,
     record: GatherRecord<NodeStateInterface>,
     state: NodeStateInterface,
@@ -246,12 +281,11 @@ class CustomGatherStrategy extends GatherStrategy {
  * `gather` is required on every `ScatterNode`. Declare `{ strategy: 'discard' }`
  * to make the no-merge intent explicit.
  */
-class DiscardGatherStrategy extends GatherStrategy {
+class DiscardGatherStrategy extends IncrementalGatherStrategy {
   readonly name = 'discard';
-  override readonly supportsIncremental = true;
 
   // applyIncremental is a no-op: never accumulates any state.
-  override applyIncremental(): void {
+  applyIncremental(): void {
     // Intentional no-op: discard strategy folds nothing.
   }
 
@@ -274,11 +308,10 @@ class DiscardGatherStrategy extends GatherStrategy {
  * The collected array is appended to the existing value at `target`
  * (consistent with `append`/`map` semantics), preserving source-index order.
  */
-class CollectGatherStrategy extends GatherStrategy {
+class CollectGatherStrategy extends IncrementalGatherStrategy {
   readonly name = 'collect';
-  override readonly supportsIncremental = true;
 
-  override applyIncremental(
+  applyIncremental(
     config: GatherConfig,
     record: GatherRecord<NodeStateInterface>,
     state: NodeStateInterface,
@@ -333,10 +366,25 @@ export class GatherStrategies {
   );
 
   /**
-   * Register a strategy. Replaces any prior registration with the same
-   * `name`: last-write-wins.
+   * Register a strategy. Throws `DAGError` when a strategy with the same
+   * `name` is already registered — protects against silent overwrite of
+   * built-ins or consumer-registered strategies. Use `replace()` for
+   * intentional overrides (e.g. test-time substitution).
    */
   static register(strategy: GatherStrategy): void {
+    if (GatherStrategies.registry.has(strategy.name)) {
+      throw new DAGError(`GatherStrategy '${strategy.name}' is already registered; use GatherStrategies.replace() to intentionally override`);
+    }
+    GatherStrategies.registry.set(strategy.name, strategy);
+  }
+
+  /**
+   * Explicitly replace an existing registration. Does not throw when the
+   * name is already present. Use this for intentional test-time or
+   * plugin-override substitution where overwriting an existing entry is
+   * the deliberate goal.
+   */
+  static replace(strategy: GatherStrategy): void {
     GatherStrategies.registry.set(strategy.name, strategy);
   }
 

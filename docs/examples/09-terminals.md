@@ -17,20 +17,22 @@ seeAlso:
 import {
   DAG_CONTEXT,
   DAGBuilder,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface } from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 
 class S extends NodeStateBase { shouldPass = true; }
 
-const checkNode: NodeInterface<S, 'pass' | 'fail'> = {
-  name: 'check',
-  outputs: ['pass', 'fail'],
-  async execute(state) { return { output: state.shouldPass ? 'pass' : 'fail' }; },
-};
+class CheckNode implements NodeInterface<S, 'pass' | 'fail'> {
+  readonly name = 'check';
+  readonly outputs = ['pass', 'fail'] as const;
+  async execute(state: S) { return NodeOutputBuilder.of(state.shouldPass ? 'pass' : 'fail'); }
+}
 
 const dag2 = new DAGBuilder('demo-explicit-terminals', '1')
-  .node('check', checkNode, { pass: 'end-ok', fail: 'end-fail' })
+  .node('check', new CheckNode(), { pass: 'end-ok', fail: 'end-fail' })
   .terminal('end-ok')
   .terminal('end-fail', { outcome: 'failed' })
   .build();
