@@ -13,14 +13,17 @@ npm install @noocodex/dagonizer @noocodex/dagonizer-adapter-web-llm @mlc-ai/web-
 ## Usage
 
 ```ts
-import { WebLlmAdapter, detectWebGpu } from '@noocodex/dagonizer-adapter-web-llm';
+import { WebLlmAdapter, type WebLlmInitReport } from '@noocodex/dagonizer-adapter-web-llm';
 
-if (!detectWebGpu()) throw new Error('WebGPU not supported by this browser');
+if (!WebLlmAdapter.detectWebGpu()) throw new Error('WebGPU not supported by this browser');
 
-const llm = new WebLlmAdapter({
-  model: 'Phi-3.5-mini-instruct-q4f16_1-MLC',
-  onProgress: (report) => console.log(report),
-});
+class LoggingWebLlmAdapter extends WebLlmAdapter {
+  protected override onInitProgress(report: WebLlmInitReport): void {
+    console.log(report);
+  }
+}
+
+const llm = new LoggingWebLlmAdapter({ model: 'Phi-3.5-mini-instruct-q4f16_1-MLC' });
 ```
 
 ## Browser requirements
@@ -34,8 +37,9 @@ const llm = new WebLlmAdapter({
 | Option | Default | Notes |
 |---|---|---|
 | `model` | `Phi-3.5-mini-instruct-q4f16_1-MLC` | Any model id from `prebuiltAppConfig.model_list` |
-| `onProgress` | none | Callback that fires during model download/init |
 | `maxAttempts` | 2 | Retry budget (lower than cloud; local failures rarely recover) |
+
+To observe model-download progress, subclass `WebLlmAdapter` and override `protected onInitProgress(report: WebLlmInitReport): void`.
 
 ## Capabilities
 

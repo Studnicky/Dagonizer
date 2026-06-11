@@ -1,5 +1,15 @@
 # @noocodex/dagonizer-tool-openlibrary
 
+## [unreleased]
+
+### Changed
+
+- `OpenLibrarySearchTool` and `SubjectSearchTool` both narrow the API response via `narrowOpenLibraryResponse` (typed guard in `openLibraryTypes.ts`) at the `HttpTransport.getJson` boundary; throws `ToolError('PARSE_ERROR')` on shape mismatch.
+- `OpenLibrarySearchTool.inputSchema` drops the empty `'required': []` array (no-op; absence is equivalent under JSON Schema).
+- `SubjectSearchTool` removes `// #region` / `// #endregion` fold markers (no other tool uses them).
+- Convenience re-exports of `Book`, `Candidate`, `Money`, `CanonicalId` removed from the package barrel. Consumers import these directly from `@noocodex/dagonizer-book-entities`.
+- `@noocodex/dagonizer-book-entities` promoted from `peerDependencies` to `dependencies`.
+
 ## 0.19.0
 
 ## 0.17.0

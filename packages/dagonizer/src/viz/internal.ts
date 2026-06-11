@@ -20,6 +20,28 @@ export type PlacementEntry =
   | TerminalNode
   | PhaseNode;
 
+/** The discriminant values that identify a valid `PlacementEntry`. */
+const PLACEMENT_TYPES = new Set<string>([
+  'EmbeddedDAGNode',
+  'ScatterNode',
+  'SingleNode',
+  'TerminalNode',
+  'PhaseNode',
+]);
+
+/**
+ * Type guard: narrows an `object` to `PlacementEntry` by checking the
+ * `@type` discriminant field. Ajv has already validated the DAG document
+ * against its schema, so any object in `dag.nodes` with a recognised
+ * `@type` is structurally valid. The guard exists to eliminate the bare
+ * `as` cast at the schema boundary without requiring a full deep validation
+ * pass here.
+ */
+function isPlacementEntry(node: object): node is PlacementEntry {
+  const type = (node as Record<string, unknown>)['@type'];
+  return typeof type === 'string' && PLACEMENT_TYPES.has(type);
+}
+
 /**
  * The three color tokens a contained placement carries.
  *
@@ -160,11 +182,15 @@ export class PlacementUtils {
    *
    * `DAG.nodes` is typed as `ReadonlyArray<object>` at the schema boundary so
    * the engine core stays dependency-free. All renderer/layout callers in the
-   * viz module need the richer union type; this single cast is the one place
-   * that performs the narrowing so no consumer repeats it.
+   * viz module need the richer union type. The `isPlacementEntry` type guard
+   * checks the `@type` discriminant field; Ajv has already validated the DAG
+   * document, so every node with a recognised `@type` is structurally valid.
+   *
+   * Nodes that fail the guard (which would indicate a schema bypass) are
+   * excluded rather than crashing the renderer, preserving graceful degradation.
    */
   static narrowNodes(dag: DAG): PlacementEntry[] {
-    return dag.nodes as PlacementEntry[];
+    return dag.nodes.filter(isPlacementEntry);
   }
 
   /** Build a placement-name id, optionally prefixed by an enclosing scope. */

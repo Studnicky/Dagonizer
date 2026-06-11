@@ -78,17 +78,7 @@ export class ForkContainer extends DagContainerBase<NodeStateInterface, ChildPro
     // No execArgv override needed: package.json "type": "module" makes
     // the compiled .js output ESM.
     const child = fork(this.#entryUrl.pathname, []);
-
-    // child.send expects Serializable; BridgeMessage is JSON-serializable.
-    // The IpcEndpoint.send type is (message: unknown) => void, so the cast
-    // to object is narrowed here at the IPC boundary only.
-    const sendFn = (message: unknown): void => { child.send(message as object); };
-    const onFn = (event: 'message', listener: (message: unknown) => void) => {
-      child.on(event, listener);
-      return { 'send': sendFn, 'on': onFn };
-    };
-
-    const channel = new IpcChannel({ 'send': sendFn, 'on': onFn });
+    const channel = IpcChannel.fromChildProcess(child);
     return { 'worker': child, 'channel': channel, 'initialized': false };
   }
 

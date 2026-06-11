@@ -13,13 +13,19 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { ShippingCalculator } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region enrich-leg-node
-export const enrichLeg: NodeInterface<CartographerState, 'leg-measured', CartographerServices> = {
-  'name': 'enrich-leg',
-  'outputs': ['leg-measured'],
-  async execute(state, context) {
+export class EnrichLegNode implements NodeInterface<CartographerState, 'leg-measured', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'enrich-leg';
+  readonly 'outputs' = ['leg-measured'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'leg-measured'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -33,6 +39,6 @@ export const enrichLeg: NodeInterface<CartographerState, 'leg-measured', Cartogr
       norm.longitude,
     );
     return NodeOutputBuilder.of('leg-measured');
-  },
-};
+  }
+}
 // #endregion enrich-leg-node

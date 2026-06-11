@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import type { StateAccessor } from '../../src/contracts/StateAccessor.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { DottedPathAccessor } from '../../src/runtime/DottedPathAccessor.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 
 void describe('DottedPathAccessor', () => {
   void it('reads a top-level field', () => {
@@ -73,18 +75,20 @@ void describe('Dagonizer accepts a custom StateAccessor', () => {
       results: number[] = [];
     }
 
-    const handler: NodeInterface<ScatterState, 'success'> = {
-      'name': 'handler',
-      'outputs': ['success'],
-      async execute(state) {
+    class HandlerNode implements NodeInterface<ScatterState, 'success'> {
+      readonly name = 'handler';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(state: ScatterState) {
         const item = state.getMetadata<number>('item') ?? 0;
         state.results.push(item * 2);
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
 
     const dispatcher = new Dagonizer<ScatterState>({ 'accessor': trackingAccessor });
-    dispatcher.registerNode(handler);
+    dispatcher.registerNode(new HandlerNode());
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:fan-test',

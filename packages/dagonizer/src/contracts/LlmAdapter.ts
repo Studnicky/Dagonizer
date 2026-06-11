@@ -2,18 +2,15 @@
  * LlmAdapter: consumer-implemented contract for LLM transport plugins.
  *
  * Single source of truth for the interface declaration. Entity types
- * (`ChatRequest`, `ChatResponse`, `AdapterCapabilities`, …) live in
- * `src/adapter/LlmAdapter.ts`; this file imports them to declare the
- * interface and re-exports the interface for `./contracts` consumers.
- * `src/adapter/LlmAdapter.ts` re-exports `LlmAdapter` from here so
- * `./adapter` consumers continue to see a single import path.
+ * (`ChatRequest`, `ChatResponse`, `AdapterCapabilities`) live in
+ * `src/entities/adapter/`; this file imports them directly — no dependency
+ * on `src/adapter/`. `src/adapter/LlmAdapter.ts` re-exports `LlmAdapter`
+ * from here so `./adapter` consumers continue to see a single import path.
  */
 
-import type {
-  AdapterCapabilities,
-  ChatRequest,
-  ChatResponse,
-} from '../adapter/LlmAdapter.js';
+import type { AdapterCapabilities } from '../entities/adapter/AdapterCapabilities.js';
+import type { ChatRequest } from '../entities/adapter/ChatRequest.js';
+import type { ChatResponse } from '../entities/adapter/ChatResponse.js';
 
 import type { AbortableOptionsInterface } from './AbortableOptionsInterface.js';
 

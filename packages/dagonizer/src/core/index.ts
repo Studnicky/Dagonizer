@@ -11,6 +11,7 @@
 export {
   GatherStrategies,
   GatherStrategy,
+  IncrementalGatherStrategy,
 } from './GatherStrategies.js';
 export type { GatherExecution, GatherRecord } from './GatherStrategies.js';
 

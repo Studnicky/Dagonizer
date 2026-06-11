@@ -10,9 +10,10 @@ import {
   NodeErrorBuilder,
   NodeOutputBuilder,
   NodeStateBase,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
 } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import type { DAG, NodeInterface} from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State
@@ -26,30 +27,39 @@ export class GateState extends NodeStateBase {
 // Nodes
 // ---------------------------------------------------------------------------
 
-export const stepA: NodeInterface<GateState, 'ok'> = {
-  "name":    'step-a',
-  "outputs": ['ok'],
-  async execute(_state) {
-    return NodeOutputBuilder.of('ok');
-  },
-};
+export class StepANode implements NodeInterface<GateState, 'ok'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'step-a';
+  readonly outputs = ['ok'] as const;
 
-export const checkNode: NodeInterface<GateState, 'pass' | 'fail'> = {
-  "name":    'check',
-  "outputs": ['pass', 'fail'],
-  async execute(state) {
+  async execute(_state: GateState) {
+    return NodeOutputBuilder.of('ok');
+  }
+}
+
+export class CheckNode implements NodeInterface<GateState, 'pass' | 'fail'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'check';
+  readonly outputs = ['pass', 'fail'] as const;
+
+  async execute(state: GateState) {
     return NodeOutputBuilder.of(state.shouldPass ? 'pass' : 'fail');
-  },
-};
+  }
+}
 
 // Child DAG work node: used in pattern 3. Reads `shouldPass`, which the
 // ScatterNode projection seeds onto the clone from parent state before the
 // child DAG body runs (a state clone carries metadata, not subclass fields;
 // projection is how parent data reaches the clone).
-export const childWork: NodeInterface<GateState, 'done'> = {
-  "name":    'child-work',
-  "outputs": ['done'],
-  async execute(state) {
+export class ChildWorkNode implements NodeInterface<GateState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'child-work';
+  readonly outputs = ['done'] as const;
+
+  async execute(state: GateState) {
     if (!state.shouldPass) {
       state.collectError(NodeErrorBuilder.from(
         'CHILD_ERR',
@@ -60,8 +70,8 @@ export const childWork: NodeInterface<GateState, 'done'> = {
       ));
     }
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Pattern 1: Explicit completed terminal
@@ -69,7 +79,7 @@ export const childWork: NodeInterface<GateState, 'done'> = {
 
 // #region terminal-completed
 export const dag1 = new DAGBuilder('demo-explicit-completed', '1')
-  .node('step-a', stepA, { 'ok': 'end' })
+  .node('step-a', new StepANode(), { 'ok': 'end' })
   .terminal('end')  // outcome defaults to 'completed'
   .build();
 // #endregion terminal-completed
@@ -80,7 +90,7 @@ export const dag1 = new DAGBuilder('demo-explicit-completed', '1')
 
 // #region terminal-failed
 export const dag2 = new DAGBuilder('demo-explicit-terminals', '1')
-  .node('check', checkNode, { 'pass': 'end-ok', 'fail': 'end-fail' })
+  .node('check', new CheckNode(), { 'pass': 'end-ok', 'fail': 'end-fail' })
   .terminal('end-ok')
   .terminal('end-fail', { outcome: 'failed' })
   .build();
@@ -95,7 +105,7 @@ export const dag2 = new DAGBuilder('demo-explicit-terminals', '1')
 // Demonstrates the minimal single-terminal failed pattern (as opposed to dag2
 // which shows the dual-terminal pass/fail case).
 export const dag3 = new DAGBuilder('demo-explicit-failed', '1')
-  .node('check', checkNode, { 'pass': 'end-ok', 'fail': 'end-fail' })
+  .node('check', new CheckNode(), { 'pass': 'end-ok', 'fail': 'end-fail' })
   .terminal('end-ok')
   .terminal('end-fail', { outcome: 'failed' })
   .build();

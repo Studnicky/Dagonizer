@@ -302,13 +302,16 @@ export const ArchivistOntologyJsonLd: Record<string, unknown> = {
 // JSON-LD library.  Generated once from the JSON-LD graph above; kept
 // in sync manually (or via build tooling) since the ontology is stable.
 
-function iri(s: string): string { return `<${s}>`; }
-function lit(s: string): string { return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"@en`; }
-function triple(s: string, p: string, o: string): string {
-  return `${iri(s)} ${iri(p)} ${iri(o)} .`;
-}
-function tripleL(s: string, p: string, o: string): string {
-  return `${iri(s)} ${iri(p)} ${lit(o)} .`;
+/** Turtle/N-Triples serialization helpers. */
+class Turtle {
+  private static iri(s: string): string { return `<${s}>`; }
+  private static lit(s: string): string { return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}"@en`; }
+  static triple(s: string, p: string, o: string): string {
+    return `${Turtle.iri(s)} ${Turtle.iri(p)} ${Turtle.iri(o)} .`;
+  }
+  static tripleL(s: string, p: string, o: string): string {
+    return `${Turtle.iri(s)} ${Turtle.iri(p)} ${Turtle.lit(o)} .`;
+  }
 }
 
 const RDF_TYPE    = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
@@ -324,139 +327,139 @@ const RDFS_COMMENT = `${RDFS}comment`;
 /** N-Triple strings ready to load into the ontology named graph. */
 export const ONTOLOGY_NTRIPLES: readonly string[] = [
   // ── Classes
-  triple(`${DAG}Book`,     RDF_TYPE, OWL_CLASS),
-  tripleL(`${DAG}Book`,    RDFS_LABEL,   'Book'),
-  tripleL(`${DAG}Book`,    RDFS_COMMENT, 'A bibliographic record: catalog entry, web-search result, or wiki article.'),
+  Turtle.triple(`${DAG}Book`,     RDF_TYPE, OWL_CLASS),
+  Turtle.tripleL(`${DAG}Book`,    RDFS_LABEL,   'Book'),
+  Turtle.tripleL(`${DAG}Book`,    RDFS_COMMENT, 'A bibliographic record: catalog entry, web-search result, or wiki article.'),
 
-  triple(`${DAG}Author`,   RDF_TYPE, OWL_CLASS),
-  tripleL(`${DAG}Author`,  RDFS_LABEL,   'Author'),
-  tripleL(`${DAG}Author`,  RDFS_COMMENT, 'A person or organisation responsible for a Book.'),
+  Turtle.triple(`${DAG}Author`,   RDF_TYPE, OWL_CLASS),
+  Turtle.tripleL(`${DAG}Author`,  RDFS_LABEL,   'Author'),
+  Turtle.tripleL(`${DAG}Author`,  RDFS_COMMENT, 'A person or organisation responsible for a Book.'),
 
-  triple(`${DAG}Subject`,  RDF_TYPE, OWL_CLASS),
-  tripleL(`${DAG}Subject`, RDFS_LABEL,   'Subject'),
-  tripleL(`${DAG}Subject`, RDFS_COMMENT, 'A thematic topic or classification applied to a Book.'),
+  Turtle.triple(`${DAG}Subject`,  RDF_TYPE, OWL_CLASS),
+  Turtle.tripleL(`${DAG}Subject`, RDFS_LABEL,   'Subject'),
+  Turtle.tripleL(`${DAG}Subject`, RDFS_COMMENT, 'A thematic topic or classification applied to a Book.'),
 
-  triple(`${DAG}Run`,      RDF_TYPE,  OWL_CLASS),
-  triple(`${DAG}Run`,      RDFS_SUB,  `${PROV}Activity`),
-  tripleL(`${DAG}Run`,     RDFS_LABEL,   'Run'),
-  tripleL(`${DAG}Run`,     RDFS_COMMENT, 'One top-level Archivist execution, keyed by runId.'),
+  Turtle.triple(`${DAG}Run`,      RDF_TYPE,  OWL_CLASS),
+  Turtle.triple(`${DAG}Run`,      RDFS_SUB,  `${PROV}Activity`),
+  Turtle.tripleL(`${DAG}Run`,     RDFS_LABEL,   'Run'),
+  Turtle.tripleL(`${DAG}Run`,     RDFS_COMMENT, 'One top-level Archivist execution, keyed by runId.'),
 
-  triple(`${DAG}Activity`, RDF_TYPE, OWL_CLASS),
-  triple(`${DAG}Activity`, RDFS_SUB, `${PROV}Activity`),
-  tripleL(`${DAG}Activity`, RDFS_LABEL,   'Activity'),
-  tripleL(`${DAG}Activity`, RDFS_COMMENT, 'An Archivist-domain prov:Activity (node execution, tool call, LLM call).'),
+  Turtle.triple(`${DAG}Activity`, RDF_TYPE, OWL_CLASS),
+  Turtle.triple(`${DAG}Activity`, RDFS_SUB, `${PROV}Activity`),
+  Turtle.tripleL(`${DAG}Activity`, RDFS_LABEL,   'Activity'),
+  Turtle.tripleL(`${DAG}Activity`, RDFS_COMMENT, 'An Archivist-domain prov:Activity (node execution, tool call, LLM call).'),
 
-  triple(`${DAG}Source`,   RDF_TYPE, OWL_CLASS),
-  tripleL(`${DAG}Source`,  RDFS_LABEL,   'Source'),
-  tripleL(`${DAG}Source`,  RDFS_COMMENT, 'A data source from which Book records are fetched (catalog, web, wiki, reviews).'),
+  Turtle.triple(`${DAG}Source`,   RDF_TYPE, OWL_CLASS),
+  Turtle.tripleL(`${DAG}Source`,  RDFS_LABEL,   'Source'),
+  Turtle.tripleL(`${DAG}Source`,  RDFS_COMMENT, 'A data source from which Book records are fetched (catalog, web, wiki, reviews).'),
 
-  triple(`${DAG}Score`,    RDF_TYPE, OWL_CLASS),
-  tripleL(`${DAG}Score`,   RDFS_LABEL,   'Score'),
-  tripleL(`${DAG}Score`,   RDFS_COMMENT, 'A ranked relevance score in [0, 1] assigned to a Book by the ranking node.'),
+  Turtle.triple(`${DAG}Score`,    RDF_TYPE, OWL_CLASS),
+  Turtle.tripleL(`${DAG}Score`,   RDFS_LABEL,   'Score'),
+  Turtle.tripleL(`${DAG}Score`,   RDFS_COMMENT, 'A ranked relevance score in [0, 1] assigned to a Book by the ranking node.'),
 
   // ── Object properties
-  triple(`${DAG}hasAuthor`,   RDF_TYPE,    OWL_OP),
-  triple(`${DAG}hasAuthor`,   RDFS_DOMAIN, `${DAG}Book`),
-  triple(`${DAG}hasAuthor`,   RDFS_RANGE,  `${DAG}Author`),
-  tripleL(`${DAG}hasAuthor`,  RDFS_LABEL,  'hasAuthor'),
+  Turtle.triple(`${DAG}hasAuthor`,   RDF_TYPE,    OWL_OP),
+  Turtle.triple(`${DAG}hasAuthor`,   RDFS_DOMAIN, `${DAG}Book`),
+  Turtle.triple(`${DAG}hasAuthor`,   RDFS_RANGE,  `${DAG}Author`),
+  Turtle.tripleL(`${DAG}hasAuthor`,  RDFS_LABEL,  'hasAuthor'),
 
-  triple(`${DAG}hasSubject`,  RDF_TYPE,    OWL_OP),
-  triple(`${DAG}hasSubject`,  RDFS_DOMAIN, `${DAG}Book`),
-  triple(`${DAG}hasSubject`,  RDFS_RANGE,  `${DAG}Subject`),
-  tripleL(`${DAG}hasSubject`, RDFS_LABEL,  'hasSubject'),
+  Turtle.triple(`${DAG}hasSubject`,  RDF_TYPE,    OWL_OP),
+  Turtle.triple(`${DAG}hasSubject`,  RDFS_DOMAIN, `${DAG}Book`),
+  Turtle.triple(`${DAG}hasSubject`,  RDFS_RANGE,  `${DAG}Subject`),
+  Turtle.tripleL(`${DAG}hasSubject`, RDFS_LABEL,  'hasSubject'),
 
-  triple(`${DAG}fromSource`,  RDF_TYPE,    OWL_OP),
-  triple(`${DAG}fromSource`,  RDFS_DOMAIN, `${DAG}Book`),
-  triple(`${DAG}fromSource`,  RDFS_RANGE,  `${DAG}Source`),
-  tripleL(`${DAG}fromSource`, RDFS_LABEL,  'fromSource'),
+  Turtle.triple(`${DAG}fromSource`,  RDF_TYPE,    OWL_OP),
+  Turtle.triple(`${DAG}fromSource`,  RDFS_DOMAIN, `${DAG}Book`),
+  Turtle.triple(`${DAG}fromSource`,  RDFS_RANGE,  `${DAG}Source`),
+  Turtle.tripleL(`${DAG}fromSource`, RDFS_LABEL,  'fromSource'),
 
-  triple(`${DAG}queriedIn`,   RDF_TYPE,    OWL_OP),
-  triple(`${DAG}queriedIn`,   RDFS_DOMAIN, `${DAG}Source`),
-  triple(`${DAG}queriedIn`,   RDFS_RANGE,  `${DAG}Run`),
-  tripleL(`${DAG}queriedIn`,  RDFS_LABEL,  'queriedIn'),
+  Turtle.triple(`${DAG}queriedIn`,   RDF_TYPE,    OWL_OP),
+  Turtle.triple(`${DAG}queriedIn`,   RDFS_DOMAIN, `${DAG}Source`),
+  Turtle.triple(`${DAG}queriedIn`,   RDFS_RANGE,  `${DAG}Run`),
+  Turtle.tripleL(`${DAG}queriedIn`,  RDFS_LABEL,  'queriedIn'),
 
-  triple(`${DAG}shortlisted`, RDF_TYPE,    OWL_OP),
-  triple(`${DAG}shortlisted`, RDFS_DOMAIN, `${DAG}Run`),
-  triple(`${DAG}shortlisted`, RDFS_RANGE,  `${DAG}Book`),
-  tripleL(`${DAG}shortlisted`, RDFS_LABEL, 'shortlisted'),
+  Turtle.triple(`${DAG}shortlisted`, RDF_TYPE,    OWL_OP),
+  Turtle.triple(`${DAG}shortlisted`, RDFS_DOMAIN, `${DAG}Run`),
+  Turtle.triple(`${DAG}shortlisted`, RDFS_RANGE,  `${DAG}Book`),
+  Turtle.tripleL(`${DAG}shortlisted`, RDFS_LABEL, 'shortlisted'),
 
-  triple(`${DAG}about`,       RDF_TYPE,    OWL_OP),
-  triple(`${DAG}about`,       RDFS_DOMAIN, `${DAG}Book`),
-  triple(`${DAG}about`,       RDFS_RANGE,  `${DAG}Subject`),
-  tripleL(`${DAG}about`,      RDFS_LABEL,  'about'),
+  Turtle.triple(`${DAG}about`,       RDF_TYPE,    OWL_OP),
+  Turtle.triple(`${DAG}about`,       RDFS_DOMAIN, `${DAG}Book`),
+  Turtle.triple(`${DAG}about`,       RDFS_RANGE,  `${DAG}Subject`),
+  Turtle.tripleL(`${DAG}about`,      RDFS_LABEL,  'about'),
 
-  triple(`${DAG}publishedBy`, RDF_TYPE,    OWL_OP),
-  triple(`${DAG}publishedBy`, RDFS_DOMAIN, `${DAG}Book`),
-  tripleL(`${DAG}publishedBy`, RDFS_LABEL, 'publishedBy'),
+  Turtle.triple(`${DAG}publishedBy`, RDF_TYPE,    OWL_OP),
+  Turtle.triple(`${DAG}publishedBy`, RDFS_DOMAIN, `${DAG}Book`),
+  Turtle.tripleL(`${DAG}publishedBy`, RDFS_LABEL, 'publishedBy'),
 
   // ── Datatype properties
-  triple(`${DAG}title`,            RDF_TYPE,    OWL_DP),
-  triple(`${DAG}title`,            RDFS_DOMAIN, `${DAG}Book`),
-  triple(`${DAG}title`,            RDFS_RANGE,  `${XSD}string`),
-  tripleL(`${DAG}title`,           RDFS_LABEL,  'title'),
+  Turtle.triple(`${DAG}title`,            RDF_TYPE,    OWL_DP),
+  Turtle.triple(`${DAG}title`,            RDFS_DOMAIN, `${DAG}Book`),
+  Turtle.triple(`${DAG}title`,            RDFS_RANGE,  `${XSD}string`),
+  Turtle.tripleL(`${DAG}title`,           RDFS_LABEL,  'title'),
 
-  triple(`${DAG}isbn`,             RDF_TYPE,    OWL_DP),
-  triple(`${DAG}isbn`,             RDFS_DOMAIN, `${DAG}Book`),
-  triple(`${DAG}isbn`,             RDFS_RANGE,  `${XSD}string`),
-  tripleL(`${DAG}isbn`,            RDFS_LABEL,  'isbn'),
+  Turtle.triple(`${DAG}isbn`,             RDF_TYPE,    OWL_DP),
+  Turtle.triple(`${DAG}isbn`,             RDFS_DOMAIN, `${DAG}Book`),
+  Turtle.triple(`${DAG}isbn`,             RDFS_RANGE,  `${XSD}string`),
+  Turtle.tripleL(`${DAG}isbn`,            RDFS_LABEL,  'isbn'),
 
-  triple(`${DAG}summary`,          RDF_TYPE,    OWL_DP),
-  triple(`${DAG}summary`,          RDFS_DOMAIN, `${DAG}Book`),
-  triple(`${DAG}summary`,          RDFS_RANGE,  `${XSD}string`),
-  tripleL(`${DAG}summary`,         RDFS_LABEL,  'summary'),
+  Turtle.triple(`${DAG}summary`,          RDF_TYPE,    OWL_DP),
+  Turtle.triple(`${DAG}summary`,          RDFS_DOMAIN, `${DAG}Book`),
+  Turtle.triple(`${DAG}summary`,          RDFS_RANGE,  `${XSD}string`),
+  Turtle.tripleL(`${DAG}summary`,         RDFS_LABEL,  'summary'),
 
-  triple(`${DAG}firstPublishYear`, RDF_TYPE,    OWL_DP),
-  triple(`${DAG}firstPublishYear`, RDFS_DOMAIN, `${DAG}Book`),
-  triple(`${DAG}firstPublishYear`, RDFS_RANGE,  `${XSD}integer`),
-  tripleL(`${DAG}firstPublishYear`, RDFS_LABEL, 'firstPublishYear'),
+  Turtle.triple(`${DAG}firstPublishYear`, RDF_TYPE,    OWL_DP),
+  Turtle.triple(`${DAG}firstPublishYear`, RDFS_DOMAIN, `${DAG}Book`),
+  Turtle.triple(`${DAG}firstPublishYear`, RDFS_RANGE,  `${XSD}integer`),
+  Turtle.tripleL(`${DAG}firstPublishYear`, RDFS_LABEL, 'firstPublishYear'),
 
-  triple(`${DAG}rating`,           RDF_TYPE,    OWL_DP),
-  triple(`${DAG}rating`,           RDFS_DOMAIN, `${DAG}Book`),
-  triple(`${DAG}rating`,           RDFS_RANGE,  `${XSD}double`),
-  tripleL(`${DAG}rating`,          RDFS_LABEL,  'rating'),
+  Turtle.triple(`${DAG}rating`,           RDF_TYPE,    OWL_DP),
+  Turtle.triple(`${DAG}rating`,           RDFS_DOMAIN, `${DAG}Book`),
+  Turtle.triple(`${DAG}rating`,           RDFS_RANGE,  `${XSD}double`),
+  Turtle.tripleL(`${DAG}rating`,          RDFS_LABEL,  'rating'),
 
-  triple(`${DAG}score`,            RDF_TYPE,    OWL_DP),
-  triple(`${DAG}score`,            RDFS_DOMAIN, `${DAG}Book`),
-  triple(`${DAG}score`,            RDFS_RANGE,  `${XSD}double`),
-  tripleL(`${DAG}score`,           RDFS_LABEL,  'score'),
+  Turtle.triple(`${DAG}score`,            RDF_TYPE,    OWL_DP),
+  Turtle.triple(`${DAG}score`,            RDFS_DOMAIN, `${DAG}Book`),
+  Turtle.triple(`${DAG}score`,            RDFS_RANGE,  `${XSD}double`),
+  Turtle.tripleL(`${DAG}score`,           RDFS_LABEL,  'score'),
 
-  triple(`${DAG}visitorQuery`,     RDF_TYPE,    OWL_DP),
-  triple(`${DAG}visitorQuery`,     RDFS_DOMAIN, `${DAG}Run`),
-  triple(`${DAG}visitorQuery`,     RDFS_RANGE,  `${XSD}string`),
-  tripleL(`${DAG}visitorQuery`,    RDFS_LABEL,  'visitorQuery'),
+  Turtle.triple(`${DAG}visitorQuery`,     RDF_TYPE,    OWL_DP),
+  Turtle.triple(`${DAG}visitorQuery`,     RDFS_DOMAIN, `${DAG}Run`),
+  Turtle.triple(`${DAG}visitorQuery`,     RDFS_RANGE,  `${XSD}string`),
+  Turtle.tripleL(`${DAG}visitorQuery`,    RDFS_LABEL,  'visitorQuery'),
 
-  triple(`${DAG}runTimestamp`,     RDF_TYPE,    OWL_DP),
-  triple(`${DAG}runTimestamp`,     RDFS_DOMAIN, `${DAG}Run`),
-  triple(`${DAG}runTimestamp`,     RDFS_RANGE,  `${XSD}double`),
-  tripleL(`${DAG}runTimestamp`,    RDFS_LABEL,  'runTimestamp'),
+  Turtle.triple(`${DAG}runTimestamp`,     RDF_TYPE,    OWL_DP),
+  Turtle.triple(`${DAG}runTimestamp`,     RDFS_DOMAIN, `${DAG}Run`),
+  Turtle.triple(`${DAG}runTimestamp`,     RDFS_RANGE,  `${XSD}double`),
+  Turtle.tripleL(`${DAG}runTimestamp`,    RDFS_LABEL,  'runTimestamp'),
 
-  triple(`${DAG}inShortlist`,      RDF_TYPE,    OWL_DP),
-  triple(`${DAG}inShortlist`,      RDFS_DOMAIN, `${DAG}Book`),
-  triple(`${DAG}inShortlist`,      RDFS_RANGE,  `${XSD}boolean`),
-  tripleL(`${DAG}inShortlist`,     RDFS_LABEL,  'inShortlist'),
+  Turtle.triple(`${DAG}inShortlist`,      RDF_TYPE,    OWL_DP),
+  Turtle.triple(`${DAG}inShortlist`,      RDFS_DOMAIN, `${DAG}Book`),
+  Turtle.triple(`${DAG}inShortlist`,      RDFS_RANGE,  `${XSD}boolean`),
+  Turtle.tripleL(`${DAG}inShortlist`,     RDFS_LABEL,  'inShortlist'),
 
-  triple(`${DAG}source`,           RDF_TYPE,    OWL_DP),
-  triple(`${DAG}source`,           RDFS_DOMAIN, `${DAG}Book`),
-  triple(`${DAG}source`,           RDFS_RANGE,  `${XSD}string`),
-  tripleL(`${DAG}source`,          RDFS_LABEL,  'source'),
+  Turtle.triple(`${DAG}source`,           RDF_TYPE,    OWL_DP),
+  Turtle.triple(`${DAG}source`,           RDFS_DOMAIN, `${DAG}Book`),
+  Turtle.triple(`${DAG}source`,           RDFS_RANGE,  `${XSD}string`),
+  Turtle.tripleL(`${DAG}source`,          RDFS_LABEL,  'source'),
 
-  triple(`${DAG}author`,           RDF_TYPE,    OWL_DP),
-  triple(`${DAG}author`,           RDFS_DOMAIN, `${DAG}Book`),
-  triple(`${DAG}author`,           RDFS_RANGE,  `${XSD}string`),
-  tripleL(`${DAG}author`,          RDFS_LABEL,  'author'),
+  Turtle.triple(`${DAG}author`,           RDF_TYPE,    OWL_DP),
+  Turtle.triple(`${DAG}author`,           RDFS_DOMAIN, `${DAG}Book`),
+  Turtle.triple(`${DAG}author`,           RDFS_RANGE,  `${XSD}string`),
+  Turtle.tripleL(`${DAG}author`,          RDFS_LABEL,  'author'),
 
-  triple(`${DAG}subject`,          RDF_TYPE,    OWL_DP),
-  triple(`${DAG}subject`,          RDFS_DOMAIN, `${DAG}Book`),
-  triple(`${DAG}subject`,          RDFS_RANGE,  `${XSD}string`),
-  tripleL(`${DAG}subject`,         RDFS_LABEL,  'subject'),
+  Turtle.triple(`${DAG}subject`,          RDF_TYPE,    OWL_DP),
+  Turtle.triple(`${DAG}subject`,          RDFS_DOMAIN, `${DAG}Book`),
+  Turtle.triple(`${DAG}subject`,          RDFS_RANGE,  `${XSD}string`),
+  Turtle.tripleL(`${DAG}subject`,         RDFS_LABEL,  'subject'),
 
-  triple(`${DAG}candidate`,        RDF_TYPE,    OWL_OP),
-  triple(`${DAG}candidate`,        RDFS_DOMAIN, `${DAG}Run`),
-  triple(`${DAG}candidate`,        RDFS_RANGE,  `${DAG}Book`),
-  tripleL(`${DAG}candidate`,       RDFS_LABEL,  'candidate'),
+  Turtle.triple(`${DAG}candidate`,        RDF_TYPE,    OWL_OP),
+  Turtle.triple(`${DAG}candidate`,        RDFS_DOMAIN, `${DAG}Run`),
+  Turtle.triple(`${DAG}candidate`,        RDFS_RANGE,  `${DAG}Book`),
+  Turtle.tripleL(`${DAG}candidate`,       RDFS_LABEL,  'candidate'),
 
-  triple(`${DAG}shortlistedTitle`, RDF_TYPE,    OWL_DP),
-  triple(`${DAG}shortlistedTitle`, RDFS_DOMAIN, `${DAG}Run`),
-  triple(`${DAG}shortlistedTitle`, RDFS_RANGE,  `${XSD}string`),
-  tripleL(`${DAG}shortlistedTitle`, RDFS_LABEL, 'shortlistedTitle'),
+  Turtle.triple(`${DAG}shortlistedTitle`, RDF_TYPE,    OWL_DP),
+  Turtle.triple(`${DAG}shortlistedTitle`, RDFS_DOMAIN, `${DAG}Run`),
+  Turtle.triple(`${DAG}shortlistedTitle`, RDFS_RANGE,  `${XSD}string`),
+  Turtle.tripleL(`${DAG}shortlistedTitle`, RDFS_LABEL, 'shortlistedTitle'),
 ];

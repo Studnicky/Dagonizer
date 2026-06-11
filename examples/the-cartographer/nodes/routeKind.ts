@@ -1,5 +1,5 @@
 /**
- * route-kind: per-kind conditional enrichment dispatch (heterogeneous routing).
+ * route-kind: per-kind enrichment dispatch (heterogeneous routing).
  *
  * Different canonical `kind`s need different enrichment; this node routes each
  * to ONLY the lane it needs, skipping irrelevant work:
@@ -21,7 +21,10 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import type { CanonicalEvent } from '../entities/CanonicalEvent.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region route-kind-node
 type KindRoute = 'geo-only' | 'sensor' | 'order' | 'customs';
@@ -34,10 +37,13 @@ const KIND_ROUTE: Readonly<Record<CanonicalEvent['kind'], KindRoute>> = {
   'customs-event':         'customs',
 };
 
-export const routeKind: NodeInterface<CartographerState, KindRoute, CartographerServices> = {
-  'name': 'route-kind',
-  'outputs': ['geo-only', 'sensor', 'order', 'customs'],
-  async execute(state, context) {
+export class RouteKindNode implements NodeInterface<CartographerState, KindRoute, CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'route-kind';
+  readonly 'outputs' = ['geo-only', 'sensor', 'order', 'customs'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<KindRoute>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -57,6 +63,6 @@ export const routeKind: NodeInterface<CartographerState, KindRoute, Cartographer
     };
 
     return NodeOutputBuilder.of(route);
-  },
-};
+  }
+}
 // #endregion route-kind-node

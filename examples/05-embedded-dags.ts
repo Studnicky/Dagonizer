@@ -17,7 +17,7 @@
  */
 
 import { Dagonizer } from '@noocodex/dagonizer';
-import { IncrementState, increment, child, parent } from './dags/05-embedded-dags.js';
+import { IncrementState, IncrementNode, child, parent } from './dags/05-embedded-dags.js';
 
 // ---------------------------------------------------------------------------
 // Run
@@ -25,7 +25,7 @@ import { IncrementState, increment, child, parent } from './dags/05-embedded-dag
 
 // #region run
 const dispatcher = new Dagonizer<IncrementState>();
-dispatcher.registerNode(increment);
+dispatcher.registerNode(new IncrementNode());
 dispatcher.registerDAG(child);
 dispatcher.registerDAG(parent);
 

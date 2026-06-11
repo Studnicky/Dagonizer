@@ -51,7 +51,7 @@ async execute(state, context) {
     if (context.signal.aborted) break;   // check between iterations
     await process(item, context.signal); // propagate to every IO call
   }
-  return { output: 'success' };
+  return NodeOutputBuilder.of('success');
 }
 ```
 

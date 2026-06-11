@@ -8,8 +8,10 @@ import {
   DAGBuilder,
   NodeOutputBuilder,
   NodeStateBase,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
 } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import type { NodeInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State: tracks execution order so the example proves ordering guarantees
@@ -30,30 +32,36 @@ export class PhaseState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // #region pre-phase-node
-export const preSetup: NodeInterface<PhaseState, 'ready'> = {
-  "name":    'pre-setup',
-  "outputs": ['ready'],
-  async execute(state) {
+export class PreSetupNode implements NodeInterface<PhaseState, 'ready'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'pre-setup';
+  readonly outputs = ['ready'] as const;
+
+  async execute(state: PhaseState) {
     state.executionLog.push('pre-setup');
     state.seedValue = 42;
     return NodeOutputBuilder.of('ready');
-  },
-};
+  }
+}
 // #endregion pre-phase-node
 
 // ---------------------------------------------------------------------------
 // Main node: the flow entrypoint. Reads seedValue left by the pre-phase.
 // ---------------------------------------------------------------------------
 
-export const compute: NodeInterface<PhaseState, 'done'> = {
-  "name":    'compute',
-  "outputs": ['done'],
-  async execute(state) {
+export class ComputeNode implements NodeInterface<PhaseState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'compute';
+  readonly outputs = ['done'] as const;
+
+  async execute(state: PhaseState) {
     state.executionLog.push('compute');
     state.result = `computed:${String(state.seedValue * 2)}`;
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Post-phase node: runs AFTER the main loop on every exit path (completion,
@@ -62,16 +70,19 @@ export const compute: NodeInterface<PhaseState, 'done'> = {
 // ---------------------------------------------------------------------------
 
 // #region post-phase-node
-export const postAudit: NodeInterface<PhaseState, 'audited'> = {
-  "name":    'post-audit',
-  "outputs": ['audited'],
-  async execute(state) {
+export class PostAuditNode implements NodeInterface<PhaseState, 'audited'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'post-audit';
+  readonly outputs = ['audited'] as const;
+
+  async execute(state: PhaseState) {
     state.executionLog.push('post-audit');
     // State is already finalized; this is the last observer.
     state.executionLog.push(`final-result:${state.result}`);
     return NodeOutputBuilder.of('audited');
-  },
-};
+  }
+}
 // #endregion post-phase-node
 
 // ---------------------------------------------------------------------------
@@ -79,13 +90,17 @@ export const postAudit: NodeInterface<PhaseState, 'audited'> = {
 // ---------------------------------------------------------------------------
 
 // #region phase-dag
+const preSetupNode = new PreSetupNode();
+const computeNode = new ComputeNode();
+const postAuditNode = new PostAuditNode();
+
 export const dag = new DAGBuilder('phase-demo', '1')
   // 'pre' phase: runs before the entrypoint in declaration order.
-  .phase('setup', 'pre', preSetup)
+  .phase('setup', 'pre', preSetupNode)
   // Main loop: compute is the entrypoint (first .node() call).
-  .node('compute', compute, { 'done': 'end' })
+  .node('compute', computeNode, { 'done': 'end' })
   .terminal('end')
   // 'post' phase: runs after the main loop drains on every exit path.
-  .phase('audit', 'post', postAudit)
+  .phase('audit', 'post', postAuditNode)
   .build();
 // #endregion phase-dag

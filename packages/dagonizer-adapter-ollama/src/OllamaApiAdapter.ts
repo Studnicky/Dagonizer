@@ -21,11 +21,14 @@
  * adapter plugins (`'mistral'`, `'groq'`, `'cerebras'`).
  */
 
-import { LlmError, Classifications, OpenAiCompatibleAdapter } from '@noocodex/dagonizer/adapter';
+import { Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, OpenAiCompatibleAdapter } from '@noocodex/dagonizer/adapter';
 import type { ChatRequest, ChatResponse } from '@noocodex/dagonizer/adapter';
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:11434';
-const DEFAULT_MODEL = 'llama3.2:latest';
+// No portable default model: Ollama models are pulled per-host.
+// Consumers name the model they've pulled; this fallback is a convenience
+// for bare `new OllamaApiAdapter()` in development only.
+const FALLBACK_MODEL = 'llama3.2:latest';
 
 /**
  * Options accepted at construction.
@@ -50,11 +53,10 @@ const PROBE_TIMEOUT_MS = 500;
 
 export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
   readonly #baseUrl: string;
-  readonly #currentModel: string;
 
   constructor(options: OllamaApiAdapterOptions = {}) {
     const baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
-    const model = options.model ?? DEFAULT_MODEL;
+    const model = options.model ?? FALLBACK_MODEL;
     super(
       options.apiKey ?? 'ollama',
       {
@@ -66,17 +68,16 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
           'jsonMode': true
         },
         'endpoint': `${baseUrl}/v1/chat/completions`,
-        'defaultModel': DEFAULT_MODEL,
+        'defaultModel': FALLBACK_MODEL,
         'tokenField': 'max_tokens',
         'extraHeaders': {}
       },
       {
         'model': model,
-        ...(options.maxAttempts !== undefined ? { 'maxAttempts': options.maxAttempts } : {})
+        'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
       }
     );
     this.#baseUrl = baseUrl;
-    this.#currentModel = model;
   }
 
   /**
@@ -94,7 +95,7 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
       ) {
         // Extract the model name from the raw error message when available.
         const modelMatch = /model ['"]?([^'"]+)['"]? not found/iu.exec(err.message);
-        const modelName = modelMatch?.[1] ?? this.#currentModel;
+        const modelName = modelMatch?.[1] ?? this.model;
         throw new LlmError(
           `Ollama model '${modelName}' is not installed. Run: ollama pull ${modelName}`,
           Classifications['MODEL_NOT_FOUND'],

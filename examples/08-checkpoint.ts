@@ -26,12 +26,12 @@ import {
   CheckpointRestoreAdapterFn,
   Dagonizer,
 } from '@noocodex/dagonizer';
-import { CountingState, inc, dag } from './dags/08-checkpoint.js';
+import { CountingState, IncNode, dag } from './dags/08-checkpoint.js';
 
 // Step 1: partial run, abort after the first node completes
 // #region capture
 const dispatcher = new Dagonizer<CountingState>();
-dispatcher.registerNode(inc);
+dispatcher.registerNode(new IncNode());
 dispatcher.registerDAG(dag);
 
 const ctl     = new AbortController();

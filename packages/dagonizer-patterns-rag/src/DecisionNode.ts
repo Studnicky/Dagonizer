@@ -13,9 +13,8 @@
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
 import { NodeOutputBuilder } from '@noocodex/dagonizer';
 
-import { LlmDispatchNode, type RagServices } from './LlmDispatchNode.js';
-
-export { type RagServices };
+import { LlmDispatchNode } from './LlmDispatchNode.js';
+import type { RagServices } from './LlmDispatchNode.js';
 
 export abstract class DecisionNode<
   TState extends NodeStateInterface,

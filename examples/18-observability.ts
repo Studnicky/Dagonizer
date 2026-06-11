@@ -29,7 +29,7 @@
 
 import { Dagonizer } from '@noocodex/dagonizer';
 import type { ExecutionResultInterface } from '@noocodex/dagonizer';
-import { PipelineState, validate, transform, dag } from './dags/18-observability.js';
+import { PipelineState, ValidateNode, TransformNode, dag } from './dags/18-observability.js';
 
 // ---------------------------------------------------------------------------
 // Subclass: TracingDispatcher
@@ -102,8 +102,8 @@ class TracingDispatcher extends Dagonizer<PipelineState> {
 // ---------------------------------------------------------------------------
 
 const dispatcher = new TracingDispatcher('[trace]');
-dispatcher.registerNode(validate);
-dispatcher.registerNode(transform);
+dispatcher.registerNode(new ValidateNode());
+dispatcher.registerNode(new TransformNode());
 dispatcher.registerDAG(dag);
 
 const state = new PipelineState();

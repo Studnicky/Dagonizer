@@ -23,7 +23,7 @@ The plugin packages are GitHub-only and not yet published to npm. Install via th
 | Tier | Subpath consumed | Packages | Shape |
 |------|------------------|----------|-------|
 | **Adapters** | `@noocodex/dagonizer/adapter` | `@noocodex/dagonizer-adapter-*` (8) | Concrete drop-in classes |
-| **Tools** | `@noocodex/dagonizer/tool` (+ `/adapter`) | `@noocodex/dagonizer-tool-*` (3) | Concrete static classes |
+| **Tools** | `@noocodex/dagonizer/tool` (+ `/adapter`) | `@noocodex/dagonizer-tool-*` (3) | Concrete classes implementing `Tool<TInput, TOutput>` |
 | **Patterns** | `@noocodex/dagonizer/patterns` (+ `/adapter`, `/tool`) | `@noocodex/dagonizer-patterns-*` (3) | Abstract base classes consumers extend |
 
 ## `@noocodex/dagonizer/adapter`
@@ -50,7 +50,7 @@ import { ChatRequestBuilder } from '@noocodex/dagonizer/adapter';
 
 const adapter = new GroqApiAdapter({ apiKey: process.env.GROQ_API_KEY! });
 const response = await adapter.chat(ChatRequestBuilder.from({
-  messages: [{ role: 'user', content: 'Hello', toolCallId: '', toolName: '' }],
+  messages: [{ role: 'user', content: 'Hello' }],
 }));
 if (response.message.kind === 'text') {
   console.log(response.message.content);
@@ -87,7 +87,7 @@ The tool subpath exposes a small surface for external-service wrappers:
 
 | Symbol | Role |
 |--------|------|
-| `Tool<TInput, TOutput>` | Contract: `definition` (the JSON-Schema LLM-facing surface) + `execute(input, signal)` |
+| `Tool<TInput, TOutput>` | Contract: `definition` (the JSON-Schema LLM-facing surface) + `execute(input, options?)` |
 | `ToolError` | Error type with `classification.reason` |
 | `HttpTransport` | Built-in retry, timeout, abort propagation, JSON parsing for HTTP-backed tools |
 
@@ -96,30 +96,32 @@ The tool subpath exposes a small surface for external-service wrappers:
 ```ts
 import { OpenLibrarySearchTool } from '@noocodex/dagonizer-tool-openlibrary';
 
-const candidates = await OpenLibrarySearchTool.execute({ query: 'labyrinths' });
+const tool = new OpenLibrarySearchTool();
+const candidates = await tool.execute({ query: 'labyrinths' });
 ```
 
 ### Writing a tool
 
 ```ts
-import type { Tool } from '@noocodex/dagonizer/tool';
-import { HttpTransport, ToolError } from '@noocodex/dagonizer/tool';
+import type { Tool, ToolDefinition } from '@noocodex/dagonizer/tool';
+import type { AbortableOptionsInterface } from '@noocodex/dagonizer';
+import { HttpTransport } from '@noocodex/dagonizer/tool';
 
-export const MyTool: Tool<{ q: string }, readonly string[]> = {
-  definition: {
+export class MyTool implements Tool<{ q: string }, readonly string[]> {
+  readonly definition: ToolDefinition = {
     name: 'mine',
     description: 'Search my service',
     inputSchema: { type: 'object', properties: { q: { type: 'string' } }, required: ['q'] },
     strict: true,
-  },
-  async execute(input, signal) {
+  };
+  async execute(input: { q: string }, options?: AbortableOptionsInterface): Promise<readonly string[]> {
     const data = await HttpTransport.getJson<{ items: string[] }>(
       `https://api.example.com/search?q=${encodeURIComponent(input.q)}`,
-      { signal },
+      { signal: options?.signal },
     );
     return data.items;
-  },
-};
+  }
+}
 ```
 
 `HttpTransport` handles retry on 429/5xx/network, abort propagation, JSON parsing, and timeout; every tool gets it for free.

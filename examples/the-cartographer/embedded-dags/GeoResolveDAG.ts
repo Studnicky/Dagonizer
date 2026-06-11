@@ -26,36 +26,36 @@
  */
 
 // #region geo-resolve-dag
-import { reverseGeocode } from '../nodes/geo/reverseGeocode.ts';
-import { routeModalities } from '../nodes/geo/routeModalities.ts';
-import { ipGeolocate } from '../nodes/geo/ipGeolocate.ts';
-import { fuseGeo } from '../nodes/geo/fuseGeo.ts';
+import { ReverseGeocodeNode } from '../nodes/geo/reverseGeocode.ts';
+import { RouteModalitiesNode } from '../nodes/geo/routeModalities.ts';
+import { IpGeolocateNode } from '../nodes/geo/ipGeolocate.ts';
+import { FuseGeoNode } from '../nodes/geo/fuseGeo.ts';
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
 import type { DAG, DispatcherBundle } from '@noocodex/dagonizer';
-import { DAGBuilder } from '@noocodex/dagonizer/builder';
+import { DAGBuilder } from '@noocodex/dagonizer';
 
 export const geoResolveDAG: DAG = new DAGBuilder('geo-resolve', '1.0')
 
   // 1. reverse-geocode: GPS modality (offline country-coder). Always runs.
-  .node('reverse-geocode', reverseGeocode, {
+  .node('reverse-geocode', new ReverseGeocodeNode(), {
     'geocoded': 'route-modalities',
   })
 
   // 2. route-modalities: run the IP modality only when a gateway IP is present.
-  .node('route-modalities', routeModalities, {
+  .node('route-modalities', new RouteModalitiesNode(), {
     'ip':       'ip-geolocate',
     'gps-only': 'fuse-geo',
   })
 
   // 3. ip-geolocate: IP modality (a real freeipapi.com call). Conditional.
-  .node('ip-geolocate', ipGeolocate, {
+  .node('ip-geolocate', new IpGeolocateNode(), {
     'geolocated': 'fuse-geo',
   })
 
   // 4. fuse-geo: FAN-IN the two modality candidates → ResolvedGeo + geoContext.
-  .node('fuse-geo', fuseGeo, {
+  .node('fuse-geo', new FuseGeoNode(), {
     'fused': 'resolved',
   })
 
@@ -64,7 +64,7 @@ export const geoResolveDAG: DAG = new DAGBuilder('geo-resolve', '1.0')
   .build();
 
 export const geoResolveBundle: DispatcherBundle<CartographerState, CartographerServices> = {
-  'nodes': [reverseGeocode, routeModalities, ipGeolocate, fuseGeo],
+  'nodes': [new ReverseGeocodeNode(), new RouteModalitiesNode(), new IpGeolocateNode(), new FuseGeoNode()],
   'dags': [geoResolveDAG],
 };
 // #endregion geo-resolve-dag

@@ -8,19 +8,25 @@
 
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region validate-coords-node
-export const validateCoords: NodeInterface<CartographerState, 'valid' | 'rejected', CartographerServices> = {
-  'name': 'validate-coords',
-  'outputs': ['valid', 'rejected'],
-  async execute(state, context) {
+export class ValidateCoordsNode implements NodeInterface<CartographerState, 'valid' | 'rejected', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'validate-coords';
+  readonly 'outputs' = ['valid', 'rejected'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'valid' | 'rejected'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
     const { latitude, longitude } = state.raw;
     const isValid = latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180;
     return NodeOutputBuilder.of(isValid ? 'valid' : 'rejected');
-  },
-};
+  }
+}
 // #endregion validate-coords-node

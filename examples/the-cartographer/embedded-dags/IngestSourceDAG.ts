@@ -18,14 +18,14 @@
  */
 
 // #region ingest-source-dag
-import { selectSource } from '../nodes/ingest/selectSource.ts';
-import { decompress }   from '../nodes/ingest/decompress.ts';
-import { parseCsv }     from '../nodes/ingest/parseCsv.ts';
-import { parseJson }    from '../nodes/ingest/parseJson.ts';
-import { parseNdjson }  from '../nodes/ingest/parseNdjson.ts';
-import { mapFields }    from '../nodes/ingest/mapFields.ts';
-import { coerceTypes }  from '../nodes/ingest/coerceTypes.ts';
-import { validateEvent } from '../nodes/ingest/validateEvent.ts';
+import { SelectSourceNode } from '../nodes/ingest/selectSource.ts';
+import { DecompressNode }   from '../nodes/ingest/decompress.ts';
+import { ParseCsvNode }     from '../nodes/ingest/parseCsv.ts';
+import { ParseJsonNode }    from '../nodes/ingest/parseJson.ts';
+import { ParseNdjsonNode }  from '../nodes/ingest/parseNdjson.ts';
+import { MapFieldsNode }    from '../nodes/ingest/mapFields.ts';
+import { CoerceTypesNode }  from '../nodes/ingest/coerceTypes.ts';
+import { ValidateEventNode } from '../nodes/ingest/validateEvent.ts';
 
 import { ingestJsonDAG }     from './IngestJsonDAG.ts';
 import { ingestCsvDAG }      from './IngestCsvDAG.ts';
@@ -35,12 +35,12 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
 import type { DAG, DispatcherBundle } from '@noocodex/dagonizer';
-import { DAGBuilder } from '@noocodex/dagonizer/builder';
+import { DAGBuilder } from '@noocodex/dagonizer';
 
 export const ingestSourceDAG: DAG = new DAGBuilder('ingest-source', '1.0')
 
   // 1. select-source: read source feed from metadata; route by format.
-  .node('select-source', selectSource, {
+  .node('select-source', new SelectSourceNode(), {
     'json':    'json',
     'csv':     'csv',
     'gz':      'gz',
@@ -84,7 +84,13 @@ export const ingestSourceDAG: DAG = new DAGBuilder('ingest-source', '1.0')
   .build();
 
 export const ingestSourceBundle: DispatcherBundle<CartographerState, CartographerServices> = {
-  'nodes': [selectSource, decompress, parseCsv, parseJson, parseNdjson, mapFields, coerceTypes, validateEvent],
-  'dags':  [ingestSourceDAG, ingestJsonDAG, ingestCsvDAG, ingestNdjsonGzDAG],
+  // All unique ingest nodes: select-source (router) + all format-specific parse nodes
+  // + the shared transform nodes (map-fields, coerce-types, validate-event).
+  // Register this bundle as the single ingest registration point. Do NOT also register
+  // the per-format bundles (IngestJsonDAG, IngestCsvDAG, IngestNdjsonGzDAG) — they
+  // share map-fields / coerce-types / validate-event and would cause duplicate-node errors.
+  'nodes': [new SelectSourceNode(), new DecompressNode(), new ParseCsvNode(), new ParseJsonNode(), new ParseNdjsonNode(), new MapFieldsNode(), new CoerceTypesNode(), new ValidateEventNode()],
+  // Format sub-DAGs must be registered before ingest-source (which embeds them).
+  'dags':  [ingestJsonDAG, ingestCsvDAG, ingestNdjsonGzDAG, ingestSourceDAG],
 };
 // #endregion ingest-source-dag

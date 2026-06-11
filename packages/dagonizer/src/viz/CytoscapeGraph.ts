@@ -190,8 +190,8 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
   protected readonly embeddedDAGs: ReadonlyMap<string, DAG>;
   /** Layout tuning options forwarded to CompositeLayout. */
   protected readonly layoutOptions: CompositeLayoutOptions;
-  /** The live cytoscape Core after `mount()`, or `null` before. */
-  protected cyInstance: cytoscape.Core | null;
+  /** The live cytoscape Core after `mount()`. Only `mount()` writes this. */
+  #cyInstance: cytoscape.Core | null;
 
   /**
    * Create a new `CytoscapeGraph`.
@@ -214,7 +214,15 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
     this.dag              = dag;
     this.embeddedDAGs     = resolved.embeddedDAGs;
     this.layoutOptions    = resolved.layoutOptions;
-    this.cyInstance       = null;
+    this.#cyInstance      = null;
+  }
+
+  /**
+   * Read-only access to the live `cytoscape.Core` for subclasses.
+   * Subclasses may read but not write `cyInstance`; writes are owned by `mount()`.
+   */
+  protected get cyInstance(): cytoscape.Core | null {
+    return this.#cyInstance;
   }
 
   // ── CytoscapeGraphInterface ───────────────────────────────────────────────
@@ -224,7 +232,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
    * has not yet been mounted.
    */
   get cy(): cytoscape.Core | null {
-    return this.cyInstance;
+    return this.#cyInstance;
   }
 
   /**
@@ -255,7 +263,7 @@ export class CytoscapeGraph implements CytoscapeGraphInterface {
       ...this.interactionDefaults(),
     });
 
-    this.cyInstance = cy;
+    this.#cyInstance = cy;
 
     this.enforceVisibility(cy);
     this.onReady(cy);

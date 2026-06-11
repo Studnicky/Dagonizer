@@ -3,11 +3,13 @@ import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
 import type { WarningEmitter } from '../../src/contracts/WarningEmitter.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 
 class CollectingWarningEmitter implements WarningEmitter {
   readonly collected: string[] = [];
@@ -18,20 +20,30 @@ class CollectingWarningEmitter implements WarningEmitter {
 // Helpers
 // ---------------------------------------------------------------------------
 
+class ContractTestNode implements NodeInterface<NodeStateBase, string> {
+  readonly name: string;
+  readonly outputs: readonly string[];
+  readonly contract: OperationContractFragment;
+  readonly timeout: Timeout;
+
+  constructor(name: string, outputs: readonly string[], contract: OperationContractFragment = EMPTY_CONTRACT_FRAGMENT) {
+    this.name = name;
+    this.outputs = outputs;
+    this.contract = contract;
+    this.timeout = Timeout.none();
+  }
+
+  async execute(): Promise<{ 'errors': never[]; 'output': string }> {
+    return { 'errors': [], 'output': this.outputs[0] ?? 'success' };
+  }
+}
+
 function makeNode(
   name: string,
   outputs: readonly string[],
   contract?: OperationContractFragment,
 ): NodeInterface<NodeStateBase, string> {
-  const base: NodeInterface<NodeStateBase, string> = {
-    name,
-    outputs,
-    async execute() { return { 'errors': [], 'output': outputs[0] ?? 'success' }; },
-  };
-  if (contract !== undefined) {
-    return { ...base, contract };
-  }
-  return base;
+  return new ContractTestNode(name, outputs, contract);
 }
 
 // ---------------------------------------------------------------------------

@@ -38,7 +38,7 @@ function makeFakeResponse(content: string): Response {
 
 function makeRequest(withTools: boolean): ChatRequest {
   return {
-    'messages': [{ 'role': 'user', 'content': 'hello', 'toolCallId': '', 'toolName': '' }],
+    'messages': [{ 'role': 'user', 'content': 'hello' }],
     'tools': withTools
       ? [{ 'name': 'search', 'description': 'do a search', 'inputSchema': {}, 'strict': false }]
       : [],

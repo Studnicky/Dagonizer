@@ -3,8 +3,8 @@
  * No network calls; instantiation only.
  */
 
-import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { test } from 'node:test';
 
 import { MistralApiAdapter } from '../src/index.js';
 

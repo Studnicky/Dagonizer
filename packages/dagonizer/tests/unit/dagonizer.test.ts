@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
@@ -10,6 +11,7 @@ import {
   DAGError,
 } from '../../src/errors/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 import { TestNode } from '../_support/TestNode.js';
 
 const makeNode = TestNode.make;
@@ -93,16 +95,19 @@ void describe('Dagonizer scatter (source-based fork)', () => {
     }
     const dispatcher = new Dagonizer<NodeStateBase>();
     const seen: number[] = [];
-    dispatcher.registerNode({
-      'name': 'double',
-      'outputs': ['success'],
-      async execute(state) {
+    class DoubleNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'double';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(state: NodeStateBase) {
         const item = state.getMetadata<number>('item');
         if (item === undefined) throw new Error('no item');
         seen.push(item);
-        return { 'errors': [], 'output': 'success' };
-      },
-    });
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    dispatcher.registerNode(new DoubleNode());
 
     const dag: DAG = {
       '@context': DAG_CONTEXT,
@@ -167,15 +172,18 @@ void describe('Dagonizer embedded-DAG (nested sub-DAG)', () => {
       result: number;
     }
     const dispatcher = new Dagonizer<NodeStateBase>();
-    dispatcher.registerNode({
-      'name': 'inc',
-      'outputs': ['success'],
-      async execute(state) {
+    class IncNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'inc';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(state: NodeStateBase) {
         const s = state as NestState;
         s.result = (s.childValue ?? 0) + 1;
-        return { 'errors': [], 'output': 'success' };
-      },
-    });
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    dispatcher.registerNode(new IncNode());
     dispatcher.registerNode(makeNode('done', ['success'], () => 'success'));
 
     const child: DAG = {
@@ -296,13 +304,15 @@ void describe('Dagonizer validation', () => {
 
   void it('rejects nodes with invalid validate result', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const bad: NodeInterface<NodeStateBase> = {
-      'name': 'bad',
-      'outputs': ['success'],
-      async execute() { return { 'errors': [], 'output': 'success' }; },
-      validate() { return { 'valid': false, 'errors': ['bad config'] }; },
-    };
-    assert.throws(() => dispatcher.registerNode(bad), DAGError);
+    class BadNode implements NodeInterface<NodeStateBase> {
+      readonly name = 'bad';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(_state: NodeStateBase) { return { 'errors': [], 'output': 'success' as const }; }
+      validate() { return { 'valid': false, 'errors': ['bad config'] }; }
+    }
+    assert.throws(() => dispatcher.registerNode(new BadNode()), DAGError);
   });
 
   void it('single node registration succeeds', () => {

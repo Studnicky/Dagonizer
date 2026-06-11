@@ -17,12 +17,16 @@
  *                description of a previous read instead.
  */
 
+import { NodeOutputBuilder,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+
 import type { Binding } from '../memory/MemoryStore.ts';
-import { MemoryStore, STATE_GRAPH_PREFIX, stateGraphIri } from '../memory/MemoryStore.ts';
-
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
-
-import type { ArchivistNode } from './ArchivistNode.ts';
+import { MemoryStore, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';
+import type { ArchivistState } from '../ArchivistState.ts';
+import type { ArchivistServices } from '../services.ts';
 
 const dagInShortlist  = MemoryStore.dagIri('inShortlist');
 const dagScore        = MemoryStore.dagIri('score');
@@ -32,13 +36,15 @@ const dagRunTimestamp = MemoryStore.dagIri('runTimestamp');
 
 const MAX_TERMS = 6;
 
-export const recommendSimilar: ArchivistNode<'seeded' | 'empty'> = {
-  'name':    'recommend-similar',
-  'kind':    'deterministic',
-  'outputs': ['seeded', 'empty'],
-  async execute(state, context) {
+export class RecommendSimilarNode implements NodeInterface<ArchivistState, 'seeded' | 'empty', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'recommend-similar';
+  readonly outputs = ['seeded', 'empty'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const memory = context.services.memory;
-    const currentGraph = stateGraphIri(state.runId).value;
+    const currentGraph = MemoryStore.stateGraphIri(state.runId).value;
 
     // Find every state graph except the current run.
     const graphs = memory.graphs()
@@ -138,5 +144,8 @@ export const recommendSimilar: ArchivistNode<'seeded' | 'empty'> = {
 
     context.services.logger.info('recommend-similar: no prior shortlist with usable metadata');
     return NodeOutputBuilder.of('empty');
-  },
-};
+  }
+}
+
+/** Backward-compatible const export for existing bundle/DAG references. */
+export const recommendSimilar = new RecommendSimilarNode();

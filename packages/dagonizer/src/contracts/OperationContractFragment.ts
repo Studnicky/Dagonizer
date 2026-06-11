@@ -11,3 +11,16 @@ export interface OperationContractFragment {
   /** Field paths the operation writes to state on success. */
   produces: string[];
 }
+
+/**
+ * Sentinel `OperationContractFragment` for nodes that do not participate in
+ * derivation. Nodes carry this as their required `contract` field when they
+ * have no data-flow declaration; `DAGDeriver.extractContracts` skips fragments
+ * where both arrays are empty, so these nodes contribute no derived edges.
+ *
+ * Mirrors the role of `Timeout.none()` for the `timeout` field.
+ */
+export const EMPTY_CONTRACT_FRAGMENT: OperationContractFragment = {
+  'hardRequired': [],
+  'produces': [],
+};

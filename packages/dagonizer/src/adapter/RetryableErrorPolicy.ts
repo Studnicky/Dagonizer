@@ -1,3 +1,4 @@
+import type { RetryPolicyOptionsInterface } from '../contracts/RetryPolicyOptionsInterface.js';
 import { RetryPolicy } from '../runtime/index.js';
 
 import { LlmError } from './LlmError.js';
@@ -10,8 +11,19 @@ import { LlmError } from './LlmError.js';
  *
  * Keeps `RetryPolicy` itself generic; the `LlmError` coupling lives here, in
  * the adapter layer.
+ *
+ * Construct via `RetryableErrorPolicy.from(partial)` — the inherited constructor
+ * is `protected`, so `from()` is the canonical creation path.
  */
 export class RetryableErrorPolicy extends RetryPolicy {
+  /**
+   * Materialise a `RetryableErrorPolicy` from a partial options object.
+   * Delegates to the base `RetryPolicy` constructor via `from()`.
+   */
+  static override from(partial: RetryPolicyOptionsInterface = {}): RetryableErrorPolicy {
+    return new RetryableErrorPolicy(partial);
+  }
+
   override shouldRetry(error: Error, attempt: number): boolean {
     if (error instanceof LlmError && !error.classification.retryable) return false;
     return super.shouldRetry(error, attempt);

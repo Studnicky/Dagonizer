@@ -9,17 +9,22 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import { ValidationError } from '../../src/errors/index.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 
-const bodyNode: NodeInterface<NodeStateBase, 'success'> = {
-  'name': 'body-node',
-  'outputs': ['success'],
-  async execute() { return { 'errors': [], 'output': 'success' }; },
-};
+class BodyNode implements NodeInterface<NodeStateBase, 'success'> {
+  readonly name = 'body-node';
+  readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  async execute() { return { 'errors': [], 'output': 'success' as const }; }
+}
+const bodyNode = new BodyNode();
 
 // A ScatterNode with a node body AND a container key — this is a validation error.
 const invalidDAG: DAG = {

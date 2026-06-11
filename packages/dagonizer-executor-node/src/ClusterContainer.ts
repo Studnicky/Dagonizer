@@ -85,17 +85,7 @@ export class ClusterContainer extends DagContainerBase<NodeStateInterface, Worke
     }
 
     const worker = cluster.fork();
-
-    // worker.send expects Serializable; BridgeMessage is JSON-serializable.
-    // The IpcEndpoint.send type is (message: unknown) => void, so the cast
-    // to object is narrowed here at the IPC boundary only.
-    const sendFn = (message: unknown): void => { worker.send(message as object); };
-    const onFn = (event: 'message', listener: (message: unknown) => void) => {
-      worker.on(event, listener);
-      return { 'send': sendFn, 'on': onFn };
-    };
-
-    const channel = new IpcChannel({ 'send': sendFn, 'on': onFn });
+    const channel = IpcChannel.fromChildProcess(worker);
     return { 'worker': worker, 'channel': channel, 'initialized': false };
   }
 

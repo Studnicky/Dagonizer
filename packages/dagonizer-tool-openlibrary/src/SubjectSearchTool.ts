@@ -30,14 +30,14 @@
  *     (e.g. `lang`, `first_publish_year`) without a schema change.
  */
 
-import type { Candidate } from '@noocodex/dagonizer-book-entities';
-
+import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
+import type { AbortableOptionsInterface } from '@noocodex/dagonizer/contracts';
 import { HttpTransport } from '@noocodex/dagonizer/tool';
 import type { Tool } from '@noocodex/dagonizer/tool';
-import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
+import type { Candidate } from '@noocodex/dagonizer-book-entities';
 
-import type { OpenLibraryResponse } from './openLibraryTypes.js';
-import { OPENLIBRARY_ENDPOINT, OpenLibraryDocs } from './openLibraryTypes.js';
+
+import { OPENLIBRARY_ENDPOINT, narrowOpenLibraryResponse, OpenLibraryDocs } from './openLibraryTypes.js';
 
 interface SubjectSearchInput extends Record<string, unknown> {
   readonly subject: string;
@@ -45,44 +45,41 @@ interface SubjectSearchInput extends Record<string, unknown> {
   readonly lang?: string;
 }
 
-// #region tool-schema
-const definition: ToolDefinition = {
-  'name': 'subject_search',
-  'description':
-    'Search OpenLibrary by subject or theme. Use when the visitor describes a book by what it is *about* (themes, mood, plot motifs, setting) rather than by title, author, or ISBN. For example: "labyrinth", "haunted house", "minotaur", "cosmic horror", "unreliable narrator". Do NOT use for title or author keyword searches; use web_search_books for those.',
-  'inputSchema': {
-    'type': 'object',
-    'additionalProperties': true,
-    'properties': {
-      'subject': {
-        'type':        'string',
-        'minLength':   2,
-        'maxLength':   80,
-        'description': 'A thematic term, subject heading, or plot motif drawn from the visitor description. Prefer concrete nouns or adjective phrases (e.g. "labyrinth", "haunted house", "unreliable narrator"). AND-matching is strict; use a single focused term rather than a long phrase.',
-        'examples':    ['<subject-or-theme>', '<plot-motif>', '<setting-or-mood>'],
+export class SubjectSearchTool implements Tool<SubjectSearchInput, readonly Candidate[]> {
+  readonly definition: ToolDefinition = {
+    'name': 'subject_search',
+    'description':
+      'Search OpenLibrary by subject or theme. Use when the visitor describes a book by what it is *about* (themes, mood, plot motifs, setting) rather than by title, author, or ISBN. For example: "labyrinth", "haunted house", "minotaur", "cosmic horror", "unreliable narrator". Do NOT use for title or author keyword searches; use web_search_books for those.',
+    'inputSchema': {
+      'type': 'object',
+      'additionalProperties': true,
+      'properties': {
+        'subject': {
+          'type':        'string',
+          'minLength':   2,
+          'maxLength':   80,
+          'description': 'A thematic term, subject heading, or plot motif drawn from the visitor description. Prefer concrete nouns or adjective phrases (e.g. "labyrinth", "haunted house", "unreliable narrator"). AND-matching is strict; use a single focused term rather than a long phrase.',
+          'examples':    ['<subject-or-theme>', '<plot-motif>', '<setting-or-mood>'],
+        },
+        'limit': {
+          'type':        'integer',
+          'minimum':     1,
+          'maximum':     20,
+          'default':     8,
+          'description': 'Maximum number of results to return.',
+          'examples':    [8],
+        },
+        'lang': {
+          'type':        'string',
+          'description': 'Optional ISO 639-2 language code (e.g. eng, fre, jpn) to restrict results to that language.',
+        },
       },
-      'limit': {
-        'type':        'integer',
-        'minimum':     1,
-        'maximum':     20,
-        'default':     8,
-        'description': 'Maximum number of results to return.',
-        'examples':    [8],
-      },
-      'lang': {
-        'type':        'string',
-        'description': 'Optional ISO 639-2 language code (e.g. eng, fre, jpn) to restrict results to that language.',
-      },
+      'required': ['subject'],
     },
-    'required': ['subject'],
-  },
-  'strict': true,
-};
-// #endregion tool-schema
+    'strict': true,
+  };
 
-export const SubjectSearchTool: Tool<SubjectSearchInput, readonly Candidate[]> = {
-  definition,
-  async execute(input, options) {
+  async execute(input: SubjectSearchInput, options?: AbortableOptionsInterface): Promise<readonly Candidate[]> {
     const signal = options?.signal;
     const limit = Math.max(1, Math.min(20, input.limit ?? 8));
     const params = new URLSearchParams({
@@ -93,10 +90,11 @@ export const SubjectSearchTool: Tool<SubjectSearchInput, readonly Candidate[]> =
       params.set('lang', input.lang);
     }
 
-    const payload = await HttpTransport.getJson<OpenLibraryResponse>(
+    const raw = await HttpTransport.getJson<unknown>(
       `${OPENLIBRARY_ENDPOINT}?${params.toString()}`,
       { ...(signal !== undefined && { signal }) },
     );
-    return OpenLibraryDocs.buildCandidates(payload.docs ?? [], 'subject-search', 'openlibrary-subject');
-  },
-};
+    const payload = narrowOpenLibraryResponse(raw);
+    return OpenLibraryDocs.candidates(payload.docs ?? [], 'subject-search', 'openlibrary-subject');
+  }
+}

@@ -40,9 +40,6 @@ import { canonicalizeBundle } from './embedded-dags/CanonicalizeDAG.ts';
 import { gdprComplianceBundle } from './embedded-dags/GdprComplianceDAG.ts';
 import { geoResolveBundle } from './embedded-dags/GeoResolveDAG.ts';
 import { ingestSourceBundle } from './embedded-dags/IngestSourceDAG.ts';
-import { ingestJsonBundle } from './embedded-dags/IngestJsonDAG.ts';
-import { ingestCsvBundle } from './embedded-dags/IngestCsvDAG.ts';
-import { ingestNdjsonGzBundle } from './embedded-dags/IngestNdjsonGzDAG.ts';
 import { orderEnrichmentBundle } from './embedded-dags/OrderEnrichmentDAG.ts';
 import type { EnrichedShipment } from './entities/EnrichedShipment.ts';
 import { GeoResolvers } from './services/GeoResolvers.ts';
@@ -69,28 +66,66 @@ for (let i = 0; i < args.length; i++) {
   }
 }
 
+// ── CLI utilities ─────────────────────────────────────────────────────────────
+
+class CartographerCli {
+  static async networkReachable(): Promise<boolean> {
+    try {
+      const probe = new AbortController();
+      const timer = setTimeout(() => probe.abort(), 4000);
+      const res = await fetch('https://freeipapi.com/api/json/8.8.8.8', {
+        'signal':  probe.signal,
+        'headers': { 'accept': 'application/json' },
+      });
+      clearTimeout(timer);
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  static fmtCoord(lat: number, lng: number): string {
+    const ns = `${Math.abs(lat).toFixed(2)}${lat >= 0 ? 'N' : 'S'}`;
+    const ew = `${Math.abs(lng).toFixed(2)}${lng >= 0 ? 'E' : 'W'}`;
+    return `${ns} ${ew}`;
+  }
+
+  static printJourney(j: JourneyInsights): void {
+    const km = Math.round(j.pathKm).toLocaleString('en-US');
+    const elapsedH = Math.floor(j.elapsedHours);
+    const elapsedM = Math.round((j.elapsedHours - elapsedH) * 60);
+    console.log(`${j.shipmentId}  (${j.scanCount} scans, ${j.timezones.length} timezone(s))`);
+    for (const s of j.scans) {
+      const time = s.localIso.slice(11, 16);
+      const cum = `+${Math.round(s.legKm).toLocaleString('en-US')} km`;
+      console.log(
+        `  ${time} ${s.utcOffset.padEnd(7)} ${s.eventType.padEnd(16)} ` +
+        `${s.hub.slice(0, 18).padEnd(19)} ${CartographerCli.fmtCoord(s.lat, s.lng).padEnd(20)} ${cum}`,
+      );
+    }
+    const tzCrossings = Math.max(0, j.offsets.length - 1);
+    const jurisLabel = j.jurisdictions.length > 1 ? `${j.jurisdictions.join('→')}` : j.jurisdictions[0] ?? 'baseline';
+    const otLabel = j.delivered ? (j.onTime ? 'on-time' : `late ${j.delayHours}h`) : `in transit (${j.lastStatus})`;
+    console.log(`  journey: ${km} km · ${elapsedH}h${String(elapsedM).padStart(2, '0')}m elapsed · ${tzCrossings} tz crossing(s) · jurisdiction ${jurisLabel} · ${otLabel}`);
+  }
+
+  static printRedaction(label: string, rec: EnrichedShipment): void {
+    console.log(`  [${label}] ${rec.shipmentId}  jurisdiction=${rec.jurisdiction}  consent=${rec.consentStatus}`);
+    console.log(`    Name:    ${rec.redactedSample.recipientName}`);
+    console.log(`    Email:   ${rec.redactedSample.recipientEmail}`);
+    console.log(`    Phone:   ${rec.redactedSample.recipientPhone}`);
+    console.log(`    Coords:  ${CartographerCli.fmtCoord(rec.lat, rec.lng)}  ${rec.coordsCoarsened ? '(COARSENED to grid centroid)' : '(precise)'}`);
+  }
+}
+
 // ── Geo backend selection: LIVE IP if a network is reachable, else RECORDED ────
 // GPS reverse-geocode is ALWAYS offline (the `@rapideditor/country-coder` boundary
 // dataset — deterministic, no network) — only the IP modality is a live API call.
 // `useLive` selects the live freeipapi.com IP geolocator when reachable; otherwise
 // (and with `--recorded`) the recorded IP fixture replays for a deterministic,
 // offline run. The probe targets freeipapi (the only live modality).
-async function networkReachable(): Promise<boolean> {
-  try {
-    const probe = new AbortController();
-    const timer = setTimeout(() => probe.abort(), 4000);
-    const res = await fetch('https://freeipapi.com/api/json/8.8.8.8', {
-      'signal':  probe.signal,
-      'headers': { 'accept': 'application/json' },
-    });
-    clearTimeout(timer);
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
 
-const useLive = !forceRecorded && (await networkReachable());
+const useLive = !forceRecorded && (await CartographerCli.networkReachable());
 const services: CartographerServices = useLive ? GeoResolvers.live() : GeoResolvers.recorded();
 
 // ── Worker container (only when --workers / CARTO_WORKERS=1) ─────────────────
@@ -137,10 +172,7 @@ if (useWorkers) {
   dispatcher.registerBundle(canonicalizeBundle);
   dispatcher.registerBundle(orderEnrichmentBundle);
   dispatcher.registerBundle(gdprComplianceBundle);
-  // Ingestion bundles (execute in-process; ingest fan-in is NOT containerised).
-  dispatcher.registerBundle(ingestJsonBundle);
-  dispatcher.registerBundle(ingestCsvBundle);
-  dispatcher.registerBundle(ingestNdjsonGzBundle);
+  // ingestSourceBundle owns all unique ingest nodes + all format sub-DAGs.
   dispatcher.registerBundle(ingestSourceBundle);
   // Top-level DAG (cartographerWorkersDAG has container: 'cpu' on process-events).
   dispatcher.registerBundle(cartographerWorkersBundle);
@@ -150,9 +182,7 @@ if (useWorkers) {
   dispatcher.registerBundle(canonicalizeBundle);
   dispatcher.registerBundle(orderEnrichmentBundle);
   dispatcher.registerBundle(gdprComplianceBundle);
-  dispatcher.registerBundle(ingestJsonBundle);
-  dispatcher.registerBundle(ingestCsvBundle);
-  dispatcher.registerBundle(ingestNdjsonGzBundle);
+  // ingestSourceBundle owns all unique ingest nodes + all format sub-DAGs.
   dispatcher.registerBundle(ingestSourceBundle);
   dispatcher.registerBundle(cartographerBundle);
 }
@@ -235,12 +265,6 @@ console.log(`\nEvents carrying pre-resolved geo (RICH source → Stage 2 can ski
 console.log('');
 
 // ── (a) Normalization sample — a multi-zone, multi-scan journey ───────────────
-function fmtCoord(lat: number, lng: number): string {
-  const ns = `${Math.abs(lat).toFixed(2)}${lat >= 0 ? 'N' : 'S'}`;
-  const ew = `${Math.abs(lng).toFixed(2)}${lng >= 0 ? 'E' : 'W'}`;
-  return `${ns} ${ew}`;
-}
-
 // Prefer a journey that crosses >=2 timezones to show differing local offsets.
 const multiZoneJourney =
   [...state.journeys.values()].find((j) => j.scanCount >= 3 && j.offsets.length >= 2)
@@ -254,7 +278,7 @@ if (multiZoneJourney !== undefined) {
     const time = s.localIso.slice(11, 16);
     console.log(
       `  seq ${s.scanSeq}  ${time} ${s.utcOffset.padEnd(7)} ${s.eventType.padEnd(16)} ` +
-      `${s.hub.slice(0, 18).padEnd(19)} ${fmtCoord(s.lat, s.lng).padEnd(20)} [${s.jurisdiction}]`,
+      `${s.hub.slice(0, 18).padEnd(19)} ${CartographerCli.fmtCoord(s.lat, s.lng).padEnd(20)} [${s.jurisdiction}]`,
     );
   }
 }
@@ -381,25 +405,6 @@ console.log(`    • ${redactionPassesAvoided.toLocaleString('en-US')} redaction
 console.log(`    • ${pricingEtaAvoided.toLocaleString('en-US')} pricing/shipping/ETA node-executions avoided — don't price a position ping.`);
 
 // ── (c) Per-journey summaries (a few) ─────────────────────────────────────────
-function printJourney(j: JourneyInsights): void {
-  const km = Math.round(j.pathKm).toLocaleString('en-US');
-  const elapsedH = Math.floor(j.elapsedHours);
-  const elapsedM = Math.round((j.elapsedHours - elapsedH) * 60);
-  console.log(`${j.shipmentId}  (${j.scanCount} scans, ${j.timezones.length} timezone(s))`);
-  for (const s of j.scans) {
-    const time = s.localIso.slice(11, 16);
-    const cum = `+${Math.round(s.legKm).toLocaleString('en-US')} km`;
-    console.log(
-      `  ${time} ${s.utcOffset.padEnd(7)} ${s.eventType.padEnd(16)} ` +
-      `${s.hub.slice(0, 18).padEnd(19)} ${fmtCoord(s.lat, s.lng).padEnd(20)} ${cum}`,
-    );
-  }
-  const tzCrossings = Math.max(0, j.offsets.length - 1);
-  const jurisLabel = j.jurisdictions.length > 1 ? `${j.jurisdictions.join('→')}` : j.jurisdictions[0] ?? 'baseline';
-  const otLabel = j.delivered ? (j.onTime ? 'on-time' : `late ${j.delayHours}h`) : `in transit (${j.lastStatus})`;
-  console.log(`  journey: ${km} km · ${elapsedH}h${String(elapsedM).padStart(2, '0')}m elapsed · ${tzCrossings} tz crossing(s) · jurisdiction ${jurisLabel} · ${otLabel}`);
-}
-
 console.log('\n=== (c) Per-Journey Summaries ===\n');
 const journeysSorted = [...state.journeys.values()].sort((a, b) => b.scanCount - a.scanCount);
 // Show a few: one multi-tz, one multi-jurisdiction, one delivered.
@@ -412,7 +417,7 @@ if (multiJuris !== undefined) { picks.push(multiJuris); shown.add(multiJuris.shi
 const deliveredJourney = journeysSorted.find((j) => j.delivered && !shown.has(j.shipmentId));
 if (deliveredJourney !== undefined) { picks.push(deliveredJourney); shown.add(deliveredJourney.shipmentId); }
 for (const j of picks) {
-  printJourney(j);
+  CartographerCli.printJourney(j);
   console.log('');
 }
 
@@ -422,14 +427,6 @@ console.log(`Journeys crossing >=2 timezones: ${tzCrossingJourneys}`);
 console.log(`Journeys changing jurisdiction mid-path: ${jurisChangeJourneys}`);
 
 // ── (d) Location-driven redaction comparison ──────────────────────────────────
-function printRedaction(label: string, rec: EnrichedShipment): void {
-  console.log(`  [${label}] ${rec.shipmentId}  jurisdiction=${rec.jurisdiction}  consent=${rec.consentStatus}`);
-  console.log(`    Name:    ${rec.redactedSample.recipientName}`);
-  console.log(`    Email:   ${rec.redactedSample.recipientEmail}`);
-  console.log(`    Phone:   ${rec.redactedSample.recipientPhone}`);
-  console.log(`    Coords:  ${fmtCoord(rec.lat, rec.lng)}  ${rec.coordsCoarsened ? '(COARSENED to grid centroid)' : '(precise)'}`);
-}
-
 const strictRecord = processedRecords.find(
   (r) => r.coordsCoarsened && (r.jurisdiction === 'GDPR' || r.jurisdiction === 'UK-GDPR' || r.jurisdiction === 'LGPD'),
 ) ?? processedRecords.find((r) => r.coordsCoarsened);
@@ -438,10 +435,10 @@ const baselineRecord = processedRecords.find(
 ) ?? processedRecords.find((r) => !r.coordsCoarsened);
 
 console.log('\n=== (d) Location-Driven Redaction (strict vs baseline) ===\n');
-if (strictRecord !== undefined) printRedaction('strict', strictRecord);
+if (strictRecord !== undefined) CartographerCli.printRedaction('strict', strictRecord);
 if (baselineRecord !== undefined) {
   console.log('');
-  printRedaction('baseline', baselineRecord);
+  CartographerCli.printRedaction('baseline', baselineRecord);
 }
 
 console.log(`\nDone. ${state.insights.size} continent(s), ${state.journeys.size} journey(s). No Date.now. No Math.random.`);

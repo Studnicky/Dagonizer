@@ -63,7 +63,7 @@ A pre-phase that threw is not appended. A post-phase that threw is not appended.
 The fluent surface lives on `DAGBuilder`:
 
 ```ts
-import { DAGBuilder } from '@noocodex/dagonizer/builder';
+import { DAGBuilder } from '@noocodex/dagonizer';
 
 const dag = new DAGBuilder('pipeline', '1')
   .node('ingest', ingestNode, { success: 'process' })

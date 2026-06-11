@@ -51,7 +51,7 @@ The validator does no acyclic check, so the self-edge and the multi-node compose
 
 ## `RetryPolicy`
 
-`RetryPolicy` retries a thunk on declared error classes with a configurable backoff strategy. `policy.run(task, signal)` cooperates with the dispatcher's `AbortSignal`, so a cancelled flow stops cleanly mid-retry. Reach for it when a single operation (an HTTP fetch, an API round-trip) fails transiently and the right response is "try the same call again," not "re-route the flow." The adapters use it (via `RetryableErrorPolicy`) for rate-limited LLM API calls.
+`RetryPolicy` retries a thunk on declared error classes with a configurable backoff strategy. `policy.run(task, { signal })` cooperates with the dispatcher's `AbortSignal`, so a cancelled flow stops cleanly mid-retry. Reach for it when a single operation (an HTTP fetch, an API round-trip) fails transiently and the right response is "try the same call again," not "re-route the flow." The adapters use it (via `RetryableErrorPolicy`) for rate-limited LLM API calls.
 
 The Phase 07 demo constructs the policy at module scope so the configuration lives next to the operation it guards and no fresh instance is built per invocation. `jitterFactor: 0` keeps the delay deterministic for the example:
 
@@ -99,12 +99,12 @@ Precedence:
 
 ### Abort cooperation
 
-`policy.run(task, context.signal)` checks the signal before each attempt. During a backoff wait, if the signal fires the wait resolves with the abort reason (thrown). A cancelled flow stops cleanly mid-retry:
+`policy.run(task, { signal: context.signal })` checks the signal before each attempt. During a backoff wait, if the signal fires the wait resolves with the abort reason (thrown). A cancelled flow stops cleanly mid-retry:
 
 ```ts
 const policy = RetryPolicy.from({ maxAttempts: 10, baseDelay: 1000 });
 // If context.signal aborts during a 1 s sleep, run() throws immediately.
-await policy.run(task, context.signal);
+await policy.run(task, { signal: context.signal });
 ```
 
 ### Custom backoff

@@ -17,6 +17,7 @@ export type ToolErrorReason =
   | 'TIMEOUT'
   | 'PARSE_ERROR'
   | 'INVALID_INPUT'
+  | 'ABORTED'
   | 'UNKNOWN';
 
 export interface ToolErrorOptions {

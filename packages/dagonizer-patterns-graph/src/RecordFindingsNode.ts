@@ -6,9 +6,9 @@
  * record) and `toQuads` (turn one entity into a list of quads).
  */
 
-import type { Quad } from '@noocodex/dagonizer/patterns';
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
 import { NodeOutputBuilder } from '@noocodex/dagonizer';
+import type { Quad } from '@noocodex/dagonizer/patterns';
 
 import { GraphNode, type GraphServices } from './GraphNode.js';
 

@@ -16,13 +16,19 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region ip-geolocate-node
-export const ipGeolocate: NodeInterface<CartographerState, 'geolocated', CartographerServices> = {
-  'name': 'ip-geolocate',
-  'outputs': ['geolocated'],
-  async execute(state, context) {
+export class IpGeolocateNode implements NodeInterface<CartographerState, 'geolocated', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'ip-geolocate';
+  readonly 'outputs' = ['geolocated'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'geolocated'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -32,6 +38,6 @@ export const ipGeolocate: NodeInterface<CartographerState, 'geolocated', Cartogr
     );
     state.routing = { ...state.routing, 'ipGeolocateRun': true };
     return NodeOutputBuilder.of('geolocated');
-  },
-};
+  }
+}
 // #endregion ip-geolocate-node

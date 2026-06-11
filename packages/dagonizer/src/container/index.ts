@@ -12,11 +12,10 @@
  */
 
 export { DagTask } from './DagTask.js';
-// CON-13: DagTaskInterface canonical source (class-shape interface taxonomy).
-export type { DagTaskInterface } from './DagTask.js';
+export type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
 export { DagHost } from './DagHost.js';
 export type { DagHostOptions } from './DagHost.js';
-export { DagContainerBase } from './DagContainerBase.js';
+export { DagContainerBase, DAG_CONTAINER_DEFAULTS } from './DagContainerBase.js';
 export type {
   DagContainerOptions,
   InitMessageShape,
@@ -25,8 +24,7 @@ export type {
 export { DEFAULT_SHUTDOWN_GRACE_MS } from './DagContainerBase.js';
 export { DagContainerError } from './DagContainerError.js';
 export { DagOutcome } from './DagOutcome.js';
-// CON-13: DagOutcomeInterface canonical source (entity-narrowing interface taxonomy).
-export type { DagOutcomeInterface } from './DagOutcome.js';
+export type { DagOutcomeInterface } from '../contracts/DagOutcomeInterface.js';
 export {
   DAG_CONTAINER_TRANSPORT,
   DAG_CONTAINER_WORKER_DIED,

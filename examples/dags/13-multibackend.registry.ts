@@ -15,13 +15,13 @@ import type { RegistryBundleInterface, RegistryModuleInterface } from '@noocodex
 import { CheckpointRestoreAdapterFn } from '@noocodex/dagonizer/checkpoint';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 
-import { dag, squareItemDag, squareNode, sumNode, sumResultsDag, MultiBackendState } from './13-multibackend.js';
+import { dag, squareItemDag, SquareNode, SumNode, sumResultsDag, MultiBackendState } from './13-multibackend.js';
 
 const registry: RegistryModuleInterface = {
   async createBundle(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
     return {
       "bundle": {
-        "nodes": [squareNode, sumNode],
+        "nodes": [new SquareNode(), new SumNode()],
         "dags":  [squareItemDag, sumResultsDag, dag],
       },
       "services":        undefined,

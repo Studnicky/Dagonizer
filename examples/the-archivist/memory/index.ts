@@ -11,7 +11,5 @@ export {
   GRAPH_MEMORY,
   STATE_GRAPH_PREFIX,
   PROV_GRAPH_PREFIX,
-  stateGraphIri,
-  provGraphIri,
 } from './MemoryStore.ts';
 export type { Binding } from './MemoryStore.ts';

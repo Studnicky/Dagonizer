@@ -15,7 +15,7 @@
  */
 
 import { Dagonizer } from '@noocodex/dagonizer';
-import { ChatState, classify, respond, dag } from './dags/01-linear.js';
+import { ChatState, ClassifyNode, RespondNode, dag } from './dags/01-linear.js';
 
 // ---------------------------------------------------------------------------
 // Run
@@ -23,8 +23,8 @@ import { ChatState, classify, respond, dag } from './dags/01-linear.js';
 
 // #region run
 const dispatcher = new Dagonizer<ChatState>();
-dispatcher.registerNode(classify);
-dispatcher.registerNode(respond);
+dispatcher.registerNode(new ClassifyNode());
+dispatcher.registerNode(new RespondNode());
 dispatcher.registerDAG(dag);
 
 // On-topic: flows classify → respond, reply is an echo

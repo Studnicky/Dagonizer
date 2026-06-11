@@ -7,9 +7,9 @@
  * RecordFindingsNode, MemoryDigestNode) implement specific operations.
  */
 
+import type { NodeStateInterface } from '@noocodex/dagonizer';
 import { MonadicNode } from '@noocodex/dagonizer/patterns';
 import type { TripleStore } from '@noocodex/dagonizer/patterns';
-import type { NodeStateInterface } from '@noocodex/dagonizer';
 
 export interface GraphServices {
   readonly memory: TripleStore;

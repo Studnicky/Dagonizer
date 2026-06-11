@@ -27,12 +27,12 @@ import { StubAdapter } from '@noocodex/dagonizer-adapter-stub';
 import {
   ToolUseState,
   ToolRegistry,
-  calculatorTool,
-  callLlm,
-  dispatchTool,
-  onText,
-  onToolDone,
-  onToolError,
+  CalculatorTool,
+  CallLlmNode,
+  DispatchToolNode,
+  OnTextNode,
+  OnToolDoneNode,
+  OnToolErrorNode,
   dag,
 } from './dags/26-tool-use.js';
 
@@ -100,6 +100,7 @@ class TextChannelToolCallAdapter extends StubAdapter {
 // Tool registry
 // ---------------------------------------------------------------------------
 
+const calculatorTool = new CalculatorTool();
 const registry = new ToolRegistry();
 registry.register(calculatorTool);
 
@@ -111,11 +112,11 @@ process.stdout.write(`Tool input schema: ${JSON.stringify(calculatorTool.definit
 // ---------------------------------------------------------------------------
 
 const dispatcher = new Dagonizer<ToolUseState>();
-dispatcher.registerNode(callLlm);
-dispatcher.registerNode(dispatchTool);
-dispatcher.registerNode(onText);
-dispatcher.registerNode(onToolDone);
-dispatcher.registerNode(onToolError);
+dispatcher.registerNode(new CallLlmNode());
+dispatcher.registerNode(new DispatchToolNode());
+dispatcher.registerNode(new OnTextNode());
+dispatcher.registerNode(new OnToolDoneNode());
+dispatcher.registerNode(new OnToolErrorNode());
 dispatcher.registerDAG(dag);
 
 // ---------------------------------------------------------------------------

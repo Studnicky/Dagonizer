@@ -22,7 +22,7 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test tests/**/*.test.ts",
-    "lint": "echo 'lint via workspace root'",
+    "lint": "eslint . --max-warnings 0",
     "prepack": "npm run clean && npm run build"
   },
   "publishConfig": {
@@ -32,8 +32,10 @@
   "devDependencies": {
     "@types/node": "^25.2.0"
   },
+  "dependencies": {
+    "@noocodex/dagonizer-book-entities": "workspace:>=0.14.0 <1.0.0"
+  },
   "peerDependencies": {
-    "@noocodex/dagonizer-book-entities": "workspace:>=0.14.0 <1.0.0",
     "@noocodex/dagonizer": "workspace:>=0.14.0 <1.0.0"
   },
   "engines": {

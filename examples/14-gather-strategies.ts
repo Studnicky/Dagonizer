@@ -28,7 +28,7 @@
 import { Dagonizer } from '@noocodex/dagonizer';
 import {
   GatherDemoState,
-  tag,
+  TagNode,
   collectDag,
   discardDag,
 } from './dags/14-gather-strategies.js';
@@ -39,7 +39,7 @@ import {
 
 // #region run-collect
 const collectDispatcher = new Dagonizer<GatherDemoState>();
-collectDispatcher.registerNode(tag);
+collectDispatcher.registerNode(new TagNode());
 collectDispatcher.registerDAG(collectDag);
 
 const collectState = new GatherDemoState();
@@ -59,7 +59,7 @@ process.stdout.write(`  length match: ${collectState.tokens.length === collectSt
 
 // #region run-discard
 const discardDispatcher = new Dagonizer<GatherDemoState>();
-discardDispatcher.registerNode(tag);
+discardDispatcher.registerNode(new TagNode());
 discardDispatcher.registerDAG(discardDag);
 
 const discardState = new GatherDemoState();

@@ -23,21 +23,27 @@
  * named output union narrower than the default `'success'`.
  */
 
+import { NodeOutputBuilder,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+
 import type { Candidate } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
 import { UserLanguage } from '../language/UserLanguage.ts';
 import type { ArchivistServices } from '../services.ts';
-import { CanonicalId } from '@noocodex/dagonizer-tool-openlibrary';
-
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { CanonicalId } from '@noocodex/dagonizer-book-entities';
 
 const SHORTLIST_LIMIT = 5;
 
-export const mergeCandidates: NodeInterface<ArchivistState, 'ranked' | 'empty', ArchivistServices> = {
-  "name": 'merge-candidates',
-  "outputs": ['ranked', 'empty'],
-  async execute(state, context) {
+export class MergeCandidatesNode implements NodeInterface<ArchivistState, 'ranked' | 'empty', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'merge-candidates';
+  readonly outputs = ['ranked', 'empty'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const targetIso2 = UserLanguage.toIso6392(state.userLanguage);
 
     // ── Both pools empty → soft gate ──────────────────────────────────────
@@ -65,9 +71,9 @@ export const mergeCandidates: NodeInterface<ArchivistState, 'ranked' | 'empty', 
     } else {
       // Case 2b: both pools have content; merge, dedupe, prefer live over prior.
       // Build a set of ISBNs already present in live candidates.
-      const liveIsbns = new Set(state.candidates.map((c) => c.book.isbn));
+      const liveIsbns = new Set(state.candidates.map((c) => c.book.identity.isbn));
       // Only add prior candidates whose ISBN is NOT already in live results.
-      const priorOnly = state.priorCandidates.filter((c) => !liveIsbns.has(c.book.isbn));
+      const priorOnly = state.priorCandidates.filter((c) => !liveIsbns.has(c.book.identity.isbn));
       pool = [...state.candidates, ...priorOnly];
       context.services.logger.info(
         `merge: ${String(state.candidates.length)} live + ${String(priorOnly.length)} prior (${String(pool.length)} combined before dedupe)`,
@@ -83,8 +89,8 @@ export const mergeCandidates: NodeInterface<ArchivistState, 'ranked' | 'empty', 
     // skipped the per-scout filter. Candidates without language metadata
     // pass through unchanged.
     const inLanguage = deduped.filter((c) => {
-      const langs = c.book.languages;
-      if (langs === undefined || langs.length === 0) return true;
+      const langs = c.book.publication.languages;
+      if (langs.length === 0) return true;
       return langs.includes(targetIso2);
     });
     const ranked = [...inLanguage]
@@ -98,5 +104,8 @@ export const mergeCandidates: NodeInterface<ArchivistState, 'ranked' | 'empty', 
     }
     return NodeOutputBuilder.of(ranked.length > 0 ? 'ranked' : 'empty');
     // #endregion merge-aggregation
-  },
-};
+  }
+}
+
+/** Backward-compatible const export for existing bundle/DAG references. */
+export const mergeCandidates = new MergeCandidatesNode();

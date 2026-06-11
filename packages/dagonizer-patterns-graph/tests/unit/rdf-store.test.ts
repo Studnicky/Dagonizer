@@ -1,25 +1,26 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { RdfStore } from '../../src/RdfStore.js';
 import type { Term } from '@noocodex/dagonizer/patterns';
 import { StoreError } from '@noocodex/dagonizer/store';
+
+import { RdfStore } from '../../src/RdfStore.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function namedNode(value: string): Term {
-  return { termType: 'NamedNode', value };
+  return { "termType": 'NamedNode', value };
 }
 
 function literal(value: string): Term {
-  return { termType: 'Literal', value };
+  return { "termType": 'Literal', value };
 }
 
 function namedGraph(value: string): Term {
-  return { termType: 'NamedNode', value };
+  return { "termType": 'NamedNode', value };
 }
 
-const DEFAULT_GRAPH: Term = { termType: 'DefaultGraph', value: '' };
+const DEFAULT_GRAPH: Term = { "termType": 'DefaultGraph', "value": '' };
 
 // ── 1. Store contract: get/set/has/delete round-trip ─────────────────────────
 
@@ -55,8 +56,8 @@ void describe('RdfStore: Store contract (reified key-value)', () => {
 
   void it('stores complex JsonValue (object, array)', async () => {
     const store = new RdfStore();
-    await store.set('obj', { a: 1, b: [2, 3] });
-    assert.deepEqual(await store.get('obj'), { a: 1, b: [2, 3] });
+    await store.set('obj', { "a": 1, "b": [2, 3] });
+    assert.deepEqual(await store.get('obj'), { "a": 1, "b": [2, 3] });
   });
 });
 
@@ -96,13 +97,13 @@ void describe('RdfStore: TripleStore contract', () => {
 
     store.assert(s, p, o);
 
-    assert.equal(store.ask({ subject: s, predicate: p, object: o }), true);
+    assert.equal(store.ask({ "subject": s, "predicate": p, "object": o }), true);
   });
 
   void it('ask returns false for a non-matching pattern', () => {
     const store = new RdfStore();
     store.assert(namedNode('urn:test:s'), namedNode('urn:test:p'), literal('o'));
-    assert.equal(store.ask({ subject: namedNode('urn:test:other') }), false);
+    assert.equal(store.ask({ "subject": namedNode('urn:test:other') }), false);
   });
 
   void it('select returns bindings for variable slots', () => {
@@ -112,7 +113,7 @@ void describe('RdfStore: TripleStore contract', () => {
     const o = namedNode('urn:test:b');
     store.assert(s, p, o);
 
-    const rows = store.select({ subject: '?who', predicate: p, object: '?target' });
+    const rows = store.select({ "subject": '?who', "predicate": p, "object": '?target' });
     assert.equal(rows.length, 1);
     const row = rows[0];
     assert.ok(row !== undefined);
@@ -126,7 +127,7 @@ void describe('RdfStore: TripleStore contract', () => {
     store.assert(namedNode('urn:test:x'), p, literal('A'));
     store.assert(namedNode('urn:test:y'), p, literal('B'));
 
-    const rows = store.select({ predicate: p, subject: '?s' });
+    const rows = store.select({ "predicate": p, "subject": '?s' });
     assert.equal(rows.length, 2);
   });
 
@@ -137,7 +138,7 @@ void describe('RdfStore: TripleStore contract', () => {
     store.assert(namedNode('urn:2'), p, literal('v2'));
     store.assert(namedNode('urn:3'), namedNode('urn:other'), literal('v3'));
 
-    assert.equal(store.count({ predicate: p }), 2);
+    assert.equal(store.count({ "predicate": p }), 2);
     assert.equal(store.count({}), 3);
   });
 });
@@ -157,10 +158,10 @@ void describe('RdfStore: clearGraph', () => {
 
     store.clearGraph(graphA);
 
-    assert.equal(store.count({ graph: graphA }), 0);
-    assert.equal(store.count({ graph: graphB }), 1);
+    assert.equal(store.count({ "graph": graphA }), 0);
+    assert.equal(store.count({ "graph": graphB }), 1);
     // Default-graph quad survives.
-    assert.equal(store.count({ graph: DEFAULT_GRAPH }), 1);
+    assert.equal(store.count({ "graph": DEFAULT_GRAPH }), 1);
   });
 
   void it('clearGraph on an empty or non-existent graph is a no-op', () => {
@@ -208,7 +209,7 @@ void describe('RdfStore: Store entries and native quads coexist', () => {
     await store.set<number>('score', 99);
 
     // Both are present.
-    assert.equal(store.count({ predicate: p }), 1);
+    assert.equal(store.count({ "predicate": p }), 1);
     assert.equal(await store.get<number>('score'), 99);
   });
 
@@ -278,7 +279,7 @@ void describe('RdfStore: restore()', () => {
 
     await store.restore(snap);
     // The native assert is gone; this is the documented trade-off.
-    assert.equal(store.count({ subject: namedNode('urn:s') }), 0);
+    assert.equal(store.count({ "subject": namedNode('urn:s') }), 0);
     assert.equal(await store.get<string>('k'), 'v');
   });
 });
@@ -288,7 +289,7 @@ void describe('RdfStore: restore()', () => {
 void describe('RdfStore: restore() incompatible snapshot', () => {
   void it('throws StoreError INCOMPATIBLE_SNAPSHOT for wrong type', async () => {
     const store = new RdfStore();
-    const bad = { version: 1, type: 'wrong-type', entries: [] };
+    const bad = { "version": 1, "type": 'wrong-type', "entries": [] };
     await assert.rejects(
       () => store.restore(bad),
       (err: unknown) => {
@@ -307,7 +308,7 @@ void describe('RdfStore: restore() incompatible snapshot', () => {
 
   void it('throws StoreError INCOMPATIBLE_SNAPSHOT for wrong version', async () => {
     const store = new RdfStore();
-    const bad = { version: 99, type: 'rdf-store', entries: [] };
+    const bad = { "version": 99, "type": 'rdf-store', "entries": [] };
     await assert.rejects(
       () => store.restore(bad),
       (err: unknown) => {

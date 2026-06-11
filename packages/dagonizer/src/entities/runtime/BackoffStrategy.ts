@@ -17,7 +17,7 @@ export const BackoffStrategySchema = {
 } as const;
 
 /** Union type derived from `BackoffStrategySchema` via `json-schema-to-ts`. */
-export type BackoffStrategyValue = FromSchema<typeof BackoffStrategySchema>;
+export type BackoffStrategy = FromSchema<typeof BackoffStrategySchema>;
 // → 'constant' | 'decorrelated-jitter' | 'exponential' | 'linear'
 
 /** Backoff delay strategies for `RetryPolicy`. */
@@ -26,4 +26,4 @@ export const BackoffStrategy = {
   'DECORRELATED_JITTER': 'decorrelated-jitter',
   'EXPONENTIAL': 'exponential',
   'LINEAR': 'linear',
-} as const satisfies Record<string, BackoffStrategyValue>;
+} as const satisfies Record<string, BackoffStrategy>;

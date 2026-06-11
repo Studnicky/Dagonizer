@@ -7,6 +7,7 @@
   "type": "module",
   "dependencies": {
     "@noocodex/dagonizer": "workspace:^",
+    "@noocodex/dagonizer-adapter-stub": "workspace:*",
     "@noocodex/dagonizer-executor-node": "workspace:^"
   },
   "devDependencies": {

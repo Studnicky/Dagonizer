@@ -13,13 +13,19 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { GeoLookup } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region apply-geo-node
-export const applyGeo: NodeInterface<CartographerState, 'normalize', CartographerServices> = {
-  'name': 'apply-geo',
-  'outputs': ['normalize'],
-  async execute(state, context) {
+export class ApplyGeoNode implements NodeInterface<CartographerState, 'normalize', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'apply-geo';
+  readonly 'outputs' = ['normalize'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'normalize'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -30,6 +36,6 @@ export const applyGeo: NodeInterface<CartographerState, 'normalize', Cartographe
     const region    = geo?.region ?? 'Unmapped';
     state.geoContext = GeoLookup.fromResolved(country, continent, region, state.raw.latitude, state.raw.longitude);
     return NodeOutputBuilder.of('normalize');
-  },
-};
+  }
+}
 // #endregion apply-geo-node

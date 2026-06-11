@@ -19,9 +19,44 @@
 
 import { open, type FileHandle } from 'node:fs/promises';
 
-import { BaseStore, type BaseStoreOptions } from '@noocodex/dagonizer/store';
 import type { StoreSnapshotEntry } from '@noocodex/dagonizer/contracts';
 import type { JsonValue } from '@noocodex/dagonizer/entities';
+import { BASE_STORE_DEFAULTS, BaseStore, StoreError, type BaseStoreOptions } from '@noocodex/dagonizer/store';
+import type { EntityValidator } from '@noocodex/dagonizer/validation';
+
+// ── Schema ────────────────────────────────────────────────────────────────────
+
+/**
+ * JSON Schema 2020-12 for EventLogEntry wire shape.
+ * Runtime validator narrows deserialized log lines to this schema before use.
+ */
+export const EventLogEntrySchema = {
+  '$id': 'https://noocodex.dev/schemas/dagonizer-store-eventlog/EventLogEntry',
+  '$schema': 'https://json-schema.org/draft/2020-12/schema',
+  'oneOf': [
+    {
+      'type': 'object',
+      'required': ['kind', 'at', 'key', 'value'],
+      'properties': {
+        'kind':  { 'type': 'string', 'const': 'set' },
+        'at':    { 'type': 'number' },
+        'key':   { 'type': 'string' },
+        'value': {},
+      },
+      'additionalProperties': false,
+    },
+    {
+      'type': 'object',
+      'required': ['kind', 'at', 'key'],
+      'properties': {
+        'kind': { 'type': 'string', 'const': 'delete' },
+        'at':   { 'type': 'number' },
+        'key':  { 'type': 'string' },
+      },
+      'additionalProperties': false,
+    },
+  ],
+} as const;
 
 // ── Discriminated union ───────────────────────────────────────────────────────
 
@@ -30,10 +65,60 @@ import type { JsonValue } from '@noocodex/dagonizer/entities';
  *
  * `kind: 'set'`: `value` carries the new value stored under `key`.
  * `kind: 'delete'`: a tombstone; the key is logically absent after this entry.
+ *
+ * The compile-time type is hand-written rather than derived from
+ * `EventLogEntrySchema` via `FromSchema` because `JsonValue` is a recursive
+ * union that JSON Schema's `{}` (any value) maps to `unknown` in
+ * `json-schema-to-ts`. `EventLogEntrySchema` governs runtime validation;
+ * this type governs compile-time usage — both are required to be structurally
+ * consistent and are kept co-located.
  */
 export type EventLogEntry =
   | { readonly kind: 'set';    readonly at: number; readonly key: string; readonly value: JsonValue }
   | { readonly kind: 'delete'; readonly at: number; readonly key: string };
+
+// ── Local validator ───────────────────────────────────────────────────────────
+
+/**
+ * Structural validator for `EventLogEntry` at the file-read JSON ingest
+ * boundary. Compiled once at module load; no external runtime dependency.
+ *
+ * Performs the minimum structural check the discriminated union requires:
+ *   - `kind` is `'set'` or `'delete'`
+ *   - `at` is a number
+ *   - `key` is a string
+ *   - `value` is present on `set` entries
+ * `additionalProperties` on the stored objects are NOT rejected — the schema
+ * allows forward-compat reads. Malformed/missing required fields throw.
+ */
+const EventLogEntryValidator: EntityValidator<EventLogEntry> = {
+  is(value): value is EventLogEntry {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+    const obj = value as Record<string, unknown>;
+    if (typeof obj['at'] !== 'number') return false;
+    if (typeof obj['key'] !== 'string') return false;
+    if (obj['kind'] === 'set') return 'value' in obj;
+    if (obj['kind'] === 'delete') return true;
+    return false;
+  },
+  validate(value): EventLogEntry {
+    if (EventLogEntryValidator.is(value)) return value;
+    throw new StoreError(
+      `invalid EventLogEntry: ${JSON.stringify(value)}`,
+      {
+        'reason':          'INCOMPATIBLE_SNAPSHOT',
+        'expectedType':    'event-log-store',
+        'actualType':      'unknown',
+        'expectedVersion': 1,
+        'actualVersion':   0,
+      },
+    );
+  },
+  errors(value): string[] | null {
+    if (EventLogEntryValidator.is(value)) return null;
+    return [`invalid EventLogEntry shape: kind must be 'set' or 'delete', at must be number, key must be string`];
+  },
+};
 
 // ── Options ───────────────────────────────────────────────────────────────────
 
@@ -55,7 +140,7 @@ export class EventLogStore extends BaseStore {
   readonly #syncOnAppend: boolean;
   #handle: FileHandle | null;
 
-  constructor(options: EventLogStoreOptions = { 'namespace': '' }) {
+  constructor(options: EventLogStoreOptions = BASE_STORE_DEFAULTS) {
     super(options);
     this.#log = [];
     this.#filePath = options.filePath ?? '';
@@ -71,6 +156,8 @@ export class EventLogStore extends BaseStore {
   /**
    * Open the log file (if `filePath` was set) and replay existing entries into
    * the in-memory log. Each line of the file is a JSON-serialized `EventLogEntry`.
+   * Each line is validated against `EventLogEntrySchema`; malformed or
+   * structurally incompatible lines throw a `StoreError(INCOMPATIBLE_SNAPSHOT)`.
    * No-op when `filePath` is empty.
    */
   override async connect(): Promise<void> {
@@ -80,9 +167,10 @@ export class EventLogStore extends BaseStore {
     const contents = await this.#handle.readFile({ 'encoding': 'utf8' });
     for (const line of contents.split('\n')) {
       if (line === '') continue;
-      // JSON parse IS the JSON ingest boundary: file bytes → runtime type.
-      const parsed = JSON.parse(line) as EventLogEntry;
-      this.#log.push(parsed);
+      // JSON parse is the ingest boundary: file bytes → unknown → validated type.
+      const parsed: unknown = JSON.parse(line);
+      const entry = EventLogEntryValidator.validate(parsed);
+      this.#log.push(entry);
     }
   }
 

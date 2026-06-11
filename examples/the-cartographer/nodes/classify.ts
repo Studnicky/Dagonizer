@@ -20,13 +20,19 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { EventClassifier } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region classify-node
-export const classify: NodeInterface<CartographerState, 'classified', CartographerServices> = {
-  'name': 'classify',
-  'outputs': ['classified'],
-  async execute(state, context) {
+export class ClassifyNode implements NodeInterface<CartographerState, 'classified', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'classify';
+  readonly 'outputs' = ['classified'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'classified'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -64,6 +70,6 @@ export const classify: NodeInterface<CartographerState, 'classified', Cartograph
     };
 
     return NodeOutputBuilder.of('classified');
-  },
-};
+  }
+}
 // #endregion classify-node
