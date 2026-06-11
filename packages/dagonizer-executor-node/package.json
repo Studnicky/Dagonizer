@@ -1,6 +1,6 @@
 {
   "name": "@noocodex/dagonizer-executor-node",
-  "version": "0.19.0",
+  "version": "0.20.0",
   "description": "Node.js isolating executor backends for @noocodex/dagonizer: worker threads, fork, cluster, and spawn over the bridge protocol.",
   "private": false,
   "license": "MIT",
@@ -35,7 +35,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@noocodex/dagonizer": "workspace:>=0.19.0"
+    "@noocodex/dagonizer": "workspace:>=0.20.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
