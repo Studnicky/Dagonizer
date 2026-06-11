@@ -18,7 +18,7 @@
 
 import type { Term } from 'n3';
 
-import { MemoryStore, provGraphIri } from '../memory/MemoryStore.ts';
+import { MemoryStore } from '../memory/MemoryStore.ts';
 
 import { DAG_ACT, PROV, ProvIris, RDF_TYPE } from './PROV.ts';
 
@@ -41,7 +41,7 @@ export class RdfProvObserver {
   constructor(inputs: ProvObserverInputs) {
     this.#store = inputs.store;
     this.#runId = inputs.runId;
-    this.#graph = provGraphIri(this.#runId);
+    this.#graph = MemoryStore.provGraphIri(this.#runId);
     this.#dispatcher = ProvIris.agent(inputs.dispatcherAgentId);
     this.#run = ProvIris.activity(this.#runId, 'run', 0);
   }

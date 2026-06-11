@@ -1,14 +1,19 @@
-import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { OpenLibrarySearchTool, SubjectSearchTool, CanonicalId } from '../src/index.js';
+import { test } from 'node:test';
+
+import { CanonicalId } from '@noocodex/dagonizer-book-entities';
+
+import { OpenLibrarySearchTool, SubjectSearchTool } from '../src/index.js';
 void test('OpenLibrarySearchTool definition is well-formed', () => {
-  assert.equal(typeof OpenLibrarySearchTool.definition.name, 'string');
-  assert.ok(OpenLibrarySearchTool.definition.name.length > 0);
-  assert.equal(typeof OpenLibrarySearchTool.execute, 'function');
+  const tool = new OpenLibrarySearchTool();
+  assert.equal(typeof tool.definition.name, 'string');
+  assert.ok(tool.definition.name.length > 0);
+  assert.equal(typeof tool.execute, 'function');
 });
 void test('SubjectSearchTool definition is well-formed', () => {
-  assert.equal(typeof SubjectSearchTool.definition.name, 'string');
-  assert.ok(SubjectSearchTool.definition.name.length > 0);
+  const tool = new SubjectSearchTool();
+  assert.equal(typeof tool.definition.name, 'string');
+  assert.ok(tool.definition.name.length > 0);
 });
 void test('CanonicalId.fromIsbns prefers ISBN-13', () => {
   assert.equal(CanonicalId.fromIsbns(['1234567890', '9781234567897']), '9781234567897');

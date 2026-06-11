@@ -6,24 +6,29 @@
 
 import {
   DAG_CONTEXT,
-  Dagonizer,
   NodeOutputBuilder,
   NodeStateBase,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
 } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import { DAGDocument } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Node
 // ---------------------------------------------------------------------------
 
-export const echo: NodeInterface<NodeStateBase, 'success'> = {
-  'name': 'echo',
-  'outputs': ['success'],
-  async execute(state) {
+export class EchoNode implements NodeInterface<NodeStateBase, 'success'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'echo';
+  readonly outputs = ['success'] as const;
+
+  async execute(state: NodeStateBase) {
     state.setMetadata('seen', true);
     return NodeOutputBuilder.of('success');
-  },
-};
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Canonical JSON-LD DAG as a JSON string (the wire format).
@@ -64,10 +69,10 @@ const dagJson = JSON.stringify({
 // #endregion dag-literal
 
 // ---------------------------------------------------------------------------
-// Load + export: Dagonizer.load() is the only valid ingest path
+// Load + export: DAGDocument.load() is the only valid ingest path
 // ---------------------------------------------------------------------------
 
 // #region load
-// Dagonizer.load() throws ValidationError if JSON is malformed or schema fails.
-export const dag = Dagonizer.load(dagJson);
+// DAGDocument.load() throws ValidationError if JSON is malformed or schema fails.
+export const dag = DAGDocument.load(dagJson);
 // #endregion load

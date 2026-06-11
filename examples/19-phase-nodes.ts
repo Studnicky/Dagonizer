@@ -24,16 +24,16 @@
  */
 
 import { Dagonizer } from '@noocodex/dagonizer';
-import { PhaseState, preSetup, compute, postAudit, dag } from './dags/19-phase-nodes.js';
+import { PhaseState, PreSetupNode, ComputeNode, PostAuditNode, dag } from './dags/19-phase-nodes.js';
 
 // ---------------------------------------------------------------------------
 // Run
 // ---------------------------------------------------------------------------
 
 const dispatcher = new Dagonizer<PhaseState>();
-dispatcher.registerNode(preSetup);
-dispatcher.registerNode(compute);
-dispatcher.registerNode(postAudit);
+dispatcher.registerNode(new PreSetupNode());
+dispatcher.registerNode(new ComputeNode());
+dispatcher.registerNode(new PostAuditNode());
 dispatcher.registerDAG(dag);
 
 const state = new PhaseState();

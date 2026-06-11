@@ -20,7 +20,7 @@
  *      DAG's success/error outputs route to the parent's named terminals.
  *      A child with errors routes to `end-fail` and state becomes `failed`.
  *
- * DAG definitions (state, nodes, dag1-dag3, childDAG): examples/dags/09-terminals.ts
+ * DAG definitions (state, nodes, dag1-dag4, childDAG): examples/dags/09-terminals.ts
  *
  * Run: npx tsx examples/09-terminals.ts
  */
@@ -28,13 +28,13 @@
 import { Dagonizer } from '@noocodex/dagonizer';
 import {
   GateState,
-  stepA,
-  checkNode,
-  childWork,
+  StepANode,
+  CheckNode,
+  ChildWorkNode,
   childDAG,
   dag1,
   dag2,
-  dag3,
+  dag4,
 } from './dags/09-terminals.js';
 
 // ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ import {
 // ── Pattern 1: explicit completed terminal ─────────────────────────────────
 {
   const dispatcher = new Dagonizer<GateState>();
-  dispatcher.registerNode(stepA);
+  dispatcher.registerNode(new StepANode());
   dispatcher.registerDAG(dag1);
 
   const state = new GateState();
@@ -57,7 +57,7 @@ import {
 // ── Pattern 2a: check node routes to end-ok ───────────────────────────────
 {
   const dispatcher = new Dagonizer<GateState>();
-  dispatcher.registerNode(checkNode);
+  dispatcher.registerNode(new CheckNode());
   dispatcher.registerDAG(dag2);
 
   const statePass = new GateState();
@@ -71,7 +71,7 @@ import {
 // ── Pattern 2b: check node routes to end-fail ─────────────────────────────
 {
   const dispatcher = new Dagonizer<GateState>();
-  dispatcher.registerNode(checkNode);
+  dispatcher.registerNode(new CheckNode());
   dispatcher.registerDAG(dag2);
 
   const stateFail = new GateState();
@@ -85,9 +85,9 @@ import {
 // ── Pattern 3a: child succeeds -> end-ok ──────────────────────────────────
 {
   const dispatcher = new Dagonizer<GateState>();
-  dispatcher.registerNode(childWork);
+  dispatcher.registerNode(new ChildWorkNode());
   dispatcher.registerDAG(childDAG);
-  dispatcher.registerDAG(dag3);
+  dispatcher.registerDAG(dag4);
 
   const stateOk = new GateState();
   stateOk.shouldPass = true;
@@ -100,9 +100,9 @@ import {
 // ── Pattern 3b: child errors -> end-fail ──────────────────────────────────
 {
   const dispatcher = new Dagonizer<GateState>();
-  dispatcher.registerNode(childWork);
+  dispatcher.registerNode(new ChildWorkNode());
   dispatcher.registerDAG(childDAG);
-  dispatcher.registerDAG(dag3);
+  dispatcher.registerDAG(dag4);
 
   const stateErr = new GateState();
   stateErr.shouldPass = false;

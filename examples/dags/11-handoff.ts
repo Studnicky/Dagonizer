@@ -23,9 +23,10 @@ import {
   DAG_CONTEXT,
   NodeOutputBuilder,
   NodeStateBase,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
 } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import type { DAG, NodeInterface} from '@noocodex/dagonizer';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
@@ -62,44 +63,56 @@ export class PipelineState extends NodeStateBase {
 
 // DAG A: collect three items into state.items
 // #region node-collect
-export const collectA: NodeInterface<PipelineState, 'done'> = {
-  "name":    'collectA',
-  "outputs": ['done'],
-  async execute(state) {
+export class CollectANode implements NodeInterface<PipelineState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'collectA';
+  readonly outputs = ['done'] as const;
+
+  async execute(state: PipelineState) {
     state.items.push('alpha');
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
-export const collectB: NodeInterface<PipelineState, 'done'> = {
-  "name":    'collectB',
-  "outputs": ['done'],
-  async execute(state) {
+export class CollectBNode implements NodeInterface<PipelineState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'collectB';
+  readonly outputs = ['done'] as const;
+
+  async execute(state: PipelineState) {
     state.items.push('beta');
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
-export const collectC: NodeInterface<PipelineState, 'done'> = {
-  "name":    'collectC',
-  "outputs": ['done'],
-  async execute(state) {
+export class CollectCNode implements NodeInterface<PipelineState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'collectC';
+  readonly outputs = ['done'] as const;
+
+  async execute(state: PipelineState) {
     state.items.push('gamma');
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 // #endregion node-collect
 
 // DAG B: summarize the items collected by DAG A
 // #region node-summarize
-export const summarize: NodeInterface<PipelineState, 'done'> = {
-  "name":    'summarize',
-  "outputs": ['done'],
-  async execute(state) {
+export class SummarizeNode implements NodeInterface<PipelineState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'summarize';
+  readonly outputs = ['done'] as const;
+
+  async execute(state: PipelineState) {
     state.summary = `processed ${state.items.length} item(s): ${state.items.join(', ')}`;
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 // #endregion node-summarize
 
 // ---------------------------------------------------------------------------

@@ -3,14 +3,17 @@ import { afterEach, describe, it } from 'node:test';
 
 import { Checkpoint, CheckpointRestoreAdapterFn } from '../../src/checkpoint/Checkpoint.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
+import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
 import { DAGError, ValidationError } from '../../src/errors/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Clock } from '../../src/runtime/Clock.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 import { VirtualClockProvider } from '../../testing/VirtualClock.js';
 import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
 
@@ -65,12 +68,14 @@ void describe('NodeStateBase snapshot/restore', () => {
 void describe('cursor on ExecutionResultInterface', () => {
   void it('is null on a clean completion', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const op: NodeInterface<NodeStateBase, 'success'> = {
-      'name': 'op',
-      'outputs': ['success'],
-      async execute() { return { 'errors': [], 'output': 'success' }; },
-    };
-    dispatcher.registerNode(op);
+    class OpNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'op';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute() { return { 'errors': [], 'output': 'success' as const }; }
+    }
+    dispatcher.registerNode(new OpNode());
     dispatcher.registerDAG({
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:clean',
@@ -93,18 +98,20 @@ void describe('cursor on ExecutionResultInterface', () => {
     let resolveNodeReady!: () => void;
     const nodeReady = new Promise<void>((r) => { resolveNodeReady = r; });
 
-    const op: NodeInterface<NodeStateBase, 'success'> = {
-      'name': 'op',
-      'outputs': ['success'],
-      async execute(_state, context) {
+    class OpNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'op';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(_state: NodeStateBase, context: NodeContextInterface) {
         resolveNodeReady();
         await new Promise<void>((_resolve, reject) => {
           context.signal.addEventListener('abort', () => { reject(context.signal.reason); }, { 'once': true });
         });
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
-    dispatcher.registerNode(op);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    dispatcher.registerNode(new OpNode());
     dispatcher.registerDAG({
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:two',
@@ -137,16 +144,18 @@ void describe('Checkpoint round-trip', () => {
     Scheduler.configure(new VirtualScheduler(0));
 
     const dispatcher = new Dagonizer<CountingState>();
-    const inc: NodeInterface<CountingState, 'success'> = {
-      'name': 'inc',
-      'outputs': ['success'],
-      async execute(state) {
+    class IncNode implements NodeInterface<CountingState, 'success'> {
+      readonly name = 'inc';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(state: CountingState) {
         state.count++;
         state.log.push(`tick:${state.count}`);
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
-    dispatcher.registerNode(inc);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    dispatcher.registerNode(new IncNode());
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:count',
@@ -198,12 +207,14 @@ void describe('Checkpoint round-trip', () => {
 
   void it('rejects checkpointing a completed DAG', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const op: NodeInterface<NodeStateBase, 'success'> = {
-      'name': 'op',
-      'outputs': ['success'],
-      async execute() { return { 'errors': [], 'output': 'success' }; },
-    };
-    dispatcher.registerNode(op);
+    class OpNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'op';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute() { return { 'errors': [], 'output': 'success' as const }; }
+    }
+    dispatcher.registerNode(new OpNode());
     dispatcher.registerDAG({
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:done',

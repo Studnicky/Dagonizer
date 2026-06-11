@@ -36,7 +36,16 @@ export interface MistralEmbedderOptions extends BaseAdapterCoreOptions {
 }
 
 interface MistralEmbedResponse {
-  readonly data?: ReadonlyArray<{ readonly embedding?: readonly number[] }>;
+  readonly data: ReadonlyArray<{ readonly embedding: readonly number[] }>;
+}
+
+function isMistralEmbedResponse(v: unknown): v is MistralEmbedResponse {
+  if (typeof v !== 'object' || v === null) return false;
+  const obj = v as Record<string, unknown>;
+  if (!Array.isArray(obj['data']) || obj['data'].length === 0) return false;
+  const first: unknown = obj['data'][0];
+  if (typeof first !== 'object' || first === null) return false;
+  return Array.isArray((first as Record<string, unknown>)['embedding']);
 }
 
 export class MistralEmbedder extends BaseEmbedder {
@@ -85,15 +94,21 @@ export class MistralEmbedder extends BaseEmbedder {
       );
     }
 
-    const payload = (await res.json()) as MistralEmbedResponse;
-    const first = payload.data?.[0]?.embedding;
-    if (first === undefined || first.length === 0) {
+    const raw: unknown = await res.json();
+    if (!isMistralEmbedResponse(raw)) {
       throw new LlmError(
         `Mistral embed: missing or empty 'data[0].embedding' field`,
         Classifications['SCHEMA_VIOLATION'],
       );
     }
-    return first;
+    const first = raw.data[0];
+    if (first === undefined || first.embedding.length === 0) {
+      throw new LlmError(
+        `Mistral embed: missing or empty 'data[0].embedding' field`,
+        Classifications['SCHEMA_VIOLATION'],
+      );
+    }
+    return first.embedding;
   }
 
   /**

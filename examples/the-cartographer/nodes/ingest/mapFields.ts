@@ -18,13 +18,19 @@ import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 import { FieldMappings } from '../../services.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region map-fields-node
-export const mapFields: NodeInterface<CartographerState, 'coerce-types', CartographerServices> = {
-  'name': 'map-fields',
-  'outputs': ['coerce-types'],
-  async execute(state, context) {
+export class MapFieldsNode implements NodeInterface<CartographerState, 'coerce-types', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'map-fields';
+  readonly 'outputs' = ['coerce-types'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'coerce-types'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -38,6 +44,6 @@ export const mapFields: NodeInterface<CartographerState, 'coerce-types', Cartogr
     });
     state.mappedRecords = mapped;
     return NodeOutputBuilder.of('coerce-types');
-  },
-};
+  }
+}
 // #endregion map-fields-node

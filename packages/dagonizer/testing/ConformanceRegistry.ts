@@ -62,7 +62,7 @@ import type { NodeContextInterface } from '../dist/entities/node/NodeContext.js'
 import type { NodeOutputInterface } from '../dist/entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../dist/NodeStateBase.js';
 
-import { CheckpointRestoreAdapterFn, NodeStateBase, Timeout } from '@noocodex/dagonizer';
+import { CheckpointRestoreAdapterFn, EMPTY_CONTRACT_FRAGMENT, NodeStateBase, Timeout } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -159,27 +159,33 @@ function sleepUntilAborted(signal: AbortSignal, ceilingMs: number): Promise<void
 // Nodes — Laws 1–6, each records through state
 // ---------------------------------------------------------------------------
 
-const recorderNode: NodeInterface<ConformanceState> = {
-  'name': 'recorder',
-  'outputs': ['done'],
+class RecorderNode implements NodeInterface<ConformanceState> {
+  readonly name = 'recorder';
+  readonly outputs = ['done'] as const;
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
   async execute(state: ConformanceState): Promise<NodeOutputInterface<'done'>> {
     state.executedNodes.push('recorder');
     return { 'errors': [], 'output': 'done' };
-  },
-};
+  }
+}
 
-const mutatorNode: NodeInterface<ConformanceState> = {
-  'name': 'mutator',
-  'outputs': ['done'],
+class MutatorNode implements NodeInterface<ConformanceState> {
+  readonly name = 'mutator';
+  readonly outputs = ['done'] as const;
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
   async execute(state: ConformanceState): Promise<NodeOutputInterface<'done'>> {
     state.value = 99;
     return { 'errors': [], 'output': 'done' };
-  },
-};
+  }
+}
 
-const errorEmitterNode: NodeInterface<ConformanceState> = {
-  'name': 'error-emitter',
-  'outputs': ['error'],
+class ErrorEmitterNode implements NodeInterface<ConformanceState> {
+  readonly name = 'error-emitter';
+  readonly outputs = ['error'] as const;
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
   async execute(state: ConformanceState): Promise<NodeOutputInterface<'error'>> {
     state.collectError({
       'code': 'TEST_ERROR',
@@ -190,25 +196,28 @@ const errorEmitterNode: NodeInterface<ConformanceState> = {
       'timestamp': new Date().toISOString(),
     });
     return { 'errors': [], 'output': 'error' };
-  },
-};
+  }
+}
 
-const timeoutSleeperNode: NodeInterface<ConformanceState> = {
-  'name': 'timeout-sleeper',
-  'outputs': ['done'],
-  'timeout': Timeout.ofMs(TIMEOUT_SLEEPER_TIMEOUT_MS),
+class TimeoutSleeperNode implements NodeInterface<ConformanceState> {
+  readonly name = 'timeout-sleeper';
+  readonly outputs = ['done'] as const;
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.ofMs(TIMEOUT_SLEEPER_TIMEOUT_MS);
   async execute(
     _state: ConformanceState,
     context: NodeContextInterface<undefined>,
   ): Promise<NodeOutputInterface<'done'>> {
     await sleepUntilAborted(context.signal, SLEEPER_SAFETY_CEILING_MS);
     return { 'errors': [], 'output': 'done' };
-  },
-};
+  }
+}
 
-const abortSleeperNode: NodeInterface<ConformanceState> = {
-  'name': 'abort-sleeper',
-  'outputs': ['done'],
+class AbortSleeperNode implements NodeInterface<ConformanceState> {
+  readonly name = 'abort-sleeper';
+  readonly outputs = ['done'] as const;
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
   async execute(
     state: ConformanceState,
     context: NodeContextInterface<undefined>,
@@ -216,23 +225,25 @@ const abortSleeperNode: NodeInterface<ConformanceState> = {
     state.began = true;
     await sleepUntilAborted(context.signal, SLEEPER_SAFETY_CEILING_MS);
     return { 'errors': [], 'output': 'done' };
-  },
-};
+  }
+}
 
 /**
- * scatter-counter: increments state.value by 1 to prove the item was
+ * ScatterCounterNode: increments state.value by 1 to prove the item was
  * processed. The map gather { value → gatheredItems } collects value=1 from
  * each clone into the parent's gatheredItems array. Used by Laws 7–8.
  * Observes through state so results survive snapshot/restore round-trips.
  */
-const scatterCounterNode: NodeInterface<ConformanceState> = {
-  'name': 'scatter-counter',
-  'outputs': ['done'],
+class ScatterCounterNode implements NodeInterface<ConformanceState> {
+  readonly name = 'scatter-counter';
+  readonly outputs = ['done'] as const;
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
   async execute(state: ConformanceState): Promise<NodeOutputInterface<'done'>> {
     state.value += 1;
     return { 'errors': [], 'output': 'done' };
-  },
-};
+  }
+}
 
 // ---------------------------------------------------------------------------
 // DAG context
@@ -475,12 +486,12 @@ const runnerLaw9 = embeddingDag(CONFORMANCE_DAG.law9, BODY.law9, ['done', 'error
 // ---------------------------------------------------------------------------
 
 const CONFORMANCE_NODES: NodeInterface<NodeStateInterface, string, unknown>[] = [
-  recorderNode,
-  mutatorNode,
-  errorEmitterNode,
-  timeoutSleeperNode,
-  abortSleeperNode,
-  scatterCounterNode,
+  new RecorderNode(),
+  new MutatorNode(),
+  new ErrorEmitterNode(),
+  new TimeoutSleeperNode(),
+  new AbortSleeperNode(),
+  new ScatterCounterNode(),
 ] as NodeInterface<NodeStateInterface, string, unknown>[];
 
 /**

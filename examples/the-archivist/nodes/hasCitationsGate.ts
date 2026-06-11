@@ -15,22 +15,28 @@
  * dereferencing typed fields.
  */
 
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
+import { NodeOutputBuilder,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
 
-import { MemoryStore, stateGraphIri } from '../memory/MemoryStore.ts';
-
-import type { ArchivistNode } from './ArchivistNode.ts';
+import { MemoryStore } from '../memory/MemoryStore.ts';
+import type { ArchivistState } from '../ArchivistState.ts';
+import type { ArchivistServices } from '../services.ts';
 
 const dagSource      = MemoryStore.dagIri('source');
 const dagInShortlist = MemoryStore.dagIri('inShortlist');
 
-export const hasCitationsGate: ArchivistNode<'pass' | 'fail'> = {
-  "name":    'has-citations-gate',
-  "kind":    'deterministic',
-  "outputs": ['pass', 'fail'],
-  async execute(state, context) {
+export class HasCitationsGateNode implements NodeInterface<ArchivistState, 'pass' | 'fail', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'has-citations-gate';
+  readonly outputs = ['pass', 'fail'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const memory = context.services.memory;
-    const graph = stateGraphIri(state.runId);
+    const graph = MemoryStore.stateGraphIri(state.runId);
     const shortlisted = memory.select({
       'subject':   '?book',
       'predicate': dagInShortlist,
@@ -62,5 +68,8 @@ export const hasCitationsGate: ArchivistNode<'pass' | 'fail'> = {
       state.failureCause = 'No candidates found after searching all available sources. ';
     }
     return NodeOutputBuilder.of('fail');
-  },
-};
+  }
+}
+
+/** Backward-compatible const export for existing bundle/DAG references. */
+export const hasCitationsGate = new HasCitationsGateNode();

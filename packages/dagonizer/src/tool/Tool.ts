@@ -5,11 +5,12 @@
  * surface the LLM declares via the adapter's tool channel) with an
  * `execute()` method the dispatcher invokes when a `ToolCall` lands.
  *
- * Tools are stateless adapters: consumers register one instance per
- * tool and reuse it across runs. Concrete tools are static classes per
- * project standards (`OpenLibrarySearchTool.search(...)` style); the
- * `Tool` interface they conform to is what `ScoutNode` and other tool-
- * dispatching patterns target.
+ * Concrete tools are classes that implement this interface. Consumers
+ * construct one instance per tool and reuse it across runs
+ * (`new OpenLibrarySearchTool()`). The `execute()` method is the
+ * invocation verb; helper logic lives as private static methods on the
+ * tool class. `ScoutNode` and other tool-dispatching patterns target
+ * this interface, not any concrete implementation.
  *
  * `ToolDefinition` and `ToolCall` shapes are reused from
  * `@noocodex/dagonizer/adapter` so the LLM tool-channel and the

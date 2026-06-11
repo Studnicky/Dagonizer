@@ -95,18 +95,6 @@ void describe('WebSystemInfo', () => {
     assert.strictEqual(count, 1);
   });
 
-  // ── crossOriginIsolated ────────────────────────────────────────────────────
-
-  void it('crossOriginIsolated defaults to false when probe is absent', () => {
-    const info = new WebSystemInfo({ 'hardwareConcurrency': 4 });
-    assert.strictEqual(info.crossOriginIsolated, false);
-  });
-
-  void it('crossOriginIsolated reflects the injected probe', () => {
-    const info = new WebSystemInfo({ 'hardwareConcurrency': 4, 'crossOriginIsolated': true });
-    assert.strictEqual(info.crossOriginIsolated, true);
-  });
-
   // ── memoryPerWorkerBytes is ignored (no memory API in browsers) ────────────
 
   void it('memoryPerWorkerBytes in config does not throw and result is unchanged', () => {

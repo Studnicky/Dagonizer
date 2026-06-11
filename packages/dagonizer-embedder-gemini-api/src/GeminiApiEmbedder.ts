@@ -34,7 +34,15 @@ export interface GeminiApiEmbedderOptions extends BaseAdapterCoreOptions {
 }
 
 interface GeminiEmbedResponse {
-  readonly embedding?: { readonly values?: readonly number[] };
+  readonly embedding: { readonly values: readonly number[] };
+}
+
+function isGeminiEmbedResponse(v: unknown): v is GeminiEmbedResponse {
+  if (typeof v !== 'object' || v === null) return false;
+  const obj = v as Record<string, unknown>;
+  if (typeof obj['embedding'] !== 'object' || obj['embedding'] === null) return false;
+  const emb = obj['embedding'] as Record<string, unknown>;
+  return Array.isArray(emb['values']);
 }
 
 export class GeminiApiEmbedder extends BaseEmbedder {
@@ -82,15 +90,14 @@ export class GeminiApiEmbedder extends BaseEmbedder {
       );
     }
 
-    const payload = (await res.json()) as GeminiEmbedResponse;
-    const values = payload.embedding?.values;
-    if (values === undefined || values.length === 0) {
+    const raw: unknown = await res.json();
+    if (!isGeminiEmbedResponse(raw) || raw.embedding.values.length === 0) {
       throw new LlmError(
         `Gemini embed: missing or empty 'embedding.values' field`,
         Classifications['SCHEMA_VIOLATION'],
       );
     }
-    return values;
+    return raw.embedding.values;
   }
 
   /**

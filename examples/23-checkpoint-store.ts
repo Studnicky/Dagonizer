@@ -28,26 +28,28 @@ import {
   Dagonizer,
   MemoryCheckpointStore,
 } from '@noocodex/dagonizer';
-import { PipelineState, dag, exportNode, ingestNode, processNode } from './dags/23-checkpoint-store.js';
+import { PipelineState, dag, ExportNode, IngestNode, ProcessNode } from './dags/23-checkpoint-store.js';
 
 const CHECKPOINT_KEY = 'pipeline:run-001';
 
 // ── Step 1: create the dispatcher and register everything ────────────────────
 
-function makeDispatcher(): Dagonizer<PipelineState> {
-  const d = new Dagonizer<PipelineState>();
-  d.registerNode(ingestNode);
-  d.registerNode(processNode);
-  d.registerNode(exportNode);
-  d.registerDAG(dag);
-  return d;
+class PipelineDispatcher {
+  static make(): Dagonizer<PipelineState> {
+    const d = new Dagonizer<PipelineState>();
+    d.registerNode(new IngestNode());
+    d.registerNode(new ProcessNode());
+    d.registerNode(new ExportNode());
+    d.registerDAG(dag);
+    return d;
+  }
 }
 
 process.stdout.write('\n=== 23-checkpoint-store: persist mid-run state, resume from store ===\n\n');
 
 // ── Step 2: run the DAG, abort after the first node (ingest) completes ───────
 
-const dispatcher1 = makeDispatcher();
+const dispatcher1 = PipelineDispatcher.make();
 const ctl          = new AbortController();
 const initial      = new PipelineState();
 
@@ -85,7 +87,7 @@ process.stdout.write(`[checkpoint] dagName="${data.dagName}" cursor="${data.curs
 
 // ── Step 4: fresh dispatcher + same store (simulates process restart) ─────────
 
-const dispatcher2 = makeDispatcher();
+const dispatcher2 = PipelineDispatcher.make();
 // In production this would be a new store pointing at the same persistence
 // backend; here we reuse store1 to avoid I/O.
 

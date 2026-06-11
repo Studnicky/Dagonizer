@@ -20,6 +20,12 @@ export interface DAGErrorInterface extends Error {
   toJSON(): DAGErrorJSON;
 }
 
+/** Module-level defaults for `DAGError` options. `cause` is not defaulted — it is a genuine optional sentinel. */
+const DAG_ERROR_DEFAULTS = {
+  'code':    'DAG_ERROR',
+  'context': {} as Record<string, unknown>,
+} as const;
+
 /**
  * Error thrown by the DAG dispatcher for configuration or execution problems.
  */
@@ -34,30 +40,33 @@ export class DAGError extends Error implements DAGErrorInterface {
     message: string,
     options: { code?: string; context?: Record<string, unknown>; cause?: Error } = {}
   ) {
-    const { code = 'DAG_ERROR', context = {}, ...errorOptions } = options;
-    super(message, errorOptions);
+    const { cause, ...rest } = options;
+    const resolved = { ...DAG_ERROR_DEFAULTS, ...rest };
+    super(message, cause !== undefined ? { 'cause': cause } : {});
     this.name = 'DAGError';
-    this.code = code;
-    this.context = context;
+    this.code = resolved.code;
+    this.context = resolved.context;
     this.timestamp = new Date();
     Error.captureStackTrace(this, this.constructor);
   }
 
   toJSON(): DAGErrorJSON {
+    // Stable shape: all keys always present, `null` when absent.
+    // Every serialized DAGError has the same hidden class for V8 stability.
     return {
-      ...(this.cause !== undefined && {
-        'cause': {
-          'message': this.cause.message,
-          'name': this.cause.name,
-          ...(this.cause.stack !== undefined && { 'stack': this.cause.stack })
-        }
-      }),
-      'code': this.code,
-      'context': this.context,
-      'message': this.message,
-      'name': this.name,
-      ...(this.stack !== undefined && { 'stack': this.stack }),
-      'timestamp': this.timestamp.toISOString()
+      'cause': this.cause !== undefined
+        ? {
+            'message': this.cause.message,
+            'name':    this.cause.name,
+            'stack':   this.cause.stack ?? null,
+          }
+        : null,
+      'code':      this.code,
+      'context':   this.context,
+      'message':   this.message,
+      'name':      this.name,
+      'stack':     this.stack ?? null,
+      'timestamp': this.timestamp.toISOString(),
     };
   }
 }

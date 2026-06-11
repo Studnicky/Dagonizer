@@ -12,11 +12,14 @@ import { describe, it } from 'node:test';
 import { Checkpoint } from '../../src/checkpoint/Checkpoint.js';
 import { MemoryCheckpointStore } from '../../src/checkpoint/MemoryCheckpointStore.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import type { Snapshottable, StoreSnapshot } from '../../src/contracts/Snapshottable.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
+import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
 
@@ -28,26 +31,31 @@ import { StoreError } from '../../src/store/StoreError.js';
  * the node is suspended, giving a deterministic interruption without any
  * real timer dependencies.
  */
+class SlowNode implements NodeInterface<NodeStateBase, 'done'> {
+  readonly name = 'slow';
+  readonly outputs = ['done'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly #onReady: () => void;
+  constructor(onReady: () => void) { this.#onReady = onReady; }
+  async execute(_state: NodeStateBase, context: NodeContextInterface): Promise<{ errors: []; output: 'done' }> {
+    this.#onReady();
+    await new Promise<void>((_resolve, reject) => {
+      context.signal.addEventListener('abort', () => {
+        reject(context.signal.reason);
+      }, { 'once': true });
+    });
+    return { 'errors': [], 'output': 'done' };
+  }
+}
+
 async function makeAbortedResult(): Promise<ReturnType<typeof Dagonizer.prototype.execute>> {
   const dispatcher = new Dagonizer<NodeStateBase>();
 
   let resolveNodeReady!: () => void;
   const nodeReady = new Promise<void>((r) => { resolveNodeReady = r; });
 
-  const slow: NodeInterface<NodeStateBase, 'done'> = {
-    'name': 'slow',
-    'outputs': ['done'],
-    async execute(_state, context) {
-      resolveNodeReady();
-      await new Promise<void>((_resolve, reject) => {
-        context.signal.addEventListener('abort', () => {
-          reject(context.signal.reason);
-        }, { 'once': true });
-      });
-      return { 'errors': [], 'output': 'done' };
-    },
-  };
-  dispatcher.registerNode(slow);
+  dispatcher.registerNode(new SlowNode(resolveNodeReady));
   dispatcher.registerDAG({
     '@context': DAG_CONTEXT,
     '@id':      'urn:noocodex:dag:store-test',

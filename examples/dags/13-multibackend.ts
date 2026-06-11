@@ -26,9 +26,10 @@ import {
   DAG_CONTEXT,
   NodeOutputBuilder,
   NodeStateBase,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
 } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import type { DAG, NodeInterface} from '@noocodex/dagonizer';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 import { GatherStrategyName } from '@noocodex/dagonizer/constants';
 
@@ -75,25 +76,31 @@ export class MultiBackendState extends NodeStateBase {
 
 // #region nodes
 /** CPU node: squares the current scatter item. Runs inside the `cpu` container. */
-export const squareNode: NodeInterface<MultiBackendState, 'done'> = {
-  "name":    'squareNode',
-  "outputs": ['done'],
-  async execute(state) {
+export class SquareNode implements NodeInterface<MultiBackendState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'squareNode';
+  readonly outputs = ['done'] as const;
+
+  async execute(state: MultiBackendState) {
     const task = state.getMetadata<number>('task') ?? 0;
     state.lastResult = task * task;
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
 /** IO node: sums all results. Runs inside the `io` container. */
-export const sumNode: NodeInterface<MultiBackendState, 'done'> = {
-  "name":    'sumNode',
-  "outputs": ['done'],
-  async execute(state) {
+export class SumNode implements NodeInterface<MultiBackendState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'sumNode';
+  readonly outputs = ['done'] as const;
+
+  async execute(state: MultiBackendState) {
     state.total = state.results.reduce((acc, n) => acc + n, 0);
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 // #endregion nodes
 
 // ---------------------------------------------------------------------------

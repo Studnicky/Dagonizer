@@ -2,6 +2,10 @@
 
 ## 0.19.0
 
+### Changed
+
+- `GeminiEmbedResponse` fields are now required (non-optional) and narrowed at the ingest boundary via a typed `isGeminiEmbedResponse` guard, replacing the unchecked `as GeminiEmbedResponse` cast.
+
 ## 0.17.0
 
 ## 0.16.0

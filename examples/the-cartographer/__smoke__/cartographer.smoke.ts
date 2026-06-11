@@ -28,9 +28,6 @@ import { canonicalizeBundle } from '../embedded-dags/CanonicalizeDAG.ts';
 import { gdprComplianceBundle } from '../embedded-dags/GdprComplianceDAG.ts';
 import { geoResolveBundle } from '../embedded-dags/GeoResolveDAG.ts';
 import { ingestSourceBundle } from '../embedded-dags/IngestSourceDAG.ts';
-import { ingestJsonBundle } from '../embedded-dags/IngestJsonDAG.ts';
-import { ingestCsvBundle } from '../embedded-dags/IngestCsvDAG.ts';
-import { ingestNdjsonGzBundle } from '../embedded-dags/IngestNdjsonGzDAG.ts';
 import { orderEnrichmentBundle } from '../embedded-dags/OrderEnrichmentDAG.ts';
 import { GeoResolvers } from '../services/GeoResolvers.ts';
 
@@ -39,46 +36,46 @@ import { Dagonizer } from '@noocodex/dagonizer';
 const EVENT_COUNT = 20;
 let failures = 0;
 
-async function check(name: string, fn: () => Promise<void>): Promise<void> {
-  try {
-    await fn();
-    console.log(`✓ ${name}`);
-  } catch (err) {
-    failures++;
-    console.error(`✗ ${name}\n  ${err instanceof Error ? err.message : String(err)}`);
+class SmokeRunner {
+  static async check(name: string, fn: () => Promise<void>): Promise<void> {
+    try {
+      await fn();
+      console.log(`✓ ${name}`);
+    } catch (err) {
+      failures++;
+      console.error(`✗ ${name}\n  ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // The smoke ALWAYS uses the RECORDED geo transports → deterministic + offline.
+  // Geo is resolved by the geo-resolve sub-DAG against the committed fixture.
+  static async runPipeline(n: number): Promise<CartographerState> {
+    const services: CartographerServices = GeoResolvers.recorded();
+    const dispatcher = new Dagonizer<CartographerState, CartographerServices>({ 'services': services });
+    dispatcher.registerBundle(geoResolveBundle);
+    dispatcher.registerBundle(canonicalizeBundle);
+    dispatcher.registerBundle(orderEnrichmentBundle);
+    dispatcher.registerBundle(gdprComplianceBundle);
+    // ingestSourceBundle owns all unique ingest nodes + all format sub-DAGs.
+    dispatcher.registerBundle(ingestSourceBundle);
+    dispatcher.registerBundle(cartographerBundle);
+    const state = new CartographerState();
+    state.eventCount = n;
+    const execution = dispatcher.execute('cartographer', state);
+    for await (const _stage of execution) { /* drain */ }
+    await execution;
+    return state;
   }
 }
 
-// The smoke ALWAYS uses the RECORDED geo transports → deterministic + offline.
-// Geo is resolved by the geo-resolve sub-DAG against the committed fixture.
-async function runPipeline(n: number): Promise<CartographerState> {
-  const services: CartographerServices = GeoResolvers.recorded();
-  const dispatcher = new Dagonizer<CartographerState, CartographerServices>({ 'services': services });
-  dispatcher.registerBundle(geoResolveBundle);
-  dispatcher.registerBundle(canonicalizeBundle);
-  dispatcher.registerBundle(orderEnrichmentBundle);
-  dispatcher.registerBundle(gdprComplianceBundle);
-  dispatcher.registerBundle(ingestJsonBundle);
-  dispatcher.registerBundle(ingestCsvBundle);
-  dispatcher.registerBundle(ingestNdjsonGzBundle);
-  dispatcher.registerBundle(ingestSourceBundle);
-  dispatcher.registerBundle(cartographerBundle);
-  const state = new CartographerState();
-  state.eventCount = n;
-  const execution = dispatcher.execute('cartographer', state);
-  for await (const _stage of execution) { /* drain */ }
-  await execution;
-  return state;
-}
-
-await check(`pipeline runs ${EVENT_COUNT} events end-to-end`, async () => {
-  const state = await runPipeline(EVENT_COUNT);
+await SmokeRunner.check(`pipeline runs ${EVENT_COUNT} events end-to-end`, async () => {
+  const state = await SmokeRunner.runPipeline(EVENT_COUNT);
   // runPipeline drains + awaits; a populated insights map confirms terminal.
   assert.ok(state.insights.size > 0, `Expected pipeline to complete with insights, got 0`);
 });
 
-await check('ingestion fans in from >=3 distinct source formats and >=2 kinds', async () => {
-  const state = await runPipeline(EVENT_COUNT);
+await SmokeRunner.check('ingestion fans in from >=3 distinct source formats and >=2 kinds', async () => {
+  const state = await SmokeRunner.runPipeline(EVENT_COUNT);
   // The unified canonical collection must carry events decoded from >=3 distinct
   // on-the-wire formats (json, csv, ndjson.gz) AND >=2 distinct kinds.
   const formats = new Set(state.canonicalEvents.map((e) => e.sourceFormat));
@@ -91,8 +88,8 @@ await check('ingestion fans in from >=3 distinct source formats and >=2 kinds', 
   assert.ok(withGeo.length > 0, `Expected >=1 event with pre-resolved geo (RICH source), got 0`);
 });
 
-await check('records gathered from scatter clones', async () => {
-  const state = await runPipeline(EVENT_COUNT);
+await SmokeRunner.check('records gathered from scatter clones', async () => {
+  const state = await SmokeRunner.runPipeline(EVENT_COUNT);
   // eventCount is the JOURNEY count; each journey emits M (~2–5) scans, so
   // records (one per scan) exceed eventCount. The journey count is bounded by it.
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
@@ -101,42 +98,42 @@ await check('records gathered from scatter clones', async () => {
   assert.ok(state.journeys.size <= EVENT_COUNT, `journeys (${state.journeys.size}) must be <= eventCount (${EVENT_COUNT})`);
 });
 
-await check('insights map populated', async () => {
-  const state = await runPipeline(EVENT_COUNT);
+await SmokeRunner.check('insights map populated', async () => {
+  const state = await SmokeRunner.runPipeline(EVENT_COUNT);
   assert.ok(state.insights.size > 0, `Expected at least 1 region in insights, got 0`);
 });
 
-await check('redaction applied to at least one record', async () => {
-  const state = await runPipeline(EVENT_COUNT);
+await SmokeRunner.check('redaction applied to at least one record', async () => {
+  const state = await SmokeRunner.runPipeline(EVENT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   const redacted = processed.filter((r) => r.redactionApplied);
   assert.ok(redacted.length > 0, `Expected at least 1 processed record with redactionApplied=true`);
 });
 
-await check('subtotalUsdMinor > 0 on at least one record (pricing ran)', async () => {
-  const state = await runPipeline(EVENT_COUNT);
+await SmokeRunner.check('subtotalUsdMinor > 0 on at least one record (pricing ran)', async () => {
+  const state = await SmokeRunner.runPipeline(EVENT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   const priced = processed.filter((r) => r.subtotalUsdMinor > 0);
   assert.ok(priced.length > 0, `Expected at least 1 processed record with subtotalUsdMinor>0, got 0`);
 });
 
-await check('distanceKm > 0 on at least one record (shipping ran)', async () => {
-  const state = await runPipeline(EVENT_COUNT);
+await SmokeRunner.check('distanceKm > 0 on at least one record (shipping ran)', async () => {
+  const state = await SmokeRunner.runPipeline(EVENT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   const shipped = processed.filter((r) => r.distanceKm > 0);
   assert.ok(shipped.length > 0, `Expected at least 1 processed record with distanceKm>0, got 0`);
 });
 
-await check('onTime is boolean on all processed records (ETA ran)', async () => {
-  const state = await runPipeline(EVENT_COUNT);
+await SmokeRunner.check('onTime is boolean on all processed records (ETA ran)', async () => {
+  const state = await SmokeRunner.runPipeline(EVENT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   for (const r of processed) {
     assert.equal(typeof r.onTime, 'boolean', `Expected onTime to be boolean on ${r.shipmentId}, got ${typeof r.onTime}`);
   }
 });
 
-await check('serviceTier and sizeTier are canonical on all processed records', async () => {
-  const state = await runPipeline(EVENT_COUNT);
+await SmokeRunner.check('serviceTier and sizeTier are canonical on all processed records', async () => {
+  const state = await SmokeRunner.runPipeline(EVENT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   const validServiceTiers = new Set(['express', 'standard', 'economy']);
   const validSizeTiers = new Set(['envelope', 'small', 'medium', 'large', 'freight']);
@@ -151,8 +148,8 @@ await check('serviceTier and sizeTier are canonical on all processed records', a
 // With ~8% invalid coords and ~2% GDPR violations, the vast majority survive.
 const STAT_COUNT = 150;
 
-await check('per-region insights are rolled up to CONTINENT, not subdivision', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('per-region insights are rolled up to CONTINENT, not subdivision', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   // The macro rollup buckets by the continent the real geo API resolved (~6–8
   // rows), plus the single maritime bucket — never a fine subdivision/country.
   // A subdivision-keyed table would explode to ~20+ tiny single-scan rows.
@@ -168,8 +165,8 @@ await check('per-region insights are rolled up to CONTINENT, not subdivision', a
   assert.ok(state.insights.has('International Waters / Maritime'), `Expected the 'International Waters / Maritime' bucket`);
 });
 
-await check('most events survive — consent does not gate processing (FIX 1)', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('most events survive — consent does not gate processing (FIX 1)', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   const ratio = processed.length / STAT_COUNT;
   assert.ok(ratio >= 0.80, `Expected >=80% of events processed, got ${(ratio * 100).toFixed(1)}% (${processed.length}/${STAT_COUNT})`);
@@ -178,8 +175,8 @@ await check('most events survive — consent does not gate processing (FIX 1)', 
   assert.ok(nonValidConsent.length > 0, `Expected processed records with missing/expired consent, got 0`);
 });
 
-await check('at least one record is late — ETA mix is realistic (FIX 2)', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('at least one record is late — ETA mix is realistic (FIX 2)', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   const late = processed.filter((r) => r.onTime === false && r.delayHours > 0);
   const onTime = processed.filter((r) => r.onTime === true);
@@ -187,8 +184,8 @@ await check('at least one record is late — ETA mix is realistic (FIX 2)', asyn
   assert.ok(onTime.length > 0, `Expected at least 1 on-time record, got 0`);
 });
 
-await check('distances vary widely — origin is independent of destination (FIX 2)', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('distances vary widely — origin is independent of destination (FIX 2)', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   const distances = processed.map((r) => r.distanceKm);
   const maxDist = Math.max(...distances);
@@ -198,8 +195,8 @@ await check('distances vary widely — origin is independent of destination (FIX
   assert.ok(maxDist - minDist > 3000, `Expected wide distance spread (>3000 km), got ${(maxDist - minDist).toFixed(0)} km`);
 });
 
-await check('promise never before dispatch; delayHours >= 0 (B.9.9 invariants)', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('promise never before dispatch; delayHours >= 0 (B.9.9 invariants)', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   // The promise is an SLA set at dispatch: it can never precede dispatch, and
   // delayHours is non-negative. Disruptions MAY push actual delay past transit.
@@ -217,8 +214,8 @@ await check('promise never before dispatch; delayHours >= 0 (B.9.9 invariants)',
   }
 });
 
-await check('at least one late record exceeds nominal transit (disruptions represented)', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('at least one late record exceeds nominal transit (disruptions represented)', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   const beyondTransit = processed.filter((r) => r.routing.etaRun && r.onTime === false && r.delayHours > r.transitHours);
   assert.ok(
@@ -227,20 +224,20 @@ await check('at least one late record exceeds nominal transit (disruptions repre
   );
 });
 
-await check('at least one multi-scan journey reconstructed', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('at least one multi-scan journey reconstructed', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const multiScan = [...state.journeys.values()].filter((j) => j.scanCount >= 2);
   assert.ok(multiScan.length > 0, `Expected >=1 journey with >=2 scans, got 0`);
 });
 
-await check('at least one journey crosses >=2 distinct timezones', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('at least one journey crosses >=2 distinct timezones', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const crossTz = [...state.journeys.values()].filter((j) => j.offsets.length >= 2);
   assert.ok(crossTz.length > 0, `Expected >=1 journey crossing >=2 UTC offsets, got 0`);
 });
 
-await check('at least one strict-jurisdiction record has coarsened coords', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('at least one strict-jurisdiction record has coarsened coords', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   const strictCoarsened = processed.filter(
     (r) => r.coordsCoarsened
@@ -249,8 +246,8 @@ await check('at least one strict-jurisdiction record has coarsened coords', asyn
   assert.ok(strictCoarsened.length > 0, `Expected >=1 strict-jurisdiction record with coarsened coords, got 0`);
 });
 
-await check('overall on-time is in a believable range (60-90%)', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('overall on-time is in a believable range (60-90%)', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   // On-time is only meaningful for order-lane records that ran the ETA node.
   const orderLane = processed.filter((r) => r.routing.etaRun);
@@ -260,8 +257,8 @@ await check('overall on-time is in a believable range (60-90%)', async () => {
 });
 
 // ── Stage 2: branching conditional-routing guards ──────────────────────────────
-await check('at least one event SKIPPED geo-lookup (source pre-resolved)', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('at least one event SKIPPED geo-lookup (source pre-resolved)', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   const geoSkipped = processed.filter((r) => r.routing.geoLookupSkipped);
   const geoRun = processed.filter((r) => r.routing.geoLookupRun);
@@ -269,8 +266,8 @@ await check('at least one event SKIPPED geo-lookup (source pre-resolved)', async
   assert.ok(geoRun.length > 0, `Expected >=1 event to RUN geo-lookup, got 0`);
 });
 
-await check('at least one event SKIPPED redaction (no PII / not required)', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('at least one event SKIPPED redaction (no PII / not required)', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   const redSkipped = processed.filter((r) => r.routing.redactionSkipped);
   const redRun = processed.filter((r) => r.routing.redactionRun);
@@ -278,8 +275,8 @@ await check('at least one event SKIPPED redaction (no PII / not required)', asyn
   assert.ok(redRun.length > 0, `Expected >=1 event to RUN redaction, got 0`);
 });
 
-await check('each per-kind enrichment lane is exercised', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('each per-kind enrichment lane is exercised', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   const lanes = new Set(processed.map((r) => r.routing.path));
   for (const lane of ['geo-only', 'sensor', 'order', 'customs'] as const) {
@@ -294,8 +291,8 @@ await check('each per-kind enrichment lane is exercised', async () => {
   assert.ok(customsDwelled.length > 0, `Expected >=1 customs-lane record to run customs-dwell, got 0`);
 });
 
-await check('no journey emits more than one DELIVERED (single terminal)', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('no journey emits more than one DELIVERED (single terminal)', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const deliveredByShip = new Map<string, number>();
   for (const r of state.records) {
     if (r.shipmentId.length === 0) continue;
@@ -310,8 +307,8 @@ await check('no journey emits more than one DELIVERED (single terminal)', async 
 });
 
 // ── Stage 3: per-ping resolution polish guards (§B.9.10) ──────────────────────
-await check('water/maritime pings resolve to a water body (not a land country)', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('water/maritime pings resolve to a water body (not a land country)', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   // A satellite ping over open water is legitimate in-transit data: it must be
   // status 'water', jurisdiction 'international-waters', and labelled by a named
@@ -325,8 +322,8 @@ await check('water/maritime pings resolve to a water body (not a land country)',
   }
 });
 
-await check('land pings show a place name, never a bare ISO code', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('land pings show a place name, never a bare ISO code', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   const landLabelled = processed.filter((r) => r.status === 'land');
   // No land ping may render a bare 3-letter ISO code as its hub label.
@@ -334,8 +331,8 @@ await check('land pings show a place name, never a bare ISO code', async () => {
   assert.equal(bareIso.length, 0, `Expected 0 land pings with a bare-ISO hub, got ${bareIso.length} (e.g. ${bareIso[0]?.hub})`);
 });
 
-await check('unmapped land regions are near-zero (coherent geo coverage)', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('unmapped land regions are near-zero (coherent geo coverage)', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   // After ocean labelling + ISO→name + zone overrides, only a tiny fraction of
   // pings should fall in a genuinely-unmapped grid cell (table coverage gaps).
@@ -344,8 +341,8 @@ await check('unmapped land regions are near-zero (coherent geo coverage)', async
   assert.ok(ratio < 0.05, `Unmapped land fraction ${(ratio * 100).toFixed(1)}% must be < 5% (near-zero)`);
 });
 
-await check('at least one journey crosses into international waters mid-path', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('at least one journey crosses into international waters mid-path', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const maritime = [...state.journeys.values()].filter(
     (j) => j.jurisdictions.includes('international-waters') && j.jurisdictions.length >= 2,
   );
@@ -353,8 +350,8 @@ await check('at least one journey crosses into international waters mid-path', a
 });
 
 // ── Wave B5: real geo-resolver adapter + multi-modal fusion guards (§B0.10) ───
-await check('geo came from the resolver adapter (modalities present on resolved events)', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('geo came from the resolver adapter (modalities present on resolved events)', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   // Every event that RAN the geo-resolve sub-DAG must carry the modalities the
   // resolver reported (proof geo came from the adapter, not a curated table).
@@ -366,8 +363,8 @@ await check('geo came from the resolver adapter (modalities present on resolved 
   }
 });
 
-await check('at least one event fused GPS + IP modalities', async () => {
-  const state = await runPipeline(STAT_COUNT);
+await SmokeRunner.check('at least one event fused GPS + IP modalities', async () => {
+  const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   const fused = processed.filter(
     (r) => r.routing.geoModalities.includes('gps') && r.routing.geoModalities.includes('ip'),

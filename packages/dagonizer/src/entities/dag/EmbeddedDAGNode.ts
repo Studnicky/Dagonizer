@@ -49,3 +49,32 @@ export const EmbeddedDAGNodeSchema = {
 
 /** TypeScript type derived from `EmbeddedDAGNodeSchema` via `json-schema-to-ts`. */
 export type EmbeddedDAGNode = FromSchema<typeof EmbeddedDAGNodeSchema>;
+
+/** Empty state-mapping: the default when `stateMapping` is absent on an `EmbeddedDAGNode`. */
+const EMBEDDED_EMPTY_MAPPING: Readonly<Record<string, string>> = Object.freeze({});
+
+/**
+ * Default-filling helpers for `EmbeddedDAGNode` fields that are optional in
+ * the wire schema but must be present for engine-internal processing.
+ *
+ * Callers resolve once at entry and never optional-chain afterward.
+ */
+export class EmbeddedDAGNodeDefaults {
+  private constructor() { /* static-only */ }
+
+  /**
+   * Return the `stateMapping.input` map, defaulting to an empty mapping when
+   * `stateMapping` is absent.
+   */
+  static inputMapping(node: EmbeddedDAGNode): Readonly<Record<string, string>> {
+    return node.stateMapping?.input ?? EMBEDDED_EMPTY_MAPPING;
+  }
+
+  /**
+   * Return the `stateMapping.output` map, defaulting to an empty mapping when
+   * `stateMapping` is absent.
+   */
+  static outputMapping(node: EmbeddedDAGNode): Readonly<Record<string, string>> {
+    return node.stateMapping?.output ?? EMBEDDED_EMPTY_MAPPING;
+  }
+}

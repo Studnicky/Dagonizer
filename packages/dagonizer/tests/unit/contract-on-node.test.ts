@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import type { Chainable } from '../../src/contracts/Chainable.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
 import type { WarningEmitter } from '../../src/contracts/WarningEmitter.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
@@ -11,6 +12,7 @@ import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
 import { NoopWarningEmitter } from '../../src/runtime/NoopWarningEmitter.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 
 class CollectingWarningEmitter implements WarningEmitter {
   readonly collected: string[] = [];
@@ -21,20 +23,26 @@ class CollectingWarningEmitter implements WarningEmitter {
 // Helpers
 // ---------------------------------------------------------------------------
 
+class MakeNode implements NodeInterface<NodeStateBase, string> {
+  readonly name: string;
+  readonly outputs: readonly string[];
+  readonly contract: OperationContractFragment;
+  readonly timeout: Timeout;
+  constructor(name: string, outputs: readonly string[], contract: OperationContractFragment = EMPTY_CONTRACT_FRAGMENT) {
+    this.name = name;
+    this.outputs = outputs;
+    this.contract = contract;
+    this.timeout = Timeout.none();
+  }
+  async execute() { return { 'errors': [], 'output': this.outputs[0] ?? 'success' }; }
+}
+
 function makeNode(
   name: string,
   outputs: readonly string[],
   contract?: OperationContractFragment,
-): NodeInterface<NodeStateBase, string> {
-  const base: NodeInterface<NodeStateBase, string> = {
-    name,
-    outputs,
-    async execute() { return { 'errors': [], 'output': outputs[0] ?? 'success' }; },
-  };
-  if (contract !== undefined) {
-    return { ...base, contract };
-  }
-  return base;
+): MakeNode {
+  return new MakeNode(name, outputs, contract);
 }
 
 // ---------------------------------------------------------------------------
@@ -281,27 +289,32 @@ void describe('Dagonizer.onContractWarning hook', () => {
 
 void describe('Chainable<A, B> type helper', () => {
   void it('compiles: Chainable resolves to true for compatible node pair', () => {
-    // Declare nodes with as-const literal contracts so the type system
+    // Declare nodes with literal-typed contracts so the type system
     // can see the exact string literals in hardRequired / produces.
-    const _fetchNode = {
-      'name': 'fetch',
-      'outputs': ['success'] as const,
-      'contract': {
-        'hardRequired': ['url'] as const,
-        'produces': ['raw'] as const,
-      },
-      async execute() { return { 'errors': [], 'output': 'success' as const }; },
-    } satisfies NodeInterface;
+    class FetchNode implements NodeInterface {
+      readonly name = 'fetch';
+      readonly outputs = ['success'] as const;
+      readonly contract: { 'hardRequired': ['url']; 'produces': ['raw'] } = {
+        'hardRequired': ['url'],
+        'produces': ['raw'],
+      };
+      readonly timeout = Timeout.none();
+      async execute() { return { 'errors': [], 'output': 'success' as const }; }
+    }
 
-    const _parseNode = {
-      'name': 'parse',
-      'outputs': ['success'] as const,
-      'contract': {
-        'hardRequired': ['raw'] as const,
-        'produces': ['record'] as const,
-      },
-      async execute() { return { 'errors': [], 'output': 'success' as const }; },
-    } satisfies NodeInterface;
+    class ParseNode implements NodeInterface {
+      readonly name = 'parse';
+      readonly outputs = ['success'] as const;
+      readonly contract: { 'hardRequired': ['raw']; 'produces': ['record'] } = {
+        'hardRequired': ['raw'],
+        'produces': ['record'],
+      };
+      readonly timeout = Timeout.none();
+      async execute() { return { 'errors': [], 'output': 'success' as const }; }
+    }
+
+    const _fetchNode = new FetchNode();
+    const _parseNode = new ParseNode();
 
     // This type assertion compiles only when Chainable<_fetchNode, _parseNode> = true.
     type _CheckChainable = Chainable<typeof _fetchNode, typeof _parseNode>;

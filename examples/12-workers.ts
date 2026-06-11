@@ -34,7 +34,7 @@
 import { Dagonizer } from '@noocodex/dagonizer';
 import { WorkerThreadContainer } from '@noocodex/dagonizer-executor-node';
 
-import { dag, squareWorker, workerDag, WorkState } from './dags/12-workers.js';
+import { dag, SquareWorkerNode, workerDag, WorkState } from './dags/12-workers.js';
 
 // ---------------------------------------------------------------------------
 // Registry module URL
@@ -74,7 +74,7 @@ const dispatcher = new Dagonizer<WorkState>({
   // instead of running it in-process.
   "containers": { "cpu": container },
 });
-dispatcher.registerNode(squareWorker);
+dispatcher.registerNode(new SquareWorkerNode());
 dispatcher.registerDAG(workerDag);
 dispatcher.registerDAG(dag);
 // #endregion dispatcher

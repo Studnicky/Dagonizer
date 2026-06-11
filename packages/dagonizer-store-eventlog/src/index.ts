@@ -1,2 +1,2 @@
-export { EventLogStore } from './EventLogStore.js';
+export { EventLogStore, EventLogEntrySchema } from './EventLogStore.js';
 export type { EventLogStoreOptions, EventLogEntry } from './EventLogStore.js';

@@ -19,13 +19,18 @@ import {
   ScatterOptions,
 } from '../../src/builder/ScatterOptions.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 
-const noop: NodeInterface<NodeStateBase, 'success'> = {
-  'name': 'noop',
-  'outputs': ['success'],
-  async execute() { return { 'errors': [], 'output': 'success' }; },
-};
+class NoopNode implements NodeInterface<NodeStateBase, 'success'> {
+  readonly name = 'noop';
+  readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  async execute(_state: NodeStateBase) { return { 'errors': [], 'output': 'success' as const }; }
+}
+const noop = new NoopNode();
 
 void describe('ScatterOptions.from — static factory', () => {
   void it('fills itemKey with SCATTER_ITEM_KEY_DEFAULT when omitted', () => {

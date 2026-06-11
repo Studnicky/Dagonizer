@@ -2,10 +2,13 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
+import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 
 interface PaletteServices {
   readonly logger: { entries: string[] };
@@ -23,18 +26,20 @@ void describe('Dagonizer services container', () => {
       out = '';
     }
 
-    const node: NodeInterface<S, 'success', PaletteServices> = {
-      'name': 'use-services',
-      'outputs': ['success'],
-      async execute(state, context) {
+    class UseServicesNode implements NodeInterface<S, 'success', PaletteServices> {
+      readonly name = 'use-services';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(state: S, context: NodeContextInterface<PaletteServices>) {
         context.services.logger.entries.push(`hit:${context.services.client.url}`);
         state.out = context.services.client.url;
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
 
     const dispatcher = new Dagonizer<S, PaletteServices>({ services });
-    dispatcher.registerNode(node);
+    dispatcher.registerNode(new UseServicesNode());
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:svc',
@@ -62,17 +67,19 @@ void describe('Dagonizer services container', () => {
       out: unknown = 'unset';
     }
 
-    const node: NodeInterface<S, 'success'> = {
-      'name': 'check-undefined',
-      'outputs': ['success'],
-      async execute(state, context) {
+    class CheckUndefinedNode implements NodeInterface<S, 'success'> {
+      readonly name = 'check-undefined';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(state: S, context: NodeContextInterface) {
         state.out = context.services;
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
 
     const dispatcher = new Dagonizer<S>();
-    dispatcher.registerNode(node);
+    dispatcher.registerNode(new CheckUndefinedNode());
     dispatcher.registerDAG({
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:svc-default',

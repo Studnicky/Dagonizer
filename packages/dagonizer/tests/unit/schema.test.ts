@@ -2,11 +2,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/dag/DAG.js';
+import { DAGDocument } from '../../src/entities/dag/DAGDocument.js';
 import { DAGError, ValidationError } from '../../src/errors/index.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 import { Validator } from '../../src/validation/Validator.js';
 
 // validDAG: a minimal well-formed DAG — SingleNode routes to an explicit TerminalNode.
@@ -105,31 +108,71 @@ void describe('Validator.dag', () => {
   });
 });
 
-void describe('Dagonizer.load', () => {
+void describe('DAGDocument.load', () => {
   void it('parses + validates a JSON DAG', () => {
     const json = JSON.stringify(validDAG);
-    const parsed = Dagonizer.load(json);
+    const parsed = DAGDocument.load(json);
     assert.deepEqual(parsed, validDAG);
   });
 
   void it('rejects malformed JSON', () => {
-    assert.throws(() => Dagonizer.load('{not json'), ValidationError);
+    assert.throws(() => DAGDocument.load('{not json'), ValidationError);
   });
 
   void it('rejects schema-noncompliant JSON', () => {
-    assert.throws(() => Dagonizer.load('{"name": "x"}'), ValidationError);
+    assert.throws(() => DAGDocument.load('{"name": "x"}'), ValidationError);
   });
 });
 
-void describe('Dagonizer.serialize round-trip', () => {
+void describe('DAGDocument.serialize round-trip', () => {
   void it('serialize → load yields the original DAG', () => {
-    const json = Dagonizer.serialize(validDAG);
-    const parsed = Dagonizer.load(json);
+    const json = DAGDocument.serialize(validDAG);
+    const parsed = DAGDocument.load(json);
     assert.deepEqual(parsed, validDAG);
   });
 
   void it('serializeCompact omits whitespace', () => {
-    const compact = Dagonizer.serializeCompact(validDAG);
+    const compact = DAGDocument.serializeCompact(validDAG);
+    assert.equal(compact.includes('\n'), false);
+  });
+});
+
+void describe('DAGDocument.fromValue', () => {
+  void it('accepts an already-decoded valid DAG', () => {
+    const result = DAGDocument.fromValue(validDAG);
+    assert.deepEqual(result, validDAG);
+  });
+
+  void it('rejects schema-noncompliant value', () => {
+    assert.throws(() => DAGDocument.fromValue({ 'name': 'x' }), ValidationError);
+  });
+});
+
+void describe('DAGDocument.load', () => {
+  void it('parses + validates a JSON DAG', () => {
+    const json = JSON.stringify(validDAG);
+    const parsed = DAGDocument.load(json);
+    assert.deepEqual(parsed, validDAG);
+  });
+
+  void it('rejects malformed JSON', () => {
+    assert.throws(() => DAGDocument.load('{not json'), ValidationError);
+  });
+
+  void it('rejects schema-noncompliant JSON', () => {
+    assert.throws(() => DAGDocument.load('{"name": "x"}'), ValidationError);
+  });
+});
+
+void describe('DAGDocument.serialize round-trip', () => {
+  void it('serialize → load yields the original DAG', () => {
+    const json = DAGDocument.serialize(validDAG);
+    const parsed = DAGDocument.load(json);
+    assert.deepEqual(parsed, validDAG);
+  });
+
+  void it('serializeCompact omits whitespace', () => {
+    const compact = DAGDocument.serializeCompact(validDAG);
     assert.equal(compact.includes('\n'), false);
   });
 });
@@ -137,12 +180,14 @@ void describe('Dagonizer.serialize round-trip', () => {
 void describe('Dagonizer.registerDAG schema pre-pass', () => {
   void it('rejects schema-invalid DAGs with ValidationError, not DAGError', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const op: NodeInterface<NodeStateBase, 'success'> = {
-      'name': 'op',
-      'outputs': ['success'],
-      async execute() { return { 'errors': [], 'output': 'success' }; },
-    };
-    dispatcher.registerNode(op);
+    class OpNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'op';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute() { return { 'errors': [], 'output': 'success' as const }; }
+    }
+    dispatcher.registerNode(new OpNode());
 
     // Constructs intentionally-invalid input: missing @context, @id, @type so the
     // schema pre-pass rejects it before the semantic check. The cast is necessary
@@ -157,12 +202,14 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
 
   void it('semantic errors still surface as DAGError', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const op: NodeInterface<NodeStateBase, 'success'> = {
-      'name': 'op',
-      'outputs': ['success'],
-      async execute() { return { 'errors': [], 'output': 'success' }; },
-    };
-    dispatcher.registerNode(op);
+    class OpNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'op';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute() { return { 'errors': [], 'output': 'success' as const }; }
+    }
+    dispatcher.registerNode(new OpNode());
 
     // Schema-valid but references unknown node; semantic tier rejects.
     // Uses a TerminalNode so the schema passes; DAGValidator catches the unknown node reference.

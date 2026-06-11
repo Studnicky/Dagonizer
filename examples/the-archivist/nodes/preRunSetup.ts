@@ -20,16 +20,22 @@
  */
 
 // #region pre-phase-setup
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
+import { NodeOutputBuilder,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
 
-import type { ArchivistNode } from './ArchivistNode.ts';
+import type { ArchivistState } from '../ArchivistState.ts';
+import type { ArchivistServices } from '../services.ts';
 
-export const preRunSetup: ArchivistNode<'ready'> = {
-  'name':    'pre-run-setup',
-  'kind':    'deterministic',
-  'outputs': ['ready'],
+export class PreRunSetupNode implements NodeInterface<ArchivistState, 'ready', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'pre-run-setup';
+  readonly outputs = ['ready'] as const;
 
-  execute(state, context) {
+  execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     // Stamp a per-run identifier that downstream memory-write nodes key their
     // named graph on.  Format: ISO timestamp with milliseconds, URL-safe.
     // crypto.randomUUID() would be stronger but wall-clock is deterministic
@@ -47,6 +53,9 @@ export const preRunSetup: ArchivistNode<'ready'> = {
     );
 
     return Promise.resolve(NodeOutputBuilder.of('ready'));
-  },
-};
+  }
+}
 // #endregion pre-phase-setup
+
+/** Backward-compatible const export for existing bundle/DAG references. */
+export const preRunSetup = new PreRunSetupNode();

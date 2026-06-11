@@ -57,6 +57,15 @@ class PassThroughStore extends BaseStore {
       this.#backing[key] = value;
     }
   }
+
+  /**
+   * Non-atomic RMW via the `performUpdateRmw` helper. Acceptable for this
+   * test-only store: the backing is an in-memory record with no concurrency
+   * guarantees, so the default sequential RMW is sufficient.
+   */
+  override async update<T extends JsonValue>(key: string, fn: (current: T | undefined) => T): Promise<T> {
+    return this.performUpdateRmw(key, fn);
+  }
 }
 
 // ── MemoryStore tests ───────────────────────────────────────────────────────

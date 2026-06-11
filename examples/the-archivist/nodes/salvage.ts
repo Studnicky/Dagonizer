@@ -13,11 +13,14 @@
  * failed node would have continued to.
  */
 
+import { NodeOutputBuilder,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
-
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
 
 /** Cap on naive split terms; matches the old in-catch fallback. */
 const MAX_NAIVE_TERMS = 6;
@@ -27,10 +30,13 @@ const MAX_NAIVE_TERMS = 6;
  * caps at six. Deterministic; no LLM. Writes `state.terms` and rejoins at
  * decide-tools.
  */
-export const extractQuerySalvage: NodeInterface<ArchivistState, 'done', ArchivistServices> = {
-  'name': 'extract-query-salvage',
-  'outputs': ['done'],
-  async execute(state, context) {
+export class ExtractQuerySalvageNode implements NodeInterface<ArchivistState, 'done', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'extract-query-salvage';
+  readonly outputs = ['done'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     state.terms = state.query
       .toLowerCase()
       .split(/\s+/u)
@@ -38,54 +44,63 @@ export const extractQuerySalvage: NodeInterface<ArchivistState, 'done', Archivis
       .slice(0, MAX_NAIVE_TERMS);
     context.services.logger.info(`extract-query-salvage: naive term split → [${state.terms.join(', ')}]`);
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
 /**
  * decide-tools salvage: minimal tool plan so the scouts still run. No `query`
  * arg; each scout falls back to `state.terms.join(' ')`. Rejoins at
  * recall-candidates.
  */
-export const decideToolsSalvage: NodeInterface<ArchivistState, 'done', ArchivistServices> = {
-  'name': 'decide-tools-salvage',
-  'outputs': ['done'],
-  async execute(state, context) {
+export class DecideToolsSalvageNode implements NodeInterface<ArchivistState, 'done', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'decide-tools-salvage';
+  readonly outputs = ['done'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     state.toolPlan = [{ 'name': 'web_search_books', 'arguments': {} }];
     context.services.logger.info('decide-tools-salvage: minimal tool plan (web_search_books)');
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
 /**
  * classify-intent salvage: default to the broadest on-topic intent (`search`)
  * so the visitor still gets a book search. Rejoins at the on-topic search
  * branch.
  */
-export const classifyIntentSalvage: NodeInterface<ArchivistState, 'done', ArchivistServices> = {
-  'name': 'classify-intent-salvage',
-  'outputs': ['done'],
-  async execute(state, context) {
+export class ClassifyIntentSalvageNode implements NodeInterface<ArchivistState, 'done', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'classify-intent-salvage';
+  readonly outputs = ['done'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     state.intent = 'search';
     context.services.logger.info('classify-intent-salvage: defaulting intent → search');
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
 /**
  * rank-candidates salvage: keep the candidates in their scout-produced order
  * (deterministic given the same inputs). No fabricated scores. Rejoins at
  * merge-candidates, which soft-gates on emptiness.
  */
-export const rankCandidatesSalvage: NodeInterface<ArchivistState, 'done', ArchivistServices> = {
-  'name': 'rank-candidates-salvage',
-  'outputs': ['done'],
-  async execute(state, context) {
+export class RankCandidatesSalvageNode implements NodeInterface<ArchivistState, 'done', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'rank-candidates-salvage';
+  readonly outputs = ['done'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     context.services.logger.info(
       `rank-candidates-salvage: passing ${String(state.candidates.length)} candidates through unranked`,
     );
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
 /** Canned message when compose can't reach the LLM after exhausting retries. */
 const COMPOSE_SALVAGE_DRAFT =
@@ -96,15 +111,18 @@ const COMPOSE_SALVAGE_DRAFT =
  * budget. Emit a deterministic acknowledgement rather than fabricating a
  * fluent answer, then exit the compose loop.
  */
-export const composeResponseSalvage: NodeInterface<ArchivistState, 'done', ArchivistServices> = {
-  'name': 'compose-salvage',
-  'outputs': ['done'],
-  async execute(state, context) {
+export class ComposeResponseSalvageNode implements NodeInterface<ArchivistState, 'done', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'compose-salvage';
+  readonly outputs = ['done'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     state.draft = COMPOSE_SALVAGE_DRAFT;
     context.services.logger.warn('compose-salvage: emitting canned acknowledgement after retry budget exhausted');
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
 /** Canned empty-result message when compose-empty exhausts its retry budget. */
 const EMPTY_SALVAGE_DRAFT =
@@ -115,15 +133,18 @@ const EMPTY_SALVAGE_DRAFT =
  * after retries. Emit the deterministic acknowledgement so the visitor always
  * gets a response, then route on to respond-to-visitor.
  */
-export const composeEmptyResponseSalvage: NodeInterface<ArchivistState, 'done', ArchivistServices> = {
-  'name': 'compose-empty-salvage',
-  'outputs': ['done'],
-  async execute(state, context) {
+export class ComposeEmptyResponseSalvageNode implements NodeInterface<ArchivistState, 'done', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'compose-empty-salvage';
+  readonly outputs = ['done'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     state.draft = EMPTY_SALVAGE_DRAFT;
     context.services.logger.warn('compose-empty-salvage: emitting canned empty-result acknowledgement after retry budget exhausted');
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
 /** Canned message when the memory-recall composer exhausts its retry budget. */
 const MEMORY_SALVAGE_DRAFT =
@@ -133,12 +154,24 @@ const MEMORY_SALVAGE_DRAFT =
  * compose-memory-response salvage: the recall composer exhausted its budget.
  * Emit a deterministic acknowledgement and route on to respond-to-visitor.
  */
-export const composeMemoryResponseSalvage: NodeInterface<ArchivistState, 'done', ArchivistServices> = {
-  'name': 'compose-memory-salvage',
-  'outputs': ['done'],
-  async execute(state, context) {
+export class ComposeMemoryResponseSalvageNode implements NodeInterface<ArchivistState, 'done', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'compose-memory-salvage';
+  readonly outputs = ['done'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     state.draft = MEMORY_SALVAGE_DRAFT;
     context.services.logger.warn('compose-memory-salvage: emitting canned acknowledgement after retry budget exhausted');
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
+
+/** Backward-compatible const exports for existing bundle/DAG references. */
+export const extractQuerySalvage = new ExtractQuerySalvageNode();
+export const decideToolsSalvage = new DecideToolsSalvageNode();
+export const classifyIntentSalvage = new ClassifyIntentSalvageNode();
+export const rankCandidatesSalvage = new RankCandidatesSalvageNode();
+export const composeResponseSalvage = new ComposeResponseSalvageNode();
+export const composeEmptyResponseSalvage = new ComposeEmptyResponseSalvageNode();
+export const composeMemoryResponseSalvage = new ComposeMemoryResponseSalvageNode();

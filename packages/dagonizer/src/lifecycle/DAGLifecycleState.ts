@@ -28,12 +28,14 @@ export type DAGLifecycleState =
   | { kind: 'timed_out'; startedAt: number; finishedAt: number; error: null;  reason: null };
 
 /**
- * Events consumed by `DAGLifecycleMachine.transition()`. The optional
- * `at` field overrides `Clock.monotonicMs()` for deterministic tests.
+ * Events consumed by `DAGLifecycleMachine.transition()`. The `at` field
+ * carries the monotonic clock value for the transition; production callers
+ * supply `clock.monotonicMs()` explicitly. Tests supply a pinned value for
+ * determinism.
  */
 export type DAGLifecycleEvent =
-  | { type: 'start'; at?: number }
-  | { type: 'succeed'; at?: number }
-  | { type: 'fail'; error: Error; at?: number }
-  | { type: 'cancel'; reason: string; at?: number }
-  | { type: 'timeout'; at?: number };
+  | { type: 'start'; at: number }
+  | { type: 'succeed'; at: number }
+  | { type: 'fail'; error: Error; at: number }
+  | { type: 'cancel'; reason: string; at: number }
+  | { type: 'timeout'; at: number };

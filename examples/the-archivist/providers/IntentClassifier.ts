@@ -26,9 +26,11 @@ import type { Embedder } from '@noocodex/dagonizer/contracts';
 
 import type { ClassifiedIntent } from '../services.ts';
 
-import { cosineSimilarity } from '../nodes/textUtils.ts';
+import { TextSimilarity } from '../nodes/textUtils.ts';
 
-export { cosineSimilarity };
+/** Cosine similarity re-export for backward-compatible test imports. */
+export const cosineSimilarity = (a: readonly number[], b: readonly number[]): number =>
+  TextSimilarity.cosine(a, b);
 
 /**
  * Canonical intent labels. The order matters only for tie-breaking:
@@ -115,7 +117,7 @@ export class IntentClassifier {
     let bestIntent: ClassifiedIntent | null = null;
     let bestScore = -Infinity;
     for (const { intent, vector } of this.#intentVectors) {
-      const score = cosineSimilarity(queryVec, vector);
+      const score = TextSimilarity.cosine(queryVec, vector);
       if (score > bestScore) {
         bestScore = score;
         bestIntent = intent;

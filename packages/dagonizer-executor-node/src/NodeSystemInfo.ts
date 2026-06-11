@@ -5,11 +5,8 @@
  * memory-based pool-size clamping. All os methods are injectable via the
  * `services` constructor parameter for deterministic testing.
  *
- * Formula:
- *   base  = clamp(parallelism − mainThreadReservation, fallbackWorkerCount, maximumWorkers)
- *   final = memoryPerWorkerBytes != null
- *           ? clamp(Math.floor(freemem / memoryPerWorkerBytes), fallbackWorkerCount, base)
- *           : base
+ * Delegates the clamp formula to `SystemInfo.recommendedWorkerCount` from the
+ * core package; this class owns only the environment probing.
  *
  * All properties initialised in constructor for V8 hidden-class stability.
  */
@@ -17,6 +14,7 @@
 import os from 'node:os';
 
 import type { SystemInfoInterface } from '@noocodex/dagonizer/contracts';
+import { SystemInfo } from '@noocodex/dagonizer/entities';
 import type { RecommendedWorkerCountConfig } from '@noocodex/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
@@ -55,25 +53,9 @@ export class NodeSystemInfo implements SystemInfoInterface {
   }
 
   recommendedWorkerCount(config: RecommendedWorkerCountConfig): number {
-    const {
-      maximumWorkers,
-      mainThreadReservation,
-      fallbackWorkerCount,
-      memoryPerWorkerBytes,
-    } = config;
-
-    const parallelism = this.#os.availableParallelism();
-    // maximumWorkers is a hard cap: it wins over fallbackWorkerCount when the
-    // two conflict (a pool must never exceed its configured ceiling).
-    // Floor at Math.max(1, …) so a zero/negative result never yields a 0-worker pool.
-    const base = Math.max(1, Math.min(maximumWorkers, Math.max(fallbackWorkerCount, parallelism - mainThreadReservation)));
-
-    if (memoryPerWorkerBytes !== null && memoryPerWorkerBytes > 0) {
-      const freemem = this.#os.freemem();
-      const memoryBased = Math.floor(freemem / memoryPerWorkerBytes);
-      return Math.max(1, Math.min(base, Math.max(fallbackWorkerCount, memoryBased)));
-    }
-
-    return base;
+    return SystemInfo.recommendedWorkerCount(config, {
+      'parallelism': this.#os.availableParallelism(),
+      'freeMemoryBytes': this.#os.freemem(),
+    });
   }
 }

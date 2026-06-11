@@ -3,10 +3,12 @@ import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import type { OperationContract } from '../../src/contracts/OperationContract.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
 import type { DAGDeriverEmbeddedDAG } from '../../src/derive/DAGDeriverAnnotations.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 
 // `DAGDeriver.derive` takes `nodes` with co-located contracts (single source of
 // truth); there is no standalone `contracts` input. Wrap each contract spec in
@@ -16,6 +18,7 @@ const contractNode = (c: OperationContract): NodeInterface => ({
   'name': c.name,
   'outputs': c.outputs,
   'contract': { 'hardRequired': c.hardRequired, 'produces': c.produces },
+  'timeout': Timeout.none(),
   async execute() { return { 'errors': [], 'output': c.outputs[0] as string }; },
 });
 
@@ -119,12 +122,13 @@ void describe('DAGDeriver.derive', () => {
       'annotations': {
         'scatters': {
           'scout': {
-            'source':   'tasks',
-            'itemKey':  'currentTask',
-            'node':     'scout',
-            'strategy': 'partition',
-            'partitions': { 'success': 'state.passed', 'error': 'state.failed' },
-            'outcomes': ['success', 'error', 'empty'],
+            'source':      'tasks',
+            'itemKey':     'currentTask',
+            'node':        'scout',
+            'concurrency': 0,
+            'strategy':    'partition',
+            'partitions':  { 'success': 'state.passed', 'error': 'state.failed' },
+            'outcomes':    ['success', 'error', 'empty'],
           },
         },
         'terminals': {
@@ -162,12 +166,13 @@ void describe('DAGDeriver.derive', () => {
       'annotations': {
         'scatters': {
           'scout': {
-            'source':   'tasks',
-            'itemKey':  'currentTask',
-            'node':     'scout',
-            'strategy': 'append',
-            'target':   'state.allResults',
-            'outcomes': ['success', 'error'],
+            'source':      'tasks',
+            'itemKey':     'currentTask',
+            'node':        'scout',
+            'concurrency': 0,
+            'strategy':    'append',
+            'target':      'state.allResults',
+            'outcomes':    ['success', 'error'],
           },
         },
         'terminals': {
@@ -205,12 +210,13 @@ void describe('DAGDeriver.derive', () => {
         'annotations': {
           'scatters': {
             'scout': {
-              'source':   'tasks',
-              'itemKey':  'currentTask',
-              'node':     'scout',
-              'strategy': 'partition',
-              'partitions': { 'unknown-outcome': 'state.somewhere' },
-              'outcomes': ['success', 'error'],
+              'source':      'tasks',
+              'itemKey':     'currentTask',
+              'node':        'scout',
+              'concurrency': 0,
+              'strategy':    'partition',
+              'partitions':  { 'unknown-outcome': 'state.somewhere' },
+              'outcomes':    ['success', 'error'],
             },
           },
         },
@@ -473,12 +479,13 @@ void describe('DAGDeriver.derive', () => {
         'annotations': {
           'scatters': {
             'scout': {
-              'source':     'tasks',
-              'itemKey':    'currentTask',
-              'node':       'scout',
-              'strategy':   'custom',
-              'customNode': 'merge',
-              'outcomes':   ['all-success'],
+              'source':      'tasks',
+              'itemKey':     'currentTask',
+              'node':        'scout',
+              'concurrency': 0,
+              'strategy':    'custom',
+              'customNode':  'merge',
+              'outcomes':    ['all-success'],
             },
           },
           'embeddedDAGs': {
@@ -538,6 +545,8 @@ void describe('DAGDeriver.derive', () => {
     const make = (name: string): NodeInterface<NodeStateBase, 'success'> => ({
       name,
       'outputs': ['success'],
+      'contract': EMPTY_CONTRACT_FRAGMENT,
+      'timeout': Timeout.none(),
       async execute() { return { 'errors': [], 'output': 'success' }; },
     });
     dispatcher.registerNode(make('prepare'));
@@ -574,6 +583,8 @@ void describe('DAGDeriver.derive', () => {
     const make = (name: string): NodeInterface<NodeStateBase, 'success'> => ({
       name,
       'outputs': ['success'],
+      'contract': EMPTY_CONTRACT_FRAGMENT,
+      'timeout': Timeout.none(),
       async execute() { return { 'errors': [], 'output': 'success' }; },
     });
     dispatcher.registerNode(make('first'));
@@ -624,12 +635,13 @@ void describe('DAGDeriver.derive', () => {
         'annotations': {
           'scatters': {
             'scout': {
-              'source':   'tasks',
-              'itemKey':  'currentTask',
-              'node':     'scout',
-              'strategy': 'append',
-              'target':   'state.results',
-              'outcomes': ['success', 'error'],
+              'source':      'tasks',
+              'itemKey':     'currentTask',
+              'node':        'scout',
+              'concurrency': 0,
+              'strategy':    'append',
+              'target':      'state.results',
+              'outcomes':    ['success', 'error'],
             },
           },
           // No terminals for scout — outcomes are unrouted.
@@ -659,6 +671,8 @@ void describe('DAGDeriver: terminals with emit variant', () => {
   ): NodeInterface<NodeStateBase, TOut> => ({
     name,
     outputs,
+    'contract': EMPTY_CONTRACT_FRAGMENT,
+    'timeout': Timeout.none(),
     async execute() { return { 'errors': [], 'output': outputs[0] }; },
   });
 
@@ -670,6 +684,8 @@ void describe('DAGDeriver: terminals with emit variant', () => {
   ): NodeInterface<NodeStateBase, TOut> => ({
     name,
     outputs,
+    'contract': EMPTY_CONTRACT_FRAGMENT,
+    'timeout': Timeout.none(),
     async execute() { return { 'errors': [], 'output': output }; },
   });
 

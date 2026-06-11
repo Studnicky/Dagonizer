@@ -21,9 +21,9 @@ import {
 import { CheckpointRestoreAdapterFn } from '@noocodex/dagonizer/checkpoint';
 import {
   MemoryStore,
-  stepA,
-  stepB,
-  childStep,
+  StepANode,
+  StepBNode,
+  ChildStepNode,
   childDag,
   parentDag,
 } from './dags/10-shared-state.js';
@@ -37,9 +37,9 @@ import type { Services } from './dags/10-shared-state.js';
   const dispatcher = new Dagonizer<NodeStateBase, Services>({ "services": { "log": logStore } });
   // #endregion store-init
 
-  dispatcher.registerNode(stepA);
-  dispatcher.registerNode(stepB);
-  dispatcher.registerNode(childStep);
+  dispatcher.registerNode(new StepANode());
+  dispatcher.registerNode(new StepBNode());
+  dispatcher.registerNode(new ChildStepNode());
   dispatcher.registerDAG(childDag);
   dispatcher.registerDAG(parentDag);
 
@@ -58,9 +58,9 @@ import type { Services } from './dags/10-shared-state.js';
   const logStore = new MemoryStore();
   const dispatcher = new Dagonizer<NodeStateBase, Services>({ "services": { "log": logStore } });
 
-  dispatcher.registerNode(stepA);
-  dispatcher.registerNode(stepB);
-  dispatcher.registerNode(childStep);
+  dispatcher.registerNode(new StepANode());
+  dispatcher.registerNode(new StepBNode());
+  dispatcher.registerNode(new ChildStepNode());
   dispatcher.registerDAG(childDag);
   dispatcher.registerDAG(parentDag);
 
@@ -94,9 +94,9 @@ import type { Services } from './dags/10-shared-state.js';
     process.stdout.write(`  log after restoreStores = "${restoredEntries}"\n`);
 
     const resumeDispatcher = new Dagonizer<NodeStateBase, Services>({ "services": { "log": freshLog } });
-    resumeDispatcher.registerNode(stepA);
-    resumeDispatcher.registerNode(stepB);
-    resumeDispatcher.registerNode(childStep);
+    resumeDispatcher.registerNode(new StepANode());
+    resumeDispatcher.registerNode(new StepBNode());
+    resumeDispatcher.registerNode(new ChildStepNode());
     resumeDispatcher.registerDAG(childDag);
     resumeDispatcher.registerDAG(parentDag);
 

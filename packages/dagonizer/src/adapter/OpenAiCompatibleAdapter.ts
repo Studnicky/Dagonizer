@@ -68,8 +68,10 @@ type ResolvedOpenAiCompatibleConfig = OpenAiCompatibleConfig & { timeoutMs: numb
 
 /** Per-consumer options every OpenAI-compatible adapter accepts. */
 export interface OpenAiCompatibleAdapterOptions {
-  model?: string;
-  maxAttempts?: number;
+  readonly model?: string;
+  readonly maxAttempts?: number;
+  /** First retry delay in ms forwarded to the base retry policy. */
+  readonly baseDelayMs?: number;
 }
 
 export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
@@ -86,11 +88,23 @@ export abstract class OpenAiCompatibleAdapter extends BaseAdapter {
       config.id,
       config.displayName,
       config.capabilities,
-      { 'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS, 'baseDelayMs': DEFAULT_BASE_DELAY_MS },
+      {
+        'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
+        'baseDelayMs': options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS,
+      },
     );
     this.#apiKey = apiKey;
     this.#model = options.model ?? config.defaultModel;
     this.#config = { ...config, 'timeoutMs': config.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS };
+  }
+
+  /**
+   * The resolved model identifier for this adapter instance.
+   * Subclasses can read this to include the model name in request bodies
+   * or error messages without duplicating the resolution logic.
+   */
+  protected get model(): string {
+    return this.#model;
   }
 
   protected async performChat(request: ChatRequest): Promise<ChatResponse> {

@@ -50,8 +50,6 @@ export const GRAPH_ONTOLOGY = namedNode('urn:dagonizer:ontology');
 export const GRAPH_MEMORY   = namedNode('urn:dagonizer:memory');
 export const STATE_GRAPH_PREFIX = 'urn:dagonizer:state:';
 export const PROV_GRAPH_PREFIX  = 'urn:dagonizer:prov:';
-export const stateGraphIri = (runId: string): Term => namedNode(`${STATE_GRAPH_PREFIX}${runId}`);
-export const provGraphIri  = (runId: string): Term => namedNode(`${PROV_GRAPH_PREFIX}${runId}`);
 
 /**
  * One bound row from `select()`. Keys are pattern variable names without
@@ -115,6 +113,10 @@ export class MemoryStore implements Snapshottable {
   static runIri(id: string):   Term { return namedNode(`${RUN_NS}${id}`); }
   /** Make any IRI. */
   static iri(value: string):   Term { return namedNode(value); }
+  /** Named-graph IRI for the per-run typed-state mirror graph. */
+  static stateGraphIri(runId: string): Term { return namedNode(`${STATE_GRAPH_PREFIX}${runId}`); }
+  /** Named-graph IRI for the per-run PROV-O activity log. */
+  static provGraphIri(runId: string):  Term { return namedNode(`${PROV_GRAPH_PREFIX}${runId}`); }
 
   /** Literal helpers: typed XSD where it matters for SPARQL FILTER. */
   static lit = {
@@ -165,10 +167,10 @@ export class MemoryStore implements Snapshottable {
   /** ASK: true when at least one quad matches the pattern. */
   ask(pattern: SlotPattern): boolean {
     return this.#store.getQuads(
-      asTerm(pattern.subject)   ?? null,
-      asTerm(pattern.predicate) ?? null,
-      asTerm(pattern.object)    ?? null,
-      asTerm(pattern.graph)     ?? null,
+      MemoryStore.asTerm(pattern.subject)   ?? null,
+      MemoryStore.asTerm(pattern.predicate) ?? null,
+      MemoryStore.asTerm(pattern.object)    ?? null,
+      MemoryStore.asTerm(pattern.graph)     ?? null,
     ).length > 0;
   }
 
@@ -177,17 +179,17 @@ export class MemoryStore implements Snapshottable {
    * slot and it becomes a binding key; concrete terms filter.
    */
   select(pattern: SlotPattern): Binding[] {
-    const subject   = asTerm(pattern.subject)   ?? null;
-    const predicate = asTerm(pattern.predicate) ?? null;
-    const object    = asTerm(pattern.object)    ?? null;
-    const graph     = asTerm(pattern.graph)     ?? null;
+    const subject   = MemoryStore.asTerm(pattern.subject)   ?? null;
+    const predicate = MemoryStore.asTerm(pattern.predicate) ?? null;
+    const object    = MemoryStore.asTerm(pattern.object)    ?? null;
+    const graph     = MemoryStore.asTerm(pattern.graph)     ?? null;
     const quads = this.#store.getQuads(subject, predicate, object, graph);
     return quads.map((q) => {
       const row: Record<string, Term> = {};
-      if (isVar(pattern.subject))   row[stripQuestion(pattern.subject)]   = q.subject;
-      if (isVar(pattern.predicate)) row[stripQuestion(pattern.predicate)] = q.predicate;
-      if (isVar(pattern.object))    row[stripQuestion(pattern.object)]    = q.object;
-      if (isVar(pattern.graph))     row[stripQuestion(pattern.graph)]     = q.graph;
+      if (MemoryStore.isVar(pattern.subject))   row[MemoryStore.stripQuestion(pattern.subject)]   = q.subject;
+      if (MemoryStore.isVar(pattern.predicate)) row[MemoryStore.stripQuestion(pattern.predicate)] = q.predicate;
+      if (MemoryStore.isVar(pattern.object))    row[MemoryStore.stripQuestion(pattern.object)]    = q.object;
+      if (MemoryStore.isVar(pattern.graph))     row[MemoryStore.stripQuestion(pattern.graph)]     = q.graph;
       return row;
     });
   }
@@ -195,10 +197,10 @@ export class MemoryStore implements Snapshottable {
   /** Count matching quads. */
   count(pattern: SlotPattern): number {
     return this.#store.getQuads(
-      asTerm(pattern.subject)   ?? null,
-      asTerm(pattern.predicate) ?? null,
-      asTerm(pattern.object)    ?? null,
-      asTerm(pattern.graph)     ?? null,
+      MemoryStore.asTerm(pattern.subject)   ?? null,
+      MemoryStore.asTerm(pattern.predicate) ?? null,
+      MemoryStore.asTerm(pattern.object)    ?? null,
+      MemoryStore.asTerm(pattern.graph)     ?? null,
     ).length;
   }
 
@@ -321,19 +323,19 @@ export class MemoryStore implements Snapshottable {
     }
     return [...seen.values()];
   }
-}
 
-function isVar(slot: Term | string | undefined): slot is string {
-  return typeof slot === 'string' && slot.startsWith('?');
-}
+  private static isVar(slot: Term | string | undefined): slot is string {
+    return typeof slot === 'string' && slot.startsWith('?');
+  }
 
-function stripQuestion(name: string): string {
-  return name.startsWith('?') ? name.slice(1) : name;
-}
+  private static stripQuestion(name: string): string {
+    return name.startsWith('?') ? name.slice(1) : name;
+  }
 
-function asTerm(slot: Term | string | undefined): Term | null {
-  if (slot === undefined) return null;
-  if (isVar(slot)) return null;
-  if (typeof slot === 'string') return null;
-  return slot;
+  private static asTerm(slot: Term | string | undefined): Term | null {
+    if (slot === undefined) return null;
+    if (MemoryStore.isVar(slot)) return null;
+    if (typeof slot === 'string') return null;
+    return slot;
+  }
 }

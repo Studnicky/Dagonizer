@@ -16,11 +16,11 @@
  * response into a node output.
  */
 
-import { MonadicNode } from '@noocodex/dagonizer/patterns';
-import type { LlmClient } from '@noocodex/dagonizer/patterns';
+import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
 import { ChatRequestBuilder } from '@noocodex/dagonizer/adapter';
 import type { ChatRequest, ChatResponse, PartialChatRequest } from '@noocodex/dagonizer/adapter';
-import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
+import { MonadicNode } from '@noocodex/dagonizer/patterns';
+import type { LlmClient } from '@noocodex/dagonizer/patterns';
 
 export interface RagServices {
   readonly llm: LlmClient;
@@ -37,10 +37,14 @@ export abstract class LlmDispatchNode<
    * Optional hook to override the request envelope (model selection,
    * temperature, etc.). Default packs the prompt as a single user
    * message; signal flows from the dispatcher context.
+   *
+   * Non-tool messages (system/user/assistant) must not carry
+   * `toolCallId`/`toolName` — the `ChatMessageSchema` `oneOf` enforces
+   * `additionalProperties: false` on the non-tool branch.
    */
   protected buildRequest(prompt: string, signal: AbortSignal): PartialChatRequest {
     return {
-      'messages': [{ 'role': 'user', 'content': prompt, 'toolCallId': '', 'toolName': '' }],
+      'messages': [{ 'role': 'user', 'content': prompt }],
       signal,
     };
   }

@@ -100,53 +100,48 @@ export class DagHost {
       return;
     }
 
-    // Typed dispatch map: each handler receives the narrowed message. The
-    // 'execute' handler is fire-and-forget with error capture so failures
-    // reach the caller (R3). Unknown kinds send UNEXPECTED_MESSAGE.
-    type DispatchMessage = typeof message;
-    const dispatch: Partial<Record<DispatchMessage['kind'], (msg: DispatchMessage) => Promise<void> | void>> = {
-      'init': async (msg) => {
-        const m = msg as DispatchMessage & { kind: 'init' };
-        await this.#handleInit(m.registryModule, m.registryVersion, m.servicesConfig as JsonObject);
-      },
-      'execute': (msg) => {
-        const m = msg as DispatchMessage & { kind: 'execute' };
+    // Exhaustive typed switch: TypeScript narrows `message` on each `kind` arm,
+    // eliminating the need for `as` casts inside each handler. The R3
+    // fire-and-forget pattern for 'execute' is preserved — the error is
+    // captured and sent as a channel message rather than leaking an unhandled
+    // rejection. Unknown kinds (host→parent messages) are unexpected here but
+    // must not crash the host.
+    switch (message.kind) {
+      case 'init':
+        await this.#handleInit(message.registryModule, message.registryVersion, message.servicesConfig as JsonObject);
+        break;
+      case 'execute':
         // R3: fire-and-forget with error capture so failures reach the caller.
-        this.#handleExecute(m.request.correlationId, m.request).catch((err: unknown) => {
+        this.#handleExecute(message.request.correlationId, message.request).catch((err: unknown) => {
           const errMsg = err instanceof Error ? err.message : String(err);
           try {
             this.#channel.send({
               'kind': 'error',
-              'correlationId': m.request.correlationId,
+              'correlationId': message.request.correlationId,
               'code': 'INTERNAL_ERROR',
               'message': `DagHost execute error: ${errMsg}`,
               'recoverable': false,
             });
           } catch { /* channel closed — suppress */ }
         });
-      },
-      'abort': (msg) => {
-        const m = msg as DispatchMessage & { kind: 'abort' };
-        this.#handleAbort(m.correlationId, m.reason);
-      },
-      'shutdown': async () => {
+        break;
+      case 'abort':
+        this.#handleAbort(message.correlationId, message.reason);
+        break;
+      case 'shutdown':
         await this.#handleShutdown();
-      },
-    };
-
-    const handler = dispatch[message.kind];
-    if (handler !== undefined) {
-      await handler(message);
-    } else {
-      // DagHost receives only parent→host messages; host→parent messages are
-      // unexpected on this side but must not crash the host.
-      this.#channel.send({
-        'kind': 'error',
-        'correlationId': null,
-        'code': 'UNEXPECTED_MESSAGE',
-        'message': `DagHost received unexpected message kind: ${message.kind}`,
-        'recoverable': true,
-      });
+        break;
+      default:
+        // DagHost receives only parent→host messages; host→parent messages are
+        // unexpected on this side but must not crash the host.
+        this.#channel.send({
+          'kind': 'error',
+          'correlationId': null,
+          'code': 'UNEXPECTED_MESSAGE',
+          'message': `DagHost received unexpected message kind: ${(message as { kind: string }).kind}`,
+          'recoverable': true,
+        });
+        break;
     }
   }
 

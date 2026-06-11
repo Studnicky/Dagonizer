@@ -235,31 +235,6 @@ export const schemas = {
   } as Record<string, unknown>,
 };
 
-// ── Language preamble: top-of-prompt directive ────────────────────────
-/**
- * Prepend a single language directive to every prompt body. Single
- * source of truth for the language instruction so we can evolve the
- * exact phrasing in one place.
- *
- * The directive instructs the model to:
- *   • respond in the user's device language;
- *   • use that language for every natural-language field in any JSON
- *     output (descriptions, ranking reasons, draft responses);
- *   • not echo translations of the input; respond directly in the
- *     target language.
- */
-function withLanguagePreamble(language: string, body: string): string {
-  const code = UserLanguage.normalize(language);
-  const name = UserLanguage.displayName(code);
-  const preamble = [
-    `You communicate in ${name} (${code}). Every word you output, including`,
-    'JSON field values that contain natural language (book descriptions, ranking',
-    `reasons, draft responses), MUST be in ${name}. Do not output translations`,
-    `or transliterations of the user's input. Respond directly in ${name}.`,
-  ].join('\n');
-  return `${preamble}\n\n${body}`;
-}
-
 // ── Prompt builders ────────────────────────────────────────────────────
 /** Helpers expose only the builders; nodes never assemble prose themselves. */
 export const prompts = {
@@ -270,7 +245,7 @@ export const prompts = {
           '',
           `${directives.recentContextLabel} ${recalledSummary} ${directives.continuityHint}`,
         ].join('\n');
-    const conversationBlock = formatConversationBlock(conversation);
+    const conversationBlock = PromptFormat.formatConversationBlock(conversation);
     const body = [
       SYSTEM,
       '',
@@ -287,7 +262,7 @@ export const prompts = {
       '',
       `${directives.visitorQuestionLabel} ${query}`,
     ].join('\n');
-    return withLanguagePreamble(language, body);
+    return PromptFormat.withLanguagePreamble(language, body);
   },
 
   extractTerms(language: string, query: string): string {
@@ -299,7 +274,7 @@ export const prompts = {
       '',
       `${directives.visitorQuestionLabel} ${query}`,
     ].join('\n');
-    return withLanguagePreamble(language, body);
+    return PromptFormat.withLanguagePreamble(language, body);
   },
 
   decideTools(
@@ -327,11 +302,11 @@ export const prompts = {
       '',
       `${directives.visitorQuestionLabel} ${query}`,
     ].join('\n');
-    return withLanguagePreamble(language, body);
+    return PromptFormat.withLanguagePreamble(language, body);
   },
 
   rankCandidates(language: string, query: string, candidates: readonly Candidate[]): string {
-    const rows = candidates.map((c, i) => formatCandidateRow(i + 1, c)).join('\n');
+    const rows = candidates.map((c, i) => PromptFormat.formatCandidateRow(i + 1, c)).join('\n');
     const body = [
       SYSTEM,
       directives.emitJsonOnly,
@@ -343,7 +318,7 @@ export const prompts = {
       '',
       `Reply with {"order": [n, n, n, ...]} where each n is a candidate number from the list above, ordered best to worst. No duplicates, no other fields.`,
     ].join('\n');
-    return withLanguagePreamble(language, body);
+    return PromptFormat.withLanguagePreamble(language, body);
   },
 
   compose(
@@ -354,7 +329,7 @@ export const prompts = {
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
   ): string {
-    const rows = shortlist.map((c, i) => formatCandidateRow(i + 1, c)).join('\n');
+    const rows = shortlist.map((c, i) => PromptFormat.formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
       ? ''
       : [
@@ -365,8 +340,8 @@ export const prompts = {
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
-    const conversationBlock = formatConversationBlock(conversation);
-    const memoryHint = priorMemoryHintLine(shortlist);
+    const conversationBlock = PromptFormat.formatConversationBlock(conversation);
+    const memoryHint = PromptFormat.priorMemoryHintLine(shortlist);
     const body = [
       SYSTEM,
       directives.beTerse,
@@ -381,7 +356,7 @@ export const prompts = {
       directives.candidatesHeader,
       rows,
     ].join('\n');
-    return withLanguagePreamble(language, body);
+    return PromptFormat.withLanguagePreamble(language, body);
   },
 
   composeAuthor(
@@ -392,7 +367,7 @@ export const prompts = {
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
   ): string {
-    const rows = shortlist.map((c, i) => formatCandidateRow(i + 1, c)).join('\n');
+    const rows = shortlist.map((c, i) => PromptFormat.formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
       ? ''
       : [
@@ -403,8 +378,8 @@ export const prompts = {
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
-    const conversationBlock = formatConversationBlock(conversation);
-    const memoryHintAuthor = priorMemoryHintLine(shortlist);
+    const conversationBlock = PromptFormat.formatConversationBlock(conversation);
+    const memoryHintAuthor = PromptFormat.priorMemoryHintLine(shortlist);
     const body = [
       SYSTEM,
       directives.beTerse,
@@ -421,7 +396,7 @@ export const prompts = {
       directives.candidatesHeaderChronological,
       rows,
     ].join('\n');
-    return withLanguagePreamble(language, body);
+    return PromptFormat.withLanguagePreamble(language, body);
   },
 
   composeReviews(
@@ -432,7 +407,7 @@ export const prompts = {
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
   ): string {
-    const rows = shortlist.map((c, i) => formatCandidateRow(i + 1, c)).join('\n');
+    const rows = shortlist.map((c, i) => PromptFormat.formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
       ? ''
       : [
@@ -443,8 +418,8 @@ export const prompts = {
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
-    const conversationBlock = formatConversationBlock(conversation);
-    const memoryHintReviews = priorMemoryHintLine(shortlist);
+    const conversationBlock = PromptFormat.formatConversationBlock(conversation);
+    const memoryHintReviews = PromptFormat.priorMemoryHintLine(shortlist);
     const body = [
       SYSTEM,
       directives.beTerse,
@@ -461,7 +436,7 @@ export const prompts = {
       directives.candidatesHeaderRated,
       rows,
     ].join('\n');
-    return withLanguagePreamble(language, body);
+    return PromptFormat.withLanguagePreamble(language, body);
   },
 
   describeBook(
@@ -472,7 +447,7 @@ export const prompts = {
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
   ): string {
-    const rows = shortlist.map((c, i) => formatCandidateRow(i + 1, c)).join('\n');
+    const rows = shortlist.map((c, i) => PromptFormat.formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
       ? ''
       : [
@@ -483,8 +458,8 @@ export const prompts = {
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
-    const conversationBlock = formatConversationBlock(conversation);
-    const memoryHintDescribe = priorMemoryHintLine(shortlist);
+    const conversationBlock = PromptFormat.formatConversationBlock(conversation);
+    const memoryHintDescribe = PromptFormat.priorMemoryHintLine(shortlist);
     const body = [
       SYSTEM,
       directives.describeOnly,
@@ -500,7 +475,7 @@ export const prompts = {
       directives.matchedBooksHeader,
       rows,
     ].join('\n');
-    return withLanguagePreamble(language, body);
+    return PromptFormat.withLanguagePreamble(language, body);
   },
 
   composeSimilar(
@@ -511,7 +486,7 @@ export const prompts = {
     recalledSummary?: string,
     conversation: readonly ConversationTurn[] = [],
   ): string {
-    const rows = shortlist.map((c, i) => formatCandidateRow(i + 1, c)).join('\n');
+    const rows = shortlist.map((c, i) => PromptFormat.formatCandidateRow(i + 1, c)).join('\n');
     const contextBlock = (priorContext === undefined || priorContext.length === 0)
       ? ''
       : [
@@ -522,8 +497,8 @@ export const prompts = {
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
-    const conversationBlock = formatConversationBlock(conversation);
-    const memoryHintSimilar = priorMemoryHintLine(shortlist);
+    const conversationBlock = PromptFormat.formatConversationBlock(conversation);
+    const memoryHintSimilar = PromptFormat.priorMemoryHintLine(shortlist);
     const body = [
       SYSTEM,
       directives.beTerse,
@@ -539,14 +514,14 @@ export const prompts = {
       directives.candidatesHeader,
       rows,
     ].join('\n');
-    return withLanguagePreamble(language, body);
+    return PromptFormat.withLanguagePreamble(language, body);
   },
 
   composeEmptyResponse(language: string, query: string, failureCause: string, conversation: readonly ConversationTurn[] = []): string {
     const causeBlock = failureCause.trim().length > 0
       ? `\n${directives.searchNotesLabel} ${failureCause.trim()}`
       : '';
-    const conversationBlock = formatConversationBlock(conversation);
+    const conversationBlock = PromptFormat.formatConversationBlock(conversation);
     const body = [
       SYSTEM,
       directives.ownTheGap,
@@ -556,11 +531,11 @@ export const prompts = {
       conversationBlock,
       causeBlock,
     ].join('\n');
-    return withLanguagePreamble(language, body);
+    return PromptFormat.withLanguagePreamble(language, body);
   },
 
   validate(language: string, draft: string, shortlist: readonly Candidate[]): string {
-    const titles = shortlist.map((c) => c.book.title).join(' | ');
+    const titles = shortlist.map((c) => c.book.identity.title).join(' | ');
     const body = [
       SYSTEM,
       directives.validateApprovalRule,
@@ -570,7 +545,7 @@ export const prompts = {
       '',
       `${directives.draftLabel} ${draft}`,
     ].join('\n');
-    return withLanguagePreamble(language, body);
+    return PromptFormat.withLanguagePreamble(language, body);
   },
 
   suggestStarterQuery(language: string): string {
@@ -582,7 +557,7 @@ export const prompts = {
       directives.starterLengthLimit,
       directives.starterReturnFormat,
     ].join(' ');
-    return withLanguagePreamble(language, body);
+    return PromptFormat.withLanguagePreamble(language, body);
   },
 
   suggestGreeting(language: string): string {
@@ -594,7 +569,7 @@ export const prompts = {
       directives.greetingLengthLimit,
       directives.greetingReturnFormat,
     ].join(' ');
-    return withLanguagePreamble(language, body);
+    return PromptFormat.withLanguagePreamble(language, body);
   },
 
   suggestVisitorReplyTo(language: string, greeting: string): string {
@@ -607,7 +582,7 @@ export const prompts = {
       directives.visitorReplyLengthLimit,
       directives.visitorReplyReturnFormat,
     ].join(' ');
-    return withLanguagePreamble(language, body);
+    return PromptFormat.withLanguagePreamble(language, body);
   },
 
   explainTool(language: string, name: string, context: string): string {
@@ -622,7 +597,7 @@ export const prompts = {
       directives.explainToolTone,
       directives.explainToolReturnFormat,
     ].join('\n');
-    return withLanguagePreamble(language, body);
+    return PromptFormat.withLanguagePreamble(language, body);
   },
 
   composeMemoryRecall(
@@ -635,7 +610,7 @@ export const prompts = {
     const continuityBlock = (recalledSummary === undefined || recalledSummary.length === 0)
       ? ''
       : `\n${directives.conversationContextLabel} ${recalledSummary}`;
-    const conversationBlock = formatConversationBlock(conversation);
+    const conversationBlock = PromptFormat.formatConversationBlock(conversation);
 
     const digestBlock = digest.bookCount === 0
       ? directives.memoryEmptyStatus
@@ -660,45 +635,72 @@ export const prompts = {
       '',
       digestBlock,
     ].join('\n');
-    return withLanguagePreamble(language, body);
+    return PromptFormat.withLanguagePreamble(language, body);
   },
 };
 
 // ── Internals ──────────────────────────────────────────────────────────
-/**
- * Returns the `priorMemoryHint` directive line when any candidate in the
- * shortlist carries `notes.fromPriorMemory: true`. Returns empty string
- * otherwise so callers can splice it directly into the prompt body array.
- */
-function priorMemoryHintLine(shortlist: readonly Candidate[]): string {
-  const hasPriorMemory = shortlist.some((c) => c.notes?.['fromPriorMemory'] === true);
-  return hasPriorMemory ? directives.priorMemoryHint : '';
-}
+/** Prompt formatting utilities: language preamble, conversation blocks, candidate rows. */
+export class PromptFormat {
+  /**
+   * Prepend a single language directive to every prompt body. Single
+   * source of truth for the language instruction so we can evolve the
+   * exact phrasing in one place.
+   *
+   * The directive instructs the model to:
+   *   • respond in the user's device language;
+   *   • use that language for every natural-language field in any JSON
+   *     output (descriptions, ranking reasons, draft responses);
+   *   • not echo translations of the input; respond directly in the
+   *     target language.
+   */
+  static withLanguagePreamble(language: string, body: string): string {
+    const code = UserLanguage.normalize(language);
+    const name = UserLanguage.displayName(code);
+    const preamble = [
+      `You communicate in ${name} (${code}). Every word you output, including`,
+      'JSON field values that contain natural language (book descriptions, ranking',
+      `reasons, draft responses), MUST be in ${name}. Do not output translations`,
+      `or transliterations of the user's input. Respond directly in ${name}.`,
+    ].join('\n');
+    return `${preamble}\n\n${body}`;
+  }
 
-/** Format prior conversation turns as a terse "Conversation so far" block. */
-function formatConversationBlock(turns: readonly ConversationTurn[]): string {
-  if (turns.length === 0) return '';
-  const lines = turns.map((t) => `  ${t.role}: ${t.text}`).join('\n');
-  return `\nConversation so far (most recent last):\n${lines}`;
-}
+  /**
+   * Returns the `priorMemoryHint` directive line when any candidate in the
+   * shortlist carries `notes.fromPriorMemory: true`. Returns empty string
+   * otherwise so callers can splice it directly into the prompt body array.
+   */
+  static priorMemoryHintLine(shortlist: readonly Candidate[]): string {
+    const hasPriorMemory = shortlist.some((c) => c.notes?.['fromPriorMemory'] === true);
+    return hasPriorMemory ? directives.priorMemoryHint : '';
+  }
 
-function formatCandidateRow(n: number, c: Candidate): string {
-  const parts: string[] = [];
-  parts.push(`${String(n)}. isbn=${c.book.isbn}`);
-  parts.push(`"${c.book.title}"`);
-  parts.push(`by ${c.book.authors.join(', ') || '<unknown author>'}`);
-  if (c.book.firstPublishYear !== undefined) parts.push(`(${String(c.book.firstPublishYear)})`);
-  if (c.book.subjects !== undefined && c.book.subjects.length > 0) {
-    parts.push(`subjects: ${c.book.subjects.slice(0, 5).join(', ')}`);
+  /** Format prior conversation turns as a terse "Conversation so far" block. */
+  static formatConversationBlock(turns: readonly ConversationTurn[]): string {
+    if (turns.length === 0) return '';
+    const lines = turns.map((t) => `  ${t.role}: ${t.text}`).join('\n');
+    return `\nConversation so far (most recent last):\n${lines}`;
   }
-  if (c.book.publishers !== undefined && c.book.publishers.length > 0) {
-    parts.push(`pub: ${c.book.publishers[0]}`);
+
+  static formatCandidateRow(n: number, c: Candidate): string {
+    const parts: string[] = [];
+    parts.push(`${String(n)}. isbn=${c.book.identity.isbn}`);
+    parts.push(`"${c.book.identity.title}"`);
+    parts.push(`by ${c.book.identity.authors.join(', ') || '<unknown author>'}`);
+    if (c.book.publication.firstPublishYear !== undefined) parts.push(`(${String(c.book.publication.firstPublishYear)})`);
+    if (c.book.publication.subjects.length > 0) {
+      parts.push(`subjects: ${c.book.publication.subjects.slice(0, 5).join(', ')}`);
+    }
+    if (c.book.publication.publishers.length > 0) {
+      parts.push(`pub: ${c.book.publication.publishers[0]}`);
+    }
+    if (c.book.publication.summary !== undefined && c.book.publication.summary.length > 0) {
+      parts.push(`summary: ${c.book.publication.summary}`);
+    }
+    if (c.reason !== undefined && c.reason.length > 0) {
+      parts.push(`[rank-reason: ${c.reason}]`);
+    }
+    return parts.join(' | ');
   }
-  if (c.book.summary !== undefined && c.book.summary.length > 0) {
-    parts.push(`summary: ${c.book.summary}`);
-  }
-  if (c.reason !== undefined && c.reason.length > 0) {
-    parts.push(`[rank-reason: ${c.reason}]`);
-  }
-  return parts.join(' | ');
 }

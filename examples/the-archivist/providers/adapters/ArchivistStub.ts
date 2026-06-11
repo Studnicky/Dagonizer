@@ -22,165 +22,6 @@ export interface ArchivistStubOptions {
   readonly memoryStore: MemoryStore;
 }
 
-export class ArchivistStub extends StubAdapter {
-  readonly #memoryStore: MemoryStore;
-
-  constructor(opts: ArchivistStubOptions) {
-    super({ 'maxAttempts': 1 });
-    this.#memoryStore = opts.memoryStore;
-  }
-
-  protected override async performChat(request: ChatRequest): Promise<ChatResponse> {
-    const lastUser = [...request.messages].reverse().find((m) => m.role === 'user');
-    const query = lastUser?.content ?? '';
-
-    if (isExplainToolPrompt(query)) {
-      return { 'message': ChatResponseMessageBuilder.from(cannedToolExplanation(query), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
-    }
-
-    if (isStarterQueryPrompt(query)) {
-      return { 'message': ChatResponseMessageBuilder.from(starterQuery(), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
-    }
-
-    if (isGreetingPrompt(query)) {
-      return { 'message': ChatResponseMessageBuilder.from(stubGreeting(), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
-    }
-
-    if (isVisitorReplyPrompt(query)) {
-      return { 'message': ChatResponseMessageBuilder.from(stubVisitorReply(), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
-    }
-
-    if (request.outputSchema.kind === 'schema') {
-      const id = request.outputSchema.id;
-      if (id === 'archivist-decide-tools-v1') {
-        return { 'message': ChatResponseMessageBuilder.from(groundedDecideToolsJson(query), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
-      }
-      if (id === 'archivist-rank-v1') {
-        return { 'message': ChatResponseMessageBuilder.from(groundedRankJson(query), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
-      }
-      // Unknown schema: emit empty JSON object.
-      return { 'message': ChatResponseMessageBuilder.from('{}', []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
-    }
-
-    return { 'message': ChatResponseMessageBuilder.from(groundedAnswer(query, this.#shelfSize()), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
-  }
-
-  /** Count live `?book rdf:type dag:Book` triples in the store. */
-  #shelfSize(): number {
-    return this.#memoryStore.select({
-      'subject':   '?book',
-      'predicate': MemoryStore.iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'),
-      'object':    MemoryStore.dagIri('Book'),
-      'graph':     '?g',
-    }).length;
-  }
-}
-
-// ── Grounded response helpers ──────────────────────────────────────────────
-
-/**
- * Index-pointer stub for `decideTools`. Counts the numbered tool list
- * in the prompt and returns indices 1..N, calling every tool so the
- * downstream scatter actually runs all scouts. When no numbered list is
- * found in the prompt (degenerate case), returns `{tools: []}`.
- */
-function groundedDecideToolsJson(prompt: string): string {
-  const lines = prompt.split('\n');
-  // Count "  N. <name>: <desc>" lines under the `Available tools:` header.
-  let count = 0;
-  let inList = false;
-  for (const line of lines) {
-    if (/^Available tools:/.test(line)) { inList = true; continue; }
-    if (inList) {
-      if (/^\s+\d+\.\s/.test(line)) count += 1;
-      else if (line.trim().length === 0) break;
-    }
-  }
-  if (count === 0) return JSON.stringify({ 'tools': [] });
-  const tools = Array.from({ length: count }, (_v, i) => i + 1);
-  return JSON.stringify({ 'tools': tools });
-}
-
-/**
- * Index-pointer stub for `rankCandidates`. Counts numbered candidate
- * rows in the prompt and returns a `{order: [...]}` shuffle. The
- * SeedLibrary lookup is used only for shelf-resonance flavour; the
- * stub doesn't try to actually re-rank; it returns the identity order.
- */
-function groundedRankJson(prompt: string): string {
-  const lines = prompt.split('\n');
-  let count = 0;
-  for (const line of lines) {
-    if (/^\d+\.\s+isbn=/.test(line)) count += 1;
-  }
-  if (count === 0) return JSON.stringify({ 'order': [] });
-  const order = Array.from({ length: count }, (_v, i) => i + 1);
-  return JSON.stringify({ 'order': order });
-}
-
-function groundedAnswer(query: string, shelfSize: number): string {
-  const q = query.toLowerCase();
-
-  if (q.includes('acknowledge which sources were searched')) {
-    const notesMatch = /search notes:\s*([^\n]+)/i.exec(query);
-    const hint = notesMatch !== null ? ` (${(notesMatch[1] ?? '').trim().slice(0, 120)})` : '';
-    return `I keep ${String(shelfSize)} titles on these shelves and none of them matched your description${hint}. Try a single keyword (an author surname, a year, or one strong image from the book) and I will cast a wider net.`;
-  }
-
-  if (q.includes('memory status:')) {
-    if (q.includes('no books have been recorded')) {
-      return `My shelves currently hold ${String(shelfSize)} title${shelfSize === 1 ? '' : 's'} from the seed library. Ask me about science fiction, philosophy, or a specific author and we'll build from there.`;
-    }
-    const bookMatch  = /(\d+) distinct book/.exec(q);
-    const queryMatch = /(\d+) prior (session|sessions)/.exec(q);
-    const titleMatch = /recent titles?: ([^.]+)\./.exec(q);
-    const bookCount  = bookMatch  !== null ? bookMatch[1]  : 'several';
-    const sessions   = queryMatch !== null ? queryMatch[1] : 'several';
-    const titles     = titleMatch !== null ? titleMatch[1] : 'various titles';
-    return `These shelves hold ${String(shelfSize)} title${shelfSize === 1 ? '' : 's'} in total. Of those, ${bookCount} ${Number(bookCount) === 1 ? 'book' : 'books'} came up across ${sessions} prior ${Number(sessions) === 1 ? 'session' : 'sessions'}. The most recent include ${titles}.`;
-  }
-
-  const visitorLine = extractVisitorQuery(query);
-  const searchFor = visitorLine.length > 0 ? visitorLine : query;
-  const matches = SeedLibrary.findByKeywords(searchFor, 3);
-
-  if (matches.length === 0) {
-    return "I don't have anything matching that on the shelves. Try a title name, an author surname, or a subject keyword and I'll cast a wider net.";
-  }
-
-  const [first, second, third] = matches;
-  if (first === undefined) {
-    return "I don't have anything matching that on the shelves. Try a title name, an author surname, or a subject keyword and I'll cast a wider net.";
-  }
-
-  const reason = first.subjects.slice(0, 2).join(', ');
-  let response = `Of what the shelves remember, ${first.title} by ${first.authors[0] ?? 'unknown'} fits closest: ${reason}.`;
-
-  if (second !== undefined) {
-    const reason2 = second.subjects[0] ?? second.summary.split('.')[0] ?? '';
-    response += ` You might also consider ${second.title} by ${second.authors[0] ?? 'unknown'}: ${reason2}.`;
-  }
-
-  if (third !== undefined) {
-    response += ` ${third.title} by ${third.authors[0] ?? 'unknown'} rounds out the shelf on this subject.`;
-  }
-
-  return response;
-}
-
-function extractVisitorQuery(prompt: string): string {
-  const patterns = [
-    /visitor(?:'s)? (?:question|message|query)[:\s]+([^\n]+)/iu,
-    /visitor said[:\s]+"([^"]+)"/iu,
-    /"query"[:\s]+"([^"]+)"/u,
-  ];
-  for (const re of patterns) {
-    const m = re.exec(prompt);
-    if (m !== null && m[1] !== undefined && m[1].length > 0) return m[1].trim();
-  }
-  return prompt.slice(-200).trim();
-}
-
 const STARTER_QUERIES: readonly string[] = [
   'Do you have the complete Dune saga by Frank Herbert?',
   'What order should I read The Lord of the Rings?',
@@ -230,40 +71,198 @@ const TOOL_EXPLANATIONS: ReadonlyMap<string, string> = new Map([
   ['validate-response',   "This node asks the LLM to judge the drafted reply: does it mention a shortlisted title and read as a polite, on-topic response? It matters because it acts as a quality gate; if the draft fails, the pipeline retries the compose step rather than showing a weak answer. For example, a draft that only says 'I'm not sure' scores 'no' and triggers a retry with the full shortlist."],
 ]);
 
-function isExplainToolPrompt(query: string): boolean {
-  return query.includes('You are a librarian explaining a backend tool') && query.includes('Return just the explanation, no preamble.');
-}
+export class ArchivistStub extends StubAdapter {
+  readonly #memoryStore: MemoryStore;
 
-function cannedToolExplanation(query: string): string {
-  for (const [key, explanation] of TOOL_EXPLANATIONS) {
-    if (query.includes(`"${key}"`)) return explanation;
+  constructor(opts: ArchivistStubOptions) {
+    super({ 'maxAttempts': 1 });
+    this.#memoryStore = opts.memoryStore;
   }
-  const nameMatch = /The tool is called "([^"]+)"/u.exec(query);
-  const name = nameMatch !== null ? nameMatch[1] : 'this component';
-  return `${name} is a node in the Archivist DAG that performs a focused step in book discovery or response generation. It matters because each node has a single responsibility, keeping the pipeline modular and easy to test in isolation. For example, it runs whenever the dispatcher reaches that step in the execution graph.`;
-}
 
-function isStarterQueryPrompt(query: string): boolean {
-  return query.includes('Pick one popular author or series at random');
-}
+  protected override async performChat(request: ChatRequest): Promise<ChatResponse> {
+    const lastUser = [...request.messages].reverse().find((m) => m.role === 'user');
+    const query = lastUser?.content ?? '';
 
-function starterQuery(): string {
-  return STARTER_QUERIES[Date.now() % STARTER_QUERIES.length] as string;
-}
+    if (ArchivistStub.isExplainToolPrompt(query)) {
+      return { 'message': ChatResponseMessageBuilder.from(ArchivistStub.cannedToolExplanation(query), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
+    }
 
-function isGreetingPrompt(query: string): boolean {
-  return query.includes('Write ONE fresh opening greeting for a new visitor');
-}
+    if (ArchivistStub.isStarterQueryPrompt(query)) {
+      return { 'message': ChatResponseMessageBuilder.from(ArchivistStub.starterQuery(), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
+    }
 
-function stubGreeting(): string {
-  return STUB_GREETINGS[Date.now() % STUB_GREETINGS.length] as string;
-}
+    if (ArchivistStub.isGreetingPrompt(query)) {
+      return { 'message': ChatResponseMessageBuilder.from(ArchivistStub.stubGreeting(), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
+    }
 
-function isVisitorReplyPrompt(query: string): boolean {
-  return query.includes('Write ONE natural first message the visitor might send in reply');
-}
+    if (ArchivistStub.isVisitorReplyPrompt(query)) {
+      return { 'message': ChatResponseMessageBuilder.from(ArchivistStub.stubVisitorReply(), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
+    }
 
-function stubVisitorReply(): string {
-  return STUB_VISITOR_REPLIES[Date.now() % STUB_VISITOR_REPLIES.length] as string;
-}
+    if (request.outputSchema.kind === 'schema') {
+      const id = request.outputSchema.id;
+      if (id === 'archivist-decide-tools-v1') {
+        return { 'message': ChatResponseMessageBuilder.from(ArchivistStub.groundedDecideToolsJson(query), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
+      }
+      if (id === 'archivist-rank-v1') {
+        return { 'message': ChatResponseMessageBuilder.from(ArchivistStub.groundedRankJson(query), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
+      }
+      // Unknown schema: emit empty JSON object.
+      return { 'message': ChatResponseMessageBuilder.from('{}', []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
+    }
 
+    return { 'message': ChatResponseMessageBuilder.from(ArchivistStub.groundedAnswer(query, this.#shelfSize()), []), 'finishReason': 'stop', 'usage': ZERO_TOKEN_USAGE };
+  }
+
+  /** Count live `?book rdf:type dag:Book` triples in the store. */
+  #shelfSize(): number {
+    return this.#memoryStore.select({
+      'subject':   '?book',
+      'predicate': MemoryStore.iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#type'),
+      'object':    MemoryStore.dagIri('Book'),
+      'graph':     '?g',
+    }).length;
+  }
+
+  // ── Grounded response helpers ────────────────────────────────────────────
+
+  /**
+   * Index-pointer stub for `decideTools`. Counts the numbered tool list
+   * in the prompt and returns indices 1..N, calling every tool so the
+   * downstream scatter actually runs all scouts. When no numbered list is
+   * found in the prompt (degenerate case), returns `{tools: []}`.
+   */
+  private static groundedDecideToolsJson(prompt: string): string {
+    const lines = prompt.split('\n');
+    // Count "  N. <name>: <desc>" lines under the `Available tools:` header.
+    let count = 0;
+    let inList = false;
+    for (const line of lines) {
+      if (/^Available tools:/.test(line)) { inList = true; continue; }
+      if (inList) {
+        if (/^\s+\d+\.\s/.test(line)) count += 1;
+        else if (line.trim().length === 0) break;
+      }
+    }
+    if (count === 0) return JSON.stringify({ 'tools': [] });
+    const tools = Array.from({ length: count }, (_v, i) => i + 1);
+    return JSON.stringify({ 'tools': tools });
+  }
+
+  /**
+   * Index-pointer stub for `rankCandidates`. Counts numbered candidate
+   * rows in the prompt and returns a `{order: [...]}` shuffle. The
+   * SeedLibrary lookup is used only for shelf-resonance flavour; the
+   * stub doesn't try to actually re-rank; it returns the identity order.
+   */
+  private static groundedRankJson(prompt: string): string {
+    const lines = prompt.split('\n');
+    let count = 0;
+    for (const line of lines) {
+      if (/^\d+\.\s+isbn=/.test(line)) count += 1;
+    }
+    if (count === 0) return JSON.stringify({ 'order': [] });
+    const order = Array.from({ length: count }, (_v, i) => i + 1);
+    return JSON.stringify({ 'order': order });
+  }
+
+  private static groundedAnswer(query: string, shelfSize: number): string {
+    const q = query.toLowerCase();
+
+    if (q.includes('acknowledge which sources were searched')) {
+      const notesMatch = /search notes:\s*([^\n]+)/i.exec(query);
+      const hint = notesMatch !== null ? ` (${(notesMatch[1] ?? '').trim().slice(0, 120)})` : '';
+      return `I keep ${String(shelfSize)} titles on these shelves and none of them matched your description${hint}. Try a single keyword (an author surname, a year, or one strong image from the book) and I will cast a wider net.`;
+    }
+
+    if (q.includes('memory status:')) {
+      if (q.includes('no books have been recorded')) {
+        return `My shelves currently hold ${String(shelfSize)} title${shelfSize === 1 ? '' : 's'} from the seed library. Ask me about science fiction, philosophy, or a specific author and we'll build from there.`;
+      }
+      const bookMatch  = /(\d+) distinct book/.exec(q);
+      const queryMatch = /(\d+) prior (session|sessions)/.exec(q);
+      const titleMatch = /recent titles?: ([^.]+)\./.exec(q);
+      const bookCount  = bookMatch  !== null ? bookMatch[1]  : 'several';
+      const sessions   = queryMatch !== null ? queryMatch[1] : 'several';
+      const titles     = titleMatch !== null ? titleMatch[1] : 'various titles';
+      return `These shelves hold ${String(shelfSize)} title${shelfSize === 1 ? '' : 's'} in total. Of those, ${bookCount} ${Number(bookCount) === 1 ? 'book' : 'books'} came up across ${sessions} prior ${Number(sessions) === 1 ? 'session' : 'sessions'}. The most recent include ${titles}.`;
+    }
+
+    const visitorLine = ArchivistStub.extractVisitorQuery(query);
+    const searchFor = visitorLine.length > 0 ? visitorLine : query;
+    const matches = SeedLibrary.findByKeywords(searchFor, 3);
+
+    if (matches.length === 0) {
+      return "I don't have anything matching that on the shelves. Try a title name, an author surname, or a subject keyword and I'll cast a wider net.";
+    }
+
+    const [first, second, third] = matches;
+    if (first === undefined) {
+      return "I don't have anything matching that on the shelves. Try a title name, an author surname, or a subject keyword and I'll cast a wider net.";
+    }
+
+    const reason = first.subjects.slice(0, 2).join(', ');
+    let response = `Of what the shelves remember, ${first.title} by ${first.authors[0] ?? 'unknown'} fits closest: ${reason}.`;
+
+    if (second !== undefined) {
+      const reason2 = second.subjects[0] ?? second.summary.split('.')[0] ?? '';
+      response += ` You might also consider ${second.title} by ${second.authors[0] ?? 'unknown'}: ${reason2}.`;
+    }
+
+    if (third !== undefined) {
+      response += ` ${third.title} by ${third.authors[0] ?? 'unknown'} rounds out the shelf on this subject.`;
+    }
+
+    return response;
+  }
+
+  private static extractVisitorQuery(prompt: string): string {
+    const patterns = [
+      /visitor(?:'s)? (?:question|message|query)[:\s]+([^\n]+)/iu,
+      /visitor said[:\s]+"([^"]+)"/iu,
+      /"query"[:\s]+"([^"]+)"/u,
+    ];
+    for (const re of patterns) {
+      const m = re.exec(prompt);
+      if (m !== null && m[1] !== undefined && m[1].length > 0) return m[1].trim();
+    }
+    return prompt.slice(-200).trim();
+  }
+
+  private static isExplainToolPrompt(query: string): boolean {
+    return query.includes('You are a librarian explaining a backend tool') && query.includes('Return just the explanation, no preamble.');
+  }
+
+  private static cannedToolExplanation(query: string): string {
+    for (const [key, explanation] of TOOL_EXPLANATIONS) {
+      if (query.includes(`"${key}"`)) return explanation;
+    }
+    const nameMatch = /The tool is called "([^"]+)"/u.exec(query);
+    const name = nameMatch !== null ? nameMatch[1] : 'this component';
+    return `${name} is a node in the Archivist DAG that performs a focused step in book discovery or response generation. It matters because each node has a single responsibility, keeping the pipeline modular and easy to test in isolation. For example, it runs whenever the dispatcher reaches that step in the execution graph.`;
+  }
+
+  private static isStarterQueryPrompt(query: string): boolean {
+    return query.includes('Pick one popular author or series at random');
+  }
+
+  private static starterQuery(): string {
+    return STARTER_QUERIES[Date.now() % STARTER_QUERIES.length] as string;
+  }
+
+  private static isGreetingPrompt(query: string): boolean {
+    return query.includes('Write ONE fresh opening greeting for a new visitor');
+  }
+
+  private static stubGreeting(): string {
+    return STUB_GREETINGS[Date.now() % STUB_GREETINGS.length] as string;
+  }
+
+  private static isVisitorReplyPrompt(query: string): boolean {
+    return query.includes('Write ONE natural first message the visitor might send in reply');
+  }
+
+  private static stubVisitorReply(): string {
+    return STUB_VISITOR_REPLIES[Date.now() % STUB_VISITOR_REPLIES.length] as string;
+  }
+}

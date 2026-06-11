@@ -28,17 +28,17 @@
 import { Dagonizer, GatherStrategies } from '@noocodex/dagonizer';
 import {
   IncrementalState,
-  shout,
+  ObservableStrategies,
+  ShoutNode,
   incrementalDag,
   batchDag,
-  registerObservableStrategies,
 } from './dags/15-incremental-gather.js';
 
 // ---------------------------------------------------------------------------
 // Register observable strategies
 // ---------------------------------------------------------------------------
 
-const foldLog = registerObservableStrategies();
+const foldLog = ObservableStrategies.register();
 
 // ---------------------------------------------------------------------------
 // Run: incremental gather (logging-map)
@@ -46,7 +46,7 @@ const foldLog = registerObservableStrategies();
 
 // #region run-incremental
 const incrDispatcher = new Dagonizer<IncrementalState>();
-incrDispatcher.registerNode(shout);
+incrDispatcher.registerNode(new ShoutNode());
 incrDispatcher.registerDAG(incrementalDag);
 
 const incrState = new IncrementalState();
@@ -71,7 +71,7 @@ process.stdout.write(`\n  Final results: ${JSON.stringify(incrState.results)}\n`
 foldLog.length = 0;  // clear log between runs
 
 const batchDispatcher = new Dagonizer<IncrementalState>();
-batchDispatcher.registerNode(shout);
+batchDispatcher.registerNode(new ShoutNode());
 batchDispatcher.registerDAG(batchDag);
 
 const batchState = new IncrementalState();

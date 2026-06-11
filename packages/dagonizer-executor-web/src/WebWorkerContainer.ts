@@ -40,7 +40,7 @@ import type { JsonObject } from '@noocodex/dagonizer/entities';
 import { RecommendedWorkerCountConfigDefault } from '@noocodex/dagonizer/entities';
 
 import { PostMessageChannel } from './PostMessageChannel.js';
-import { WebSystemInfo } from './WebSystemInfo.js';
+import { DEFAULT_WEB_PROBES, WebSystemInfo } from './WebSystemInfo.js';
 import type { WebWorkerLikeInterface } from './WebWorkerLike.js';
 
 // ---------------------------------------------------------------------------
@@ -162,18 +162,7 @@ export class WebWorkerContainer extends DagContainerBase<NodeStateInterface, Web
   // ---------------------------------------------------------------------------
 
   static #resolvePoolSize(): number {
-    // Safe probe: navigator is unavailable in Node test environments.
-    // Access through globalThis to avoid a DOM-lib type dependency.
-    const nav = (globalThis as Record<string, unknown>)['navigator'];
-    const concurrency = (
-      nav !== null &&
-      nav !== undefined &&
-      typeof (nav as Record<string, unknown>)['hardwareConcurrency'] === 'number'
-    )
-      ? (nav as Record<string, unknown>)['hardwareConcurrency'] as number
-      : 2;
-
-    const info = new WebSystemInfo({ 'hardwareConcurrency': concurrency });
+    const info = new WebSystemInfo({ 'hardwareConcurrency': DEFAULT_WEB_PROBES.hardwareConcurrency });
     const config = { ...RecommendedWorkerCountConfigDefault, 'maximumWorkers': 8 };
     return info.recommendedWorkerCount(config);
   }

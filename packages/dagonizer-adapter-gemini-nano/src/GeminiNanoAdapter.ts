@@ -18,19 +18,23 @@
  * `finally` to release the on-device GPU buffer.
  */
 
-import { BaseAdapter, ChatResponseMessageBuilder, ToolCallCodec } from '@noocodex/dagonizer/adapter';
 import type {
   ChatRequest,
   ChatResponse,
+  ErrorClassification,
   ToolDefinition,
 } from '@noocodex/dagonizer/adapter';
-import { Classifications, LlmError, type ErrorClassification } from '@noocodex/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ToolCallCodec, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
 
 export type GeminiNanoAvailability =
   | 'available'
   | 'downloadable'
   | 'downloading'
   | 'unavailable';
+
+export interface GeminiNanoAdapterOptions {
+  readonly maxAttempts?: number;
+}
 
 interface PromptOptions {
   responseConstraint?: Record<string, unknown>;
@@ -48,17 +52,15 @@ interface LanguageModelStatic {
   }): Promise<LanguageModelSession>;
 }
 
-const GEMINI_NANO_MAX_ATTEMPTS = 2;
-
-function getLanguageModel(): LanguageModelStatic | undefined {
-  if (typeof globalThis === 'undefined') return undefined;
-  return (globalThis as { LanguageModel?: LanguageModelStatic }).LanguageModel;
-}
-
 export class GeminiNanoAdapter extends BaseAdapter {
+  private static getLanguageModel(): LanguageModelStatic | undefined {
+    if (typeof globalThis === 'undefined') return undefined;
+    return (globalThis as { LanguageModel?: LanguageModelStatic }).LanguageModel;
+  }
+
   /** Public probe. Used by the provider matrix to pick the best backend. */
   static async detect(): Promise<GeminiNanoAvailability> {
-    const lm = getLanguageModel();
+    const lm = GeminiNanoAdapter.getLanguageModel();
     if (lm === undefined) return 'unavailable';
     try {
       return await lm.availability();
@@ -67,14 +69,14 @@ export class GeminiNanoAdapter extends BaseAdapter {
     }
   }
 
-  constructor() {
+  constructor(options: GeminiNanoAdapterOptions = {}) {
     super(
       'gemini-nano',
       'Browser built-in LanguageModel (on-device)',
       // Tool calls are emitted via JSON coercion (responseConstraint +
       // ToolCallCodec.decode) rather than a native function-calling channel.
       { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': false },
-      { 'maxAttempts': GEMINI_NANO_MAX_ATTEMPTS },
+      { 'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS },
     );
   }
 
@@ -86,18 +88,11 @@ export class GeminiNanoAdapter extends BaseAdapter {
    * adapter while the on-device weights warm up. Never throws.
    */
   override async probe(): Promise<boolean> {
-    const lm = getLanguageModel();
-    if (lm === undefined) return false;
-    try {
-      const status = await lm.availability();
-      return status === 'available';
-    } catch {
-      return false;
-    }
+    return (await GeminiNanoAdapter.detect()) === 'available';
   }
 
   protected async performChat(request: ChatRequest): Promise<ChatResponse> {
-    const lm = getLanguageModel();
+    const lm = GeminiNanoAdapter.getLanguageModel();
     if (lm === undefined) {
       throw new LlmError('window.LanguageModel is not present', Classifications['MODEL_NOT_FOUND']);
     }
@@ -130,7 +125,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
       return {
         'message': ChatResponseMessageBuilder.from(text, toolCalls),
         'finishReason': toolCalls.length > 0 ? 'tool_call' : 'stop',
-        'usage': { 'promptTokens': 0, 'completionTokens': 0 },
+        'usage': ZERO_TOKEN_USAGE,
       };
     } finally {
       session.destroy();
@@ -139,9 +134,9 @@ export class GeminiNanoAdapter extends BaseAdapter {
 
   protected override classify(error: unknown): ErrorClassification {
     if (error instanceof LlmError) return error.classification;
-    const msg = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-    if (msg.includes('availability') || msg.includes('not present')) return Classifications['MODEL_NOT_FOUND'];
-    if (msg.includes('aborted')) return Classifications['NETWORK'];
+    const msg = error instanceof Error ? error.message : String(error);
+    if (/availability|not present/iu.test(msg)) return Classifications['MODEL_NOT_FOUND'];
+    if (/aborted|timeout/iu.test(msg)) return Classifications['TIMEOUT'];
     return Classifications['UNKNOWN'];
   }
 
@@ -187,11 +182,11 @@ export class GeminiNanoAdapter extends BaseAdapter {
 
   #classifyNanoError(err: unknown): LlmError {
     const message = err instanceof Error ? err.message : String(err);
-    const msg = message.toLowerCase();
-    if (msg.includes('schema') || msg.includes('constraint')) {
+    if (/schema|constraint/iu.test(message)) {
       return new LlmError(message, Classifications['SCHEMA_VIOLATION'], { 'cause': err });
     }
-    if (msg.includes('quota')) return new LlmError(message, Classifications['QUOTA_EXHAUSTED'], { 'cause': err });
+    if (/quota/iu.test(message)) return new LlmError(message, Classifications['QUOTA_EXHAUSTED'], { 'cause': err });
+    if (/aborted|timeout/iu.test(message)) return new LlmError(message, Classifications['TIMEOUT'], { 'cause': err });
     return new LlmError(message, Classifications['UNKNOWN'], { 'cause': err });
   }
 }

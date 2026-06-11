@@ -3,8 +3,9 @@
  * OpenLibrarySearchTool and SubjectSearchTool.
  */
 
+import { ToolError } from '@noocodex/dagonizer/tool';
 import type { Candidate } from '@noocodex/dagonizer-book-entities';
-import { CanonicalId } from '@noocodex/dagonizer-book-entities';
+import { BookBuilder, CanonicalId } from '@noocodex/dagonizer-book-entities';
 
 export const OPENLIBRARY_ENDPOINT = 'https://openlibrary.org/search.json';
 
@@ -33,6 +34,27 @@ export interface OpenLibraryResponse {
   readonly numFound?: number;
 }
 
+function isOpenLibraryResponse(value: unknown): value is OpenLibraryResponse {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  if ('numFound' in v && typeof v['numFound'] !== 'number') return false;
+  if (!('docs' in v)) return true; // docs is optional
+  if (!Array.isArray(v['docs'])) return false;
+  return true;
+}
+
+/** Narrow an `unknown` value returned by `HttpTransport.getJson` to `OpenLibraryResponse`.
+ *  Throws `ToolError` with reason `'PARSE_ERROR'` when the shape does not match. */
+export function narrowOpenLibraryResponse(raw: unknown): OpenLibraryResponse {
+  if (!isOpenLibraryResponse(raw)) {
+    throw new ToolError('Unexpected OpenLibrary API response shape', {
+      'reason': 'PARSE_ERROR',
+      'retryable': false,
+    });
+  }
+  return raw;
+}
+
 export class OpenLibraryDocs {
   private constructor() { /* static class */ }
 
@@ -49,12 +71,12 @@ export class OpenLibraryDocs {
     return undefined;
   }
 
-  static buildCandidates(
+  static candidates(
     docs: readonly OpenLibraryDoc[],
     source: string,
     sourcesLabel: string,
   ): Candidate[] {
-    const candidates: Candidate[] = [];
+    const result: Candidate[] = [];
     for (const doc of docs) {
       if (doc.title === undefined) continue;
       const canonical = CanonicalId.pick({
@@ -68,23 +90,22 @@ export class OpenLibraryDocs {
         '_sources': [sourcesLabel],
         ...(doc.key !== undefined && { 'openlibraryKey': doc.key }),
       };
-      candidates.push({
-        'book': {
+      result.push({
+        'book': BookBuilder.from({
           'isbn':    canonical,
           'title':   doc.title,
           'authors': doc.author_name ?? [],
-          'price':   { 'amount': 0, 'currency': 'USD' },
           ...(summary !== undefined                                    && { 'summary': summary }),
           ...(doc.first_publish_year !== undefined                     && { 'firstPublishYear': doc.first_publish_year }),
           ...(subjects !== undefined                                   && { 'subjects': subjects }),
           ...(doc.publisher !== undefined                              && { 'publishers': doc.publisher.slice(0, MAX_PUBLISHERS) }),
           ...(doc.language !== undefined && doc.language.length > 0   && { 'languages': doc.language }),
-        },
+        }),
         'score':  0,
         'source': source,
         'notes':  notes,
       });
     }
-    return candidates;
+    return result;
   }
 }

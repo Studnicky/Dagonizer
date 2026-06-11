@@ -11,10 +11,11 @@
  * output port naming. The same class extension pattern applies.
  */
 
-import { ComposeNode } from './ComposeNode.js';
-import { DecisionNode } from './DecisionNode.js';
 import type { NodeStateInterface } from '@noocodex/dagonizer';
 import type { ToolCall } from '@noocodex/dagonizer/adapter';
+
+import { ComposeNode } from './ComposeNode.js';
+import { DecisionNode } from './DecisionNode.js';
 
 // ── DecisionNode leaves ───────────────────────────────────────────────────
 

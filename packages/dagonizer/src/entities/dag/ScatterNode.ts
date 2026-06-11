@@ -79,3 +79,24 @@ export const ScatterNodeSchema = {
 
 /** TypeScript type derived from `ScatterNodeSchema` via `json-schema-to-ts`. */
 export type ScatterNode = FromSchema<typeof ScatterNodeSchema>;
+
+/** Empty state-mapping input: the default when `stateMapping` is absent on a `ScatterNode`. */
+const SCATTER_EMPTY_INPUT: Readonly<Record<string, string>> = Object.freeze({});
+
+/**
+ * Default-filling helpers for `ScatterNode` fields that are optional in the
+ * wire schema but must be present for engine-internal processing.
+ *
+ * Callers resolve once at entry and never optional-chain afterward.
+ */
+export class ScatterNodeDefaults {
+  private constructor() { /* static-only */ }
+
+  /**
+   * Return the `stateMapping.input` map, defaulting to an empty mapping when
+   * `stateMapping` is absent.
+   */
+  static inputMapping(node: ScatterNode): Readonly<Record<string, string>> {
+    return node.stateMapping?.input ?? SCATTER_EMPTY_INPUT;
+  }
+}

@@ -2,24 +2,30 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
+import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 
 void describe('Dagonizer AbortSignal cancellation', () => {
   void it('marks state cancelled when caller aborts before DAG starts', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const slowNode: NodeInterface<NodeStateBase, 'success'> = {
-      'name': 'slow',
-      'outputs': ['success'],
-      async execute(_state, context) {
+    class SlowNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'slow';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(_state: NodeStateBase, context: NodeContextInterface): Promise<{ errors: []; output: 'success' }> {
         await new Promise<void>((resolve, reject) => {
           const t = setTimeout(resolve, 1000);
-          context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { "once": true });
+          context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { 'once': true });
         });
         return { 'errors': [], 'output': 'success' };
-      },
-    };
+      }
+    }
+    const slowNode = new SlowNode();
     dispatcher.registerNode(slowNode);
     dispatcher.registerDAG({
       '@context': DAG_CONTEXT,
@@ -49,29 +55,35 @@ void describe('Dagonizer AbortSignal cancellation', () => {
   void it('records interruptedAt when caller aborts mid-flow at a downstream node', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     const controller = new AbortController();
-    const firstNode: NodeInterface<NodeStateBase, 'success'> = {
-      'name': 'first',
-      'outputs': ['success'],
-      async execute() { return { 'errors': [], 'output': 'success' }; },
-    };
-    const secondNode: NodeInterface<NodeStateBase, 'success'> = {
-      'name': 'second',
-      'outputs': ['success'],
-      async execute() {
+    class FirstNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'first';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(_state: NodeStateBase): Promise<{ errors: []; output: 'success' }> { return { 'errors': [], 'output': 'success' }; }
+    }
+    class SecondNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'second';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(_state: NodeStateBase): Promise<{ errors: []; output: 'success' }> {
         // Trip the controller before this node returns so the next iteration
         // observes `signal.aborted` BEFORE running the downstream stage.
         controller.abort(new Error('mid-flow cancel'));
         return { 'errors': [], 'output': 'success' };
-      },
-    };
-    const thirdNode: NodeInterface<NodeStateBase, 'success'> = {
-      'name': 'third',
-      'outputs': ['success'],
-      async execute() { return { 'errors': [], 'output': 'success' }; },
-    };
-    dispatcher.registerNode(firstNode);
-    dispatcher.registerNode(secondNode);
-    dispatcher.registerNode(thirdNode);
+      }
+    }
+    class ThirdNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'third';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(_state: NodeStateBase): Promise<{ errors: []; output: 'success' }> { return { 'errors': [], 'output': 'success' }; }
+    }
+    dispatcher.registerNode(new FirstNode());
+    dispatcher.registerNode(new SecondNode());
+    dispatcher.registerNode(new ThirdNode());
     dispatcher.registerDAG({
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:mid-cancel',
@@ -101,17 +113,20 @@ void describe('Dagonizer AbortSignal cancellation', () => {
 
   void it('marks state timed_out when deadlineMs elapses', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const slowNode: NodeInterface<NodeStateBase, 'success'> = {
-      'name': 'slow',
-      'outputs': ['success'],
-      async execute(_state, context) {
+    class SlowTimeoutNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'slow';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(_state: NodeStateBase, context: NodeContextInterface): Promise<{ errors: []; output: 'success' }> {
         await new Promise<void>((resolve, reject) => {
           const t = setTimeout(resolve, 5000);
-          context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { "once": true });
+          context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { 'once': true });
         });
         return { 'errors': [], 'output': 'success' };
-      },
-    };
+      }
+    }
+    const slowNode = new SlowTimeoutNode();
     dispatcher.registerNode(slowNode);
     dispatcher.registerDAG({
       '@context': DAG_CONTEXT,
@@ -139,16 +154,18 @@ void describe('Dagonizer AbortSignal cancellation', () => {
   void it('passes dagName/nodeName through NodeContext', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     const seen: { dag: string; node: string } = { 'dag': '', 'node': '' };
-    const op: NodeInterface<NodeStateBase, 'success'> = {
-      'name': 'inspect',
-      'outputs': ['success'],
-      async execute(_state, context) {
+    class InspectNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'inspect';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(_state: NodeStateBase, context: NodeContextInterface): Promise<{ errors: []; output: 'success' }> {
         seen.dag = context.dagName;
         seen.node = context.nodeName;
         return { 'errors': [], 'output': 'success' };
-      },
-    };
-    dispatcher.registerNode(op);
+      }
+    }
+    dispatcher.registerNode(new InspectNode());
     dispatcher.registerDAG({
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:inspect-dag',
@@ -191,12 +208,14 @@ void describe('Dagonizer extension hooks', () => {
     }
 
     const dispatcher = new TracedDagonizer();
-    const op: NodeInterface<NodeStateBase, 'success'> = {
-      'name': 'op',
-      'outputs': ['success'],
-      async execute() { return { 'errors': [], 'output': 'success' }; },
-    };
-    dispatcher.registerNode(op);
+    class OpNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'op';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(_state: NodeStateBase): Promise<{ errors: []; output: 'success' }> { return { 'errors': [], 'output': 'success' }; }
+    }
+    dispatcher.registerNode(new OpNode());
     dispatcher.registerDAG({
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:hooked',
@@ -235,12 +254,14 @@ void describe('Dagonizer extension hooks', () => {
     }
 
     const dispatcher = new ErrTraced();
-    const op: NodeInterface<NodeStateBase, 'success'> = {
-      'name': 'boom',
-      'outputs': ['success'],
-      async execute() { throw new Error('kaboom'); },
-    };
-    dispatcher.registerNode(op);
+    class BoomNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'boom';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(_state: NodeStateBase): Promise<{ errors: []; output: 'success' }> { throw new Error('kaboom'); }
+    }
+    dispatcher.registerNode(new BoomNode());
     dispatcher.registerDAG({
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:err',

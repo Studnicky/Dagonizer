@@ -3,13 +3,22 @@
  *
  * Defaults to the free-tier Llama 3.3 70B Instruct route. Requires
  * `HTTP-Referer` + `X-Title` headers per OpenRouter's :free tier
- * routing rules.
+ * routing rules. Both headers are overridable via options so consuming
+ * projects can set their own identity.
  */
 
 import { OpenAiCompatibleAdapter } from '@noocodex/dagonizer/adapter';
 import type { OpenAiCompatibleAdapterOptions } from '@noocodex/dagonizer/adapter';
 
-export interface OpenRouterApiAdapterOptions extends OpenAiCompatibleAdapterOptions {}
+const DEFAULT_REFERER = 'https://studnicky.github.io/Dagonizer/';
+const DEFAULT_TITLE   = 'Dagonizer Archivist';
+
+export interface OpenRouterApiAdapterOptions extends OpenAiCompatibleAdapterOptions {
+  /** `HTTP-Referer` header sent to OpenRouter. Defaults to the Dagonizer project URL. */
+  readonly referer?: string;
+  /** `X-Title` header sent to OpenRouter. Defaults to the Dagonizer project name. */
+  readonly title?: string;
+}
 
 export class OpenRouterApiAdapter extends OpenAiCompatibleAdapter {
   constructor(apiKey: string, options: OpenRouterApiAdapterOptions = {}) {
@@ -24,8 +33,8 @@ export class OpenRouterApiAdapter extends OpenAiCompatibleAdapter {
         'defaultModel':  'meta-llama/llama-3.3-70b-instruct:free',
         'tokenField':    'max_tokens',
         'extraHeaders':  {
-          'HTTP-Referer': 'https://studnicky.github.io/Dagonizer/',
-          'X-Title':      'Dagonizer Archivist',
+          'HTTP-Referer': options.referer ?? DEFAULT_REFERER,
+          'X-Title':      options.title   ?? DEFAULT_TITLE,
         },
       },
       options,

@@ -34,34 +34,34 @@ import type {
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 
 // Parent-level event-pipeline nodes (registered in the worker dispatcher)
-import { parseEvent }     from '../nodes/parseEvent.js';
-import { routeGeo }       from '../nodes/routeGeo.js';
-import { applyGeo }       from '../nodes/applyGeo.js';
-import { validateCoords } from '../nodes/validateCoords.js';
-import { routeKind }      from '../nodes/routeKind.js';
-import { coldChainCheck } from '../nodes/coldChainCheck.js';
-import { customsDwell }   from '../nodes/customsDwell.js';
-import { enrichLeg }      from '../nodes/enrichLeg.js';
-import { routeRedaction } from '../nodes/routeRedaction.js';
-import { aggregateEvent } from '../nodes/aggregateEvent.js';
+import { ParseEventNode }     from '../nodes/parseEvent.js';
+import { RouteGeoNode }       from '../nodes/routeGeo.js';
+import { ApplyGeoNode }       from '../nodes/applyGeo.js';
+import { ValidateCoordsNode } from '../nodes/validateCoords.js';
+import { RouteKindNode }      from '../nodes/routeKind.js';
+import { ColdChainCheckNode } from '../nodes/coldChainCheck.js';
+import { CustomsDwellNode }   from '../nodes/customsDwell.js';
+import { EnrichLegNode }      from '../nodes/enrichLeg.js';
+import { RouteRedactionNode } from '../nodes/routeRedaction.js';
+import { AggregateEventNode } from '../nodes/aggregateEvent.js';
 
 // geo-resolve sub-DAG nodes
-import { reverseGeocode }  from '../nodes/geo/reverseGeocode.js';
-import { routeModalities } from '../nodes/geo/routeModalities.js';
-import { ipGeolocate }     from '../nodes/geo/ipGeolocate.js';
-import { fuseGeo }         from '../nodes/geo/fuseGeo.js';
+import { ReverseGeocodeNode }  from '../nodes/geo/reverseGeocode.js';
+import { RouteModalitiesNode } from '../nodes/geo/routeModalities.js';
+import { IpGeolocateNode }     from '../nodes/geo/ipGeolocate.js';
+import { FuseGeoNode }         from '../nodes/geo/fuseGeo.js';
 
 // canonicalize sub-DAG nodes
-import { normalize } from '../nodes/normalize.js';
-import { classify }  from '../nodes/classify.js';
+import { NormalizeNode } from '../nodes/normalize.js';
+import { ClassifyNode }  from '../nodes/classify.js';
 
 // order-enrichment sub-DAG nodes
-import { enrichPricing }  from '../nodes/enrichPricing.js';
-import { enrichShipping } from '../nodes/enrichShipping.js';
-import { enrichEta }      from '../nodes/enrichEta.js';
+import { EnrichPricingNode }  from '../nodes/enrichPricing.js';
+import { EnrichShippingNode } from '../nodes/enrichShipping.js';
+import { EnrichEtaNode }      from '../nodes/enrichEta.js';
 
 // gdpr-compliance sub-DAG nodes
-import { consentGate, classifyPii, redactPii } from '../nodes/gdprNodes.js';
+import { ConsentGateNode, ClassifyPiiNode, RedactPiiNode } from '../nodes/gdprNodes.js';
 
 // DAG definitions (event-pipeline + all embedded sub-DAGs)
 import { eventPipelineDAG } from '../dag.js';
@@ -86,18 +86,18 @@ const registry: RegistryModuleInterface = {
       'bundle': {
         'nodes': [
           // event-pipeline parent nodes
-          parseEvent,
-          routeGeo, applyGeo, validateCoords,
-          routeKind, coldChainCheck, customsDwell,
-          enrichLeg, routeRedaction, aggregateEvent,
+          new ParseEventNode(),
+          new RouteGeoNode(), new ApplyGeoNode(), new ValidateCoordsNode(),
+          new RouteKindNode(), new ColdChainCheckNode(), new CustomsDwellNode(),
+          new EnrichLegNode(), new RouteRedactionNode(), new AggregateEventNode(),
           // geo-resolve
-          reverseGeocode, routeModalities, ipGeolocate, fuseGeo,
+          new ReverseGeocodeNode(), new RouteModalitiesNode(), new IpGeolocateNode(), new FuseGeoNode(),
           // canonicalize
-          normalize, classify,
+          new NormalizeNode(), new ClassifyNode(),
           // order-enrichment
-          enrichPricing, enrichShipping, enrichEta,
+          new EnrichPricingNode(), new EnrichShippingNode(), new EnrichEtaNode(),
           // gdpr-compliance
-          consentGate, classifyPii, redactPii,
+          new ConsentGateNode(), new ClassifyPiiNode(), new RedactPiiNode(),
         ],
         'dags': [
           // Embedded sub-DAGs must be registered before the parent.

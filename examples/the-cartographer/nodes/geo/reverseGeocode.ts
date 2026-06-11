@@ -15,13 +15,19 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region reverse-geocode-node
-export const reverseGeocode: NodeInterface<CartographerState, 'geocoded', CartographerServices> = {
-  'name': 'reverse-geocode',
-  'outputs': ['geocoded'],
-  async execute(state, context) {
+export class ReverseGeocodeNode implements NodeInterface<CartographerState, 'geocoded', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'reverse-geocode';
+  readonly 'outputs' = ['geocoded'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'geocoded'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -32,6 +38,6 @@ export const reverseGeocode: NodeInterface<CartographerState, 'geocoded', Cartog
     );
     state.routing = { ...state.routing, 'reverseGeocodeRun': true };
     return NodeOutputBuilder.of('geocoded');
-  },
-};
+  }
+}
 // #endregion reverse-geocode-node

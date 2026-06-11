@@ -76,8 +76,8 @@ interface NodeInterface<
 > {
   readonly name: string;
   readonly outputs: readonly TOutput[];
-  readonly timeoutMs?: number;
-  readonly contract?: OperationContractFragment;
+  readonly timeout?: Timeout;
+  readonly contract: OperationContractFragment;
   execute(state: TState, context: NodeContextInterface<TServices>): Promise<NodeOutputInterface<TOutput>>;
   destroy?(): Promise<void>;
   validate?(): ValidationResult;
@@ -86,9 +86,9 @@ interface NodeInterface<
 
 The contract every consumer node implements. Nodes are stateless; they mutate state and route to a named output. They never throw: caught errors route to `'error'` (or whatever the consumer declared).
 
-`timeoutMs` is an optional per-node wall-clock budget in milliseconds. When set, the engine derives a child `AbortController` from the run's signal and schedules an abort after `timeoutMs`. On expiry, `NodeTimeoutError` is thrown and the run is marked failed.
+`timeout` is an optional per-node wall-clock budget expressed as a `Timeout` value (`Timeout.ofMs(n)` or `Timeout.none()`). When set to a non-none value, the engine derives a child `AbortController` from the run's signal and schedules an abort after the budget. On expiry, `NodeTimeoutError` is thrown and the run is marked failed. The `MonadicNode` base class defaults to `Timeout.none()`; nodes that do not extend it should omit the field (treated as `Timeout.none()` by the engine).
 
-`contract` is an optional `OperationContractFragment`. When present, `DAGDeriver.derive({ nodes })` projects the node into a full `OperationContract` using the node's `name` and `outputs`. `Dagonizer.registerDAG` runs `ContractRegistryValidator` against all contract-bearing nodes in the DAG.
+`contract` is a required `OperationContractFragment`. Nodes that do not participate in derivation set it to the `EMPTY_CONTRACT_FRAGMENT` constant (both arrays empty). `DAGDeriver.derive({ nodes })` projects the fragment plus the node's `name` and `outputs` into a full `OperationContract`. `Dagonizer.registerDAG` runs `ContractRegistryValidator` against all contract-bearing nodes in the DAG.
 
 ## ExecuteOptionsInterface
 
@@ -212,20 +212,21 @@ Per-operation contract consumed by `DAGDeriver.derive` to compute DAG topology a
 **Co-located pattern.** Declare the contract directly on the node so the node is the single source of truth. `DAGDeriver.derive({ nodes })` reads `node.contract` alongside `node.name` and `node.outputs`:
 
 ```ts
-import type { NodeInterface, OperationContractFragment } from '@noocodex/dagonizer/contracts';
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface, OperationContractFragment } from '@noocodex/dagonizer';
 
-const fetchNode: NodeInterface = {
-  name: 'fetch',
-  outputs: ['success', 'cached', 'error'],
-  contract: {
+class FetchNode implements NodeInterface {
+  readonly name = 'fetch';
+  readonly outputs = ['success', 'cached', 'error'] as const;
+  readonly contract = {
     hardRequired: ['url'],
     produces:     ['raw'],
-  } satisfies OperationContractFragment,
-  async execute(state, ctx) {
+  } satisfies OperationContractFragment;
+  async execute(state: NodeStateInterface, ctx: NodeContextInterface) {
     // ...
-    return { output: 'success' };
-  },
-};
+    return NodeOutputBuilder.of('success');
+  }
+}
 ```
 
 See [co-located contracts](../guide/derive.md#co-located-contracts) and [Reference: Derive](./derive).
@@ -237,7 +238,7 @@ type ErrorConstructorType = new (...args: never[]) => Error;
 
 interface RetryPolicyOptionsInterface {
   readonly maxAttempts?: number;
-  readonly strategy?: BackoffStrategyValue;
+  readonly strategy?: BackoffStrategy;
   readonly baseDelay?: number;
   readonly maxDelay?: number;
   readonly multiplier?: number;

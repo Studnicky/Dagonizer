@@ -44,7 +44,7 @@ class StubEmbedder implements Embedder {
     // anything else gets the queryVector under test.
     const anchorIndex = INTENT_LABELS.findIndex((intent) => INTENT_DESCRIPTIONS[intent] === text);
     if (anchorIndex === -1) return this.#queryVector;
-    return basisVector(anchorIndex);
+    return IntentVectors.basisVector(anchorIndex);
   }
 
   async embedBatch(texts: readonly string[]): Promise<readonly (readonly number[])[]> {
@@ -56,18 +56,21 @@ class StubEmbedder implements Embedder {
   async disconnect(): Promise<void> { /* no-op */ }
 }
 
-function basisVector(index: number): readonly number[] {
-  const v: number[] = new Array<number>(DIM).fill(0);
-  v[index] = 1;
-  return v;
-}
+/** Vector helpers for deterministic IntentClassifier tests. */
+class IntentVectors {
+  static basisVector(index: number): readonly number[] {
+    const v: number[] = new Array<number>(DIM).fill(0);
+    v[index] = 1;
+    return v;
+  }
 
-/** Lerp two basis vectors so the result aligns mostly with `dominant`. */
-function blend(dominantIndex: number, otherIndex: number, dominantWeight: number): readonly number[] {
-  const v: number[] = new Array<number>(DIM).fill(0);
-  v[dominantIndex] = dominantWeight;
-  v[otherIndex] = 1 - dominantWeight;
-  return v;
+  /** Lerp two basis vectors so the result aligns mostly with `dominant`. */
+  static blend(dominantIndex: number, otherIndex: number, dominantWeight: number): readonly number[] {
+    const v: number[] = new Array<number>(DIM).fill(0);
+    v[dominantIndex] = dominantWeight;
+    v[otherIndex] = 1 - dominantWeight;
+    return v;
+  }
 }
 
 void test('cosineSimilarity: orthogonal vectors score 0', () => {
@@ -92,7 +95,7 @@ void test('cosineSimilarity: zero-norm input returns 0', () => {
 });
 
 void test('IntentClassifier.create embeds every anchor once', async () => {
-  const embedder = new StubEmbedder(basisVector(0));
+  const embedder = new StubEmbedder(IntentVectors.basisVector(0));
   const classifier = await IntentClassifier.create(embedder);
   assert.equal(classifier.embedderId, 'stub');
 });
@@ -101,7 +104,7 @@ void test('IntentClassifier picks the intent whose anchor matches the query embe
   // Embed query as the basis vector for 'find-reviews' (index 1).
   const targetIndex = INTENT_LABELS.indexOf('find-reviews');
   assert.notEqual(targetIndex, -1);
-  const embedder = new StubEmbedder(basisVector(targetIndex));
+  const embedder = new StubEmbedder(IntentVectors.basisVector(targetIndex));
   const classifier = await IntentClassifier.create(embedder);
 
   const result = await classifier.classify('anything (routes via stubbed embedder)');
@@ -113,7 +116,7 @@ void test('IntentClassifier picks the intent whose anchor matches the query embe
 void test('IntentClassifier picks each intent when the query embedding rides its axis', async () => {
   for (const intent of INTENT_LABELS) {
     const idx = INTENT_LABELS.indexOf(intent);
-    const embedder = new StubEmbedder(basisVector(idx));
+    const embedder = new StubEmbedder(IntentVectors.basisVector(idx));
     const classifier = await IntentClassifier.create(embedder);
     const result = await classifier.classify('q');
     assert.notEqual(result, null, `expected non-null for ${intent}`);
@@ -126,7 +129,7 @@ void test('IntentClassifier returns null when top score is below the confidence 
   // Set floor above that so the classifier returns null.
   const a = INTENT_LABELS.indexOf('search');
   const b = INTENT_LABELS.indexOf('describe');
-  const embedder = new StubEmbedder(blend(a, b, 0.5));
+  const embedder = new StubEmbedder(IntentVectors.blend(a, b, 0.5));
   const classifier = await IntentClassifier.create(embedder);
   const result = await classifier.classify('q', 0.9);
   assert.equal(result, null);
@@ -137,7 +140,7 @@ void test('IntentClassifier honours the default confidence floor', async () => {
   // (0.1) with 'recommend-similar' must score above the default floor.
   const dominant = INTENT_LABELS.indexOf('recommend');
   const secondary = INTENT_LABELS.indexOf('recommend-similar');
-  const embedder = new StubEmbedder(blend(dominant, secondary, 0.9));
+  const embedder = new StubEmbedder(IntentVectors.blend(dominant, secondary, 0.9));
   const classifier = await IntentClassifier.create(embedder);
   const result = await classifier.classify('q');
   assert.notEqual(result, null);

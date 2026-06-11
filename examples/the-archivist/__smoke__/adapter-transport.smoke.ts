@@ -28,33 +28,46 @@ interface CapturedRequest {
   readonly body: Record<string, unknown>;
 }
 
-function captureNextFetch(response: unknown): Promise<CapturedRequest> {
-  return new Promise((resolveCaptured) => {
-    const original = globalThis.fetch;
-    globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): Promise<Response> => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as { url: string }).url;
-      const headers: Record<string, string> = {};
-      const rawHeaders = init?.headers ?? {};
-      if (rawHeaders instanceof Headers) {
-        rawHeaders.forEach((v, k) => { headers[k.toLowerCase()] = v; });
-      } else if (Array.isArray(rawHeaders)) {
-        for (const [k, v] of rawHeaders) headers[k.toLowerCase()] = v;
-      } else {
-        for (const [k, v] of Object.entries(rawHeaders)) headers[k.toLowerCase()] = String(v);
-      }
-      const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
-      globalThis.fetch = original;
-      resolveCaptured({ url, headers, body });
-      return new Response(JSON.stringify(response), {
-        'status': 200,
-        'headers': { 'content-type': 'application/json' },
-      });
-    }) as typeof fetch;
-  });
+/** Smoke test runner: fetch interception and named check execution. */
+class SmokeRunner {
+  static captureNextFetch(response: unknown): Promise<CapturedRequest> {
+    return new Promise((resolveCaptured) => {
+      const original = globalThis.fetch;
+      globalThis.fetch = (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]): Promise<Response> => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as { url: string }).url;
+        const headers: Record<string, string> = {};
+        const rawHeaders = init?.headers ?? {};
+        if (rawHeaders instanceof Headers) {
+          rawHeaders.forEach((v, k) => { headers[k.toLowerCase()] = v; });
+        } else if (Array.isArray(rawHeaders)) {
+          for (const [k, v] of rawHeaders) headers[k.toLowerCase()] = v;
+        } else {
+          for (const [k, v] of Object.entries(rawHeaders)) headers[k.toLowerCase()] = String(v);
+        }
+        const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+        globalThis.fetch = original;
+        resolveCaptured({ url, headers, body });
+        return new Response(JSON.stringify(response), {
+          'status': 200,
+          'headers': { 'content-type': 'application/json' },
+        });
+      }) as typeof fetch;
+    });
+  }
+
+  static async check(name: string, fn: () => Promise<void>): Promise<void> {
+    try {
+      await fn();
+      process.stdout.write(`✓ ${name}\n`);
+    } catch (err) {
+      failures++;
+      process.stderr.write(`✗ ${name}\n  ${err instanceof Error ? err.message : String(err)}\n`);
+    }
+  }
 }
 
 const sampleRequest: ChatRequest = ChatRequestBuilder.from({
-  'messages': [{ 'role': 'user', 'content': 'find me a book about labyrinths', 'toolCallId': '', 'toolName': '' }],
+  'messages': [{ 'role': 'user', 'content': 'find me a book about labyrinths' }],
   'tools': [{
     'name': 'web_search_books',
     'description': 'Search the book catalogue.',
@@ -80,19 +93,9 @@ const openAiSuccessResponse = {
 
 let failures = 0;
 
-async function check(name: string, fn: () => Promise<void>): Promise<void> {
-  try {
-    await fn();
-    process.stdout.write(`✓ ${name}\n`);
-  } catch (err) {
-    failures++;
-    process.stderr.write(`✗ ${name}\n  ${err instanceof Error ? err.message : String(err)}\n`);
-  }
-}
-
-await check('Groq: POSTs to api.groq.com with max_completion_tokens and OpenAI tools', async () => {
+await SmokeRunner.check('Groq: POSTs to api.groq.com with max_completion_tokens and OpenAI tools', async () => {
   const adapter = new GroqApiAdapter('sk-test');
-  const captured = captureNextFetch(openAiSuccessResponse);
+  const captured = SmokeRunner.captureNextFetch(openAiSuccessResponse);
   await adapter.chat(sampleRequest);
   const c = await captured;
   assert.equal(c.url, 'https://api.groq.com/openai/v1/chat/completions');
@@ -105,9 +108,9 @@ await check('Groq: POSTs to api.groq.com with max_completion_tokens and OpenAI t
   assert.equal(c.body['tool_choice'], 'auto');
 });
 
-await check('Cerebras: POSTs to api.cerebras.ai with gpt-oss-120b default and max_completion_tokens', async () => {
+await SmokeRunner.check('Cerebras: POSTs to api.cerebras.ai with gpt-oss-120b default and max_completion_tokens', async () => {
   const adapter = new CerebrasApiAdapter('sk-test');
-  const captured = captureNextFetch(openAiSuccessResponse);
+  const captured = SmokeRunner.captureNextFetch(openAiSuccessResponse);
   await adapter.chat(sampleRequest);
   const c = await captured;
   assert.equal(c.url, 'https://api.cerebras.ai/v1/chat/completions');
@@ -116,9 +119,9 @@ await check('Cerebras: POSTs to api.cerebras.ai with gpt-oss-120b default and ma
   assert.ok(!('max_tokens' in c.body), 'must NOT send max_tokens');
 });
 
-await check('Mistral: POSTs to api.mistral.ai with max_tokens and OpenAI tools', async () => {
+await SmokeRunner.check('Mistral: POSTs to api.mistral.ai with max_tokens and OpenAI tools', async () => {
   const adapter = new MistralApiAdapter('sk-test');
-  const captured = captureNextFetch(openAiSuccessResponse);
+  const captured = SmokeRunner.captureNextFetch(openAiSuccessResponse);
   await adapter.chat(sampleRequest);
   const c = await captured;
   assert.equal(c.url, 'https://api.mistral.ai/v1/chat/completions');
@@ -127,9 +130,9 @@ await check('Mistral: POSTs to api.mistral.ai with max_tokens and OpenAI tools',
   assert.equal(tools[0]?.type, 'function');
 });
 
-await check('OpenRouter: POSTs with HTTP-Referer + X-Title headers and OpenAI tools', async () => {
+await SmokeRunner.check('OpenRouter: POSTs with HTTP-Referer + X-Title headers and OpenAI tools', async () => {
   const adapter = new OpenRouterApiAdapter('sk-test');
-  const captured = captureNextFetch(openAiSuccessResponse);
+  const captured = SmokeRunner.captureNextFetch(openAiSuccessResponse);
   await adapter.chat(sampleRequest);
   const c = await captured;
   assert.equal(c.url, 'https://openrouter.ai/api/v1/chat/completions');
@@ -138,7 +141,7 @@ await check('OpenRouter: POSTs with HTTP-Referer + X-Title headers and OpenAI to
   assert.equal(c.body['model'], 'meta-llama/llama-3.3-70b-instruct:free');
 });
 
-await check('Adapters expose capabilities metadata', async () => {
+await SmokeRunner.check('Adapters expose capabilities metadata', async () => {
   const groq = new GroqApiAdapter('sk-test');
   const cerebras = new CerebrasApiAdapter('sk-test');
   const mistral = new MistralApiAdapter('sk-test');

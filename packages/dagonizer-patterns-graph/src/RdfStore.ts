@@ -21,10 +21,10 @@
  *   should subclass and override `performRestoreEntries`.
  */
 
-import { BaseStore, type BaseStoreOptions } from '@noocodex/dagonizer/store';
 import type { StoreSnapshotEntry } from '@noocodex/dagonizer/contracts';
 import type { JsonValue } from '@noocodex/dagonizer/entities';
 import type { Binding, Quad, SlotPattern, Term, TripleStore } from '@noocodex/dagonizer/patterns';
+import { BaseStore, type BaseStoreOptions } from '@noocodex/dagonizer/store';
 
 /** Subject IRI prefix used when no override is supplied. */
 const DEFAULT_SUBJECT_PREFIX = 'urn:dagonizer:store:';
@@ -33,7 +33,7 @@ const DEFAULT_SUBJECT_PREFIX = 'urn:dagonizer:store:';
 const DEFAULT_VALUE_PREDICATE = 'urn:dagonizer:store:value';
 
 /** Sentinel for the default RDF graph. */
-const DEFAULT_GRAPH: Term = { termType: 'DefaultGraph', value: '' };
+const DEFAULT_GRAPH: Term = { "termType": 'DefaultGraph', "value": '' };
 
 export interface RdfStoreOptions extends BaseStoreOptions {
   /**
@@ -54,7 +54,7 @@ export class RdfStore extends BaseStore implements TripleStore {
   readonly #valuePredicate: string;
 
   constructor(options: RdfStoreOptions = { 'namespace': '' }) {
-    super({ namespace: options.namespace ?? '' });
+    super({ "namespace": options.namespace ?? '' });
     this.#quads          = [];
     this.#subjectPrefix  = options.subjectPrefix  ?? DEFAULT_SUBJECT_PREFIX;
     this.#valuePredicate = options.valuePredicate ?? DEFAULT_VALUE_PREDICATE;
@@ -110,8 +110,8 @@ export class RdfStore extends BaseStore implements TripleStore {
       if (!quad.subject.value.startsWith(this.#subjectPrefix)) continue;
       const rawKey = quad.subject.value.slice(this.#subjectPrefix.length);
       entries.push({
-        key:   rawKey,
-        value: JSON.parse(quad.object.value) as JsonValue,
+        "key":   rawKey,
+        "value": JSON.parse(quad.object.value) as JsonValue,
       });
     }
     return entries;
@@ -129,7 +129,7 @@ export class RdfStore extends BaseStore implements TripleStore {
   // ── TripleStore contract (native quad operations) ────────────────────────────
 
   assert(subject: Term, predicate: Term, object: Term, graph?: Term): void {
-    this.#quads.push({ subject, predicate, object, graph: graph ?? DEFAULT_GRAPH });
+    this.#quads.push({ subject, predicate, object, "graph": graph ?? DEFAULT_GRAPH });
   }
 
   ask(pattern: SlotPattern): boolean {
@@ -139,7 +139,7 @@ export class RdfStore extends BaseStore implements TripleStore {
   select(pattern: SlotPattern): readonly Binding[] {
     const bindings: Binding[] = [];
     for (const quad of this.#quads) {
-      const binding = matchQuad(quad, pattern);
+      const binding = RdfStore.#matchQuad(quad, pattern);
       if (binding !== null) bindings.push(binding);
     }
     return bindings;
@@ -183,10 +183,10 @@ export class RdfStore extends BaseStore implements TripleStore {
   #writeValue(subject: string, value: JsonValue): void {
     this.#removeQuadsMatching(subject, this.#valuePredicate);
     this.#quads.push({
-      subject:   { termType: 'NamedNode', value: subject },
-      predicate: { termType: 'NamedNode', value: this.#valuePredicate },
-      object:    { termType: 'Literal',   value: JSON.stringify(value) },
-      graph:     DEFAULT_GRAPH,
+      "subject":   { "termType": 'NamedNode', "value": subject },
+      "predicate": { "termType": 'NamedNode', "value": this.#valuePredicate },
+      "object":    { "termType": 'Literal',   "value": JSON.stringify(value) },
+      "graph":     DEFAULT_GRAPH,
     });
   }
 
@@ -199,40 +199,40 @@ export class RdfStore extends BaseStore implements TripleStore {
       this.#quads.splice(i, 1);
     }
   }
-}
 
-/**
- * Match a single quad against a SlotPattern.
- *
- * Returns `null` when the quad does not match. Returns a `Binding` (possibly
- * empty) when it does; variable slots (string values in the pattern) are
- * bound to the corresponding quad Term; constant slots (Term values in the
- * pattern) must match by both `termType` and `value`.
- *
- * The `graph` slot is matched when present in the pattern; when omitted the
- * quad's graph is unconstrained (it matches regardless of graph).
- */
-function matchQuad(quad: Quad, pattern: SlotPattern): Binding | null {
-  const binding: Record<string, Term> = {};
+  /**
+   * Match a single quad against a SlotPattern.
+   *
+   * Returns `null` when the quad does not match. Returns a `Binding` (possibly
+   * empty) when it does; variable slots (string values in the pattern) are
+   * bound to the corresponding quad Term; constant slots (Term values in the
+   * pattern) must match by both `termType` and `value`.
+   *
+   * The `graph` slot is matched when present in the pattern; when omitted the
+   * quad's graph is unconstrained (it matches regardless of graph).
+   */
+  static #matchQuad(quad: Quad, pattern: SlotPattern): Binding | null {
+    const binding: Record<string, Term> = {};
 
-  for (const slot of ['subject', 'predicate', 'object', 'graph'] as const) {
-    const patternSlot = pattern[slot];
-    if (patternSlot === undefined) continue; // unconstrained: any value matches
+    for (const slot of ['subject', 'predicate', 'object', 'graph'] as const) {
+      const patternSlot = pattern[slot];
+      if (patternSlot === undefined) continue; // unconstrained: any value matches
 
-    const quadTerm = quad[slot];
+      const quadTerm = quad[slot];
 
-    if (typeof patternSlot === 'string') {
-      // Variable slot: strip leading `?` to match the TripleStore.Binding convention
-      // ("Keys are pattern-variable names without the leading `?`").
-      const varName = patternSlot.startsWith('?') ? patternSlot.slice(1) : patternSlot;
-      binding[varName] = quadTerm;
-    } else if (
-      patternSlot.value    !== quadTerm.value ||
-      patternSlot.termType !== quadTerm.termType
-    ) {
-      return null; // constant mismatch
+      if (typeof patternSlot === 'string') {
+        // Variable slot: strip leading `?` to match the TripleStore.Binding convention
+        // ("Keys are pattern-variable names without the leading `?`").
+        const varName = patternSlot.startsWith('?') ? patternSlot.slice(1) : patternSlot;
+        binding[varName] = quadTerm;
+      } else if (
+        patternSlot.value    !== quadTerm.value ||
+        patternSlot.termType !== quadTerm.termType
+      ) {
+        return null; // constant mismatch
+      }
     }
-  }
 
-  return binding;
+    return binding;
+  }
 }

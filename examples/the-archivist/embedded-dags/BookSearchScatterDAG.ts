@@ -69,7 +69,7 @@ import {
 import type { ArchivistServices } from '../services.ts';
 
 import type { DAG, DispatcherBundle } from '@noocodex/dagonizer';
-import { DAGBuilder } from '@noocodex/dagonizer/builder';
+import { DAGBuilder } from '@noocodex/dagonizer';
 
 /**
  * The `book-search-scatter` DAG: one packaged unit that any parent DAG

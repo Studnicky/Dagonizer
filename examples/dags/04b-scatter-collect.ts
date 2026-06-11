@@ -8,9 +8,10 @@ import {
   DAG_CONTEXT,
   NodeOutputBuilder,
   NodeStateBase,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
 } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import type { DAG, NodeInterface} from '@noocodex/dagonizer';
 import { GatherStrategyName } from '@noocodex/dagonizer/constants';
 
 // #region state
@@ -39,10 +40,13 @@ export class GenerateState extends NodeStateBase {
 //
 // The 'success' output token is what the default 'aggregate' reducer counts:
 // every clone returning 'success' yields the 'all-success' route.
-export const provider: NodeInterface<GenerateState, 'success'> = {
-  "name": 'provider',
-  "outputs": ['success'],
-  async execute(state) {
+export class ProviderNode implements NodeInterface<GenerateState, 'success'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'provider';
+  readonly outputs = ['success'] as const;
+
+  async execute(state: GenerateState) {
     const name = state.getMetadata<string>('provider') ?? 'unknown';
     // Deterministic pseudo-score so the example output is stable: score by
     // the provider name length plus a per-provider salt. In a real flow this
@@ -56,16 +60,19 @@ export const provider: NodeInterface<GenerateState, 'success'> = {
       score,
     };
     return NodeOutputBuilder.of('success');
-  },
-};
+  }
+}
 // #endregion provider-node
 
 // #region select-node
 // Reads the collected candidates off parent state and picks the highest score.
-export const select: NodeInterface<GenerateState, 'selected' | 'none'> = {
-  "name": 'select',
-  "outputs": ['selected', 'none'],
-  async execute(state) {
+export class SelectNode implements NodeInterface<GenerateState, 'selected' | 'none'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'select';
+  readonly outputs = ['selected', 'none'] as const;
+
+  async execute(state: GenerateState) {
     if (state.candidates.length === 0) return NodeOutputBuilder.of('none');
     let best = state.candidates[0]!;
     for (const candidate of state.candidates) {
@@ -73,8 +80,8 @@ export const select: NodeInterface<GenerateState, 'selected' | 'none'> = {
     }
     state.chosen = best;
     return NodeOutputBuilder.of('selected');
-  },
-};
+  }
+}
 // #endregion select-node
 
 // #region scatter-collect-placement

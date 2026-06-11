@@ -2,22 +2,57 @@
  * scatter-extensions/dags: demonstrates scatter extension points —
  * custom GatherStrategy and custom OutcomeReducer — via the
  * GatherStrategies and OutcomeReducers static registries.
+ * Also defines ScoreNode used by the entry's scatter DAG.
  *
- * Pure module: no side effects beyond registry.register calls; no dispatcher.
+ * Side effects: GatherStrategies.register and OutcomeReducers.register calls
+ * at module load. Import this module to install 'top-n' and 'threshold-75'.
  */
 
 import {
   GatherStrategies,
   GatherStrategy,
+  NodeOutputBuilder,
+  NodeStateBase,
   OutcomeReducer,
   OutcomeReducers,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
 } from '@noocodex/dagonizer';
 import type {
   GatherConfig,
   GatherExecution,
   NodeStateInterface,
-  OutcomeRecord,
-} from '@noocodex/dagonizer';
+  OutcomeRecord, NodeInterface} from '@noocodex/dagonizer';
+
+// ── Domain state (re-exported so entry can reference the type) ────────────────
+
+export interface ScoredCandidate {
+  readonly title: string;
+  readonly score: number;
+}
+
+export class RankingState extends NodeStateBase {
+  items: string[]               = [];
+  candidate: ScoredCandidate    = { title: '', score: 0 };
+  topCandidates: ScoredCandidate[] = [];
+}
+
+// #region score-node
+// Worker node: produces a scored candidate from each scatter item.
+export class ScoreNode implements NodeInterface<RankingState, 'success' | 'error'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name    = 'score';
+  readonly outputs = ['success', 'error'] as const;
+
+  async execute(state: RankingState) {
+    const item = state.getMetadata<string>('item') ?? '';
+    // Synthetic score: proportional to string length
+    state.candidate = { title: item, score: item.length };
+    return NodeOutputBuilder.of('success');
+  }
+}
+// #endregion score-node
 
 // #region gather-strategy
 /**
@@ -26,7 +61,7 @@ import type {
  * Registered under 'top-n'. Reference via `gather: { strategy: 'top-n', target: 'topCandidates' }`
  * on a ScatterNode placement to collect and rank clone outputs in one pass.
  */
-interface ScoredCandidate {
+interface ScoredItem {
   readonly score: number;
 }
 
@@ -40,8 +75,8 @@ class TopNGatherStrategy extends GatherStrategy {
     const target = config.target ?? 'topCandidates';
     const n = 3;
     const all = execution.records.map((r) =>
-      execution.accessor.get<ScoredCandidate>(r.cloneState, 'candidate'),
-    ).filter((c): c is ScoredCandidate => c !== null);
+      execution.accessor.get<ScoredItem>(r.cloneState, 'candidate'),
+    ).filter((c): c is ScoredItem => c !== null);
     const sorted = [...all].sort((a, b) => b.score - a.score).slice(0, n);
     execution.accessor.set(execution.state, target, sorted);
   }

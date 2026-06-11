@@ -8,8 +8,10 @@ import {
   DAGBuilder,
   NodeOutputBuilder,
   NodeStateBase,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
 } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import type { NodeInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State
@@ -23,40 +25,46 @@ export class PipelineState extends NodeStateBase {
 // Nodes: each stage appends to `items` so the consumer can see progress
 // ---------------------------------------------------------------------------
 
-export const ingest: NodeInterface<PipelineState, 'done'> = {
-  "name":    'ingest',
-  "outputs": ['done'],
-  async execute(state) {
+export class IngestNode implements NodeInterface<PipelineState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'ingest';
+  readonly outputs = ['done'] as const;
+  async execute(state: PipelineState) {
     state.items.push('raw-data');
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
-export const enrich: NodeInterface<PipelineState, 'done'> = {
-  "name":    'enrich',
-  "outputs": ['done'],
-  async execute(state) {
+export class EnrichNode implements NodeInterface<PipelineState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'enrich';
+  readonly outputs = ['done'] as const;
+  async execute(state: PipelineState) {
     state.items.push('enriched-data');
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
-export const persist: NodeInterface<PipelineState, 'done'> = {
-  "name":    'persist',
-  "outputs": ['done'],
-  async execute(state) {
+export class PersistNode implements NodeInterface<PipelineState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'persist';
+  readonly outputs = ['done'] as const;
+  async execute(state: PipelineState) {
     state.items.push('persisted');
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
 // ---------------------------------------------------------------------------
 // DAG: a linear three-step pipeline
 // ---------------------------------------------------------------------------
 
 export const dag = new DAGBuilder('streaming-demo', '1')
-  .node('ingest',  ingest,  { 'done': 'enrich' })
-  .node('enrich',  enrich,  { 'done': 'persist' })
-  .node('persist', persist, { 'done': 'end' })
+  .node('ingest',  new IngestNode(),  { 'done': 'enrich' })
+  .node('enrich',  new EnrichNode(),  { 'done': 'persist' })
+  .node('persist', new PersistNode(), { 'done': 'end' })
   .terminal('end')
   .build();

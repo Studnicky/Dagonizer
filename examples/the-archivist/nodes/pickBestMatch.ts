@@ -18,30 +18,36 @@
  * Output route is always 'picked'.
  */
 
+import { NodeOutputBuilder,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+
 import type { Candidate } from '../entities/Book.ts';
-
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
-
-import type { ArchivistNode } from './ArchivistNode.ts';
-import { jaccard, tokenise as wordSet } from './textUtils.ts';
+import type { ArchivistState } from '../ArchivistState.ts';
+import type { ArchivistServices } from '../services.ts';
+import { TextSimilarity } from './textUtils.ts';
 
 const TOP_K = 3;
 
-export const pickBestMatch: ArchivistNode<'picked'> = {
-  'name':    'pick-best-match',
-  'kind':    'deterministic',
-  'outputs': ['picked'],
-  execute(state, context) {
+export class PickBestMatchNode implements NodeInterface<ArchivistState, 'picked', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'pick-best-match';
+  readonly outputs = ['picked'] as const;
+
+  execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     if (state.candidates.length === 0) {
       context.services.logger.info('pick-best-match: no candidates');
       return Promise.resolve(NodeOutputBuilder.of('picked'));
     }
 
-    const queryWords = wordSet(state.query);
+    const queryWords = TextSimilarity.tokenise(state.query);
 
     const scored = state.candidates.map((c) => {
-      const text   = `${c.book.title} ${c.book.authors.join(' ')}`;
-      const sim    = jaccard(queryWords, wordSet(text));
+      const text   = `${c.book.identity.title} ${c.book.identity.authors.join(' ')}`;
+      const sim    = TextSimilarity.jaccard(queryWords, TextSimilarity.tokenise(text));
       return { "candidate": c, sim };
     });
 
@@ -61,10 +67,13 @@ export const pickBestMatch: ArchivistNode<'picked'> = {
     context.services.logger.info(
       `pick-best-match: kept top ${String(Math.min(TOP_K, scored.length))} of ${String(scored.length)}` +
       (top !== undefined
-        ? ` (best sim ${top.sim.toFixed(3)}: "${top.candidate.book.title}")`
+        ? ` (best sim ${top.sim.toFixed(3)}: "${top.candidate.book.identity.title}")`
         : ''),
     );
 
     return Promise.resolve(NodeOutputBuilder.of('picked'));
-  },
-};
+  }
+}
+
+/** Backward-compatible const export for existing bundle/DAG references. */
+export const pickBestMatch = new PickBestMatchNode();

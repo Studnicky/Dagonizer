@@ -27,13 +27,19 @@ import {
   Units,
 } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region normalize-node
-export const normalize: NodeInterface<CartographerState, 'normalized' | 'rejected', CartographerServices> = {
-  'name': 'normalize',
-  'outputs': ['normalized', 'rejected'],
-  async execute(state, context) {
+export class NormalizeNode implements NodeInterface<CartographerState, 'normalized' | 'rejected', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'normalize';
+  readonly 'outputs' = ['normalized', 'rejected'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'normalized' | 'rejected'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -96,6 +102,6 @@ export const normalize: NodeInterface<CartographerState, 'normalized' | 'rejecte
     };
 
     return NodeOutputBuilder.of('normalized');
-  },
-};
+  }
+}
 // #endregion normalize-node

@@ -8,6 +8,12 @@
  * triple store, a vector index, an append-only log projection) can participate
  * in checkpointing WITHOUT implementing `get`/`set`/`has`/`delete`/`update`.
  * `Store extends Snapshottable`, so every `Store` is also `Snapshottable`.
+ *
+ * `StoreSnapshotEntry` and `StoreSnapshot` are defined here as the runtime
+ * contract surface (with `value: JsonValue` for type-safe store access).
+ * The wire-validation schemas live at `entities/checkpoint/StoreSnapshot.ts`
+ * and mirror the same shape; the schemas validate inbound JSON, these
+ * interfaces type in-process store operations.
  */
 
 import type { JsonValue } from '../entities/json.js';

@@ -1,8 +1,8 @@
-import { test, after } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { mkdtemp, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { mkdtemp, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
+import { test, after } from 'node:test';
 
 import { StoreError } from '@noocodex/dagonizer/store';
 
@@ -78,7 +78,7 @@ void test('update: concurrent Promise.all produces no lost writes (JS single-thr
   // reading #latest(), each invocation reads the prior committed value.
   // JS single-threaded semantics guarantee these interleave at microtask
   // boundaries only after each append resolves.
-  const increments = Array.from({ length: 10 }, () =>
+  const increments = Array.from({ "length": 10 }, () =>
     store.update<number>('x', (v) => (v ?? 0) + 1),
   );
   await Promise.all(increments);
@@ -314,6 +314,51 @@ void test('namespace: qualifies keys transparently', async () => {
   // Internal log stores the qualified key.
   const entry = store.log()[0];
   assert.ok(entry !== undefined && entry.key === 'ns:key');
+});
+
+// ── 10. File-backed: ingest validation ───────────────────────────────────────
+
+void test('connect: malformed log line throws StoreError INCOMPATIBLE_SNAPSHOT', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dagonizer-eventlog-'));
+  const filePath = join(dir, 'malformed.log');
+
+  // Write a log file with one valid line and one structurally invalid line.
+  const valid   = JSON.stringify({ 'kind': 'set', 'at': Date.now(), 'key': 'x', 'value': 1 });
+  const invalid = JSON.stringify({ 'kind': 'unknown', 'at': 'not-a-number', 'key': 42 });
+  await writeFile(filePath, `${valid}\n${invalid}\n`);
+
+  const store = new EventLogStore({ filePath });
+  await assert.rejects(
+    () => store.connect(),
+    (err: unknown) => {
+      assert.ok(err instanceof StoreError);
+      assert.equal(err.classification.reason, 'INCOMPATIBLE_SNAPSHOT');
+      return true;
+    },
+  );
+
+  await unlink(filePath);
+});
+
+void test('connect: missing required field (no key) throws StoreError INCOMPATIBLE_SNAPSHOT', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'dagonizer-eventlog-'));
+  const filePath = join(dir, 'missing-key.log');
+
+  // A line with kind + at but no key.
+  const line = JSON.stringify({ 'kind': 'set', 'at': Date.now(), 'value': 'v' });
+  await writeFile(filePath, `${line}\n`);
+
+  const store = new EventLogStore({ filePath });
+  await assert.rejects(
+    () => store.connect(),
+    (err: unknown) => {
+      assert.ok(err instanceof StoreError);
+      assert.equal(err.classification.reason, 'INCOMPATIBLE_SNAPSHOT');
+      return true;
+    },
+  );
+
+  await unlink(filePath);
 });
 
 after(() => {

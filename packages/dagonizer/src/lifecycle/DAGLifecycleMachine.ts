@@ -2,9 +2,9 @@
  * DAGLifecycleMachine: pure reducer + initial-state factory + terminal
  * predicate for the lifecycle defined in `DAGLifecycleState.ts`.
  *
- * Side-effect-free: no IO, no logging. The reducer reads the optional `at`
- * field on each event and otherwise calls `Clock.monotonicMs()` to stamp transitions.
- * Pin the clock with `at` for deterministic tests.
+ * Side-effect-free: no IO, no logging. The `at` field on each event carries
+ * the monotonic clock value; callers supply it explicitly (production callers
+ * use `clock.monotonicMs()`; tests supply a pinned value for determinism).
  *
  * Transitions:
  *
@@ -20,8 +20,6 @@
  * Illegal transitions return the input state by reference. `NodeStateBase`
  * detects `next === current` after dispatch and throws a `DAGError`.
  */
-
-import { Clock } from '../runtime/Clock.js';
 
 import type {
   DAGLifecycleEvent,
@@ -90,7 +88,7 @@ export class DAGLifecycleMachine {
     _state: Extract<DAGLifecycleState, { kind: 'pending' }>,
     event: Extract<DAGLifecycleEvent, { type: 'start' }>,
   ): DAGLifecycleState {
-    return { 'kind': 'running', 'startedAt': event.at ?? Clock.monotonicMs(), 'finishedAt': null, 'error': null, 'reason': null };
+    return { 'kind': 'running', 'startedAt': event.at, 'finishedAt': null, 'error': null, 'reason': null };
   }
 
   private static handleRunningSucceed(
@@ -100,7 +98,7 @@ export class DAGLifecycleMachine {
     return {
       'kind': 'completed',
       'startedAt': state.startedAt,
-      'finishedAt': event.at ?? Clock.monotonicMs(),
+      'finishedAt': event.at,
       'error': null,
       'reason': null,
     };
@@ -113,7 +111,7 @@ export class DAGLifecycleMachine {
     return {
       'kind': 'failed',
       'startedAt': state.startedAt,
-      'finishedAt': event.at ?? Clock.monotonicMs(),
+      'finishedAt': event.at,
       'error': event.error,
       'reason': null,
     };
@@ -126,7 +124,7 @@ export class DAGLifecycleMachine {
     return {
       'kind': 'cancelled',
       'startedAt': state.startedAt,
-      'finishedAt': event.at ?? Clock.monotonicMs(),
+      'finishedAt': event.at,
       'error': null,
       'reason': event.reason,
     };
@@ -139,7 +137,7 @@ export class DAGLifecycleMachine {
     return {
       'kind': 'timed_out',
       'startedAt': state.startedAt,
-      'finishedAt': event.at ?? Clock.monotonicMs(),
+      'finishedAt': event.at,
       'error': null,
       'reason': null,
     };

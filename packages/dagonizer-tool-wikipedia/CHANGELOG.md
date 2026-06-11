@@ -1,5 +1,14 @@
 # @noocodex/dagonizer-tool-wikipedia
 
+## [unreleased]
+
+### Changed
+
+- `WikipediaSummaryTool.execute` replaces `(err as { status?: number }).status` with `err instanceof ToolError && err.status === 404`; imports `ToolError` from `@noocodex/dagonizer/tool`.
+- API response narrowed via `isWikiSummary` typed guard at the `HttpTransport.getJson` boundary; throws `ToolError('PARSE_ERROR')` on shape mismatch.
+- Convenience re-exports of `Book`, `Candidate`, `Money`, `CanonicalId` removed from the package barrel. Consumers import these directly from `@noocodex/dagonizer-book-entities`.
+- `@noocodex/dagonizer-book-entities` promoted from `peerDependencies` to `dependencies`.
+
 ## 0.19.0
 
 ## 0.17.0

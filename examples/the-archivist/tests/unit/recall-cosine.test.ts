@@ -43,43 +43,47 @@ class StubEmbedder implements Embedder {
 }
 
 const logs: string[] = [];
-function makeContext(memory: MemoryStore, embedder: Embedder | null) {
-  return {
-    signal: new AbortController().signal,
-    services: {
-      memory,
-      embedder,
-      logger: {
-        info(msg: string) { logs.push(msg); },
-        warn(msg: string) { logs.push(`WARN: ${msg}`); },
+
+/** Context and seed helpers for recall-cosine unit tests. */
+class RecallCosineFixture {
+  static makeContext(memory: MemoryStore, embedder: Embedder | null) {
+    return {
+      signal: new AbortController().signal,
+      services: {
+        memory,
+        embedder,
+        logger: {
+          info(msg: string) { logs.push(msg); },
+          warn(msg: string) { logs.push(`WARN: ${msg}`); },
+        },
       },
-    },
-  } as unknown as Parameters<typeof recallCandidates.execute>[1];
-}
-
-function seedPriorRun(
-  memory: MemoryStore,
-  runId: string,
-  visitorQuery: string,
-  queryEmbedding: readonly number[] | null,
-  books: Array<{ isbn: string; title: string }>,
-) {
-  const runTerm = MemoryStore.runIri(runId);
-  const dagVisitorQuery   = MemoryStore.dagIri('visitorQuery');
-  const dagShortlisted    = MemoryStore.dagIri('shortlisted');
-  const dagTitle          = MemoryStore.dagIri('title');
-  const dagSource         = MemoryStore.dagIri('source');
-  const dagQueryEmbedding = MemoryStore.dagIri('queryEmbedding');
-
-  memory.assert(runTerm, dagVisitorQuery, MemoryStore.lit.str(visitorQuery), GRAPH_MEMORY);
-  if (queryEmbedding !== null) {
-    memory.assert(runTerm, dagQueryEmbedding, MemoryStore.lit.str(JSON.stringify(queryEmbedding)), GRAPH_MEMORY);
+    } as unknown as Parameters<typeof recallCandidates.execute>[1];
   }
-  for (const { isbn, title } of books) {
-    const bookTerm = MemoryStore.bookIri(isbn);
-    memory.assert(runTerm, dagShortlisted, bookTerm, GRAPH_MEMORY);
-    memory.assert(bookTerm, dagTitle,  MemoryStore.lit.str(title), GRAPH_MEMORY);
-    memory.assert(bookTerm, dagSource, MemoryStore.lit.str('openlibrary'), GRAPH_MEMORY);
+
+  static seedPriorRun(
+    memory: MemoryStore,
+    runId: string,
+    visitorQuery: string,
+    queryEmbedding: readonly number[] | null,
+    books: Array<{ isbn: string; title: string }>,
+  ) {
+    const runTerm = MemoryStore.runIri(runId);
+    const dagVisitorQuery   = MemoryStore.dagIri('visitorQuery');
+    const dagShortlisted    = MemoryStore.dagIri('shortlisted');
+    const dagTitle          = MemoryStore.dagIri('title');
+    const dagSource         = MemoryStore.dagIri('source');
+    const dagQueryEmbedding = MemoryStore.dagIri('queryEmbedding');
+
+    memory.assert(runTerm, dagVisitorQuery, MemoryStore.lit.str(visitorQuery), GRAPH_MEMORY);
+    if (queryEmbedding !== null) {
+      memory.assert(runTerm, dagQueryEmbedding, MemoryStore.lit.str(JSON.stringify(queryEmbedding)), GRAPH_MEMORY);
+    }
+    for (const { isbn, title } of books) {
+      const bookTerm = MemoryStore.bookIri(isbn);
+      memory.assert(runTerm, dagShortlisted, bookTerm, GRAPH_MEMORY);
+      memory.assert(bookTerm, dagTitle,  MemoryStore.lit.str(title), GRAPH_MEMORY);
+      memory.assert(bookTerm, dagSource, MemoryStore.lit.str('openlibrary'), GRAPH_MEMORY);
+    }
   }
 }
 
@@ -87,7 +91,7 @@ void test('recallCandidates cosine: similar query (cos >= 0.70) loads prior book
   logs.length = 0;
   const memory = new MemoryStore();
   // Prior run query embedding pointed along axis 0.
-  seedPriorRun(memory, 'prior-cos-1', 'existentialism', [1, 0, 0, 0], [
+  RecallCosineFixture.seedPriorRun(memory, 'prior-cos-1', 'existentialism', [1, 0, 0, 0], [
     { isbn: '1110000001', title: 'Being and Nothingness' },
   ]);
   // Embedder returns a query vector close to axis 0 → cosine ~ 1.0
@@ -97,7 +101,7 @@ void test('recallCandidates cosine: similar query (cos >= 0.70) loads prior book
   state.query = 'philosophy of being';
   state.terms = ['philosophy', 'being'];
 
-  await recallCandidates.execute(state, makeContext(memory, embedder));
+  await recallCandidates.execute(state, RecallCosineFixture.makeContext(memory, embedder));
 
   assert.equal(state.priorCandidates.length, 1, 'should load 1 prior book via cosine');
   const cs = state.priorCandidates[0]?.notes?.['cosineSimilarity'];
@@ -108,7 +112,7 @@ void test('recallCandidates cosine: similar query (cos >= 0.70) loads prior book
 void test('recallCandidates cosine: orthogonal query (cos < 0.70) yields no prior candidates', async () => {
   logs.length = 0;
   const memory = new MemoryStore();
-  seedPriorRun(memory, 'prior-cos-2', 'romance', [0, 1, 0, 0], [
+  RecallCosineFixture.seedPriorRun(memory, 'prior-cos-2', 'romance', [0, 1, 0, 0], [
     { isbn: '1110000002', title: 'Pride and Prejudice' },
   ]);
   // Query along axis 0; orthogonal to axis 1 → cosine ~ 0
@@ -118,7 +122,7 @@ void test('recallCandidates cosine: orthogonal query (cos < 0.70) yields no prio
   state.query = 'science fiction';
   state.terms = ['science', 'fiction'];
 
-  await recallCandidates.execute(state, makeContext(memory, embedder));
+  await recallCandidates.execute(state, RecallCosineFixture.makeContext(memory, embedder));
 
   assert.equal(state.priorCandidates.length, 0, 'orthogonal query must not match');
 });
@@ -127,7 +131,7 @@ void test('recallCandidates cosine: embedder throws → falls back to Jaccard pa
   logs.length = 0;
   const memory = new MemoryStore();
   // Prior run with a query that overlaps the current one (Jaccard).
-  seedPriorRun(memory, 'prior-fb-1', 'existentialism science fiction philosophy', null, [
+  RecallCosineFixture.seedPriorRun(memory, 'prior-fb-1', 'existentialism science fiction philosophy', null, [
     { isbn: '1110000003', title: 'Nausea' },
   ]);
   const embedder = new StubEmbedder([1, 0, 0, 0], { throwOnce: true });
@@ -136,17 +140,17 @@ void test('recallCandidates cosine: embedder throws → falls back to Jaccard pa
   state.query = 'existentialism philosophy fiction';
   state.terms = ['existentialism', 'philosophy', 'fiction'];
 
-  await recallCandidates.execute(state, makeContext(memory, embedder));
+  await recallCandidates.execute(state, RecallCosineFixture.makeContext(memory, embedder));
 
   // Jaccard should populate from the prior run.
   assert.equal(state.priorCandidates.length, 1, 'Jaccard fallback should populate');
-  assert.equal(state.priorCandidates[0]?.book.isbn, '1110000003');
+  assert.equal(state.priorCandidates[0]?.book.identity.isbn, '1110000003');
 });
 
 void test('recallCandidates cosine: embedder=null uses Jaccard path with logged reason', async () => {
   logs.length = 0;
   const memory = new MemoryStore();
-  seedPriorRun(memory, 'prior-null-1', 'sci-fi space adventure', null, [
+  RecallCosineFixture.seedPriorRun(memory, 'prior-null-1', 'sci-fi space adventure', null, [
     { isbn: '1110000004', title: 'Dune' },
   ]);
   const state = new ArchivistState();
@@ -154,7 +158,7 @@ void test('recallCandidates cosine: embedder=null uses Jaccard path with logged 
   state.query = 'space adventure';
   state.terms = ['space', 'adventure'];
 
-  await recallCandidates.execute(state, makeContext(memory, null));
+  await recallCandidates.execute(state, RecallCosineFixture.makeContext(memory, null));
 
   assert.equal(state.priorCandidates.length, 1);
   assert.ok(

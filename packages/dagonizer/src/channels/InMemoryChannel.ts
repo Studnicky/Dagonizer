@@ -27,9 +27,11 @@ export type InMemoryChannelOptions = Record<string, never>;
 
 export class InMemoryChannel implements HandoffChannelInterface {
   #published: DAGHandoff[];
+  readonly #publishErrors: Error[];
 
   constructor(_options: InMemoryChannelOptions = {}) {
     this.#published = [];
+    this.#publishErrors = [];
   }
 
   /** All published envelopes in publish order (deep-cloned on entry). */
@@ -37,15 +39,27 @@ export class InMemoryChannel implements HandoffChannelInterface {
     return this.#published;
   }
 
+  /**
+   * Errors thrown by `onPublished` overrides, in the order they were caught.
+   * Each entry corresponds to a `publish()` call whose `onPublished` hook threw.
+   * The channel records these rather than swallowing them silently so callers
+   * can assert on hook errors in tests. The happy path (no throws) leaves this
+   * array empty.
+   */
+  get publishErrors(): readonly Error[] {
+    return this.#publishErrors;
+  }
+
   async publish(handoff: DAGHandoff): Promise<void> {
     const clone = structuredClone(handoff);
     this.#published.push(clone);
     try {
       await this.onPublished(clone);
-    } catch {
+    } catch (err) {
       // Subclass override errors must not corrupt channel state.
-      // The envelope is already recorded; swallow the override failure
-      // so publish() remains side-effect-safe for the dispatcher.
+      // The envelope is already recorded; collect the error rather than
+      // swallowing it silently so callers can observe hook failures.
+      this.#publishErrors.push(err instanceof Error ? err : new Error(String(err)));
     }
   }
 
@@ -55,10 +69,10 @@ export class InMemoryChannel implements HandoffChannelInterface {
    * downstream dispatcher's `execute`. Receives the deep-cloned, stored
    * envelope (the same instance returned from `published`).
    *
-   * Errors thrown from this hook are swallowed by `publish()`; the envelope
-   * is already appended to `published` before the hook fires. Override errors
-   * should be collected internally and surfaced through an observable property
-   * rather than re-thrown.
+   * Errors thrown from this hook are collected in `publishErrors` rather than
+   * re-thrown; the envelope is already appended to `published` before the hook
+   * fires. Override errors surface through the `publishErrors` getter instead
+   * of propagating to the publisher.
    */
   protected async onPublished(_handoff: DAGHandoff): Promise<void> { /* override */ }
 }

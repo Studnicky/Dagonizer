@@ -8,9 +8,10 @@ import {
   DAG_CONTEXT,
   NodeOutputBuilder,
   NodeStateBase,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
 } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import type { DAG, NodeInterface} from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State: fields live on the same class; inputs / outputs control which
@@ -28,14 +29,17 @@ export class IncrementState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // The child DAG's working node: increments the payload field
-export const increment: NodeInterface<IncrementState, 'success'> = {
-  "name": 'increment',
-  "outputs": ['success'],
-  async execute(state) {
+export class IncrementNode implements NodeInterface<IncrementState, 'success'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'increment';
+  readonly outputs = ['success'] as const;
+
+  async execute(state: IncrementState) {
     state.payload = state.payload + 1;
     return NodeOutputBuilder.of('success');
-  },
-};
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Child (deep) DAG: runs the increment node then hands control back
