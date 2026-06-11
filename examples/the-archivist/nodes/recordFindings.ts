@@ -26,6 +26,8 @@
 import { GRAPH_MEMORY, MemoryStore, provGraphIri } from '../memory/MemoryStore.ts';
 import { PROV, ProvIris } from '../provenance/PROV.ts';
 
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
+
 import type { ArchivistNode } from './ArchivistNode.ts';
 
 const rdfType              = MemoryStore.iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#type');
@@ -140,6 +142,6 @@ export const recordFindings: ArchivistNode<'recorded'> = {
       context.services.logger.info('record-findings: embedder unreachable, skipping embedding writes (fallback to Jaccard recall)');
     }
 
-    return { "output": 'recorded' };
+    return NodeOutputBuilder.of('recorded');
   },
 };

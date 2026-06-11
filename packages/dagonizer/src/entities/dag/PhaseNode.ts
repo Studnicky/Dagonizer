@@ -42,19 +42,3 @@ export const PhaseNodeSchema = {
 /** TypeScript type derived from `PhaseNodeSchema` via `json-schema-to-ts`. */
 export type PhaseNode = FromSchema<typeof PhaseNodeSchema>;
 
-/**
- * Phase node placement.
- * Runs around the main DAG loop: `'pre'` before the entrypoint,
- * `'post'` after the main loop drains on every exit path.
- *
- * Carries no `outputs` map: phase placements are out-of-band and never
- * route to other placements. They reference a registered `NodeInterface`
- * by `node` and mutate state in place.
- */
-export interface PhaseNodePlacementInterface {
-  readonly '@id': string;
-  readonly '@type': 'PhaseNode';
-  readonly name: string;
-  readonly node: string;
-  readonly phase: 'pre' | 'post';
-}

@@ -8,7 +8,7 @@ seeAlso:
     description: '`NodeInterface`, `ExecuteOptionsInterface`'
   - text: 'Reference: Core'
     link: './core'
-    description: '`ParallelCombiners`, `GatherStrategies`, `OutcomeReducers`'
+    description: '`GatherStrategies`, `OutcomeReducers`'
   - text: 'Reference: Lifecycle'
     link: './lifecycle'
 ---
@@ -34,7 +34,7 @@ const dispatcher = new Dagonizer<MyState, MyServices>({ services: { logger, db }
 ### Constructor
 
 ```ts
-constructor(options?: DagonizerOptionsInterface<TServices>)
+constructor(options?: DagonizerOptionsInterface<TState, TServices>)
 ```
 
 `options.accessor` swaps the path resolver for scatter source reads, state-mapping input copies, and gather writes. Defaults to `DottedPathAccessor`. `options.services` is the typed services bag; defaults to `undefined`.
@@ -42,14 +42,22 @@ constructor(options?: DagonizerOptionsInterface<TServices>)
 ### `DagonizerOptionsInterface`
 
 ```ts
-interface DagonizerOptionsInterface<TServices = undefined> {
-  readonly accessor?: StateAccessor;
-  readonly services?: TServices;
-  readonly instrumentation?: Instrumentation;
+interface DagonizerOptionsInterface<TState extends NodeStateInterface = NodeStateInterface, TServices = undefined> {
+  readonly accessor?:         StateAccessor;
+  readonly services?:         TServices;
+  readonly containers?:       Readonly<Record<string, DagContainerInterface<TState>>>;
+  readonly channels?:         Readonly<Record<string, HandoffChannelInterface>>;
+  readonly registryVersion?:  string;
 }
 ```
 
-`instrumentation` is the plugin-supplied observability surface. Defaults to a `NoopInstrumentation` (every hook is a no-op when not overridden). Plugins extend `NoopInstrumentation` and pass the instance through this option. The dispatcher fires both the protected `on*` subclass hooks and the equivalent `instrumentation.*` methods at every execution boundary.
+| Field | Type | Description |
+|---|---|---|
+| `accessor` | `StateAccessor` | Path resolver for scatter source reads, gather writes, and state-mapping copies. Defaults to `DottedPathAccessor`. |
+| `services` | `TServices` | Typed services bag exposed to every node via `context.services`. Defaults to `undefined`. |
+| `containers` | `Readonly<Record<string, DagContainerInterface<TState>>>` | Named container backends keyed by logical role name. An unbound role falls back to in-process and fires `onContractWarning`. Defaults to an empty registry (all placements run in-process). |
+| `channels` | `Readonly<Record<string, HandoffChannelInterface>>` | Named egress channels keyed by terminal placement name. When a non-embedded flow reaches a named terminal, the dispatcher builds a `DAGHandoff` envelope and calls `channel.publish(handoff)`. Unbound terminals do not publish. |
+| `registryVersion` | `string` | Registry version string included in every `DAGHandoff` envelope for receiver version-handshake validation. Defaults to `'0'`. |
 
 ---
 
@@ -215,7 +223,7 @@ resume(
 ): Execution<TState>
 ```
 
-Identical to `execute()` but begins at `fromStage` instead of the DAG's entrypoint. The caller is responsible for rehydrating `state` (typically via `Checkpoint.load(raw).restoreState(fn)`) before calling.
+Identical to `execute()` but begins at `fromStage` instead of the DAG's entrypoint. The caller is responsible for rehydrating `state` (typically via `Checkpoint.load(raw).restoreState(CheckpointRestoreAdapterFn.fromFn(fn))`) before calling.
 
 <<< @/../examples/the-archivist/runArchivist.ts#resume-run
 

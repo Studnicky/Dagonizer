@@ -5,7 +5,8 @@
  * An edge `A → B` exists iff some path in `A.produces` appears in
  * `B.hardRequired`. The dispatcher executes operations in topological
  * order; operations sharing a depth (no remaining unsatisfied
- * prerequisites) are wrapped in a `parallel` placement.
+ * prerequisites) are emitted as sequential `SingleNode` placements in
+ * bucket order.
  *
  * Two pieces of routing the data graph cannot express:
  *
@@ -32,14 +33,13 @@
 
 import type { NodeInterface } from '../contracts/NodeInterface.js';
 import type { OperationContract } from '../contracts/OperationContract.js';
-import type { DAG } from '../entities/dag/DAG.js';
-import { DAG_CONTEXT } from '../entities/dag/DAG.js';
+import { DAG, DAG_CONTEXT } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
-import type { ParallelNode } from '../entities/dag/ParallelNode.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
-import type { TerminalNodePlacementInterface } from '../entities/dag/TerminalNode.js';
+import type { TerminalNode } from '../entities/dag/TerminalNode.js';
 import { DAGError } from '../errors/DAGError.js';
+import { NoopWarningEmitter } from '../runtime/NoopWarningEmitter.js';
 
 import { ContractRegistryValidator } from './ContractRegistryValidator.js';
 import type {
@@ -49,20 +49,20 @@ import type {
   DAGDeriverEmbeddedDAG,
 } from './DAGDeriverAnnotations.js';
 
-type DAGNodeEntry = EmbeddedDAGNode | ScatterNode | ParallelNode | SingleNodePlacementInterface | TerminalNodePlacementInterface;
+type DAGNodeEntry = EmbeddedDAGNode | ScatterNode | SingleNodePlacementInterface | TerminalNode;
 
 export interface DAGDeriverOptions {
-  readonly name: string;
-  readonly version: string;
-  readonly entrypoint: string;
+  name: string;
+  version: string;
+  entrypoint: string;
   /**
    * Node registry. Every node with a co-located `contract` field participates
    * in topology derivation; nodes without one still register but contribute no
    * derived edges. At least one node must declare a contract. Contracts are
    * single-source-of-truth on the node; there is no standalone contracts input.
    */
-  readonly nodes: readonly NodeInterface[];
-  readonly annotations?: DAGDeriverAnnotations;
+  nodes: NodeInterface[];
+  annotations?: DAGDeriverAnnotations;
 }
 
 export class DAGDeriver {
@@ -82,7 +82,7 @@ export class DAGDeriver {
       if (node.contract !== undefined) {
         result.push({
           "name": node.name,
-          "outputs": node.outputs,
+          "outputs": [...node.outputs],
           "hardRequired": node.contract.hardRequired,
           "produces": node.contract.produces,
         });
@@ -117,7 +117,7 @@ export class DAGDeriver {
     // registration time: surface drift before the DAG is even built. Pass
     // entrypoint so the entrypoint's hardRequired (external initial state) are
     // not flagged as dangling reads.
-    ContractRegistryValidator.validate(contracts, (_msg) => { /* warnings surfaced at registerDAG time */ }, opts.entrypoint);
+    ContractRegistryValidator.validate(contracts, new NoopWarningEmitter(), { 'entrypointName': opts.entrypoint });
 
     // Operations referenced only as a gather step (the `customNode`
     // for a 'custom' strategy scatter) are emitted alongside the
@@ -141,7 +141,7 @@ export class DAGDeriver {
 
     return {
       '@context': DAG_CONTEXT,
-      '@id':      `urn:noocodex:dag:${opts.name}`,
+      '@id':      DAG.id(opts.name),
       '@type':    'DAG',
       'name':       opts.name,
       'version':    opts.version,
@@ -185,41 +185,6 @@ export class DAGDeriver {
         );
       }
     }
-
-    // parallels: members must be contracts, no overlapping membership,
-    // can't collide with scatters or embeddedDAGs.
-    const parallelMembership = new Map<string, string>();   // memberName → parallel groupName
-    for (const [groupName, group] of Object.entries(annotations.parallels ?? {})) {
-      if (group.members.length === 0) {
-        throw new DAGError(
-          `DAGDeriver: parallels['${groupName}'] declares zero members; a parallel group requires at least one operation`,
-        );
-      }
-      for (const member of group.members) {
-        if (!contractNames.has(member)) {
-          throw new DAGError(
-            `DAGDeriver: parallels['${groupName}'].members contains '${member}' which is not in the contract registry`,
-          );
-        }
-        const existingGroup = parallelMembership.get(member);
-        if (existingGroup !== undefined) {
-          throw new DAGError(
-            `DAGDeriver: operation '${member}' appears in multiple parallels (${existingGroup}, ${groupName}); membership must be exclusive`,
-          );
-        }
-        parallelMembership.set(member, groupName);
-        if (annotations.scatters?.[member] !== undefined) {
-          throw new DAGError(
-            `DAGDeriver: operation '${member}' appears in both annotations.parallels['${groupName}'] and annotations.scatters; placement kind must be unambiguous`,
-          );
-        }
-        if (annotations.embeddedDAGs?.[member] !== undefined) {
-          throw new DAGError(
-            `DAGDeriver: operation '${member}' appears in both annotations.parallels['${groupName}'] and annotations.embeddedDAGs; placement kind must be unambiguous`,
-          );
-        }
-      }
-    }
   }
 
   /**
@@ -251,7 +216,8 @@ export class DAGDeriver {
   /**
    * Topological sort by depth: every operation appears at the depth equal
    * to the longest path from a root. Operations sharing a depth become a
-   * single bucket and are wrapped in a `parallel` placement.
+   * single bucket, emitted as sequential `SingleNode` placements in
+   * bucket order.
    */
   static depthBuckets(
     contracts: readonly OperationContract[],
@@ -296,12 +262,13 @@ export class DAGDeriver {
    * Resolve the `outputs` map for a placement.
    *
    * Every port in `declaredOutputs` auto-wires to the first derived
-   * successor (`null` if none). Terminal annotations override
-   * individual ports; a terminal whose `outcome` doesn't appear in
-   * `declaredOutputs` is a routing-shape mismatch and throws
-   * `DAGError`. The same resolver runs for `SingleNode` (contract
-   * outputs) and `EmbeddedDAGNode` (embeddedDAG outputs) so both placements
-   * fail fast on out-of-band terminals with the same error shape.
+   * successor. When no successor exists and the port has no terminal
+   * annotation, a `DAGError` is thrown — the author must declare an
+   * explicit `TerminalNode` route via `annotations.terminals`. Terminal
+   * annotations override individual ports; a terminal whose `outcome`
+   * doesn't appear in `declaredOutputs` is a routing-shape mismatch and
+   * also throws `DAGError`. The same resolver runs for `SingleNode`
+   * (contract outputs) and `EmbeddedDAGNode` (embeddedDAG outputs).
    */
   private static resolveOutputs(
     name: string,
@@ -310,8 +277,8 @@ export class DAGDeriver {
     successors: ReadonlySet<string>,
     annotations: DAGDeriverAnnotations,
     emitCollector: Map<string, DAGDeriverEmitTerminal>,
-  ): Record<string, string | null> {
-    const overrides = new Map<string, string | null>();
+  ): Record<string, string> {
+    const overrides = new Map<string, string>();
     const terminals = annotations.terminals?.[name] ?? [];
     const declared = new Set(declaredOutputs);
 
@@ -329,10 +296,19 @@ export class DAGDeriver {
       }
     }
 
-    const defaultNext = [...successors][0] ?? null;
-    const out: Record<string, string | null> = {};
+    const defaultSuccessor = [...successors][0];
+    const out: Record<string, string> = {};
     for (const port of declaredOutputs) {
-      out[port] = overrides.has(port) ? overrides.get(port) ?? null : defaultNext;
+      if (overrides.has(port)) {
+        const target = overrides.get(port);
+        if (target !== undefined) out[port] = target;
+      } else if (defaultSuccessor !== undefined) {
+        out[port] = defaultSuccessor;
+      } else {
+        throw new DAGError(
+          `DAGDeriver: operation '${name}' output port '${port}' has no successor and no terminal annotation; declare an explicit TerminalNode route via annotations.terminals`,
+        );
+      }
     }
     return out;
   }
@@ -366,8 +342,6 @@ export class DAGDeriver {
     dagName: string,
   ): DAGNodeEntry[] {
     const nodes: DAGNodeEntry[] = [];
-    const nodeId = (placementName: string): string =>
-      `urn:noocodex:dag:${dagName}/node/${placementName}`;
 
     // Collect all synthesized TerminalNode placements from `emit` annotations.
     // Keyed by placement name; populated incrementally as each operation is
@@ -378,69 +352,12 @@ export class DAGDeriver {
     // Used to detect name collisions with emit terminal names.
     const operationNames = new Set<string>(contracts.keys());
 
-    // Member → group lookup so we render explicit parallels exactly once
-    // (when the first member is encountered in topological order).
-    const memberToParallel = new Map<string, string>();
-    for (const [groupName, group] of Object.entries(annotations.parallels ?? {})) {
-      for (const member of group.members) memberToParallel.set(member, groupName);
-    }
-    const renderedParallels = new Set<string>();
-
-    buckets.forEach((bucket, depth) => {
-      const next = buckets[depth + 1] ?? [];
-
-      // Explicit `parallels` annotation takes precedence over auto-grouping:
-      // when a member is at the current depth and its parallel group hasn't
-      // been rendered yet, emit the ParallelNode with the consumer's
-      // chosen combine strategy.
-      for (const name of bucket) {
-        const groupName = memberToParallel.get(name);
-        if (groupName === undefined || renderedParallels.has(groupName)) continue;
-        const group = annotations.parallels?.[groupName];
-        if (group === undefined) continue;
-        const join = next[0] ?? null;
-        const parallelNode: ParallelNode = {
-          '@id':     nodeId(groupName),
-          '@type':   'ParallelNode',
-          'name':    groupName,
-          'nodes':   [...group.members],
-          'combine': group.combine,
-          'outputs': {
-            'success': join,
-            'error':   join,
-          },
-        };
-        nodes.push(parallelNode);
-        renderedParallels.add(groupName);
-      }
-
-      // Auto-parallel on same-depth ONLY for members not already covered by
-      // an explicit `parallels` group. Auto-grouping uses combine: 'collect'.
-      const autoBucket = bucket.filter((name) => memberToParallel.get(name) === undefined);
-      if (autoBucket.length > 1) {
-        const join = next[0] ?? null;
-        const parallelName = `depth_${depth.toString()}`;
-        const parallelNode: ParallelNode = {
-          '@id':     nodeId(parallelName),
-          '@type':   'ParallelNode',
-          'name':    parallelName,
-          'nodes':   [...autoBucket],
-          'combine': 'collect',
-          'outputs': {
-            'success': join,
-            'error':   join,
-          },
-        };
-        nodes.push(parallelNode);
-      }
-
+    buckets.forEach((bucket) => {
       for (const name of bucket) {
         const scatter = annotations.scatters?.[name];
         const embeddedDAG = annotations.embeddedDAGs?.[name];
         const succs = edges.get(name) ?? new Set<string>();
 
-        // Mutual exclusion across the placement-shape annotations.
-        // (parallels collisions are checked in validateAnnotations.)
         if (scatter !== undefined && embeddedDAG !== undefined) {
           throw new DAGError(
             `DAGDeriver: operation '${name}' appears in both annotations.scatters and annotations.embeddedDAGs; placement kind must be unambiguous`,
@@ -448,16 +365,16 @@ export class DAGDeriver {
         }
 
         if (scatter !== undefined) {
-          nodes.push(DAGDeriver.renderScatterNode(name, scatter, succs, annotations, nodeId, emitCollector));
+          nodes.push(DAGDeriver.renderScatterNode(name, scatter, succs, annotations, dagName, emitCollector));
         } else if (embeddedDAG !== undefined) {
-          nodes.push(DAGDeriver.renderEmbeddedDAGNode(name, embeddedDAG, succs, annotations, nodeId, emitCollector));
+          nodes.push(DAGDeriver.renderEmbeddedDAGNode(name, embeddedDAG, succs, annotations, dagName, emitCollector));
         } else {
           const contract = contracts.get(name);
           if (contract === undefined) {
             throw new DAGError(`DAGDeriver: contract for '${name}' not found in registry`);
           }
           const single: SingleNodePlacementInterface = {
-            '@id':   nodeId(name),
+            '@id':   DAG.placementId(dagName, name),
             '@type': 'SingleNode',
             name,
             'node': name,
@@ -483,8 +400,8 @@ export class DAGDeriver {
           `DAGDeriver: emit terminal name '${emitName}' collides with an existing operation placement; choose a distinct name`,
         );
       }
-      const terminalNode: TerminalNodePlacementInterface = {
-        '@id':     nodeId(emitName),
+      const terminalNode: TerminalNode = {
+        '@id':     DAG.placementId(dagName, emitName),
         '@type':   'TerminalNode',
         'name':    emitName,
         'outcome': emit.outcome,
@@ -509,11 +426,11 @@ export class DAGDeriver {
     scatter: DAGDeriverScatter,
     successors: ReadonlySet<string>,
     annotations: DAGDeriverAnnotations,
-    nodeId: (n: string) => string,
+    dagName: string,
     emitCollector: Map<string, DAGDeriverEmitTerminal>,
   ): ScatterNode {
-    const next0 = [...successors][0] ?? null;
-    const outcomeOverrides = new Map<string, string | null>();
+    const next0 = [...successors][0];
+    const outcomeOverrides = new Map<string, string>();
     for (const terminal of annotations.terminals?.[name] ?? []) {
       if (!scatter.outcomes.includes(terminal.outcome)) {
         throw new DAGError(
@@ -527,24 +444,32 @@ export class DAGDeriver {
         outcomeOverrides.set(terminal.outcome, terminal.target);
       }
     }
-    const outputs: Record<string, string | null> = {};
+    const outputs: Record<string, string> = {};
     for (const outcome of scatter.outcomes) {
-      outputs[outcome] = outcomeOverrides.has(outcome)
-        ? outcomeOverrides.get(outcome) ?? null
-        : next0;
+      if (outcomeOverrides.has(outcome)) {
+        const target = outcomeOverrides.get(outcome);
+        if (target !== undefined) outputs[outcome] = target;
+      } else if (next0 !== undefined) {
+        outputs[outcome] = next0;
+      } else {
+        throw new DAGError(
+          `DAGDeriver: scatter '${name}' outcome '${outcome}' has no successor and no terminal annotation; declare an explicit TerminalNode route via annotations.terminals`,
+        );
+      }
     }
 
-    let gather: ScatterNode['gather'];
-    if (scatter.strategy === 'custom') {
-      gather = { 'strategy': 'custom', 'customNode': scatter.customNode };
-    } else if (scatter.strategy === 'partition') {
-      gather = { 'strategy': 'partition', 'partitions': { ...scatter.partitions } };
-    } else {
-      gather = { 'strategy': 'append', 'target': scatter.target };
-    }
+    // Dispatch map over strategy → gather config. Exhaustive: TypeScript narrows
+    // `scatter` in each branch via the discriminated union on `DAGDeriverScatter['strategy']`.
+    type GatherResolver = (s: DAGDeriverScatter) => ScatterNode['gather'];
+    const gatherByStrategy: Record<DAGDeriverScatter['strategy'], GatherResolver> = {
+      'custom':    (s) => ({ 'strategy': 'custom',    'customNode':  (s as Extract<DAGDeriverScatter, { strategy: 'custom' }>).customNode }),
+      'partition': (s) => ({ 'strategy': 'partition', 'partitions':  { ...(s as Extract<DAGDeriverScatter, { strategy: 'partition' }>).partitions } }),
+      'append':    (s) => ({ 'strategy': 'append',    'target':      (s as Extract<DAGDeriverScatter, { strategy: 'append' }>).target }),
+    };
+    const gather: ScatterNode['gather'] = (gatherByStrategy[scatter.strategy] ?? (() => { throw new DAGError(`DAGDeriver: unknown scatter strategy '${scatter.strategy}'`); }))(scatter);
 
     const scatterNode: ScatterNode = {
-      '@id':     nodeId(name),
+      '@id':     DAG.placementId(dagName, name),
       '@type':   'ScatterNode',
       name,
       'body':    { 'node': scatter.node },
@@ -552,8 +477,8 @@ export class DAGDeriver {
       'itemKey': scatter.itemKey,
       'gather':  gather,
       'outputs': outputs,
+      ...(scatter.concurrency !== undefined ? { 'concurrency': scatter.concurrency } : {}),
     };
-    if (scatter.concurrency !== undefined) scatterNode.concurrency = scatter.concurrency;
     return scatterNode;
   }
 
@@ -574,11 +499,30 @@ export class DAGDeriver {
     embeddedDAG: DAGDeriverEmbeddedDAG,
     successors: ReadonlySet<string>,
     annotations: DAGDeriverAnnotations,
-    nodeId: (n: string) => string,
+    dagName: string,
     emitCollector: Map<string, DAGDeriverEmitTerminal>,
   ): EmbeddedDAGNode {
+    // CON-7/CON-11: Build stateMapping in the object literal (no post-construction
+    // assignment). The annotation allows a subset of state keys (Partial<Record<K,V>>
+    // with exactOptionalPropertyTypes: present keys always have string values, absent
+    // keys are simply omitted). The casts to Record<string,string> are safe because:
+    //   spread of Partial<Record<K,string>> with exactOptionalPropertyTypes → object
+    //   whose every present key has a string value; the wire shape
+    //   { [key: string]: string } is structurally satisfied at runtime. The Partial
+    //   is required at the annotation level so callers supply only the keys they
+    //   need to map (requiring all keys would force mapping every state property).
+    const mapping = embeddedDAG.stateMapping;
+    const stateMapping: EmbeddedDAGNode['stateMapping'] = (
+      mapping !== undefined && (mapping.input !== undefined || mapping.output !== undefined)
+    )
+      ? {
+          ...(mapping.input  !== undefined ? { 'input':  { ...mapping.input  } as Record<string, string> } : {}),
+          ...(mapping.output !== undefined ? { 'output': { ...mapping.output } as Record<string, string> } : {}),
+        }
+      : undefined;
+
     const embeddedNode: EmbeddedDAGNode = {
-      '@id':   nodeId(name),
+      '@id':   DAG.placementId(dagName, name),
       '@type': 'EmbeddedDAGNode',
       name,
       'dag':   embeddedDAG.dag,
@@ -590,19 +534,8 @@ export class DAGDeriver {
         annotations,
         emitCollector,
       ),
+      ...(stateMapping !== undefined ? { 'stateMapping': stateMapping } : {}),
     };
-
-    const mapping = embeddedDAG.stateMapping;
-    if (mapping?.input !== undefined || mapping?.output !== undefined) {
-      const stateMapping: EmbeddedDAGNode['stateMapping'] = {};
-      if (mapping?.input !== undefined) {
-        stateMapping.input = { ...(mapping.input as Record<string, string>) };
-      }
-      if (mapping?.output !== undefined) {
-        stateMapping.output = { ...(mapping.output as Record<string, string>) };
-      }
-      embeddedNode.stateMapping = stateMapping;
-    }
 
     return embeddedNode;
   }

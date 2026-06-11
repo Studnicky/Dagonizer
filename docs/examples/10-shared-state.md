@@ -32,13 +32,15 @@ const stepB = { ...noop, name: 'step-b' };
 const childStep = { ...noop, name: 'child-step' };
 
 const childDag = new DAGBuilder('sub-flow', '1')
-  .node('child-step', childStep, { done: null })
+  .node('child-step', childStep, { done: 'child-end' })
+  .terminal('child-end')
   .build();
 
 const parentDag = new DAGBuilder('main-flow', '1')
   .node('step-a', stepA, { done: 'run-child' })
   .embeddedDAG('run-child', 'sub-flow', { success: 'step-b', error: 'step-b' })
-  .node('step-b', stepB, { done: null })
+  .node('step-b', stepB, { done: 'end' })
+  .terminal('end')
   .build();
 
 const sharedStateRegistry = new Map([['sub-flow', childDag]]);
@@ -91,4 +93,4 @@ The runnable example covers the full lifecycle: a normal run, then a second run 
 - **`Checkpoint.load(...).restoreStores({ log: freshLog })`.** Restores the store contents into a fresh instance. The resumed dispatcher uses the fresh instance on its services bag, so the resume continues from the captured store contents.
 - **Resume is order-preserving.** After restoreStores plus resume, the final `entries` value is `step-a,child-step,step-b` with no duplication, identical to the normal-run output.
 
-See [Shared state](../guide/shared-state) for the decision matrix between `inputs`/`gather` (point-to-point transfer) and `Store` (accumulating shared structure), and the concurrency contract for write-write races in `parallel` placements.
+See [Shared state](../guide/shared-state) for the decision matrix between `inputs`/`gather` (point-to-point transfer) and `Store` (accumulating shared structure), and the concurrency contract for write-write races across concurrent scatter clones.

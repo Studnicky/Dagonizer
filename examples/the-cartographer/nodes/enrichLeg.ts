@@ -13,7 +13,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { ShippingCalculator } from '../services.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region enrich-leg-node
 export const enrichLeg: NodeInterface<CartographerState, 'leg-measured', CartographerServices> = {
@@ -32,7 +32,7 @@ export const enrichLeg: NodeInterface<CartographerState, 'leg-measured', Cartogr
       norm.latitude,
       norm.longitude,
     );
-    return { 'output': 'leg-measured' };
+    return NodeOutputBuilder.of('leg-measured');
   },
 };
 // #endregion enrich-leg-node

@@ -28,7 +28,7 @@ export const CheckpointDataSchema = {
     'version': { 'type': 'string', 'const': '2' },
     'dagName': { 'type': 'string', 'minLength': 1 },
     'cursor': { 'type': ['string', 'null'] },
-    'state': { 'type': 'object' },
+    'state': { 'type': 'object', 'additionalProperties': true },
     'executedNodes': { 'type': 'array', 'items': { 'type': 'string' } },
     'skippedNodes': { 'type': 'array', 'items': { 'type': 'string' } },
     /**

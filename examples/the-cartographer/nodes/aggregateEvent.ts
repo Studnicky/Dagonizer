@@ -17,7 +17,7 @@
 
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region aggregate-event-node
 export const aggregateEvent: NodeInterface<CartographerState, 'done', CartographerServices> = {
@@ -82,7 +82,7 @@ export const aggregateEvent: NodeInterface<CartographerState, 'done', Cartograph
       'routing': { ...state.routing },
     };
 
-    return { 'output': 'done' };
+    return NodeOutputBuilder.of('done');
   },
 };
 // #endregion aggregate-event-node

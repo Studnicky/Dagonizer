@@ -2,7 +2,7 @@
 seeAlso:
   - text: 'Reference: Core'
     link: './core'
-    description: '`ParallelCombiner`, `GatherStrategy`, `OutcomeReducer` extension classes'
+    description: '`GatherStrategy`, `OutcomeReducer` extension classes'
   - text: 'Reference: Derive'
     link: './derive'
     description: 'uses `OperationContract`'
@@ -23,27 +23,45 @@ Adapter contracts live at the root of `src/contracts/` and ship through `@noocod
 
 ```ts
 import type {
+  // Core dispatcher contracts
+  HandoffChannelInterface,
   CheckpointStore,
   ClockProvider,
+  DagContainerInterface,
   Embedder,
   ErrorConstructorType,
   ExecuteOptionsInterface,
-  Instrumentation,
+  GatherExecution,
+  GatherRecord,
+  LlmAdapter,
+  LlmClient,
+  MessageChannelInterface,
   NodeInterface,
+  NodeInvoker,
   OperationContract,
   OperationContractFragment,
+  OutcomeRecord,
+  RegistryBundleInterface,
+  RegistryModuleInterface,
   RemoteStore,
   RemoteStoreEndpoint,
   RemoteStoreLease,
   RetryPolicyOptionsInterface,
-  SchedulerHandle,
   SchedulerProvider,
   Snapshottable,
   StateAccessor,
   Store,
   StoreSnapshot,
   StoreSnapshotEntry,
+  SystemInfoInterface,
+  WarningEmitter,
 } from '@noocodex/dagonizer/contracts';
+
+// DagOutcomeInterface and DagTaskInterface ship through the root barrel
+import type {
+  DagOutcomeInterface,
+  DagTaskInterface,
+} from '@noocodex/dagonizer';
 ```
 
 `Chainable` is exported from the root barrel but is not part of `./contracts`. Source: `src/contracts/NodeInterface.ts`.
@@ -93,7 +111,7 @@ interface ClockProvider {
 
 Backend for the `Clock` singleton. Implement to swap time sources (typically in tests via `VirtualClockProvider` from `@noocodex/dagonizer/testing`).
 
-## SchedulerProvider / SchedulerHandle
+## SchedulerProvider
 
 ```ts
 interface SchedulerProvider {
@@ -102,16 +120,9 @@ interface SchedulerProvider {
   every(intervalMs: number, signal?: AbortSignal): AsyncIterable<void>;
   cancelAll(): void;
 }
-
-interface SchedulerHandle {
-  after(delayMs: number, signal?: AbortSignal): Promise<void>;
-  at(atMs: number, signal?: AbortSignal): Promise<void>;
-  every(intervalMs: number, signal?: AbortSignal): AsyncIterable<void>;
-  cancelAll(): void;
-}
 ```
 
-`SchedulerProvider` is the backend contract (implement to swap in a custom scheduler). `SchedulerHandle` is the public surface returned by `Scheduler.current()`. Same shape, separate type.
+`SchedulerProvider` is the backend contract; implement it to swap in a custom scheduler. `Scheduler.current()` returns the active `SchedulerProvider`. Production uses `RealTimeScheduler`; tests install `VirtualScheduler` from `@noocodex/dagonizer/testing`.
 
 ## StateAccessor
 
@@ -123,38 +134,6 @@ interface StateAccessor {
 ```
 
 Path resolver used for scatter source reads, state-mapping input copies, and gather writes. Default implementation: `DottedPathAccessor` in `runtime/`. Pass a custom implementation via `new Dagonizer({ accessor })`.
-
-## Instrumentation
-
-```ts
-interface Instrumentation<TState extends NodeStateInterface = NodeStateInterface> {
-  flowStart(dagName: string, state: TState): void;
-  flowEnd(dagName: string, state: TState, result: ExecutionResultInterface<TState>): void;
-  nodeStart(dagName: string, nodeName: string, state: TState, placementPath: readonly string[]): void;
-  nodeEnd(dagName: string, nodeName: string, output: string | null, state: TState, placementPath: readonly string[]): void;
-  phaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
-  phaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
-  contractWarning(message: string): void;
-  error(dagName: string, nodeName: string, error: Error, state: TState, placementPath: readonly string[]): void;
-}
-```
-
-Hook surface the dispatcher invokes at execution boundaries. Plugins (`@noocodex/dagonizer-tracing-otel`, custom metrics exporters) implement this to participate without subclassing `Dagonizer`.
-
-| Hook | Fires |
-|---|---|
-| `flowStart` | Before the entrypoint node runs |
-| `flowEnd` | After the loop drains (terminal or interrupted) |
-| `nodeStart` | Before each node's `execute()` call, including placements inside parallel and scatter clones |
-| `nodeEnd` | After the node's result is recorded; `output` is `string \| null` (`null` = no route emitted) |
-| `phaseEnter` | Before a pre or post phase placement runs |
-| `phaseExit` | After a pre or post phase placement runs |
-| `contractWarning` | Non-fatal dangling-write warning from `ContractRegistryValidator` |
-| `error` | Any thrown error the dispatcher catches |
-
-`placementPath` is the ordered array of parent embedded-DAG placement names leading to the current node. For top-level nodes it is `[]`; for a node inside an `EmbeddedDAGNode` named `'search'` it is `['search']`. The full node id is `[...placementPath, nodeName].join('/')`.
-
-Implementations must not throw: an exception surfacing through a hook will abort the flow. Wrap any I/O in try/catch internally. Extend `NoopInstrumentation` from `@noocodex/dagonizer/runtime` to override only the hooks you need.
 
 ## Snapshottable
 
@@ -295,6 +274,163 @@ import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '@noocod
 
 See [Reference: Store](./store#interface-remotestore) for the full interface and
 [Shared state](../guide/shared-state#distributed-execution--remotestore) for the authoring guide.
+
+## DagContainerInterface
+
+```ts
+interface DagContainerInterface<TState extends NodeStateInterface = NodeStateInterface> {
+  runDag(task: DagTaskInterface<TState, unknown>): Promise<DagOutcomeInterface>;
+  destroy?(): Promise<void>;
+}
+```
+
+Adapter contract for running an embedded DAG in an isolate (worker thread, forked child, spawned process, Web Worker). Bound to the dispatcher via `DagonizerOptionsInterface.containers` keyed by logical role name. An unbound role falls back to in-process and fires `onContractWarning`.
+
+`runDag` must never throw. Transport failures, host crashes, and serialization errors are returned as collected errors in `DagOutcomeInterface.errors` with `recoverable: false`. The `TServices` parameter on the task is unconstrained (`unknown`) so the interface stays decoupled from the dispatcher's services bag.
+
+`destroy()` is optional. Implement it to release pool resources when the dispatcher shuts down.
+
+## HandoffChannelInterface
+
+```ts
+interface HandoffChannelInterface {
+  publish(handoff: DAGHandoff): Promise<void>;
+  destroy?(): Promise<void>;
+}
+```
+
+Adapter contract for publishing completed-DAG hand-off envelopes to a downstream transport (queue, message bus, or loopback store). Bound via `DagonizerOptionsInterface.channels` keyed by terminal placement name. Implementations must not throw out of the dispatcher; any internal transport error is the implementation's responsibility. `InMemoryChannel` in `@noocodex/dagonizer/channels` is the reference implementation.
+
+## MessageChannelInterface
+
+```ts
+interface MessageChannelInterface {
+  send(message: BridgeMessage): void;
+  onMessage(handler: (message: BridgeMessage) => void): void;
+  close(): void;
+}
+```
+
+Duplex channel contract between a parent dispatcher and a `DagHost`. `send` is fire-and-forget (does not throw). `onMessage` registers the inbound handler (replaces any previous handler). `close` severs both directions; outstanding send calls are silently dropped. Implementations include `LoopbackChannel` (in-memory, for testing), `MessagePortChannel` (worker threads), `IpcChannel` (child process), and `NdjsonChannel` (stdio, polyglot hosts).
+
+## RegistryModuleInterface / RegistryBundleInterface
+
+```ts
+interface RegistryModuleInterface {
+  createBundle(servicesConfig: JsonObject): Promise<RegistryBundleInterface>;
+}
+
+interface RegistryBundleInterface {
+  readonly bundle:          DispatcherBundle<NodeStateInterface, unknown>;
+  readonly services:        unknown;
+  readonly registryVersion: string;
+  readonly restoreState:    CheckpointRestoreAdapter<NodeStateInterface>;
+  destroy?():               Promise<void>;
+}
+```
+
+`RegistryModuleInterface` is the default export shape of a registry module loaded by `DagHost` via dynamic import. `createBundle` receives the opaque `servicesConfig` JSON from the `init` message and returns a fully initialised `RegistryBundleInterface`.
+
+`RegistryBundleInterface` bundles the node+DAG registry (`bundle`), the locally constructed services bag (`services`), the semantic version for the init ↔ ready handshake (`registryVersion`), and the state restore factory (`restoreState`). Services never cross the isolate boundary — each isolate constructs its own via its registry module.
+
+## DagOutcomeInterface
+
+```ts
+interface DagOutcomeInterface {
+  readonly terminalOutput: string;
+  readonly errors:         readonly NodeError[];
+  readonly stateSnapshot:  JsonObject | null;
+  readonly intermediates:  readonly ExecutorIntermediate[];
+}
+```
+
+Result returned by `DagContainerInterface.runDag()` after an embedded DAG completes in an isolate. `terminalOutput` is the routing output the child resolved to. `stateSnapshot` is the terminal child state snapshot (`null` when the container cannot produce one, e.g. transport failure); the parent calls `cloneState.applySnapshot(stateSnapshot)` when non-null. `intermediates` are per-node results forwarded to the parent execution stream.
+
+## DagTaskInterface
+
+```ts
+interface DagTaskInterface<TState extends NodeStateInterface = NodeStateInterface, TServices = undefined> {
+  readonly dagName:        string;
+  readonly placementPath:  readonly string[];
+  readonly correlationId:  string;
+  readonly timeoutMs:      number | null;
+  readonly state:          TState;
+  readonly context:        NodeContextInterface<TServices>;
+  toRequest(): ExecutionRequest;
+}
+```
+
+Engine-side descriptor of a contained DAG execution. Carries a live seeded child clone (`state`) for the in-process path. Isolating containers call `toRequest()` to snapshot the clone into a wire-safe `ExecutionRequest`. `correlationId` is a dispatcher-monotonic id (no randomness). `timeoutMs` is `null` when no budget applies.
+
+## SystemInfoInterface
+
+```ts
+interface SystemInfoInterface {
+  recommendedWorkerCount(config: RecommendedWorkerCountConfig): number;
+}
+```
+
+Host-environment probe for pool sizing recommendations. Implementations are environment-specific (Node `os.availableParallelism()` + `os.totalmem()`; Web `navigator.hardwareConcurrency`). The recommended count follows the quadrascope formula: `clamp(parallelism − mainThreadReservation, fallbackWorkerCount, maximumWorkers)`, optionally further clamped by `memoryPerWorkerBytes`.
+
+## GatherExecution / GatherRecord / OutcomeRecord
+
+These contracts ship through `@noocodex/dagonizer/contracts` for use by custom gather strategy and outcome reducer implementations. See [Reference: Core](./core) for the full authoring guide.
+
+```ts
+import type { GatherExecution, GatherRecord, OutcomeRecord } from '@noocodex/dagonizer/contracts';
+```
+
+`GatherRecord<TState>` carries per-clone results from the scatter loop: `index`, `item`, `output`, `terminalOutcome`, and `cloneState`. `GatherExecution<TState>` is the invocation context handed to `GatherStrategy.apply`: it provides `records`, the live parent `state`, the `accessor`, and `invoker` (a `NodeInvoker`; used by the `custom` strategy via `invoker.invokeNode(name)`). `OutcomeRecord` is the per-clone summary handed to `OutcomeReducer.reduce`: `index`, `output`, and `terminalOutcome`.
+
+## LlmAdapter / LlmClient
+
+```ts
+interface LlmAdapter {
+  readonly id:           string;
+  readonly displayName:  string;
+  readonly capabilities: AdapterCapabilities;
+  chat(request: ChatRequest): Promise<ChatResponse>;
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  probe(): Promise<boolean>;
+}
+
+interface LlmClient {
+  chat(request: ChatRequest): Promise<ChatResponse>;
+}
+```
+
+`LlmAdapter` is the transport contract every LLM provider adapter implements. Provider packages extend `BaseAdapter` from `@noocodex/dagonizer/adapter` to inherit retry and error classification. `LlmClient` is the minimal chat surface pattern bases accept — any `LlmAdapter` satisfies it. Pattern bases that need capability metadata (e.g. tool-call support) accept the full `LlmAdapter` directly.
+
+## WarningEmitter
+
+```ts
+interface WarningEmitter {
+  warn(message: string): void;
+}
+```
+
+Typed contract for emitting diagnostic warnings without introducing a callback seam. Accepted by `DAGBuilder.build({ warningEmitter })` to surface dead-write warnings detected during contract validation at build time. The `NoopWarningEmitter` from `@noocodex/dagonizer/runtime` is the default when no emitter is passed.
+
+```ts
+import type { WarningEmitter } from '@noocodex/dagonizer/contracts';
+
+const emitter: WarningEmitter = {
+  warn(message) { console.warn('[contract]', message); },
+};
+
+const dag = builder.build({ warningEmitter: emitter });
+```
+
+## NodeInvoker
+
+```ts
+interface NodeInvoker {
+  invokeNode(nodeName: string): Promise<void>;
+}
+```
+
+Typed contract for dispatching a registered node back through the engine. Lives on `GatherExecution.invoker`; used exclusively by `custom` gather strategies to invoke the registered node named in `GatherConfig.customNode`. Custom strategies access it via `execution.invoker.invokeNode(name)`.
 
 ## Related guides
 

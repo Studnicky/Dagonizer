@@ -16,7 +16,7 @@ export type {
   ChatResponse,
   ChatResponseMessage,
   LlmAdapter,
-  OutputSchema,
+  LlmOutputSchema,
   PartialChatRequest,
   TokenUsage,
   ToolCall,
@@ -25,21 +25,33 @@ export type {
 } from './LlmAdapter.js';
 
 export {
+  ChatMessageSchema,
   ChatRequestBuilder,
   ChatResponseMessageBuilder,
+  ChatResponseMessageSchema,
+  ChatResponseSchema,
   DEFAULT_MAX_TOKENS,
   DEFAULT_OUTPUT_SCHEMA,
   DEFAULT_TEMPERATURE,
   DEFAULT_TOOL_CHOICE,
+  TokenUsageSchema,
+  ToolCallSchema,
+  ToolDefinitionSchema,
   ZERO_TOKEN_USAGE,
 } from './LlmAdapter.js';
 
+// ── Canonical adapter constants, base options, and shared base ─────────────
 export {
-  BaseAdapter,
+  BaseAdapterCore,
   DEFAULT_BASE_DELAY_MS,
   DEFAULT_MAX_ATTEMPTS,
-} from './BaseAdapter.js';
-export type { BaseAdapterOptions } from './BaseAdapter.js';
+} from './BaseAdapterCore.js';
+export type {
+  BaseAdapterCoreOptions,
+  BaseAdapterCoreOptionsResolved,
+} from './BaseAdapterCore.js';
+
+export { BaseAdapter } from './BaseAdapter.js';
 
 export { OpenAiCompatibleAdapter } from './OpenAiCompatibleAdapter.js';
 export type {
@@ -58,24 +70,24 @@ export type { AdapterDescriptorShape } from './AdapterDescriptor.js';
 
 export { ToolCallCodec } from './ToolCallCodec.js';
 
+export { BaseRegistry } from './BaseRegistry.js';
+
 export { LlmAdapterRegistry } from './LlmAdapterRegistry.js';
 export type { AdapterFactory } from './LlmAdapterRegistry.js';
 
+export { BaseCascade } from './BaseCascade.js';
+export type { CascadePreference } from './BaseCascade.js';
+
 export { LlmAdapterCascade } from './LlmAdapterCascade.js';
-export type { CascadePreference } from './LlmAdapterCascade.js';
 
 // ── Embedder surface (parallel to LlmAdapter) ──────────────────────────────
 export type { Embedder } from '../contracts/Embedder.js';
 
-export {
-  BaseEmbedder,
-  DEFAULT_EMBEDDER_BASE_DELAY_MS,
-  DEFAULT_EMBEDDER_MAX_ATTEMPTS,
-} from './BaseEmbedder.js';
-export type { BaseEmbedderOptions } from './BaseEmbedder.js';
+export { BaseEmbedder } from './BaseEmbedder.js';
 
 export { EmbedderRegistry } from './EmbedderRegistry.js';
 export type { EmbedderFactory } from './EmbedderRegistry.js';
 
 export { EmbedderCascade } from './EmbedderCascade.js';
-export type { EmbedderCascadePreference } from './EmbedderCascade.js';
+
+export { RetryableErrorPolicy } from './RetryableErrorPolicy.js';

@@ -4,6 +4,7 @@
  */
 
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
 
 import { FlowNode } from './FlowNode.js';
 
@@ -18,6 +19,6 @@ export abstract class PredicateGateNode<
     state: TState,
     _context: NodeContextInterface<undefined>,
   ): Promise<NodeOutputInterface<'pass' | 'fail'>> {
-    return { 'output': this.predicate(state) ? 'pass' : 'fail' };
+    return NodeOutputBuilder.of(this.predicate(state) ? 'pass' : 'fail');
   }
 }

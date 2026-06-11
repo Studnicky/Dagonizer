@@ -1,5 +1,10 @@
 import type { ToolCall } from './LlmAdapter.js';
 
+/** JSON wire shape emitted by text-channel models that encode tool calls inline. */
+interface TextChannelToolCallEnvelope {
+  tool_calls?: Array<{ name?: string; arguments?: Record<string, unknown> }>;
+}
+
 /**
  * Decode a `{ tool_calls: [{ name, arguments }] }` JSON envelope from a model
  * that emits tool calls as text rather than via a native channel (Gemini Nano,
@@ -15,9 +20,7 @@ export class ToolCallCodec {
       const start = raw.indexOf('{');
       const end = raw.lastIndexOf('}');
       if (start < 0 || end < 0) return [];
-      const parsed = JSON.parse(raw.slice(start, end + 1)) as {
-        tool_calls?: ReadonlyArray<{ name?: string; arguments?: Record<string, unknown> }>;
-      };
+      const parsed = JSON.parse(raw.slice(start, end + 1)) as TextChannelToolCallEnvelope;
       return (parsed.tool_calls ?? [])
         .filter((c): c is { name: string; arguments: Record<string, unknown> } =>
           typeof c.name === 'string' && c.arguments !== undefined)

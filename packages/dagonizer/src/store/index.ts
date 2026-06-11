@@ -6,7 +6,7 @@
  * reference implementation and the default for single-process DAG runs.
  */
 
-export { BaseStore } from './BaseStore.js';
+export { BASE_STORE_DEFAULTS, BaseStore } from './BaseStore.js';
 export type { BaseStoreOptions } from './BaseStore.js';
 
 export { MemoryStore } from './MemoryStore.js';

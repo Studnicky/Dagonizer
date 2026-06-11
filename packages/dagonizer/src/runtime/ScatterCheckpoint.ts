@@ -1,9 +1,34 @@
 import { SCATTER_PROGRESS_KEY } from '../Dagonizer.js';
-import type { ScatterAckedResult, ScatterInboxItem, ScatterProgress, StoredScatterProgress } from '../Dagonizer.js';
+import type { ScatterAckedResult, ScatterInboxItem, ScatterProgress, StoredScatterProgress } from '../entities/scatter/ScatterProgress.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
+import { Validator } from '../validation/Validator.js';
 
 export class ScatterCheckpoint {
   private constructor() { /* static class */ }
+
+  /**
+   * Read and validate the stored scatter progress map from state metadata.
+   *
+   * Validates the raw metadata value with `Validator.storedScatterProgress`
+   * at the read boundary so a corrupt or migrated checkpoint fails here —
+   * close to the ingest point — rather than deep in the scatter loop where
+   * the error would be harder to trace. Returns `undefined` when no
+   * checkpoint entry exists for this placement.
+   *
+   * Throws `ValidationError` when the stored value is present but does not
+   * satisfy `StoredScatterProgressSchema`.
+   */
+  static read(
+    state: NodeStateInterface,
+    placementName: string,
+  ): ScatterProgress | undefined {
+    const raw = state.getMetadata<unknown>(SCATTER_PROGRESS_KEY);
+    if (raw === undefined) return undefined;
+    // Validate at the read boundary so corrupt/migrated checkpoints surface
+    // here rather than causing silent type mismatches in the scatter loop.
+    const stored = Validator.storedScatterProgress.validate(raw);
+    return stored[placementName];
+  }
 
   /**
    * Persist the current scatter checkpoint (inbox + acked results) to
@@ -16,9 +41,9 @@ export class ScatterCheckpoint {
     inbox: readonly ScatterInboxItem[],
     ackedResults: readonly ScatterAckedResult[],
   ): void {
-    const stored = state.getMetadata<StoredScatterProgress>(SCATTER_PROGRESS_KEY) ?? {};
-    const next: Record<string, ScatterProgress> = { ...stored };
-    next[placementName] = { placementName, inbox, ackedResults };
+    const raw = state.getMetadata<StoredScatterProgress>(SCATTER_PROGRESS_KEY) ?? {};
+    const next: Record<string, ScatterProgress> = { ...raw };
+    next[placementName] = { placementName, 'inbox': [...inbox], 'ackedResults': [...ackedResults] };
     state.setMetadata(SCATTER_PROGRESS_KEY, next);
   }
 

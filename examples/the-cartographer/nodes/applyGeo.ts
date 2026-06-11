@@ -13,7 +13,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { GeoLookup } from '../services.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region apply-geo-node
 export const applyGeo: NodeInterface<CartographerState, 'normalize', CartographerServices> = {
@@ -29,7 +29,7 @@ export const applyGeo: NodeInterface<CartographerState, 'normalize', Cartographe
     const continent = geo?.continent ?? 'Unmapped';
     const region    = geo?.region ?? 'Unmapped';
     state.geoContext = GeoLookup.fromResolved(country, continent, region, state.raw.latitude, state.raw.longitude);
-    return { 'output': 'normalize' };
+    return NodeOutputBuilder.of('normalize');
   },
 };
 // #endregion apply-geo-node

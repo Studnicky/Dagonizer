@@ -55,8 +55,8 @@ export const ingestNdjsonGzDAG: DAG = new DAGBuilder('ingest-ndjson-gz', '1.0')
   })
 
   // Terminals
-  .terminal('ingested', 'completed')
-  .terminal('rejected', 'failed')
+  .terminal('ingested', { outcome: 'completed' })
+  .terminal('rejected', { outcome: 'failed' })
 
   .build();
 

@@ -25,7 +25,7 @@ export const NodeStateDataSchema = {
       'type': 'array',
       'items': {
         'type': 'object',
-        'required': ['code', 'message', 'operation', 'recoverable', 'timestamp'],
+        'required': ['code', 'context', 'message', 'operation', 'recoverable', 'timestamp'],
         'properties': {
           'code': { 'type': 'string' },
           'context': { 'type': 'object' },

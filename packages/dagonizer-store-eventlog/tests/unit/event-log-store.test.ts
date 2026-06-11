@@ -10,9 +10,9 @@ import { EventLogStore } from '../../src/index.js';
 
 // ── 1. In-memory: basic get / set / has / delete ──────────────────────────────
 
-void test('in-memory: get returns undefined for absent key', async () => {
+void test('in-memory: get returns null for absent key', async () => {
   const store = new EventLogStore();
-  assert.equal(await store.get<string>('missing'), undefined);
+  assert.equal(await store.get<string>('missing'), null);
 });
 
 void test('in-memory: set + get round-trip', async () => {
@@ -149,16 +149,16 @@ void test('restore: clears prior log entries', async () => {
   await store.restore(emptySnap);
 
   assert.equal(store.log().length, 0);
-  assert.equal(await store.get<string>('old'), undefined);
+  assert.equal(await store.get<string>('old'), null);
 });
 
 // ── 5. Tombstone semantics ────────────────────────────────────────────────────
 
-void test('tombstone: delete then get returns undefined', async () => {
+void test('tombstone: delete then get returns null', async () => {
   const store = new EventLogStore();
   await store.set<string>('k', 'v');
   await store.delete('k');
-  assert.equal(await store.get<string>('k'), undefined);
+  assert.equal(await store.get<string>('k'), null);
 });
 
 void test('tombstone: delete then has returns false', async () => {
@@ -231,7 +231,7 @@ void test('file-backed: replays tombstones correctly', async () => {
   const reader = new EventLogStore({ filePath });
   await reader.connect();
   assert.equal(await reader.get<string>('a'), 'present');
-  assert.equal(await reader.get<string>('b'), undefined);
+  assert.equal(await reader.get<string>('b'), null);
   assert.equal(await reader.has('b'), false);
   await reader.disconnect();
 

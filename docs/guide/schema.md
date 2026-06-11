@@ -75,8 +75,7 @@ The schema covers `name`, `version`, `entrypoint`, and `nodes`. Each node varian
 | `@type` | Required fields | Notes |
 |---|---|---|
 | `SingleNode` | `@id`, `@type`, `name`, `node`, `outputs` | `outputs` is `Record<string, string \| null>` |
-| `ParallelNode` | `@id`, `@type`, `name`, `nodes`, `combine`, `outputs` | `nodes` is a non-empty string array |
-| `ScatterNode` | `@id`, `@type`, `name`, `body`, `source`, `outputs` | `body` is `{ node }` or `{ dag }`; `source` is required; optional `itemKey`, `concurrency`, `stateMapping.input`, `gather`, `reducer` |
+| `ScatterNode` | `@id`, `@type`, `name`, `body`, `source`, `gather`, `outputs` | `body` is `{ node }` or `{ dag }`; `gather` is required; optional `itemKey`, `concurrency`, `stateMapping.input`, `reducer` |
 | `EmbeddedDAGNode` | `@id`, `@type`, `name`, `dag`, `outputs` | `dag` is the registered child DAG name; optional `stateMapping` (`input` and `output` field maps) |
 | `TerminalNode` | `@id`, `@type`, `name`, `outcome` | no `outputs` field; `outcome` is `'completed'` or `'failed'` |
 | `PhaseNode` | `@id`, `@type`, `name`, `phase`, `node` | `phase` is `'pre'` or `'post'`; no `outputs` |

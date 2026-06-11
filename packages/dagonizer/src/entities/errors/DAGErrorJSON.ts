@@ -18,7 +18,16 @@ export const DAGErrorJSONSchema = {
   'type': 'object',
   'required': ['code', 'message', 'name', 'timestamp'],
   'properties': {
-    'cause': {},
+    'cause': {
+      'type': 'object',
+      'properties': {
+        'message': { 'type': 'string' },
+        'name': { 'type': 'string' },
+        'stack': { 'type': 'string' },
+      },
+      'required': ['message', 'name'],
+      'additionalProperties': false,
+    },
     'code': { 'type': 'string' },
     'context': { 'type': 'object' },
     'message': { 'type': 'string' },

@@ -13,7 +13,6 @@ export {
   ScatterOutput,
   MetadataKey,
   Output,
-  ParallelCombine,
   NodeType,
 } from './entities/index.js';
 
@@ -65,12 +64,14 @@ export type { EntityValidator } from './validation/index.js';
 // =============================================================================
 
 export {
+  Placement,
+  NodeErrorBuilder,
+  NodeOutputBuilder,
   ScatterNodeSchema,
   EmbeddedDAGNodeSchema,
   GatherConfigSchema,
   DAGSchema,
   DAGLifecycleStateSchema,
-  ParallelNodeSchema,
   SingleNodeSchema,
   TerminalNodeSchema,
   PhaseNodeSchema,
@@ -88,18 +89,21 @@ export {
   ScatterOutputSchema,
   MetadataKeySchema,
   OutputSchema,
-  ParallelCombineSchema,
   NodeTypeSchema,
   BackoffStrategySchema,
   DAG_CONTEXT,
+  ExecutorIntermediateSchema,
+  ExecutionRequestSchema,
+  ExecutionResponseSchema,
+  DAGHandoffSchema,
 } from './entities/index.js';
 export type {
+  DAGNodeType,
   ScatterNode,
   EmbeddedDAGNode,
   GatherConfig,
   DAG,
   DAGLifecycleStateData,
-  ParallelNode,
   SingleNode,
   TerminalNode,
   PhaseNode,
@@ -117,6 +121,22 @@ export type {
   JsonSchema,
   JsonSchemaObject,
   JsonSchemaTypeName,
+  ExecutorIntermediate,
+  ExecutionRequest,
+  ExecutionResponse,
+} from './entities/index.js';
+export {
+  BridgeMessageSchema,
+  RecommendedWorkerCountConfigSchema,
+  RecommendedWorkerCountConfigDefault,
+  RECOMMENDED_WORKER_COUNT_MAIN_THREAD_RESERVATION,
+  RECOMMENDED_WORKER_COUNT_FALLBACK,
+  RECOMMENDED_WORKER_COUNT_MEMORY_PER_WORKER_BYTES,
+} from './entities/index.js';
+export type {
+  BridgeMessage,
+  RecommendedWorkerCountConfig,
+  DAGHandoff,
 } from './entities/index.js';
 
 // =============================================================================
@@ -126,19 +146,35 @@ export type {
 export {
   BackoffStrategy,
   Clock,
-  NoopInstrumentation,
   RealTimeScheduler,
   RetryPolicy,
   Scheduler,
+  Timeout,
 } from './runtime/index.js';
 export type {
   BackoffStrategyValue,
   ClockProvider,
   ErrorConstructorType,
   RetryPolicyOptionsInterface,
-  SchedulerHandle,
   SchedulerProvider,
 } from './runtime/index.js';
+
+// =============================================================================
+// CHANNELS
+// =============================================================================
+
+export { InMemoryChannel } from './channels/index.js';
+export type { InMemoryChannelOptions } from './channels/index.js';
+
+// =============================================================================
+// CONTAINER
+// =============================================================================
+
+export { DagTask } from './container/DagTask.js';
+export { DagHost } from './container/DagHost.js';
+export type { DagHostOptions } from './container/DagHost.js';
+export { DagContainerBase } from './container/DagContainerBase.js';
+export type { DagContainerOptions } from './container/DagContainerBase.js';
 
 // =============================================================================
 // FUNCTIONS
@@ -152,11 +188,6 @@ export { Execution } from './Execution.js';
 // CORE: pluggable execution primitives
 // =============================================================================
 
-export {
-  ParallelCombiner,
-  ParallelCombiners,
-} from './core/ParallelCombiners.js';
-export type { ParallelResult } from './core/ParallelCombiners.js';
 export {
   GatherStrategies,
   GatherStrategy,
@@ -172,8 +203,8 @@ export type { OutcomeRecord } from './core/OutcomeReducers.js';
 // CHECKPOINT
 // =============================================================================
 
-export { Checkpoint, MemoryCheckpointStore } from './checkpoint/index.js';
-export type { CaptureOptionsInterface, RecalledCheckpoint, StateRestoreFnType } from './checkpoint/index.js';
+export { Checkpoint, CheckpointRestoreAdapterFn, MemoryCheckpointStore } from './checkpoint/index.js';
+export type { CaptureOptionsInterface, RecalledCheckpoint } from './checkpoint/index.js';
 
 // =============================================================================
 // STORE
@@ -193,39 +224,23 @@ export type { NodeStateInterface } from './NodeStateBase.js';
 // CONTRACTS (adapter-pattern interfaces)
 // =============================================================================
 
+export type { HandoffChannelInterface } from './contracts/HandoffChannelInterface.js';
+export type { DagContainerInterface } from './contracts/DagContainerInterface.js';
+export type { DagOutcomeInterface } from './container/DagOutcome.js';
+export type { DagTaskInterface } from './container/DagTask.js';
 export type { ExecuteOptionsInterface } from './contracts/ExecuteOptionsInterface.js';
-export type { Instrumentation } from './contracts/Instrumentation.js';
-export type { Chainable, NodeInterface } from './contracts/NodeInterface.js';
+export type { Chainable } from './contracts/Chainable.js';
+export type { NodeInterface } from './contracts/NodeInterface.js';
 export type { OperationContractFragment } from './contracts/OperationContractFragment.js';
 export type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from './contracts/RemoteStore.js';
 export type { Snapshottable, StoreSnapshot, StoreSnapshotEntry } from './contracts/Snapshottable.js';
 export type { Store } from './contracts/Store.js';
 
-// =============================================================================
-// ADAPTER: LLM adapter contract, registry, and cascade selector
-// =============================================================================
-
-export {
-  AdapterDescriptor,
-  BaseEmbedder,
-  Classifications,
-  EmbedderCascade,
-  EmbedderRegistry,
-  LlmAdapterCascade,
-  LlmAdapterRegistry,
-  LlmError,
-} from './adapter/index.js';
-export type {
-  AdapterDescriptorShape,
-  AdapterFactory,
-  BaseEmbedderOptions,
-  CascadePreference,
-  Embedder,
-  EmbedderCascadePreference,
-  EmbedderFactory,
-  ErrorClassification,
-  LlmErrorReason,
-} from './adapter/index.js';
+// Adapter infrastructure ships exclusively via @noocodex/dagonizer/adapter.
+// See: AdapterDescriptor, BaseAdapter, BaseEmbedder, Classifications,
+//      EmbedderCascade, EmbedderRegistry, LlmAdapterCascade,
+//      LlmAdapterRegistry, LlmError (and their types).
+// Breaking change in 0.18.0 — migrate root-barrel imports to the subpath.
 
 // =============================================================================
 // ENTITY-NARROWING INTERFACES (colocated with entity)
@@ -237,5 +252,3 @@ export type { NodeOutputInterface } from './entities/node/NodeOutput.js';
 export type { NodeResultInterface } from './entities/node/NodeResult.js';
 export type { ExecutionResultInterface } from './entities/execution/ExecutionResult.js';
 export type { SingleNodePlacementInterface } from './entities/dag/SingleNode.js';
-export type { TerminalNodePlacementInterface } from './entities/dag/TerminalNode.js';
-export type { PhaseNodePlacementInterface } from './entities/dag/PhaseNode.js';

@@ -19,6 +19,8 @@
 
 import type { Candidate } from '../entities/Book.ts';
 
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
+
 import type { ArchivistNode } from './ArchivistNode.ts';
 
 export const rankByRating: ArchivistNode<'ranked'> = {
@@ -28,7 +30,7 @@ export const rankByRating: ArchivistNode<'ranked'> = {
   execute(state, context) {
     if (state.candidates.length === 0) {
       context.services.logger.info('rank-by-rating: no candidates');
-      return Promise.resolve({ 'output': 'ranked' });
+      return Promise.resolve(NodeOutputBuilder.of('ranked'));
     }
 
     const weighted = state.candidates.map((c) => {
@@ -57,6 +59,6 @@ export const rankByRating: ArchivistNode<'ranked'> = {
         : ''),
     );
 
-    return Promise.resolve({ 'output': 'ranked' });
+    return Promise.resolve(NodeOutputBuilder.of('ranked'));
   },
 };

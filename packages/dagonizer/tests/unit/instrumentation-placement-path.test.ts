@@ -6,12 +6,11 @@ import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { NoopInstrumentation } from '../../src/runtime/NoopInstrumentation.js';
 
-// ── Recording instrumentation ────────────────────────────────────────────
+// ── Recording Dagonizer subclass ─────────────────────────────────────────
 //
 // Captures every `(nodeName, placementPath)` pair the dispatcher emits on
-// `nodeStart` / `nodeEnd`. The test asserts on the path shape:
+// `onNodeStart` / `onNodeEnd`. The test asserts on the path shape:
 //   • top-level placements              → `[]`
 //   • inner placement inside one embed  → `['<parent-placement>']`
 //   • inner placement two levels deep   → `['<outer>', '<inner-parent>']`
@@ -22,13 +21,13 @@ interface PathCall {
   readonly placementPath: readonly string[];
 }
 
-class PathRecordingInstrumentation extends NoopInstrumentation<NodeStateBase> {
+class PathRecordingDagonizer extends Dagonizer<NodeStateBase> {
   readonly calls: PathCall[] = [];
 
-  override nodeStart(_dagName: string, nodeName: string, _state: NodeStateBase, placementPath: readonly string[]): void {
+  protected override onNodeStart(nodeName: string, _state: NodeStateBase, placementPath: readonly string[]): void {
     this.calls.push({ 'hook': 'nodeStart', nodeName, 'placementPath': [...placementPath] });
   }
-  override nodeEnd(_dagName: string, nodeName: string, _output: string | null, _state: NodeStateBase, placementPath: readonly string[]): void {
+  protected override onNodeEnd(nodeName: string, _output: string | null, _state: NodeStateBase, placementPath: readonly string[]): void {
     this.calls.push({ 'hook': 'nodeEnd', nodeName, 'placementPath': [...placementPath] });
   }
 
@@ -47,7 +46,7 @@ const makeNode = (
 ): NodeInterface<NodeStateBase> => ({
   name,
   outputs,
-  async execute() { return { 'output': outputs[0] as string }; },
+  async execute() { return { 'errors': [], 'output': outputs[0] as string }; },
 });
 
 // ── DAG fixtures ─────────────────────────────────────────────────────────
@@ -66,8 +65,9 @@ const leafDAG: DAG = {
       '@type': 'SingleNode',
       'name':  'leaf-step',
       'node':  'leaf-step',
-      'outputs': { 'done': null },
+      'outputs': { 'done': 'end' },
     },
+    { '@id': 'urn:noocodex:dag:pp-leaf/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
@@ -92,8 +92,9 @@ const middleDAG: DAG = {
       '@type': 'EmbeddedDAGNode',
       'name':  'run-leaf',
       'dag':   'pp-leaf',
-      'outputs': { 'success': null, 'error': null },
+      'outputs': { 'success': 'end', 'error': 'end' },
     },
+    { '@id': 'urn:noocodex:dag:pp-middle/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
@@ -120,17 +121,17 @@ const parentDAG: DAG = {
       '@type': 'EmbeddedDAGNode',
       'name':  'run-middle',
       'dag':   'pp-middle',
-      'outputs': { 'success': null, 'error': null },
+      'outputs': { 'success': 'end', 'error': 'end' },
     },
+    { '@id': 'urn:noocodex:dag:pp-parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
 // ── Tests ────────────────────────────────────────────────────────────────
 
-void describe('Instrumentation placementPath threading', () => {
+void describe('Dagonizer placementPath threading', () => {
   void it('emits empty path for top-level nodes, single-element path for one-deep, full path for two-deep', async () => {
-    const instrumentation = new PathRecordingInstrumentation();
-    const dispatcher = new Dagonizer<NodeStateBase>({ instrumentation });
+    const dispatcher = new PathRecordingDagonizer();
 
     dispatcher.registerNode(makeNode('top-step',    ['next']));
     dispatcher.registerNode(makeNode('middle-step', ['next']));
@@ -145,45 +146,45 @@ void describe('Instrumentation placementPath threading', () => {
 
     // top-step ran at the root of pp-parent: path is empty
     assert.deepEqual(
-      instrumentation.pathsFor('nodeStart', 'top-step'),
+      dispatcher.pathsFor('nodeStart', 'top-step'),
       [[]],
-      'top-step fires nodeStart with empty placementPath',
+      'top-step fires onNodeStart with empty placementPath',
     );
     assert.deepEqual(
-      instrumentation.pathsFor('nodeEnd', 'top-step'),
+      dispatcher.pathsFor('nodeEnd', 'top-step'),
       [[]],
-      'top-step fires nodeEnd with empty placementPath',
+      'top-step fires onNodeEnd with empty placementPath',
     );
 
     // run-middle is the embedded-DAG placement in pp-parent; its own
-    // nodeStart fires at the parent level so it too carries an empty path.
+    // onNodeStart fires at the parent level so it too carries an empty path.
     assert.deepEqual(
-      instrumentation.pathsFor('nodeStart', 'run-middle'),
+      dispatcher.pathsFor('nodeStart', 'run-middle'),
       [[]],
       'run-middle (top-level placement) carries empty path',
     );
 
     // middle-step runs inside the run-middle placement: path is ['run-middle']
     assert.deepEqual(
-      instrumentation.pathsFor('nodeStart', 'middle-step'),
+      dispatcher.pathsFor('nodeStart', 'middle-step'),
       [['run-middle']],
       'middle-step carries one-deep placementPath',
     );
 
     // leaf-step lives inside run-leaf inside run-middle: full ancestry.
     assert.deepEqual(
-      instrumentation.pathsFor('nodeStart', 'leaf-step'),
+      dispatcher.pathsFor('nodeStart', 'leaf-step'),
       [['run-middle', 'run-leaf']],
       'leaf-step carries the full two-deep placementPath',
     );
     assert.deepEqual(
-      instrumentation.pathsFor('nodeEnd', 'leaf-step'),
+      dispatcher.pathsFor('nodeEnd', 'leaf-step'),
       [['run-middle', 'run-leaf']],
-      'leaf-step nodeEnd matches the same two-deep path',
+      'leaf-step onNodeEnd matches the same two-deep path',
     );
   });
 
-  void it('emits the embedded-DAG placement name as the SAME path for two distinct embed instances with same inner names', async () => {
+  void it('emits distinct placement paths for two embed placements pointing at the same inner DAG', async () => {
     // Mirrors the Archivist case: two embedded-DAG placements point at the
     // SAME inner DAG. The inner node fires twice, once per outer placement,
     // and each fire must carry its OWN outer name as the path so the
@@ -202,8 +203,9 @@ void describe('Instrumentation placementPath threading', () => {
           '@type': 'SingleNode',
           'name':  'inner-step',
           'node':  'inner-step',
-          'outputs': { 'done': null },
+          'outputs': { 'done': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:pp-shared-inner/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
 
@@ -227,13 +229,13 @@ void describe('Instrumentation placementPath threading', () => {
           '@type': 'EmbeddedDAGNode',
           'name':  'second-embed',
           'dag':   'pp-shared-inner',
-          'outputs': { 'success': null, 'error': null },
+          'outputs': { 'success': 'end', 'error': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:pp-two-instances/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
 
-    const instrumentation = new PathRecordingInstrumentation();
-    const dispatcher = new Dagonizer<NodeStateBase>({ instrumentation });
+    const dispatcher = new PathRecordingDagonizer();
 
     dispatcher.registerNode(makeNode('inner-step', ['done']));
     dispatcher.registerDAG(innerDAG);
@@ -243,7 +245,7 @@ void describe('Instrumentation placementPath threading', () => {
 
     // inner-step fires once under `first-embed` and once under
     // `second-embed`. The path discriminates the two instances.
-    const innerPaths = instrumentation.pathsFor('nodeStart', 'inner-step');
+    const innerPaths = dispatcher.pathsFor('nodeStart', 'inner-step');
     assert.equal(innerPaths.length, 2, 'inner-step fires once per outer placement');
     assert.deepEqual(innerPaths[0], ['first-embed']);
     assert.deepEqual(innerPaths[1], ['second-embed']);

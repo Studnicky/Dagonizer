@@ -59,12 +59,11 @@ features:
 
 ## ⦿ What it is
 
-A **node** is a typed, stateless unit of work that receives shared state and a context (including an `AbortSignal`) and returns a named output. The dispatcher routes on that output to the next node. Six placement kinds cover the composition space.
+A **node** is a typed, stateless unit of work that receives shared state and a context (including an `AbortSignal`) and returns a named output. The dispatcher routes on that output to the next node. Five placement kinds cover the composition space.
 
 | Kind | What it does |
 |------|-------------|
 | `single` | One node; output name selects the next vertex |
-| `parallel` | Multiple independent nodes run concurrently; combine strategy reduces to one route |
 | `scatter` | Isolate one state clone per item in a source array, run a body (node or sub-DAG) in each clone, gather produced clone state back, route on aggregate outcome |
 | `embedded` | Invoke a registered sub-DAG exactly once (cardinality 1) in an isolated state; optional `stateMapping` seeds the child and copies fields back; route on the child's terminal outcome |
 | `terminal` | Named end state for explicit completion or failure; use when a flow has more than one "done" semantics |

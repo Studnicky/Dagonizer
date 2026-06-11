@@ -35,7 +35,7 @@ export interface MemoryDigest {
   /** Total visitor queries issued across all runs. */
   readonly queryCount: number;
   /** Up to the last 10 distinct shortlisted books (most-recent first). */
-  readonly recentBooks: ReadonlyArray<{ readonly title: string; readonly author?: string }>;
+  readonly recentBooks: ReadonlyArray<{ readonly title: string; readonly author: string }>;
   /** Intent distribution: how many times each intent was classified. */
   readonly intentBreakdown: ReadonlyArray<{ readonly intent: string; readonly count: number }>;
   /** 1–2 sentence LLM-ready summary of the digest. */
@@ -98,8 +98,13 @@ export class ArchivistState extends NodeStateBase {
   shortlist: readonly Candidate[] = [];
   /** The Archivist's draft response. */
   draft = '';
-  /** Validation outcome. `null` if not yet validated. */
-  approved: boolean | null = null;
+  /**
+   * Validation lifecycle state for the current draft.
+   *   'pending'  — not yet validated (initial state, reset by preRunSetup)
+   *   'approved' — LLM validator accepted the draft
+   *   'rejected' — validator rejected (retry or salvage path follows)
+   */
+  approvalState: 'pending' | 'approved' | 'rejected' = 'pending';
   /**
    * Tool plan emitted by the LLM via `decideTools`. The DAG inspects
    * this to gate the optional scouts (web search runs only when the
@@ -154,6 +159,14 @@ export class ArchivistState extends NodeStateBase {
    */
   priorCandidates: readonly Candidate[] = [];
   /**
+   * Fixed provider descriptor array seeded once at state construction.
+   * Each scatter fan-out (book-search, reviews, describe) reads this as
+   * its source so the dispatching scout body knows which provider to invoke.
+   * Immutable across all runs; never written by nodes.
+   */
+  readonly scoutProviders: readonly string[] = ['openlibrary', 'googlebooks', 'subject', 'wikipedia'];
+
+  /**
    * Memory roll-up produced by `recallMemories` for the `recall-memories`
    * intent. Empty/zero-valued when the intent is not `recall-memories`.
    */
@@ -166,8 +179,9 @@ export class ArchivistState extends NodeStateBase {
   };
 
   // #region clone
-  override clone(): ArchivistState {
-    const copy = new ArchivistState();
+  override clone(): this {
+    const copy = super.clone(); // new Constructor() + _metadata copy from base
+    // scoutProviders is readonly and always the default value — no clone needed.
     copy.query        = this.query;
     copy.userLanguage = this.userLanguage;
     copy.intent       = this.intent;
@@ -175,7 +189,7 @@ export class ArchivistState extends NodeStateBase {
     copy.candidates = [...this.candidates];
     copy.shortlist  = [...this.shortlist];
     copy.draft      = this.draft;
-    copy.approved   = this.approved;
+    copy.approvalState = this.approvalState;
     copy.toolPlan     = [...this.toolPlan];
     copy.runId        = this.runId;
     copy.failureCause = this.failureCause;
@@ -205,53 +219,83 @@ export class ArchivistState extends NodeStateBase {
       "query":        this.query,
       "userLanguage": this.userLanguage,
       "intent":       this.intent,
-      "terms":      [...this.terms],
-      "candidates": this.candidates.map((candidate) => ({
-        "book":   { ...candidate.book, "authors": [...candidate.book.authors] },
-        "score":  candidate.score,
-        "source": candidate.source,
-      })) as unknown as JsonObject[],
-      "shortlist":  this.shortlist.map((candidate) => ({
-        "book":   { ...candidate.book, "authors": [...candidate.book.authors] },
-        "score":  candidate.score,
-        "source": candidate.source,
-      })) as unknown as JsonObject[],
+      "terms":        [...this.terms],
+      "candidates":   this.candidates.map(ArchivistState.candidateToJson),
+      "shortlist":    this.shortlist.map(ArchivistState.candidateToJson),
       "draft":        this.draft,
-      "approved":     this.approved,
+      "approvalState": this.approvalState,
       "failureCause": this.failureCause,
       "recalledContext": {
-        "priorIntents":        this.recalledContext.priorIntents as unknown as JsonObject[],
-        "recentCandidates":    this.recalledContext.recentCandidates.map((c) => ({
-          "book":   { ...c.book, "authors": [...c.book.authors] },
-          "score":  c.score,
-          "source": c.source,
-        })) as unknown as JsonObject[],
-        "similarPriorQueries": this.recalledContext.similarPriorQueries as unknown as JsonObject[],
+        "priorIntents":        this.recalledContext.priorIntents.map(ArchivistState.priorIntentToJson),
+        "recentCandidates":    this.recalledContext.recentCandidates.map(ArchivistState.candidateToJson),
+        "similarPriorQueries": this.recalledContext.similarPriorQueries.map(ArchivistState.priorQueryToJson),
         "summary":             this.recalledContext.summary,
       },
-      "priorCandidates": this.priorCandidates.map((candidate) => ({
-        "book":   { ...candidate.book, "authors": [...candidate.book.authors] },
-        "score":  candidate.score,
-        "source": candidate.source,
-        "notes":  candidate.notes ?? {},
-      })) as unknown as JsonObject[],
-      "conversation": this.conversation as unknown as JsonObject[],
+      "priorCandidates": this.priorCandidates.map(ArchivistState.candidateToJson),
+      "conversation": this.conversation.map(ArchivistState.turnToJson),
       "memoryDigest": {
         "bookCount":       this.memoryDigest.bookCount,
         "queryCount":      this.memoryDigest.queryCount,
-        "recentBooks":     this.memoryDigest.recentBooks as unknown as JsonObject[],
-        "intentBreakdown": this.memoryDigest.intentBreakdown as unknown as JsonObject[],
+        "recentBooks":     this.memoryDigest.recentBooks.map((b) => ({ "title": b.title, "author": b.author })),
+        "intentBreakdown": this.memoryDigest.intentBreakdown.map((i) => ({ "intent": i.intent, "count": i.count })),
         "summary":         this.memoryDigest.summary,
       },
     };
   }
+
+  // #region snapshot-helpers
+  private static candidateToJson(c: Candidate): JsonObject {
+    const book: JsonObject = {
+      "isbn":    c.book.isbn,
+      "title":   c.book.title,
+      "authors": [...c.book.authors],
+      "price":   { "amount": c.book.price.amount, "currency": c.book.price.currency },
+      ...(c.book.summary !== undefined          ? { "summary": c.book.summary }                 : {}),
+      ...(c.book.firstPublishYear !== undefined ? { "firstPublishYear": c.book.firstPublishYear } : {}),
+      ...(c.book.subjects !== undefined         ? { "subjects": [...c.book.subjects] }          : {}),
+      ...(c.book.publishers !== undefined       ? { "publishers": [...c.book.publishers] }      : {}),
+      ...(c.book.inStock !== undefined          ? { "inStock": c.book.inStock }                 : {}),
+      ...(c.book.languages !== undefined        ? { "languages": [...c.book.languages] }        : {}),
+    };
+    // notes values are Record<string, unknown>; serialize only JSON-safe primitives.
+    const notesOut: JsonObject = c.notes !== undefined
+      ? Object.fromEntries(
+          Object.entries(c.notes).filter(([, v]) =>
+            v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean',
+          ),
+        ) as JsonObject
+      : {};
+    return {
+      "book":   book,
+      "score":  c.score,
+      "source": c.source,
+      ...(c.reason !== undefined ? { "reason": c.reason } : {}),
+      ...(c.notes !== undefined  ? { "notes": notesOut }  : {}),
+    };
+  }
+
+  private static priorIntentToJson(p: RecalledContext['priorIntents'][number]): JsonObject {
+    return { "query": p.query, "intent": p.intent, "ts": p.ts };
+  }
+
+  private static priorQueryToJson(q: RecalledContext['similarPriorQueries'][number]): JsonObject {
+    return { "query": q.query, "ts": q.ts };
+  }
+
+  private static turnToJson(t: ConversationTurn): JsonObject {
+    return { "role": t.role, "text": t.text, "ts": t.ts };
+  }
+  // #endregion snapshot-helpers
 
   protected override restoreData(snap: JsonObject): void {
     if (typeof snap['query']        === 'string') this.query        = snap['query'];
     if (typeof snap['userLanguage'] === 'string') this.userLanguage = snap['userLanguage'];
     if (typeof snap['intent']       === 'string') this.intent       = snap['intent'] as ArchivistIntent;
     if (typeof snap['draft']        === 'string')  this.draft  = snap['draft'];
-    if (typeof snap['approved']    === 'boolean') this.approved = snap['approved'];
+    const approvalSnap = snap['approvalState'];
+    if (approvalSnap === 'pending' || approvalSnap === 'approved' || approvalSnap === 'rejected') {
+      this.approvalState = approvalSnap;
+    }
     if (typeof snap['failureCause'] === 'string') this.failureCause = snap['failureCause'];
     if (Array.isArray(snap['terms']))      this.terms      = snap['terms'] as string[];
     if (Array.isArray(snap['candidates'])) this.candidates = snap['candidates'] as unknown as Candidate[];

@@ -6,9 +6,10 @@
 
 import {
   DAGBuilder,
+  NodeOutputBuilder,
   NodeStateBase,
 } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 import { MemoryStore } from '@noocodex/dagonizer/store';
 import type { Store } from '@noocodex/dagonizer/contracts';
 
@@ -26,23 +27,41 @@ export interface Services {
 // Nodes: each appends its own name to the store's 'entries' key
 // ---------------------------------------------------------------------------
 
-export function makeStep(stepName: string): NodeInterface<NodeStateBase, 'done', Services> {
-  return {
-    "name":    stepName,
-    "outputs": ['done'],
-    async execute(_state, context) {
-      await context.services.log.update<string>('entries', (current) => {
-        const existing = current?.split(',').filter(Boolean) ?? [];
-        return [...existing, stepName].join(',');
-      });
-      return { "output": 'done' };
-    },
-  };
-}
+export const stepA: NodeInterface<NodeStateBase, 'done', Services> = {
+  "name":    'step-a',
+  "outputs": ['done'],
+  async execute(_state, context) {
+    await context.services.log.update<string>('entries', (current) => {
+      const existing = current?.split(',').filter(Boolean) ?? [];
+      return [...existing, 'step-a'].join(',');
+    });
+    return NodeOutputBuilder.of('done');
+  },
+};
 
-export const stepA     = makeStep('step-a');
-export const stepB     = makeStep('step-b');
-export const childStep = makeStep('child-step');
+export const stepB: NodeInterface<NodeStateBase, 'done', Services> = {
+  "name":    'step-b',
+  "outputs": ['done'],
+  async execute(_state, context) {
+    await context.services.log.update<string>('entries', (current) => {
+      const existing = current?.split(',').filter(Boolean) ?? [];
+      return [...existing, 'step-b'].join(',');
+    });
+    return NodeOutputBuilder.of('done');
+  },
+};
+
+export const childStep: NodeInterface<NodeStateBase, 'done', Services> = {
+  "name":    'child-step',
+  "outputs": ['done'],
+  async execute(_state, context) {
+    await context.services.log.update<string>('entries', (current) => {
+      const existing = current?.split(',').filter(Boolean) ?? [];
+      return [...existing, 'child-step'].join(',');
+    });
+    return NodeOutputBuilder.of('done');
+  },
+};
 
 // ---------------------------------------------------------------------------
 // DAGs: child DAG placed inside the parent

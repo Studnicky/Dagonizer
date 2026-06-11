@@ -15,7 +15,7 @@ seeAlso:
 Dagonizer ships three tiers of plugins, each installable independently. Every tier consumes a stable subpath surface on the main `@noocodex/dagonizer` package; the surface stays narrow so an adapter package does not pull in pattern code, a tool package does not pull in adapter internals, and so on.
 
 ::: warning Beta
-v0.10.0 is GitHub-only. The plugin packages have not been published to npm yet. Install via the repo + workspace path while live-API smoke confirmation lands against each provider. The contracts (`./adapter`, `./tool`, `./patterns`) are stable; minor adjustments are expected on each adapter before 1.0.
+The plugin packages are GitHub-only and not yet published to npm. Install via the repo + workspace path while live-API confirmation lands against each provider. The contracts (`./adapter`, `./tool`, `./patterns`) are stable.
 :::
 
 ## Plugin tiers

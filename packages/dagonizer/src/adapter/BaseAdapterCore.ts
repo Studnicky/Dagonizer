@@ -1,0 +1,99 @@
+/**
+ * BaseAdapterCore: shared lifecycle foundation for `BaseAdapter` and
+ * `BaseEmbedder`.
+ *
+ * Owns the retry plumbing (`RetryableErrorPolicy` with exponential
+ * backoff), the identity fields (`id`, `displayName`), the default
+ * lifecycle methods (`connect`/`disconnect`/`probe`), and the default
+ * `classify()` implementation. Child classes add only the concerns
+ * specific to their surface:
+ *
+ *   BaseAdapterCore ─── BaseAdapter  → capabilities + chat() / performChat()
+ *                   └── BaseEmbedder → dimensions  + embed() / performEmbed()
+ *
+ * Constants and the shared options type live here so both subtypes
+ * consume a single canonical name with a single canonical value.
+ */
+
+import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
+import { BackoffStrategy } from '../runtime/index.js';
+
+import { Classifications, LlmError, type ErrorClassification } from './LlmError.js';
+import { RetryableErrorPolicy } from './RetryableErrorPolicy.js';
+
+/** Canonical default: attempts before giving up (adapter + embedder). */
+export const DEFAULT_MAX_ATTEMPTS = 3;
+/** Canonical default: first retry delay in ms (adapter + embedder). */
+export const DEFAULT_BASE_DELAY_MS = 400;
+
+/** Fully-resolved options for `BaseAdapterCore` — no optional fields. */
+export interface BaseAdapterCoreOptionsResolved {
+  maxAttempts: number;
+  baseDelayMs: number;
+}
+
+/**
+ * Caller-facing options. Subclasses expose this (or an extension of it)
+ * to their own callers; every field falls back to `defaultOptions()`
+ * when omitted, so the base materialises a complete value in one place.
+ */
+export interface BaseAdapterCoreOptions {
+  maxAttempts?: number;
+  baseDelayMs?: number;
+}
+
+export abstract class BaseAdapterCore {
+  readonly id: string;
+  readonly displayName: string;
+  readonly #retry: RetryableErrorPolicy;
+
+  /**
+   * The canonical default options. Subclasses do not need to spread this
+   * themselves — the base constructor folds caller-supplied partials over
+   * it — but it is exposed for callers that want the default values.
+   */
+  static defaultOptions(): BaseAdapterCoreOptionsResolved {
+    return { 'maxAttempts': DEFAULT_MAX_ATTEMPTS, 'baseDelayMs': DEFAULT_BASE_DELAY_MS };
+  }
+
+  protected constructor(id: string, displayName: string, options: BaseAdapterCoreOptions = {}) {
+    const resolved: BaseAdapterCoreOptionsResolved = { ...BaseAdapterCore.defaultOptions(), ...options };
+    this.id = id;
+    this.displayName = displayName;
+    this.#retry = new RetryableErrorPolicy({
+      'maxAttempts': resolved.maxAttempts,
+      'strategy':    BackoffStrategy.EXPONENTIAL,
+      'baseDelay':   resolved.baseDelayMs,
+    });
+  }
+
+  /** No-op default. Subclasses with a session lifecycle override. */
+  async connect(_options?: AbortableOptionsInterface): Promise<void> {
+    return Promise.resolve();
+  }
+
+  /** No-op default. Subclasses with a session lifecycle override. */
+  async disconnect(_options?: AbortableOptionsInterface): Promise<void> {
+    return Promise.resolve();
+  }
+
+  /**
+   * Default availability probe. Returns true; the adapter assumes it
+   * can run unless the concrete subclass knows better. Implementations
+   * MUST NOT throw; return false instead.
+   */
+  async probe(_options?: AbortableOptionsInterface): Promise<boolean> {
+    return Promise.resolve(true);
+  }
+
+  /** Map a provider-native error into the shared classification. */
+  protected classify(error: unknown): ErrorClassification {
+    if (error instanceof LlmError) return error.classification;
+    return Classifications['UNKNOWN'];
+  }
+
+  /** Expose the retry policy to subclasses for envelope execution. */
+  protected get retryPolicy(): RetryableErrorPolicy {
+    return this.#retry;
+  }
+}

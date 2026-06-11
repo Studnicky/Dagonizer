@@ -71,7 +71,8 @@ const definition: ToolDefinition = {
 
 export const WikipediaSummaryTool: Tool<WikipediaInput, readonly Candidate[]> = {
   definition,
-  async execute(input, signal) {
+  async execute(input, options) {
+    const signal = options?.signal;
     const lang = input.lang !== undefined && input.lang.length > 0
       ? normalizeLang(input.lang)
       : DEFAULT_LANG;

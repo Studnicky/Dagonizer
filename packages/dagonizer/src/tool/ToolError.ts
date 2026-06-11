@@ -20,12 +20,12 @@ export type ToolErrorReason =
   | 'UNKNOWN';
 
 export interface ToolErrorOptions {
-  readonly reason: ToolErrorReason;
-  readonly retryable: boolean;
-  /** HTTP status code when applicable. */
-  readonly status?: number;
+  reason: ToolErrorReason;
+  retryable: boolean;
+  /** HTTP status code. Omit (or null) when no HTTP status applies; defaults to null. */
+  status?: number | null;
   /** Cause chain: original error if wrapped. */
-  readonly cause?: unknown;
+  cause?: unknown;
 }
 
 export class ToolError extends Error {

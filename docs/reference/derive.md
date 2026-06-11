@@ -5,7 +5,7 @@ seeAlso:
     description: '`OperationContract`, `OperationContractFragment`'
   - text: 'Reference: Entities'
     link: './entities'
-    description: '`DAG`, `ParallelNode`, `ScatterNode`'
+    description: '`DAG`, `ScatterNode`'
   - text: 'Reference: Viz'
     link: './viz'
     description: 'render the DAG `derive()` returned'
@@ -60,9 +60,9 @@ interface DAGDeriverOptions {
 }
 ```
 
-Operations sharing a topological depth auto-group into a `ParallelNode` with `combine: 'collect'`; use `annotations.parallels` to override the grouping or pick a different combine strategy. Each port in `node.outputs` routes to the first successor at the next depth; `annotations.terminals` overrides individual ports. When `annotations.scatters.<name>.strategy === 'custom'`, the referenced `customNode` is emitted as a registered single-node placement alongside the scatter so the dispatcher's `custom` gather reducer can resolve it.
+Each port in `node.outputs` routes to the first successor at the next depth; `annotations.terminals` overrides individual ports. Operations at the same topological depth that need concurrent execution are expressed via `annotations.scatters` (scatter over a descriptor source with a dispatching body). When `annotations.scatters.<name>.strategy === 'custom'`, the referenced `customNode` is emitted as a registered single-node placement alongside the scatter so the dispatcher's `custom` gather strategy can resolve it.
 
-Throws `DAGError` when no node carries a `contract` field, when a terminal references a port outside the node's `outputs`, when two `emit` entries share a name but declare conflicting `outcome` values, when an `emit.name` collides with an existing operation name, when a partition outcome isn't in `outcomes`, when a parallel member appears in multiple groups, or when an operation appears in more than one of `scatters` / `embeddedDAGs` / `parallels`.
+Throws `DAGError` when no node carries a `contract` field, when a terminal references a port outside the node's `outputs`, when two `emit` entries share a name but declare conflicting `outcome` values, when an `emit.name` collides with an existing operation name, when a partition outcome isn't in `outcomes`, or when an operation appears in more than one of `scatters` / `embeddedDAGs`.
 
 ### `extractContracts(nodes)`
 
@@ -74,7 +74,7 @@ Adjacency map. An entry `A → B` exists iff some path in `A.produces` appears i
 
 ### `depthBuckets(contracts, edges)`
 
-Topological depth buckets. Operations sharing a depth share a bucket. Same data the renderer uses to decide which placements to wrap in a `parallel`.
+Topological depth buckets. Operations sharing a depth share a bucket. Useful for tooling that needs to inspect which operations are topologically concurrent before or after derivation.
 
 ---
 
@@ -85,7 +85,6 @@ interface DAGDeriverAnnotations {
   readonly terminals?:    Readonly<Record<string, readonly DAGDeriverTerminal[]>>;
   readonly scatters?:     Readonly<Record<string, DAGDeriverScatter>>;
   readonly embeddedDAGs?: Readonly<Record<string, DAGDeriverEmbeddedDAG>>;
-  readonly parallels?:    Readonly<Record<string, DAGDeriverParallel>>;
 }
 
 type DAGDeriverTerminal =
@@ -117,21 +116,15 @@ interface DAGDeriverEmbeddedDAG<TChildState extends NodeStateInterface = NodeSta
   };
   readonly outputs:       readonly string[];
 }
-
-interface DAGDeriverParallel {
-  readonly members:  readonly string[];
-  readonly combine:  'all-success' | 'any-success' | 'collect';
-}
 ```
 
 | Annotation | Purpose |
 |---|---|
 | `terminals` | Per-operation alternate exits. Target variant (`target: string`) routes to a named existing placement. Emit variant synthesizes a `TerminalNode` with the declared `outcome`; this is the only way to end a flow outcome. Multiple operations may share an `emit.name`; conflicting `outcome` values throw `DAGError`; collisions with existing operation names throw `DAGError`. |
-| `scatters` | Per-operation scatter wrapping. `source` is the dotted state-array path; `itemKey` is the metadata key the worker reads; `node` is the per-item registered node; `strategy` discriminates which gather shape is emitted (`custom`+`customNode`, `partition`+`partitions`, `append`+`target`); `outcomes` lists the scatter outcome names. Partition keys must appear in `outcomes`. |
+| `scatters` | Per-operation scatter wrapping. `source` is the dotted state-array path; `itemKey` is the metadata key the clone reads; `node` is the per-item body node; `strategy` discriminates which gather shape is emitted (`custom`+`customNode`, `partition`+`partitions`, `append`+`target`); `outcomes` lists the scatter outcome names. Partition keys must appear in `outcomes`. |
 | `embeddedDAGs` | Per-operation nested-DAG composition. Swaps the rendered placement from `SingleNode` to an `EmbeddedDAGNode` while preserving the contract's role in topology derivation. `stateMapping.input` seeds the child state before execution; `stateMapping.output` copies child fields back to the parent after completion. Supply `TChildState` on the generic to narrow `stateMapping.input` keys and `stateMapping.output` values at compile time. |
-| `parallels` | Explicit `ParallelNode` grouping with chosen combine strategy. Without it, same-topological-depth operations auto-group with `combine: 'collect'`. Membership is exclusive across groups. |
 
-An operation cannot appear in more than one of `scatters`, `embeddedDAGs`, or `parallels`. Placement kind must be unambiguous.
+An operation cannot appear in more than one of `scatters` or `embeddedDAGs`. Placement kind must be unambiguous.
 
 ---
 
@@ -182,7 +175,7 @@ Surfaces two categories of drift:
 - **Dangling-read.** A non-entrypoint node declares `hardRequired: ['foo.bar']` but no upstream-in-DAG node produces `'foo.bar'`. Thrown as `DAGError`. The entrypoint's `hardRequired` is external initial state and is not checked.
 - **Dead-write.** A node declares `produces: ['baz']` but no downstream-in-DAG node `hardRequires` `'baz'`. Emitted as a non-fatal warning via `onWarning`.
 
-Edge semantics match `DAGDeriver.edges` (`produces ↔ hardRequired`). Invoked automatically by `Dagonizer.registerDAG` when any registered node on the DAG carries a `contract` fragment; warnings flow to the dispatcher's `onContractWarning` hook and to `Instrumentation.contractWarning`.
+Edge semantics match `DAGDeriver.edges` (`produces ↔ hardRequired`). Invoked automatically by `Dagonizer.registerDAG` when any registered node on the DAG carries a `contract` fragment; warnings flow to the dispatcher's `onContractWarning` hook.
 
 ---
 

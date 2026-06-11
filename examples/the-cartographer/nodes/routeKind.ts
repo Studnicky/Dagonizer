@@ -21,7 +21,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import type { CanonicalEvent } from '../entities/CanonicalEvent.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region route-kind-node
 type KindRoute = 'geo-only' | 'sensor' | 'order' | 'customs';
@@ -56,7 +56,7 @@ export const routeKind: NodeInterface<CartographerState, KindRoute, Cartographer
       'customsDwellRun': route === 'customs',
     };
 
-    return { 'output': route };
+    return NodeOutputBuilder.of(route);
   },
 };
 // #endregion route-kind-node

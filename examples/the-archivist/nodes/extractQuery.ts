@@ -20,6 +20,7 @@
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
 import type { NodeInterface } from '@noocodex/dagonizer';
 
 /** Per-node timeout: generous for Gemini Nano's constrained-output path (20-60 s typical). */
@@ -39,18 +40,18 @@ export const extractQuery: NodeInterface<ArchivistState, 'success' | 'retry' | '
     try {
       state.terms = await context.services.llm.extractTerms(state.query, signal);
       state.clearAttempts(context.nodeName);
-      return { "output": 'success' };
+      return NodeOutputBuilder.of('success');
     } catch (err) {
       // External cancellation / run deadline propagates unchanged.
       if (context.signal.aborted) throw err;
       // Node-local timeout or LLM failure → retry budget decides the flow.
       if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
         context.services.logger.warn(`extract-query: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
-        return { "output": 'retry' };
+        return NodeOutputBuilder.of('retry');
       }
       state.clearAttempts(context.nodeName);
       context.services.logger.warn(`extract-query: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
-      return { "output": 'salvage' };
+      return NodeOutputBuilder.of('salvage');
     } finally {
       clearTimeout(handle);
     }

@@ -9,18 +9,18 @@ import type { NodeStateBase } from '../../src/NodeStateBase.js';
 const greet: NodeInterface<NodeStateBase, 'success'> = {
   'name': 'greet',
   'outputs': ['success'],
-  async execute() { return { 'output': 'success' }; },
+  async execute() { return { 'errors': [], 'output': 'success' }; },
 };
 const plan: NodeInterface<NodeStateBase, 'success' | 'error'> = {
   'name': 'plan',
   'outputs': ['success', 'error'],
-  async execute() { return { 'output': 'success' }; },
+  async execute() { return { 'errors': [], 'output': 'success' }; },
 };
 
 void describe('DAGBuilder', () => {
   void it('builds a single-node DAG in JSON-LD canonical form', () => {
     const dag = new DAGBuilder('demo', '1.0')
-      .node('greet', greet, { 'success': null })
+      .node('greet', greet, { 'success': 'end' })
       .build();
 
     assert.equal(dag.name, 'demo');
@@ -40,7 +40,7 @@ void describe('DAGBuilder', () => {
     const dag = new DAGBuilder('demo', '1')
       .entrypoint('plan')
       .node('greet', greet, { 'success': 'plan' })
-      .node('plan', plan, { 'success': null, 'error': null })
+      .node('plan', plan, { 'success': 'end', 'error': 'end' })
       .build();
     assert.equal(dag.entrypoint, 'plan');
   });
@@ -48,7 +48,8 @@ void describe('DAGBuilder', () => {
   void it('produces a config the dispatcher accepts', () => {
     const dag = new DAGBuilder('via-builder', '1')
       .node('greet', greet, { 'success': 'plan' })
-      .node('plan', plan, { 'success': null, 'error': null })
+      .node('plan', plan, { 'success': 'end', 'error': 'end' })
+      .terminal('end')
       .build();
 
     const dispatcher = new Dagonizer<NodeStateBase>();
@@ -61,13 +62,4 @@ void describe('DAGBuilder', () => {
     assert.throws(() => new DAGBuilder('empty', '1').build());
   });
 
-  void it('parallel/scatter/embeddedDAG round-trip into DAG shape', () => {
-    const dag = new DAGBuilder('mix', '1')
-      .node('a', greet, { 'success': 'b' })
-      .node('b', greet, { 'success': 'group' })
-      .parallel('group', ['a', 'b'], 'all-success', { 'success': null })
-      .build();
-    assert.equal(dag.nodes.length, 3);
-    assert.equal(dag.nodes[2]?.['@type'], 'ParallelNode');
-  });
 });

@@ -14,7 +14,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { EtaEstimator } from '../services.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region enrich-eta-node
 export const enrichEta: NodeInterface<CartographerState, 'eta-estimated', CartographerServices> = {
@@ -33,7 +33,7 @@ export const enrichEta: NodeInterface<CartographerState, 'eta-estimated', Cartog
       norm.promisedEpochMs,
       norm.disruptionHours,
     );
-    return { 'output': 'eta-estimated' };
+    return NodeOutputBuilder.of('eta-estimated');
   },
 };
 // #endregion enrich-eta-node

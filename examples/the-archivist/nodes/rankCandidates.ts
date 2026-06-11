@@ -28,6 +28,8 @@
  * Output route is always 'ranked'. mergeCandidates then takes the top-K.
  */
 
+import { NodeErrorBuilder, NodeOutputBuilder } from '@noocodex/dagonizer';
+
 import type { Embedder } from '@noocodex/dagonizer/contracts';
 
 import type { Candidate } from '../entities/Book.ts';
@@ -156,7 +158,7 @@ export const rankCandidates: ArchivistNode<'ranked' | 'retry' | 'salvage'> = {
     if (state.candidates.length === 0) {
       state.clearAttempts(context.nodeName);
       context.services.logger.info('rank-candidates: no candidates to rank');
-      return { 'output': 'ranked' };
+      return NodeOutputBuilder.of('ranked');
     }
 
     const controller = new AbortController();
@@ -247,7 +249,7 @@ export const rankCandidates: ArchivistNode<'ranked' | 'retry' | 'salvage'> = {
         `rank-candidates: hybrid (${String(scored.length)} deterministic, ${String(llmTiebreaks)} LLM-tiebreaks); top: ${top !== undefined ? `"${top.book.title}" score=${top.score.toFixed(3)}` : 'none'}`,
       );
       state.clearAttempts(context.nodeName);
-      return { 'output': 'ranked' };
+      return NodeOutputBuilder.of('ranked');
     } catch (err) {
       // External cancellation / run deadline propagates unchanged.
       if (context.signal.aborted) throw err;
@@ -255,20 +257,20 @@ export const rankCandidates: ArchivistNode<'ranked' | 'retry' | 'salvage'> = {
       // flow. Emitting the candidates as "ranked" when ranking never completed
       // would be a fabricated result; rank-candidates-salvage owns the
       // deterministic-passthrough recovery.
-      state.collectError({
-        'code':        'RANK_FAILED',
-        'message':     err instanceof Error ? err.message : String(err),
-        'operation':   'rank-candidates',
-        'recoverable': true,
-        'timestamp':   new Date().toISOString(),
-      });
+      state.collectError(NodeErrorBuilder.from(
+        'RANK_FAILED',
+        err instanceof Error ? err.message : String(err),
+        'rank-candidates',
+        true,
+        new Date().toISOString(),
+      ));
       if (state.withinRetryBudget(context.nodeName, RETRY_BUDGET)) {
         context.services.logger.warn(`rank-candidates: failed (attempt ${String(state.retriesFor(context.nodeName))}/${String(RETRY_BUDGET)}), retry: ${err instanceof Error ? err.message : String(err)}`);
-        return { 'output': 'retry' };
+        return NodeOutputBuilder.of('retry');
       }
       state.clearAttempts(context.nodeName);
       context.services.logger.warn(`rank-candidates: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
-      return { 'output': 'salvage' };
+      return NodeOutputBuilder.of('salvage');
     } finally {
       clearTimeout(handle);
     }

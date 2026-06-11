@@ -36,9 +36,8 @@ import { composeResponse, validateResponse } from '../nodes/composeResponse.ts';
 import { composeResponseSalvage } from '../nodes/salvage.ts';
 import type { ArchivistServices } from '../services.ts';
 
-import type { DispatcherBundle } from '@noocodex/dagonizer';
+import type { DAG, DispatcherBundle } from '@noocodex/dagonizer';
 import { DAGBuilder } from '@noocodex/dagonizer/builder';
-import type { DAG } from '@noocodex/dagonizer/entities';
 
 
 /**
@@ -82,7 +81,7 @@ export const ComposeRetryLoopDAG: DAG = new DAGBuilder('compose-retry-loop', '1.
   // ── 3. composed ──────────────────────────────────────────────────────────
   // Canonical TerminalNode(completed): the single explicit exit of the compose
   // loop. No bare null end-of-flow routes.
-  .terminal('composed', 'completed')
+  .terminal('composed', { outcome: 'completed' })
 
   .build();
 

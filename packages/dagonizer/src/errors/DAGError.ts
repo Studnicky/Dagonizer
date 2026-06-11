@@ -10,8 +10,9 @@ import type { DAGErrorJSON } from '../entities/errors/DAGErrorJSON.js';
  */
 export interface DAGErrorInterface extends Error {
   readonly 'code': string;
-  readonly 'context'?: Record<string, unknown>;
+  readonly 'context': Record<string, unknown>;
   readonly 'timestamp': Date;
+  readonly 'cause'?: Error;
 
   /**
    * Serialize to JSON. Returns the `DAGErrorJSON` wire shape.
@@ -24,38 +25,35 @@ export interface DAGErrorInterface extends Error {
  */
 export class DAGError extends Error implements DAGErrorInterface {
   readonly 'code': string;
-  readonly 'context'?: Record<string, unknown>;
+  readonly 'context': Record<string, unknown>;
   readonly 'timestamp': Date;
+  /** Narrowed from the base `Error.cause: unknown`; the dispatcher only ever chains `Error` causes. */
+  declare readonly 'cause'?: Error;
 
   constructor(
     message: string,
-    code = 'DAG_ERROR',
-    context?: Record<string, unknown>,
-    options?: ErrorOptions
+    options: { code?: string; context?: Record<string, unknown>; cause?: Error } = {}
   ) {
-    super(message, options);
+    const { code = 'DAG_ERROR', context = {}, ...errorOptions } = options;
+    super(message, errorOptions);
     this.name = 'DAGError';
     this.code = code;
+    this.context = context;
     this.timestamp = new Date();
-    if (context !== undefined) {
-      this.context = context;
-    }
     Error.captureStackTrace(this, this.constructor);
   }
 
   toJSON(): DAGErrorJSON {
     return {
       ...(this.cause !== undefined && {
-        'cause': this.cause instanceof Error
-          ? {
-            'message': this.cause.message,
-            'name': this.cause.name,
-            'stack': this.cause.stack
-          }
-          : this.cause
+        'cause': {
+          'message': this.cause.message,
+          'name': this.cause.name,
+          ...(this.cause.stack !== undefined && { 'stack': this.cause.stack })
+        }
       }),
       'code': this.code,
-      ...(this.context !== undefined && { 'context': this.context }),
+      'context': this.context,
       'message': this.message,
       'name': this.name,
       ...(this.stack !== undefined && { 'stack': this.stack }),
@@ -68,8 +66,8 @@ export class DAGError extends Error implements DAGErrorInterface {
  * Error thrown when flow or node configuration is invalid.
  */
 export class ConfigurationError extends DAGError {
-  constructor(message: string, context?: Record<string, unknown>, options?: ErrorOptions) {
-    super(message, 'CONFIGURATION_ERROR', context, options);
+  constructor(message: string, options: { 'context'?: Record<string, unknown>; 'cause'?: Error } = {}) {
+    super(message, { ...options, 'code': 'CONFIGURATION_ERROR' });
     this.name = 'ConfigurationError';
   }
 }
@@ -78,8 +76,8 @@ export class ConfigurationError extends DAGError {
  * Error thrown during flow execution.
  */
 export class ExecutionError extends DAGError {
-  constructor(message: string, context?: Record<string, unknown>, options?: ErrorOptions) {
-    super(message, 'EXECUTION_ERROR', context, options);
+  constructor(message: string, options: { 'context'?: Record<string, unknown>; 'cause'?: Error } = {}) {
+    super(message, { ...options, 'code': 'EXECUTION_ERROR' });
     this.name = 'ExecutionError';
   }
 
@@ -99,8 +97,8 @@ export class ExecutionError extends DAGError {
  * Error thrown when a referenced node or flow is not found.
  */
 export class NotFoundError extends DAGError {
-  constructor(message: string, context?: Record<string, unknown>, options?: ErrorOptions) {
-    super(message, 'NOT_FOUND_ERROR', context, options);
+  constructor(message: string, options: { 'context'?: Record<string, unknown>; 'cause'?: Error } = {}) {
+    super(message, { ...options, 'code': 'NOT_FOUND_ERROR' });
     this.name = 'NotFoundError';
   }
 }
@@ -109,8 +107,8 @@ export class NotFoundError extends DAGError {
  * Error thrown when validation fails.
  */
 export class ValidationError extends DAGError {
-  constructor(message: string, context?: Record<string, unknown>, options?: ErrorOptions) {
-    super(message, 'VALIDATION_ERROR', context, options);
+  constructor(message: string, options: { 'context'?: Record<string, unknown>; 'cause'?: Error } = {}) {
+    super(message, { ...options, 'code': 'VALIDATION_ERROR' });
     this.name = 'ValidationError';
   }
 }
@@ -125,12 +123,10 @@ export class NodeTimeoutError extends DAGError {
   readonly 'nodeName': string;
   readonly 'timeoutMs': number;
 
-  constructor(nodeName: string, timeoutMs: number, options?: ErrorOptions) {
+  constructor(nodeName: string, timeoutMs: number, options: { 'cause'?: Error } = {}) {
     super(
       `Node "${nodeName}" exceeded its ${String(timeoutMs)} ms timeout`,
-      'NODE_TIMEOUT',
-      { nodeName, timeoutMs },
-      options,
+      { 'code': 'NODE_TIMEOUT', 'context': { nodeName, timeoutMs }, ...options }
     );
     this.name = 'NodeTimeoutError';
     this.nodeName = nodeName;

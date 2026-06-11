@@ -44,7 +44,6 @@ import {
   WebLlmAdapter,
   detectOllama,
   listOllamaModels,
-  detectWebGpu,
   type GeminiNanoAvailability,
   type WebLlmInitReport,
 } from './adapters/index.ts';
@@ -225,7 +224,7 @@ export async function detectBackends(inputs: DetectionInputs = {}): Promise<read
     'hint': 'Paste a free Google AI Studio key. Nothing leaves your browser except the request itself.',
   });
 
-  const webGpu = detectWebGpu();
+  const webGpu = WebLlmAdapter.detectWebGpu();
   out.push({
     'id': 'web-llm',
     'displayName': 'WebLLM (Phi-3.5 in-browser)',
@@ -463,7 +462,6 @@ export {
   WebLlmAdapter,
   detectOllama,
   listOllamaModels,
-  detectWebGpu,
 } from './adapters/index.ts';
 export { MobileDetection } from './MobileDetection.ts';
 export type { GeminiNanoAvailability, WebLlmInitReport };

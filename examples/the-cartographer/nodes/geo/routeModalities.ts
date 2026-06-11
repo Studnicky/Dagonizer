@@ -14,7 +14,7 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region route-modalities-node
 export const routeModalities: NodeInterface<CartographerState, 'ip' | 'gps-only', CartographerServices> = {
@@ -26,10 +26,10 @@ export const routeModalities: NodeInterface<CartographerState, 'ip' | 'gps-only'
     }
     const hasIp = state.canonical.body.ipAddress.length > 0;
     if (hasIp) {
-      return { 'output': 'ip' };
+      return NodeOutputBuilder.of('ip');
     }
     state.routing = { ...state.routing, 'ipGeolocateSkipped': true };
-    return { 'output': 'gps-only' };
+    return NodeOutputBuilder.of('gps-only');
   },
 };
 // #endregion route-modalities-node

@@ -40,12 +40,11 @@ The Archivist DAG has roughly ten placements covering classify, scout scatter, c
 
 ## Placement
 
-A **placement** is one vertex in the DAG. Each placement has a name, a `@type` discriminator that selects the kind, and an `outputs` map that routes named outputs to the next placement (or `null` to end the path).
+A **placement** is one vertex in the DAG. Each placement has a name, a `@type` discriminator that selects the kind, and an `outputs` map that routes named outputs to the next placement. Flows terminate at an explicit `TerminalNode` placement.
 
-Six kinds:
+Five kinds:
 
 - **`single`**: one registered node. The node returns one output name; the dispatcher follows the corresponding route.
-- **`parallel`**: a set of previously declared single placements that run concurrently via `Promise.all`. A combine strategy (`all-success`, `any-success`, `collect`) reduces individual outputs to one aggregate output.
 - **`scatter`**: isolates one state clone per item in a source array, runs a node body in each clone, merges produced clone state back into the parent via a `gather` config, and routes on the aggregate outcome via a `reducer`. This is the fork (generate-collect) pattern; a `ScatterNode` is always 1→N over a required `source`.
 - **`embedded`**: invokes a registered sub-DAG exactly once (cardinality 1) in an isolated state, then routes the parent on the child's terminal outcome (`success` or `error`). Optional `stateMapping` seeds the child from the parent before it runs and copies fields back after it completes. The Archivist's sub-DAG compositions are `EmbeddedDAGNode` placements.
 - **`terminal`**: named end state for explicit completion or failure. Use when a flow has more than one "done" semantics (for example, `accepted` versus `rejected`).
@@ -56,11 +55,10 @@ Six kinds:
 | Need | Kind |
 |------|------|
 | Sequential steps with conditional branching | `single` |
-| Multiple independent fetches that must all finish before proceeding | `parallel` |
 | Process every item in a collection, then aggregate | `scatter` |
 | Invoke a registered sub-DAG exactly once and route on its outcome | `embedded` |
 | Distinguish multiple terminal semantics | `terminal` |
-| Tag a stretch of nodes for telemetry | `phase` |
+| Attach a pre- or post-run lifecycle hook to the DAG | `phase` |
 
 ## State
 
@@ -84,7 +82,7 @@ Override `snapshotData()` and `restoreData()` to make domain fields checkpointab
 A **lifecycle** is the FSM behind each DAG execution: `pending → running → completed | failed | cancelled | timed_out`. `DAGLifecycleMachine` is the pure reducer; `NodeStateBase` owns the instance.
 
 - The dispatcher marks `running` when the flow starts.
-- It marks `completed` when every output routes to `null` without error.
+- It marks `completed` when the flow reaches a `TerminalNode` with `outcome: 'completed'` (the default).
 - It marks `failed` when a node throws (which should not happen, but the dispatcher guards the boundary), or when execution reaches a `TerminalNode` with `outcome: 'failed'`.
 - It marks `cancelled` when the composed `AbortSignal` fires before a deadline.
 - It marks `timed_out` when the `deadlineMs` timer fires.
@@ -125,7 +123,7 @@ When `cursor` is non-null, the execution stopped early. Pass it to `dispatcher.r
 
 ## Route
 
-A **route** is the directed edge in the DAG: an output name on one placement mapped to the name of the next placement (or `null`). The Archivist's classify-intent placement has four routes, one per output. The TypeScript compiler verifies that every declared output in the node's `TOutput` union appears in the placement's `outputs` map; an unwired output is a build error before `registerDAG` runs the same check at runtime.
+A **route** is the directed edge in the DAG: an output name on one placement mapped to the name of the next placement. The Archivist's classify-intent placement has four routes, one per output. The TypeScript compiler verifies that every declared output in the node's `TOutput` union appears in the placement's `outputs` map; an unwired output is a build error before `registerDAG` runs the same check at runtime.
 
 ## Cancellation
 
@@ -161,6 +159,18 @@ gather: { strategy: 'append', target: 'results' }
 
 ```ts
 gather: { strategy: 'partition', partitions: { success: 'passed', error: 'failed' } }
+```
+
+**`collect`** requires `target` (dotted path) and an optional `field`. Collects each clone's output token (or `field` value when specified) into `target` in source-index order. Unlike `append`, `collect` preserves positional correspondence between source items and their collected values.
+
+```ts
+gather: { strategy: 'collect', target: 'outputTokens' }
+```
+
+**`discard`** is a no-op merge. Clones run for side-effects only; no clone state flows back to the parent. Use when the body node writes to an external store and the parent state needs no update.
+
+```ts
+gather: { strategy: 'discard' }
 ```
 
 **`custom`** requires `customNode: string`. The dispatcher stages the per-clone records under `state.metadata.gatherResults` and dispatches the named registered node. The Archivist's `mergeCandidates` node uses `custom` to deduplicate scout results by canonical book id.
@@ -202,13 +212,13 @@ Authored via the `inputs` option on `.scatter()` (or `.embeddedDAG()` for embedd
 A **checkpoint** records the position and state of an in-flight flow so it can resume later.
 
 - **Cursor**: the name of the next node to run. Set on `ExecutionResultInterface.cursor` when execution stops early. `null` means the flow ran to completion.
-- **State snapshot**: `NodeStateBase.snapshot()` returns a `JsonObject` containing metadata, errors, and warnings. Domain-specific fields are captured by overriding `snapshotData()`.
+- **State snapshot**: `NodeStateBase.snapshot()` returns a `JsonObject` containing metadata, warnings, and the retry budget. Engine errors are excluded from snapshots; they flow via `outcome.errors`. Domain-specific fields are captured by overriding `snapshotData()`.
 
-Resume is a new execution. `dispatcher.resume(dagName, state, cursor)` starts a new lifecycle run from `pending`, identical to `execute()` except it begins at `cursor` instead of the entrypoint. The checkpoint's `executedNodes` and `skippedNodes` are available from `ckpt.restoreState(fn)` for inspection; they are not replayed.
+Resume is a new execution. `dispatcher.resume(dagName, state, cursor)` starts a new lifecycle run from `pending`, identical to `execute()` except it begins at `cursor` instead of the entrypoint. The checkpoint's `executedNodes` and `skippedNodes` are available from the `RecalledCheckpoint` returned by `ckpt.restoreState(adapter)` for inspection; they are not replayed.
 
 `Checkpoint.capture(dagName, result)` builds a `Checkpoint` instance from an execution result. It throws if `result.cursor` is `null`.
 
-`Checkpoint.load(raw).restoreState(factory)` validates the persisted data against `CheckpointDataSchema` and rehydrates a state instance via the factory function.
+`Checkpoint.load(raw).restoreState(CheckpointRestoreAdapterFn.fromFn(factory))` validates the persisted data against `CheckpointDataSchema` and rehydrates a state instance via the factory. `CheckpointRestoreAdapterFn` ships from `@noocodex/dagonizer/checkpoint`.
 
 The package does not provide a persistence backend. Serialize the checkpoint as JSON (`ckpt.toJson()`) and store it wherever your infrastructure requires.
 

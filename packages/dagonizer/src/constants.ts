@@ -14,5 +14,4 @@ export { GatherStrategySchema, GatherStrategyName } from './entities/constants/G
 export { MetadataKeySchema, MetadataKey } from './entities/constants/MetadataKey.js';
 export { NodeTypeSchema, NodeType } from './entities/constants/NodeType.js';
 export { OutputSchema, Output } from './entities/constants/Output.js';
-export { ParallelCombineSchema, ParallelCombine } from './entities/constants/ParallelCombine.js';
 export { ScatterOutputSchema, ScatterOutput } from './entities/constants/ScatterOutput.js';

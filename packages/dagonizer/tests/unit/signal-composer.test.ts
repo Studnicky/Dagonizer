@@ -3,6 +3,24 @@ import { describe, it } from 'node:test';
 
 import { SignalComposer } from '../../src/runtime/SignalComposer.js';
 
+void describe('SignalComposer.never', () => {
+  void it('returns an AbortSignal', () => {
+    const signal = SignalComposer.never();
+    assert.ok(signal instanceof AbortSignal);
+  });
+
+  void it('returns a signal that is not aborted', () => {
+    const signal = SignalComposer.never();
+    assert.equal(signal.aborted, false);
+  });
+
+  void it('returns the same cached instance on repeated calls', () => {
+    const a = SignalComposer.never();
+    const b = SignalComposer.never();
+    assert.equal(a, b);
+  });
+});
+
 void describe('SignalComposer.compose', () => {
   void it('returns null when neither signal nor deadline is supplied', () => {
     assert.equal(SignalComposer.compose({}), null);

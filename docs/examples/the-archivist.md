@@ -42,7 +42,7 @@ The Archivist is the running demo every Dagonizer example refers to. It is a boo
 
 Try it live below; the demo runs in your browser. The runner uses an `LlmAdapterCascade` over the providers below and surfaces which one is answering. Cloud-first when keys are present (Groq, Cerebras, Gemini API, Mistral, OpenRouter), local-first when reachable (Ollama on desktop), then on-device fallbacks (Gemini Nano, WebLLM), with the offline stub as the last resort. Intent classification runs through a parallel `EmbedderCascade` (Ollama, Gemini API, Mistral) when an embedder is reachable; otherwise the LLM classifies directly.
 
-The Archivist exercises two placement types for nested DAG execution: `EmbeddedDAGNode` for the three search branches and the compose loop (cardinality 1), and `ParallelNode` (`.parallel(...)`) for the within-branch scouts — four sources run concurrently per branch, combined with `collect`. A `PhaseNode` (`phase: 'pre'`, placement name `setup`) runs `pre-run-setup` before the entrypoint: it stamps a `runId` on state and clears any stale draft from a prior interrupted execution. Phase nodes are out-of-band; they do not participate in output routing.
+The Archivist exercises two placement types for nested DAG execution: `EmbeddedDAGNode` for the three search branches and the compose loop (cardinality 1), and `ScatterNode` for the within-branch scouts — four providers run as clones over a descriptor source (`state.scoutProviders`), a `scoutDispatch` body node routes each clone to the matching scout logic, and a `collect` gather strategy accumulates candidates before ranking. A `PhaseNode` (`phase: 'pre'`, placement name `setup`) runs `pre-run-setup` before the entrypoint: it stamps a `runId` on state and clears any stale draft from a prior interrupted execution. Phase nodes are out-of-band; they do not participate in output routing.
 
 <ArchivistRunner />
 
@@ -188,7 +188,7 @@ Every page starts from the same `ArchivistState` + `services` + node set; only t
 
 The Archivist's DAG is composed of two reusable sub-DAGs that ship as independent components. Each is a `DAG` value any consumer can import, register, and reference via `.embeddedDAG(name, dagName, routes, options)`.
 
-- **`book-search-scatter`**: extract-query, decide-tools, 4-source parallel scout cluster (OpenLibrary, Google Books, Subject, Wikipedia), rank-candidates, merge-candidates, record-findings, has-citations-gate, recall-past-visits. Used in three intent branches (`on-topic-search`, `author-search`, `similar-search`); one definition, three embedded-DAG placements.
+- **`book-search-scatter`**: extract-query, decide-tools, 4-source scatter scout cluster (OpenLibrary, Google Books, Subject, Wikipedia) via a single `ScatterNode` over `state.scoutProviders` with `scoutDispatch` body and `collect` gather, rank-candidates, merge-candidates, record-findings, has-citations-gate, recall-past-visits. Used in three intent branches (`on-topic-search`, `author-search`, `similar-search`); one definition, three embedded-DAG placements.
 - **`compose-retry-loop`**: compose-response and validate-response, with a bounded retry edge back to compose and a `compose-salvage` recovery node. The sub-DAG produces `state.draft` and exits with `success`; the parent DAG owns the shared `respond-to-visitor` terminal. Every successful search branch funnels through this one shared cluster.
 
 The renderer expands both sub-DAGs inline in the diagram. Compound-graph children render inside the embedded-DAG placement box so the full topology is visible. No opaque boxes.

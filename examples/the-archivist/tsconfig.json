@@ -21,7 +21,6 @@
     "ObservedArchivist.ts",
     "embedded-dags/**/*.ts",
     "entities/**/*.ts",
-    "instrumentation/**/*.ts",
     "logger/**/*.ts",
     "memory/**/*.ts",
     "nodes/**/*.ts",

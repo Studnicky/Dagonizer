@@ -52,7 +52,7 @@ The `#resume-run` region in the runner performs the actual persist and resume pa
 
 ## What it demonstrates
 
-- **`ArchivistState.snapshotData()` and `restoreData()`.** Domain-specific serialization. `NodeStateBase` calls `snapshotData` during `Checkpoint.capture` and `restoreData` during `ckpt.restoreState(fn)`. The lifecycle resets to `pending` on restore; the resumed execution is a fresh lifecycle run on the recovered state data.
+- **`ArchivistState.snapshotData()` and `restoreData()`.** Domain-specific serialization. `NodeStateBase` calls `snapshotData` during `Checkpoint.capture` and `restoreData` during `ckpt.restoreState(adapter)`. The lifecycle resets to `pending` on restore; the resumed execution is a fresh lifecycle run on the recovered state data.
 - **`Checkpoint.capture(dagName, result)`.** Produces a `Checkpoint` instance only when `result.cursor !== null` (an in-progress flow). A completed flow produces no cursor.
 - **`CheckpointStore` adapter contract.** `MemoryCheckpointStore` is the test-time implementation. Swap to Postgres, Redis, or S3 without touching the dispatcher or state.
 - **`ckpt.persist(store, key)` and `Checkpoint.recall(store, key)`.** Codec plus store in one call per side. `Checkpoint.recall` returns `null` when nothing is stored under the key.

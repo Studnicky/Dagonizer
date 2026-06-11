@@ -70,27 +70,27 @@ under different keys; type narrowing happens at the call site.
 
 ```ts
 interface Store extends Snapshottable {
-  get<T extends JsonValue>(key: string): Promise<T | undefined>;
+  get<T extends JsonValue>(key: string): Promise<T | null>;
   set<T extends JsonValue>(key: string, value: T): Promise<void>;
   has(key: string): Promise<boolean>;
   delete(key: string): Promise<boolean>;
   update<T extends JsonValue>(key: string, fn: (current: T | undefined) => T): Promise<T>;
   // snapshot() / restore() inherited from Snapshottable.
-  connect(): Promise<void>;
-  disconnect(): Promise<void>;
+  connect?(): Promise<void>;
+  disconnect?(): Promise<void>;
 }
 ```
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `get(key)` | `Promise<T \| undefined>` | Return the value at `key`, or `undefined` when absent. |
+| `get(key)` | `Promise<T \| null>` | Return the value at `key`, or `null` when absent. |
 | `set(key, value)` | `Promise<void>` | Write `value` at `key`. Last-write-wins. |
 | `has(key)` | `Promise<boolean>` | Return `true` when the key exists. |
 | `delete(key)` | `Promise<boolean>` | Remove the key. Returns `true` when the key existed. |
-| `update(key, fn)` | `Promise<T>` | Atomic read-modify-write. `fn` receives the current value (or `undefined`) and returns the new value. Implementations are responsible for atomicity. |
+| `update(key, fn)` | `Promise<T>` | Atomic read-modify-write. `fn` receives the current value (or `undefined` when absent) and returns the new value. Implementations are responsible for atomicity. |
 | `snapshot()` / `restore(snapshot)` | inherited | From `Snapshottable`: capture / repopulate the whole store. |
-| `connect()` | `Promise<void>` | Optional lifecycle hook for stores that hold a connection. |
-| `disconnect()` | `Promise<void>` | Optional lifecycle hook for stores that hold a connection. |
+| `connect?()` | `Promise<void>` | Optional lifecycle hook for stores that hold a connection. |
+| `disconnect?()` | `Promise<void>` | Optional lifecycle hook for stores that hold a connection. |
 
 **Concurrency:** `update(key, fn)` is atomic within a single store instance.
 Implementations are responsible for delivering this. See the `update` note on
@@ -438,7 +438,7 @@ new TypedStore<Schema extends Record<string, JsonValue>>(inner: Store)
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `get(key)` | `Promise<Schema[K] \| undefined>` | Return the value at `key`, type inferred from `Schema[K]`. |
+| `get(key)` | `Promise<Schema[K] \| null>` | Return the value at `key`, type inferred from `Schema[K]`, or `null` when absent. |
 | `set(key, value)` | `Promise<void>` | Write `value` at `key`. `value` must be `Schema[K]`. |
 | `has(key)` | `Promise<boolean>` | Return `true` when the key exists. |
 | `delete(key)` | `Promise<boolean>` | Remove the key. Returns `true` when the key existed. |

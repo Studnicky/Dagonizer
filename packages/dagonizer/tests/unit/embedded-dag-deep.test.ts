@@ -19,7 +19,7 @@ const incNode = (name: string, delta: number): NodeInterface<CounterState> => ({
   'outputs': ['success'],
   async execute(state) {
     state.value += delta;
-    return { 'output': 'success' };
+    return { 'errors': [], 'output': 'success' };
   },
 });
 
@@ -28,7 +28,7 @@ const incNode = (name: string, delta: number): NodeInterface<CounterState> => ({
 // full descent and ascent.
 const VALUE_MAPPING = { 'input': { 'value': 'value' }, 'output': { 'value': 'value' } } as const;
 
-const singleNode = (dag: string, name: string, outputs: Record<string, string | null>): DAG['nodes'][number] => ({
+const singleNode = (dag: string, name: string, outputs: Record<string, string>): DAG['nodes'][number] => ({
   '@id':   `urn:noocodex:dag:${dag}/node/${name}`,
   '@type': 'SingleNode',
   name,
@@ -42,7 +42,7 @@ const embedNode = (dag: string, name: string, childDag: string): DAG['nodes'][nu
   name,
   'dag':   childDag,
   'stateMapping': VALUE_MAPPING,
-  'outputs': { 'success': null, 'error': null },
+  'outputs': { 'success': 'end', 'error': 'end' },
 });
 
 const makeDAG = (name: string, entrypoint: string, nodes: DAG['nodes']): DAG => ({
@@ -55,19 +55,32 @@ const makeDAG = (name: string, entrypoint: string, nodes: DAG['nodes']): DAG => 
   nodes,
 });
 
+const terminalNode = (dag: string): DAG['nodes'][number] => ({
+  '@id':     `urn:noocodex:dag:${dag}/node/end`,
+  '@type':   'TerminalNode',
+  'name':    'end',
+  'outcome': 'completed',
+});
+
 // core ← inner ← mid ← outer  (three levels of embedding: nested in nested in nested)
-const coreDAG  = makeDAG('deep-core',  'inc-core',  [singleNode('deep-core', 'inc-core', { 'success': null })]);
+const coreDAG  = makeDAG('deep-core',  'inc-core',  [
+  singleNode('deep-core', 'inc-core', { 'success': 'end' }),
+  terminalNode('deep-core'),
+]);
 const innerDAG = makeDAG('deep-inner', 'inc-inner', [
   singleNode('deep-inner', 'inc-inner', { 'success': 'embed-core' }),
   embedNode('deep-inner', 'embed-core', 'deep-core'),
+  terminalNode('deep-inner'),
 ]);
 const midDAG = makeDAG('deep-mid', 'inc-mid', [
   singleNode('deep-mid', 'inc-mid', { 'success': 'embed-inner' }),
   embedNode('deep-mid', 'embed-inner', 'deep-inner'),
+  terminalNode('deep-mid'),
 ]);
 const outerDAG = makeDAG('deep-outer', 'inc-outer', [
   singleNode('deep-outer', 'inc-outer', { 'success': 'embed-mid' }),
   embedNode('deep-outer', 'embed-mid', 'deep-mid'),
+  terminalNode('deep-outer'),
 ]);
 
 void describe('EmbeddedDAGNode: deep recursive nesting', () => {
@@ -84,7 +97,7 @@ void describe('EmbeddedDAGNode: deep recursive nesting', () => {
     // 1000 (outer) → seed mid → +100 → seed inner → +10 → seed core → +1,
     // then 1111 copied back up through every output mapping.
     assert.equal(result.state.value, 1111);
-    assert.equal(result.terminalOutcome, null);
+    assert.equal(result.terminalOutcome, 'completed');
   });
 
   void it('accumulates placementPath one segment per nesting level', async () => {
@@ -110,27 +123,39 @@ void describe('EmbeddedDAGNode: deep recursive nesting', () => {
     assert.deepEqual(seen.get('inc-core'),  ['embed-mid', 'embed-inner', 'embed-core']);
   });
 
-  void it('detects a cross-kind cycle (scatter → embed → scatter) at registration', () => {
+  void it('cannot construct a cross-kind cycle: the append-only registry refuses the closing re-registration', () => {
     const dispatcher = new Dagonizer<CounterState>();
     dispatcher.registerNode(incNode('na', 1));
-    dispatcher.registerNode(incNode('nb', 1));
 
-    // a (standalone) ← b embeds a. Acyclic so far.
-    dispatcher.registerDAG(makeDAG('cyc-a', 'na', [singleNode('cyc-a', 'na', { 'success': null })]));
-    dispatcher.registerDAG(makeDAG('cyc-b', 'embed-a', [embedNode('cyc-b', 'embed-a', 'cyc-a')]));
+    // a (standalone) ← b embeds a. Acyclic.
+    dispatcher.registerDAG(makeDAG('cyc-a', 'na', [
+      singleNode('cyc-a', 'na', { 'success': 'end' }),
+      terminalNode('cyc-a'),
+    ]));
+    dispatcher.registerDAG(makeDAG('cyc-b', 'embed-a', [
+      embedNode('cyc-b', 'embed-a', 'cyc-a'),
+      terminalNode('cyc-b'),
+    ]));
 
-    // Re-register a so it SCATTERS into b → a → b → a, a cross-kind cycle
-    // (a's edge is scatter, b's back-edge is embed). The unified detector must
-    // catch it even though the two edges are different kinds.
+    // The only way to close a cross-kind cycle (a SCATTERS into b → b embeds a)
+    // is to re-register 'cyc-a' so it references 'cyc-b'. Because every sub-DAG
+    // reference must resolve to an already-registered DAG, references are
+    // backward-only; the sole route to a cycle is mutating an existing
+    // registration. The registry is append-only, so this re-registration is
+    // refused with 'already registered' before any cyclic state can install —
+    // a cross-kind cycle is structurally unconstructable through the registry.
     const cyclicA = makeDAG('cyc-a', 'fork-b', [{
       '@id':    'urn:noocodex:dag:cyc-a/node/fork-b',
       '@type':  'ScatterNode',
       'name':   'fork-b',
       'source': 'items',
       'body':   { 'dag': 'cyc-b' },
-      'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
-    }]);
+      'gather': { 'strategy': 'discard' },
+      'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+    },
+      terminalNode('cyc-a'),
+    ]);
 
-    assert.throws(() => dispatcher.registerDAG(cyclicA), /Circular/u);
+    assert.throws(() => dispatcher.registerDAG(cyclicA), /already registered/u);
   });
 });
