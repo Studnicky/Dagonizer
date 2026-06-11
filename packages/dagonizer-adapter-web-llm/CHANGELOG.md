@@ -1,5 +1,7 @@
 # @noocodex/dagonizer-adapter-web-llm
 
+## 0.19.0
+
 ## 0.17.0
 
 ### Patch Changes
