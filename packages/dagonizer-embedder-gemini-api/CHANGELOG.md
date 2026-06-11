@@ -1,5 +1,7 @@
 # @noocodex/dagonizer-embedder-gemini-api
 
+## 0.20.0
+
 ## 0.19.0
 
 ### Changed

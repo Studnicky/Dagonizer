@@ -1,5 +1,11 @@
 # @noocodex/dagonizer-tool-googlebooks
 
+## 0.20.0
+
+### Patch Changes
+
+- @noocodex/dagonizer-book-entities@0.20.0
+
 ## [unreleased]
 
 ### Changed

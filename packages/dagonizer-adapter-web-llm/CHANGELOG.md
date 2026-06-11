@@ -1,5 +1,7 @@
 # @noocodex/dagonizer-adapter-web-llm
 
+## 0.20.0
+
 ## 0.19.0
 
 ## 0.17.0
