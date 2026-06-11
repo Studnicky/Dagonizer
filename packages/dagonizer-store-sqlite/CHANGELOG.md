@@ -1,5 +1,12 @@
 # @noocodex/dagonizer-store-sqlite
 
+## 0.19.0
+
+### Patch Changes
+
+- Updated dependencies [d5a95ea]
+  - @noocodex/dagonizer@0.19.0
+
 ## 0.17.0
 
 ### Patch Changes
