@@ -19,56 +19,79 @@
  * taxonomy.
  */
 
-import { BaseAdapter, ChatResponseMessageBuilder, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
 import type {
   ChatMessage,
   ChatRequest,
   ChatResponse,
+  ErrorClassification,
   ToolCall,
   ToolChoice,
   ToolDefinition,
 } from '@noocodex/dagonizer/adapter';
-import { Classifications, LlmError, type ErrorClassification } from '@noocodex/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
 
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 const DEFAULT_MODEL = 'gemini-2.0-flash';
-const DEFAULT_GEMINI_MAX_ATTEMPTS = 3;
-const DEFAULT_TOKEN_COUNT = 0;
+/** Per-request timeout in ms before the adapter aborts and surfaces TIMEOUT. */
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+
+// ── Gemini response body JSON Schema + validator ──────────────────────────
+
+/**
+ * Structural type for the Gemini `generateContent` response body.
+ * Defined explicitly (not via json-schema-to-ts) because the gemini-api
+ * package does not carry a json-schema-to-ts dependency.
+ */
+interface GeminiResponseBody {
+  candidates?: ReadonlyArray<{
+    content?:      { parts?: readonly GeminiPart[] };
+    finishReason?: string;
+  }>;
+  usageMetadata?: {
+    promptTokenCount?:     number;
+    candidatesTokenCount?: number;
+  };
+}
 
 interface GeminiPart {
   readonly text?: string;
   readonly functionCall?: { readonly name: string; readonly args?: Record<string, unknown> };
 }
 
-interface GeminiResponseBody {
-  candidates?: ReadonlyArray<{
-    content?:   { parts?: readonly GeminiPart[] };
-    finishReason?: string;
-  }>;
-  usageMetadata?: {
-    promptTokenCount?: number;
-    candidatesTokenCount?: number;
-  };
+/**
+ * Validate that an unknown value has the minimum shape required to call
+ * `#parseResponse` without a raw cast. We only assert structural presence;
+ * optional fields remain optional.
+ */
+function isGeminiResponseBody(value: unknown): value is GeminiResponseBody {
+  if (value === null || typeof value !== 'object') return false;
+  const v = value as Record<string, unknown>;
+  if ('candidates' in v && !Array.isArray(v['candidates'])) return false;
+  return true;
 }
 
 export interface GeminiApiAdapterOptions {
   readonly model?: string;
   readonly maxAttempts?: number;
+  /** Per-request timeout in ms. Defaults to 60 000 ms. */
+  readonly timeoutMs?: number;
 }
 
 export class GeminiApiAdapter extends BaseAdapter {
-  readonly #apiKey: string;
-  readonly #model:  string;
+  readonly #apiKey:    string;
+  readonly #model:     string;
+  readonly #timeoutMs: number;
 
   constructor(apiKey: string, options: GeminiApiAdapterOptions = {}) {
     super(
       'gemini-api',
       'Gemini API (your AI Studio key)',
       { 'toolUse': 'full', 'structuredOutput': true, 'jsonMode': true },
-      { 'maxAttempts': options.maxAttempts ?? DEFAULT_GEMINI_MAX_ATTEMPTS },
+      { 'maxAttempts': options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS },
     );
-    this.#apiKey = apiKey;
-    this.#model  = options.model ?? DEFAULT_MODEL;
+    this.#apiKey    = apiKey;
+    this.#model     = options.model ?? DEFAULT_MODEL;
+    this.#timeoutMs = options.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
   /**
@@ -86,16 +109,27 @@ export class GeminiApiAdapter extends BaseAdapter {
     const url = `${ENDPOINT}/${encodeURIComponent(this.#model)}:generateContent?key=${encodeURIComponent(this.#apiKey)}`;
     const body = this.#buildBody(request);
 
+    // Compose a per-request timeout with the caller's signal so either
+    // can abort the fetch independently.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => { controller.abort(new LlmError('gemini-api request timeout', Classifications['TIMEOUT'])); },
+      this.#timeoutMs,
+    );
+    const signal = AbortSignal.any([request.signal, controller.signal]);
+
     let res: Response;
     try {
       res = await fetch(url, {
         'method':  'POST',
         'headers': { 'content-type': 'application/json' },
         'body':    JSON.stringify(body),
-        'signal': request.signal,
+        signal,
       });
     } catch (err) {
       throw LlmError.fromNetworkError(err);
+    } finally {
+      clearTimeout(timeoutId);
     }
 
     if (!res.ok) {
@@ -103,13 +137,19 @@ export class GeminiApiAdapter extends BaseAdapter {
       throw new LlmError(`Gemini REST ${String(res.status)}: ${text}`, LlmError.classifyHttp(res.status, { 'body': text }));
     }
 
-    const payload = (await res.json()) as GeminiResponseBody;
-    return this.#parseResponse(payload);
+    const rawBody: unknown = await res.json();
+    if (!isGeminiResponseBody(rawBody)) {
+      throw new LlmError(
+        'Gemini API: response body schema violation — unexpected structure',
+        Classifications['SCHEMA_VIOLATION'],
+      );
+    }
+    return this.#parseResponse(rawBody);
   }
 
   protected override classify(error: unknown): ErrorClassification {
     if (error instanceof LlmError) return error.classification;
-    if (error instanceof Error && /aborted/iu.test(error.message)) return Classifications['NETWORK'];
+    if (error instanceof Error && /aborted|timeout/iu.test(error.message)) return Classifications['TIMEOUT'];
     return Classifications['UNKNOWN'];
   }
 
@@ -166,8 +206,8 @@ export class GeminiApiAdapter extends BaseAdapter {
       'finishReason': finishReason,
       'usage': payload.usageMetadata !== undefined
         ? {
-          'promptTokens':     payload.usageMetadata.promptTokenCount ?? DEFAULT_TOKEN_COUNT,
-          'completionTokens': payload.usageMetadata.candidatesTokenCount ?? DEFAULT_TOKEN_COUNT,
+          'promptTokens':     payload.usageMetadata.promptTokenCount   ?? 0,
+          'completionTokens': payload.usageMetadata.candidatesTokenCount ?? 0,
         }
         : ZERO_TOKEN_USAGE,
     };

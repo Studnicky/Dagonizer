@@ -12,40 +12,46 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region parse-csv-node
-/** Split one CSV line into cells, honouring double-quoted fields. */
-function splitCsvLine(line: string): string[] {
-  const cells: string[] = [];
-  let current = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (inQuotes) {
-      if (ch === '"') {
-        if (line[i + 1] === '"') { current += '"'; i++; }
-        else { inQuotes = false; }
+export class ParseCsvNode implements NodeInterface<CartographerState, 'map-fields' | 'invalid', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'parse-csv';
+  readonly 'outputs' = ['map-fields', 'invalid'] as const;
+
+  /** Split one CSV line into cells, honouring double-quoted fields. */
+  private static splitCsvLine(line: string): string[] {
+    const cells: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (line[i + 1] === '"') { current += '"'; i++; }
+          else { inQuotes = false; }
+        } else {
+          current += ch;
+        }
+      } else if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        cells.push(current);
+        current = '';
       } else {
         current += ch;
       }
-    } else if (ch === '"') {
-      inQuotes = true;
-    } else if (ch === ',') {
-      cells.push(current);
-      current = '';
-    } else {
-      current += ch;
     }
+    cells.push(current);
+    return cells;
   }
-  cells.push(current);
-  return cells;
-}
 
-export const parseCsv: NodeInterface<CartographerState, 'map-fields' | 'invalid', CartographerServices> = {
-  'name': 'parse-csv',
-  'outputs': ['map-fields', 'invalid'],
-  async execute(state, context) {
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'map-fields' | 'invalid'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -55,10 +61,10 @@ export const parseCsv: NodeInterface<CartographerState, 'map-fields' | 'invalid'
     if (headerLine === undefined) {
       return NodeOutputBuilder.of('invalid');
     }
-    const header = splitCsvLine(headerLine);
+    const header = ParseCsvNode.splitCsvLine(headerLine);
     const records: Array<Record<string, unknown>> = [];
     for (let i = 1; i < lines.length; i++) {
-      const cells = splitCsvLine(lines[i] ?? '');
+      const cells = ParseCsvNode.splitCsvLine(lines[i] ?? '');
       const record: Record<string, unknown> = {};
       for (let c = 0; c < header.length; c++) {
         record[header[c] ?? `col${c}`] = cells[c] ?? '';
@@ -67,6 +73,6 @@ export const parseCsv: NodeInterface<CartographerState, 'map-fields' | 'invalid'
     }
     state.parsedRecords = records;
     return NodeOutputBuilder.of('map-fields');
-  },
-};
+  }
+}
 // #endregion parse-csv-node

@@ -5,7 +5,6 @@ export { RealTimeScheduler } from './RealTimeScheduler.js';
 export { Scheduler } from './Scheduler.js';
 export { SignalComposer } from './SignalComposer.js';
 export { BackoffStrategy, RetryPolicy } from './RetryPolicy.js';
-export type { BackoffStrategyValue } from './RetryPolicy.js';
 export { Timeout } from './Timeout.js';
 
 // Adapter contracts live in `contracts/` (single source of truth).

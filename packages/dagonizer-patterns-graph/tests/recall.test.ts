@@ -1,7 +1,10 @@
-import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { RecallContextNode } from '../src/index.js';
+import { test } from 'node:test';
+
 import type { Binding, SlotPattern, TripleStore } from '@noocodex/dagonizer/patterns';
+
+import { RecallContextNode } from '../src/index.js';
+
 
 class TestState {
   recalled: string[] = [];

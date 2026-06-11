@@ -29,11 +29,11 @@
 import { Dagonizer } from '@noocodex/dagonizer';
 import {
   PipelineState,
-  prepare,
-  invokePlugin,
-  finalize,
-  validate,
-  transform,
+  PrepareNode,
+  InvokePluginNode,
+  FinalizeNode,
+  ValidateNode,
+  TransformNode,
   childDAG,
   parentDAG,
 } from './dags/derive.js';
@@ -43,11 +43,11 @@ import {
 // ---------------------------------------------------------------------------
 
 const dispatcher = new Dagonizer<PipelineState>();
-dispatcher.registerNode(prepare);
-dispatcher.registerNode(invokePlugin);
-dispatcher.registerNode(finalize);
-dispatcher.registerNode(validate);
-dispatcher.registerNode(transform);
+dispatcher.registerNode(new PrepareNode());
+dispatcher.registerNode(new InvokePluginNode());
+dispatcher.registerNode(new FinalizeNode());
+dispatcher.registerNode(new ValidateNode());
+dispatcher.registerNode(new TransformNode());
 dispatcher.registerDAG(childDAG);
 dispatcher.registerDAG(parentDAG);
 

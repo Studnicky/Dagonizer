@@ -4,7 +4,7 @@
  * Accepts a structural endpoint so the same class serves both sides of the
  * IPC boundary:
  *
- *   Parent side:  new IpcChannel({ send: (m) => child.send(m), on: (e, fn) => child.on(e, fn) })
+ *   Parent side:  IpcChannel.fromChildProcess(child)
  *   Child side:   new IpcChannel({ send: (m) => process.send!(m), on: (e, fn) => process.on(e, fn) })
  *
  * send      → endpoint.send(message)
@@ -29,6 +29,16 @@ export interface IpcEndpoint {
 }
 
 // ---------------------------------------------------------------------------
+// IpcProcessLike: minimal structural type satisfied by ChildProcess and
+// cluster.Worker — allows IpcChannel.fromChildProcess to serve both.
+// ---------------------------------------------------------------------------
+
+export interface IpcProcessLike {
+  send(message: object): unknown;
+  on(event: 'message', listener: (message: unknown) => void): this;
+}
+
+// ---------------------------------------------------------------------------
 // IpcChannel
 // ---------------------------------------------------------------------------
 
@@ -36,6 +46,21 @@ export class IpcChannel implements MessageChannelInterface {
   readonly #endpoint: IpcEndpoint;
   #handler: ((message: BridgeMessage) => void) | null;
   #closed: boolean;
+
+  /**
+   * Construct an IpcChannel from any IpcProcessLike (ChildProcess or
+   * cluster.Worker). Adapts the process's `.send(Serializable)` signature
+   * to the IpcEndpoint contract with the Serializable→object cast isolated here.
+   * Both ForkContainer and ClusterContainer use this factory.
+   */
+  static fromChildProcess(process: IpcProcessLike): IpcChannel {
+    const sendFn = (message: unknown): void => { process.send(message as object); };
+    const onFn = (event: 'message', listener: (message: unknown) => void): IpcEndpoint => {
+      process.on(event, listener);
+      return { 'send': sendFn, 'on': onFn };
+    };
+    return new IpcChannel({ 'send': sendFn, 'on': onFn });
+  }
 
   constructor(endpoint: IpcEndpoint) {
     this.#endpoint = endpoint;

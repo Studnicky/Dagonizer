@@ -53,12 +53,12 @@ Key features: strict TypeScript (exactOptionalPropertyTypes), JSON-LD canonical 
 - [Nodes](https://studnicky.github.io/Dagonizer/reference/nodes): placement types (SingleNode, ScatterNode, EmbeddedDAGNode, TerminalNode, PhaseNode).
 - [Lifecycle](https://studnicky.github.io/Dagonizer/reference/lifecycle): DAGLifecycleMachine states and transition guards.
 - [Runtime](https://studnicky.github.io/Dagonizer/reference/runtime): Clock, Scheduler, RetryPolicy, RealTimeScheduler, BackoffStrategy.
-- [Contracts](https://studnicky.github.io/Dagonizer/reference/contracts): NodeInterface, ClockProvider, SchedulerProvider, SchedulerHandle.
+- [Contracts](https://studnicky.github.io/Dagonizer/reference/contracts): NodeInterface, ClockProvider, SchedulerProvider.
 - [Core](https://studnicky.github.io/Dagonizer/reference/core): GatherStrategy, GatherStrategies, OutcomeReducers.
 - [Derive](https://studnicky.github.io/Dagonizer/reference/derive): contract-to-DAG derivation API.
 - [Viz](https://studnicky.github.io/Dagonizer/reference/viz): CytoscapeRenderer and MermaidRenderer APIs.
 - [Validation](https://studnicky.github.io/Dagonizer/reference/validation): Validator and EntityValidator; Ajv compiled once at module load.
-- [Checkpoint](https://studnicky.github.io/Dagonizer/reference/checkpoint): Checkpoint class, StateRestoreFnType, cursor serialization format.
+- [Checkpoint](https://studnicky.github.io/Dagonizer/reference/checkpoint): Checkpoint class, cursor serialization format.
 - [Entities](https://studnicky.github.io/Dagonizer/reference/entities): JSON Schema 2020-12 definitions and FromSchema-derived TypeScript types.
 - [Testing](https://studnicky.github.io/Dagonizer/reference/testing): VirtualClockProvider and VirtualScheduler for deterministic unit tests.
 - [Errors](https://studnicky.github.io/Dagonizer/reference/errors): DAGError hierarchy (NodeTimeoutError, validation errors, lifecycle errors).

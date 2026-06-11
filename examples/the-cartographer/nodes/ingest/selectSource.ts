@@ -16,7 +16,10 @@ import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 import type { SourcePayload } from '../../entities/SourcePayload.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region select-source-node
 const FORMAT_ROUTE: Readonly<Record<SourcePayload['format'], 'json' | 'csv' | 'gz'>> = {
@@ -25,10 +28,13 @@ const FORMAT_ROUTE: Readonly<Record<SourcePayload['format'], 'json' | 'csv' | 'g
   'json':      'json',
 };
 
-export const selectSource: NodeInterface<CartographerState, 'json' | 'csv' | 'gz' | 'invalid', CartographerServices> = {
-  'name': 'select-source',
-  'outputs': ['json', 'csv', 'gz', 'invalid'],
-  async execute(state, context) {
+export class SelectSourceNode implements NodeInterface<CartographerState, 'json' | 'csv' | 'gz' | 'invalid', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'select-source';
+  readonly 'outputs' = ['json', 'csv', 'gz', 'invalid'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'json' | 'csv' | 'gz' | 'invalid'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -38,6 +44,6 @@ export const selectSource: NodeInterface<CartographerState, 'json' | 'csv' | 'gz
     }
     state.currentSource = item;
     return NodeOutputBuilder.of(FORMAT_ROUTE[item.format]);
-  },
-};
+  }
+}
 // #endregion select-source-node

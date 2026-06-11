@@ -18,9 +18,10 @@ import {
   DAGBuilder,
   NodeOutputBuilder,
   NodeStateBase,
+  EMPTY_CONTRACT_FRAGMENT,
 } from '@noocodex/dagonizer';
 import { Timeout } from '@noocodex/dagonizer/runtime';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import type { NodeContextInterface, NodeInterface} from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State
@@ -35,16 +36,17 @@ export class TaskState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // #region fast-node
-export const fastNode: NodeInterface<TaskState, 'done'> = {
-  "name":    'fast-task',
-  "outputs": ['done'],
+export class FastTaskNode implements NodeInterface<TaskState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly name = 'fast-task';
+  readonly outputs = ['done'] as const;
   // Per-node timeout budget: 200 ms. This node resolves in ~0 ms → no timeout.
-  "timeout": Timeout.ofMs(200),
-  async execute(state) {
+  readonly timeout = Timeout.ofMs(200);
+  async execute(state: TaskState) {
     state.output = 'fast-done';
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 // #endregion fast-node
 
 // ---------------------------------------------------------------------------
@@ -55,12 +57,13 @@ export const fastNode: NodeInterface<TaskState, 'done'> = {
 // ---------------------------------------------------------------------------
 
 // #region slow-node
-export const slowNode: NodeInterface<TaskState, 'done'> = {
-  "name":    'slow-task',
-  "outputs": ['done'],
+export class SlowTaskNode implements NodeInterface<TaskState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly name = 'slow-task';
+  readonly outputs = ['done'] as const;
   // Per-node timeout budget: 50 ms. The node tries to wait 5 s → NodeTimeoutError.
-  "timeout": Timeout.ofMs(50),
-  async execute(_state, context) {
+  readonly timeout = Timeout.ofMs(50);
+  async execute(_state: TaskState, context: NodeContextInterface) {
     // Await a 5-second delay, but honour context.signal so the engine's
     // per-node abort terminates the wait promptly at the 50 ms boundary.
     await new Promise<void>((_resolve, reject) => {
@@ -72,8 +75,8 @@ export const slowNode: NodeInterface<TaskState, 'done'> = {
       );
     });
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 // #endregion slow-node
 
 // ---------------------------------------------------------------------------
@@ -81,11 +84,11 @@ export const slowNode: NodeInterface<TaskState, 'done'> = {
 // ---------------------------------------------------------------------------
 
 export const fastDag = new DAGBuilder('fast-dag', '1')
-  .node('fast-task', fastNode, { 'done': 'end' })
+  .node('fast-task', new FastTaskNode(), { 'done': 'end' })
   .terminal('end')
   .build();
 
 export const slowDag = new DAGBuilder('slow-dag', '1')
-  .node('slow-task', slowNode, { 'done': 'end' })
+  .node('slow-task', new SlowTaskNode(), { 'done': 'end' })
   .terminal('end')
   .build();

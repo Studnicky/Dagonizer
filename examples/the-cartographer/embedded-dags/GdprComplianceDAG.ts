@@ -23,12 +23,12 @@
  */
 
 // #region gdpr-compliance-dag
-import { consentGate, classifyPii, redactPii } from '../nodes/gdprNodes.ts';
+import { ConsentGateNode, ClassifyPiiNode, RedactPiiNode } from '../nodes/gdprNodes.ts';
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
 import type { DAG, DispatcherBundle } from '@noocodex/dagonizer';
-import { DAGBuilder } from '@noocodex/dagonizer/builder';
+import { DAGBuilder } from '@noocodex/dagonizer';
 
 export const gdprComplianceDAG: DAG = new DAGBuilder('gdpr-compliance', '1.0')
 
@@ -36,19 +36,19 @@ export const gdprComplianceDAG: DAG = new DAGBuilder('gdpr-compliance', '1.0')
   // Resolves the consent status from marketingConsent + simulated expiry.
   // Always routes 'classify' (both consented and non-consented proceed;
   // the consent status drives redaction rules downstream).
-  .node('consent-gate', consentGate, {
+  .node('consent-gate', new ConsentGateNode(), {
     'classify': 'classify-pii',
   })
 
   // ── 2. classify-pii ──────────────────────────────────────────────────────
   // Records which fields are personal/sensitive; no routing decision yet.
-  .node('classify-pii', classifyPii, {
+  .node('classify-pii', new ClassifyPiiNode(), {
     'redact': 'redact-pii',
   })
 
   // ── 3. redact-pii ────────────────────────────────────────────────────────
   // Applies GdprRedactor.redact. Routes to 'compliant' (ok) or 'violation'.
-  .node('redact-pii', redactPii, {
+  .node('redact-pii', new RedactPiiNode(), {
     'ok':        'compliant',
     'violation': 'violation',
   })
@@ -61,6 +61,6 @@ export const gdprComplianceDAG: DAG = new DAGBuilder('gdpr-compliance', '1.0')
 // #endregion gdpr-compliance-dag
 
 export const gdprComplianceBundle: DispatcherBundle<CartographerState, CartographerServices> = {
-  'nodes': [consentGate, classifyPii, redactPii],
+  'nodes': [new ConsentGateNode(), new ClassifyPiiNode(), new RedactPiiNode()],
   'dags': [gdprComplianceDAG],
 };

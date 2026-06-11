@@ -6,8 +6,8 @@
  * extract a field, respond. No LLM, no triple store, no HTTP.
  */
 
-import { MonadicNode } from '@noocodex/dagonizer/patterns';
 import type { NodeStateInterface } from '@noocodex/dagonizer';
+import { MonadicNode } from '@noocodex/dagonizer/patterns';
 
 export abstract class FlowNode<
   TState extends NodeStateInterface,

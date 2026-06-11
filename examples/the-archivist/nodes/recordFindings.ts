@@ -23,12 +23,16 @@
  *   SPARQL ASK gate can rely on the store as ground truth.
  */
 
-import { GRAPH_MEMORY, MemoryStore, provGraphIri } from '../memory/MemoryStore.ts';
+import { NodeOutputBuilder,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+
+import { GRAPH_MEMORY, MemoryStore } from '../memory/MemoryStore.ts';
 import { PROV, ProvIris } from '../provenance/PROV.ts';
-
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
-
-import type { ArchivistNode } from './ArchivistNode.ts';
+import type { ArchivistState } from '../ArchivistState.ts';
+import type { ArchivistServices } from '../services.ts';
 
 const rdfType              = MemoryStore.iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#type');
 const dagBook              = MemoryStore.dagIri('Book');
@@ -48,24 +52,26 @@ const dagQueryEmbedding    = MemoryStore.dagIri('queryEmbedding');
 // asserted as type prov:SoftwareAgent.
 const ARCHIVIST_AGENT      = ProvIris.agent('archivist-software');
 
-export const recordFindings: ArchivistNode<'recorded'> = {
-  "name": 'record-findings',
-  "kind": 'deterministic',
-  "outputs": ['recorded'],
-  async execute(state, context) {
+export class RecordFindingsNode implements NodeInterface<ArchivistState, 'recorded', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'record-findings';
+  readonly outputs = ['recorded'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const memory = context.services.memory;
     const embedder = context.services.embedder;
-    const shortlistIsbns = new Set(state.shortlist.map((c) => c.book.isbn));
+    const shortlistIsbns = new Set(state.shortlist.map((c) => c.book.identity.isbn));
     for (const candidate of state.candidates) {
-      const book = MemoryStore.bookIri(candidate.book.isbn);
+      const book = MemoryStore.bookIri(candidate.book.identity.isbn);
       // rdf:type links this ABox instance to the TBox dag:Book class;
       // this is the triple that connects memory nodes to ontology class nodes
       // in the MemoryGraph cosmos.gl view.
-      memory.assert(book, rdfType,        dagBook,                                               GRAPH_MEMORY);
-      memory.assert(book, dagTitle,       MemoryStore.lit.str(candidate.book.title),             GRAPH_MEMORY);
-      memory.assert(book, dagSource,      MemoryStore.lit.str(candidate.source),                 GRAPH_MEMORY);
-      memory.assert(book, dagScore,       MemoryStore.lit.num(candidate.score),                  GRAPH_MEMORY);
-      memory.assert(book, dagInShortlist, MemoryStore.lit.bool(shortlistIsbns.has(candidate.book.isbn)), GRAPH_MEMORY);
+      memory.assert(book, rdfType,        dagBook,                                                     GRAPH_MEMORY);
+      memory.assert(book, dagTitle,       MemoryStore.lit.str(candidate.book.identity.title),          GRAPH_MEMORY);
+      memory.assert(book, dagSource,      MemoryStore.lit.str(candidate.source),                       GRAPH_MEMORY);
+      memory.assert(book, dagScore,       MemoryStore.lit.num(candidate.score),                        GRAPH_MEMORY);
+      memory.assert(book, dagInShortlist, MemoryStore.lit.bool(shortlistIsbns.has(candidate.book.identity.isbn)), GRAPH_MEMORY);
     }
 
     // Per-run facts so future runs can recall this visitor's session.
@@ -76,11 +82,11 @@ export const recordFindings: ArchivistNode<'recorded'> = {
       memory.assert(run, dagVisitorQuery,  MemoryStore.lit.str(state.query),          GRAPH_MEMORY);
       memory.assert(run, dagRunTimestamp,  MemoryStore.lit.num(Date.now()),            GRAPH_MEMORY);
       for (const candidate of state.shortlist) {
-        const book = MemoryStore.bookIri(candidate.book.isbn);
+        const book = MemoryStore.bookIri(candidate.book.identity.isbn);
         // dag:shortlisted is the object property (run → book); dag:shortlistedTitle
         // is the literal convenience predicate kept for SPARQL compatibility.
-        memory.assert(run, dagShortlisted,     book,                                           GRAPH_MEMORY);
-        memory.assert(run, dagShortlistedTitle, MemoryStore.lit.str(candidate.book.title),     GRAPH_MEMORY);
+        memory.assert(run, dagShortlisted,     book,                                                          GRAPH_MEMORY);
+        memory.assert(run, dagShortlistedTitle, MemoryStore.lit.str(candidate.book.identity.title),            GRAPH_MEMORY);
       }
 
       // ── PROV-O bridge: connect every shortlisted Book (memory layer)
@@ -91,11 +97,11 @@ export const recordFindings: ArchivistNode<'recorded'> = {
       //    pulls the Book nodes into the prov layer's adjacency too;
       //    one connected graph, traversable via standard PROV-O
       //    predicates by recall / SPARQL.
-      const provGraph    = provGraphIri(state.runId);
+      const provGraph    = MemoryStore.provGraphIri(state.runId);
       const runActivity  = ProvIris.activity(state.runId, 'run', 0);
       memory.assert(runActivity, MemoryStore.dagIri('searchedFor'), MemoryStore.lit.str(state.query), provGraph);
       for (const candidate of state.shortlist) {
-        const book = MemoryStore.bookIri(candidate.book.isbn);
+        const book = MemoryStore.bookIri(candidate.book.identity.isbn);
         memory.assert(book,         PROV.wasGeneratedBy,   runActivity,      provGraph);
         memory.assert(book,         PROV.wasAttributedTo,  ARCHIVIST_AGENT,  provGraph);
         memory.assert(runActivity,  PROV.generated,        book,             provGraph);
@@ -120,10 +126,10 @@ export const recordFindings: ArchivistNode<'recorded'> = {
           const description = typeof candidate.notes?.['description'] === 'string'
             ? String(candidate.notes['description'])
             : '';
-          const text = `${candidate.book.title} ${description}`.trim();
+          const text = `${candidate.book.identity.title} ${description}`.trim();
           if (text.length === 0) continue;
           const vec = await embedder.embed(text);
-          const book = MemoryStore.bookIri(candidate.book.isbn);
+          const book = MemoryStore.bookIri(candidate.book.identity.isbn);
           memory.assert(book, dagEmbedding, MemoryStore.lit.str(JSON.stringify([...vec])), GRAPH_MEMORY);
         }
         if (state.runId !== '' && state.query.length > 0) {
@@ -143,5 +149,8 @@ export const recordFindings: ArchivistNode<'recorded'> = {
     }
 
     return NodeOutputBuilder.of('recorded');
-  },
-};
+  }
+}
+
+/** Backward-compatible const export for existing bundle/DAG references. */
+export const recordFindings = new RecordFindingsNode();

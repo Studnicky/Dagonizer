@@ -19,22 +19,28 @@
  */
 
 
+import { NodeOutputBuilder,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { Candidate } from '../entities/Book.ts';
 import type { ArchivistServices } from '../services.ts';
-
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
 
 const MAX_COMPOSE_ATTEMPTS = 3;
 
 /** Default wall-clock budget for the compose phase (ms). Overridden at runtime by the runner. */
 export const COMPOSE_TIMEOUT_MS = 60_000;
 
-export const composeResponse: NodeInterface<ArchivistState, 'drafted' | 'retry' | 'salvage', ArchivistServices> = {
-  "name": 'compose-response',
-  "outputs": ['drafted', 'retry', 'salvage'],
-  async execute(state, context) {
+export class ComposeResponseNode implements NodeInterface<ArchivistState, 'drafted' | 'retry' | 'salvage', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'compose-response';
+  readonly outputs = ['drafted', 'retry', 'salvage'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     state.recordAttempt('compose');
     const llm = context.services.llm;
     const prior = state.priorContext.length > 0 ? state.priorContext : undefined;
@@ -83,117 +89,128 @@ export const composeResponse: NodeInterface<ArchivistState, 'drafted' | 'retry' 
     } finally {
       clearTimeout(handle);
     }
-  },
-};
-
-/**
- * Detect candidate named-entity spans in a draft.
- *
- *   - Capitalised multi-word phrases (titles like "House of Leaves",
- *     authors like "Mark Z Danielewski"). Allows lowercase joiners
- *     `of/the/de/von/and/&` between capitalised tokens to keep titles
- *     like "Lord of the Rings" intact.
- *   - Italicised titles in `*…*` markdown spans.
- *
- * Returns the raw matched strings, de-duplicated, preserving order.
- */
-export function detectEntities(draft: string): readonly string[] {
-  const found = new Map<string, true>();
-  // Capitalised tokens: a leading word and one or more trailing capitalised
-  // words, optionally with lowercase joiners (of/the/de/von/&/and) BETWEEN
-  // capitalised tokens. The trailing token must be capitalised; joiners
-  // never end a match, so "House of Leaves and Piranesi" splits cleanly.
-  // Single-letter middle initials (e.g. "Mark Z Danielewski") are allowed.
-  const capToken = '[A-Z](?:[a-z\']+|\\.?)';                    // CapWord or initial
-  const joiner   = '(?:of|the|de|von|and|&)';                   // lowercase joiners
-  const capitalRe = new RegExp(
-    `\\b(${capToken}(?:\\s+(?:${joiner}\\s+)?${capToken})+)\\b`,
-    'gu',
-  );
-  const italicRe = /\*([^*\n]{2,80})\*/gu;
-  for (const m of draft.matchAll(capitalRe)) {
-    const span = (m[1] ?? '').trim();
-    if (span.length > 0) found.set(span, true);
   }
-  for (const m of draft.matchAll(italicRe)) {
-    const span = (m[1] ?? '').trim();
-    if (span.length > 0) found.set(span, true);
-  }
-  return [...found.keys()];
 }
 
 /**
- * Anti-hallucination check. Returns either `'ok'` or a failure cause
- * string describing the first hallucinated title found. Caller routes
- * accordingly.
+ * ResponseAnalysis: static methods for draft quality analysis.
  *
- *   1. Tokenise named-entity spans in the draft.
- *   2. For each entity, check substring-match (case-insensitive) against
- *      every title in shortlist + priorCandidates.
- *   3. If unmatched AND entity has > 2 words (heuristic: book titles
- *      tend to be longer than 2 words), flag as hallucination.
- *   4. Bias-check: when the shortlist is non-empty and the draft names
- *      NO book from it, the response is "compose-was-lazy" and gets
- *      flagged too.
+ * detectEntities: detect candidate named-entity spans in a draft.
+ * antiHallucinationCheck: verify draft entities against known shortlist.
  */
-export function antiHallucinationCheck(
-  draft: string,
-  shortlist: readonly Candidate[],
-  priorCandidates: readonly Candidate[],
-): { readonly status: 'pass' | 'fail'; readonly count: number; readonly cause: string } {
-  const knownTitles: readonly string[] = [
-    ...shortlist.map((c) => c.book.title.toLowerCase()),
-    ...priorCandidates.map((c) => c.book.title.toLowerCase()),
-  ];
-  const entities = detectEntities(draft);
-  let checked = 0;
-  for (const entity of entities) {
-    const words = entity.trim().split(/\s+/u);
-    if (words.length <= 2) continue; // skip likely author / proper-noun shortish spans
-    checked++;
-    const needle = entity.toLowerCase();
-    const matched = knownTitles.some((t) => t.includes(needle) || needle.includes(t));
-    if (!matched) {
-      return {
-        'status': 'fail',
-        'count':  checked,
-        'cause':  `Hallucinated title: "${entity}". Use only books from the shortlist. `,
-      };
+export class ResponseAnalysis {
+  /**
+   * Detect candidate named-entity spans in a draft.
+   *
+   *   - Capitalised multi-word phrases (titles like "House of Leaves",
+   *     authors like "Mark Z Danielewski"). Allows lowercase joiners
+   *     `of/the/de/von/and/&` between capitalised tokens to keep titles
+   *     like "Lord of the Rings" intact.
+   *   - Italicised titles in `*…*` markdown spans.
+   *
+   * Returns the raw matched strings, de-duplicated, preserving order.
+   */
+  static detectEntities(draft: string): readonly string[] {
+    const found = new Map<string, true>();
+    // Capitalised tokens: a leading word and one or more trailing capitalised
+    // words, optionally with lowercase joiners (of/the/de/von/&/and) BETWEEN
+    // capitalised tokens. The trailing token must be capitalised; joiners
+    // never end a match, so "House of Leaves and Piranesi" splits cleanly.
+    // Single-letter middle initials (e.g. "Mark Z Danielewski") are allowed.
+    const capToken = '[A-Z](?:[a-z\']+|\\.?)';                    // CapWord or initial
+    const joiner   = '(?:of|the|de|von|and|&)';                   // lowercase joiners
+    const capitalRe = new RegExp(
+      `\\b(${capToken}(?:\\s+(?:${joiner}\\s+)?${capToken})+)\\b`,
+      'gu',
+    );
+    const italicRe = /\*([^*\n]{2,80})\*/gu;
+    for (const m of draft.matchAll(capitalRe)) {
+      const span = (m[1] ?? '').trim();
+      if (span.length > 0) found.set(span, true);
     }
+    for (const m of draft.matchAll(italicRe)) {
+      const span = (m[1] ?? '').trim();
+      if (span.length > 0) found.set(span, true);
+    }
+    return [...found.keys()];
   }
 
-  // Bias-check: shortlist non-empty but draft mentions no shortlist title.
-  if (shortlist.length > 0) {
-    const draftLower = draft.toLowerCase();
-    const mentioned = shortlist.some((c) => {
-      const title = c.book.title.toLowerCase();
-      return title.length > 0 && draftLower.includes(title);
-    });
-    if (!mentioned) {
-      return {
-        'status': 'fail',
-        'count':  checked,
-        'cause':  'Draft references no book from the shortlist. Cite at least one shortlist title. ',
-      };
+  /**
+   * Anti-hallucination check. Returns either `'ok'` or a failure cause
+   * string describing the first hallucinated title found. Caller routes
+   * accordingly.
+   *
+   *   1. Tokenise named-entity spans in the draft.
+   *   2. For each entity, check substring-match (case-insensitive) against
+   *      every title in shortlist + priorCandidates.
+   *   3. If unmatched AND entity has > 2 words (heuristic: book titles
+   *      tend to be longer than 2 words), flag as hallucination.
+   *   4. Bias-check: when the shortlist is non-empty and the draft names
+   *      NO book from it, the response is "compose-was-lazy" and gets
+   *      flagged too.
+   */
+  static antiHallucinationCheck(
+    draft: string,
+    shortlist: readonly Candidate[],
+    priorCandidates: readonly Candidate[],
+  ): { readonly status: 'pass' | 'fail'; readonly count: number; readonly cause: string } {
+    const knownTitles: readonly string[] = [
+      ...shortlist.map((c) => c.book.identity.title.toLowerCase()),
+      ...priorCandidates.map((c) => c.book.identity.title.toLowerCase()),
+    ];
+    const entities = ResponseAnalysis.detectEntities(draft);
+    let checked = 0;
+    for (const entity of entities) {
+      const words = entity.trim().split(/\s+/u);
+      if (words.length <= 2) continue; // skip likely author / proper-noun shortish spans
+      checked++;
+      const needle = entity.toLowerCase();
+      const matched = knownTitles.some((t) => t.includes(needle) || needle.includes(t));
+      if (!matched) {
+        return {
+          'status': 'fail',
+          'count':  checked,
+          'cause':  `Hallucinated title: "${entity}". Use only books from the shortlist. `,
+        };
+      }
     }
-  }
 
-  return { 'status': 'pass', 'count': checked, 'cause': '' };
+    // Bias-check: shortlist non-empty but draft mentions no shortlist title.
+    if (shortlist.length > 0) {
+      const draftLower = draft.toLowerCase();
+      const mentioned = shortlist.some((c) => {
+        const title = c.book.identity.title.toLowerCase();
+        return title.length > 0 && draftLower.includes(title);
+      });
+      if (!mentioned) {
+        return {
+          'status': 'fail',
+          'count':  checked,
+          'cause':  'Draft references no book from the shortlist. Cite at least one shortlist title. ',
+        };
+      }
+    }
+
+    return { 'status': 'pass', 'count': checked, 'cause': '' };
+  }
 }
 
-export const validateResponse: NodeInterface<
+export class ValidateResponseNode implements NodeInterface<
   ArchivistState,
   'approved' | 'retry' | 'exhausted',
   ArchivistServices
-> = {
-  "name": 'validate-response',
-  "outputs": ['approved', 'retry', 'exhausted'],
-  async execute(state, context) {
+> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'validate-response';
+  readonly outputs = ['approved', 'retry', 'exhausted'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     // ── Deterministic anti-hallucination pre-check ───────────────────────
     // Runs BEFORE the LLM validator. When it fails we force a retry
     // without paying for an LLM round-trip; we accumulate a
     // failureCause so the next compose attempt knows what to fix.
-    const antiHal = antiHallucinationCheck(state.draft, state.shortlist, state.priorCandidates);
+    const antiHal = ResponseAnalysis.antiHallucinationCheck(state.draft, state.shortlist, state.priorCandidates);
     if (antiHal.status === 'fail') {
       context.services.logger.warn(`validate-anti-hallucination: FAIL: ${antiHal.cause.trim()}`);
       state.failureCause += antiHal.cause;
@@ -214,5 +231,9 @@ export const validateResponse: NodeInterface<
       return NodeOutputBuilder.of('exhausted');
     }
     return NodeOutputBuilder.of('retry');
-  },
-};
+  }
+}
+
+/** Backward-compatible const exports for existing bundle/DAG references. */
+export const composeResponse = new ComposeResponseNode();
+export const validateResponse = new ValidateResponseNode();

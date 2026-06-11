@@ -17,7 +17,7 @@
  */
 
 import { Dagonizer } from '@noocodex/dagonizer';
-import { ScrapeState, probe, dag } from './dags/04-scatter.js';
+import { ScrapeState, ProbeNode, dag } from './dags/04-scatter.js';
 
 // ---------------------------------------------------------------------------
 // Run
@@ -25,7 +25,7 @@ import { ScrapeState, probe, dag } from './dags/04-scatter.js';
 
 // #region run
 const dispatcher = new Dagonizer<ScrapeState>();
-dispatcher.registerNode(probe);
+dispatcher.registerNode(new ProbeNode());
 dispatcher.registerDAG(dag);
 
 const state = new ScrapeState();

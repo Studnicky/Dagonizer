@@ -13,37 +13,37 @@
  */
 
 // #region ingest-csv-dag
-import { parseCsv }      from '../nodes/ingest/parseCsv.ts';
-import { mapFields }     from '../nodes/ingest/mapFields.ts';
-import { coerceTypes }   from '../nodes/ingest/coerceTypes.ts';
-import { validateEvent } from '../nodes/ingest/validateEvent.ts';
+import { ParseCsvNode }      from '../nodes/ingest/parseCsv.ts';
+import { MapFieldsNode }     from '../nodes/ingest/mapFields.ts';
+import { CoerceTypesNode }   from '../nodes/ingest/coerceTypes.ts';
+import { ValidateEventNode } from '../nodes/ingest/validateEvent.ts';
 import type { CartographerState }    from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
 import type { DispatcherBundle } from '@noocodex/dagonizer';
-import { DAGBuilder }            from '@noocodex/dagonizer/builder';
+import { DAGBuilder } from '@noocodex/dagonizer';
 import type { DAG }              from '@noocodex/dagonizer/entities';
 
 export const ingestCsvDAG: DAG = new DAGBuilder('ingest-csv', '1.0')
 
   // 1. parse-csv: CSV text → records.
-  .node('parse-csv', parseCsv, {
+  .node('parse-csv', new ParseCsvNode(), {
     'map-fields': 'map-fields',
     'invalid':    'rejected',
   })
 
   // 2. map-fields: source field names → canonical names (per-source mapping).
-  .node('map-fields', mapFields, {
+  .node('map-fields', new MapFieldsNode(), {
     'coerce-types': 'coerce-types',
   })
 
   // 3. coerce-types: string cells → number / bool / epoch.
-  .node('coerce-types', coerceTypes, {
+  .node('coerce-types', new CoerceTypesNode(), {
     'validate-event': 'validate-event',
   })
 
   // 4. validate-event: build CanonicalEvents → state.ingestedEvents.
-  .node('validate-event', validateEvent, {
+  .node('validate-event', new ValidateEventNode(), {
     'validated': 'ingested',
   })
 
@@ -54,7 +54,7 @@ export const ingestCsvDAG: DAG = new DAGBuilder('ingest-csv', '1.0')
   .build();
 
 export const ingestCsvBundle: DispatcherBundle<CartographerState, CartographerServices> = {
-  'nodes': [parseCsv, mapFields, coerceTypes, validateEvent],
+  'nodes': [new ParseCsvNode(), new MapFieldsNode(), new CoerceTypesNode(), new ValidateEventNode()],
   'dags':  [ingestCsvDAG],
 };
 // #endregion ingest-csv-dag

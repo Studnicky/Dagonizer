@@ -2,9 +2,9 @@
  * RespondNode: terminal node that writes the draft response to a
  * consumer-controlled location and marks the lifecycle completed.
  *
- * Default implementation reads from `state.draft` (a common convention
- * across the Archivist and similar flows). Override `extractDraft` to
- * pull from a different field.
+ * Subclasses declare exactly which state field holds the draft by
+ * implementing `extractDraft`. This keeps the type contract explicit
+ * and removes convention-coupled casts from the base.
  */
 
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
@@ -17,13 +17,13 @@ export abstract class RespondNode<
 > extends FlowNode<TState, 'success'> {
   readonly outputs = ['success'] as const;
 
-  protected abstract emit(state: TState, draft: string): void;
+  /**
+   * Extract the draft string from state. Each subclass declares the
+   * exact field it reads; no convention-based casts in the base.
+   */
+  protected abstract extractDraft(state: TState): string;
 
-  /** Default extraction: state.draft when present. Override for custom fields. */
-  protected extractDraft(state: TState): string {
-    const raw = (state as Record<string, unknown>)['draft'];
-    return typeof raw === 'string' ? raw : '';
-  }
+  protected abstract emit(state: TState, draft: string): void;
 
   async execute(
     state: TState,

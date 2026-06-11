@@ -11,18 +11,24 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { Sources } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region seed-events-node
-export const seedEvents: NodeInterface<CartographerState, never, CartographerServices> = {
-  'name': 'seed',
-  'outputs': [],
-  async execute(state, context) {
+export class SeedEventsNode implements NodeInterface<CartographerState, never, CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'seed';
+  readonly 'outputs' = [] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<never>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
     state.sources = await Sources.build(state.eventCount);
     return NodeOutputBuilder.of(undefined as never);
-  },
-};
+  }
+}
 // #endregion seed-events-node

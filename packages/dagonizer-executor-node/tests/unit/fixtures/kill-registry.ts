@@ -25,16 +25,16 @@
  * the worker thread, not the parent.
  */
 
+import { EMPTY_CONTRACT_FRAGMENT, Timeout } from '@noocodex/dagonizer';
 import type {
   NodeInterface,
   RegistryBundleInterface,
   RegistryModuleInterface,
 } from '@noocodex/dagonizer/contracts';
 import { NodeOutputBuilder } from '@noocodex/dagonizer/entities';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
+import type { JsonObject, NodeContextInterface, NodeOutputInterface } from '@noocodex/dagonizer/entities';
 import { ConformanceRegistry } from '@noocodex/dagonizer/testing';
 import type { ConformanceState } from '@noocodex/dagonizer/testing';
-import type { NodeOutputInterface } from '@noocodex/dagonizer/types';
 
 /** The scatter item value whose worker self-terminates mid-request. */
 export const KILL_ITEM = 20;
@@ -45,10 +45,13 @@ export const KILL_ITEM = 20;
  * result — the silent-death simulation. Reads the current item from metadata
  * via the node context's itemKey ('currentItem').
  */
-const scatterKillerNode: NodeInterface<ConformanceState> = {
-  'name': 'scatter-counter',
-  'outputs': ['done'],
-  async execute(state: ConformanceState): Promise<NodeOutputInterface<'done'>> {
+class ScatterKillerNode implements NodeInterface<ConformanceState, 'done'> {
+  readonly 'name' = 'scatter-counter';
+  readonly 'outputs' = ['done'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+  readonly 'timeout' = Timeout.none();
+
+  async execute(state: ConformanceState, _context: NodeContextInterface): Promise<NodeOutputInterface<'done'>> {
     const current = state.getMetadata<number>('currentItem');
     if (current === KILL_ITEM) {
       // Silent death: terminate this worker thread mid-request. No result is
@@ -58,8 +61,8 @@ const scatterKillerNode: NodeInterface<ConformanceState> = {
     }
     state.value += 1;
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
 /**
  * Build a bundle identical to the conformance bundle but with scatter-counter
@@ -69,7 +72,7 @@ const scatterKillerNode: NodeInterface<ConformanceState> = {
 function buildKillBundle(): RegistryBundleInterface {
   const base = ConformanceRegistry.bundle();
   const nodes = base.bundle.nodes.filter((n) => n.name !== 'scatter-counter');
-  nodes.push(scatterKillerNode as (typeof base.bundle.nodes)[number]);
+  nodes.push(new ScatterKillerNode() as (typeof base.bundle.nodes)[number]);
   return {
     'bundle': {
       'nodes': nodes,

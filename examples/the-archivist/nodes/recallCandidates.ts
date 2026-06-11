@@ -29,13 +29,18 @@
  * kind:   'deterministic': pure SPARQL pattern-match over a stable store.
  */
 
+import { NodeOutputBuilder,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+
 import type { Candidate } from '../entities/Book.ts';
+import { BookBuilder } from '../entities/Book.ts';
 import { BOOK_NS, GRAPH_MEMORY, MemoryStore, RUN_NS, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';
-
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
-
-import type { ArchivistNode } from './ArchivistNode.ts';
-import { cosineSimilarity, jaccard, tokenise } from './textUtils.ts';
+import type { ArchivistState } from '../ArchivistState.ts';
+import type { ArchivistServices } from '../services.ts';
+import { TextSimilarity } from './textUtils.ts';
 
 const dagVisitorQuery   = MemoryStore.dagIri('visitorQuery');
 const dagShortlisted    = MemoryStore.dagIri('shortlisted');
@@ -49,33 +54,40 @@ const COSINE_THRESHOLD  = 0.70;
 const MAX_PRIOR_CANDIDATES = 10;
 const RECALLED_SCORE = 0.5;
 
-/** Parse a JSON-encoded float-array literal from a memory triple; return null on failure. */
-function parseEmbeddingLiteral(value: string): readonly number[] | null {
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed)) return null;
-    const vec: number[] = [];
-    for (const n of parsed) {
-      if (typeof n !== 'number' || !Number.isFinite(n)) return null;
-      vec.push(n);
+/**
+ * EmbeddingParser: parses JSON-encoded float-array literals from memory triples.
+ */
+class EmbeddingParser {
+  /** Parse a JSON-encoded float-array literal; return null on failure. */
+  static parse(value: string): readonly number[] | null {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      if (!Array.isArray(parsed)) return null;
+      const vec: number[] = [];
+      for (const n of parsed) {
+        if (typeof n !== 'number' || !Number.isFinite(n)) return null;
+        vec.push(n);
+      }
+      return vec.length > 0 ? vec : null;
+    } catch {
+      return null;
     }
-    return vec.length > 0 ? vec : null;
-  } catch {
-    return null;
   }
 }
 
-export const recallCandidates: ArchivistNode<'recalled'> = {
-  'name':    'recall-candidates',
-  'kind':    'deterministic',
-  'outputs': ['recalled'],
-  async execute(state, context) {
+export class RecallCandidatesNode implements NodeInterface<ArchivistState, 'recalled', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'recall-candidates';
+  readonly outputs = ['recalled'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const memory   = context.services.memory;
     const embedder = context.services.embedder;
 
     // Use extracted terms when available; fall back to raw query tokens.
     const queryText     = state.terms.length > 0 ? state.terms.join(' ') : state.query;
-    const currentTokens = tokenise(queryText);
+    const currentTokens = TextSimilarity.tokenise(queryText);
     const currentRunIri = `${RUN_NS}${state.runId}`;
 
     // ── Step 1: attempt cosine similarity recall via embedder ─────────
@@ -135,13 +147,13 @@ export const recallCandidates: ArchivistNode<'recalled'> = {
           // they're only reachable via Jaccard fallback (covered below).
           continue;
         }
-        const priorVec = parseEmbeddingLiteral(literal);
+        const priorVec = EmbeddingParser.parse(literal);
         if (priorVec === null) continue;
-        score = cosineSimilarity(queryVec, priorVec);
+        score = TextSimilarity.cosine(queryVec, priorVec);
         cosineByRun.set(runIri, score);
       } else {
-        const priorTokens = tokenise(queryVal);
-        score = jaccard(currentTokens, priorTokens);
+        const priorTokens = TextSimilarity.tokenise(queryVal);
+        score = TextSimilarity.jaccard(currentTokens, priorTokens);
       }
 
       if (score >= threshold) {
@@ -195,12 +207,7 @@ export const recallCandidates: ArchivistNode<'recalled'> = {
         if (cs !== undefined) notes['cosineSimilarity'] = cs;
 
         priorCandidates.push({
-          'book': {
-            'isbn':    isbn,
-            'title':   title,
-            'authors': authors,
-            'price':   { 'amount': 0, 'currency': 'USD' },
-          },
+          'book':   BookBuilder.from({ 'isbn': isbn, 'title': title, 'authors': authors }),
           'score':  RECALLED_SCORE,
           'source': source,
           'notes':  notes,
@@ -216,5 +223,8 @@ export const recallCandidates: ArchivistNode<'recalled'> = {
     );
 
     return NodeOutputBuilder.of('recalled');
-  },
-};
+  }
+}
+
+/** Backward-compatible const export for existing bundle/DAG references. */
+export const recallCandidates = new RecallCandidatesNode();

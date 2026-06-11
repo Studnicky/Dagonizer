@@ -17,14 +17,20 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { Consent, GdprRedactor, GeoCoarsener, Jurisdictions } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region gdpr-nodes
 
-export const consentGate: NodeInterface<CartographerState, 'classify', CartographerServices> = {
-  'name': 'consent-gate',
-  'outputs': ['classify'],
-  async execute(state, context) {
+export class ConsentGateNode implements NodeInterface<CartographerState, 'classify', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'consent-gate';
+  readonly 'outputs' = ['classify'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'classify'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -37,13 +43,16 @@ export const consentGate: NodeInterface<CartographerState, 'classify', Cartograp
       'jurisdiction':  state.geoContext.jurisdiction,
     };
     return NodeOutputBuilder.of('classify');
-  },
-};
+  }
+}
 
-export const classifyPii: NodeInterface<CartographerState, 'redact', CartographerServices> = {
-  'name': 'classify-pii',
-  'outputs': ['redact'],
-  async execute(state, context) {
+export class ClassifyPiiNode implements NodeInterface<CartographerState, 'redact', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'classify-pii';
+  readonly 'outputs' = ['redact'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'redact'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -54,13 +63,16 @@ export const classifyPii: NodeInterface<CartographerState, 'redact', Cartographe
       'sensitiveDataFields': classification.sensitiveDataFields,
     };
     return NodeOutputBuilder.of('redact');
-  },
-};
+  }
+}
 
-export const redactPii: NodeInterface<CartographerState, 'ok' | 'violation', CartographerServices> = {
-  'name': 'redact-pii',
-  'outputs': ['ok', 'violation'],
-  async execute(state, context) {
+export class RedactPiiNode implements NodeInterface<CartographerState, 'ok' | 'violation', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'redact-pii';
+  readonly 'outputs' = ['ok', 'violation'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'ok' | 'violation'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -100,6 +112,6 @@ export const redactPii: NodeInterface<CartographerState, 'ok' | 'violation', Car
 
     state.gdprResult = result;
     return NodeOutputBuilder.of('ok');
-  },
-};
+  }
+}
 // #endregion gdpr-nodes

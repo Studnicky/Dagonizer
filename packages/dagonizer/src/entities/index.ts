@@ -35,16 +35,18 @@ export type { PhaseNode } from './dag/PhaseNode.js';
 export { GatherConfigSchema } from './dag/GatherConfig.js';
 export type { GatherConfig } from './dag/GatherConfig.js';
 
-export { ScatterNodeSchema } from './dag/ScatterNode.js';
+export { ScatterNodeSchema, ScatterNodeDefaults } from './dag/ScatterNode.js';
 export type { ScatterNode } from './dag/ScatterNode.js';
 
-export { EmbeddedDAGNodeSchema } from './dag/EmbeddedDAGNode.js';
+export { EmbeddedDAGNodeSchema, EmbeddedDAGNodeDefaults } from './dag/EmbeddedDAGNode.js';
 export type { EmbeddedDAGNode } from './dag/EmbeddedDAGNode.js';
 
 export { DAGSchema, DAG_CONTEXT, DAG } from './dag/DAG.js';
 
 export { Placement } from './dag/Placement.js';
 export type { DAGNodeType } from './dag/Placement.js';
+
+export { DAGDocument } from './dag/DAGDocument.js';
 
 // ---------------------------------------------------------------------------
 // state-machines
@@ -62,6 +64,9 @@ export {
   CheckpointDataSchema,
 } from './checkpoint/CheckpointData.js';
 export type { CheckpointData } from './checkpoint/CheckpointData.js';
+
+export { StoreSnapshotEntrySchema, StoreSnapshotSchema } from './checkpoint/StoreSnapshot.js';
+export type { StoreSnapshotEntry, StoreSnapshot } from './checkpoint/StoreSnapshot.js';
 
 // ---------------------------------------------------------------------------
 // node
@@ -128,7 +133,6 @@ export { NodeTypeSchema, NodeType } from './constants/NodeType.js';
 // ---------------------------------------------------------------------------
 
 export { BackoffStrategySchema, BackoffStrategy } from './runtime/BackoffStrategy.js';
-export type { BackoffStrategyValue } from './runtime/BackoffStrategy.js';
 
 // ---------------------------------------------------------------------------
 // executor (container wire shapes)
@@ -155,6 +159,9 @@ export {
 } from './executor/RecommendedWorkerCountConfig.js';
 export type { RecommendedWorkerCountConfig } from './executor/RecommendedWorkerCountConfig.js';
 
+export { SystemInfo } from './executor/SystemInfo.js';
+export type { SystemInfoProbes } from './executor/SystemInfo.js';
+
 // ---------------------------------------------------------------------------
 // handoff
 // ---------------------------------------------------------------------------
@@ -178,6 +185,32 @@ export type {
   ScatterProgress,
   StoredScatterProgress,
 } from './scatter/ScatterProgress.js';
+
+// ---------------------------------------------------------------------------
+// adapter (LLM chat wire shapes)
+// ---------------------------------------------------------------------------
+
+export type { AdapterCapabilities } from './adapter/AdapterCapabilities.js';
+
+export { ChatMessageSchema } from './adapter/ChatMessage.js';
+export type { ChatMessage } from './adapter/ChatMessage.js';
+
+export type { ChatRequest, LlmOutputSchema, PartialChatRequest, ToolChoice } from './adapter/ChatRequest.js';
+
+export { ChatResponseSchema } from './adapter/ChatResponse.js';
+export type { ChatResponse } from './adapter/ChatResponse.js';
+
+export { ChatResponseMessageSchema } from './adapter/ChatResponseMessage.js';
+export type { ChatResponseMessage } from './adapter/ChatResponseMessage.js';
+
+export { TokenUsageSchema } from './adapter/TokenUsage.js';
+export type { TokenUsage } from './adapter/TokenUsage.js';
+
+export { ToolCallSchema } from './adapter/ToolCall.js';
+export type { ToolCall } from './adapter/ToolCall.js';
+
+export { ToolDefinitionSchema } from './adapter/ToolDefinition.js';
+export type { ToolDefinition } from './adapter/ToolDefinition.js';
 
 // ---------------------------------------------------------------------------
 // json primitives

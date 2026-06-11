@@ -3,8 +3,10 @@ import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 
 void describe('Dagonizer scatter gather strategies', () => {
   void it('partition routes items by output into distinct target paths', async () => {
@@ -14,14 +16,17 @@ void describe('Dagonizer scatter gather strategies', () => {
       odds: number[];
     }
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const classify: NodeInterface<NodeStateBase, 'even' | 'odd'> = {
-      'name': 'classify',
-      'outputs': ['even', 'odd'],
-      async execute(state) {
+    class ClassifyNode implements NodeInterface<NodeStateBase, 'even' | 'odd'> {
+      readonly name = 'classify';
+      readonly outputs = ['even', 'odd'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(state: NodeStateBase) {
         const n = state.getMetadata<number>('item') ?? 0;
-        return { 'errors': [], 'output': n % 2 === 0 ? 'even' : 'odd' };
-      },
-    };
+        return { 'errors': [], 'output': n % 2 === 0 ? 'even' as const : 'odd' as const };
+      }
+    }
+    const classify = new ClassifyNode();
     dispatcher.registerNode(classify);
 
     const dag = new DAGBuilder('partition', '1')
@@ -53,19 +58,25 @@ void describe('Dagonizer scatter gather strategies', () => {
     let seenResults: GatherResultRecord[] | undefined;
 
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const cls: NodeInterface<NodeStateBase, 'success'> = {
-      'name': 'classify',
-      'outputs': ['success'],
-      async execute() { return { 'errors': [], 'output': 'success' }; },
-    };
-    const merge: NodeInterface<NodeStateBase, 'success'> = {
-      'name': 'merge',
-      'outputs': ['success'],
-      async execute(state) {
+    class ClsNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'classify';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(_state: NodeStateBase) { return { 'errors': [], 'output': 'success' as const }; }
+    }
+    class MergeNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'merge';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(state: NodeStateBase) {
         seenResults = state.getMetadata<GatherResultRecord[]>('gatherResults');
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    const cls = new ClsNode();
+    const merge = new MergeNode();
     dispatcher.registerNode(cls);
     dispatcher.registerNode(merge);
 
@@ -101,11 +112,14 @@ void describe('Dagonizer scatter gather strategies', () => {
     interface S extends NodeStateBase { items: number[]; out: number[] }
 
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const passThrough: NodeInterface<NodeStateBase, 'success'> = {
-      'name': 'passThrough',
-      'outputs': ['success'],
-      async execute() { return { 'errors': [], 'output': 'success' }; },
-    };
+    class PassThroughNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'passThrough';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(_state: NodeStateBase) { return { 'errors': [], 'output': 'success' as const }; }
+    }
+    const passThrough = new PassThroughNode();
     dispatcher.registerNode(passThrough);
 
     const dag = new DAGBuilder('appendfan', '1')
@@ -138,14 +152,17 @@ void describe('Dagonizer scatter gather strategies', () => {
     // so the target is always an array. This is the documented behavior change
     // introduced with native streaming scatter (§A.3.4).
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const produce: NodeInterface<NodeStateBase, 'success'> = {
-      'name': 'produce',
-      'outputs': ['success'],
-      async execute(state) {
+    class ProduceNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'produce';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(state: NodeStateBase) {
         state.setMetadata('answer', 'hello');
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    const produce = new ProduceNode();
     dispatcher.registerNode(produce);
 
     // Single-item source scatter + map strategy: reads cloneState metadata
@@ -184,17 +201,20 @@ void describe('Dagonizer scatter gather strategies', () => {
     let inFlight = 0;
     let peak = 0;
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const slow: NodeInterface<NodeStateBase, 'success'> = {
-      'name': 'slow',
-      'outputs': ['success'],
-      async execute() {
+    class SlowNode implements NodeInterface<NodeStateBase, 'success'> {
+      readonly name = 'slow';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(_state: NodeStateBase) {
         inFlight++;
         peak = Math.max(peak, inFlight);
         await new Promise<void>((r) => setImmediate(r));
         inFlight--;
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    const slow = new SlowNode();
     dispatcher.registerNode(slow);
 
     const dag = new DAGBuilder('conc', '1')

@@ -15,40 +15,42 @@ import { strict as assert } from 'node:assert';
 import { ArchivistState } from '../../ArchivistState.ts';
 import { mergeCandidates } from '../../nodes/mergeCandidates.ts';
 import type { Candidate } from '../../entities/Book.ts';
+import { BookBuilder } from '../../entities/Book.ts';
 
 // ── Minimal context stub ──────────────────────────────────────────────────────
 
 const logs: string[] = [];
 
-function makeContext() {
-  return {
-    signal: new AbortController().signal,
-    services: {
-      logger: {
-        info(msg: string) { logs.push(msg); },
-        warn(msg: string) { logs.push(`WARN: ${msg}`); },
+/** Context and candidate factories for merge-fallback unit tests. */
+class MergeFallbackFixture {
+  static makeContext() {
+    return {
+      signal: new AbortController().signal,
+      services: {
+        logger: {
+          info(msg: string) { logs.push(msg); },
+          warn(msg: string) { logs.push(`WARN: ${msg}`); },
+        },
       },
-    },
-  } as unknown as Parameters<typeof mergeCandidates.execute>[1];
-}
+    } as unknown as Parameters<typeof mergeCandidates.execute>[1];
+  }
 
-// ── Candidate factories ───────────────────────────────────────────────────────
+  static liveCandidate(isbn: string, score: number): Candidate {
+    return {
+      'book':   BookBuilder.from({ isbn, 'title': `Title ${isbn}`, 'authors': ['Author'] }),
+      score,
+      'source': 'openlibrary',
+    };
+  }
 
-function liveCandidate(isbn: string, score: number): Candidate {
-  return {
-    book: { isbn, title: `Title ${isbn}`, authors: ['Author'], price: { amount: 0, currency: 'USD' } },
-    score,
-    source: 'openlibrary',
-  };
-}
-
-function priorCandidate(isbn: string): Candidate {
-  return {
-    book: { isbn, title: `Prior ${isbn}`, authors: ['Prior Author'], price: { amount: 0, currency: 'USD' } },
-    score: 0.5,
-    source: 'openlibrary',
-    notes: { fromPriorMemory: true },
-  };
+  static priorCandidate(isbn: string): Candidate {
+    return {
+      'book':   BookBuilder.from({ isbn, 'title': `Prior ${isbn}`, 'authors': ['Prior Author'] }),
+      'score':  0.5,
+      'source': 'openlibrary',
+      'notes':  { 'fromPriorMemory': true },
+    };
+  }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -60,12 +62,12 @@ void test('mergeCandidates: live=0 + prior=3 → shortlist=3, all fromPriorMemor
   state.userLanguage   = 'en';
   state.candidates     = [];
   state.priorCandidates = [
-    priorCandidate('A001'),
-    priorCandidate('A002'),
-    priorCandidate('A003'),
+    MergeFallbackFixture.priorCandidate('A001'),
+    MergeFallbackFixture.priorCandidate('A002'),
+    MergeFallbackFixture.priorCandidate('A003'),
   ];
 
-  const result = await mergeCandidates.execute(state, makeContext());
+  const result = await mergeCandidates.execute(state, MergeFallbackFixture.makeContext());
 
   assert.equal(result.output, 'ranked', 'routes ranked when prior candidates present');
   assert.equal(state.shortlist.length, 3, 'shortlist length = 3');
@@ -82,22 +84,22 @@ void test('mergeCandidates: live=2 + prior=3 (1 overlap isbn B001) → dedupe �
   state.query          = 'some query';
   state.userLanguage   = 'en';
   state.candidates     = [
-    liveCandidate('B001', 0.9),  // overlaps with prior
-    liveCandidate('B002', 0.8),
+    MergeFallbackFixture.liveCandidate('B001', 0.9),  // overlaps with prior
+    MergeFallbackFixture.liveCandidate('B002', 0.8),
   ];
   state.priorCandidates = [
-    priorCandidate('B001'),  // duplicate; live score 0.9 wins
-    priorCandidate('B003'),
-    priorCandidate('B004'),
+    MergeFallbackFixture.priorCandidate('B001'),  // duplicate; live score 0.9 wins
+    MergeFallbackFixture.priorCandidate('B003'),
+    MergeFallbackFixture.priorCandidate('B004'),
   ];
 
-  const result = await mergeCandidates.execute(state, makeContext());
+  const result = await mergeCandidates.execute(state, MergeFallbackFixture.makeContext());
 
   assert.equal(result.output, 'ranked', 'routes ranked');
   // B001 live + B002 live + B003 prior + B004 prior = 4 unique
   assert.equal(state.shortlist.length, 4, '4 unique items after dedupe (capped at 5)');
   // B001 must be the live version (higher score 0.9 beats prior 0.5).
-  const b001 = state.shortlist.find((c) => c.book.isbn === 'B001');
+  const b001 = state.shortlist.find((c) => c.book.identity.isbn === 'B001');
   assert.notEqual(b001, undefined);
   // Live candidate has no notes.fromPriorMemory; prior does.
   // mergeCandidates keeps live for duplicates by filtering priorCandidates with liveIsbns.
@@ -112,7 +114,7 @@ void test('mergeCandidates: both empty → routes empty', async () => {
   state.candidates     = [];
   state.priorCandidates = [];
 
-  const result = await mergeCandidates.execute(state, makeContext());
+  const result = await mergeCandidates.execute(state, MergeFallbackFixture.makeContext());
 
   assert.equal(result.output, 'empty', 'routes empty when both pools empty');
   assert.equal(state.shortlist.length, 0);
@@ -124,13 +126,13 @@ void test('mergeCandidates: live=3 + prior=0 → original path, no regression', 
   state.query          = 'some query';
   state.userLanguage   = 'en';
   state.candidates     = [
-    liveCandidate('C001', 0.9),
-    liveCandidate('C002', 0.7),
-    liveCandidate('C003', 0.5),
+    MergeFallbackFixture.liveCandidate('C001', 0.9),
+    MergeFallbackFixture.liveCandidate('C002', 0.7),
+    MergeFallbackFixture.liveCandidate('C003', 0.5),
   ];
   state.priorCandidates = [];
 
-  const result = await mergeCandidates.execute(state, makeContext());
+  const result = await mergeCandidates.execute(state, MergeFallbackFixture.makeContext());
 
   assert.equal(result.output, 'ranked');
   assert.equal(state.shortlist.length, 3);
@@ -146,19 +148,19 @@ void test('mergeCandidates: prior-only fallback sets failureCause when still emp
   state.candidates     = [];
   // Prior candidate with German language; should be filtered out by language gate.
   state.priorCandidates = [{
-    book: {
+    book: BookBuilder.from({
       isbn:      'D001',
       title:     'Deutsch Buch',
       authors:   ['Autor'],
       price:     { amount: 0, currency: 'USD' },
       languages: ['ger'],  // ISO 639-2 German; won't pass Japanese filter
-    },
+    }),
     score:  0.5,
     source: 'openlibrary',
     notes:  { fromPriorMemory: true },
   }];
 
-  const result = await mergeCandidates.execute(state, makeContext());
+  const result = await mergeCandidates.execute(state, MergeFallbackFixture.makeContext());
 
   assert.equal(result.output, 'empty', 'routes empty when language-filtered prior candidates are empty');
   assert.notEqual(state.failureCause, '', 'failureCause set on empty after filter');

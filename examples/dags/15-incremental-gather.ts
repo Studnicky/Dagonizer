@@ -22,10 +22,12 @@ import {
   GatherStrategy,
   NodeOutputBuilder,
   NodeStateBase,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
 } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
+import { IncrementalGatherStrategy } from '@noocodex/dagonizer/core';
+import type { DAG, NodeInterface} from '@noocodex/dagonizer';
 import type { GatherExecution, GatherRecord } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 import type { GatherConfig } from '@noocodex/dagonizer';
 import type { StateAccessor } from '@noocodex/dagonizer/contracts';
 import type { NodeStateInterface } from '@noocodex/dagonizer';
@@ -51,18 +53,21 @@ export class IncrementalState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // #region worker-node
-export const shout: NodeInterface<IncrementalState, 'done'> = {
-  "name": 'shout',
-  "outputs": ['done'],
-  async execute(state) {
+export class ShoutNode implements NodeInterface<IncrementalState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'shout';
+  readonly outputs = ['done'] as const;
+
+  async execute(state: IncrementalState) {
     const word = state.getMetadata<string>('word') ?? '?';
     // Write a scalar to `processed` on the clone. The map gather reads
     // `processed` off each clone and appends it to the parent's `results`.
     // (A map gather appends one entry per clone; keep the source field scalar.)
     state.processed = word.toUpperCase();
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 // #endregion worker-node
 
 // ---------------------------------------------------------------------------
@@ -75,7 +80,7 @@ export const shout: NodeInterface<IncrementalState, 'done'> = {
  * emits a log line each time a single record is folded into parent state.
  * Makes the streaming accumulation of `state.results` visible during execution.
  */
-export class LoggingMapStrategy extends GatherStrategy {
+export class LoggingMapStrategy extends IncrementalGatherStrategy {
   readonly name = 'logging-map';
 
   private readonly foldLog: string[];
@@ -150,6 +155,28 @@ export class BatchOnlyStrategy extends GatherStrategy {
   }
 }
 // #endregion observable-strategies
+
+// ---------------------------------------------------------------------------
+// Strategy registration
+// ---------------------------------------------------------------------------
+
+// #region register
+/**
+ * Register both observable strategies with a shared log array.
+ * Returns the log array so callers can print it after execution.
+ *
+ * Call `GatherStrategies.unregister('logging-map')` /
+ * `GatherStrategies.unregister('batch-only')` to clean up in tests.
+ */
+export class ObservableStrategies {
+  static register(): string[] {
+    const foldLog: string[] = [];
+    GatherStrategies.register(new LoggingMapStrategy(foldLog));
+    GatherStrategies.register(new BatchOnlyStrategy(foldLog));
+    return foldLog;
+  }
+}
+// #endregion register
 
 // ---------------------------------------------------------------------------
 // DAG: incremental gather (map / logging-map)
@@ -234,26 +261,6 @@ export const batchDag: DAG = {
   ],
 };
 // #endregion batch-dag
-
-// ---------------------------------------------------------------------------
-// Strategy registration helpers
-// ---------------------------------------------------------------------------
-
-// #region register
-/**
- * Register both observable strategies with a shared log array.
- * Returns the log array so callers can print it after execution.
- *
- * Call `GatherStrategies.unregister('logging-map')` /
- * `GatherStrategies.unregister('batch-only')` to clean up in tests.
- */
-export function registerObservableStrategies(): string[] {
-  const foldLog: string[] = [];
-  GatherStrategies.register(new LoggingMapStrategy(foldLog));
-  GatherStrategies.register(new BatchOnlyStrategy(foldLog));
-  return foldLog;
-}
-// #endregion register
 
 // Re-export GatherStrategyName for the entry-point to verify built-in list.
 export { GatherStrategyName };

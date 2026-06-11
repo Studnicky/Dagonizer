@@ -1,19 +1,19 @@
 /**
  * DAG round-trip: serialize → load → validate.
  *
- * Serializes `archivistDAG` to JSON, reloads it through `Dagonizer.load`,
+ * Serializes `archivistDAG` to JSON, reloads it through `DAGDocument.load`,
  * asserts structural identity (name, entrypoint, node count), then
  * validates the reloaded document with `Validator.dag.validate`.
  */
 
 // #region dag-roundtrip
-import { Dagonizer } from '@noocodex/dagonizer';
+import { DAGDocument } from '@noocodex/dagonizer/entities';
 import { Validator } from '@noocodex/dagonizer/validation';
 
 import { archivistDAG } from './dag.ts';
 
-const json     = Dagonizer.serialize(archivistDAG);
-const reloaded = Dagonizer.load(json);
+const json     = DAGDocument.serialize(archivistDAG);
+const reloaded = DAGDocument.load(json);
 
 console.assert(reloaded.name        === archivistDAG.name,       'name mismatch');
 console.assert(reloaded.entrypoint  === archivistDAG.entrypoint, 'entrypoint mismatch');

@@ -37,9 +37,10 @@ import {
   Dagonizer,
   SCATTER_PROGRESS_KEY,
 } from '@noocodex/dagonizer';
+import type { StoredScatterProgress } from '@noocodex/dagonizer';
 import {
   ResumeState,
-  process_job,
+  ProcessJobNode,
   dag,
   observable,
 } from './dags/16-scatter-resume.js';
@@ -49,7 +50,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const dispatcher = new Dagonizer<ResumeState>();
-dispatcher.registerNode(process_job);
+dispatcher.registerNode(new ProcessJobNode());
 dispatcher.registerDAG(dag);
 
 const JOBS = ['job-A', 'job-B', 'job-C', 'job-D', 'job-E'];
@@ -84,7 +85,7 @@ process.stdout.write(`  completed after run-1: ${JSON.stringify(state.completed)
 process.stdout.write(`  bodies run in run-1: ${JSON.stringify(observable.execLog)}\n`);
 
 // Inspect the scatter checkpoint persisted in metadata.
-const rawProgress = state.getMetadata<unknown>(SCATTER_PROGRESS_KEY);
+const rawProgress = state.getMetadata<StoredScatterProgress>(SCATTER_PROGRESS_KEY);
 process.stdout.write(`  scatter progress stored in metadata: ${rawProgress !== undefined ? 'yes' : 'no'}\n`);
 // #endregion run1
 
@@ -107,7 +108,7 @@ const { state: resumedState, cursor } = restored.restoreState(
 
 process.stdout.write(`  cursor restored to: "${cursor}"\n`);
 process.stdout.write(`  completed in restored state: ${JSON.stringify(resumedState.completed)}\n`);
-const restoredProgress = resumedState.getMetadata<unknown>(SCATTER_PROGRESS_KEY);
+const restoredProgress = resumedState.getMetadata<StoredScatterProgress>(SCATTER_PROGRESS_KEY);
 process.stdout.write(`  scatter checkpoint in restored state: ${restoredProgress !== undefined ? 'yes' : 'no'}\n`);
 // #endregion checkpoint
 

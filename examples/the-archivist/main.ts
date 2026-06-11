@@ -35,6 +35,7 @@ import { GeminiApiAdapter }   from '@noocodex/dagonizer-adapter-gemini-api';
 import { GeminiNanoAdapter }  from '@noocodex/dagonizer-adapter-gemini-nano';
 import { OllamaApiAdapter }   from '@noocodex/dagonizer-adapter-ollama';
 import { WebLlmAdapter }      from '@noocodex/dagonizer-adapter-web-llm';
+import type { WebLlmInitReport } from '@noocodex/dagonizer-adapter-web-llm';
 
 import { LlmAdapterCascade, LlmAdapterRegistry } from '@noocodex/dagonizer/adapter';
 import type { AdapterCapabilities } from '@noocodex/dagonizer/adapter';
@@ -49,23 +50,49 @@ const input   = document.getElementById('ask-input')     as HTMLInputElement;
 const button  = document.getElementById('ask-button')    as HTMLButtonElement;
 const logEl   = document.getElementById('archivist-log') as HTMLPreElement;
 
+/** Static CLI helpers for the browser demo: log wiring and query submission. */
+class ArchivistCli {
+  static appendLogLine(event: LogEvent): void {
+    const line = document.createElement('span');
+    line.className = event.level;
+    line.textContent = `[${event.level}] ${event.message}\n`;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  static appendErrorLine(message: string): void {
+    const line = document.createElement('span');
+    line.className = 'error';
+    line.textContent = `[error] ${message}\n`;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  static async ask(query: string): Promise<void> {
+    const visitor = new ArchivistState();
+    visitor.query = query;
+    button.disabled = true;
+    try {
+      const execution = dispatcher.execute('the-archivist', visitor);
+      for await (const stage of execution) {
+        logger.info(`▸ ${stage.nodeName}${stage.skipped ? ' (skipped)' : ` → ${stage.output ?? '(none)'}`}`);
+      }
+      const result = await execution;
+      logger.result(`intent=${result.state.intent}`);
+      logger.result(`shortlist=${String(result.state.shortlist.length)}`);
+      logger.result(`draft=${result.state.draft}`);
+      logger.result(`lifecycle=${result.state.lifecycle.kind}`);
+    } catch (err) {
+      ArchivistCli.appendErrorLine(err instanceof Error ? err.message : String(err));
+    } finally {
+      button.disabled = false;
+    }
+  }
+}
+
 // ── Logger wiring: stream every event to the <pre>. ──────────────────────
 const logger = new ConsoleLogger();
-function appendLogLine(event: LogEvent): void {
-  const line = document.createElement('span');
-  line.className = event.level;
-  line.textContent = `[${event.level}] ${event.message}\n`;
-  logEl.appendChild(line);
-  logEl.scrollTop = logEl.scrollHeight;
-}
-function appendErrorLine(message: string): void {
-  const line = document.createElement('span');
-  line.className = 'error';
-  line.textContent = `[error] ${message}\n`;
-  logEl.appendChild(line);
-  logEl.scrollTop = logEl.scrollHeight;
-}
-logger.subscribe(appendLogLine);
+logger.subscribe(ArchivistCli.appendLogLine);
 
 // ── Cascade: browser-runnable adapters in preference order. ──────────────
 const CAPS_FULL_TOOLS:    AdapterCapabilities = { 'toolUse': 'full',    'structuredOutput': true, 'jsonMode': true };
@@ -91,9 +118,16 @@ registry.register(
 );
 
 // WebGPU-accelerated in-browser model. Lazy-downloads on first chat.
+// Progress reporting is an extension seam: subclass and override
+// onInitProgress rather than passing a callback in.
+class LoggingWebLlmAdapter extends WebLlmAdapter {
+  protected override onInitProgress(report: WebLlmInitReport): void {
+    logger.info(`web-llm: ${report.text} (${String(Math.round(report.progress * 100))}%)`);
+  }
+}
 registry.register(
   { 'provider': 'web-llm', 'model': 'Phi-3.5-mini-instruct-q4f16_1-MLC', 'capabilities': CAPS_PARTIAL_TOOLS },
-  () => new WebLlmAdapter({ 'onProgress': (report) => logger.info(`web-llm: ${report.text} (${String(Math.round(report.progress * 100))}%)`) }),
+  () => new LoggingWebLlmAdapter(),
 );
 
 // REST fallback: key from URL param, otherwise prompt the visitor.
@@ -137,7 +171,7 @@ try {
   logger.info(`backend: ${adapter.id} (${adapter.displayName})`);
 } catch (err) {
   const message = err instanceof Error ? err.message : String(err);
-  appendErrorLine(message);
+  ArchivistCli.appendErrorLine(message);
   button.disabled = true;
   input.disabled = true;
   throw err;
@@ -146,10 +180,10 @@ try {
 // #region wire-services
 // ── Dispatcher + DAG registration (mirrors runArchivist.ts). ─────────────
 const services: ArchivistServices = {
-  'webSearch':        OpenLibrarySearchTool,
-  'googleBooks':      GoogleBooksTool,
-  'subjectSearch':    SubjectSearchTool,
-  'wikipediaSummary': WikipediaSummaryTool,
+  'webSearch':        new OpenLibrarySearchTool(),
+  'googleBooks':      new GoogleBooksTool(),
+  'subjectSearch':    new SubjectSearchTool(),
+  'wikipediaSummary': new WikipediaSummaryTool(),
   'memory':           new MemoryStore(),
   'llm':              llm,
   // Browser entry has no native embedder wired today. Browser built-in LanguageModel does
@@ -177,36 +211,15 @@ dispatcher.registerBundle(archivistBundle);
 
 // #region run-loop
 // ── Submit handler: fresh state per ask. ──────────────────────────────────
-async function ask(query: string): Promise<void> {
-  const visitor = new ArchivistState();
-  visitor.query = query;
-  button.disabled = true;
-  try {
-    const execution = dispatcher.execute('the-archivist', visitor);
-    for await (const stage of execution) {
-      logger.info(`▸ ${stage.nodeName}${stage.skipped ? ' (skipped)' : ` → ${stage.output ?? '(none)'}`}`);
-    }
-    const result = await execution;
-    logger.result(`intent=${result.state.intent}`);
-    logger.result(`shortlist=${String(result.state.shortlist.length)}`);
-    logger.result(`draft=${result.state.draft}`);
-    logger.result(`lifecycle=${result.state.lifecycle.kind}`);
-  } catch (err) {
-    appendErrorLine(err instanceof Error ? err.message : String(err));
-  } finally {
-    button.disabled = false;
-  }
-}
-
 form.addEventListener('submit', (event) => {
   event.preventDefault();
   const query = input.value.trim();
   if (query.length === 0) return;
-  void ask(query);
+  void ArchivistCli.ask(query);
 });
 
 // Default page = "open it and it just runs" with the seed question.
 const SEED_QUERY = "I'm looking for a book about a strange house and a library";
 input.value = SEED_QUERY;
-void ask(SEED_QUERY);
+void ArchivistCli.ask(SEED_QUERY);
 // #endregion run-loop

@@ -3,8 +3,8 @@
  * No network calls; instantiation only.
  */
 
-import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { test } from 'node:test';
 
 import { OllamaApiAdapter } from '../src/index.js';
 
@@ -20,15 +20,15 @@ void test('OllamaApiAdapter identity + capabilities', () => {
 
 void test('OllamaApiAdapter accepts model + baseUrl overrides without throwing', () => {
   const adapter = new OllamaApiAdapter({
-    model: 'mistral:latest',
-    baseUrl: 'http://10.0.0.5:11434'
+    "model": 'mistral:latest',
+    "baseUrl": 'http://10.0.0.5:11434'
   });
 
   assert.equal(adapter.id, 'ollama');
 });
 
 void test('OllamaApiAdapter accepts custom apiKey for proxied deployments', () => {
-  const adapter = new OllamaApiAdapter({ apiKey: 'gateway-token-123' });
+  const adapter = new OllamaApiAdapter({ "apiKey": 'gateway-token-123' });
 
   assert.equal(adapter.id, 'ollama');
 });
@@ -51,9 +51,9 @@ void test('OllamaApiAdapter.probe returns true when /api/tags answers 200', asyn
   installFetch((async (input: string | URL | Request) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     assert.ok(url.endsWith('/api/tags'));
-    return new Response('{"models":[]}', { status: 200 });
+    return new Response('{"models":[]}', { "status": 200 });
   }) as typeof fetch);
-  const adapter = new OllamaApiAdapter({ baseUrl: 'http://127.0.0.1:11434' });
+  const adapter = new OllamaApiAdapter({ "baseUrl": 'http://127.0.0.1:11434' });
   try {
     assert.equal(await adapter.probe(), true);
   } finally {
@@ -62,7 +62,7 @@ void test('OllamaApiAdapter.probe returns true when /api/tags answers 200', asyn
 });
 
 void test('OllamaApiAdapter.probe returns false when /api/tags answers non-2xx', async () => {
-  installFetch((async () => new Response('nope', { status: 500 })) as typeof fetch);
+  installFetch((async () => new Response('nope', { "status": 500 })) as typeof fetch);
   const adapter = new OllamaApiAdapter();
   try {
     assert.equal(await adapter.probe(), false);
@@ -102,9 +102,9 @@ void test('OllamaApiAdapter.probe hits the configured baseUrl, not the default',
   let seen = '';
   installFetch((async (input: string | URL | Request) => {
     seen = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-    return new Response('{}', { status: 200 });
+    return new Response('{}', { "status": 200 });
   }) as typeof fetch);
-  const adapter = new OllamaApiAdapter({ baseUrl: 'http://10.0.0.5:11434' });
+  const adapter = new OllamaApiAdapter({ "baseUrl": 'http://10.0.0.5:11434' });
   try {
     await adapter.probe();
     assert.equal(seen, 'http://10.0.0.5:11434/api/tags');

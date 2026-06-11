@@ -25,7 +25,6 @@ import {
   SignalComposer,
 } from '@noocodex/dagonizer/runtime';
 import type {
-  BackoffStrategyValue,
   ClockProvider,
   ErrorConstructorType,
   RetryPolicyOptionsInterface,
@@ -124,13 +123,13 @@ Also re-exported from `@noocodex/dagonizer` root.
 
 See [Retry](/guide/retry) for detailed usage.
 
-### `RetryPolicy.run(task, signal?)`
+### `RetryPolicy.run(task, options?)`
 
 ```ts
-async run<T>(task: (attempt: number) => Promise<T> | T, signal?: AbortSignal): Promise<T>
+async run<T>(task: (attempt: number) => Promise<T> | T, options?: AbortableOptionsInterface): Promise<T>
 ```
 
-Runs `task` under the configured policy. Resolves with the function's return value on success, or throws the last error when attempts are exhausted. `signal` aborts mid-wait.
+Runs `task` under the configured policy. Resolves with the function's return value on success, or throws the last error when attempts are exhausted. `options.signal` aborts mid-wait.
 
 ### `RetryPolicy.getDelay(attempt, error?)`
 
@@ -160,10 +159,10 @@ const BackoffStrategy = {
   DECORRELATED_JITTER: 'decorrelated-jitter',
 } as const;
 
-type BackoffStrategyValue = (typeof BackoffStrategy)[keyof typeof BackoffStrategy];
+type BackoffStrategy = (typeof BackoffStrategy)[keyof typeof BackoffStrategy];
 ```
 
-Pass as `strategy` in `RetryPolicyOptionsInterface`. See [Retry](/guide/retry) for delay formulas.
+`BackoffStrategy` serves as both the const enum object and the union type of its values. Pass a value as `strategy` in `RetryPolicyOptionsInterface`. See [Retry](/guide/retry) for delay formulas.
 
 ---
 

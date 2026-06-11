@@ -21,12 +21,15 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
 import type { ScatterProgress } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
+import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 
 // ── test state ────────────────────────────────────────────────────────────────
 
@@ -107,10 +110,12 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
 
     const dispatcher = new Dagonizer<AbortState>();
 
-    const worker: NodeInterface<AbortState, 'success'> = {
-      'name':    'worker',
-      'outputs': ['success'],
-      async execute(state, context) {
+    class WorkerNode implements NodeInterface<AbortState, 'success'> {
+      readonly name = 'worker';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(state: AbortState, context: NodeContextInterface) {
         // Simulate some async work.
         await new Promise<void>((resolve, reject) => {
           const handle = setTimeout(resolve, 2);
@@ -125,9 +130,10 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
           controller.abort(new Error('test-abort'));
         }
         state.processed.push(state.getMetadata<number>('item') ?? -1);
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    const worker = new WorkerNode();
 
     dispatcher.registerNode(worker);
     dispatcher.registerDAG(makeAbortDag('abort-async-50', 2));
@@ -178,15 +184,17 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     //    must supply the remainder. We test the simpler array-based resume path
     //    to confirm the checkpoint is usable.)
     const resumeDispatcher = new Dagonizer<AbortState>();
-    const resumeWorker: NodeInterface<AbortState, 'success'> = {
-      'name':    'worker',
-      'outputs': ['success'],
-      async execute(state) {
+    class ResumeWorkerNode implements NodeInterface<AbortState, 'success'> {
+      readonly name = 'worker';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(state: AbortState) {
         state.processed.push(state.getMetadata<number>('item') ?? -1);
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
-    resumeDispatcher.registerNode(resumeWorker);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    resumeDispatcher.registerNode(new ResumeWorkerNode());
 
     // Supply an array-based resume DAG so the engine can skip seen indices.
     const resumeDag: DAG = {
@@ -248,15 +256,17 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
   void it('pre-aborted signal: pull-loop exits before processing any items', async () => {
     const dispatcher = new Dagonizer<AbortState>();
 
-    const worker: NodeInterface<AbortState, 'success'> = {
-      'name':    'worker',
-      'outputs': ['success'],
-      async execute(state) {
+    class PreAbortWorkerNode implements NodeInterface<AbortState, 'success'> {
+      readonly name = 'worker';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(state: AbortState) {
         state.processed.push(state.getMetadata<number>('item') ?? -1);
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
-    dispatcher.registerNode(worker);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    dispatcher.registerNode(new PreAbortWorkerNode());
     dispatcher.registerDAG(makeAbortDag('pre-aborted', 2));
 
     const state = new AbortState();
@@ -291,10 +301,12 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     const executedItems: number[] = [];
 
     const dispatcher = new Dagonizer<AbortState>();
-    const worker: NodeInterface<AbortState, 'success'> = {
-      'name':    'worker',
-      'outputs': ['success'],
-      async execute(state, context) {
+    class ExactlyOnceWorkerNode implements NodeInterface<AbortState, 'success'> {
+      readonly name = 'worker';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(state: AbortState, context: NodeContextInterface) {
         await new Promise<void>((resolve, reject) => {
           const handle = setTimeout(resolve, 1);
           context.signal.addEventListener('abort', () => {
@@ -308,10 +320,10 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
           controller.abort(new Error('abort-at-5'));
         }
         state.processed.push(item);
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
-    dispatcher.registerNode(worker);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    dispatcher.registerNode(new ExactlyOnceWorkerNode());
 
     // Use array source for deterministic index-stable resume.
     const abortDag: DAG = {
@@ -348,17 +360,19 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     // Resume with fresh dispatcher.
     const resumeItems: number[] = [];
     const resumeDispatcher = new Dagonizer<AbortState>();
-    const resumeWorker: NodeInterface<AbortState, 'success'> = {
-      'name':    'worker',
-      'outputs': ['success'],
-      async execute(state) {
+    class ExactlyOnceResumeWorkerNode implements NodeInterface<AbortState, 'success'> {
+      readonly name = 'worker';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(state: AbortState) {
         const item = state.getMetadata<number>('item') ?? -1;
         resumeItems.push(item);
         state.processed.push(item);
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
-    resumeDispatcher.registerNode(resumeWorker);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    resumeDispatcher.registerNode(new ExactlyOnceResumeWorkerNode());
     resumeDispatcher.registerDAG(abortDag);
 
     // Restore state for resume.

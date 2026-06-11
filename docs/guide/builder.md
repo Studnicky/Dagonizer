@@ -75,25 +75,28 @@ When the underlying `NodeInterface` carries a `contract` field (`hardRequired` p
 - **Dead write**. A node declares `produces: ['bar']` but no downstream node `hardRequires` `'bar'`. Calls `warningEmitter.warn` (non-fatal).
 
 ```ts
-import { DAGBuilder, DAGError } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { DAGBuilder, DAGError, NodeOutputBuilder } from '@noocodex/dagonizer';
 import type { NodeStateBase } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 import type { WarningEmitter } from '@noocodex/dagonizer/contracts';
 
-const fetchNode: NodeInterface<NodeStateBase, 'success'> = {
-  name: 'fetch',
-  outputs: ['success'],
-  contract: { hardRequired: ['url'], produces: ['raw'] },
-  async execute(state) { return { output: 'success' }; },
-};
+class FetchNode implements NodeInterface<NodeStateBase, 'success'> {
+  readonly name = 'fetch';
+  readonly outputs = ['success'] as const;
+  readonly contract = { hardRequired: ['url'], produces: ['raw'] };
+  async execute() { return NodeOutputBuilder.of('success'); }
+}
 
-const parseNode: NodeInterface<NodeStateBase, 'success'> = {
-  name: 'parse',
-  outputs: ['success'],
+class ParseNode implements NodeInterface<NodeStateBase, 'success'> {
+  readonly name = 'parse';
+  readonly outputs = ['success'] as const;
   // Deliberate mismatch: hardRequires 'data' but upstream only produces 'raw'
-  contract: { hardRequired: ['data'], produces: ['record'] },
-  async execute(state) { return { output: 'success' }; },
-};
+  readonly contract = { hardRequired: ['data'], produces: ['record'] };
+  async execute() { return NodeOutputBuilder.of('success'); }
+}
+
+const fetchNode = new FetchNode();
+const parseNode = new ParseNode();
 
 // Throws DAGError: node 'parse' hardRequires 'data' but no upstream node produces it.
 new DAGBuilder('pipeline', '1.0')
@@ -327,14 +330,14 @@ When the child DAG exits with a failed terminal, the `error` output arrives at `
 ### Example, two explicit terminals
 
 ```ts
-import { DAGBuilder } from '@noocodex/dagonizer/builder';
+import { DAGBuilder } from '@noocodex/dagonizer';
 
 class S extends NodeStateBase { shouldPass = true; }
 
 const dag = new DAGBuilder('demo', '1')
   .node('check', checkNode, { pass: 'end-ok', fail: 'end-fail' })
   .terminal('end-ok')
-  .terminal('end-fail', 'failed')
+  .terminal('end-fail', { outcome: 'failed' })
   .build();
 ```
 
@@ -373,7 +376,7 @@ The dispatcher invokes `onPhaseEnter(dagName, 'pre' | 'post', placementName, sta
 ### Example
 
 ```ts
-import { DAGBuilder } from '@noocodex/dagonizer/builder';
+import { DAGBuilder } from '@noocodex/dagonizer';
 
 const dag = new DAGBuilder('with-phases', '1')
   .node('process', processNode, { success: 'end' })

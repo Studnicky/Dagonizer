@@ -20,12 +20,14 @@ import { describe, it } from 'node:test';
 import { InMemoryChannel } from '../../src/channels/InMemoryChannel.js';
 import type { HandoffChannelInterface } from '../../src/contracts/HandoffChannelInterface.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGHandoff } from '../../src/entities/handoff/DAGHandoff.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 import { Validator } from '../../src/validation/Validator.js';
 
 // ---------------------------------------------------------------------------
@@ -55,22 +57,29 @@ class HandoffState extends NodeStateBase {
 // Nodes
 // ---------------------------------------------------------------------------
 
-const incrementNode: NodeInterface<HandoffState, 'next'> = {
-  'name': 'increment',
-  'outputs': ['next'],
-  async execute(state) {
+class IncrementNode implements NodeInterface<HandoffState, 'next'> {
+  readonly name = 'increment';
+  readonly outputs = ['next'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  async execute(state: HandoffState) {
     state.counter += 1;
-    return { 'errors': [], 'output': 'next' };
-  },
-};
+    return { 'errors': [], 'output': 'next' as const };
+  }
+}
 
-const noopNode: NodeInterface<HandoffState, 'done'> = {
-  'name': 'noop',
-  'outputs': ['done'],
-  async execute() {
-    return { 'errors': [], 'output': 'done' };
-  },
-};
+class NoopNode implements NodeInterface<HandoffState, 'done'> {
+  readonly name = 'noop';
+  readonly outputs = ['done'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  async execute(_state: HandoffState) {
+    return { 'errors': [], 'output': 'done' as const };
+  }
+}
+
+const incrementNode = new IncrementNode();
+const noopNode = new NoopNode();
 
 // ---------------------------------------------------------------------------
 // DAG helpers
@@ -435,5 +444,42 @@ void describe('InMemoryChannel: onPublished hook', () => {
     assert.equal(received.length, 1);
     // The hook receives the same deep-cloned envelope stored in published
     assert.deepEqual(received[0] as DAGHandoff, channel.published[0] as DAGHandoff);
+  });
+
+  void it('publishErrors collects errors thrown by onPublished; envelope still recorded', async () => {
+    class ThrowingChannel extends InMemoryChannel {
+      protected override async onPublished(_handoff: DAGHandoff): Promise<void> {
+        throw new Error('hook-failure');
+      }
+    }
+    const channel = new ThrowingChannel();
+    const dag = makeSimpleDAG('handoff-throw', 'done', 'completed');
+    const dispatcher = new Dagonizer<HandoffState>({
+      'channels': { 'done': channel },
+    });
+    dispatcher.registerNode(incrementNode);
+    dispatcher.registerDAG(dag);
+
+    await dispatcher.execute('handoff-throw', new HandoffState());
+
+    // Envelope is still recorded (publish() records before calling hook).
+    assert.equal(channel.published.length, 1);
+    // Error is collected, not swallowed silently.
+    assert.equal(channel.publishErrors.length, 1);
+    assert.equal(channel.publishErrors[0]?.message, 'hook-failure');
+  });
+
+  void it('publishErrors is empty when onPublished succeeds', async () => {
+    const channel = new InMemoryChannel();
+    const dag = makeSimpleDAG('handoff-no-error', 'done', 'completed');
+    const dispatcher = new Dagonizer<HandoffState>({
+      'channels': { 'done': channel },
+    });
+    dispatcher.registerNode(incrementNode);
+    dispatcher.registerDAG(dag);
+
+    await dispatcher.execute('handoff-no-error', new HandoffState());
+
+    assert.equal(channel.publishErrors.length, 0);
   });
 });

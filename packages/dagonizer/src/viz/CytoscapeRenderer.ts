@@ -133,16 +133,6 @@ export interface RenderOptions {
  */
 type PlacementWithOutputs = Extract<PlacementEntry, { outputs: Record<string, string> }>;
 
-/**
- * Type predicate that narrows a `PlacementEntry` to a `PlacementWithOutputs`.
- *
- * Checks for the presence of `outputs` as an own property. This avoids a
- * type-unsafe `as Record<string,string>` cast at every call site.
- */
-function hasOutputs(placement: PlacementEntry): placement is PlacementWithOutputs {
-  return 'outputs' in placement;
-}
-
 /** Default empty embedded-DAG registry used when none is supplied. */
 const DEFAULT_EMBEDDED_DAGS: ReadonlyMap<string, DAG> = new Map();
 
@@ -233,6 +223,36 @@ export class CytoscapeRenderer {
   }
 
   /**
+   * Build the base `CytoscapeNodeData` for a placement, including container
+   * role colors when the placement is bound to a worker/isolate container.
+   *
+   * Extracted from `placementNode` to eliminate the inline IIFE and make the
+   * logic independently testable. In-process placements (no container role)
+   * receive only `id`, `label`, and `type`; container-bound placements receive
+   * the additional `container*` color keys (honoring `exactOptionalPropertyTypes`).
+   */
+  private static buildNodeData(
+    id: string,
+    label: string,
+    kind: CytoscapeNodeData['type'],
+    role: string | null,
+  ): CytoscapeNodeData {
+    if (role !== null) {
+      const colors = RoleColorUtils.forRole(role);
+      return {
+        "id":               id,
+        "label":            label,
+        "type":             kind,
+        "container":        role,
+        "containerColor":   colors.fill,
+        "containerStroke":  colors.stroke,
+        "containerText":    colors.text,
+      };
+    }
+    return { "id": id, "label": label, "type": kind };
+  }
+
+  /**
    * Render one placement as a Cytoscape node element with type-discriminated metadata.
    *
    * Containment: placements bound to a `container` role (worker/isolate) carry:
@@ -259,23 +279,8 @@ export class CytoscapeRenderer {
     const kind = CytoscapeRenderer.PLACEMENT_KIND[placement['@type']] ?? 'single';
     const role = PlacementUtils.containerRole(placement);
 
-    // Build the base data object. Container keys are added only when a role
-    // exists so the keys are absent on in-process placements (exactOptionalPropertyTypes).
     const baseLabel = CytoscapeRenderer.titleCase(placement.name);
-    const baseData: CytoscapeNodeData = role !== null
-      ? (() => {
-          const colors = RoleColorUtils.forRole(role);
-          return {
-            "id":               id,
-            "label":            baseLabel,
-            "type":             kind,
-            "container":        role,
-            "containerColor":   colors.fill,
-            "containerStroke":  colors.stroke,
-            "containerText":    colors.text,
-          };
-        })()
-      : { "id": id, "label": baseLabel, "type": kind };
+    const baseData: CytoscapeNodeData = CytoscapeRenderer.buildNodeData(id, baseLabel, kind, role);
 
     // Append dag-contained class for stylesheet selection.
     const classes = role !== null ? `dag-${kind} dag-contained` : `dag-${kind}`;
@@ -324,6 +329,16 @@ export class CytoscapeRenderer {
     }
   }
 
+  /**
+   * Type predicate that narrows a `PlacementEntry` to a `PlacementWithOutputs`.
+   *
+   * Checks for the presence of `outputs` as an own property. This avoids a
+   * type-unsafe `as Record<string,string>` cast at every call site.
+   */
+  private static hasOutputs(placement: PlacementEntry): placement is PlacementWithOutputs {
+    return 'outputs' in placement;
+  }
+
   /** Render a placement's outbound routes as Cytoscape edge elements. */
   private static placementEdges(
     placement: PlacementEntry,
@@ -331,7 +346,7 @@ export class CytoscapeRenderer {
     prefix: string,
   ): readonly CytoscapeEdgeElement[] {
     // TerminalNode and PhaseNode are leaf placements with no outbound routes.
-    if (!hasOutputs(placement)) return [];
+    if (!CytoscapeRenderer.hasOutputs(placement)) return [];
     const edges: CytoscapeEdgeElement[] = [];
     for (const [output, target] of Object.entries(placement.outputs)) {
       const destId = PlacementUtils.idIn(prefix, target);

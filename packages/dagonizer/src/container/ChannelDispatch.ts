@@ -18,6 +18,7 @@
  */
 
 
+import type { DagOutcomeInterface } from '../contracts/DagOutcomeInterface.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
 import type { ObserverRelay } from '../Dagonizer.js';
 import type { BridgeMessage } from '../entities/executor/BridgeMessage.js';
@@ -26,7 +27,6 @@ import type { JsonObject } from '../entities/json.js';
 import type { NodeError } from '../entities/node/NodeError.js';
 
 import { DagOutcome } from './DagOutcome.js';
-import type { DagOutcomeInterface } from './DagOutcome.js';
 
 // ---------------------------------------------------------------------------
 // Internal shapes
@@ -64,15 +64,21 @@ export class ChannelDispatch {
   readonly #channel: MessageChannelInterface;
   readonly #pending: Map<string, PendingEntry>;
   #initWaiter: InitWaiter | null;
+  // Stable bound handler — allocated once at construction so the same
+  // function reference is always registered with the channel. An inline
+  // closure would create a fresh function on every construction, preventing
+  // any identity-based deregistration and complicating V8 inline-cache stability.
+  readonly #onMessage: (msg: BridgeMessage) => void;
 
   constructor(channel: MessageChannelInterface) {
     this.#channel = channel;
     this.#pending = new Map<string, PendingEntry>();
     this.#initWaiter = null;
+    this.#onMessage = (msg: BridgeMessage): void => { this.#route(msg); };
 
     // EXACTLY ONE onMessage registration for the channel's lifetime.
-    // All inbound messages are demuxed through #route.
-    this.#channel.onMessage((msg) => { this.#route(msg); });
+    // All inbound messages are demuxed through #route via the stable handler.
+    this.#channel.onMessage(this.#onMessage);
   }
 
   // ---------------------------------------------------------------------------

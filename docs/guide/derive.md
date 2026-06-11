@@ -17,43 +17,50 @@ seeAlso:
 ---
 
 <script setup lang="ts">
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
 import { DAGDeriver } from '@noocodex/dagonizer/derive';
-import type { NodeInterface } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 
-const validate: NodeInterface = {
-  name: 'validate',
-  outputs: ['success', 'error'],
-  contract: { hardRequired: ['intermediate'], produces: ['validated'] },
-  async execute() { return { output: 'success' }; },
-};
+class ValidateNode implements NodeInterface {
+  readonly name = 'validate';
+  readonly outputs = ['success', 'error'] as const;
+  readonly contract = { hardRequired: ['intermediate'], produces: ['validated'] };
+  async execute() { return NodeOutputBuilder.of('success'); }
+}
 
-const transform: NodeInterface = {
-  name: 'transform',
-  outputs: ['success'],
-  contract: { hardRequired: ['validated'], produces: ['childResult'] },
-  async execute() { return { output: 'success' }; },
-};
+class TransformNode implements NodeInterface {
+  readonly name = 'transform';
+  readonly outputs = ['success'] as const;
+  readonly contract = { hardRequired: ['validated'], produces: ['childResult'] };
+  async execute() { return NodeOutputBuilder.of('success'); }
+}
 
-const prepare: NodeInterface = {
-  name: 'prepare',
-  outputs: ['success'],
-  contract: { hardRequired: ['input'], produces: ['intermediate'] },
-  async execute() { return { output: 'success' }; },
-};
+class PrepareNode implements NodeInterface {
+  readonly name = 'prepare';
+  readonly outputs = ['success'] as const;
+  readonly contract = { hardRequired: ['input'], produces: ['intermediate'] };
+  async execute() { return NodeOutputBuilder.of('success'); }
+}
 
-const invokePlugin: NodeInterface = {
-  name: 'invoke-plugin',
-  outputs: ['success', 'error'],
-  contract: { hardRequired: ['intermediate'], produces: ['childResult'] },
-  async execute() { return { output: 'success' }; },
-};
+class InvokePluginNode implements NodeInterface {
+  readonly name = 'invoke-plugin';
+  readonly outputs = ['success', 'error'] as const;
+  readonly contract = { hardRequired: ['intermediate'], produces: ['childResult'] };
+  async execute() { return NodeOutputBuilder.of('success'); }
+}
 
-const finalize: NodeInterface = {
-  name: 'finalize',
-  outputs: ['success'],
-  contract: { hardRequired: ['childResult'], produces: ['final'] },
-  async execute() { return { output: 'success' }; },
-};
+class FinalizeNode implements NodeInterface {
+  readonly name = 'finalize';
+  readonly outputs = ['success'] as const;
+  readonly contract = { hardRequired: ['childResult'], produces: ['final'] };
+  async execute() { return NodeOutputBuilder.of('success'); }
+}
+
+const validate = new ValidateNode();
+const transform = new TransformNode();
+const prepare = new PrepareNode();
+const invokePlugin = new InvokePluginNode();
+const finalize = new FinalizeNode();
 
 const childDAG = DAGDeriver.derive({
   name: 'plugin:transform',
@@ -164,24 +171,24 @@ When an operation has output ports that should terminate the flow (or route to a
 `target: string` routes the output port to the named existing placement. Use this to send an outcome to a placement already in the DAG rather than the auto-derived next stage.
 
 ```ts
-const classify: NodeInterface<S, 'success' | 'off-topic' | 'error'> = {
-  name: 'classify',
-  outputs: ['success', 'off-topic', 'error'],
-  contract: { hardRequired: ['input'], produces: ['classification'] },
-  async execute(state) { return { output: 'success' }; },
-};
-const plan: NodeInterface<S, 'success'> = {
-  name: 'plan',
-  outputs: ['success'],
-  contract: { hardRequired: ['classification'], produces: ['plan'] },
-  async execute(state) { return { output: 'success' }; },
-};
+class ClassifyNode implements NodeInterface<S, 'success' | 'off-topic' | 'error'> {
+  readonly name = 'classify';
+  readonly outputs = ['success', 'off-topic', 'error'] as const;
+  readonly contract = { hardRequired: ['input'], produces: ['classification'] };
+  async execute() { return NodeOutputBuilder.of('success'); }
+}
+class PlanNode implements NodeInterface<S, 'success'> {
+  readonly name = 'plan';
+  readonly outputs = ['success'] as const;
+  readonly contract = { hardRequired: ['classification'], produces: ['plan'] };
+  async execute() { return NodeOutputBuilder.of('success'); }
+}
 
 const dag = DAGDeriver.derive({
   name: 'gated',
   version: '1.0',
   entrypoint: 'classify',
-  nodes: [classify, plan],
+  nodes: [new ClassifyNode(), new PlanNode()],
   annotations: {
     terminals: {
       classify: [
@@ -197,24 +204,24 @@ const dag = DAGDeriver.derive({
 Use `emit` to end a flow with an explicit `failed` or `completed` lifecycle outcome. The deriver materializes a [`TerminalNode`](../examples/09-terminals) placement and routes the operation's output port to it. `emit` is the way to declare terminal outcomes in the deriver; leaf nodes with no downstream successor must use `emit` to declare their exit terminal.
 
 ```ts
-const classify: NodeInterface<S, 'success' | 'fail' | 'error'> = {
-  name: 'classify',
-  outputs: ['success', 'fail', 'error'],
-  contract: { hardRequired: ['input'], produces: ['classification'] },
-  async execute(state) { return { output: 'success' }; },
-};
-const plan: NodeInterface<S, 'success'> = {
-  name: 'plan',
-  outputs: ['success'],
-  contract: { hardRequired: ['classification'], produces: ['plan'] },
-  async execute(state) { return { output: 'success' }; },
-};
+class ClassifyNode implements NodeInterface<S, 'success' | 'fail' | 'error'> {
+  readonly name = 'classify';
+  readonly outputs = ['success', 'fail', 'error'] as const;
+  readonly contract = { hardRequired: ['input'], produces: ['classification'] };
+  async execute() { return NodeOutputBuilder.of('success'); }
+}
+class PlanNode implements NodeInterface<S, 'success'> {
+  readonly name = 'plan';
+  readonly outputs = ['success'] as const;
+  readonly contract = { hardRequired: ['classification'], produces: ['plan'] };
+  async execute() { return NodeOutputBuilder.of('success'); }
+}
 
 const dag = DAGDeriver.derive({
   name: 'gated',
   version: '1.0',
   entrypoint: 'classify',
-  nodes: [classify, plan],
+  nodes: [new ClassifyNode(), new PlanNode()],
   annotations: {
     terminals: {
       classify: [
@@ -254,30 +261,30 @@ When an operation dispatches one execution per item from a state-array source, t
 #### Strategy `'custom'`: registered gather node
 
 ```ts
-const plan: NodeInterface<S, 'success'> = {
-  name: 'plan',
-  outputs: ['success'],
-  contract: { hardRequired: ['input'], produces: ['tasks'] },
-  async execute(state) { return { output: 'success' }; },
-};
-const scout: NodeInterface<S, 'success'> = {
-  name: 'scout',
-  outputs: ['success'],
-  contract: { hardRequired: ['tasks'], produces: ['scoutResults'] },
-  async execute(state) { return { output: 'success' }; },
-};
-const merge: NodeInterface<S, 'success'> = {
-  name: 'merge',
-  outputs: ['success'],
-  contract: { hardRequired: ['scoutResults'], produces: ['merged'] },
-  async execute(state) { return { output: 'success' }; },
-};
+class PlanNode implements NodeInterface<S, 'success'> {
+  readonly name = 'plan';
+  readonly outputs = ['success'] as const;
+  readonly contract = { hardRequired: ['input'], produces: ['tasks'] };
+  async execute() { return NodeOutputBuilder.of('success'); }
+}
+class ScoutNode implements NodeInterface<S, 'success'> {
+  readonly name = 'scout';
+  readonly outputs = ['success'] as const;
+  readonly contract = { hardRequired: ['tasks'], produces: ['scoutResults'] };
+  async execute() { return NodeOutputBuilder.of('success'); }
+}
+class MergeNode implements NodeInterface<S, 'success'> {
+  readonly name = 'merge';
+  readonly outputs = ['success'] as const;
+  readonly contract = { hardRequired: ['scoutResults'], produces: ['merged'] };
+  async execute() { return NodeOutputBuilder.of('success'); }
+}
 
 const dag = DAGDeriver.derive({
   name: 'scout-flow',
   version: '1.0',
   entrypoint: 'plan',
-  nodes: [plan, scout, merge],
+  nodes: [new PlanNode(), new ScoutNode(), new MergeNode()],
   annotations: {
     scatters: {
       scout: {
@@ -339,30 +346,30 @@ Every item result (regardless of outcome) is flattened into the array at `target
 When an operation delegates execution to a nested registered DAG (plugin dispatch, phase composition, runtime-resolved child flows). The contract still declares `produces ↔ hardRequired` for topology derivation; the annotation swaps the rendered placement from `SingleNode` to an `EmbeddedDAGNode`. The `stateMapping.input` seeds child-state fields from the parent before the child runs; `stateMapping.output` copies child-state fields back into the parent after the child completes.
 
 ```ts
-const fetch: NodeInterface<S, 'success' | 'cached' | 'error'> = {
-  name: 'fetch',
-  outputs: ['success', 'cached', 'error'],
-  contract: { hardRequired: ['url'], produces: ['html'] },
-  async execute(state) { return { output: 'success' }; },
-};
-const parse: NodeInterface<S, 'success' | 'error'> = {
-  name: 'parse',
-  outputs: ['success', 'error'],
-  contract: { hardRequired: ['html'], produces: ['record'] },
-  async execute(state) { return { output: 'success' }; },
-};
-const persist: NodeInterface<S, 'success'> = {
-  name: 'persist',
-  outputs: ['success'],
-  contract: { hardRequired: ['record'], produces: ['saved'] },
-  async execute(state) { return { output: 'success' }; },
-};
+class FetchNode implements NodeInterface<S, 'success' | 'cached' | 'error'> {
+  readonly name = 'fetch';
+  readonly outputs = ['success', 'cached', 'error'] as const;
+  readonly contract = { hardRequired: ['url'], produces: ['html'] };
+  async execute() { return NodeOutputBuilder.of('success'); }
+}
+class ParseNode implements NodeInterface<S, 'success' | 'error'> {
+  readonly name = 'parse';
+  readonly outputs = ['success', 'error'] as const;
+  readonly contract = { hardRequired: ['html'], produces: ['record'] };
+  async execute() { return NodeOutputBuilder.of('success'); }
+}
+class PersistNode implements NodeInterface<S, 'success'> {
+  readonly name = 'persist';
+  readonly outputs = ['success'] as const;
+  readonly contract = { hardRequired: ['record'], produces: ['saved'] };
+  async execute() { return NodeOutputBuilder.of('success'); }
+}
 
 const dag = DAGDeriver.derive({
   name: 'page-pipeline',
   version: '1.0',
   entrypoint: 'fetch',
-  nodes: [fetch, parse, persist],
+  nodes: [new FetchNode(), new ParseNode(), new PersistNode()],
   annotations: {
     embeddedDAGs: {
       parse: {
@@ -419,15 +426,17 @@ Declare `hardRequired` and `produces` directly on the node via `NodeInterface.co
 
 ```ts
 // Contract lives on the node; single source of truth
-const fetchNode = {
-  name:    'fetch',
-  outputs: ['success', 'cached', 'error'] as const,
-  contract: {
+class FetchNode implements NodeInterface<MyState> {
+  readonly name    = 'fetch';
+  readonly outputs = ['success', 'cached', 'error'] as const;
+  readonly contract = {
     hardRequired: ['url'] as const,
     produces:     ['raw'] as const,
-  },
-  async execute(state: MyState, ctx) { /* ... */ return { output: 'success' as const }; },
-} satisfies NodeInterface;
+  };
+  async execute(state: MyState, ctx: NodeContextInterface) { /* ... */ return NodeOutputBuilder.of('success'); }
+}
+
+const fetchNode = new FetchNode();
 
 // Pass the node registry
 const dag = DAGDeriver.derive({
@@ -437,7 +446,7 @@ const dag = DAGDeriver.derive({
 dispatcher.registerNode(fetchNode);
 ```
 
-Nodes without a `contract` field are silently skipped in topology derivation; the dispatcher still registers and executes them.
+Nodes whose `contract` carries empty arrays (`EMPTY_CONTRACT_FRAGMENT`) are silently skipped in topology derivation; the dispatcher still registers and executes them.
 
 Use `DAGDeriver.extractContracts(nodes)` to inspect the projected contracts before derivation:
 
@@ -459,17 +468,22 @@ Most useful when nodes are typed with `as const` literal-tuple contracts:
 ```ts
 import type { Chainable } from '@noocodex/dagonizer/contracts';
 
-const fetchNode = {
-  name: 'fetch', outputs: ['success'] as const,
-  contract: { hardRequired: ['url'] as const, produces: ['raw'] as const },
-  async execute(state, ctx) { return { output: 'success' as const }; },
-} satisfies NodeInterface;
+class FetchNode implements NodeInterface {
+  readonly name    = 'fetch';
+  readonly outputs = ['success'] as const;
+  readonly contract = { hardRequired: ['url'] as const, produces: ['raw'] as const };
+  async execute() { return NodeOutputBuilder.of('success'); }
+}
 
-const parseNode = {
-  name: 'parse', outputs: ['success'] as const,
-  contract: { hardRequired: ['raw'] as const, produces: ['record'] as const },
-  async execute(state, ctx) { return { output: 'success' as const }; },
-} satisfies NodeInterface;
+class ParseNode implements NodeInterface {
+  readonly name    = 'parse';
+  readonly outputs = ['success'] as const;
+  readonly contract = { hardRequired: ['raw'] as const, produces: ['record'] as const };
+  async execute() { return NodeOutputBuilder.of('success'); }
+}
+
+const fetchNode = new FetchNode();
+const parseNode = new ParseNode();
 
 // Compiles: 'raw' in fetchNode.produces satisfies parseNode.hardRequired
 type FetchThenParse = Chainable<typeof fetchNode, typeof parseNode>; // true

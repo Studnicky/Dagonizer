@@ -7,6 +7,7 @@
  * membership tests; import the type for narrowing.
  *
  * Pure module: no side effects, no dispatcher, no execute.
+ * Imported by examples/constants-usage.ts (the executable entry point).
  */
 
 // #region constants
@@ -18,51 +19,52 @@ import {
   ScatterOutput,
 } from '@noocodex/dagonizer/constants';
 
-// -- Output ------------------------------------------------------------------
-// Route by the node's output token.
-function describeOutput(output: Output): string {
-  if (output === Output.SUCCESS) return 'operation completed';
-  if (output === Output.ERROR)   return 'operation failed';
-  return output;
+// ── Item type narrowed at the scatter boundary ────────────────────────────────
+export interface CatalogueItem {
+  readonly title: string;
 }
 
-// -- NodeType ----------------------------------------------------------------
-// Discriminate a placement type read from a DAG definition.
-function isScatterPlacement(type: NodeType): boolean {
-  return type === NodeType.SCATTER;
-}
+// ── Constant guards: all five methods live on one cohesive static class ───────
+export class ConstantUsage {
+  // -- Output ------------------------------------------------------------------
+  // Route by the node's output token.
+  static describeOutput(output: Output): string {
+    if (output === Output.SUCCESS) return 'operation completed';
+    if (output === Output.ERROR)   return 'operation failed';
+    return output;
+  }
 
-// -- GatherStrategyName ------------------------------------------------------
-// Validate a config value against the known gather strategies.
-function isKnownGatherStrategy(name: string): name is GatherStrategyName {
-  return (Object.values(GatherStrategyName) as readonly string[]).includes(name);
+  // -- NodeType ----------------------------------------------------------------
+  // Discriminate a placement type read from a DAG definition.
+  static isScatterPlacement(type: NodeType): boolean {
+    return type === NodeType.SCATTER;
+  }
+
+  // -- GatherStrategyName ------------------------------------------------------
+  // Validate a config value against the known gather strategies.
+  static isKnownGatherStrategy(name: string): name is GatherStrategyName {
+    return (Object.values(GatherStrategyName) as readonly string[]).includes(name);
+  }
+
+  // -- MetadataKey -------------------------------------------------------------
+  // Read a reserved key off a node's metadata bag.
+  // CURRENT_ITEM is set by scatter; narrow to CatalogueItem at the read site.
+  static readCurrentItem(metadata: Partial<Record<MetadataKey, CatalogueItem>>): CatalogueItem | undefined {
+    return metadata[MetadataKey.CURRENT_ITEM];
+  }
+
+  // -- ScatterOutput -----------------------------------------------------------
+  // Branch on scatter aggregate output.
+  static interpretScatterOutput(output: ScatterOutput): string {
+    if (output === ScatterOutput.ALL_SUCCESS) return 'all clones succeeded';
+    if (output === ScatterOutput.ALL_ERROR)   return 'all clones failed';
+    if (output === ScatterOutput.PARTIAL)     return 'partial success';
+    return 'source array was empty';
+  }
 }
 
 // Select the gather strategy for a fan-out that maps per-clone field values
 // into a target array on the parent state (one entry per source item, in
 // source-index order). Use COLLECT when aggregating output tokens instead.
-const fanOutGatherStrategy: GatherStrategyName = GatherStrategyName.MAP;
-
-// -- MetadataKey -------------------------------------------------------------
-// Read a reserved key off a node's metadata bag.
-function readCurrentItem(metadata: Partial<Record<MetadataKey, unknown>>): unknown {
-  return metadata[MetadataKey.CURRENT_ITEM];
-}
-
-// -- ScatterOutput -----------------------------------------------------------
-// Branch on scatter aggregate output.
-function interpretScatterOutput(output: ScatterOutput): string {
-  if (output === ScatterOutput.ALL_SUCCESS) return 'all clones succeeded';
-  if (output === ScatterOutput.ALL_ERROR)   return 'all clones failed';
-  if (output === ScatterOutput.PARTIAL)     return 'partial success';
-  return 'source array was empty';
-}
+export const fanOutGatherStrategy: GatherStrategyName = GatherStrategyName.MAP;
 // #endregion constants
-
-// Suppress unused variable warnings.
-void describeOutput;
-void isScatterPlacement;
-void isKnownGatherStrategy;
-void readCurrentItem;
-void fanOutGatherStrategy;
-void interpretScatterOutput;

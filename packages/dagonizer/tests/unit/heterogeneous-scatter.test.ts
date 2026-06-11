@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
 import type { GatherExecution } from '../../src/core/GatherStrategies.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
@@ -23,6 +24,7 @@ import type { GatherConfig } from '../../src/entities/dag/GatherConfig.js';
 import type { JsonObject } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -61,10 +63,12 @@ class HeterogeneousState extends NodeStateBase {
 // Reads currentItem (the provider descriptor) and produces a per-provider
 // result. Three providers succeed, one returns 'empty'.
 
-const dispatchNode: NodeInterface<HeterogeneousState, 'success' | 'empty'> = {
-  'name': 'dispatch',
-  'outputs': ['success', 'empty'],
-  async execute(state) {
+class DispatchNode implements NodeInterface<HeterogeneousState, 'success' | 'empty'> {
+  readonly name = 'dispatch';
+  readonly outputs = ['success', 'empty'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  async execute(state: HeterogeneousState): Promise<{ errors: []; output: 'success' | 'empty' }> {
     const provider = state.getMetadata<string>('currentItem') ?? 'unknown';
     switch (provider) {
       case 'alpha': {
@@ -88,8 +92,10 @@ const dispatchNode: NodeInterface<HeterogeneousState, 'success' | 'empty'> = {
         return { 'errors': [], 'output': 'empty' };
       }
     }
-  },
-};
+  }
+}
+
+const dispatchNode = new DispatchNode();
 
 // ── custom gather strategy ───────────────────────────────────────────────────
 // Flat-merges each clone's `providerResult` into the parent `results` array
@@ -175,13 +181,16 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
   void it('routes error when all providers return empty', async () => {
     const dispatcher = new Dagonizer<HeterogeneousState>();
 
-    const emptyDispatch: NodeInterface<HeterogeneousState, 'success' | 'empty'> = {
-      'name': 'empty-dispatch',
-      'outputs': ['success', 'empty'],
-      async execute() {
+    class EmptyDispatchNode implements NodeInterface<HeterogeneousState, 'success' | 'empty'> {
+      readonly name = 'empty-dispatch';
+      readonly outputs = ['success', 'empty'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(_state: HeterogeneousState): Promise<{ errors: []; output: 'success' | 'empty' }> {
         return { 'errors': [], 'output': 'empty' };
-      },
-    };
+      }
+    }
+    const emptyDispatch = new EmptyDispatchNode();
     dispatcher.registerNode(emptyDispatch);
 
     const dag = new DAGBuilder('hetero-all-empty', '1.0')

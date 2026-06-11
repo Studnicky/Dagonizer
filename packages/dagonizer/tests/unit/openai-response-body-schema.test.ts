@@ -55,7 +55,7 @@ class InjectableAdapter extends OpenAiCompatibleAdapter {
 
 function makeRequest(): ChatRequest {
   return {
-    'messages': [{ 'role': 'user', 'content': 'hi', 'toolCallId': '', 'toolName': '' }],
+    'messages': [{ 'role': 'user', 'content': 'hi' }],
     'tools': [],
     'toolChoice': { 'type': 'auto' },
     'outputSchema': { 'kind': 'none' },
@@ -134,7 +134,7 @@ void describe('OpenAiCompatibleAdapter — untrusted input hardening', () => {
     });
 
     const request: ChatRequest = {
-      'messages': [{ 'role': 'user', 'content': 'hi', 'toolCallId': '', 'toolName': '' }],
+      'messages': [{ 'role': 'user', 'content': 'hi' }],
       'tools': [{ 'name': 'test', 'description': 'd', 'inputSchema': {}, 'strict': false }],
       'toolChoice': { 'type': 'auto' },
       'outputSchema': { 'kind': 'none' },
@@ -172,7 +172,7 @@ void describe('OpenAiCompatibleAdapter — untrusted input hardening', () => {
     });
 
     const request: ChatRequest = {
-      'messages': [{ 'role': 'user', 'content': 'hi', 'toolCallId': '', 'toolName': '' }],
+      'messages': [{ 'role': 'user', 'content': 'hi' }],
       'tools': [{ 'name': 'test', 'description': 'd', 'inputSchema': {}, 'strict': false }],
       'toolChoice': { 'type': 'auto' },
       'outputSchema': { 'kind': 'none' },

@@ -21,9 +21,10 @@ import {
   DAG_CONTEXT,
   NodeOutputBuilder,
   NodeStateBase,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
 } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import type { DAG, NodeInterface} from '@noocodex/dagonizer';
 import { GatherStrategyName } from '@noocodex/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
@@ -57,10 +58,13 @@ export class GatherDemoState extends NodeStateBase {
  * The node unconditionally returns 'done' so the collector receives 'done'
  * for every clone.
  */
-export const tag: NodeInterface<GatherDemoState, 'done'> = {
-  "name": 'tag',
-  "outputs": ['done'],
-  async execute(state) {
+export class TagNode implements NodeInterface<GatherDemoState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'tag';
+  readonly outputs = ['done'] as const;
+
+  async execute(state: GatherDemoState) {
     const item = state.getMetadata<string>('item') ?? '?';
     // Side-effect: visible even under `discard` gather (clone state is
     // discarded, but direct writes to *shared* parent state via reference
@@ -71,8 +75,8 @@ export const tag: NodeInterface<GatherDemoState, 'done'> = {
     // via the `collect` run where state IS merged back.
     state.sideEffects = [...state.sideEffects, `tagged:${item}`];
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 // #endregion worker-node
 
 // ---------------------------------------------------------------------------

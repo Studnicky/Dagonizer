@@ -9,9 +9,10 @@
  * calls the selected adapter and routes on the response kind.
  */
 
-import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,
+  EMPTY_CONTRACT_FRAGMENT, Timeout,
+} from '@noocodex/dagonizer';
+import type { DAG, NodeInterface} from '@noocodex/dagonizer';
 import type { LlmAdapter } from '@noocodex/dagonizer/adapter';
 import { ChatRequestBuilder } from '@noocodex/dagonizer/adapter';
 
@@ -30,15 +31,17 @@ export class ChatAdapterState extends NodeStateBase {
 // Nodes
 // ---------------------------------------------------------------------------
 
-export const chat: NodeInterface<ChatAdapterState, 'text' | 'tools'> = {
-  'name': 'chat',
-  'outputs': ['text', 'tools'],
-  async execute(state) {
+export class ChatNode implements NodeInterface<ChatAdapterState, 'text' | 'tools'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'chat';
+  readonly outputs = ['text', 'tools'] as const;
+  async execute(state: ChatAdapterState) {
     if (state.adapter === null) throw new Error('chat: adapter not set');
     const request = ChatRequestBuilder.from({
       'messages': [
-        { 'role': 'system', 'content': 'You are a helpful assistant.', 'toolCallId': '', 'toolName': '' },
-        { 'role': 'user',   'content': state.prompt,                   'toolCallId': '', 'toolName': '' },
+        { 'role': 'system', 'content': 'You are a helpful assistant.' },
+        { 'role': 'user',   'content': state.prompt },
       ],
     });
     const response = await state.adapter.chat(request);
@@ -53,27 +56,31 @@ export const chat: NodeInterface<ChatAdapterState, 'text' | 'tools'> = {
       : response.message.toolCalls;
     state.response = `tool_call:${calls[0]?.name ?? 'unknown'}`;
     return NodeOutputBuilder.of('tools');
-  },
-};
+  }
+}
 
-export const handleText: NodeInterface<ChatAdapterState, 'done'> = {
-  'name': 'handleText',
-  'outputs': ['done'],
-  async execute(state) {
+export class HandleTextNode implements NodeInterface<ChatAdapterState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'handleText';
+  readonly outputs = ['done'] as const;
+  async execute(state: ChatAdapterState) {
     // Slot for downstream text-processing logic; identity pass-through here
     process.stdout.write(`  [handleText] response="${state.response}"\n`);
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
-export const handleTools: NodeInterface<ChatAdapterState, 'done'> = {
-  'name': 'handleTools',
-  'outputs': ['done'],
-  async execute(state) {
+export class HandleToolsNode implements NodeInterface<ChatAdapterState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'handleTools';
+  readonly outputs = ['done'] as const;
+  async execute(state: ChatAdapterState) {
     process.stdout.write(`  [handleTools] tool dispatched: ${state.response}\n`);
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
 // ---------------------------------------------------------------------------
 // DAG

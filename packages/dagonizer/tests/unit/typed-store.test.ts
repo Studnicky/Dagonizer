@@ -83,20 +83,20 @@ void describe('TypedStore', () => {
     assert.deepEqual(result, { 'retries': 3, 'timeout': 5000 });
   });
 
-  void it('snapshot() / restore() pass-through preserves typed values', async () => {
+  void it('inner.snapshot() / inner.restore() pass-through preserves typed values', async () => {
     const inner = new MemoryStore();
     const typed = new TypedStore<AppSchema>(inner);
 
     await typed.set('count', 99);
     await typed.set('label', 'snap-test');
 
-    const snap = await typed.snapshot();
+    const snap = await typed.inner.snapshot();
     assert.equal(snap.type, 'memory-store');
     assert.equal(snap.version, 1);
 
     // Restore into a fresh TypedStore wrapping a new MemoryStore.
     const fresh = new TypedStore<AppSchema>(new MemoryStore());
-    await fresh.restore(snap);
+    await fresh.inner.restore(snap);
 
     assert.equal(await fresh.get('count'), 99);
     assert.equal(await fresh.get('label'), 'snap-test');
@@ -116,13 +116,13 @@ void describe('TypedStore', () => {
     assert.equal(typed.inner, inner);
   });
 
-  void it('connect() and disconnect() pass through to the inner store', async () => {
+  void it('inner.connect() and inner.disconnect() pass through to the inner store', async () => {
     const inner = new MemoryStore();
     const typed = new TypedStore<AppSchema>(inner);
 
-    // MemoryStore no-ops both; verifying no throw and no type error.
-    await assert.doesNotReject(() => typed.connect());
-    await assert.doesNotReject(() => typed.disconnect());
+    // MemoryStore no-ops both; callers use .inner for lifecycle operations.
+    await assert.doesNotReject(() => typed.inner.connect());
+    await assert.doesNotReject(() => typed.inner.disconnect());
   });
 
   void it('TypedStore composes with a MemoryStore that already has prior data', async () => {
@@ -137,10 +137,10 @@ void describe('TypedStore', () => {
     assert.equal(await typed.get('count'), 100);
     assert.deepEqual(await typed.get('tags'), ['a', 'b']);
 
-    // Snapshot round-trip preserves those values.
-    const snap = await typed.snapshot();
+    // Snapshot round-trip preserves those values via .inner lifecycle ops.
+    const snap = await typed.inner.snapshot();
     const restored = new TypedStore<AppSchema>(new MemoryStore());
-    await restored.restore(snap);
+    await restored.inner.restore(snap);
     assert.equal(await restored.get('count'), 100);
     assert.deepEqual(await restored.get('tags'), ['a', 'b']);
   });

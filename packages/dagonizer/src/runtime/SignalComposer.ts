@@ -57,11 +57,15 @@ export class SignalComposer {
    * - two inputs → composed via `AbortSignal.any([…])`
    */
   static compose(options: ExecuteOptionsInterface): AbortSignal | null {
-    const signals: AbortSignal[] = [];
-    if (options.signal) signals.push(options.signal);
-    if (options.deadlineMs !== undefined) signals.push(AbortSignal.timeout(options.deadlineMs));
-    if (signals.length === 0) return null;
-    if (signals.length === 1) return signals[0] ?? null;
-    return AbortSignal.any(signals);
+    const callerSignal  = options.signal;
+    const deadlineMs    = options.deadlineMs;
+    const timeoutSignal = deadlineMs !== undefined ? AbortSignal.timeout(deadlineMs) : undefined;
+
+    if (callerSignal !== undefined && timeoutSignal !== undefined) {
+      return AbortSignal.any([callerSignal, timeoutSignal]);
+    }
+    if (callerSignal !== undefined) return callerSignal;
+    if (timeoutSignal !== undefined) return timeoutSignal;
+    return null;
   }
 }

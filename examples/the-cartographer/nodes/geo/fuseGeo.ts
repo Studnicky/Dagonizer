@@ -19,13 +19,19 @@ import type { CartographerServices } from '../../CartographerServices.ts';
 import { GeoFusion } from '../../services/GeoFusion.ts';
 import { TimeZoneResolver } from '../../services.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region fuse-geo-node
-export const fuseGeo: NodeInterface<CartographerState, 'fused', CartographerServices> = {
-  'name': 'fuse-geo',
-  'outputs': ['fused'],
-  async execute(state, context) {
+export class FuseGeoNode implements NodeInterface<CartographerState, 'fused', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'fuse-geo';
+  readonly 'outputs' = ['fused'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'fused'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -57,6 +63,6 @@ export const fuseGeo: NodeInterface<CartographerState, 'fused', CartographerServ
       'jurisdiction': resolved.jurisdiction,
     };
     return NodeOutputBuilder.of('fused');
-  },
-};
+  }
+}
 // #endregion fuse-geo-node

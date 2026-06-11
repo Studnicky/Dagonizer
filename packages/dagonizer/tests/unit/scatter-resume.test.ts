@@ -3,12 +3,15 @@ import { describe, it } from 'node:test';
 
 import { Checkpoint, CheckpointRestoreAdapterFn } from '../../src/checkpoint/Checkpoint.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
 import type { ScatterProgress } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
+import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 
 /** State carrying a typed items / processed array plus an optional second
  *  scatter source, and a `results` array for the map-gather fix scenario.
@@ -52,17 +55,19 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
   void it('clean run executes every item and leaves no progress entry', async () => {
     const dispatcher = new Dagonizer<ScatterState>();
     let calls = 0;
-    const worker: NodeInterface<ScatterState, 'success'> = {
-      'name': 'worker',
-      'outputs': ['success'],
-      async execute(state) {
+    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+      readonly name = 'worker';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(state: ScatterState) {
         calls++;
         const item = state.getMetadata<number>('item') ?? 0;
         state.setMetadata('processedItem', item);
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
-    dispatcher.registerNode(worker);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    dispatcher.registerNode(new WorkerNode());
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-clean',
@@ -98,18 +103,20 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     // Concurrency 1 to make per-item ack writes deterministic.
     // Worker throws after two completions so the scatter aborts before
     // the loop drains; the acked progress entries survive on state.metadata.
-    const worker: NodeInterface<ScatterState, 'success'> = {
-      'name': 'worker',
-      'outputs': ['success'],
+    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+      readonly name = 'worker';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
       async execute() {
         const idx = ++completedCount;
         if (idx === 3) {
           throw new Error('simulated mid-flight failure');
         }
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
-    dispatcher.registerNode(worker);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    dispatcher.registerNode(new WorkerNode());
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-interrupt',
@@ -153,15 +160,17 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
   void it('resume skips already-acked indices and re-executes only the rest', async () => {
     const dispatcher = new Dagonizer<ScatterState>();
     let calls = 0;
-    const worker: NodeInterface<ScatterState, 'success'> = {
-      'name': 'worker',
-      'outputs': ['success'],
+    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+      readonly name = 'worker';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
       async execute() {
         calls++;
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
-    dispatcher.registerNode(worker);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    dispatcher.registerNode(new WorkerNode());
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-resume',
@@ -204,14 +213,16 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
 
   void it('resumed aggregate output reflects every item including prior-run ones', async () => {
     const dispatcher = new Dagonizer<ScatterState>();
-    const worker: NodeInterface<ScatterState, 'success'> = {
-      'name': 'worker',
-      'outputs': ['success'],
+    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+      readonly name = 'worker';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
       async execute() {
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
-    dispatcher.registerNode(worker);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    dispatcher.registerNode(new WorkerNode());
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-aggregate',
@@ -265,10 +276,12 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     // --- Phase 1: run to interruption ---------------------------------------
     const interruptDispatcher = new Dagonizer<ScatterState>();
     let runCount = 0;
-    const interruptingWorker: NodeInterface<ScatterState, 'success'> = {
-      'name': 'producer',
-      'outputs': ['success'],
-      async execute(state) {
+    class InterruptingWorkerNode implements NodeInterface<ScatterState, 'success'> {
+      readonly name = 'producer';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(state: ScatterState) {
         const item = state.getMetadata<number>('item') ?? 0;
         const idx = ++runCount;
         if (idx === 3) {
@@ -277,10 +290,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
           throw new Error('simulated mid-flight failure');
         }
         state.produced = f(item);
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
-    interruptDispatcher.registerNode(interruptingWorker);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    interruptDispatcher.registerNode(new InterruptingWorkerNode());
     const mapDag = (dagName: string): DAG => ({
       '@context': DAG_CONTEXT,
       '@id':      `urn:noocodex:dag:${dagName}`,
@@ -330,17 +343,19 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
 
     const resumeDispatcher = new Dagonizer<ScatterState>();
     let resumeRunCount = 0;
-    const resumeWorker: NodeInterface<ScatterState, 'success'> = {
-      'name': 'producer',
-      'outputs': ['success'],
-      async execute(state) {
+    class ResumeWorkerNode implements NodeInterface<ScatterState, 'success'> {
+      readonly name = 'producer';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(state: ScatterState) {
         resumeRunCount++;
         const item = state.getMetadata<number>('item') ?? 0;
         state.produced = f(item);
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
-    resumeDispatcher.registerNode(resumeWorker);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    resumeDispatcher.registerNode(new ResumeWorkerNode());
     resumeDispatcher.registerDAG(mapDag('scatter-map-interrupt'));
 
     const result = await resumeDispatcher.resume('scatter-map-interrupt', restored, 'fan');
@@ -368,24 +383,28 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     const dispatcher = new Dagonizer<ScatterState>();
     let aCalls = 0;
     let bCalls = 0;
-    const workerA: NodeInterface<ScatterState, 'success'> = {
-      'name': 'workerA',
-      'outputs': ['success'],
+    class WorkerANode implements NodeInterface<ScatterState, 'success'> {
+      readonly name = 'workerA';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
       async execute() {
         aCalls++;
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
-    const workerB: NodeInterface<ScatterState, 'success'> = {
-      'name': 'workerB',
-      'outputs': ['success'],
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    class WorkerBNode implements NodeInterface<ScatterState, 'success'> {
+      readonly name = 'workerB';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
       async execute() {
         bCalls++;
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
-    dispatcher.registerNode(workerA);
-    dispatcher.registerNode(workerB);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    dispatcher.registerNode(new WorkerANode());
+    dispatcher.registerNode(new WorkerBNode());
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-twin',
@@ -461,14 +480,16 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       originalSet(key, value);
     };
 
-    const worker: NodeInterface<ScatterState, 'success'> = {
-      'name': 'worker',
-      'outputs': ['success'],
+    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+      readonly name = 'worker';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
       async execute() {
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
-    dispatcher.registerNode(worker);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    dispatcher.registerNode(new WorkerNode());
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-batched',
@@ -496,15 +517,17 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
   void it('survives snapshot/restore through Checkpoint and resumes correctly', async () => {
     const dispatcher = new Dagonizer<ScatterState>();
     let calls = 0;
-    const worker: NodeInterface<ScatterState, 'success'> = {
-      'name': 'worker',
-      'outputs': ['success'],
+    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+      readonly name = 'worker';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
       async execute() {
         calls++;
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
-    dispatcher.registerNode(worker);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    dispatcher.registerNode(new WorkerNode());
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-ckpt',
@@ -555,10 +578,12 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
 
   void it('end-to-end Checkpoint capture/load round-trip preserves progress', async () => {
     const dispatcher = new Dagonizer<ScatterState>();
-    const worker: NodeInterface<ScatterState, 'success'> = {
-      'name': 'worker',
-      'outputs': ['success'],
-      async execute(_state, context) {
+    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+      readonly name = 'worker';
+      readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(_state: ScatterState, context: NodeContextInterface) {
         // Long-running so we can abort mid-flight.
         await new Promise<void>((resolve, reject) => {
           const t = setTimeout(resolve, 1000);
@@ -567,10 +592,10 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
             reject(context.signal.reason);
           }, { 'once': true });
         });
-        return { 'errors': [], 'output': 'success' };
-      },
-    };
-    dispatcher.registerNode(worker);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    dispatcher.registerNode(new WorkerNode());
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:scatter-e2e',

@@ -34,11 +34,11 @@ import {
   DAG_CONTAINER_TRANSPORT,
   DAG_CONTAINER_WORKER_DIED,
 } from '@noocodex/dagonizer/container';
+import type { PoolEntry } from '@noocodex/dagonizer/container';
 import type {
   DagOutcomeInterface,
   DagTaskInterface,
-  PoolEntry,
-} from '@noocodex/dagonizer/container';
+} from '@noocodex/dagonizer/contracts';
 ```
 
 ---
@@ -214,5 +214,5 @@ const DAG_CONTAINER_WORKER_DIED: 'DAG_CONTAINER_WORKER_DIED';
 - [Distribution and cloud](../guide/distribution)
 - [Example 12: Worker containers](../examples/12-workers)
 - [Example 13: Multi-backend dispatch](../examples/13-multibackend)
-- [Reference: Contracts](./contracts) — `DagContainerInterface`, `DagTaskInterface`, `DagOutcomeInterface`, `MessageChannelInterface`
+- [Reference: Contracts](./contracts) — `DagContainerInterface`, `DagTaskInterface`, `DagOutcomeInterface`, `MessageChannelInterface` (canonical import: `@noocodex/dagonizer/contracts`)
 - [Reference: Channels](./channels) — `InMemoryChannel`

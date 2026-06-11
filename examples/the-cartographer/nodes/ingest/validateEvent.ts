@@ -23,60 +23,66 @@ import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 import type { CanonicalEvent } from '../../entities/CanonicalEvent.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region validate-event-node
-function lawfulBasis(value: unknown): CanonicalEvent['body']['lawfulBasis'] {
-  return value === 'contract' || value === 'consent' || value === 'legitimate-interest' || value === 'none'
-    ? value
-    : 'contract';
-}
+export class ValidateEventNode implements NodeInterface<CartographerState, 'validated', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'validate-event';
+  readonly 'outputs' = ['validated'] as const;
 
-function specialCategory(value: unknown): CanonicalEvent['body']['specialCategory'] {
-  return value === 'health' ? 'health' : 'none';
-}
+  private static lawfulBasis(value: unknown): CanonicalEvent['body']['lawfulBasis'] {
+    return value === 'contract' || value === 'consent' || value === 'legitimate-interest' || value === 'none'
+      ? value
+      : 'contract';
+  }
 
-function weightUnit(value: unknown): CanonicalEvent['body']['weightUnit'] {
-  return value === 'lb' || value === 'kg' || value === 'g' || value === 'oz' ? value : 'kg';
-}
+  private static specialCategory(value: unknown): CanonicalEvent['body']['specialCategory'] {
+    return value === 'health' ? 'health' : 'none';
+  }
 
-function num(value: unknown): number {
-  return typeof value === 'number' && isFinite(value) ? value : 0;
-}
+  private static weightUnit(value: unknown): CanonicalEvent['body']['weightUnit'] {
+    return value === 'lb' || value === 'kg' || value === 'g' || value === 'oz' ? value : 'kg';
+  }
 
-function str(value: unknown): string {
-  return typeof value === 'string' ? value : '';
-}
+  private static num(value: unknown): number {
+    return typeof value === 'number' && isFinite(value) ? value : 0;
+  }
 
-function bool(value: unknown): boolean {
-  return value === true;
-}
+  private static str(value: unknown): string {
+    return typeof value === 'string' ? value : '';
+  }
 
-function lineItems(value: unknown): Array<{ 'productId': string; 'quantity': number }> {
-  if (!Array.isArray(value)) return [];
-  const out: Array<{ 'productId': string; 'quantity': number }> = [];
-  for (const li of value) {
-    if (li !== null && typeof li === 'object' && !Array.isArray(li)) {
-      const o = li as Record<string, unknown>;
-      out.push({ 'productId': str(o['productId']), 'quantity': num(o['quantity']) || 1 });
+  private static bool(value: unknown): boolean {
+    return value === true;
+  }
+
+  private static lineItems(value: unknown): Array<{ 'productId': string; 'quantity': number }> {
+    if (!Array.isArray(value)) return [];
+    const out: Array<{ 'productId': string; 'quantity': number }> = [];
+    for (const li of value) {
+      if (li !== null && typeof li === 'object' && !Array.isArray(li)) {
+        const o = li as Record<string, unknown>;
+        out.push({ 'productId': ValidateEventNode.str(o['productId']), 'quantity': ValidateEventNode.num(o['quantity']) || 1 });
+      }
     }
+    return out;
   }
-  return out;
-}
 
-/** Derive the canonical kind for a record, given the source's primary kind. */
-function kindFor(sourceKind: CanonicalEvent['kind'], rec: Record<string, unknown>): CanonicalEvent['kind'] {
-  // The customs/delivery feed mixes two kinds — a delivered flag distinguishes.
-  if (sourceKind === 'customs-event') {
-    return bool(rec['delivered']) ? 'delivery-confirmation' : 'customs-event';
+  /** Derive the canonical kind for a record, given the source's primary kind. */
+  private static kindFor(sourceKind: CanonicalEvent['kind'], rec: Record<string, unknown>): CanonicalEvent['kind'] {
+    // The customs/delivery feed mixes two kinds — a delivered flag distinguishes.
+    if (sourceKind === 'customs-event') {
+      return ValidateEventNode.bool(rec['delivered']) ? 'delivery-confirmation' : 'customs-event';
+    }
+    return sourceKind;
   }
-  return sourceKind;
-}
 
-export const validateEvent: NodeInterface<CartographerState, 'validated', CartographerServices> = {
-  'name': 'validate-event',
-  'outputs': ['validated'],
-  async execute(state, context) {
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'validated'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -84,63 +90,63 @@ export const validateEvent: NodeInterface<CartographerState, 'validated', Cartog
     const events: CanonicalEvent[] = [];
 
     for (const rec of state.mappedRecords) {
-      const shipmentId = str(rec['shipmentId']);
-      const eventId    = str(rec['eventId']);
+      const shipmentId = ValidateEventNode.str(rec['shipmentId']);
+      const eventId    = ValidateEventNode.str(rec['eventId']);
       // Reject records lacking the canonical header.
       if (shipmentId.length === 0 || eventId.length === 0) continue;
 
-      const kind = kindFor(source.kind, rec);
-      const hasPii = str(rec['recipientName']).length > 0 || str(rec['recipientEmail']).length > 0;
+      const kind = ValidateEventNode.kindFor(source.kind, rec);
+      const hasPii = ValidateEventNode.str(rec['recipientName']).length > 0 || ValidateEventNode.str(rec['recipientEmail']).length > 0;
 
       const event: CanonicalEvent = {
         'shipmentId':   shipmentId,
         'eventId':      eventId,
-        'epochMs':      num(rec['epochMs']),
+        'epochMs':      ValidateEventNode.num(rec['epochMs']),
         'kind':         kind,
         'sourceId':     source.sourceId,
         'sourceFormat': source.format,
         'body': {
-          'scanSeq':          num(rec['scanSeq']),
-          'latitude':         num(rec['latitude']),
-          'longitude':        num(rec['longitude']),
-          'ipAddress':        str(rec['ipAddress']),
-          'legFromLat':       num(rec['legFromLat']),
-          'legFromLng':       num(rec['legFromLng']),
-          'originLat':        num(rec['originLat']),
-          'originLng':        num(rec['originLng']),
-          'destLat':          num(rec['destLat']),
-          'destLng':          num(rec['destLng']),
-          'carrier':          str(rec['carrier']),
-          'facilityId':       str(rec['facilityId']),
-          'status':           str(rec['status']),
-          'weight':           num(rec['weight']),
-          'weightUnit':       weightUnit(rec['weightUnit']),
-          'lineItems':        lineItems(rec['lineItems']),
-          'rawTimestamp':          str(rec['epochRaw']),
-          'rawDispatchAt':         str(rec['dispatchRaw']),
-          'rawPromisedDeliveryAt': str(rec['promisedRaw']),
-          'disruptionReason':      str(rec['disruptionReason']),
-          'tempC':            num(rec['tempC']),
-          'humidityPct':      num(rec['humidityPct']),
-          'shockG':           num(rec['shockG']),
-          'customsStatus':    str(rec['customsStatus']),
-          'delivered':        bool(rec['delivered']),
-          'recipientName':    str(rec['recipientName']),
-          'recipientEmail':   str(rec['recipientEmail']),
-          'recipientPhone':   str(rec['recipientPhone']),
-          'recipientAddress': str(rec['recipientAddress']),
-          'recipientCountry': str(rec['recipientCountry']),
-          'marketingConsent': bool(rec['marketingConsent']),
-          'lawfulBasis':      lawfulBasis(rec['lawfulBasis']),
-          'specialCategory':  specialCategory(rec['specialCategory']),
+          'scanSeq':          ValidateEventNode.num(rec['scanSeq']),
+          'latitude':         ValidateEventNode.num(rec['latitude']),
+          'longitude':        ValidateEventNode.num(rec['longitude']),
+          'ipAddress':        ValidateEventNode.str(rec['ipAddress']),
+          'legFromLat':       ValidateEventNode.num(rec['legFromLat']),
+          'legFromLng':       ValidateEventNode.num(rec['legFromLng']),
+          'originLat':        ValidateEventNode.num(rec['originLat']),
+          'originLng':        ValidateEventNode.num(rec['originLng']),
+          'destLat':          ValidateEventNode.num(rec['destLat']),
+          'destLng':          ValidateEventNode.num(rec['destLng']),
+          'carrier':          ValidateEventNode.str(rec['carrier']),
+          'facilityId':       ValidateEventNode.str(rec['facilityId']),
+          'status':           ValidateEventNode.str(rec['status']),
+          'weight':           ValidateEventNode.num(rec['weight']),
+          'weightUnit':       ValidateEventNode.weightUnit(rec['weightUnit']),
+          'lineItems':        ValidateEventNode.lineItems(rec['lineItems']),
+          'rawTimestamp':          ValidateEventNode.str(rec['epochRaw']),
+          'rawDispatchAt':         ValidateEventNode.str(rec['dispatchRaw']),
+          'rawPromisedDeliveryAt': ValidateEventNode.str(rec['promisedRaw']),
+          'disruptionReason':      ValidateEventNode.str(rec['disruptionReason']),
+          'tempC':            ValidateEventNode.num(rec['tempC']),
+          'humidityPct':      ValidateEventNode.num(rec['humidityPct']),
+          'shockG':           ValidateEventNode.num(rec['shockG']),
+          'customsStatus':    ValidateEventNode.str(rec['customsStatus']),
+          'delivered':        ValidateEventNode.bool(rec['delivered']),
+          'recipientName':    ValidateEventNode.str(rec['recipientName']),
+          'recipientEmail':   ValidateEventNode.str(rec['recipientEmail']),
+          'recipientPhone':   ValidateEventNode.str(rec['recipientPhone']),
+          'recipientAddress': ValidateEventNode.str(rec['recipientAddress']),
+          'recipientCountry': ValidateEventNode.str(rec['recipientCountry']),
+          'marketingConsent': ValidateEventNode.bool(rec['marketingConsent']),
+          'lawfulBasis':      ValidateEventNode.lawfulBasis(rec['lawfulBasis']),
+          'specialCategory':  ValidateEventNode.specialCategory(rec['specialCategory']),
         },
         'pii': hasPii,
       };
 
       // RICH sources pre-resolve geo (country/continent/region from the coords).
-      const geoCountry   = str(rec['geoCountry']);
-      const geoContinent = str(rec['geoContinent']);
-      const geoRegion    = str(rec['geoRegion']);
+      const geoCountry   = ValidateEventNode.str(rec['geoCountry']);
+      const geoContinent = ValidateEventNode.str(rec['geoContinent']);
+      const geoRegion    = ValidateEventNode.str(rec['geoRegion']);
       if (geoCountry.length > 0 && geoRegion.length > 0) {
         event.geo = { 'country': geoCountry, 'continent': geoContinent, 'region': geoRegion };
       }
@@ -150,6 +156,6 @@ export const validateEvent: NodeInterface<CartographerState, 'validated', Cartog
 
     state.ingestedEvents = events;
     return NodeOutputBuilder.of('validated');
-  },
-};
+  }
+}
 // #endregion validate-event-node

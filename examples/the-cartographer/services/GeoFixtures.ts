@@ -22,7 +22,7 @@ interface FixtureFile {
   readonly 'ipGeolocate': Record<string, GeoCandidate>;
 }
 
-const FIXTURES = FIXTURES_RAW as unknown as FixtureFile;
+const FIXTURES = FIXTURES_RAW as FixtureFile;
 
 export class GeoFixtures {
   static isLiveRecorded(): boolean {

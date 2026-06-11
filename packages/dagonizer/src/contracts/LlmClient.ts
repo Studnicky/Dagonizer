@@ -11,7 +11,8 @@
  * on capability should accept the full `LlmAdapter` directly.
  */
 
-import type { ChatRequest, ChatResponse } from '../adapter/LlmAdapter.js';
+import type { ChatRequest } from '../entities/adapter/ChatRequest.js';
+import type { ChatResponse } from '../entities/adapter/ChatResponse.js';
 
 export interface LlmClient {
   chat(request: ChatRequest): Promise<ChatResponse>;

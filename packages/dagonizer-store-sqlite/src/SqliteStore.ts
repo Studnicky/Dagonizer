@@ -16,8 +16,7 @@ import type { DatabaseSyncOptions } from 'node:sqlite';
 
 import type { StoreSnapshotEntry } from '@noocodex/dagonizer/contracts';
 import type { JsonValue } from '@noocodex/dagonizer/entities';
-import { BaseStore } from '@noocodex/dagonizer/store';
-import type { BaseStoreOptions } from '@noocodex/dagonizer/store';
+import { BASE_STORE_DEFAULTS, BaseStore, type BaseStoreOptions } from '@noocodex/dagonizer/store';
 
 export interface SqliteStoreOptions extends BaseStoreOptions {
   /** SQLite DatabaseSync options (e.g. readOnly). */
@@ -36,7 +35,7 @@ export class SqliteStore extends BaseStore {
   readonly #db: DatabaseSync;
   readonly #tableName: string;
 
-  constructor(path: string, options: SqliteStoreOptions = { 'namespace': '' }) {
+  constructor(path: string, options: SqliteStoreOptions = BASE_STORE_DEFAULTS) {
     super(options);
     this.#db = options.database !== undefined
       ? new DatabaseSync(path, options.database)
@@ -59,14 +58,13 @@ export class SqliteStore extends BaseStore {
     fn: (current: T | undefined) => T,
   ): Promise<T> {
     const qualified = this.qualifyKey(key);
-    let next!: T;
     this.#db.exec('BEGIN IMMEDIATE');
     try {
       const row = this.#db
         .prepare(`SELECT value FROM ${this.#tableName} WHERE key = ?`)
         .get(qualified) as KvRow | undefined;
       const current = (row === undefined) ? undefined : JSON.parse(row.value) as T;
-      next = fn(current);
+      const next = fn(current);
       this.#db
         .prepare(
           `INSERT INTO ${this.#tableName} (key, value) VALUES (?, ?)` +
@@ -74,11 +72,11 @@ export class SqliteStore extends BaseStore {
         )
         .run(qualified, JSON.stringify(next));
       this.#db.exec('COMMIT');
+      return next;
     } catch (err) {
       this.#db.exec('ROLLBACK');
       throw err;
     }
-    return next;
   }
 
   protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {

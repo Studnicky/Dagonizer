@@ -15,13 +15,19 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region decompress-node
-export const decompress: NodeInterface<CartographerState, 'parse-ndjson' | 'invalid', CartographerServices> = {
-  'name': 'decompress',
-  'outputs': ['parse-ndjson', 'invalid'],
-  async execute(state, context) {
+export class DecompressNode implements NodeInterface<CartographerState, 'parse-ndjson' | 'invalid', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'decompress';
+  readonly 'outputs' = ['parse-ndjson', 'invalid'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'parse-ndjson' | 'invalid'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -44,6 +50,6 @@ export const decompress: NodeInterface<CartographerState, 'parse-ndjson' | 'inva
       return NodeOutputBuilder.of('invalid');
     }
     return NodeOutputBuilder.of('parse-ndjson');
-  },
-};
+  }
+}
 // #endregion decompress-node

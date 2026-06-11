@@ -76,29 +76,31 @@ DAGDeriver is for agentic flows where reaching the final state matters more than
 The mental model: *these operations declare what they need and what they produce; the system figures out the order.* Adding a new operation is a one-line registration; the data graph (`produces` paired with `hardRequired`) derives the edges.
 
 ```ts
+import { NodeOutputBuilder, DAGDeriver } from '@noocodex/dagonizer';
+
 const classifyIntent = {
   name: 'classify-intent',
   outputs: ['lookup', 'similar', 'off-topic'] as const,
   contract: { hardRequired: ['query'] as const, produces: ['intent'] as const },
-  async execute(state) { return { output: 'lookup' as const }; },
+  async execute(state) { return NodeOutputBuilder.of('lookup'); },
 };
 const fetchCandidates = {
   name: 'fetch-candidates',
   outputs: ['success', 'empty'] as const,
   contract: { hardRequired: ['intent'] as const, produces: ['candidates'] as const },
-  async execute(state) { return { output: 'success' as const }; },
+  async execute(state) { return NodeOutputBuilder.of('success'); },
 };
 const rank = {
   name: 'rank',
   outputs: ['success'] as const,
   contract: { hardRequired: ['candidates'] as const, produces: ['shortlist'] as const },
-  async execute(state) { return { output: 'success' as const }; },
+  async execute(state) { return NodeOutputBuilder.of('success'); },
 };
 const compose = {
   name: 'compose',
   outputs: ['success', 'retry'] as const,
   contract: { hardRequired: ['shortlist'] as const, produces: ['response'] as const },
-  async execute(state) { return { output: 'success' as const }; },
+  async execute(state) { return NodeOutputBuilder.of('success'); },
 };
 
 const dag = DAGDeriver.derive({

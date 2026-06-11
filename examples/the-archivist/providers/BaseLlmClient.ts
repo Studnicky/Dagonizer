@@ -102,14 +102,14 @@ export class BaseLlmClient implements LlmClient {
     // Index-pointer schema: the LLM emits `{tools: [1, 3, ...]}` only.
     // Token-economy win for slow constrained-output backends (Nano, WebLLM).
     const request = ChatRequestBuilder.from({
-      'messages':     [{ 'role': 'user', 'content': prompts.decideTools(this.language, query, available), 'toolCallId': '', 'toolName': '' }],
+      'messages':     [{ 'role': 'user', 'content': prompts.decideTools(this.language, query, available) }],
       'outputSchema': { 'kind': 'schema', 'schema': schemas.decideTools, 'id': 'archivist-decide-tools-v1' },
       'temperature':  0.1,
       'maxTokens':    256,
       ...(signal !== undefined ? { 'signal': signal } : {}),
     });
     const response = await this.adapter.chat(request);
-    const raw = contentOf(response.message);
+    const raw = BaseLlmClient.contentOf(response.message);
     let indices: readonly number[] = [];
     try {
       const start = raw.indexOf('{');
@@ -129,7 +129,7 @@ export class BaseLlmClient implements LlmClient {
       seen.add(n);
       const tool = available[n - 1];
       if (tool === undefined) continue;
-      calls.push({ 'name': tool.name, 'arguments': defaultToolArguments(tool.name, query, this.language) });
+      calls.push({ 'name': tool.name, 'arguments': BaseLlmClient.defaultToolArguments(tool.name, query, this.language) });
     }
     return calls;
   }
@@ -137,14 +137,14 @@ export class BaseLlmClient implements LlmClient {
   async rankCandidates(query: string, candidates: readonly Candidate[], signal?: AbortSignal): Promise<readonly ScoredCandidate[]> {
     if (candidates.length === 0) return [];
     const request = ChatRequestBuilder.from({
-      'messages':     [{ 'role': 'user', 'content': prompts.rankCandidates(this.language, query, candidates), 'toolCallId': '', 'toolName': '' }],
+      'messages':     [{ 'role': 'user', 'content': prompts.rankCandidates(this.language, query, candidates) }],
       'outputSchema': { 'kind': 'schema', 'schema': schemas.rankCandidates, 'id': 'archivist-rank-v1' },
       'temperature':  0.1,
       'maxTokens':    256,
       ...(signal !== undefined ? { 'signal': signal } : {}),
     });
     const response = await this.adapter.chat(request);
-    const raw = contentOf(response.message);
+    const raw = BaseLlmClient.contentOf(response.message);
     let order: readonly number[] = [];
     try {
       const start = raw.indexOf('{');
@@ -270,43 +270,43 @@ export class BaseLlmClient implements LlmClient {
 
   async #text(prompt: string, signal?: AbortSignal): Promise<string> {
     const response = await this.adapter.chat(ChatRequestBuilder.from({
-      'messages':    [{ 'role': 'user', 'content': prompt, 'toolCallId': '', 'toolName': '' }],
+      'messages':    [{ 'role': 'user', 'content': prompt }],
       'temperature': 0.2,
       'maxTokens':   512,
       ...(signal !== undefined ? { 'signal': signal } : {}),
     }));
-    return contentOf(response.message);
+    return BaseLlmClient.contentOf(response.message);
   }
-}
 
-/** Discriminated-union accessors for the new ChatResponse.message shape. */
-function contentOf(msg: ChatResponseMessage): string {
-  return msg.kind === 'tools' ? '' : msg.content;
-}
+  /** Discriminated-union accessor for the ChatResponse.message shape. */
+  private static contentOf(msg: ChatResponseMessage): string {
+    return msg.kind === 'tools' ? '' : msg.content;
+  }
 
-/**
- * Deterministic argument defaults for known scout tool names.
- * `decideTools` only emits indices now; argument generation lives here.
- *
- * The `query` / `subject` field is intentionally omitted: every scout
- * already falls back to `state.terms.join(' ')` when its query arg is
- * missing, and `state.terms` is the keyword set produced by the
- * `extract-query` node (which ran before `decide-tools` in the DAG).
- * Letting scouts use the extracted terms instead of the raw visitor
- * sentence means OpenLibrary / Google Books / Subject Search receive
- * proper keyword queries, not prose questions.
- */
-function defaultToolArguments(name: string, _query: string, language: string): Record<string, unknown> {
-  switch (name) {
-    case 'web_search_books':
-      return { 'limit': 8, 'lang': language };
-    case 'google_books_search':
-      return { 'maxResults': 8, 'langRestrict': language };
-    case 'subject_search':
-      return { 'limit': 8, 'lang': language };
-    case 'wikipedia_summary':
-      return { 'lang': language };
-    default:
-      return {};
+  /**
+   * Deterministic argument defaults for known scout tool names.
+   * `decideTools` only emits indices now; argument generation lives here.
+   *
+   * The `query` / `subject` field is intentionally omitted: every scout
+   * already falls back to `state.terms.join(' ')` when its query arg is
+   * missing, and `state.terms` is the keyword set produced by the
+   * `extract-query` node (which ran before `decide-tools` in the DAG).
+   * Letting scouts use the extracted terms instead of the raw visitor
+   * sentence means OpenLibrary / Google Books / Subject Search receive
+   * proper keyword queries, not prose questions.
+   */
+  private static defaultToolArguments(name: string, _query: string, language: string): Record<string, unknown> {
+    switch (name) {
+      case 'web_search_books':
+        return { 'limit': 8, 'lang': language };
+      case 'google_books_search':
+        return { 'maxResults': 8, 'langRestrict': language };
+      case 'subject_search':
+        return { 'limit': 8, 'lang': language };
+      case 'wikipedia_summary':
+        return { 'lang': language };
+      default:
+        return {};
+    }
   }
 }

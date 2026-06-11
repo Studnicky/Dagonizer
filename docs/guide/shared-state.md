@@ -17,30 +17,41 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { DAGBuilder, NodeStateBase } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { DAGBuilder, NodeOutputBuilder, NodeStateBase, EMPTY_CONTRACT_FRAGMENT } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
 
 interface Services { log: { update: (k: string, fn: (c?: string) => string) => Promise<void> } }
 
-const noop: NodeInterface<NodeStateBase, 'done', Services> = {
-  name: 'noop',
-  outputs: ['done'],
-  async execute() { return { output: 'done' }; },
-};
+class StepANode implements NodeInterface<NodeStateBase, 'done', Services> {
+  readonly name = 'step-a';
+  readonly outputs = ['done'] as const;
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  async execute() { return NodeOutputBuilder.of('done'); }
+}
 
-const stepA = { ...noop, name: 'step-a' };
-const stepB = { ...noop, name: 'step-b' };
-const childStep = { ...noop, name: 'child-step' };
+class StepBNode implements NodeInterface<NodeStateBase, 'done', Services> {
+  readonly name = 'step-b';
+  readonly outputs = ['done'] as const;
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  async execute() { return NodeOutputBuilder.of('done'); }
+}
+
+class ChildStepNode implements NodeInterface<NodeStateBase, 'done', Services> {
+  readonly name = 'child-step';
+  readonly outputs = ['done'] as const;
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  async execute() { return NodeOutputBuilder.of('done'); }
+}
 
 const childDag = new DAGBuilder('sub-flow', '1')
-  .node('child-step', childStep, { done: 'child-end' })
+  .node('child-step', new ChildStepNode(), { done: 'child-end' })
   .terminal('child-end')
   .build();
 
 const parentDag = new DAGBuilder('main-flow', '1')
-  .node('step-a', stepA, { done: 'run-child' })
+  .node('step-a', new StepANode(), { done: 'run-child' })
   .embeddedDAG('run-child', 'sub-flow', { success: 'step-b', error: 'step-b' })
-  .node('step-b', stepB, { done: 'end' })
+  .node('step-b', new StepBNode(), { done: 'end' })
   .terminal('end')
   .build();
 

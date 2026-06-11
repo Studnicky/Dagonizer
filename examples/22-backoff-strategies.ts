@@ -30,7 +30,8 @@ import {
   RetryPolicy,
   Scheduler,
 } from '@noocodex/dagonizer';
-import type { BackoffStrategyValue } from '@noocodex/dagonizer';
+import type { RetryPolicyOptionsInterface } from '@noocodex/dagonizer';
+
 import { VirtualScheduler } from '@noocodex/dagonizer/testing';
 
 import { FlakyStub } from './dags/22-backoff-strategies.js';
@@ -44,9 +45,13 @@ import { FlakyStub } from './dags/22-backoff-strategies.js';
 class RecordingPolicy extends RetryPolicy {
   readonly #delays: number[] = [];
 
+  constructor(options?: RetryPolicyOptionsInterface) {
+    super(options);
+  }
+
   get delays(): readonly number[] { return this.#delays; }
 
-  override getDelay(attempt: number, options?: { error: Error | null }): number {
+  override getDelay(attempt: number, options: { readonly error?: Error | null } = {}): number {
     const delay = super.getDelay(attempt, options);
     this.#delays.push(delay);
     return delay;
@@ -55,56 +60,58 @@ class RecordingPolicy extends RetryPolicy {
 // #endregion recording-policy
 
 // ---------------------------------------------------------------------------
-// runStrategy: drive a single strategy through N retries under VirtualScheduler
+// StrategyRunner: drives a single strategy through N retries under VirtualScheduler
 // ---------------------------------------------------------------------------
 
 // #region run-strategy
-async function runStrategy(
-  strategyName: string,
-  strategy: BackoffStrategyValue,
-  baseDelay: number,
-  maxAttempts: number,
-  jitterFactor: number,
-): Promise<{ delays: readonly number[]; attempts: number }> {
-  const scheduler = new VirtualScheduler(0);
-  Scheduler.configure(scheduler);
+class StrategyRunner {
+  static async run(
+    strategyName: string,
+    strategy: BackoffStrategy,
+    baseDelay: number,
+    maxAttempts: number,
+    jitterFactor: number,
+  ): Promise<{ delays: readonly number[]; attempts: number }> {
+    const scheduler = new VirtualScheduler(0);
+    Scheduler.configure(scheduler);
 
-  const policy = new RecordingPolicy({
-    strategy,
-    baseDelay,
-    maxAttempts,
-    jitterFactor,
-    maxDelay: 100_000, // high cap so we see the raw strategy values
-  });
+    const policy = new RecordingPolicy({
+      strategy,
+      baseDelay,
+      maxAttempts,
+      jitterFactor,
+      maxDelay: 100_000, // high cap so we see the raw strategy values
+    });
 
-  // Stub that fails (maxAttempts - 1) times then succeeds.
-  const stub = new FlakyStub(maxAttempts - 1);
-  const runPromise = policy.run(() => stub.call());
+    // Stub that fails (maxAttempts - 1) times then succeeds.
+    const stub = new FlakyStub(maxAttempts - 1);
+    const runPromise = policy.run(() => stub.call());
 
-  // Drive each retry by advancing virtual time past the scheduled delay.
-  // Each cycle: yield to let the pending `after()` register in the scheduler,
-  // then capture how far ahead we need to advance to drain it.
-  for (let i = 0; i < maxAttempts - 1; i++) {
-    // Let the retry's `after(delay)` call register in the VirtualScheduler.
-    await new Promise<void>((r) => setImmediate(r));
-    // Peek at the next pending entry's target time, then advance to it.
-    // scheduler.virtualNow is at the previous advance point; the next pending
-    // entry sits at virtualNow + delay.
-    const nextAt = scheduler.virtualNow;
-    scheduler.runAll(); // drain all due entries up to the end of the pending queue
-    void nextAt;        // used implicitly via runAll
+    // Drive each retry by advancing virtual time past the scheduled delay.
+    // Each cycle: yield to let the pending `after()` register in the scheduler,
+    // then capture how far ahead we need to advance to drain it.
+    for (let i = 0; i < maxAttempts - 1; i++) {
+      // Let the retry's `after(delay)` call register in the VirtualScheduler.
+      await new Promise<void>((r) => setImmediate(r));
+      // Peek at the next pending entry's target time, then advance to it.
+      // scheduler.virtualNow is at the previous advance point; the next pending
+      // entry sits at virtualNow + delay.
+      const nextAt = scheduler.virtualNow;
+      scheduler.runAll(); // drain all due entries up to the end of the pending queue
+      void nextAt;        // used implicitly via runAll
+    }
+
+    await runPromise;
+    Scheduler.reset();
+
+    process.stdout.write(`\n  ${strategyName}:\n`);
+    for (let i = 0; i < policy.delays.length; i++) {
+      process.stdout.write(`    attempt ${String(i + 1)} failed → wait ${String(Math.round(policy.delays[i] ?? 0))} ms\n`);
+    }
+    process.stdout.write(`    attempt ${String(maxAttempts)} succeeded\n`);
+
+    return { delays: policy.delays, attempts: stub.attempts };
   }
-
-  await runPromise;
-  Scheduler.reset();
-
-  process.stdout.write(`\n  ${strategyName}:\n`);
-  for (let i = 0; i < policy.delays.length; i++) {
-    process.stdout.write(`    attempt ${String(i + 1)} failed → wait ${String(Math.round(policy.delays[i] ?? 0))} ms\n`);
-  }
-  process.stdout.write(`    attempt ${String(maxAttempts)} succeeded\n`);
-
-  return { delays: policy.delays, attempts: stub.attempts };
 }
 // #endregion run-strategy
 
@@ -120,17 +127,17 @@ const BASE_DELAY   = 100;
 
 // #region strategies
 // CONSTANT: every wait is exactly baseDelay.
-await runStrategy('CONSTANT', BackoffStrategy.CONSTANT, BASE_DELAY, MAX_ATTEMPTS, 0);
+await StrategyRunner.run('CONSTANT', BackoffStrategy.CONSTANT, BASE_DELAY, MAX_ATTEMPTS, 0);
 
 // LINEAR: wait grows as baseDelay × attempt (100, 200, 300 ms …).
-await runStrategy('LINEAR', BackoffStrategy.LINEAR, BASE_DELAY, MAX_ATTEMPTS, 0);
+await StrategyRunner.run('LINEAR', BackoffStrategy.LINEAR, BASE_DELAY, MAX_ATTEMPTS, 0);
 
 // EXPONENTIAL: wait grows as baseDelay × 2^(attempt-1) (100, 200, 400 ms …).
-await runStrategy('EXPONENTIAL', BackoffStrategy.EXPONENTIAL, BASE_DELAY, MAX_ATTEMPTS, 0);
+await StrategyRunner.run('EXPONENTIAL', BackoffStrategy.EXPONENTIAL, BASE_DELAY, MAX_ATTEMPTS, 0);
 
 // DECORRELATED_JITTER: wait is random in [baseDelay, baseDelay × 3].
 // jitterFactor is ignored for this strategy; the output varies each run.
-await runStrategy('DECORRELATED_JITTER', BackoffStrategy.DECORRELATED_JITTER, BASE_DELAY, MAX_ATTEMPTS, 0.1);
+await StrategyRunner.run('DECORRELATED_JITTER', BackoffStrategy.DECORRELATED_JITTER, BASE_DELAY, MAX_ATTEMPTS, 0.1);
 // #endregion strategies
 
 process.stdout.write('\nLesson: choose a strategy to match your retry workload:\n');

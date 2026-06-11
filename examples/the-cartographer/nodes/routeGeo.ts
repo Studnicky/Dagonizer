@@ -15,13 +15,19 @@
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region route-geo-node
-export const routeGeo: NodeInterface<CartographerState, 'has-geo' | 'needs-geo', CartographerServices> = {
-  'name': 'route-geo',
-  'outputs': ['has-geo', 'needs-geo'],
-  async execute(state, context) {
+export class RouteGeoNode implements NodeInterface<CartographerState, 'has-geo' | 'needs-geo', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'route-geo';
+  readonly 'outputs' = ['has-geo', 'needs-geo'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'has-geo' | 'needs-geo'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -43,6 +49,6 @@ export const routeGeo: NodeInterface<CartographerState, 'has-geo' | 'needs-geo',
     }
     state.routing = { ...state.routing, 'geoLookupRun': true, 'geoLookupSkipped': false };
     return NodeOutputBuilder.of('needs-geo');
-  },
-};
+  }
+}
 // #endregion route-geo-node

@@ -8,8 +8,10 @@
  */
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 
 export class TestNode {
   private constructor() { /* static class */ }
@@ -33,6 +35,8 @@ export class TestNode {
     return {
       name,
       outputs,
+      'contract': EMPTY_CONTRACT_FRAGMENT,
+      'timeout': Timeout.none(),
       async execute(state) {
         const output = exec !== undefined ? await exec(state) : defaultOutput;
         return { 'errors': [], output };
@@ -59,6 +63,7 @@ export class TestNode {
       name,
       outputs,
       contract,
+      'timeout': Timeout.none(),
       async execute() { return { 'errors': [], 'output': defaultOutput }; },
     };
   }

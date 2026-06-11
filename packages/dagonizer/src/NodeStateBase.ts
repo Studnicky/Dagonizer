@@ -4,6 +4,7 @@ import type { NodeWarning } from './entities/node/NodeWarning.js';
 import { DAGError } from './errors/DAGError.js';
 import { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
 import type { DAGLifecycleState } from './lifecycle/DAGLifecycleState.js';
+import { Clock } from './runtime/Clock.js';
 import { Validator } from './validation/Validator.js';
 
 /**
@@ -200,7 +201,7 @@ export class NodeStateBase implements NodeStateInterface {
   private readonly _errors: NodeErrorInterface[] = [];
   private _lifecycle: DAGLifecycleState = DAGLifecycleMachine.initial();
   private _metadata: Record<string, JsonValue> = {};
-  private _retries: Record<string, number> = {};
+  private _retries: Map<string, number> = new Map();
   private readonly _warnings: NodeWarning[] = [];
 
   constructor() {
@@ -217,7 +218,7 @@ export class NodeStateBase implements NodeStateInterface {
     // Lifecycle resets to `pending`, errors/warnings empty for fresh
     // sub-execution. Only metadata is preserved for data passing between
     // parent and child.
-    cloned._metadata = structuredClone(this._metadata);
+    cloned._metadata = { ...this._metadata };
 
     return cloned;
   }
@@ -251,23 +252,23 @@ export class NodeStateBase implements NodeStateInterface {
   }
 
   markCancelled(reason: string): void {
-    this.dispatch({ "type": 'cancel', reason }, 'cancelled');
+    this.dispatch({ "type": 'cancel', reason, "at": Clock.monotonicMs() }, 'cancelled');
   }
 
   markCompleted(): void {
-    this.dispatch({ "type": 'succeed' }, 'completed');
+    this.dispatch({ "type": 'succeed', "at": Clock.monotonicMs() }, 'completed');
   }
 
   markFailed(error: Error): void {
-    this.dispatch({ "type": 'fail', error }, 'failed');
+    this.dispatch({ "type": 'fail', error, "at": Clock.monotonicMs() }, 'failed');
   }
 
   markRunning(): void {
-    this.dispatch({ "type": 'start' }, 'running');
+    this.dispatch({ "type": 'start', "at": Clock.monotonicMs() }, 'running');
   }
 
   markTimedOut(): void {
-    this.dispatch({ "type": 'timeout' }, 'timed_out');
+    this.dispatch({ "type": 'timeout', "at": Clock.monotonicMs() }, 'timed_out');
   }
 
   resetLifecycle(): void {
@@ -275,6 +276,10 @@ export class NodeStateBase implements NodeStateInterface {
   }
 
   get metadata(): Readonly<Record<string, unknown>> {
+    // Returns the live backing record. The dotted-path accessor writes through
+    // this reference (e.g. gather map strategy writes `metadata.result`), so
+    // the returned object must be the same reference every call to preserve
+    // write semantics: `state.metadata.result = value` must persist.
     return this._metadata;
   }
 
@@ -289,27 +294,22 @@ export class NodeStateBase implements NodeStateInterface {
   }
 
   deleteMetadata(key: string): void {
-    // Destructuring-rest reassignment avoids V8 dictionary-mode demotion
-    // that would occur with `delete this._metadata[key]`.
-    const { [key]: _removed, ...rest } = this._metadata;
-    this._metadata = rest;
+    delete this._metadata[key];
   }
 
   recordAttempt(key: string): number {
-    const next = (this._retries[key] ?? 0) + 1;
-    this._retries[key] = next;
+    const next = (this._retries.get(key) ?? 0) + 1;
+    this._retries.set(key, next);
     return next;
   }
 
   retriesFor(key: string): number {
-    return this._retries[key] ?? 0;
+    return this._retries.get(key) ?? 0;
   }
 
   clearAttempts(key: string): void {
-    // Destructuring-rest reassignment avoids V8 dictionary-mode demotion
-    // that would occur with `delete this._retries[key]`.
-    const { [key]: _removed, ...rest } = this._retries;
-    this._retries = rest;
+    // Map.delete never alters the object shape — no hidden-class demotion.
+    this._retries.delete(key);
   }
 
   withinRetryBudget(key: string, maxAttempts: number): boolean {
@@ -346,12 +346,12 @@ export class NodeStateBase implements NodeStateInterface {
    */
   snapshot(): JsonObject {
     return {
-      'metadata': structuredClone(this._metadata),
-      // Sound JSON-safe narrowing: `_retries` is `Record<string, number>`, a
-      // subset of `JsonValue`. TypeScript cannot derive this without the cast
-      // because `structuredClone` returns the same generic type, not a narrowed
-      // `JsonValue`.
-      'retries': structuredClone(this._retries) as JsonValue,
+      // Spread to a stable snapshot object; the live record is not passed
+      // by reference so checkpoint consumers cannot mutate internal state.
+      'metadata': { ...this._metadata },
+      // Sound JSON-safe narrowing: `_retries` entries are number values.
+      // Convert Map → plain Record at the wire boundary.
+      'retries': Object.fromEntries(this._retries) as JsonValue,
       // Sound JSON-safe narrowing: `NodeWarning` fields are all primitive
       // strings/numbers (schema-derived). Spread copies them to a plain object;
       // the resulting array of plain objects satisfies `JsonValue`.
@@ -400,26 +400,27 @@ export class NodeStateBase implements NodeStateInterface {
     // Errors are intentionally excluded — they flow via outcome.errors, not
     // via the snapshot, so _errors is left as-is for the caller to populate.
     this._warnings.splice(0);
+    // Replace the metadata record wholesale. Reassignment keeps the hidden
+    // class stable (the property type stays `Record<string, JsonValue>`);
+    // no existing key is deleted in place, so the backing object starts fresh.
     this._metadata = {};
-    this._retries = {};
+    this._retries.clear();
 
     const metadata = snapshot['metadata'];
     if (metadata !== undefined && typeof metadata === 'object' && metadata !== null && !Array.isArray(metadata)) {
-      // Cast: structuredClone<T> returns T where T is narrowed to JsonObject;
-      // Record<string,JsonValue> is structurally identical but TypeScript
-      // requires the explicit cast at the assignment site.
-      this._metadata = structuredClone(metadata) as Record<string, JsonValue>;
+      // Populate from the plain Record wire shape.
+      for (const [k, v] of Object.entries(metadata)) {
+        this._metadata[k] = v as JsonValue;
+      }
     }
     const retries = snapshot['retries'];
     if (retries !== undefined && typeof retries === 'object' && retries !== null && !Array.isArray(retries)) {
       // Validate each entry is a number to guard against corrupted snapshots.
-      const validated: Record<string, number> = {};
       for (const [k, v] of Object.entries(retries)) {
         if (typeof v === 'number') {
-          validated[k] = v;
+          this._retries.set(k, v);
         }
       }
-      this._retries = validated;
     }
     const warnings = snapshot['warnings'];
     if (Array.isArray(warnings)) {

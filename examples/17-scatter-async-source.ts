@@ -35,30 +35,32 @@
 import { Dagonizer } from '@noocodex/dagonizer';
 import {
   AsyncSourceState,
-  consume,
+  ConsumeNode,
   dag,
   eventLog,
 } from './dags/17-scatter-async-source.js';
 
 // ---------------------------------------------------------------------------
-// Async generator source
+// Async generator source factory
 // ---------------------------------------------------------------------------
 
 // #region generator
 /**
- * An async generator that yields string items. Each `next()` call logs the
- * item as it is produced (simulating a data source where items are expensive
- * to produce — network pages, DB cursor rows, streamed API results).
+ * Builds an async generator that yields string items. Each `next()` call
+ * logs the item as it is produced (simulating a data source where items are
+ * expensive to produce — network pages, DB cursor rows, streamed API results).
  *
  * The generator uses no internal await so it yields immediately on each call,
  * but because it is declared `async function*`, each `next()` invocation
  * returns a Promise. This lets the engine's pull-loop correctly interleave
  * pulls and worker completions under bounded concurrency.
  */
-async function* makeStream(items: readonly string[]): AsyncGenerator<string> {
-  for (const item of items) {
-    eventLog.push(`pull     ${item}`);
-    yield item;
+class AsyncStream {
+  static async *from(items: readonly string[]): AsyncGenerator<string> {
+    for (const item of items) {
+      eventLog.push(`pull     ${item}`);
+      yield item;
+    }
   }
 }
 // #endregion generator
@@ -69,14 +71,14 @@ async function* makeStream(items: readonly string[]): AsyncGenerator<string> {
 
 // #region run
 const dispatcher = new Dagonizer<AsyncSourceState>();
-dispatcher.registerNode(consume);
+dispatcher.registerNode(new ConsumeNode());
 dispatcher.registerDAG(dag);
 
 const ITEMS = ['alpha', 'bravo', 'charlie', 'delta', 'echo'];
 const state = new AsyncSourceState();
 // Assign the async generator as the scatter source.
 // The engine reads `state.stream` (the `source` path) and normalises it.
-state.stream = makeStream(ITEMS);
+state.stream = AsyncStream.from(ITEMS);
 
 process.stdout.write('\n=== Scatter over AsyncIterable (concurrency=2) ===\n\n');
 

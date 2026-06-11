@@ -80,6 +80,9 @@ importers:
       '@noocodex/dagonizer':
         specifier: workspace:^
         version: link:../packages/dagonizer
+      '@noocodex/dagonizer-adapter-stub':
+        specifier: workspace:*
+        version: link:../packages/dagonizer-adapter-stub
       '@noocodex/dagonizer-executor-node':
         specifier: workspace:^
         version: link:../packages/dagonizer-executor-node

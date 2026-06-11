@@ -65,6 +65,3 @@ export class SearchCatalogueNode extends LoggingNode<CatalogueState, 'success' |
   }
 }
 // #endregion monadic-node
-
-// Compile-time assignability check: SearchCatalogueNode satisfies NodeInterface.
-export const searchNode = new SearchCatalogueNode();

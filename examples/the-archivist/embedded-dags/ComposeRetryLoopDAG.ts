@@ -37,7 +37,7 @@ import { composeResponseSalvage } from '../nodes/salvage.ts';
 import type { ArchivistServices } from '../services.ts';
 
 import type { DAG, DispatcherBundle } from '@noocodex/dagonizer';
-import { DAGBuilder } from '@noocodex/dagonizer/builder';
+import { DAGBuilder } from '@noocodex/dagonizer';
 
 
 /**

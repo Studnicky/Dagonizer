@@ -1,5 +1,6 @@
-import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { test } from 'node:test';
+
 import { PredicateGateNode, DedupeByKeyNode } from '../src/index.js';
 
 class TestState {
