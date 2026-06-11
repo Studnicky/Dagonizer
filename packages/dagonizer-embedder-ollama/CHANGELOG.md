@@ -1,5 +1,7 @@
 # @noocodex/dagonizer-embedder-ollama
 
+## 0.20.0
+
 ## [unreleased]
 
 ### Added
