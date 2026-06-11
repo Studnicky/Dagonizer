@@ -1,5 +1,5 @@
 ---
-"@noocodex/dagonizer": major
+"@noocodex/dagonizer": minor
 ---
 
 DAG containment, cross-host hand-off, crash-safe transport, and a full audit-and-harden pass.
