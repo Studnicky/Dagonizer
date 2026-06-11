@@ -1,5 +1,12 @@
 # @noocodex/dagonizer-executor-web
 
+## 0.19.0
+
+### Patch Changes
+
+- Updated dependencies [d5a95ea]
+  - @noocodex/dagonizer@0.19.0
+
 ## [Unreleased]
 
 ### Added

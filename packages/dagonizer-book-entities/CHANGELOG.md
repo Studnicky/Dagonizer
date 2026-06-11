@@ -1,5 +1,7 @@
 # @noocodex/dagonizer-book-entities
 
+## 0.19.0
+
 ## 0.17.0
 
 ### Minor Changes

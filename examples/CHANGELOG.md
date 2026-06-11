@@ -1,5 +1,13 @@
 # @noocodex/dagonizer-examples
 
+## 0.0.6
+
+### Patch Changes
+
+- Updated dependencies [d5a95ea]
+  - @noocodex/dagonizer@0.19.0
+  - @noocodex/dagonizer-executor-node@0.19.0
+
 ## [unreleased]
 
 ### Changed
