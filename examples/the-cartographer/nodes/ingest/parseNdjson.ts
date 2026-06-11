@@ -12,13 +12,19 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region parse-ndjson-node
-export const parseNdjson: NodeInterface<CartographerState, 'map-fields' | 'invalid', CartographerServices> = {
-  'name': 'parse-ndjson',
-  'outputs': ['map-fields', 'invalid'],
-  async execute(state, context) {
+export class ParseNdjsonNode implements NodeInterface<CartographerState, 'map-fields' | 'invalid', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'parse-ndjson';
+  readonly 'outputs' = ['map-fields', 'invalid'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'map-fields' | 'invalid'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -39,6 +45,6 @@ export const parseNdjson: NodeInterface<CartographerState, 'map-fields' | 'inval
     }
     state.parsedRecords = records;
     return NodeOutputBuilder.of('map-fields');
-  },
-};
+  }
+}
 // #endregion parse-ndjson-node

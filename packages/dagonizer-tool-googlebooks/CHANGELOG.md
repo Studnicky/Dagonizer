@@ -1,5 +1,13 @@
 # @noocodex/dagonizer-tool-googlebooks
 
+## [unreleased]
+
+### Changed
+
+- `GoogleBooksTool.execute` narrows the Google Books API response via a typed guard (`isGoogleBooksResponse`) at the `HttpTransport.getJson` boundary; throws `ToolError('PARSE_ERROR')` on shape mismatch instead of relying on implicit `as` casting.
+- Convenience re-exports of `Book`, `Candidate`, `Money`, `CanonicalId` removed from the package barrel. Consumers import these directly from `@noocodex/dagonizer-book-entities`.
+- `@noocodex/dagonizer-book-entities` promoted from `peerDependencies` to `dependencies`.
+
 ## 0.19.0
 
 ## 0.17.0

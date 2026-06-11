@@ -12,18 +12,24 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { Customs } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region customs-dwell-node
-export const customsDwell: NodeInterface<CartographerState, 'dwelled', CartographerServices> = {
-  'name': 'customs-dwell',
-  'outputs': ['dwelled'],
-  async execute(state, context) {
+export class CustomsDwellNode implements NodeInterface<CartographerState, 'dwelled', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'customs-dwell';
+  readonly 'outputs' = ['dwelled'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'dwelled'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
     state.customsDwellHours = Customs.dwellHours(state.canonical.body.customsStatus);
     return NodeOutputBuilder.of('dwelled');
-  },
-};
+  }
+}
 // #endregion customs-dwell-node

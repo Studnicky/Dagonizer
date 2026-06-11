@@ -20,13 +20,19 @@ import type {
   RegionInsights,
 } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region summarize-insights-node
-export const summarizeInsights: NodeInterface<CartographerState, 'success', CartographerServices> = {
-  'name': 'summarize',
-  'outputs': ['success'],
-  async execute(state, context) {
+export class SummarizeInsightsNode implements NodeInterface<CartographerState, 'success', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'summarize';
+  readonly 'outputs' = ['success'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'success'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -196,6 +202,6 @@ export const summarizeInsights: NodeInterface<CartographerState, 'success', Cart
     }
 
     return NodeOutputBuilder.of('success');
-  },
-};
+  }
+}
 // #endregion summarize-insights-node

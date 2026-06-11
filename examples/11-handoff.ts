@@ -26,12 +26,12 @@ import type { DAGHandoff, JsonObject } from '@noocodex/dagonizer/entities';
 
 import {
   PipelineState,
-  collectA,
-  collectB,
-  collectC,
+  CollectANode,
+  CollectBNode,
+  CollectCNode,
   dagA,
   dagB,
-  summarize,
+  SummarizeNode,
 } from './dags/11-handoff.js';
 
 // ---------------------------------------------------------------------------
@@ -40,7 +40,7 @@ import {
 
 // #region dag-b-dispatcher
 const dispatcherB = new Dagonizer<PipelineState>();
-dispatcherB.registerNode(summarize);
+dispatcherB.registerNode(new SummarizeNode());
 dispatcherB.registerDAG(dagB);
 // #endregion dag-b-dispatcher
 
@@ -87,9 +87,9 @@ const dispatcherA = new Dagonizer<PipelineState>({
   // a DAGHandoff envelope to this channel.
   "channels": { "handoff": channel },
 });
-dispatcherA.registerNode(collectA);
-dispatcherA.registerNode(collectB);
-dispatcherA.registerNode(collectC);
+dispatcherA.registerNode(new CollectANode());
+dispatcherA.registerNode(new CollectBNode());
+dispatcherA.registerNode(new CollectCNode());
 dispatcherA.registerDAG(dagA);
 // #endregion dag-a-dispatcher
 

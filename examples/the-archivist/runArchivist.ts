@@ -52,7 +52,8 @@ import { MistralEmbedder }      from '@noocodex/dagonizer-embedder-mistral';
 import { OllamaEmbedder }       from '@noocodex/dagonizer-embedder-ollama';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
 import { IntentClassifier } from './providers/IntentClassifier.ts';
-import { listOllamaModels, pickOllamaChatModel } from './providers/index.ts';
+import { OllamaModels } from './providers/index.ts';
+import { OllamaProbe } from './providers/adapters/index.ts';
 import type { ArchivistServices, LlmClient } from './services.ts';
 import { GoogleBooksTool } from '@noocodex/dagonizer-tool-googlebooks';
 import { OpenLibrarySearchTool } from '@noocodex/dagonizer-tool-openlibrary';
@@ -73,22 +74,24 @@ import { Checkpoint, CheckpointRestoreAdapterFn, MemoryCheckpointStore } from '@
 
 const logger = new ConsoleLogger();
 
-// ── Backend: cascade over the registered adapters. The first probe that
-//    resolves true wins; if none resolves, `cascade.select()` throws
-//    `LlmError(NO_ADAPTER_AVAILABLE)` and the script fails loud.
-function envVar(key: string): string {
-  if (typeof process === 'undefined') return '';
-  const raw = process.env[key];
-  return typeof raw === 'string' ? raw : '';
+/**
+ * Env: environment variable access utilities.
+ */
+class Env {
+  static get(key: string): string {
+    if (typeof process === 'undefined') return '';
+    const raw = process.env[key];
+    return typeof raw === 'string' ? raw : '';
+  }
 }
 
-const OLLAMA_BASE_URL = envVar('OLLAMA_BASE_URL') || 'http://127.0.0.1:11434';
+const OLLAMA_BASE_URL = Env.get('OLLAMA_BASE_URL') || 'http://127.0.0.1:11434';
 // Model resolution: an explicit OLLAMA_MODEL env var wins; otherwise pick the
 // first chat model the daemon actually has installed (GET /api/tags); only if
 // both are unavailable fall back to a documented default so the registry still
 // has a descriptor (the cascade probe fails closed when nothing is pulled).
-const OLLAMA_MODEL    = envVar('OLLAMA_MODEL')
-  || pickOllamaChatModel(await listOllamaModels())
+const OLLAMA_MODEL    = Env.get('OLLAMA_MODEL')
+  || OllamaModels.pickChat(await OllamaProbe.listModels())
   || 'llama3.2:latest';
 
 // Capability shapes mirror each adapter's own declaration so the
@@ -111,34 +114,34 @@ registry.register(
 // Keyed providers: skip registration when the key is missing so the
 // `NO_ADAPTER_AVAILABLE` message lists only the providers the user
 // actually configured.
-if (envVar('GEMINI_API_KEY').length > 0) {
+if (Env.get('GEMINI_API_KEY').length > 0) {
   registry.register(
     { 'provider': 'gemini-api', 'model': 'gemini-2.0-flash', 'capabilities': CAPS_FULL_TOOLS },
-    () => new GeminiApiAdapter(envVar('GEMINI_API_KEY'), { 'model': 'gemini-2.0-flash' }),
+    () => new GeminiApiAdapter(Env.get('GEMINI_API_KEY'), { 'model': 'gemini-2.0-flash' }),
   );
 }
-if (envVar('CEREBRAS_API_KEY').length > 0) {
+if (Env.get('CEREBRAS_API_KEY').length > 0) {
   registry.register(
     { 'provider': 'cerebras', 'model': 'gpt-oss-120b', 'capabilities': CAPS_PARTIAL_TOOLS },
-    () => new CerebrasApiAdapter(envVar('CEREBRAS_API_KEY'), { 'model': 'gpt-oss-120b' }),
+    () => new CerebrasApiAdapter(Env.get('CEREBRAS_API_KEY'), { 'model': 'gpt-oss-120b' }),
   );
 }
-if (envVar('GROQ_API_KEY').length > 0) {
+if (Env.get('GROQ_API_KEY').length > 0) {
   registry.register(
     { 'provider': 'groq', 'model': 'llama-3.3-70b-versatile', 'capabilities': CAPS_PARTIAL_TOOLS },
-    () => new GroqApiAdapter(envVar('GROQ_API_KEY'), { 'model': 'llama-3.3-70b-versatile' }),
+    () => new GroqApiAdapter(Env.get('GROQ_API_KEY'), { 'model': 'llama-3.3-70b-versatile' }),
   );
 }
-if (envVar('MISTRAL_API_KEY').length > 0) {
+if (Env.get('MISTRAL_API_KEY').length > 0) {
   registry.register(
     { 'provider': 'mistral', 'model': 'mistral-small-latest', 'capabilities': CAPS_PARTIAL_TOOLS },
-    () => new MistralApiAdapter(envVar('MISTRAL_API_KEY'), { 'model': 'mistral-small-latest' }),
+    () => new MistralApiAdapter(Env.get('MISTRAL_API_KEY'), { 'model': 'mistral-small-latest' }),
   );
 }
-if (envVar('OPENROUTER_API_KEY').length > 0) {
+if (Env.get('OPENROUTER_API_KEY').length > 0) {
   registry.register(
     { 'provider': 'openrouter', 'model': 'meta-llama/llama-3.3-70b-instruct:free', 'capabilities': CAPS_PARTIAL_TOOLS },
-    () => new OpenRouterApiAdapter(envVar('OPENROUTER_API_KEY'), { 'model': 'meta-llama/llama-3.3-70b-instruct:free' }),
+    () => new OpenRouterApiAdapter(Env.get('OPENROUTER_API_KEY'), { 'model': 'meta-llama/llama-3.3-70b-instruct:free' }),
   );
 }
 
@@ -161,23 +164,23 @@ logger.info(`backend: ${adapter.id} (${adapter.displayName})`);
 //    behaviour: Ollama (loopback, no key) → Gemini REST → Mistral. When
 //    nothing probes true the cascade throws; we catch and continue with
 //    LLM-only classification.
-const OLLAMA_EMBED_MODEL = envVar('OLLAMA_EMBED_MODEL') || 'nomic-embed-text';
+const OLLAMA_EMBED_MODEL = Env.get('OLLAMA_EMBED_MODEL') || 'nomic-embed-text';
 
 const embedderRegistry = new EmbedderRegistry();
 embedderRegistry.register(
   { 'provider': 'ollama', 'model': OLLAMA_EMBED_MODEL, 'capabilities': CAPS_PARTIAL_TOOLS },
-  () => new OllamaEmbedder(OLLAMA_EMBED_MODEL, { 'baseUrl': OLLAMA_BASE_URL }),
+  () => new OllamaEmbedder({ 'model': OLLAMA_EMBED_MODEL, 'baseUrl': OLLAMA_BASE_URL }),
 );
-if (envVar('GEMINI_API_KEY').length > 0) {
+if (Env.get('GEMINI_API_KEY').length > 0) {
   embedderRegistry.register(
     { 'provider': 'gemini-api', 'model': 'text-embedding-004', 'capabilities': CAPS_FULL_TOOLS },
-    () => new GeminiApiEmbedder(envVar('GEMINI_API_KEY')),
+    () => new GeminiApiEmbedder(Env.get('GEMINI_API_KEY')),
   );
 }
-if (envVar('MISTRAL_API_KEY').length > 0) {
+if (Env.get('MISTRAL_API_KEY').length > 0) {
   embedderRegistry.register(
     { 'provider': 'mistral', 'model': 'mistral-embed', 'capabilities': CAPS_PARTIAL_TOOLS },
-    () => new MistralEmbedder(envVar('MISTRAL_API_KEY')),
+    () => new MistralEmbedder(Env.get('MISTRAL_API_KEY')),
   );
 }
 
@@ -205,10 +208,10 @@ try {
 const llm: LlmClient = new BaseLlmClient(adapter, intentClassifier !== undefined ? { intentClassifier } : {});
 
 const services: ArchivistServices = {
-  "webSearch":         OpenLibrarySearchTool,
-  "googleBooks":       GoogleBooksTool,
-  "subjectSearch":     SubjectSearchTool,
-  "wikipediaSummary":  WikipediaSummaryTool,
+  "webSearch":         new OpenLibrarySearchTool(),
+  "googleBooks":       new GoogleBooksTool(),
+  "subjectSearch":     new SubjectSearchTool(),
+  "wikipediaSummary":  new WikipediaSummaryTool(),
   "memory":            new MemoryStore(),
   "llm":               llm,
   "embedder":          resolvedEmbedder,

@@ -11,12 +11,12 @@
  * into `ToolCall[]` via JSON coercion (`ToolCallCodec.decode`).
  */
 
-import { BaseAdapter, ChatResponseMessageBuilder, ToolCallCodec, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
 import type {
   ChatRequest,
   ChatResponse,
+  ErrorClassification,
 } from '@noocodex/dagonizer/adapter';
-import { Classifications, LlmError, type ErrorClassification } from '@noocodex/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder, Classifications, LlmError, ToolCallCodec, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
 
 const DEFAULT_MODEL = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
 const WEBLLM_ESM = 'https://esm.run/@mlc-ai/web-llm';
@@ -46,15 +46,14 @@ interface WebLlmModule {
 
 export interface WebLlmAdapterOptions {
   readonly model?: string;
-  readonly onProgress?: (report: WebLlmInitReport) => void;
+  readonly maxAttempts?: number;
 }
 
 export class WebLlmAdapter extends BaseAdapter {
   readonly #model: string;
-  readonly #onProgress?: (report: WebLlmInitReport) => void;
   #enginePromise: Promise<WebLlmEngine> | null = null;
 
-  static detectWebGpu(): boolean {
+  private static detectWebGpu(): boolean {
     const nav = (globalThis as { navigator?: { gpu?: unknown } }).navigator;
     if (nav === undefined) return false;
     return 'gpu' in nav;
@@ -67,10 +66,19 @@ export class WebLlmAdapter extends BaseAdapter {
       // Phi-3.5 supports structured output but tool-call format is
       // inconsistent across the small in-browser model class.
       { 'toolUse': 'partial', 'structuredOutput': true, 'jsonMode': true },
-      { 'maxAttempts': WEBLLM_MAX_ATTEMPTS },
+      { 'maxAttempts': options.maxAttempts ?? WEBLLM_MAX_ATTEMPTS },
     );
     this.#model = options.model ?? DEFAULT_MODEL;
-    if (options.onProgress !== undefined) this.#onProgress = options.onProgress;
+  }
+
+  /**
+   * Called for each progress report emitted by WebLLM during model
+   * download and initialisation. Subclasses override to observe progress
+   * (e.g. update a loading indicator). The default implementation is a
+   * no-op; the adapter is usable without overriding this method.
+   */
+  protected onInitProgress(_report: WebLlmInitReport): void {
+    // no-op default — subclasses override to handle progress events
   }
 
   /**
@@ -130,8 +138,9 @@ export class WebLlmAdapter extends BaseAdapter {
 
   protected override classify(error: unknown): ErrorClassification {
     if (error instanceof LlmError) return error.classification;
-    const msg = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
-    if (msg.includes('webgpu')) return Classifications['MODEL_NOT_FOUND'];
+    const msg = error instanceof Error ? error.message : String(error);
+    if (/webgpu/iu.test(msg)) return Classifications['MODEL_NOT_FOUND'];
+    if (/aborted|timeout/iu.test(msg)) return Classifications['TIMEOUT'];
     return Classifications['UNKNOWN'];
   }
 
@@ -173,12 +182,12 @@ export class WebLlmAdapter extends BaseAdapter {
       throw new LlmError('navigator.gpu unavailable', Classifications['MODEL_NOT_FOUND']);
     }
     const mod = await import(/* @vite-ignore */ WEBLLM_ESM) as WebLlmModule;
-    const options = this.#onProgress === undefined ? undefined : { 'initProgressCallback': this.#onProgress };
-    return mod.CreateMLCEngine(this.#model, options);
+    return mod.CreateMLCEngine(this.#model, { 'initProgressCallback': (report) => { this.onInitProgress(report); } });
   }
 
   #classifyWebLlmError(err: unknown): LlmError {
     const message = err instanceof Error ? err.message : String(err);
+    if (/aborted|timeout/iu.test(message)) return new LlmError(message, Classifications['TIMEOUT'], { 'cause': err });
     return new LlmError(message, Classifications['UNKNOWN'], { 'cause': err });
   }
 }

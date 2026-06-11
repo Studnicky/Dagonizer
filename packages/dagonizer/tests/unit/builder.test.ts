@@ -3,19 +3,29 @@ import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 
-const greet: NodeInterface<NodeStateBase, 'success'> = {
-  'name': 'greet',
-  'outputs': ['success'],
-  async execute() { return { 'errors': [], 'output': 'success' }; },
-};
-const plan: NodeInterface<NodeStateBase, 'success' | 'error'> = {
-  'name': 'plan',
-  'outputs': ['success', 'error'],
-  async execute() { return { 'errors': [], 'output': 'success' }; },
-};
+class GreetNode implements NodeInterface<NodeStateBase, 'success'> {
+  readonly name = 'greet';
+  readonly outputs = ['success'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  async execute(_state: NodeStateBase) { return { 'errors': [], 'output': 'success' as const }; }
+}
+
+class PlanNode implements NodeInterface<NodeStateBase, 'success' | 'error'> {
+  readonly name = 'plan';
+  readonly outputs = ['success', 'error'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  async execute(_state: NodeStateBase) { return { 'errors': [], 'output': 'success' as const }; }
+}
+
+const greet = new GreetNode();
+const plan = new PlanNode();
 
 void describe('DAGBuilder', () => {
   void it('builds a single-node DAG in JSON-LD canonical form', () => {

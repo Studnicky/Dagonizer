@@ -17,10 +17,10 @@
  */
 
 import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-import { slow, dag } from './dags/06-cancellation.js';
+import { SlowNode, dag } from './dags/06-cancellation.js';
 
 const dispatcher = new Dagonizer<NodeStateBase>();
-dispatcher.registerNode(slow);
+dispatcher.registerNode(new SlowNode());
 dispatcher.registerDAG(dag);
 
 // #region abort-signal

@@ -28,14 +28,18 @@
  * Output route is always 'ranked'. mergeCandidates then takes the top-K.
  */
 
-import { NodeErrorBuilder, NodeOutputBuilder } from '@noocodex/dagonizer';
+import { NodeErrorBuilder, NodeOutputBuilder,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
 
 import type { Embedder } from '@noocodex/dagonizer/contracts';
 
 import type { Candidate } from '../entities/Book.ts';
-
-import type { ArchivistNode } from './ArchivistNode.ts';
-import { cosineSimilarity, jaccard, tokenise } from './textUtils.ts';
+import type { ArchivistState } from '../ArchivistState.ts';
+import type { ArchivistServices } from '../services.ts';
+import { TextSimilarity } from './textUtils.ts';
 
 /**
  * Per-node timeout: generous for Gemini Nano's batch-scoring path.
@@ -74,49 +78,80 @@ const SOURCE_PRIORITY: Readonly<Record<string, number>> = {
 /** Recency window: books first published within the last N years earn the bonus. */
 const RECENCY_WINDOW_YEARS = 30;
 
-function sourcePriority(source: string): number {
-  const key = source.toLowerCase();
-  return SOURCE_PRIORITY[key] ?? 0.5;
-}
-
 /**
- * Hybrid composite scorer. Pure function: given the inputs, the output
- * is deterministic and unit-testable.
+ * CandidateScorer: pure-function composite scorer for hybrid ranking.
+ * Static methods only; no instance state.
  */
-export function compositeScore(
-  candidate: Candidate,
-  queryVec: readonly number[] | null,
-  titleVec: readonly number[] | null,
-  termTokens: Set<string>,
-  currentYear: number,
-): number {
-  const titleTokens = tokenise(candidate.book.title);
-  const jac = jaccard(titleTokens, termTokens);
+export class CandidateScorer {
+  static sourcePriority(source: string): number {
+    const key = source.toLowerCase();
+    return SOURCE_PRIORITY[key] ?? 0.5;
+  }
 
-  const cos = (queryVec !== null && titleVec !== null)
-    ? cosineSimilarity(queryVec, titleVec)
-    : 0;
+  /**
+   * Embed every candidate title via the embedder, returning a parallel
+   * array of vectors. Reuses `candidate.notes.titleEmbedding` when present
+   * so re-ranks across nodes don't re-embed.
+   *
+   * Any throw bubbles up and is caught by the caller; the deterministic
+   * ranker continues with `titleEmbeddings = null` (Jaccard takes the
+   * whole weight via the redistribution branch above).
+   */
+  static async embedTitles(
+    embedder: Embedder,
+    candidates: readonly Candidate[],
+  ): Promise<readonly (readonly number[] | null)[]> {
+    const out: (readonly number[] | null)[] = [];
+    for (const c of candidates) {
+      const cached = c.notes?.['titleEmbedding'];
+      if (Array.isArray(cached) && cached.every((n) => typeof n === 'number' && Number.isFinite(n))) {
+        out.push(cached as readonly number[]);
+        continue;
+      }
+      out.push(await embedder.embed(c.book.identity.title));
+    }
+    return out;
+  }
 
-  // When the embedder isn't reachable for either side, redistribute the
-  // cosine weight onto the Jaccard term so the deterministic ranker isn't
-  // starved of signal. Total weight stays 1.0.
-  const cosTerm = (queryVec !== null && titleVec !== null)
-    ? cos * W_COSINE
-    : 0;
-  const jacTerm = (queryVec !== null && titleVec !== null)
-    ? jac * W_JACCARD
-    : jac * (W_COSINE + W_JACCARD);
+  /**
+   * Hybrid composite scorer. Pure function: given the inputs, the output
+   * is deterministic and unit-testable.
+   */
+  static compositeScore(
+    candidate: Candidate,
+    queryVec: readonly number[] | null,
+    titleVec: readonly number[] | null,
+    termTokens: Set<string>,
+    currentYear: number,
+  ): number {
+    const titleTokens = TextSimilarity.tokenise(candidate.book.identity.title);
+    const jac = TextSimilarity.jaccard(titleTokens, termTokens);
 
-  const srcTerm = sourcePriority(candidate.source) * W_SOURCE;
+    const cos = (queryVec !== null && titleVec !== null)
+      ? TextSimilarity.cosine(queryVec, titleVec)
+      : 0;
 
-  const year = candidate.book.firstPublishYear;
-  const recTerm = (typeof year === 'number' && year >= currentYear - RECENCY_WINDOW_YEARS)
-    ? W_RECENCY
-    : 0;
+    // When the embedder isn't reachable for either side, redistribute the
+    // cosine weight onto the Jaccard term so the deterministic ranker isn't
+    // starved of signal. Total weight stays 1.0.
+    const cosTerm = (queryVec !== null && titleVec !== null)
+      ? cos * W_COSINE
+      : 0;
+    const jacTerm = (queryVec !== null && titleVec !== null)
+      ? jac * W_JACCARD
+      : jac * (W_COSINE + W_JACCARD);
 
-  const memBonus = candidate.notes?.['fromPriorMemory'] === true ? MEMORY_BONUS : 0;
+    const srcTerm = CandidateScorer.sourcePriority(candidate.source) * W_SOURCE;
 
-  return cosTerm + jacTerm + srcTerm + recTerm + memBonus;
+    const year = candidate.book.publication.firstPublishYear;
+    const recTerm = (typeof year === 'number' && year >= currentYear - RECENCY_WINDOW_YEARS)
+      ? W_RECENCY
+      : 0;
+
+    const memBonus = candidate.notes?.['fromPriorMemory'] === true ? MEMORY_BONUS : 0;
+
+    return cosTerm + jacTerm + srcTerm + recTerm + memBonus;
+  }
 }
 
 interface ScoredEntry {
@@ -125,36 +160,13 @@ interface ScoredEntry {
   readonly titleEmbedding: readonly number[] | null;
 }
 
-/**
- * Embed every candidate title via the embedder, returning a parallel
- * array of vectors. Reuses `candidate.notes.titleEmbedding` when present
- * so re-ranks across nodes don't re-embed.
- *
- * Any throw bubbles up and is caught by the caller; the deterministic
- * ranker continues with `titleEmbeddings = null` (Jaccard takes the
- * whole weight via the redistribution branch above).
- */
-async function embedTitles(
-  embedder: Embedder,
-  candidates: readonly Candidate[],
-): Promise<readonly (readonly number[] | null)[]> {
-  const out: (readonly number[] | null)[] = [];
-  for (const c of candidates) {
-    const cached = c.notes?.['titleEmbedding'];
-    if (Array.isArray(cached) && cached.every((n) => typeof n === 'number' && Number.isFinite(n))) {
-      out.push(cached as readonly number[]);
-      continue;
-    }
-    out.push(await embedder.embed(c.book.title));
-  }
-  return out;
-}
+export class RankCandidatesNode implements NodeInterface<ArchivistState, 'ranked' | 'retry' | 'salvage', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'rank-candidates';
+  readonly outputs = ['ranked', 'retry', 'salvage'] as const;
 
-export const rankCandidates: ArchivistNode<'ranked' | 'retry' | 'salvage'> = {
-  'name':    'rank-candidates',
-  'kind':    'non-deterministic',
-  'outputs': ['ranked', 'retry', 'salvage'],
-  async execute(state, context) {
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     if (state.candidates.length === 0) {
       state.clearAttempts(context.nodeName);
       context.services.logger.info('rank-candidates: no candidates to rank');
@@ -168,7 +180,7 @@ export const rankCandidates: ArchivistNode<'ranked' | 'retry' | 'salvage'> = {
     try {
       const embedder = context.services.embedder;
       const queryText = state.terms.length > 0 ? state.terms.join(' ') : state.query;
-      const termTokens = tokenise(queryText);
+      const termTokens = TextSimilarity.tokenise(queryText);
       const currentYear = new Date().getFullYear();
 
       // ── Step 1: Embed query + candidate titles (best-effort) ────────────
@@ -177,7 +189,7 @@ export const rankCandidates: ArchivistNode<'ranked' | 'retry' | 'salvage'> = {
       if (embedder !== null) {
         try {
           queryVec  = await embedder.embed(queryText);
-          titleVecs = await embedTitles(embedder, state.candidates);
+          titleVecs = await CandidateScorer.embedTitles(embedder, state.candidates);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           context.services.logger.warn(`rank-candidates: embedder threw, dropping cosine term: ${message}`);
@@ -189,7 +201,7 @@ export const rankCandidates: ArchivistNode<'ranked' | 'retry' | 'salvage'> = {
       // ── Step 2: Deterministic composite scoring ─────────────────────────
       const scored: ScoredEntry[] = state.candidates.map((candidate, i) => ({
         candidate,
-        'score':          compositeScore(candidate, queryVec, titleVecs[i] ?? null, termTokens, currentYear),
+        'score':          CandidateScorer.compositeScore(candidate, queryVec, titleVecs[i] ?? null, termTokens, currentYear),
         'titleEmbedding': titleVecs[i] ?? null,
       }));
       scored.sort((a, b) => b.score - a.score);
@@ -208,11 +220,11 @@ export const rankCandidates: ArchivistNode<'ranked' | 'retry' | 'salvage'> = {
           // deterministic order. Match LLM-returned candidates back to
           // ScoredEntry by ISBN so we preserve composite scores in logs.
           const byIsbn = new Map<string, ScoredEntry>();
-          for (const entry of top3) byIsbn.set(entry.candidate.book.isbn, entry);
+          for (const entry of top3) byIsbn.set(entry.candidate.book.identity.isbn, entry);
 
           const reorderedTop: ScoredEntry[] = [];
           for (const ls of llmScored) {
-            const found = byIsbn.get(ls.candidate.book.isbn);
+            const found = byIsbn.get(ls.candidate.book.identity.isbn);
             if (found !== undefined) reorderedTop.push(found);
           }
           // Defensive: if the LLM dropped one (schema drift), fall back.
@@ -246,7 +258,7 @@ export const rankCandidates: ArchivistNode<'ranked' | 'retry' | 'salvage'> = {
 
       const top = ranked[0];
       context.services.logger.info(
-        `rank-candidates: hybrid (${String(scored.length)} deterministic, ${String(llmTiebreaks)} LLM-tiebreaks); top: ${top !== undefined ? `"${top.book.title}" score=${top.score.toFixed(3)}` : 'none'}`,
+        `rank-candidates: hybrid (${String(scored.length)} deterministic, ${String(llmTiebreaks)} LLM-tiebreaks); top: ${top !== undefined ? `"${top.book.identity.title}" score=${top.score.toFixed(3)}` : 'none'}`,
       );
       state.clearAttempts(context.nodeName);
       return NodeOutputBuilder.of('ranked');
@@ -274,5 +286,8 @@ export const rankCandidates: ArchivistNode<'ranked' | 'retry' | 'salvage'> = {
     } finally {
       clearTimeout(handle);
     }
-  },
-};
+  }
+}
+
+/** Backward-compatible const export for existing bundle/DAG references. */
+export const rankCandidates = new RankCandidatesNode();

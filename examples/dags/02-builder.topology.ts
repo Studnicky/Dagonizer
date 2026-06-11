@@ -1,9 +1,9 @@
 /**
  * 02-builder.topology/dags: pure topology for the DAGBuilder example.
  *
- * No side effects, no top-level await. Exports ChatState, classify, respond,
- * and dag for use by the runnable script (examples/02-builder.ts) and the
- * documentation carve directives.
+ * No side effects, no top-level await. Exports ChatState, ClassifyNode,
+ * RespondNode, and dag for use by the runnable script (examples/02-builder.ts)
+ * and the documentation carve directives.
  *
  * Runnable script: examples/02-builder.ts
  */
@@ -13,8 +13,10 @@ import {
   DAGBuilder,
   NodeOutputBuilder,
   NodeStateBase,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
 } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import type { NodeInterface } from '@noocodex/dagonizer';
 // #endregion imports
 
 // ---------------------------------------------------------------------------
@@ -32,25 +34,31 @@ export class ChatState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // #region nodes
-export const classify: NodeInterface<ChatState, 'on_topic' | 'off_topic'> = {
-  "name": 'classify',
-  "outputs": ['on_topic', 'off_topic'],
-  async execute(state) {
+export class ClassifyNode implements NodeInterface<ChatState, 'on_topic' | 'off_topic'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'classify';
+  readonly outputs = ['on_topic', 'off_topic'] as const;
+
+  async execute(state: ChatState) {
     state.topic = state.input.toLowerCase().includes('weather') ? 'off_topic' : 'on_topic';
     return NodeOutputBuilder.of(state.topic);
-  },
-};
+  }
+}
 
-export const respond: NodeInterface<ChatState, 'success'> = {
-  "name": 'respond',
-  "outputs": ['success'],
-  async execute(state) {
+export class RespondNode implements NodeInterface<ChatState, 'success'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'respond';
+  readonly outputs = ['success'] as const;
+
+  async execute(state: ChatState) {
     state.reply = state.topic === 'on_topic'
       ? `Echo: ${state.input}`
       : `I only talk about coding, not the weather.`;
     return NodeOutputBuilder.of('success');
-  },
-};
+  }
+}
 // #endregion nodes
 
 // ---------------------------------------------------------------------------
@@ -68,9 +76,9 @@ export const respond: NodeInterface<ChatState, 'success'> = {
 // #region builder
 export const dag = new DAGBuilder('chat', '1')
   // First .node() call → entrypoint is set to 'classify' automatically.
-  .node('classify', classify, { "on_topic": 'respond', "off_topic": 'respond' })
+  .node('classify', new ClassifyNode(), { "on_topic": 'respond', "off_topic": 'respond' })
   // routes for 'respond' must cover exactly { success }, no more, no less.
-  .node('respond', respond, { "success": 'end' })
+  .node('respond', new RespondNode(), { "success": 'end' })
   .terminal('end')
   .build();  // materialises the canonical JSON-LD DAG document
 // #endregion builder

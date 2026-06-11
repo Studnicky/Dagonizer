@@ -8,9 +8,10 @@
  * similarity between their vectors.
  */
 
-import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,
+  EMPTY_CONTRACT_FRAGMENT, Timeout,
+} from '@noocodex/dagonizer';
+import type { DAG, NodeInterface} from '@noocodex/dagonizer';
 import type { Embedder } from '@noocodex/dagonizer/adapter';
 
 // ---------------------------------------------------------------------------
@@ -27,33 +28,37 @@ export class EmbedderState extends NodeStateBase {
 }
 
 // ---------------------------------------------------------------------------
-// Cosine similarity: pure function, accepts readonly vectors
+// Cosine similarity: domain utility, accepts readonly vectors
 // ---------------------------------------------------------------------------
 
-export function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
-  if (a.length === 0 || a.length !== b.length) return 0;
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    const ai = a[i] ?? 0;
-    const bi = b[i] ?? 0;
-    dot   += ai * bi;
-    normA += ai * ai;
-    normB += bi * bi;
+export class VectorSimilarity {
+  static cosine(a: readonly number[], b: readonly number[]): number {
+    if (a.length === 0 || a.length !== b.length) return 0;
+    let dot = 0;
+    let normA = 0;
+    let normB = 0;
+    for (let i = 0; i < a.length; i++) {
+      const ai = a[i] ?? 0;
+      const bi = b[i] ?? 0;
+      dot   += ai * bi;
+      normA += ai * ai;
+      normB += bi * bi;
+    }
+    const denom = Math.sqrt(normA) * Math.sqrt(normB);
+    return denom === 0 ? 0 : dot / denom;
   }
-  const denom = Math.sqrt(normA) * Math.sqrt(normB);
-  return denom === 0 ? 0 : dot / denom;
 }
 
 // ---------------------------------------------------------------------------
 // Nodes
 // ---------------------------------------------------------------------------
 
-export const embed: NodeInterface<EmbedderState, 'done'> = {
-  'name': 'embed',
-  'outputs': ['done'],
-  async execute(state) {
+export class EmbedNode implements NodeInterface<EmbedderState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'embed';
+  readonly outputs = ['done'] as const;
+  async execute(state: EmbedderState) {
     if (state.embedder === null) throw new Error('embed: embedder not set');
     const [vecA, vecB] = await Promise.all([
       state.embedder.embed(state.textA),
@@ -61,19 +66,21 @@ export const embed: NodeInterface<EmbedderState, 'done'> = {
     ]);
     state.vectorA = vecA;
     state.vectorB = vecB;
-    state.similarity = cosineSimilarity(vecA, vecB);
+    state.similarity = VectorSimilarity.cosine(vecA, vecB);
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
-export const report: NodeInterface<EmbedderState, 'done'> = {
-  'name': 'report',
-  'outputs': ['done'],
-  async execute(state) {
+export class ReportNode implements NodeInterface<EmbedderState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'report';
+  readonly outputs = ['done'] as const;
+  async execute(state: EmbedderState) {
     process.stdout.write(`  similarity("${state.textA}", "${state.textB}") = ${state.similarity.toFixed(4)}\n`);
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
 // ---------------------------------------------------------------------------
 // DAG

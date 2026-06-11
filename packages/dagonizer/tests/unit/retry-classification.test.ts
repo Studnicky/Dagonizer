@@ -6,7 +6,7 @@ import { RetryableErrorPolicy } from '../../src/adapter/RetryableErrorPolicy.js'
 import { BackoffStrategy } from '../../src/runtime/index.js';
 
 const policy = (): RetryableErrorPolicy =>
-  new RetryableErrorPolicy({ 'maxAttempts': 3, 'strategy': BackoffStrategy.EXPONENTIAL, 'baseDelay': 0 });
+  RetryableErrorPolicy.from({ 'maxAttempts': 3, 'strategy': BackoffStrategy.EXPONENTIAL, 'baseDelay': 0 });
 
 void describe('RetryableErrorPolicy honors LlmError.classification.retryable', () => {
   void it('does NOT retry a non-retryable LlmError (exactly one attempt)', async () => {

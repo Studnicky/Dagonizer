@@ -18,7 +18,7 @@
 
 import { DAG_CONTEXT, Dagonizer } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
-import { CatalogueState, searchNode } from './dags/monadic-node.js';
+import { CatalogueState, SearchCatalogueNode } from './dags/monadic-node.js';
 
 // ── Build a minimal DAG: search-catalogue → end ─────────────────────────────
 
@@ -53,7 +53,7 @@ const dag: DAG = {
 // ── Dispatcher ───────────────────────────────────────────────────────────────
 
 const dispatcher = new Dagonizer<CatalogueState>();
-dispatcher.registerNode(searchNode);
+dispatcher.registerNode(new SearchCatalogueNode());
 dispatcher.registerDAG(dag);
 
 // ── Run 1: valid query → 'success' output, results populated ─────────────────

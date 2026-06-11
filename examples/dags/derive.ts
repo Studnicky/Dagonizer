@@ -11,8 +11,9 @@
  */
 
 import { DAGDeriver } from '@noocodex/dagonizer/derive';
-import { NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import { NodeOutputBuilder, NodeStateBase, Timeout } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@noocodex/dagonizer';
+import type { OperationContractFragment } from '@noocodex/dagonizer/contracts';
 
 // ---------------------------------------------------------------------------
 // State
@@ -26,66 +27,84 @@ export class PipelineState extends NodeStateBase {
 }
 
 // ---------------------------------------------------------------------------
-// Nodes: same NodeInterface shape regardless of authoring path
+// Nodes: class-per-node, implements NodeInterface
 // ---------------------------------------------------------------------------
 
-export const prepare: NodeInterface<PipelineState, 'success'> = {
-  "name": 'prepare',
-  "outputs": ['success'],
-  "contract": { "hardRequired": ['input'], "produces": ['intermediate'] },
-  async execute(state) {
+export class PrepareNode implements NodeInterface<PipelineState, 'success'> {
+  readonly name     = 'prepare';
+  readonly outputs  = ['success'] as const;
+  readonly contract: OperationContractFragment = { "hardRequired": ['input'], "produces": ['intermediate'] };
+  readonly timeout  = Timeout.none();
+
+  async execute(state: PipelineState) {
     state.intermediate = state.input.toUpperCase();
     return NodeOutputBuilder.of('success');
-  },
-};
+  }
+}
 
-export const validate: NodeInterface<PipelineState, 'success' | 'error'> = {
-  "name": 'validate',
-  "outputs": ['success', 'error'],
-  "contract": { "hardRequired": ['intermediate'], "produces": ['validated'] },
-  async execute(state) {
+export class ValidateNode implements NodeInterface<PipelineState, 'success' | 'error'> {
+  readonly name     = 'validate';
+  readonly outputs  = ['success', 'error'] as const;
+  readonly contract: OperationContractFragment = { "hardRequired": ['intermediate'], "produces": ['validated'] };
+  readonly timeout  = Timeout.none();
+
+  async execute(state: PipelineState) {
     if (state.intermediate.length === 0) return NodeOutputBuilder.of('error');
     return NodeOutputBuilder.of('success');
-  },
-};
+  }
+}
 
-export const transform: NodeInterface<PipelineState, 'success'> = {
-  "name": 'transform',
-  "outputs": ['success'],
-  "contract": { "hardRequired": ['validated'], "produces": ['childResult'] },
-  async execute(state) {
+export class TransformNode implements NodeInterface<PipelineState, 'success'> {
+  readonly name     = 'transform';
+  readonly outputs  = ['success'] as const;
+  readonly contract: OperationContractFragment = { "hardRequired": ['validated'], "produces": ['childResult'] };
+  readonly timeout  = Timeout.none();
+
+  async execute(state: PipelineState) {
     state.childResult = `[${state.intermediate}]`;
     return NodeOutputBuilder.of('success');
-  },
-};
+  }
+}
 
-export const invokePlugin: NodeInterface<PipelineState, 'success' | 'error'> = {
+export class InvokePluginNode implements NodeInterface<PipelineState, 'success' | 'error'> {
   // invoke-plugin carries the contract (hardRequired/produces) the deriver
   // uses to place this stage in the topology. The embeddedDAGs annotation
   // renders it as an EmbeddedDAGNode whose `dag` runs the child DAG;
   // so this `execute` does not run; the sub-DAG does the work.
   // Its `outputs` declare the ports the EmbeddedDAGNode routes on.
-  "name": 'invoke-plugin',
-  "outputs": ['success', 'error'],
-  "contract": { "hardRequired": ['intermediate'], "produces": ['childResult'] },
-  async execute() {
-    return NodeOutputBuilder.of('success');
-  },
-};
+  readonly name     = 'invoke-plugin';
+  readonly outputs  = ['success', 'error'] as const;
+  readonly contract: OperationContractFragment = { "hardRequired": ['intermediate'], "produces": ['childResult'] };
+  readonly timeout  = Timeout.none();
 
-export const finalize: NodeInterface<PipelineState, 'success'> = {
-  "name": 'finalize',
-  "outputs": ['success'],
-  "contract": { "hardRequired": ['childResult'], "produces": ['final'] },
-  async execute(state) {
+  async execute(_state: PipelineState) {
+    return NodeOutputBuilder.of('success');
+  }
+}
+
+export class FinalizeNode implements NodeInterface<PipelineState, 'success'> {
+  readonly name     = 'finalize';
+  readonly outputs  = ['success'] as const;
+  readonly contract: OperationContractFragment = { "hardRequired": ['childResult'], "produces": ['final'] };
+  readonly timeout  = Timeout.none();
+
+  async execute(state: PipelineState) {
     state.final = `done: ${state.childResult}`;
     return NodeOutputBuilder.of('success');
-  },
-};
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Derive the DAGs
 // ---------------------------------------------------------------------------
+
+// Node instances used for DAGDeriver.derive: not exported (derive consumes
+// them for topology; callers instantiate fresh nodes for registration).
+const prepare      = new PrepareNode();
+const validate     = new ValidateNode();
+const transform    = new TransformNode();
+const invokePlugin = new InvokePluginNode();
+const finalize     = new FinalizeNode();
 
 // #region derive
 // Child DAG: simple validate->transform chain. validate's error port

@@ -15,13 +15,19 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import type { CanonicalEvent } from '../entities/CanonicalEvent.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region merge-events-node
-export const mergeEvents: NodeInterface<CartographerState, 'merged', CartographerServices> = {
-  'name': 'merge-events',
-  'outputs': ['merged'],
-  async execute(state, context) {
+export class MergeEventsNode implements NodeInterface<CartographerState, 'merged', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'merge-events';
+  readonly 'outputs' = ['merged'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'merged'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -33,6 +39,6 @@ export const mergeEvents: NodeInterface<CartographerState, 'merged', Cartographe
     }
     state.canonicalEvents = merged;
     return NodeOutputBuilder.of('merged');
-  },
-};
+  }
+}
 // #endregion merge-events-node

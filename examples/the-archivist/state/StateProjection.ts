@@ -2,7 +2,7 @@
  * StateProjection: mirror ArchivistState into `urn:dagonizer:state:<runId>`.
  *
  * The named graph is canonical: nodes that need cross-cutting facts
- * SPARQL the graph (`store.select({...,graph: stateGraphIri(runId)})`).
+ * SPARQL the graph (`store.select({...,graph: MemoryStore.stateGraphIri(runId)})`).
  * Typed property access on `ArchivistState` is the WRITE path; this
  * projection mirrors every set into RDF, so the graph is always in
  * sync with the typed view.
@@ -21,7 +21,7 @@
 import type { Term } from 'n3';
 
 import type { ArchivistState } from '../ArchivistState.ts';
-import { MemoryStore, stateGraphIri } from '../memory/MemoryStore.ts';
+import { MemoryStore } from '../memory/MemoryStore.ts';
 
 const dag     = (local: string): Term => MemoryStore.dagIri(local);
 const rdfType = MemoryStore.iri('http://www.w3.org/1999/02/22-rdf-syntax-ns#type');
@@ -31,7 +31,7 @@ const dagRun  = MemoryStore.dagIri('Run');
 export class StateProjection {
   /** Wipe everything in the per-run state graph. */
   static clear(runId: string, store: MemoryStore): void {
-    store.clearGraph(stateGraphIri(runId));
+    store.clearGraph(MemoryStore.stateGraphIri(runId));
   }
 
   /**
@@ -40,7 +40,7 @@ export class StateProjection {
    */
   static project(state: ArchivistState, store: MemoryStore): void {
     if (state.runId === '') return;
-    const graph = stateGraphIri(state.runId);
+    const graph = MemoryStore.stateGraphIri(state.runId);
     store.clearGraph(graph);
     const run = MemoryStore.runIri(state.runId);
 
@@ -67,27 +67,25 @@ export class StateProjection {
 
     // Candidates: full book metadata + scoring per candidate
     for (const candidate of state.candidates) {
-      const book = MemoryStore.bookIri(candidate.book.isbn);
+      const book = MemoryStore.bookIri(candidate.book.identity.isbn);
       // rdf:type links this ABox book instance to the TBox dag:Book class;
       // connects the state graph to the ontology graph in the MemoryGraph view.
-      store.assert(book, rdfType,          dagBook,                                          graph);
-      store.assert(run,  dag('candidate'), book,                                             graph);
-      store.assert(book, dag('title'),     MemoryStore.lit.str(candidate.book.title),        graph);
-      store.assert(book, dag('source'),    MemoryStore.lit.str(candidate.source),            graph);
-      store.assert(book, dag('score'),     MemoryStore.lit.num(candidate.score),             graph);
-      for (const author of candidate.book.authors) {
+      store.assert(book, rdfType,          dagBook,                                                   graph);
+      store.assert(run,  dag('candidate'), book,                                                      graph);
+      store.assert(book, dag('title'),     MemoryStore.lit.str(candidate.book.identity.title),        graph);
+      store.assert(book, dag('source'),    MemoryStore.lit.str(candidate.source),                     graph);
+      store.assert(book, dag('score'),     MemoryStore.lit.num(candidate.score),                      graph);
+      for (const author of candidate.book.identity.authors) {
         store.assert(book, dag('author'), MemoryStore.lit.str(author), graph);
       }
-      if (candidate.book.summary !== undefined) {
-        store.assert(book, dag('summary'), MemoryStore.lit.str(candidate.book.summary), graph);
+      if (candidate.book.publication.summary !== undefined) {
+        store.assert(book, dag('summary'), MemoryStore.lit.str(candidate.book.publication.summary), graph);
       }
-      if (candidate.book.firstPublishYear !== undefined) {
-        store.assert(book, dag('firstPublishYear'), MemoryStore.lit.int(candidate.book.firstPublishYear), graph);
+      if (candidate.book.publication.firstPublishYear !== undefined) {
+        store.assert(book, dag('firstPublishYear'), MemoryStore.lit.int(candidate.book.publication.firstPublishYear), graph);
       }
-      if (candidate.book.subjects !== undefined) {
-        for (const subject of candidate.book.subjects) {
-          store.assert(book, dag('subject'), MemoryStore.lit.str(subject), graph);
-        }
+      for (const subject of candidate.book.publication.subjects) {
+        store.assert(book, dag('subject'), MemoryStore.lit.str(subject), graph);
       }
       if (candidate.reason !== undefined) {
         store.assert(book, dag('rankReason'), MemoryStore.lit.str(candidate.reason), graph);
@@ -100,11 +98,11 @@ export class StateProjection {
     }
 
     // Shortlist: flagged via dag:inShortlist on the book
-    const shortlistIsbns = new Set(state.shortlist.map((c) => c.book.isbn));
+    const shortlistIsbns = new Set(state.shortlist.map((c) => c.book.identity.isbn));
     for (const candidate of state.candidates) {
-      const book = MemoryStore.bookIri(candidate.book.isbn);
+      const book = MemoryStore.bookIri(candidate.book.identity.isbn);
       store.assert(book, dag('inShortlist'),
-        MemoryStore.lit.bool(shortlistIsbns.has(candidate.book.isbn)), graph);
+        MemoryStore.lit.bool(shortlistIsbns.has(candidate.book.identity.isbn)), graph);
     }
 
     // Tool plan: one triple per planned call

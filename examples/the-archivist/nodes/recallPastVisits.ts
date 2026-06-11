@@ -10,11 +10,15 @@
  * so we never echo back the question the visitor just asked.
  */
 
-import { MemoryStore, STATE_GRAPH_PREFIX, stateGraphIri } from '../memory/MemoryStore.ts';
+import { NodeOutputBuilder,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
 
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
-
-import type { ArchivistNode } from './ArchivistNode.ts';
+import { MemoryStore, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';
+import type { ArchivistState } from '../ArchivistState.ts';
+import type { ArchivistServices } from '../services.ts';
 
 const dagVisitorQuery = MemoryStore.dagIri('visitorQuery');
 const dagTitle        = MemoryStore.dagIri('title');
@@ -23,13 +27,15 @@ const dagInShortlist  = MemoryStore.dagIri('inShortlist');
 const MAX_PRIOR_QUERIES = 4;
 const MAX_PRIOR_TITLES  = 6;
 
-export const recallPastVisits: ArchivistNode<'recalled'> = {
-  'name':    'recall-past-visits',
-  'kind':    'deterministic',
-  'outputs': ['recalled'],
-  async execute(state, context) {
+export class RecallPastVisitsNode implements NodeInterface<ArchivistState, 'recalled', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'recall-past-visits';
+  readonly outputs = ['recalled'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const memory = context.services.memory;
-    const currentGraph = stateGraphIri(state.runId).value;
+    const currentGraph = MemoryStore.stateGraphIri(state.runId).value;
 
     // Pull every prior visitorQuery across every state graph (graph is
     // unbound in the pattern, so we get the binding back per row).
@@ -88,5 +94,8 @@ export const recallPastVisits: ArchivistNode<'recalled'> = {
       );
     }
     return NodeOutputBuilder.of('recalled');
-  },
-};
+  }
+}
+
+/** Backward-compatible const export for existing bundle/DAG references. */
+export const recallPastVisits = new RecallPastVisitsNode();

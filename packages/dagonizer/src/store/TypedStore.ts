@@ -26,8 +26,6 @@
  * await typed.set('count', 'wrong');       // TS error
  */
 
-import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
-import type { StoreSnapshot } from '../contracts/Snapshottable.js';
 import type { Store } from '../contracts/Store.js';
 import type { JsonValue } from '../entities/json.js';
 
@@ -61,14 +59,15 @@ export class TypedStore<Schema extends { [K in keyof Schema]: JsonValue }> {
     return this.#inner.update<Schema[K]>(key, fn);
   }
 
-  /** Snapshot/restore pass through to the underlying Store. */
-  async snapshot(options?: AbortableOptionsInterface): Promise<StoreSnapshot> { return this.#inner.snapshot(options); }
-  async restore(snapshot: StoreSnapshot, options?: AbortableOptionsInterface): Promise<void> { await this.#inner.restore(snapshot, options); }
-
-  /** Connect/disconnect pass through to the underlying Store. */
-  async connect(): Promise<void> { await this.#inner.connect(); }
-  async disconnect(): Promise<void> { await this.#inner.disconnect(); }
-
-  /** Access the underlying Store for operations TypedStore does not narrow. */
+  /**
+   * Access the underlying `Store` for lifecycle operations (`connect`,
+   * `disconnect`, `snapshot`, `restore`) and any other heterogeneous
+   * calls that TypedStore does not narrow. The underlying instance is the
+   * same object passed to the constructor.
+   *
+   * @example
+   * await typedStore.inner.connect();
+   * const snap = await typedStore.inner.snapshot();
+   */
   get inner(): Store { return this.#inner; }
 }

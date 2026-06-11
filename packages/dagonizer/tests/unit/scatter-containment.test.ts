@@ -22,12 +22,14 @@ import type { DagOutcomeInterface } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
 import type { ObserverRelay } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Timeout } from '../../src/runtime/Timeout.js';
 import { Validator } from '../../src/validation/Validator.js';
 
 // ---------------------------------------------------------------------------
@@ -75,16 +77,19 @@ class ScatterContainerState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 /** Reads currentItem from metadata and sets value on the clone. */
-const counterNode: NodeInterface<ScatterContainerState, 'done'> = {
-  'name': 'counter',
-  'outputs': ['done'],
-  async execute(state) {
+class CounterNode implements NodeInterface<ScatterContainerState, 'done'> {
+  readonly name = 'counter';
+  readonly outputs = ['done'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  async execute(state: ScatterContainerState) {
     const item = state.getMetadata<number>('item') ?? 0;
     // value is a declared field on ScatterContainerState; no cast required.
     state.value = item;
-    return { 'errors': [], 'output': 'done' };
-  },
-};
+    return { 'errors': [], 'output': 'done' as const };
+  }
+}
+const counterNode = new CounterNode();
 
 // ---------------------------------------------------------------------------
 // Minimal DAG body (runs inside each scatter item clone)
@@ -359,14 +364,17 @@ void describe('Scatter dag-body container seam (W4)', () => {
 
     // Counting node-body node — uses a closure counter since node-body
     // scatter runs inline (no snapshot/restore boundary).
-    const countingNodeBody: NodeInterface<ScatterContainerState, 'done'> = {
-      'name': 'node-body-worker',
-      'outputs': ['done'],
-      async execute() {
+    class CountingNodeBodyNode implements NodeInterface<ScatterContainerState, 'done'> {
+      readonly name = 'node-body-worker';
+      readonly outputs = ['done'] as const;
+  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
+      readonly timeout = Timeout.none();
+      async execute(_state: ScatterContainerState) {
         inlineNodeCalls++;
-        return { 'errors': [], 'output': 'done' };
-      },
-    };
+        return { 'errors': [], 'output': 'done' as const };
+      }
+    }
+    const countingNodeBody = new CountingNodeBodyNode();
 
     const dispatcher = new Dagonizer<ScatterContainerState>({
       // Container is bound but node-body scatter must NOT use it.

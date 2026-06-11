@@ -19,16 +19,16 @@
 
 import { Dagonizer } from '@noocodex/dagonizer';
 import type { NodeResultInterface } from '@noocodex/dagonizer';
-import { PipelineState, ingest, enrich, persist, dag } from './dags/20-streaming.js';
+import { PipelineState, IngestNode, EnrichNode, PersistNode, dag } from './dags/20-streaming.js';
 
 // ---------------------------------------------------------------------------
 // Run
 // ---------------------------------------------------------------------------
 
 const dispatcher = new Dagonizer<PipelineState>();
-dispatcher.registerNode(ingest);
-dispatcher.registerNode(enrich);
-dispatcher.registerNode(persist);
+dispatcher.registerNode(new IngestNode());
+dispatcher.registerNode(new EnrichNode());
+dispatcher.registerNode(new PersistNode());
 dispatcher.registerDAG(dag);
 
 const state = new PipelineState();

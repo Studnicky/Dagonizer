@@ -8,10 +8,11 @@
  * Tool and routes on the result.
  */
 
-import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
-import type { LlmAdapter, ToolCall } from '@noocodex/dagonizer/adapter';
+import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,
+  EMPTY_CONTRACT_FRAGMENT, Timeout,
+} from '@noocodex/dagonizer';
+import type { DAG, NodeInterface} from '@noocodex/dagonizer';
+import type { LlmAdapter, ToolCall, ToolDefinition } from '@noocodex/dagonizer/adapter';
 import { ChatRequestBuilder, ToolCallCodec } from '@noocodex/dagonizer/adapter';
 import type { Tool } from '@noocodex/dagonizer/tool';
 
@@ -28,25 +29,25 @@ export interface CalcOutput {
   readonly result: number;
 }
 
-export const calculatorTool: Tool<CalcInput, CalcOutput> = {
-  'definition': {
+export class CalculatorTool implements Tool<CalcInput, CalcOutput> {
+  readonly definition = {
     'name':        'calculator',
     'description': 'Add two numbers. Returns { result: number }.',
     'inputSchema': {
       '$schema':    'https://json-schema.org/draft/2020-12/schema',
-      'type':       'object',
-      'required':   ['a', 'b'],
+      'type':       'object' as const,
+      'required':   ['a', 'b'] as const,
       'properties': {
-        'a': { 'type': 'number' },
-        'b': { 'type': 'number' },
+        'a': { 'type': 'number' as const },
+        'b': { 'type': 'number' as const },
       },
     },
     'strict': true,
-  },
-  async execute(input, _options) {
+  };
+  async execute(input: CalcInput) {
     return Promise.resolve({ 'result': input.a + input.b });
-  },
-};
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Tool registry (simple map; no framework needed for the dispatch pattern)
@@ -65,7 +66,7 @@ export class ToolRegistry {
     return this.#tools.get(name) ?? null;
   }
 
-  definitions(): readonly (typeof calculatorTool.definition)[] {
+  definitions(): readonly ToolDefinition[] {
     return [...this.#tools.values()].map((t) => t.definition);
   }
 }
@@ -89,16 +90,18 @@ export class ToolUseState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 /** Call the adapter; inspect the response for tool calls. */
-export const callLlm: NodeInterface<ToolUseState, 'tool_call' | 'text'> = {
-  'name': 'callLlm',
-  'outputs': ['tool_call', 'text'],
-  async execute(state) {
+export class CallLlmNode implements NodeInterface<ToolUseState, 'tool_call' | 'text'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'callLlm';
+  readonly outputs = ['tool_call', 'text'] as const;
+  async execute(state: ToolUseState) {
     if (state.adapter === null) throw new Error('callLlm: adapter not set');
 
     const tools = state.registry.definitions();
     const request = ChatRequestBuilder.from({
       'messages': [
-        { 'role': 'user', 'content': state.question, 'toolCallId': '', 'toolName': '' },
+        { 'role': 'user', 'content': state.question },
       ],
       'tools':      [...tools],
       'toolChoice': { 'type': 'required' },
@@ -131,14 +134,16 @@ export const callLlm: NodeInterface<ToolUseState, 'tool_call' | 'text'> = {
     // No tool call produced — treat as plain text answer
     state.finalAnswer = response.message.kind === 'text' ? response.message.content : '(no text)';
     return NodeOutputBuilder.of('text');
-  },
-};
+  }
+}
 
 /** Dispatch the tool call to the registered Tool and collect the result. */
-export const dispatchTool: NodeInterface<ToolUseState, 'done' | 'error'> = {
-  'name': 'dispatchTool',
-  'outputs': ['done', 'error'],
-  async execute(state) {
+export class DispatchToolNode implements NodeInterface<ToolUseState, 'done' | 'error'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'dispatchTool';
+  readonly outputs = ['done', 'error'] as const;
+  async execute(state: ToolUseState) {
     // Decode from raw text (works for both native JSON and prose-wrapped)
     const calls: ToolCall[] = ToolCallCodec.decode(state.toolCallRaw, 'dispatch');
 
@@ -158,35 +163,41 @@ export const dispatchTool: NodeInterface<ToolUseState, 'done' | 'error'> = {
     state.toolResult = result;
     state.finalAnswer = `Tool "${call.name}" returned: ${JSON.stringify(result)}`;
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
-export const onText: NodeInterface<ToolUseState, 'done'> = {
-  'name': 'onText',
-  'outputs': ['done'],
-  async execute(state) {
+export class OnTextNode implements NodeInterface<ToolUseState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'onText';
+  readonly outputs = ['done'] as const;
+  async execute(state: ToolUseState) {
     process.stdout.write(`  [onText] direct answer: "${state.finalAnswer}"\n`);
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
-export const onToolDone: NodeInterface<ToolUseState, 'done'> = {
-  'name': 'onToolDone',
-  'outputs': ['done'],
-  async execute(state) {
+export class OnToolDoneNode implements NodeInterface<ToolUseState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'onToolDone';
+  readonly outputs = ['done'] as const;
+  async execute(state: ToolUseState) {
     process.stdout.write(`  [onToolDone] tool="${state.dispatchedTool}" result=${JSON.stringify(state.toolResult)}\n`);
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
-export const onToolError: NodeInterface<ToolUseState, 'done'> = {
-  'name': 'onToolError',
-  'outputs': ['done'],
-  async execute(state) {
+export class OnToolErrorNode implements NodeInterface<ToolUseState, 'done'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'onToolError';
+  readonly outputs = ['done'] as const;
+  async execute(state: ToolUseState) {
     process.stdout.write(`  [onToolError] ${state.finalAnswer}\n`);
     return NodeOutputBuilder.of('done');
-  },
-};
+  }
+}
 
 // ---------------------------------------------------------------------------
 // DAG

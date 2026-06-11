@@ -3,7 +3,7 @@
  * HTTPS). Geolocates a public IP to a GeoCandidate.
  *
  *   GET https://freeipapi.com/api/json/IP
- *   → { countryCode, countryName, regionName, cityName, latitude, longitude }
+ *   → { countryCode, countryName, continent, regionName, cityName, latitude, longitude }
  *
  * freeipapi.com is the universal no-key IP API: it answers from Node AND sends
  * `Access-Control-Allow-Origin: *`, so the same code path serves the browser demo.
@@ -19,24 +19,25 @@ import type { IpGeolocator } from '../contracts/IpGeolocator.ts';
 const FREEIPAPI_ENDPOINT = 'https://freeipapi.com/api/json';
 
 interface FreeIpApiResponse {
-  readonly 'countryCode'?: unknown;
-  readonly 'countryName'?: unknown;
-  readonly 'continent'?: unknown;
-  readonly 'regionName'?: unknown;
-  readonly 'cityName'?: unknown;
-  readonly 'latitude'?: unknown;
-  readonly 'longitude'?: unknown;
-}
-
-function str(value: unknown): string {
-  return typeof value === 'string' ? value : '';
-}
-function num(value: unknown): number {
-  return typeof value === 'number' ? value : 0;
+  readonly 'countryCode': string;
+  readonly 'countryName': string;
+  readonly 'continent': string;
+  readonly 'regionName': string;
+  readonly 'cityName': string;
+  readonly 'latitude': number;
+  readonly 'longitude': number;
 }
 
 export class LiveIpGeolocator implements IpGeolocator {
   readonly #cache = new Map<string, GeoCandidate>();
+
+  private static str(value: string | undefined): string {
+    return typeof value === 'string' ? value : '';
+  }
+
+  private static num(value: number | undefined): number {
+    return typeof value === 'number' ? value : 0;
+  }
 
   async lookup(ipAddress: string, signal: AbortSignal): Promise<GeoCandidate> {
     const cached = this.#cache.get(ipAddress);
@@ -51,9 +52,9 @@ export class LiveIpGeolocator implements IpGeolocator {
       if (!res.ok) {
         candidate = LiveIpGeolocator.unresolved();
       } else {
-        const body: FreeIpApiResponse = await res.json() as FreeIpApiResponse;
-        candidate = str(body.countryCode).length > 0
-          ? LiveIpGeolocator.fromResponse(body)
+        const body = await res.json() as Partial<FreeIpApiResponse>;
+        candidate = (body.countryCode !== undefined && body.countryCode.length > 0)
+          ? LiveIpGeolocator.fromResponse(body as FreeIpApiResponse)
           : LiveIpGeolocator.unresolved();
       }
     } catch {
@@ -68,13 +69,13 @@ export class LiveIpGeolocator implements IpGeolocator {
     return {
       'modality':    'ip',
       'resolved':    true,
-      'country':     str(body.countryCode),
-      'countryName': str(body.countryName),
-      'continent':   str(body.continent),
-      'region':      str(body.regionName),
-      'locality':    str(body.cityName),
-      'lat':         num(body.latitude),
-      'lng':         num(body.longitude),
+      'country':     LiveIpGeolocator.str(body.countryCode),
+      'countryName': LiveIpGeolocator.str(body.countryName),
+      'continent':   LiveIpGeolocator.str(body.continent),
+      'region':      LiveIpGeolocator.str(body.regionName),
+      'locality':    LiveIpGeolocator.str(body.cityName),
+      'lat':         LiveIpGeolocator.num(body.latitude),
+      'lng':         LiveIpGeolocator.num(body.longitude),
       'water':       false,
     };
   }

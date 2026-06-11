@@ -4,49 +4,35 @@
  * into a Dagonizer instance.
  *
  * Pure module: no side effects, no dispatcher execution.
+ * Imported by examples/state-accessor.ts (the executable entry point).
  */
 
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+import { NodeStateBase } from '@noocodex/dagonizer';
 import type { StateAccessor } from '@noocodex/dagonizer/contracts';
 import { DottedPathAccessor } from '@noocodex/dagonizer/runtime';
 
 // ---------------------------------------------------------------------------
-// Shared state shape used by all snippets
+// Shared state shape used by all snippets in the entry
 // ---------------------------------------------------------------------------
 
-class ArchiveState extends NodeStateBase {
+export class ArchiveState extends NodeStateBase {
   catalogue: Record<string, Record<string, string>> = {};
+  archivist: Record<string, Record<string, string>> = {};
 }
-
-// #region dotted-get
-const accessor = new DottedPathAccessor();
-const state = new ArchiveState();
-state.catalogue = { shelves: { fiction: 'Shelf A' } };
-
-// Read a nested value by dotted path; returns `null` on a miss.
-export const shelf = accessor.get(state, 'catalogue.shelves.fiction');
-// shelf === 'Shelf A'
-// #endregion dotted-get
-
-// #region dotted-set
-// Write a value at a dotted path, creating intermediate objects as needed.
-accessor.set(state, 'catalogue.shelves.non-fiction', 'Shelf B');
-// state.catalogue.shelves['non-fiction'] === 'Shelf B'
-// #endregion dotted-set
 
 // #region custom-accessor
 /**
- * PrefixAccessor: a custom StateAccessor that silently adds an 'archivist:'
- * prefix to every key before delegating to DottedPathAccessor logic.
+ * PrefixAccessor: a custom StateAccessor that silently adds a fixed namespace
+ * prefix to every key before delegating to DottedPathAccessor.
  * Demonstrates the adapter contract: implement get + set, no callbacks.
  */
-class PrefixAccessor implements StateAccessor {
+export class PrefixAccessor implements StateAccessor {
   readonly #prefix: string;
   readonly #inner: DottedPathAccessor;
 
   constructor(prefix: string) {
     this.#prefix = prefix;
-    this.#inner = new DottedPathAccessor();
+    this.#inner  = new DottedPathAccessor();
   }
 
   get<T = unknown>(target: object, path: string): T | null {
@@ -59,8 +45,13 @@ class PrefixAccessor implements StateAccessor {
 }
 // #endregion custom-accessor
 
+// #region dotted-get
+// Read a nested value by dotted path; returns `null` on a miss.
+export const accessor = new DottedPathAccessor();
+// #endregion dotted-get
+
 // #region wire-accessor
 // Pass any StateAccessor to the Dagonizer constructor; scatter source reads
 // and gather writes will use it for every execution.
-export const dispatcher = new Dagonizer({ accessor: new PrefixAccessor('archivist') });
+export const prefixedAccessor = new PrefixAccessor('archivist');
 // #endregion wire-accessor

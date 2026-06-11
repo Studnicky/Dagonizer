@@ -1,8 +1,10 @@
-import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { test } from 'node:test';
+
 import { WikipediaSummaryTool } from '../src/index.js';
 void test('WikipediaSummaryTool definition is well-formed', () => {
-  assert.equal(typeof WikipediaSummaryTool.definition.name, 'string');
-  assert.ok(WikipediaSummaryTool.definition.name.length > 0);
-  assert.equal(typeof WikipediaSummaryTool.execute, 'function');
+  const tool = new WikipediaSummaryTool();
+  assert.equal(typeof tool.definition.name, 'string');
+  assert.ok(tool.definition.name.length > 0);
+  assert.equal(typeof tool.execute, 'function');
 });

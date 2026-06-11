@@ -1,5 +1,6 @@
-import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { test } from 'node:test';
+
 import { WebLlmAdapter } from '../src/index.js';
 
 interface MutableGlobal {
@@ -20,8 +21,9 @@ void test('WebLlmAdapter identity', () => {
   assert.equal(a.capabilities.toolUse, 'partial');
 });
 
-void test('detectWebGpu returns false in node', () => {
-  assert.equal(WebLlmAdapter.detectWebGpu(), false);
+void test('WebLlmAdapter.probe returns false in node (no navigator)', async () => {
+  const a = new WebLlmAdapter();
+  assert.equal(await a.probe(), false);
 });
 
 void test('WebLlmAdapter.probe returns false when navigator is absent', async () => {
@@ -42,7 +44,7 @@ void test('WebLlmAdapter.probe returns false when navigator.gpu is missing', asy
 
 void test('WebLlmAdapter.probe returns true when requestAdapter resolves to a non-null adapter', async () => {
   installNavigator({
-    gpu: { requestAdapter: async () => Promise.resolve({}) },
+    "gpu": { "requestAdapter": async () => Promise.resolve({}) },
   });
   const a = new WebLlmAdapter();
   try {
@@ -54,7 +56,7 @@ void test('WebLlmAdapter.probe returns true when requestAdapter resolves to a no
 
 void test('WebLlmAdapter.probe returns false when requestAdapter resolves to null (no hardware)', async () => {
   installNavigator({
-    gpu: { requestAdapter: async () => Promise.resolve(null) },
+    "gpu": { "requestAdapter": async () => Promise.resolve(null) },
   });
   const a = new WebLlmAdapter();
   try {
@@ -66,7 +68,7 @@ void test('WebLlmAdapter.probe returns false when requestAdapter resolves to nul
 
 void test('WebLlmAdapter.probe does not throw when requestAdapter rejects', async () => {
   installNavigator({
-    gpu: { requestAdapter: async () => Promise.reject(new Error('driver fail')) },
+    "gpu": { "requestAdapter": async () => Promise.reject(new Error('driver fail')) },
   });
   const a = new WebLlmAdapter();
   try {

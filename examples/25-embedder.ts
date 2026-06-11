@@ -27,7 +27,7 @@ import {
   EmbedderCascade,
 } from '@noocodex/dagonizer/adapter';
 
-import { EmbedderState, embed, report, dag, cosineSimilarity } from './dags/25-embedder.js';
+import { EmbedderState, EmbedNode, ReportNode, dag, VectorSimilarity } from './dags/25-embedder.js';
 
 // ---------------------------------------------------------------------------
 // 1. Deterministic stub embedder.
@@ -96,8 +96,8 @@ process.stdout.write(`\nEmbedder cascade selected: "${embedder.displayName}" (${
 // ---------------------------------------------------------------------------
 
 const dispatcher = new Dagonizer<EmbedderState>();
-dispatcher.registerNode(embed);
-dispatcher.registerNode(report);
+dispatcher.registerNode(new EmbedNode());
+dispatcher.registerNode(new ReportNode());
 dispatcher.registerDAG(dag);
 
 // Pair A: identical strings → cosine = 1.0
@@ -128,6 +128,6 @@ const vec = await embedder.embed('hello world');
 const norm = Math.sqrt(vec.reduce((acc, v) => acc + v * v, 0));
 process.stdout.write(`\nVector dimensions: ${String(vec.length)}  (expected ${String(DIMS)})\n`);
 process.stdout.write(`Vector L2 norm:    ${norm.toFixed(6)}  (expected 1.000000 — unit normalised)\n`);
-process.stdout.write(`Self-similarity:   ${cosineSimilarity(vec, vec).toFixed(4)}  (expected 1.0000)\n`);
+process.stdout.write(`Self-similarity:   ${VectorSimilarity.cosine(vec, vec).toFixed(4)}  (expected 1.0000)\n`);
 process.stdout.write(`\nLesson: EmbedderCascade selects the first embedder whose probe() is true.\n`);
 process.stdout.write(`        BaseEmbedder subclasses implement one method: performEmbed(text, signal).\n`);

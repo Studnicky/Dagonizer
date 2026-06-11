@@ -133,10 +133,25 @@ export class OutcomeReducers {
   );
 
   /**
-   * Register a reducer. Replaces any prior registration with the same
-   * `name`: last-write-wins.
+   * Register a reducer. Throws `DAGError` when a reducer with the same
+   * `name` is already registered — protects against silent overwrite of
+   * built-ins or consumer-registered reducers. Use `replace()` for
+   * intentional overrides (e.g. test-time substitution).
    */
   static register(reducer: OutcomeReducer): void {
+    if (OutcomeReducers.registry.has(reducer.name)) {
+      throw new DAGError(`OutcomeReducer '${reducer.name}' is already registered; use OutcomeReducers.replace() to intentionally override`);
+    }
+    OutcomeReducers.registry.set(reducer.name, reducer);
+  }
+
+  /**
+   * Explicitly replace an existing registration. Does not throw when the
+   * name is already present. Use this for intentional test-time or
+   * plugin-override substitution where overwriting an existing entry is
+   * the deliberate goal.
+   */
+  static replace(reducer: OutcomeReducer): void {
     OutcomeReducers.registry.set(reducer.name, reducer);
   }
 

@@ -64,6 +64,7 @@ export type { EntityValidator } from './validation/index.js';
 // =============================================================================
 
 export {
+  DAGDocument,
   Placement,
   NodeErrorBuilder,
   NodeOutputBuilder,
@@ -132,11 +133,13 @@ export {
   RECOMMENDED_WORKER_COUNT_MAIN_THREAD_RESERVATION,
   RECOMMENDED_WORKER_COUNT_FALLBACK,
   RECOMMENDED_WORKER_COUNT_MEMORY_PER_WORKER_BYTES,
+  SystemInfo,
 } from './entities/index.js';
 export type {
   BridgeMessage,
   RecommendedWorkerCountConfig,
   DAGHandoff,
+  SystemInfoProbes,
 } from './entities/index.js';
 
 // =============================================================================
@@ -152,7 +155,6 @@ export {
   Timeout,
 } from './runtime/index.js';
 export type {
-  BackoffStrategyValue,
   ClockProvider,
   ErrorConstructorType,
   RetryPolicyOptionsInterface,
@@ -173,7 +175,7 @@ export type { InMemoryChannelOptions } from './channels/index.js';
 export { DagTask } from './container/DagTask.js';
 export { DagHost } from './container/DagHost.js';
 export type { DagHostOptions } from './container/DagHost.js';
-export { DagContainerBase } from './container/DagContainerBase.js';
+export { DagContainerBase, DAG_CONTAINER_DEFAULTS } from './container/DagContainerBase.js';
 export type { DagContainerOptions } from './container/DagContainerBase.js';
 
 // =============================================================================
@@ -219,6 +221,7 @@ export type { BaseStoreOptions, StoreErrorClassification } from './store/index.j
 
 export type { DagonizerInterface, DispatcherBundle } from './Dagonizer.js';
 export type { NodeStateInterface } from './NodeStateBase.js';
+export type { DAGErrorInterface } from './errors/DAGError.js';
 
 // =============================================================================
 // CONTRACTS (adapter-pattern interfaces)
@@ -226,12 +229,13 @@ export type { NodeStateInterface } from './NodeStateBase.js';
 
 export type { HandoffChannelInterface } from './contracts/HandoffChannelInterface.js';
 export type { DagContainerInterface } from './contracts/DagContainerInterface.js';
-export type { DagOutcomeInterface } from './container/DagOutcome.js';
-export type { DagTaskInterface } from './container/DagTask.js';
+export type { DagOutcomeInterface } from './contracts/DagOutcomeInterface.js';
+export type { DagTaskInterface } from './contracts/DagTaskInterface.js';
 export type { ExecuteOptionsInterface } from './contracts/ExecuteOptionsInterface.js';
 export type { Chainable } from './contracts/Chainable.js';
 export type { NodeInterface } from './contracts/NodeInterface.js';
 export type { OperationContractFragment } from './contracts/OperationContractFragment.js';
+export { EMPTY_CONTRACT_FRAGMENT } from './contracts/OperationContractFragment.js';
 export type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from './contracts/RemoteStore.js';
 export type { Snapshottable, StoreSnapshot, StoreSnapshotEntry } from './contracts/Snapshottable.js';
 export type { Store } from './contracts/Store.js';

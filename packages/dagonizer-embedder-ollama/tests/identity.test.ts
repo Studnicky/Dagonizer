@@ -3,8 +3,8 @@
  * dimensionality. No network calls; instantiation + fetch-stub only.
  */
 
-import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { test } from 'node:test';
 
 import { OllamaEmbedder } from '../src/index.js';
 
@@ -16,13 +16,13 @@ void test('OllamaEmbedder identity + default dimensions (nomic-embed-text)', () 
 });
 
 void test('OllamaEmbedder accepts custom model with known dimensions', () => {
-  const embedder = new OllamaEmbedder('mxbai-embed-large');
+  const embedder = new OllamaEmbedder({ 'model': 'mxbai-embed-large' });
   assert.equal(embedder.dimensions, 1024);
   assert.ok(embedder.displayName.includes('mxbai-embed-large'));
 });
 
 void test('OllamaEmbedder accepts explicit dimensions override for unknown model', () => {
-  const embedder = new OllamaEmbedder('exotic-model', { 'dimensions': 512 });
+  const embedder = new OllamaEmbedder({ 'model': 'exotic-model', 'dimensions': 512 });
   assert.equal(embedder.dimensions, 512);
 });
 
@@ -46,7 +46,7 @@ void test('OllamaEmbedder.probe returns true when /api/tags answers 200', async 
     assert.ok(url.endsWith('/api/tags'));
     return new Response('{"models":[]}', { 'status': 200 });
   }) as typeof fetch);
-  const embedder = new OllamaEmbedder('nomic-embed-text', { 'baseUrl': 'http://127.0.0.1:11434' });
+  const embedder = new OllamaEmbedder({ 'model': 'nomic-embed-text', 'baseUrl': 'http://127.0.0.1:11434' });
   try {
     assert.equal(await embedder.probe(), true);
   } finally {
@@ -70,6 +70,38 @@ void test('OllamaEmbedder.embed returns the embedding vector from /api/embedding
   try {
     const vec = await embedder.embed('hello');
     assert.deepEqual(vec, [0.1, 0.2, 0.3]);
+  } finally {
+    restoreFetch();
+  }
+});
+
+void test('OllamaEmbedder without apiKey sends no Authorization header', async () => {
+  let capturedHeaders: Record<string, string> | undefined;
+  installFetch((async (_input: string | URL | Request, init?: RequestInit) => {
+    capturedHeaders = init?.headers as Record<string, string> | undefined;
+    return new Response(JSON.stringify({ 'embedding': [0.1, 0.2, 0.3] }), { 'status': 200 });
+  }) as typeof fetch);
+  const embedder = new OllamaEmbedder();
+  try {
+    await embedder.embed('hello');
+    assert.ok(capturedHeaders !== undefined, 'fetch was called');
+    assert.equal(Object.prototype.hasOwnProperty.call(capturedHeaders, 'Authorization'), false, 'no Authorization header for local usage');
+  } finally {
+    restoreFetch();
+  }
+});
+
+void test('OllamaEmbedder with apiKey sends Authorization: Bearer header', async () => {
+  let capturedHeaders: Record<string, string> | undefined;
+  installFetch((async (_input: string | URL | Request, init?: RequestInit) => {
+    capturedHeaders = init?.headers as Record<string, string> | undefined;
+    return new Response(JSON.stringify({ 'embedding': [0.4, 0.5, 0.6] }), { 'status': 200 });
+  }) as typeof fetch);
+  const embedder = new OllamaEmbedder({ 'apiKey': 'test-cloud-key', 'baseUrl': 'https://api.ollama.ai' });
+  try {
+    await embedder.embed('hello');
+    assert.ok(capturedHeaders !== undefined, 'fetch was called');
+    assert.equal(capturedHeaders['Authorization'], 'Bearer test-cloud-key', 'Authorization header sent for cloud usage');
   } finally {
     restoreFetch();
   }

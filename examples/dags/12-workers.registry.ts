@@ -20,13 +20,13 @@ import type { RegistryBundleInterface, RegistryModuleInterface } from '@noocodex
 import { CheckpointRestoreAdapterFn } from '@noocodex/dagonizer/checkpoint';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 
-import { dag, squareWorker, workerDag, WorkState } from './12-workers.js';
+import { dag, SquareWorkerNode, workerDag, WorkState } from './12-workers.js';
 
 const registry: RegistryModuleInterface = {
   async createBundle(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
     return {
       "bundle": {
-        "nodes": [squareWorker],
+        "nodes": [new SquareWorkerNode()],
         "dags":  [workerDag, dag],
       },
       "services":        undefined,

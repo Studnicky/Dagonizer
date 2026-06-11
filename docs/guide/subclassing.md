@@ -104,6 +104,7 @@ When `restoreData()` is overridden, `restore()` calls `applySnapshot()` which ca
 ```ts
 import { NodeStateBase, Dagonizer, Checkpoint, DAG_CONTEXT } from '@noocodex/dagonizer';
 import { CheckpointRestoreAdapterFn } from '@noocodex/dagonizer/checkpoint';
+import { NodeOutputBuilder, EMPTY_CONTRACT_FRAGMENT } from '@noocodex/dagonizer';
 import type { JsonObject, NodeInterface, DAG } from '@noocodex/dagonizer';
 
 class CountState extends NodeStateBase {
@@ -122,15 +123,18 @@ class CountState extends NodeStateBase {
   }
 }
 
-const tick: NodeInterface<CountState, 'success'> = {
-  name: 'tick',
-  outputs: ['success'],
-  async execute(state) {
+class TickNode implements NodeInterface<CountState, 'success'> {
+  readonly name = 'tick';
+  readonly outputs = ['success'] as const;
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  async execute(state: CountState) {
     state.count++;
     state.log.push(`tick:${state.count}`);
-    return { output: 'success' };
-  },
-};
+    return NodeOutputBuilder.of('success');
+  }
+}
+
+const tick = new TickNode();
 
 const dag: DAG = {
   '@context': DAG_CONTEXT,
@@ -182,22 +186,25 @@ const final = await dispatcher.resume(dagName, s2, cursor);
 A typical node that participates in a retry loop:
 
 ```ts
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+import { EMPTY_CONTRACT_FRAGMENT } from '@noocodex/dagonizer';
 
-const fetchNode: NodeInterface<MyState, 'success' | 'retry' | 'salvage'> = {
-  name: 'fetch',
-  outputs: ['success', 'retry', 'salvage'],
-  async execute(state, context) {
+class FetchNode implements NodeInterface<MyState, 'success' | 'retry' | 'salvage'> {
+  readonly name = 'fetch';
+  readonly outputs = ['success', 'retry', 'salvage'] as const;
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  async execute(state: MyState, context: NodeContextInterface) {
     try {
       state.data = await fetch('/api', { signal: context.signal }).then((r) => r.json());
       state.clearAttempts(context.nodeName);
-      return { output: 'success' };
+      return NodeOutputBuilder.of('success');
     } catch {
       const canRetry = state.withinRetryBudget(context.nodeName, 3);
-      return { output: canRetry ? 'retry' : 'salvage' };
+      return NodeOutputBuilder.of(canRetry ? 'retry' : 'salvage');
     }
-  },
-};
+  }
+}
 ```
 
 The DAG topology provides the loop: the `retry` output edges back to `fetch`; `salvage` routes forward to a recovery node. The counter is included in `snapshot()` (under the `retries` map in `NodeStateData`), so a retry budget survives checkpoint and resume.

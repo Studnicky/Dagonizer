@@ -8,10 +8,8 @@
 import { OpenAiCompatibleAdapter } from '@noocodex/dagonizer/adapter';
 import type { OpenAiCompatibleAdapterOptions } from '@noocodex/dagonizer/adapter';
 
-export interface GroqApiAdapterOptions extends OpenAiCompatibleAdapterOptions {}
-
 export class GroqApiAdapter extends OpenAiCompatibleAdapter {
-  constructor(apiKey: string, options: GroqApiAdapterOptions = {}) {
+  constructor(apiKey: string, options: OpenAiCompatibleAdapterOptions = {}) {
     super(
       apiKey,
       {

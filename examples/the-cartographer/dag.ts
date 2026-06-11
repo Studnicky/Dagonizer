@@ -32,25 +32,25 @@
  */
 
 // #region cartographer-dag-imports
-import { parseEvent }        from './nodes/parseEvent.ts';
-import { routeGeo }          from './nodes/routeGeo.ts';
-import { applyGeo }          from './nodes/applyGeo.ts';
-import { validateCoords }    from './nodes/validateCoords.ts';
-import { routeKind }         from './nodes/routeKind.ts';
-import { coldChainCheck }    from './nodes/coldChainCheck.ts';
-import { customsDwell }      from './nodes/customsDwell.ts';
-import { enrichLeg }         from './nodes/enrichLeg.ts';
-import { routeRedaction }    from './nodes/routeRedaction.ts';
-import { aggregateEvent }    from './nodes/aggregateEvent.ts';
-import { mergeEvents }       from './nodes/mergeEvents.ts';
-import { summarizeInsights } from './nodes/summarizeInsights.ts';
-import { seedEvents }        from './nodes/seedEvents.ts';
+import { ParseEventNode }        from './nodes/parseEvent.ts';
+import { RouteGeoNode }          from './nodes/routeGeo.ts';
+import { ApplyGeoNode }          from './nodes/applyGeo.ts';
+import { ValidateCoordsNode }    from './nodes/validateCoords.ts';
+import { RouteKindNode }         from './nodes/routeKind.ts';
+import { ColdChainCheckNode }    from './nodes/coldChainCheck.ts';
+import { CustomsDwellNode }      from './nodes/customsDwell.ts';
+import { EnrichLegNode }         from './nodes/enrichLeg.ts';
+import { RouteRedactionNode }    from './nodes/routeRedaction.ts';
+import { AggregateEventNode }    from './nodes/aggregateEvent.ts';
+import { MergeEventsNode }       from './nodes/mergeEvents.ts';
+import { SummarizeInsightsNode } from './nodes/summarizeInsights.ts';
+import { SeedEventsNode }        from './nodes/seedEvents.ts';
 
 import type { CartographerState } from './CartographerState.ts';
 import type { CartographerServices } from './CartographerServices.ts';
 
 import type { DAG, DispatcherBundle } from '@noocodex/dagonizer';
-import { DAGBuilder } from '@noocodex/dagonizer/builder';
+import { DAGBuilder } from '@noocodex/dagonizer';
 // #endregion cartographer-dag-imports
 
 // ── DAG 1: cartographer (top-level) ─────────────────────────────────────────
@@ -60,7 +60,7 @@ export const cartographerDAG: DAG = new DAGBuilder('cartographer', '1.0')
 
   // Pre-phase: seeds state.sources = Sources.build(state.eventCount) — the
   // multi-format source feeds — before the ingestion scatter reads them.
-  .phase('seed', 'pre', seedEvents)
+  .phase('seed', 'pre', new SeedEventsNode())
 
   // Ingestion FAN-IN: scatter over the source feeds; each runs its ingest-source
   // sub-DAG in an isolated clone; the append gather appends each clone's
@@ -87,7 +87,7 @@ export const cartographerDAG: DAG = new DAGBuilder('cartographer', '1.0')
   )
 
   // merge-events: flatten the per-source buckets into one canonicalEvents model.
-  .node('merge-events', mergeEvents, {
+  .node('merge-events', new MergeEventsNode(), {
     'merged': 'process-events',
   })
 
@@ -115,7 +115,7 @@ export const cartographerDAG: DAG = new DAGBuilder('cartographer', '1.0')
   )
 
   // Fold gathered records into the fixed-size regional + per-journey insights.
-  .node('summarize', summarizeInsights, {
+  .node('summarize', new SummarizeInsightsNode(), {
     'success': 'done',
   })
 
@@ -161,24 +161,24 @@ export const cartographerDAG: DAG = new DAGBuilder('cartographer', '1.0')
 export const eventPipelineDAG: DAG = new DAGBuilder('event-pipeline', '1.0')
 
   // 1. parse: adapt the canonical event (from metadata) into state.raw.
-  .node('parse', parseEvent, {
+  .node('parse', new ParseEventNode(), {
     'parsed':  'route-geo',
     'invalid': 'rejected',
   })
 
   // 2. route-geo: SKIP the geo lookup when the source pre-resolved location.
-  .node('route-geo', routeGeo, {
+  .node('route-geo', new RouteGeoNode(), {
     'has-geo':   'apply-geo',
     'needs-geo': 'validate-coords',
   })
 
   // 2a. apply-geo (skip path): materialise GeoContext from carried geo.
-  .node('apply-geo', applyGeo, {
+  .node('apply-geo', new ApplyGeoNode(), {
     'normalize': 'canonicalize',
   })
 
   // 2b. validate-coords (lookup path): WGS-84 bounds check on the scan coords.
-  .node('validate-coords', validateCoords, {
+  .node('validate-coords', new ValidateCoordsNode(), {
     'valid':    'geo-resolve',
     'rejected': 'rejected',
   })
@@ -223,7 +223,7 @@ export const eventPipelineDAG: DAG = new DAGBuilder('event-pipeline', '1.0')
   })
 
   // 4. route-kind: per-kind enrichment dispatch (skip irrelevant work).
-  .node('route-kind', routeKind, {
+  .node('route-kind', new RouteKindNode(), {
     'geo-only': 'enrich-leg',
     'sensor':   'cold-chain-check',
     'order':    'order-enrichment',
@@ -231,12 +231,12 @@ export const eventPipelineDAG: DAG = new DAGBuilder('event-pipeline', '1.0')
   })
 
   // 4a. cold-chain-check (sensor lane): temp/shock breach evaluation.
-  .node('cold-chain-check', coldChainCheck, {
+  .node('cold-chain-check', new ColdChainCheckNode(), {
     'checked': 'enrich-leg',
   })
 
   // 4b. customs-dwell (customs lane): clearance dwell hours.
-  .node('customs-dwell', customsDwell, {
+  .node('customs-dwell', new CustomsDwellNode(), {
     'dwelled': 'enrich-leg',
   })
 
@@ -257,13 +257,13 @@ export const eventPipelineDAG: DAG = new DAGBuilder('event-pipeline', '1.0')
   })
 
   // 5. enrich-leg: legFrom → scan distance (every lane converges here).
-  .node('enrich-leg', enrichLeg, {
+  .node('enrich-leg', new EnrichLegNode(), {
     'leg-measured': 'route-redaction',
   })
 
   // 6. route-redaction: SKIP the redaction sub-DAG when not required.
   //    skip-redaction routes directly to aggregate-event (no intermediate node).
-  .node('route-redaction', routeRedaction, {
+  .node('route-redaction', new RouteRedactionNode(), {
     'needs-redaction': 'gdpr',
     'skip-redaction':  'aggregate-event',
   })
@@ -280,7 +280,7 @@ export const eventPipelineDAG: DAG = new DAGBuilder('event-pipeline', '1.0')
   })
 
   // 7. aggregate-event: write compact EnrichedShipment to state.enriched.
-  .node('aggregate-event', aggregateEvent, {
+  .node('aggregate-event', new AggregateEventNode(), {
     'done': 'done',
   })
 
@@ -309,7 +309,7 @@ export const eventPipelineDAG: DAG = new DAGBuilder('event-pipeline', '1.0')
  */
 export const cartographerWorkersDAG: DAG = new DAGBuilder('cartographer', '1.0')
 
-  .phase('seed', 'pre', seedEvents)
+  .phase('seed', 'pre', new SeedEventsNode())
 
   .scatter(
     'ingest-sources',
@@ -332,7 +332,7 @@ export const cartographerWorkersDAG: DAG = new DAGBuilder('cartographer', '1.0')
     },
   )
 
-  .node('merge-events', mergeEvents, {
+  .node('merge-events', new MergeEventsNode(), {
     'merged': 'process-events',
   })
 
@@ -360,7 +360,7 @@ export const cartographerWorkersDAG: DAG = new DAGBuilder('cartographer', '1.0')
     },
   )
 
-  .node('summarize', summarizeInsights, {
+  .node('summarize', new SummarizeInsightsNode(), {
     'success': 'done',
   })
 
@@ -379,19 +379,19 @@ export const cartographerWorkersDAG: DAG = new DAGBuilder('cartographer', '1.0')
  */
 export const cartographerBundle: DispatcherBundle<CartographerState, CartographerServices> = {
   'nodes': [
-    seedEvents,
-    mergeEvents,
-    parseEvent,
-    routeGeo,
-    applyGeo,
-    validateCoords,
-    routeKind,
-    coldChainCheck,
-    customsDwell,
-    enrichLeg,
-    routeRedaction,
-    aggregateEvent,
-    summarizeInsights,
+    new SeedEventsNode(),
+    new MergeEventsNode(),
+    new ParseEventNode(),
+    new RouteGeoNode(),
+    new ApplyGeoNode(),
+    new ValidateCoordsNode(),
+    new RouteKindNode(),
+    new ColdChainCheckNode(),
+    new CustomsDwellNode(),
+    new EnrichLegNode(),
+    new RouteRedactionNode(),
+    new AggregateEventNode(),
+    new SummarizeInsightsNode(),
   ],
   'dags': [eventPipelineDAG, cartographerDAG],
 };
@@ -403,19 +403,19 @@ export const cartographerBundle: DispatcherBundle<CartographerState, Cartographe
  */
 export const cartographerWorkersBundle: DispatcherBundle<CartographerState, CartographerServices> = {
   'nodes': [
-    seedEvents,
-    mergeEvents,
-    parseEvent,
-    routeGeo,
-    applyGeo,
-    validateCoords,
-    routeKind,
-    coldChainCheck,
-    customsDwell,
-    enrichLeg,
-    routeRedaction,
-    aggregateEvent,
-    summarizeInsights,
+    new SeedEventsNode(),
+    new MergeEventsNode(),
+    new ParseEventNode(),
+    new RouteGeoNode(),
+    new ApplyGeoNode(),
+    new ValidateCoordsNode(),
+    new RouteKindNode(),
+    new ColdChainCheckNode(),
+    new CustomsDwellNode(),
+    new EnrichLegNode(),
+    new RouteRedactionNode(),
+    new AggregateEventNode(),
+    new SummarizeInsightsNode(),
   ],
   'dags': [eventPipelineDAG, cartographerWorkersDAG],
 };

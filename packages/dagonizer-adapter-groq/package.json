@@ -22,7 +22,7 @@
     "clean": "rm -rf dist",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --test tests/**/*.test.ts",
-    "lint": "echo 'lint via workspace root'",
+    "lint": "eslint . --max-warnings 0",
     "prepack": "npm run clean && npm run build"
   },
   "publishConfig": {

@@ -34,14 +34,19 @@
  * output: 'recalled': always routes forward, even on empty recall.
  */
 
+import { NodeOutputBuilder,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+
 import type { RecalledContext } from '../ArchivistState.ts';
+import type { ArchivistState } from '../ArchivistState.ts';
+import { BookBuilder } from '../entities/Book.ts';
 import type { Candidate } from '../entities/Book.ts';
-import { BOOK_NS, GRAPH_MEMORY, MemoryStore, STATE_GRAPH_PREFIX, stateGraphIri } from '../memory/MemoryStore.ts';
-
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
-
-import type { ArchivistNode } from './ArchivistNode.ts';
-import { jaccard, tokenise } from './textUtils.ts';
+import { BOOK_NS, GRAPH_MEMORY, MemoryStore, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';
+import type { ArchivistServices } from '../services.ts';
+import { TextSimilarity } from './textUtils.ts';
 
 const dagVisitorQuery = MemoryStore.dagIri('visitorQuery');
 const dagIntent       = MemoryStore.dagIri('intent');
@@ -57,14 +62,16 @@ const MAX_RECENT_CANDIDATES = 6;
 const MAX_PRIOR_CANDIDATES_CONTEXT = 5;
 const JACCARD_THRESHOLD_CONTEXT = 0.35;
 
-export const recallContext: ArchivistNode<'recalled'> = {
-  'name':    'recall-context',
-  'kind':    'non-deterministic',
-  'outputs': ['recalled'],
-  async execute(state, context) {
+export class RecallContextNode implements NodeInterface<ArchivistState, 'recalled', ArchivistServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'recall-context';
+  readonly outputs = ['recalled'] as const;
+
+  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const memory = context.services.memory;
-    const currentGraphIri = stateGraphIri(state.runId).value;
-    const currentTokens   = tokenise(state.query);
+    const currentGraphIri = MemoryStore.stateGraphIri(state.runId).value;
+    const currentTokens   = TextSimilarity.tokenise(state.query);
 
     // ── Collect every state graph IRI except the current run ──────────────
     // We iterate over all quads, collect unique graph IRIs that start with
@@ -113,8 +120,8 @@ export const recallContext: ArchivistNode<'recalled'> = {
         const intentText = intentRows[0]?.['i']?.value;
         if (intentText === undefined) continue;
 
-        const priorTokens = tokenise(queryText);
-        const score = jaccard(currentTokens, priorTokens);
+        const priorTokens = TextSimilarity.tokenise(queryText);
+        const score = TextSimilarity.jaccard(currentTokens, priorTokens);
         priorRaw.push({ 'query': queryText, 'intent': intentText, 'jaccard': score, 'graphIri': graphIri });
       }
     }
@@ -176,12 +183,12 @@ export const recallContext: ArchivistNode<'recalled'> = {
         const authors = authorRows.map((r) => r['v']?.value ?? '').filter(Boolean);
 
         recentCandidates.push({
-          'book': {
+          'book': BookBuilder.from({
             'isbn':    isbn,
             'title':   title,
             'authors': authors,
             'price':   { 'amount': 0, 'currency': 'USD' },
-          },
+          }),
           'score':  score,
           'source': source,
         });
@@ -213,7 +220,7 @@ export const recallContext: ArchivistNode<'recalled'> = {
           `${String(similarPriorQueries.length)} similar prior ${similarPriorQueries.length === 1 ? 'query' : 'queries'} detected; the visitor may be continuing an earlier search.`,
         );
       } else if (recentCandidates.length > 0) {
-        const titleList = recentCandidates.slice(0, 3).map((c) => `"${c.book.title}"`).join(', ');
+        const titleList = recentCandidates.slice(0, 3).map((c) => `"${c.book.identity.title}"`).join(', ');
         parts.push(`Recent shortlisted titles: ${titleList}.`);
       }
       summary = parts.join(' ');
@@ -286,12 +293,12 @@ export const recallContext: ArchivistNode<'recalled'> = {
         const authors = authorRows.map((r) => r['v']?.value ?? '').filter(Boolean);
 
         priorCandidatesFromContext.push({
-          'book': {
+          'book': BookBuilder.from({
             'isbn':    isbn,
             'title':   title,
             'authors': authors,
             'price':   { 'amount': 0, 'currency': 'USD' },
-          },
+          }),
           'score':  0.5,
           'source': source,
           'notes':  { 'fromPriorMemory': true },
@@ -312,5 +319,8 @@ export const recallContext: ArchivistNode<'recalled'> = {
     }
 
     return NodeOutputBuilder.of('recalled');
-  },
-};
+  }
+}
+
+/** Backward-compatible const export for existing bundle/DAG references. */
+export const recallContext = new RecallContextNode();

@@ -22,7 +22,7 @@
  */
 
 import { Dagonizer } from '@noocodex/dagonizer';
-import { dag, ChatState, classify, respond } from './dags/02-builder.topology.js';
+import { dag, ChatState, ClassifyNode, RespondNode } from './dags/02-builder.topology.js';
 
 // ---------------------------------------------------------------------------
 // Run
@@ -30,8 +30,8 @@ import { dag, ChatState, classify, respond } from './dags/02-builder.topology.js
 
 // #region run
 const dispatcher = new Dagonizer<ChatState>();
-dispatcher.registerNode(classify);
-dispatcher.registerNode(respond);
+dispatcher.registerNode(new ClassifyNode());
+dispatcher.registerNode(new RespondNode());
 dispatcher.registerDAG(dag);  // same API as with a literal; build() returns a valid DAG
 
 const state = new ChatState();

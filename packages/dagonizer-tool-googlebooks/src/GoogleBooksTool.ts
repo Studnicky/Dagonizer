@@ -14,12 +14,12 @@
  * could poison the model's output).
  */
 
-import type { Candidate } from '@noocodex/dagonizer-book-entities';
-
-import { CanonicalId, LanguageCode } from '@noocodex/dagonizer-book-entities';
-import { HttpTransport } from '@noocodex/dagonizer/tool';
-import type { Tool } from '@noocodex/dagonizer/tool';
 import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
+import type { AbortableOptionsInterface } from '@noocodex/dagonizer/contracts';
+import { HttpTransport, ToolError } from '@noocodex/dagonizer/tool';
+import type { Tool } from '@noocodex/dagonizer/tool';
+import type { Candidate } from '@noocodex/dagonizer-book-entities';
+import { BookBuilder, CanonicalId, LanguageCode } from '@noocodex/dagonizer-book-entities';
 
 interface VolumeInfo {
   readonly title?:           string;
@@ -54,6 +54,15 @@ interface GoogleBooksInput extends Record<string, unknown> {
   readonly langRestrict?: string;
 }
 
+function isGoogleBooksResponse(value: unknown): value is GoogleBooksResponse {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  if ('totalItems' in v && typeof v['totalItems'] !== 'number') return false;
+  if (!('items' in v)) return true; // items is optional
+  if (!Array.isArray(v['items'])) return false;
+  return true;
+}
+
 const ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
 
 const GOOGLE_BOOKS_MIN_RESULTS = 1;
@@ -61,46 +70,45 @@ const GOOGLE_BOOKS_MAX_RESULTS = 40;
 const GOOGLE_BOOKS_DEFAULT_RESULTS = 8;
 const GOOGLE_BOOKS_MAX_SUBJECTS = 8;
 
-const definition: ToolDefinition = {
-  'name': 'google_books_search',
-  'description': 'Search Google Books for real volumes (returns titles, authors, descriptions, average rating, ratings count). Complementary to openlibrary; many editions and reviews land here that openlibrary lacks.',
-  'inputSchema': {
-    'type': 'object',
-    'additionalProperties': true,
-    'properties': {
-      'query': {
-        'type':        'string',
-        'minLength':   2,
-        'maxLength':   80,
-        'description': 'Free-text query. May include Google Books query operators (intitle:, inauthor:, isbn:, subject:).',
-        'examples':    ['<title-words>', '<author-name>', 'isbn:<isbn-13>', 'inauthor:"<author-name>"', 'subject:<topic>'],
+export class GoogleBooksTool implements Tool<GoogleBooksInput, readonly Candidate[]> {
+  readonly definition: ToolDefinition = {
+    'name': 'google_books_search',
+    'description': 'Search Google Books for real volumes (returns titles, authors, descriptions, average rating, ratings count). Complementary to openlibrary; many editions and reviews land here that openlibrary lacks.',
+    'inputSchema': {
+      'type': 'object',
+      'additionalProperties': true,
+      'properties': {
+        'query': {
+          'type':        'string',
+          'minLength':   2,
+          'maxLength':   80,
+          'description': 'Free-text query. May include Google Books query operators (intitle:, inauthor:, isbn:, subject:).',
+          'examples':    ['<title-words>', '<author-name>', 'isbn:<isbn-13>', 'inauthor:"<author-name>"', 'subject:<topic>'],
+        },
+        'maxResults': {
+          'type':    'integer',
+          'minimum': GOOGLE_BOOKS_MIN_RESULTS,
+          'maximum': GOOGLE_BOOKS_MAX_RESULTS,
+          'default': GOOGLE_BOOKS_DEFAULT_RESULTS,
+          'description': 'Maximum volumes to return.',
+        },
+        'orderBy': {
+          'type':        'string',
+          'enum':        ['relevance', 'newest'],
+          'default':     'relevance',
+          'description': 'Result ordering.',
+        },
+        'langRestrict': {
+          'type':        'string',
+          'description': 'Optional ISO 639-1 language code (e.g. en, ja, fr) to restrict results.',
+        },
       },
-      'maxResults': {
-        'type':    'integer',
-        'minimum': GOOGLE_BOOKS_MIN_RESULTS,
-        'maximum': GOOGLE_BOOKS_MAX_RESULTS,
-        'default': GOOGLE_BOOKS_DEFAULT_RESULTS,
-        'description': 'Maximum volumes to return.',
-      },
-      'orderBy': {
-        'type':        'string',
-        'enum':        ['relevance', 'newest'],
-        'default':     'relevance',
-        'description': 'Result ordering.',
-      },
-      'langRestrict': {
-        'type':        'string',
-        'description': 'Optional ISO 639-1 language code (e.g. en, ja, fr) to restrict results.',
-      },
+      'required': ['query'],
     },
-    'required': ['query'],
-  },
-  'strict': true,
-};
+    'strict': true,
+  };
 
-export const GoogleBooksTool: Tool<GoogleBooksInput, readonly Candidate[]> = {
-  definition,
-  async execute(input, options) {
+  async execute(input: GoogleBooksInput, options?: AbortableOptionsInterface): Promise<readonly Candidate[]> {
     const signal = options?.signal;
     const max = Math.max(GOOGLE_BOOKS_MIN_RESULTS, Math.min(GOOGLE_BOOKS_MAX_RESULTS, input.maxResults ?? GOOGLE_BOOKS_DEFAULT_RESULTS));
     const params = new URLSearchParams({ 'q': input.query, 'maxResults': String(max) });
@@ -109,11 +117,17 @@ export const GoogleBooksTool: Tool<GoogleBooksInput, readonly Candidate[]> = {
       params.set('langRestrict', input.langRestrict);
     }
 
-    const payload = await HttpTransport.getJson<GoogleBooksResponse>(
+    const raw = await HttpTransport.getJson<unknown>(
       `${ENDPOINT}?${params.toString()}`,
       { ...(signal !== undefined && { signal }) },
     );
-    const volumes = payload.items ?? [];
+    if (!isGoogleBooksResponse(raw)) {
+      throw new ToolError('Unexpected Google Books API response shape', {
+        'reason': 'PARSE_ERROR',
+        'retryable': false,
+      });
+    }
+    const volumes = raw.items ?? [];
     const candidates: Candidate[] = [];
     for (const vol of volumes) {
       const info = vol.volumeInfo;
@@ -126,7 +140,7 @@ export const GoogleBooksTool: Tool<GoogleBooksInput, readonly Candidate[]> = {
         ...(isbns.length > 0 && { 'isbns': isbns }),
         ...(info.authors !== undefined && { 'authors': info.authors }),
       });
-      const year = pickYear(info.publishedDate);
+      const year = GoogleBooksTool.pickYear(info.publishedDate);
       const notes: Record<string, unknown> = {
         '_sources': ['google-books'],
         ...(info.averageRating !== undefined && { 'rating': info.averageRating }),
@@ -138,30 +152,29 @@ export const GoogleBooksTool: Tool<GoogleBooksInput, readonly Candidate[]> = {
         ? [LanguageCode.toIso6392(info.language)]
         : undefined;
       candidates.push({
-        'book': {
-          'isbn':    canonical,
-          'title':   info.title,
-          'authors': info.authors ?? [],
-          'price':   { 'amount': 0, 'currency': 'USD' },
+        'book': BookBuilder.from({
+          'isbn':             canonical,
+          'title':            info.title,
+          'authors':          info.authors ?? [],
           ...(info.description !== undefined && { 'summary': info.description }),
           ...(year !== undefined             && { 'firstPublishYear': year }),
           ...(info.categories !== undefined  && { 'subjects': info.categories.slice(0, GOOGLE_BOOKS_MAX_SUBJECTS) }),
           ...(info.publisher !== undefined   && { 'publishers': [info.publisher] }),
           ...(languages !== undefined        && { 'languages': languages }),
-        },
+        }),
         'score':  0,
         'source': 'google-books',
         'notes':  notes,
       });
     }
     return candidates;
-  },
-};
+  }
 
-function pickYear(date: string | undefined): number | undefined {
-  if (date === undefined) return undefined;
-  const m = /^(\d{4})/u.exec(date);
-  if (m === null) return undefined;
-  const n = Number(m[1]);
-  return Number.isFinite(n) ? n : undefined;
+  private static pickYear(date: string | undefined): number | undefined {
+    if (date === undefined) return undefined;
+    const m = /^(\d{4})/u.exec(date);
+    if (m === null) return undefined;
+    const n = Number(m[1]);
+    return Number.isFinite(n) ? n : undefined;
+  }
 }

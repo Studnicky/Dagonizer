@@ -26,13 +26,19 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { Consent } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
+} from '@noocodex/dagonizer';
 
 // #region route-redaction-node
-export const routeRedaction: NodeInterface<CartographerState, 'needs-redaction' | 'skip-redaction', CartographerServices> = {
-  'name': 'route-redaction',
-  'outputs': ['needs-redaction', 'skip-redaction'],
-  async execute(state, context) {
+export class RouteRedactionNode implements NodeInterface<CartographerState, 'needs-redaction' | 'skip-redaction', CartographerServices> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly 'name' = 'route-redaction';
+  readonly 'outputs' = ['needs-redaction', 'skip-redaction'] as const;
+
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'needs-redaction' | 'skip-redaction'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -68,6 +74,6 @@ export const routeRedaction: NodeInterface<CartographerState, 'needs-redaction' 
     }
     state.routing = { ...state.routing, 'redactionRun': true, 'redactionSkipped': false };
     return NodeOutputBuilder.of('needs-redaction');
-  },
-};
+  }
+}
 // #endregion route-redaction-node

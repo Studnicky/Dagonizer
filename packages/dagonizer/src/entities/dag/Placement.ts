@@ -6,10 +6,9 @@
  * manual `n['@type'] === '…'` checks so narrowing is consistent and refactor-
  * safe across the whole engine.
  *
- * Three-tier taxonomy: this is an **adapter contract helper** — a static
- * utility class that does not belong to any single entity but enables safe
- * narrowing across the entire placement union. It lives in `entities/dag/`
- * alongside the types it guards.
+ * Domain utility co-located with the entity types it guards. Lives in
+ * `entities/dag/` alongside `SingleNode`, `ScatterNode`, `EmbeddedDAGNode`,
+ * `TerminalNode`, and `PhaseNode` — the placement shapes it narrows.
  */
 
 import type { EmbeddedDAGNode } from './EmbeddedDAGNode.js';

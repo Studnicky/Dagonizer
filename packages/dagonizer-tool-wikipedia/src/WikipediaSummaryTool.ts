@@ -13,12 +13,12 @@
  * if other tools already returned a book with the same canonical id.
  */
 
-import type { Candidate } from '@noocodex/dagonizer-book-entities';
-
-import { CanonicalId, LanguageCode } from '@noocodex/dagonizer-book-entities';
-import { HttpTransport } from '@noocodex/dagonizer/tool';
-import type { Tool } from '@noocodex/dagonizer/tool';
 import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
+import type { AbortableOptionsInterface } from '@noocodex/dagonizer/contracts';
+import { HttpTransport, ToolError } from '@noocodex/dagonizer/tool';
+import type { Tool } from '@noocodex/dagonizer/tool';
+import type { Candidate } from '@noocodex/dagonizer-book-entities';
+import { BookBuilder, CanonicalId, LanguageCode } from '@noocodex/dagonizer-book-entities';
 
 interface WikiSummary {
   readonly title?:           string;
@@ -34,63 +34,67 @@ interface WikipediaInput extends Record<string, unknown> {
   readonly lang?: string;
 }
 
+function isWikiSummary(value: unknown): value is WikiSummary {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  if ('title' in v && typeof v['title'] !== 'string') return false;
+  if ('extract' in v && typeof v['extract'] !== 'string') return false;
+  return true;
+}
+
 const DEFAULT_LANG = 'en';
 
-function endpointFor(lang: string): string {
-  return `https://${lang}.wikipedia.org/api/rest_v1/page/summary/`;
-}
-
-function normalizeLang(input: string): string {
-  const head = input.toLowerCase().split(/[-_]/u)[0];
-  return head !== undefined && head.length > 0 ? head : DEFAULT_LANG;
-}
-
-const definition: ToolDefinition = {
-  'name': 'wikipedia_summary',
-  'description': 'Fetch the Wikipedia summary paragraph for a book, author, or topic. Use to enrich a known title with editorial context, or to look up an author bio.',
-  'inputSchema': {
-    'type': 'object',
-    'additionalProperties': true,
-    'properties': {
-      'query': {
-        'type':        'string',
-        'minLength':   2,
-        'maxLength':   80,
-        'description': 'Exact Wikipedia article title or a near-match the redirect handler resolves.',
-        'examples':    ['<book-title>', '<author-name>', '<topic-name>'],
+export class WikipediaSummaryTool implements Tool<WikipediaInput, readonly Candidate[]> {
+  readonly definition: ToolDefinition = {
+    'name': 'wikipedia_summary',
+    'description': 'Fetch the Wikipedia summary paragraph for a book, author, or topic. Use to enrich a known title with editorial context, or to look up an author bio.',
+    'inputSchema': {
+      'type': 'object',
+      'additionalProperties': true,
+      'properties': {
+        'query': {
+          'type':        'string',
+          'minLength':   2,
+          'maxLength':   80,
+          'description': 'Exact Wikipedia article title or a near-match the redirect handler resolves.',
+          'examples':    ['<book-title>', '<author-name>', '<topic-name>'],
+        },
+        'lang': {
+          'type':        'string',
+          'description': 'Optional ISO 639-1 language code; selects the corresponding Wikipedia (defaults to en).',
+        },
       },
-      'lang': {
-        'type':        'string',
-        'description': 'Optional ISO 639-1 language code; selects the corresponding Wikipedia (defaults to en).',
-      },
+      'required': ['query'],
     },
-    'required': ['query'],
-  },
-  'strict': true,
-};
+    'strict': true,
+  };
 
-export const WikipediaSummaryTool: Tool<WikipediaInput, readonly Candidate[]> = {
-  definition,
-  async execute(input, options) {
+  async execute(input: WikipediaInput, options?: AbortableOptionsInterface): Promise<readonly Candidate[]> {
     const signal = options?.signal;
     const lang = input.lang !== undefined && input.lang.length > 0
-      ? normalizeLang(input.lang)
+      ? WikipediaSummaryTool.normalizeLang(input.lang)
       : DEFAULT_LANG;
-    const endpoint = endpointFor(lang);
+    const endpoint = WikipediaSummaryTool.endpointFor(lang);
     const title = encodeURIComponent(input.query.trim().replace(/\s+/gu, '_'));
 
-    let payload: WikiSummary;
+    let raw: unknown;
     try {
-      payload = await HttpTransport.getJson<WikiSummary>(
+      raw = await HttpTransport.getJson<unknown>(
         `${endpoint}${title}`,
         { ...(signal !== undefined && { signal }), 'headers': { 'accept': 'application/json' } },
       );
     } catch (err) {
       // HttpTransport throws ToolError on 404; treat as "no article found".
-      const status = (err as { status?: number }).status;
-      if (status === 404) return [];
+      if (err instanceof ToolError && err.status === 404) return [];
       throw err;
     }
+    if (!isWikiSummary(raw)) {
+      throw new ToolError('Unexpected Wikipedia API response shape', {
+        'reason': 'PARSE_ERROR',
+        'retryable': false,
+      });
+    }
+    const payload = raw;
 
     if (payload.title === undefined || payload.extract === undefined) return [];
 
@@ -115,17 +119,25 @@ export const WikipediaSummaryTool: Tool<WikipediaInput, readonly Candidate[]> = 
     };
 
     return [{
-      'book': {
+      'book': BookBuilder.from({
         'isbn':      canonical,
         'title':     payload.title,
         'authors':   [],
-        'price':     { 'amount': 0, 'currency': 'USD' },
         'summary':   payload.extract,
         'languages': [LanguageCode.toIso6392(lang)],
-      },
+      }),
       'score':  0,
       'source': 'wikipedia',
       'notes':  notes,
     }];
-  },
-};
+  }
+
+  private static endpointFor(lang: string): string {
+    return `https://${lang}.wikipedia.org/api/rest_v1/page/summary/`;
+  }
+
+  private static normalizeLang(input: string): string {
+    const head = input.toLowerCase().split(/[-_]/u)[0];
+    return head !== undefined && head.length > 0 ? head : DEFAULT_LANG;
+  }
+}

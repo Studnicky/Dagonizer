@@ -106,7 +106,7 @@ export class ContractRegistryValidator {
   static validate(
     contracts: readonly OperationContract[],
     warningEmitter: WarningEmitter,
-    options: { entrypointName?: string } = {},
+    options: { entrypointName: string } = CONTRACT_VALIDATION_DEFAULTS,
   ): void {
     const { entrypointName } = { ...CONTRACT_VALIDATION_DEFAULTS, ...options };
     const upstreamProducers = ContractRegistryValidator.buildUpstreamProducers(contracts);

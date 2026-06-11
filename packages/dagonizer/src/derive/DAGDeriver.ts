@@ -56,9 +56,10 @@ export interface DAGDeriverOptions {
   version: string;
   entrypoint: string;
   /**
-   * Node registry. Every node with a co-located `contract` field participates
-   * in topology derivation; nodes without one still register but contribute no
-   * derived edges. At least one node must declare a contract. Contracts are
+   * Node registry. Every node whose `contract` carries non-empty `hardRequired`
+   * or `produces` arrays participates in topology derivation; nodes carrying
+   * `EMPTY_CONTRACT_FRAGMENT` still register but contribute no derived edges.
+   * At least one node must declare a non-empty contract. Contracts are
    * single-source-of-truth on the node; there is no standalone contracts input.
    */
   nodes: NodeInterface[];
@@ -70,7 +71,8 @@ export class DAGDeriver {
 
   /**
    * Project contract-bearing nodes from a node registry into `OperationContract`s.
-   * Nodes without a `contract` field are silently skipped.
+   * Nodes carrying `EMPTY_CONTRACT_FRAGMENT` (both arrays empty) are skipped;
+   * they contribute no derived edges.
    *
    * The node's own `name` and `outputs` fields complete the full
    * `OperationContract` surface alongside the fragment's `hardRequired`
@@ -79,14 +81,14 @@ export class DAGDeriver {
   static extractContracts(nodes: readonly NodeInterface[]): OperationContract[] {
     const result: OperationContract[] = [];
     for (const node of nodes) {
-      if (node.contract !== undefined) {
-        result.push({
-          "name": node.name,
-          "outputs": [...node.outputs],
-          "hardRequired": node.contract.hardRequired,
-          "produces": node.contract.produces,
-        });
-      }
+      const c = node.contract;
+      if (c.hardRequired.length === 0 && c.produces.length === 0) continue;
+      result.push({
+        "name": node.name,
+        "outputs": [...node.outputs],
+        "hardRequired": c.hardRequired,
+        "produces": c.produces,
+      });
     }
     return result;
   }
@@ -466,7 +468,7 @@ export class DAGDeriver {
       'partition': (s) => ({ 'strategy': 'partition', 'partitions':  { ...(s as Extract<DAGDeriverScatter, { strategy: 'partition' }>).partitions } }),
       'append':    (s) => ({ 'strategy': 'append',    'target':      (s as Extract<DAGDeriverScatter, { strategy: 'append' }>).target }),
     };
-    const gather: ScatterNode['gather'] = (gatherByStrategy[scatter.strategy] ?? (() => { throw new DAGError(`DAGDeriver: unknown scatter strategy '${scatter.strategy}'`); }))(scatter);
+    const gather: ScatterNode['gather'] = gatherByStrategy[scatter.strategy](scatter);
 
     const scatterNode: ScatterNode = {
       '@id':     DAG.placementId(dagName, name),
@@ -477,7 +479,9 @@ export class DAGDeriver {
       'itemKey': scatter.itemKey,
       'gather':  gather,
       'outputs': outputs,
-      ...(scatter.concurrency !== undefined ? { 'concurrency': scatter.concurrency } : {}),
+      // `DEFAULT_SCATTER_CONCURRENCY` (0) is the sentinel meaning "engine default";
+      // omit `concurrency` from the wire shape so the dispatcher applies its own default.
+      ...(scatter.concurrency > 0 ? { 'concurrency': scatter.concurrency } : {}),
     };
     return scatterNode;
   }

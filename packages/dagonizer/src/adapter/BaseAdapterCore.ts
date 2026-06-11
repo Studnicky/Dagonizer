@@ -60,7 +60,7 @@ export abstract class BaseAdapterCore {
     const resolved: BaseAdapterCoreOptionsResolved = { ...BaseAdapterCore.defaultOptions(), ...options };
     this.id = id;
     this.displayName = displayName;
-    this.#retry = new RetryableErrorPolicy({
+    this.#retry = RetryableErrorPolicy.from({
       'maxAttempts': resolved.maxAttempts,
       'strategy':    BackoffStrategy.EXPONENTIAL,
       'baseDelay':   resolved.baseDelayMs,

@@ -42,7 +42,7 @@ import { OfflineGeo } from './services/OfflineGeo.ts';
 
 // ── tz-lookup: CJS package; import-default works under tsx (Node CJS interop)
 // and under Vite (with optimizeDeps.include — see docs/.vitepress/config.ts).
-const tzLookup = tzLookupDefault as unknown as (lat: number, lng: number) => string;
+const tzLookup = tzLookupDefault;
 
 // ── Data tables (static JSON imports — ESM + Vite compatible; no createRequire)
 
@@ -73,10 +73,10 @@ interface JurisdictionTable {
   readonly 'default': JurisdictionEntry;
 }
 
-const CATALOG = CATALOG_RAW as unknown as CatalogEntry[];
-const CARRIER_RATES = CARRIER_RATES_RAW as unknown as Record<string, CarrierRate>;
-const FX_TABLE = FX_RATES_RAW as unknown as Record<string, number>;
-const JURISDICTION_TABLE = JURISDICTION_TABLE_RAW as unknown as JurisdictionTable;
+const CATALOG = CATALOG_RAW as CatalogEntry[];
+const CARRIER_RATES = CARRIER_RATES_RAW as Record<string, CarrierRate>;
+const FX_TABLE = FX_RATES_RAW as Record<string, number>;
+const JURISDICTION_TABLE = JURISDICTION_TABLE_RAW as JurisdictionTable;
 
 // #region timezone-resolver-service
 /**

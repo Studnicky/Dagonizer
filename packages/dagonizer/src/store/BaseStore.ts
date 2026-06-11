@@ -69,16 +69,27 @@ export abstract class BaseStore implements Store {
   }
 
   /**
-   * Default read-modify-write. NOT atomic on its own; there are two
-   * `await` points (`performGet`, `performSet`) where another `update`
-   * on the same key can interleave. Subclasses MUST override when they
-   * back a storage layer that supports a single-step RMW (in-memory
-   * direct access, SQL transactions, Redis WATCH/MULTI, etc.).
+   * Atomic read-modify-write. Every concrete subclass MUST implement this
+   * method using the storage layer's native transaction or lock mechanism
+   * (in-memory direct access, SQL `BEGIN IMMEDIATE`, Redis `WATCH/MULTI`, etc.)
+   * to prevent lost updates under concurrent callers.
    *
-   * The override is required to satisfy the `Store.update` atomicity
-   * contract; consumers should not rely on the default.
+   * Subclasses that have no native transaction mechanism may call
+   * `performUpdateRmw(key, fn)` to delegate to the sequential, non-atomic
+   * helper — but they MUST document that their `update` is not concurrency-safe.
    */
-  async update<T extends JsonValue>(key: string, fn: (current: T | undefined) => T): Promise<T> {
+  abstract update<T extends JsonValue>(key: string, fn: (current: T | undefined) => T): Promise<T>;
+
+  /**
+   * Sequential read-modify-write helper for subclasses that have no native
+   * transaction mechanism. NOT atomic: two concurrent `update` calls on the
+   * same key can interleave at the two `await` points and lose one write.
+   *
+   * Call this from your `update` override only when you accept that limitation
+   * and document it on your class. Always prefer a native transaction when the
+   * backing layer supports one.
+   */
+  protected async performUpdateRmw<T extends JsonValue>(key: string, fn: (current: T | undefined) => T): Promise<T> {
     const qualified = this.qualifyKey(key);
     const raw       = await this.performGet<T>(qualified);
     const current   = raw === null ? undefined : raw;

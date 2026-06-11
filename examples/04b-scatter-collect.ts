@@ -24,7 +24,7 @@
  */
 
 import { Dagonizer } from '@noocodex/dagonizer';
-import { GenerateState, provider, select, dag } from './dags/04b-scatter-collect.js';
+import { GenerateState, ProviderNode, SelectNode, dag } from './dags/04b-scatter-collect.js';
 
 // ---------------------------------------------------------------------------
 // Run
@@ -32,8 +32,8 @@ import { GenerateState, provider, select, dag } from './dags/04b-scatter-collect
 
 // #region run
 const dispatcher = new Dagonizer<GenerateState>();
-dispatcher.registerNode(provider);
-dispatcher.registerNode(select);
+dispatcher.registerNode(new ProviderNode());
+dispatcher.registerNode(new SelectNode());
 dispatcher.registerDAG(dag);
 
 const state = new GenerateState();

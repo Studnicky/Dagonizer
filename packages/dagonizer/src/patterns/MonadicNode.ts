@@ -16,8 +16,9 @@
  *      boundary.
  *
  * Implements `NodeInterface` and supplies the fields a pattern needs
- * but doesn't vary by domain: name, outputs, optional contract,
- * optional timeoutMs, optional validate/destroy hooks. Subclasses
+ * but doesn't vary by domain: name, outputs, contract (defaults to
+ * `EMPTY_CONTRACT_FRAGMENT`), optional timeout, optional validate/destroy
+ * hooks. Subclasses
  * declare what they need (`abstract readonly name`, `abstract readonly
  * outputs`, `abstract execute`) and inherit the rest. Subclasses
  * return output port literals directly in `execute()` — no indirection
@@ -37,6 +38,7 @@
  */
 
 import type { NodeInterface } from '../contracts/NodeInterface.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../contracts/OperationContractFragment.js';
 import type { OperationContractFragment } from '../contracts/OperationContractFragment.js';
 import type { NodeContextInterface } from '../entities/node/NodeContext.js';
 import type { NodeOutputInterface } from '../entities/node/NodeOutput.js';
@@ -56,10 +58,12 @@ export abstract class MonadicNode<
   abstract readonly outputs: readonly TOutput[];
 
   /**
-   * Optional data-flow declaration. When present, `DAGDeriver` can use
-   * this node in contract-derived flow generation.
+   * Data-flow declaration for `DAGDeriver`. The default `EMPTY_CONTRACT_FRAGMENT`
+   * (both arrays empty) means "no derivation edges" — the deriver skips this node.
+   * Subclasses that participate in contract-derived flow generation override this
+   * with a populated fragment.
    */
-  readonly contract?: OperationContractFragment;
+  readonly contract: OperationContractFragment = EMPTY_CONTRACT_FRAGMENT;
 
   /**
    * Per-node wall-clock budget. `Timeout.none()` means no time limit.
@@ -80,10 +84,30 @@ export abstract class MonadicNode<
     context: NodeContextInterface<TServices>,
   ): Promise<NodeOutputInterface<TOutput>>;
 
-  /** Optional validation invoked at flow registration. */
-  validate?(): ValidationResult;
+  /**
+   * Validate node configuration at flow registration time. Default
+   * implementation returns a valid result with no errors. Subclasses
+   * override to check their own invariants (e.g. required config fields).
+   *
+   * The `NodeInterface` contract keeps `validate?()` optional at the external
+   * boundary; `MonadicNode` supplies a concrete required-with-default so every
+   * subclass always has a validation method without needing a presence check.
+   */
+  validate(): ValidationResult {
+    return { 'valid': true, 'errors': [] };
+  }
 
-  /** Optional cleanup invoked when the dispatcher is destroyed. */
-  destroy?(): Promise<void>;
+  /**
+   * Clean up resources when the dispatcher is destroyed. Default
+   * implementation is a no-op. Subclasses override to release connections,
+   * timers, or other held resources.
+   *
+   * The `NodeInterface` contract keeps `destroy?()` optional at the external
+   * boundary; `MonadicNode` supplies a concrete required-with-default so every
+   * subclass always has a destroy method without needing a presence check.
+   */
+  async destroy(): Promise<void> {
+    // no-op default
+  }
 
 }

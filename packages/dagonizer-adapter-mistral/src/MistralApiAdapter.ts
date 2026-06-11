@@ -8,10 +8,8 @@
 import { OpenAiCompatibleAdapter } from '@noocodex/dagonizer/adapter';
 import type { OpenAiCompatibleAdapterOptions } from '@noocodex/dagonizer/adapter';
 
-export interface MistralApiAdapterOptions extends OpenAiCompatibleAdapterOptions {}
-
 export class MistralApiAdapter extends OpenAiCompatibleAdapter {
-  constructor(apiKey: string, options: MistralApiAdapterOptions = {}) {
+  constructor(apiKey: string, options: OpenAiCompatibleAdapterOptions = {}) {
     super(
       apiKey,
       {

@@ -16,7 +16,7 @@
  */
 
 import { Dagonizer } from '@noocodex/dagonizer';
-import { FetchState, fetchNode, dag } from './dags/07-retry.js';
+import { FetchState, FetchNode, dag } from './dags/07-retry.js';
 
 // ---------------------------------------------------------------------------
 // Run
@@ -24,13 +24,13 @@ import { FetchState, fetchNode, dag } from './dags/07-retry.js';
 
 // #region runtime
 const dispatcher = new Dagonizer<FetchState>();
-dispatcher.registerNode(fetchNode);
+dispatcher.registerNode(new FetchNode());
 dispatcher.registerDAG(dag);
 
 const state = new FetchState();
 await dispatcher.execute('retry-dag', state);
 
-// FlakyDownstream (inside fetchNode.execute) throws twice before succeeding.
+// FlakyDownstream (inside FetchNode.execute) throws twice before succeeding.
 // The stub is per-execution so attempts are scoped to the node invocation.
 process.stdout.write('\nRetry DAG: fetch with EXPONENTIAL backoff\n');
 process.stdout.write(`  result="${state.result}"\n`);

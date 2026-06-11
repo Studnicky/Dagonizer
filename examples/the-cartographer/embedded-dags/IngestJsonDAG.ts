@@ -13,37 +13,37 @@
  */
 
 // #region ingest-json-dag
-import { parseJson }     from '../nodes/ingest/parseJson.ts';
-import { mapFields }     from '../nodes/ingest/mapFields.ts';
-import { coerceTypes }   from '../nodes/ingest/coerceTypes.ts';
-import { validateEvent } from '../nodes/ingest/validateEvent.ts';
+import { ParseJsonNode }     from '../nodes/ingest/parseJson.ts';
+import { MapFieldsNode }     from '../nodes/ingest/mapFields.ts';
+import { CoerceTypesNode }   from '../nodes/ingest/coerceTypes.ts';
+import { ValidateEventNode } from '../nodes/ingest/validateEvent.ts';
 import type { CartographerState }    from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
 import type { DispatcherBundle } from '@noocodex/dagonizer';
-import { DAGBuilder }            from '@noocodex/dagonizer/builder';
+import { DAGBuilder } from '@noocodex/dagonizer';
 import type { DAG }              from '@noocodex/dagonizer/entities';
 
 export const ingestJsonDAG: DAG = new DAGBuilder('ingest-json', '1.0')
 
   // 1. parse-json: JSON array text → records.
-  .node('parse-json', parseJson, {
+  .node('parse-json', new ParseJsonNode(), {
     'map-fields': 'map-fields',
     'invalid':    'rejected',
   })
 
   // 2. map-fields: source field names → canonical names (per-source mapping).
-  .node('map-fields', mapFields, {
+  .node('map-fields', new MapFieldsNode(), {
     'coerce-types': 'coerce-types',
   })
 
   // 3. coerce-types: string cells → number / bool / epoch.
-  .node('coerce-types', coerceTypes, {
+  .node('coerce-types', new CoerceTypesNode(), {
     'validate-event': 'validate-event',
   })
 
   // 4. validate-event: build CanonicalEvents → state.ingestedEvents.
-  .node('validate-event', validateEvent, {
+  .node('validate-event', new ValidateEventNode(), {
     'validated': 'ingested',
   })
 
@@ -54,7 +54,7 @@ export const ingestJsonDAG: DAG = new DAGBuilder('ingest-json', '1.0')
   .build();
 
 export const ingestJsonBundle: DispatcherBundle<CartographerState, CartographerServices> = {
-  'nodes': [parseJson, mapFields, coerceTypes, validateEvent],
+  'nodes': [new ParseJsonNode(), new MapFieldsNode(), new CoerceTypesNode(), new ValidateEventNode()],
   'dags':  [ingestJsonDAG],
 };
 // #endregion ingest-json-dag

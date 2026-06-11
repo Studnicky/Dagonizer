@@ -10,9 +10,10 @@ import {
   DAG_CONTEXT,
   NodeOutputBuilder,
   NodeStateBase,
+  EMPTY_CONTRACT_FRAGMENT,
+  Timeout,
 } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import type { DAG, NodeInterface} from '@noocodex/dagonizer';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
@@ -40,25 +41,47 @@ export class PipelineState extends NodeStateBase {
 }
 
 // ---------------------------------------------------------------------------
-// Node: a multi-stage pipeline node that marks its stage and tallies work
+// Nodes: each stage marks its name, increments tally, and appends to trail
 // ---------------------------------------------------------------------------
 
-function makeStageNode(stageName: string): NodeInterface<PipelineState, 'success'> {
-  return {
-    name:    stageName,
-    outputs: ['success'],
-    async execute(state) {
-      state.stage = stageName;
-      state.tally++;
-      state.trail.push(stageName);
-      return NodeOutputBuilder.of('success');
-    },
-  };
+export class IngestNode implements NodeInterface<PipelineState, 'success'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'ingest';
+  readonly outputs = ['success'] as const;
+  async execute(state: PipelineState) {
+    state.stage = 'ingest';
+    state.tally++;
+    state.trail.push('ingest');
+    return NodeOutputBuilder.of('success');
+  }
 }
 
-export const ingestNode  = makeStageNode('ingest');
-export const processNode = makeStageNode('process');
-export const exportNode  = makeStageNode('export');
+export class ProcessNode implements NodeInterface<PipelineState, 'success'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'process';
+  readonly outputs = ['success'] as const;
+  async execute(state: PipelineState) {
+    state.stage = 'process';
+    state.tally++;
+    state.trail.push('process');
+    return NodeOutputBuilder.of('success');
+  }
+}
+
+export class ExportNode implements NodeInterface<PipelineState, 'success'> {
+  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+  readonly timeout = Timeout.none();
+  readonly name = 'export';
+  readonly outputs = ['success'] as const;
+  async execute(state: PipelineState) {
+    state.stage = 'export';
+    state.tally++;
+    state.trail.push('export');
+    return NodeOutputBuilder.of('success');
+  }
+}
 
 // ---------------------------------------------------------------------------
 // DAG: three sequential stages: ingest -> process -> export -> end

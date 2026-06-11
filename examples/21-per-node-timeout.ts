@@ -25,14 +25,14 @@
  */
 
 import { Dagonizer } from '@noocodex/dagonizer';
-import { TaskState, fastNode, slowNode, fastDag, slowDag } from './dags/21-per-node-timeout.js';
+import { TaskState, FastTaskNode, SlowTaskNode, fastDag, slowDag } from './dags/21-per-node-timeout.js';
 
 // ---------------------------------------------------------------------------
 // Run (a): fast node — completes within budget
 // ---------------------------------------------------------------------------
 
 const fastDispatcher = new Dagonizer<TaskState>();
-fastDispatcher.registerNode(fastNode);
+fastDispatcher.registerNode(new FastTaskNode());
 fastDispatcher.registerDAG(fastDag);
 
 const fastState = new TaskState();
@@ -43,7 +43,7 @@ const fastResult = await fastDispatcher.execute('fast-dag', fastState);
 // ---------------------------------------------------------------------------
 
 const slowDispatcher = new Dagonizer<TaskState>();
-slowDispatcher.registerNode(slowNode);
+slowDispatcher.registerNode(new SlowTaskNode());
 slowDispatcher.registerDAG(slowDag);
 
 const slowState = new TaskState();
