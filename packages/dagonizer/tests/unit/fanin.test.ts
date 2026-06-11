@@ -19,7 +19,7 @@ void describe('Dagonizer scatter gather strategies', () => {
       'outputs': ['even', 'odd'],
       async execute(state) {
         const n = state.getMetadata<number>('item') ?? 0;
-        return { 'output': n % 2 === 0 ? 'even' : 'odd' };
+        return { 'errors': [], 'output': n % 2 === 0 ? 'even' : 'odd' };
       },
     };
     dispatcher.registerNode(classify);
@@ -29,12 +29,13 @@ void describe('Dagonizer scatter gather strategies', () => {
         'fan',
         'items',
         classify,
-        { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+        { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         {
           'itemKey': 'item',
           'gather':  { 'strategy': 'partition', 'partitions': { 'even': 'evens', 'odd': 'odds' } },
         },
       )
+      .terminal('end')
       .build();
     dispatcher.registerDAG(dag);
 
@@ -55,14 +56,14 @@ void describe('Dagonizer scatter gather strategies', () => {
     const cls: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'classify',
       'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     const merge: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'merge',
       'outputs': ['success'],
       async execute(state) {
         seenResults = state.getMetadata<GatherResultRecord[]>('gatherResults');
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(cls);
@@ -74,12 +75,13 @@ void describe('Dagonizer scatter gather strategies', () => {
         'fan',
         'items',
         cls,
-        { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+        { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         {
           'itemKey': 'item',
           'gather':  { 'strategy': 'custom', 'customNode': 'merge' },
         },
       )
+      .terminal('end')
       .build();
     dispatcher.registerDAG(dag);
 
@@ -102,7 +104,7 @@ void describe('Dagonizer scatter gather strategies', () => {
     const passThrough: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'passThrough',
       'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     dispatcher.registerNode(passThrough);
 
@@ -111,12 +113,13 @@ void describe('Dagonizer scatter gather strategies', () => {
         'fan',
         'items',
         passThrough,
-        { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+        { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         {
           'itemKey': 'item',
           'gather':  { 'strategy': 'append', 'target': 'out' },
         },
       )
+      .terminal('end')
       .build();
     dispatcher.registerDAG(dag);
 
@@ -140,7 +143,7 @@ void describe('Dagonizer scatter gather strategies', () => {
       'outputs': ['success'],
       async execute(state) {
         state.setMetadata('answer', 'hello');
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(produce);
@@ -155,7 +158,7 @@ void describe('Dagonizer scatter gather strategies', () => {
         'fan',
         'items',
         produce,
-        { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+        { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         {
           'itemKey': 'item',
           'gather': {
@@ -164,6 +167,7 @@ void describe('Dagonizer scatter gather strategies', () => {
           },
         },
       )
+      .terminal('end')
       .build();
     dispatcher.registerDAG(dag);
 
@@ -188,7 +192,7 @@ void describe('Dagonizer scatter gather strategies', () => {
         peak = Math.max(peak, inFlight);
         await new Promise<void>((r) => setImmediate(r));
         inFlight--;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(slow);
@@ -198,12 +202,13 @@ void describe('Dagonizer scatter gather strategies', () => {
         'fan',
         'items',
         slow,
-        { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+        { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         {
           'concurrency': 2,
           'gather':      { 'strategy': 'append', 'target': 'out' },
         },
       )
+      .terminal('end')
       .build();
     dispatcher.registerDAG(dag);
 
@@ -220,7 +225,7 @@ void describe('NodeStateBase clone semantics', () => {
     const state = new NodeStateBase();
     state.setMetadata('foo', { 'bar': 1 });
     state.collectError({
-      'code': 'E', 'message': 'm', 'operation': 'op',
+      'code': 'E', 'context': {}, 'message': 'm', 'operation': 'op',
       'recoverable': false, 'timestamp': new Date().toISOString(),
     });
     state.markRunning();

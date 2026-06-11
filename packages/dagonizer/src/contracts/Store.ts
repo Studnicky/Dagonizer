@@ -45,7 +45,7 @@ import type { Snapshottable } from './Snapshottable.js';
  * at every call site. The engine never uses `unknown` here.
  */
 export interface Store extends Snapshottable {
-  get<T extends JsonValue>(key: string): Promise<T | undefined>;
+  get<T extends JsonValue>(key: string): Promise<T | null>;
   set<T extends JsonValue>(key: string, value: T): Promise<void>;
   has(key: string): Promise<boolean>;
   delete(key: string): Promise<boolean>;
@@ -61,9 +61,17 @@ export interface Store extends Snapshottable {
 
   // snapshot() / restore() are inherited from Snapshottable.
 
-  /** Optional lifecycle hook for stores that hold a connection. */
+  /**
+   * Lifecycle hook for stores that hold a connection. Called before first use.
+   * Stores with no connection lifecycle implement this as a no-op
+   * (the default in `BaseStore`).
+   */
   connect(): Promise<void>;
 
-  /** Optional lifecycle hook for stores that hold a connection. */
+  /**
+   * Lifecycle hook for stores that hold a connection. Called on teardown.
+   * Stores with no connection lifecycle implement this as a no-op
+   * (the default in `BaseStore`).
+   */
   disconnect(): Promise<void>;
 }

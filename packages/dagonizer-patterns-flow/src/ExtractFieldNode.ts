@@ -5,6 +5,7 @@
  */
 
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
 
 import { FlowNode } from './FlowNode.js';
 
@@ -23,6 +24,6 @@ export abstract class ExtractFieldNode<
   ): Promise<NodeOutputInterface<'success'>> {
     const value = this.extract(state);
     this.apply(state, value);
-    return { 'output': 'success' };
+    return NodeOutputBuilder.of('success');
   }
 }

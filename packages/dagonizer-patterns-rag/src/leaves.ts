@@ -65,7 +65,7 @@ export abstract class RankCandidatesNode<
  */
 export abstract class ComposeResponseNode<
   TState extends NodeStateInterface,
-> extends ComposeNode<TState, 'success'> {}
+> extends ComposeNode<TState> {}
 
 /**
  * ComposeEmptyResponseNode: composition path for the "no data found"
@@ -73,7 +73,7 @@ export abstract class ComposeResponseNode<
  */
 export abstract class ComposeEmptyResponseNode<
   TState extends NodeStateInterface,
-> extends ComposeNode<TState, 'success'> {}
+> extends ComposeNode<TState> {}
 
 /**
  * ComposeMemoryResponseNode: composition that draws from a recalled
@@ -81,7 +81,7 @@ export abstract class ComposeEmptyResponseNode<
  */
 export abstract class ComposeMemoryResponseNode<
   TState extends NodeStateInterface,
-> extends ComposeNode<TState, 'success'> {}
+> extends ComposeNode<TState> {}
 
 /**
  * DeclineNode: composition with refusal slant (polite "I can't help
@@ -89,4 +89,4 @@ export abstract class ComposeMemoryResponseNode<
  */
 export abstract class DeclineNode<
   TState extends NodeStateInterface,
-> extends ComposeNode<TState, 'success'> {}
+> extends ComposeNode<TState> {}

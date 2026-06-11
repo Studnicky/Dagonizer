@@ -13,7 +13,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { ShippingCalculator } from '../services.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region enrich-shipping-node
 export const enrichShipping: NodeInterface<CartographerState, 'shipping-quoted', CartographerServices> = {
@@ -36,7 +36,7 @@ export const enrichShipping: NodeInterface<CartographerState, 'shipping-quoted',
       norm.serviceTier,
       norm.carrierId,
     );
-    return { 'output': 'shipping-quoted' };
+    return NodeOutputBuilder.of('shipping-quoted');
   },
 };
 // #endregion enrich-shipping-node

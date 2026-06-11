@@ -33,13 +33,15 @@ const stepB = { ...noop, name: 'step-b' };
 const childStep = { ...noop, name: 'child-step' };
 
 const childDag = new DAGBuilder('sub-flow', '1')
-  .node('child-step', childStep, { done: null })
+  .node('child-step', childStep, { done: 'child-end' })
+  .terminal('child-end')
   .build();
 
 const parentDag = new DAGBuilder('main-flow', '1')
   .node('step-a', stepA, { done: 'run-child' })
   .embeddedDAG('run-child', 'sub-flow', { success: 'step-b', error: 'step-b' })
-  .node('step-b', stepB, { done: null })
+  .node('step-b', stepB, { done: 'end' })
+  .terminal('end')
   .build();
 
 const sharedStateRegistry = new Map([['sub-flow', childDag]]);
@@ -144,7 +146,7 @@ const inner = new MemoryStore();
 const typed = new TypedStore<PipelineSchema>(inner);
 
 await typed.set('tokenBudget', 4096);
-const budget = await typed.get('tokenBudget');   // number | undefined
+const budget = await typed.get('tokenBudget');   // number | null
 await typed.update('messages', (msgs) => [...(msgs ?? []), 'hello']);
 
 // TypeScript rejects wrong keys and wrong value types at compile time.
@@ -206,9 +208,9 @@ export class RedisStore extends BaseStore {
   protected get snapshotType(): string    { return 'redis-store-v1'; }
   protected get snapshotVersion(): number { return 1; }
 
-  protected async performGet<T extends JsonValue>(key: string): Promise<T | undefined> {
+  protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {
     const raw = await this.#client.get(key);
-    return raw === null ? undefined : JSON.parse(raw) as T;
+    return raw === null ? null : JSON.parse(raw) as T;
   }
 
   protected async performSet<T extends JsonValue>(key: string, value: T): Promise<void> {
@@ -263,7 +265,7 @@ The `type` string is the stable discriminant for the resume path; include a vers
 `Checkpoint.capture` is the async factory for checkpoints that include named stores. It accepts a `dagName`, execution `result`, and optional `stores` map. All stores are snapshotted in parallel.
 
 ```ts
-import { Checkpoint, MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
+import { Checkpoint, CheckpointRestoreAdapterFn, MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
 import { MemoryStore } from '@noocodex/dagonizer/store';
 
 // Save
@@ -288,7 +290,7 @@ const freshAudit  = new MemoryStore();
 await ckpt2.restoreStores({ memory: freshMemory, audit: freshAudit });
 
 const { dagName, state: restored, cursor } = ckpt2.restoreState(
-  (snap) => MyState.restore(snap),
+  CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap)),
 );
 await dispatcher.resume(dagName, restored, cursor);
 ```
@@ -299,7 +301,7 @@ await dispatcher.resume(dagName, restored, cursor);
 - **Incompatible snapshot**: `BaseStore.restore` throws `StoreError(INCOMPATIBLE_SNAPSHOT)` when `snapshot.type` or `snapshot.version` does not match the store instance's `snapshotType` or `snapshotVersion`. Schema migration is the plugin author's responsibility; `snapshotVersion` is the hook.
 - **Extra stores in restore map**: stores present in the map but absent from the checkpoint are a no-op. The consumer added a store that was not tracked at capture time; the engine accepts this silently.
 
-`CheckpointData.stores` is required in the schema. Checkpoints produced before stores support was added do not load.
+`CheckpointData.stores` is required in the schema. Any checkpoint payload lacking the field is rejected by `Checkpoint.load`.
 
 ## Distributed execution: `RemoteStore`
 

@@ -435,8 +435,8 @@ export class CartographerState extends NodeStateBase {
   };
 
   // #region clone
-  override clone(): CartographerState {
-    const copy = new CartographerState();
+  override clone(): this {
+    const copy = super.clone(); // new Constructor() + _metadata copy from base
     copy.eventCount = this.eventCount;
     copy.sources    = this.sources.map((s) => ({ ...s }));
     copy.ingestBuckets = this.ingestBuckets.map((bucket) => bucket.map((e) => CartographerState.cloneCanonical(e)));

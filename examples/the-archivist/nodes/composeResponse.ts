@@ -23,6 +23,7 @@ import type { ArchivistState } from '../ArchivistState.ts';
 import type { Candidate } from '../entities/Book.ts';
 import type { ArchivistServices } from '../services.ts';
 
+import { NodeOutputBuilder } from '@noocodex/dagonizer';
 import type { NodeInterface } from '@noocodex/dagonizer';
 
 const MAX_COMPOSE_ATTEMPTS = 3;
@@ -67,7 +68,7 @@ export const composeResponse: NodeInterface<ArchivistState, 'drafted' | 'retry' 
       if (state.priorContext.length > 0) {
         context.services.logger.info(`compose: ${String(state.priorContext.length)} prior facts in context`);
       }
-      return { "output": 'drafted' };
+      return NodeOutputBuilder.of('drafted');
     } catch (err) {
       // External cancellation / run deadline propagates unchanged.
       if (context.signal.aborted) throw err;
@@ -75,10 +76,10 @@ export const composeResponse: NodeInterface<ArchivistState, 'drafted' | 'retry' 
       // flow. The attempt was already recorded above, so read the count.
       if (state.retriesFor('compose') < MAX_COMPOSE_ATTEMPTS) {
         context.services.logger.warn(`compose-response: failed (attempt ${String(state.retriesFor('compose'))}/${String(MAX_COMPOSE_ATTEMPTS)}), retry: ${err instanceof Error ? err.message : String(err)}`);
-        return { "output": 'retry' };
+        return NodeOutputBuilder.of('retry');
       }
       context.services.logger.warn(`compose-response: retries exhausted, salvage: ${err instanceof Error ? err.message : String(err)}`);
-      return { "output": 'salvage' };
+      return NodeOutputBuilder.of('salvage');
     } finally {
       clearTimeout(handle);
     }
@@ -196,22 +197,22 @@ export const validateResponse: NodeInterface<
     if (antiHal.status === 'fail') {
       context.services.logger.warn(`validate-anti-hallucination: FAIL: ${antiHal.cause.trim()}`);
       state.failureCause += antiHal.cause;
-      state.approved = false;
+      state.approvalState = 'rejected';
       if (state.retriesFor('compose') >= MAX_COMPOSE_ATTEMPTS) {
         context.services.logger.warn('compose attempts exhausted (anti-hallucination)');
-        return { "output": 'exhausted' };
+        return NodeOutputBuilder.of('exhausted');
       }
-      return { "output": 'retry' };
+      return NodeOutputBuilder.of('retry');
     }
     context.services.logger.info(`validate-anti-hallucination: PASS (${String(antiHal.count)} entities checked)`);
 
     const ok = await context.services.llm.validate(state.draft, state.shortlist);
-    state.approved = ok;
-    if (ok) return { "output": 'approved' };
+    state.approvalState = ok ? 'approved' : 'rejected';
+    if (ok) return NodeOutputBuilder.of('approved');
     if (state.retriesFor('compose') >= MAX_COMPOSE_ATTEMPTS) {
       context.services.logger.warn('compose attempts exhausted');
-      return { "output": 'exhausted' };
+      return NodeOutputBuilder.of('exhausted');
     }
-    return { "output": 'retry' };
+    return NodeOutputBuilder.of('retry');
   },
 };

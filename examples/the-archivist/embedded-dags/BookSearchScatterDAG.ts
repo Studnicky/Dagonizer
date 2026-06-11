@@ -1,5 +1,5 @@
 /**
- * BookSearchScatterDAG: reusable query-extract + 4-source parallel scout cluster.
+ * BookSearchScatterDAG: reusable query-extract + 4-source scatter scout cluster.
  *
  * Internal flow:
  *
@@ -8,11 +8,10 @@
  *   decide-tools
  *     └─ (tools | no-tools) ──► recall-candidates
  *   recall-candidates
- *     └─ recalled ──► book-search-scatter (parallel, combine: collect)
- *          ├─ openlibrary-scout  (OpenLibrary)
- *          ├─ google-books-scout (Google Books)
- *          ├─ subject-scout      (Subject search)
- *          └─ wikipedia-scout    (Wikipedia enrichment)
+ *     └─ recalled ──► book-search-scatter (scatter over scoutProviders, concurrency 4)
+ *          body: scoutDispatch (reads currentItem, routes to matching scout logic)
+ *          gather: scout-merge (flat-merges candidates + failureCause from clones)
+ *          reducer: any-success (routes 'success' if any clone found results)
  *     └─ rank-candidates
  *     └─ merge-candidates
  *          ├─ ranked ──► record-findings
@@ -65,16 +64,12 @@ import {
   rankCandidatesSalvage,
 } from '../nodes/salvage.ts';
 import {
-  openLibraryScout,
-  googleBooksScout,
-  subjectScout,
-  wikipediaScout,
+  scoutDispatch,
 } from '../nodes/scouts.ts';
 import type { ArchivistServices } from '../services.ts';
 
-import type { DispatcherBundle } from '@noocodex/dagonizer';
+import type { DAG, DispatcherBundle } from '@noocodex/dagonizer';
 import { DAGBuilder } from '@noocodex/dagonizer/builder';
-import type { DAG } from '@noocodex/dagonizer/entities';
 
 /**
  * The `book-search-scatter` DAG: one packaged unit that any parent DAG
@@ -121,16 +116,22 @@ export const BookSearchScatterDAG: DAG = new DAGBuilder('book-search-scatter', '
   })
 
   // ── 3. book-search-scatter ───────────────────────────────────────────────
-  // All four scouts run concurrently. combine:'collect' waits for all four
-  // and merges their state mutations. Each scout writes to state.candidates.
-  .parallel('book-search-scatter', ['openlibrary-scout', 'google-books-scout', 'subject-scout', 'wikipedia-scout'], 'collect', {
+  // Heterogeneous scatter: four provider descriptors fan out concurrently.
+  // scoutDispatch reads state.scoutProviders items via the currentItem
+  // metadata key and routes to the matching scout logic.
+  // scout-merge gather flat-merges candidates + failureCause from all four
+  // clones. any-success reducer: 'success' → rank-candidates (at least one
+  // hit); 'error' → rank-candidates (proceed even when all scouts return
+  // empty — rank handles the empty-candidates case gracefully).
+  .scatter('book-search-scatter', 'scoutProviders', scoutDispatch, {
     'success': 'rank-candidates',
     'error':   'rank-candidates',
+    'empty':   'rank-candidates',
+  }, {
+    'concurrency': 4,
+    'gather': { 'strategy': 'scout-merge' },
+    'reducer': 'any-success',
   })
-  .node('openlibrary-scout',  openLibraryScout, { 'success': null, 'empty': null })
-  .node('google-books-scout', googleBooksScout, { 'success': null, 'empty': null })
-  .node('subject-scout',      subjectScout,     { 'success': null, 'empty': null })
-  .node('wikipedia-scout',    wikipediaScout,   { 'success': null, 'empty': null })
 
   // ── 4. rank-candidates ───────────────────────────────────────────────────
   // LLM-driven relevance scoring. Routes 'ranked' on success (an empty set is
@@ -182,8 +183,8 @@ export const BookSearchScatterDAG: DAG = new DAGBuilder('book-search-scatter', '
   // Both sub-DAG exits are canonical TerminalNode placements (no bare null
   // routes): `found` (completed) drives the parent EmbeddedDAGNode's 'success'
   // branch; `no-results` (failed) drives its 'error' branch.
-  .terminal('found', 'completed')
-  .terminal('no-results', 'failed')
+  .terminal('found', { outcome: 'completed' })
+  .terminal('no-results', { outcome: 'failed' })
 
   .build();
 
@@ -194,10 +195,10 @@ export const BookSearchScatterDAG: DAG = new DAGBuilder('book-search-scatter', '
  */
 export const bookSearchScatterBundle: DispatcherBundle<ArchivistState, ArchivistServices> = {
   'nodes': [
-    extractQuery, decideTools, recallCandidates, openLibraryScout,
-    googleBooksScout, subjectScout, wikipediaScout, rankCandidates,
-    mergeCandidates, recordFindings, hasCitationsGate, recallPastVisits,
-    extractQuerySalvage, decideToolsSalvage, rankCandidatesSalvage,
+    extractQuery, decideTools, recallCandidates, scoutDispatch,
+    rankCandidates, mergeCandidates, recordFindings, hasCitationsGate,
+    recallPastVisits, extractQuerySalvage, decideToolsSalvage,
+    rankCandidatesSalvage,
   ],
   'dags': [BookSearchScatterDAG],
 };

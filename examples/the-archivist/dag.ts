@@ -72,6 +72,25 @@
  *   { type: 'single', name, node: nodeImpl.name, outputs: routes }
  *   object that the hand-written literal used. build() returns a plain
  *   DAG: identical wire shape, same Dagonizer.load() call.
+ *
+ * DAG containment (WorkerThreadContainer) — why the archivist stays in-process:
+ *   The container/worker feature is most natural for CPU-bound, self-contained
+ *   per-item work: pure data transforms that only read from state and write a
+ *   result back (see the-cartographer, which routes its canonical-event enrichment
+ *   sub-DAG through a WorkerThreadContainer — haversine, GDPR redaction, pricing
+ *   and ETA are pure arithmetic on serialisable data).
+ *
+ *   The archivist's scatter items (the four scout providers) are LLM / network
+ *   bound: each clone calls a live language model and external book APIs. Workers
+ *   cannot share the LLM provider instance (it is not serialisable), and each
+ *   scatter item's payload — prompt context, live API credentials, LLM adapter
+ *   state — crosses the worker message channel as structured-clone, which drops
+ *   functions, closures, class instances, and streams.
+ *
+ *   Worker containment suits CPU / data DAGs. LLM-cascade DAGs — where nodes
+ *   carry network clients, streaming responses, and rich provider objects — run
+ *   in-process and rely on async concurrency (Promise.all, scatter concurrency)
+ *   rather than OS-level thread isolation for parallelism.
  */
 
 
@@ -92,7 +111,7 @@ import { recommendSimilar }     from './nodes/recommendSimilar.ts';
 import { recordFindings }       from './nodes/recordFindings.ts';
 import { classifyIntentSalvage, composeEmptyResponseSalvage, composeMemoryResponseSalvage, decideToolsSalvage, extractQuerySalvage } from './nodes/salvage.ts';
 import { declineOffTopic, respondToVisitor, composeEmptyResponse } from './nodes/respondToVisitor.ts';
-import { openLibraryScout, googleBooksScout, subjectScout, wikipediaScout } from './nodes/scouts.ts';
+import { scoutDispatch } from './nodes/scouts.ts';
 
 import { DAGBuilder } from '@noocodex/dagonizer/builder';
 import type { DispatcherBundle } from '@noocodex/dagonizer';
@@ -202,14 +221,21 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
   .node('reviews-decide-tools-salvage', decideToolsSalvage, {
     'done': 'reviews-scatter',
   })
-  .parallel('reviews-scatter', ['reviews-ol', 'reviews-gb', 'reviews-subject', 'reviews-wiki'], 'collect', {
+  // Heterogeneous scatter: four provider descriptors fan out concurrently;
+  // scoutDispatch reads the currentItem metadata key and calls the matching
+  // scout logic. scout-merge gather flat-merges candidates + failureCause
+  // from all four clones back into parent state. any-success reducer routes
+  // 'success' when at least one scout found results, 'error' when all returned
+  // empty. Both routes proceed to reviews-rank (same as old collect behavior).
+  .scatter('reviews-scatter', 'scoutProviders', scoutDispatch, {
     'success': 'reviews-rank',
     'error':   'reviews-rank',
+    'empty':   'reviews-rank',
+  }, {
+    'concurrency': 4,
+    'gather': { 'strategy': 'scout-merge' },
+    'reducer': 'any-success',
   })
-  .node('reviews-ol',      openLibraryScout, { 'success': null, 'empty': null })
-  .node('reviews-gb',      googleBooksScout, { 'success': null, 'empty': null })
-  .node('reviews-subject', subjectScout,     { 'success': null, 'empty': null })
-  .node('reviews-wiki',    wikipediaScout,   { 'success': null, 'empty': null })
   .node('reviews-rank',    rankByRating,     { 'ranked': 'reviews-merge' })
   .node('reviews-merge',   mergeCandidates,  { 'ranked': 'reviews-record', 'empty': 'compose-empty' })
   .node('reviews-record',  recordFindings,   { 'recorded': 'reviews-gate' })
@@ -224,14 +250,19 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
   .node('describe-extract-salvage', extractQuerySalvage, { 'done': 'describe-decide-tools' })
   .node('describe-decide-tools', decideTools,      { 'tools': 'describe-scatter', 'no-tools': 'describe-scatter', 'retry': 'describe-decide-tools', 'salvage': 'describe-decide-tools-salvage' })
   .node('describe-decide-tools-salvage', decideToolsSalvage, { 'done': 'describe-scatter' })
-  .parallel('describe-scatter', ['describe-ol', 'describe-gb', 'describe-subject', 'describe-wiki'], 'collect', {
+  // Heterogeneous scatter: same descriptor source, same dispatching body.
+  // any-success reducer: 'success' → describe-pick, 'error' → compose-empty.
+  // (The old collect combiner always returned 'success'; 'error' now fires when
+  // all four scouts return empty — more correct than the previous dead route.)
+  .scatter('describe-scatter', 'scoutProviders', scoutDispatch, {
     'success': 'describe-pick',
     'error':   'compose-empty',
+    'empty':   'compose-empty',
+  }, {
+    'concurrency': 4,
+    'gather': { 'strategy': 'scout-merge' },
+    'reducer': 'any-success',
   })
-  .node('describe-ol',      openLibraryScout, { 'success': null, 'empty': null })
-  .node('describe-gb',      googleBooksScout, { 'success': null, 'empty': null })
-  .node('describe-subject', subjectScout,     { 'success': null, 'empty': null })
-  .node('describe-wiki',    wikipediaScout,   { 'success': null, 'empty': null })
   .node('describe-pick',   pickBestMatch,    { 'picked': 'describe-merge' })
   .node('describe-merge',  mergeCandidates,  { 'ranked': 'describe-record', 'empty': 'compose-empty' })
   .node('describe-record', recordFindings,   { 'recorded': 'describe-gate' })
@@ -278,9 +309,8 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
     'error':   'compose-empty',
   }, {
     'outputs': {
-      'draft':    'draft',
-      'approved': 'approved',
-      'attempts': 'attempts',
+      'draft':         'draft',
+      'approvalState': 'approvalState',
     },
   })
   // #endregion embedded-dag-placements
@@ -317,7 +347,7 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
   // Canonical end-of-flow: every completed path (a composed answer or an
   // off-topic decline) routes to this one `TerminalNode(completed)` instead of
   // a bare `null` route. The flow ends explicitly, not by absence of a route.
-  .terminal('end', 'completed')
+  .terminal('end', { outcome: 'completed' })
   // #endregion terminal-placements
 
   .build();
@@ -332,7 +362,7 @@ export const archivistBundle: DispatcherBundle<ArchivistState, ArchivistServices
   'nodes': [
     preRunSetup,
     recallContext, classifyIntent, extractQuery, decideTools,
-    openLibraryScout, googleBooksScout, subjectScout, wikipediaScout,
+    scoutDispatch,
     rankByRating, pickBestMatch, mergeCandidates, recordFindings,
     hasCitationsGate, groupByYear, recallPastVisits, recommendSimilar,
     recallMemories, composeMemoryResponse, respondToVisitor,

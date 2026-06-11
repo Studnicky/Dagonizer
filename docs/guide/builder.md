@@ -72,12 +72,13 @@ When the node declares a narrow `TOutput` union, `.node()` enforces exhaustive r
 When the underlying `NodeInterface` carries a `contract` field (`hardRequired` plus `produces`), `build()` runs the same dangling-read and dead-write validation that `DAGDeriver` runs at derive time. Drift fails at build time, not run time.
 
 - **Dangling read**. A non-entrypoint node declares `hardRequired: ['foo']` but no upstream node produces `'foo'`. Throws `DAGError`.
-- **Dead write**. A node declares `produces: ['bar']` but no downstream node `hardRequires` `'bar'`. Fires the `onContractWarning` callback (non-fatal).
+- **Dead write**. A node declares `produces: ['bar']` but no downstream node `hardRequires` `'bar'`. Calls `warningEmitter.warn` (non-fatal).
 
 ```ts
 import { DAGBuilder, DAGError } from '@noocodex/dagonizer';
 import type { NodeInterface } from '@noocodex/dagonizer';
 import type { NodeStateBase } from '@noocodex/dagonizer';
+import type { WarningEmitter } from '@noocodex/dagonizer/contracts';
 
 const fetchNode: NodeInterface<NodeStateBase, 'success'> = {
   name: 'fetch',
@@ -97,24 +98,26 @@ const parseNode: NodeInterface<NodeStateBase, 'success'> = {
 // Throws DAGError: node 'parse' hardRequires 'data' but no upstream node produces it.
 new DAGBuilder('pipeline', '1.0')
   .node('fetch', fetchNode, { success: 'parse' })
-  .node('parse', parseNode, { success: null })
+  .node('parse', parseNode, { success: 'end' })
+  .terminal('end')
   .build();
 ```
 
-Pass an `onContractWarning` callback to capture dead writes:
+Pass a `warningEmitter` to capture dead writes:
 
 ```ts
+const emitter: WarningEmitter = { warn(message) { console.warn('[contract]', message); } };
+
 const dag = new DAGBuilder('pipeline', '1.0')
   .node('fetch', fetchNode, { success: 'parse' })
-  .node('parse', parseNode, { success: null })
-  .build((message) => {
-    console.warn('[contract]', message);
-  });
+  .node('parse', parseNode, { success: 'end' })
+  .terminal('end')
+  .build({ warningEmitter: emitter });
 ```
 
-Placements added via `.parallel()` or `.scatter()` with a `{ dag }` body do not receive a `NodeInterface` and are not tracked in the impl registry; they are silently skipped during contract validation, preventing false-positive dangling-read errors for node names declared elsewhere.
+Placements added via `.scatter()` with a `{ dag }` body do not receive a `NodeInterface` and are not tracked in the impl registry; they are silently skipped during contract validation, preventing false-positive dangling-read errors for node names declared elsewhere.
 
-The `onContractWarning` hook on `build()` fires at construction time and is local to the builder call. When the resulting DAG is registered with a `Dagonizer` subclass, the dispatcher's `onContractWarning` hook fires again at `registerDAG` time if the nodes carry co-located contracts. See [Contract-derived flows](./derive) and [Reference, contracts](../reference/contracts).
+The `warningEmitter` passed to `build()` fires at construction time and is local to the builder call. When the resulting DAG is registered with a `Dagonizer` subclass, the dispatcher's `onContractWarning` hook fires again at `registerDAG` time if the nodes carry co-located contracts. See [Contract-derived flows](./derive) and [Reference, contracts](../reference/contracts).
 
 ## `DAGBuilder.fromNodes()`, the linear shortcut
 
@@ -137,37 +140,56 @@ Equivalent fluent form:
 const dag = new DAGBuilder('pipeline', '1.0')
   .node('fetch', fetchNode, { success: 'parse' })
   .node('parse', parseNode, { success: 'save'  })
-  .node('save',  saveNode,  { success: null     })
+  .node('save',  saveNode,  { success: 'end'   })
+  .terminal('end')
   .build();
 ```
 
 `DAGBuilder.fromNodes()` delegates to `DAGDeriver.derive({ nodes })`, the same deriver that powers contract-first topology. Use it when the shape is linear and all nodes carry contracts. Drop into the fluent `.node()` API when you need:
 
 - Scatter placements (node body or sub-DAG body)
-- Terminal routes to `null` mid-flow
+- Multiple named terminal placements with distinct outcomes
 - Explicit entrypoint overrides
 - Non-contract nodes that still appear in the placement list
 
-## Parallel group
+## Scatter
+
+`.scatter()` places a `ScatterNode` in the parent flow. A scatter isolates a state clone per source item, runs a body (a registered node or a sub-DAG) in the clone, folds clone state back through a required `gather`, and routes on the aggregate outcome via an outcome `reducer`. `source` is a required positional argument.
+
+`gather` is required on every scatter. Use `{ strategy: 'discard' }` to express a side-effect-only fan-out where no clone state flows back to the parent:
 
 ```ts
-const dag = new DAGBuilder('enrich', '1')
-  .node('fetch-a', fetchA, { success: null, error: null })
-  .node('fetch-b', fetchB, { success: null, error: null })
-  .parallel('enrich-both', ['fetch-a', 'fetch-b'], 'all-success', {
-    success: 'save',
-    error:   null,
-  })
-  .node('save', saveNode, { success: null })
-  .entrypoint('enrich-both')
+const dag = new DAGBuilder('notify', '1')
+  .scatter('fan-out', 'targets', notifyNode,
+    { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+    {
+      gather:      { strategy: 'discard' },
+      concurrency: 10,
+    },
+  )
+  .terminal('end')
   .build();
 ```
 
-Nodes listed in `parallel()` must already be declared. The builder does not validate this; `registerDAG` does.
+Heterogeneous fan-out — running different logic per item — is expressed by authoring the `source` as a descriptor array and writing a body node that dispatches on `state.metadata.currentItem`:
 
-## Scatter
+```ts
+// state.scoutProviders = ['openlibrary', 'googlebooks', 'wikipedia']
+const dag = new DAGBuilder('search', '1')
+  .scatter('scout', 'scoutProviders', scoutDispatchNode,
+    { 'any-success': 'merge', 'all-error': 'end', 'empty': 'end' },
+    {
+      gather:      { strategy: 'collect', target: 'scoutResults' },
+      reducer:     'any-success',
+      concurrency: 3,
+    },
+  )
+  .node('merge', mergeNode, { success: 'end' })
+  .terminal('end')
+  .build();
+```
 
-`.scatter()` places a `ScatterNode` in the parent flow. A scatter isolates a state clone per source item, runs a body (a registered node) in the clone, and routes on the aggregate outcome. `source` is a required positional argument.
+`scoutDispatchNode` reads `state.metadata.currentItem` and routes to the matching scout logic. Whether bodies are identical or all different is the implementer's choice; the engine is indifferent.
 
 ### Generate-collect pattern
 
@@ -176,13 +198,14 @@ Each source item gets one clone. After all clones finish, the `gather.mapping` w
 ```ts
 const dag = new DAGBuilder('batch', '1')
   .scatter('generate', 'providers', generateNode,
-    { 'all-success': 'select', 'partial': 'select', 'all-error': null, 'empty': null },
+    { 'all-success': 'select', 'partial': 'select', 'all-error': 'end', 'empty': 'end' },
     {
       gather:      { strategy: 'map', mapping: { 'candidate': 'candidates' } },
       concurrency: 4,
     },
   )
-  .node('select', selectNode, { success: null })
+  .node('select', selectNode, { success: 'end' })
+  .terminal('end')
   .build();
 ```
 
@@ -190,7 +213,7 @@ const dag = new DAGBuilder('batch', '1')
 
 ```ts
 scatter('process-items', 'items', processNode,
-  { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+  { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
   {
     gather: { strategy: 'partition', partitions: { success: 'processed', error: 'failed' } },
     concurrency: 4,
@@ -217,8 +240,8 @@ scatter<TState extends NodeStateInterface, TOutput extends string, TServices = u
 | `itemKey?` | `string` | Metadata key the clone reads for the current item. Default `'currentItem'`. |
 | `concurrency?` | `number` | Max clones running concurrently. Default: source length. |
 | `inputs?` | `Partial<Record<string, Path<TState>>>` | Parent → clone field copy before the body runs. Becomes `stateMapping.input` on the entity. Keys are child-state keys; values are parent-state dotted paths. |
-| `gather?` | `GatherConfig` | How produced clone state merges back into the parent. |
-| `reducer?` | `string` | Outcome reducer name. Defaults to `'aggregate'`. |
+| `gather` | `GatherConfig` | **Required.** How produced clone state merges back into the parent. Use `{ strategy: 'discard' }` for side-effect-only fan-outs. |
+| `reducer?` | `string` | Outcome reducer name. Defaults to `'aggregate'`. Built-in reducers: `'aggregate'`, `'terminal'`, `'all-success'`, `'any-success'`. Custom reducers registered via `OutcomeReducers.register` are referenceable by name. |
 
 `Path<T>` enumerates valid dotted-path strings over a state shape recursively:
 
@@ -230,6 +253,8 @@ scatter<TState extends NodeStateInterface, TOutput extends string, TServices = u
 Arrays contribute `${number}` and `${number}.${ElementPath}` paths. The depth cap is 8 levels; deeper nesting falls back to `string`. The type is exported from the `@noocodex/dagonizer/builder` subpath.
 
 When `body` is a `NodeInterface`, the impl is registered automatically and the placement emits `body: { node: body.name }`.
+
+When `body` is `{ dag: 'name' }`, the placement runs a full registered sub-DAG per clone. Pair with the `container` key on the raw scatter entity to dispatch each clone to an isolate (worker thread, child process). See [Distribution and cloud](./distribution) for the `DagContainerBase` authoring guide and the `DagonizerOptionsInterface.containers` binding.
 
 For patterns where nodes across multiple scatter placements accumulate to shared mutable state (agent memory, audit log), see [Shared state](./shared-state).
 
@@ -246,7 +271,8 @@ const dag = new DAGBuilder('parent', '1')
       outputs: { 'user.age': 'result' },   // parent path ← child key
     },
   )
-  .node('finalize', finalizeNode, { success: null })
+  .node('finalize', finalizeNode, { success: 'end' })
+  .terminal('end')
   .build();
 ```
 
@@ -257,7 +283,7 @@ embeddedDAG<TChildState extends NodeStateInterface = NodeStateInterface,
             TParentState extends NodeStateInterface = NodeStateInterface>(
   name:    string,
   dagName: string,
-  outputs: Record<'success' | 'error', null | string>,
+  outputs: Record<'success' | 'error', string>,
   options?: TypedEmbeddedDAGOptionsInterface<TChildState, TParentState>,
 ): this
 ```
@@ -271,29 +297,19 @@ embeddedDAG<TChildState extends NodeStateInterface = NodeStateInterface,
 
 Supply `TChildState` and `TParentState` to narrow path strings at compile time; both default to `NodeStateInterface`, which accepts any string.
 
-## `.terminal(name, outcome?)`
+## `.terminal(name, options?)`
 
 ```ts
-.terminal(name: string, outcome: 'completed' | 'failed' = 'completed'): this
+.terminal(name: string, options?: { outcome?: 'completed' | 'failed' }): this
 ```
 
-Appends a `TerminalNode` placement. When the engine reaches it, the flow ends with the declared `outcome`. The default is `'completed'`. Passing `'failed'` marks the state as failed before resolving.
+Appends a `TerminalNode` placement. When the engine reaches it, the flow ends with the declared `outcome`. The default is `'completed'`. Passing `{ outcome: 'failed' }` marks the state as failed before resolving.
 
-TerminalNodes carry no `outputs` map. They are placement-only constructs with no backing `NodeInterface`.
-
-### When to use an explicit terminal versus a null route
-
-A null route (`{ ok: null }`) is the shortest form and is sufficient when the endpoint has no semantic meaning beyond "done." It is sugar for an implicit `completed` terminal.
-
-Use `.terminal(name)` when:
-
-- The endpoint name carries meaning (`end-ok`, `response-sent`) and you want it visible in the visualisation.
-- The outcome is `'failed'`. Null routes always mean `completed`; there is no null-route shorthand for a failed outcome.
-- Multiple branches converge at named endpoints and legibility matters.
+TerminalNodes carry no `outputs` map. They are placement-only constructs with no backing `NodeInterface`. Every output of every node in a DAG must route to another named node — a `TerminalNode` placement is the only valid flow endpoint.
 
 ### Routing embedded-DAG outputs to a terminal placement
 
-An `EmbeddedDAGNode` placement may target a named terminal directly:
+An `EmbeddedDAGNode` placement targets named terminals directly:
 
 ```ts
 const dag = new DAGBuilder('parent', '1')
@@ -302,11 +318,11 @@ const dag = new DAGBuilder('parent', '1')
     error:   'end-fail',
   })
   .terminal('end-ok')
-  .terminal('end-fail', 'failed')
+  .terminal('end-fail', { outcome: 'failed' })
   .build();
 ```
 
-When the child DAG exits with a failed terminal, the `error` output arrives at `end-fail`, which marks the parent flow `failed`. Without a named terminal, the author would need a dedicated SingleNode to call `state.markFailed()`. The terminal collapses that to one `.terminal(name, 'failed')` call.
+When the child DAG exits with a failed terminal, the `error` output arrives at `end-fail`, which marks the parent flow `failed`. Without a named terminal, the author would need a dedicated SingleNode to call `state.markFailed()`. The terminal collapses that to one `.terminal(name, { outcome: 'failed' })` call.
 
 ### Example, two explicit terminals
 
@@ -350,9 +366,9 @@ Post-phase placements run after the main loop drains. They run on every exit pat
 
 Pre-phase names appear at the start of `executedNodes`; post-phase names appear at the end (only when the placement completed successfully). Main-loop nodes appear in between.
 
-### Instrumentation
+### Phase hooks
 
-The dispatcher invokes `Instrumentation.phaseEnter(dagName, 'pre' | 'post', placementName, state)` immediately before each phase placement runs and `phaseExit(...)` immediately after. See [Observability](./observability).
+The dispatcher invokes `onPhaseEnter(dagName, 'pre' | 'post', placementName, state)` immediately before each phase placement runs and `onPhaseExit(...)` immediately after. Override these protected methods in a `Dagonizer` subclass to observe phase boundaries. See [Observability](./observability).
 
 ### Example
 
@@ -360,9 +376,10 @@ The dispatcher invokes `Instrumentation.phaseEnter(dagName, 'pre' | 'post', plac
 import { DAGBuilder } from '@noocodex/dagonizer/builder';
 
 const dag = new DAGBuilder('with-phases', '1')
-  .node('process', processNode, { success: null })
+  .node('process', processNode, { success: 'end' })
   .phase('warm-cache', 'pre',  warmCacheNode)
   .phase('flush-logs', 'post', flushLogsNode)
+  .terminal('end')
   .build();
 ```
 
@@ -373,8 +390,9 @@ By default the first added node is the entrypoint. Override explicitly:
 ```ts
 new DAGBuilder('dag', '1')
   .node('setup', setupNode, { success: 'main' })
-  .node('main', mainNode, { success: null })
+  .node('main', mainNode, { success: 'end' })
   .entrypoint('main')  // skip setup during a resume, for example
+  .terminal('end')
   .build();
 ```
 
@@ -388,4 +406,4 @@ The returned object is identical to one written by hand. Pass it directly to `di
 
 - [Phase 02, DAGBuilder demo](../examples/02-builder)
 - [Reference, Dagonizer](../reference/dagonizer)
-- [Reference, Entities, `DAG`, `SingleNode`, `ParallelNode`, `ScatterNode`, `EmbeddedDAGNode`](../reference/entities)
+- [Reference, Entities, `DAG`, `SingleNode`, `ScatterNode`, `EmbeddedDAGNode`](../reference/entities)

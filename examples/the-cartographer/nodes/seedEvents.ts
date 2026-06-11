@@ -11,7 +11,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { Sources } from '../services.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region seed-events-node
 export const seedEvents: NodeInterface<CartographerState, never, CartographerServices> = {
@@ -22,7 +22,7 @@ export const seedEvents: NodeInterface<CartographerState, never, CartographerSer
       throw new Error('Aborted');
     }
     state.sources = await Sources.build(state.eventCount);
-    return { 'output': undefined as never };
+    return NodeOutputBuilder.of(undefined as never);
   },
 };
 // #endregion seed-events-node

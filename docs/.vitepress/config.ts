@@ -67,16 +67,71 @@ const sidebar = [
     items: [
       { text: 'The Archivist (in-browser demo)',    link: '/examples/the-archivist' },
       { text: 'The Cartographer (in-browser demo)', link: '/examples/the-cartographer' },
-      { text: 'Phase 01: Linear intake',            link: '/examples/01-linear' },
-      { text: 'Phase 02: DAGBuilder',               link: '/examples/02-builder' },
-      { text: 'Phase 03: Tool schemas',             link: '/examples/03-schema' },
-      { text: 'Phase 04: Scatter scout',             link: '/examples/04-scatter' },
+    ],
+  },
+  {
+    text: 'Examples — Core',
+    collapsed: false,
+    items: [
+      { text: 'Phase 01: Linear intake',               link: '/examples/01-linear' },
+      { text: 'Phase 02: DAGBuilder',                  link: '/examples/02-builder' },
+      { text: 'Phase 03: Tool schemas',                link: '/examples/03-schema' },
       { text: 'Phase 05: EmbeddedDAGNode composition', link: '/examples/05-embedded-dags' },
-      { text: 'Phase 06: Cancellation',             link: '/examples/06-cancellation' },
-      { text: 'Phase 07: Retry',                    link: '/examples/07-retry' },
-      { text: 'Phase 08: Checkpoint + resume',      link: '/examples/08-checkpoint' },
-      { text: 'Phase 09: Terminal placements',      link: '/examples/09-terminals' },
-      { text: 'Phase 10: Shared state',             link: '/examples/10-shared-state' },
+      { text: 'Phase 06: Cancellation',                link: '/examples/06-cancellation' },
+      { text: 'Phase 07: Retry',                       link: '/examples/07-retry' },
+      { text: 'Phase 08: Checkpoint + resume',         link: '/examples/08-checkpoint' },
+      { text: 'Phase 09: Terminal placements',         link: '/examples/09-terminals' },
+      { text: 'Phase 10: Shared state',                link: '/examples/10-shared-state' },
+      { text: 'Phase 11: Cross-host handoff',          link: '/examples/11-handoff' },
+      { text: 'Example 18: Observability',             link: '/examples/18-observability' },
+      { text: 'Example 19: Phase nodes',               link: '/examples/19-phase-nodes' },
+      { text: 'Example 20: Streaming execution',       link: '/examples/20-streaming' },
+      { text: 'Example 21: Per-node timeout',          link: '/examples/21-per-node-timeout' },
+    ],
+  },
+  {
+    text: 'Examples — Scatter / Gather',
+    collapsed: false,
+    items: [
+      { text: 'Phase 04: Scatter scout',               link: '/examples/04-scatter' },
+      { text: 'Example 04b: Scatter collect',          link: '/examples/04b-scatter-collect' },
+      { text: 'Example 04c: Scatter + container',      link: '/examples/04c-scatter-workers' },
+      { text: 'Example 14: Gather strategies',         link: '/examples/14-gather-strategies' },
+      { text: 'Example 15: Incremental gather',        link: '/examples/15-incremental-gather' },
+      { text: 'Example 16: Scatter resume',            link: '/examples/16-scatter-resume' },
+      { text: 'Example 17: Async source',              link: '/examples/17-scatter-async-source' },
+      { text: 'Example: Scatter extensions',           link: '/examples/scatter-extensions' },
+    ],
+  },
+  {
+    text: 'Examples — Distribution / Workers',
+    collapsed: false,
+    items: [
+      { text: 'Phase 12: Worker containers',           link: '/examples/12-workers' },
+      { text: 'Phase 13: Multi-backend dispatch',      link: '/examples/13-multibackend' },
+    ],
+  },
+  {
+    text: 'Examples — LLM / Agent',
+    collapsed: false,
+    items: [
+      { text: 'Example 24: LLM adapter',              link: '/examples/24-llm-adapter' },
+      { text: 'Example 25: Embedder',                 link: '/examples/25-embedder' },
+      { text: 'Example 26: Tool use',                 link: '/examples/26-tool-use' },
+    ],
+  },
+  {
+    text: 'Examples — Patterns / Modules',
+    collapsed: true,
+    items: [
+      { text: 'Example: DAGDeriver',                  link: '/examples/derive' },
+      { text: 'Example 22: Backoff strategies',       link: '/examples/22-backoff-strategies' },
+      { text: 'Example 23: Checkpoint store',         link: '/examples/23-checkpoint-store' },
+      { text: 'Example: Constants usage',             link: '/examples/constants-usage' },
+      { text: 'Example: Monadic node',                link: '/examples/monadic-node' },
+      { text: 'Example: State accessor',              link: '/examples/state-accessor' },
+      { text: 'Example: Remote store',                link: '/examples/store-remote' },
+      { text: 'Example: Virtual clock',               link: '/examples/virtual-clock' },
     ],
   },
   {
@@ -109,6 +164,7 @@ const sidebar = [
       { text: 'Checkpoint persistence',    link: '/guide/persistence' },
       { text: 'Contract-derived flows',    link: '/guide/derive' },
       { text: 'Visualization',             link: '/guide/visualization' },
+      { text: 'Distribution and cloud',    link: '/guide/distribution' },
     ],
   },
   {
@@ -137,7 +193,9 @@ const sidebar = [
       { text: 'Store',      link: '/reference/store' },
       { text: 'Entities',   link: '/reference/entities' },
       { text: 'Testing',    link: '/reference/testing' },
-      { text: 'Errors',     link: '/reference/errors' },
+      { text: 'Container', link: '/reference/container' },
+      { text: 'Channels',  link: '/reference/channels' },
+      { text: 'Errors',    link: '/reference/errors' },
     ],
   },
 ];
@@ -152,7 +210,7 @@ const SITE_URL = `https://studnicky.github.io${SITE_BASE}`;
 const SITE_ICON = `${SITE_URL}dagonizer-icon.svg`;
 const SITE_OG_IMAGE = `${SITE_URL}og-image.png`;
 const SITE_THEME_COLOR = '#22e8ff';
-const SITE_KEYWORDS = 'dagonizer, dag, workflow, orchestration, dispatcher, node.js, typescript, flow, pipeline, state-machine, scatter, embedded-dag, parallel, checkpoint, abortable, deterministic resume, mermaid visualization, json schema, retry policy, cancellation, async-iterable, contract-derived flow';
+const SITE_KEYWORDS = 'dagonizer, dag, workflow, orchestration, dispatcher, node.js, typescript, flow, pipeline, state-machine, scatter-gather, embedded-dag, checkpoint, abortable, deterministic resume, mermaid visualization, json schema, retry policy, cancellation, async-iterable, contract-derived flow';
 const SITE_AUTHOR_NAME = 'Andrew Studnicky';
 const SITE_AUTHOR_URL = 'https://github.com/Studnicky';
 const SITE_REPO       = 'https://github.com/Studnicky/Dagonizer';
@@ -169,6 +227,8 @@ export default withMermaid(defineConfig({
   appearance: false,
   cleanUrls: true,
   lastUpdated: true,
+  // Exclude plans/** from the built site (audit ledger + stale plans docs).
+  srcExclude: ['plans/**'],
   head: [
     /* Favicon stack. The SVG is the canonical icon (modern browsers,
        crisp at every size). The PNG variants stay as fallbacks for
@@ -635,6 +695,12 @@ export default withMermaid(defineConfig({
     },
     optimizeDeps: {
       include: ['tz-lookup', '@rapideditor/country-coder'],
+    },
+    // The base tsconfig targets `ES2024`, which the Vite-bundled esbuild does
+    // not accept. Pin a target esbuild supports so the docs bundle transpiles
+    // the `src/viz/` and `examples/` sources cleanly (browser runtime only).
+    esbuild: {
+      target: 'es2022',
     },
   },
 }));

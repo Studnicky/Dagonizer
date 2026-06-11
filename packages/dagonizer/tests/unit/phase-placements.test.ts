@@ -7,7 +7,6 @@ import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { NoopInstrumentation } from '../../src/runtime/NoopInstrumentation.js';
 import { Validator } from '../../src/validation/Validator.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -29,7 +28,7 @@ const makeNode = (
     } else {
       state.trace.push(name);
     }
-    return { 'output': outputs[0] as string };
+    return { 'errors': [], 'output': outputs[0] as string };
   },
 });
 
@@ -44,25 +43,25 @@ const makeThrowingNode = (
   },
 });
 
-// Recording instrumentation captures phase hook invocations in order.
+// Recording Dagonizer subclass captures phase hook invocations in order.
 interface Call {
   readonly hook: string;
   readonly args: readonly unknown[];
 }
 
-class RecordingInstrumentation extends NoopInstrumentation<TrackingState> {
+class RecordingDagonizer extends Dagonizer<TrackingState> {
   readonly calls: Call[] = [];
 
-  override phaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TrackingState, placementPath: readonly string[]): void {
+  protected override onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TrackingState, placementPath: readonly string[]): void {
     this.calls.push({ 'hook': 'phaseEnter', 'args': [dagName, phase, placementName, state, placementPath] });
   }
-  override phaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TrackingState, placementPath: readonly string[]): void {
+  protected override onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TrackingState, placementPath: readonly string[]): void {
     this.calls.push({ 'hook': 'phaseExit', 'args': [dagName, phase, placementName, state, placementPath] });
   }
-  override flowStart(dagName: string, state: TrackingState): void {
+  protected override onFlowStart(dagName: string, state: TrackingState): void {
     this.calls.push({ 'hook': 'flowStart', 'args': [dagName, state] });
   }
-  override flowEnd(dagName: string, _state: TrackingState): void {
+  protected override onFlowEnd(dagName: string, _state: TrackingState): void {
     this.calls.push({ 'hook': 'flowEnd', 'args': [dagName] });
   }
 
@@ -124,7 +123,7 @@ void describe('PhaseNode placements: schema validation', () => {
       'name':  'setup',
       'node':  'setup-node',
       'phase': 'pre',
-      'outputs': { 'success': null },
+      'outputs': { 'success': 'end' },
     };
     assert.equal(Validator.phaseNode.is(bad), false);
   });
@@ -150,8 +149,9 @@ void describe('PhaseNode placements: schema validation', () => {
           '@type': 'SingleNode',
           'name':  'a',
           'node':  'a',
-          'outputs': { 'success': null },
+          'outputs': { 'success': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:demo/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     assert.equal(Validator.dag.is(dag), true);
@@ -169,8 +169,9 @@ void describe('PhaseNode placements: pre-phase execution', () => {
     dispatcher.registerNode(makeNode('entry', ['success']));
 
     const dag = new DAGBuilder('pre-runs-first', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': null })
+      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
       .phase('setup', 'pre', makeNode('setup-node', ['success']))
+      .terminal('end')
       .build();
 
     dispatcher.registerDAG(dag);
@@ -186,8 +187,9 @@ void describe('PhaseNode placements: pre-phase execution', () => {
     dispatcher.registerNode(makeNode('entry', ['success']));
 
     const dag = new DAGBuilder('pre-aborts', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': null })
+      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
       .phase('boom', 'pre', makeThrowingNode('boom-pre', 'pre-phase fail'))
+      .terminal('end')
       .build();
 
     dispatcher.registerDAG(dag);
@@ -206,10 +208,11 @@ void describe('PhaseNode placements: pre-phase execution', () => {
     dispatcher.registerNode(makeNode('entry', ['success']));
 
     const dag = new DAGBuilder('multi-pre', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': null })
+      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
       .phase('p1', 'pre', makeNode('p1', ['success']))
       .phase('p2', 'pre', makeNode('p2', ['success']))
       .phase('p3', 'pre', makeNode('p3', ['success']))
+      .terminal('end')
       .build();
 
     dispatcher.registerDAG(dag);
@@ -228,8 +231,9 @@ void describe('PhaseNode placements: post-phase execution', () => {
     dispatcher.registerNode(makeNode('teardown', ['success'], (s) => { s.trace.push('post-teardown'); }));
 
     const dag = new DAGBuilder('post-success', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': null })
+      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
       .phase('teardown', 'post', makeNode('teardown', ['success']))
+      .terminal('end')
       .build();
 
     dispatcher.registerDAG(dag);
@@ -242,25 +246,30 @@ void describe('PhaseNode placements: post-phase execution', () => {
   void it('post-phase runs after the main loop on the abort path', async () => {
     const dispatcher = new Dagonizer<TrackingState>();
     dispatcher.registerNode(makeNode('teardown', ['success'], (s) => { s.trace.push('post-teardown'); }));
-    // Slow node we can pre-abort
+
+    // Slow node that signals readiness once suspended, then waits for abort.
+    // Using a readiness promise avoids any wall-clock dependency.
+    let resolveNodeReady!: () => void;
+    const nodeReady = new Promise<void>((r) => { resolveNodeReady = r; });
+
     dispatcher.registerNode({
       'name': 'slow',
       'outputs': ['success'],
       async execute(_state, ctx) {
-        await new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(() => resolve(), 10_000);
+        resolveNodeReady();
+        await new Promise<void>((_resolve, reject) => {
           ctx.signal.addEventListener('abort', () => {
-            clearTimeout(timer);
             reject(new Error('aborted'));
-          });
+          }, { 'once': true });
         });
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     });
 
     const dag = new DAGBuilder('post-abort', '1')
-      .node('slow', makeNode('slow', ['success']), { 'success': null })
+      .node('slow', makeNode('slow', ['success']), { 'success': 'end' })
       .phase('teardown', 'post', makeNode('teardown', ['success']))
+      .terminal('end')
       .build();
 
     dispatcher.registerDAG(dag);
@@ -268,8 +277,8 @@ void describe('PhaseNode placements: post-phase execution', () => {
     const controller = new AbortController();
     const state = new TrackingState();
     const exec = dispatcher.execute('post-abort', state, { 'signal': controller.signal });
-    // Abort almost immediately
-    setTimeout(() => controller.abort(), 10);
+    // Abort deterministically once the node body is provably suspended.
+    nodeReady.then(() => { controller.abort(); });
     const result = await exec;
     assert.equal(['cancelled', 'failed'].includes(result.state.lifecycle.kind), true);
     assert.ok(state.trace.includes('post-teardown'), 'post-phase ran on abort path');
@@ -281,8 +290,9 @@ void describe('PhaseNode placements: post-phase execution', () => {
     dispatcher.registerNode(makeThrowingNode('boom-post', 'post-phase fail'));
 
     const dag = new DAGBuilder('post-throws', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': null })
+      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
       .phase('boom', 'post', makeThrowingNode('boom-post', 'post-phase fail'))
+      .terminal('end')
       .build();
 
     dispatcher.registerDAG(dag);
@@ -303,10 +313,11 @@ void describe('PhaseNode placements: post-phase execution', () => {
     dispatcher.registerNode(makeNode('p3', ['success'], (s) => { s.trace.push('p3'); }));
 
     const dag = new DAGBuilder('multi-post', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': null })
+      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
       .phase('p1', 'post', makeNode('p1', ['success']))
       .phase('p2', 'post', makeNode('p2', ['success']))
       .phase('p3', 'post', makeNode('p3', ['success']))
+      .terminal('end')
       .build();
 
     dispatcher.registerDAG(dag);
@@ -316,28 +327,28 @@ void describe('PhaseNode placements: post-phase execution', () => {
   });
 });
 
-// ── 4. Instrumentation hooks ──────────────────────────────────────────────
+// ── 4. Subclass phase hooks ───────────────────────────────────────────────
 
-void describe('PhaseNode placements: instrumentation hooks', () => {
-  void it('phaseEnter / phaseExit fire with correct phase + placement name', async () => {
-    const instrumentation = new RecordingInstrumentation();
-    const dispatcher = new Dagonizer<TrackingState>({ instrumentation });
+void describe('PhaseNode placements: subclass phase hooks', () => {
+  void it('onPhaseEnter / onPhaseExit fire with correct phase + placement name', async () => {
+    const dispatcher = new RecordingDagonizer();
 
     dispatcher.registerNode(makeNode('setup', ['success']));
     dispatcher.registerNode(makeNode('entry', ['success']));
     dispatcher.registerNode(makeNode('teardown', ['success']));
 
     const dag = new DAGBuilder('instr-phases', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': null })
+      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
       .phase('setup', 'pre', makeNode('setup', ['success']))
       .phase('teardown', 'post', makeNode('teardown', ['success']))
+      .terminal('end')
       .build();
 
     dispatcher.registerDAG(dag);
     await dispatcher.execute('instr-phases', new TrackingState());
 
-    const enters = instrumentation.hooksOfType('phaseEnter');
-    const exits  = instrumentation.hooksOfType('phaseExit');
+    const enters = dispatcher.hooksOfType('phaseEnter');
+    const exits  = dispatcher.hooksOfType('phaseExit');
 
     assert.equal(enters.length, 2);
     assert.equal(exits.length, 2);
@@ -364,15 +375,16 @@ void describe('PhaseNode placements: executedNodes ordering', () => {
     dispatcher.registerNode(makeNode('entry', ['success']));
 
     const dag = new DAGBuilder('ordering', '1')
-      .node('entry', makeNode('entry', ['success']), { 'success': null })
+      .node('entry', makeNode('entry', ['success']), { 'success': 'end' })
       .phase('setup', 'pre', makeNode('setup', ['success']))
       .phase('teardown', 'post', makeNode('teardown', ['success']))
+      .terminal('end')
       .build();
 
     dispatcher.registerDAG(dag);
 
     const result = await dispatcher.execute('ordering', new TrackingState());
-    assert.deepEqual(result.executedNodes, ['setup', 'entry', 'teardown']);
+    assert.deepEqual(result.executedNodes, ['setup', 'entry', 'end', 'teardown']);
   });
 });
 
@@ -396,7 +408,7 @@ void describe('PhaseNode placements: registration validation', () => {
           '@type': 'SingleNode',
           'name':  'entry',
           'node':  'entry',
-          'outputs': { 'success': null },
+          'outputs': { 'success': 'end' },
         },
         {
           '@id':   'urn:noocodex:dag:bad-phase/node/missing',
@@ -405,6 +417,7 @@ void describe('PhaseNode placements: registration validation', () => {
           'node':  'not-registered',
           'phase': 'pre',
         },
+        { '@id': 'urn:noocodex:dag:bad-phase/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     assert.throws(() => dispatcher.registerDAG(dag), /unknown registered node: not-registered/);

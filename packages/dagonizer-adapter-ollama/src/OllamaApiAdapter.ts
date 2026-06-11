@@ -98,7 +98,7 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
         throw new LlmError(
           `Ollama model '${modelName}' is not installed. Run: ollama pull ${modelName}`,
           Classifications['MODEL_NOT_FOUND'],
-          err,
+          { 'cause': err },
         );
       }
       throw err;

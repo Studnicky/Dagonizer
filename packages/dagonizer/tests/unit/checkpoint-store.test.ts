@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Checkpoint, MemoryCheckpointStore } from '../../src/checkpoint/index.js';
+import { Checkpoint, CheckpointRestoreAdapterFn, MemoryCheckpointStore } from '../../src/checkpoint/index.js';
 import type { CheckpointData } from '../../src/entities/index.js';
 import { ValidationError } from '../../src/errors/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
@@ -57,7 +57,7 @@ void describe('ckpt.persist + Checkpoint.recall', () => {
     assert.ok(recalled !== null);
 
     const { dagName, cursor, state, executedNodes } = recalled.restoreState<StoreState>(
-      (snap) => StoreState.restore(snap),
+      CheckpointRestoreAdapterFn.fromFn((snap) => StoreState.restore(snap)),
     );
     assert.equal(dagName, 'demo');
     assert.equal(cursor, 'next-node');

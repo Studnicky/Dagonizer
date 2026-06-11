@@ -21,21 +21,28 @@ import type { StateAccessor } from '../contracts/StateAccessor.js';
 const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 
 export class DottedPathAccessor implements StateAccessor {
-  get(state: object, path: string): unknown {
+  get<T = unknown>(state: object, path: string): T | null {
     const parts = path.split('.');
     let current: unknown = state;
 
     for (const part of parts) {
       if (current === null || current === undefined) {
-        return undefined;
+        return null;
       }
       if (part === '' || FORBIDDEN_KEYS.has(part)) {
-        return undefined;
+        return null;
       }
+      // State-traversal boundary: `current` is verified non-null/undefined above
+      // and is a plain object at every step of the path; the cast to
+      // `Record<string, unknown>` is the single permitted ingest point for
+      // dotted-path traversal over arbitrary state objects.
       current = (current as Record<string, unknown>)[part];
     }
 
-    return current;
+    if (current === undefined) {
+      return null;
+    }
+    return current as T;
   }
 
   set(state: object, path: string, value: unknown): void {
@@ -50,6 +57,9 @@ export class DottedPathAccessor implements StateAccessor {
         return;
       }
     }
+    // State-traversal boundary: `state` is typed as `object` at the interface
+    // boundary; the cast widens it to an indexable record so the write loop
+    // can traverse and create intermediate plain objects along the path.
     let current = state as Record<string, unknown>;
 
     for (let i = 0; i < parts.length - 1; i++) {
@@ -61,6 +71,10 @@ export class DottedPathAccessor implements StateAccessor {
       if (!(part in current)) {
         current[part] = {};
       }
+      // State-traversal boundary: the intermediate segment at `part` is a
+      // plain object created by this method (or supplied by the caller as
+      // domain state). The cast to `Record<string, unknown>` advances the
+      // traversal cursor; FORBIDDEN_KEYS guards prevent prototype pollution.
       current = current[part] as Record<string, unknown>;
     }
     const lastPart = parts[parts.length - 1];

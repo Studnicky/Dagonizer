@@ -12,10 +12,13 @@
 
 import type { JsonValue } from '../entities/json.js';
 
+import type { AbortableOptionsInterface } from './AbortableOptionsInterface.js';
+
+
 /** Entry in a serialized snapshot envelope. */
 export interface StoreSnapshotEntry {
-  readonly key:   string;
-  readonly value: JsonValue;
+  key:   string;
+  value: JsonValue;
 }
 
 /**
@@ -23,19 +26,25 @@ export interface StoreSnapshotEntry {
  * (e.g. `'memory-store-v1'`) so resume code can refuse incompatible snapshots.
  */
 export interface StoreSnapshot {
-  readonly version: number;
-  readonly type:    string;
-  readonly entries: readonly StoreSnapshotEntry[];
+  version: number;
+  type:    string;
+  entries: StoreSnapshotEntry[];
 }
 
 /** A state container that can be captured into, and restored from, a `StoreSnapshot`. */
 export interface Snapshottable {
-  /** Capture the entire state as a typed envelope. */
-  snapshot(): Promise<StoreSnapshot>;
+  /**
+   * Capture the entire state as a typed envelope. `options.signal` is
+   * available for implementations backed by remote or async stores that
+   * support cancellation; in-process implementations may ignore it.
+   */
+  snapshot(options?: AbortableOptionsInterface): Promise<StoreSnapshot>;
 
   /**
    * Repopulate from a snapshot. Implementations validate `snapshot.type` and
-   * `snapshot.version` before applying entries.
+   * `snapshot.version` before applying entries. `options.signal` is available
+   * for implementations backed by remote or async stores; in-process
+   * implementations may ignore it.
    */
-  restore(snapshot: StoreSnapshot): Promise<void>;
+  restore(snapshot: StoreSnapshot, options?: AbortableOptionsInterface): Promise<void>;
 }

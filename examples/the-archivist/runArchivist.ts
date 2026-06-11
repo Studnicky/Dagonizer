@@ -38,7 +38,6 @@ import { ArchivistState } from './ArchivistState.ts';
 import { archivistBundle } from './dag.ts';
 import { bookSearchScatterBundle } from './embedded-dags/BookSearchScatterDAG.ts';
 import { composeRetryLoopBundle } from './embedded-dags/ComposeRetryLoopDAG.ts';
-import { ArchivistInstrumentation } from './instrumentation/ArchivistInstrumentation.ts';
 import { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { ObservedArchivist } from './ObservedArchivist.ts';
@@ -66,11 +65,11 @@ import {
   LlmAdapterCascade,
   LlmAdapterRegistry,
   LlmError,
-} from '@noocodex/dagonizer';
+} from '@noocodex/dagonizer/adapter';
 import { ExecutionError, NodeTimeoutError } from '@noocodex/dagonizer/errors';
 import type { AdapterCapabilities } from '@noocodex/dagonizer/adapter';
 import type { Embedder } from '@noocodex/dagonizer/contracts';
-import { Checkpoint, MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
+import { Checkpoint, CheckpointRestoreAdapterFn, MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
 
 const logger = new ConsoleLogger();
 
@@ -220,10 +219,9 @@ const services: ArchivistServices = {
 // #region linear-run
 // ── Dispatcher ───────────────────────────────────────────────────────────
 // ObservedArchivist: Dagonizer subclass wiring every lifecycle hook to the
-// logger. ArchivistInstrumentation: plugin surface for composable telemetry.
-// Both coexist on the same dispatcher; neither suppresses the other.
+// logger via protected hook overrides (the sole observability surface).
 const dispatcher = new ObservedArchivist(
-  { services, 'instrumentation': new ArchivistInstrumentation(logger) },
+  { services },
   logger,
 );
 
@@ -325,7 +323,7 @@ if (cancelResult.cursor !== null) {
     const freshMemory = new MemoryStore();
     await recalled.restoreStores({ 'memory': freshMemory });
     const { dagName, state, cursor } = recalled.restoreState(
-      (snap) => ArchivistState.restore(snap),
+      CheckpointRestoreAdapterFn.fromFn((snap) => ArchivistState.restore(snap)),
     );
     const resumeResult = await dispatcher.resume(dagName, state, cursor);
     logger.result(`resumed draft=${resumeResult.state.draft}`);

@@ -15,7 +15,6 @@ import {
   MetadataKey,
   NodeType,
   Output,
-  ParallelCombine,
   ScatterOutput,
 } from '@noocodex/dagonizer/constants';
 
@@ -29,31 +28,26 @@ function describeOutput(output: Output): string {
 
 // -- NodeType ----------------------------------------------------------------
 // Discriminate a placement type read from a DAG definition.
-function isParallelPlacement(type: NodeType): boolean {
-  return type === NodeType.PARALLEL;
+function isScatterPlacement(type: NodeType): boolean {
+  return type === NodeType.SCATTER;
 }
 
 // -- GatherStrategyName ------------------------------------------------------
 // Validate a config value against the known gather strategies.
 function isKnownGatherStrategy(name: string): name is GatherStrategyName {
-  const known: readonly string[] = [
-    GatherStrategyName.APPEND,
-    GatherStrategyName.CUSTOM,
-    GatherStrategyName.MAP,
-    GatherStrategyName.PARTITION,
-  ];
-  return known.includes(name);
+  return (Object.values(GatherStrategyName) as readonly string[]).includes(name);
 }
+
+// Select the gather strategy for a fan-out that maps per-clone field values
+// into a target array on the parent state (one entry per source item, in
+// source-index order). Use COLLECT when aggregating output tokens instead.
+const fanOutGatherStrategy: GatherStrategyName = GatherStrategyName.MAP;
 
 // -- MetadataKey -------------------------------------------------------------
 // Read a reserved key off a node's metadata bag.
 function readCurrentItem(metadata: Partial<Record<MetadataKey, unknown>>): unknown {
   return metadata[MetadataKey.CURRENT_ITEM];
 }
-
-// -- ParallelCombine ---------------------------------------------------------
-// Pick a combine strategy name for a parallel placement.
-const combineStrategy: ParallelCombine = ParallelCombine.ALL_SUCCESS;
 
 // -- ScatterOutput -----------------------------------------------------------
 // Branch on scatter aggregate output.
@@ -67,8 +61,8 @@ function interpretScatterOutput(output: ScatterOutput): string {
 
 // Suppress unused variable warnings.
 void describeOutput;
-void isParallelPlacement;
+void isScatterPlacement;
 void isKnownGatherStrategy;
 void readCurrentItem;
-void combineStrategy;
+void fanOutGatherStrategy;
 void interpretScatterOutput;

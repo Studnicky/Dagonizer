@@ -23,12 +23,12 @@ import type { OperationContractFragment } from './OperationContractFragment.js';
 
 export interface OperationContract extends OperationContractFragment {
   /** Operation name. Matches `NodeInterface.name` used at registration. */
-  readonly name: string;
+  name: string;
   /**
    * Output ports the operation can emit. Must match the node's
    * `outputs` declaration at registration. Every port routes to the
    * next derived stage; `DAGDeriverAnnotations.terminals` overrides
    * individual ports.
    */
-  readonly outputs: readonly string[];
+  outputs: string[];
 }

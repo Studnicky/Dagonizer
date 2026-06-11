@@ -20,7 +20,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { EventClassifier } from '../services.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region classify-node
 export const classify: NodeInterface<CartographerState, 'classified', CartographerServices> = {
@@ -63,7 +63,7 @@ export const classify: NodeInterface<CartographerState, 'classified', Cartograph
       'promisedDeliveryAt': new Date(norm.promisedEpochMs).toISOString(),
     };
 
-    return { 'output': 'classified' };
+    return NodeOutputBuilder.of('classified');
   },
 };
 // #endregion classify-node

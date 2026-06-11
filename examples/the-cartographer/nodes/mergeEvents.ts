@@ -15,7 +15,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import type { CanonicalEvent } from '../entities/CanonicalEvent.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region merge-events-node
 export const mergeEvents: NodeInterface<CartographerState, 'merged', CartographerServices> = {
@@ -32,7 +32,7 @@ export const mergeEvents: NodeInterface<CartographerState, 'merged', Cartographe
       }
     }
     state.canonicalEvents = merged;
-    return { 'output': 'merged' };
+    return NodeOutputBuilder.of('merged');
   },
 };
 // #endregion merge-events-node

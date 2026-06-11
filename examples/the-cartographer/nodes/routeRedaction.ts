@@ -26,7 +26,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { Consent } from '../services.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region route-redaction-node
 export const routeRedaction: NodeInterface<CartographerState, 'needs-redaction' | 'skip-redaction', CartographerServices> = {
@@ -64,10 +64,10 @@ export const routeRedaction: NodeInterface<CartographerState, 'needs-redaction' 
         'coordsCoarsened':            false,
         'marketingAnalyticsEligible': consentStatus === 'valid',
       };
-      return { 'output': 'skip-redaction' };
+      return NodeOutputBuilder.of('skip-redaction');
     }
     state.routing = { ...state.routing, 'redactionRun': true, 'redactionSkipped': false };
-    return { 'output': 'needs-redaction' };
+    return NodeOutputBuilder.of('needs-redaction');
   },
 };
 // #endregion route-redaction-node

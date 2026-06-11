@@ -19,7 +19,7 @@ import type { CartographerServices } from '../../CartographerServices.ts';
 import { GeoFusion } from '../../services/GeoFusion.ts';
 import { TimeZoneResolver } from '../../services.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region fuse-geo-node
 export const fuseGeo: NodeInterface<CartographerState, 'fused', CartographerServices> = {
@@ -56,7 +56,7 @@ export const fuseGeo: NodeInterface<CartographerState, 'fused', CartographerServ
       'timezone':     TimeZoneResolver.zoneFor(lat, lng),
       'jurisdiction': resolved.jurisdiction,
     };
-    return { 'output': 'fused' };
+    return NodeOutputBuilder.of('fused');
   },
 };
 // #endregion fuse-geo-node

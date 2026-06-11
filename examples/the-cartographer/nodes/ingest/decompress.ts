@@ -15,7 +15,7 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region decompress-node
 export const decompress: NodeInterface<CartographerState, 'parse-ndjson' | 'invalid', CartographerServices> = {
@@ -41,9 +41,9 @@ export const decompress: NodeInterface<CartographerState, 'parse-ndjson' | 'inva
       let off = 0; for (const c of chunks) { merged.set(c, off); off += c.length; }
       state.decodedText = new TextDecoder().decode(merged);
     } catch {
-      return { 'output': 'invalid' };
+      return NodeOutputBuilder.of('invalid');
     }
-    return { 'output': 'parse-ndjson' };
+    return NodeOutputBuilder.of('parse-ndjson');
   },
 };
 // #endregion decompress-node

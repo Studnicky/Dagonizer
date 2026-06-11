@@ -25,8 +25,11 @@ import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 // ─── shared test state ───────────────────────────────────────────────────────
 
+/** Union type for scatter source fields: array (array-mode) or async iterable (streaming mode). */
+type ScatterSource<T> = T[] | AsyncIterable<T>;
+
 class StreamState extends NodeStateBase {
-  items: number[] = [];
+  items: ScatterSource<number> = [];
   processed: number[] = [];
   mappedResults: number[] = [];
   partition_success: number[] = [];
@@ -34,8 +37,12 @@ class StreamState extends NodeStateBase {
   produced = 0;
 
   protected override snapshotData(): JsonObject {
+    // items may be an AsyncIterable at runtime (scatter engine reads it via
+    // accessor); only array form is JSON-serialisable. Non-array sources are
+    // snapshotted as empty — resume callers supply a re-positioned iterator.
+    const itemsSnap = Array.isArray(this.items) ? [...this.items] : [];
     return {
-      'items':             [...this.items],
+      'items':             itemsSnap,
       'processed':         [...this.processed],
       'mappedResults':     [...this.mappedResults],
       'partition_success': [...this.partition_success],
@@ -80,8 +87,9 @@ const makeScatterDag = (
       'itemKey': 'item',
       ...(options.concurrency !== undefined ? { 'concurrency': options.concurrency } : {}),
       'gather': gatherStrategy,
-      'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+      'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
     },
+    { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 });
 
@@ -93,7 +101,7 @@ void describe('Scatter: array source backward compatibility', () => {
     let calls = 0;
     const worker: NodeInterface<StreamState, 'success'> = {
       'name': 'worker', 'outputs': ['success'],
-      async execute() { calls++; return { 'output': 'success' }; },
+      async execute() { calls++; return { 'errors': [], 'output': 'success' }; },
     };
     dispatcher.registerNode(worker);
     dispatcher.registerDAG(makeScatterDag('arr-compat',
@@ -121,7 +129,7 @@ void describe('Scatter: array source backward compatibility', () => {
         // Yield to allow other workers to start before decrementing.
         await new Promise<void>((r) => setImmediate(r));
         current--;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -144,7 +152,7 @@ void describe('Scatter: AsyncIterable source', () => {
     const dispatcher = new Dagonizer<StreamState>();
     const worker: NodeInterface<StreamState, 'success'> = {
       'name': 'worker', 'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     dispatcher.registerNode(worker);
     dispatcher.registerDAG(makeScatterDag('async-source',
@@ -160,7 +168,7 @@ void describe('Scatter: AsyncIterable source', () => {
     // The schema type for items is number[], but at runtime the scatter engine
     // reads the value via the accessor and passes it to toAsyncIterator.
     // Cast to any to set a non-array source value on the state field.
-    (state as unknown as Record<string, unknown>)['items'] = makeSource();
+    state.items = makeSource();
 
     const result = await dispatcher.execute('async-source', state);
     assert.equal(result.cursor, null);
@@ -169,14 +177,15 @@ void describe('Scatter: AsyncIterable source', () => {
 
   void it('true backpressure: source is not fully drained before processing begins', async () => {
     const dispatcher = new Dagonizer<StreamState>();
-    const pullOrder: number[] = [];
-    const processOrder: number[] = [];
 
-    // A generator that records when each item is pulled.
-    let seq = 0;
+    // Interleaving log: each entry is either { event: 'pull', item: N } or
+    // { event: 'process', item: N }. With true backpressure and concurrency=1
+    // the sequence must be: pull(1) → process(1) → pull(2) → process(2) → …
+    const log: Array<{ event: 'pull' | 'process'; item: number }> = [];
+
     async function* lazySource(): AsyncGenerator<number> {
       for (const n of [1, 2, 3, 4, 5]) {
-        pullOrder.push(n);
+        log.push({ 'event': 'pull', 'item': n });
         yield n;
       }
     }
@@ -185,11 +194,12 @@ void describe('Scatter: AsyncIterable source', () => {
       'name': 'worker', 'outputs': ['success'],
       async execute(state) {
         const item = state.getMetadata<number>('item') ?? 0;
-        processOrder.push(item);
-        seq++;
-        // Stall briefly so the next pull can only happen after processing starts.
+        log.push({ 'event': 'process', 'item': item });
+        // Yield to the event loop so the pull loop can advance if backpressure
+        // is broken; with correct backpressure the next pull happens only AFTER
+        // this item completes.
         await new Promise<void>((r) => setImmediate(r));
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -199,25 +209,28 @@ void describe('Scatter: AsyncIterable source', () => {
       { 'concurrency': 1 }));
 
     const st = new StreamState();
-    (st as unknown as Record<string, unknown>)['items'] = lazySource();
+    st.items = lazySource();
 
     await dispatcher.execute('bp-test', st);
 
-    // With true backpressure and concurrency=1, items are pulled ONE AT A TIME.
-    // Processing of item N must start before item N+1 is pulled.
-    // Assert: at the time item 2 is pulled, item 1 must already be in processOrder.
-    // pullOrder and processOrder both have 5 entries when done; check interleaving.
-    assert.equal(pullOrder.length, 5);
-    assert.equal(processOrder.length, 5);
-    // The entire source should NOT have been drained instantly: if backpressure
-    // works, pull and process interleave (pull[0] → process[0] → pull[1] ...).
-    // With setImmediate between pulls and concurrency=1 this is deterministic.
-    // At minimum, the source was NOT fully drained before ANY processing.
-    // We verify: after the first pull, processing started before the second pull.
-    // Since we can't observe async interleaving precisely in a unit test, we
-    // assert the stronger invariant: all 5 items were processed (no loss).
-    assert.equal(seq, 5, 'all items must be processed');
+    // All 5 items pulled and processed.
+    const pulls = log.filter((e) => e.event === 'pull').map((e) => e.item);
+    const procs = log.filter((e) => e.event === 'process').map((e) => e.item);
+    assert.equal(pulls.length, 5);
+    assert.equal(procs.length, 5);
     assert.deepEqual([...st.processed].sort((a, b) => a - b), [1, 2, 3, 4, 5]);
+
+    // Interleaving invariant: for each item N > 1, its pull must come AFTER the
+    // process of item N-1. Scan the log for the first 'pull' of item 2: the
+    // 'process' of item 1 must appear before it.
+    for (let n = 2; n <= 5; n++) {
+      const pullIdx  = log.findIndex((e) => e.event === 'pull'    && e.item === n);
+      const procIdx  = log.findIndex((e) => e.event === 'process' && e.item === n - 1);
+      assert.ok(
+        procIdx !== -1 && pullIdx !== -1 && procIdx < pullIdx,
+        `interleaving violated: process(${n - 1}) at log[${procIdx}] must precede pull(${n}) at log[${pullIdx}]`,
+      );
+    }
   });
 });
 
@@ -233,7 +246,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
       async execute(state) {
         calls++;
         seenItems.push(state.getMetadata<number>('item') ?? -1);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -253,8 +266,8 @@ void describe('Scatter: resume mid-stream (array source)', () => {
         'placementName': 'fan',
         'inbox': [],
         'ackedResults': [
-          { 'index': 0, 'item': 10, 'output': 'success' },
-          { 'index': 1, 'item': 20, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 0, 'item': 10, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 1, 'item': 20, 'output': 'success' },
         ],
       },
     });
@@ -281,7 +294,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
       'name': 'worker', 'outputs': ['success'],
       async execute(state) {
         processedItems.push(state.getMetadata<number>('item') ?? -1);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -300,7 +313,7 @@ void describe('Scatter: resume mid-stream (array source)', () => {
         'placementName': 'fan',
         'inbox': [{ 'index': 1, 'item': 2 }],  // item 1 (value=2) was in-flight
         'ackedResults': [
-          { 'index': 0, 'item': 1, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 0, 'item': 1, 'output': 'success' },
         ],
       },
     });
@@ -334,7 +347,7 @@ void describe('Scatter: resume mid-stream (AsyncIterable source)', () => {
       async execute(state) {
         calls++;
         processedValues.push(state.getMetadata<number>('item') ?? -1);
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -353,7 +366,7 @@ void describe('Scatter: resume mid-stream (AsyncIterable source)', () => {
     }
 
     const st = new StreamState();
-    (st as unknown as Record<string, unknown>)['items'] = remainingSource();
+    st.items = remainingSource();
 
     // Simulate what a real checkpoint looks like: items 0 and 1 were acked
     // and their gather contributions (append strategy) are already in processed.
@@ -365,8 +378,8 @@ void describe('Scatter: resume mid-stream (AsyncIterable source)', () => {
         'placementName': 'fan',
         'inbox': [{ 'index': 2, 'item': 30 }],
         'ackedResults': [
-          { 'index': 0, 'item': 10, 'output': 'success' },
-          { 'index': 1, 'item': 20, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 0, 'item': 10, 'output': 'success' },
+          { 'kind': 'plain' as const, 'index': 1, 'item': 20, 'output': 'success' },
         ],
       },
     });
@@ -401,7 +414,7 @@ void describe('Scatter: incremental gather', () => {
       async execute(state) {
         const item = state.getMetadata<number>('item') ?? 0;
         state.produced = item * 2;
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -422,8 +435,9 @@ void describe('Scatter: incremental gather', () => {
           'itemKey': 'item',
           'concurrency': 1,
           'gather': { 'strategy': 'map', 'mapping': { 'produced': 'mappedResults' } },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -460,7 +474,7 @@ void describe('Scatter: incremental gather', () => {
 
     const worker: NodeInterface<StreamState, 'success'> = {
       'name': 'worker', 'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     dispatcher.registerNode(worker);
     dispatcher.registerDAG(makeScatterDag('incr-append',
@@ -494,7 +508,7 @@ void describe('Scatter: incremental gather', () => {
       'name': 'worker', 'outputs': ['success', 'error'],
       async execute(state) {
         const item = state.getMetadata<number>('item') ?? 0;
-        return { 'output': item % 2 === 1 ? 'success' : 'error' };
+        return { 'errors': [], 'output': item % 2 === 1 ? 'success' : 'error' };
       },
     };
     dispatcher.registerNode(worker);
@@ -518,8 +532,9 @@ void describe('Scatter: incremental gather', () => {
             'strategy': 'partition',
             'partitions': { 'success': 'partition_success', 'error': 'partition_error' },
           },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -550,7 +565,7 @@ void describe('Scatter: incremental gather', () => {
 
     const worker: NodeInterface<StreamState, 'success'> = {
       'name': 'worker', 'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     // Custom gather node: reads gatherResults from metadata.
     const customGather: NodeInterface<StreamState, 'success'> = {
@@ -561,7 +576,7 @@ void describe('Scatter: incremental gather', () => {
         for (const r of records) {
           if (typeof r.item === 'number') state.processed.push(r.item);
         }
-        return { 'output': 'success' };
+        return { 'errors': [], 'output': 'success' };
       },
     };
     dispatcher.registerNode(worker);
@@ -583,8 +598,9 @@ void describe('Scatter: incremental gather', () => {
           'itemKey': 'item',
           'concurrency': 2,
           'gather': { 'strategy': 'custom', 'customNode': 'customGather' },
-          'outputs': { 'all-success': null, 'partial': null, 'all-error': null, 'empty': null },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
         },
+        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
       ],
     };
     dispatcher.registerDAG(dag);
@@ -622,7 +638,7 @@ void describe('Scatter: progress shape (inbox model)', () => {
 
     const worker: NodeInterface<StreamState, 'success'> = {
       'name': 'worker', 'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     dispatcher.registerNode(worker);
     dispatcher.registerDAG(makeScatterDag('progress-shape',

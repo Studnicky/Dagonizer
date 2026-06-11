@@ -2,7 +2,7 @@
 seeAlso:
   - text: 'Reference: Contracts'
     link: './contracts'
-    description: '`ClockProvider`, `SchedulerProvider`, `StateAccessor`, `Instrumentation`'
+    description: '`ClockProvider`, `SchedulerProvider`, `StateAccessor`'
   - text: 'Reference: Testing'
     link: './testing'
     description: '`VirtualClockProvider`, `VirtualScheduler`'
@@ -12,14 +12,13 @@ seeAlso:
 
 `@noocodex/dagonizer/runtime`
 
-Runtime utilities: monotonic clock, scheduler, retry policy, signal composition, state accessor, and the no-op instrumentation base class. All clock and scheduler primitives are swappable via their provider contracts for deterministic tests.
+Runtime utilities: monotonic clock, scheduler, retry policy, signal composition, and state accessor. All clock and scheduler primitives are swappable via their provider contracts for deterministic tests.
 
 ```ts
 import {
   BackoffStrategy,
   Clock,
   DottedPathAccessor,
-  NoopInstrumentation,
   RealTimeScheduler,
   RetryPolicy,
   Scheduler,
@@ -29,9 +28,7 @@ import type {
   BackoffStrategyValue,
   ClockProvider,
   ErrorConstructorType,
-  Instrumentation,
   RetryPolicyOptionsInterface,
-  SchedulerHandle,
   SchedulerProvider,
   StateAccessor,
 } from '@noocodex/dagonizer/runtime';
@@ -84,10 +81,10 @@ Engine-owned monotonic timer. Static class; never instantiated.
 ### `Scheduler.current()`
 
 ```ts
-static current(): SchedulerHandle
+static current(): SchedulerProvider
 ```
 
-Returns the active scheduler handle. `RetryPolicy` calls `Scheduler.current().after(ms, signal)` for backoff delays.
+Returns the active scheduler. `RetryPolicy` calls `Scheduler.current().after(ms, signal)` for backoff delays.
 
 ### `Scheduler.configure(provider)`
 
@@ -209,45 +206,6 @@ class DottedPathAccessor implements StateAccessor {
 ```
 
 Used by the dispatcher for scatter source reads, state-mapping input copies, and gather writes. Swap via `new Dagonizer({ accessor: customAccessor })`.
-
----
-
-## Class: `NoopInstrumentation`
-
-No-op base class for the `Instrumentation` contract. Plugins extend this and override only the hooks they need; every un-overridden hook stays a no-op.
-
-```ts
-class NoopInstrumentation<TState extends NodeStateInterface = NodeStateInterface>
-  implements Instrumentation<TState> {
-  flowStart(dagName: string, state: TState): void;
-  flowEnd(dagName: string, state: TState, result: ExecutionResultInterface<TState>): void;
-  nodeStart(dagName: string, nodeName: string, state: TState, placementPath: readonly string[]): void;
-  nodeEnd(dagName: string, nodeName: string, output: string | null, state: TState, placementPath: readonly string[]): void;
-  phaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
-  phaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, state: TState, placementPath: readonly string[]): void;
-  contractWarning(message: string): void;
-  error(dagName: string, nodeName: string, error: Error, state: TState, placementPath: readonly string[]): void;
-}
-```
-
-The default `Dagonizer.instrumentation` when no instance is passed through the constructor option.
-
-```ts
-import { NoopInstrumentation } from '@noocodex/dagonizer/runtime';
-
-class MetricsInstrumentation extends NoopInstrumentation {
-  override flowStart(dagName: string, _state: NodeStateInterface): void {
-    metrics.counter('dag.flow.start', { dag: dagName }).inc();
-  }
-  override nodeEnd(_dagName: string, nodeName: string, output: string | null, _state: NodeStateInterface, _placementPath: readonly string[]): void {
-    metrics.counter('dag.node.end', { node: nodeName, output: output ?? 'none' }).inc();
-  }
-}
-
-const dispatcher = new Dagonizer({ instrumentation: new MetricsInstrumentation() });
-```
-
-See [Reference: Contracts](./contracts#instrumentation) for the full `Instrumentation` interface.
 
 ---
 

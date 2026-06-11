@@ -18,7 +18,11 @@
  */
 
 import type { OperationContract } from '../contracts/OperationContract.js';
+import type { WarningEmitter } from '../contracts/WarningEmitter.js';
 import { DAGError } from '../errors/DAGError.js';
+
+/** Co-located defaults for `ContractRegistryValidator.validate()` options. */
+const CONTRACT_VALIDATION_DEFAULTS = { 'entrypointName': '' } as const;
 
 export class ContractRegistryValidator {
   private constructor() { /* static class */ }
@@ -50,6 +54,12 @@ export class ContractRegistryValidator {
 
     // For each node, collect the union of all produces from its ancestors
     // (nodes that can reach it via topological paths).
+    // Index contracts by name once for O(1) lookup inside the BFS loop,
+    // avoiding an O(n) linear scan per iteration (was O(n^2+) on transitive closure).
+    const contractByName = new Map<string, OperationContract>(
+      contracts.map((c) => [c.name, c]),
+    );
+
     const upstreamProducers = new Map<string, Set<string>>();
     for (const target of contracts) {
       const reachable = new Set<string>();
@@ -65,7 +75,7 @@ export class ContractRegistryValidator {
         if (visited.has(cur)) continue;
         visited.add(cur);
         // Collect produces from cur
-        const curContract = contracts.find((c) => c.name === cur);
+        const curContract = contractByName.get(cur);
         if (curContract) {
           for (const p of curContract.produces) reachable.add(p);
         }
@@ -84,26 +94,29 @@ export class ContractRegistryValidator {
    * Validate a contract set for dangling reads and dead writes.
    *
    * @param contracts - The full set of contracts derived from the node registry.
-   * @param onWarning - Called for each dead-write warning (non-fatal).
-   * @param entrypointName - Optional entrypoint operation name. When supplied, that
-   *   node's `hardRequired` paths are treated as external initial-state fields and
-   *   are not checked for dangling reads.
+   * @param warningEmitter - Receives each dead-write warning (non-fatal).
+   * @param options.entrypointName - Entrypoint operation name. The entrypoint's
+   *   `hardRequired` paths are treated as external initial-state fields and are
+   *   not checked for dangling reads. Pass an empty string when there is no
+   *   named entrypoint (skips external-key seeding).
    *
    * @throws {DAGError} When any non-entrypoint node declares a `hardRequired` path
    *   that no upstream-in-DAG node produces.
    */
   static validate(
     contracts: readonly OperationContract[],
-    onWarning: (message: string) => void,
-    entrypointName?: string,
+    warningEmitter: WarningEmitter,
+    options: { entrypointName?: string } = {},
   ): void {
+    const { entrypointName } = { ...CONTRACT_VALIDATION_DEFAULTS, ...options };
     const upstreamProducers = ContractRegistryValidator.buildUpstreamProducers(contracts);
 
     // The entrypoint's hardRequired paths are the flow's external initial
     // state: ambient and present from the start, so ANY node may read them
     // without an upstream producer (not just the entrypoint itself).
+    // An empty entrypointName means no entrypoint is designated (no external keys seeded).
     const externalKeys = new Set<string>(
-      entrypointName === undefined
+      entrypointName === ''
         ? []
         : contracts.find((c) => c.name === entrypointName)?.hardRequired ?? [],
     );
@@ -134,7 +147,7 @@ export class ContractRegistryValidator {
     for (const contract of contracts) {
       for (const path of contract.produces) {
         if (!allRequired.has(path)) {
-          onWarning(
+          warningEmitter.warn(
             `ContractRegistryValidator: node '${contract.name}' produces '${path}' but no node in the registry hardRequires it`,
           );
         }

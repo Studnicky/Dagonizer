@@ -45,21 +45,19 @@ The `#embedded-dag-placements` region covers only the `.embeddedDAG(...)` calls:
 
 <<< @/../examples/the-archivist/dag.ts#embedded-dag-placements
 
-## EmbeddedDAGNode output routing: null and named terminals
+## EmbeddedDAGNode output routing to named terminals
 
-An `EmbeddedDAGNode` placement's outputs map accepts two target forms:
-
-- **`null`**: the branch ends with `outcome: completed`. Identical to any other null route, sugar for an implicit completed terminal. Use it when the parent flow has a single clean termination path and the lifecycle outcome is always `completed`.
-- **Named `TerminalNode` placement**: target an explicit terminal declared via `.terminal(name, outcome?)`. The idiomatic form when the `error` output should mark the parent flow as `failed`, or when the diagram should show the endpoint as a discrete node.
+An `EmbeddedDAGNode` placement's outputs map routes each output to a named `TerminalNode` placement declared via `.terminal(name, options?)`. Every output must target a named node — all flow branches end at an explicit `TerminalNode`.
 
 ```ts
-// null route: both success and error end with outcome=completed
-.embeddedDAG('invoke', 'child', { success: null, error: null })
-
 // named terminals: error path marks the parent flow as failed
 .embeddedDAG('invoke', 'child', { success: 'end-ok', error: 'end-fail' })
 .terminal('end-ok')
-.terminal('end-fail', 'failed')
+.terminal('end-fail', { outcome: 'failed' })
+
+// single outcome: both outputs end as completed
+.embeddedDAG('invoke', 'child', { success: 'end', error: 'end' })
+.terminal('end')
 ```
 
 See [Phase 09: Terminal placements](./09-terminals) for the full pattern with runnable examples.
@@ -74,6 +72,26 @@ See [Phase 09: Terminal placements](./09-terminals) for the full pattern with ru
 - **`bookSearchScatterBundle` and `composeRetryLoopBundle`.** Each sub-DAG module exports a `DispatcherBundle` packaging its nodes plus its DAG. `dispatcher.registerBundle(bundle)` installs the nodes before the DAG; register both embedded-DAG bundles before the parent `archivistBundle`.
 
 See this in action in the [Archivist live demo](./the-archivist).
+
+## Running in a container
+
+An `EmbeddedDAGNode` placement can run the sub-DAG in an isolate by adding a `container` key to the placement and binding a `DagContainerInterface` backend at dispatcher construction:
+
+```ts
+import { WorkerThreadContainer } from '@noocodex/dagonizer-executor-node';
+
+const dispatcher = new Dagonizer<AppState, AppServices>({
+  services,
+  containers: {
+    isolated: new WorkerThreadContainer({
+      registryModule: new URL('./registry.js', import.meta.url).href,
+      registryVersion: '1.0.0',
+    }),
+  },
+});
+```
+
+In the DAG document, add `container: "isolated"` to the `EmbeddedDAGNode` placement. The `stateMapping.input` seed and `stateMapping.output` copy operate identically in both paths — only the execution location changes. An unbound role falls back to in-process and fires `contractWarning`. See [Example 12: Worker pool](./12-workers) for a complete walkthrough of the registry module and pool lifecycle.
 
 ## Typed `stateMapping` and growing shared state
 

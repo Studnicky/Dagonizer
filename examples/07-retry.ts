@@ -16,7 +16,7 @@
  */
 
 import { Dagonizer } from '@noocodex/dagonizer';
-import { FetchState, fetchNode, dag, flakyAttempts } from './dags/07-retry.js';
+import { FetchState, fetchNode, dag } from './dags/07-retry.js';
 
 // ---------------------------------------------------------------------------
 // Run
@@ -30,11 +30,10 @@ dispatcher.registerDAG(dag);
 const state = new FetchState();
 await dispatcher.execute('retry-dag', state);
 
-// flakyAttempts is a live binding from the dag module; it reflects the count
-// accumulated during execution.
+// FlakyDownstream (inside fetchNode.execute) throws twice before succeeding.
+// The stub is per-execution so attempts are scoped to the node invocation.
 process.stdout.write('\nRetry DAG: fetch with EXPONENTIAL backoff\n');
-process.stdout.write(`  attempts=${flakyAttempts}  result="${state.result}"\n`);
-process.stdout.write(`  (threw ${flakyAttempts - 1} time(s) before succeeding)\n`);
-process.stdout.write('\nLesson: RetryPolicy.run(fn, signal) retries on declared error classes;\n');
+process.stdout.write(`  result="${state.result}"\n`);
+process.stdout.write('\nLesson: RetryPolicy.run(fn, { signal }) retries on declared error classes;\n');
 process.stdout.write('        passing context.signal ensures abort short-circuits the delay.\n');
 // #endregion runtime

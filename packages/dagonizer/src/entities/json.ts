@@ -12,7 +12,7 @@ export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonObject | JsonArray;
 
 /** JSON object: keys are strings, values are `JsonValue`. */
-export interface JsonObject { readonly [key: string]: JsonValue }
+export interface JsonObject { [key: string]: JsonValue }
 
 /** JSON array: elements are `JsonValue`. */
-export type JsonArray = readonly JsonValue[];
+export type JsonArray = JsonValue[];

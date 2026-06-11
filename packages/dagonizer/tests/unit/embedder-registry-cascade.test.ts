@@ -28,7 +28,7 @@ class TestEmbedder extends BaseEmbedder {
     this.#probeResult = probeResult;
   }
 
-  protected async performEmbed(_text: string): Promise<readonly number[]> {
+  protected async performEmbed(_text: string, _signal: AbortSignal): Promise<readonly number[]> {
     return Promise.resolve([1, 0, 0, 0]);
   }
 
@@ -43,7 +43,7 @@ class DefaultProbeEmbedder extends BaseEmbedder {
     super('default-probe', 'default-probe', 4);
   }
 
-  protected async performEmbed(_text: string): Promise<readonly number[]> {
+  protected async performEmbed(_text: string, _signal: AbortSignal): Promise<readonly number[]> {
     return Promise.resolve([0, 1, 0, 0]);
   }
 }

@@ -14,6 +14,13 @@
  * `EmbeddedDAGNode.stateMapping.input`. Scatter has no `stateMapping.output`:
  * the N→1 merge back into the parent is `gather`'s job (a fork reduces, an embed
  * copies). `reducer` picks the outcome strategy; defaults to `'aggregate'`.
+ *
+ * `container` (optional): logical container role name. Honored ONLY when the
+ * body is a `dag` body (a `{dag: string}` body). A node body with `container`
+ * set is a validation error — a node body is one node, not a DAG, and cannot be
+ * contained. Bound at dispatcher construction via
+ * `DagonizerOptionsInterface.containers`. When declared but unbound, the scatter
+ * dag-body resolves to in-process and fires a `contractWarning`.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';
@@ -24,7 +31,7 @@ export const ScatterNodeSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/ScatterNode',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['@id', '@type', 'name', 'body', 'source', 'outputs'],
+  'required': ['@id', '@type', 'name', 'body', 'source', 'gather', 'outputs'],
   'properties': {
     '@id':         { 'type': 'string', 'minLength': 1 },
     '@type':       { 'type': 'string', 'const': 'ScatterNode' },
@@ -60,8 +67,12 @@ export const ScatterNodeSchema = {
     'reducer': { 'type': 'string', 'minLength': 1 },
     'outputs': {
       'type': 'object',
-      'additionalProperties': { 'type': ['string', 'null'] },
+      'additionalProperties': { 'type': 'string' },
     },
+    // Logical container role. Honored only for dag-body scatter.
+    // A node-body scatter with container set is a validation error.
+    // Bound at dispatcher construction via DagonizerOptionsInterface.containers.
+    'container': { 'type': 'string', 'minLength': 1 },
   },
   'additionalProperties': false,
 } as const;

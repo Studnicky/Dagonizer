@@ -1,13 +1,21 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface, Chainable  } from '../../src/contracts/NodeInterface.js';
+import type { Chainable } from '../../src/contracts/Chainable.js';
+import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
+import type { WarningEmitter } from '../../src/contracts/WarningEmitter.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { ContractRegistryValidator } from '../../src/derive/ContractRegistryValidator.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
+import { NoopWarningEmitter } from '../../src/runtime/NoopWarningEmitter.js';
+
+class CollectingWarningEmitter implements WarningEmitter {
+  readonly collected: string[] = [];
+  warn(message: string): void { this.collected.push(message); }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -21,7 +29,7 @@ function makeNode(
   const base: NodeInterface<NodeStateBase, string> = {
     name,
     outputs,
-    async execute() { return { 'output': outputs[0] ?? 'success' }; },
+    async execute() { return { 'errors': [], 'output': outputs[0] ?? 'success' }; },
   };
   if (contract !== undefined) {
     return { ...base, contract };
@@ -45,6 +53,11 @@ void describe('DAGDeriver.derive with co-located contracts', () => {
       'version': '1',
       'entrypoint': 'a',
       nodes,
+      'annotations': {
+        'terminals': {
+          'c': [{ 'outcome': 'success', 'emit': { 'name': 'chain-end', 'outcome': 'completed' } }],
+        },
+      },
     });
 
     assert.equal(dag.name, 'node-chain');
@@ -52,7 +65,7 @@ void describe('DAGDeriver.derive with co-located contracts', () => {
     assert.equal(dag['@type'], 'DAG');
 
     const names = dag.nodes.map((node) => node.name);
-    assert.deepEqual(names, ['a', 'b', 'c']);
+    assert.deepEqual(names, ['a', 'b', 'c', 'chain-end']);
 
     const a = dag.nodes[0];
     if (a !== undefined && a['@type'] === 'SingleNode') {
@@ -63,7 +76,7 @@ void describe('DAGDeriver.derive with co-located contracts', () => {
 
     const c = dag.nodes[2];
     if (c !== undefined && c['@type'] === 'SingleNode') {
-      assert.equal(c.outputs['success'], null);
+      assert.equal(c.outputs['success'], 'chain-end');
     } else {
       assert.fail('expected third node to be SingleNode');
     }
@@ -81,6 +94,11 @@ void describe('DAGDeriver.derive with co-located contracts', () => {
       'version': '1',
       'entrypoint': 'a',
       nodes,
+      'annotations': {
+        'terminals': {
+          'b': [{ 'outcome': 'success', 'emit': { 'name': 'skip-end', 'outcome': 'completed' } }],
+        },
+      },
     });
 
     const names = dag.nodes.map((n) => n.name);
@@ -151,7 +169,7 @@ void describe('ContractRegistryValidator', () => {
       { 'name': 'b', 'hardRequired': ['missing-path'], 'produces': ['y'],   'outputs': ['success'] },
     ];
     assert.throws(
-      () => ContractRegistryValidator.validate(contracts, () => { /* no-op */ }, 'a'),
+      () => ContractRegistryValidator.validate(contracts, new NoopWarningEmitter(), { 'entrypointName': 'a' }),
       (err: unknown) => {
         assert.ok(err instanceof DAGError);
         assert.ok(err.message.includes("hardRequires 'missing-path'"));
@@ -161,7 +179,7 @@ void describe('ContractRegistryValidator', () => {
     );
   });
 
-  void it('calls onContractWarning for a dead write (produces not required by any node)', () => {
+  void it('calls warn() on WarningEmitter for a dead write (produces not required by any node)', () => {
     // 'root' is the entrypoint; its hardRequired are skipped.
     // 'a' produces 'x' (consumed by 'b') and 'unused' (consumed by nobody) → dead-write warning.
     const contracts = [
@@ -169,11 +187,11 @@ void describe('ContractRegistryValidator', () => {
       { 'name': 'a',    'hardRequired': ['input'],  'produces': ['x', 'unused'],  'outputs': ['success'] },
       { 'name': 'b',    'hardRequired': ['x'],      'produces': ['done'],         'outputs': ['success'] },
     ];
-    const warnings: string[] = [];
-    ContractRegistryValidator.validate(contracts, (msg) => { warnings.push(msg); }, 'root');
+    const emitter = new CollectingWarningEmitter();
+    ContractRegistryValidator.validate(contracts, emitter, { 'entrypointName': 'root' });
     // 'unused' is produced by 'a' but not required by anyone → dead-write warning
-    const unusedWarning = warnings.find((w) => w.includes("'unused'"));
-    assert.ok(unusedWarning !== undefined, `expected a dead-write warning for 'unused', got: ${JSON.stringify(warnings)}`);
+    const unusedWarning = emitter.collected.find((w) => w.includes("'unused'"));
+    assert.ok(unusedWarning !== undefined, `expected a dead-write warning for 'unused', got: ${JSON.stringify(emitter.collected)}`);
     assert.ok(unusedWarning.includes('produces'), `warning mentions produces`);
   });
 
@@ -182,11 +200,11 @@ void describe('ContractRegistryValidator', () => {
       { 'name': 'a', 'hardRequired': [],    'produces': ['x'], 'outputs': ['success'] },
       { 'name': 'b', 'hardRequired': ['x'], 'produces': ['y'], 'outputs': ['success'] },
     ];
-    const warnings: string[] = [];
+    const emitter = new CollectingWarningEmitter();
     // 'x' is consumed by 'b'; no warning for 'x'.
     // 'y' is produced by 'b' but not required; will warn.
-    ContractRegistryValidator.validate(contracts, (msg) => { warnings.push(msg); }, 'a');
-    const xWarning = warnings.find((w) => w.includes("'x'"));
+    ContractRegistryValidator.validate(contracts, emitter, { 'entrypointName': 'a' });
+    const xWarning = emitter.collected.find((w) => w.includes("'x'"));
     assert.equal(xWarning, undefined, "'x' is consumed so no dead-write warning expected");
   });
 
@@ -195,7 +213,7 @@ void describe('ContractRegistryValidator', () => {
       { 'name': 'root', 'hardRequired': [],       'produces': ['a-out'], 'outputs': ['success'] },
       { 'name': 'leaf', 'hardRequired': ['a-out'], 'produces': ['done'], 'outputs': ['success'] },
     ];
-    assert.doesNotThrow(() => ContractRegistryValidator.validate(contracts, () => { /* no-op */ }, 'root'));
+    assert.doesNotThrow(() => ContractRegistryValidator.validate(contracts, new NoopWarningEmitter(), { 'entrypointName': 'root' }));
   });
 
   void it('does not flag entrypoint hardRequired as dangling reads', () => {
@@ -206,7 +224,7 @@ void describe('ContractRegistryValidator', () => {
       { 'name': 'b', 'hardRequired': ['x'],             'produces': ['y'], 'outputs': ['success'] },
     ];
     assert.doesNotThrow(
-      () => ContractRegistryValidator.validate(contracts, () => { /* no-op */ }, 'a'),
+      () => ContractRegistryValidator.validate(contracts, new NoopWarningEmitter(), { 'entrypointName': 'a' }),
       'entrypoint hardRequired should not throw as dangling read',
     );
   });
@@ -243,6 +261,11 @@ void describe('Dagonizer.onContractWarning hook', () => {
       'version': '1',
       'entrypoint': 'root',
       "nodes": [rootNode, aNode, bNode],
+      'annotations': {
+        'terminals': {
+          'b': [{ 'outcome': 'success', 'emit': { 'name': 'warn-end', 'outcome': 'completed' } }],
+        },
+      },
     });
 
     dispatcher.registerDAG(dag);
@@ -267,7 +290,7 @@ void describe('Chainable<A, B> type helper', () => {
         'hardRequired': ['url'] as const,
         'produces': ['raw'] as const,
       },
-      async execute() { return { 'output': 'success' as const }; },
+      async execute() { return { 'errors': [], 'output': 'success' as const }; },
     } satisfies NodeInterface;
 
     const _parseNode = {
@@ -277,7 +300,7 @@ void describe('Chainable<A, B> type helper', () => {
         'hardRequired': ['raw'] as const,
         'produces': ['record'] as const,
       },
-      async execute() { return { 'output': 'success' as const }; },
+      async execute() { return { 'errors': [], 'output': 'success' as const }; },
     } satisfies NodeInterface;
 
     // This type assertion compiles only when Chainable<_fetchNode, _parseNode> = true.
@@ -301,11 +324,23 @@ void describe('registerDAG: embedded/scatter placement contracts', () => {
     // The sub-DAG the embedded placement runs.
     const work     = makeNode('work',     ['success'],          { 'hardRequired': ['mid'],   'produces': ['out'] });
 
-    const child = DAGDeriver.derive({ 'name': 'sub', 'version': '1', 'entrypoint': 'work', 'nodes': [work] });
+    const child = DAGDeriver.derive({
+      'name': 'sub', 'version': '1', 'entrypoint': 'work', 'nodes': [work],
+      'annotations': {
+        'terminals': {
+          'work': [{ 'outcome': 'success', 'emit': { 'name': 'sub-end', 'outcome': 'completed' } }],
+        },
+      },
+    });
     const parent = DAGDeriver.derive({
       'name': 'parent', 'version': '1', 'entrypoint': 'prepare',
       'nodes': [prepare, invoke, finalize],
-      'annotations': { 'embeddedDAGs': { 'invoke': { 'dag': 'sub', 'outputs': ['success', 'error'] } } },
+      'annotations': {
+        'embeddedDAGs': { 'invoke': { 'dag': 'sub', 'outputs': ['success', 'error'] } },
+        'terminals': {
+          'finalize': [{ 'outcome': 'success', 'emit': { 'name': 'parent-end', 'outcome': 'completed' } }],
+        },
+      },
     });
 
     for (const n of [prepare, invoke, finalize, work]) d.registerNode(n);

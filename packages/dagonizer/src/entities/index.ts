@@ -1,8 +1,8 @@
 /**
  * Entity registry: JSON Schema + derived TS type per shape.
  *
- * Layout mirrors the nocturne `entities/` convention so the package can swap
- * in `@noocodex/jsontology` without restructuring:
+ * Entities are grouped by domain so each schema and its derived type live
+ * together:
  *
  *   dag/: DAG and its node-entry sub-shapes
  *   state-machines/: DAGLifecycleState wire shape
@@ -10,7 +10,7 @@
  *   execution/: ExecutionResult
  *   validation/: ValidationResult
  *   errors/: DAGErrorJSON
- *   constants/: GatherStrategyName, ScatterOutput, MetadataKey, Output, ParallelCombine, NodeType
+ *   constants/: GatherStrategyName, ScatterOutput, MetadataKey, Output, NodeType
  *   runtime/: BackoffStrategy
  *   primitives/: JsonSchema (draft-2020-12 TS model)
  *
@@ -24,10 +24,7 @@
 // ---------------------------------------------------------------------------
 
 export { SingleNodeSchema } from './dag/SingleNode.js';
-export type { SingleNode } from './dag/SingleNode.js';
-
-export { ParallelNodeSchema } from './dag/ParallelNode.js';
-export type { ParallelNode } from './dag/ParallelNode.js';
+export type { SingleNode, SingleNodePlacementInterface } from './dag/SingleNode.js';
 
 export { TerminalNodeSchema } from './dag/TerminalNode.js';
 export type { TerminalNode } from './dag/TerminalNode.js';
@@ -44,8 +41,10 @@ export type { ScatterNode } from './dag/ScatterNode.js';
 export { EmbeddedDAGNodeSchema } from './dag/EmbeddedDAGNode.js';
 export type { EmbeddedDAGNode } from './dag/EmbeddedDAGNode.js';
 
-export { DAGSchema, DAG_CONTEXT } from './dag/DAG.js';
-export type { DAG } from './dag/DAG.js';
+export { DAGSchema, DAG_CONTEXT, DAG } from './dag/DAG.js';
+
+export { Placement } from './dag/Placement.js';
+export type { DAGNodeType } from './dag/Placement.js';
 
 // ---------------------------------------------------------------------------
 // state-machines
@@ -72,19 +71,19 @@ export { NodeSchema } from './node/Node.js';
 export type { Node } from './node/Node.js';
 
 export { NodeContextSchema } from './node/NodeContext.js';
-export type { NodeContext } from './node/NodeContext.js';
+export type { NodeContext, NodeContextInterface } from './node/NodeContext.js';
 
-export { NodeErrorSchema } from './node/NodeError.js';
-export type { NodeError } from './node/NodeError.js';
+export { NodeErrorBuilder, NodeErrorSchema } from './node/NodeError.js';
+export type { NodeError, NodeErrorInterface } from './node/NodeError.js';
 
 export { NodeWarningSchema } from './node/NodeWarning.js';
 export type { NodeWarning } from './node/NodeWarning.js';
 
-export { NodeOutputSchema } from './node/NodeOutput.js';
-export type { NodeOutput } from './node/NodeOutput.js';
+export { NodeOutputSchema, NodeOutputBuilder } from './node/NodeOutput.js';
+export type { NodeOutput, NodeOutputInterface } from './node/NodeOutput.js';
 
 export { NodeResultSchema } from './node/NodeResult.js';
-export type { NodeResult } from './node/NodeResult.js';
+export type { NodeResult, NodeResultInterface } from './node/NodeResult.js';
 
 export { NodeStateDataSchema } from './node/NodeStateData.js';
 export type { NodeStateData } from './node/NodeStateData.js';
@@ -93,8 +92,8 @@ export type { NodeStateData } from './node/NodeStateData.js';
 // execution
 // ---------------------------------------------------------------------------
 
-export { ExecutionResultSchema } from './execution/ExecutionResult.js';
-export type { ExecutionResult, InterruptionInfo } from './execution/ExecutionResult.js';
+export { ExecutionResultSchema, InterruptionInfoSchema } from './execution/ExecutionResult.js';
+export type { ExecutionResult, ExecutionResultInterface, InterruptionInfo } from './execution/ExecutionResult.js';
 
 // ---------------------------------------------------------------------------
 // validation
@@ -122,7 +121,6 @@ export { GatherStrategySchema, GatherStrategyName } from './constants/GatherStra
 export { ScatterOutputSchema, ScatterOutput } from './constants/ScatterOutput.js';
 export { MetadataKeySchema, MetadataKey } from './constants/MetadataKey.js';
 export { OutputSchema, Output } from './constants/Output.js';
-export { ParallelCombineSchema, ParallelCombine } from './constants/ParallelCombine.js';
 export { NodeTypeSchema, NodeType } from './constants/NodeType.js';
 
 // ---------------------------------------------------------------------------
@@ -131,6 +129,55 @@ export { NodeTypeSchema, NodeType } from './constants/NodeType.js';
 
 export { BackoffStrategySchema, BackoffStrategy } from './runtime/BackoffStrategy.js';
 export type { BackoffStrategyValue } from './runtime/BackoffStrategy.js';
+
+// ---------------------------------------------------------------------------
+// executor (container wire shapes)
+// ---------------------------------------------------------------------------
+
+export { ExecutorIntermediateSchema } from './executor/ExecutorIntermediate.js';
+export type { ExecutorIntermediate } from './executor/ExecutorIntermediate.js';
+
+export { ExecutionRequestSchema } from './executor/ExecutionRequest.js';
+export type { ExecutionRequest } from './executor/ExecutionRequest.js';
+
+export { ExecutionResponseSchema } from './executor/ExecutionResponse.js';
+export type { ExecutionResponse } from './executor/ExecutionResponse.js';
+
+export { BridgeMessageBuilder, BridgeMessageSchema } from './executor/BridgeMessage.js';
+export type { BridgeMessage } from './executor/BridgeMessage.js';
+
+export {
+  RecommendedWorkerCountConfigSchema,
+  RecommendedWorkerCountConfigDefault,
+  RECOMMENDED_WORKER_COUNT_MAIN_THREAD_RESERVATION,
+  RECOMMENDED_WORKER_COUNT_FALLBACK,
+  RECOMMENDED_WORKER_COUNT_MEMORY_PER_WORKER_BYTES,
+} from './executor/RecommendedWorkerCountConfig.js';
+export type { RecommendedWorkerCountConfig } from './executor/RecommendedWorkerCountConfig.js';
+
+// ---------------------------------------------------------------------------
+// handoff
+// ---------------------------------------------------------------------------
+
+export { DAGHandoffSchema } from './handoff/DAGHandoff.js';
+export type { DAGHandoff } from './handoff/DAGHandoff.js';
+
+// ---------------------------------------------------------------------------
+// scatter (checkpoint wire shapes)
+// ---------------------------------------------------------------------------
+
+export {
+  ScatterInboxItemSchema,
+  ScatterAckedResultSchema,
+  ScatterProgressSchema,
+  StoredScatterProgressSchema,
+} from './scatter/ScatterProgress.js';
+export type {
+  ScatterInboxItem,
+  ScatterAckedResult,
+  ScatterProgress,
+  StoredScatterProgress,
+} from './scatter/ScatterProgress.js';
 
 // ---------------------------------------------------------------------------
 // json primitives

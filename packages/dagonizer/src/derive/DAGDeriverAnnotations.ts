@@ -17,9 +17,6 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  *                 with the supplied `dag` name and optional state mapping.
  *                 Every port in `outputs` auto-wires to the next derived
  *                 stage; `terminals` overrides per-port.
- *   parallels: explicit `ParallelNode` groupings with a chosen
- *              combine strategy. Without it, same-topological-depth
- *              operations auto-group with `combine: 'collect'`.
  */
 
 /**
@@ -30,9 +27,9 @@ import type { NodeStateInterface } from '../NodeStateBase.js';
  */
 export interface DAGDeriverEmitTerminal {
   /** Placement name for the synthesized TerminalNode. */
-  readonly name: string;
+  name: string;
   /** Lifecycle outcome the terminal triggers on the parent run. */
-  readonly outcome: 'completed' | 'failed';
+  outcome: 'completed' | 'failed';
 }
 
 /**
@@ -53,8 +50,8 @@ export interface DAGDeriverEmitTerminal {
  * disagree on `outcome`, `DAGDeriver.derive` throws `DAGError`.
  */
 export type DAGDeriverTerminal =
-  | { readonly outcome: string; readonly target: string }
-  | { readonly outcome: string; readonly emit: DAGDeriverEmitTerminal };
+  | { outcome: string; target: string }
+  | { outcome: string; emit: DAGDeriverEmitTerminal };
 
 /**
  * Common fields every scatter annotation carries regardless of strategy.
@@ -62,15 +59,15 @@ export type DAGDeriverTerminal =
  */
 interface DAGDeriverScatterBase {
   /** Dotted path on state to the source array. */
-  readonly source:       string;
+  source:       string;
   /** Metadata key the per-item executions read for the current item. */
-  readonly itemKey:      string;
+  itemKey:      string;
   /** Registered node name invoked once per item in the source array. */
-  readonly node:         string;
+  node:         string;
   /** Concurrency cap; defaults to source array length when omitted. */
-  readonly concurrency?: number;
+  concurrency?: number;
   /** Scatter outcome names the dispatcher routes on. */
-  readonly outcomes:     readonly string[];
+  outcomes:     string[];
 }
 
 /**
@@ -92,12 +89,12 @@ interface DAGDeriverScatterBase {
  * `DAGDeriver.derive` re-validates at runtime as a defensive backstop.
  */
 export type DAGDeriverScatter = DAGDeriverScatterBase & (
-  | { readonly strategy: 'custom';    readonly customNode: string;
-      readonly partitions?: never;    readonly target?: never }
-  | { readonly strategy: 'partition'; readonly partitions: Readonly<Record<string, string>>;
-      readonly customNode?: never;    readonly target?: never }
-  | { readonly strategy: 'append';    readonly target: string;
-      readonly customNode?: never;    readonly partitions?: never }
+  | { strategy: 'custom';    customNode: string;
+      partitions?: never;    target?: never }
+  | { strategy: 'partition'; partitions: Record<string, string>;
+      customNode?: never;    target?: never }
+  | { strategy: 'append';    target: string;
+      customNode?: never;    partitions?: never }
 );
 
 /**
@@ -147,7 +144,7 @@ type ChildKey<T extends NodeStateInterface> =
  */
 export interface DAGDeriverEmbeddedDAG<TChildState extends NodeStateInterface = NodeStateInterface> {
   /** Registered DAG name to invoke as the embedded-DAG. */
-  readonly dag: string;
+  dag: string;
   /**
    * Optional state mapping copied into / out of the child execution.
    * Mirrors `EmbeddedDAGNode.stateMapping` in the engine.
@@ -163,40 +160,18 @@ export interface DAGDeriverEmbeddedDAG<TChildState extends NodeStateInterface = 
    * The wire shape written to the rendered `EmbeddedDAGNode` is always
    * `Record<string, string>`; the generic is for authoring ergonomics only.
    */
-  readonly stateMapping?: {
+  stateMapping?: {
     /** Child-state key → parent dotted path. */
-    readonly input?:  Readonly<Partial<Record<ChildKey<TChildState>, string>>>;
+    input?:  Partial<Record<ChildKey<TChildState>, string>>;
     /** Parent dotted path → child-state key. */
-    readonly output?: Readonly<Partial<Record<string, ChildKey<TChildState>>>>;
+    output?: Partial<Record<string, ChildKey<TChildState>>>;
   };
   /**
    * Output ports the embedded-DAG can route on. Each port auto-wires to
    * the next derived stage; `DAGDeriverAnnotations.terminals` overrides
    * individual ports.
    */
-  readonly outputs: readonly string[];
-}
-
-/**
- * Per-grouping explicit parallel placement. Operations listed in
- * `members` execute concurrently under a `ParallelNode` with the
- * specified `combine` strategy, regardless of their data-graph depth.
- *
- * Without this annotation, DAGDeriver auto-groups operations sharing
- * a topological depth with `combine: 'collect'`. Use `parallels`
- * when:
- *   ⦿ Same-depth operations should run sequentially instead
- *     (omit them from any parallels entry; auto-grouping
- *     activates whenever ≥2 operations share a depth, so the
- *     opt-out path is to flatten the data graph)
- *   ⦿ A combine strategy other than `'collect'` is required
- *   ⦿ Cross-depth operations should be grouped explicitly
- */
-export interface DAGDeriverParallel {
-  /** Operation names to group into one ParallelNode. */
-  readonly members:  readonly string[];
-  /** Combine strategy reducing per-member outputs to one routing output. */
-  readonly combine:  'all-success' | 'any-success' | 'collect';
+  outputs: string[];
 }
 
 /**
@@ -205,8 +180,7 @@ export interface DAGDeriverParallel {
  * `SingleNode` with `success` routing to the next derived operation.
  */
 export interface DAGDeriverAnnotations {
-  readonly terminals?:   Readonly<Record<string, readonly DAGDeriverTerminal[]>>;
-  readonly scatters?:    Readonly<Record<string, DAGDeriverScatter>>;
-  readonly embeddedDAGs?: Readonly<Record<string, DAGDeriverEmbeddedDAG>>;
-  readonly parallels?:   Readonly<Record<string, DAGDeriverParallel>>;
+  terminals?:   Record<string, DAGDeriverTerminal[]>;
+  scatters?:    Record<string, DAGDeriverScatter>;
+  embeddedDAGs?: Record<string, DAGDeriverEmbeddedDAG>;
 }

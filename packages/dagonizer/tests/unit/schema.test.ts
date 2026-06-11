@@ -9,6 +9,7 @@ import { DAGError, ValidationError } from '../../src/errors/index.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
 
+// validDAG: a minimal well-formed DAG — SingleNode routes to an explicit TerminalNode.
 const validDAG: DAG = {
   '@context': DAG_CONTEXT,
   '@id':      'urn:noocodex:dag:demo',
@@ -18,7 +19,9 @@ const validDAG: DAG = {
   'entrypoint': 's',
   'nodes': [
     { '@id': 'urn:noocodex:dag:demo/node/s', '@type': 'SingleNode',
-      'name': 's', 'node': 'op', 'outputs': { 'success': null } },
+      'name': 's', 'node': 'op', 'outputs': { 'success': 'done' } },
+    { '@id': 'urn:noocodex:dag:demo/node/done', '@type': 'TerminalNode',
+      'name': 'done', 'outcome': 'completed' },
   ],
 };
 
@@ -55,21 +58,44 @@ void describe('Validator.dag', () => {
     assert.throws(() => Validator.dag.validate(bad), ValidationError);
   });
 
-  void it('rejects a scatter node with an invalid gather strategy', () => {
+  void it('rejects a SingleNode whose output value is null', () => {
     const bad = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:x',
       '@type':    'DAG',
-      'name': 'x', 'version': '1', 'entrypoint': 'f',
+      'name': 'x', 'version': '1', 'entrypoint': 's',
       'nodes': [{
-        '@id':    'urn:noocodex:dag:x/node/f',
-        '@type':  'ScatterNode',
-        'name':   'f', 'body': { 'node': 'op' }, 'source': 'items',
-        'gather': { 'strategy': 'magic' },
-        'outputs': { 'all-success': null },
+        '@id': 'urn:x', '@type': 'SingleNode', 'name': 's', 'node': 'op',
+        'outputs': { 'success': null },
       }],
-    };
+    } as unknown as DAG;
+    assert.equal(Validator.dag.is(bad), false, 'null route must fail schema validation');
     assert.throws(() => Validator.dag.validate(bad), ValidationError);
+  });
+
+  void it('accepts a scatter node with a custom registered gather strategy name', () => {
+    // GatherConfig.strategy is an open string: custom strategies are registered
+    // via GatherStrategies.register() and resolved at runtime. The schema no longer
+    // restricts strategy to a closed enum — unknown names are caught by
+    // GatherStrategies.resolve() when the scatter executes, not at author time.
+    const doc = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:x',
+      '@type':    'DAG',
+      'name': 'x', 'version': '1', 'entrypoint': 'f',
+      'nodes': [
+        {
+          '@id':    'urn:noocodex:dag:x/node/f',
+          '@type':  'ScatterNode',
+          'name':   'f', 'body': { 'node': 'op' }, 'source': 'items',
+          'gather': { 'strategy': 'my-domain-specific-gather' },
+          'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+        },
+        { '@id': 'urn:noocodex:dag:x/node/end', '@type': 'TerminalNode',
+          'name': 'end', 'outcome': 'completed' },
+      ],
+    };
+    assert.doesNotThrow(() => Validator.dag.validate(doc));
   });
 
   void it('returns formatted errors list without throwing', () => {
@@ -114,13 +140,16 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
     const op: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'op',
       'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     dispatcher.registerNode(op);
 
-    // Missing @context, @id, @type; fails schema pre-pass before semantic check.
+    // Constructs intentionally-invalid input: missing @context, @id, @type so the
+    // schema pre-pass rejects it before the semantic check. The cast is necessary
+    // because the object deliberately omits required DAG fields.
     const bad = { 'name': 'x', 'entrypoint': 's', 'nodes': [
-      { '@id': 'urn:x', '@type': 'SingleNode', 'name': 's', 'node': 'op', 'outputs': { 'success': null } },
+      { '@id': 'urn:x', '@type': 'SingleNode', 'name': 's', 'node': 'op', 'outputs': { 'success': 'done' } },
+      { '@id': 'urn:x/done', '@type': 'TerminalNode', 'name': 'done', 'outcome': 'completed' },
     ] } as unknown as DAG;
 
     assert.throws(() => dispatcher.registerDAG(bad), ValidationError);
@@ -131,18 +160,23 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
     const op: NodeInterface<NodeStateBase, 'success'> = {
       'name': 'op',
       'outputs': ['success'],
-      async execute() { return { 'output': 'success' }; },
+      async execute() { return { 'errors': [], 'output': 'success' }; },
     };
     dispatcher.registerNode(op);
 
     // Schema-valid but references unknown node; semantic tier rejects.
+    // Uses a TerminalNode so the schema passes; DAGValidator catches the unknown node reference.
     const dag: DAG = {
       '@context': DAG_CONTEXT,
       '@id':      'urn:noocodex:dag:x',
       '@type':    'DAG',
       'name': 'x', 'version': '1', 'entrypoint': 's',
-      'nodes': [{ '@id': 'urn:noocodex:dag:x/node/s', '@type': 'SingleNode',
-        'name': 's', 'node': 'ghost', 'outputs': { 'success': null } }],
+      'nodes': [
+        { '@id': 'urn:noocodex:dag:x/node/s', '@type': 'SingleNode',
+          'name': 's', 'node': 'ghost', 'outputs': { 'success': 'done' } },
+        { '@id': 'urn:noocodex:dag:x/node/done', '@type': 'TerminalNode',
+          'name': 'done', 'outcome': 'completed' },
+      ],
     };
     try {
       dispatcher.registerDAG(dag);

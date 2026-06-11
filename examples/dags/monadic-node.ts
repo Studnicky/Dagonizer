@@ -10,7 +10,7 @@
  */
 
 // #region monadic-node
-import { NodeStateBase } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
 import type { NodeContextInterface } from '@noocodex/dagonizer';
 import { MonadicNode } from '@noocodex/dagonizer/patterns';
 import type { NodeOutputInterface } from '@noocodex/dagonizer';
@@ -34,7 +34,7 @@ abstract class LoggingNode<
   ): Promise<NodeOutputInterface<TOutput>> {
     const start = Date.now();
     const result = await this.run(state, context);
-    console.log(`[${this.name}] output=${result.output} elapsed=${Date.now() - start}ms`);
+    process.stdout.write(`[${this.name}] output=${result.output} elapsed=${Date.now() - start}ms\n`);
     return result;
   }
 
@@ -53,15 +53,15 @@ export class SearchCatalogueNode extends LoggingNode<CatalogueState, 'success' |
 
   protected async run(state: CatalogueState): Promise<NodeOutputInterface<'success' | 'empty' | 'error'>> {
     if (state.query.trim() === '') {
-      return { output: this.errorPort() };
+      return NodeOutputBuilder.of('error');
     }
     // Stub: return a synthetic result set.
     state.results = [`${state.query} - Shelf A`, `${state.query} - Shelf B`];
 
     if (state.results.length === 0) {
-      return { output: this.emptyPort() };
+      return NodeOutputBuilder.of('empty');
     }
-    return { output: this.successPort() };
+    return NodeOutputBuilder.of('success');
   }
 }
 // #endregion monadic-node

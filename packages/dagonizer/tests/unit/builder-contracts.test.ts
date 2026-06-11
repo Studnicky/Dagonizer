@@ -4,9 +4,15 @@ import { describe, it } from 'node:test';
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
+import type { WarningEmitter } from '../../src/contracts/WarningEmitter.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
+
+class CollectingWarningEmitter implements WarningEmitter {
+  readonly collected: string[] = [];
+  warn(message: string): void { this.collected.push(message); }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -20,7 +26,7 @@ function makeNode(
   const base: NodeInterface<NodeStateBase, string> = {
     name,
     outputs,
-    async execute() { return { 'output': outputs[0] ?? 'success' }; },
+    async execute() { return { 'errors': [], 'output': outputs[0] ?? 'success' }; },
   };
   if (contract !== undefined) {
     return { ...base, contract };
@@ -39,7 +45,7 @@ void describe('DAGBuilder.build() contract validation', () => {
 
     const dag = new DAGBuilder('valid-chain', '1.0')
       .node('produce', produce, { 'success': 'consume' })
-      .node('consume', consume, { 'success': null })
+      .node('consume', consume, { 'success': 'end' })
       .build();
 
     assert.equal(dag.name, 'valid-chain');
@@ -54,7 +60,7 @@ void describe('DAGBuilder.build() contract validation', () => {
     assert.throws(
       () => new DAGBuilder('bad-chain', '1.0')
         .node('a', a, { 'success': 'b' })
-        .node('b', b, { 'success': null })
+        .node('b', b, { 'success': 'end' })
         .build(),
       (err: unknown) => {
         assert.ok(err instanceof DAGError, `expected DAGError, got ${String(err)}`);
@@ -64,22 +70,22 @@ void describe('DAGBuilder.build() contract validation', () => {
     );
   });
 
-  void it('fires onContractWarning when a node produces a path no downstream consumer needs', () => {
+  void it('emits warn() on warningEmitter when a node produces a path no downstream consumer needs', () => {
     const a = makeNode('a', ['success'], { 'hardRequired': ['input'], 'produces': ['used', 'dead'] });
     const b = makeNode('b', ['success'], { 'hardRequired': ['used'],  'produces': ['done'] });
 
-    const warnings: string[] = [];
+    const emitter = new CollectingWarningEmitter();
     new DAGBuilder('dead-write', '1.0')
       .node('a', a, { 'success': 'b' })
-      .node('b', b, { 'success': null })
-      .build((msg) => { warnings.push(msg); });
+      .node('b', b, { 'success': 'end' })
+      .build({ 'warningEmitter': emitter });
 
-    const deadWarning = warnings.find((w) => w.includes("'dead'"));
-    assert.ok(deadWarning !== undefined, `expected dead-write warning for 'dead'; got: ${JSON.stringify(warnings)}`);
+    const deadWarning = emitter.collected.find((w) => w.includes("'dead'"));
+    assert.ok(deadWarning !== undefined, `expected dead-write warning for 'dead'; got: ${JSON.stringify(emitter.collected)}`);
     assert.ok(deadWarning.includes('produces'), `warning should mention produces; got: ${deadWarning}`);
   });
 
-  void it('silently no-ops on dead writes when onContractWarning is omitted', () => {
+  void it('silently no-ops on dead writes when warningEmitter is omitted', () => {
     const a = makeNode('a', ['success'], { 'hardRequired': ['input'], 'produces': ['used', 'dead'] });
     const b = makeNode('b', ['success'], { 'hardRequired': ['used'],  'produces': ['done'] });
 
@@ -87,30 +93,11 @@ void describe('DAGBuilder.build() contract validation', () => {
     assert.doesNotThrow(() =>
       new DAGBuilder('silent-dead-write', '1.0')
         .node('a', a, { 'success': 'b' })
-        .node('b', b, { 'success': null })
+        .node('b', b, { 'success': 'end' })
         .build(),
     );
   });
 
-  void it('skips contract validation for placements whose impl is not registered via .node()', () => {
-    // parallel() and embeddedDAG() do not call .node(); their impl is not in #nodeImpls.
-    // The parallel group references 'a' and 'b' by name, but 'a' and 'b' are added
-    // via .node() while 'group' is a ParallelNode with no underlying NodeInterface.
-    // The contract check runs only over #nodeImpls entries, so 'group' is not
-    // evaluated and cannot generate false-positive dangling-read errors.
-    const a = makeNode('a', ['success'], { 'hardRequired': ['input'], 'produces': ['x'] });
-    const b = makeNode('b', ['success'], { 'hardRequired': ['x'],     'produces': ['y'] });
-
-    // The parallel placement 'group' references node names not added via .node().
-    // This must not throw, because .parallel() placements are outside the impl registry.
-    assert.doesNotThrow(() =>
-      new DAGBuilder('with-parallel', '1.0')
-        .node('a', a, { 'success': 'b' })
-        .node('b', b, { 'success': 'group' })
-        .parallel('group', ['a', 'b'], 'all-success', { 'success': null })
-        .build(),
-    );
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -120,23 +107,24 @@ void describe('DAGBuilder.build() contract validation', () => {
 void describe('DAGBuilder.fromNodes()', () => {
   void it('produces the same DAG as the equivalent DAGDeriver.derive({ nodes }) call', () => {
     const nodes: NodeInterface<NodeStateBase, string>[] = [
-      makeNode('fetch', ['success'], { 'hardRequired': ['url'],   'produces': ['raw'] }),
-      makeNode('parse', ['success'], { 'hardRequired': ['raw'],   'produces': ['record'] }),
+      makeNode('fetch', ['success'], { 'hardRequired': ['url'],    'produces': ['raw'] }),
+      makeNode('parse', ['success'], { 'hardRequired': ['raw'],    'produces': ['record'] }),
       makeNode('save',  ['success'], { 'hardRequired': ['record'], 'produces': ['saved'] }),
     ];
+    const annotations = {
+      'terminals': {
+        'save': [{ 'outcome': 'success', 'emit': { 'name': 'pipeline-end', 'outcome': 'completed' as const } }],
+      },
+    };
 
-    const fromBuilder = DAGBuilder.fromNodes({
-      'name': 'pipeline',
-      'version': '1.0',
-      'entrypoint': 'fetch',
-      nodes,
-    });
+    const fromBuilder = DAGBuilder.fromNodes('pipeline', '1.0', 'fetch', nodes, { annotations });
 
     const fromDeriver = DAGDeriver.derive({
       'name': 'pipeline',
       'version': '1.0',
       'entrypoint': 'fetch',
       nodes,
+      annotations,
     });
 
     // Structural deep-equal: both should produce identical DAG documents.
@@ -145,12 +133,7 @@ void describe('DAGBuilder.fromNodes()', () => {
 
   void it('throws a DAGError when nodes is empty (no contracts to derive from)', () => {
     assert.throws(
-      () => DAGBuilder.fromNodes({
-        'name': 'empty',
-        'version': '1',
-        'entrypoint': 'a',
-        'nodes': [],
-      }),
+      () => DAGBuilder.fromNodes('empty', '1', 'a', []),
       (err: unknown) => {
         assert.ok(err instanceof DAGError, `expected DAGError, got ${String(err)}`);
         return true;
@@ -165,13 +148,13 @@ void describe('DAGBuilder.fromNodes()', () => {
       // no contract; should be silently skipped
       makeNode('helper', ['success']),
     ];
+    const annotations = {
+      'terminals': {
+        'b': [{ 'outcome': 'success', 'emit': { 'name': 'skip-end', 'outcome': 'completed' as const } }],
+      },
+    };
 
-    const dag = DAGBuilder.fromNodes({
-      'name': 'skip-no-contract',
-      'version': '1',
-      'entrypoint': 'a',
-      nodes,
-    });
+    const dag = DAGBuilder.fromNodes('skip-no-contract', '1', 'a', nodes, { annotations });
 
     const names = dag.nodes.map((n) => n.name);
     assert.ok(!names.includes('helper'), `'helper' should be skipped; got: ${JSON.stringify(names)}`);

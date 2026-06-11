@@ -20,7 +20,7 @@ import type {
   RegionInsights,
 } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region summarize-insights-node
 export const summarizeInsights: NodeInterface<CartographerState, 'success', CartographerServices> = {
@@ -195,7 +195,7 @@ export const summarizeInsights: NodeInterface<CartographerState, 'success', Cart
       state.journeys.set(shipmentId, journey);
     }
 
-    return { 'output': 'success' };
+    return NodeOutputBuilder.of('success');
   },
 };
 // #endregion summarize-insights-node

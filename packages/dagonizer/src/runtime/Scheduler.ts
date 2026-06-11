@@ -13,7 +13,6 @@
  * Static class; no instances, no free helpers.
  */
 
-import type { SchedulerHandle } from '../contracts/SchedulerHandle.js';
 import type { SchedulerProvider } from '../contracts/SchedulerProvider.js';
 
 import { RealTimeScheduler } from './RealTimeScheduler.js';
@@ -29,12 +28,11 @@ export class Scheduler {
   private constructor() { /* static class */ }
 
   /**
-   * Get the current scheduler handle. Returns the active provider directly:
-   * `SchedulerProvider` structurally satisfies `SchedulerHandle`, so no wrapper
-   * is allocated. This call is on the hot path (per node with a timeout, per
-   * scatter clone), so it must not allocate.
+   * Get the current scheduler provider. Returns the active provider directly;
+   * no wrapper is allocated. This call is on the hot path (per node with a
+   * timeout, per scatter clone).
    */
-  static current(): SchedulerHandle {
+  static current(): SchedulerProvider {
     return _provider;
   }
 
@@ -43,8 +41,12 @@ export class Scheduler {
     _provider = provider;
   }
 
-  /** Reset to the default RealTimeScheduler. */
+  /**
+   * Reset to the default RealTimeScheduler. Cancels all in-flight timers on
+   * the current provider before replacing it (R10).
+   */
   static reset(): void {
+    _provider.cancelAll();
     _provider = new RealTimeScheduler();
   }
 }

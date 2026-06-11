@@ -114,15 +114,25 @@ Persist this checkpoint to a `CheckpointStore` under `key`. Composes `toJson` + 
 
 ---
 
-### `ckpt.restoreState(restoreFn)`
+### `ckpt.restoreState(adapter)`
 
 ```ts
 restoreState<TState extends NodeStateInterface>(
-  restoreFn: StateRestoreFnType<TState>,
+  adapter: CheckpointRestoreAdapter<TState>,
 ): RecalledCheckpoint<TState>
 ```
 
-Rehydrate the state from this checkpoint via the supplied factory. Returns the rehydrated state, dag name, cursor, and execution history. Pass the result to `dispatcher.resume`.
+Rehydrate the state from this checkpoint via the supplied adapter. Returns the rehydrated state, dag name, cursor, and execution history. Pass the result to `dispatcher.resume`.
+
+`CheckpointRestoreAdapter<TState>` is an interface with a single `restore(snap: JsonObject): TState` method. For a quick inline factory, wrap a plain function with `CheckpointRestoreAdapterFn.fromFn(fn)` from `@noocodex/dagonizer/checkpoint`:
+
+```ts
+import { CheckpointRestoreAdapterFn } from '@noocodex/dagonizer/checkpoint';
+
+const { dagName, state, cursor } = ckpt.restoreState(
+  CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap)),
+);
+```
 
 ```ts
 <<< @/../examples/08-checkpoint.ts#recall
@@ -173,14 +183,15 @@ The parsed and validated checkpoint record. Serialize with `ckpt.toJson()`.
 
 ---
 
-## Type: `StateRestoreFnType<TState>`
+## Interface: `CheckpointRestoreAdapter<TState>`
 
 ```ts
-type StateRestoreFnType<TState extends NodeStateInterface> =
-  (snapshot: JsonObject) => TState;
+interface CheckpointRestoreAdapter<TState> {
+  restore(snapshot: JsonObject): TState;
+}
 ```
 
-Any function that maps a snapshot `JsonObject` to a `TState` instance. The typical form is `(snap) => MyState.restore(snap)`, where `MyState.restore` is inherited from `NodeStateBase`.
+Contract for restoring a state instance from a JSON snapshot. Wrap a plain function with `CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap))`. Ships from `@noocodex/dagonizer/checkpoint`.
 
 ---
 
@@ -228,7 +239,7 @@ interface CheckpointData {
 }
 ```
 
-`stores` is a required field. `Checkpoint.capture` always writes it: as an empty object `{}` when no stores are passed, or as a keyed map of `StoreSnapshot` envelopes when stores are supplied. `Checkpoint.load` rejects any payload that lacks the field: checkpoints produced before this field was introduced do not load.
+`stores` is a required field. `Checkpoint.capture` always writes it: as an empty object `{}` when no stores are passed, or as a keyed map of `StoreSnapshot` envelopes when stores are supplied. Any checkpoint payload lacking the field is rejected by `Checkpoint.load`.
 
 `restoreStores` treats an empty `stores` field as a no-op, so state-only checkpoints resume cleanly. Named stores captured at checkpoint time must be supplied by name in the `restoreStores` map; a name present in the checkpoint but absent from the map throws `DAGError`.
 

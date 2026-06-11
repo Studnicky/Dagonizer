@@ -19,7 +19,7 @@ import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 import { TimeNormalizer } from '../../services.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, type NodeInterface } from '@noocodex/dagonizer';
 
 // #region coerce-types-node
 const NUMERIC_FIELDS = [
@@ -75,7 +75,7 @@ export const coerceTypes: NodeInterface<CartographerState, 'validate-event', Car
       return out;
     });
     state.mappedRecords = coerced;
-    return { 'output': 'validate-event' };
+    return NodeOutputBuilder.of('validate-event');
   },
 };
 // #endregion coerce-types-node
