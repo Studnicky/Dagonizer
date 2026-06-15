@@ -1,7 +1,7 @@
 /**
  * PlacementRank: computes a topological rank for each DAG placement.
  *
- * Rank determines firing order in the frontier scheduler:
+ * Rank determines firing order in the work-set scheduler:
  *   - Entry placement has rank 0.
  *   - rank(v) = 1 + max(rank of forward predecessors of v).
  *   - Back-edges (edges whose target is an ancestor on the current DFS path,

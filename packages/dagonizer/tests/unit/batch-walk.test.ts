@@ -1,8 +1,8 @@
 /**
- * Frontier walk tests: exercises the batch-native frontier scheduler.
+ * Batch-walk tests: exercises the batch-native work-set scheduler.
  *
  * Uses hand-written `NodeInterface` implementations to exercise multi-item
- * batches through the DAG. The `execute()` API seeds a size-1 batch from the
+ * batches through the DAG. The `execute()` API starts with a size-1 batch from the
  * provided initial state; multi-item batches are produced when the entry node
  * fans out (returns a RoutedBatch whose single port holds N items), then flow
  * through subsequent SingleNode placements until reaching a TerminalNode.
@@ -153,7 +153,7 @@ function makeAccumulatorNode(
 // Tests
 // ---------------------------------------------------------------------------
 
-void describe('Frontier walk — size-1 parity', () => {
+void describe('Batch walk — size-1 parity', () => {
   void it('size-1 linear walk matches expected executedNodes order', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     dispatcher.registerNode(TestNode.make('step1', ['ok'], () => 'ok'));
@@ -215,7 +215,7 @@ void describe('Frontier walk — size-1 parity', () => {
   });
 });
 
-void describe('Frontier walk — linear multi-item', () => {
+void describe('Batch walk — linear multi-item', () => {
   void it('N items flow A→B→end; B fires once over all N', async () => {
     const dispatcher = new Dagonizer<WalkState>();
     const bFirings: number[] = [];
@@ -259,7 +259,7 @@ void describe('Frontier walk — linear multi-item', () => {
   });
 });
 
-void describe('Frontier walk — branch multi-item', () => {
+void describe('Batch walk — branch multi-item', () => {
   void it('partition node splits N items across two ports, each port fires once downstream', async () => {
     const dispatcher = new Dagonizer<WalkState>();
     // Items 0..5; even: 0, 2, 4 (3 items); odd: 1, 3, 5 (3 items).
@@ -321,7 +321,7 @@ void describe('Frontier walk — branch multi-item', () => {
   });
 });
 
-void describe('Frontier walk — diamond join with rank coalescing', () => {
+void describe('Batch walk — diamond join with rank coalescing', () => {
   void it('join node (D) fires exactly once over the merged batch from B and C', async () => {
     // Shape: fan(1→N) → partitioner → B(even), C(odd) → join → end
     // D must fire exactly once over ALL N items combined.

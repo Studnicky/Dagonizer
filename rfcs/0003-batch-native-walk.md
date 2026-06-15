@@ -1,13 +1,13 @@
 # RFC 0003 — Batch-native walk (the plural executor core)
 
-Status: **In progress — sub-waves 1 & 2 BUILT & GREEN (784 tests); sub-wave 3 next** · Depends on:
+Status: **In progress — sub-waves 1 & 2 BUILT & GREEN (784 tests); build order reordered: sub-wave 4 (scatter/embedded work-set-native) is next, then sub-wave 3 (reservoir as a work-set firing policy)** · Depends on:
 RFC 0001 (plural-native), Phase 2a (one-fold gather) · Supersedes: RFC 0002 §2 "DAG bodies
 iterate per item" (DAG bodies are now batch-native). §10 decisions are resolved. Build per §9
-sub-waves. Sub-wave 1 (frontier scheduler `PlacementRank` + `Frontier`, acyclic, size-1 parity
+sub-waves. Sub-wave 1 (work-set scheduler `PlacementRank` + `WorkSet`, acyclic, size-1 parity
 byte-identical) is built; `SingleNode` fires batch-native, `ScatterNode`/`EmbeddedDAGNode` stay
 size-1 until sub-wave 4. Sub-wave 2 (cycles/retry over multi-item batches) needed no engine
-change — SW1's back-edge-excluding rank + re-entrant `merge` already subsume it; it is locked by
-`tests/unit/frontier-cycles.test.ts`. Read `0000-status.md` first.
+change — SW1's back-edge-excluding rank + re-entrant `add` already subsume it; it is locked by
+`tests/unit/batch-walk-cycles.test.ts`. Read `0000-status.md` first.
 
 The walk (`runNodes`) becomes a **batch dataflow**. A DAG processes a `Batch<N>`
 natively — partition at nodes, merge at joins — so a DAG body has the exact same
@@ -24,19 +24,19 @@ could only fake batches by looping per item — a different execution shape, no
 vectorization, and a special case in the reservoir. Making the walk batch-native
 removes the exemption and the special case at once.
 
-## 2. The model: per-item position, frontier of batches
+## 2. The model: per-item position, work set of batches
 
 Today the walk is one `state` and a single `currentNodeName` cursor advancing by
 the one route a node returns. Batch-native:
 
 - Each **item** has its own position (which placement it is currently at).
-- The walk holds a **frontier**: `Map<placementName, Batch<TState>>` — the items
+- The walk holds a **work set**: `Map<placementName, Batch<TState>>` — the items
   waiting at each placement.
-- **Seed**: the entrypoint placement's frontier = the input batch.
+- **Seed**: the entrypoint placement's work set = the input batch.
 - **Fire** a placement: run it over its accumulated batch → `RoutedBatch`
   (items partitioned across output ports). For each `port → nextPlacement`, the
   port's sub-batch is **merged** (concat, item-order preserved) into
-  `frontier[nextPlacement]`. Items routed to a terminal are collected.
+  `pending[nextPlacement]`. Items routed to a terminal are collected.
 - Repeat until only terminals hold items.
 
 A node fires once over all items currently at it — that is the batching. Items
@@ -54,7 +54,7 @@ freedom, and it is where the reservoir lives:
 - **reservoir** — a placement fires a **per-key** sub-batch as soon as it reaches
   `capacity` (or `idleMs`, or on complete), regardless of whether upstream is
   drained. This is the explicit, latency-bounded merge. `scatter.reservoir`
-  (RFC 0002) is this policy applied at the scatter's seed; the same policy is
+  (RFC 0002) is this policy applied at the scatter's entry; the same policy is
   expressible on any placement (`placement.reservoir = { keyField, capacity, idleMs }`).
 
 So: **default firing is the implicit reservoir (fire-when-complete); the reservoir
@@ -71,11 +71,11 @@ Firing order must be deterministic and must handle retry self-edges / back-edges
   ready** (per its firing policy). Lowest-rank-first guarantees a feeder fires
   before its join, so the join coalesces maximally before firing.
 - **Back-edges / retry**: when a node routes items to a lower-or-equal-rank
-  placement (a retry), those items **re-enter** that placement's frontier and are
+  placement (a retry), those items **re-enter** that placement's work set and are
   re-fired on a later iteration, batched together with any fresh items then present.
   Per-item retry budgets (already on state) bound the cycles; an item exceeding its
   budget routes to its salvage/terminal port like today.
-- **Termination**: the loop ends when every non-terminal placement's frontier is
+- **Termination**: the loop ends when every non-terminal placement's work set is
   empty. Determinism: ties at equal rank break by placement declaration order;
   within a batch, item order is preserved by index.
 
@@ -105,7 +105,7 @@ Cartographer's retry loops and multi-feeder joins.
 - **Embedded DAG**: a placement whose firing runs a **sub-walk** (recursion of §2)
   over its accumulated batch, with the existing input/output field threading mapping
   batch→batch. Same machinery, one level down.
-- **Scatter**: seeds the frontier from a source (`Array`/`Iterable`/`AsyncIterable`),
+- **Scatter**: initializes the work set from a source (`Array`/`Iterable`/`AsyncIterable`),
   optionally via the reservoir firing policy (RFC 0002), and folds terminal-reached
   items with one gather (Phase 2a). Concurrency bounds in-flight fired batches.
 - **Gather**: unchanged from Phase 2a — `seed/reduce/finalize`, folding the batches
@@ -113,47 +113,56 @@ Cartographer's retry loops and multi-feeder joins.
 
 ## 7. Checkpoint / resume
 
-The frontier (`placement → Batch`) plus per-item state is **in-flight state** and is
+The work set (`placement → Batch`) plus per-item state is **in-flight state** and is
 serialized at checkpoint (RFC 0001 §7, full serialization — each item is
-`NodeStateBase`-snapshotable; a frontier entry is a snapshot of its item array).
-Resume rebuilds the frontier exactly and continues firing. The scatter inbox/ack
-(RFC 0002 §5) composes: the scatter seed re-derives its frontier from the inbox
-grouped by key; the walk frontier inside a fired batch is captured per in-flight
+`NodeStateBase`-snapshotable; a work set entry is a snapshot of its item array).
+Resume rebuilds the work set exactly and continues firing. The scatter inbox/ack
+(RFC 0002 §5) composes: the scatter entry re-derives its work set from the inbox
+grouped by key; the walk work set inside a fired batch is captured per in-flight
 batch. Resume is byte-equivalent to an uninterrupted run.
 
 ## 8. Impact on Phase 1b
 
 `#runNodeOnState` (the size-1 wrapper) generalizes to **fire-placement-over-batch**:
 the five invocation sites and the single-cursor `mainLoop` in `runNodes` are replaced
-by the frontier scheduler (§2–§4). Behavior for a size-1 input (today's flows) must
+by the work-set scheduler (§2–§4). Behavior for a size-1 input (today's flows) must
 remain byte-identical: one item, one position, the scheduler degenerates to the
 single-cursor walk. This is the parity gate — the entire existing core suite stays
 green.
 
 ## 9. Build order (sub-waves, each keeps the package green)
 
-1. **Frontier scheduler over acyclic DAGs** — replace the single-cursor `mainLoop`
-   with the frontier model + drained firing + topo-rank scheduling; size-1 parity is
+1. **work-set scheduler over acyclic DAGs** — replace the single-cursor `mainLoop`
+   with the work-set model + drained firing + topo-rank scheduling; size-1 parity is
    byte-identical; multi-item tests over linear + branching + join DAGs (no cycles).
-   **BUILT & GREEN** — `src/core/PlacementRank.ts` + `src/core/Frontier.ts` +
+   **BUILT & GREEN** — `src/core/PlacementRank.ts` + `src/core/WorkSet.ts` +
    `#fireSinglePlacement`; 22 new tests incl. the diamond-join coalescing proof.
 2. **Cycles/retry** — back-edge handling + re-entry batching; port the existing
    retry-loop tests to multi-item; Cartographer-style retry self-edges.
    **BUILT & GREEN** — no engine change needed (SW1's rank excludes back-edges,
-   `Frontier.merge` re-batches re-entrants); locked by `frontier-cycles.test.ts`
+   `WorkSet.add` re-batches re-entrants); locked by `batch-walk-cycles.test.ts`
    (6 tests incl. heterogeneous shrink `[5,4,3,2,1]` and back-edge-into-join).
-3. **Reservoir as a firing policy** — generalize RFC 0002's `reservoir` from
-   scatter-seed-only to any placement; capacity/idle/complete firing; the
-   scatter-input case becomes the seed placement's policy.
-4. **Embedded-DAG + scatter integration** under the frontier model; gather folds
-   terminal batches.
-5. **Checkpoint** of the frontier + resume parity; crash-safe multi-item tests.
+   **Build order reordered (by decision): sub-wave 4 is built before sub-wave 3**,
+   so the reservoir attaches as a firing policy to a real work set placement
+   (scatter's entry) rather than the scatter worker pool. The labels are unchanged;
+   only the order is 1 → 2 → **4 → 3** → 5 → 6.
+4. **Embedded-DAG + scatter integration** under the work-set model; gather folds
+   terminal batches. **← next.** Scatter and EmbeddedDAG placements fire
+   batch-native (a sub-walk over a `Batch<N>`), removing the size-1 guard SW1
+   placed on them. This makes scatter's source a work-set entry placement.
+3. **Reservoir as a firing policy** — built after SW4. Generalize RFC 0002's
+   `reservoir` from scatter-only to any placement; capacity/idle/complete
+   firing; the scatter-input case is the entry placement's policy. Wire the
+   already-built `scatter.reservoir` config (`keyField`/`capacity`/`idleMs`) to
+   the work-set firing policy; idle via the swappable `Scheduler`
+   (VirtualScheduler-deterministic); checkpoint-safe per-key buffers.
+5. **Checkpoint** of the work set + resume parity; crash-safe multi-item tests.
 6. **Viz** — per-firing batch-size on edges; reservoir glyph + per-key fill.
 
 ## 10. Resolved design decisions
 
 1. **Drained readiness** — a placement fires when all placements with a forward
-   edge to it have empty frontiers AND have fired this pass. Diamonds resolve
+   edge to it have empty work sets AND have fired this pass. Diamonds resolve
    correctly (A→B, A→C, B→D, C→D: D fires after B and C drain).
 2. **Node errors** — a node `execute(batch)` that *throws* fails that fired batch
    (its items route to the run's failure path); per-item routing to the `error`

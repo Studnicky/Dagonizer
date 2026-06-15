@@ -8,12 +8,12 @@ import type { NodeInvoker } from './contracts/NodeInvoker.js';
 import type { StateAccessor } from './contracts/StateAccessor.js';
 import type { WarningEmitter } from './contracts/WarningEmitter.js';
 import { Batch } from './core/batch/Batch.js';
-import { Frontier } from './core/Frontier.js';
 import { GatherStrategies } from './core/GatherStrategies.js';
 import type { GatherExecution, GatherRecord, GatherStrategy } from './core/GatherStrategies.js';
 import { OutcomeReducers } from './core/OutcomeReducers.js';
 import type { OutcomeRecord } from './core/OutcomeReducers.js';
 import { PlacementRank } from './core/PlacementRank.js';
+import { WorkSet } from './core/WorkSet.js';
 import { ContractRegistryValidator } from './derive/ContractRegistryValidator.js';
 import type { DAG } from './entities/dag/DAG.js';
 import { EmbeddedDAGNodeDefaults } from './entities/dag/EmbeddedDAGNode.js';
@@ -720,7 +720,7 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
         if (!Placement.isScatter(entry)) throw new DAGError(`Dispatch type mismatch: expected ScatterNode`);
         return this.executeScatter(entry, state, dagName, signal, placementPath);
       },
-      // SingleNode is handled structurally by the frontier scheduler (via
+      // SingleNode is handled structurally by the work-set scheduler (via
       // #fireSinglePlacement) before executeDAGNode is called; this entry is
       // unreachable in normal operation but keeps the dispatch table exhaustive
       // over the DAGNodeAtType union. executeSingleNode is preserved here so
@@ -1042,8 +1042,8 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
       cursor = null;
     }
 
-    // ── Frontier scheduler ────────────────────────────────────────────────────
-    // Seed the frontier with the initial state at the entry placement.
+    // ── Work-set scheduler ──────────────────────────────────────────────────
+    // Initialize the work set with the input state at the entry placement.
     // When cursor is null (phase-entry guard tripped), skip the main loop.
     if (cursor !== null) {
       // Build rank and declaration-index maps once per walk.
@@ -1056,17 +1056,17 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
       const rankOf = (name: string): number => rankMap.get(name) ?? Number.MAX_SAFE_INTEGER;
       const declIndexOf = (name: string): number => declIndex.get(name) ?? Number.MAX_SAFE_INTEGER;
 
-      const frontier = new Frontier<TState>();
-      frontier.merge(cursor, Batch.of(state));
+      const pending = new WorkSet<TState>();
+      pending.add(cursor, Batch.of(state));
 
-      // The frontier loop replaces the single-cursor mainLoop.
+      // The work-set loop replaces the single-cursor mainLoop.
       // For size-1 input: exactly one placement holds exactly one item at all
-      // times; pickReady returns that placement, SingleNode fires over the
+      // times; nextReady returns that placement, SingleNode fires over the
       // size-1 batch returning one route with one item, and the item advances
       // to the next placement — byte-identical to the old cursor walk.
-      frontierLoop: while (true) {
-        const currentPlacementName = frontier.pickReady(rankOf, declIndexOf);
-        if (currentPlacementName === null) break frontierLoop;
+      scheduleLoop: while (true) {
+        const currentPlacementName = pending.nextReady(rankOf, declIndexOf);
+        if (currentPlacementName === null) break scheduleLoop;
 
         // Advance cursor to the placement about to fire. This matches the old
         // single-cursor walk where `currentNodeName` was updated at the END of
@@ -1089,8 +1089,8 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
           return result;
         }
 
-        // Take the batch from the frontier for this placement.
-        const batch = frontier.take(currentPlacementName) as Batch<TState>;
+        // Take the batch pending at this placement.
+        const batch = pending.take(currentPlacementName) as Batch<TState>;
 
         const node = this.nodeIndex.get(`${dagName}:${currentPlacementName}`);
 
@@ -1112,7 +1112,7 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
         this.onNodeStart(node.name, repState, placementPath);
 
         // TerminalNode: no-op execution — capture outcome, synthesize result,
-        // fire onNodeEnd, break the frontier loop.
+        // fire onNodeEnd, break the work-set loop.
         if (Placement.isTerminal(node)) {
           const terminal = node;
           terminalOutcome = terminal.outcome;
@@ -1127,14 +1127,14 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
           };
           this.onNodeEnd(terminal.name, terminal.outcome, repState, placementPath);
           yield terminalResult;
-          break frontierLoop;
+          break scheduleLoop;
         }
 
         // SingleNode: batch-native path.
         if (Placement.isSingle(node)) {
           let nodeResult: NodeResultInterface<TState>;
           try {
-            nodeResult = await this.#fireSinglePlacement(node, batch, dagName, signal, frontier);
+            nodeResult = await this.#fireSinglePlacement(node, batch, dagName, signal, pending);
           } catch (caughtError) {
             const error = caughtError instanceof Error ? caughtError : new ExecutionError(String(caughtError));
             this.onError(currentPlacementName, error, repState, placementPath);
@@ -1163,7 +1163,7 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
           executedNodes.push(nodeResult.nodeName);
           this.onNodeEnd(node.name, nodeResult.output, repState, placementPath);
           yield nodeResult;
-          continue frontierLoop;
+          continue scheduleLoop;
         }
 
         // ScatterNode / EmbeddedDAGNode: size-1 only in this sub-wave.
@@ -1227,7 +1227,7 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
 
         // Route the single item to the next placement.
         if (nextStage !== null) {
-          frontier.merge(nextStage, Batch.of(repState));
+          pending.add(nextStage, Batch.of(repState));
         }
       }
     }
@@ -1439,11 +1439,11 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
   }
 
   /**
-   * Fire a SingleNode placement over a batch in the frontier scheduler.
+   * Fire a SingleNode placement over a batch in the work-set scheduler.
    *
-   * Calls `node.execute(batch, context)` via `withNodeTimeout`, merges each
-   * output port's sub-batch into the frontier, and returns a representative
-   * `NodeResultInterface` for the firing.
+   * Calls `node.execute(batch, context)` via `withNodeTimeout`, adds each
+   * output port's sub-batch to the downstream node's pending work, and returns
+   * a representative `NodeResultInterface` for the firing.
    *
    * For a size-1 batch: exactly one route is produced with exactly one item,
    * so `output` equals the single port key and `state` equals the single item
@@ -1451,8 +1451,8 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
    *
    * For a multi-item batch: items may split across multiple output ports.
    * `output` is `null` (no single representative output) and `state` is the
-   * representative state (`batch.row(0).state`). Each sub-batch is merged into
-   * the frontier for downstream placement processing.
+   * representative state (`batch.row(0).state`). Each sub-batch is added to the
+   * work set for downstream placement processing.
    *
    * Throws `DAGError` when the placement routing map has no entry for a returned
    * output port (same error message as the previous `executeSingleNode`).
@@ -1462,7 +1462,7 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
     batch: Batch<TState>,
     dagName: string,
     signal: AbortSignal | null,
-    frontier: Frontier<TState>,
+    pending: WorkSet<TState>,
   ): Promise<NodeResultInterface<TState>> {
     const dagNode = this.nodes.get(nodeConfig.node);
 
@@ -1475,7 +1475,7 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
       return dagNode.execute(batch, context);
     });
 
-    // Merge each output port's sub-batch into the frontier.
+    // Add each output port's sub-batch to the downstream node's pending work.
     for (const [outputPort, subBatch] of routed.entries()) {
       const nextPlacement = nodeConfig.outputs[outputPort];
       if (nextPlacement === undefined) {
@@ -1484,7 +1484,7 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
           + `Available outputs: ${Object.keys(nodeConfig.outputs).join(', ')}`,
         );
       }
-      frontier.merge(nextPlacement, subBatch);
+      pending.add(nextPlacement, subBatch);
     }
 
     // For size-1 batches: exactly one route, one item → single representative output.

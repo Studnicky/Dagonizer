@@ -1,8 +1,8 @@
 /**
- * Frontier cycle / retry-loop tests: locks in batch-native back-edge behavior.
+ * Batch-walk cycle / retry-loop tests: locks in batch-native back-edge behavior.
  *
- * The frontier scheduler handles retry by routing a back-edge output to an
- * earlier (or self) placement. Items re-enter that placement's frontier slot
+ * The work-set scheduler handles retry by routing a back-edge output to an
+ * earlier (or self) placement. Items re-enter that placement's pending work
  * and are re-batched with any other items waiting there. Each pass reduces the
  * batch until all items exit the loop. This file covers five proven behaviors:
  *
@@ -56,7 +56,7 @@ class CycleState extends NodeStateBase {
 }
 
 // ---------------------------------------------------------------------------
-// Helper: fan-out node — takes a size-1 seed batch and emits N items.
+// Helper: fan-out node — takes a size-1 input batch and emits N items.
 //
 // Item i receives `exitAt = i`, so item 0 exits immediately, item 1 after one
 // retry, item 4 after four retries, etc. The `attempts` counter starts at 0.
@@ -278,7 +278,7 @@ function makeRecordingNode(
 // Tests
 // ===========================================================================
 
-void describe('Frontier cycles — size-1 self-loop retry', () => {
+void describe('Batch walk cycles — size-1 self-loop retry', () => {
   void it('single item retries exactly exitAt times then reaches terminal', async () => {
     // exitAt=3: item exits on the 4th pass (attempts goes 1→2→3→4, but the
     // node routes to `done` when `attempts > exitAt`, i.e. on attempt 4).
@@ -321,10 +321,10 @@ void describe('Frontier cycles — size-1 self-loop retry', () => {
     };
     dispatcher.registerDAG(dag);
 
-    const seed = new CycleState();
-    seed.exitAt = 3; // exits after attempt 4 (attempts 1,2,3 loop; attempt 4 exits)
+    const input = new CycleState();
+    input.exitAt = 3; // exits after attempt 4 (attempts 1,2,3 loop; attempt 4 exits)
 
-    const result = await dispatcher.execute('cycle-size1', seed);
+    const result = await dispatcher.execute('cycle-size1', input);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.equal(result.state.lifecycle.kind, 'completed');
@@ -381,10 +381,10 @@ void describe('Frontier cycles — size-1 self-loop retry', () => {
     };
     dispatcher.registerDAG(dag);
 
-    const seed = new CycleState();
-    seed.exitAt = 0; // attempts becomes 1 which is > 0 → immediate exit
+    const input = new CycleState();
+    input.exitAt = 0; // attempts becomes 1 which is > 0 → immediate exit
 
-    const result = await dispatcher.execute('cycle-immediate', seed);
+    const result = await dispatcher.execute('cycle-immediate', input);
 
     assert.equal(result.terminalOutcome, 'completed');
     assert.deepEqual(result.executedNodes, ['a', 'collect', 'end']);
@@ -394,7 +394,7 @@ void describe('Frontier cycles — size-1 self-loop retry', () => {
   });
 });
 
-void describe('Frontier cycles — multi-item homogeneous self-loop', () => {
+void describe('Batch walk cycles — multi-item homogeneous self-loop', () => {
   void it('N identical items all retry in lockstep; retrier fires once per round', async () => {
     // 4 items all with exitAt=2: exit after attempt 3 (attempts 1,2 loop; 3 exits).
     const dispatcher = new Dagonizer<CycleState>();
@@ -462,7 +462,7 @@ void describe('Frontier cycles — multi-item homogeneous self-loop', () => {
   });
 });
 
-void describe('Frontier cycles — multi-item heterogeneous self-loop', () => {
+void describe('Batch walk cycles — multi-item heterogeneous self-loop', () => {
   void it('items with exitAt 0..4 exit one-at-a-time; retrier batch shrinks each round', async () => {
     // 5 items: exitAt 0,1,2,3,4.
     // Round 1: all 5 process; item 0 exits (attempts 1 > 0), items 1-4 loop.
@@ -550,7 +550,7 @@ void describe('Frontier cycles — multi-item heterogeneous self-loop', () => {
   });
 });
 
-void describe('Frontier cycles — budget exhaustion → salvage', () => {
+void describe('Batch walk cycles — budget exhaustion → salvage', () => {
   void it('items exhausting withinRetryBudget land at salvage; successful items land at done terminal', async () => {
     // 4 items: 2 with exitAt=0 (succeed immediately), 2 with exitAt=255 (exhaust budget).
     const dispatcher = new Dagonizer<CycleState>();
@@ -658,9 +658,9 @@ void describe('Frontier cycles — budget exhaustion → salvage', () => {
   });
 });
 
-void describe('Frontier cycles — back-edge into a join', () => {
+void describe('Batch walk cycles — back-edge into a join', () => {
   void it('cycle drains before the downstream join fires; join fires once over full coalesced batch', async () => {
-    // Shape: seed → fan (splits into loop-out and straight-out)
+    // Shape: input → fan (splits into loop-out and straight-out)
     //   loop-out  → a (self-loop; exitAt 0,1,1) → done: j
     //   straight-out → j (2 items, straight through)
     //   j → collect → end
