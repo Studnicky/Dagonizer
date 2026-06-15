@@ -112,8 +112,8 @@ function fmtWeight(weight: number, unit: string): string {
                   <span class="abox-field-val mono">{{ entity.before.eventId }}</span>
                 </div>
                 <div class="abox-field-row">
-                  <span class="abox-field-key">kind</span>
-                  <span class="abox-field-val mono">{{ entity.before.kind }}</span>
+                  <span class="abox-field-key">eventType</span>
+                  <span class="abox-field-val mono">{{ entity.before.eventType }}</span>
                 </div>
                 <div class="abox-field-row">
                   <span class="abox-field-key">source</span>
@@ -203,8 +203,8 @@ function fmtWeight(weight: number, unit: string): string {
                 <span class="abox-field-val mono cr-brand">{{ entity.after.scanSeq }}</span>
               </div>
               <div class="abox-field-row">
-                <span class="abox-field-key">eventType</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.eventType }}</span>
+                <span class="abox-field-key">status</span>
+                <span class="abox-field-val mono cr-brand">{{ entity.after.status }}</span>
               </div>
             </div>
             <div class="abox-field-group">

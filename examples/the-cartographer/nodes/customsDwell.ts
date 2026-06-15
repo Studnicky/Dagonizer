@@ -1,8 +1,8 @@
 /**
  * customs-dwell: customs-lane only — compute the clearance dwell hours.
  *
- * Runs ONLY on the route-kind 'customs' lane (customs-event). Other kinds skip
- * it — the per-kind skip showcase. Sets state.customsDwellHours from the
+ * Runs ONLY on the route-event-type 'customs' lane (customs-event). Other event types skip
+ * it — the per-event-type skip showcase. Sets state.customsDwellHours from the
  * canonical body's customsStatus (held dwells longer than cleared).
  *
  * Routes 'dwelled'.

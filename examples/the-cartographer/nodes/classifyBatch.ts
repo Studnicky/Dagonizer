@@ -1,14 +1,14 @@
 /**
- * classifyBatch: reservoir scatter body node — kind-keyed batch classification pass.
+ * classifyBatch: reservoir scatter body node — event-type-keyed batch classification pass.
  *
- * Runs as the body of the 'batch-by-kind' scatter, which uses a reservoir
- * (keyField: 'kind', capacity: 50, idleMs: 100). The reservoir buffers
- * incoming canonical events by their `kind` field and releases a per-kind
- * batch when either capacity is reached or 100 ms of idle elapses.
+ * Runs as the body of the 'batch-by-event-type' scatter, which uses a reservoir
+ * (keyField: 'eventType', capacity: 50, idleMs: 100). The reservoir buffers
+ * incoming canonical events by their `eventType` field and releases a
+ * per-event-type batch when either capacity is reached or 100 ms of idle elapses.
  *
  * This node is a pass-through: it receives the batch (all items of the same
- * kind, as partitioned by the reservoir), records the batch size onto
- * `state.batchKindCount` for observability, then routes all items to the
+ * event type, as partitioned by the reservoir), records the batch size onto
+ * `state.batchEventTypeCount` for observability, then routes all items to the
  * single output port 'classified'. The source collection (`canonicalEvents`)
  * is read-only from the scatter's perspective — the gather strategy is
  * 'discard' so no clone state flows back to the parent. The main
@@ -16,9 +16,9 @@
  * unchanged in the next step.
  *
  * The primary purpose is to demonstrate the engine's keyed reservoir
- * mechanism: grouping heterogeneous events by kind before processing,
+ * mechanism: grouping heterogeneous events by event type before processing,
  * enabling cache amortisation and batch-native enrichment in downstream
- * nodes that share per-kind resources.
+ * nodes that share per-event-type resources.
  */
 
 import type { CartographerState } from '../CartographerState.ts';
@@ -38,10 +38,10 @@ export class ClassifyBatchNode extends MonadicNode<CartographerState, 'classifie
     _context: NodeContextInterface<CartographerServices>,
   ): Promise<RoutedBatch<'classified', CartographerState>> {
     // Record the batch size on each clone for observability. In a real
-    // implementation this is where per-kind shared resources (model weights,
+    // implementation this is where per-event-type shared resources (model weights,
     // cache warm-up, bulk DB fetches) would be amortised across the batch.
     for (const item of batch) {
-      item.state.batchKindCount = batch.size;
+      item.state.batchEventTypeCount = batch.size;
     }
     return RoutedBatchBuilder.of('classified', batch);
   }

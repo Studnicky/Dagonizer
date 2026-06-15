@@ -2,7 +2,7 @@
  * validate-event: shared ingest transform — coerced records → CanonicalEvents.
  *
  * The final shared node in every source's ingest sub-DAG. It assembles each
- * coerced record into the canonical event shape, derives the per-record `kind`
+ * coerced record into the canonical event shape, derives the per-record `eventType`
  * (the customs/delivery feed mixes customs-events + delivery-confirmations),
  * attaches the OPTIONAL pre-resolved fields some sources supply (Stage 2 will
  * branch on these), validates the required header + coords, and appends the
@@ -70,13 +70,13 @@ export class ValidateEventNode extends ScalarNode<CartographerState, 'validated'
     return out;
   }
 
-  /** Derive the canonical kind for a record, given the source's primary kind. */
-  private static kindFor(sourceKind: CanonicalEvent['kind'], rec: Record<string, unknown>): CanonicalEvent['kind'] {
-    // The customs/delivery feed mixes two kinds — a delivered flag distinguishes.
-    if (sourceKind === 'customs-event') {
+  /** Derive the canonical event type for a record, given the source's primary event type. */
+  private static eventTypeFor(sourceEventType: CanonicalEvent['eventType'], rec: Record<string, unknown>): CanonicalEvent['eventType'] {
+    // The customs/delivery feed mixes two event types — a delivered flag distinguishes.
+    if (sourceEventType === 'customs-event') {
       return ValidateEventNode.bool(rec['delivered']) ? 'delivery-confirmation' : 'customs-event';
     }
-    return sourceKind;
+    return sourceEventType;
   }
 
   protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'validated'>> {
@@ -89,14 +89,14 @@ export class ValidateEventNode extends ScalarNode<CartographerState, 'validated'
       // Reject records lacking the canonical header.
       if (shipmentId.length === 0 || eventId.length === 0) continue;
 
-      const kind = ValidateEventNode.kindFor(source.kind, rec);
+      const eventType = ValidateEventNode.eventTypeFor(source.eventType, rec);
       const hasPii = ValidateEventNode.str(rec['recipientName']).length > 0 || ValidateEventNode.str(rec['recipientEmail']).length > 0;
 
       const event: CanonicalEvent = {
         'shipmentId':        shipmentId,
         'eventId':           eventId,
         'epochMs':           ValidateEventNode.num(rec['epochMs']),
-        'kind':              kind,
+        'eventType':         eventType,
         'sourceId':          source.sourceId,
         'sourceFormat':      source.format,
         'sourceCompression': source.compression,

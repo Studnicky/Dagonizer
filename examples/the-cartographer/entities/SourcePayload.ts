@@ -28,13 +28,13 @@ export const SourcePayloadSchema = {
   '$id': 'https://noocodex.dev/schemas/cartographer/SourcePayload',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['sourceId', 'format', 'compression', 'mappingKey', 'kind', 'payload'],
+  'required': ['sourceId', 'format', 'compression', 'mappingKey', 'eventType', 'payload'],
   'properties': {
     'sourceId':     { 'type': 'string', 'minLength': 1 },
     'format':       { 'type': 'string', 'enum': ['csv', 'json', 'ndjson', 'yaml'] },
     'compression':  { 'type': 'string', 'enum': ['none', 'gzip'] },
     'mappingKey':   { 'type': 'string', 'minLength': 1 },
-    'kind': {
+    'eventType': {
       'type': 'string',
       'enum': ['position-ping', 'facility-scan', 'sensor-reading', 'customs-event', 'delivery-confirmation'],
     },

@@ -527,19 +527,19 @@ export class Units {
 // Order matters: the more specific 'out for delivery' must be tested BEFORE the
 // generic 'deliver' (which 'out for delivery' also contains), or an OFD scan
 // would be mis-classified as the DELIVERED terminal.
-const STATUS_DISPATCH: Array<{ 'pattern': RegExp; 'eventType': NormalizedShipment['eventType'] }> = [
-  { 'pattern': /out.?for.?delivery|out_for_delivery/i, 'eventType': 'OUT_FOR_DELIVERY' },
-  { 'pattern': /deliver/i,                           'eventType': 'DELIVERED' },
-  { 'pattern': /exception|address|hold|customs|delay|damage/i, 'eventType': 'EXCEPTION' },
-  { 'pattern': /arrival|arrived|arrival.scan/i,      'eventType': 'ARRIVAL' },
-  { 'pattern': /depart|departed|dispatch/i,          'eventType': 'DEPARTURE' },
-  { 'pattern': /scan|transit|in.transit|picked.?up|pickup/i, 'eventType': 'SCAN' },
+const STATUS_DISPATCH: Array<{ 'pattern': RegExp; 'status': NormalizedShipment['status'] }> = [
+  { 'pattern': /out.?for.?delivery|out_for_delivery/i, 'status': 'OUT_FOR_DELIVERY' },
+  { 'pattern': /deliver/i,                           'status': 'DELIVERED' },
+  { 'pattern': /exception|address|hold|customs|delay|damage/i, 'status': 'EXCEPTION' },
+  { 'pattern': /arrival|arrived|arrival.scan/i,      'status': 'ARRIVAL' },
+  { 'pattern': /depart|departed|dispatch/i,          'status': 'DEPARTURE' },
+  { 'pattern': /scan|transit|in.transit|picked.?up|pickup/i, 'status': 'SCAN' },
 ];
 
 export class EventClassifier {
-  static eventType(rawStatus: string): NormalizedShipment['eventType'] {
-    for (const { pattern, eventType } of STATUS_DISPATCH) {
-      if (pattern.test(rawStatus)) return eventType;
+  static eventType(rawStatus: string): NormalizedShipment['status'] {
+    for (const { pattern, status } of STATUS_DISPATCH) {
+      if (pattern.test(rawStatus)) return status;
     }
     return 'SCAN'; // default for unrecognised but non-exceptional statuses
   }
@@ -789,7 +789,7 @@ export class Disruptions {
  *
  * A breach is a temperature outside the 2–8°C window or a shock event above 2.5g.
  * Pure deterministic thresholds — only `sensor-reading` events carry telemetry,
- * so this check runs ONLY on the sensor lane (the per-kind skip showcase).
+ * so this check runs ONLY on the sensor lane (the per-event-type skip showcase).
  */
 const COLD_CHAIN_MIN_C = 2;
 const COLD_CHAIN_MAX_C = 8;
@@ -846,7 +846,7 @@ export class Consent {
  * Each entity (shipmentId) has a JOURNEY: an ordered sequence of M~2–5 scans
  * moving origin → destination with monotonically increasing timestamps and
  * coords along the path. Scans from many journeys are interleaved in time order
- * (a real feed); one scan per scatter item. The eventType progression is
+ * (a real feed); one scan per scatter item. The status progression is
  * DEPARTURE → SCAN/ARRIVAL → OUT_FOR_DELIVERY → DELIVERED, with a disrupted
  * scan flagged EXCEPTION. Seeded LCG (Knuth params) — no Date.now/Math.random;
  * tz-lookup + Intl are pure on the fixed epochs.
@@ -1158,7 +1158,7 @@ export class ShipmentEvents {
       { 'alias': 'DPD',                    'carrierId': 'dpd' },
     ];
 
-    // Free-text statuses keyed by journey position (the eventType progression
+    // Free-text statuses keyed by journey position (the status progression
     // DEPARTURE → SCAN/ARRIVAL → OUT_FOR_DELIVERY → DELIVERED). A disrupted
     // scan emits an EXCEPTION-flavoured status.
     const STATUS_DEPARTURE = ['departed facility', 'dispatch', 'picked up'];
@@ -1624,7 +1624,7 @@ export class FieldMappings {
  * on-the-wire source feeds (the multi-format fan-in showcase).
  *
  * The single raw feed (ShipmentEvents.buildRawScans) is partitioned by each
- * scan's eventType-derived `kind`, then each partition is encoded in its
+ * scan's assigned SourcePayload `kind`, then each partition is encoded in its
  * source's native format under that source's field-name mapping:
  *   - position-ping        → JSON API array string         (RICH: carries geo)
  *   - facility-scan        → CSV string (header + rows)     (RAW PII)
@@ -1636,7 +1636,7 @@ export class FieldMappings {
  * reverses it (base64 → gunzip → text).
  *
  * Deterministic: a pure function of `n` (the raw feed is seeded; partitioning
- * is by eventType; no Date.now/Math.random).
+ * is by SourcePayload kind; no Date.now/Math.random).
  */
 export class Sources {
   /** A CSV cell: quote and escape embedded quotes/commas/newlines. */
@@ -1822,7 +1822,7 @@ export class Sources {
       'yaml':   'yaml-position',
     };
 
-    const FORMAT_KIND: Record<string, CanonicalEvent['kind']> = {
+    const FORMAT_KIND: Record<string, CanonicalEvent['eventType']> = {
       'json':   'position-ping',
       'csv':    'facility-scan',
       'ndjson': 'sensor-reading',
@@ -1881,7 +1881,7 @@ export class Sources {
       'format':      format,
       'compression': compression,
       'mappingKey':  mapKey,
-      'kind':        kind,
+      'eventType':   kind,
       'payload':     payload,
     };
   }
@@ -1908,7 +1908,7 @@ export class Sources {
       'yaml':   'yaml-position',
     };
 
-    const FORMAT_KIND: Record<string, CanonicalEvent['kind']> = {
+    const FORMAT_KIND: Record<string, CanonicalEvent['eventType']> = {
       'json':   'position-ping',
       'csv':    'facility-scan',
       'ndjson': 'sensor-reading',
@@ -1973,7 +1973,7 @@ export class Sources {
         'format':      entry.format,
         'compression': entry.compression,
         'mappingKey':  mapKey,
-        'kind':        kind,
+        'eventType':   kind,
         'payload':     payload,
       });
     }

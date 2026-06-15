@@ -5,8 +5,8 @@
  * clone's state.enriched into parent.state.records.
  *
  * Sources:
- *   - state.normalized      → shipmentId, scanSeq, epochMs, local time, eventType, tiers
- *   - state.geoContext      → region, country, hub, status, timezone, jurisdiction
+ *   - state.normalized      → shipmentId, scanSeq, epochMs, local time, status, tiers
+ *   - state.geoContext      → region, country, hub, geoStatus, timezone, jurisdiction
  *   - state.currentEvent    → stored lat/lng (possibly GDPR-coarsened) + redactedSample
  *   - state.gdprResult      → consentStatus, redactionApplied, coordsCoarsened
  *   - state.pricedOrder     → subtotalUsdMinor, currency  (shipment-level)
@@ -35,7 +35,7 @@ export class AggregateEventNode extends ScalarNode<CartographerState, 'done', Ca
     const de   = state.deliveryEstimate;
     const ev   = state.currentEvent;
 
-    const isException = norm.eventType === 'EXCEPTION';
+    const isException = norm.status === 'EXCEPTION';
 
     state.enriched = {
       'shipmentId':       norm.shipmentId,
@@ -50,14 +50,14 @@ export class AggregateEventNode extends ScalarNode<CartographerState, 'done', Ca
       'region':           geo.region,
       'country':          geo.country,
       'hub':              geo.hub,
-      'status':           geo.status,
+      'geoStatus':        geo.status,
       // Stored coords come from currentEvent, which GDPR coarsened in-place
       // when the jurisdiction is strict or consent is not valid.
       'lat':              ev.latitude,
       'lng':              ev.longitude,
       'coordsCoarsened':  gdpr.coordsCoarsened,
       'legKm':            state.legKm,
-      'eventType':        norm.eventType,
+      'status':           norm.status,
       'serviceTier':      norm.serviceTier,
       'sizeTier':         norm.sizeTier,
       'onTime':           de.onTime,

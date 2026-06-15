@@ -91,18 +91,18 @@ export const cartographerDAG: DAG = new DAGBuilder('cartographer', '1.0')
 
   // merge-events: flatten the per-source buckets into one canonicalEvents model.
   .node('merge-events', mergeEvents, {
-    'merged': 'batch-by-kind',
+    'merged': 'batch-by-event-type',
   })
 
-  // Reservoir scatter (DEMO): batch canonical events by kind before enrichment.
-  // Uses a keyed reservoir (keyField: 'kind') so the engine groups events by
-  // their canonical kind and releases a same-kind batch when capacity=50 is
-  // reached or 100 ms of idle elapses. The body (classifyBatch) is a
+  // Reservoir scatter (DEMO): batch canonical events by event type before enrichment.
+  // Uses a keyed reservoir (keyField: 'eventType') so the engine groups events by
+  // their canonical event type and releases a same-event-type batch when capacity=50
+  // is reached or 100 ms of idle elapses. The body (classifyBatch) is a
   // pass-through that records the batch size for observability and routes
   // all items to 'classified'. gather: discard — no clone state flows back;
   // the original canonicalEvents array is untouched for process-events.
   .scatter<CartographerState, 'classified', CartographerServices>(
-    'batch-by-kind',
+    'batch-by-event-type',
     'canonicalEvents',
     classifyBatch,
     {
@@ -114,7 +114,7 @@ export const cartographerDAG: DAG = new DAGBuilder('cartographer', '1.0')
     {
       'itemKey': 'canonical-event',
       'gather': { 'strategy': 'discard' },
-      'reservoir': { 'keyField': 'kind', 'capacity': 50, 'idleMs': 100 },
+      'reservoir': { 'keyField': 'eventType', 'capacity': 50, 'idleMs': 100 },
     },
   )
 
@@ -157,7 +157,7 @@ export const cartographerDAG: DAG = new DAGBuilder('cartographer', '1.0')
 /**
  * event-pipeline (BRANCHING — the headline): each event routes ONLY through the
  * nodes it needs. Four embedded sub-DAGs compose the domain logic; the parent is
- * a thin orchestrator. Three conditional branches + per-kind enrichment lanes,
+ * a thin orchestrator. Three conditional branches + per-event-type enrichment lanes,
  * all converging on aggregate-event:
  *
  *   parse ─invalid→ rejected
@@ -169,7 +169,7 @@ export const cartographerDAG: DAG = new DAGBuilder('cartographer', '1.0')
  *                                                        ▼ (converge)
  *                                                [canonicalize] (embedded: normalize → classify)
  *                                                        ▼
- *                                                   route-kind
+ *                                              route-event-type
  *      ┌──────────────────────────────────────────────────────────────────────┘
  *      ├geo-only (position-ping)→ enrich-leg
  *      ├sensor   (sensor-reading)→ cold-chain-check → enrich-leg
@@ -236,7 +236,7 @@ export const eventPipelineDAG: DAG = new DAGBuilder('event-pipeline', '1.0')
   //    event. Runs AFTER geo so normalize has the timezone from state.geoContext.
   //    normalize (scalar canonicalization + local time) → classify (eventType/tiers)
   .embeddedDAG<CartographerState, CartographerState>('canonicalize', 'canonicalize', {
-    'success': 'route-kind',
+    'success': 'route-event-type',
     'error':   'rejected',
   }, {
     'inputs': {
@@ -249,8 +249,8 @@ export const eventPipelineDAG: DAG = new DAGBuilder('event-pipeline', '1.0')
     },
   })
 
-  // 4. route-kind: per-kind enrichment dispatch (skip irrelevant work).
-  .node('route-kind', routeKind, {
+  // 4. route-event-type: per-event-type enrichment dispatch (skip irrelevant work).
+  .node('route-event-type', routeKind, {
     'geo-only': 'enrich-leg',
     'sensor':   'cold-chain-check',
     'order':    'order-enrichment',
@@ -360,13 +360,13 @@ export const cartographerWorkersDAG: DAG = new DAGBuilder('cartographer', '1.0')
   )
 
   .node('merge-events', mergeEvents, {
-    'merged': 'batch-by-kind',
+    'merged': 'batch-by-event-type',
   })
 
-  // Reservoir scatter (DEMO): same as cartographerDAG — kind-keyed batching
+  // Reservoir scatter (DEMO): same as cartographerDAG — event-type-keyed batching
   // pass before the enrichment scatter. See cartographerDAG for rationale.
   .scatter<CartographerState, 'classified', CartographerServices>(
-    'batch-by-kind',
+    'batch-by-event-type',
     'canonicalEvents',
     classifyBatch,
     {
@@ -378,7 +378,7 @@ export const cartographerWorkersDAG: DAG = new DAGBuilder('cartographer', '1.0')
     {
       'itemKey': 'canonical-event',
       'gather': { 'strategy': 'discard' },
-      'reservoir': { 'keyField': 'kind', 'capacity': 50, 'idleMs': 100 },
+      'reservoir': { 'keyField': 'eventType', 'capacity': 50, 'idleMs': 100 },
     },
   )
 

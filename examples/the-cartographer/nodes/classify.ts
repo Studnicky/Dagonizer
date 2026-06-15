@@ -3,7 +3,7 @@
  *
  * Reads state.raw.rawStatus and state.normalized (scalar-canonicalized by the
  * normalize node) and derives, via EventClassifier:
- *   - eventType   from the free-text rawStatus (keyword dispatch map)
+ *   - status      from the free-text rawStatus (keyword dispatch map)
  *   - serviceTier from carrierId + weightGrams
  *   - sizeTier    from weightGrams
  * These are written back onto state.normalized.
@@ -12,7 +12,7 @@
  * state.currentEvent so the downstream GDPR nodes can consume it unchanged
  * (geo enrichment already ran before normalize/classify in the geo-first order).
  *
- * Routes 'classified' on success. SCAN is the documented default eventType for
+ * Routes 'classified' on success. SCAN is the documented default status for
  * statuses that match no keyword, so there is no reject route here.
  */
 
@@ -33,13 +33,13 @@ export class ClassifyNode extends ScalarNode<CartographerState, 'classified', Ca
     const norm = state.normalized;
 
     // Derive the canonical classification from the raw status + normalized scalars.
-    const eventType   = EventClassifier.eventType(state.raw.rawStatus);
+    const lifecycleStatus = EventClassifier.eventType(state.raw.rawStatus);
     const serviceTier = EventClassifier.serviceTier(norm.carrierId, norm.weightGrams);
     const sizeTier    = EventClassifier.sizeTier(norm.weightGrams);
 
     state.normalized = {
       ...norm,
-      'eventType':   eventType,
+      'status':      lifecycleStatus,
       'serviceTier': serviceTier,
       'sizeTier':    sizeTier,
     };
@@ -49,7 +49,7 @@ export class ClassifyNode extends ScalarNode<CartographerState, 'classified', Ca
     state.currentEvent = {
       'shipmentId':        norm.shipmentId,
       'timestamp':         norm.isoTimestamp,
-      'eventType':         eventType,
+      'eventType':         lifecycleStatus,
       'latitude':          norm.latitude,
       'longitude':         norm.longitude,
       'carrier':           norm.carrierName,

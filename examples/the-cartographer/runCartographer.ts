@@ -107,7 +107,7 @@ class CartographerCli {
       const time = s.localIso.slice(11, 16);
       const cum = `+${Math.round(s.legKm).toLocaleString('en-US')} km`;
       console.log(
-        `  ${time} ${s.utcOffset.padEnd(7)} ${s.eventType.padEnd(16)} ` +
+        `  ${time} ${s.utcOffset.padEnd(7)} ${s.status.padEnd(16)} ` +
         `${s.hub.slice(0, 18).padEnd(19)} ${CartographerCli.fmtCoord(s.lat, s.lng).padEnd(20)} ${cum}`,
       );
     }
@@ -278,12 +278,12 @@ for (const [sourceId, format] of formatBySource) {
 console.log(`\nDistinct source formats decoded: ${distinctFormats.size} (${[...distinctFormats].sort().join(', ')})`);
 console.log(`Total canonical events fanned in: ${state.canonicalEvents.length}`);
 
-// ── (0b) Per-kind counts on the unified canonical model ───────────────────────
-console.log('\n=== (0b) Canonical kinds (heterogeneous events, one collection) ===\n');
-const byKind = new Map<string, number>();
-for (const ev of state.canonicalEvents) byKind.set(ev.kind, (byKind.get(ev.kind) ?? 0) + 1);
-for (const kind of [...byKind.keys()].sort()) {
-  console.log(`  ${kind.padEnd(24)} ${String(byKind.get(kind) ?? 0).padStart(6)}`);
+// ── (0b) Per-event-type counts on the unified canonical model ─────────────────
+console.log('\n=== (0b) Canonical event types (heterogeneous events, one collection) ===\n');
+const byEventType = new Map<string, number>();
+for (const ev of state.canonicalEvents) byEventType.set(ev.eventType, (byEventType.get(ev.eventType) ?? 0) + 1);
+for (const eventType of [...byEventType.keys()].sort()) {
+  console.log(`  ${eventType.padEnd(24)} ${String(byEventType.get(eventType) ?? 0).padStart(6)}`);
 }
 const richGeo = state.canonicalEvents.filter((e) => e.geo !== undefined).length;
 console.log(`\nEvents carrying pre-resolved geo (RICH source → Stage 2 can skip geo-lookup): ${richGeo}`);
@@ -302,7 +302,7 @@ if (multiZoneJourney !== undefined) {
   for (const s of multiZoneJourney.scans) {
     const time = s.localIso.slice(11, 16);
     console.log(
-      `  seq ${s.scanSeq}  ${time} ${s.utcOffset.padEnd(7)} ${s.eventType.padEnd(16)} ` +
+      `  seq ${s.scanSeq}  ${time} ${s.utcOffset.padEnd(7)} ${s.status.padEnd(16)} ` +
       `${s.hub.slice(0, 18).padEnd(19)} ${CartographerCli.fmtCoord(s.lat, s.lng).padEnd(20)} [${s.jurisdiction}]`,
     );
   }
@@ -422,8 +422,8 @@ console.log(`    • multi-modal fusion: ${fusedGpsIp} events fused GPS+IP (agre
 console.log('');
 console.log(`  geo-resolve: RAN ${geoRun}  ·  SKIPPED ${geoSkip} (${pct(geoSkip, total)} — source already resolved → geo sub-DAG + IP call avoided)`);
 console.log(`  redaction:   RAN ${redRun}  ·  SKIPPED ${redSkip} (${pct(redSkip, total)} — no PII / not required → redaction sub-DAG bypassed)`);
-console.log(`  pricing+eta: RAN ${total - priceSkip}  ·  SKIPPED ${priceSkip} (${pct(priceSkip, total)} — non-order kinds carry no basket/delivery)`);
-console.log(`  per-kind lanes: ${[...pathCounts.entries()].sort().map(([p, n]) => `${p}=${n}`).join('  ')}`);
+console.log(`  pricing+eta: RAN ${total - priceSkip}  ·  SKIPPED ${priceSkip} (${pct(priceSkip, total)} — non-order event types carry no basket/delivery)`);
+console.log(`  per-event-type lanes: ${[...pathCounts.entries()].sort().map(([p, n]) => `${p}=${n}`).join('  ')}`);
 console.log(`  cold-chain-check RAN ${coldRun} (sensor lane only) · customs-dwell RAN ${customsRun} (customs lane only)`);
 console.log('\n  Compute avoided (beyond API calls):');
 console.log(`    • ${redactionPassesAvoided.toLocaleString('en-US')} redaction passes avoided — skip hashing/coarsening when there is no PII to protect.`);

@@ -75,7 +75,7 @@ export interface JourneyScan {
   readonly utcOffset: string;
   readonly timezone: string;
   readonly jurisdiction: string;
-  readonly eventType: string;
+  readonly status: string;
   readonly hub: string;
   readonly region: string;
   readonly country: string;
@@ -175,7 +175,7 @@ export class CartographerState extends NodeStateBase {
     'format':       'json',
     'compression':  'none',
     'mappingKey':   'json-position',
-    'kind':         'position-ping',
+    'eventType':    'position-ping',
     'payload':      '',
   };
 
@@ -196,7 +196,7 @@ export class CartographerState extends NodeStateBase {
     'shipmentId':        '',
     'eventId':           '',
     'epochMs':           0,
-    'kind':              'position-ping',
+    'eventType':         'position-ping',
     'sourceId':          '',
     'sourceFormat':      'json',
     'sourceCompression': 'none',
@@ -292,7 +292,7 @@ export class CartographerState extends NodeStateBase {
     'carrierName':      '',
     'countryIso3':      'UNK',
     'weightGrams':      0,
-    'eventType':        'SCAN',
+    'status':           'SCAN',
     'serviceTier':      'standard',
     'sizeTier':         'small',
     'lineItems':        [{ 'productId': '', 'quantity': 1 }],
@@ -386,12 +386,12 @@ export class CartographerState extends NodeStateBase {
   legKm: number = 0;
 
   /**
-   * Batch size recorded by the classifyBatch node during the batch-by-kind
+   * Batch size recorded by the classifyBatch node during the batch-by-event-type
    * reservoir scatter. Set per-clone to the number of items in the batch
-   * released by the reservoir for this clone's kind. Used for observability
+   * released by the reservoir for this clone's event type. Used for observability
    * of the keyed reservoir batching mechanism.
    */
-  batchKindCount: number = 0;
+  batchEventTypeCount: number = 0;
 
   /** Cold-chain breach flag (sensor lane only; set by cold-chain-check). */
   coldChainBreach: boolean = false;
@@ -456,12 +456,12 @@ export class CartographerState extends NodeStateBase {
     'region':           '',
     'country':          '',
     'hub':              '',
-    'status':           'unmapped',
+    'geoStatus':        'unmapped',
     'lat':              0,
     'lng':              0,
     'coordsCoarsened':  false,
     'legKm':            0,
-    'eventType':        'SCAN',
+    'status':           'SCAN',
     'serviceTier':      'standard',
     'sizeTier':         'small',
     'onTime':           false,
@@ -538,7 +538,7 @@ export class CartographerState extends NodeStateBase {
     copy.legKm = this.legKm;
     copy.coldChainBreach = this.coldChainBreach;
     copy.customsDwellHours = this.customsDwellHours;
-    copy.batchKindCount = this.batchKindCount;
+    copy.batchEventTypeCount = this.batchEventTypeCount;
 
     copy.gpsCandidate = { ...this.gpsCandidate };
     copy.ipCandidate  = { ...this.ipCandidate };
@@ -611,7 +611,7 @@ export class CartographerState extends NodeStateBase {
       'legKm': this.legKm,
       'coldChainBreach': this.coldChainBreach,
       'customsDwellHours': this.customsDwellHours,
-      'batchKindCount': this.batchKindCount,
+      'batchEventTypeCount': this.batchEventTypeCount,
       'routing': {
         'path':             this.routing.path,
         'geoLookupRun':     this.routing.geoLookupRun,
@@ -737,7 +737,7 @@ export class CartographerState extends NodeStateBase {
     if (typeof snap['legKm'] === 'number') this.legKm = snap['legKm'];
     if (typeof snap['coldChainBreach'] === 'boolean') this.coldChainBreach = snap['coldChainBreach'];
     if (typeof snap['customsDwellHours'] === 'number') this.customsDwellHours = snap['customsDwellHours'];
-    if (typeof snap['batchKindCount'] === 'number') this.batchKindCount = snap['batchKindCount'];
+    if (typeof snap['batchEventTypeCount'] === 'number') this.batchEventTypeCount = snap['batchEventTypeCount'];
 
     if (snap['routing'] !== undefined) this.routing = CartographerState.routingFromJson(snap['routing']);
 
@@ -793,7 +793,7 @@ export class CartographerState extends NodeStateBase {
   }
 
   // ── CanonicalEvent / SourcePayload narrowers + reconstruction ──────────────
-  private static canonicalKind(value: unknown): CanonicalEvent['kind'] {
+  private static canonicalEventType(value: unknown): CanonicalEvent['eventType'] {
     return value === 'position-ping' || value === 'facility-scan' || value === 'sensor-reading'
       || value === 'customs-event' || value === 'delivery-confirmation'
       ? value
@@ -818,7 +818,7 @@ export class CartographerState extends NodeStateBase {
       'shipmentId':        e.shipmentId,
       'eventId':           e.eventId,
       'epochMs':           e.epochMs,
-      'kind':              e.kind,
+      'eventType':         e.eventType,
       'sourceId':          e.sourceId,
       'sourceFormat':      e.sourceFormat,
       'sourceCompression': e.sourceCompression,
@@ -870,7 +870,7 @@ export class CartographerState extends NodeStateBase {
       'shipmentId':        e.shipmentId,
       'eventId':           e.eventId,
       'epochMs':           e.epochMs,
-      'kind':              e.kind,
+      'eventType':         e.eventType,
       'sourceId':          e.sourceId,
       'sourceFormat':      e.sourceFormat,
       'sourceCompression': e.sourceCompression,
@@ -887,7 +887,7 @@ export class CartographerState extends NodeStateBase {
       'shipmentId':        CartographerState.str(o['shipmentId']),
       'eventId':           CartographerState.str(o['eventId']),
       'epochMs':           CartographerState.num(o['epochMs']),
-      'kind':              CartographerState.canonicalKind(o['kind']),
+      'eventType':         CartographerState.canonicalEventType(o['eventType']),
       'sourceId':          CartographerState.str(o['sourceId']),
       'sourceFormat':      CartographerState.canonicalSourceFormat(o['sourceFormat']),
       'sourceCompression': CartographerState.canonicalSourceCompression(o['sourceCompression']),
@@ -946,7 +946,7 @@ export class CartographerState extends NodeStateBase {
       'format':      s.format,
       'compression': s.compression,
       'mappingKey':  s.mappingKey,
-      'kind':        s.kind,
+      'eventType':   s.eventType,
       'payload':     s.payload,
     };
   }
@@ -957,7 +957,7 @@ export class CartographerState extends NodeStateBase {
       'format':      CartographerState.sourceFormat(o['format']),
       'compression': (o['compression'] === 'none' || o['compression'] === 'gzip') ? o['compression'] : 'none',
       'mappingKey':  CartographerState.str(o['mappingKey'], 'json-position'),
-      'kind':        CartographerState.canonicalKind(o['kind']),
+      'eventType':   CartographerState.canonicalEventType(o['eventType']),
       'payload':     CartographerState.str(o['payload']),
     };
   }
@@ -991,6 +991,13 @@ export class CartographerState extends NodeStateBase {
   }
 
   private static eventType(value: unknown): ShipmentEvent['eventType'] {
+    return value === 'SCAN' || value === 'DEPARTURE' || value === 'ARRIVAL'
+      || value === 'OUT_FOR_DELIVERY' || value === 'DELIVERED' || value === 'EXCEPTION'
+      ? value
+      : 'SCAN';
+  }
+
+  private static lifecycleStatus(value: unknown): NormalizedShipment['status'] {
     return value === 'SCAN' || value === 'DEPARTURE' || value === 'ARRIVAL'
       || value === 'OUT_FOR_DELIVERY' || value === 'DELIVERED' || value === 'EXCEPTION'
       ? value
@@ -1085,7 +1092,7 @@ export class CartographerState extends NodeStateBase {
       'shipmentId': n.shipmentId, 'scanSeq': n.scanSeq, 'epochMs': n.epochMs, 'dispatchEpochMs': n.dispatchEpochMs,
       'isoTimestamp': n.isoTimestamp, 'localIso': n.localIso, 'utcOffset': n.utcOffset,
       'carrierId': n.carrierId, 'carrierName': n.carrierName, 'countryIso3': n.countryIso3,
-      'weightGrams': n.weightGrams, 'eventType': n.eventType, 'serviceTier': n.serviceTier, 'sizeTier': n.sizeTier,
+      'weightGrams': n.weightGrams, 'status': n.status, 'serviceTier': n.serviceTier, 'sizeTier': n.sizeTier,
       'lineItems': n.lineItems.map((li) => ({ 'productId': li.productId, 'quantity': li.quantity })),
       'facilityId': n.facilityId, 'latitude': n.latitude, 'longitude': n.longitude,
       'legFromLat': n.legFromLat, 'legFromLng': n.legFromLng,
@@ -1110,7 +1117,7 @@ export class CartographerState extends NodeStateBase {
       'carrierName': CartographerState.str(o['carrierName']),
       'countryIso3': CartographerState.str(o['countryIso3'], 'UNK'),
       'weightGrams': CartographerState.num(o['weightGrams']),
-      'eventType': CartographerState.eventType(o['eventType']),
+      'status': CartographerState.lifecycleStatus(o['status']),
       'serviceTier': CartographerState.serviceTier(o['serviceTier']),
       'sizeTier': CartographerState.sizeTier(o['sizeTier']),
       'lineItems': CartographerState.lineItemsFromJson(o['lineItems']),
@@ -1203,9 +1210,9 @@ export class CartographerState extends NodeStateBase {
     return {
       'shipmentId': e.shipmentId, 'scanSeq': e.scanSeq, 'epochMs': e.epochMs,
       'localIso': e.localIso, 'utcOffset': e.utcOffset, 'timezone': e.timezone, 'jurisdiction': e.jurisdiction,
-      'continent': e.continent, 'region': e.region, 'country': e.country, 'hub': e.hub, 'status': e.status,
+      'continent': e.continent, 'region': e.region, 'country': e.country, 'hub': e.hub, 'geoStatus': e.geoStatus,
       'lat': e.lat, 'lng': e.lng, 'coordsCoarsened': e.coordsCoarsened, 'legKm': e.legKm,
-      'eventType': e.eventType, 'serviceTier': e.serviceTier, 'sizeTier': e.sizeTier,
+      'status': e.status, 'serviceTier': e.serviceTier, 'sizeTier': e.sizeTier,
       'onTime': e.onTime, 'exception': e.exception, 'consentStatus': e.consentStatus,
       'disruptionReason': e.disruptionReason,
       'subtotalUsdMinor': e.subtotalUsdMinor, 'currency': e.currency,
@@ -1314,12 +1321,12 @@ export class CartographerState extends NodeStateBase {
       'region': CartographerState.str(o['region']),
       'country': CartographerState.str(o['country']),
       'hub': CartographerState.str(o['hub']),
-      'status': CartographerState.geoStatus(o['status']),
+      'geoStatus': CartographerState.geoStatus(o['geoStatus']),
       'lat': CartographerState.num(o['lat']),
       'lng': CartographerState.num(o['lng']),
       'coordsCoarsened': CartographerState.bool(o['coordsCoarsened']),
       'legKm': CartographerState.num(o['legKm']),
-      'eventType': CartographerState.eventType(o['eventType']),
+      'status': CartographerState.lifecycleStatus(o['status']),
       'serviceTier': CartographerState.serviceTier(o['serviceTier']),
       'sizeTier': CartographerState.sizeTier(o['sizeTier']),
       'onTime': CartographerState.bool(o['onTime']),

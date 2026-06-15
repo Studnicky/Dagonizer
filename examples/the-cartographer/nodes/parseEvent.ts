@@ -28,13 +28,13 @@ export class ParseEventNode extends ScalarNode<CartographerState, 'parsed' | 'in
   readonly 'name' = 'parse';
   readonly 'outputs' = ['parsed', 'invalid'] as const;
 
-  /** A non-empty status for kinds whose source status string may be sparse. */
+  /** A non-empty status for event types whose source status string may be sparse. */
   private static statusFor(event: CanonicalEvent): string {
     const s = event.body.status;
     if (s.length > 0) return s;
-    if (event.kind === 'delivery-confirmation') return 'delivered';
-    if (event.kind === 'customs-event') return event.body.customsStatus === 'held' ? 'customs hold' : 'customs cleared';
-    if (event.kind === 'sensor-reading') return 'sensor reading';
+    if (event.eventType === 'delivery-confirmation') return 'delivered';
+    if (event.eventType === 'customs-event') return event.body.customsStatus === 'held' ? 'customs hold' : 'customs cleared';
+    if (event.eventType === 'sensor-reading') return 'sensor reading';
     return 'in transit';
   }
 

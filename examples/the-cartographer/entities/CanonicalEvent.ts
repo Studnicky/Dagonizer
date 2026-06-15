@@ -4,14 +4,14 @@
  * NDJSON, customs/delivery) decode into this one shape so the downstream
  * enrichment scatter processes a single collection.
  *
- * Discriminated on `kind`:
+ * Discriminated on `eventType`:
  *   - 'position-ping'         — a moving asset's satellite position fix
  *   - 'facility-scan'         — a parcel scanned at a depot/facility
  *   - 'sensor-reading'        — cold-chain telemetry (temp / humidity / shock)
  *   - 'customs-event'         — a customs clearance / hold event
  *   - 'delivery-confirmation' — proof-of-delivery (the single terminal)
  *
- * Common header: `assetId`/`shipmentId`, `eventId`, `epochMs`, `kind`.
+ * Common header: `assetId`/`shipmentId`, `eventId`, `epochMs`, `eventType`.
  *
  * Per-kind body (`body`) carries the fields a kind needs (coords, sensor
  * channels, customs status, recipient PII for delivery, etc.). Modelled as a
@@ -38,12 +38,12 @@ export const CanonicalEventSchema = {
   '$id': 'https://noocodex.dev/schemas/cartographer/CanonicalEvent',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['shipmentId', 'eventId', 'epochMs', 'kind', 'sourceId', 'sourceFormat', 'sourceCompression', 'body'],
+  'required': ['shipmentId', 'eventId', 'epochMs', 'eventType', 'sourceId', 'sourceFormat', 'sourceCompression', 'body'],
   'properties': {
     'shipmentId':   { 'type': 'string', 'minLength': 1 },
     'eventId':      { 'type': 'string', 'minLength': 1 },
     'epochMs':      { 'type': 'number' },
-    'kind': {
+    'eventType': {
       'type': 'string',
       'enum': ['position-ping', 'facility-scan', 'sensor-reading', 'customs-event', 'delivery-confirmation'],
     },

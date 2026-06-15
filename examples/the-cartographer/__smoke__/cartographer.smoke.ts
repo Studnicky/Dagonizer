@@ -79,10 +79,10 @@ await SmokeRunner.check('ingestion fans in from >=3 distinct source formats and 
   // The unified canonical collection must carry events decoded from >=3 distinct
   // on-the-wire formats (json, csv, ndjson.gz) AND >=2 distinct kinds.
   const formats = new Set(state.canonicalEvents.map((e) => e.sourceFormat));
-  const kinds = new Set(state.canonicalEvents.map((e) => e.kind));
+  const eventTypes = new Set(state.canonicalEvents.map((e) => e.eventType));
   assert.ok(state.canonicalEvents.length > 0, `Expected canonical events, got 0`);
   assert.ok(formats.size >= 3, `Expected >=3 distinct source formats, got ${formats.size} (${[...formats].join(', ')})`);
-  assert.ok(kinds.size >= 2, `Expected >=2 distinct kinds, got ${kinds.size} (${[...kinds].join(', ')})`);
+  assert.ok(eventTypes.size >= 2, `Expected >=2 distinct event types, got ${eventTypes.size} (${[...eventTypes].join(', ')})`);
   // The JSON API source pre-resolves geo on its events (Stage 2 branches on this).
   const withGeo = state.canonicalEvents.filter((e) => e.geo !== undefined);
   assert.ok(withGeo.length > 0, `Expected >=1 event with pre-resolved geo (RICH source), got 0`);
@@ -275,14 +275,14 @@ await SmokeRunner.check('at least one event SKIPPED redaction (no PII / not requ
   assert.ok(redRun.length > 0, `Expected >=1 event to RUN redaction, got 0`);
 });
 
-await SmokeRunner.check('each per-kind enrichment lane is exercised', async () => {
+await SmokeRunner.check('each per-event-type enrichment lane is exercised', async () => {
   const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
   const lanes = new Set(processed.map((r) => r.routing.path));
   for (const lane of ['geo-only', 'sensor', 'order', 'customs'] as const) {
     assert.ok(lanes.has(lane), `Expected the '${lane}' lane to be exercised, got lanes: ${[...lanes].join(', ')}`);
   }
-  // The per-kind lanes skip pricing/eta except the order lane.
+  // The per-event-type lanes skip pricing/eta except the order lane.
   const nonOrderRanPricing = processed.filter((r) => r.routing.path !== 'order' && r.routing.pricingRun);
   assert.equal(nonOrderRanPricing.length, 0, `Non-order lanes must skip pricing, ${nonOrderRanPricing.length} ran it`);
   const sensorChecked = processed.filter((r) => r.routing.path === 'sensor' && r.routing.coldChainRun);
@@ -296,7 +296,7 @@ await SmokeRunner.check('no journey emits more than one DELIVERED (single termin
   const deliveredByShip = new Map<string, number>();
   for (const r of state.records) {
     if (r.shipmentId.length === 0) continue;
-    if (r.eventType === 'DELIVERED') {
+    if (r.status === 'DELIVERED') {
       deliveredByShip.set(r.shipmentId, (deliveredByShip.get(r.shipmentId) ?? 0) + 1);
     }
   }
@@ -313,7 +313,7 @@ await SmokeRunner.check('water/maritime pings resolve to a water body (not a lan
   // A satellite ping over open water is legitimate in-transit data: it must be
   // status 'water', jurisdiction 'international-waters', and labelled by a named
   // ocean/sea (NOT a wrong land country and NOT 'Unknown').
-  const water = processed.filter((r) => r.status === 'water');
+  const water = processed.filter((r) => r.geoStatus === 'water');
   assert.ok(water.length > 0, `Expected >=1 water/maritime ping, got 0`);
   for (const r of water) {
     assert.equal(r.jurisdiction, 'international-waters', `water ping ${r.shipmentId} must be international-waters, got ${r.jurisdiction}`);
@@ -325,7 +325,7 @@ await SmokeRunner.check('water/maritime pings resolve to a water body (not a lan
 await SmokeRunner.check('land pings show a place name, never a bare ISO code', async () => {
   const state = await SmokeRunner.runPipeline(STAT_COUNT);
   const processed = state.records.filter((r) => r.shipmentId.length > 0);
-  const landLabelled = processed.filter((r) => r.status === 'land');
+  const landLabelled = processed.filter((r) => r.geoStatus === 'land');
   // No land ping may render a bare 3-letter ISO code as its hub label.
   const bareIso = landLabelled.filter((r) => /^[A-Z]{3}$/.test(r.hub) && r.hub !== 'UNK');
   assert.equal(bareIso.length, 0, `Expected 0 land pings with a bare-ISO hub, got ${bareIso.length} (e.g. ${bareIso[0]?.hub})`);

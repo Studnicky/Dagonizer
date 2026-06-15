@@ -55,7 +55,7 @@ type TraceEvent =
 interface StreamLine {
   readonly shipmentId: string;
   readonly scanSeq: number;
-  readonly eventType: string;
+  readonly status: string;
   readonly continent: string;
   readonly redacted: boolean;
 }
@@ -247,7 +247,7 @@ const aboxEntities = computed<AboxEntity[]>(() => {
   return records.value.map<AboxEntity>((after) => {
     const key = `${after.shipmentId}::${after.scanSeq}`;
     const before = beforeMap.get(key);
-    const label = `${after.shipmentId} · scan ${after.scanSeq} · ${after.eventType} · ${after.continent}`;
+    const label = `${after.shipmentId} · scan ${after.scanSeq} · ${after.status} · ${after.continent}`;
     return { 'id': key, label, before, after };
   });
 });
@@ -390,7 +390,7 @@ async function run(): Promise<void> {
             streamFeed.value = [...streamFeed.value, {
               'shipmentId':  rec.shipmentId,
               'scanSeq':     rec.scanSeq,
-              'eventType':   rec.eventType,
+              'status':      rec.status,
               'continent':   rec.continent,
               'redacted':    rec.redactionApplied,
             }];
@@ -529,7 +529,7 @@ onMounted(() => {
                   <span class="cr-stream-sep">·</span>
                   <span class="cr-stream-scan mono">scan {{ line.scanSeq }}</span>
                   <span class="cr-stream-sep">·</span>
-                  <span class="cr-stream-type">{{ line.eventType }}</span>
+                  <span class="cr-stream-type">{{ line.status }}</span>
                   <span class="cr-stream-sep">·</span>
                   <span class="cr-stream-continent">{{ line.continent }}</span>
                   <template v-if="line.redacted">

@@ -10,7 +10,7 @@
  *   - Units.toGrams for weight
  *   - Disruptions.hoursFor to recover the journey's disruption hours
  *
- * It does NOT derive eventType, serviceTier, or sizeTier — that is classify's job.
+ * It does NOT derive status, serviceTier, or sizeTier — that is classify's job.
  * Carries journey fields (scanSeq, leg coords, origin/dest) through.
  *
  * Routes 'normalized'; 'rejected' when the scan timestamp is unparseable.
@@ -70,8 +70,8 @@ export class NormalizeNode extends ScalarNode<CartographerState, 'normalized' | 
       'carrierName':      carrierName,
       'countryIso3':      countryIso3,
       'weightGrams':      weightGrams,
-      // eventType / serviceTier / sizeTier are derived by the classify node.
-      'eventType':        'SCAN',
+      // status (lifecycle) / serviceTier / sizeTier are derived by the classify node.
+      'status':           'SCAN',
       'serviceTier':      'standard',
       'sizeTier':         'small',
       'lineItems':        raw.lineItems,

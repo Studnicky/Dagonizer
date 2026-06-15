@@ -45,7 +45,7 @@ export class SummarizeInsightsNode extends ScalarNode<CartographerState, 'succes
       // water → no continent) collapse into one 'International Waters / Maritime'
       // bucket. The continent is always present (default 'Unmapped' upstream),
       // so the key is consistent — never a bare country code or subdivision.
-      const key = record.status === 'water'
+      const key = record.geoStatus === 'water'
         ? 'International Waters / Maritime'
         : record.continent;
       let entry = state.insights.get(key);
@@ -90,7 +90,7 @@ export class SummarizeInsightsNode extends ScalarNode<CartographerState, 'succes
           entry.totalDelayHours += record.delayHours;
         }
       }
-      if (record.eventType === 'DELIVERED') entry.deliveries++;
+      if (record.status === 'DELIVERED') entry.deliveries++;
       if (record.exception) entry.exceptions++;
       if (record.consentStatus === 'valid')   entry.consentValid++;
       if (record.consentStatus === 'missing') entry.consentMissing++;
@@ -117,7 +117,7 @@ export class SummarizeInsightsNode extends ScalarNode<CartographerState, 'succes
         'utcOffset':        record.utcOffset,
         'timezone':         record.timezone,
         'jurisdiction':     record.jurisdiction,
-        'eventType':        record.eventType,
+        'status':           record.status,
         'hub':              record.hub,
         'region':           record.region,
         'country':          record.country,
@@ -154,8 +154,8 @@ export class SummarizeInsightsNode extends ScalarNode<CartographerState, 'succes
         if (!offsets.includes(s.utcOffset)) offsets.push(s.utcOffset);
         if (!timezones.includes(s.timezone)) timezones.push(s.timezone);
         if (!jurisdictions.includes(s.jurisdiction)) jurisdictions.push(s.jurisdiction);
-        statusProgression.push(s.eventType);
-        if (s.eventType === 'DELIVERED') delivered = true;
+        statusProgression.push(s.status);
+        if (s.status === 'DELIVERED') delivered = true;
       }
 
       // Shipment-level facts (on-time, delay, pricing) come from an ORDER-lane
@@ -184,7 +184,7 @@ export class SummarizeInsightsNode extends ScalarNode<CartographerState, 'succes
         'offsets':           offsets,
         'jurisdictions':     jurisdictions,
         'statusProgression': statusProgression,
-        'lastStatus':        last.eventType,
+        'lastStatus':        last.status,
         'lastHub':           last.hub,
         'delivered':         delivered,
         'onTime':            onTime,

@@ -1,8 +1,8 @@
 /**
  * cold-chain-check: sensor-lane only — evaluate cold-chain telemetry for a breach.
  *
- * Runs ONLY on the route-kind 'sensor' lane (sensor-reading events carry temp /
- * shock telemetry). Other kinds skip this node entirely — the per-kind skip
+ * Runs ONLY on the route-event-type 'sensor' lane (sensor-reading events carry temp /
+ * shock telemetry). Other event types skip this node entirely — the per-event-type skip
  * showcase. Sets state.coldChainBreach from the canonical body's tempC / shockG.
  *
  * Routes 'checked'.

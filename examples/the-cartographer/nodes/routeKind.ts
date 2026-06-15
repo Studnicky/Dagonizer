@@ -1,7 +1,7 @@
 /**
- * route-kind: per-kind enrichment dispatch (heterogeneous routing).
+ * route-event-type: per-event-type enrichment dispatch (heterogeneous routing).
  *
- * Different canonical `kind`s need different enrichment; this node routes each
+ * Different canonical `eventType`s need different enrichment; this node routes each
  * to ONLY the lane it needs, skipping irrelevant work:
  *   - position-ping        → 'geo-only'   : location/time only (SKIP pricing/eta)
  *   - sensor-reading       → 'sensor'     : cold-chain breach check, then leg
@@ -10,9 +10,9 @@
  *   - delivery-confirmation→ 'order'      : full pricing → shipping → eta
  *   - customs-event        → 'customs'    : customs dwell (SKIP pricing/eta)
  *
- * Records the path + the per-kind skip tallies on state.routing so the parent's
- * summarize totals the compute saved. Deterministic dispatch-map routing — not a
- * runtime callback.
+ * Records the path + the per-event-type skip tallies on state.routing so the
+ * parent's summarize totals the compute saved. Deterministic dispatch-map
+ * routing — not a runtime callback.
  *
  * Routes 'geo-only' | 'sensor' | 'order' | 'customs'.
  */
@@ -25,10 +25,10 @@ import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
 } from '@noocodex/dagonizer';
 
-// #region route-kind-node
-type KindRoute = 'geo-only' | 'sensor' | 'order' | 'customs';
+// #region route-event-type-node
+type EventTypeRoute = 'geo-only' | 'sensor' | 'order' | 'customs';
 
-const KIND_ROUTE: Readonly<Record<CanonicalEvent['kind'], KindRoute>> = {
+const EVENT_TYPE_ROUTE: Readonly<Record<CanonicalEvent['eventType'], EventTypeRoute>> = {
   'position-ping':         'geo-only',
   'sensor-reading':        'sensor',
   'facility-scan':         'order',
@@ -36,12 +36,12 @@ const KIND_ROUTE: Readonly<Record<CanonicalEvent['kind'], KindRoute>> = {
   'customs-event':         'customs',
 };
 
-export class RouteKindNode extends ScalarNode<CartographerState, KindRoute, CartographerServices> {
-  readonly 'name' = 'route-kind';
+export class RouteKindNode extends ScalarNode<CartographerState, EventTypeRoute, CartographerServices> {
+  readonly 'name' = 'route-event-type';
   readonly 'outputs' = ['geo-only', 'sensor', 'order', 'customs'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<KindRoute>> {
-    const route = KIND_ROUTE[state.canonical.kind];
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<EventTypeRoute>> {
+    const route = EVENT_TYPE_ROUTE[state.canonical.eventType];
     // The 'order' lane runs pricing + eta; every other lane skips them.
     const runsOrder = route === 'order';
 
@@ -61,4 +61,4 @@ export class RouteKindNode extends ScalarNode<CartographerState, KindRoute, Cart
 }
 
 export const routeKind = new RouteKindNode();
-// #endregion route-kind-node
+// #endregion route-event-type-node

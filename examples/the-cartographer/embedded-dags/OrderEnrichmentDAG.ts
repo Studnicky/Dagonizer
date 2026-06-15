@@ -2,7 +2,7 @@
  * OrderEnrichmentDAG: the order-lane value enrichment sub-DAG.
  *
  * Runs only for 'facility-scan' and 'delivery-confirmation' events (the order
- * lane, as dispatched by route-kind). The three nodes form a tight value-chain:
+ * lane, as dispatched by route-event-type). The three nodes form a tight value-chain:
  *   enrich-pricing  — price the basket: lineItems → PricedOrder + FX-normalised USD
  *   enrich-shipping — haversine origin→dest distance + carrier rate → ShippingQuote
  *   enrich-eta      — transit time, ETA vs SLA promise → DeliveryEstimate

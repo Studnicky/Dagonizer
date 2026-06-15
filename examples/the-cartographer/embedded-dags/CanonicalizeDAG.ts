@@ -5,7 +5,7 @@
  * already set on state.geoContext. The two nodes form a single conceptual domain:
  *   normalize  — scalar canonicalization (timestamps, carrier aliases, country codes,
  *                weight units; derives LOCAL time from state.geoContext.timezone)
- *   classify   — derive eventType / serviceTier / sizeTier; project state.currentEvent
+ *   classify   — derive status / serviceTier / sizeTier; project state.currentEvent
  *
  *   normalize
  *     ├─rejected─► rejected  (TerminalNode failed — unparseable scan timestamp)
@@ -13,9 +13,9 @@
  *   classify
  *     └─classified─► canonical  (TerminalNode completed)
  *
- * Embedded in event-pipeline between geo and route-kind:
+ * Embedded in event-pipeline between geo and route-event-type:
  *   .embeddedDAG('canonicalize', 'canonicalize',
- *     { 'success': 'route-kind', 'error': 'rejected' },
+ *     { 'success': 'route-event-type', 'error': 'rejected' },
  *     {
  *       'inputs':  { 'raw': 'raw', 'geoContext': 'geoContext' },
  *       'outputs': { 'normalized': 'normalized', 'currentEvent': 'currentEvent' },
@@ -44,7 +44,7 @@ export const canonicalizeDAG: DAG = new DAGBuilder('canonicalize', '1.0')
     'rejected':   'rejected',
   })
 
-  // 2. classify: derive eventType / serviceTier / sizeTier; project currentEvent.
+  // 2. classify: derive status / serviceTier / sizeTier; project currentEvent.
   .node('classify', classify, {
     'classified': 'canonical',
   })
