@@ -269,15 +269,24 @@ contract alive — there is no old contract after wave 1.
   is a keyed batch, with capacity/idle/complete release and crash-safe buffer
   state; (c) renderer reservoir glyph + live fill; (d) validation + tests.
   No new placement type — reservoir is scatter config; gather is one fold.
-- **Phase 3** — migrate executors → patterns → adapters/tools/embedders; every
-  package's tests green.
-- **Phase 4** — Cartographer adoption: classify → keyed reservoirs at the
-  decision points → batch-aware enrichment with LRU-cached services; async
-  streaming source (configurable count 1k–1M, configurable batch size,
-  per-format mix, orthogonal compression already landed); web-worker enrichment
-  (`executor-web`); throughput + progress + sliding-window + live-insights UI.
-- **Phase 5** — docs/concepts: plural-native as a core concept, reservoir guide,
-  migration guide; update `architecture.md` / `concepts.md`.
+- **Phase 3** — migrate consumers. **DONE.** The node taxonomy was corrected
+  (`MonadicNode` is the root/monad with `execute(batch)`; `ScalarNode extends
+  MonadicNode` adds the per-item `executeOne`). patterns (flow/graph/rag),
+  top-level examples, the-cartographer, and the-archivist all migrated to the
+  taxonomy; adapters/tools/embedders/executors/stores were already green. The
+  CI-blocking `executor-node` conformance fixture was migrated. **Full workspace
+  `npm run ci` is GREEN** (typecheck + examples + docs + lint + all package
+  tests + lint:dags).
+- **Phase 4** — Cartographer adoption. **In progress.** The cartographer is
+  migrated & green; keyed reservoirs at the decision points, batch-aware
+  enrichment with LRU-cached services, and an async streaming source
+  (configurable count 1k–1M, per-format mix, orthogonal compression already
+  landed) are being adopted on top of the new engine. web-worker enrichment
+  (`executor-web`) and the throughput / progress / sliding-window / live-insights
+  UI are the heaviest remaining showcase pieces.
+- **Phase 5** — docs/concepts. **DONE** — `concepts.md` Node + gather sections
+  rewritten for the batch contract and the taxonomy; new `guide/{plural-native,
+  reservoir,migrating-to-batch}.md`; sidebar wired; `typecheck:docs` green.
 
 ## 11. Resolved decisions
 
