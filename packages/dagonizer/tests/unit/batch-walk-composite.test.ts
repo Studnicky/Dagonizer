@@ -17,17 +17,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Batch } from '../../src/core/batch/Batch.js';
 import type { Item } from '../../src/core/batch/Item.js';
 import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/dag/DAG.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 import { TestNode } from '../_support/TestNode.js';
 
 // ---------------------------------------------------------------------------
@@ -57,26 +55,32 @@ class CompositeState extends NodeStateBase {
 // Each clone carries its index as `value`.
 // ---------------------------------------------------------------------------
 
-function makeFanOutNode(name: string, n: number): NodeInterface<CompositeState, 'out'> {
-  return {
-    name,
-    'outputs': ['out'] as const,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute(batch: Batch<CompositeState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'out', CompositeState>> {
-      const source = batch.row(0).state;
-      const items: Array<Item<CompositeState>> = [];
-      for (let i = 0; i < n; i++) {
-        const clone = source.clone();
-        clone.value = i;
-        clone.log.push(`fan:${i}`);
-        items.push({ 'id': String(i), 'state': clone });
-      }
-      const result = new Map<'out', Batch<CompositeState>>();
-      result.set('out', Batch.from(items));
-      return result;
-    },
-  };
+class FanOutNode extends MonadicNode<CompositeState, 'out'> {
+  readonly name: string;
+  readonly outputs = ['out'] as const;
+
+  constructor(name: string, private readonly n: number) {
+    super();
+    this.name = name;
+  }
+
+  override async execute(batch: Batch<CompositeState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'out', CompositeState>> {
+    const source = batch.row(0).state;
+    const items: Array<Item<CompositeState>> = [];
+    for (let i = 0; i < this.n; i++) {
+      const clone = source.clone();
+      clone.value = i;
+      clone.log.push(`fan:${i}`);
+      items.push({ 'id': String(i), 'state': clone });
+    }
+    const result = new Map<'out', Batch<CompositeState>>();
+    result.set('out', Batch.from(items));
+    return result;
+  }
+}
+
+function makeFanOutNode(name: string, n: number): FanOutNode {
+  return new FanOutNode(name, n);
 }
 
 // ---------------------------------------------------------------------------
@@ -84,24 +88,30 @@ function makeFanOutNode(name: string, n: number): NodeInterface<CompositeState, 
 // Routes all items to 'done'.
 // ---------------------------------------------------------------------------
 
+class AccumulatorNode extends MonadicNode<CompositeState, 'done'> {
+  readonly name: string;
+  readonly outputs = ['done'] as const;
+
+  constructor(name: string, private readonly collected: CompositeState[]) {
+    super();
+    this.name = name;
+  }
+
+  override async execute(batch: Batch<CompositeState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'done', CompositeState>> {
+    for (const item of batch) {
+      this.collected.push(item.state);
+    }
+    const result = new Map<'done', Batch<CompositeState>>();
+    result.set('done', batch);
+    return result;
+  }
+}
+
 function makeAccumulatorNode(
   name: string,
   collected: CompositeState[],
-): NodeInterface<CompositeState, 'done'> {
-  return {
-    name,
-    'outputs': ['done'] as const,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute(batch: Batch<CompositeState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'done', CompositeState>> {
-      for (const item of batch) {
-        collected.push(item.state);
-      }
-      const result = new Map<'done', Batch<CompositeState>>();
-      result.set('done', batch);
-      return result;
-    },
-  };
+): AccumulatorNode {
+  return new AccumulatorNode(name, collected);
 }
 
 // ---------------------------------------------------------------------------
@@ -109,22 +119,28 @@ function makeAccumulatorNode(
 // Routes all items to 'done'.
 // ---------------------------------------------------------------------------
 
+class RecordingNode extends MonadicNode<CompositeState, 'done'> {
+  readonly name: string;
+  readonly outputs = ['done'] as const;
+
+  constructor(name: string, private readonly firings: number[]) {
+    super();
+    this.name = name;
+  }
+
+  override async execute(batch: Batch<CompositeState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'done', CompositeState>> {
+    this.firings.push(batch.size);
+    const result = new Map<'done', Batch<CompositeState>>();
+    result.set('done', batch);
+    return result;
+  }
+}
+
 function makeRecordingNode(
   name: string,
   firings: number[],
-): NodeInterface<CompositeState, 'done'> {
-  return {
-    name,
-    'outputs': ['done'] as const,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute(batch: Batch<CompositeState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'done', CompositeState>> {
-      firings.push(batch.size);
-      const result = new Map<'done', Batch<CompositeState>>();
-      result.set('done', batch);
-      return result;
-    },
-  };
+): RecordingNode {
+  return new RecordingNode(name, firings);
 }
 
 // ---------------------------------------------------------------------------
@@ -193,22 +209,27 @@ void describe('Multi-item EmbeddedDAG — uniform outcome (all N via success)', 
     // Child: increment `value` by 10, then terminal.
     const childItemsSeen: number[] = [];
 
-    const childIncrNode: NodeInterface<CompositeState, 'done'> = {
-      'name': 'child-incr',
-      'outputs': ['done'] as const,
-      'contract': EMPTY_CONTRACT_FRAGMENT,
-      'timeout': Timeout.none(),
-      async execute(batch: Batch<CompositeState>): Promise<RoutedBatch<'done', CompositeState>> {
+    class ChildIncrNode extends MonadicNode<CompositeState, 'done'> {
+      readonly name = 'child-incr';
+      readonly outputs = ['done'] as const;
+
+      constructor(private readonly childItemsSeen: number[]) {
+        super();
+      }
+
+      override async execute(batch: Batch<CompositeState>): Promise<RoutedBatch<'done', CompositeState>> {
         for (const item of batch) {
-          childItemsSeen.push(item.state.value);
+          this.childItemsSeen.push(item.state.value);
           item.state.value += 10;
           item.state.log.push(`child-incr:${item.state.value}`);
         }
         const result = new Map<'done', Batch<CompositeState>>();
         result.set('done', batch);
         return result;
-      },
-    };
+      }
+    }
+
+    const childIncrNode = new ChildIncrNode(childItemsSeen);
 
     // Child DAG: child-incr → child-end (success terminal).
     const childDAG = makeDAG('embed-uniform-child', 'child-incr', [
@@ -286,12 +307,11 @@ void describe('Multi-item EmbeddedDAG — uniform outcome (all N via success)', 
 void describe('Multi-item EmbeddedDAG — split outcomes (even→success, odd→error)', () => {
   void it('items partition correctly across two downstream terminals by sub-DAG route', async () => {
     // Child routing node: even value → 'success', odd value → 'failure'.
-    const childRouterNode: NodeInterface<CompositeState, 'success' | 'failure'> = {
-      'name': 'child-router',
-      'outputs': ['success', 'failure'] as const,
-      'contract': EMPTY_CONTRACT_FRAGMENT,
-      'timeout': Timeout.none(),
-      async execute(batch: Batch<CompositeState>): Promise<RoutedBatch<'success' | 'failure', CompositeState>> {
+    class ChildRouterNode extends MonadicNode<CompositeState, 'success' | 'failure'> {
+      readonly name = 'child-router';
+      readonly outputs = ['success', 'failure'] as const;
+
+      override async execute(batch: Batch<CompositeState>): Promise<RoutedBatch<'success' | 'failure', CompositeState>> {
         const even: Array<Item<CompositeState>> = [];
         const odd: Array<Item<CompositeState>> = [];
         for (const item of batch) {
@@ -305,8 +325,10 @@ void describe('Multi-item EmbeddedDAG — split outcomes (even→success, odd→
         if (even.length > 0) result.set('success', Batch.from(even));
         if (odd.length > 0) result.set('failure', Batch.from(odd));
         return result;
-      },
-    };
+      }
+    }
+
+    const childRouterNode = new ChildRouterNode();
 
     // Child DAG: router → success-terminal or failure-terminal.
     // success terminal outcome = 'completed', failure terminal outcome = 'failed'.
@@ -413,12 +435,11 @@ class ScatterParentState extends NodeStateBase {
 void describe('Multi-item ScatterNode — per-parent source isolation', () => {
   void it('each parent scatters its own source; no cross-parent mixing in gather', async () => {
     // Fan-out: 3 parent states, each with distinct items arrays and parentId.
-    const fanOutNode: NodeInterface<ScatterParentState, 'out'> = {
-      'name': 'parent-fan',
-      'outputs': ['out'] as const,
-      'contract': EMPTY_CONTRACT_FRAGMENT,
-      'timeout': Timeout.none(),
-      async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatch<'out', ScatterParentState>> {
+    class ParentFanOutNode extends MonadicNode<ScatterParentState, 'out'> {
+      readonly name = 'parent-fan';
+      readonly outputs = ['out'] as const;
+
+      override async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatch<'out', ScatterParentState>> {
         const source = batch.row(0).state;
         const items: Array<Item<ScatterParentState>> = [];
         for (let i = 0; i < 3; i++) {
@@ -432,43 +453,51 @@ void describe('Multi-item ScatterNode — per-parent source isolation', () => {
         const result = new Map<'out', Batch<ScatterParentState>>();
         result.set('out', Batch.from(items));
         return result;
-      },
-    };
+      }
+    }
+
+    const fanOutNode = new ParentFanOutNode();
 
     // Body node: runs once per scatter item; appends the item value to `gathered` via gather.
     // The node itself does nothing to `gathered` — that is the gather strategy's job.
     // We use the `append` gather strategy (target: `gathered`) with `itemKey: 'currentItem'`.
-    const scatterBodyNode: NodeInterface<ScatterParentState, 'success'> = {
-      'name': 'scatter-body',
-      'outputs': ['success'] as const,
-      'contract': EMPTY_CONTRACT_FRAGMENT,
-      'timeout': Timeout.none(),
-      async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatch<'success', ScatterParentState>> {
+    class ScatterBodyNode extends MonadicNode<ScatterParentState, 'success'> {
+      readonly name = 'scatter-body';
+      readonly outputs = ['success'] as const;
+
+      override async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatch<'success', ScatterParentState>> {
         // The append gather strategy reads the clone's currentItem metadata and
         // appends it to the parent's `gathered` array.
         // The body node itself simply routes success; gather does the fold.
         const result = new Map<'success', Batch<ScatterParentState>>();
         result.set('success', batch);
         return result;
-      },
-    };
+      }
+    }
+
+    const scatterBodyNode = new ScatterBodyNode();
 
     // Downstream accumulator collects all parent states after scatter+gather.
     const downstreamCollected: ScatterParentState[] = [];
-    const downstreamNode: NodeInterface<ScatterParentState, 'done'> = {
-      'name': 'downstream',
-      'outputs': ['done'] as const,
-      'contract': EMPTY_CONTRACT_FRAGMENT,
-      'timeout': Timeout.none(),
-      async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatch<'done', ScatterParentState>> {
+    class DownstreamNode extends MonadicNode<ScatterParentState, 'done'> {
+      readonly name = 'downstream';
+      readonly outputs = ['done'] as const;
+
+      constructor(private readonly downstreamCollected: ScatterParentState[]) {
+        super();
+      }
+
+      override async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatch<'done', ScatterParentState>> {
         for (const item of batch) {
-          downstreamCollected.push(item.state);
+          this.downstreamCollected.push(item.state);
         }
         const result = new Map<'done', Batch<ScatterParentState>>();
         result.set('done', batch);
         return result;
-      },
-    };
+      }
+    }
+
+    const downstreamNode = new DownstreamNode(downstreamCollected);
 
     const dag = makeDAG('scatter-per-parent', 'fan', [
       {
@@ -599,17 +628,18 @@ void describe('Size-1 composite parity guard', () => {
     singleParentState.items = [7, 14];
     singleParentState.gathered = [];
 
-    const bodyNode: NodeInterface<ScatterParentState, 'success'> = {
-      'name': 'parity-body',
-      'outputs': ['success'] as const,
-      'contract': EMPTY_CONTRACT_FRAGMENT,
-      'timeout': Timeout.none(),
-      async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatch<'success', ScatterParentState>> {
+    class ParityBodyNode extends MonadicNode<ScatterParentState, 'success'> {
+      readonly name = 'parity-body';
+      readonly outputs = ['success'] as const;
+
+      override async execute(batch: Batch<ScatterParentState>): Promise<RoutedBatch<'success', ScatterParentState>> {
         const result = new Map<'success', Batch<ScatterParentState>>();
         result.set('success', batch);
         return result;
-      },
-    };
+      }
+    }
+
+    const bodyNode = new ParityBodyNode();
 
     const parity1Dag = makeDAG('parity-scatter-1', 'parity-scatter', [
       {

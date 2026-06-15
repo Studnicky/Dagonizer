@@ -18,18 +18,18 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import { Checkpoint, CheckpointRestoreAdapterFn } from '../../src/checkpoint/Checkpoint.js';
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Batch } from '../../src/core/batch/Batch.js';
 import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer, WORKSET_PROGRESS_KEY } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/dag/DAG.js';
 import type { JsonObject } from '../../src/entities/json.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Clock } from '../../src/runtime/Clock.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 import { VirtualClockProvider } from '../../testing/VirtualClock.js';
 import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
 
@@ -90,67 +90,62 @@ function restoreWalkState(snap: JsonObject): WalkState {
 const FAN_N = 4;
 
 /** Fan-out node: takes the single input item and fans to N clones. */
-function makeFanNode(name: string, n: number): NodeInterface<WalkState, 'out'> {
-  return {
-    name,
-    'outputs': ['out'] as const,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute(batch: Batch<WalkState>): Promise<RoutedBatch<'out', WalkState>> {
-      const src = batch.row(0).state;
-      const items: Array<{ 'id': string; 'state': WalkState }> = [];
-      for (let i = 0; i < n; i++) {
-        const clone = src.clone();
-        clone.value = i;
-        clone.log.push(`fan:${i}`);
-        items.push({ 'id': String(i), 'state': clone });
-      }
-      const result = new Map<'out', Batch<WalkState>>();
-      result.set('out', Batch.from(items));
-      return result;
-    },
-  };
+class FanNode extends MonadicNode<WalkState, 'out'> {
+  readonly name: string;
+  readonly outputs: readonly ['out'] = ['out'];
+  private readonly n: number;
+
+  constructor(name: string, n: number) { super(); this.name = name; this.n = n; }
+
+  override async execute(batch: Batch<WalkState>): Promise<RoutedBatch<'out', WalkState>> {
+    const src = batch.row(0).state;
+    const items: Array<{ 'id': string; 'state': WalkState }> = [];
+    for (let i = 0; i < this.n; i++) {
+      const clone = src.clone();
+      clone.value = i;
+      clone.log.push(`fan:${i}`);
+      items.push({ 'id': String(i), 'state': clone });
+    }
+    const result = new Map<'out', Batch<WalkState>>();
+    result.set('out', Batch.from(items));
+    return result;
+  }
 }
+function makeFanNode(name: string, n: number): FanNode { return new FanNode(name, n); }
 
 /** Process node: stamps each item's log. */
-function makeProcNode(name: string): NodeInterface<WalkState, 'done'> {
-  return {
-    name,
-    'outputs': ['done'] as const,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute(batch: Batch<WalkState>): Promise<RoutedBatch<'done', WalkState>> {
-      const items: Array<{ 'id': string; 'state': WalkState }> = [];
-      for (const item of batch) {
-        item.state.log.push(`proc:${item.state.value}`);
-        items.push({ 'id': item.id, 'state': item.state });
-      }
-      const result = new Map<'done', Batch<WalkState>>();
-      result.set('done', Batch.from(items));
-      return result;
-    },
-  };
+class ProcNodeImpl extends ScalarNode<WalkState, 'done'> {
+  readonly name: string;
+  readonly outputs: readonly ['done'] = ['done'];
+
+  constructor(name: string) { super(); this.name = name; }
+
+  protected async executeOne(state: WalkState): Promise<NodeOutputInterface<'done'>> {
+    state.log.push(`proc:${state.value}`);
+    return { 'errors': [], 'output': 'done' };
+  }
 }
+function makeProcNode(name: string): ProcNodeImpl { return new ProcNodeImpl(name); }
 
 /** Accumulator node: pushes all items into `collected`, routes 'done'. */
-function makeCollectNode(
-  name: string,
-  collected: WalkState[],
-): NodeInterface<WalkState, 'done'> {
-  return {
-    name,
-    'outputs': ['done'] as const,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute(batch: Batch<WalkState>): Promise<RoutedBatch<'done', WalkState>> {
-      for (const item of batch) {
-        collected.push(item.state);
-      }
-      const result = new Map<'done', Batch<WalkState>>();
-      result.set('done', batch);
-      return result;
-    },
-  };
+class CollectNode extends MonadicNode<WalkState, 'done'> {
+  readonly name: string;
+  readonly outputs: readonly ['done'] = ['done'];
+  private readonly collected: WalkState[];
+
+  constructor(name: string, collected: WalkState[]) { super(); this.name = name; this.collected = collected; }
+
+  override async execute(batch: Batch<WalkState>): Promise<RoutedBatch<'done', WalkState>> {
+    for (const item of batch) {
+      this.collected.push(item.state);
+    }
+    const result = new Map<'done', Batch<WalkState>>();
+    result.set('done', batch);
+    return result;
+  }
+}
+function makeCollectNode(name: string, collected: WalkState[]): CollectNode {
+  return new CollectNode(name, collected);
 }
 
 /** Build and register the fan→proc→collect DAG. */
@@ -425,24 +420,18 @@ void describe('WorkSet checkpoint — size-1 parity guard', () => {
       const dispatcher = new Dagonizer<CountState>();
 
       // Inline node factory — increments count and routes to 'next'.
-      function makeIncNode(name: string): NodeInterface<CountState, 'next'> {
-        return {
-          name,
-          'outputs': ['next'] as const,
-          'contract': EMPTY_CONTRACT_FRAGMENT,
-          'timeout': Timeout.none(),
-          async execute(batch: Batch<CountState>): Promise<RoutedBatch<'next', CountState>> {
-            const items: Array<{ 'id': string; 'state': CountState }> = [];
-            for (const item of batch) {
-              item.state.count++;
-              items.push({ 'id': item.id, 'state': item.state });
-            }
-            const result = new Map<'next', Batch<CountState>>();
-            result.set('next', Batch.from(items));
-            return result;
-          },
-        };
+      class IncNodeImpl extends ScalarNode<CountState, 'next'> {
+        readonly name: string;
+        readonly outputs: readonly ['next'] = ['next'];
+
+        constructor(name: string) { super(); this.name = name; }
+
+        protected async executeOne(state: CountState): Promise<NodeOutputInterface<'next'>> {
+          state.count++;
+          return { 'errors': [], 'output': 'next' };
+        }
       }
+      function makeIncNode(name: string): IncNodeImpl { return new IncNodeImpl(name); }
 
       dispatcher.registerNode(makeIncNode('inc'));
 

@@ -18,16 +18,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Batch } from '../../src/core/batch/Batch.js';
 import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/dag/DAG.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 // ---------------------------------------------------------------------------
 // Cycle state: carries per-item retry counters and an exit threshold.
@@ -62,19 +60,26 @@ class CycleState extends NodeStateBase {
 // retry, item 4 after four retries, etc. The `attempts` counter starts at 0.
 // ---------------------------------------------------------------------------
 
-function makeCycleFanOutNode(name: string, n: number): NodeInterface<CycleState, 'out'> {
-  return {
-    'name': name,
-    'outputs': ['out'] as const,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute(
+function makeCycleFanOutNode(name: string, n: number): MonadicNode<CycleState, 'out'> {
+  class CycleFanOutNode extends MonadicNode<CycleState, 'out'> {
+    readonly name: string;
+    readonly outputs = ['out'] as const;
+
+    constructor(
+      name: string,
+      private readonly n: number,
+    ) {
+      super();
+      this.name = name;
+    }
+
+    override async execute(
       batch: Batch<CycleState>,
       _ctx: NodeContextInterface,
     ): Promise<RoutedBatch<'out', CycleState>> {
       const sourceState = batch.row(0).state;
       const items: Array<{ 'id': string; 'state': CycleState }> = [];
-      for (let i = 0; i < n; i++) {
+      for (let i = 0; i < this.n; i++) {
         const clone = sourceState.clone();
         clone.exitAt = i;
         clone.attempts = 0;
@@ -83,8 +88,9 @@ function makeCycleFanOutNode(name: string, n: number): NodeInterface<CycleState,
       const result = new Map<'out', Batch<CycleState>>();
       result.set('out', Batch.from(items));
       return result;
-    },
-  };
+    }
+  }
+  return new CycleFanOutNode(name, n);
 }
 
 // ---------------------------------------------------------------------------
@@ -96,29 +102,38 @@ function makeHomogeneousFanOutNode(
   name: string,
   n: number,
   exitAt: number,
-): NodeInterface<CycleState, 'out'> {
-  return {
-    'name': name,
-    'outputs': ['out'] as const,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute(
+): MonadicNode<CycleState, 'out'> {
+  class HomogeneousFanOutNode extends MonadicNode<CycleState, 'out'> {
+    readonly name: string;
+    readonly outputs = ['out'] as const;
+
+    constructor(
+      name: string,
+      private readonly n: number,
+      private readonly exitAt: number,
+    ) {
+      super();
+      this.name = name;
+    }
+
+    override async execute(
       batch: Batch<CycleState>,
       _ctx: NodeContextInterface,
     ): Promise<RoutedBatch<'out', CycleState>> {
       const sourceState = batch.row(0).state;
       const items: Array<{ 'id': string; 'state': CycleState }> = [];
-      for (let i = 0; i < n; i++) {
+      for (let i = 0; i < this.n; i++) {
         const clone = sourceState.clone();
-        clone.exitAt = exitAt;
+        clone.exitAt = this.exitAt;
         clone.attempts = 0;
         items.push({ 'id': String(i), 'state': clone });
       }
       const result = new Map<'out', Batch<CycleState>>();
       result.set('out', Batch.from(items));
       return result;
-    },
-  };
+    }
+  }
+  return new HomogeneousFanOutNode(name, n, exitAt);
 }
 
 // ---------------------------------------------------------------------------
@@ -133,17 +148,24 @@ function makeHomogeneousFanOutNode(
 function makeRetryNode(
   name: string,
   firings: number[],
-): NodeInterface<CycleState, 'retry' | 'done'> {
-  return {
-    'name': name,
-    'outputs': ['retry', 'done'] as const,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute(
+): MonadicNode<CycleState, 'retry' | 'done'> {
+  class RetryNode extends MonadicNode<CycleState, 'retry' | 'done'> {
+    readonly name: string;
+    readonly outputs = ['retry', 'done'] as const;
+
+    constructor(
+      name: string,
+      private readonly firings: number[],
+    ) {
+      super();
+      this.name = name;
+    }
+
+    override async execute(
       batch: Batch<CycleState>,
       _ctx: NodeContextInterface,
     ): Promise<RoutedBatch<'retry' | 'done', CycleState>> {
-      firings.push(batch.size);
+      this.firings.push(batch.size);
 
       const retryItems: Array<{ 'id': string; 'state': CycleState }> = [];
       const doneItems: Array<{ 'id': string; 'state': CycleState }> = [];
@@ -167,8 +189,9 @@ function makeRetryNode(
         result.set('done', Batch.from(doneItems));
       }
       return result;
-    },
-  };
+    }
+  }
+  return new RetryNode(name, firings);
 }
 
 // ---------------------------------------------------------------------------
@@ -181,17 +204,25 @@ function makeBudgetRetryNode(
   name: string,
   maxAttempts: number,
   firings: number[],
-): NodeInterface<CycleState, 'retry' | 'done' | 'salvage'> {
-  return {
-    'name': name,
-    'outputs': ['retry', 'done', 'salvage'] as const,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute(
+): MonadicNode<CycleState, 'retry' | 'done' | 'salvage'> {
+  class BudgetRetryNode extends MonadicNode<CycleState, 'retry' | 'done' | 'salvage'> {
+    readonly name: string;
+    readonly outputs = ['retry', 'done', 'salvage'] as const;
+
+    constructor(
+      name: string,
+      private readonly maxAttempts: number,
+      private readonly firings: number[],
+    ) {
+      super();
+      this.name = name;
+    }
+
+    override async execute(
       batch: Batch<CycleState>,
       _ctx: NodeContextInterface,
     ): Promise<RoutedBatch<'retry' | 'done' | 'salvage', CycleState>> {
-      firings.push(batch.size);
+      this.firings.push(batch.size);
 
       const retryItems: Array<{ 'id': string; 'state': CycleState }> = [];
       const doneItems: Array<{ 'id': string; 'state': CycleState }> = [];
@@ -202,7 +233,7 @@ function makeBudgetRetryNode(
         if (item.state.exitAt === 0) {
           item.state.attempts += 1;
           doneItems.push({ 'id': item.id, 'state': item.state });
-        } else if (item.state.withinRetryBudget('loop', maxAttempts)) {
+        } else if (item.state.withinRetryBudget('loop', this.maxAttempts)) {
           // Within budget — loop again.
           item.state.attempts += 1;
           retryItems.push({ 'id': item.id, 'state': item.state });
@@ -218,8 +249,9 @@ function makeBudgetRetryNode(
       if (doneItems.length > 0) result.set('done', Batch.from(doneItems));
       if (salvageItems.length > 0) result.set('salvage', Batch.from(salvageItems));
       return result;
-    },
-  };
+    }
+  }
+  return new BudgetRetryNode(name, maxAttempts, firings);
 }
 
 // ---------------------------------------------------------------------------
@@ -229,24 +261,32 @@ function makeBudgetRetryNode(
 function makeAccumulatorNode(
   name: string,
   collected: CycleState[],
-): NodeInterface<CycleState, 'done'> {
-  return {
-    'name': name,
-    'outputs': ['done'] as const,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute(
+): MonadicNode<CycleState, 'done'> {
+  class AccumulatorNode extends MonadicNode<CycleState, 'done'> {
+    readonly name: string;
+    readonly outputs = ['done'] as const;
+
+    constructor(
+      name: string,
+      private readonly collected: CycleState[],
+    ) {
+      super();
+      this.name = name;
+    }
+
+    override async execute(
       batch: Batch<CycleState>,
       _ctx: NodeContextInterface,
     ): Promise<RoutedBatch<'done', CycleState>> {
       for (const item of batch) {
-        collected.push(item.state);
+        this.collected.push(item.state);
       }
       const result = new Map<'done', Batch<CycleState>>();
       result.set('done', batch);
       return result;
-    },
-  };
+    }
+  }
+  return new AccumulatorNode(name, collected);
 }
 
 // ---------------------------------------------------------------------------
@@ -256,22 +296,30 @@ function makeAccumulatorNode(
 function makeRecordingNode(
   name: string,
   firings: number[],
-): NodeInterface<CycleState, 'done'> {
-  return {
-    'name': name,
-    'outputs': ['done'] as const,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute(
+): MonadicNode<CycleState, 'done'> {
+  class RecordingNode extends MonadicNode<CycleState, 'done'> {
+    readonly name: string;
+    readonly outputs = ['done'] as const;
+
+    constructor(
+      name: string,
+      private readonly firings: number[],
+    ) {
+      super();
+      this.name = name;
+    }
+
+    override async execute(
       batch: Batch<CycleState>,
       _ctx: NodeContextInterface,
     ): Promise<RoutedBatch<'done', CycleState>> {
-      firings.push(batch.size);
+      this.firings.push(batch.size);
       const result = new Map<'done', Batch<CycleState>>();
       result.set('done', batch);
       return result;
-    },
-  };
+    }
+  }
+  return new RecordingNode(name, firings);
 }
 
 // ===========================================================================
@@ -558,12 +606,11 @@ void describe('Batch walk cycles — budget exhaustion → salvage', () => {
     const MAX_ATTEMPTS = 3;
 
     // Custom fan-out: 2 items with exitAt=0 (succeed fast), 2 items with exitAt=255 (exhaust).
-    const mixedFanOut: NodeInterface<CycleState, 'out'> = {
-      'name': 'mix-fan',
-      'outputs': ['out'] as const,
-      'contract': EMPTY_CONTRACT_FRAGMENT,
-      'timeout': Timeout.none(),
-      async execute(
+    class MixedFanOutNode extends MonadicNode<CycleState, 'out'> {
+      readonly name = 'mix-fan';
+      readonly outputs = ['out'] as const;
+
+      override async execute(
         batch: Batch<CycleState>,
         _ctx: NodeContextInterface,
       ): Promise<RoutedBatch<'out', CycleState>> {
@@ -581,8 +628,9 @@ void describe('Batch walk cycles — budget exhaustion → salvage', () => {
         const result = new Map<'out', Batch<CycleState>>();
         result.set('out', Batch.from(items));
         return result;
-      },
-    };
+      }
+    }
+    const mixedFanOut = new MixedFanOutNode();
 
     dispatcher.registerNode(mixedFanOut);
     dispatcher.registerNode(makeBudgetRetryNode('budget-retrier', MAX_ATTEMPTS, firings));
@@ -674,12 +722,11 @@ void describe('Batch walk cycles — back-edge into a join', () => {
     const collected: CycleState[] = [];
 
     // Fan-out: 3 loop items (exitAt 0,1,1) + 2 straight items.
-    const fanNode: NodeInterface<CycleState, 'loop-out' | 'straight-out'> = {
-      'name': 'cycle-join-fan',
-      'outputs': ['loop-out', 'straight-out'] as const,
-      'contract': EMPTY_CONTRACT_FRAGMENT,
-      'timeout': Timeout.none(),
-      async execute(
+    class CycleJoinFanNode extends MonadicNode<CycleState, 'loop-out' | 'straight-out'> {
+      readonly name = 'cycle-join-fan';
+      readonly outputs = ['loop-out', 'straight-out'] as const;
+
+      override async execute(
         batch: Batch<CycleState>,
         _ctx: NodeContextInterface,
       ): Promise<RoutedBatch<'loop-out' | 'straight-out', CycleState>> {
@@ -705,8 +752,9 @@ void describe('Batch walk cycles — back-edge into a join', () => {
         result.set('loop-out', Batch.from(loopItems));
         result.set('straight-out', Batch.from(straightItems));
         return result;
-      },
-    };
+      }
+    }
+    const fanNode = new CycleJoinFanNode();
 
     dispatcher.registerNode(fanNode);
     dispatcher.registerNode(makeRetryNode('cycle-retrier', []));

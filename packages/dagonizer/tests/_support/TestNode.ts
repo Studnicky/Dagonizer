@@ -8,13 +8,12 @@
  */
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
-import { Batch } from '../../src/core/batch/Batch.js';
-import type { Item } from '../../src/core/batch/Item.js';
-import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
+import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import { NodeOutputBuilder } from '../../src/entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 export class TestNode {
   private constructor() { /* static class */ }
@@ -35,23 +34,21 @@ export class TestNode {
     exec?: (state: TState) => string | Promise<string>,
   ): NodeInterface<TState> {
     const defaultOutput = outputs[0] as string;
-    return {
-      name,
-      outputs,
-      'contract': EMPTY_CONTRACT_FRAGMENT,
-      'timeout': Timeout.none(),
-      async execute(batch: Batch<TState>): Promise<RoutedBatch<string, TState>> {
-        const acc = new Map<string, Item<TState>[]>();
-        for (const item of batch) {
-          const output = exec !== undefined ? await exec(item.state) : defaultOutput;
-          const bucket = acc.get(output);
-          if (bucket !== undefined) { bucket.push(item); } else { acc.set(output, [item]); }
-        }
-        const routed = new Map<string, Batch<TState>>();
-        for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
-        return routed;
-      },
-    };
+
+    class MakeNode extends ScalarNode<TState, string> {
+      override readonly name = name;
+      override readonly outputs = outputs as readonly string[];
+
+      override async executeOne(
+        state: TState,
+        _context: NodeContextInterface,
+      ): Promise<NodeOutputInterface<string>> {
+        const output = exec !== undefined ? await exec(state) : defaultOutput;
+        return NodeOutputBuilder.of(output);
+      }
+    }
+
+    return new MakeNode();
   }
 
   /**
@@ -69,21 +66,20 @@ export class TestNode {
     contract: OperationContractFragment,
   ): NodeInterface<TState, string> {
     const defaultOutput = outputs[0] ?? 'success';
-    return {
-      name,
-      outputs,
-      contract,
-      'timeout': Timeout.none(),
-      async execute(batch: Batch<TState>): Promise<RoutedBatch<string, TState>> {
-        const acc = new Map<string, Item<TState>[]>();
-        for (const item of batch) {
-          const bucket = acc.get(defaultOutput);
-          if (bucket !== undefined) { bucket.push(item); } else { acc.set(defaultOutput, [item]); }
-        }
-        const routed = new Map<string, Batch<TState>>();
-        for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
-        return routed;
-      },
-    };
+
+    class WithContractNode extends ScalarNode<TState, string> {
+      override readonly name = name;
+      override readonly outputs = outputs as readonly string[];
+      override readonly contract: OperationContractFragment = contract;
+
+      override async executeOne(
+        _state: TState,
+        _context: NodeContextInterface,
+      ): Promise<NodeOutputInterface<string>> {
+        return NodeOutputBuilder.of(defaultOutput);
+      }
+    }
+
+    return new WithContractNode();
   }
 }

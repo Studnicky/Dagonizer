@@ -12,17 +12,15 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import type { Batch } from '../../src/core/batch/Batch.js';
 import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
 import type { ScatterProgress } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
-import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 /** Item shape used by all reservoir tests. Must be JSON-serialisable. */
 type ReservoirItem = { key: string; value: number };
@@ -106,35 +104,35 @@ function makeReservoirDag(dagName: string, keyField: string, capacity: number): 
  *
  * The node does NOT write to `gathered` — the gather strategy handles that.
  */
+class BatchTrackingNode extends MonadicNode<ReservoirState, string> {
+  readonly name = 'worker';
+  readonly outputs: readonly string[] = ['success'];
+
+  constructor(private readonly batchSizes: number[]) {
+    super();
+  }
+
+  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatch<string, ReservoirState>> {
+    this.batchSizes.push(batch.size);
+    return new Map([['success', batch]]);
+  }
+}
+
 function makeBatchTrackingNode(batchSizes: number[]): NodeInterface<ReservoirState> {
-  return {
-    'name':     'worker',
-    'outputs':  ['success'] as const,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout':  Timeout.none(),
-    async execute(
-      batch: Batch<ReservoirState>,
-      _context: NodeContextInterface,
-    ): Promise<RoutedBatch<string, ReservoirState>> {
-      batchSizes.push(batch.size);
-      return new Map([['success', batch]]);
-    },
-  };
+  return new BatchTrackingNode(batchSizes);
 }
 
 /** Passthrough node — routes everything to 'success'. No state mutation. */
-const PASSTHROUGH_NODE: NodeInterface<ReservoirState> = {
-  'name':     'worker',
-  'outputs':  ['success'] as const,
-  'contract': EMPTY_CONTRACT_FRAGMENT,
-  'timeout':  Timeout.none(),
-  async execute(
-    batch: Batch<ReservoirState>,
-    _context: NodeContextInterface,
-  ): Promise<RoutedBatch<string, ReservoirState>> {
+class PassthroughNode extends MonadicNode<ReservoirState, string> {
+  readonly name = 'worker';
+  readonly outputs: readonly string[] = ['success'];
+
+  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatch<string, ReservoirState>> {
     return new Map([['success', batch]]);
-  },
-};
+  }
+}
+
+const PASSTHROUGH_NODE = new PassthroughNode();
 
 // ---------------------------------------------------------------------------
 // Test 1 — capacity release
@@ -169,42 +167,44 @@ void describe('Reservoir scatter — capacity release', () => {
 // Test 2 — keyed partitioning (no cross-key mixing)
 // ---------------------------------------------------------------------------
 
+class KeyedPartitionNode extends MonadicNode<ReservoirState, string> {
+  readonly name = 'worker';
+  readonly outputs: readonly string[] = ['success'];
+
+  constructor(private readonly batchesByKey: Map<string, ReservoirItem[][]>) {
+    super();
+  }
+
+  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatch<string, ReservoirState>> {
+    // Collect the items from this batch to verify no cross-key mixing.
+    const keys = new Set<string>();
+    const batchItems: ReservoirItem[] = [];
+    for (const batchItem of batch) {
+      const val = batchItem.state.getMetadata<ReservoirItem>('currentItem');
+      if (val !== undefined) {
+        keys.add(val.key);
+        batchItems.push(val);
+      }
+    }
+    // All items in one reservoir batch must share the same key.
+    assert.equal(keys.size, 1, `batch contained mixed keys: ${[...keys].join(', ')}`);
+    const batchKey = [...keys][0] as string;
+    const existing = this.batchesByKey.get(batchKey);
+    if (existing !== undefined) {
+      existing.push(batchItems);
+    } else {
+      this.batchesByKey.set(batchKey, [batchItems]);
+    }
+    return new Map([['success', batch]]);
+  }
+}
+
 void describe('Reservoir scatter — keyed partitioning', () => {
   void it('releases one batch per key with no cross-key items', async () => {
     const dispatcher = new Dagonizer<ReservoirState>();
     const batchesByKey = new Map<string, ReservoirItem[][]>();
 
-    const node: NodeInterface<ReservoirState> = {
-      'name':     'worker',
-      'outputs':  ['success'] as const,
-      'contract': EMPTY_CONTRACT_FRAGMENT,
-      'timeout':  Timeout.none(),
-      async execute(
-        batch: Batch<ReservoirState>,
-        _ctx: NodeContextInterface,
-      ): Promise<RoutedBatch<string, ReservoirState>> {
-        // Collect the items from this batch to verify no cross-key mixing.
-        const keys = new Set<string>();
-        const batchItems: ReservoirItem[] = [];
-        for (const batchItem of batch) {
-          const val = batchItem.state.getMetadata<ReservoirItem>('currentItem');
-          if (val !== undefined) {
-            keys.add(val.key);
-            batchItems.push(val);
-          }
-        }
-        // All items in one reservoir batch must share the same key.
-        assert.equal(keys.size, 1, `batch contained mixed keys: ${[...keys].join(', ')}`);
-        const batchKey = [...keys][0] as string;
-        const existing = batchesByKey.get(batchKey);
-        if (existing !== undefined) {
-          existing.push(batchItems);
-        } else {
-          batchesByKey.set(batchKey, [batchItems]);
-        }
-        return new Map([['success', batch]]);
-      },
-    };
+    const node = new KeyedPartitionNode(batchesByKey);
 
     dispatcher.registerNode(node);
     dispatcher.registerDAG(makeReservoirDag('reservoir-keyed', 'key', 100));
@@ -231,24 +231,26 @@ void describe('Reservoir scatter — keyed partitioning', () => {
 // Test 3 — complete-flush (partial batches flushed when source drains)
 // ---------------------------------------------------------------------------
 
+class ExecuteCounterNode extends MonadicNode<ReservoirState, string> {
+  readonly name = 'worker';
+  readonly outputs: readonly string[] = ['success'];
+
+  constructor(private readonly calls: { n: number }) {
+    super();
+  }
+
+  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatch<string, ReservoirState>> {
+    this.calls.n++;
+    return new Map([['success', batch]]);
+  }
+}
+
 void describe('Reservoir scatter — complete-flush', () => {
   void it('flushes partial key buffers when source is exhausted', async () => {
     const dispatcher = new Dagonizer<ReservoirState>();
-    let executeCalls = 0;
+    const calls = { 'n': 0 };
 
-    const node: NodeInterface<ReservoirState> = {
-      'name':     'worker',
-      'outputs':  ['success'] as const,
-      'contract': EMPTY_CONTRACT_FRAGMENT,
-      'timeout':  Timeout.none(),
-      async execute(
-        batch: Batch<ReservoirState>,
-        _ctx: NodeContextInterface,
-      ): Promise<RoutedBatch<string, ReservoirState>> {
-        executeCalls++;
-        return new Map([['success', batch]]);
-      },
-    };
+    const node = new ExecuteCounterNode(calls);
 
     dispatcher.registerNode(node);
     // capacity 100, but only 50 items per key → complete-flush fires at drain.
@@ -263,7 +265,7 @@ void describe('Reservoir scatter — complete-flush', () => {
     const result = await dispatcher.execute('reservoir-flush', state);
     assert.equal(result.cursor, null);
     // One execute call per key (3 partial batches at complete-flush).
-    assert.equal(executeCalls, 3, `expected 3 execute calls, got ${executeCalls}`);
+    assert.equal(calls.n, 3, `expected 3 execute calls, got ${calls.n}`);
     assert.equal(result.state.gathered.length, 150, `expected 150 gathered, got ${result.state.gathered.length}`);
   });
 });
@@ -301,26 +303,28 @@ void describe('Reservoir scatter — gather exactly-once', () => {
 // Test 5 — crash-safe resume
 // ---------------------------------------------------------------------------
 
+class CrashingNode extends MonadicNode<ReservoirState, string> {
+  readonly name = 'worker';
+  readonly outputs: readonly string[] = ['success'];
+
+  constructor(private readonly crash: { n: number }) {
+    super();
+  }
+
+  async execute(batch: Batch<ReservoirState>): Promise<RoutedBatch<string, ReservoirState>> {
+    this.crash.n++;
+    if (this.crash.n === 3) throw new Error('simulated crash on third batch');
+    return new Map([['success', batch]]);
+  }
+}
+
 void describe('Reservoir scatter — crash-safe resume', () => {
   void it('resumes after mid-run crash without item loss or double-fold', async () => {
     // ── Phase 1: run with crash after 2 batches ─────────────────────────────
     const dispatcher1 = new Dagonizer<ReservoirState>();
-    let batchCount1 = 0;
+    const crash = { 'n': 0 };
 
-    const crashingNode: NodeInterface<ReservoirState> = {
-      'name':     'worker',
-      'outputs':  ['success'] as const,
-      'contract': EMPTY_CONTRACT_FRAGMENT,
-      'timeout':  Timeout.none(),
-      async execute(
-        batch: Batch<ReservoirState>,
-        _ctx: NodeContextInterface,
-      ): Promise<RoutedBatch<string, ReservoirState>> {
-        batchCount1++;
-        if (batchCount1 === 3) throw new Error('simulated crash on third batch');
-        return new Map([['success', batch]]);
-      },
-    };
+    const crashingNode = new CrashingNode(crash);
 
     dispatcher1.registerNode(crashingNode);
     // 3 keys × 5 items, capacity 5 → 3 capacity releases (one crashes).

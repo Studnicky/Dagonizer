@@ -3,13 +3,14 @@ import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import type { OperationContract } from '../../src/contracts/OperationContract.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Batch } from '../../src/core/batch/Batch.js';
 import type { Item } from '../../src/core/batch/Item.js';
 import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
 import type { DAGDeriverEmbeddedDAG } from '../../src/derive/DAGDeriverAnnotations.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { Timeout } from '../../src/runtime/Timeout.js';
@@ -18,6 +19,7 @@ import { Timeout } from '../../src/runtime/Timeout.js';
 // truth); there is no standalone `contracts` input. Wrap each contract spec in
 // a node whose `contract` carries the topology fields; `execute` is a no-op
 // (derive reads only the contract, never runs the node).
+// intentional raw NodeInterface: DAGDeriver reads node.contract not execute; tests the raw contract directly
 const contractNode = <TState extends NodeStateInterface>(c: OperationContract): NodeInterface<TState> => {
   const defaultOutput = c.outputs[0] as string;
   return {
@@ -37,6 +39,28 @@ const contractNode = <TState extends NodeStateInterface>(c: OperationContract): 
     },
   };
 };
+
+/**
+ * Reusable ScalarNode for derive tests. Always routes to `defaultOutput`
+ * (first output when not specified). Replaces the inline `make`/`makeWith`
+ * arrow-function helpers in every test describe block.
+ */
+class DerivePassthroughNode<TOut extends string> extends ScalarNode<NodeStateBase, TOut> {
+  readonly name: string;
+  readonly outputs: readonly [TOut, ...TOut[]];
+  private readonly defaultOutput: TOut;
+
+  constructor(name: string, outputs: readonly [TOut, ...TOut[]], defaultOutput?: TOut) {
+    super();
+    this.name = name;
+    this.outputs = outputs;
+    this.defaultOutput = defaultOutput ?? outputs[0];
+  }
+
+  protected async executeOne(): Promise<NodeOutputInterface<TOut>> {
+    return { 'errors': [], 'output': this.defaultOutput };
+  }
+}
 
 void describe('DAGDeriver.derive', () => {
   void it('produces a linear DAG from a chain of contracts', () => {
@@ -558,26 +582,10 @@ void describe('DAGDeriver.derive', () => {
     });
 
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const make = (name: string): NodeInterface<NodeStateBase, 'success'> => ({
-      name,
-      'outputs': ['success'],
-      'contract': EMPTY_CONTRACT_FRAGMENT,
-      'timeout': Timeout.none(),
-      async execute(batch: Batch<NodeStateBase>): Promise<RoutedBatch<'success', NodeStateBase>> {
-        const acc = new Map<'success', Item<NodeStateBase>[]>();
-        for (const item of batch) {
-          const bucket = acc.get('success');
-          if (bucket !== undefined) { bucket.push(item); } else { acc.set('success', [item]); }
-        }
-        const routed = new Map<'success', Batch<NodeStateBase>>();
-        for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
-        return routed;
-      },
-    });
-    dispatcher.registerNode(make('prepare'));
-    dispatcher.registerNode(make('invoke-child'));
-    dispatcher.registerNode(make('finalize'));
-    dispatcher.registerNode(make('child-step'));
+    dispatcher.registerNode(new DerivePassthroughNode('prepare',      ['success']));
+    dispatcher.registerNode(new DerivePassthroughNode('invoke-child', ['success']));
+    dispatcher.registerNode(new DerivePassthroughNode('finalize',     ['success']));
+    dispatcher.registerNode(new DerivePassthroughNode('child-step',   ['success']));
     dispatcher.registerDAG(childDAG);
     dispatcher.registerDAG(parentDAG);
 
@@ -605,24 +613,8 @@ void describe('DAGDeriver.derive', () => {
     });
 
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const make = (name: string): NodeInterface<NodeStateBase, 'success'> => ({
-      name,
-      'outputs': ['success'],
-      'contract': EMPTY_CONTRACT_FRAGMENT,
-      'timeout': Timeout.none(),
-      async execute(batch: Batch<NodeStateBase>): Promise<RoutedBatch<'success', NodeStateBase>> {
-        const acc = new Map<'success', Item<NodeStateBase>[]>();
-        for (const item of batch) {
-          const bucket = acc.get('success');
-          if (bucket !== undefined) { bucket.push(item); } else { acc.set('success', [item]); }
-        }
-        const routed = new Map<'success', Batch<NodeStateBase>>();
-        for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
-        return routed;
-      },
-    });
-    dispatcher.registerNode(make('first'));
-    dispatcher.registerNode(make('second'));
+    dispatcher.registerNode(new DerivePassthroughNode('first',  ['success']));
+    dispatcher.registerNode(new DerivePassthroughNode('second', ['success']));
 
     dispatcher.registerDAG(dag);
     assert.equal(dispatcher.getDAG('reg-test'), dag);
@@ -698,51 +690,17 @@ void describe('DAGDeriver.derive', () => {
 });
 
 void describe('DAGDeriver: terminals with emit variant', () => {
-  // Helper: make a node that always returns its first output.
+  // Helpers backed by DerivePassthroughNode (defined at file top level).
   const make = <TOut extends string>(
     name: string,
     outputs: readonly [TOut, ...TOut[]],
-  ): NodeInterface<NodeStateBase, TOut> => {
-    const defaultOutput = outputs[0];
-    return {
-      name,
-      outputs,
-      'contract': EMPTY_CONTRACT_FRAGMENT,
-      'timeout': Timeout.none(),
-      async execute(batch: Batch<NodeStateBase>): Promise<RoutedBatch<TOut, NodeStateBase>> {
-        const acc = new Map<TOut, Item<NodeStateBase>[]>();
-        for (const item of batch) {
-          const bucket = acc.get(defaultOutput);
-          if (bucket !== undefined) { bucket.push(item); } else { acc.set(defaultOutput, [item]); }
-        }
-        const routed = new Map<TOut, Batch<NodeStateBase>>();
-        for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
-        return routed;
-      },
-    };
-  };
+  ): DerivePassthroughNode<TOut> => new DerivePassthroughNode(name, outputs);
 
-  // Helper: make a node that always returns a specific output.
   const makeWith = <TOut extends string>(
     name: string,
     outputs: readonly [TOut, ...TOut[]],
     output: TOut,
-  ): NodeInterface<NodeStateBase, TOut> => ({
-    name,
-    outputs,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute(batch: Batch<NodeStateBase>): Promise<RoutedBatch<TOut, NodeStateBase>> {
-      const acc = new Map<TOut, Item<NodeStateBase>[]>();
-      for (const item of batch) {
-        const bucket = acc.get(output);
-        if (bucket !== undefined) { bucket.push(item); } else { acc.set(output, [item]); }
-      }
-      const routed = new Map<TOut, Batch<NodeStateBase>>();
-      for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
-      return routed;
-    },
-  });
+  ): DerivePassthroughNode<TOut> => new DerivePassthroughNode(name, outputs, output);
 
   void it('basic emit: synthesizes a TerminalNode placement and routes the output port to it', () => {
     const contracts: OperationContract[] = [

@@ -11,16 +11,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Batch } from '../../src/core/batch/Batch.js';
 import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
+import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/dag/DAG.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 import { TestNode } from '../_support/TestNode.js';
 
 // ---------------------------------------------------------------------------
@@ -52,75 +50,97 @@ class WalkState extends NodeStateBase {
 // identifying which item it is). Routes all N to port 'out'.
 // ---------------------------------------------------------------------------
 
-function makeFanOutNode(name: string, n: number): NodeInterface<WalkState, 'out'> {
-  return {
-    name,
-    'outputs': ['out'] as const,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute(batch: Batch<WalkState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'out', WalkState>> {
-      // Take the first (and only) item and fan out to N clones.
-      const sourceState = batch.row(0).state;
-      const items: Array<{ 'id': string; 'state': WalkState }> = [];
-      for (let i = 0; i < n; i++) {
-        const clone = sourceState.clone();
-        clone.count = i;
-        clone.log.push(`fan:${i}`);
-        items.push({ 'id': String(i), 'state': clone });
-      }
-      const result = new Map<'out', Batch<WalkState>>();
-      result.set('out', Batch.from(items));
-      return result;
-    },
-  };
+class FanOutNode extends MonadicNode<WalkState, 'out'> {
+  readonly name: string;
+  readonly outputs: readonly ['out'] = ['out'];
+  private readonly n: number;
+
+  constructor(name: string, n: number) {
+    super();
+    this.name = name;
+    this.n = n;
+  }
+
+  override async execute(batch: Batch<WalkState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'out', WalkState>> {
+    // Take the first (and only) item and fan out to N clones.
+    const sourceState = batch.row(0).state;
+    const items: Array<{ 'id': string; 'state': WalkState }> = [];
+    for (let i = 0; i < this.n; i++) {
+      const clone = sourceState.clone();
+      clone.count = i;
+      clone.log.push(`fan:${i}`);
+      items.push({ 'id': String(i), 'state': clone });
+    }
+    const result = new Map<'out', Batch<WalkState>>();
+    result.set('out', Batch.from(items));
+    return result;
+  }
+}
+
+function makeFanOutNode(name: string, n: number): FanOutNode {
+  return new FanOutNode(name, n);
 }
 
 // ---------------------------------------------------------------------------
 // Helper: partition node — splits items across two ports by even/odd count.
 // ---------------------------------------------------------------------------
 
-function makePartitionNode(name: string): NodeInterface<WalkState, 'even' | 'odd'> {
-  return {
-    name,
-    'outputs': ['even', 'odd'] as const,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute(batch: Batch<WalkState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'even' | 'odd', WalkState>> {
-      const partitioned = batch.partition((s) => s.count % 2 === 0 ? 'even' : 'odd');
-      const result = new Map<'even' | 'odd', Batch<WalkState>>();
-      for (const [key, b] of partitioned) {
-        result.set(key, b);
-      }
-      return result;
-    },
-  };
+class PartitionNode extends MonadicNode<WalkState, 'even' | 'odd'> {
+  readonly name: string;
+  readonly outputs: readonly ['even', 'odd'] = ['even', 'odd'];
+
+  constructor(name: string) {
+    super();
+    this.name = name;
+  }
+
+  override async execute(batch: Batch<WalkState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'even' | 'odd', WalkState>> {
+    const partitioned = batch.partition((s) => s.count % 2 === 0 ? 'even' : 'odd');
+    const result = new Map<'even' | 'odd', Batch<WalkState>>();
+    for (const [key, b] of partitioned) {
+      result.set(key, b);
+    }
+    return result;
+  }
+}
+
+function makePartitionNode(name: string): PartitionNode {
+  return new PartitionNode(name);
 }
 
 // ---------------------------------------------------------------------------
 // Helper: recording node — stamps each item's log and records batch sizes.
 // ---------------------------------------------------------------------------
 
+class RecordingNode extends MonadicNode<WalkState, 'done'> {
+  readonly name: string;
+  readonly outputs: readonly ['done'] = ['done'];
+  private readonly firings: number[];
+
+  constructor(name: string, firings: number[]) {
+    super();
+    this.name = name;
+    this.firings = firings;
+  }
+
+  override async execute(batch: Batch<WalkState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'done', WalkState>> {
+    this.firings.push(batch.size);
+    const items: Array<{ 'id': string; 'state': WalkState }> = [];
+    for (const item of batch) {
+      item.state.log.push(`${this.name}:run`);
+      items.push({ 'id': item.id, 'state': item.state });
+    }
+    const result = new Map<'done', Batch<WalkState>>();
+    result.set('done', Batch.from(items));
+    return result;
+  }
+}
+
 function makeRecordingNode(
   name: string,
   firings: number[],
-): NodeInterface<WalkState, 'done'> {
-  return {
-    name,
-    'outputs': ['done'] as const,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute(batch: Batch<WalkState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'done', WalkState>> {
-      firings.push(batch.size);
-      const items: Array<{ 'id': string; 'state': WalkState }> = [];
-      for (const item of batch) {
-        item.state.log.push(`${name}:run`);
-        items.push({ 'id': item.id, 'state': item.state });
-      }
-      const result = new Map<'done', Batch<WalkState>>();
-      result.set('done', Batch.from(items));
-      return result;
-    },
-  };
+): RecordingNode {
+  return new RecordingNode(name, firings);
 }
 
 // ---------------------------------------------------------------------------
@@ -128,25 +148,33 @@ function makeRecordingNode(
 // Used to collect multi-item batches before the terminal.
 // ---------------------------------------------------------------------------
 
+class AccumulatorNode extends MonadicNode<WalkState, 'done'> {
+  readonly name: string;
+  readonly outputs: readonly ['done'] = ['done'];
+  private readonly collected: WalkState[];
+
+  constructor(name: string, collected: WalkState[]) {
+    super();
+    this.name = name;
+    this.collected = collected;
+  }
+
+  override async execute(batch: Batch<WalkState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'done', WalkState>> {
+    for (const item of batch) {
+      this.collected.push(item.state);
+    }
+    // Route all items through to the terminal.
+    const result = new Map<'done', Batch<WalkState>>();
+    result.set('done', batch);
+    return result;
+  }
+}
+
 function makeAccumulatorNode(
   name: string,
   collected: WalkState[],
-): NodeInterface<WalkState, 'done'> {
-  return {
-    name,
-    'outputs': ['done'] as const,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute(batch: Batch<WalkState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'done', WalkState>> {
-      for (const item of batch) {
-        collected.push(item.state);
-      }
-      // Route all items through to the terminal.
-      const result = new Map<'done', Batch<WalkState>>();
-      result.set('done', batch);
-      return result;
-    },
-  };
+): AccumulatorNode {
+  return new AccumulatorNode(name, collected);
 }
 
 // ---------------------------------------------------------------------------

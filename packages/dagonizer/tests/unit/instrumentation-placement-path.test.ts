@@ -1,16 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
-import { Batch } from '../../src/core/batch/Batch.js';
-import type { Item } from '../../src/core/batch/Item.js';
-import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 // ── Recording Dagonizer subclass ─────────────────────────────────────────
 //
@@ -45,26 +41,23 @@ class PathRecordingDagonizer extends Dagonizer<NodeStateBase> {
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-const makeNode = (
-  name: string,
-  outputs: readonly string[],
-): NodeInterface<NodeStateBase> => ({
-  name,
-  outputs,
-  'contract': EMPTY_CONTRACT_FRAGMENT,
-  'timeout': Timeout.none(),
-  async execute(batch: Batch<NodeStateBase>): Promise<RoutedBatch<string, NodeStateBase>> {
-    const acc = new Map<string, Item<NodeStateBase>[]>();
-    for (const item of batch) {
-      const output = outputs[0] as string;
-      const bucket = acc.get(output);
-      if (bucket !== undefined) { bucket.push(item); } else { acc.set(output, [item]); }
-    }
-    const routed = new Map<string, Batch<NodeStateBase>>();
-    for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
-    return routed;
-  },
-});
+class InstrNodeImpl extends ScalarNode<NodeStateBase, string> {
+  readonly name: string;
+  readonly outputs: readonly string[];
+
+  constructor(name: string, outputs: readonly string[]) {
+    super();
+    this.name = name;
+    this.outputs = outputs;
+  }
+
+  protected async executeOne(): Promise<NodeOutputInterface<string>> {
+    return { 'errors': [], 'output': this.outputs[0] as string };
+  }
+}
+
+const makeNode = (name: string, outputs: readonly string[]): InstrNodeImpl =>
+  new InstrNodeImpl(name, outputs);
 
 // ── DAG fixtures ─────────────────────────────────────────────────────────
 //

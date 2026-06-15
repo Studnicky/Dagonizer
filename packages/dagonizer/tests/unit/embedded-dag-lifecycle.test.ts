@@ -1,17 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
-import { Batch } from '../../src/core/batch/Batch.js';
-import type { Item } from '../../src/core/batch/Item.js';
-import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { ExecutionResultInterface } from '../../src/entities/execution/ExecutionResult.js';
 import type { DAG } from '../../src/entities/index.js';
+import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 // ── Observer subclass ─────────────────────────────────────────────────────
 
@@ -40,28 +37,26 @@ class CountingDagonizer<TState extends NodeStateBase> extends Dagonizer<TState> 
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-const makeNode = (
-  name: string,
-  outputs: readonly string[],
-): NodeInterface<NodeStateBase> => {
-  const defaultOutput = outputs[0] as string;
-  return {
-    name,
-    outputs,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute(batch: Batch<NodeStateBase>): Promise<RoutedBatch<string, NodeStateBase>> {
-      const acc = new Map<string, Item<NodeStateBase>[]>();
-      for (const item of batch) {
-        const bucket = acc.get(defaultOutput);
-        if (bucket !== undefined) { bucket.push(item); } else { acc.set(defaultOutput, [item]); }
-      }
-      const routed = new Map<string, Batch<NodeStateBase>>();
-      for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
-      return routed;
-    },
-  };
-};
+class MakeNodeImpl extends ScalarNode<NodeStateBase, string> {
+  readonly name: string;
+  readonly outputs: readonly string[];
+
+  constructor(name: string, outputs: readonly string[]) {
+    super();
+    this.name = name;
+    this.outputs = outputs;
+  }
+
+  protected async executeOne(
+    _state: NodeStateBase,
+    _ctx: NodeContextInterface,
+  ): Promise<NodeOutputInterface<string>> {
+    return { 'errors': [], 'output': this.outputs[0] as string };
+  }
+}
+
+const makeNode = (name: string, outputs: readonly string[]): MakeNodeImpl =>
+  new MakeNodeImpl(name, outputs);
 
 // ── Child DAG (two nodes: start → finish) ────────────────────────────────
 

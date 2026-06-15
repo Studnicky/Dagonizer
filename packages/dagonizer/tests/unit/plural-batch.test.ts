@@ -363,6 +363,7 @@ void describe('NodeRunner', () => {
 
   void it('hand-written batch execute produces same result as ScalarNode', async () => {
     const scalarNode = new TagNode();
+    // intentional raw NodeInterface: this test compares a hand-written raw NodeInterface against a ScalarNode; the raw impl IS the test.
     const handWrittenNode: NodeInterface<TestState, 'tagged' | 'skip'> = {
       'name': 'hw-tag',
       'outputs': ['tagged', 'skip'] as const,

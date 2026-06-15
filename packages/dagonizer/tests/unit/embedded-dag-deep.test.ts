@@ -1,16 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
-import { Batch } from '../../src/core/batch/Batch.js';
-import type { Item } from '../../src/core/batch/Item.js';
-import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
+import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 // A state carrying one accumulator threaded through every nesting level.
 class CounterState extends NodeStateBase {
@@ -19,23 +16,29 @@ class CounterState extends NodeStateBase {
 
 // One increment node per level; each adds a distinct power of ten so the
 // final total proves every level executed exactly once and in order.
-const incNode = (name: string, delta: number): NodeInterface<CounterState> => ({
-  name,
-  'outputs': ['success'],
-  'contract': EMPTY_CONTRACT_FRAGMENT,
-  'timeout': Timeout.none(),
-  async execute(batch: Batch<CounterState>): Promise<RoutedBatch<string, CounterState>> {
-    const acc = new Map<string, Item<CounterState>[]>();
-    for (const item of batch) {
-      item.state.value += delta;
-      const bucket = acc.get('success');
-      if (bucket !== undefined) { bucket.push(item); } else { acc.set('success', [item]); }
-    }
-    const routed = new Map<string, Batch<CounterState>>();
-    for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
-    return routed;
-  },
-});
+class IncNodeImpl extends ScalarNode<CounterState, string> {
+  readonly name: string;
+  readonly outputs: readonly string[];
+  private readonly delta: number;
+
+  constructor(name: string, outputs: readonly string[], delta: number) {
+    super();
+    this.name = name;
+    this.outputs = outputs;
+    this.delta = delta;
+  }
+
+  protected async executeOne(
+    state: CounterState,
+    _ctx: NodeContextInterface,
+  ): Promise<NodeOutputInterface<string>> {
+    state.value += this.delta;
+    return { 'errors': [], 'output': 'success' };
+  }
+}
+
+const incNode = (name: string, delta: number): IncNodeImpl =>
+  new IncNodeImpl(name, ['success'], delta);
 
 // Identity state mapping: seed the child's `value` from the parent and copy it
 // back out. Applied at every embed boundary so the accumulator survives the

@@ -2,14 +2,15 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/index.js';
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Batch } from '../../src/core/batch/Batch.js';
 import type { Item } from '../../src/core/batch/Item.js';
 import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Timeout } from '../../src/runtime/Timeout.js';
 import { Validator } from '../../src/validation/Validator.js';
@@ -20,45 +21,52 @@ class TrackingState extends NodeStateBase {
   trace: string[] = [];
 }
 
+class PhaseMakeNodeImpl extends ScalarNode<TrackingState, string> {
+  readonly name: string;
+  readonly outputs: readonly string[];
+  private readonly side: ((state: TrackingState) => void | Promise<void>) | undefined;
+
+  constructor(name: string, outputs: readonly string[], side?: (state: TrackingState) => void | Promise<void>) {
+    super();
+    this.name = name;
+    this.outputs = outputs;
+    this.side = side ?? undefined;
+  }
+
+  protected async executeOne(state: TrackingState): Promise<NodeOutputInterface<string>> {
+    if (this.side) {
+      await this.side(state);
+    } else {
+      state.trace.push(this.name);
+    }
+    return { 'errors': [], 'output': this.outputs[0] as string };
+  }
+}
+
+class PhaseThrowingNodeImpl extends ScalarNode<TrackingState, string> {
+  readonly name: string;
+  readonly outputs: readonly ['success'] = ['success'];
+  private readonly message: string;
+
+  constructor(name: string, message: string) {
+    super();
+    this.name = name;
+    this.message = message;
+  }
+
+  protected async executeOne(): Promise<NodeOutputInterface<string>> {
+    throw new Error(this.message);
+  }
+}
+
 const makeNode = (
   name: string,
   outputs: readonly string[] = ['success'],
   side?: (state: TrackingState) => void | Promise<void>,
-): NodeInterface<TrackingState> => ({
-  name,
-  outputs,
-  'contract': EMPTY_CONTRACT_FRAGMENT,
-  'timeout': Timeout.none(),
-  async execute(batch: Batch<TrackingState>): Promise<RoutedBatch<string, TrackingState>> {
-    const acc = new Map<string, Item<TrackingState>[]>();
-    for (const item of batch) {
-      if (side) {
-        await side(item.state);
-      } else {
-        item.state.trace.push(name);
-      }
-      const output = outputs[0] as string;
-      const bucket = acc.get(output);
-      if (bucket !== undefined) { bucket.push(item); } else { acc.set(output, [item]); }
-    }
-    const routed = new Map<string, Batch<TrackingState>>();
-    for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
-    return routed;
-  },
-});
+): PhaseMakeNodeImpl => new PhaseMakeNodeImpl(name, outputs, side);
 
-const makeThrowingNode = (
-  name: string,
-  message: string,
-): NodeInterface<TrackingState> => ({
-  name,
-  'outputs': ['success'],
-  'contract': EMPTY_CONTRACT_FRAGMENT,
-  'timeout': Timeout.none(),
-  async execute(_batch: Batch<TrackingState>): Promise<RoutedBatch<string, TrackingState>> {
-    throw new Error(message);
-  },
-});
+const makeThrowingNode = (name: string, message: string): PhaseThrowingNodeImpl =>
+  new PhaseThrowingNodeImpl(name, message);
 
 // Recording Dagonizer subclass captures phase hook invocations in order.
 interface Call {
