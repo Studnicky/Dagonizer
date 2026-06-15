@@ -21,8 +21,9 @@ export const ScatterInboxItemSchema = {
   'type': 'object',
   'required': ['index', 'item'],
   'properties': {
-    'index': { 'type': 'integer', 'minimum': 0 },
-    'item':  {},
+    'index':     { 'type': 'integer', 'minimum': 0 },
+    'item':      {},
+    'bufferKey': { 'type': 'string' },
   },
   'additionalProperties': false,
 } as const;

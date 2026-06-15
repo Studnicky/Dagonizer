@@ -30,6 +30,8 @@ import type { NodeContextInterface } from './entities/node/NodeContext.js';
 import type { NodeResultInterface } from './entities/node/NodeResult.js';
 import type { ScatterAckedResult, ScatterInboxItem } from './entities/scatter/ScatterProgress.js';
 import { DAGError, ExecutionError, NodeTimeoutError } from './errors/index.js';
+import { ReservoirBuffer } from './execution/ReservoirBuffer.js';
+import type { ReservoirDriverInterface, ScatterItemBatchResult } from './execution/ReservoirBuffer.js';
 import { ScatterWorkerPool } from './execution/ScatterWorkerPool.js';
 import type { ScatterItemResult, ScatterPoolDriverInterface } from './execution/ScatterWorkerPool.js';
 import { Execution } from './Execution.js';
@@ -394,7 +396,7 @@ interface _ScatterRunContext<TState extends NodeStateInterface> {
  * members on `Dagonizer` directly.
  */
 class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
-  implements ScatterPoolDriverInterface<TState>
+  implements ScatterPoolDriverInterface<TState>, ReservoirDriverInterface<TState>
 {
   readonly #adapter: _ScatterDispatchAdapter<TState, TServices>;
   readonly #ctx: _ScatterRunContext<TState>;
@@ -594,6 +596,124 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
     allFreshRecords.push(freshRecord);
 
     // Persist checkpoint after the fold so gathered state is captured.
+    ScatterCheckpoint.write(state, scatter.name, [...inbox], [...ackedResults]);
+  }
+
+  /**
+   * Execute a batch of buffered reservoir items.
+   *
+   * Builds N child clones, assembles a size-N Batch, calls `node.execute(batch)`
+   * once, and derives each item's output from the routed entries. Errors and
+   * warnings from each clone are collected into the parent state.
+   *
+   * Only node bodies are supported for reservoir scatter (DAG bodies and
+   * containers execute per-item via the existing `executeItem` path).
+   */
+  async executeBatch(items: { index: number; item: unknown; bufferKey: string }[]): Promise<ScatterItemBatchResult<TState>> {
+    const { scatter, state, dagName, signal, itemKey } = this.#ctx;
+
+    if (!('node' in scatter.body)) {
+      throw new DAGError(`ScatterNode '${scatter.name}': reservoir is only supported for node bodies`);
+    }
+
+    const dagNode = this.#adapter.nodes.get(scatter.body.node);
+    if (!dagNode) {
+      throw new DAGError(`ScatterNode '${scatter.name}': unknown node '${scatter.body.node}'`);
+    }
+
+    // Build N child clones and a size-N Batch.
+    const clones: TState[] = [];
+    const batchItems: { id: string; state: TState }[] = [];
+    for (const buffered of items) {
+      const clone = this.#adapter.stateMapper.createChild(state, ScatterNodeDefaults.inputMapping(scatter));
+      clone.setMetadata(itemKey, buffered.item);
+      clone.setMetadata('itemIndex', buffered.index);
+      clones.push(clone);
+      batchItems.push({ 'id': String(buffered.index), 'state': clone });
+    }
+
+    const batch = Batch.from(batchItems);
+    const routed = await this.#adapter.withNodeTimeout(dagNode, signal, async (nodeSignal) => {
+      const context = this.#adapter.buildContext(dagName, scatter.name, nodeSignal);
+      return dagNode.execute(batch, context);
+    });
+
+    // Map item id → route key.
+    const outputById = new Map<string, string>();
+    for (const [routeKey, routeBatch] of routed.entries()) {
+      for (const batchEntry of routeBatch) {
+        outputById.set(batchEntry.id, routeKey);
+      }
+    }
+
+    // Collect errors/warnings from each clone and build results.
+    const results: ScatterItemResult<TState>[] = items.map((buffered, i) => {
+      const clone = clones[i] as TState;
+      for (const err of clone.errors) state.collectError(err);
+      for (const warn of clone.warnings) state.collectWarning(warn);
+      return {
+        'index': buffered.index,
+        'item': buffered.item,
+        'output': outputById.get(String(buffered.index)) ?? 'error',
+        'terminalOutcome': null,
+        'cloneState': clone,
+      };
+    });
+
+    return { results };
+  }
+
+  /**
+   * Acknowledge a batch of items: remove all from inbox, build acked results,
+   * fold them into parent state via a SINGLE `gatherStrategy.reduce` call, and
+   * write the checkpoint ONCE for the entire batch.
+   */
+  async ackBatch(batchResult: ScatterItemBatchResult<TState>): Promise<void> {
+    const { scatter, state, inbox, ackedResults, ackedByIndex, itemOutputs, allFreshRecords, gatherStrategy } = this.#ctx;
+
+    const freshRecordsForBatch: GatherRecord<TState>[] = [];
+
+    for (const res of batchResult.results) {
+      const { 'index': itemIndex, 'item': item, 'output': output, 'terminalOutcome': terminalOutcome, 'cloneState': cloneState } = res;
+
+      // Remove from inbox.
+      const inboxIdx = inbox.findIndex((e) => e.index === itemIndex);
+      if (inboxIdx !== -1) inbox.splice(inboxIdx, 1);
+
+      // Build acked result (same discriminated logic as ackItem).
+      const ackedResult: ScatterAckedResult = (() => {
+        if (scatter.gather?.strategy === 'map' && scatter.gather.mapping !== undefined) {
+          const snapshot: Record<string, unknown> = {};
+          for (const clonePath of Object.keys(scatter.gather.mapping)) {
+            snapshot[clonePath] = this.#adapter.accessor.get(cloneState, clonePath);
+          }
+          return { 'kind': 'map' as const, 'index': itemIndex, 'item': item, output, 'mappingValues': snapshot };
+        }
+        if (
+          (scatter.gather?.strategy === 'append' || scatter.gather?.strategy === 'partition') &&
+          scatter.gather.field !== undefined
+        ) {
+          return { 'kind': 'field' as const, 'index': itemIndex, 'item': item, output, 'fieldValue': this.#adapter.accessor.get(cloneState, scatter.gather.field) };
+        }
+        return { 'kind': 'plain' as const, 'index': itemIndex, 'item': item, output };
+      })();
+
+      ackedResults.push(ackedResult);
+      ackedByIndex.set(itemIndex, ackedResult);
+      itemOutputs.set(itemIndex, output);
+
+      const freshRecord: GatherRecord<TState> = { 'index': itemIndex, item, output, terminalOutcome, cloneState };
+      freshRecordsForBatch.push(freshRecord);
+      allFreshRecords.push(freshRecord);
+    }
+
+    // Single reduce call for the whole batch.
+    if (scatter.gather !== undefined && gatherStrategy !== null) {
+      const batchItems = freshRecordsForBatch.map((r) => ({ 'id': String(r.index), 'state': r }));
+      await gatherStrategy.reduce(scatter.gather, Batch.from(batchItems), state, this.#adapter.accessor);
+    }
+
+    // Single checkpoint write for the entire batch.
     ScatterCheckpoint.write(state, scatter.name, [...inbox], [...ackedResults]);
   }
 }
@@ -1897,20 +2017,34 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
       gatherStrategy,
     };
 
-    // ── 6. Drive the worker pool ─────────────────────────────────────────────
-    const pool = new ScatterWorkerPool<TState>(
-      new _ScatterPoolDriverImpl<TState, TServices>(scatterAdapter, scatterCtx),
-      {
+    // ── 6. Drive the worker pool or reservoir buffer ─────────────────────────
+    const driver = new _ScatterPoolDriverImpl<TState, TServices>(scatterAdapter, scatterCtx);
+
+    if (scatter.reservoir !== undefined) {
+      // Reservoir path: buffer-then-release loop keyed by item field.
+      const reservoirBuf = new ReservoirBuffer<TState>(driver, {
         'concurrencyLimit': concurrencyLimit,
         'inbox': inbox,
         'freshIter': freshIter,
         'nextIndex': nextIndex,
         'signal': signal,
-      },
-    );
-
-    // drain() throws on abort or worker error; checkpoint is preserved on throw.
-    await pool.drain();
+        'reservoir': scatter.reservoir,
+        'accessor': this.accessor,
+      });
+      // drain() throws on abort or batch error; checkpoint is preserved on throw.
+      await reservoirBuf.drain();
+    } else {
+      // Non-reservoir path: original per-item worker pool (byte-identical).
+      const pool = new ScatterWorkerPool<TState>(driver, {
+        'concurrencyLimit': concurrencyLimit,
+        'inbox': inbox,
+        'freshIter': freshIter,
+        'nextIndex': nextIndex,
+        'signal': signal,
+      });
+      // drain() throws on abort or worker error; checkpoint is preserved on throw.
+      await pool.drain();
+    }
 
     // ── 7. Synthesise acked records for finalize ─────────────────────────────
     // Acked-only records (from a prior run) were already folded into state via
