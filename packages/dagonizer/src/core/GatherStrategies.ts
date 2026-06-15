@@ -3,7 +3,7 @@
  * dispatcher merges scatter clone results back into the parent state.
  *
  * A `GatherStrategy` implements a unified fold contract:
- *   - `seed`:     initialise the accumulator in state before any clones run.
+ *   - `initial`:  initialise the accumulator in state before any clones run.
  *   - `reduce`:   fold a batch of clone results into state (batch of 1 for
  *                 per-clone streaming, batch of N for all-at-once).
  *   - `finalize`: end-of-gather work after all clones complete (e.g. custom
@@ -47,7 +47,7 @@ export type { GatherExecution, GatherRecord };
 /**
  * Extension point for gather strategies.
  *
- * Implement `reduce` for per-clone or bulk folding. Override `seed` to
+ * Implement `reduce` for per-clone or bulk folding. Override `initial` to
  * initialise accumulator state before any clones run. Override `finalize`
  * for end-of-gather work such as invoking a registered node.
  *
@@ -63,7 +63,7 @@ export abstract class GatherStrategy {
    * Initialise the accumulator in state before any clones run.
    * Called once per scatter, before the first `reduce`. Default: no-op.
    */
-  seed(
+  initial(
     _config: GatherConfig,
     _state: NodeStateInterface,
     _accessor: StateAccessor,

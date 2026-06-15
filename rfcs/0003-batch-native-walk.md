@@ -108,7 +108,7 @@ Cartographer's retry loops and multi-feeder joins.
 - **Scatter**: initializes the work set from a source (`Array`/`Iterable`/`AsyncIterable`),
   optionally via the reservoir firing policy (RFC 0002), and folds terminal-reached
   items with one gather (Phase 2a). Concurrency bounds in-flight fired batches.
-- **Gather**: unchanged from Phase 2a — `seed/reduce/finalize`, folding the batches
+- **Gather**: unchanged from Phase 2a — `initial/reduce/finalize`, folding the batches
   that reach terminals.
 
 ## 7. Checkpoint / resume

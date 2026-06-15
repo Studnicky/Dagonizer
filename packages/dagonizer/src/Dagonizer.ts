@@ -1707,7 +1707,7 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
    * reprocessed first (as the priority source), then any remaining source
    * items continue normally.
    *
-   * **Unified gather fold.** `seed` initialises accumulator state before any
+   * **Unified gather fold.** `initial` initialises accumulator state before any
    * clones run; `reduce` folds each completed record into parent state as it
    * arrives (batch of 1 per clone); `finalize` runs end-of-gather work (e.g.
    * node invocation for `custom`) once all clones have reported.
@@ -1770,14 +1770,14 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
       if (item.index >= nextIndex) nextIndex = item.index + 1;
     }
 
-    // ── 3. Gather strategy: resolve, seed, and prepare accumulators ─────────
+    // ── 3. Gather strategy: resolve, initialise, and prepare accumulators ───
     const gatherStrategy = scatter.gather !== undefined
       ? GatherStrategies.resolve(scatter.gather.strategy)
       : null;
 
-    // seed: initialise accumulator in state before any clones run.
+    // initial: initialise accumulator in state before any clones run.
     if (gatherStrategy !== null && scatter.gather !== undefined) {
-      gatherStrategy.seed(scatter.gather, state, this.accessor);
+      gatherStrategy.initial(scatter.gather, state, this.accessor);
     }
 
     // Accumulate fresh records for the finalize pass and outcome-reducer.

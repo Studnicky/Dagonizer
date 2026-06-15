@@ -32,7 +32,7 @@ agent needs to avoid going off the rails is here or in the linked RFCs.
    columnar/SoA. `ScalarNode` is mechanical precisely because the unit is a row.
 4. **Routing is partitioning.** A node maps a batch to `Map<output, Batch>`. This
    unifies per-item routing, micro-batching, and the reservoir.
-5. **Gather is one fold.** `seed → reduce(batch) → finalize`. No
+5. **Gather is one fold.** `initial → reduce(batch) → finalize`. No
    `apply`/`applyIncremental` split, no `IncrementalGatherStrategy`. "Incremental"
    is a batch of 1; "all-at-once" is a batch of N — same `reduce`.
 6. **Reservoir = a firing policy, not a placement or a scatter bolt-on.** Default
@@ -68,10 +68,10 @@ Built and green:
   `#runNodeOnState` (wraps `Batch.of(state)`, asserts size-1 invariant, returns the
   one route); `MonadicNode`, the conformance harness, and all dagonizer test nodes
   migrated to the contract.
-- **Phase 2a** — `GatherStrategy` reified to `seed`/`reduce(config, batch, state,
+- **Phase 2a** — `GatherStrategy` reified to `initial`/`reduce(config, batch, state,
   accessor)`/`finalize`; `IncrementalGatherStrategy`/`apply`/`applyIncremental`
   removed; six built-ins migrated (`map/append/partition/collect/discard/custom`);
-  the scatter executor calls seed → reduce(`Batch.of(record)`) per clone → finalize.
+  the scatter executor calls initial → reduce(`Batch.of(record)`) per clone → finalize.
 - **RFC 0002 sub-wave 1** — `reservoir` JSON-schema block on `ScatterNode`, the
   `reservoir?` option in `DAGBuilder.scatter` (conditional spread), and
   `DAGValidator.validateReservoir`. **Config only — no executor behavior** (the
