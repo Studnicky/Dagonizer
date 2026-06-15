@@ -67,6 +67,15 @@ export interface CytoscapeNodeData {
   source?: string;     // ScatterNode
   gather?: GatherConfig; // ScatterNode
   reducer?: string;    // ScatterNode
+  /**
+   * Reservoir config for a reservoir-configured ScatterNode.
+   *
+   * Present only when the ScatterNode carries a `reservoir` config. The
+   * animation layer reads this to render per-key fill and per-firing batch
+   * size from observer buffer-size deltas; the static renderer populates the
+   * config fields only.
+   */
+  reservoir?: { keyField: string; capacity: number; idleMs?: number };
   // ── Compound graph parent id (set during recursive expansion) ──
   parent?: string;
   /**
@@ -296,14 +305,34 @@ export class CytoscapeRenderer {
         return { ...base, "data": { ...base.data, "node": placement.node } };
       case 'ScatterNode': {
         const bodyRef = 'node' in placement.body ? placement.body.node : placement.body.dag;
+        // Add dag-reservoir class when reservoir config is present, so a
+        // stylesheet or animation layer can target it for the glyph and
+        // per-key fill. Per-key fill and per-firing batch size are runtime
+        // values — the animation layer renders them from observer buffer-size
+        // deltas; this renderer populates the static config only.
+        const scatterClasses = placement.reservoir !== undefined
+          ? `${base.classes} dag-reservoir`
+          : base.classes;
         return {
           ...base,
+          "classes": scatterClasses,
           "data": {
             ...base.data,
             "body":        bodyRef,
             "source":      placement.source,
             "gather":      placement.gather,
-            ...(placement.reducer !== undefined ? { "reducer": placement.reducer } : {}),
+            ...(placement.reducer  !== undefined ? { "reducer":  placement.reducer }  : {}),
+            ...(placement.reservoir !== undefined
+              ? {
+                  "reservoir": {
+                    "keyField": placement.reservoir.keyField,
+                    "capacity": placement.reservoir.capacity,
+                    ...(placement.reservoir.idleMs !== undefined
+                      ? { "idleMs": placement.reservoir.idleMs }
+                      : {}),
+                  },
+                }
+              : {}),
           },
         };
       }

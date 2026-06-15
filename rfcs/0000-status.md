@@ -13,11 +13,12 @@ agent needs to avoid going off the rails is here or in the linked RFCs.
   per item" is **superseded by 0003** (DAG bodies become batch-native). The
   reservoir config surface (schema/builder/validation) is built; its *behavior* is
   now a "firing policy" delivered inside 0003.
-- **`0003-batch-native-walk.md`** — the executor heart and the next major work. The
-  walk becomes a batch dataflow (work set of `placement → batch`, fire/partition/
-  merge). Firing policy is the one knob; the reservoir is the capacity-triggered
-  firing policy. Has resolved §10 decisions and a 6-sub-wave build order. **Start
-  here for the next phase.**
+- **`0003-batch-native-walk.md`** — the executor heart, **now COMPLETE** (all six
+  sub-waves built & green). The walk is a batch dataflow (work set of
+  `placement → batch`, fire/partition/merge); firing policy is the one knob and
+  the reservoir is the capacity-triggered firing policy. Read it for how the live
+  executor works. **The next major work is 0001 Phase 3** — migrating consumer
+  packages to `execute(batch)`.
 
 ## Non-negotiable principles (decided this session — do not relitigate)
 
@@ -51,11 +52,11 @@ agent needs to avoid going off the rails is here or in the linked RFCs.
 ## Current baseline (as-built, all in the dagonizer package, GREEN)
 
 Verified: `npm run typecheck` clean, `npm run lint -- --max-warnings 0` clean,
-`npm run test` → **802 pass / 0 fail**, `npm run build` clean. The green baseline
-(Phases 1a/1b/2a + RFC-0002 sub-wave-1) is committed at `362ac38`; RFC-0003
-sub-waves 1, 2, 4, 3 and 5 are committed on top (the `Frontier`→`WorkSet` /
+`npm run test` → **820 pass / 0 fail**, `npm run build` clean. The green baseline
+(Phases 1a/1b/2a + RFC-0002 sub-wave-1) is committed at `362ac38`; all six
+RFC-0003 sub-waves are committed on top (the `Frontier`→`WorkSet` /
 `seed`→`initial` renames too). The branch is `feature/plural-native-core`.
-Build order was reordered SW4 before SW3; **SW6 (viz) is next, the last RFC-0003 sub-wave**.
+Build order was reordered SW4 before SW3; **RFC-0003 is COMPLETE; next is 0001 Phase 3 (consumer migration)**.
 
 Built and green:
 - **Phase 1a** — `src/core/batch/{Item,Batch,RoutedBatch}.ts`
@@ -171,7 +172,7 @@ throwaway.
    4. Embedded-DAG + scatter fire batch-native under the work set (drop the SW1 size-1 guard). **BUILT & GREEN.**
    3. Reservoir runtime (scatter keyed input-batching: capacity/idle/complete, crash-safe). **BUILT & GREEN.**
    5. Checkpoint of the work set + resume parity. **BUILT & GREEN.**
-   6. Viz (per-firing batch size; reservoir glyph + per-key fill). **← next (last sub-wave).**
+   6. Viz (reservoir glyph in both renderers). **BUILT & GREEN — RFC-0003 complete.**
 2. **0001 Phase 3** — migrate consumers in order: executors → patterns →
    adapters/tools/embedders → examples (mostly `ScalarNode` base-swaps; hot nodes
    hand-write `execute(batch)`). Each package goes green as migrated.

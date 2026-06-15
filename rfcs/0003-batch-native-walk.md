@@ -1,6 +1,6 @@
 # RFC 0003 — Batch-native walk (the plural executor core)
 
-Status: **In progress — sub-waves 1, 2, 4, 3 & 5 BUILT & GREEN (802 tests); sub-wave 6 (viz) next, then RFC-0003 is complete** · Depends on:
+Status: **COMPLETE — all six sub-waves BUILT & GREEN (820 tests). The batch-native walk is the live executor.** · Depends on:
 RFC 0001 (plural-native), Phase 2a (one-fold gather) · Supersedes: RFC 0002 §2 "DAG bodies
 iterate per item" (DAG bodies are now batch-native). §10 decisions are resolved. Build per §9
 sub-waves. Sub-wave 1 (work-set scheduler `PlacementRank` + `WorkSet`, acyclic, size-1 parity
@@ -180,7 +180,14 @@ green.
    blob — the cursor model is byte-identical, so `checkpoint.test.ts` is
    untouched. Locked by `workset-checkpoint.test.ts` (multi-item resume parity:
    union of pre/post-abort collected items = uninterrupted set, each exactly once).
-6. **Viz** — per-firing batch-size on edges; reservoir glyph + per-key fill. **← next.**
+6. **Viz** — per-firing batch-size on edges; reservoir glyph + per-key fill.
+   **BUILT & GREEN** — reservoir-configured scatters render a glyph in both
+   renderers: Mermaid augments the label with `▣ <keyField> ×<capacity>` and a
+   `classDef reservoir`; Cytoscape adds a `dag-reservoir` class + a `reservoir`
+   data field. Plain scatters render byte-identically (parity guards). Live
+   per-key fill / per-firing batch size are surfaced by the consumer's
+   animation/observer layer (renderers stay static DAG→output; the class + data
+   field are the hooks). Locked by `reservoir-viz.test.ts` (18 tests).
 
 ## 10. Resolved design decisions
 

@@ -60,6 +60,8 @@ export class MermaidRenderer {
     const roleToIds = new Map<string, string[]>();
     // Map from sanitized role token → original role string (for color lookup).
     const roleTokenToRole = new Map<string, string>();
+    // Reservoir-configured scatter placement names (for classDef emission).
+    const reservoirIds: string[] = [];
 
     for (const placement of PlacementUtils.narrowNodes(dag)) {
       lines.push(`  ${MermaidRenderer.renderShape(placement)}`);
@@ -75,6 +77,10 @@ export class MermaidRenderer {
         ids.push(placement.name);
         roleToIds.set(token, ids);
       }
+      // Track reservoir-configured ScatterNode placements.
+      if (placement['@type'] === 'ScatterNode' && placement.reservoir !== undefined) {
+        reservoirIds.push(placement.name);
+      }
     }
 
     // Emit one classDef per distinct role, then assign each contained node
@@ -88,6 +94,18 @@ export class MermaidRenderer {
       lines.push(`  classDef contained-${token} fill:${colors.fill},stroke:${colors.stroke},color:${colors.text}`);
       for (const id of ids) {
         lines.push(`  class ${id} contained-${token}`);
+      }
+    }
+
+    // Emit the reservoir classDef once (if any reservoir placements exist),
+    // then assign each reservoir scatter to it. The fill/stroke are chosen to
+    // read as "buffered / windowed" — distinct from all containment role colors.
+    // Per-key fill and per-firing batch size are runtime values supplied by the
+    // animation layer (not static output).
+    if (reservoirIds.length > 0) {
+      lines.push('  classDef reservoir fill:#1e3a5f,stroke:#3b82f6,color:#bfdbfe');
+      for (const id of reservoirIds) {
+        lines.push(`  class ${id} reservoir`);
       }
     }
 
@@ -137,9 +155,19 @@ export class MermaidRenderer {
     switch (placement['@type']) {
       case 'SingleNode':
         return `${placement.name}[${label}]`;
-      case 'ScatterNode':
-        // trapezoid: fork over a source
+      case 'ScatterNode': {
+        if (placement.reservoir !== undefined) {
+          // Reservoir-configured scatter: augment label with key/capacity marker.
+          // Per-key fill and per-firing batch size are runtime values — the
+          // animation layer renders them from observer buffer-size deltas.
+          const reservoirLabel = MermaidRenderer.escapeLabel(
+            `${placement.name}\\n▣ ${placement.reservoir.keyField} ×${placement.reservoir.capacity}`,
+          );
+          return `${placement.name}[/${reservoirLabel}/]`;
+        }
+        // Plain scatter (no reservoir): trapezoid shape.
         return `${placement.name}[/${label}/]`;
+      }
       case 'EmbeddedDAGNode':
         // subroutine shape: a nested sub-DAG invocation
         return `${placement.name}[[${label}]]`;
