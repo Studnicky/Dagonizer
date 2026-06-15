@@ -914,6 +914,229 @@ export class ShipmentEvents {
   ];
 
   /**
+   * Lazy generator: yields one RawShipmentEvent at a time without collecting the
+   * full array. The LCG and formatIdx advance in the same order as buildRawScans,
+   * so each record at position k is byte-identical to buildRawScans(n)[k] (pre-sort).
+   *
+   * Scans emerge in journey-insertion order (not globally sorted by timestamp).
+   * The streaming consumer accepts this — scatter processes each event independently,
+   * so sort order is immaterial for the lazy path.
+   *
+   * Memory: O(scansInCurrentJourney) — at most 5 RawShipmentEvent objects exist per
+   * yielded batch. Suitable for n up to 1_000_000 under a 256 MB old-space cap.
+   */
+  static * rawScansGenerator(n: number): Generator<RawShipmentEvent> {
+    const rand = ShipmentEvents.lcg(42);
+
+    const CARRIERS: Array<{ 'alias': string; 'carrierId': string }> = [
+      { 'alias': 'FEDEX',                  'carrierId': 'fedex' },
+      { 'alias': 'FedEx',                  'carrierId': 'fedex' },
+      { 'alias': 'Federal Express',        'carrierId': 'fedex' },
+      { 'alias': 'fedex ground',           'carrierId': 'fedex' },
+      { 'alias': 'UPS',                    'carrierId': 'ups' },
+      { 'alias': 'United Parcel Service',  'carrierId': 'ups' },
+      { 'alias': 'DHL Express',            'carrierId': 'dhl' },
+      { 'alias': 'DHL',                    'carrierId': 'dhl' },
+      { 'alias': 'USPS',                   'carrierId': 'usps' },
+      { 'alias': 'Royal Mail',             'carrierId': 'royal-mail' },
+      { 'alias': 'DPD',                    'carrierId': 'dpd' },
+    ];
+
+    const STATUS_DEPARTURE = ['departed facility', 'dispatch', 'picked up'];
+    const STATUS_TRANSIT   = ['in transit', 'arrival scan', 'arrived at hub', 'en route'];
+    const STATUS_OFD       = ['out for delivery'];
+    const STATUS_DELIVERED = ['delivered', 'DELIVERED'];
+    const STATUS_EXCEPTION = ['exception - address', 'customs hold'];
+
+    const REGIONS: Array<{ 'lat': number; 'lng': number; 'country': string; 'countryVariants': string[]; 'gatewayIp': string }> = [
+      { 'lat':  39.9,  'lng':  -75.2, 'country': 'USA',  'countryVariants': ['US', 'USA', 'United States'],        'gatewayIp': '8.8.8.8' },
+      { 'lat':  51.5,  'lng':   -0.1, 'country': 'GBR',  'countryVariants': ['GB', 'GBR', 'United Kingdom'],       'gatewayIp': '212.58.244.1' },
+      { 'lat':  48.9,  'lng':    2.3, 'country': 'FRA',  'countryVariants': ['FR', 'FRA', 'France'],               'gatewayIp': '80.67.169.12' },
+      { 'lat':  52.5,  'lng':   13.4, 'country': 'DEU',  'countryVariants': ['DE', 'DEU', 'Germany'],              'gatewayIp': '194.150.168.168' },
+      { 'lat':  35.7,  'lng':  139.7, 'country': 'JPN',  'countryVariants': ['JP', 'JPN', 'Japan'],                'gatewayIp': '210.130.1.1' },
+      { 'lat':  31.2,  'lng':  121.5, 'country': 'CHN',  'countryVariants': ['CN', 'CHN', 'China'],                'gatewayIp': '114.114.114.114' },
+      { 'lat': -33.9,  'lng':  151.2, 'country': 'AUS',  'countryVariants': ['AU', 'AUS', 'Australia'],            'gatewayIp': '1.1.1.1' },
+      { 'lat': -23.5,  'lng':  -46.6, 'country': 'BRA',  'countryVariants': ['BR', 'BRA', 'Brazil'],               'gatewayIp': '200.160.2.3' },
+      { 'lat':  19.4,  'lng':  -99.1, 'country': 'MEX',  'countryVariants': ['MX', 'MEX', 'Mexico'],               'gatewayIp': '200.33.146.249' },
+      { 'lat':  28.6,  'lng':   77.2, 'country': 'IND',  'countryVariants': ['IN', 'IND', 'India'],                'gatewayIp': '49.44.79.1' },
+      { 'lat':  25.2,  'lng':   55.3, 'country': 'ARE',  'countryVariants': ['AE', 'ARE', 'United Arab Emirates'], 'gatewayIp': '94.200.200.200' },
+      { 'lat': -26.2,  'lng':   28.0, 'country': 'ZAF',  'countryVariants': ['ZA', 'ZAF', 'South Africa'],         'gatewayIp': '196.4.160.4' },
+    ];
+
+    const ORIGIN_HUBS: Array<{ 'lat': number; 'lng': number; 'name': string }> = [
+      { 'lat':  35.0,  'lng':  -89.9, 'name': 'Memphis' },
+      { 'lat':  51.4,  'lng':   12.2, 'name': 'Leipzig' },
+      { 'lat':  22.3,  'lng':  113.9, 'name': 'Hong Kong' },
+      { 'lat':  25.3,  'lng':   55.4, 'name': 'Dubai' },
+      { 'lat':  40.6,  'lng':  -73.8, 'name': 'New York' },
+      { 'lat':  -3.1,  'lng':  -38.5, 'name': 'Fortaleza' },
+    ];
+
+    const NAMES   = ['Alice Müller', 'Bob Chen', 'Carol Smith', 'David García', 'Eve Johnson',
+                     'Frank Kim', 'Grace Lee', 'Henry Brown', 'Isabelle Dubois', 'Jack Okonkwo'];
+    const DOMAINS = ['example.com', 'test.org', 'mail.net', 'inbox.io', 'post.co'];
+
+    const catalogIds = PricingCatalog.catalogIds();
+    const BASE_EPOCH_MS = 1735689600000;
+    const WEIGHT_UNITS: Array<RawShipmentEvent['weightUnit']> = ['lb', 'kg', 'g', 'oz'];
+
+    const pick = <T>(arr: readonly T[]): T => arr[Math.floor(rand() * arr.length)] ?? arr[0]!;
+
+    let formatIdx = 0;
+
+    for (let i = 0; i < n; i++) {
+      const dest = pick(REGIONS);
+      const hasGatewayIp = rand() < 0.8;
+      const gatewayIp = hasGatewayIp ? dest.gatewayIp : '';
+      const destLat = dest.lat + (rand() - 0.5) * 4;
+      const destLng = dest.lng + (rand() - 0.5) * 4;
+
+      const hub = pick(ORIGIN_HUBS);
+      const originLat = hub.lat + (rand() - 0.5) * 4;
+      const originLng = hub.lng + (rand() - 0.5) * 4;
+
+      const carrierEntry = pick(CARRIERS);
+      const carrier   = carrierEntry.alias;
+      const carrierId = carrierEntry.carrierId;
+
+      const name       = pick(NAMES);
+      const domain     = pick(DOMAINS);
+      const localPart  = `user${i}`;
+      const countryRaw = pick(dest.countryVariants);
+
+      const weightValue = 10 + Math.floor(rand() * 3490) / 10;
+      const weightUnit  = pick(WEIGHT_UNITS);
+      const weightGrams = Units.toGrams(weightValue, weightUnit);
+      const serviceTier = EventClassifier.serviceTier(carrierId, weightGrams);
+
+      const shipDistanceKm = ShippingCalculator.distanceKm(originLat, originLng, destLat, destLng);
+      const nominalTransitH = EtaEstimator.transitHours(shipDistanceKm, carrierId, serviceTier);
+
+      const slaBase = ShipmentEvents.slaBaseHours(serviceTier);
+      const tightRoll = rand();
+      const tightSla = tightRoll < 0.5;
+      const slaHours = tightSla
+        ? Math.max(nominalTransitH + 1, nominalTransitH * (1.0 + rand() * 0.1))
+        : Math.max(nominalTransitH + 1, nominalTransitH + 6 + rand() * Math.min(slaBase, 36));
+
+      const disruptProb = shipDistanceKm > 8000 ? 0.42 : 0.32;
+      const disrupted = rand() < disruptProb;
+      const disruptionPick = disrupted
+        ? (ShipmentEvents.DISRUPTIONS[1 + Math.floor(rand() * (ShipmentEvents.DISRUPTIONS.length - 1))] ?? ShipmentEvents.DISRUPTIONS[0]!)
+        : ShipmentEvents.DISRUPTIONS[0]!;
+      const disruptionHours  = disruptionPick.hours;
+      const disruptionReason = disruptionPick.reason;
+
+      const daysOffset  = Math.floor(rand() * 60);
+      const hoursOffset = Math.floor(rand() * 24);
+      const dispatchEpochMs = BASE_EPOCH_MS + daysOffset * 86_400_000 + hoursOffset * 3_600_000;
+
+      const promisedMs = dispatchEpochMs + Math.round(slaHours * 3_600_000);
+      const rawPromisedDeliveryAt = ShipmentEvents.formatTimestamp(promisedMs, i % 2 === 0 ? 0 : 2);
+      const rawDispatchAt = ShipmentEvents.formatTimestamp(dispatchEpochMs, i % 2 === 0 ? 2 : 0);
+
+      const consent = rand() < 0.6;
+      const violationRoll = rand();
+      const isViolation = violationRoll < 0.02;
+      const lawfulBasis: RawShipmentEvent['lawfulBasis'] = isViolation ? 'none' : 'contract';
+      const specialCategory: RawShipmentEvent['specialCategory'] = isViolation ? 'health' : 'none';
+
+      const lineCount = 1 + Math.floor(rand() * 4);
+      const lineItems: Array<{ 'productId': string; 'quantity': number }> = [];
+      for (let j = 0; j < lineCount; j++) {
+        const productId = catalogIds[Math.floor(rand() * catalogIds.length)] ?? 'PROD-001';
+        const quantity  = 1 + Math.floor(rand() * 3);
+        lineItems.push({ 'productId': productId, 'quantity': quantity });
+      }
+      const phonePrefix = 100 + Math.floor(rand() * 900);
+      const phoneMid    = 100 + Math.floor(rand() * 900);
+      const phoneSuffix = 1000 + Math.floor(rand() * 9000);
+      const recipientEmail   = `${localPart}@${domain}`;
+      const recipientPhone   = `+1-${phonePrefix}-${phoneMid}-${phoneSuffix}`;
+      const recipientAddress = `${1000 + Math.floor(rand() * 8000)} Main St, ${dest.country}`;
+      const facilityId       = `FAC-${hub.name.replace(/\s+/g, '').toUpperCase().slice(0, 3)}-${String(Math.floor(rand() * 100)).padStart(3, '0')}`;
+
+      const scanCount = 2 + Math.floor(rand() * 4);
+      const journeyFails = rand() < 0.12;
+      const disruptScanIdx = disrupted && scanCount > 2
+        ? 1 + Math.floor(rand() * (scanCount - 2))
+        : -1;
+
+      let prevLat = originLat;
+      let prevLng = originLng;
+      let cursorMs = dispatchEpochMs;
+
+      for (let s = 0; s < scanCount; s++) {
+        const t = scanCount === 1 ? 0 : s / (scanCount - 1);
+        const lat = originLat + (destLat - originLat) * t;
+        const lng = originLng + (destLng - originLng) * t;
+
+        if (s > 0) {
+          const legShare = nominalTransitH / (scanCount - 1);
+          let legHours = legShare;
+          if (s === disruptScanIdx) legHours += disruptionHours;
+          cursorMs += Math.round(legHours * 3_600_000);
+        }
+
+        const isLast  = s === scanCount - 1;
+        const isFirst = s === 0;
+        const isTransientException = s === disruptScanIdx;
+
+        const rawStatus = isLast
+            ? (journeyFails ? pick(STATUS_EXCEPTION) : pick(STATUS_DELIVERED))
+          : isFirst ? pick(STATUS_DEPARTURE)
+          : isTransientException ? pick(STATUS_EXCEPTION)
+          : (s === scanCount - 2) ? pick(STATUS_OFD)
+          : pick(STATUS_TRANSIT);
+
+        const invalid = rand() < 0.06;
+        const finalLat = invalid ? 95 + rand() * 10  : lat;
+        const finalLng = invalid ? 185 + rand() * 10 : lng;
+
+        const FORMAT_CYCLE = [0, 1, 2, 4] as const;
+        const variant = FORMAT_CYCLE[formatIdx % FORMAT_CYCLE.length] ?? 0;
+        const rawTimestamp = ShipmentEvents.formatTimestamp(cursorMs, variant);
+        formatIdx++;
+
+        yield {
+          'shipmentId':          `SHP-${String(i).padStart(6, '0')}`,
+          'scanSeq':             s,
+          'rawTimestamp':        rawTimestamp,
+          'rawDispatchAt':       rawDispatchAt,
+          'rawStatus':           rawStatus,
+          'carrier':             carrier,
+          'ipAddress':           gatewayIp,
+          'latitude':            finalLat,
+          'longitude':           finalLng,
+          'legFromLat':          prevLat,
+          'legFromLng':          prevLng,
+          'originLat':           originLat,
+          'originLng':           originLng,
+          'destLat':             destLat,
+          'destLng':             destLng,
+          'weight':              weightValue,
+          'weightUnit':          weightUnit,
+          'recipientName':       name,
+          'recipientEmail':      recipientEmail,
+          'recipientPhone':      recipientPhone,
+          'recipientAddress':    recipientAddress,
+          'recipientCountry':    countryRaw,
+          'marketingConsent':    consent,
+          'rawPromisedDeliveryAt': rawPromisedDeliveryAt,
+          'lineItems':           lineItems.map((li) => ({ ...li })),
+          'facilityId':          facilityId,
+          'lawfulBasis':         lawfulBasis,
+          'specialCategory':     specialCategory,
+          'disruptionReason':    disruptionReason,
+        };
+
+        prevLat = lat;
+        prevLng = lng;
+      }
+    }
+  }
+
+  /**
    * Build the deterministic raw scan feed: N journeys, each M~2–5 scans, all
    * scans interleaved by timestamp. This is the single source of truth for the
    * synthetic data; the multi-format `Sources` encode a partition of it.
@@ -1568,6 +1791,99 @@ export class Sources {
       h = Math.imul(h ^ key.charCodeAt(i), 16777619) >>> 0;
     }
     return h;
+  }
+
+  /**
+   * Encode a single RawShipmentEvent into a SourcePayload.
+   *
+   * The payload contains exactly one record encoded in the requested format.
+   * For CSV the header row is always included so each payload is self-describing
+   * and can be fed directly to the normalize-csv node unchanged.
+   *
+   * For the CSV path the shuffled-column order (header-alignment proof) is
+   * derived deterministically from the FieldMap so it is consistent with the
+   * full-batch encoder above.
+   *
+   * `scanIndex` is the global scan counter used to pick the sensor telemetry
+   * shard (fnv1a key) and to form the CSV column shuffle — it must increment
+   * monotonically across calls from a single stream so per-record determinism
+   * holds across the generator sequence.
+   */
+  static async buildPayloadFromScan(
+    scan: RawShipmentEvent,
+    format: 'csv' | 'json' | 'ndjson' | 'yaml',
+    compression: 'none' | 'gzip',
+    scanIndex: number,
+  ): Promise<SourcePayload> {
+    const FORMAT_MAP_KEY: Record<string, string> = {
+      'json':   'json-position',
+      'csv':    'csv-facility',
+      'ndjson': 'ndjson-sensor',
+      'yaml':   'yaml-position',
+    };
+
+    const FORMAT_KIND: Record<string, CanonicalEvent['kind']> = {
+      'json':   'position-ping',
+      'csv':    'facility-scan',
+      'ndjson': 'sensor-reading',
+      'yaml':   'position-ping',
+    };
+
+    const mapKey = FORMAT_MAP_KEY[format] ?? 'json-position';
+    const map = FieldMappings.forKey(mapKey);
+    const kind = FORMAT_KIND[format] ?? 'position-ping';
+    const withGeo = format === 'json' || format === 'yaml';
+
+    const rec = Sources.wireRecord(scan, withGeo);
+
+    // Sensor telemetry for ndjson entries (same FNV shard as the batch encoder).
+    if (format === 'ndjson') {
+      const h = Sources.fnv1a(`${scan.shipmentId}:${scan.scanSeq}:sensor`);
+      const b0 = (h >>> 24) & 0xff;
+      const b1 = (h >>> 16) & 0xff;
+      const b2 = (h >>> 8)  & 0xff;
+      rec['tempC']       = Math.round((2 + (b0 / 255) * 6) * 10) / 10;
+      rec['humidityPct'] = Math.round(40 + (b1 / 255) * 40);
+      rec['shockG']      = Math.round((b2 / 255) * 30) / 10;
+    }
+
+    let text: string;
+    if (format === 'json') {
+      // Single-element JSON array — self-describing for the parseJson node.
+      text = Sources.encodeJson([rec], map);
+    } else if (format === 'yaml') {
+      text = Sources.encodeYaml([rec], map);
+    } else if (format === 'ndjson') {
+      text = Sources.encodeNdjson([rec], map);
+    } else {
+      // CSV: header + single data row using the same shuffled column order as the
+      // batch encoder so header-alignment remains consistent.
+      const entries = Object.entries(map).reverse();
+      const swapped: Array<[string, string]> = [];
+      for (let i = 0; i < entries.length; i += 2) {
+        if (i + 1 < entries.length) {
+          swapped.push(entries[i + 1]!, entries[i]!);
+        } else {
+          swapped.push(entries[i]!);
+        }
+      }
+      const shuffledMap: FieldMap = Object.fromEntries(swapped);
+      text = Sources.encodeCsv([rec], shuffledMap);
+    }
+
+    const payload = await Sources.maybeGzip(text, compression);
+    // sourceId encodes format, compression, and the scan's global index so each
+    // yielded payload has a distinct ID in the stream.
+    const sourceId = `${format}-${compression}-${scanIndex}`;
+
+    return {
+      'sourceId':    sourceId,
+      'format':      format,
+      'compression': compression,
+      'mappingKey':  mapKey,
+      'kind':        kind,
+      'payload':     payload,
+    };
   }
 
   /**
