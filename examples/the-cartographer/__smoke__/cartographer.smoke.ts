@@ -23,12 +23,8 @@ import { strict as assert } from 'node:assert';
 
 import { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
-import { cartographerBundle } from '../dag.ts';
-import { canonicalizeBundle } from '../embedded-dags/CanonicalizeDAG.ts';
-import { gdprComplianceBundle } from '../embedded-dags/GdprComplianceDAG.ts';
-import { geoResolveBundle } from '../embedded-dags/GeoResolveDAG.ts';
+import { cartographerBundle, eventPipelineBundle } from '../dag.ts';
 import { ingestSourceBundle } from '../embedded-dags/IngestSourceDAG.ts';
-import { orderEnrichmentBundle } from '../embedded-dags/OrderEnrichmentDAG.ts';
 import { GeoResolvers } from '../services/GeoResolvers.ts';
 
 import { Dagonizer } from '@noocodex/dagonizer';
@@ -52,15 +48,16 @@ class SmokeRunner {
   static async runPipeline(n: number): Promise<CartographerState> {
     const services: CartographerServices = GeoResolvers.recorded();
     const dispatcher = new Dagonizer<CartographerState, CartographerServices>({ 'services': services });
-    dispatcher.registerBundle(geoResolveBundle);
-    dispatcher.registerBundle(canonicalizeBundle);
-    dispatcher.registerBundle(orderEnrichmentBundle);
-    dispatcher.registerBundle(gdprComplianceBundle);
+    // eventPipelineBundle covers all geo, canonicalize, order-enrichment, gdpr, and per-type DAGs.
+    dispatcher.registerBundle(eventPipelineBundle);
     // ingestSourceBundle owns all unique ingest nodes + all format sub-DAGs.
     dispatcher.registerBundle(ingestSourceBundle);
+    // cartographerBundle adds top-level nodes and the cartographerDAG.
     dispatcher.registerBundle(cartographerBundle);
     const state = new CartographerState();
     state.eventCount = n;
+    const factor = Math.max(1, Math.round(n / 21));
+    state.eventConfig = state.eventConfig.map((e) => ({ 'eventType': e.eventType, 'count': e.count * factor, 'formatMix': e.formatMix.map((m) => ({ ...m })) }));
     const execution = dispatcher.execute('cartographer', state);
     for await (const _stage of execution) { /* drain */ }
     await execution;
@@ -82,7 +79,10 @@ await SmokeRunner.check('ingestion fans in from >=3 distinct source formats and 
   const eventTypes = new Set(state.canonicalEvents.map((e) => e.eventType));
   assert.ok(state.canonicalEvents.length > 0, `Expected canonical events, got 0`);
   assert.ok(formats.size >= 3, `Expected >=3 distinct source formats, got ${formats.size} (${[...formats].join(', ')})`);
-  assert.ok(eventTypes.size >= 2, `Expected >=2 distinct event types, got ${eventTypes.size} (${[...eventTypes].join(', ')})`);
+  const eventTypeArr = [...eventTypes];
+  for (const t of ['position-ping', 'facility-scan', 'sensor-reading', 'customs-event', 'delivery-confirmation'] as const) {
+    assert.ok(eventTypeArr.includes(t), `Expected eventType '${t}' in canonical events, got: ${eventTypeArr.join(', ')}`);
+  }
   // The JSON API source pre-resolves geo on its events (Stage 2 branches on this).
   const withGeo = state.canonicalEvents.filter((e) => e.geo !== undefined);
   assert.ok(withGeo.length > 0, `Expected >=1 event with pre-resolved geo (RICH source), got 0`);

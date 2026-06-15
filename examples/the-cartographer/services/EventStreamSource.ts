@@ -1,32 +1,25 @@
 /**
  * EventStreamSource: lazy AsyncIterable<SourcePayload> for the scatter source.
  *
- * Pulls from ShipmentEvents.rawScansGenerator — a sync generator that steps the
- * seeded LCG one journey at a time, yielding RawShipmentEvent records without
+ * `streamTyped` pulls from ShipmentEvents.typedScansGenerator — a sync generator
+ * that steps the seeded LCG one journey at a time, yielding typed scans without
  * materialising the full array. Each record is encoded per-format via
  * Sources.buildPayloadFromScan and yielded as a SourcePayload, so peak memory is
- * O(batch) regardless of total count.
+ * O(1) regardless of total count.
  *
  * The engine's scatter natively accepts AsyncIterable as the source value, so
- * assigning the result of EventStreamSource.stream to state.sources wires it
+ * assigning the result of EventStreamSource.streamTyped to state.sources wires it
  * transparently with no DAG changes needed.
  *
- * Count override: `totalCount` overrides the sum of feedConfig entry counts.
- * When absent, the env var `CARTO_EVENT_COUNT` is checked, then the config sum
- * is used. Count is clamped to [1, 1_000_000].
+ * Format distribution: each EventTypeConfig entry's formatMix weights determine
+ * the proportional threshold split for that entry's scan budget. Local index
+ * within each entry drives the per-entry threshold selector.
  *
- * Determinism: ShipmentEvents.rawScansGenerator uses the same seeded LCG and
- * formatIdx as buildRawScans. Each scan at position k in the generator produces
- * the same RawShipmentEvent as buildRawScans(n)[k] (pre-sort). No Date.now or
- * Math.random in the data path.
- *
- * Format distribution: with a multi-entry FeedConfig, each yielded scan is
- * assigned a format by round-robin across the config entries (proportional to
- * each entry's count / configSum weight). When only one entry is present, all
- * scans use that entry's format and compression.
+ * Determinism: ShipmentEvents.typedScansGenerator uses the same seeded LCG as
+ * buildTypedFeed. No Date.now or Math.random in the data path.
  */
 
-import type { FeedConfig } from '../services.ts';
+import type { EventTypeConfig } from '../services.ts';
 import { ShipmentEvents, Sources } from '../services.ts';
 import type { SourcePayload } from '../entities/SourcePayload.ts';
 
@@ -38,58 +31,37 @@ function clampCount(n: number): number {
   return Math.min(MAX_COUNT, Math.max(MIN_COUNT, Math.floor(n)));
 }
 
-/** Sum the event counts across all feed config entries. */
-function configTotal(config: FeedConfig): number {
+/** Sum total scans across all EventTypeConfig entries. */
+function typedConfigTotal(config: EventTypeConfig): number {
   let total = 0;
   for (const entry of config) total += entry.count;
   return total;
 }
 
-/** Resolve the effective total count: explicit → env → config sum. */
-function resolveCount(config: FeedConfig, totalCount: number | undefined): number {
-  if (totalCount !== undefined) return clampCount(totalCount);
-  const envVal = process.env['CARTO_EVENT_COUNT'];
-  if (envVal !== undefined && envVal.length > 0) {
-    const parsed = parseInt(envVal, 10);
-    if (!isNaN(parsed) && parsed > 0) return clampCount(parsed);
-  }
-  return clampCount(configTotal(config));
-}
-
 /**
- * Build a per-scan format selector: given a FeedConfig and effective total count,
- * returns a function that maps a scan index (0-based) to the config entry whose
- * format/compression applies. Distribution is proportional — entry i receives
- * floor(entry.count / configSum * total) scans, with the remainder going to the
- * last non-zero entry.
- *
- * The selector is a flat array of indices into the config, one per output scan.
- * For large counts this array itself is O(effective) — so for the truly lazy path
- * we instead compute the format via cumulative thresholds (O(config entries), not
- * O(total)).
+ * Build per-entry format thresholds from a FormatMix weight array.
+ * Returns an array of cumulative limit thresholds mapping local scan indices to {format, compression}.
  */
-function buildFormatThresholds(
-  config: FeedConfig,
-  effective: number,
-  configSum: number,
+function buildTypedFormatThresholds(
+  mix: EventTypeConfig[number]['formatMix'],
+  count: number,
 ): Array<{ format: 'csv' | 'json' | 'ndjson' | 'yaml'; compression: 'none' | 'gzip'; limit: number }> {
+  const totalWeight = mix.reduce((sum, m) => sum + m.weight, 0);
   const thresholds: Array<{ format: 'csv' | 'json' | 'ndjson' | 'yaml'; compression: 'none' | 'gzip'; limit: number }> = [];
   let allocated = 0;
-
-  for (let i = 0; i < config.length; i++) {
-    const entry = config[i]!;
-    const isLast = i === config.length - 1;
-    const count = isLast
-      ? Math.max(0, effective - allocated)
-      : configSum > 0
-        ? Math.round((entry.count / configSum) * effective)
+  for (let mi = 0; mi < mix.length; mi++) {
+    const m = mix[mi]!;
+    const isLast = mi === mix.length - 1;
+    const c = isLast
+      ? Math.max(0, count - allocated)
+      : totalWeight > 0
+        ? Math.round((m.weight / totalWeight) * count)
         : 0;
-    allocated += count;
-    if (count > 0) {
-      thresholds.push({ format: entry.format, compression: entry.compression, limit: allocated });
+    allocated += c;
+    if (c > 0) {
+      thresholds.push({ format: m.format, compression: m.compression, limit: allocated });
     }
   }
-
   return thresholds;
 }
 
@@ -98,35 +70,41 @@ export class EventStreamSource {
   private constructor() { /* static-only */ }
 
   /**
-   * Return an AsyncIterable<SourcePayload> that yields payloads one record at a
-   * time with O(1) peak memory relative to total count.
+   * Return an AsyncIterable<SourcePayload> for a typed feed. Yields payloads
+   * lazily from ShipmentEvents.typedScansGenerator with O(1) peak memory.
    *
-   * Each scan from ShipmentEvents.rawScansGenerator is encoded via
-   * Sources.buildPayloadFromScan (per-format, per-record) and yielded immediately.
-   * Gzip for a single record is a tiny, bounded operation — no large string is
-   * ever accumulated.
+   * Format assignment: each entry's formatMix weights determine the proportional
+   * threshold split for that entry's scan budget. Local index within each entry
+   * drives the per-entry threshold selector.
    *
-   * Format assignment: scans are assigned to config entries in ascending threshold
-   * order. The first `limit[0]` scans use entry[0]'s format/compression; the next
-   * block uses entry[1]'s, and so on. This matches the proportional distribution
-   * the eager path applies.
-   *
-   * @param config     Feed configuration driving format/compression/count.
-   * @param totalCount Optional override for the total event count. When absent,
-   *                   `CARTO_EVENT_COUNT` env var is checked, then the config sum.
+   * @param config     Typed feed configuration.
+   * @param totalCount Optional override for total event count. When absent, the
+   *                   sum of entry counts is used. Clamped to [1, 1_000_000].
    */
-  static stream(config: FeedConfig, totalCount?: number): AsyncIterable<SourcePayload> {
-    const effective = resolveCount(config, totalCount);
-    const configSum = configTotal(config);
-    const thresholds = buildFormatThresholds(config, effective, configSum);
+  static streamTyped(config: EventTypeConfig, totalCount?: number): AsyncIterable<SourcePayload> {
+    const rawTotal = typedConfigTotal(config);
+    const effective = totalCount !== undefined ? clampCount(totalCount) : clampCount(rawTotal);
+
+    // Build per-entry thresholds once before iteration.
+    const entryThresholds = config.map((entry) =>
+      buildTypedFormatThresholds(entry.formatMix, entry.count),
+    );
 
     return {
       [Symbol.asyncIterator](): AsyncIterator<SourcePayload> {
-        const generator = ShipmentEvents.rawScansGenerator(effective);
-        let scanIndex = 0;
+        const generator = ShipmentEvents.typedScansGenerator(config);
+        let globalIndex = 0;
+        // Track local index per config entry by config position.
+        const localIndices = new Array<number>(config.length).fill(0);
+        let configPos = 0;
+        let countInCurrentEntry = 0;
 
         return {
           async next(): Promise<IteratorResult<SourcePayload>> {
+            if (globalIndex >= effective) {
+              return { value: undefined as unknown as SourcePayload, done: true };
+            }
+
             const step = generator.next();
             if (step.done === true) {
               return { value: undefined as unknown as SourcePayload, done: true };
@@ -134,20 +112,42 @@ export class EventStreamSource {
 
             const scan = step.value;
 
-            // Determine which config entry applies to this scan by threshold.
-            let format: 'csv' | 'json' | 'ndjson' | 'yaml' = 'json';
-            let compression: 'none' | 'gzip' = 'none';
+            // Advance configPos to match the current entry based on cumulative counts.
+            while (configPos < config.length - 1) {
+              const entry = config[configPos]!;
+              if (countInCurrentEntry >= entry.count) {
+                configPos++;
+                countInCurrentEntry = 0;
+              } else {
+                break;
+              }
+            }
+
+            const currentEntry = config[configPos]!;
+            const localIdx = localIndices[configPos] ?? 0;
+            const thresholds = entryThresholds[configPos] ?? [];
+
+            let format: 'csv' | 'json' | 'ndjson' | 'yaml' = currentEntry.formatMix[0]?.format ?? 'json';
+            let compression: 'none' | 'gzip' = currentEntry.formatMix[0]?.compression ?? 'none';
             for (const threshold of thresholds) {
-              if (scanIndex < threshold.limit) {
+              if (localIdx < threshold.limit) {
                 format = threshold.format;
                 compression = threshold.compression;
                 break;
               }
             }
 
-            const payload = await Sources.buildPayloadFromScan(scan, format, compression, scanIndex);
-            scanIndex++;
-            return { value: payload, done: false };
+            const payload = await Sources.buildPayloadFromScan(scan, format, compression, globalIndex, currentEntry.eventType);
+            const sourceId = `${currentEntry.eventType}-${format}-${compression}-${globalIndex}`;
+
+            localIndices[configPos] = localIdx + 1;
+            countInCurrentEntry++;
+            globalIndex++;
+
+            return {
+              value: { ...payload, 'sourceId': sourceId, 'eventType': currentEntry.eventType },
+              done: false,
+            };
           },
         };
       },

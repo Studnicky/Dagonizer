@@ -36,7 +36,6 @@ import { CartographerState } from './CartographerState.ts';
 import type { JourneyInsights } from './CartographerState.ts';
 import type { CartographerServices } from './CartographerServices.ts';
 import { cartographerBundle, cartographerWorkersBundle } from './dag.ts';
-import { canonicalizeBundle } from './embedded-dags/CanonicalizeDAG.ts';
 import { gdprComplianceBundle } from './embedded-dags/GdprComplianceDAG.ts';
 import { geoResolveBundle } from './embedded-dags/GeoResolveDAG.ts';
 import { ingestSourceBundle } from './embedded-dags/IngestSourceDAG.ts';
@@ -177,7 +176,6 @@ if (useWorkers) {
   });
   // Sub-DAG bundles (needed for DAG validator; execution stays in the workers).
   dispatcher.registerBundle(geoResolveBundle);
-  dispatcher.registerBundle(canonicalizeBundle);
   dispatcher.registerBundle(orderEnrichmentBundle);
   dispatcher.registerBundle(gdprComplianceBundle);
   // ingestSourceBundle owns all unique ingest nodes + all format sub-DAGs.
@@ -187,7 +185,6 @@ if (useWorkers) {
 } else {
   dispatcher = new Dagonizer<CartographerState, CartographerServices>({ 'services': services });
   dispatcher.registerBundle(geoResolveBundle);
-  dispatcher.registerBundle(canonicalizeBundle);
   dispatcher.registerBundle(orderEnrichmentBundle);
   dispatcher.registerBundle(gdprComplianceBundle);
   // ingestSourceBundle owns all unique ingest nodes + all format sub-DAGs.

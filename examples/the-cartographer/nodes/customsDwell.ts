@@ -22,7 +22,9 @@ export class CustomsDwellNode extends ScalarNode<CartographerState, 'dwelled', C
   readonly 'outputs' = ['dwelled'] as const;
 
   protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'dwelled'>> {
-    state.customsDwellHours = Customs.dwellHours(state.canonical.body.customsStatus);
+    const v = state.canonicalVariant;
+    const customsStatus = v.eventType === 'customs-event' ? v.body.customsStatus : '';
+    state.customsDwellHours = Customs.dwellHours(customsStatus);
     return NodeOutputBuilder.of('dwelled');
   }
 }

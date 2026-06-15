@@ -23,16 +23,15 @@ import { computed, nextTick, onMounted, ref } from 'vue';
 import { CartographerState } from '../../../../examples/the-cartographer/CartographerState.ts';
 import type { JourneyInsights, RegionInsights } from '../../../../examples/the-cartographer/CartographerState.ts';
 import type { CartographerServices } from '../../../../examples/the-cartographer/CartographerServices.ts';
-import { cartographerWorkersDAG, cartographerWorkersBundle, eventPipelineDAG } from '../../../../examples/the-cartographer/dag.ts';
-import { canonicalizeDAG, canonicalizeBundle } from '../../../../examples/the-cartographer/embedded-dags/CanonicalizeDAG.ts';
+import { cartographerWorkersDAG, cartographerWorkersBundle } from '../../../../examples/the-cartographer/dag.ts';
 import { ingestSourceDAG, ingestSourceBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestSourceDAG.ts';
 import { geoResolveDAG, geoResolveBundle } from '../../../../examples/the-cartographer/embedded-dags/GeoResolveDAG.ts';
 import { gdprComplianceDAG, gdprComplianceBundle } from '../../../../examples/the-cartographer/embedded-dags/GdprComplianceDAG.ts';
 import { orderEnrichmentDAG, orderEnrichmentBundle } from '../../../../examples/the-cartographer/embedded-dags/OrderEnrichmentDAG.ts';
 import { GeoResolvers } from '../../../../examples/the-cartographer/services/GeoResolvers.ts';
 import type { EnrichedShipment } from '../../../../examples/the-cartographer/entities/EnrichedShipment.ts';
-import type { CanonicalEvent } from '../../../../examples/the-cartographer/entities/CanonicalEvent.ts';
-import type { FeedConfig } from '../../../../examples/the-cartographer/services.ts';
+import type { CanonicalEventVariant } from '../../../../examples/the-cartographer/entities/CanonicalEvent.ts';
+import type { EventTypeConfig, FormatMix } from '../../../../examples/the-cartographer/services.ts';
 import { normalizeCsvDAG } from '../../../../examples/the-cartographer/embedded-dags/NormalizeCsvDAG.ts';
 import { normalizeJsonDAG } from '../../../../examples/the-cartographer/embedded-dags/NormalizeJsonDAG.ts';
 import { normalizeNdjsonDAG } from '../../../../examples/the-cartographer/embedded-dags/NormalizeNdjsonDAG.ts';
@@ -81,7 +80,7 @@ const feedContainerRef = ref<HTMLElement | null>(null);
 // Finished state snapshot (set after execution completes).
 const records = ref<EnrichedShipment[]>([]);
 /** Pre-stream canonical events captured in onFlowEnd (the before payloads). */
-const canonicalEvents = ref<CanonicalEvent[]>([]);
+const canonicalEvents = ref<CanonicalEventVariant[]>([]);
 const insightsMap = ref<Map<string, RegionInsights>>(new Map());
 const journeysMap = ref<Map<string, JourneyInsights>>(new Map());
 
@@ -91,111 +90,135 @@ const dagGraph = ref<InstanceType<typeof DagGraph> | null>(null);
 // embeddedDAG calls) to its DAG object so DagGraph can expand them.
 const embeddedDagRegistry = new Map([
   ['ingest-source',    ingestSourceDAG],
-  ['event-pipeline',   eventPipelineDAG],
   ['normalize-csv',    normalizeCsvDAG],
   ['normalize-json',   normalizeJsonDAG],
   ['normalize-ndjson', normalizeNdjsonDAG],
   ['normalize-yaml',   normalizeYamlDAG],
   ['geo-resolve',      geoResolveDAG],
-  ['canonicalize',     canonicalizeDAG],
   ['order-enrichment', orderEnrichmentDAG],
   ['gdpr-compliance',  gdprComplianceDAG],
 ]);
 
 // ── Feed configuration ───────────────────────────────────────────────────────
 
-/** Per-format row type: mirrors FeedConfig entry but mutable for the UI. */
-interface FeedRow {
-  format: 'csv' | 'json' | 'ndjson' | 'yaml';
-  compression: 'none' | 'gzip';
+/** Per-event-type row (mutable UI state). */
+interface TypeRow {
+  eventType: CanonicalEventVariant['eventType'];
   count: number;
 }
 
-/** Sample presets for quick-pick. */
-interface FeedPreset {
-  label: string;
-  rows: FeedRow[];
+/** A single global format-mix row (shared across all event types). */
+interface FormatMixRow {
+  format: 'csv' | 'json' | 'ndjson' | 'yaml';
+  compression: 'none' | 'gzip';
+  weight: number;
 }
 
-const PRESETS: readonly FeedPreset[] = [
+/** Sample presets for quick-pick. */
+interface TypePreset {
+  label: string;
+  rows: TypeRow[];
+}
+
+const PRESETS: readonly TypePreset[] = [
   {
-    label: 'Mixed (default)',
+    label: 'Balanced',
     rows: [
-      { format: 'json',   compression: 'none', count: 6 },
-      { format: 'csv',    compression: 'gzip', count: 4 },
-      { format: 'ndjson', compression: 'gzip', count: 4 },
-      { format: 'yaml',   compression: 'none', count: 2 },
+      { eventType: 'position-ping',         count: 6  },
+      { eventType: 'facility-scan',         count: 5  },
+      { eventType: 'sensor-reading',        count: 4  },
+      { eventType: 'customs-event',         count: 3  },
+      { eventType: 'delivery-confirmation', count: 3  },
     ],
   },
   {
-    label: '1000 × ndjson.gz',
+    label: 'Sensor-heavy',
     rows: [
-      { format: 'json',   compression: 'none', count: 0 },
-      { format: 'csv',    compression: 'none', count: 0 },
-      { format: 'ndjson', compression: 'gzip', count: 1000 },
-      { format: 'yaml',   compression: 'none', count: 0 },
+      { eventType: 'position-ping',         count: 2  },
+      { eventType: 'facility-scan',         count: 2  },
+      { eventType: 'sensor-reading',        count: 15 },
+      { eventType: 'customs-event',         count: 1  },
+      { eventType: 'delivery-confirmation', count: 1  },
     ],
   },
   {
-    label: 'CSV only (gzip)',
+    label: 'Customs-heavy',
     rows: [
-      { format: 'json',   compression: 'none', count: 0 },
-      { format: 'csv',    compression: 'gzip', count: 200 },
-      { format: 'ndjson', compression: 'none', count: 0 },
-      { format: 'yaml',   compression: 'none', count: 0 },
+      { eventType: 'position-ping',         count: 2  },
+      { eventType: 'facility-scan',         count: 3  },
+      { eventType: 'sensor-reading',        count: 2  },
+      { eventType: 'customs-event',         count: 12 },
+      { eventType: 'delivery-confirmation', count: 2  },
     ],
   },
   {
-    label: 'JSON only',
+    label: '100 × position',
     rows: [
-      { format: 'json',   compression: 'none', count: 200 },
-      { format: 'csv',    compression: 'none', count: 0 },
-      { format: 'ndjson', compression: 'none', count: 0 },
-      { format: 'yaml',   compression: 'none', count: 0 },
+      { eventType: 'position-ping',         count: 100 },
+      { eventType: 'facility-scan',         count: 0   },
+      { eventType: 'sensor-reading',        count: 0   },
+      { eventType: 'customs-event',         count: 0   },
+      { eventType: 'delivery-confirmation', count: 0   },
     ],
   },
   {
-    label: 'YAML',
+    label: 'All types (1k)',
     rows: [
-      { format: 'json',   compression: 'none', count: 0 },
-      { format: 'csv',    compression: 'none', count: 0 },
-      { format: 'ndjson', compression: 'none', count: 0 },
-      { format: 'yaml',   compression: 'none', count: 100 },
-    ],
-  },
-  {
-    label: 'All gzipped',
-    rows: [
-      { format: 'json',   compression: 'gzip', count: 50 },
-      { format: 'csv',    compression: 'gzip', count: 50 },
-      { format: 'ndjson', compression: 'gzip', count: 50 },
-      { format: 'yaml',   compression: 'gzip', count: 50 },
+      { eventType: 'position-ping',         count: 200 },
+      { eventType: 'facility-scan',         count: 200 },
+      { eventType: 'sensor-reading',        count: 200 },
+      { eventType: 'customs-event',         count: 200 },
+      { eventType: 'delivery-confirmation', count: 200 },
     ],
   },
 ];
 
-const feedRows = ref<FeedRow[]>([
-  { format: 'json',   compression: 'none', count: 6 },
-  { format: 'csv',    compression: 'gzip', count: 4 },
-  { format: 'ndjson', compression: 'gzip', count: 4 },
-  { format: 'yaml',   compression: 'none', count: 2 },
+const typeRows = ref<TypeRow[]>([
+  { eventType: 'position-ping',         count: 6 },
+  { eventType: 'facility-scan',         count: 5 },
+  { eventType: 'sensor-reading',        count: 4 },
+  { eventType: 'customs-event',         count: 3 },
+  { eventType: 'delivery-confirmation', count: 3 },
 ]);
 
-const totalFeedEvents = computed(() =>
-  feedRows.value.reduce((sum, r) => sum + r.count, 0),
+const formatMixRows = ref<FormatMixRow[]>([
+  { format: 'json',   compression: 'none', weight: 3 },
+  { format: 'csv',    compression: 'none', weight: 2 },
+  { format: 'ndjson', compression: 'gzip', weight: 2 },
+  { format: 'yaml',   compression: 'none', weight: 1 },
+]);
+
+const totalTypeEvents = computed(() =>
+  typeRows.value.reduce((sum, r) => sum + r.count, 0),
 );
 
-function applyPreset(preset: FeedPreset): void {
-  feedRows.value = preset.rows.map((r) => ({ ...r }));
+/** When true, the run uses the lazy generative streamer (up to 1,000,000 events). */
+const streamingEnabled = ref(false);
+/** Total events for the generative streamer; clamped to [1, 1,000,000] at run time. */
+const streamCountInput = ref(100000);
+
+/** Maximum number of feed lines held in DOM at any time (virtualization). */
+const MAX_VISIBLE_FEED = 200;
+
+/** True total of records appended across the entire run (never trimmed). */
+const processedCount = ref(0);
+
+function applyPreset(preset: TypePreset): void {
+  typeRows.value = preset.rows.map((r) => ({ ...r }));
 }
 
-function clampCount(row: FeedRow): void {
+function clampTypeCount(row: TypeRow): void {
   const v = Math.floor(row.count);
-  row.count = Number.isNaN(v) ? 0 : Math.max(0, Math.min(1000, v));
+  row.count = Number.isNaN(v) ? 0 : Math.max(0, Math.min(10000, v));
 }
 
-function toggleCompression(row: FeedRow): void {
+function toggleFormatCompression(row: FormatMixRow): void {
   row.compression = row.compression === 'none' ? 'gzip' : 'none';
+}
+
+function clampWeight(row: FormatMixRow): void {
+  const v = Math.floor(row.weight);
+  row.weight = Number.isNaN(v) ? 1 : Math.max(1, Math.min(100, v));
 }
 
 // ── Abort control ────────────────────────────────────────────────────────────
@@ -235,7 +258,7 @@ const savings = computed(() => {
  */
 const aboxEntities = computed<AboxEntity[]>(() => {
   // Build a lookup map keyed by "shipmentId::scanSeq" for O(1) pairing.
-  const beforeMap = new Map<string, CanonicalEvent>();
+  const beforeMap = new Map<string, CanonicalEventVariant>();
   for (const ev of canonicalEvents.value) {
     const key = `${ev.shipmentId}::${ev.body.scanSeq}`;
     // If duplicates exist, prefer the one whose epochMs matches (first wins).
@@ -282,13 +305,15 @@ const leftTabs = computed(() => [
   {
     'key': 'stream',
     'label': 'Stream',
-    'badge': isRunning.value ? 'live' : (streamFeed.value.length > 0 ? String(streamFeed.value.length) : ''),
+    'badge': isRunning.value ? 'live' : (processedCount.value > 0 ? String(processedCount.value) : ''),
     'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default',
   },
   {
     'key': 'config',
     'label': 'Config',
-    'badge': String(totalFeedEvents.value),
+    'badge': streamingEnabled.value
+      ? String(Math.min(1_000_000, Math.max(1, Math.floor(streamCountInput.value))))
+      : String(totalTypeEvents.value),
     'tone': 'default' as const,
   },
   {
@@ -351,6 +376,7 @@ async function run(): Promise<void> {
   insightsMap.value = new Map();
   journeysMap.value = new Map();
   streamFeed.value = [];
+  processedCount.value = 0;
   progressPct.value = 0;
   totalEvents = 0;
 
@@ -386,15 +412,18 @@ async function run(): Promise<void> {
         const currentCount = state.records.length;
         if (currentCount > prevRecordCount) {
           const newRecords = state.records.slice(prevRecordCount, currentCount);
-          for (const rec of newRecords) {
-            streamFeed.value = [...streamFeed.value, {
-              'shipmentId':  rec.shipmentId,
-              'scanSeq':     rec.scanSeq,
-              'status':      rec.status,
-              'continent':   rec.continent,
-              'redacted':    rec.redactionApplied,
-            }];
-          }
+          const newLines = newRecords.map((rec) => ({
+            'shipmentId':  rec.shipmentId,
+            'scanSeq':     rec.scanSeq,
+            'status':      rec.status,
+            'continent':   rec.continent,
+            'redacted':    rec.redactionApplied,
+          }));
+          processedCount.value += newLines.length;
+          const combined = [...streamFeed.value, ...newLines];
+          streamFeed.value = combined.length > MAX_VISIBLE_FEED
+            ? combined.slice(-MAX_VISIBLE_FEED)
+            : combined;
           prevRecordCount = currentCount;
 
           // Update progress percentage.
@@ -428,14 +457,36 @@ async function run(): Promise<void> {
 
     // Bundle registration order: sub-DAGs first so their names resolve.
     dispatcher.registerBundle(geoResolveBundle);
-    dispatcher.registerBundle(canonicalizeBundle);
     dispatcher.registerBundle(orderEnrichmentBundle);
     dispatcher.registerBundle(gdprComplianceBundle);
     dispatcher.registerBundle(ingestSourceBundle);
     dispatcher.registerBundle(cartographerWorkersBundle);
 
     const state = new CartographerState();
-    state.eventCount = 16; // browser-friendly: small N so the demo completes quickly
+
+    // Build the EventTypeConfig from the per-type rows and the global format mix.
+    const sharedFormatMix: FormatMix = formatMixRows.value.map((r) => ({
+      'format':      r.format,
+      'compression': r.compression,
+      'weight':      r.weight,
+    }));
+
+    state.eventConfig = typeRows.value.map((r) => ({
+      'eventType':  r.eventType,
+      'count':      r.count,
+      'formatMix':  sharedFormatMix,
+    }));
+
+    state.useStreamingSource = streamingEnabled.value;
+    if (streamingEnabled.value) {
+      const requested = Math.floor(streamCountInput.value);
+      state.streamCount = Math.min(1_000_000, Math.max(1, Number.isNaN(requested) ? 1 : requested));
+    } else {
+      state.streamCount = 0;
+    }
+    // eventCount is not the finite-path driver anymore; derive from per-type sum
+    // for checkpoint/progress hints.
+    state.eventCount = totalTypeEvents.value > 0 ? totalTypeEvents.value : 21;
 
     activeAbortController = new AbortController();
 
@@ -464,6 +515,7 @@ function reset(): void {
   journeysMap.value = new Map();
   trace.value = [];
   streamFeed.value = [];
+  processedCount.value = 0;
   progressPct.value = 0;
   totalEvents = 0;
   isDone.value = false;
@@ -538,6 +590,139 @@ onMounted(() => {
                   </template>
                 </div>
               </div>
+            </div>
+          </template>
+
+          <!-- Config tab: feed preset picker, per-format table, streaming controls -->
+          <template #config>
+            <div class="cr-left-pane cr-config-pane">
+
+              <!-- Preset picker -->
+              <div class="cr-config-section">
+                <div class="cr-section-head">Presets</div>
+                <div class="cr-preset-row">
+                  <button
+                    v-for="preset in PRESETS"
+                    :key="preset.label"
+                    type="button"
+                    class="cr-btn cr-btn--preset"
+                    @click="applyPreset(preset)"
+                  >{{ preset.label }}</button>
+                </div>
+              </div>
+
+              <!-- Per-event-type table -->
+              <div class="cr-config-section">
+                <div class="cr-section-head">Event types</div>
+                <table class="cr-table cr-table--compact cr-feed-table">
+                  <thead>
+                    <tr>
+                      <th>Event Type</th>
+                      <th>Count (0–10000)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="row in typeRows" :key="row.eventType">
+                      <td class="cr-feed-fmt mono">{{ row.eventType }}</td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          max="10000"
+                          class="cr-count-input"
+                          v-model.number="row.count"
+                          @change="clampTypeCount(row)"
+                        />
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Format mix (independent axis) -->
+              <div class="cr-config-section">
+                <div class="cr-section-head">Format mix (shared across types)</div>
+                <table class="cr-table cr-table--compact cr-feed-table">
+                  <thead>
+                    <tr>
+                      <th>Format</th>
+                      <th>Compression</th>
+                      <th>Weight (1–100)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="row in formatMixRows" :key="row.format">
+                      <td class="cr-feed-fmt mono">{{ row.format }}</td>
+                      <td>
+                        <button
+                          type="button"
+                          :class="['cr-btn', 'cr-btn--compression', row.compression === 'gzip' ? 'cr-btn--compression-active' : '']"
+                          @click="toggleFormatCompression(row)"
+                        >{{ row.compression }}</button>
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          class="cr-count-input"
+                          v-model.number="row.weight"
+                          @change="clampWeight(row)"
+                        />
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Streaming toggle -->
+              <div class="cr-config-section">
+                <div class="cr-section-head">Source mode</div>
+                <label class="cr-toggle-label">
+                  <input
+                    type="checkbox"
+                    class="cr-toggle-check"
+                    v-model="streamingEnabled"
+                  />
+                  <span class="cr-toggle-text">Generative streaming source (lazy, up to 1,000,000 events)</span>
+                </label>
+              </div>
+
+              <!-- Streaming count (shown when streaming is enabled) -->
+              <div v-if="streamingEnabled" class="cr-config-section">
+                <div class="cr-section-head">Total events</div>
+                <div class="cr-stream-count-row">
+                  <input
+                    type="number"
+                    min="1"
+                    max="1000000"
+                    class="cr-count-input cr-count-input--wide"
+                    v-model.number="streamCountInput"
+                  />
+                  <button type="button" class="cr-btn cr-btn--quickpick" @click="streamCountInput = 10000">10k</button>
+                  <button type="button" class="cr-btn cr-btn--quickpick" @click="streamCountInput = 100000">100k</button>
+                  <button type="button" class="cr-btn cr-btn--quickpick" @click="streamCountInput = 1000000">1M</button>
+                </div>
+              </div>
+
+              <!-- Summary line -->
+              <div class="cr-config-summary">
+                <template v-if="!streamingEnabled">
+                  Finite feed: <span class="cr-config-count">{{ totalTypeEvents }}</span> events across {{ typeRows.filter(r => r.count > 0).length }} type(s)
+                </template>
+                <template v-else>
+                  Streaming: <span class="cr-config-count">{{ Math.min(1000000, Math.max(1, Math.floor(streamCountInput))) }}</span> events
+                </template>
+              </div>
+
+              <!-- Helper note for streaming mode -->
+              <div v-if="streamingEnabled" class="cr-config-note">
+                In streaming mode the format-mix weights control format selection across all event types.
+                The live feed is virtualized — only the most recent {{ MAX_VISIBLE_FEED }} lines are shown in the DOM,
+                so a 1,000,000-event run does not freeze the tab. The Stream tab badge shows the true
+                processed count.
+              </div>
+
             </div>
           </template>
 
@@ -946,6 +1131,174 @@ onMounted(() => {
   padding: 0.05rem 0.3rem;
   border-radius: 3px;
   background: rgba(212, 166, 73, 0.12);
+}
+
+/* ── Config pane ────────────────────────────────────────────────────────── */
+.cr-config-pane {
+  gap: 1rem;
+}
+
+.cr-config-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.cr-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.cr-btn--preset {
+  padding: 0.28rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  background: transparent;
+  color: var(--vp-c-text-2);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+  font-family: var(--vp-font-family-mono);
+}
+
+.cr-btn--preset:hover {
+  border-color: var(--dagonizer-brand);
+  color: var(--dagonizer-brand);
+  background: rgba(34, 232, 255, 0.07);
+}
+
+.cr-feed-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.cr-feed-fmt {
+  width: 6rem;
+  color: var(--dagonizer-brand);
+  font-size: 0.78rem;
+}
+
+.cr-btn--compression {
+  padding: 0.18rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--vp-c-text-3);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: var(--vp-font-family-mono);
+  transition: border-color 0.1s ease, color 0.1s ease, background 0.1s ease;
+}
+
+.cr-btn--compression-active {
+  border-color: var(--dagonizer-brand3);
+  color: var(--dagonizer-brand3);
+  background: rgba(212, 166, 73, 0.1);
+}
+
+.cr-btn--compression:hover {
+  border-color: var(--dagonizer-brand);
+  color: var(--dagonizer-brand);
+}
+
+.cr-count-input {
+  width: 5rem;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.78rem;
+  font-family: var(--vp-font-family-mono);
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  appearance: textfield;
+}
+
+.cr-count-input:focus {
+  outline: none;
+  border-color: var(--dagonizer-brand);
+}
+
+.cr-count-input--wide {
+  width: 8rem;
+}
+
+.cr-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.cr-toggle-check {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  accent-color: var(--dagonizer-brand);
+  cursor: pointer;
+}
+
+.cr-toggle-text {
+  font-size: 0.82rem;
+  color: var(--vp-c-text-1);
+  line-height: 1.45;
+}
+
+.cr-stream-count-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.cr-btn--quickpick {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: transparent;
+  color: var(--vp-c-text-3);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--vp-font-family-mono);
+  transition: border-color 0.1s ease, color 0.1s ease;
+}
+
+.cr-btn--quickpick:hover {
+  border-color: var(--dagonizer-brand);
+  color: var(--dagonizer-brand);
+}
+
+.cr-config-summary {
+  font-size: 0.8rem;
+  color: var(--vp-c-text-3);
+  font-family: var(--vp-font-family-mono);
+  padding: 0.45rem 0.6rem;
+  background: var(--vp-c-bg);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 5px;
+}
+
+.cr-config-count {
+  color: var(--dagonizer-brand);
+  font-weight: 700;
+}
+
+.cr-config-note {
+  font-size: 0.76rem;
+  color: var(--vp-c-text-3);
+  line-height: 1.55;
+  padding: 0.5rem 0.65rem;
+  border-left: 2px solid var(--dagonizer-brand);
+  background: rgba(34, 232, 255, 0.04);
+  border-radius: 0 4px 4px 0;
 }
 
 /* ── Left pane: insights ───────────────────────────────────────────────── */

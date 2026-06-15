@@ -22,8 +22,10 @@ export class ColdChainCheckNode extends ScalarNode<CartographerState, 'checked',
   readonly 'outputs' = ['checked'] as const;
 
   protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'checked'>> {
-    const b = state.canonical.body;
-    state.coldChainBreach = ColdChain.breached(b.tempC, b.shockG);
+    const v = state.canonicalVariant;
+    const tempC = v.eventType === 'sensor-reading' ? v.body.tempC : 0;
+    const shockG = v.eventType === 'sensor-reading' ? v.body.shockG : 0;
+    state.coldChainBreach = ColdChain.breached(tempC, shockG);
     return NodeOutputBuilder.of('checked');
   }
 }

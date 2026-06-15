@@ -25,7 +25,13 @@
  * delivery; un-acked items are reprocessed from the inbox, not re-read from source.
  */
 
-import type { CanonicalEvent } from './entities/CanonicalEvent.ts';
+import { CanonicalEventVariantBuilder } from './entities/CanonicalEvent.ts';
+import type { CanonicalEventVariant } from './entities/CanonicalEvent.ts';
+import type { PositionPingEvent } from './entities/events/PositionPingEvent.ts';
+import type { FacilityScanEvent } from './entities/events/FacilityScanEvent.ts';
+import type { SensorReadingEvent } from './entities/events/SensorReadingEvent.ts';
+import type { CustomsEvent } from './entities/events/CustomsEvent.ts';
+import type { DeliveryConfirmationEvent } from './entities/events/DeliveryConfirmationEvent.ts';
 import type { GeoCandidate } from './entities/GeoCandidate.ts';
 import type { ResolvedGeo } from './entities/ResolvedGeo.ts';
 import type { DeliveryEstimate } from './entities/DeliveryEstimate.ts';
@@ -38,7 +44,7 @@ import type { RawShipmentEvent } from './entities/RawShipmentEvent.ts';
 import type { ShipmentEvent } from './entities/ShipmentEvent.ts';
 import type { ShippingQuote } from './entities/ShippingQuote.ts';
 import type { SourcePayload } from './entities/SourcePayload.ts';
-import type { FeedConfig } from './services.ts';
+import type { EventTypeConfig } from './services.ts';
 
 import { NodeStateBase } from '@noocodex/dagonizer';
 import type { JsonObject } from '@noocodex/dagonizer/types';
@@ -113,21 +119,22 @@ export class CartographerState extends NodeStateBase {
   eventCount: number = 200;
 
   /**
-   * Per-format feed configuration driving buildFromConfig. Each entry specifies
-   * format, compression, and count; the total across entries is the effective
-   * event count for the pipeline run.
+   * Per-event-type feed configuration driving buildTypedFeed / streamTyped. Each
+   * entry generates entry.count typed scans of its eventType, encoded across the
+   * formats in its formatMix.
    */
-  feedConfig: FeedConfig = [
-    { 'format': 'json',   'compression': 'none', 'count': 6 },
-    { 'format': 'csv',    'compression': 'gzip', 'count': 4 },
-    { 'format': 'ndjson', 'compression': 'gzip', 'count': 4 },
-    { 'format': 'yaml',   'compression': 'none', 'count': 2 },
+  eventConfig: EventTypeConfig = [
+    { 'eventType': 'position-ping',         'count': 6, 'formatMix': [{ 'format': 'json',   'compression': 'none', 'weight': 2 }, { 'format': 'yaml', 'compression': 'gzip', 'weight': 1 }] },
+    { 'eventType': 'facility-scan',         'count': 5, 'formatMix': [{ 'format': 'csv',    'compression': 'none', 'weight': 2 }, { 'format': 'json', 'compression': 'gzip', 'weight': 1 }] },
+    { 'eventType': 'sensor-reading',        'count': 4, 'formatMix': [{ 'format': 'ndjson', 'compression': 'gzip', 'weight': 2 }, { 'format': 'ndjson', 'compression': 'none', 'weight': 1 }] },
+    { 'eventType': 'customs-event',         'count': 3, 'formatMix': [{ 'format': 'json',   'compression': 'none', 'weight': 2 }, { 'format': 'csv',  'compression': 'none', 'weight': 1 }] },
+    { 'eventType': 'delivery-confirmation', 'count': 3, 'formatMix': [{ 'format': 'json',   'compression': 'none', 'weight': 2 }, { 'format': 'csv',  'compression': 'gzip', 'weight': 1 }] },
   ];
 
   /**
    * When true, `seedEvents` sets `sources` to an `AsyncIterable<SourcePayload>`
-   * from `EventStreamSource.stream(feedConfig, streamCount)` rather than
-   * awaiting a fully materialised array from `Sources.buildFromConfig`. The
+   * from `EventStreamSource.streamTyped(eventConfig, streamCount)` rather than
+   * awaiting a fully materialised array from `Sources.buildTypedFeed`. The
    * engine's scatter reads the async iterable with backpressure. Defaults to
    * false (materialised array path).
    */
@@ -142,11 +149,11 @@ export class CartographerState extends NodeStateBase {
 
   /**
    * The multi-format source feeds, seeded by the seed phase node. Each is a
-   * `{ sourceId, format, mappingKey, kind, payload }` — a different on-the-wire
-   * encoding (JSON / CSV / gzip NDJSON) of a partition of the raw scan feed.
+   * `{ sourceId, format, mappingKey, eventType, payload }` — a different on-the-wire
+   * encoding (JSON / CSV / gzip NDJSON) of a typed scan from the event feed.
    *
    * When `useStreamingSource` is true this field holds an
-   * `AsyncIterable<SourcePayload>` from `EventStreamSource.stream()` rather
+   * `AsyncIterable<SourcePayload>` from `EventStreamSource.streamTyped()` rather
    * than a materialised array. The engine's scatter accepts either form
    * transparently. Snapshot/restore serialises the array path only; the async
    * iterable is re-seeded by the pre-phase node on resume.
@@ -159,14 +166,14 @@ export class CartographerState extends NodeStateBase {
    * this is one bucket per source. The `merge-events` node flattens it into the
    * unified `canonicalEvents` collection.
    */
-  ingestBuckets: CanonicalEvent[][] = [];
+  ingestBuckets: CanonicalEventVariant[][] = [];
 
   /**
    * The unified canonical event collection. Every source's decoded events are
    * flattened into this one array (from `ingestBuckets`); the enrichment scatter
    * then reads it.
    */
-  canonicalEvents: CanonicalEvent[] = [];
+  canonicalEvents: CanonicalEventVariant[] = [];
 
   // ── Per-source ingest slots (used inside a source's ingest sub-DAG clone) ──
   /** The source feed currently being ingested (set from `sources` by select). */
@@ -189,53 +196,13 @@ export class CartographerState extends NodeStateBase {
   mappedRecords: Array<Record<string, unknown>> = [];
 
   /** Canonical events validated from this source (after coerce-types + validate-event). */
-  ingestedEvents: CanonicalEvent[] = [];
+  ingestedEvents: CanonicalEventVariant[] = [];
 
-  /** The single canonical event under enrichment in a scatter clone (set by parse). */
-  canonical: CanonicalEvent = {
-    'shipmentId':        '',
-    'eventId':           '',
-    'epochMs':           0,
-    'eventType':         'position-ping',
-    'sourceId':          '',
-    'sourceFormat':      'json',
-    'sourceCompression': 'none',
-    'body': {
-      'scanSeq':          0,
-      'latitude':         0,
-      'longitude':        0,
-      'ipAddress':        '',
-      'legFromLat':       0,
-      'legFromLng':       0,
-      'originLat':        0,
-      'originLng':        0,
-      'destLat':          0,
-      'destLng':          0,
-      'carrier':          '',
-      'facilityId':       '',
-      'status':           '',
-      'weight':           0,
-      'weightUnit':       'kg',
-      'lineItems':        [],
-      'rawTimestamp':          '',
-      'rawDispatchAt':         '',
-      'rawPromisedDeliveryAt': '',
-      'disruptionReason':      '',
-      'tempC':            0,
-      'humidityPct':      0,
-      'shockG':           0,
-      'customsStatus':    '',
-      'delivered':        false,
-      'recipientName':    '',
-      'recipientEmail':   '',
-      'recipientPhone':   '',
-      'recipientAddress': '',
-      'recipientCountry': '',
-      'marketingConsent': false,
-      'lawfulBasis':      'contract',
-      'specialCategory':  'none',
-    },
-  };
+  /** The single canonical event (geo/consent mirror) under enrichment in a scatter clone; set/updated by parseVariant. */
+  canonical: CanonicalEventVariant = CanonicalEventVariantBuilder.from({});
+
+  /** The discriminated per-type variant under enrichment (typed path; set by parseVariant). The old fat path uses `canonical`. */
+  canonicalVariant: CanonicalEventVariant = CanonicalEventVariantBuilder.from({});
 
   /** Enriched shipment records gathered from scatter clones. */
   records: EnrichedShipment[] = [];
@@ -483,7 +450,7 @@ export class CartographerState extends NodeStateBase {
   override clone(): this {
     const copy = super.clone(); // new Constructor() + _metadata copy from base
     copy.eventCount = this.eventCount;
-    copy.feedConfig  = this.feedConfig.map((e) => ({ ...e })) as FeedConfig;
+    copy.eventConfig = this.eventConfig.map((e) => ({ 'eventType': e.eventType, 'count': e.count, 'formatMix': e.formatMix.map((m) => ({ ...m })) }));
     // AsyncIterable sources are shared by reference — the engine iterates the
     // parent's source before cloning for scatters, so this is safe. Array
     // sources are shallow-copied (each payload is a value object).
@@ -492,8 +459,8 @@ export class CartographerState extends NodeStateBase {
       : this.sources;
     copy.useStreamingSource = this.useStreamingSource;
     copy.streamCount = this.streamCount;
-    copy.ingestBuckets = this.ingestBuckets.map((bucket) => bucket.map((e) => CartographerState.cloneCanonical(e)));
-    copy.canonicalEvents = this.canonicalEvents.map((e) => CartographerState.cloneCanonical(e));
+    copy.ingestBuckets = this.ingestBuckets.map((bucket) => bucket.map((e) => CartographerState.cloneVariant(e)));
+    copy.canonicalEvents = this.canonicalEvents.map((e) => CartographerState.cloneVariant(e));
     copy.records    = [...this.records];
     copy.insights   = new Map(this.insights);
     copy.journeys   = new Map(this.journeys);
@@ -502,8 +469,9 @@ export class CartographerState extends NodeStateBase {
     copy.decodedText    = this.decodedText;
     copy.parsedRecords  = this.parsedRecords.map((r) => ({ ...r }));
     copy.mappedRecords  = this.mappedRecords.map((r) => ({ ...r }));
-    copy.ingestedEvents = this.ingestedEvents.map((e) => CartographerState.cloneCanonical(e));
-    copy.canonical      = CartographerState.cloneCanonical(this.canonical);
+    copy.ingestedEvents = this.ingestedEvents.map((e) => CartographerState.cloneVariant(e));
+    copy.canonical        = CartographerState.cloneVariant(this.canonical);
+    copy.canonicalVariant = CartographerState.cloneVariant(this.canonicalVariant);
 
     copy.raw = {
       ...this.raw,
@@ -566,18 +534,19 @@ export class CartographerState extends NodeStateBase {
   protected override snapshotData(): JsonObject {
     return {
       'eventCount': this.eventCount,
-      'feedConfig': this.feedConfig.map((e) => ({ 'format': e.format, 'compression': e.compression, 'count': e.count })),
+      'eventConfig': this.eventConfig.map((e) => ({ 'eventType': e.eventType, 'count': e.count, 'formatMix': e.formatMix.map((m) => ({ 'format': m.format, 'compression': m.compression, 'weight': m.weight })) })),
       // AsyncIterable sources are not checkpointable. The pre-phase node
-      // re-seeds them on resume using feedConfig + streamCount. Snapshot as
+      // re-seeds them on resume using eventConfig + streamCount. Snapshot as
       // empty array so restoreData leaves sources = [] (re-seeded by pre-phase).
       'sources':    Array.isArray(this.sources)
         ? this.sources.map((s) => CartographerState.sourceToJson(s))
         : [],
       'useStreamingSource': this.useStreamingSource,
       'streamCount': this.streamCount,
-      'ingestBuckets': this.ingestBuckets.map((bucket) => bucket.map((e) => CartographerState.canonicalToJson(e))),
-      'canonicalEvents': this.canonicalEvents.map((e) => CartographerState.canonicalToJson(e)),
-      'canonical':  CartographerState.canonicalToJson(this.canonical),
+      'ingestBuckets': this.ingestBuckets.map((bucket) => bucket.map((e) => CartographerState.variantToJson(e))),
+      'canonicalEvents': this.canonicalEvents.map((e) => CartographerState.variantToJson(e)),
+      'canonical':        CartographerState.variantToJson(this.canonical),
+      'canonicalVariant': CartographerState.variantToJson(this.canonicalVariant),
       'records':    this.records.map((r) => CartographerState.enrichedToJson(r)),
       'raw':        CartographerState.rawToJson(this.raw),
       'normalized': CartographerState.normalizedToJson(this.normalized),
@@ -649,32 +618,45 @@ export class CartographerState extends NodeStateBase {
     if (typeof snap['eventCount'] === 'number') this.eventCount = snap['eventCount'];
     if (typeof snap['useStreamingSource'] === 'boolean') this.useStreamingSource = snap['useStreamingSource'];
     if (typeof snap['streamCount'] === 'number') this.streamCount = snap['streamCount'];
-    if (Array.isArray(snap['feedConfig'])) {
-      const loaded: FeedConfig = (snap['feedConfig'] as unknown[])
-        .map((e) => CartographerState.asObject(e as unknown))
-        .filter((e): e is Record<string, unknown> => e !== null)
-        .map((e): { readonly format: 'csv' | 'json' | 'ndjson' | 'yaml'; readonly compression: 'none' | 'gzip'; readonly count: number } => ({
-          'format':      (e['format'] === 'csv' || e['format'] === 'json' || e['format'] === 'ndjson' || e['format'] === 'yaml') ? e['format'] : 'json',
-          'compression': (e['compression'] === 'none' || e['compression'] === 'gzip') ? e['compression'] : 'none',
-          'count':       typeof e['count'] === 'number' ? e['count'] : 0,
-        }));
-      if (loaded.length > 0) this.feedConfig = loaded;
-    }
     if (Array.isArray(snap['sources'])) {
       this.sources = snap['sources'].map((s) => CartographerState.sourceFromJson(CartographerState.asObject(s) ?? {}));
     }
     if (Array.isArray(snap['ingestBuckets'])) {
       this.ingestBuckets = snap['ingestBuckets'].map((bucket) =>
         Array.isArray(bucket)
-          ? bucket.map((e) => CartographerState.canonicalFromJson(CartographerState.asObject(e) ?? {}))
+          ? bucket.map((e) => CartographerState.variantFromJson(CartographerState.asObject(e) ?? {}))
           : [],
       );
     }
     if (Array.isArray(snap['canonicalEvents'])) {
-      this.canonicalEvents = snap['canonicalEvents'].map((e) => CartographerState.canonicalFromJson(CartographerState.asObject(e) ?? {}));
+      this.canonicalEvents = snap['canonicalEvents'].map((e) => CartographerState.variantFromJson(CartographerState.asObject(e) ?? {}));
+    }
+    if (Array.isArray(snap['eventConfig'])) {
+      const loadedEvtCfg: EventTypeConfig = (snap['eventConfig'] as unknown[])
+        .map((e) => CartographerState.asObject(e))
+        .filter((e): e is Record<string, unknown> => e !== null)
+        .map((e) => {
+          const mixRaw = Array.isArray(e['formatMix']) ? e['formatMix'] : [];
+          const formatMix = mixRaw
+            .map((m) => CartographerState.asObject(m))
+            .filter((m): m is Record<string, unknown> => m !== null)
+            .map((m): { readonly format: 'csv' | 'json' | 'ndjson' | 'yaml'; readonly compression: 'none' | 'gzip'; readonly weight: number } => ({
+              'format':      CartographerState.sourceFormat(m['format']),
+              'compression': m['compression'] === 'gzip' ? 'gzip' : 'none',
+              'weight':      CartographerState.num(m['weight'], 1),
+            }));
+          return {
+            'eventType': CartographerState.canonicalEventType(e['eventType']),
+            'count':     CartographerState.num(e['count']),
+            'formatMix': formatMix,
+          };
+        });
+      if (loadedEvtCfg.length > 0) this.eventConfig = loadedEvtCfg;
     }
     const canObj = CartographerState.asObject(snap['canonical']);
-    if (canObj !== null) this.canonical = CartographerState.canonicalFromJson(canObj);
+    if (canObj !== null) this.canonical = CartographerState.variantFromJson(canObj);
+    const cvObj = CartographerState.asObject(snap['canonicalVariant']);
+    if (cvObj !== null) this.canonicalVariant = CartographerState.variantFromJson(cvObj);
     if (Array.isArray(snap['records'])) {
       this.records = snap['records'].map((r) => CartographerState.enrichedFromJson(CartographerState.asObject(r) ?? {}));
     }
@@ -792,8 +774,8 @@ export class CartographerState extends NodeStateBase {
     return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
   }
 
-  // ── CanonicalEvent / SourcePayload narrowers + reconstruction ──────────────
-  private static canonicalEventType(value: unknown): CanonicalEvent['eventType'] {
+  // ── CanonicalEventVariant / SourcePayload narrowers + reconstruction ──────────────
+  private static canonicalEventType(value: unknown): CanonicalEventVariant['eventType'] {
     return value === 'position-ping' || value === 'facility-scan' || value === 'sensor-reading'
       || value === 'customs-event' || value === 'delivery-confirmation'
       ? value
@@ -804,140 +786,269 @@ export class CartographerState extends NodeStateBase {
     return value === 'csv' || value === 'json' || value === 'ndjson' || value === 'yaml' ? value : 'json';
   }
 
-  private static canonicalSourceFormat(value: unknown): CanonicalEvent['sourceFormat'] {
+  private static canonicalSourceFormat(value: unknown): CanonicalEventVariant['sourceFormat'] {
     return value === 'csv' || value === 'json' || value === 'ndjson' || value === 'yaml' ? value : 'json';
   }
 
-  private static canonicalSourceCompression(value: unknown): CanonicalEvent['sourceCompression'] {
+  private static canonicalSourceCompression(value: unknown): CanonicalEventVariant['sourceCompression'] {
     return value === 'none' || value === 'gzip' ? value : 'none';
   }
 
-  /** Deep-clone a CanonicalEvent (body + optional geo) for V8-stable copies. */
-  private static cloneCanonical(e: CanonicalEvent): CanonicalEvent {
-    const copy: CanonicalEvent = {
-      'shipmentId':        e.shipmentId,
-      'eventId':           e.eventId,
-      'epochMs':           e.epochMs,
-      'eventType':         e.eventType,
-      'sourceId':          e.sourceId,
-      'sourceFormat':      e.sourceFormat,
-      'sourceCompression': e.sourceCompression,
-      'body':              { ...e.body, 'lineItems': e.body.lineItems.map((li) => ({ ...li })) },
-    };
-    if (e.geo !== undefined) copy.geo = { ...e.geo };
-    if (e.consentHandled !== undefined) copy.consentHandled = e.consentHandled;
-    if (e.pii !== undefined) copy.pii = e.pii;
-    return copy;
+  /** Deep-clone a CanonicalEventVariant (switches on eventType to keep each member's exact shape). */
+  private static cloneVariant(v: CanonicalEventVariant): CanonicalEventVariant {
+    const envelope = {
+      'shipmentId':        v.shipmentId,
+      'eventId':           v.eventId,
+      'epochMs':           v.epochMs,
+      'sourceId':          v.sourceId,
+      'sourceFormat':      v.sourceFormat,
+      'sourceCompression': v.sourceCompression,
+    } as const;
+    let result: CanonicalEventVariant;
+    switch (v.eventType) {
+      case 'position-ping': {
+        const copy: PositionPingEvent = { ...envelope, 'eventType': 'position-ping', 'body': { ...v.body } };
+        if (v.geo !== undefined) copy.geo = { ...v.geo };
+        if (v.consentHandled !== undefined) copy.consentHandled = v.consentHandled;
+        if (v.pii !== undefined) copy.pii = v.pii;
+        result = copy;
+        break;
+      }
+      case 'facility-scan': {
+        const copy: FacilityScanEvent = { ...envelope, 'eventType': 'facility-scan', 'body': { ...v.body, 'lineItems': v.body.lineItems.map((li) => ({ ...li })) } };
+        if (v.geo !== undefined) copy.geo = { ...v.geo };
+        if (v.consentHandled !== undefined) copy.consentHandled = v.consentHandled;
+        if (v.pii !== undefined) copy.pii = v.pii;
+        result = copy;
+        break;
+      }
+      case 'sensor-reading': {
+        const copy: SensorReadingEvent = { ...envelope, 'eventType': 'sensor-reading', 'body': { ...v.body } };
+        if (v.geo !== undefined) copy.geo = { ...v.geo };
+        if (v.consentHandled !== undefined) copy.consentHandled = v.consentHandled;
+        if (v.pii !== undefined) copy.pii = v.pii;
+        result = copy;
+        break;
+      }
+      case 'customs-event': {
+        const copy: CustomsEvent = { ...envelope, 'eventType': 'customs-event', 'body': { ...v.body } };
+        if (v.geo !== undefined) copy.geo = { ...v.geo };
+        if (v.consentHandled !== undefined) copy.consentHandled = v.consentHandled;
+        if (v.pii !== undefined) copy.pii = v.pii;
+        result = copy;
+        break;
+      }
+      case 'delivery-confirmation': {
+        const copy: DeliveryConfirmationEvent = { ...envelope, 'eventType': 'delivery-confirmation', 'body': { ...v.body } };
+        if (v.geo !== undefined) copy.geo = { ...v.geo };
+        if (v.consentHandled !== undefined) copy.consentHandled = v.consentHandled;
+        if (v.pii !== undefined) copy.pii = v.pii;
+        result = copy;
+        break;
+      }
+    }
+    return result;
   }
 
-  private static canonicalToJson(e: CanonicalEvent): JsonObject {
-    const body: JsonObject = {
-      'scanSeq':          e.body.scanSeq,
-      'latitude':         e.body.latitude,
-      'longitude':        e.body.longitude,
-      'ipAddress':        e.body.ipAddress,
-      'legFromLat':       e.body.legFromLat,
-      'legFromLng':       e.body.legFromLng,
-      'originLat':        e.body.originLat,
-      'originLng':        e.body.originLng,
-      'destLat':          e.body.destLat,
-      'destLng':          e.body.destLng,
-      'carrier':          e.body.carrier,
-      'facilityId':       e.body.facilityId,
-      'status':           e.body.status,
-      'weight':           e.body.weight,
-      'weightUnit':       e.body.weightUnit,
-      'lineItems':        e.body.lineItems.map((li) => ({ 'productId': li.productId, 'quantity': li.quantity })),
-      'rawTimestamp':          e.body.rawTimestamp,
-      'rawDispatchAt':         e.body.rawDispatchAt,
-      'rawPromisedDeliveryAt': e.body.rawPromisedDeliveryAt,
-      'disruptionReason':      e.body.disruptionReason,
-      'tempC':            e.body.tempC,
-      'humidityPct':      e.body.humidityPct,
-      'shockG':           e.body.shockG,
-      'customsStatus':    e.body.customsStatus,
-      'delivered':        e.body.delivered,
-      'recipientName':    e.body.recipientName,
-      'recipientEmail':   e.body.recipientEmail,
-      'recipientPhone':   e.body.recipientPhone,
-      'recipientAddress': e.body.recipientAddress,
-      'recipientCountry': e.body.recipientCountry,
-      'marketingConsent': e.body.marketingConsent,
-      'lawfulBasis':      e.body.lawfulBasis,
-      'specialCategory':  e.body.specialCategory,
+  /** Serialize a CanonicalEventVariant to a JSON-safe object (switches on eventType for exact body fields). */
+  private static variantToJson(v: CanonicalEventVariant): JsonObject {
+    const envelope: JsonObject = {
+      'shipmentId':        v.shipmentId,
+      'eventId':           v.eventId,
+      'epochMs':           v.epochMs,
+      'eventType':         v.eventType,
+      'sourceId':          v.sourceId,
+      'sourceFormat':      v.sourceFormat,
+      'sourceCompression': v.sourceCompression,
+      'geo':               v.geo !== undefined ? { 'country': v.geo.country, 'continent': v.geo.continent, 'region': v.geo.region } : null,
+      'consentHandled':    v.consentHandled !== undefined ? v.consentHandled : null,
+      'pii':               v.pii !== undefined ? v.pii : null,
     };
-    return {
-      'shipmentId':        e.shipmentId,
-      'eventId':           e.eventId,
-      'epochMs':           e.epochMs,
-      'eventType':         e.eventType,
-      'sourceId':          e.sourceId,
-      'sourceFormat':      e.sourceFormat,
-      'sourceCompression': e.sourceCompression,
-      'body':              body,
-      'geo':               e.geo !== undefined ? { 'country': e.geo.country, 'continent': e.geo.continent, 'region': e.geo.region } : null,
-      'consentHandled':    e.consentHandled !== undefined ? e.consentHandled : null,
-      'pii':               e.pii !== undefined ? e.pii : null,
-    };
+    switch (v.eventType) {
+      case 'position-ping':
+        envelope['body'] = {
+          'scanSeq':      v.body.scanSeq,   'latitude':  v.body.latitude,  'longitude': v.body.longitude,
+          'ipAddress':    v.body.ipAddress,  'legFromLat': v.body.legFromLat, 'legFromLng': v.body.legFromLng,
+          'originLat':    v.body.originLat,  'originLng':  v.body.originLng,  'destLat':    v.body.destLat,  'destLng': v.body.destLng,
+          'carrier':      v.body.carrier,    'status':     v.body.status,      'rawTimestamp': v.body.rawTimestamp,
+        };
+        break;
+      case 'facility-scan':
+        envelope['body'] = {
+          'scanSeq':      v.body.scanSeq,   'latitude':  v.body.latitude,  'longitude': v.body.longitude,
+          'ipAddress':    v.body.ipAddress,  'legFromLat': v.body.legFromLat, 'legFromLng': v.body.legFromLng,
+          'originLat':    v.body.originLat,  'originLng':  v.body.originLng,  'destLat':    v.body.destLat,  'destLng': v.body.destLng,
+          'carrier':      v.body.carrier,    'status':     v.body.status,      'rawTimestamp': v.body.rawTimestamp,
+          'facilityId':   v.body.facilityId, 'weight': v.body.weight, 'weightUnit': v.body.weightUnit,
+          'lineItems':    v.body.lineItems.map((li) => ({ 'productId': li.productId, 'quantity': li.quantity })),
+          'rawDispatchAt': v.body.rawDispatchAt, 'rawPromisedDeliveryAt': v.body.rawPromisedDeliveryAt,
+          'disruptionReason': v.body.disruptionReason,
+          'recipientName': v.body.recipientName, 'recipientEmail': v.body.recipientEmail,
+          'recipientPhone': v.body.recipientPhone, 'recipientAddress': v.body.recipientAddress,
+          'recipientCountry': v.body.recipientCountry, 'marketingConsent': v.body.marketingConsent,
+          'lawfulBasis':  v.body.lawfulBasis, 'specialCategory': v.body.specialCategory,
+        };
+        break;
+      case 'sensor-reading':
+        envelope['body'] = {
+          'scanSeq':      v.body.scanSeq,   'latitude':  v.body.latitude,  'longitude': v.body.longitude,
+          'ipAddress':    v.body.ipAddress,  'legFromLat': v.body.legFromLat, 'legFromLng': v.body.legFromLng,
+          'originLat':    v.body.originLat,  'originLng':  v.body.originLng,  'destLat':    v.body.destLat,  'destLng': v.body.destLng,
+          'carrier':      v.body.carrier,    'status':     v.body.status,      'rawTimestamp': v.body.rawTimestamp,
+          'tempC':        v.body.tempC,      'humidityPct': v.body.humidityPct, 'shockG': v.body.shockG,
+        };
+        break;
+      case 'customs-event':
+        envelope['body'] = {
+          'scanSeq':      v.body.scanSeq,   'latitude':  v.body.latitude,  'longitude': v.body.longitude,
+          'ipAddress':    v.body.ipAddress,  'legFromLat': v.body.legFromLat, 'legFromLng': v.body.legFromLng,
+          'originLat':    v.body.originLat,  'originLng':  v.body.originLng,  'destLat':    v.body.destLat,  'destLng': v.body.destLng,
+          'carrier':      v.body.carrier,    'status':     v.body.status,      'rawTimestamp': v.body.rawTimestamp,
+          'customsStatus': v.body.customsStatus,
+        };
+        break;
+      case 'delivery-confirmation':
+        envelope['body'] = {
+          'scanSeq':      v.body.scanSeq,   'latitude':  v.body.latitude,  'longitude': v.body.longitude,
+          'ipAddress':    v.body.ipAddress,  'legFromLat': v.body.legFromLat, 'legFromLng': v.body.legFromLng,
+          'originLat':    v.body.originLat,  'originLng':  v.body.originLng,  'destLat':    v.body.destLat,  'destLng': v.body.destLng,
+          'carrier':      v.body.carrier,    'status':     v.body.status,      'rawTimestamp': v.body.rawTimestamp,
+          'delivered':    v.body.delivered,  'rawPromisedDeliveryAt': v.body.rawPromisedDeliveryAt,
+          'disruptionReason': v.body.disruptionReason,
+          'recipientName': v.body.recipientName, 'recipientEmail': v.body.recipientEmail,
+          'recipientPhone': v.body.recipientPhone, 'recipientAddress': v.body.recipientAddress,
+          'recipientCountry': v.body.recipientCountry, 'marketingConsent': v.body.marketingConsent,
+          'lawfulBasis':  v.body.lawfulBasis, 'specialCategory': v.body.specialCategory,
+        };
+        break;
+    }
+    return envelope;
   }
 
-  private static canonicalFromJson(o: Record<string, unknown>): CanonicalEvent {
+  /** Reconstruct a CanonicalEventVariant from a deserialized JSON object (switches on eventType). */
+  private static variantFromJson(o: Record<string, unknown>): CanonicalEventVariant {
+    const eventType = o['eventType'];
     const b = CartographerState.asObject(o['body']) ?? {};
-    const event: CanonicalEvent = {
+    const envelope = {
       'shipmentId':        CartographerState.str(o['shipmentId']),
       'eventId':           CartographerState.str(o['eventId']),
       'epochMs':           CartographerState.num(o['epochMs']),
-      'eventType':         CartographerState.canonicalEventType(o['eventType']),
       'sourceId':          CartographerState.str(o['sourceId']),
       'sourceFormat':      CartographerState.canonicalSourceFormat(o['sourceFormat']),
       'sourceCompression': CartographerState.canonicalSourceCompression(o['sourceCompression']),
-      'body': {
-        'scanSeq':          CartographerState.num(b['scanSeq']),
-        'latitude':         CartographerState.num(b['latitude']),
-        'longitude':        CartographerState.num(b['longitude']),
-        'ipAddress':        CartographerState.str(b['ipAddress']),
-        'legFromLat':       CartographerState.num(b['legFromLat']),
-        'legFromLng':       CartographerState.num(b['legFromLng']),
-        'originLat':        CartographerState.num(b['originLat']),
-        'originLng':        CartographerState.num(b['originLng']),
-        'destLat':          CartographerState.num(b['destLat']),
-        'destLng':          CartographerState.num(b['destLng']),
-        'carrier':          CartographerState.str(b['carrier']),
-        'facilityId':       CartographerState.str(b['facilityId']),
-        'status':           CartographerState.str(b['status']),
-        'weight':           CartographerState.num(b['weight']),
-        'weightUnit':       CartographerState.weightUnit(b['weightUnit']),
-        'lineItems':        CartographerState.lineItemsFromJson(b['lineItems']),
-        'rawTimestamp':          CartographerState.str(b['rawTimestamp']),
-        'rawDispatchAt':         CartographerState.str(b['rawDispatchAt']),
-        'rawPromisedDeliveryAt': CartographerState.str(b['rawPromisedDeliveryAt']),
-        'disruptionReason':      CartographerState.str(b['disruptionReason']),
-        'tempC':            CartographerState.num(b['tempC']),
-        'humidityPct':      CartographerState.num(b['humidityPct']),
-        'shockG':           CartographerState.num(b['shockG']),
-        'customsStatus':    CartographerState.str(b['customsStatus']),
-        'delivered':        CartographerState.bool(b['delivered']),
-        'recipientName':    CartographerState.str(b['recipientName']),
-        'recipientEmail':   CartographerState.str(b['recipientEmail']),
-        'recipientPhone':   CartographerState.str(b['recipientPhone']),
-        'recipientAddress': CartographerState.str(b['recipientAddress']),
-        'recipientCountry': CartographerState.str(b['recipientCountry']),
-        'marketingConsent': CartographerState.bool(b['marketingConsent']),
-        'lawfulBasis':      CartographerState.lawfulBasis(b['lawfulBasis']),
-        'specialCategory':  CartographerState.specialCategory(b['specialCategory']),
-      },
-    };
-    const geoObj = CartographerState.asObject(o['geo']);
-    if (geoObj !== null) {
-      event.geo = {
-        'country':   CartographerState.str(geoObj['country']),
-        'continent': CartographerState.str(geoObj['continent']),
-        'region':    CartographerState.str(geoObj['region']),
-      };
+    } as const;
+    const sharedBody = {
+      'scanSeq':      CartographerState.num(b['scanSeq']),
+      'latitude':     CartographerState.num(b['latitude']),
+      'longitude':    CartographerState.num(b['longitude']),
+      'ipAddress':    CartographerState.str(b['ipAddress']),
+      'legFromLat':   CartographerState.num(b['legFromLat']),
+      'legFromLng':   CartographerState.num(b['legFromLng']),
+      'originLat':    CartographerState.num(b['originLat']),
+      'originLng':    CartographerState.num(b['originLng']),
+      'destLat':      CartographerState.num(b['destLat']),
+      'destLng':      CartographerState.num(b['destLng']),
+      'carrier':      CartographerState.str(b['carrier']),
+      'status':       CartographerState.str(b['status']),
+      'rawTimestamp': CartographerState.str(b['rawTimestamp']),
+    } as const;
+    let result: CanonicalEventVariant;
+    switch (eventType) {
+      case 'facility-scan': {
+        const variant: FacilityScanEvent = {
+          ...envelope, 'eventType': 'facility-scan',
+          'body': {
+            ...sharedBody,
+            'facilityId':           CartographerState.str(b['facilityId']),
+            'weight':               CartographerState.num(b['weight']),
+            'weightUnit':           CartographerState.weightUnit(b['weightUnit']),
+            'lineItems':            CartographerState.lineItemsFromJson(b['lineItems']),
+            'rawDispatchAt':        CartographerState.str(b['rawDispatchAt']),
+            'rawPromisedDeliveryAt': CartographerState.str(b['rawPromisedDeliveryAt']),
+            'disruptionReason':     CartographerState.str(b['disruptionReason']),
+            'recipientName':        CartographerState.str(b['recipientName']),
+            'recipientEmail':       CartographerState.str(b['recipientEmail']),
+            'recipientPhone':       CartographerState.str(b['recipientPhone']),
+            'recipientAddress':     CartographerState.str(b['recipientAddress']),
+            'recipientCountry':     CartographerState.str(b['recipientCountry']),
+            'marketingConsent':     CartographerState.bool(b['marketingConsent']),
+            'lawfulBasis':          CartographerState.lawfulBasis(b['lawfulBasis']),
+            'specialCategory':      CartographerState.specialCategory(b['specialCategory']),
+          },
+        };
+        const geoObjFs = CartographerState.asObject(o['geo']);
+        if (geoObjFs !== null) variant.geo = { 'country': CartographerState.str(geoObjFs['country']), 'continent': CartographerState.str(geoObjFs['continent']), 'region': CartographerState.str(geoObjFs['region']) };
+        if (typeof o['consentHandled'] === 'boolean') variant.consentHandled = o['consentHandled'];
+        if (typeof o['pii'] === 'boolean') variant.pii = o['pii'];
+        result = variant;
+        break;
+      }
+      case 'sensor-reading': {
+        const variant: SensorReadingEvent = {
+          ...envelope, 'eventType': 'sensor-reading',
+          'body': {
+            ...sharedBody,
+            'tempC':       CartographerState.num(b['tempC']),
+            'humidityPct': CartographerState.num(b['humidityPct']),
+            'shockG':      CartographerState.num(b['shockG']),
+          },
+        };
+        const geoObjSr = CartographerState.asObject(o['geo']);
+        if (geoObjSr !== null) variant.geo = { 'country': CartographerState.str(geoObjSr['country']), 'continent': CartographerState.str(geoObjSr['continent']), 'region': CartographerState.str(geoObjSr['region']) };
+        if (typeof o['consentHandled'] === 'boolean') variant.consentHandled = o['consentHandled'];
+        if (typeof o['pii'] === 'boolean') variant.pii = o['pii'];
+        result = variant;
+        break;
+      }
+      case 'customs-event': {
+        const variant: CustomsEvent = {
+          ...envelope, 'eventType': 'customs-event',
+          'body': { ...sharedBody, 'customsStatus': CartographerState.str(b['customsStatus']) },
+        };
+        const geoObjCe = CartographerState.asObject(o['geo']);
+        if (geoObjCe !== null) variant.geo = { 'country': CartographerState.str(geoObjCe['country']), 'continent': CartographerState.str(geoObjCe['continent']), 'region': CartographerState.str(geoObjCe['region']) };
+        if (typeof o['consentHandled'] === 'boolean') variant.consentHandled = o['consentHandled'];
+        if (typeof o['pii'] === 'boolean') variant.pii = o['pii'];
+        result = variant;
+        break;
+      }
+      case 'delivery-confirmation': {
+        const variant: DeliveryConfirmationEvent = {
+          ...envelope, 'eventType': 'delivery-confirmation',
+          'body': {
+            ...sharedBody,
+            'delivered':             CartographerState.bool(b['delivered']),
+            'rawPromisedDeliveryAt': CartographerState.str(b['rawPromisedDeliveryAt']),
+            'disruptionReason':      CartographerState.str(b['disruptionReason']),
+            'recipientName':         CartographerState.str(b['recipientName']),
+            'recipientEmail':        CartographerState.str(b['recipientEmail']),
+            'recipientPhone':        CartographerState.str(b['recipientPhone']),
+            'recipientAddress':      CartographerState.str(b['recipientAddress']),
+            'recipientCountry':      CartographerState.str(b['recipientCountry']),
+            'marketingConsent':      CartographerState.bool(b['marketingConsent']),
+            'lawfulBasis':           CartographerState.lawfulBasis(b['lawfulBasis']),
+            'specialCategory':       CartographerState.specialCategory(b['specialCategory']),
+          },
+        };
+        const geoObjDc = CartographerState.asObject(o['geo']);
+        if (geoObjDc !== null) variant.geo = { 'country': CartographerState.str(geoObjDc['country']), 'continent': CartographerState.str(geoObjDc['continent']), 'region': CartographerState.str(geoObjDc['region']) };
+        if (typeof o['consentHandled'] === 'boolean') variant.consentHandled = o['consentHandled'];
+        if (typeof o['pii'] === 'boolean') variant.pii = o['pii'];
+        result = variant;
+        break;
+      }
+      default: {
+        // 'position-ping' and any unrecognised value fall here
+        const variant: PositionPingEvent = { ...envelope, 'eventType': 'position-ping', 'body': { ...sharedBody } };
+        const geoObjPp = CartographerState.asObject(o['geo']);
+        if (geoObjPp !== null) variant.geo = { 'country': CartographerState.str(geoObjPp['country']), 'continent': CartographerState.str(geoObjPp['continent']), 'region': CartographerState.str(geoObjPp['region']) };
+        if (typeof o['consentHandled'] === 'boolean') variant.consentHandled = o['consentHandled'];
+        if (typeof o['pii'] === 'boolean') variant.pii = o['pii'];
+        result = variant;
+        break;
+      }
     }
-    if (typeof o['consentHandled'] === 'boolean') event.consentHandled = o['consentHandled'];
-    if (typeof o['pii'] === 'boolean') event.pii = o['pii'];
-    return event;
+    return result;
   }
 
   private static sourceToJson(s: SourcePayload): JsonObject {

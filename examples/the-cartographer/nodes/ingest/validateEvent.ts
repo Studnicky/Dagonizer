@@ -1,27 +1,28 @@
 /**
- * validate-event: shared ingest transform — coerced records → CanonicalEvents.
+ * validate-event: shared ingest transform — coerced records → CanonicalEventVariants.
  *
- * The final shared node in every source's ingest sub-DAG. It assembles each
- * coerced record into the canonical event shape, derives the per-record `eventType`
- * (the customs/delivery feed mixes customs-events + delivery-confirmations),
- * attaches the OPTIONAL pre-resolved fields some sources supply (Stage 2 will
- * branch on these), validates the required header + coords, and appends the
- * valid events to state.ingestedEvents. Records missing a shipmentId are dropped
- * (the source's reject path); the node never throws.
+ * The final shared node in every source's ingest sub-DAG. Assembles each
+ * coerced record into the canonical event variant shape for its authoritative
+ * eventType (carried on the SourcePayload), recovers type-owned identity extras
+ * that survive un-stripped in parsedRecords, validates the required header, and
+ * appends the valid variants to state.ingestedEvents. Records missing a
+ * shipmentId or eventId are dropped (the source's reject path); the node never
+ * throws.
  *
- * OPTIONAL pre-resolved fields per source:
- *   - geo            — the JSON API feed carries resolved country/region.
- *   - consentHandled — set when a source pre-handled consent (none in Stage 1
- *                      sources; the field is wired so Stage 2 can populate it).
- *   - pii            — whether the event carries recipient PII (delivery/facility
- *                      scans do; bare position pings may not).
+ * Type-owned identity extras: fields like customsStatus, tempC, etc. are
+ * identity-mapped by the encoder under their canonical key and survive in
+ * parsedRecords. IDENTITY_EXTRAS_BY_TYPE lists which extras belong to each
+ * eventType; they are recovered into the mapped record before building the
+ * variant so CanonicalEventVariantBuilder.fromSourcePayload can read them.
  *
  * Routes 'validated' (always — invalid records are filtered, not routed).
  */
 
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
-import type { CanonicalEvent } from '../../entities/CanonicalEvent.ts';
+import type { CanonicalEventVariant } from '../../entities/CanonicalEvent.ts';
+import { CanonicalEventVariantBuilder } from '../../entities/CanonicalEvent.ts';
+import { IDENTITY_EXTRAS_BY_TYPE } from '../../services.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
@@ -32,124 +33,36 @@ export class ValidateEventNode extends ScalarNode<CartographerState, 'validated'
   readonly 'name' = 'validate-event';
   readonly 'outputs' = ['validated'] as const;
 
-  private static lawfulBasis(value: unknown): CanonicalEvent['body']['lawfulBasis'] {
-    return value === 'contract' || value === 'consent' || value === 'legitimate-interest' || value === 'none'
-      ? value
-      : 'contract';
-  }
-
-  private static specialCategory(value: unknown): CanonicalEvent['body']['specialCategory'] {
-    return value === 'health' ? 'health' : 'none';
-  }
-
-  private static weightUnit(value: unknown): CanonicalEvent['body']['weightUnit'] {
-    return value === 'lb' || value === 'kg' || value === 'g' || value === 'oz' ? value : 'kg';
-  }
-
-  private static num(value: unknown): number {
-    return typeof value === 'number' && isFinite(value) ? value : 0;
-  }
-
   private static str(value: unknown): string {
     return typeof value === 'string' ? value : '';
   }
 
-  private static bool(value: unknown): boolean {
-    return value === true;
-  }
-
-  private static lineItems(value: unknown): Array<{ 'productId': string; 'quantity': number }> {
-    if (!Array.isArray(value)) return [];
-    const out: Array<{ 'productId': string; 'quantity': number }> = [];
-    for (const li of value) {
-      if (li !== null && typeof li === 'object' && !Array.isArray(li)) {
-        const o = li as Record<string, unknown>;
-        out.push({ 'productId': ValidateEventNode.str(o['productId']), 'quantity': ValidateEventNode.num(o['quantity']) || 1 });
-      }
-    }
-    return out;
-  }
-
-  /** Derive the canonical event type for a record, given the source's primary event type. */
-  private static eventTypeFor(sourceEventType: CanonicalEvent['eventType'], rec: Record<string, unknown>): CanonicalEvent['eventType'] {
-    // The customs/delivery feed mixes two event types — a delivered flag distinguishes.
-    if (sourceEventType === 'customs-event') {
-      return ValidateEventNode.bool(rec['delivered']) ? 'delivery-confirmation' : 'customs-event';
-    }
-    return sourceEventType;
-  }
-
   protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'validated'>> {
     const source = state.currentSource;
-    const events: CanonicalEvent[] = [];
+    const eventType = source.eventType;
+    const extras = IDENTITY_EXTRAS_BY_TYPE[eventType] ?? [];
+    const variants: CanonicalEventVariant[] = [];
 
-    for (const rec of state.mappedRecords) {
+    for (let i = 0; i < state.mappedRecords.length; i++) {
+      const rec = { ...state.mappedRecords[i] };
       const shipmentId = ValidateEventNode.str(rec['shipmentId']);
       const eventId    = ValidateEventNode.str(rec['eventId']);
-      // Reject records lacking the canonical header.
       if (shipmentId.length === 0 || eventId.length === 0) continue;
 
-      const eventType = ValidateEventNode.eventTypeFor(source.eventType, rec);
-      const hasPii = ValidateEventNode.str(rec['recipientName']).length > 0 || ValidateEventNode.str(rec['recipientEmail']).length > 0;
-
-      const event: CanonicalEvent = {
-        'shipmentId':        shipmentId,
-        'eventId':           eventId,
-        'epochMs':           ValidateEventNode.num(rec['epochMs']),
-        'eventType':         eventType,
-        'sourceId':          source.sourceId,
-        'sourceFormat':      source.format,
-        'sourceCompression': source.compression,
-        'body': {
-          'scanSeq':          ValidateEventNode.num(rec['scanSeq']),
-          'latitude':         ValidateEventNode.num(rec['latitude']),
-          'longitude':        ValidateEventNode.num(rec['longitude']),
-          'ipAddress':        ValidateEventNode.str(rec['ipAddress']),
-          'legFromLat':       ValidateEventNode.num(rec['legFromLat']),
-          'legFromLng':       ValidateEventNode.num(rec['legFromLng']),
-          'originLat':        ValidateEventNode.num(rec['originLat']),
-          'originLng':        ValidateEventNode.num(rec['originLng']),
-          'destLat':          ValidateEventNode.num(rec['destLat']),
-          'destLng':          ValidateEventNode.num(rec['destLng']),
-          'carrier':          ValidateEventNode.str(rec['carrier']),
-          'facilityId':       ValidateEventNode.str(rec['facilityId']),
-          'status':           ValidateEventNode.str(rec['status']),
-          'weight':           ValidateEventNode.num(rec['weight']),
-          'weightUnit':       ValidateEventNode.weightUnit(rec['weightUnit']),
-          'lineItems':        ValidateEventNode.lineItems(rec['lineItems']),
-          'rawTimestamp':          ValidateEventNode.str(rec['epochRaw']),
-          'rawDispatchAt':         ValidateEventNode.str(rec['dispatchRaw']),
-          'rawPromisedDeliveryAt': ValidateEventNode.str(rec['promisedRaw']),
-          'disruptionReason':      ValidateEventNode.str(rec['disruptionReason']),
-          'tempC':            ValidateEventNode.num(rec['tempC']),
-          'humidityPct':      ValidateEventNode.num(rec['humidityPct']),
-          'shockG':           ValidateEventNode.num(rec['shockG']),
-          'customsStatus':    ValidateEventNode.str(rec['customsStatus']),
-          'delivered':        ValidateEventNode.bool(rec['delivered']),
-          'recipientName':    ValidateEventNode.str(rec['recipientName']),
-          'recipientEmail':   ValidateEventNode.str(rec['recipientEmail']),
-          'recipientPhone':   ValidateEventNode.str(rec['recipientPhone']),
-          'recipientAddress': ValidateEventNode.str(rec['recipientAddress']),
-          'recipientCountry': ValidateEventNode.str(rec['recipientCountry']),
-          'marketingConsent': ValidateEventNode.bool(rec['marketingConsent']),
-          'lawfulBasis':      ValidateEventNode.lawfulBasis(rec['lawfulBasis']),
-          'specialCategory':  ValidateEventNode.specialCategory(rec['specialCategory']),
-        },
-        'pii': hasPii,
-      };
-
-      // RICH sources pre-resolve geo (country/continent/region from the coords).
-      const geoCountry   = ValidateEventNode.str(rec['geoCountry']);
-      const geoContinent = ValidateEventNode.str(rec['geoContinent']);
-      const geoRegion    = ValidateEventNode.str(rec['geoRegion']);
-      if (geoCountry.length > 0 && geoRegion.length > 0) {
-        event.geo = { 'country': geoCountry, 'continent': geoContinent, 'region': geoRegion };
+      // Recover type-owned identity extras dropped by the static normalize FieldMap.
+      // They survive un-stripped in parsedRecords under their canonical key (identity-mapped by the encoder).
+      const parsed = state.parsedRecords[i];
+      if (parsed !== undefined) {
+        for (const key of extras) {
+          if (!(key in rec) && key in parsed) rec[key] = parsed[key];
+        }
       }
 
-      events.push(event);
+      const variant = CanonicalEventVariantBuilder.fromSourcePayload(source, rec);
+      variants.push(variant);
     }
 
-    state.ingestedEvents = events;
+    state.ingestedEvents = variants;
     return NodeOutputBuilder.of('validated');
   }
 }

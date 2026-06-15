@@ -1,17 +1,16 @@
 /**
- * normalize: scalar canonicalization of a raw tracking scan (runs after geo).
+ * canonicalizeCore: shared scalar canonicalization for ALL event types (the
+ * normalize+classify subset MINUS facility/PII). Writes only the CORE slots of
+ * state.normalized: timestamps, carrier, country, weight=0 placeholder,
+ * status/serviceTier/sizeTier, leg/geo coords, scanSeq. Facility slots
+ * (weightGrams/facilityId/lineItems) and PII slots are filled by
+ * canonicalizeFacility / canonicalizeRecipient. Reads state.raw +
+ * state.geoContext.timezone.
  *
- * Reads state.raw and the scan's timezone (from state.geoContext, set by the
- * geo-first geo-context node). Canonicalizes:
- *   - TimeNormalizer.toEpochMs for the scan + dispatch timestamps
- *   - TimeZoneResolver.localParts for LOCAL time + UTC offset at the scan's zone
- *   - CarrierRegistry.canonical for carrier alias → carrierId / carrierName
- *   - CountryCodes.toIso3 for country
- *   - Units.toGrams for weight
- *   - Disruptions.hoursFor to recover the journey's disruption hours
- *
- * It does NOT derive status, serviceTier, or sizeTier — that is classify's job.
- * Carries journey fields (scanSeq, leg coords, origin/dest) through.
+ * serviceTier and sizeTier are derived from weightGrams=0 here (the placeholder
+ * value); canonicalizeFacility overrides both after computing the real
+ * weightGrams from the facility-scan body. For all non-facility types, the 0-gram
+ * tiers are the correct final values.
  *
  * Routes 'normalized'; 'rejected' when the scan timestamp is unparseable.
  */
@@ -22,18 +21,18 @@ import {
   CarrierRegistry,
   CountryCodes,
   Disruptions,
+  EventClassifier,
   TimeNormalizer,
   TimeZoneResolver,
-  Units,
 } from '../services.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
 } from '@noocodex/dagonizer';
 
-// #region normalize-node
-export class NormalizeNode extends ScalarNode<CartographerState, 'normalized' | 'rejected', CartographerServices> {
-  readonly 'name' = 'normalize';
+// #region canonicalize-core-node
+export class CanonicalizeCoreNode extends ScalarNode<CartographerState, 'normalized' | 'rejected', CartographerServices> {
+  readonly 'name' = 'canonicalize-core';
   readonly 'outputs' = ['normalized', 'rejected'] as const;
 
   protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'normalized' | 'rejected'>> {
@@ -50,13 +49,17 @@ export class NormalizeNode extends ScalarNode<CartographerState, 'normalized' | 
     const promisedEpochMs = TimeNormalizer.toEpochMs(raw.rawPromisedDeliveryAt);
     const validPromised = isFinite(promisedEpochMs) && promisedEpochMs > 0 ? promisedEpochMs : validDispatch + 7 * 86_400_000;
 
-    // Local time at the scan's timezone (resolved by geo-context).
     const { localIso, utcOffset } = TimeZoneResolver.localParts(epochMs, state.geoContext.timezone);
 
     const { carrierId, carrierName } = CarrierRegistry.canonical(raw.carrier);
     const countryIso3 = CountryCodes.toIso3(raw.recipientCountry);
-    const weightGrams = Units.toGrams(raw.weight, raw.weightUnit);
     const disruptionHours = Disruptions.hoursFor(raw.disruptionReason);
+
+    // Derive classification at weightGrams=0. canonicalizeFacility will override
+    // weightGrams/serviceTier/sizeTier with the real weight for facility-scan events.
+    const status      = EventClassifier.eventType(raw.rawStatus);
+    const serviceTier = EventClassifier.serviceTier(carrierId, 0);
+    const sizeTier    = EventClassifier.sizeTier(0);
 
     state.normalized = {
       'shipmentId':       raw.shipmentId,
@@ -69,13 +72,12 @@ export class NormalizeNode extends ScalarNode<CartographerState, 'normalized' | 
       'carrierId':        carrierId,
       'carrierName':      carrierName,
       'countryIso3':      countryIso3,
-      'weightGrams':      weightGrams,
-      // status (lifecycle) / serviceTier / sizeTier are derived by the classify node.
-      'status':           'SCAN',
-      'serviceTier':      'standard',
-      'sizeTier':         'small',
-      'lineItems':        raw.lineItems,
-      'facilityId':       raw.facilityId,
+      'weightGrams':      0,
+      'status':           status,
+      'serviceTier':      serviceTier,
+      'sizeTier':         sizeTier,
+      'lineItems':        [{ 'productId': '', 'quantity': 1 }],
+      'facilityId':       '',
       'latitude':         raw.latitude,
       'longitude':        raw.longitude,
       'legFromLat':       raw.legFromLat,
@@ -84,12 +86,12 @@ export class NormalizeNode extends ScalarNode<CartographerState, 'normalized' | 
       'originLng':        raw.originLng,
       'destLat':          raw.destLat,
       'destLng':          raw.destLng,
-      'recipientName':    raw.recipientName,
-      'recipientEmail':   raw.recipientEmail,
-      'recipientPhone':   raw.recipientPhone,
-      'recipientAddress': raw.recipientAddress,
+      'recipientName':    '',
+      'recipientEmail':   '',
+      'recipientPhone':   '',
+      'recipientAddress': '',
       'recipientCountry': raw.recipientCountry,
-      'marketingConsent': raw.marketingConsent,
+      'marketingConsent': false,
       'promisedEpochMs':  validPromised,
       'disruptionHours':  disruptionHours,
       'disruptionReason': raw.disruptionReason,
@@ -99,5 +101,5 @@ export class NormalizeNode extends ScalarNode<CartographerState, 'normalized' | 
   }
 }
 
-export const normalize = new NormalizeNode();
-// #endregion normalize-node
+export const canonicalizeCore = new CanonicalizeCoreNode();
+// #endregion canonicalize-core-node
