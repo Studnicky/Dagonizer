@@ -1,11 +1,13 @@
 # RFC 0003 — Batch-native walk (the plural executor core)
 
-Status: **In progress — sub-wave 1 BUILT & GREEN (778 tests); sub-wave 2 next** · Depends on:
+Status: **In progress — sub-waves 1 & 2 BUILT & GREEN (784 tests); sub-wave 3 next** · Depends on:
 RFC 0001 (plural-native), Phase 2a (one-fold gather) · Supersedes: RFC 0002 §2 "DAG bodies
 iterate per item" (DAG bodies are now batch-native). §10 decisions are resolved. Build per §9
 sub-waves. Sub-wave 1 (frontier scheduler `PlacementRank` + `Frontier`, acyclic, size-1 parity
 byte-identical) is built; `SingleNode` fires batch-native, `ScatterNode`/`EmbeddedDAGNode` stay
-size-1 until sub-wave 4. Read `0000-status.md` first.
+size-1 until sub-wave 4. Sub-wave 2 (cycles/retry over multi-item batches) needed no engine
+change — SW1's back-edge-excluding rank + re-entrant `merge` already subsume it; it is locked by
+`tests/unit/frontier-cycles.test.ts`. Read `0000-status.md` first.
 
 The walk (`runNodes`) becomes a **batch dataflow**. A DAG processes a `Batch<N>`
 natively — partition at nodes, merge at joins — so a DAG body has the exact same
@@ -137,6 +139,9 @@ green.
    `#fireSinglePlacement`; 22 new tests incl. the diamond-join coalescing proof.
 2. **Cycles/retry** — back-edge handling + re-entry batching; port the existing
    retry-loop tests to multi-item; Cartographer-style retry self-edges.
+   **BUILT & GREEN** — no engine change needed (SW1's rank excludes back-edges,
+   `Frontier.merge` re-batches re-entrants); locked by `frontier-cycles.test.ts`
+   (6 tests incl. heterogeneous shrink `[5,4,3,2,1]` and back-edge-into-join).
 3. **Reservoir as a firing policy** — generalize RFC 0002's `reservoir` from
    scatter-seed-only to any placement; capacity/idle/complete firing; the
    scatter-input case becomes the seed placement's policy.

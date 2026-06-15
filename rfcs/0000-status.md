@@ -51,9 +51,10 @@ agent needs to avoid going off the rails is here or in the linked RFCs.
 ## Current baseline (as-built, all in the dagonizer package, GREEN)
 
 Verified: `npm run typecheck` clean, `npm run lint -- --max-warnings 0` clean,
-`npm run test` → **778 pass / 0 fail**, `npm run build` clean. The green baseline
+`npm run test` → **784 pass / 0 fail**, `npm run build` clean. The green baseline
 (Phases 1a/1b/2a + RFC-0002 sub-wave-1) is committed at `362ac38`; RFC-0003
-sub-wave-1 (below) is built & green on top of it, uncommitted.
+sub-wave-1 is committed at `eff3df6`; RFC-0003 sub-wave-2 (below) is committed on
+top. The branch is `feature/plural-native-core`.
 
 Built and green:
 - **Phase 1a** — `src/core/batch/{Item,Batch,RoutedBatch}.ts`
@@ -90,8 +91,25 @@ Built and green:
   rank/cycle-termination, frontier ops, multi-item linear/branch, and the
   diamond-join coalescing proof — the join fires once over all merged items).
 
-Not built (and intentionally so): cycles/retry over multi-item batches
-(sub-wave 2), the reservoir runtime (sub-wave 3), batch-native scatter/embedded
+- **RFC 0003 sub-wave 2** — cycles / retry over multi-item batches. **No engine
+  change was required**: SW1's design already subsumes it — `PlacementRank`
+  excludes back-edges so a retry target keeps a forward-only rank, and
+  `Frontier.merge` re-batches re-entrant items, so a routing back-edge
+  (`outputs: { retry: <self-or-earlier>, done: <forward> }`) re-enters and
+  re-fires on a later pass. Retry is a flow shape: the per-item budget lives on
+  `NodeStateBase` (`recordAttempt`/`withinRetryBudget`/`retriesFor`/
+  `clearAttempts`, snapshot-persisted); the node consults it and partitions the
+  batch across `retry`/`done`/`salvage`. SW2 is a verification sub-wave —
+  `tests/unit/frontier-cycles.test.ts` (6 tests): size-1 self-loop, multi-item
+  homogeneous lockstep, multi-item **heterogeneous** (items exit at different
+  iterations → the retrier fires `[5,4,3,2,1]`, batch shrinks one per round),
+  budget-exhaustion → salvage routing, and a back-edge feeding a join (join
+  fires once over the coalesced batch after the loop drains). Infinite loops are
+  bounded by the node's retry budget — the scheduler imposes no loop cap, exactly
+  as the old single-cursor walk did.
+
+Not built (and intentionally so): the reservoir runtime (sub-wave 3),
+batch-native scatter/embedded
 (sub-wave 4), frontier checkpoint (sub-wave 5), viz (sub-wave 6), consumer
 migration, the Cartographer adoption.
 
@@ -113,8 +131,8 @@ throwaway.
 
 1. **0003 batch-native walk** (the executor heart), sub-waves in `0003-batch-native-walk.md` §9:
    1. Frontier scheduler over acyclic DAGs (drained firing, topo-rank), size-1 parity exact. **BUILT & GREEN.**
-   2. Cycles/retry (back-edges re-enter, re-batch). **← next.**
-   3. Reservoir as a firing policy (wire the 0002 config to capacity/idle/complete).
+   2. Cycles/retry (back-edges re-enter, re-batch). **BUILT & GREEN** (test-only; mechanism landed in SW1).
+   3. Reservoir as a firing policy (wire the 0002 config to capacity/idle/complete). **← next.**
    4. Embedded-DAG + scatter integration under the frontier model.
    5. Checkpoint of the frontier + resume parity.
    6. Viz (per-firing batch size; reservoir glyph + per-key fill).
