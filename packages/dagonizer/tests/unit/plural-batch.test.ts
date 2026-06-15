@@ -1,12 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Batch } from '../../src/core/batch/Batch.js';
 import type { Item } from '../../src/core/batch/Item.js';
 import { RoutedBatchBuilder } from '../../src/core/batch/RoutedBatch.js';
-import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
 import { NodeRunner } from '../../src/core/NodeRunner.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
@@ -14,7 +11,6 @@ import { NodeErrorBuilder } from '../../src/entities/node/NodeError.js';
 import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeOutputBuilder } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 
 // ---------------------------------------------------------------------------
@@ -361,40 +357,7 @@ void describe('NodeRunner', () => {
     assert.ok(result.has('skip'));
   });
 
-  void it('hand-written batch execute produces same result as ScalarNode', async () => {
-    const scalarNode = new TagNode();
-    // intentional raw NodeInterface: this test compares a hand-written raw NodeInterface against a ScalarNode; the raw impl IS the test.
-    const handWrittenNode: NodeInterface<TestState, 'tagged' | 'skip'> = {
-      'name': 'hw-tag',
-      'outputs': ['tagged', 'skip'] as const,
-      'contract': EMPTY_CONTRACT_FRAGMENT,
-      'timeout': Timeout.none(),
-      async execute(batch: Batch<TestState>): Promise<RoutedBatch<'tagged' | 'skip', TestState>> {
-        const acc = new Map<'tagged' | 'skip', Item<TestState>[]>();
-        for (const item of batch) {
-          const output = item.state.value > 0 ? 'tagged' as const : 'skip' as const;
-          const bucket = acc.get(output);
-          if (bucket !== undefined) { bucket.push(item); } else { acc.set(output, [item]); }
-        }
-        const routed = new Map<'tagged' | 'skip', Batch<TestState>>();
-        for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
-        return routed;
-      },
-    };
-
-    const items: Item<TestState>[] = [
-      { 'id': '1', 'state': new TestState(1) },
-      { 'id': '2', 'state': new TestState(-1) },
-      { 'id': '3', 'state': new TestState(3) },
-    ];
-    const batchA = Batch.from<TestState>(items);
-    const batchB = Batch.from<TestState>(items);
-
-    const scalarResult = await NodeRunner.run(scalarNode, batchA, ctx);
-    const hwResult = await NodeRunner.run(handWrittenNode, batchB, ctx);
-
-    assert.equal(scalarResult.size, hwResult.size);
-    assert.equal(scalarResult.get('tagged')?.size, hwResult.get('tagged')?.size);
-    assert.equal(scalarResult.get('skip')?.size, hwResult.get('skip')?.size);
-  });
+  // The raw-NodeInterface-vs-ScalarNode equivalence check lives in
+  // `raw-node-antipattern.test.ts` (the single place that documents hand-rolling
+  // a NodeInterface as an antipattern).
 });

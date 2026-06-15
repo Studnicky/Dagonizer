@@ -3,9 +3,7 @@ import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import type { OperationContract } from '../../src/contracts/OperationContract.js';
-import { Batch } from '../../src/core/batch/Batch.js';
-import type { Item } from '../../src/core/batch/Item.js';
-import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
+import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
@@ -13,32 +11,34 @@ import type { DAGDeriverEmbeddedDAG } from '../../src/derive/DAGDeriverAnnotatio
 import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 // `DAGDeriver.derive` takes `nodes` with co-located contracts (single source of
 // truth); there is no standalone `contracts` input. Wrap each contract spec in
 // a node whose `contract` carries the topology fields; `execute` is a no-op
 // (derive reads only the contract, never runs the node).
-// intentional raw NodeInterface: DAGDeriver reads node.contract not execute; tests the raw contract directly
-const contractNode = <TState extends NodeStateInterface>(c: OperationContract): NodeInterface<TState> => {
-  const defaultOutput = c.outputs[0] as string;
-  return {
-    'name': c.name,
-    'outputs': c.outputs,
-    'contract': { 'hardRequired': c.hardRequired, 'produces': c.produces },
-    'timeout': Timeout.none(),
-    async execute(batch: Batch<TState>): Promise<RoutedBatch<string, TState>> {
-      const acc = new Map<string, Item<TState>[]>();
-      for (const item of batch) {
-        const bucket = acc.get(defaultOutput);
-        if (bucket !== undefined) { bucket.push(item); } else { acc.set(defaultOutput, [item]); }
-      }
-      const routed = new Map<string, Batch<TState>>();
-      for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
-      return routed;
-    },
-  };
-};
+// A ScalarNode that carries a co-located `contract` (the topology fields
+// DAGDeriver reads). `execute` is never called by derive — it reads only the
+// contract — but the node still descends from the taxonomy like every other.
+class ContractNode<TState extends NodeStateInterface> extends ScalarNode<TState, string> {
+  readonly name: string;
+  readonly outputs: readonly string[];
+  override readonly contract: OperationContractFragment;
+  readonly #defaultOutput: string;
+
+  constructor(c: OperationContract) {
+    super();
+    this.name = c.name;
+    this.outputs = c.outputs;
+    this.contract = { 'hardRequired': c.hardRequired, 'produces': c.produces };
+    this.#defaultOutput = c.outputs[0] as string;
+  }
+
+  protected override async executeOne(): Promise<NodeOutputInterface<string>> {
+    return { 'errors': [], 'output': this.#defaultOutput };
+  }
+}
+
+const contractNode = <TState extends NodeStateInterface>(c: OperationContract): NodeInterface<TState> => new ContractNode<TState>(c);
 
 /**
  * Reusable ScalarNode for derive tests. Always routes to `defaultOutput`
