@@ -51,11 +51,11 @@ agent needs to avoid going off the rails is here or in the linked RFCs.
 ## Current baseline (as-built, all in the dagonizer package, GREEN)
 
 Verified: `npm run typecheck` clean, `npm run lint -- --max-warnings 0` clean,
-`npm run test` → **789 pass / 0 fail**, `npm run build` clean. The green baseline
+`npm run test` → **798 pass / 0 fail**, `npm run build` clean. The green baseline
 (Phases 1a/1b/2a + RFC-0002 sub-wave-1) is committed at `362ac38`; RFC-0003
-sub-waves 1, 2 and 4 are committed on top (the `Frontier`→`WorkSet` /
+sub-waves 1, 2, 4 and 3 are committed on top (the `Frontier`→`WorkSet` /
 `seed`→`initial` renames too). The branch is `feature/plural-native-core`.
-Build order is reordered: SW4 before SW3 (next).
+Build order was reordered SW4 before SW3; **SW5 (work-set checkpoint) is next**.
 
 Built and green:
 - **Phase 1a** — `src/core/batch/{Item,Batch,RoutedBatch}.ts`
@@ -119,9 +119,23 @@ Built and green:
   split-by-outcome routing, multi-item scatter per-parent source isolation, size-1
   parity). A truly vectorized sub-walk is a later optimization.
 
-Not built (and intentionally so): the reservoir runtime (sub-wave 3), work set
-checkpoint (sub-wave 5), viz (sub-wave 6), consumer migration, the Cartographer
-adoption.
+- **RFC 0003 sub-wave 3** — the reservoir runtime, as scatter's keyed
+  input-batching policy (`src/execution/ReservoirBuffer.ts`). Source items buffer
+  by `String(accessor.get(item, keyField))` and release a `Batch<N>` at capacity,
+  idle (`Scheduler.after(idleMs)`, cancelled via an AbortController after the pull
+  loop), or complete-flush; the node body runs once over the batch, the gather
+  folds the whole batch in one `reduce`, and the batch acks atomically (N inbox
+  removals + one checkpoint). Crash-safe via the sequential-pull invariant +
+  `bufferKey` on the inbox; non-reservoir path byte-identical (gated on
+  `scatter.reservoir`). `scatter.reservoir` now validates through `registerDAG`
+  (the inline DAG node schema gained `reservoir` — it previously did not
+  round-trip). Reservoir requires a node body (validator-enforced). Tests:
+  `reservoir.test.ts` + `reservoir-idle.test.ts`. The `placement.reservoir`
+  generalization to any node is deferred; the mechanism lives in the scatter
+  source pipeline.
+
+Not built (and intentionally so): work set checkpoint (sub-wave 5), viz
+(sub-wave 6), consumer migration, the Cartographer adoption.
 
 ## State of the rest of the repo (expected, not a bug)
 
@@ -143,10 +157,9 @@ throwaway.
    1. work-set scheduler over acyclic DAGs (drained firing, topo-rank), size-1 parity exact. **BUILT & GREEN.**
    2. Cycles/retry (back-edges re-enter, re-batch). **BUILT & GREEN** (test-only; mechanism landed in SW1).
    **Order reordered by decision: 4 before 3.**
-   4. Embedded-DAG + scatter fire batch-native under the work set (drop the SW1 size-1 guard). **← next.**
-   3. Reservoir as a work-set firing policy on scatter's entry placement (wire the 0002 config to capacity/idle/complete). After SW4.
-   4. Embedded-DAG + scatter integration under the work-set model.
-   5. Checkpoint of the work set + resume parity.
+   4. Embedded-DAG + scatter fire batch-native under the work set (drop the SW1 size-1 guard). **BUILT & GREEN.**
+   3. Reservoir runtime (scatter keyed input-batching: capacity/idle/complete, crash-safe). **BUILT & GREEN.**
+   5. Checkpoint of the work set + resume parity. **← next.**
    6. Viz (per-firing batch size; reservoir glyph + per-key fill).
 2. **0001 Phase 3** — migrate consumers in order: executors → patterns →
    adapters/tools/embedders → examples (mostly `ScalarNode` base-swaps; hot nodes

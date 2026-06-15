@@ -1,6 +1,6 @@
 # RFC 0003 — Batch-native walk (the plural executor core)
 
-Status: **In progress — sub-waves 1, 2 & 4 BUILT & GREEN (789 tests); sub-wave 3 (reservoir as a work-set firing policy) next** · Depends on:
+Status: **In progress — sub-waves 1, 2, 4 & 3 BUILT & GREEN (798 tests); sub-wave 5 (work-set checkpoint) next** · Depends on:
 RFC 0001 (plural-native), Phase 2a (one-fold gather) · Supersedes: RFC 0002 §2 "DAG bodies
 iterate per item" (DAG bodies are now batch-native). §10 decisions are resolved. Build per §9
 sub-waves. Sub-wave 1 (work-set scheduler `PlacementRank` + `WorkSet`, acyclic, size-1 parity
@@ -156,13 +156,21 @@ green.
    outcomes, multi-item scatter per-parent source isolation, size-1 parity). A
    truly vectorized sub-walk (one work set processing a `Batch<N>` in one pass) is
    a later optimization; correctness and substitutability hold via iteration.
-3. **Reservoir as a firing policy** — **← next.** Built after SW4. Generalize RFC 0002's
-   `reservoir` from scatter-only to any placement; capacity/idle/complete
-   firing; the scatter-input case is the entry placement's policy. Wire the
-   already-built `scatter.reservoir` config (`keyField`/`capacity`/`idleMs`) to
-   the work-set firing policy; idle via the swappable `Scheduler`
-   (VirtualScheduler-deterministic); checkpoint-safe per-key buffers.
-5. **Checkpoint** of the work set + resume parity; crash-safe multi-item tests.
+3. **Reservoir as a firing policy** — **BUILT & GREEN.** Realized as scatter's
+   keyed input-batching policy in `src/execution/ReservoirBuffer.ts` (buffer by
+   `String(accessor.get(item, keyField))`, release a `Batch<N>` at capacity /
+   idle / complete; node body runs once over the batch; one `reduce` fold + one
+   checkpoint per batch ack). Idle uses the swappable `Scheduler` (cancelled via
+   a dedicated AbortController after the pull loop; VirtualScheduler-deterministic
+   tests). Crash-safe via the sequential-pull invariant + `bufferKey` on the
+   inbox; non-reservoir path byte-identical. `scatter.reservoir` now validates
+   through `registerDAG` (the inline DAG node schema gained `reservoir`).
+   Tests: `reservoir.test.ts` (capacity/keyed/complete/exactly-once/crash-safe/
+   parity) + `reservoir-idle.test.ts` (idle release, capacity-invalidates-idle,
+   no-idle-config). Reservoir requires a node body (validator-enforced). The
+   placement-level generalization (`placement.reservoir` on any node) is deferred;
+   the firing-policy mechanism lives in the scatter source pipeline.
+5. **Checkpoint** of the work set + resume parity; crash-safe multi-item tests. **← next.**
 6. **Viz** — per-firing batch-size on edges; reservoir glyph + per-key fill.
 
 ## 10. Resolved design decisions

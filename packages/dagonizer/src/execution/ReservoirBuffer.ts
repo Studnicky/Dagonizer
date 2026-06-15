@@ -6,6 +6,11 @@
  * when the source is drained (complete-flush). Each released batch of N items
  * is dispatched as one executeBatch call, then acked as one ackBatch call.
  *
+ * When `reservoir.idleMs` is set, a key whose buffer is non-empty and has
+ * received no new item for `idleMs` releases its partial batch (idle release).
+ * All idle timers are cancelled when `drain()` transitions past the pull loop,
+ * preventing any idle release from firing during complete-flush or after drain.
+ *
  * The non-reservoir path (ScatterWorkerPool) is NOT used here. This class has
  * its own pull/buffer/dispatch loop with the same semaphore semantics as
  * ScatterWorkerPool but at batch granularity.
@@ -14,6 +19,7 @@
 import type { ScatterInboxItem } from '../entities/scatter/ScatterProgress.js';
 import { ExecutionError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
+import { Scheduler } from '../runtime/Scheduler.js';
 
 import type { ScatterItemResult } from './ScatterWorkerPool.js';
 
@@ -72,6 +78,8 @@ export class ReservoirBuffer<TState extends NodeStateInterface> {
   readonly #accessor: { get(obj: unknown, path: string): unknown };
   readonly #activeBuffers: Map<string, BufferedItem[]>;
   readonly #poolErrors: unknown[];
+  readonly #keyGeneration: Map<string, number>;
+  readonly #idleAbort: AbortController | null;
   #nextIndex: number;
   #freshDone: boolean;
   #activeWorkers: number;
@@ -87,6 +95,8 @@ export class ReservoirBuffer<TState extends NodeStateInterface> {
     this.#accessor = options.accessor;
     this.#activeBuffers = new Map<string, BufferedItem[]>();
     this.#poolErrors = [];
+    this.#keyGeneration = new Map<string, number>();
+    this.#idleAbort = options.reservoir.idleMs !== undefined ? new AbortController() : null;
     this.#nextIndex = options.nextIndex;
     this.#freshDone = false;
     this.#activeWorkers = 0;
@@ -126,6 +136,50 @@ export class ReservoirBuffer<TState extends NodeStateInterface> {
       },
     );
     workerPromise.catch(() => { /* handled above */ });
+  }
+
+  /**
+   * Bump the generation for a key and arm a fresh idle timer for the new
+   * generation. If the timer fires and the generation is still current, release
+   * the key's partial buffer. Called only when `idleMs` is set.
+   */
+  #armIdleTimer(key: string): void {
+    const idleMs = this.#reservoir.idleMs;
+    // Guard: only arm when idleMs is configured and idleAbort is live.
+    if (idleMs === undefined || this.#idleAbort === null) return;
+
+    const gen = (this.#keyGeneration.get(key) ?? 0) + 1;
+    this.#keyGeneration.set(key, gen);
+
+    Scheduler.current()
+      .after(idleMs, { 'signal': this.#idleAbort.signal })
+      .then(() => { this.#onIdle(key, gen); })
+      .catch(() => { /* idleAbort cancelled the timer — expected, no action needed */ });
+  }
+
+  /**
+   * Idle timer callback. Releases the key's partial buffer if the generation
+   * is still current and the buffer is non-empty. No-ops if stale, aborted,
+   * or already released by capacity or complete-flush.
+   */
+  #onIdle(key: string, gen: number): void {
+    // Bail if the pull loop has exited (idleAbort is already aborted).
+    if (this.#idleAbort?.signal.aborted === true) return;
+    // Bail if run is aborted or errors have accumulated.
+    if (this.#signal?.aborted === true) return;
+    if (this.#poolErrors.length > 0) return;
+    // Bail if a newer item arrived or the key was already released.
+    if (this.#keyGeneration.get(key) !== gen) return;
+
+    const buf = this.#activeBuffers.get(key);
+    if (buf === undefined || buf.length === 0) return;
+
+    // Release the partial buffer as an idle batch.
+    const batch = buf.splice(0);
+    this.#activeBuffers.delete(key);
+    // Bump generation so any racing timer (impossible here, but defensive) is stale.
+    this.#keyGeneration.set(key, gen + 1);
+    this.#spawnBatchWorker(batch);
   }
 
   /**
@@ -198,21 +252,40 @@ export class ReservoirBuffer<TState extends NodeStateInterface> {
       if (existing !== undefined) {
         existing.push(buffered);
         if (existing.length >= capacity) {
-          // Capacity release: dispatch this key's buffer as a batch.
+          // Capacity release: bump generation (invalidates any pending idle timer),
+          // then dispatch this key's buffer as a batch.
+          this.#keyGeneration.set(bufferKey, (this.#keyGeneration.get(bufferKey) ?? 0) + 1);
           const batch = existing.splice(0, capacity);
-          if (existing.length === 0) this.#activeBuffers.delete(bufferKey);
+          if (existing.length === 0) {
+            this.#activeBuffers.delete(bufferKey);
+          } else {
+            // Items remain after capacity release; arm a new idle timer.
+            this.#armIdleTimer(bufferKey);
+          }
           this.#spawnBatchWorker(batch);
+        } else {
+          // Item appended but capacity not reached; arm (or re-arm) idle timer.
+          this.#armIdleTimer(bufferKey);
         }
       } else {
         this.#activeBuffers.set(bufferKey, [buffered]);
         if (capacity === 1) {
-          // Capacity of 1: release immediately.
+          // Capacity of 1: bump generation and release immediately.
+          this.#keyGeneration.set(bufferKey, (this.#keyGeneration.get(bufferKey) ?? 0) + 1);
           const batch = [buffered];
           this.#activeBuffers.delete(bufferKey);
           this.#spawnBatchWorker(batch);
+        } else {
+          // First item for a new key; arm idle timer.
+          this.#armIdleTimer(bufferKey);
         }
       }
     }
+
+    // Pull loop has exited (source drained, error, or run-abort).
+    // Cancel all pending idle timers so none can fire during complete-flush,
+    // worker-wait, or after drain() returns.
+    this.#idleAbort?.abort();
 
     // Complete-flush: source drained, dispatch every non-empty buffer as partial batch.
     if (this.#freshDone && this.#poolErrors.length === 0 && this.#signal?.aborted !== true) {
