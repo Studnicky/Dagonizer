@@ -24,5 +24,6 @@ export { Batch } from './batch/Batch.js';
 export type { Item, ItemId } from './batch/Item.js';
 export { RoutedBatchBuilder } from './batch/RoutedBatch.js';
 export type { RoutedBatch } from './batch/RoutedBatch.js';
+export { MonadicNode } from './MonadicNode.js';
 export { ScalarNode } from './ScalarNode.js';
 export { NodeRunner } from './NodeRunner.js';

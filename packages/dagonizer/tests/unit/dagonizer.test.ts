@@ -302,8 +302,8 @@ void describe('Dagonizer validation', () => {
     class BadNode extends ScalarNode<NodeStateBase, string> {
       readonly name = 'bad';
       readonly outputs = ['success'] as const;
-      protected async executeOne(): Promise<NodeOutputInterface<string>> { return { 'errors': [], 'output': 'success' as const }; }
-      validate() { return { 'valid': false, 'errors': ['bad config'] }; }
+      protected override async executeOne(): Promise<NodeOutputInterface<string>> { return { 'errors': [], 'output': 'success' as const }; }
+      override validate() { return { 'valid': false, 'errors': ['bad config'] }; }
     }
     assert.throws(() => dispatcher.registerNode(new BadNode()), DAGError);
   });

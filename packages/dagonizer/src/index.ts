@@ -204,6 +204,7 @@ export { Batch } from './core/batch/Batch.js';
 export type { Item, ItemId } from './core/batch/Item.js';
 export { RoutedBatchBuilder } from './core/batch/RoutedBatch.js';
 export type { RoutedBatch } from './core/batch/RoutedBatch.js';
+export { MonadicNode } from './core/MonadicNode.js';
 export { ScalarNode } from './core/ScalarNode.js';
 export { NodeRunner } from './core/NodeRunner.js';
 

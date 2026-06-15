@@ -1,42 +1,34 @@
 /**
- * ScalarNode: abstract base class that adapts a per-item `executeOne` into
- * a batch-native `execute`. Implements `NodeInterface`.
+ * ScalarNode: the per-item specialization of `MonadicNode`.
  *
- * Subclasses implement `executeOne` with the per-item signature.
- * The base class maps it over the batch, forwards errors via
- * `state.collectError`, and groups items by the returned output port
- * into a `RoutedBatch`.
+ * Extends the `MonadicNode` root and implements its `execute(batch)` contract
+ * by looping a per-item `executeOne` over the batch — "a scalar is a batch of
+ * one." Subclasses implement `executeOne` with the per-item signature; the base
+ * maps it over the batch, forwards per-item errors via `state.collectError`,
+ * and groups items by the returned output port into a `RoutedBatch`.
  *
- * Migration path: swap the base class from `MonadicNode` to `ScalarNode`
- * and rename `execute` to `executeOne`.
+ * Use `ScalarNode` for the common per-item leaf node (LLM/IO leaves, most
+ * domain nodes). Author a batch-native hot-path node by extending `MonadicNode`
+ * directly and implementing `execute`.
  */
 
-import type { NodeInterface } from '../contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../contracts/OperationContractFragment.js';
-import type { OperationContractFragment } from '../contracts/OperationContractFragment.js';
 import type { NodeContextInterface } from '../entities/node/NodeContext.js';
 import type { NodeOutputInterface } from '../entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
-import { Timeout } from '../runtime/Timeout.js';
 
 import { Batch } from './batch/Batch.js';
 import type { Item } from './batch/Item.js';
 import type { RoutedBatch } from './batch/RoutedBatch.js';
+import { MonadicNode } from './MonadicNode.js';
 
 export abstract class ScalarNode<
   TState extends NodeStateInterface,
   TOutput extends string,
   TServices = undefined,
-> implements NodeInterface<TState, TOutput, TServices> {
-  abstract readonly name: string;
-  abstract readonly outputs: readonly TOutput[];
-
-  readonly contract: OperationContractFragment = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout: Timeout = Timeout.none();
-
+> extends MonadicNode<TState, TOutput, TServices> {
   /**
-   * Per-item execution. Subclasses implement this; the base class maps it
-   * over the batch and groups items by the returned output port.
+   * Per-item execution. Subclasses implement this; the base class maps it over
+   * the batch and groups items by the returned output port.
    */
   protected abstract executeOne(
     state: TState,
@@ -48,7 +40,7 @@ export abstract class ScalarNode<
    * `state.collectError`, groups items by the returned output port, and returns
    * a `RoutedBatch`.
    */
-  async execute(
+  override async execute(
     batch: Batch<TState>,
     context: NodeContextInterface<TServices>,
   ): Promise<RoutedBatch<TOutput, TState>> {

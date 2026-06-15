@@ -17,9 +17,9 @@
  */
 
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
+import { ScalarNode } from '@noocodex/dagonizer';
 import { ChatRequestBuilder } from '@noocodex/dagonizer/adapter';
 import type { ChatRequest, ChatResponse, PartialChatRequest } from '@noocodex/dagonizer/adapter';
-import { MonadicNode } from '@noocodex/dagonizer/patterns';
 import type { LlmClient } from '@noocodex/dagonizer/patterns';
 
 export interface RagServices {
@@ -29,7 +29,7 @@ export interface RagServices {
 export abstract class LlmDispatchNode<
   TState extends NodeStateInterface,
   TOutput extends string,
-> extends MonadicNode<TState, TOutput, RagServices> {
+> extends ScalarNode<TState, TOutput, RagServices> {
   /** Build the user prompt from state. */
   protected abstract buildPrompt(state: TState): string;
 
