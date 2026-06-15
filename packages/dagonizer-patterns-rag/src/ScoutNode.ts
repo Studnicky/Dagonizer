@@ -36,7 +36,7 @@ export abstract class ScoutNode<
   protected abstract writeBack(state: TState, items: readonly TItem[]): void;
 
 
-  async execute(
+  protected override async executeOne(
     state: TState,
     context: NodeContextInterface<ScoutServices<TInput, TToolOutput>>,
   ): Promise<NodeOutputInterface<'success' | 'empty' | 'error'>> {

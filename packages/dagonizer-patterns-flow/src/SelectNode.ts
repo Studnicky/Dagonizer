@@ -16,7 +16,7 @@ export abstract class SelectNode<
   protected abstract transform(items: readonly TItem[]): readonly TItem[];
 
 
-  async execute(
+  protected override async executeOne(
     state: TState,
     _context: NodeContextInterface<undefined>,
   ): Promise<NodeOutputInterface<'success' | 'empty'>> {

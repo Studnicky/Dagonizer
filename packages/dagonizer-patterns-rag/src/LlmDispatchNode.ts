@@ -56,8 +56,8 @@ export abstract class LlmDispatchNode<
     return context.services.llm.chat(request);
   }
 
-  /** Leaves provide their own execute(); the dispatch loop is shared. */
-  abstract override execute(
+  /** Leaves provide their own executeOne(); the dispatch loop is shared. */
+  protected abstract override executeOne(
     state: TState,
     context: NodeContextInterface<RagServices>,
   ): Promise<NodeOutputInterface<TOutput>>;

@@ -18,7 +18,7 @@ export abstract class ExtractFieldNode<
   protected abstract extract(state: TState): TValue;
   protected abstract apply(state: TState, value: TValue): void;
 
-  async execute(
+  protected override async executeOne(
     state: TState,
     _context: NodeContextInterface<undefined>,
   ): Promise<NodeOutputInterface<'success'>> {

@@ -20,7 +20,7 @@ export abstract class ComposeNode<
   /** Write the generated draft back to state. */
   protected abstract applyDraft(state: TState, draft: string): void;
 
-  override async execute(
+  protected override async executeOne(
     state: TState,
     context: NodeContextInterface<RagServices>,
   ): Promise<NodeOutputInterface<'success'>> {

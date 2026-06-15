@@ -30,7 +30,7 @@ export abstract class DecisionNode<
   /** Write the choice back to state. */
   protected abstract applyChoice(state: TState, choice: TChoice): void;
 
-  override async execute(
+  protected override async executeOne(
     state: TState,
     context: NodeContextInterface<RagServices>,
   ): Promise<NodeOutputInterface<TOutput>> {
