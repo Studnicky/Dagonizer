@@ -139,9 +139,10 @@ const sidebar = [
     text: 'Concepts',
     collapsed: false,
     items: [
-      { text: 'Concepts',         link: '/concepts' },
-      { text: 'Architecture',     link: '/architecture' },
-      { text: 'Lifecycle phases', link: '/guide/lifecycle-phases' },
+      { text: 'Concepts',           link: '/concepts' },
+      { text: 'Plural-native execution', link: '/guide/plural-native' },
+      { text: 'Architecture',       link: '/architecture' },
+      { text: 'Lifecycle phases',   link: '/guide/lifecycle-phases' },
     ],
   },
   {
@@ -156,6 +157,8 @@ const sidebar = [
       { text: 'Schema and JSON loading',   link: '/guide/schema' },
       { text: 'Cancellation',              link: '/guide/cancellation' },
       { text: 'Retry',                     link: '/guide/retry' },
+      { text: 'Reservoir',                 link: '/guide/reservoir' },
+      { text: 'Migrating to batch',        link: '/guide/migrating-to-batch' },
       { text: 'Services container',        link: '/guide/services' },
       { text: 'Observability',             link: '/guide/observability' },
       { text: 'State accessors',           link: '/guide/state-accessor' },

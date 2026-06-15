@@ -26,11 +26,33 @@ Vocabulary that the rest of the docs assume. The engine is domain-agnostic: agen
 
 ## Node
 
-A **node** is a stateless unit of work that implements `NodeInterface<TState, TOutput>`. It receives shared state and a context (which carries the `AbortSignal`), mutates state in place, and returns a named output. The classify-intent node in the Archivist is a typical example: it reads the user query, writes a classification to state, and returns one of `'discover' | 'identify' | 'recall' | 'rejected'`.
+The fundamental unit of work is a **batch**. A **node** consumes a `Batch<TState>` and returns a `RoutedBatch<TOutput>` — it **partitions** the batch's items across its named output ports. That single operation is the one node contract:
 
-Nodes are registered with the dispatcher under a string name. The same registered node can appear in many DAGs and in many placements.
+```ts
+execute(batch: Batch<TState>, context): Promise<RoutedBatch<TOutput, TState>>
+```
 
-A node never throws. It catches its own errors and routes through a named `error` output. The dispatcher guards the boundary with a try/catch, but a throwing node is a bug.
+A single item is a batch of one; the engine never processes a scalar specially. **Routing is partitioning**: a node distributing items across `needs-gdpr` / `geo-only` ports, micro-batching, and the reservoir are all the same mechanism — `Map<output, Batch>`.
+
+You almost never write `execute` by hand. Nodes descend from the **taxonomy**:
+
+- **`MonadicNode<TState, TOutput, TServices>`** — the root node base (the *monad*). Implements `NodeInterface` and supplies `name` / `outputs` / `contract` / `timeout` / `validate` / `destroy`, leaving `execute(batch)` abstract. Extend it directly to author a **batch-native** node — the hot path where one call processes the whole batch and hits shared caches across it.
+- **`ScalarNode<TState, TOutput, TServices>`** — extends `MonadicNode` and is the **per-item** specialization. You implement `protected executeOne(state, context): Promise<NodeOutputInterface<TOutput>>`; the base loops it over the batch and groups items by the returned port. This is the common case.
+
+The classify-intent node in the Archivist is a typical `ScalarNode`: its `executeOne` reads the user query, writes a classification to state, and returns one of `'discover' | 'identify' | 'recall' | 'rejected'`.
+
+```ts
+class ClassifyIntentNode extends ScalarNode<ArchivistState, 'on-topic' | 'off-topic'> {
+  readonly name = 'classify-intent';
+  readonly outputs = ['on-topic', 'off-topic'] as const;
+  protected override async executeOne(state: ArchivistState): Promise<NodeOutputInterface<'on-topic' | 'off-topic'>> {
+    state.classification = classify(state.query);
+    return NodeOutputBuilder.of(state.classification === 'rejected' ? 'off-topic' : 'on-topic');
+  }
+}
+```
+
+Nodes are registered with the dispatcher under a string name; the same registered node can appear in many DAGs and placements. A node never throws — a per-item error routes to the item's `error` port (its own sub-batch). The dispatcher guards the boundary, but a throwing node is a bug.
 
 ## DAG
 
@@ -178,6 +200,22 @@ gather: { strategy: 'discard' }
 ```ts
 gather: { strategy: 'custom', customNode: 'mergeCandidates' }
 ```
+
+### Authoring a custom gather strategy
+
+A gather strategy is **one fold** over batches — `initial → reduce → finalize`:
+
+```ts
+class TopNGather extends GatherStrategy {
+  readonly name = 'top-n';
+  override initial(config, state, accessor): void { /* seed the accumulator in state */ }
+  override reduce(config, batch: Batch<GatherRecord>, state, accessor): void { /* fold a batch of clone results */ }
+  override async finalize(config, execution): Promise<void> { /* end-of-gather work (e.g. invoke a node) */ }
+}
+GatherStrategies.register(new TopNGather());
+```
+
+There is no `apply` / `applyIncremental` split and no `IncrementalGatherStrategy`: "incremental" is a `reduce` over a batch of 1, "all-at-once" is a `reduce` over a batch of N — the same method. Strategies that need every result (top-N, sort) accumulate in `reduce` and compute in `finalize`.
 
 ## Streaming and backpressure
 
