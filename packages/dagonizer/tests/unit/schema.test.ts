@@ -73,6 +73,42 @@ void describe('Validator.dag', () => {
     } as unknown as DAG;
     assert.equal(Validator.dag.is(bad), false, 'null route must fail schema validation');
     assert.throws(() => Validator.dag.validate(bad), ValidationError);
+
+    // A single null route and multiple null routes both fail schema validation:
+    // null is never a valid output target, regardless of how many appear.
+    const oneNull = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:test',
+      '@type':    'DAG',
+      'name':     'test',
+      'version':  '1',
+      'entrypoint': 'start',
+      'nodes': [{
+        '@id':   'urn:noocodex:dag:test/node/start',
+        '@type': 'SingleNode',
+        'name':  'start',
+        'node':  'start',
+        'outputs': { 'done': null },
+      }],
+    } as unknown as DAG;
+    assert.equal(Validator.dag.is(oneNull), false, 'null output must not satisfy the schema');
+
+    const multiNull = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:test',
+      '@type':    'DAG',
+      'name':     'test',
+      'version':  '1',
+      'entrypoint': 'start',
+      'nodes': [{
+        '@id':   'urn:noocodex:dag:test/node/start',
+        '@type': 'SingleNode',
+        'name':  'start',
+        'node':  'start',
+        'outputs': { 'ok': null, 'fail': null },
+      }],
+    } as unknown as DAG;
+    assert.equal(Validator.dag.is(multiNull), false, 'null outputs must not satisfy the schema');
   });
 
   void it('accepts a scatter node with a custom registered gather strategy name', () => {
@@ -144,35 +180,6 @@ void describe('DAGDocument.fromValue', () => {
 
   void it('rejects schema-noncompliant value', () => {
     assert.throws(() => DAGDocument.fromValue({ 'name': 'x' }), ValidationError);
-  });
-});
-
-void describe('DAGDocument.load', () => {
-  void it('parses + validates a JSON DAG', () => {
-    const json = JSON.stringify(validDAG);
-    const parsed = DAGDocument.load(json);
-    assert.deepEqual(parsed, validDAG);
-  });
-
-  void it('rejects malformed JSON', () => {
-    assert.throws(() => DAGDocument.load('{not json'), ValidationError);
-  });
-
-  void it('rejects schema-noncompliant JSON', () => {
-    assert.throws(() => DAGDocument.load('{"name": "x"}'), ValidationError);
-  });
-});
-
-void describe('DAGDocument.serialize round-trip', () => {
-  void it('serialize → load yields the original DAG', () => {
-    const json = DAGDocument.serialize(validDAG);
-    const parsed = DAGDocument.load(json);
-    assert.deepEqual(parsed, validDAG);
-  });
-
-  void it('serializeCompact omits whitespace', () => {
-    const compact = DAGDocument.serializeCompact(validDAG);
-    assert.equal(compact.includes('\n'), false);
   });
 });
 

@@ -27,76 +27,43 @@ const CORR = 'corr-test';
 const BASE = ['parent-embed'];
 const state = new NodeStateBase();
 
+// Subclass exposes WorkerObserver's protected hooks so a test can fire each
+// hook directly and inspect the BridgeMessage the observer sends.
+class ExposedObserver extends WorkerObserver<NodeStateBase> {
+  callNodeStart(nodeName: string, s: NodeStateBase, path: readonly string[]): void { this.onNodeStart(nodeName, s, path); }
+  callNodeEnd(nodeName: string, output: string | null, s: NodeStateBase, path: readonly string[]): void { this.onNodeEnd(nodeName, output, s, path); }
+  callPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, s: NodeStateBase, path: readonly string[]): void { this.onPhaseEnter(dagName, phase, placementName, s, path); }
+  callPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, s: NodeStateBase, path: readonly string[]): void { this.onPhaseExit(dagName, phase, placementName, s, path); }
+  callError(nodeName: string, error: Error, s: NodeStateBase, path: readonly string[]): void { this.onError(nodeName, error, s, path); }
+  callContractWarning(message: string): void { this.onContractWarning(message); }
+  callFlowStart(dagName: string, s: NodeStateBase): void { this.onFlowStart(dagName, s); }
+}
+
 void describe('WorkerObserver — all-six-hook routing (G6)', () => {
-  void it('onNodeStart forwards as instrumentation with hook=nodeStart and composed path', () => {
+  void it('forwards every overridden hook as instrumentation BridgeMessage with correct fields, suppresses onFlowStart, and prepends basePath', () => {
     const ch = new CollectingChannel();
-    // Test the hook firing path via a subclass that exposes the protected methods.
-    class ExposedObserver extends WorkerObserver<NodeStateBase> {
-      callNodeStart(nodeName: string, s: NodeStateBase, path: readonly string[]): void {
-        this.onNodeStart(nodeName, s, path);
-      }
-      callNodeEnd(nodeName: string, output: string | null, s: NodeStateBase, path: readonly string[]): void {
-        this.onNodeEnd(nodeName, output, s, path);
-      }
-      callPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, s: NodeStateBase, path: readonly string[]): void {
-        this.onPhaseEnter(dagName, phase, placementName, s, path);
-      }
-      callPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, s: NodeStateBase, path: readonly string[]): void {
-        this.onPhaseExit(dagName, phase, placementName, s, path);
-      }
-      callError(nodeName: string, error: Error, s: NodeStateBase, path: readonly string[]): void {
-        this.onError(nodeName, error, s, path);
-      }
-      callContractWarning(message: string): void {
-        this.onContractWarning(message);
-      }
-      callFlowStart(dagName: string, s: NodeStateBase): void {
-        this.onFlowStart(dagName, s);
-      }
-    }
     const exposed = new ExposedObserver(ch, CORR, BASE, {});
-    exposed.callNodeStart('my-node', state, ['child']);
 
+    // nodeStart: one message, all fields populated, basePath composed with the
+    // per-call inner path.
+    exposed.callNodeStart('my-node', state, ['child']);
     assert.strictEqual(ch.sent.length, 1);
-    const msg = ch.sent[0];
-    assert.ok(msg !== undefined);
-    assert.strictEqual(msg.kind, 'instrumentation');
-    if (msg.kind === 'instrumentation') {
-      assert.strictEqual(msg.hook, 'nodeStart');
-      assert.strictEqual(msg.correlationId, CORR);
-      assert.strictEqual(msg.nodeName, 'my-node');
-      assert.strictEqual(msg.phase, '');
-      assert.strictEqual(msg.output, null);
-      assert.deepStrictEqual(msg.placementPath, ['parent-embed', 'child']);
-    }
-  });
-
-  void it('all hook overrides forward correct BridgeMessage fields', () => {
-    const ch = new CollectingChannel();
-
-    class ExposedObserver extends WorkerObserver<NodeStateBase> {
-      callNodeStart(n: string, s: NodeStateBase, p: readonly string[]): void { this.onNodeStart(n, s, p); }
-      callNodeEnd(n: string, o: string | null, s: NodeStateBase, p: readonly string[]): void { this.onNodeEnd(n, o, s, p); }
-      callPhaseEnter(d: string, ph: 'pre' | 'post', pn: string, s: NodeStateBase, p: readonly string[]): void { this.onPhaseEnter(d, ph, pn, s, p); }
-      callPhaseExit(d: string, ph: 'pre' | 'post', pn: string, s: NodeStateBase, p: readonly string[]): void { this.onPhaseExit(d, ph, pn, s, p); }
-      callError(n: string, e: Error, s: NodeStateBase, p: readonly string[]): void { this.onError(n, e, s, p); }
-      callContractWarning(m: string): void { this.onContractWarning(m); }
-      callFlowStart(d: string, s: NodeStateBase): void { this.onFlowStart(d, s); }
-    }
-    const exposed = new ExposedObserver(ch, CORR, BASE, {});
-
-    // nodeStart
-    ch.sent.length = 0;
-    exposed.callNodeStart('my-node', state, ['child']);
-    assert.strictEqual(ch.sent[0]?.kind, 'instrumentation');
-    if (ch.sent[0]?.kind === 'instrumentation') {
-      assert.strictEqual(ch.sent[0].hook, 'nodeStart');
-      assert.deepStrictEqual(ch.sent[0].placementPath, ['parent-embed', 'child']);
+    const startMsg = ch.sent[0];
+    assert.ok(startMsg !== undefined);
+    assert.strictEqual(startMsg.kind, 'instrumentation');
+    if (startMsg.kind === 'instrumentation') {
+      assert.strictEqual(startMsg.hook, 'nodeStart');
+      assert.strictEqual(startMsg.correlationId, CORR);
+      assert.strictEqual(startMsg.nodeName, 'my-node');
+      assert.strictEqual(startMsg.phase, '');
+      assert.strictEqual(startMsg.output, null);
+      assert.deepStrictEqual(startMsg.placementPath, ['parent-embed', 'child']);
     }
 
-    // nodeEnd
+    // nodeEnd: carries the output token and the composed path.
     ch.sent.length = 0;
     exposed.callNodeEnd('my-node', 'success', state, ['child']);
+    assert.strictEqual(ch.sent.length, 1);
     assert.strictEqual(ch.sent[0]?.kind, 'instrumentation');
     if (ch.sent[0]?.kind === 'instrumentation') {
       assert.strictEqual(ch.sent[0].hook, 'nodeEnd');
@@ -104,9 +71,10 @@ void describe('WorkerObserver — all-six-hook routing (G6)', () => {
       assert.deepStrictEqual(ch.sent[0].placementPath, ['parent-embed', 'child']);
     }
 
-    // phaseEnter
+    // phaseEnter: phase token surfaces and the placement name becomes nodeName.
     ch.sent.length = 0;
     exposed.callPhaseEnter('dag', 'pre', 'placement', state, []);
+    assert.strictEqual(ch.sent.length, 1);
     assert.strictEqual(ch.sent[0]?.kind, 'instrumentation');
     if (ch.sent[0]?.kind === 'instrumentation') {
       assert.strictEqual(ch.sent[0].hook, 'phaseEnter');
@@ -114,18 +82,20 @@ void describe('WorkerObserver — all-six-hook routing (G6)', () => {
       assert.strictEqual(ch.sent[0].nodeName, 'placement');
     }
 
-    // phaseExit
+    // phaseExit: post phase token surfaces.
     ch.sent.length = 0;
     exposed.callPhaseExit('dag', 'post', 'placement', state, []);
+    assert.strictEqual(ch.sent.length, 1);
     assert.strictEqual(ch.sent[0]?.kind, 'instrumentation');
     if (ch.sent[0]?.kind === 'instrumentation') {
       assert.strictEqual(ch.sent[0].hook, 'phaseExit');
       assert.strictEqual(ch.sent[0].phase, 'post');
     }
 
-    // contractWarning
+    // contractWarning: message forwarded, path is just the basePath (no per-call path).
     ch.sent.length = 0;
     exposed.callContractWarning('unbound container role');
+    assert.strictEqual(ch.sent.length, 1);
     assert.strictEqual(ch.sent[0]?.kind, 'instrumentation');
     if (ch.sent[0]?.kind === 'instrumentation') {
       assert.strictEqual(ch.sent[0].hook, 'contractWarning');
@@ -133,9 +103,10 @@ void describe('WorkerObserver — all-six-hook routing (G6)', () => {
       assert.deepStrictEqual(ch.sent[0].placementPath, []);
     }
 
-    // error
+    // error: error message forwarded and path composed with the inner path.
     ch.sent.length = 0;
     exposed.callError('node', new Error('test error'), state, ['inner']);
+    assert.strictEqual(ch.sent.length, 1);
     assert.strictEqual(ch.sent[0]?.kind, 'instrumentation');
     if (ch.sent[0]?.kind === 'instrumentation') {
       assert.strictEqual(ch.sent[0].hook, 'error');
@@ -150,17 +121,14 @@ void describe('WorkerObserver — all-six-hook routing (G6)', () => {
     assert.strictEqual(ch.sent.length, 0, 'onFlowStart must not send any message');
   });
 
-  void it('basePath is prepended to every composable hook', () => {
+  void it('prepends a multi-element basePath to the per-call placement path', () => {
     const ch = new CollectingChannel();
-
-    class ExposedObserver extends WorkerObserver<NodeStateBase> {
-      callNodeStart(n: string, s: NodeStateBase, p: readonly string[]): void { this.onNodeStart(n, s, p); }
-    }
     const exposed = new ExposedObserver(ch, CORR, ['a', 'b'], {});
     exposed.callNodeStart('n', state, ['c']);
 
     const msg = ch.sent[0];
     assert.ok(msg !== undefined);
+    assert.strictEqual(msg.kind, 'instrumentation');
     if (msg.kind === 'instrumentation') {
       assert.deepStrictEqual(msg.placementPath, ['a', 'b', 'c']);
     }

@@ -485,3 +485,111 @@ void describe('MermaidRenderer.render: TerminalNode', () => {
     assert.doesNotMatch(out, /END\(\[end\]\)/u);
   });
 });
+
+// ── Reservoir-glyph fixtures (shared with CytoscapeRenderer reservoir tests) ──
+
+/** ScatterNode with a reservoir config (keyField + capacity + idleMs). */
+const RESERVOIR_DAG: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id':      'urn:noocodex:dag:reservoir',
+  '@type':    'DAG',
+  'name':       'reservoir',
+  'version':    '1',
+  'entrypoint': 'buffer',
+  'nodes': [
+    {
+      '@id':      'urn:noocodex:dag:reservoir/node/buffer',
+      '@type':    'ScatterNode',
+      'name':     'buffer',
+      'body':     { 'node': 'worker' },
+      'source':   'events',
+      'gather':   { 'strategy': 'discard' },
+      'reservoir': { 'keyField': 'tenantId', 'capacity': 50, 'idleMs': 5000 },
+      'outputs':  { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+    },
+    { '@id': 'urn:noocodex:dag:reservoir/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+  ],
+};
+
+/** ScatterNode with reservoir but no idleMs (capacity-only flush). */
+const RESERVOIR_NO_IDLEMS_DAG: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id':      'urn:noocodex:dag:reservoir-no-idle',
+  '@type':    'DAG',
+  'name':       'reservoir-no-idle',
+  'version':    '1',
+  'entrypoint': 'batch',
+  'nodes': [
+    {
+      '@id':      'urn:noocodex:dag:reservoir-no-idle/node/batch',
+      '@type':    'ScatterNode',
+      'name':     'batch',
+      'body':     { 'node': 'processor' },
+      'source':   'records',
+      'gather':   { 'strategy': 'discard' },
+      'reservoir': { 'keyField': 'region', 'capacity': 100 },
+      'outputs':  { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+    },
+    { '@id': 'urn:noocodex:dag:reservoir-no-idle/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+  ],
+};
+
+/** Plain ScatterNode — no reservoir field. Parity guard fixture. */
+const PLAIN_SCATTER_DAG: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id':      'urn:noocodex:dag:plain-scatter',
+  '@type':    'DAG',
+  'name':       'plain-scatter',
+  'version':    '1',
+  'entrypoint': 'fan',
+  'nodes': [
+    {
+      '@id':    'urn:noocodex:dag:plain-scatter/node/fan',
+      '@type':  'ScatterNode',
+      'name':   'fan',
+      'body':   { 'node': 'worker' },
+      'source': 'items',
+      'gather': { 'strategy': 'discard' },
+      'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+    },
+    { '@id': 'urn:noocodex:dag:plain-scatter/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+  ],
+};
+
+void describe('MermaidRenderer: reservoir glyph', () => {
+  void it('reservoir-configured scatter carries keyField×capacity in a trapezoid label and gets the reservoir classDef + class assignment', () => {
+    const out = MermaidRenderer.render(RESERVOIR_DAG);
+    // Label contains the reservoir indicator with keyField and capacity.
+    assert.match(out, /▣ tenantId ×50/u);
+    // Shape is still [/.../] (trapezoid) — only the label content changes.
+    assert.match(out, /buffer\[\/.*▣.*\/\]/u);
+    // A classDef reservoir rule is emitted with the chosen reservoir blue.
+    assert.match(out, /classDef reservoir fill:/u);
+    assert.match(out, /classDef reservoir fill:#1e3a5f,stroke:#3b82f6,color:#bfdbfe/u);
+    // The reservoir-configured node is assigned the reservoir class.
+    assert.match(out, /class buffer reservoir/u);
+    // classDef is emitted exactly once for a single reservoir scatter.
+    const matches = out.match(/classDef reservoir/gu);
+    assert.equal(matches?.length ?? 0, 1, 'exactly one classDef reservoir line');
+  });
+
+  void it('reservoir config without idleMs still emits the reservoir marking', () => {
+    const out = MermaidRenderer.render(RESERVOIR_NO_IDLEMS_DAG);
+    assert.match(out, /▣ region ×100/u);
+    assert.match(out, /classDef reservoir fill:/u);
+    assert.match(out, /class batch reservoir/u);
+  });
+
+  // ── Parity guard ──────────────────────────────────────────────────────────
+
+  void it('plain (non-reservoir) scatter renders as a bare trapezoid with no reservoir marking, classDef, or class assignment', () => {
+    const out = MermaidRenderer.render(PLAIN_SCATTER_DAG);
+    // Shape is plain [/label/] without any augmentation.
+    assert.match(out, /fan\[\/fan\/\]/u);
+    // No reservoir indicator in the label.
+    assert.doesNotMatch(out, /▣/u);
+    // No reservoir classDef and no reservoir class assignment.
+    assert.doesNotMatch(out, /classDef reservoir/u);
+    assert.doesNotMatch(out, /class fan reservoir/u);
+  });
+});

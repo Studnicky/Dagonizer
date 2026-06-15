@@ -188,42 +188,31 @@ void describe('PostMessageChannel', () => {
 
   // ── Invalid payload handling ────────────────────────────────────────────────
 
-  void it('surfaces an invalid inbound payload as an error message to the handler', async () => {
-    const pair = new FakeWorkerPair();
-    const mainChannel = new PostMessageChannel(pair.mainSide);
+  void it('surfaces any invalid inbound payload as a non-recoverable INVALID_MESSAGE error', async () => {
+    // Both a non-BridgeMessage object and null are injected via the worker
+    // scope's postMessage — bypassing PostMessageChannel.send() so the payload
+    // is NOT a valid BridgeMessage. Each must surface the full error shape.
+    for (const badPayload of [{ 'notAValidMessage': true }, null] as const) {
+      const pair = new FakeWorkerPair();
+      const mainChannel = new PostMessageChannel(pair.mainSide);
 
-    const received: BridgeMessage[] = [];
-    // pair.workerSide.postMessage delivers to the main-side listeners, so the
-    // bad payload arrives at mainChannel — register its handler here.
-    mainChannel.onMessage((msg) => received.push(msg));
+      const received: BridgeMessage[] = [];
+      // pair.workerSide.postMessage delivers to the main-side listeners, so the
+      // bad payload arrives at mainChannel — register its handler here.
+      mainChannel.onMessage((msg) => received.push(msg));
 
-    // Inject an invalid payload via the worker scope's postMessage — bypassing
-    // PostMessageChannel.send() so the payload is NOT a valid BridgeMessage.
-    pair.workerSide.postMessage({ 'notAValidMessage': true });
+      pair.workerSide.postMessage(badPayload);
 
-    await nextTick();
-    assert.strictEqual(received.length, 1);
-    const msg = received[0];
-    assert.ok(msg !== undefined);
-    assert.strictEqual(msg.kind, 'error');
-    if (msg.kind === 'error') {
-      assert.strictEqual(msg.code, 'INVALID_MESSAGE');
-      assert.strictEqual(msg.recoverable, false);
+      await nextTick();
+      assert.strictEqual(received.length, 1, `payload ${JSON.stringify(badPayload)} yields exactly one message`);
+      const msg = received[0];
+      assert.ok(msg !== undefined);
+      assert.strictEqual(msg.kind, 'error');
+      if (msg.kind === 'error') {
+        assert.strictEqual(msg.code, 'INVALID_MESSAGE');
+        assert.strictEqual(msg.recoverable, false);
+      }
     }
-  });
-
-  void it('surfaces null as an error message to the handler', async () => {
-    const pair = new FakeWorkerPair();
-    const mainChannel = new PostMessageChannel(pair.mainSide);
-
-    const received: BridgeMessage[] = [];
-    mainChannel.onMessage((msg) => received.push(msg));
-
-    pair.workerSide.postMessage(null);
-
-    await nextTick();
-    assert.strictEqual(received.length, 1);
-    assert.strictEqual(received[0]?.kind, 'error');
   });
 
   // ── Close semantics ─────────────────────────────────────────────────────────

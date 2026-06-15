@@ -213,30 +213,4 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
     // any-success: all returned empty → 'error' route → fail terminal.
     assert.equal(result.state.lifecycle.kind, 'failed', 'flow failed when all providers return empty');
   });
-
-  void it('builder emits a well-formed ScatterNode for a descriptor source', () => {
-    const dag = new DAGBuilder('hetero-builder-check', '1.0')
-      .scatter('fan-out', 'providers', dispatchNode, {
-        'success': 'end',
-        'error':   'end',
-        'empty':   'end',
-      }, {
-        'concurrency': 4,
-        'gather':  { 'strategy': 'flat-merge-test' },
-        'reducer': 'any-success',
-      })
-      .terminal('end', { 'outcome': 'completed' })
-      .build();
-
-    const scatterNode = dag.nodes.find((n) => n['@type'] === 'ScatterNode');
-    assert.ok(scatterNode !== undefined, 'ScatterNode present in built DAG');
-    assert.equal(scatterNode.name, 'fan-out');
-    // body is a node reference (the dispatch node)
-    assert.ok('node' in scatterNode.body, 'body is a node reference');
-    assert.equal((scatterNode.body as { node: string }).node, 'dispatch');
-    assert.equal(scatterNode.source, 'providers');
-    assert.equal(scatterNode.concurrency, 4);
-    assert.equal(scatterNode.gather.strategy, 'flat-merge-test');
-    assert.equal(scatterNode.reducer, 'any-success');
-  });
 });

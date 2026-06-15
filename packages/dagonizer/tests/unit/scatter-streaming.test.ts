@@ -9,6 +9,10 @@
  *   - Resume mid-stream (array source): exactly-once delivery
  *   - Resume mid-stream (AsyncIterable source): exactly-once delivery
  *   - Incremental gather: map / append / partition fold progressively
+ *   - Run-level abort over an async-iterable source: the pull-loop exits on
+ *     signal.aborted, the checkpoint survives (no premature clear), and a
+ *     subsequent resume reprocesses the remaining items exactly once
+ *   - Pre-aborted signal: the run is interrupted before any item is pulled
  */
 
 import assert from 'node:assert/strict';
@@ -21,6 +25,7 @@ import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { GatherConfig } from '../../src/entities/dag/GatherConfig.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
+import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
 import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
@@ -677,5 +682,258 @@ void describe('Scatter: progress shape (inbox model)', () => {
 
     // Key is cleared after clean completion.
     assert.equal(st.getMetadata<unknown>(SCATTER_PROGRESS_KEY), undefined);
+  });
+});
+
+void describe('Scatter: run-level abort + exactly-once resume', () => {
+  /**
+   * Core scenario: 50-item async generator, abort fires after the first few
+   * items complete, many items remain unprocessed. After abort the checkpoint
+   * must still record the acked items (fewer than total), so a resume can
+   * reprocess the remainder.
+   *
+   * The pull-loop exits when signal.aborted is true, the throw fires before
+   * ScatterCheckpoint.clear(), the run returns with cursor='fan', and the
+   * checkpoint contains the partial ackedResults.
+   */
+  void it('aborted scatter over async-iterable source preserves checkpoint — resume sees remaining items', async () => {
+    const TOTAL_ITEMS = 50;
+    const ABORT_AFTER_COMPLETE = 3; // abort after this many items complete
+
+    // Gate: abort fires once the configured number of items have completed.
+    let completedCount = 0;
+    const controller = new AbortController();
+
+    const dispatcher = new Dagonizer<StreamState>();
+
+    class WorkerNode extends ScalarNode<StreamState, 'success'> {
+      readonly name = 'worker';
+      readonly outputs = ['success'] as const;
+      protected async executeOne(state: StreamState, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
+        // Simulate some async work.
+        await new Promise<void>((resolve, reject) => {
+          const handle = setTimeout(resolve, 2);
+          context.signal.addEventListener('abort', () => {
+            clearTimeout(handle);
+            reject(context.signal.reason);
+          }, { 'once': true });
+        });
+        const n = ++completedCount;
+        // Abort after the configured number of completions.
+        if (n === ABORT_AFTER_COMPLETE) {
+          controller.abort(new Error('test-abort'));
+        }
+        state.processed.push(state.getMetadata<number>('item') ?? -1);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    dispatcher.registerNode(new WorkerNode());
+    dispatcher.registerDAG(makeScatterDag('abort-async-50',
+      { 'strategy': 'append', 'target': 'processed' },
+      { 'concurrency': 2 }));
+
+    const state = new StreamState();
+
+    // Place an async-iterable at state.items (50 items).
+    async function* makeSource(): AsyncGenerator<number> {
+      for (let i = 1; i <= TOTAL_ITEMS; i++) {
+        yield i;
+      }
+    }
+    state.items = makeSource();
+
+    const result = await dispatcher.execute('abort-async-50', state, { 'signal': controller.signal });
+
+    // 1. The run was interrupted — cursor stays on 'fan'.
+    assert.equal(result.cursor, 'fan',
+      `cursor should be 'fan' after abort; got '${result.cursor}'`);
+
+    // 2. The checkpoint survives — progress entry is still present.
+    const stored = result.state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
+    assert.ok(stored !== undefined,
+      'checkpoint must be present after abort (ScatterCheckpoint.clear must NOT have run)');
+
+    const entry = stored['fan'];
+    assert.ok(entry !== undefined, 'expected a progress entry for placement "fan"');
+
+    // 3. Not all items were acked — fewer than total. If the pull-loop ignored
+    //    signal.aborted, ackedResults.length === TOTAL_ITEMS (silent data-loss).
+    const ackedCount = entry.ackedResults.length;
+    assert.ok(
+      ackedCount < TOTAL_ITEMS,
+      `only ${ackedCount} of ${TOTAL_ITEMS} items should be acked after abort; ` +
+      `got all ${TOTAL_ITEMS} — checkpoint was cleared prematurely (data-loss bug)`,
+    );
+
+    // 4. A subsequent resume processes the remaining items. The resume
+    //    dispatcher gets a fresh array source of the same total size; it skips
+    //    already-acked indices via seenIndices and completes the rest.
+    const resumeDispatcher = new Dagonizer<StreamState>();
+    class ResumeWorkerNode extends ScalarNode<StreamState, 'success'> {
+      readonly name = 'worker';
+      readonly outputs = ['success'] as const;
+      protected async executeOne(state: StreamState): Promise<NodeOutputInterface<'success'>> {
+        state.processed.push(state.getMetadata<number>('item') ?? -1);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    resumeDispatcher.registerNode(new ResumeWorkerNode());
+    resumeDispatcher.registerDAG(makeScatterDag('abort-async-resume',
+      { 'strategy': 'append', 'target': 'processed' },
+      { 'concurrency': 2 }));
+
+    // Build resume state: carry over the checkpoint metadata, already-processed
+    // items, and a full index-stable array source.
+    const resumeState = new StreamState();
+    const abortedCheckpoint = result.state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
+    if (abortedCheckpoint !== undefined) {
+      resumeState.setMetadata(SCATTER_PROGRESS_KEY, abortedCheckpoint);
+    }
+    resumeState.processed = [...result.state.processed];
+    resumeState.items = Array.from({ 'length': TOTAL_ITEMS }, (_, i) => i + 1);
+
+    const resumeResult = await resumeDispatcher.resume('abort-async-resume', resumeState, 'fan');
+
+    // 5. Resume completes (cursor null).
+    assert.equal(resumeResult.cursor, null,
+      `resume must complete; cursor should be null, got '${resumeResult.cursor}'`);
+
+    // 6. All TOTAL_ITEMS appear in processed.
+    assert.equal(
+      resumeResult.state.processed.length,
+      TOTAL_ITEMS,
+      `expected ${TOTAL_ITEMS} processed items total; got ${resumeResult.state.processed.length}`,
+    );
+  });
+
+  /**
+   * Simpler scenario: signal already aborted when the pull-loop starts. The
+   * pre-abort is caught in the runNodes main loop before executeScatter is
+   * reached, so cursor stays on 'fan' and no item is processed.
+   */
+  void it('pre-aborted signal: pull-loop exits before processing any items', async () => {
+    const dispatcher = new Dagonizer<StreamState>();
+
+    class PreAbortWorkerNode extends ScalarNode<StreamState, 'success'> {
+      readonly name = 'worker';
+      readonly outputs = ['success'] as const;
+      protected async executeOne(state: StreamState): Promise<NodeOutputInterface<'success'>> {
+        state.processed.push(state.getMetadata<number>('item') ?? -1);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    dispatcher.registerNode(new PreAbortWorkerNode());
+    dispatcher.registerDAG(makeScatterDag('pre-aborted',
+      { 'strategy': 'append', 'target': 'processed' },
+      { 'concurrency': 2 }));
+
+    const state = new StreamState();
+
+    async function* lazySource(): AsyncGenerator<number> {
+      for (let i = 1; i <= 10; i++) yield i;
+    }
+    state.items = lazySource();
+
+    // Abort before execution starts.
+    const ctl = new AbortController();
+    ctl.abort(new Error('pre-abort'));
+
+    const result = await dispatcher.execute('pre-aborted', state, { 'signal': ctl.signal });
+
+    assert.equal(result.cursor, 'fan', 'cursor should be fan after pre-abort');
+    assert.equal(result.state.processed.length, 0, 'no items should have been processed');
+  });
+
+  /**
+   * Abort-then-resume over an array source: acked items from the aborted run
+   * are NOT re-executed on resume (exactly-once guarantee), and every item is
+   * executed exactly once across the two runs.
+   */
+  void it('items acked before abort are not re-executed on resume', async () => {
+    const TOTAL_ITEMS = 20;
+    const ABORT_AFTER = 5;
+
+    let completedCount = 0;
+    const controller = new AbortController();
+    const executedItems: number[] = [];
+
+    const dispatcher = new Dagonizer<StreamState>();
+    class ExactlyOnceWorkerNode extends ScalarNode<StreamState, 'success'> {
+      readonly name = 'worker';
+      readonly outputs = ['success'] as const;
+      protected async executeOne(state: StreamState, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
+        await new Promise<void>((resolve, reject) => {
+          const handle = setTimeout(resolve, 1);
+          context.signal.addEventListener('abort', () => {
+            clearTimeout(handle);
+            reject(context.signal.reason);
+          }, { 'once': true });
+        });
+        const item = state.getMetadata<number>('item') ?? -1;
+        executedItems.push(item);
+        if (++completedCount === ABORT_AFTER) {
+          controller.abort(new Error('abort-at-5'));
+        }
+        state.processed.push(item);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    dispatcher.registerNode(new ExactlyOnceWorkerNode());
+    // Array source, concurrency=1 for deterministic index-stable resume.
+    dispatcher.registerDAG(makeScatterDag('exactly-once-abort',
+      { 'strategy': 'append', 'target': 'processed' },
+      { 'concurrency': 1 }));
+
+    const state = new StreamState();
+    state.items = Array.from({ 'length': TOTAL_ITEMS }, (_, i) => i + 1);
+
+    const partial = await dispatcher.execute('exactly-once-abort', state, { 'signal': controller.signal });
+
+    assert.equal(partial.cursor, 'fan', 'run must be interrupted');
+
+    // Resume with a fresh dispatcher.
+    const resumeItems: number[] = [];
+    const resumeDispatcher = new Dagonizer<StreamState>();
+    class ExactlyOnceResumeWorkerNode extends ScalarNode<StreamState, 'success'> {
+      readonly name = 'worker';
+      readonly outputs = ['success'] as const;
+      protected async executeOne(state: StreamState): Promise<NodeOutputInterface<'success'>> {
+        const item = state.getMetadata<number>('item') ?? -1;
+        resumeItems.push(item);
+        state.processed.push(item);
+        return { 'errors': [], 'output': 'success' as const };
+      }
+    }
+    resumeDispatcher.registerNode(new ExactlyOnceResumeWorkerNode());
+    resumeDispatcher.registerDAG(makeScatterDag('exactly-once-abort',
+      { 'strategy': 'append', 'target': 'processed' },
+      { 'concurrency': 1 }));
+
+    // Restore state for resume.
+    const resumeState = new StreamState();
+    const checkpoint = partial.state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
+    if (checkpoint !== undefined) {
+      resumeState.setMetadata(SCATTER_PROGRESS_KEY, checkpoint);
+    }
+    resumeState.processed = [...partial.state.processed];
+    resumeState.items = Array.from({ 'length': TOTAL_ITEMS }, (_, i) => i + 1);
+
+    const resumeResult = await resumeDispatcher.resume('exactly-once-abort', resumeState, 'fan');
+
+    assert.equal(resumeResult.cursor, null, 'resume must complete');
+
+    // No item appears in both the first run and the resume run.
+    const firstRunSet = new Set(executedItems);
+    const overlap = resumeItems.filter((v) => firstRunSet.has(v));
+    assert.equal(
+      overlap.length,
+      0,
+      `items re-executed on resume that were already completed in first run: [${overlap.join(', ')}]`,
+    );
+
+    // All TOTAL_ITEMS appear across the two runs.
+    const allExecuted = new Set([...executedItems, ...resumeItems]);
+    assert.equal(allExecuted.size, TOTAL_ITEMS,
+      `expected ${TOTAL_ITEMS} unique items across both runs; got ${allExecuted.size}`);
   });
 });

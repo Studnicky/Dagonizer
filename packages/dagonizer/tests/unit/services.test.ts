@@ -55,6 +55,7 @@ void describe('Dagonizer services container', () => {
     dispatcher.registerDAG(dag);
 
     const result = await dispatcher.execute('svc', new S());
+    assert.equal(result.state.lifecycle.kind, 'completed');
     assert.equal(result.state.out, 'https://example');
     assert.deepEqual(services.logger.entries, ['hit:https://example']);
   });
@@ -92,6 +93,7 @@ void describe('Dagonizer services container', () => {
     });
 
     const result = await dispatcher.execute('svc-default', new S());
+    assert.equal(result.state.lifecycle.kind, 'completed');
     assert.equal(result.state.out, undefined);
   });
 });
