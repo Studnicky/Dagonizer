@@ -36,30 +36,24 @@ const ctx: NodeContextInterface = {
 // Batch
 // ---------------------------------------------------------------------------
 
-void describe('Batch.of', () => {
-  void it('returns a size-1 batch with default id "0"', () => {
+void describe('Batch', () => {
+  void it('Batch.of: returns a size-1 batch with default id "0", accepts a custom id', () => {
     const batch = Batch.of(new TestState(1));
     assert.equal(batch.size, 1);
     assert.equal(batch.row(0).id, '0');
     assert.equal(batch.row(0).state.value, 1);
+
+    const custom = Batch.of(new TestState(2), 'abc');
+    assert.equal(custom.row(0).id, 'abc');
   });
 
-  void it('accepts a custom id', () => {
-    const batch = Batch.of(new TestState(2), 'abc');
-    assert.equal(batch.row(0).id, 'abc');
-  });
-});
-
-void describe('Batch.empty', () => {
-  void it('returns a size-0 batch', () => {
+  void it('Batch.empty: returns a size-0 batch with no ids', () => {
     const batch = Batch.empty<TestState>();
     assert.equal(batch.size, 0);
     assert.deepEqual(batch.ids(), []);
   });
-});
 
-void describe('Batch.from', () => {
-  void it('builds batch from items array', () => {
+  void it('Batch.from: builds batch from items array preserving id and order', () => {
     const items: Item<TestState>[] = [
       { 'id': 'x', 'state': new TestState(10) },
       { 'id': 'y', 'state': new TestState(20) },
@@ -69,10 +63,8 @@ void describe('Batch.from', () => {
     assert.equal(batch.row(0).id, 'x');
     assert.equal(batch.row(1).id, 'y');
   });
-});
 
-void describe('Batch.map', () => {
-  void it('transforms state values and preserves ids', () => {
+  void it('Batch.map: transforms state values and preserves ids', () => {
     const batch = Batch.from<TestState>([
       { 'id': 'a', 'state': new TestState(1) },
       { 'id': 'b', 'state': new TestState(2) },
@@ -84,10 +76,8 @@ void describe('Batch.map', () => {
     assert.equal(mapped.row(1).id, 'b');
     assert.equal(mapped.row(1).state.val, 4);
   });
-});
 
-void describe('Batch.filter', () => {
-  void it('removes items not matching predicate', () => {
+  void it('Batch.filter: removes items not matching predicate; returns empty batch when none match', () => {
     const batch = Batch.from<TestState>([
       { 'id': '1', 'state': new TestState(5) },
       { 'id': '2', 'state': new TestState(-1) },
@@ -97,17 +87,12 @@ void describe('Batch.filter', () => {
     assert.equal(filtered.size, 2);
     assert.equal(filtered.row(0).id, '1');
     assert.equal(filtered.row(1).id, '3');
+
+    const none = Batch.of(new TestState(-5)).filter((state) => state.value > 0);
+    assert.equal(none.size, 0);
   });
 
-  void it('returns empty batch when no items match', () => {
-    const batch = Batch.of(new TestState(-5));
-    const filtered = batch.filter((state) => state.value > 0);
-    assert.equal(filtered.size, 0);
-  });
-});
-
-void describe('Batch.partition', () => {
-  void it('groups by key and preserves order within each group', () => {
+  void it('Batch.partition: groups by key, preserves order within each group; single group when all share key', () => {
     const batch = Batch.from<TestState>([
       { 'id': '1', 'state': new TestState(1) },
       { 'id': '2', 'state': new TestState(-1) },
@@ -126,39 +111,29 @@ void describe('Batch.partition', () => {
     assert.equal(pos.row(1).id, '3');
     assert.equal(neg.row(0).id, '2');
     assert.equal(neg.row(1).id, '4');
-  });
 
-  void it('creates single group when all items share key', () => {
-    const batch = Batch.from<TestState>([
+    const single = Batch.from<TestState>([
       { 'id': 'a', 'state': new TestState(1) },
       { 'id': 'b', 'state': new TestState(2) },
-    ]);
-    const groups = batch.partition(() => 'all');
-    assert.equal(groups.size, 1);
-    assert.equal(groups.get('all')?.size, 2);
+    ]).partition(() => 'all');
+    assert.equal(single.size, 1);
+    assert.equal(single.get('all')?.size, 2);
   });
-});
 
-void describe('Batch.concat', () => {
-  void it('combines two batches in order', () => {
+  void it('Batch.concat: combines two batches in order; concat with empty preserves items', () => {
     const a = Batch.from<TestState>([{ 'id': '1', 'state': new TestState(1) }]);
     const b = Batch.from<TestState>([{ 'id': '2', 'state': new TestState(2) }]);
     const combined = a.concat(b);
     assert.equal(combined.size, 2);
     assert.equal(combined.row(0).id, '1');
     assert.equal(combined.row(1).id, '2');
+
+    const withEmpty = Batch.of(new TestState(42)).concat(Batch.empty());
+    assert.equal(withEmpty.size, 1);
+    assert.equal(withEmpty.row(0).state.value, 42);
   });
 
-  void it('concat with empty batch returns original items', () => {
-    const batch = Batch.of(new TestState(42));
-    const combined = batch.concat(Batch.empty());
-    assert.equal(combined.size, 1);
-    assert.equal(combined.row(0).state.value, 42);
-  });
-});
-
-void describe('Batch.ids', () => {
-  void it('returns item ids in order', () => {
+  void it('Batch.ids: returns item ids in order', () => {
     const batch = Batch.from<TestState>([
       { 'id': 'x', 'state': new TestState(1) },
       { 'id': 'y', 'state': new TestState(2) },
@@ -166,26 +141,19 @@ void describe('Batch.ids', () => {
     ]);
     assert.deepEqual(batch.ids(), ['x', 'y', 'z']);
   });
-});
 
-void describe('Batch.row', () => {
-  void it('returns first item at index 0', () => {
+  void it('Batch.row: returns correct item; throws RangeError for out-of-bounds index', () => {
     const batch = Batch.from<TestState>([
       { 'id': 'first', 'state': new TestState(10) },
       { 'id': 'second', 'state': new TestState(20) },
     ]);
     assert.equal(batch.row(0).id, 'first');
+    const single = Batch.of(new TestState(1));
+    assert.throws(() => single.row(1), RangeError);
+    assert.throws(() => single.row(-1), RangeError);
   });
 
-  void it('throws RangeError for out-of-bounds index', () => {
-    const batch = Batch.of(new TestState(1));
-    assert.throws(() => batch.row(1), RangeError);
-    assert.throws(() => batch.row(-1), RangeError);
-  });
-});
-
-void describe('Batch[Symbol.iterator]', () => {
-  void it('iterates all items in order', () => {
+  void it('Batch[Symbol.iterator]: iterates all items in order; iterates zero items for empty batch', () => {
     const batch = Batch.from<TestState>([
       { 'id': 'a', 'state': new TestState(1) },
       { 'id': 'b', 'state': new TestState(2) },
@@ -196,15 +164,12 @@ void describe('Batch[Symbol.iterator]', () => {
       collected.push(item.id);
     }
     assert.deepEqual(collected, ['a', 'b', 'c']);
-  });
 
-  void it('iterates zero items for empty batch', () => {
-    const batch = Batch.empty<TestState>();
-    const collected: string[] = [];
-    for (const item of batch) {
-      collected.push(item.id);
+    const empty: string[] = [];
+    for (const item of Batch.empty<TestState>()) {
+      empty.push(item.id);
     }
-    assert.deepEqual(collected, []);
+    assert.deepEqual(empty, []);
   });
 });
 
@@ -212,17 +177,15 @@ void describe('Batch[Symbol.iterator]', () => {
 // RoutedBatchBuilder
 // ---------------------------------------------------------------------------
 
-void describe('RoutedBatchBuilder.of', () => {
-  void it('creates single-output map', () => {
+void describe('RoutedBatchBuilder', () => {
+  void it('RoutedBatchBuilder.of: creates single-output map', () => {
     const batch = Batch.of(new TestState(1));
     const routed = RoutedBatchBuilder.of('done', batch);
     assert.equal(routed.size, 1);
     assert.equal(routed.get('done')?.size, 1);
   });
-});
 
-void describe('RoutedBatchBuilder.from', () => {
-  void it('merges duplicate keys by concat', () => {
+  void it('RoutedBatchBuilder.from: merges duplicate keys by concat; produces empty map from empty entries', () => {
     const a = Batch.from<TestState>([{ 'id': '1', 'state': new TestState(1) }]);
     const b = Batch.from<TestState>([{ 'id': '2', 'state': new TestState(2) }]);
     const c = Batch.from<TestState>([{ 'id': '3', 'state': new TestState(3) }]);
@@ -238,16 +201,12 @@ void describe('RoutedBatchBuilder.from', () => {
     assert.equal(xBatch.row(0).id, '1');
     assert.equal(xBatch.row(1).id, '2');
     assert.equal(routed.get('y')?.size, 1);
+
+    const empty = RoutedBatchBuilder.from([]);
+    assert.equal(empty.size, 0);
   });
 
-  void it('produces empty map from empty entries array', () => {
-    const routed = RoutedBatchBuilder.from([]);
-    assert.equal(routed.size, 0);
-  });
-});
-
-void describe('RoutedBatchBuilder.empty', () => {
-  void it('returns empty map', () => {
+  void it('RoutedBatchBuilder.empty: returns empty map', () => {
     const routed = RoutedBatchBuilder.empty();
     assert.equal(routed.size, 0);
   });
@@ -287,8 +246,10 @@ class ErroringNode extends ScalarNode<TestState, 'done'> {
 }
 
 void describe('ScalarNode', () => {
-  void it('routes batch of 3 items to correct ports, preserving order', async () => {
+  void it('routes batch of 3 items to correct ports, preserving order; routes single-item batch; handles empty batch', async () => {
     const node = new TagNode();
+
+    // Three-item batch: two positives, one negative.
     const batch = Batch.from<TestState>([
       { 'id': '1', 'state': new TestState(1) },
       { 'id': '2', 'state': new TestState(-1) },
@@ -305,21 +266,16 @@ void describe('ScalarNode', () => {
     assert.equal(tagged.row(0).id, '1');
     assert.equal(tagged.row(1).id, '3');
     assert.equal(skip.row(0).id, '2');
-  });
 
-  void it('routes single-item batch correctly', async () => {
-    const node = new TagNode();
-    const batch = Batch.of(new TestState(5));
-    const result = await node.execute(batch, ctx);
-    assert.equal(result.size, 1);
-    assert.ok(result.has('tagged'));
-    assert.equal(result.get('tagged')?.size, 1);
-  });
+    // Single-item batch.
+    const single = await node.execute(Batch.of(new TestState(5)), ctx);
+    assert.equal(single.size, 1);
+    assert.ok(single.has('tagged'));
+    assert.equal(single.get('tagged')?.size, 1);
 
-  void it('produces empty routed batch for empty input', async () => {
-    const node = new TagNode();
-    const result = await node.execute(Batch.empty<TestState>(), ctx);
-    assert.equal(result.size, 0);
+    // Empty batch.
+    const empty = await node.execute(Batch.empty<TestState>(), ctx);
+    assert.equal(empty.size, 0);
   });
 
   void it('forwards errors from executeOne to state.collectError', async () => {
@@ -331,7 +287,7 @@ void describe('ScalarNode', () => {
     assert.equal(state.errors[0]?.code, 'TEST_ERROR');
   });
 
-  void it('implements NodeInterface batch execute', async () => {
+  void it('implements NodeInterface batch execute — returns a Map', async () => {
     const node = new TagNode();
     const batch = Batch.of(new TestState(5));
     const result = await node.execute(batch, ctx);
@@ -356,8 +312,4 @@ void describe('NodeRunner', () => {
     assert.ok(result.has('tagged'));
     assert.ok(result.has('skip'));
   });
-
-  // The raw-NodeInterface-vs-ScalarNode equivalence check lives in
-  // `raw-node-antipattern.test.ts` (the single place that documents hand-rolling
-  // a NodeInterface as an antipattern).
 });

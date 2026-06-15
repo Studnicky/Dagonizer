@@ -1,22 +1,13 @@
 /**
- * Antipattern: hand-rolling a raw `NodeInterface`.
+ * Authoring a node by implementing `NodeInterface` directly is an antipattern.
+ * Nodes extend `ScalarNode` (per-item) or `MonadicNode` (batch-native).
  *
- * Authoring a node by implementing `NodeInterface` directly is an ANTIPATTERN.
- * Production and test nodes should descend from the taxonomy:
- *   - `ScalarNode`  — per-item nodes (implement `executeOne`); the base owns the
- *                     `execute(batch)` loop and the route grouping.
- *   - `MonadicNode` — batch-native / hot-path nodes (implement `execute(batch)`).
+ * This test asserts the engine treats a hand-rolled `NodeInterface` identically
+ * to the equivalent `ScalarNode`, and that a node's `contract` is readable
+ * without execution. The taxonomy base classes add no semantics over the bare
+ * `execute(batch) → RoutedBatch` contract; they only reduce boilerplate.
  *
- * This single test pins WHY the raw form is only an antipattern and not a
- * second contract: the engine accepts a hand-written `NodeInterface`, and it is
- * behaviourally identical to the equivalent `ScalarNode` — so the taxonomy base
- * classes can never drift from the bare `execute(batch) → RoutedBatch` contract
- * they are built on. It also shows a static reader (e.g. `DAGDeriver`) can read a
- * node's `contract` field without running it — but, again, a `ScalarNode`
- * carries `contract` just as well, so the raw form buys nothing.
- *
- * If you are tempted to hand-roll a `NodeInterface`, extend `ScalarNode` or
- * `MonadicNode` instead.
+ * Extend `ScalarNode` or `MonadicNode` instead of hand-rolling `NodeInterface`.
  */
 
 import assert from 'node:assert/strict';

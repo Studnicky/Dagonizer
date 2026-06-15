@@ -7,9 +7,12 @@
  *
  * `gathered` is typed as `ReservoirItem[]` because the scatter source is
  * `items: ReservoirItem[]` and the append strategy appends each item as-is.
+ *
+ * Idle-release tests (the final group) verify the `idleMs` trigger using
+ * `VirtualScheduler` for deterministic time control.
  */
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import type { Batch } from '../../src/core/batch/Batch.js';
@@ -20,7 +23,11 @@ import type { ScatterProgress } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
+import type { ReservoirDriverInterface, ScatterItemBatchResult } from '../../src/execution/ReservoirBuffer.js';
+import { ReservoirBuffer } from '../../src/execution/ReservoirBuffer.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import { Scheduler } from '../../src/runtime/Scheduler.js';
+import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
 
 /** Item shape used by all reservoir tests. Must be JSON-serialisable. */
 type ReservoirItem = { key: string; value: number };
@@ -421,5 +428,262 @@ void describe('Reservoir scatter — no-reservoir parity', () => {
       assert.equal(size, 1, `expected batch size 1, got ${size}`);
     }
     assert.equal(result.state.gathered.length, 10);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Idle-release helpers
+// ---------------------------------------------------------------------------
+
+/** Yield to the microtask / setImmediate queue. */
+const tick = (): Promise<void> => new Promise<void>((resolve) => setImmediate(resolve));
+
+/** Item shape used by the idle tests. */
+type IdleItem = { key: string; value: number };
+
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject:  (reason: unknown) => void;
+};
+
+function makeDeferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  let reject!:  (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
+}
+
+/**
+ * Build an async iterator that yields `items` synchronously then parks on a
+ * deferred before returning `done: true`. Lets tests advance virtual time
+ * while the pull loop is blocked waiting for the next item.
+ */
+function makeControlledSource(items: IdleItem[], gate: Deferred<void>): AsyncIterator<unknown> {
+  let index = 0;
+  return {
+    async next(): Promise<IteratorResult<unknown>> {
+      if (index < items.length) {
+        return { 'value': items[index++], 'done': false };
+      }
+      await gate.promise;
+      return { 'value': undefined, 'done': true };
+    },
+  };
+}
+
+/**
+ * Build a fake driver that records released batches. Items carry `bufferKey`;
+ * each batch is recorded as `{ size, key }`.
+ */
+function makeFakeDriver(releases: { size: number; key: string }[]): ReservoirDriverInterface<NodeStateBase> {
+  return {
+    async executeBatch(items): Promise<ScatterItemBatchResult<NodeStateBase>> {
+      const key = String((items[0] as { bufferKey: string } | undefined)?.bufferKey ?? '');
+      releases.push({ 'size': items.length, key });
+      return {
+        'results': items.map((it) => ({
+          'index':           it.index,
+          'item':            it.item,
+          'output':          'success',
+          'terminalOutcome': null,
+          'cloneState':      new NodeStateBase(),
+        })),
+      };
+    },
+    async ackBatch(_batchResult): Promise<void> {
+      // No-op for unit tests — no real checkpoint needed.
+    },
+  };
+}
+
+/** Simple accessor that reads a top-level property from a plain object. */
+const accessor = {
+  get(obj: unknown, path: string): unknown {
+    if (obj !== null && typeof obj === 'object' && path in (obj as Record<string, unknown>)) {
+      return (obj as Record<string, unknown>)[path];
+    }
+    return undefined;
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Test 7 — idle releases a partial buffer
+// ---------------------------------------------------------------------------
+
+void describe('Reservoir scatter — idle release (partial buffer)', () => {
+  afterEach(() => { Scheduler.reset(); });
+
+  void it('releases a partial key buffer after idleMs with no new items', async () => {
+    const sched = new VirtualScheduler();
+    Scheduler.configure(sched);
+
+    const IDLE_MS  = 100;
+    const CAPACITY = 5;
+    const ITEM_COUNT = 3; // below capacity; must be released by idle, not capacity or complete-flush
+
+    const items: IdleItem[] = [];
+    for (let i = 0; i < ITEM_COUNT; i++) items.push({ 'key': 'k', 'value': i });
+
+    const gate = makeDeferred<void>();
+    const releases: { size: number; key: string }[] = [];
+
+    const buf = new ReservoirBuffer<NodeStateBase>(
+      makeFakeDriver(releases),
+      {
+        'concurrencyLimit': 10,
+        'inbox':            [],
+        'freshIter':        makeControlledSource(items, gate),
+        'nextIndex':        0,
+        'signal':           null,
+        'reservoir':        { 'keyField': 'key', 'capacity': CAPACITY, 'idleMs': IDLE_MS },
+        accessor,
+      },
+    );
+
+    const drainPromise = buf.drain();
+
+    // Each `await freshIter.next()` costs at least one microtask turn.
+    // ITEM_COUNT=3 items → 3 awaits + 1 final await that blocks.
+    // 8 ticks lets those pulls complete and the idle timer register.
+    for (let i = 0; i < 8; i++) await tick();
+
+    assert.ok(sched.pendingCount >= 1, `expected idle timer to be registered; pending=${sched.pendingCount}`);
+
+    // Advance past idleMs — fires the idle timer, resolving the .after() promise.
+    sched.advance(IDLE_MS + 1);
+
+    // Flush the .then(() => #onIdle(…)) microtask.
+    await tick();
+    await tick();
+
+    // Open the gate so the source returns done: true.
+    gate.resolve();
+
+    // Let the pull loop exit, abort idleAbort, run complete-flush (empty buffer).
+    for (let i = 0; i < 6; i++) await tick();
+
+    await drainPromise;
+
+    // Exactly one release: the idle batch of ITEM_COUNT items.
+    assert.equal(releases.length, 1, `expected 1 release (idle), got ${releases.length}`);
+    assert.equal(releases[0]?.size, ITEM_COUNT, `expected batch size ${ITEM_COUNT}, got ${releases[0]?.size}`);
+    assert.equal(releases[0]?.key, 'k');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 8 — idle timer invalidated by capacity release
+// ---------------------------------------------------------------------------
+
+void describe('Reservoir scatter — idle timer invalidated by capacity release', () => {
+  afterEach(() => { Scheduler.reset(); });
+
+  void it('does not double-release when capacity fires before idleMs elapses', async () => {
+    const sched = new VirtualScheduler();
+    Scheduler.configure(sched);
+
+    const IDLE_MS  = 200;
+    const CAPACITY = 3;
+
+    // Push exactly CAPACITY items for the same key. The third item triggers a
+    // capacity release which bumps the generation, invalidating the idle timer.
+    const items: IdleItem[] = [];
+    for (let i = 0; i < CAPACITY; i++) items.push({ 'key': 'k', 'value': i });
+
+    const gate = makeDeferred<void>();
+    const releases: { size: number; key: string }[] = [];
+
+    const buf = new ReservoirBuffer<NodeStateBase>(
+      makeFakeDriver(releases),
+      {
+        'concurrencyLimit': 10,
+        'inbox':            [],
+        'freshIter':        makeControlledSource(items, gate),
+        'nextIndex':        0,
+        'signal':           null,
+        'reservoir':        { 'keyField': 'key', 'capacity': CAPACITY, 'idleMs': IDLE_MS },
+        accessor,
+      },
+    );
+
+    const drainPromise = buf.drain();
+
+    // Wait for pull loop to drain all CAPACITY items and block on gate.
+    for (let i = 0; i < 8; i++) await tick();
+
+    // The capacity release bumps the key's generation, so a later idle timer is
+    // stale: advancing past idleMs fires it but #onIdle no-ops (no double-release).
+    sched.advance(IDLE_MS + 1);
+    await tick();
+    sched.runAll();
+    await tick();
+
+    // Open the gate.
+    gate.resolve();
+    for (let i = 0; i < 6; i++) await tick();
+    await drainPromise;
+
+    // Exactly one release: the capacity release. No second (empty) release.
+    assert.equal(releases.length, 1, `expected 1 release (capacity), got ${releases.length}`);
+    assert.equal(releases[0]?.size, CAPACITY, `expected batch size ${CAPACITY}, got ${releases[0]?.size}`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 9 — no idleMs means no idle timers registered
+// ---------------------------------------------------------------------------
+
+void describe('Reservoir scatter — no idleMs, no idle timers', () => {
+  afterEach(() => { Scheduler.reset(); });
+
+  void it('registers no idle timers in the VirtualScheduler when idleMs is absent', async () => {
+    const sched = new VirtualScheduler();
+    Scheduler.configure(sched);
+
+    const CAPACITY = 5;
+    const items: IdleItem[] = [
+      { 'key': 'k', 'value': 0 },
+      { 'key': 'k', 'value': 1 },
+      { 'key': 'k', 'value': 2 },
+    ];
+
+    const gate = makeDeferred<void>();
+    const releases: { size: number; key: string }[] = [];
+
+    // No idleMs — complete-flush only.
+    const buf = new ReservoirBuffer<NodeStateBase>(
+      makeFakeDriver(releases),
+      {
+        'concurrencyLimit': 10,
+        'inbox':            [],
+        'freshIter':        makeControlledSource(items, gate),
+        'nextIndex':        0,
+        'signal':           null,
+        'reservoir':        { 'keyField': 'key', 'capacity': CAPACITY },
+        accessor,
+      },
+    );
+
+    const drainPromise = buf.drain();
+
+    // Wait for pull loop to drain all items and block on gate.
+    for (let i = 0; i < 8; i++) await tick();
+
+    // No idle timers should be registered.
+    assert.equal(sched.pendingCount, 0, `expected 0 idle timers; got ${sched.pendingCount}`);
+
+    // Advance a lot — nothing should fire.
+    sched.advance(999_999);
+    await tick();
+
+    // Open gate → complete-flush fires.
+    gate.resolve();
+    for (let i = 0; i < 6; i++) await tick();
+    await drainPromise;
+
+    // Complete-flush fires exactly one batch of 3 items.
+    assert.equal(releases.length, 1, `expected 1 release (complete-flush), got ${releases.length}`);
+    assert.equal(releases[0]?.size, 3, `expected batch size 3, got ${releases[0]?.size}`);
   });
 });
