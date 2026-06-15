@@ -284,5 +284,5 @@ export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'r
   }
 }
 
-/** Backward-compatible const export for existing bundle/DAG references. */
+/** Singleton node instance referenced by the DAG wiring. */
 export const rankCandidates = new RankCandidatesNode();

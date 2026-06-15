@@ -182,7 +182,7 @@ void describe('registerDAG: scatter/dag-body null-route acceptance', () => {
   });
 
   void it('rejects a node placement using the old discriminator string (not ScatterNode)', () => {
-    // Placements must use @type: 'ScatterNode'; the old 'EmbeddedDAGNode' string is invalid.
+    // Placements must use @type: 'ScatterNode'; the 'EmbeddedDAGNode' discriminator is invalid.
     const oldStylePlacement = {
       '@id':   'urn:noocodex:dag:x/node/run-helper',
       '@type': 'EmbeddedDAGNode',

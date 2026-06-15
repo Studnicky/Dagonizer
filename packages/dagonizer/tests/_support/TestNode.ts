@@ -2,9 +2,9 @@
  * TestNode: shared static factory for building minimal `NodeInterface`
  * instances in unit tests.
  *
- * Replaces the 6+ copies of the `makeNode` freestanding helper that existed
- * across test files. Every test that needs a trivial node should use
- * `TestNode.make(name, outputs, exec?)` rather than defining a local helper.
+ * The single source for trivial test nodes across test files. Every test that
+ * needs a trivial node uses `TestNode.make(name, outputs, exec?)` rather than
+ * defining a local helper.
  */
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';

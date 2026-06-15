@@ -189,5 +189,5 @@ export class RecallMemoriesNode extends ScalarNode<ArchivistState, 'recalled', A
   }
 }
 
-/** Backward-compatible const export for existing bundle/DAG references. */
+/** Singleton node instance referenced by the DAG wiring. */
 export const recallMemories = new RecallMemoriesNode();

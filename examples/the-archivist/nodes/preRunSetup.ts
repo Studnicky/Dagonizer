@@ -52,5 +52,5 @@ export class PreRunSetupNode extends ScalarNode<ArchivistState, 'ready', Archivi
 }
 // #endregion pre-phase-setup
 
-/** Backward-compatible const export for existing bundle/DAG references. */
+/** Singleton node instance referenced by the DAG wiring. */
 export const preRunSetup = new PreRunSetupNode();

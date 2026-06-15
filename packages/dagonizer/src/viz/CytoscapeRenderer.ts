@@ -235,8 +235,8 @@ export class CytoscapeRenderer {
    * Build the base `CytoscapeNodeData` for a placement, including container
    * role colors when the placement is bound to a worker/isolate container.
    *
-   * Extracted from `placementNode` to eliminate the inline IIFE and make the
-   * logic independently testable. In-process placements (no container role)
+   * A standalone helper for `placementNode`, independently testable.
+   * In-process placements (no container role)
    * receive only `id`, `label`, and `type`; container-bound placements receive
    * the additional `container*` color keys (honoring `exactOptionalPropertyTypes`).
    */

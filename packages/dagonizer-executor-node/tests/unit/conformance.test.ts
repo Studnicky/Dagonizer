@@ -11,8 +11,8 @@
  * as their registryModule so DagHost reconstructs the identical bundle.
  *
  * Law 6 observer relay wiring: DagConformance.laws() Law 6 uses a Dagonizer subclass
- * built inside the law to observe hook events. The harness createDispatcher no longer
- * needs to wire an Instrumentation instance.
+ * built inside the law to observe hook events. The harness createDispatcher wires no
+ * Instrumentation instance of its own.
  *
  * Law 8 (at-least-once under container failure):
  *   Real isolate death is exercised for ALL four backends. The mechanism is the
@@ -313,8 +313,8 @@ void describe('DAG Container Conformance — WorkerThreadContainer (Laws 1–9)'
 // (1b) WorkerThreadContainer — SILENT real-death proof (Law 4 + Law 8)
 //
 // A worker self-terminates (process.exit) mid-request on item 20 with NO
-// result/error message. This is the failure that previously hung the pending
-// request forever. The death-detection backstop (worker.on('exit') →
+// result/error message. Absent a backstop, this failure leaves the pending
+// request hanging forever. The death-detection backstop (worker.on('exit') →
 // failChannel) must fail the in-flight request so:
 //   (a) runDag / the scatter resolve within a bounded time (no hang), and
 //   (b) the killed item stays un-acked → resume on a fresh container

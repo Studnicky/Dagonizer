@@ -24,7 +24,7 @@
  *   lookup-author     → OpenLibrary + GoogleBooks + SubjectSearch
  *   recommend-similar → OpenLibrary + GoogleBooks + SubjectSearch
  *   describe-book     → OpenLibrary + SubjectSearch
- *   legacy on-topic   → OpenLibrary + SubjectSearch
+ *   general on-topic  → OpenLibrary + SubjectSearch
  *
  * Safety net: for FULL_CATALOG_INTENTS, if the LLM omits any of the three
  * primary catalog tools, the safety net appends the missing entries using
@@ -312,7 +312,7 @@ export class DecideToolsNode extends ScalarNode<ArchivistState, 'tools' | 'no-to
   }
 }
 
-/** Backward-compatible const export for existing bundle/DAG references. */
+/** Singleton node instance referenced by the DAG wiring. */
 export const decideTools = new DecideToolsNode();
 
 // Export tool names list for tests / documentation.

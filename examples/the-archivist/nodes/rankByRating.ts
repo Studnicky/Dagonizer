@@ -2,9 +2,9 @@
  * rankByRating: deterministic rating-weighted ranker for the
  * `find-reviews` branch.
  *
- * Replaces the LLM-based `rankCandidates` for the reviews branch so
- * the ranking is objective and reproducible: a candidate with 4.5 stars
- * across 10,000 ratings outranks one with 5 stars across 3 ratings.
+ * Ranks the reviews branch objectively and reproducibly, without an
+ * LLM: a candidate with 4.5 stars across 10,000 ratings outranks one
+ * with 5 stars across 3 ratings.
  *
  * Weight formula:
  *   weight = (notes.rating ?? 0) * log10(1 + (notes.ratingsCount ?? 0))
@@ -64,5 +64,5 @@ export class RankByRatingNode extends ScalarNode<ArchivistState, 'ranked', Archi
   }
 }
 
-/** Backward-compatible const export for existing bundle/DAG references. */
+/** Singleton node instance referenced by the DAG wiring. */
 export const rankByRating = new RankByRatingNode();

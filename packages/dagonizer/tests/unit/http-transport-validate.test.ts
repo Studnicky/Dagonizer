@@ -1,8 +1,8 @@
 /**
  * Tests for HttpTransport shape-validation behavior.
  *
- * The `validate` callback was removed from `HttpRequestOptions` — shape
- * validation is the caller's responsibility in their own domain layer.
+ * `HttpRequestOptions` carries no `validate` callback — shape validation is
+ * the caller's responsibility in their own domain layer.
  * These tests verify that getJson/postJson return the parsed JSON typed as
  * `TResponse` so the caller can narrow it, and that unknown/wrong shapes
  * are returned unmodified (no transport-level validation error).

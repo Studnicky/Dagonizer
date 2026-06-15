@@ -107,5 +107,5 @@ export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | '
   }
 }
 
-/** Backward-compatible const export for existing bundle/DAG references. */
+/** Singleton node instance referenced by the DAG wiring. */
 export const mergeCandidates = new MergeCandidatesNode();

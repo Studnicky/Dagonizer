@@ -1,8 +1,7 @@
 /**
  * heterogeneous-scatter: proves a scatter over a descriptor source with a
  * dispatching body + custom gather fans out, runs per-descriptor work, and
- * collects results — the structural/heterogeneous case the old ParallelNode
- * covered, now expressed as scatter.
+ * collects results — the structural/heterogeneous case expressed as scatter.
  *
  * The test mirrors the Archivist's scout-dispatch pattern:
  *   source = state.providers (a fixed descriptor array)

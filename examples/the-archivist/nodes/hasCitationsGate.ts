@@ -66,5 +66,5 @@ export class HasCitationsGateNode extends ScalarNode<ArchivistState, 'pass' | 'f
   }
 }
 
-/** Backward-compatible const export for existing bundle/DAG references. */
+/** Singleton node instance referenced by the DAG wiring. */
 export const hasCitationsGate = new HasCitationsGateNode();

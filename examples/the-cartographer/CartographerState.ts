@@ -109,7 +109,7 @@ export interface JourneyInsights {
 
 // #region cartographer-state
 export class CartographerState extends NodeStateBase {
-  /** Number of synthetic journeys to generate (retained for backward compat with checkpoint/resume). */
+  /** Number of synthetic journeys to generate; part of the checkpoint/resume serialized state. */
   eventCount: number = 200;
 
   /**

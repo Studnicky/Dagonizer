@@ -77,8 +77,8 @@ void describe('Validator.dag', () => {
 
   void it('accepts a scatter node with a custom registered gather strategy name', () => {
     // GatherConfig.strategy is an open string: custom strategies are registered
-    // via GatherStrategies.register() and resolved at runtime. The schema no longer
-    // restricts strategy to a closed enum — unknown names are caught by
+    // via GatherStrategies.register() and resolved at runtime. The schema does
+    // not restrict strategy to a closed enum — unknown names are caught by
     // GatherStrategies.resolve() when the scatter executes, not at author time.
     const doc = {
       '@context': DAG_CONTEXT,

@@ -19,7 +19,7 @@
  * Law 6 observer note:
  *   DagConformance.laws() Law 6 builds a Dagonizer subclass inside the law
  *   to capture hook events via protected overrides. The harness createDispatcher
- *   no longer needs to wire an Instrumentation instance.
+ *   wires no Instrumentation instance.
  */
 
 import assert from 'node:assert/strict';
@@ -304,9 +304,9 @@ void describe('WebWorkerContainer pool behavior', () => {
 // ---------------------------------------------------------------------------
 // (3) P0 regression: full pool + busy worker death must not hang a waiter
 //
-// The old WebWorkerContainer.#evict never woke parked #waiters, so when the
-// pool was full and the single busy worker died the second caller hung forever.
-// DagContainerBase.#evict wakes a waiter unconditionally — this test proves it.
+// When the pool is full and the single busy worker dies, the parked waiter
+// must wake. DagContainerBase.#evict wakes a waiter unconditionally — this
+// test proves it.
 //
 // Test strategy: use a ZombieWorker that responds to init (sends `ready`) but
 // silently drops every `execute` message. With poolSize=1, the first runDag
@@ -450,7 +450,7 @@ void describe('WebWorkerContainer P0 — busy-worker death wakes parked waiter',
     assert.ok(zombie !== undefined, 'zombie worker must be spawned');
 
     // Kill the zombie → DagContainerBase.#evict removes it from the pool and
-    // wakes the parked waiter. OLD CODE: parked waiter would hang forever.
+    // wakes the parked waiter.
     zombie.simulateError('zombie crash');
 
     // Wait for p1 and p2 to settle. The parked waiter (p2) must wake and a
@@ -467,8 +467,8 @@ void describe('WebWorkerContainer P0 — busy-worker death wakes parked waiter',
       zombie2.simulateError('zombie2 crash');
     }
 
-    // Both p1 and p2 must settle within a bounded time.
-    // The old code: p2 hung forever (waiter never woken). NEW: resolves.
+    // Both p1 and p2 must settle within a bounded time: the parked waiter (p2)
+    // wakes when its worker is evicted and resolves rather than hanging.
     const settled = await Promise.race([
       Promise.all([p1, p2]).then(() => true),
       new Promise<false>((resolve) => { setTimeout(() => resolve(false), 5000); }),

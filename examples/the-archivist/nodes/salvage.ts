@@ -19,7 +19,7 @@ import type { NodeContextInterface } from '@noocodex/dagonizer';
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
-/** Cap on naive split terms; matches the old in-catch fallback. */
+/** Cap on naive split terms. */
 const MAX_NAIVE_TERMS = 6;
 
 /**
@@ -150,7 +150,7 @@ export class ComposeMemoryResponseSalvageNode extends ScalarNode<ArchivistState,
   }
 }
 
-/** Backward-compatible const exports for existing bundle/DAG references. */
+/** Singleton node instances referenced by the DAG wiring. */
 export const extractQuerySalvage = new ExtractQuerySalvageNode();
 export const decideToolsSalvage = new DecideToolsSalvageNode();
 export const classifyIntentSalvage = new ClassifyIntentSalvageNode();

@@ -7,7 +7,7 @@
  *   find-reviews       → `find-reviews`             (ratings tool branch)
  *   describe-book      → `describe-web-search`      (one-hit description branch)
  *   recommend-similar  → `recommend-similar`        (prior-shortlist seeding branch)
- *   search | describe | recommend → `extract-query` (legacy on-topic pipeline)
+ *   search | describe | recommend → `extract-query` (general on-topic pipeline)
  *   off-topic          → `decline-off-topic`
  *
  * Demonstrates: a wide narrowly-typed output union and dispatch into
@@ -86,5 +86,5 @@ export class ClassifyIntentNode extends ScalarNode<ArchivistState, IntentOutput,
 }
 // #endregion node-class
 
-/** Backward-compatible const export for existing bundle/DAG references. */
+/** Singleton node instance referenced by the DAG wiring. */
 export const classifyIntent = new ClassifyIntentNode();

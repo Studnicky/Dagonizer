@@ -432,7 +432,7 @@ export class ProviderInstantiator {
 }
 
 /**
- * Backward-compatible named exports for existing call sites.
+ * Free-function aliases for the provider store and detection static methods.
  */
 export const loadApiKeys = (): Partial<Record<ProviderId, string>> => ApiKeyStore.load();
 export const saveApiKeys = (keys: Partial<Record<ProviderId, string>>): void => { ApiKeyStore.save(keys); };

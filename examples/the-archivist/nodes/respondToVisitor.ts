@@ -94,7 +94,7 @@ export class ComposeEmptyResponseNode extends ScalarNode<ArchivistState, 'drafte
   }
 }
 
-/** Backward-compatible const exports for existing bundle/DAG references. */
+/** Singleton node instances referenced by the DAG wiring. */
 export const respondToVisitor = new RespondToVisitorNode();
 export const declineOffTopic = new DeclineOffTopicNode();
 export const composeEmptyResponse = new ComposeEmptyResponseNode();

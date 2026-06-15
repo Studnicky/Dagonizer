@@ -226,5 +226,5 @@ export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled',
   }
 }
 
-/** Backward-compatible const export for existing bundle/DAG references. */
+/** Singleton node instance referenced by the DAG wiring. */
 export const recallCandidates = new RecallCandidatesNode();

@@ -1,6 +1,4 @@
 /**
- * worker-observer.test.ts (formerly forwarding-instrumentation.test.ts)
- *
  * Verifies that WorkerObserver routes all six hook overrides
  * (onNodeStart, onNodeEnd, onPhaseEnter, onPhaseExit, onContractWarning,
  * onError) as BridgeMessage { kind: 'instrumentation' } messages over its

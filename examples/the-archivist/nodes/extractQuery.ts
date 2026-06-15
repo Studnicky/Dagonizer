@@ -60,5 +60,5 @@ export class ExtractQueryNode extends ScalarNode<ArchivistState, 'success' | 're
 }
 // #endregion retry-salvage-node
 
-/** Backward-compatible const export for existing bundle/DAG references. */
+/** Singleton node instance referenced by the DAG wiring. */
 export const extractQuery = new ExtractQueryNode();

@@ -10,11 +10,10 @@
  * (skipped, phase, or terminal-without-route). `skipped` and `nodeName`
  * are always present so the receiver never disambiguates absence from zero.
  *
- * This shape replaces the inline `{ output, skipped, nodeName, state }`
- * item in ExecutionResponse.intermediates and the equivalent copy in
- * BridgeMessageSchema's result branch. Both inline copies intentionally
- * duplicate this shape to avoid $ref resolution at compile time; the
- * canonical source of truth is this file.
+ * This file is the canonical source of truth for the
+ * `{ output, skipped, nodeName, state }` item shape. The inline copies in
+ * ExecutionResponse.intermediates and in BridgeMessageSchema's result branch
+ * intentionally duplicate this shape to avoid $ref resolution at compile time.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';

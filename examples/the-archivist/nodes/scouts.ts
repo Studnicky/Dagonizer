@@ -510,7 +510,7 @@ GatherStrategies.register(new ScoutGatherStrategy());
 // GatherStrategies.resolve('scout-merge') now works in any scatter placement.
 // #endregion scout-gather-strategy
 
-/** Backward-compatible const exports for existing bundle/DAG references. */
+/** Singleton node instances referenced by the DAG wiring. */
 export const openLibraryScout = openLibraryScoutNode;
 export const googleBooksScout = googleBooksScoutNode;
 export const subjectScout = subjectScoutNode;

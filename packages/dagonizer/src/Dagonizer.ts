@@ -1237,24 +1237,21 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
         pending.add(cursor, Batch.of(state));
       }
 
-      // The work-set loop replaces the single-cursor mainLoop.
+      // Work-set scheduling loop.
       // For size-1 input: exactly one placement holds exactly one item at all
       // times; nextReady returns that placement, SingleNode fires over the
       // size-1 batch returning one route with one item, and the item advances
-      // to the next placement — byte-identical to the old cursor walk.
+      // to the next placement.
       scheduleLoop: while (true) {
         const currentPlacementName = pending.nextReady(rankOf, declIndexOf);
         if (currentPlacementName === null) break scheduleLoop;
 
-        // Advance cursor to the placement about to fire. This matches the old
-        // single-cursor walk where `currentNodeName` was updated at the END of
-        // each iteration (set to `nextStage`) so it held the NEXT placement at
-        // the TOP of the next iteration — before the abort check ran. Here we
-        // advance cursor immediately after picking so the abort-check result
-        // correctly identifies the placement that would have fired.
+        // Advance cursor to the placement about to fire, immediately after
+        // picking, so the abort-check result correctly identifies the placement
+        // that would have fired.
         cursor = currentPlacementName;
 
-        // Abort check: fires before each placement, identical to old loop.
+        // Abort check: fires before each placement.
         if (signal?.aborted) {
           const abortInfo = this.handleAbort(state, signal);
           this.onError(currentPlacementName, abortInfo.error, state, placementPath);
@@ -1687,8 +1684,7 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
    * a representative `NodeResultInterface` for the firing.
    *
    * For a size-1 batch: exactly one route is produced with exactly one item,
-   * so `output` equals the single port key and `state` equals the single item
-   * — byte-identical to the old `executeSingleNode` + `#runNodeOnState` path.
+   * so `output` equals the single port key and `state` equals the single item.
    *
    * For a multi-item batch: items may split across multiple output ports.
    * `output` is `null` (no single representative output) and `state` is the
@@ -1696,7 +1692,7 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
    * work set for downstream placement processing.
    *
    * Throws `DAGError` when the placement routing map has no entry for a returned
-   * output port (same error message as the previous `executeSingleNode`).
+   * output port.
    */
   async #fireSinglePlacement(
     nodeConfig: SingleNodePlacementInterface,

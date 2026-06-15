@@ -70,5 +70,5 @@ export class PickBestMatchNode extends ScalarNode<ArchivistState, 'picked', Arch
   }
 }
 
-/** Backward-compatible const export for existing bundle/DAG references. */
+/** Singleton node instance referenced by the DAG wiring. */
 export const pickBestMatch = new PickBestMatchNode();

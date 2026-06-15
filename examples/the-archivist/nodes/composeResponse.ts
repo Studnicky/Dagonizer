@@ -227,6 +227,6 @@ export class ValidateResponseNode extends ScalarNode<
   }
 }
 
-/** Backward-compatible const exports for existing bundle/DAG references. */
+/** Singleton node instances referenced by the DAG wiring. */
 export const composeResponse = new ComposeResponseNode();
 export const validateResponse = new ValidateResponseNode();
