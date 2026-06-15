@@ -1166,68 +1166,90 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
           continue scheduleLoop;
         }
 
-        // ScatterNode / EmbeddedDAGNode: size-1 only in this sub-wave.
-        // Assert single item, then call the existing executeDAGNode path.
-        if (batch.size !== 1) {
-          const error = new DAGError(
-            `Placement '${currentPlacementName}' (@type ${node['@type']}) received a batch of ${batch.size} items; multi-item batches for Scatter/EmbeddedDAG are not yet supported.`,
-          );
-          this.onError(currentPlacementName, error, repState, placementPath);
-          if (!runOptions.embedded) {
-            try { state.markFailed(error); } catch { /* already terminal */ }
-          }
-          const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, null, state);
-          await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
-          return result;
-        }
-
-        let nodeOutcome: _InternalNodeResult<TState>;
-        try {
-          nodeOutcome = await this.executeDAGNode(node, repState, dagName, signal, placementPath);
-        } catch (caughtError) {
-          const error = caughtError instanceof Error ? caughtError : new ExecutionError(String(caughtError));
-          this.onError(currentPlacementName, error, repState, placementPath);
-          let interruptedAt: InterruptionInfo | null = null;
-          if (signal?.aborted) {
-            if (!runOptions.embedded) {
-              const abortInfo = this.handleAbort(state, signal);
-              interruptedAt = { 'nodeName': currentPlacementName, 'reason': abortInfo.reason };
-            } else {
-              const isTimeout = signal.reason instanceof Error && signal.reason.name === 'TimeoutError';
-              interruptedAt = { 'nodeName': currentPlacementName, 'reason': isTimeout ? 'timeout' : 'abort' };
-            }
-          } else if (error instanceof NodeTimeoutError) {
-            interruptedAt = { 'nodeName': currentPlacementName, 'reason': 'timeout' };
-            if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
+        // ScatterNode / EmbeddedDAGNode fire batch-native by running the
+        // existing per-item composite logic (executeDAGNode) for each item in
+        // the batch, then partitioning the items across output ports by the
+        // route each one selected (RFC 0003 §6 — single-item = internal
+        // iteration; the sub-walk / scatter machinery is reused unchanged). For
+        // a size-1 batch this is byte-identical to the prior single dispatch:
+        // one item, one executeDAGNode call, one route.
+        const composite: Array<{ 'state': TState; 'nextStage': string | null; 'result': NodeResultInterface<TState> }> = [];
+        for (const item of batch) {
+          try {
+            const outcome = await this.executeDAGNode(node, item.state, dagName, signal, placementPath);
+            composite.push({ 'state': item.state, 'nextStage': outcome.nextStage, 'result': outcome.result });
+          } catch (caughtError) {
+            // A thrown firing fails the whole fired batch (RFC 0003 §10.2). Same
+            // classification + lifecycle handling as the single-item path; the
+            // representative state for telemetry is the batch's first item.
+            const error = caughtError instanceof Error ? caughtError : new ExecutionError(String(caughtError));
+            this.onError(currentPlacementName, error, repState, placementPath);
+            let interruptedAt: InterruptionInfo | null = null;
+            if (signal?.aborted) {
+              if (!runOptions.embedded) {
+                const abortInfo = this.handleAbort(state, signal);
+                interruptedAt = { 'nodeName': currentPlacementName, 'reason': abortInfo.reason };
+              } else {
+                const isTimeout = signal.reason instanceof Error && signal.reason.name === 'TimeoutError';
+                interruptedAt = { 'nodeName': currentPlacementName, 'reason': isTimeout ? 'timeout' : 'abort' };
+              }
+            } else if (error instanceof NodeTimeoutError) {
+              interruptedAt = { 'nodeName': currentPlacementName, 'reason': 'timeout' };
+              if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
+                try { state.markFailed(error); } catch { /* already terminal */ }
+              }
+            } else if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
               try { state.markFailed(error); } catch { /* already terminal */ }
             }
-          } else if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
-            try { state.markFailed(error); } catch { /* already terminal */ }
+            const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
+            await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
+            return result;
           }
-          const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
-          await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
-          return result;
         }
 
-        const { nextStage, 'result': nodeResult } = nodeOutcome;
-
-        // Stream composite node intermediates before the node's own result.
-        for (const intermediate of nodeResult.intermediateResults) {
-          yield intermediate;
+        // Stream every item's composite intermediates, in item order, before
+        // the firing's own result.
+        for (const entry of composite) {
+          for (const intermediate of entry.result.intermediateResults) {
+            yield intermediate;
+          }
         }
 
-        if (nodeResult.skipped) {
-          skippedNodes.push(nodeResult.nodeName);
+        // Observability: one onNodeEnd + one yielded result per firing. For a
+        // size-1 batch this is the single item's result, byte-identical to the
+        // prior single dispatch. For a multi-item batch the representative
+        // output is the one distinct output port when every item agrees, else
+        // null (the items split across ports).
+        const soleResult = composite.length === 1 ? composite[0]?.result : undefined;
+        if (soleResult !== undefined) {
+          if (soleResult.skipped) {
+            skippedNodes.push(soleResult.nodeName);
+          } else {
+            executedNodes.push(soleResult.nodeName);
+          }
+          this.onNodeEnd(node.name, soleResult.output, repState, placementPath);
+          yield soleResult;
         } else {
-          executedNodes.push(nodeResult.nodeName);
+          executedNodes.push(node.name);
+          let repOutput: string | null = composite[0]?.result.output ?? null;
+          for (const entry of composite) {
+            if (entry.result.output !== repOutput) { repOutput = null; break; }
+          }
+          this.onNodeEnd(node.name, repOutput, repState, placementPath);
+          yield {
+            'output': repOutput,
+            'skipped': false,
+            'nodeName': node.name,
+            'state': repState,
+            'intermediateResults': [],
+          };
         }
 
-        this.onNodeEnd(node.name, nodeResult.output, repState, placementPath);
-        yield nodeResult;
-
-        // Route the single item to the next placement.
-        if (nextStage !== null) {
-          pending.add(nextStage, Batch.of(repState));
+        // Route each item to the next placement its outcome selected.
+        for (const entry of composite) {
+          if (entry.nextStage !== null) {
+            pending.add(entry.nextStage, Batch.of(entry.state));
+          }
         }
       }
     }

@@ -1,6 +1,6 @@
 # RFC 0003 — Batch-native walk (the plural executor core)
 
-Status: **In progress — sub-waves 1 & 2 BUILT & GREEN (784 tests); build order reordered: sub-wave 4 (scatter/embedded work-set-native) is next, then sub-wave 3 (reservoir as a work-set firing policy)** · Depends on:
+Status: **In progress — sub-waves 1, 2 & 4 BUILT & GREEN (789 tests); sub-wave 3 (reservoir as a work-set firing policy) next** · Depends on:
 RFC 0001 (plural-native), Phase 2a (one-fold gather) · Supersedes: RFC 0002 §2 "DAG bodies
 iterate per item" (DAG bodies are now batch-native). §10 decisions are resolved. Build per §9
 sub-waves. Sub-wave 1 (work-set scheduler `PlacementRank` + `WorkSet`, acyclic, size-1 parity
@@ -147,10 +147,16 @@ green.
    (scatter's entry) rather than the scatter worker pool. The labels are unchanged;
    only the order is 1 → 2 → **4 → 3** → 5 → 6.
 4. **Embedded-DAG + scatter integration** under the work-set model; gather folds
-   terminal batches. **← next.** Scatter and EmbeddedDAG placements fire
-   batch-native (a sub-walk over a `Batch<N>`), removing the size-1 guard SW1
-   placed on them. This makes scatter's source a work-set entry placement.
-3. **Reservoir as a firing policy** — built after SW4. Generalize RFC 0002's
+   terminal batches. **BUILT & GREEN** — the scheduler's composite block runs the
+   existing per-item `executeDAGNode` for each item in the batch and partitions the
+   items across output ports by the route each one selects (single-item = internal
+   iteration; the sub-walk / scatter machinery is reused unchanged). One
+   `onNodeEnd` + one yielded result per firing; size-1 byte-identical. Locked by
+   `batch-walk-composite.test.ts` (5 tests: multi-item embedded uniform + split
+   outcomes, multi-item scatter per-parent source isolation, size-1 parity). A
+   truly vectorized sub-walk (one work set processing a `Batch<N>` in one pass) is
+   a later optimization; correctness and substitutability hold via iteration.
+3. **Reservoir as a firing policy** — **← next.** Built after SW4. Generalize RFC 0002's
    `reservoir` from scatter-only to any placement; capacity/idle/complete
    firing; the scatter-input case is the entry placement's policy. Wire the
    already-built `scatter.reservoir` config (`keyField`/`capacity`/`idleMs`) to

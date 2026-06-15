@@ -51,10 +51,11 @@ agent needs to avoid going off the rails is here or in the linked RFCs.
 ## Current baseline (as-built, all in the dagonizer package, GREEN)
 
 Verified: `npm run typecheck` clean, `npm run lint -- --max-warnings 0` clean,
-`npm run test` → **784 pass / 0 fail**, `npm run build` clean. The green baseline
+`npm run test` → **789 pass / 0 fail**, `npm run build` clean. The green baseline
 (Phases 1a/1b/2a + RFC-0002 sub-wave-1) is committed at `362ac38`; RFC-0003
-sub-wave-1 is committed at `eff3df6`; RFC-0003 sub-wave-2 (below) is committed on
-top. The branch is `feature/plural-native-core`.
+sub-waves 1, 2 and 4 are committed on top (the `Frontier`→`WorkSet` /
+`seed`→`initial` renames too). The branch is `feature/plural-native-core`.
+Build order is reordered: SW4 before SW3 (next).
 
 Built and green:
 - **Phase 1a** — `src/core/batch/{Item,Batch,RoutedBatch}.ts`
@@ -108,10 +109,19 @@ Built and green:
   bounded by the node's retry budget — the scheduler imposes no loop cap, exactly
   as the old single-cursor walk did.
 
-Not built (and intentionally so): the reservoir runtime (sub-wave 3),
-batch-native scatter/embedded
-(sub-wave 4), work set checkpoint (sub-wave 5), viz (sub-wave 6), consumer
-migration, the Cartographer adoption.
+- **RFC 0003 sub-wave 4** — ScatterNode + EmbeddedDAGNode fire batch-native. The
+  scheduler's composite block runs the existing per-item `executeDAGNode` for each
+  item in the fired batch and partitions the items across output ports by the route
+  each one selects (single-item = internal iteration; the sub-walk / scatter / inbox
+  machinery is reused unchanged, so crash-safe resume is untouched). One `onNodeEnd`
+  + one yielded result per firing; size-1 byte-identical. Locked by
+  `tests/unit/batch-walk-composite.test.ts` (5 tests: multi-item embedded uniform +
+  split-by-outcome routing, multi-item scatter per-parent source isolation, size-1
+  parity). A truly vectorized sub-walk is a later optimization.
+
+Not built (and intentionally so): the reservoir runtime (sub-wave 3), work set
+checkpoint (sub-wave 5), viz (sub-wave 6), consumer migration, the Cartographer
+adoption.
 
 ## State of the rest of the repo (expected, not a bug)
 
