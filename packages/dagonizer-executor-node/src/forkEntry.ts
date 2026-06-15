@@ -52,4 +52,10 @@ export class ForkEntry {
   }
 }
 
-ForkEntry.start();
+// Auto-start only when running as a forked/cluster child, where the IPC channel
+// is present (process.send defined). Importing this module via the package
+// barrel in a non-fork process leaves process.send undefined, so the bootstrap
+// is skipped rather than throwing.
+if (process.send !== undefined) {
+  ForkEntry.start();
+}
