@@ -182,7 +182,7 @@ export type { DagContainerOptions } from './container/DagContainerBase.js';
 // FUNCTIONS
 // =============================================================================
 
-export { Dagonizer, SCATTER_PROGRESS_KEY } from './Dagonizer.js';
+export { Dagonizer, SCATTER_PROGRESS_KEY, WORKSET_PROGRESS_KEY } from './Dagonizer.js';
 export type { DagonizerOptionsInterface, ScatterAckedResult, ScatterInboxItem, ScatterProgress, StoredScatterProgress } from './Dagonizer.js';
 export { Execution } from './Execution.js';
 

@@ -51,11 +51,11 @@ agent needs to avoid going off the rails is here or in the linked RFCs.
 ## Current baseline (as-built, all in the dagonizer package, GREEN)
 
 Verified: `npm run typecheck` clean, `npm run lint -- --max-warnings 0` clean,
-`npm run test` → **798 pass / 0 fail**, `npm run build` clean. The green baseline
+`npm run test` → **802 pass / 0 fail**, `npm run build` clean. The green baseline
 (Phases 1a/1b/2a + RFC-0002 sub-wave-1) is committed at `362ac38`; RFC-0003
-sub-waves 1, 2, 4 and 3 are committed on top (the `Frontier`→`WorkSet` /
+sub-waves 1, 2, 4, 3 and 5 are committed on top (the `Frontier`→`WorkSet` /
 `seed`→`initial` renames too). The branch is `feature/plural-native-core`.
-Build order was reordered SW4 before SW3; **SW5 (work-set checkpoint) is next**.
+Build order was reordered SW4 before SW3; **SW6 (viz) is next, the last RFC-0003 sub-wave**.
 
 Built and green:
 - **Phase 1a** — `src/core/batch/{Item,Batch,RoutedBatch}.ts`
@@ -134,8 +134,19 @@ Built and green:
   generalization to any node is deferred; the mechanism lives in the scatter
   source pipeline.
 
-Not built (and intentionally so): work set checkpoint (sub-wave 5), viz
-(sub-wave 6), consumer migration, the Cartographer adoption.
+- **RFC 0003 sub-wave 5** — work-set checkpoint + multi-item resume.
+  `src/entities/workset/WorkSetProgress.ts` + `src/runtime/WorkSetCheckpoint.ts`
+  (mirrors `ScatterCheckpoint`). On a top-level abort, a non-size-1 work set
+  serializes per-placement item-state snapshots into `state` metadata
+  (`WORKSET_PROGRESS_KEY`); resume rebuilds `pending` exactly (clone +
+  applySnapshot per item) and continues. Size-1 canonical runs (one item whose
+  state IS the top-level state) write no blob, so the cursor model and
+  `checkpoint.test.ts` are byte-identical. Blob cleared on completion. Locked by
+  `workset-checkpoint.test.ts` (multi-item resume: union of collected items =
+  uninterrupted set, each exactly once).
+
+Not built (and intentionally so): viz (sub-wave 6 — next), consumer migration,
+the Cartographer adoption.
 
 ## State of the rest of the repo (expected, not a bug)
 
@@ -159,8 +170,8 @@ throwaway.
    **Order reordered by decision: 4 before 3.**
    4. Embedded-DAG + scatter fire batch-native under the work set (drop the SW1 size-1 guard). **BUILT & GREEN.**
    3. Reservoir runtime (scatter keyed input-batching: capacity/idle/complete, crash-safe). **BUILT & GREEN.**
-   5. Checkpoint of the work set + resume parity. **← next.**
-   6. Viz (per-firing batch size; reservoir glyph + per-key fill).
+   5. Checkpoint of the work set + resume parity. **BUILT & GREEN.**
+   6. Viz (per-firing batch size; reservoir glyph + per-key fill). **← next (last sub-wave).**
 2. **0001 Phase 3** — migrate consumers in order: executors → patterns →
    adapters/tools/embedders → examples (mostly `ScalarNode` base-swaps; hot nodes
    hand-write `execute(batch)`). Each package goes green as migrated.

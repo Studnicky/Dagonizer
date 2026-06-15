@@ -1,6 +1,6 @@
 # RFC 0003 — Batch-native walk (the plural executor core)
 
-Status: **In progress — sub-waves 1, 2, 4 & 3 BUILT & GREEN (798 tests); sub-wave 5 (work-set checkpoint) next** · Depends on:
+Status: **In progress — sub-waves 1, 2, 4, 3 & 5 BUILT & GREEN (802 tests); sub-wave 6 (viz) next, then RFC-0003 is complete** · Depends on:
 RFC 0001 (plural-native), Phase 2a (one-fold gather) · Supersedes: RFC 0002 §2 "DAG bodies
 iterate per item" (DAG bodies are now batch-native). §10 decisions are resolved. Build per §9
 sub-waves. Sub-wave 1 (work-set scheduler `PlacementRank` + `WorkSet`, acyclic, size-1 parity
@@ -170,8 +170,17 @@ green.
    no-idle-config). Reservoir requires a node body (validator-enforced). The
    placement-level generalization (`placement.reservoir` on any node) is deferred;
    the firing-policy mechanism lives in the scatter source pipeline.
-5. **Checkpoint** of the work set + resume parity; crash-safe multi-item tests. **← next.**
-6. **Viz** — per-firing batch-size on edges; reservoir glyph + per-key fill.
+5. **Checkpoint** of the work set + resume parity; crash-safe multi-item tests.
+   **BUILT & GREEN** — `src/entities/workset/WorkSetProgress.ts` +
+   `src/runtime/WorkSetCheckpoint.ts` (mirrors `ScatterCheckpoint`). On a
+   top-level abort, a non-size-1 work set serializes per-placement item-state
+   snapshots into `state` metadata (`WORKSET_PROGRESS_KEY`); resume rebuilds
+   `pending` exactly (clone + applySnapshot per item) and continues firing.
+   Size-1 canonical runs (one item whose state IS the top-level state) write no
+   blob — the cursor model is byte-identical, so `checkpoint.test.ts` is
+   untouched. Locked by `workset-checkpoint.test.ts` (multi-item resume parity:
+   union of pre/post-abort collected items = uninterrupted set, each exactly once).
+6. **Viz** — per-firing batch-size on edges; reservoir glyph + per-key fill. **← next.**
 
 ## 10. Resolved design decisions
 

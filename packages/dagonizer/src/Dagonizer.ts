@@ -26,9 +26,11 @@ import type { ScatterNode } from './entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from './entities/dag/SingleNode.js';
 import type { ExecutionResultInterface, InterruptionInfo } from './entities/execution/ExecutionResult.js';
 import type { DAGHandoff } from './entities/handoff/DAGHandoff.js';
+import type { JsonObject } from './entities/json.js';
 import type { NodeContextInterface } from './entities/node/NodeContext.js';
 import type { NodeResultInterface } from './entities/node/NodeResult.js';
 import type { ScatterAckedResult, ScatterInboxItem } from './entities/scatter/ScatterProgress.js';
+import type { WorkSetProgress } from './entities/workset/WorkSetProgress.js';
 import { DAGError, ExecutionError, NodeTimeoutError } from './errors/index.js';
 import { ReservoirBuffer } from './execution/ReservoirBuffer.js';
 import type { ReservoirDriverInterface, ScatterItemBatchResult } from './execution/ReservoirBuffer.js';
@@ -43,6 +45,7 @@ import { Scheduler } from './runtime/Scheduler.js';
 import { SignalComposer } from './runtime/SignalComposer.js';
 import { StateMapper } from './runtime/StateMapper.js';
 import { Timeout } from './runtime/Timeout.js';
+import { WorkSetCheckpoint } from './runtime/WorkSetCheckpoint.js';
 import { DAGValidator } from './validation/DAGValidator.js';
 import { Validator } from './validation/Validator.js';
 
@@ -81,6 +84,19 @@ const DAGONIZER_OPTION_DEFAULTS = {
  * keep independent entries.
  */
 export const SCATTER_PROGRESS_KEY = '__dagonizer_scatter_progress__';
+
+/**
+ * Reserved metadata key used by the work-set scheduler to persist the
+ * in-flight work set on interruption. **Consumer nodes must not write
+ * to this key.** It is engine-internal and is cleared on resume after
+ * the work set is rebuilt and on clean completion.
+ *
+ * The stored value is a `WorkSetProgress` blob serialised by
+ * `WorkSetCheckpoint.write` and read back by `WorkSetCheckpoint.read`.
+ * Absent for size-1 canonical runs (one item whose state IS the
+ * top-level state); the cursor model handles that case exactly.
+ */
+export const WORKSET_PROGRESS_KEY = '__dagonizer_workset_progress__';
 
 // Scatter progress types originate in entities/scatter/ScatterProgress.ts;
 // re-exported here for public consumers.
@@ -1177,7 +1193,49 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
       const declIndexOf = (name: string): number => declIndex.get(name) ?? Number.MAX_SAFE_INTEGER;
 
       const pending = new WorkSet<TState>();
-      pending.add(cursor, Batch.of(state));
+
+      // Resume: when fromStage is provided and this is a top-level run, check
+      // for a persisted work-set blob. If present, rebuild `pending` from it so
+      // every in-flight item's state is restored exactly. If absent, fall through
+      // to the size-1 seed below (the cursor model — byte-identical to before).
+      if (fromStage !== null && !runOptions.embedded) {
+        const workSetBlob = WorkSetCheckpoint.read(state);
+        if (workSetBlob !== undefined) {
+          // Rebuild pending from the blob: for each placement, reconstruct each
+          // item's state via clone + applySnapshot, then accumulate into the
+          // work set in declaration order.
+          //
+          // `state.clone()` copies the current metadata (including the blob),
+          // but `applySnapshot` resets metadata and repopulates from the item
+          // snapshot, so reconstructed item states do not carry the parent blob.
+          for (const entry of workSetBlob.entries) {
+            const items: Array<{ 'id': string; 'state': TState }> = [];
+            for (const workItem of entry.items) {
+              const itemState = state.clone();
+              // workItem.snapshot is typed as `{}` by json-schema-to-ts for
+              // `{ type: 'object' }`. The engine contract requires snapshots to
+              // be JSON-safe objects (they were produced by `state.snapshot()`
+              // which returns `JsonObject`). Cast at the single ingest boundary.
+              itemState.applySnapshot(workItem.snapshot as JsonObject);
+              items.push({ 'id': workItem.id, 'state': itemState });
+            }
+            pending.add(entry.placement, Batch.from(items));
+          }
+          // Clear the blob from all reconstructed item states (applySnapshot
+          // already reset each clone's metadata from its item snapshot, so the
+          // blob is absent there). Clear from the top-level state too so a
+          // re-interrupted run captures a fresh blob rather than the old one.
+          WorkSetCheckpoint.clear(state);
+        } else {
+          // Size-1 canonical resume: no blob → seed with the top-level state at
+          // the cursor. Byte-identical to the existing checkpoint test path.
+          pending.add(cursor, Batch.of(state));
+        }
+      } else {
+        // Fresh execute (fromStage === null) or embedded: always seed with
+        // the top-level state at the entry placement.
+        pending.add(cursor, Batch.of(state));
+      }
 
       // The work-set loop replaces the single-cursor mainLoop.
       // For size-1 input: exactly one placement holds exactly one item at all
@@ -1204,6 +1262,43 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
             'nodeName': currentPlacementName,
             'reason':   abortInfo.reason,
           };
+
+          // Work-set serialization for top-level runs: persist the in-flight
+          // work set so a subsequent resume can rebuild `pending` with the
+          // correct item states for every placement.
+          //
+          // Size-1 canonical detection: exactly one item total across the whole
+          // work set AND that item's state is reference-equal to the top-level
+          // state. When this holds, the cursor model already captures everything
+          // (cursor = placement name, state = top-level state) and no blob is
+          // needed — byte-identical to existing behaviour. When it does NOT hold
+          // (multi-item or a cloned item state), write the blob.
+          if (!runOptions.embedded) {
+            let totalItems = 0;
+            let canonicalState: TState | undefined;
+            for (const [, batch] of pending.entries()) {
+              for (const item of batch) {
+                totalItems++;
+                canonicalState = item.state;
+              }
+            }
+            const isSize1Canonical = totalItems === 1 && canonicalState === state;
+
+            if (!isSize1Canonical) {
+              // Build the WorkSetProgress blob from the current `pending` map.
+              // Each entry serialises one placement's batch (in item order).
+              const entries: WorkSetProgress['entries'] = [];
+              for (const [placement, batch] of pending.entries()) {
+                const items: WorkSetProgress['entries'][number]['items'] = [];
+                for (const item of batch) {
+                  items.push({ 'id': item.id, 'snapshot': item.state.snapshot() });
+                }
+                entries.push({ placement, items });
+              }
+              WorkSetCheckpoint.write(state, { entries });
+            }
+          }
+
           const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
           await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
           return result;
@@ -1383,6 +1478,10 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
         // terminalOutcome === 'completed'; flows always end at a TerminalNode.
         try { state.markCompleted(); } catch { /* state may already be terminal */ }
       }
+      // Clear any stale work-set blob so a completed run carries no lingering
+      // progress metadata. This is a no-op for size-1 runs (no blob was written)
+      // and ensures a second execution of the same state instance starts clean.
+      WorkSetCheckpoint.clear(state);
     }
     const result = this.buildResult(null, executedNodes, skippedNodes, terminalOutcome, null, state);
     await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);

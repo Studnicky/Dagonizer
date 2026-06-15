@@ -91,6 +91,16 @@ import { DAGLifecycleStateSchema } from '../entities/state-machines/DAGLifecycle
 import type { DAGLifecycleStateData } from '../entities/state-machines/DAGLifecycleState.js';
 import { ValidationResultSchema } from '../entities/validation/ValidationResult.js';
 import type { ValidationResult } from '../entities/validation/ValidationResult.js';
+import type {
+  WorkSetEntry,
+  WorkSetItem,
+  WorkSetProgress,
+} from '../entities/workset/WorkSetProgress.js';
+import {
+  WorkSetEntrySchema,
+  WorkSetItemSchema,
+  WorkSetProgressSchema,
+} from '../entities/workset/WorkSetProgress.js';
 import { ValidationError } from '../errors/DAGError.js';
 
 import { sharedAjv } from './sharedAjv.js';
@@ -222,4 +232,9 @@ export class Validator {
   static readonly scatterAckedResult:     EntityValidator<ScatterAckedResult>     = Validator.compile('ScatterAckedResult',     ScatterAckedResultSchema);
   static readonly scatterProgress:        EntityValidator<ScatterProgress>        = Validator.compile('ScatterProgress',        ScatterProgressSchema);
   static readonly storedScatterProgress:  EntityValidator<StoredScatterProgress>  = Validator.compile('StoredScatterProgress',  StoredScatterProgressSchema);
+
+  // WorkSet progress checkpoint wire shapes
+  static readonly workSetItem:     EntityValidator<WorkSetItem>     = Validator.compile('WorkSetItem',     WorkSetItemSchema);
+  static readonly workSetEntry:    EntityValidator<WorkSetEntry>    = Validator.compile('WorkSetEntry',    WorkSetEntrySchema);
+  static readonly workSetProgress: EntityValidator<WorkSetProgress> = Validator.compile('WorkSetProgress', WorkSetProgressSchema);
 }

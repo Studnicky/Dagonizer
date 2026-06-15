@@ -91,4 +91,13 @@ export class WorkSet<TState> {
   peek(node: string): Batch<TState> | undefined {
     return this.#entries.get(node);
   }
+
+  /**
+   * Read-only iterator over all (placement, batch) pairs currently in the
+   * work set. Used by `WorkSetCheckpoint.write` at the abort boundary to
+   * serialise the in-flight work set without exposing the private map.
+   */
+  entries(): IterableIterator<[string, Batch<TState>]> {
+    return this.#entries.entries();
+  }
 }
