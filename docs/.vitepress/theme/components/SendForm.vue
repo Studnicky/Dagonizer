@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import Spinner from './Spinner.vue';
+
 /**
  * SendForm: textarea + action button side-by-side.
  *
@@ -71,7 +73,7 @@ function onActionClick(): void {
         :aria-label="running ? 'Cancel' : 'Ask the Archivist'"
         @click="onActionClick"
       >
-        <span v-if="running" class="send-spinner" aria-hidden="true"></span>
+        <Spinner v-if="running" />
         <span class="send-glyph" aria-hidden="true">{{ running ? '✕' : '▶' }}</span>
       </button>
     </div>
@@ -170,23 +172,9 @@ function onActionClick(): void {
   overflow: hidden;
 }
 
-.send-spinner {
-  position: absolute;
-  inset: 6px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.18);
-  border-top-color: rgba(255, 255, 255, 0.9);
-  animation: send-spin 0.9s linear infinite;
-  pointer-events: none;
-}
-
 .send-btn-running .send-glyph {
   position: relative;
   z-index: 1;
-}
-
-@keyframes send-spin {
-  to { transform: rotate(360deg); }
 }
 
 .send-btn:hover:not([disabled]) { filter: brightness(1.12); transform: translateX(1px); }

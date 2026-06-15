@@ -18,17 +18,15 @@ import {
   SCATTER_REDUCER_DEFAULT,
   ScatterOptions,
 } from '../../src/builder/ScatterOptions.js';
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
+import { Validator } from '../../src/validation/Validator.js';
 
-class NoopNode implements NodeInterface<NodeStateBase, 'success'> {
+class NoopNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'noop';
   readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
-  async execute(_state: NodeStateBase) { return { 'errors': [], 'output': 'success' as const }; }
+  protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
 }
 const noop = new NoopNode();
 
@@ -169,5 +167,98 @@ void describe('DAGBuilder.scatter — placement defaults', () => {
     const scatter = dag.nodes.find((n) => n['@type'] === 'ScatterNode');
     assert.ok(scatter !== undefined, 'ScatterNode present');
     assert.equal('stateMapping' in scatter, false, 'stateMapping absent when inputs not provided');
+  });
+});
+
+void describe('DAGBuilder.scatter — reservoir option', () => {
+  void it('emits reservoir verbatim on ScatterNode when caller supplies it', () => {
+    const dag = new DAGBuilder('reservoir-present', '1')
+      .scatter('fan', 'items', noop,
+        { 'all-success': 'end', 'all-error': 'end', 'partial': 'end', 'empty': 'end' },
+        {
+          'gather':    { 'strategy': 'discard' },
+          'reservoir': { 'keyField': 'user.id', 'capacity': 100, 'idleMs': 500 },
+        })
+      .terminal('end')
+      .build();
+
+    const scatter = dag.nodes.find((n) => n['@type'] === 'ScatterNode') as Record<string, unknown>;
+    assert.ok(scatter !== undefined, 'ScatterNode present');
+    const reservoir = scatter['reservoir'] as Record<string, unknown>;
+    assert.ok(reservoir !== undefined, 'reservoir present');
+    assert.equal(reservoir['keyField'], 'user.id');
+    assert.equal(reservoir['capacity'], 100);
+    assert.equal(reservoir['idleMs'], 500);
+  });
+
+  void it('emits reservoir without idleMs when caller omits it', () => {
+    const dag = new DAGBuilder('reservoir-no-idle', '1')
+      .scatter('fan', 'items', noop,
+        { 'all-success': 'end', 'all-error': 'end', 'partial': 'end', 'empty': 'end' },
+        {
+          'gather':    { 'strategy': 'discard' },
+          'reservoir': { 'keyField': 'tenantId', 'capacity': 50 },
+        })
+      .terminal('end')
+      .build();
+
+    const scatter = dag.nodes.find((n) => n['@type'] === 'ScatterNode') as Record<string, unknown>;
+    assert.ok(scatter !== undefined, 'ScatterNode present');
+    const reservoir = scatter['reservoir'] as Record<string, unknown>;
+    assert.ok(reservoir !== undefined, 'reservoir present');
+    assert.equal(reservoir['keyField'], 'tenantId');
+    assert.equal(reservoir['capacity'], 50);
+    assert.equal('idleMs' in reservoir, false, 'idleMs absent when not provided');
+  });
+
+  void it('reservoir absent from ScatterNode when caller omits it (wire-identical to pre-reservoir shape)', () => {
+    const dag = new DAGBuilder('no-reservoir', '1')
+      .scatter('fan', 'items', noop,
+        { 'all-success': 'end', 'all-error': 'end', 'partial': 'end', 'empty': 'end' },
+        { 'gather': { 'strategy': 'discard' } })
+      .terminal('end')
+      .build();
+
+    const scatter = dag.nodes.find((n) => n['@type'] === 'ScatterNode');
+    assert.ok(scatter !== undefined, 'ScatterNode present');
+    assert.equal('reservoir' in scatter, false, 'reservoir key absent when not provided');
+  });
+
+  void it('Validator.scatterNode accepts a scatter with a reservoir', () => {
+    const node = {
+      '@id':     'urn:noocodex:dag:test/node/fan',
+      '@type':   'ScatterNode',
+      'name':    'fan',
+      'source':  'items',
+      'body':    { 'node': 'worker' },
+      'gather':  { 'strategy': 'discard' },
+      'outputs': { 'all-success': 'end', 'all-error': 'end', 'partial': 'end', 'empty': 'end' },
+      'itemKey': 'currentItem',
+      'reducer': 'aggregate',
+      'reservoir': { 'keyField': 'user.id', 'capacity': 10 },
+    };
+    // Must not throw.
+    const result = Validator.scatterNode.validate(node);
+    assert.ok(result !== undefined, 'validated ScatterNode returned');
+    assert.equal((result as Record<string, unknown>)['@type'], 'ScatterNode');
+  });
+
+  void it('Validator.scatterNode rejects a reservoir with capacity 0', () => {
+    const node = {
+      '@id':     'urn:noocodex:dag:test/node/fan',
+      '@type':   'ScatterNode',
+      'name':    'fan',
+      'source':  'items',
+      'body':    { 'node': 'worker' },
+      'gather':  { 'strategy': 'discard' },
+      'outputs': { 'all-success': 'end', 'all-error': 'end', 'partial': 'end', 'empty': 'end' },
+      'itemKey': 'currentItem',
+      'reducer': 'aggregate',
+      'reservoir': { 'keyField': 'user.id', 'capacity': 0 },
+    };
+    assert.throws(
+      () => Validator.scatterNode.validate(node),
+      (err) => err instanceof Error && err.message.includes('capacity'),
+    );
   });
 });

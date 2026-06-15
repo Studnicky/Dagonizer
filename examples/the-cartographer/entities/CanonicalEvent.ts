@@ -38,7 +38,7 @@ export const CanonicalEventSchema = {
   '$id': 'https://noocodex.dev/schemas/cartographer/CanonicalEvent',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['shipmentId', 'eventId', 'epochMs', 'kind', 'sourceId', 'sourceFormat', 'body'],
+  'required': ['shipmentId', 'eventId', 'epochMs', 'kind', 'sourceId', 'sourceFormat', 'sourceCompression', 'body'],
   'properties': {
     'shipmentId':   { 'type': 'string', 'minLength': 1 },
     'eventId':      { 'type': 'string', 'minLength': 1 },
@@ -47,9 +47,10 @@ export const CanonicalEventSchema = {
       'type': 'string',
       'enum': ['position-ping', 'facility-scan', 'sensor-reading', 'customs-event', 'delivery-confirmation'],
     },
-    // Provenance: which source + format this event was decoded from.
-    'sourceId':     { 'type': 'string', 'minLength': 1 },
-    'sourceFormat': { 'type': 'string', 'enum': ['json', 'csv', 'ndjson.gz'] },
+    // Provenance: which source, format, and compression this event was decoded from.
+    'sourceId':          { 'type': 'string', 'minLength': 1 },
+    'sourceFormat':      { 'type': 'string', 'enum': ['csv', 'json', 'ndjson', 'yaml'] },
+    'sourceCompression': { 'type': 'string', 'enum': ['none', 'gzip'] },
     // Per-kind body. One object shape (V8-stable); a kind populates the fields
     // it owns and zeroes/defaults the rest.
     'body': {

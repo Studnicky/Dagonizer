@@ -153,5 +153,39 @@ export class DAGValidator {
         errors.push(`ScatterNode '${scatter.name}': output '${output}' routes to unknown node '${target}'`);
       }
     }
+
+    if (scatter.reservoir !== undefined) {
+      DAGValidator.validateReservoir(scatter, errors);
+    }
+  }
+
+  private static validateReservoir(
+    scatter: ScatterNode,
+    errors: string[],
+  ): void {
+    // reservoir is already narrowed to defined by the caller; assert shape exists.
+    const reservoir = scatter.reservoir;
+    if (reservoir === undefined) return;
+
+    // keyField: schema enforces minLength:1 but surface a clear semantic message.
+    if (reservoir.keyField.trim().length === 0) {
+      errors.push(`ScatterNode '${scatter.name}' reservoir.keyField must be a non-empty accessor path`);
+    }
+
+    // capacity: schema enforces minimum:1 but surface a clear semantic message.
+    if (reservoir.capacity < 1) {
+      errors.push(`ScatterNode '${scatter.name}' reservoir.capacity must be >= 1 (got ${reservoir.capacity})`);
+    }
+
+    // idleMs: schema enforces minimum:1 but surface a clear semantic message.
+    if (reservoir.idleMs !== undefined && reservoir.idleMs < 1) {
+      errors.push(`ScatterNode '${scatter.name}' reservoir.idleMs must be > 0 when present (got ${reservoir.idleMs})`);
+    }
+
+    // RFC §2 body constraint: reservoir requires a node body.
+    // DAG bodies (in-process or container) are not supported with reservoir.
+    if ('dag' in scatter.body || scatter.container !== undefined) {
+      errors.push(`ScatterNode '${scatter.name}' reservoir requires a node body; DAG/container bodies are not supported`);
+    }
   }
 }

@@ -67,9 +67,11 @@ const dagLegendTabs: readonly LegendTab[] = [
 ];
 
 onMounted(async () => {
-  let cytoscape: typeof import('cytoscape').default;
+  let cytoscape: typeof import('cytoscape');
   try {
-    const coreMod = await import('cytoscape');
+    // cytoscape uses `export =`; with Vite/ESM bundler the module default is the callable function.
+    // The type cast is safe: at runtime coreMod.default is the cytoscape factory function.
+    const coreMod = await import('cytoscape') as unknown as { default: typeof import('cytoscape') };
     cytoscape = coreMod.default;
   } catch (err) {
     loadError.value = err instanceof Error ? err.message : String(err);
@@ -86,11 +88,11 @@ onMounted(async () => {
   await nextTick();
 
   const instance = new AnimatedDagGraph(cytoscape, container, props.dag, {
-    embeddedDAGs: props.embeddedDAGs,
-    nodeKinds:    props.nodeKinds,
-    expandAll:    props.expandAll,
-    onNodeClick:  (name) => { emit('node-click', name); },
-    onZoomChange: (level) => { zoomLevel.value = level; },
+    ...(props.embeddedDAGs !== undefined ? { 'embeddedDAGs': props.embeddedDAGs } : {}),
+    ...(props.nodeKinds    !== undefined ? { 'nodeKinds':    props.nodeKinds    } : {}),
+    ...(props.expandAll    !== undefined ? { 'expandAll':    props.expandAll    } : {}),
+    'onNodeClick':  (name) => { emit('node-click', name); },
+    'onZoomChange': (level) => { zoomLevel.value = level; },
   });
 
   await instance.mount();

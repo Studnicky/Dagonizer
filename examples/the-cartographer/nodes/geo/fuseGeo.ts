@@ -65,4 +65,6 @@ export class FuseGeoNode implements NodeInterface<CartographerState, 'fused', Ca
     return NodeOutputBuilder.of('fused');
   }
 }
+
+export const fuseGeo = new FuseGeoNode();
 // #endregion fuse-geo-node

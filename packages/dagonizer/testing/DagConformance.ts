@@ -43,6 +43,7 @@
 import assert from 'node:assert/strict';
 
 // The relative '../dist/' imports below are type-only and erased at compile time.
+
 import type { DagContainerInterface } from '../dist/contracts/DagContainerInterface.js';
 import type { DagonizerInterface, DispatcherBundle } from '../dist/Dagonizer.js';
 import type { NodeStateInterface } from '../dist/NodeStateBase.js';
@@ -54,9 +55,10 @@ import {
   CONFORMANCE_DAG,
 } from './ConformanceRegistry.js';
 
-// Runtime value imported from the package entry (resolves via package exports).
-import { SCATTER_PROGRESS_KEY } from '@noocodex/dagonizer';
 import type { ScatterProgress } from '@noocodex/dagonizer';
+import { SCATTER_PROGRESS_KEY } from '@noocodex/dagonizer';
+
+// Runtime value imported from the package entry (resolves via package exports).
 
 // ---------------------------------------------------------------------------
 // Types

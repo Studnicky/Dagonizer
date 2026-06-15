@@ -2,28 +2,31 @@
  * GatherStrategies: pluggable strategy registry that decides how the
  * dispatcher merges scatter clone results back into the parent state.
  *
- * A `GatherStrategy` is a class with a `name` and an `apply` method (batch
- * gather — called after all clones complete). Strategies that extend
- * `IncrementalGatherStrategy` also implement `applyIncremental` to fold each
- * completed record into parent state as it arrives, producing results
- * progressively. Batch-only strategies accumulate records and call `apply`
- * at the end.
+ * A `GatherStrategy` implements a unified fold contract:
+ *   - `seed`:     initialise the accumulator in state before any clones run.
+ *   - `reduce`:   fold a batch of clone results into state (batch of 1 for
+ *                 per-clone streaming, batch of N for all-at-once).
+ *   - `finalize`: end-of-gather work after all clones complete (e.g. custom
+ *                 node invocation). Default is a no-op.
  *
  * Four defaults register at module load: `map`, `append`, `partition`,
- * `custom`. Consumers extend `GatherStrategy` and call
+ * `custom`, `discard`, `collect`. Consumers extend `GatherStrategy` and call
  * `GatherStrategies.register(new MyGather())` to add their own.
  *
  * @example
  * ```ts
  * class TopNGather extends GatherStrategy {
  *   readonly name = 'top-n';
- *   async apply<TState extends NodeStateInterface>(
+ *   reduce(
  *     config: GatherConfig,
- *     execution: GatherExecution<TState>,
- *   ): Promise<void> {
- *     const target = config.target ?? 'topResults';
- *     const all = execution.records.map((r) => r.item);
- *     execution.accessor.set(execution.state, target, all.slice(0, 10));
+ *     batch: Batch<GatherRecord<NodeStateInterface>>,
+ *     state: NodeStateInterface,
+ *     accessor: StateAccessor,
+ *   ): void {
+ *     for (const item of batch) {
+ *       const record = item.state;
+ *       accessor.set(state, 'topResults', record.item);
+ *     }
  *   }
  * }
  *
@@ -37,14 +40,16 @@ import type { GatherConfig } from '../entities/dag/GatherConfig.js';
 import { DAGError } from '../errors/DAGError.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
+import type { Batch } from './batch/Batch.js';
+
 export type { GatherExecution, GatherRecord };
 
 /**
  * Extension point for gather strategies.
  *
- * Subclass and override `apply` for batch gather — called after all scatter
- * clones complete. For incremental (per-clone) folding, extend
- * `IncrementalGatherStrategy` instead and override `applyIncremental`.
+ * Implement `reduce` for per-clone or bulk folding. Override `seed` to
+ * initialise accumulator state before any clones run. Override `finalize`
+ * for end-of-gather work such as invoking a registered node.
  *
  * The class registers in `GatherStrategies` under its `name`; the dispatcher
  * resolves it via `GatherStrategies.resolve(name)` when all scatter clones
@@ -55,207 +60,114 @@ export abstract class GatherStrategy {
   abstract readonly name: string;
 
   /**
-   * Declares whether this strategy supports incremental folding.
-   * Batch-only strategies (the default) set this to `false`; incremental
-   * strategies extend `IncrementalGatherStrategy` which overrides this to `true`.
-   * The dispatcher checks `instanceof IncrementalGatherStrategy` — this field
-   * is informational and may be used by consumers for documentation/introspection.
+   * Initialise the accumulator in state before any clones run.
+   * Called once per scatter, before the first `reduce`. Default: no-op.
    */
-  readonly supportsIncremental: boolean = false;
+  seed(
+    _config: GatherConfig,
+    _state: NodeStateInterface,
+    _accessor: StateAccessor,
+  ): void { /* no-op */ }
 
   /**
-   * Apply the strategy in batch mode. Called once after all scatter clones
-   * complete (or, for strategies that do not support `applyIncremental`, after
-   * every clone regardless). Mutates `execution.state` in place; may invoke
-   * a registered node via `execution.invokeNode(name)`.
-   */
-  abstract apply<TState extends NodeStateInterface>(
-    config: GatherConfig,
-    execution: GatherExecution<TState>,
-  ): Promise<void>;
-
-}
-
-/**
- * Base class for gather strategies that support incremental folding.
- *
- * Extend this class (instead of `GatherStrategy` directly) to enable
- * per-clone incremental folding: the dispatcher narrows to this type
- * and calls `applyIncremental` after each clone completes, without needing
- * an optional-method presence check.
- *
- * `supportsIncremental` is permanently `true` here; subclasses MUST NOT
- * override it back to `false`. The batch `apply` method MUST still be
- * implemented for compatibility with dispatchers that use the batch path.
- *
- * @example
- * ```ts
- * class TopNGather extends IncrementalGatherStrategy {
- *   readonly name = 'top-n';
- *   applyIncremental(config, record, state, accessor) {
- *     // fold one record into state
- *   }
- *   async apply(config, execution) {
- *     // batch fallback: call applyIncremental for each record
- *     for (const record of execution.records) {
- *       this.applyIncremental(config, record, execution.state, execution.accessor);
- *     }
- *   }
- * }
- * GatherStrategies.register(new TopNGather());
- * ```
- */
-export abstract class IncrementalGatherStrategy extends GatherStrategy {
-  /** Always `true`; incremental strategies declare this at the class level. */
-  override readonly supportsIncremental = true;
-
-  /**
-   * Apply the strategy incrementally for a single record as it arrives.
-   * Called after each clone body completes successfully, before the next clone
-   * starts. Implementations mutate `state` in place.
+   * Fold a batch of clone results into parent state.
    *
-   * Every `IncrementalGatherStrategy` subclass must implement this method.
-   * The dispatcher narrows to `IncrementalGatherStrategy` via `instanceof`
-   * and calls this method directly — no optional-method presence check needed.
-   *
-   * The `accessor` and `state` parameters mirror those in `GatherExecution`
-   * and are provided directly to avoid constructing a full execution context
-   * for every incremental fold.
+   * `batch.size` is 1 (per-clone streaming) or N (all-at-once). Called once
+   * per clone as it completes. Implementations mutate `state` in place.
    */
-  abstract applyIncremental(
+  abstract reduce(
     config: GatherConfig,
-    record: GatherRecord<NodeStateInterface>,
+    batch: Batch<GatherRecord<NodeStateInterface>>,
     state: NodeStateInterface,
     accessor: StateAccessor,
-  ): void;
+  ): void | Promise<void>;
+
+  /**
+   * End-of-gather work: final computation or node invocation.
+   * Called once after all clones complete. Default: no-op.
+   */
+  async finalize(
+    _config: GatherConfig,
+    _execution: GatherExecution<NodeStateInterface>,
+  ): Promise<void> { /* no-op */ }
 }
 
-class MapGatherStrategy extends IncrementalGatherStrategy {
+class MapGatherStrategy extends GatherStrategy {
   readonly name = 'map';
 
-  applyIncremental(
+  reduce(
     config: GatherConfig,
-    record: GatherRecord<NodeStateInterface>,
+    batch: Batch<GatherRecord<NodeStateInterface>>,
     state: NodeStateInterface,
     accessor: StateAccessor,
   ): void {
     const mapping = config.mapping ?? {};
-    for (const [clonePath, parentPath] of Object.entries(mapping)) {
-      const value = accessor.get(record.cloneState, clonePath);
-      const existing = accessor.get<readonly unknown[]>(state, parentPath) ?? [];
-      accessor.set(state, parentPath, [...existing, value]);
-    }
-  }
-
-  async apply<TState extends NodeStateInterface>(
-    config: GatherConfig,
-    execution: GatherExecution<TState>,
-  ): Promise<void> {
-    const mapping = config.mapping ?? {};
-    for (const [clonePath, parentPath] of Object.entries(mapping)) {
-      if (execution.records.length === 1 && execution.records[0] !== undefined) {
-        // Singleton: write scalar to parent path.
-        const value = execution.accessor.get(execution.records[0].cloneState, clonePath);
-        execution.accessor.set(execution.state, parentPath, value);
-      } else {
-        // Multi-clone: `execution.records` is already in source-index order
-        // (the scatter loop builds them index-ordered across batches — see
-        // GatherExecution.records), so map directly without a re-sort.
-        const values = execution.records
-          .map((r) => execution.accessor.get(r.cloneState, clonePath));
-        const existing = execution.accessor.get<readonly unknown[]>(execution.state, parentPath) ?? [];
-        execution.accessor.set(execution.state, parentPath, [...existing, ...values]);
+    for (const item of batch) {
+      const record = item.state;
+      for (const [clonePath, parentPath] of Object.entries(mapping)) {
+        const value = accessor.get(record.cloneState, clonePath);
+        const existing = accessor.get<readonly unknown[]>(state, parentPath) ?? [];
+        accessor.set(state, parentPath, [...existing, value]);
       }
     }
   }
 }
 
-class AppendGatherStrategy extends IncrementalGatherStrategy {
+class AppendGatherStrategy extends GatherStrategy {
   readonly name = 'append';
 
-  applyIncremental(
+  reduce(
     config: GatherConfig,
-    record: GatherRecord<NodeStateInterface>,
+    batch: Batch<GatherRecord<NodeStateInterface>>,
     state: NodeStateInterface,
     accessor: StateAccessor,
   ): void {
     if (config.target === undefined) {
       throw new DAGError('Gather append strategy requires target path');
     }
-    const value = config.field !== undefined
-      ? accessor.get(record.cloneState, config.field)
-      : record.item;
-    const existing = accessor.get<readonly unknown[]>(state, config.target) ?? [];
-    accessor.set(state, config.target, [...existing, value]);
-  }
-
-  async apply<TState extends NodeStateInterface>(
-    config: GatherConfig,
-    execution: GatherExecution<TState>,
-  ): Promise<void> {
-    if (config.target === undefined) {
-      throw new DAGError('Gather append strategy requires target path');
+    for (const item of batch) {
+      const record = item.state;
+      const value = config.field !== undefined
+        ? accessor.get(record.cloneState, config.field)
+        : record.item;
+      const existing = accessor.get<readonly unknown[]>(state, config.target) ?? [];
+      accessor.set(state, config.target, [...existing, value]);
     }
-    const target = config.target;
-    // records are already source-index ordered (see GatherExecution.records).
-    const values = execution.records.map((r) =>
-      config.field !== undefined
-        ? execution.accessor.get(r.cloneState, config.field)
-        : r.item,
-    );
-    const existing = execution.accessor.get<readonly unknown[]>(execution.state, target) ?? [];
-    execution.accessor.set(execution.state, target, [...existing, ...values]);
   }
 }
 
-class PartitionGatherStrategy extends IncrementalGatherStrategy {
+class PartitionGatherStrategy extends GatherStrategy {
   readonly name = 'partition';
 
-  applyIncremental(
+  reduce(
     config: GatherConfig,
-    record: GatherRecord<NodeStateInterface>,
+    batch: Batch<GatherRecord<NodeStateInterface>>,
     state: NodeStateInterface,
     accessor: StateAccessor,
   ): void {
     const partitions = config.partitions ?? {};
-    const targetPath = partitions[record.output];
-    if (targetPath === undefined) return;
-    const value = config.field !== undefined
-      ? accessor.get(record.cloneState, config.field)
-      : record.item;
-    const existing = accessor.get<readonly unknown[]>(state, targetPath) ?? [];
-    accessor.set(state, targetPath, [...existing, value]);
-  }
-
-  async apply<TState extends NodeStateInterface>(
-    config: GatherConfig,
-    execution: GatherExecution<TState>,
-  ): Promise<void> {
-    const partitions = config.partitions ?? {};
-    for (const [outputToken, targetPath] of Object.entries(partitions)) {
-      // records are already source-index ordered (see GatherExecution.records),
-      // so filtering preserves index order without a re-sort.
-      const matching = execution.records
-        .filter((r) => r.output === outputToken);
-      const values = matching.map((r) =>
-        config.field !== undefined
-          ? execution.accessor.get(r.cloneState, config.field)
-          : r.item,
-      );
-      if (values.length > 0) {
-        const existing = execution.accessor.get<readonly unknown[]>(execution.state, targetPath) ?? [];
-        execution.accessor.set(execution.state, targetPath, [...existing, ...values]);
-      }
+    for (const item of batch) {
+      const record = item.state;
+      const targetPath = partitions[record.output];
+      if (targetPath === undefined) continue;
+      const value = config.field !== undefined
+        ? accessor.get(record.cloneState, config.field)
+        : record.item;
+      const existing = accessor.get<readonly unknown[]>(state, targetPath) ?? [];
+      accessor.set(state, targetPath, [...existing, value]);
     }
   }
 }
 
 class CustomGatherStrategy extends GatherStrategy {
   readonly name = 'custom';
-  // No applyIncremental: custom strategies run as a batch node invocation.
-  async apply<TState extends NodeStateInterface>(
+
+  // Custom strategy accumulates nothing per-clone — all work is in finalize.
+  reduce(): void { /* no-op */ }
+
+  override async finalize(
     config: GatherConfig,
-    execution: GatherExecution<TState>,
+    execution: GatherExecution<NodeStateInterface>,
   ): Promise<void> {
     if (config.customNode === undefined) return;
     // Expose a plain projection of records for the custom gather node to read.
@@ -281,15 +193,10 @@ class CustomGatherStrategy extends GatherStrategy {
  * `gather` is required on every `ScatterNode`. Declare `{ strategy: 'discard' }`
  * to make the no-merge intent explicit.
  */
-class DiscardGatherStrategy extends IncrementalGatherStrategy {
+class DiscardGatherStrategy extends GatherStrategy {
   readonly name = 'discard';
 
-  // applyIncremental is a no-op: never accumulates any state.
-  applyIncremental(): void {
-    // Intentional no-op: discard strategy folds nothing.
-  }
-
-  async apply(): Promise<void> {
+  reduce(): void {
     // Intentional no-op: discard strategy folds nothing.
   }
 }
@@ -308,39 +215,24 @@ class DiscardGatherStrategy extends IncrementalGatherStrategy {
  * The collected array is appended to the existing value at `target`
  * (consistent with `append`/`map` semantics), preserving source-index order.
  */
-class CollectGatherStrategy extends IncrementalGatherStrategy {
+class CollectGatherStrategy extends GatherStrategy {
   readonly name = 'collect';
 
-  applyIncremental(
+  reduce(
     config: GatherConfig,
-    record: GatherRecord<NodeStateInterface>,
+    batch: Batch<GatherRecord<NodeStateInterface>>,
     state: NodeStateInterface,
     accessor: StateAccessor,
   ): void {
     if (config.target === undefined) return;
-    const value = config.field !== undefined
-      ? accessor.get(record.cloneState, config.field)
-      : record.output;
-    const existing = accessor.get<readonly unknown[]>(state, config.target) ?? [];
-    accessor.set(state, config.target, [...existing, value]);
-  }
-
-  async apply<TState extends NodeStateInterface>(
-    config: GatherConfig,
-    execution: GatherExecution<TState>,
-  ): Promise<void> {
-    if (config.target === undefined) {
-      throw new DAGError('Gather collect strategy requires target path');
+    for (const item of batch) {
+      const record = item.state;
+      const value = config.field !== undefined
+        ? accessor.get(record.cloneState, config.field)
+        : record.output;
+      const existing = accessor.get<readonly unknown[]>(state, config.target) ?? [];
+      accessor.set(state, config.target, [...existing, value]);
     }
-    const target = config.target;
-    // records are already source-index ordered (see GatherExecution.records).
-    const values = execution.records.map((r) =>
-      config.field !== undefined
-        ? execution.accessor.get(r.cloneState, config.field)
-        : r.output,
-    );
-    const existing = execution.accessor.get<readonly unknown[]>(execution.state, target) ?? [];
-    execution.accessor.set(execution.state, target, [...existing, ...values]);
   }
 }
 
@@ -398,7 +290,7 @@ export class GatherStrategies {
   }
 
   /**
-   * Reset the registry to the four built-in strategies, discarding any
+   * Reset the registry to the built-in strategies, discarding any
    * consumer-registered entries. Used in test `afterEach` to restore a clean
    * baseline.
    */

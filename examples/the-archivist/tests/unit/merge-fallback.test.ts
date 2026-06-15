@@ -6,7 +6,7 @@
  *   • live > 0 + prior > 0 (1 overlap) → merged with live preferred, deduplicated
  *   • both empty → routes 'empty'
  *
- * Uses a minimal stub for context.services (only logger + CanonicalId.dedupe path needed).
+ * Uses a minimal fixture for context.services (only logger + CanonicalId.dedupe path needed).
  */
 
 import { test } from 'node:test';
@@ -17,7 +17,7 @@ import { mergeCandidates } from '../../nodes/mergeCandidates.ts';
 import type { Candidate } from '../../entities/Book.ts';
 import { BookBuilder } from '../../entities/Book.ts';
 
-// ── Minimal context stub ──────────────────────────────────────────────────────
+// ── Minimal context fixture ───────────────────────────────────────────────────
 
 const logs: string[] = [];
 

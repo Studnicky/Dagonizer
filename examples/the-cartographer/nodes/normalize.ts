@@ -104,4 +104,6 @@ export class NormalizeNode implements NodeInterface<CartographerState, 'normaliz
     return NodeOutputBuilder.of('normalized');
   }
 }
+
+export const normalize = new NormalizeNode();
 // #endregion normalize-node

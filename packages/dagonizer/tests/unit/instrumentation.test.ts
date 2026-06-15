@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { ExecutionResultInterface } from '../../src/entities/execution/ExecutionResult.js';
 import type { DAG } from '../../src/entities/index.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 import { TestNode } from '../_support/TestNode.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -166,9 +165,9 @@ void describe('Dagonizer subclass hooks contract', () => {
   void it('onContractWarning fires when a contract-bearing DAG has a dead-write', () => {
     const dispatcher = new RecordingDagonizer();
 
-    const rootNode = makeNodeWithContract('root', ['success'], { 'hardRequired': [], 'produces': ['input'] });
-    const aNode    = makeNodeWithContract('a',    ['success'], { 'hardRequired': ['input'], 'produces': ['x', 'unused'] });
-    const bNode    = makeNodeWithContract('b',    ['success'], { 'hardRequired': ['x'],     'produces': ['done'] });
+    const rootNode = makeNodeWithContract<NodeStateBase>('root', ['success'], { 'hardRequired': [], 'produces': ['input'] });
+    const aNode    = makeNodeWithContract<NodeStateBase>('a',    ['success'], { 'hardRequired': ['input'], 'produces': ['x', 'unused'] });
+    const bNode    = makeNodeWithContract<NodeStateBase>('b',    ['success'], { 'hardRequired': ['x'],     'produces': ['done'] });
 
     dispatcher.registerNode(rootNode);
     dispatcher.registerNode(aNode);
@@ -195,12 +194,10 @@ void describe('Dagonizer subclass hooks contract', () => {
   void it('onError fires when a node throws', async () => {
     const dispatcher = new RecordingDagonizer();
 
-    class BoomNode implements NodeInterface<NodeStateBase, 'success'> {
+    class BoomNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'boom';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(_state: NodeStateBase): Promise<{ errors: []; output: 'success' }> { throw new Error('boom went off'); }
+      protected async executeOne(_state: NodeStateBase): Promise<NodeOutputInterface<'success'>> { throw new Error('boom went off'); }
     }
     dispatcher.registerNode(new BoomNode());
 

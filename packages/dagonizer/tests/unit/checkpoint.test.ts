@@ -2,18 +2,17 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import { Checkpoint, CheckpointRestoreAdapterFn } from '../../src/checkpoint/Checkpoint.js';
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { DAGError, ValidationError } from '../../src/errors/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Clock } from '../../src/runtime/Clock.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 import { VirtualClockProvider } from '../../testing/VirtualClock.js';
 import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
 
@@ -68,12 +67,10 @@ void describe('NodeStateBase snapshot/restore', () => {
 void describe('cursor on ExecutionResultInterface', () => {
   void it('is null on a clean completion', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class OpNode implements NodeInterface<NodeStateBase, 'success'> {
+    class OpNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'op';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     dispatcher.registerNode(new OpNode());
     dispatcher.registerDAG({
@@ -98,12 +95,10 @@ void describe('cursor on ExecutionResultInterface', () => {
     let resolveNodeReady!: () => void;
     const nodeReady = new Promise<void>((r) => { resolveNodeReady = r; });
 
-    class OpNode implements NodeInterface<NodeStateBase, 'success'> {
+    class OpNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'op';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(_state: NodeStateBase, context: NodeContextInterface) {
+      protected async executeOne(_state: NodeStateBase, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
         resolveNodeReady();
         await new Promise<void>((_resolve, reject) => {
           context.signal.addEventListener('abort', () => { reject(context.signal.reason); }, { 'once': true });
@@ -144,12 +139,10 @@ void describe('Checkpoint round-trip', () => {
     Scheduler.configure(new VirtualScheduler(0));
 
     const dispatcher = new Dagonizer<CountingState>();
-    class IncNode implements NodeInterface<CountingState, 'success'> {
+    class IncNode extends ScalarNode<CountingState, 'success'> {
       readonly name = 'inc';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: CountingState) {
+      protected async executeOne(state: CountingState): Promise<NodeOutputInterface<'success'>> {
         state.count++;
         state.log.push(`tick:${state.count}`);
         return { 'errors': [], 'output': 'success' as const };
@@ -207,12 +200,10 @@ void describe('Checkpoint round-trip', () => {
 
   void it('rejects checkpointing a completed DAG', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class OpNode implements NodeInterface<NodeStateBase, 'success'> {
+    class OpNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'op';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     dispatcher.registerNode(new OpNode());
     dispatcher.registerDAG({

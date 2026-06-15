@@ -91,7 +91,7 @@ class AbortLoopbackContainer extends DagContainerBase<NodeStateInterface, AbortT
 void describe('Cross-container abort propagation (G5)', () => {
   void it('aborting the parent signal cancels the in-flight DAG execution promptly', async () => {
     const container = new AbortLoopbackContainer();
-    const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
+    const bundle = ConformanceRegistry.bundle().bundle as unknown as DispatcherBundle<NodeStateInterface, undefined>;
     const containers: Readonly<Record<string, DagContainerInterface<NodeStateInterface>>> = {
       [CONFORMANCE_CONTAINER_ROLE]: container,
     };
@@ -134,7 +134,7 @@ void describe('Cross-container abort propagation (G5)', () => {
 
   void it('abort before the execution starts still resolves cleanly', async () => {
     const container = new AbortLoopbackContainer();
-    const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
+    const bundle = ConformanceRegistry.bundle().bundle as unknown as DispatcherBundle<NodeStateInterface, undefined>;
     const containers: Readonly<Record<string, DagContainerInterface<NodeStateInterface>>> = {
       [CONFORMANCE_CONTAINER_ROLE]: container,
     };

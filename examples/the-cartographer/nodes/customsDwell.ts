@@ -33,3 +33,5 @@ export class CustomsDwellNode implements NodeInterface<CartographerState, 'dwell
   }
 }
 // #endregion customs-dwell-node
+
+export const customsDwell = new CustomsDwellNode();

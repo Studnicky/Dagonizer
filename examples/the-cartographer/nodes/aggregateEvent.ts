@@ -92,3 +92,5 @@ export class AggregateEventNode implements NodeInterface<CartographerState, 'don
   }
 }
 // #endregion aggregate-event-node
+
+export const aggregateEvent = new AggregateEventNode();

@@ -230,7 +230,7 @@ describe('LoopbackContainer — state round-trip fixed point (Law 9 direct)', ()
     const container = new LoopbackContainer(REGISTRY_MODULE_URL);
 
     try {
-      const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
+      const bundle = ConformanceRegistry.bundle().bundle as unknown as DispatcherBundle<NodeStateInterface, undefined>;
       const containers = { [CONFORMANCE_CONTAINER_ROLE]: container } as Readonly<Record<string, DagContainerInterface<NodeStateInterface>>>;
       const dispatcher = new Dagonizer<NodeStateInterface, undefined>({ containers });
       dispatcher.registerBundle(bundle);
@@ -315,7 +315,7 @@ describe('DagConformance Law 8 — returns-transport-error mid-scatter (no throw
     const failing = new ReturnTransportErrorAfterOneContainer(inner);
     perLawContainers.push(failing);
 
-    const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
+    const bundle = ConformanceRegistry.bundle().bundle as unknown as DispatcherBundle<NodeStateInterface, undefined>;
 
     // Phase 1: scatter through the failing container. Item 0 acks; item 1
     // returns a transport error → scatter throws (poolError) → item 1 stays

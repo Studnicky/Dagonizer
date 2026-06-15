@@ -7,8 +7,9 @@ import type { NodeInterface } from './contracts/NodeInterface.js';
 import type { NodeInvoker } from './contracts/NodeInvoker.js';
 import type { StateAccessor } from './contracts/StateAccessor.js';
 import type { WarningEmitter } from './contracts/WarningEmitter.js';
-import { GatherStrategies, IncrementalGatherStrategy } from './core/GatherStrategies.js';
-import type { GatherExecution, GatherRecord , GatherStrategy} from './core/GatherStrategies.js';
+import { Batch } from './core/batch/Batch.js';
+import { GatherStrategies } from './core/GatherStrategies.js';
+import type { GatherExecution, GatherRecord, GatherStrategy } from './core/GatherStrategies.js';
 import { OutcomeReducers } from './core/OutcomeReducers.js';
 import type { OutcomeRecord } from './core/OutcomeReducers.js';
 import { ContractRegistryValidator } from './derive/ContractRegistryValidator.js';
@@ -417,21 +418,40 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
     cloneState.setMetadata(itemKey, item);
     cloneState.setMetadata('itemIndex', itemIndex);
 
-    let output: string;
-    let terminalOutcome: 'completed' | 'failed' | null = null;
-
     if ('node' in scatter.body) {
+      // Node body: build a size-1 Batch and execute.
       const dagNode = this.#adapter.nodes.get(scatter.body.node);
       if (!dagNode) {
         throw new DAGError(`ScatterNode '${scatter.name}': unknown node '${scatter.body.node}'`);
       }
-      const opResult = await this.#adapter.withNodeTimeout(dagNode, signal, (nodeSignal) => {
+
+      // Build a size-1 Batch with item-index as id.
+      const batch = Batch.from([{ 'id': String(itemIndex), 'state': cloneState }]);
+
+      // Execute the node over the batch.
+      const routed = await this.#adapter.withNodeTimeout(dagNode, signal, async (nodeSignal) => {
         const context = this.#adapter.buildContext(dagName, scatter.name, nodeSignal);
-        return dagNode.execute(cloneState, context);
+        return dagNode.execute(batch, context);
       });
-      for (const err of opResult.errors) cloneState.collectError(err);
-      output = opResult.output;
+
+      // Derive output from the single routed entry.
+      let output = 'error';
+      for (const [routeKey, routeBatch] of routed.entries()) {
+        for (const batchEntry of routeBatch) {
+          if (batchEntry.id === String(itemIndex)) {
+            output = routeKey;
+          }
+        }
+      }
+
+      for (const err of cloneState.errors) state.collectError(err);
+      for (const warn of cloneState.warnings) state.collectWarning(warn);
+      return { 'index': itemIndex, item, output, 'terminalOutcome': null, 'cloneState': cloneState };
     } else {
+      // DAG body path.
+      let output: string;
+      let terminalOutcome: 'completed' | 'failed' | null;
+
       // DAG body — may run in-process or through a bound container.
       const innerPath: readonly string[] = [...placementPath, scatter.name];
       const container = this.#adapter.resolveContainer(scatter.container);
@@ -515,15 +535,15 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
 
       const hasUnrecoverable = cloneState.errors.some((e) => e.recoverable === false);
       output = (terminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
+
+      for (const err of cloneState.errors) state.collectError(err);
+      for (const warn of cloneState.warnings) state.collectWarning(warn);
+
+      return { 'index': itemIndex, item, output, terminalOutcome, 'cloneState': cloneState };
     }
-
-    for (const err of cloneState.errors) state.collectError(err);
-    for (const warn of cloneState.warnings) state.collectWarning(warn);
-
-    return { 'index': itemIndex, item, output, terminalOutcome, 'cloneState': cloneState };
   }
 
-  ackItem(res: ScatterItemResult<TState>): void {
+  async ackItem(res: ScatterItemResult<TState>): Promise<void> {
     const { scatter, state, inbox, ackedResults, ackedByIndex, itemOutputs, allFreshRecords, gatherStrategy } = this.#ctx;
     const { 'index': itemIndex, 'item': item, 'output': output, 'terminalOutcome': terminalOutcome, 'cloneState': cloneState } = res;
 
@@ -554,7 +574,7 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
     ackedByIndex.set(itemIndex, ackedResult);
     itemOutputs.set(itemIndex, output);
 
-    const record: GatherRecord<TState> = {
+    const freshRecord: GatherRecord<TState> = {
       'index': itemIndex,
       item,
       output,
@@ -562,17 +582,16 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
       cloneState,
     };
 
-    // Incremental gather: fold this record into parent state BEFORE the
-    // checkpoint write so the persisted state already reflects the fold.
-    if (scatter.gather !== undefined && gatherStrategy instanceof IncrementalGatherStrategy) {
-      gatherStrategy.applyIncremental(scatter.gather, record, state, this.#adapter.accessor);
-    } else {
-      // Accumulate for batch apply at the end.
-      allFreshRecords.push(record);
+    // Fold this record into state via reduce (exactly-once per item).
+    if (scatter.gather !== undefined && gatherStrategy !== null) {
+      const batchItems = [{ 'id': String(itemIndex), 'state': freshRecord }];
+      await gatherStrategy.reduce(scatter.gather, Batch.from(batchItems), state, this.#adapter.accessor);
     }
 
-    // Persist checkpoint after the incremental fold (so gathered state is
-    // already captured in the state snapshot that backs the metadata write).
+    // Accumulate for the finalize pass and outcome-reducer.
+    allFreshRecords.push(freshRecord);
+
+    // Persist checkpoint after the fold so gathered state is captured.
     ScatterCheckpoint.write(state, scatter.name, [...inbox], [...ackedResults]);
   }
 }
@@ -1270,11 +1289,10 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
         `PhaseNode '${phase.name}' references unknown registered node: ${phase.node}`,
       );
     }
-    const result = await this.withNodeTimeout(node, signal, (nodeSignal) => {
+    await this.withNodeTimeout(node, signal, (nodeSignal) => {
       const context = this.buildContext(dagName, phase.name, nodeSignal);
-      return node.execute(state, context);
+      return this.#runNodeOnState(node, state, context);
     });
-    for (const err of result.errors) state.collectError(err);
   }
 
   /**
@@ -1293,6 +1311,45 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
       nodeName,
       'services': this.services,
     };
+  }
+
+  /**
+   * Invokes a node on a single state as a size-1 batch.
+   *
+   * Wraps `state` in `Batch.of(state)`, calls `node.execute(batch, context)`,
+   * asserts the size-1 invariant (exactly one route with exactly one item),
+   * and returns the single output port key.
+   *
+   * The node owns error-forwarding: `ScalarNode.execute` forwards per-item
+   * errors to `item.state.collectError` during `execute`. Since `Batch.of`
+   * wraps the same state reference, mutations are visible after this call.
+   *
+   * Throws `DAGError` if the returned `RoutedBatch` does not contain exactly
+   * one route with exactly one item (invariant violation for size-1 dispatch).
+   */
+  async #runNodeOnState(
+    node: NodeInterface<TState, string, TServices>,
+    state: TState,
+    context: NodeContextInterface<TServices>,
+  ): Promise<string> {
+    const batch = Batch.of(state);
+    const routed = await node.execute(batch, context);
+    if (routed.size !== 1) {
+      throw new DAGError(
+        `Node '${node.name}' returned ${routed.size} routes for a size-1 batch (expected exactly 1).`,
+      );
+    }
+    const entry = routed.entries().next().value;
+    if (entry === undefined) {
+      throw new DAGError(`Node '${node.name}' returned an empty RoutedBatch for a size-1 batch.`);
+    }
+    const [output, resultBatch] = entry;
+    if (resultBatch.size !== 1) {
+      throw new DAGError(
+        `Node '${node.name}' route '${output}' contains ${resultBatch.size} items for a size-1 batch (expected exactly 1).`,
+      );
+    }
+    return output;
   }
 
   /**
@@ -1501,10 +1558,10 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
    * reprocessed first (as the priority source), then any remaining source
    * items continue normally.
    *
-   * **Incremental gather.** Strategies that implement `applyIncremental` fold
-   * each completed record into parent state as it arrives. Strategies without
-   * `applyIncremental` (e.g. `custom`) accumulate records and call `apply`
-   * once at the end.
+   * **Unified gather fold.** `seed` initialises accumulator state before any
+   * clones run; `reduce` folds each completed record into parent state as it
+   * arrives (batch of 1 per clone); `finalize` runs end-of-gather work (e.g.
+   * node invocation for `custom`) once all clones have reported.
    *
    * Resume bookkeeping is persisted under {@link SCATTER_PROGRESS_KEY}.
    */
@@ -1564,25 +1621,27 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
       if (item.index >= nextIndex) nextIndex = item.index + 1;
     }
 
-    // ── 3. Gather strategy and incremental fold ──────────────────────────────
+    // ── 3. Gather strategy: resolve, seed, and prepare accumulators ─────────
     const gatherStrategy = scatter.gather !== undefined
       ? GatherStrategies.resolve(scatter.gather.strategy)
       : null;
-    const isIncremental = gatherStrategy instanceof IncrementalGatherStrategy;
 
-    // Accumulate fresh records; used only by strategies without applyIncremental
-    // and for the final outcome-reducer pass.
+    // seed: initialise accumulator in state before any clones run.
+    if (gatherStrategy !== null && scatter.gather !== undefined) {
+      gatherStrategy.seed(scatter.gather, state, this.accessor);
+    }
+
+    // Accumulate fresh records for the finalize pass and outcome-reducer.
     const allFreshRecords: GatherRecord<TState>[] = [];
     const intermediateResults: Array<NodeResultInterface<TState>> = [];
     const itemOutputs = new Map<number, string>();
     // Populate itemOutputs from prior acked results.
     for (const r of ackedResults) itemOutputs.set(r.index, r.output);
 
-    // NOTE: For incremental gather strategies (applyIncremental defined), the
-    // gather contributions from acked items are already present in the state
-    // snapshot (they were folded per-ack during the prior run). No replay is
-    // needed here. The batch-only path at step 7 handles reconstruction for
-    // non-incremental strategies.
+    // NOTE: Gather contributions from acked items in a prior run are already
+    // present in the state snapshot (they were folded per-ack via reduce).
+    // No replay is needed here; the finalize pass at step 7 handles any
+    // end-of-gather work that needs the full record set.
 
     // ── 4. Build the source async iterator ──────────────────────────────────
     // Fresh source: new items from the actual source value.
@@ -1682,15 +1741,11 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
     // drain() throws on abort or worker error; checkpoint is preserved on throw.
     await pool.drain();
 
-    // ── 7. Synthesise acked records that came from a prior run ───────────────
-    // Strategies using incremental gather only saw fresh records; acked-only
-    // records (from a prior run that used incremental gather) were already
-    // folded into parent state by the previous run — they are not re-gathered.
-    // For batch-only strategies (e.g. custom) we must reconstruct the full
-    // record set in source-index order.
-    if (!isIncremental && scatter.gather !== undefined) {
-      // Build synthetic records for acked items that were NOT re-executed
-      // (i.e. items present in ackedResults but not in allFreshRecords).
+    // ── 7. Synthesise acked records for finalize ─────────────────────────────
+    // Acked-only records (from a prior run) were already folded into state via
+    // reduce during that run — do NOT re-reduce them. Synthetic records exist
+    // only so finalize (e.g. custom) can see the full record set.
+    if (gatherStrategy !== null && scatter.gather !== undefined) {
       const freshIndices = new Set<number>(allFreshRecords.map((r) => r.index));
       const syntheticRecords: GatherRecord<TState>[] = [];
       for (const acked of ackedResults) {
@@ -1714,13 +1769,13 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
           'cloneState': syntheticClone,
         });
       }
-      // Merge synthetic + fresh, sorted by index.
+      // Merge synthetic + fresh, sorted by index, for the finalize execution context.
       const merged = [...syntheticRecords, ...allFreshRecords]
         .sort((a, b) => a.index - b.index);
 
       if (merged.length > 0) {
         const gatherExecution = this.buildGatherExecution(state, merged, dagName, signal);
-        await GatherStrategies.resolve(scatter.gather.strategy).apply(scatter.gather, gatherExecution);
+        await gatherStrategy.finalize(scatter.gather, gatherExecution);
       }
     }
 
@@ -1772,7 +1827,7 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
         const dagNode = dispatcher.nodes.get(nodeName);
         if (dagNode === undefined) return;
         const context = dispatcher.buildContext(dagName, nodeName, signal);
-        await dagNode.execute(state, context);
+        await dispatcher.#runNodeOnState(dagNode, state, context);
       },
     };
     return {
@@ -1878,22 +1933,20 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
       throw new DAGError(`Unknown node: ${nodeConfig.node}`);
     }
 
-    const opResult = await this.withNodeTimeout(dagNode, signal, (nodeSignal) => {
+    const output = await this.withNodeTimeout(dagNode, signal, (nodeSignal) => {
       const context = this.buildContext(dagName, nodeConfig.name, nodeSignal);
-      return dagNode.execute(state, context);
+      return this.#runNodeOnState(dagNode, state, context);
     });
 
-    for (const error of opResult.errors) state.collectError(error);
-
-    const nextStage = nodeConfig.outputs[opResult.output];
+    const nextStage = nodeConfig.outputs[output];
 
     if (nextStage === undefined) {
-      throw new DAGError(`Node ${dagNode.name} returned output '${opResult.output}' but node ${nodeConfig.name} has no routing for it. `
+      throw new DAGError(`Node ${dagNode.name} returned output '${output}' but node ${nodeConfig.name} has no routing for it. `
         + `Available outputs: ${Object.keys(nodeConfig.outputs).join(', ')}`);
     }
 
     const result: NodeResultInterface<TState> = {
-      'output': opResult.output,
+      'output': output,
       'skipped': false,
       'nodeName': nodeConfig.name,
       state,
@@ -1935,7 +1988,8 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
    */
   registerDAG(dag: DAG): void {
     if (this.dags.has(dag.name)) {
-      throw new DAGError(`DAG '${dag.name}' is already registered`);
+      if (this.dags.get(dag.name) === dag) return;
+      throw new DAGError(`DAG '${dag.name}' is already registered with a different implementation`);
     }
 
     // Schema pre-pass: catches malformed JSON (missing fields, wrong
@@ -2049,7 +2103,8 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
     node: NodeInterface<TState, TOutput, TServices>,
   ): void {
     if (this.nodes.has(node.name)) {
-      throw new DAGError(`Node '${node.name}' is already registered`);
+      if (this.nodes.get(node.name) === (node as NodeInterface<TState, string, TServices>)) return;
+      throw new DAGError(`Node '${node.name}' is already registered with a different implementation`);
     }
     if (node.validate) {
       const result = node.validate();

@@ -42,3 +42,5 @@ export class EnrichLegNode implements NodeInterface<CartographerState, 'leg-meas
   }
 }
 // #endregion enrich-leg-node
+
+export const enrichLeg = new EnrichLegNode();

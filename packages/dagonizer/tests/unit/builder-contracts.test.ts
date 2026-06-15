@@ -3,13 +3,13 @@ import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
 import type { WarningEmitter } from '../../src/contracts/WarningEmitter.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { DAGError } from '../../src/errors/DAGError.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 class CollectingWarningEmitter implements WarningEmitter {
   readonly collected: string[] = [];
@@ -20,20 +20,19 @@ class CollectingWarningEmitter implements WarningEmitter {
 // Helpers
 // ---------------------------------------------------------------------------
 
-class ContractTestNode implements NodeInterface<NodeStateBase, string> {
+class ContractTestNode extends ScalarNode<NodeStateBase, string> {
   readonly name: string;
   readonly outputs: readonly string[];
-  readonly contract: OperationContractFragment;
-  readonly timeout: Timeout;
+  override readonly contract: OperationContractFragment;
 
-  constructor(name: string, outputs: readonly string[], contract: OperationContractFragment = EMPTY_CONTRACT_FRAGMENT) {
+  constructor(name: string, outputs: readonly string[], contract: OperationContractFragment = { 'hardRequired': [], 'produces': [] }) {
+    super();
     this.name = name;
     this.outputs = outputs;
     this.contract = contract;
-    this.timeout = Timeout.none();
   }
 
-  async execute(): Promise<{ 'errors': never[]; 'output': string }> {
+  protected async executeOne(): Promise<NodeOutputInterface<string>> {
     return { 'errors': [], 'output': this.outputs[0] ?? 'success' };
   }
 }

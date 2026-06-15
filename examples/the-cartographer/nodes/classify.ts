@@ -73,3 +73,5 @@ export class ClassifyNode implements NodeInterface<CartographerState, 'classifie
   }
 }
 // #endregion classify-node
+
+export const classify = new ClassifyNode();

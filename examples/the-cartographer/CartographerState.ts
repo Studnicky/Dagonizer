@@ -38,6 +38,7 @@ import type { RawShipmentEvent } from './entities/RawShipmentEvent.ts';
 import type { ShipmentEvent } from './entities/ShipmentEvent.ts';
 import type { ShippingQuote } from './entities/ShippingQuote.ts';
 import type { SourcePayload } from './entities/SourcePayload.ts';
+import type { FeedConfig } from './services.ts';
 
 import { NodeStateBase } from '@noocodex/dagonizer';
 import type { JsonObject } from '@noocodex/dagonizer/types';
@@ -108,8 +109,20 @@ export interface JourneyInsights {
 
 // #region cartographer-state
 export class CartographerState extends NodeStateBase {
-  /** Number of synthetic journeys to generate. */
+  /** Number of synthetic journeys to generate (retained for backward compat with checkpoint/resume). */
   eventCount: number = 200;
+
+  /**
+   * Per-format feed configuration driving buildFromConfig. Each entry specifies
+   * format, compression, and count; the total across entries is the effective
+   * event count for the pipeline run.
+   */
+  feedConfig: FeedConfig = [
+    { 'format': 'json',   'compression': 'none', 'count': 6 },
+    { 'format': 'csv',    'compression': 'gzip', 'count': 4 },
+    { 'format': 'ndjson', 'compression': 'gzip', 'count': 4 },
+    { 'format': 'yaml',   'compression': 'none', 'count': 2 },
+  ];
 
   /**
    * The multi-format source feeds, seeded by the seed phase node. Each is a
@@ -136,11 +149,12 @@ export class CartographerState extends NodeStateBase {
   // ── Per-source ingest slots (used inside a source's ingest sub-DAG clone) ──
   /** The source feed currently being ingested (set from `sources` by select). */
   currentSource: SourcePayload = {
-    'sourceId':   '',
-    'format':     'json',
-    'mappingKey': 'json-position',
-    'kind':       'position-ping',
-    'payload':    '',
+    'sourceId':     '',
+    'format':       'json',
+    'compression':  'none',
+    'mappingKey':   'json-position',
+    'kind':         'position-ping',
+    'payload':      '',
   };
 
   /** Decompressed/raw text of the current source (after `decompress`). */
@@ -157,12 +171,13 @@ export class CartographerState extends NodeStateBase {
 
   /** The single canonical event under enrichment in a scatter clone (set by parse). */
   canonical: CanonicalEvent = {
-    'shipmentId':   '',
-    'eventId':      '',
-    'epochMs':      0,
-    'kind':         'position-ping',
-    'sourceId':     '',
-    'sourceFormat': 'json',
+    'shipmentId':        '',
+    'eventId':           '',
+    'epochMs':           0,
+    'kind':              'position-ping',
+    'sourceId':          '',
+    'sourceFormat':      'json',
+    'sourceCompression': 'none',
     'body': {
       'scanSeq':          0,
       'latitude':         0,
@@ -438,6 +453,7 @@ export class CartographerState extends NodeStateBase {
   override clone(): this {
     const copy = super.clone(); // new Constructor() + _metadata copy from base
     copy.eventCount = this.eventCount;
+    copy.feedConfig  = this.feedConfig.map((e) => ({ ...e })) as FeedConfig;
     copy.sources    = this.sources.map((s) => ({ ...s }));
     copy.ingestBuckets = this.ingestBuckets.map((bucket) => bucket.map((e) => CartographerState.cloneCanonical(e)));
     copy.canonicalEvents = this.canonicalEvents.map((e) => CartographerState.cloneCanonical(e));
@@ -512,6 +528,7 @@ export class CartographerState extends NodeStateBase {
   protected override snapshotData(): JsonObject {
     return {
       'eventCount': this.eventCount,
+      'feedConfig': this.feedConfig.map((e) => ({ 'format': e.format, 'compression': e.compression, 'count': e.count })),
       'sources':    this.sources.map((s) => CartographerState.sourceToJson(s)),
       'ingestBuckets': this.ingestBuckets.map((bucket) => bucket.map((e) => CartographerState.canonicalToJson(e))),
       'canonicalEvents': this.canonicalEvents.map((e) => CartographerState.canonicalToJson(e)),
@@ -584,6 +601,17 @@ export class CartographerState extends NodeStateBase {
 
   protected override restoreData(snap: JsonObject): void {
     if (typeof snap['eventCount'] === 'number') this.eventCount = snap['eventCount'];
+    if (Array.isArray(snap['feedConfig'])) {
+      const loaded: FeedConfig = (snap['feedConfig'] as unknown[])
+        .map((e) => CartographerState.asObject(e as unknown))
+        .filter((e): e is Record<string, unknown> => e !== null)
+        .map((e): { readonly format: 'csv' | 'json' | 'ndjson' | 'yaml'; readonly compression: 'none' | 'gzip'; readonly count: number } => ({
+          'format':      (e['format'] === 'csv' || e['format'] === 'json' || e['format'] === 'ndjson' || e['format'] === 'yaml') ? e['format'] : 'json',
+          'compression': (e['compression'] === 'none' || e['compression'] === 'gzip') ? e['compression'] : 'none',
+          'count':       typeof e['count'] === 'number' ? e['count'] : 0,
+        }));
+      if (loaded.length > 0) this.feedConfig = loaded;
+    }
     if (Array.isArray(snap['sources'])) {
       this.sources = snap['sources'].map((s) => CartographerState.sourceFromJson(CartographerState.asObject(s) ?? {}));
     }
@@ -724,19 +752,28 @@ export class CartographerState extends NodeStateBase {
   }
 
   private static sourceFormat(value: unknown): SourcePayload['format'] {
-    return value === 'json' || value === 'csv' || value === 'ndjson.gz' ? value : 'json';
+    return value === 'csv' || value === 'json' || value === 'ndjson' || value === 'yaml' ? value : 'json';
+  }
+
+  private static canonicalSourceFormat(value: unknown): CanonicalEvent['sourceFormat'] {
+    return value === 'csv' || value === 'json' || value === 'ndjson' || value === 'yaml' ? value : 'json';
+  }
+
+  private static canonicalSourceCompression(value: unknown): CanonicalEvent['sourceCompression'] {
+    return value === 'none' || value === 'gzip' ? value : 'none';
   }
 
   /** Deep-clone a CanonicalEvent (body + optional geo) for V8-stable copies. */
   private static cloneCanonical(e: CanonicalEvent): CanonicalEvent {
     const copy: CanonicalEvent = {
-      'shipmentId':   e.shipmentId,
-      'eventId':      e.eventId,
-      'epochMs':      e.epochMs,
-      'kind':         e.kind,
-      'sourceId':     e.sourceId,
-      'sourceFormat': e.sourceFormat,
-      'body':         { ...e.body, 'lineItems': e.body.lineItems.map((li) => ({ ...li })) },
+      'shipmentId':        e.shipmentId,
+      'eventId':           e.eventId,
+      'epochMs':           e.epochMs,
+      'kind':              e.kind,
+      'sourceId':          e.sourceId,
+      'sourceFormat':      e.sourceFormat,
+      'sourceCompression': e.sourceCompression,
+      'body':              { ...e.body, 'lineItems': e.body.lineItems.map((li) => ({ ...li })) },
     };
     if (e.geo !== undefined) copy.geo = { ...e.geo };
     if (e.consentHandled !== undefined) copy.consentHandled = e.consentHandled;
@@ -781,28 +818,30 @@ export class CartographerState extends NodeStateBase {
       'specialCategory':  e.body.specialCategory,
     };
     return {
-      'shipmentId':     e.shipmentId,
-      'eventId':        e.eventId,
-      'epochMs':        e.epochMs,
-      'kind':           e.kind,
-      'sourceId':       e.sourceId,
-      'sourceFormat':   e.sourceFormat,
-      'body':           body,
-      'geo':            e.geo !== undefined ? { 'country': e.geo.country, 'continent': e.geo.continent, 'region': e.geo.region } : null,
-      'consentHandled': e.consentHandled !== undefined ? e.consentHandled : null,
-      'pii':            e.pii !== undefined ? e.pii : null,
+      'shipmentId':        e.shipmentId,
+      'eventId':           e.eventId,
+      'epochMs':           e.epochMs,
+      'kind':              e.kind,
+      'sourceId':          e.sourceId,
+      'sourceFormat':      e.sourceFormat,
+      'sourceCompression': e.sourceCompression,
+      'body':              body,
+      'geo':               e.geo !== undefined ? { 'country': e.geo.country, 'continent': e.geo.continent, 'region': e.geo.region } : null,
+      'consentHandled':    e.consentHandled !== undefined ? e.consentHandled : null,
+      'pii':               e.pii !== undefined ? e.pii : null,
     };
   }
 
   private static canonicalFromJson(o: Record<string, unknown>): CanonicalEvent {
     const b = CartographerState.asObject(o['body']) ?? {};
     const event: CanonicalEvent = {
-      'shipmentId':   CartographerState.str(o['shipmentId']),
-      'eventId':      CartographerState.str(o['eventId']),
-      'epochMs':      CartographerState.num(o['epochMs']),
-      'kind':         CartographerState.canonicalKind(o['kind']),
-      'sourceId':     CartographerState.str(o['sourceId']),
-      'sourceFormat': CartographerState.sourceFormat(o['sourceFormat']),
+      'shipmentId':        CartographerState.str(o['shipmentId']),
+      'eventId':           CartographerState.str(o['eventId']),
+      'epochMs':           CartographerState.num(o['epochMs']),
+      'kind':              CartographerState.canonicalKind(o['kind']),
+      'sourceId':          CartographerState.str(o['sourceId']),
+      'sourceFormat':      CartographerState.canonicalSourceFormat(o['sourceFormat']),
+      'sourceCompression': CartographerState.canonicalSourceCompression(o['sourceCompression']),
       'body': {
         'scanSeq':          CartographerState.num(b['scanSeq']),
         'latitude':         CartographerState.num(b['latitude']),
@@ -854,21 +893,23 @@ export class CartographerState extends NodeStateBase {
 
   private static sourceToJson(s: SourcePayload): JsonObject {
     return {
-      'sourceId':   s.sourceId,
-      'format':     s.format,
-      'mappingKey': s.mappingKey,
-      'kind':       s.kind,
-      'payload':    s.payload,
+      'sourceId':    s.sourceId,
+      'format':      s.format,
+      'compression': s.compression,
+      'mappingKey':  s.mappingKey,
+      'kind':        s.kind,
+      'payload':     s.payload,
     };
   }
 
   private static sourceFromJson(o: Record<string, unknown>): SourcePayload {
     return {
-      'sourceId':   CartographerState.str(o['sourceId']),
-      'format':     CartographerState.sourceFormat(o['format']),
-      'mappingKey': CartographerState.str(o['mappingKey'], 'json-position'),
-      'kind':       CartographerState.canonicalKind(o['kind']),
-      'payload':    CartographerState.str(o['payload']),
+      'sourceId':    CartographerState.str(o['sourceId']),
+      'format':      CartographerState.sourceFormat(o['format']),
+      'compression': (o['compression'] === 'none' || o['compression'] === 'gzip') ? o['compression'] : 'none',
+      'mappingKey':  CartographerState.str(o['mappingKey'], 'json-position'),
+      'kind':        CartographerState.canonicalKind(o['kind']),
+      'payload':     CartographerState.str(o['payload']),
     };
   }
 

@@ -27,8 +27,8 @@
  */
 
 // #region canonicalize-dag
-import { NormalizeNode }  from '../nodes/normalize.ts';
-import { ClassifyNode }   from '../nodes/classify.ts';
+import { normalize }  from '../nodes/normalize.ts';
+import { classify }   from '../nodes/classify.ts';
 import type { CartographerState }   from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
@@ -39,13 +39,13 @@ import type { DAG }              from '@noocodex/dagonizer/entities';
 export const canonicalizeDAG: DAG = new DAGBuilder('canonicalize', '1.0')
 
   // 1. normalize: scalar canonicalization (runs after geo; needs geoContext.timezone).
-  .node('normalize', new NormalizeNode(), {
+  .node('normalize', normalize, {
     'normalized': 'classify',
     'rejected':   'rejected',
   })
 
   // 2. classify: derive eventType / serviceTier / sizeTier; project currentEvent.
-  .node('classify', new ClassifyNode(), {
+  .node('classify', classify, {
     'classified': 'canonical',
   })
 
@@ -56,7 +56,7 @@ export const canonicalizeDAG: DAG = new DAGBuilder('canonicalize', '1.0')
   .build();
 
 export const canonicalizeBundle: DispatcherBundle<CartographerState, CartographerServices> = {
-  'nodes': [new NormalizeNode(), new ClassifyNode()],
+  'nodes': [normalize, classify],
   'dags':  [canonicalizeDAG],
 };
 // #endregion canonicalize-dag

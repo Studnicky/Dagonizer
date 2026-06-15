@@ -1,10 +1,10 @@
 /**
  * seedEvents: pre-phase node for the cartographer DAG.
  *
- * Sets state.sources = Sources.build(state.eventCount) — the fixed list of
- * heterogeneous-format source feeds (JSON / CSV / gzip NDJSON / customs) — before
- * the ingestion fan-in reads them. Called as a PhaseNode('pre') so it runs before
- * the entrypoint and never appears in the routing graph.
+ * Sets state.sources = Sources.buildFromConfig(state.feedConfig) — one SourcePayload
+ * per FeedConfig entry — before the ingestion fan-in reads them. Called as a
+ * PhaseNode('pre') so it runs before the entrypoint and never appears in the
+ * routing graph.
  */
 
 import type { CartographerState } from '../CartographerState.ts';
@@ -27,8 +27,10 @@ export class SeedEventsNode implements NodeInterface<CartographerState, never, C
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
-    state.sources = await Sources.build(state.eventCount);
+    state.sources = await Sources.buildFromConfig(state.feedConfig);
     return NodeOutputBuilder.of(undefined as never);
   }
 }
+
+export const seedEvents = new SeedEventsNode();
 // #endregion seed-events-node

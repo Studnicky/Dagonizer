@@ -3,10 +3,11 @@
  * No side effects, no dispatcher, no execute.
  * Imported by examples/24-llm-adapter.ts (the executable entry point).
  *
- * Demonstrates: LlmAdapterRegistry + LlmAdapterCascade with two StubAdapter
- * instances (primary + fallback). The primary stub has probe() overridden to
- * return false, so the cascade skips it and selects the fallback. A ChatNode
- * calls the selected adapter and routes on the response kind.
+ * Demonstrates: LlmAdapterRegistry + LlmAdapterCascade with two OllamaApiAdapter
+ * instances (primary at an unreachable port, fallback at the default loopback).
+ * The primary adapter's probe() returns false, so the cascade skips it and
+ * selects the fallback. A ChatNode calls the selected adapter and routes on
+ * the response kind.
  */
 
 import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,

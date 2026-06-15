@@ -6,7 +6,7 @@
  *   • a high-overlap query (Jaccard >= 0.35)  → state.priorCandidates populated
  *   • an unrelated query (Jaccard < 0.35)     → state.priorCandidates stays empty
  *
- * Uses a minimal stub for `context.services` (only memory + logger needed).
+ * Uses a minimal fixture for `context.services` (only memory + logger needed).
  */
 
 import { test } from 'node:test';
@@ -16,7 +16,7 @@ import { ArchivistState } from '../../ArchivistState.ts';
 import { recallCandidates } from '../../nodes/recallCandidates.ts';
 import { GRAPH_MEMORY, MemoryStore } from '../../memory/MemoryStore.ts';
 
-// ── Minimal stub context ────────────────────────────────────────────────────
+// ── Minimal fixture context ─────────────────────────────────────────────────
 
 const logs: string[] = [];
 

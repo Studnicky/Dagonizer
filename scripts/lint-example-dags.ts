@@ -50,9 +50,6 @@ import { canonicalizeDAG }                        from '../examples/the-cartogra
 import { gdprComplianceDAG }                      from '../examples/the-cartographer/embedded-dags/GdprComplianceDAG.js';
 import { geoResolveDAG }                          from '../examples/the-cartographer/embedded-dags/GeoResolveDAG.js';
 import { ingestSourceDAG }                        from '../examples/the-cartographer/embedded-dags/IngestSourceDAG.js';
-import { ingestJsonDAG }                          from '../examples/the-cartographer/embedded-dags/IngestJsonDAG.js';
-import { ingestCsvDAG }                           from '../examples/the-cartographer/embedded-dags/IngestCsvDAG.js';
-import { ingestNdjsonGzDAG }                      from '../examples/the-cartographer/embedded-dags/IngestNdjsonGzDAG.js';
 import { orderEnrichmentDAG }                     from '../examples/the-cartographer/embedded-dags/OrderEnrichmentDAG.js';
 
 const dags: ReadonlyArray<readonly [string, DAG]> = [
@@ -79,9 +76,6 @@ const dags: ReadonlyArray<readonly [string, DAG]> = [
   ['dags / derive (parent)',                 deriveParentDAG],
   ['the-cartographer / cartographerDAG',     cartographerDAG],
   ['the-cartographer / ingestSourceDAG',     ingestSourceDAG],
-  ['the-cartographer / ingestJsonDAG',       ingestJsonDAG],
-  ['the-cartographer / ingestCsvDAG',        ingestCsvDAG],
-  ['the-cartographer / ingestNdjsonGzDAG',   ingestNdjsonGzDAG],
   ['the-cartographer / geoResolveDAG',       geoResolveDAG],
   ['the-cartographer / canonicalizeDAG',     canonicalizeDAG],
   ['the-cartographer / orderEnrichmentDAG',  orderEnrichmentDAG],

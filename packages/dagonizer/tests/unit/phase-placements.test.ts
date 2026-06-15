@@ -4,6 +4,9 @@ import { describe, it } from 'node:test';
 import { DAGBuilder } from '../../src/builder/index.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { Batch } from '../../src/core/batch/Batch.js';
+import type { Item } from '../../src/core/batch/Item.js';
+import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
@@ -26,13 +29,21 @@ const makeNode = (
   outputs,
   'contract': EMPTY_CONTRACT_FRAGMENT,
   'timeout': Timeout.none(),
-  async execute(state) {
-    if (side) {
-      await side(state);
-    } else {
-      state.trace.push(name);
+  async execute(batch: Batch<TrackingState>): Promise<RoutedBatch<string, TrackingState>> {
+    const acc = new Map<string, Item<TrackingState>[]>();
+    for (const item of batch) {
+      if (side) {
+        await side(item.state);
+      } else {
+        item.state.trace.push(name);
+      }
+      const output = outputs[0] as string;
+      const bucket = acc.get(output);
+      if (bucket !== undefined) { bucket.push(item); } else { acc.set(output, [item]); }
     }
-    return { 'errors': [], 'output': outputs[0] as string };
+    const routed = new Map<string, Batch<TrackingState>>();
+    for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
+    return routed;
   },
 });
 
@@ -44,7 +55,7 @@ const makeThrowingNode = (
   'outputs': ['success'],
   'contract': EMPTY_CONTRACT_FRAGMENT,
   'timeout': Timeout.none(),
-  async execute() {
+  async execute(_batch: Batch<TrackingState>): Promise<RoutedBatch<string, TrackingState>> {
     throw new Error(message);
   },
 });
@@ -263,14 +274,21 @@ void describe('PhaseNode placements: post-phase execution', () => {
       'outputs': ['success'],
       'contract': EMPTY_CONTRACT_FRAGMENT,
       'timeout': Timeout.none(),
-      async execute(_state, ctx) {
-        resolveNodeReady();
-        await new Promise<void>((_resolve, reject) => {
-          ctx.signal.addEventListener('abort', () => {
-            reject(new Error('aborted'));
-          }, { 'once': true });
-        });
-        return { 'errors': [], 'output': 'success' };
+      async execute(batch: Batch<TrackingState>, ctx): Promise<RoutedBatch<string, TrackingState>> {
+        const acc = new Map<string, Item<TrackingState>[]>();
+        for (const item of batch) {
+          resolveNodeReady();
+          await new Promise<void>((_resolve, reject) => {
+            ctx.signal.addEventListener('abort', () => {
+              reject(new Error('aborted'));
+            }, { 'once': true });
+          });
+          const bucket = acc.get('success');
+          if (bucket !== undefined) { bucket.push(item); } else { acc.set('success', [item]); }
+        }
+        const routed = new Map<string, Batch<TrackingState>>();
+        for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
+        return routed;
       },
     });
 

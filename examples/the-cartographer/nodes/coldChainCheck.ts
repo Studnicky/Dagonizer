@@ -34,3 +34,5 @@ export class ColdChainCheckNode implements NodeInterface<CartographerState, 'che
   }
 }
 // #endregion cold-chain-check-node
+
+export const coldChainCheck = new ColdChainCheckNode();

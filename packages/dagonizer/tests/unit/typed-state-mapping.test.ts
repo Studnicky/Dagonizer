@@ -18,11 +18,11 @@ import { describe, it } from 'node:test';
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { TypedEmbeddedDAGOptionsInterface } from '../../src/builder/DAGBuilder.js';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { EmbeddedDAGNode } from '../../src/entities/dag/EmbeddedDAGNode.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 // ── Domain child state ────────────────────────────────────────────────────────
 
@@ -40,12 +40,10 @@ class ParentState extends NodeStateBase {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-class TerminalNode implements NodeInterface<NodeStateBase, 'success'> {
+class TerminalNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'terminal';
   readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
-  async execute(_state: NodeStateBase) { return { 'errors': [], 'output': 'success' as const }; }
+  protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
 }
 const terminal = new TerminalNode();
 
@@ -140,12 +138,10 @@ void describe('DAGBuilder.embeddedDAG: wire shape', () => {
 void describe('DAGBuilder.embeddedDAG: runtime execute with typed mapping', () => {
   void it('inputs + outputs mappings propagate state correctly across the embedded-DAG boundary', async () => {
     // Child node reads cloneState.payload and writes cloneState.result.
-    class ChildNodeImpl implements NodeInterface<ChildState, 'success'> {
+    class ChildNodeImpl extends ScalarNode<ChildState, 'success'> {
       readonly name = 'child-node';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: ChildState) {
+      protected async executeOne(state: ChildState): Promise<NodeOutputInterface<'success'>> {
         // result = length of payload (deterministic, easy to assert)
         state.result = state.payload.length;
         return { 'errors': [], 'output': 'success' as const };
@@ -187,8 +183,8 @@ void describe('DAGBuilder.embeddedDAG: runtime execute with typed mapping', () =
 
     const workState = new WorkState();
     const dispatcher2 = new Dagonizer<WorkState>();
-    dispatcher2.registerNode(childNode as NodeInterface<WorkState, 'success'>);
-    dispatcher2.registerNode(terminal as NodeInterface<WorkState, 'success'>);
+    dispatcher2.registerNode(childNode as unknown as NodeInterface<WorkState, 'success'>);
+    dispatcher2.registerNode(terminal as unknown as NodeInterface<WorkState, 'success'>);
     dispatcher2.registerDAG(childDag);
     dispatcher2.registerDAG(parentDag);
 

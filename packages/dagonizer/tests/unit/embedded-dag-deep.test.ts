@@ -3,6 +3,9 @@ import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { Batch } from '../../src/core/batch/Batch.js';
+import type { Item } from '../../src/core/batch/Item.js';
+import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
@@ -21,9 +24,16 @@ const incNode = (name: string, delta: number): NodeInterface<CounterState> => ({
   'outputs': ['success'],
   'contract': EMPTY_CONTRACT_FRAGMENT,
   'timeout': Timeout.none(),
-  async execute(state) {
-    state.value += delta;
-    return { 'errors': [], 'output': 'success' };
+  async execute(batch: Batch<CounterState>): Promise<RoutedBatch<string, CounterState>> {
+    const acc = new Map<string, Item<CounterState>[]>();
+    for (const item of batch) {
+      item.state.value += delta;
+      const bucket = acc.get('success');
+      if (bucket !== undefined) { bucket.push(item); } else { acc.set('success', [item]); }
+    }
+    const routed = new Map<string, Batch<CounterState>>();
+    for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
+    return routed;
   },
 });
 

@@ -99,12 +99,13 @@ export class ValidateEventNode implements NodeInterface<CartographerState, 'vali
       const hasPii = ValidateEventNode.str(rec['recipientName']).length > 0 || ValidateEventNode.str(rec['recipientEmail']).length > 0;
 
       const event: CanonicalEvent = {
-        'shipmentId':   shipmentId,
-        'eventId':      eventId,
-        'epochMs':      ValidateEventNode.num(rec['epochMs']),
-        'kind':         kind,
-        'sourceId':     source.sourceId,
-        'sourceFormat': source.format,
+        'shipmentId':        shipmentId,
+        'eventId':           eventId,
+        'epochMs':           ValidateEventNode.num(rec['epochMs']),
+        'kind':              kind,
+        'sourceId':          source.sourceId,
+        'sourceFormat':      source.format,
+        'sourceCompression': source.compression,
         'body': {
           'scanSeq':          ValidateEventNode.num(rec['scanSeq']),
           'latitude':         ValidateEventNode.num(rec['latitude']),
@@ -158,4 +159,6 @@ export class ValidateEventNode implements NodeInterface<CartographerState, 'vali
     return NodeOutputBuilder.of('validated');
   }
 }
+
+export const validateEvent = new ValidateEventNode();
 // #endregion validate-event-node

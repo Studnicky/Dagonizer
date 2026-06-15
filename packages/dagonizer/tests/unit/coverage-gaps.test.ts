@@ -16,17 +16,16 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Checkpoint } from '../../src/checkpoint/Checkpoint.js';
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGHandoff } from '../../src/entities/handoff/DAGHandoff.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { SignalComposer } from '../../src/runtime/SignalComposer.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
 import { StoreError } from '../../src/store/StoreError.js';
 import { Validator } from '../../src/validation/Validator.js';
@@ -133,12 +132,10 @@ void describe('TST-17: DAGHandoff stateSnapshotRef publishing path', () => {
       }
     }
 
-    class NoopNode implements NodeInterface<NodeStateBase, 'done'> {
+    class NoopNode extends ScalarNode<NodeStateBase, 'done'> {
       readonly name = 'noop';
       readonly outputs = ['done'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() { return { 'errors': [], 'output': 'done' as const }; }
+      protected async executeOne(): Promise<NodeOutputInterface<'done'>> { return { 'errors': [], 'output': 'done' as const }; }
     }
 
     const dag: DAG = {
@@ -213,12 +210,10 @@ void describe('TST-18: registerBundle unbound-role warning idempotency', () => {
 
     const dispatcher = new WarningCapture();
 
-    class NoopBundleNode implements NodeInterface<NodeStateBase, 'done'> {
+    class NoopBundleNode extends ScalarNode<NodeStateBase, 'done'> {
       readonly name = 'noop-bundle';
       readonly outputs = ['done'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() { return { 'errors': [], 'output': 'done' as const }; }
+      protected async executeOne(): Promise<NodeOutputInterface<'done'>> { return { 'errors': [], 'output': 'done' as const }; }
     }
     const noop = new NoopBundleNode();
 
@@ -271,12 +266,10 @@ void describe('TST-18: registerBundle unbound-role warning idempotency', () => {
 
     const dispatcher = new CapturingDispatcher();
 
-    class NoopUnboundNode implements NodeInterface<NodeStateBase, 'done'> {
+    class NoopUnboundNode extends ScalarNode<NodeStateBase, 'done'> {
       readonly name = 'noop-unbound';
       readonly outputs = ['done'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() { return { 'errors': [], 'output': 'done' as const }; }
+      protected async executeOne(): Promise<NodeOutputInterface<'done'>> { return { 'errors': [], 'output': 'done' as const }; }
     }
     dispatcher.registerNode(new NoopUnboundNode());
 
@@ -490,12 +483,10 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
     const secondReady = new Promise<void>((r) => { resolveSecondReady = r; });
     let callCount = 0;
 
-    class CounterNode implements NodeInterface<ScatterAbortState, 'done'> {
+    class CounterNode extends ScalarNode<ScatterAbortState, 'done'> {
       readonly name = 'counter';
       readonly outputs = ['done'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: ScatterAbortState, context: NodeContextInterface) {
+      protected async executeOne(state: ScatterAbortState, context: NodeContextInterface): Promise<NodeOutputInterface<'done'>> {
         callCount++;
         const item = state.getMetadata<number>('item') ?? 0;
         state.value = item;

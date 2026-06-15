@@ -46,3 +46,5 @@ export class EnrichShippingNode implements NodeInterface<CartographerState, 'shi
   }
 }
 // #endregion enrich-shipping-node
+
+export const enrichShipping = new EnrichShippingNode();

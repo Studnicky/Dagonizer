@@ -2,26 +2,21 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
-class GreetNode implements NodeInterface<NodeStateBase, 'success'> {
+class GreetNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'greet';
   readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
-  async execute(_state: NodeStateBase) { return { 'errors': [], 'output': 'success' as const }; }
+  protected async executeOne(_state: NodeStateBase): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
 }
 
-class PlanNode implements NodeInterface<NodeStateBase, 'success' | 'error'> {
+class PlanNode extends ScalarNode<NodeStateBase, 'success' | 'error'> {
   readonly name = 'plan';
   readonly outputs = ['success', 'error'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
-  async execute(_state: NodeStateBase) { return { 'errors': [], 'output': 'success' as const }; }
+  protected async executeOne(_state: NodeStateBase): Promise<NodeOutputInterface<'success' | 'error'>> { return { 'errors': [], 'output': 'success' as const }; }
 }
 
 const greet = new GreetNode();

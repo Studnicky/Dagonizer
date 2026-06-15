@@ -42,3 +42,5 @@ export class MergeEventsNode implements NodeInterface<CartographerState, 'merged
   }
 }
 // #endregion merge-events-node
+
+export const mergeEvents = new MergeEventsNode();

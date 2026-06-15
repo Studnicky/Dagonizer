@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/dag/DAG.js';
 import { DAGDocument } from '../../src/entities/dag/DAGDocument.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { DAGError, ValidationError } from '../../src/errors/index.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 import { Validator } from '../../src/validation/Validator.js';
 
 // validDAG: a minimal well-formed DAG — SingleNode routes to an explicit TerminalNode.
@@ -180,12 +179,10 @@ void describe('DAGDocument.serialize round-trip', () => {
 void describe('Dagonizer.registerDAG schema pre-pass', () => {
   void it('rejects schema-invalid DAGs with ValidationError, not DAGError', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class OpNode implements NodeInterface<NodeStateBase, 'success'> {
+    class OpNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'op';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     dispatcher.registerNode(new OpNode());
 
@@ -202,12 +199,10 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
 
   void it('semantic errors still surface as DAGError', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class OpNode implements NodeInterface<NodeStateBase, 'success'> {
+    class OpNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'op';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     dispatcher.registerNode(new OpNode());
 

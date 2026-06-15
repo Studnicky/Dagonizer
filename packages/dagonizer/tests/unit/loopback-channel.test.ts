@@ -39,7 +39,7 @@ void describe('LoopbackChannel — pre-registration drop (S4)', () => {
 
     // Now register handler — it must NOT fire for the already-sent message.
     const received: BridgeMessage[] = [];
-    hostSide.onMessage((msg) => received.push(msg));
+    hostSide.onMessage((msg: BridgeMessage) => received.push(msg));
 
     // Another tick — still no delivery.
     await new Promise<void>((resolve) => setImmediate(resolve));
@@ -52,7 +52,7 @@ void describe('LoopbackChannel — pre-registration drop (S4)', () => {
     const [parentSide, hostSide] = LoopbackChannel.pair();
 
     const received: BridgeMessage[] = [];
-    hostSide.onMessage((msg) => received.push(msg));
+    hostSide.onMessage((msg: BridgeMessage) => received.push(msg));
 
     parentSide.send(INIT_MSG);
     await new Promise<void>((resolve) => setImmediate(resolve));
@@ -71,7 +71,7 @@ void describe('LoopbackChannel — close() severs both directions (G7)', () => {
     const [parentSide, hostSide] = LoopbackChannel.pair();
 
     const received: BridgeMessage[] = [];
-    hostSide.onMessage((msg) => received.push(msg));
+    hostSide.onMessage((msg: BridgeMessage) => received.push(msg));
 
     // Verify delivery works before close.
     parentSide.send(INIT_MSG);
@@ -92,7 +92,7 @@ void describe('LoopbackChannel — close() severs both directions (G7)', () => {
     const [parentSide, hostSide] = LoopbackChannel.pair();
 
     const received: BridgeMessage[] = [];
-    parentSide.onMessage((msg) => received.push(msg));
+    parentSide.onMessage((msg: BridgeMessage) => received.push(msg));
 
     // Close hostSide — receiving side closed.
     hostSide.close();
@@ -125,8 +125,8 @@ void describe('LoopbackChannel — close() severs both directions (G7)', () => {
 
     const parentReceived: BridgeMessage[] = [];
     const hostReceived: BridgeMessage[] = [];
-    parentSide.onMessage((msg) => parentReceived.push(msg));
-    hostSide.onMessage((msg) => hostReceived.push(msg));
+    parentSide.onMessage((msg: BridgeMessage) => parentReceived.push(msg));
+    hostSide.onMessage((msg: BridgeMessage) => hostReceived.push(msg));
 
     parentSide.send(INIT_MSG);
     hostSide.send(SHUTDOWN_MSG);

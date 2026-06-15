@@ -39,6 +39,17 @@ import type { ShipmentEvent } from './entities/ShipmentEvent.ts';
 import type { ShippingQuote } from './entities/ShippingQuote.ts';
 import type { SourcePayload } from './entities/SourcePayload.ts';
 import { OfflineGeo } from './services/OfflineGeo.ts';
+import { stringify as yamlStringify } from 'yaml';
+
+/**
+ * FeedConfig: configures which formats and counts buildFromConfig generates.
+ * Each entry with count > 0 produces one SourcePayload in the output.
+ */
+export type FeedConfig = ReadonlyArray<{
+  readonly format: 'csv' | 'json' | 'ndjson' | 'yaml';
+  readonly compression: 'none' | 'gzip';
+  readonly count: number;
+}>;
 
 // ── tz-lookup: CJS package; import-default works under tsx (Node CJS interop)
 // and under Vite (with optimizeDeps.include — see docs/.vitepress/config.ts).
@@ -1187,8 +1198,8 @@ export class ShipmentEvents {
  * FieldMappings: per-source field-name → canonical-body-field maps.
  *
  * Each source feed names its columns/keys differently (the heterogeneity the
- * `map-fields` shared node resolves). A mapping is `{ canonicalBodyField:
- * sourceFieldName }`; `map-fields` reads the source record's `sourceFieldName`
+ * format-specific normalize nodes resolve). A mapping is `{ canonicalBodyField:
+ * sourceFieldName }`; each normalize node reads the source record's `sourceFieldName`
  * and writes the value under `canonicalBodyField`. Both the generator (encoding)
  * and the ingest pipeline (decoding) use the SAME mapping, so they cannot drift.
  *
@@ -1339,6 +1350,42 @@ const FIELD_MAPPINGS: Readonly<Record<string, FieldMap>> = {
     'customsStatus':    'customs_state',
     'delivered':        'delivered_flag',
   },
+  // YAML sequence feed (position-pings). RICH: same fields as json-position.
+  'yaml-position': {
+    'shipmentId':       'asset_id',
+    'eventId':          'ping_id',
+    'scanSeq':          'seq',
+    'epochRaw':         'observed_at',
+    'dispatchRaw':      'dispatched_at',
+    'promisedRaw':      'promised_at',
+    'status':           'movement',
+    'ipAddress':        'gateway_ip',
+    'latitude':         'lat',
+    'longitude':        'lon',
+    'legFromLat':       'prev_lat',
+    'legFromLng':       'prev_lon',
+    'originLat':        'origin_lat',
+    'originLng':        'origin_lon',
+    'destLat':          'dest_lat',
+    'destLng':          'dest_lon',
+    'carrier':          'carrier',
+    'facilityId':       'facility',
+    'weight':           'weight',
+    'weightUnit':       'weight_unit',
+    'lineItems':        'basket',
+    'recipientName':    'recipient_name',
+    'recipientEmail':   'recipient_email',
+    'recipientPhone':   'recipient_phone',
+    'recipientAddress': 'recipient_address',
+    'recipientCountry': 'recipient_country',
+    'marketingConsent': 'consent',
+    'lawfulBasis':      'lawful_basis',
+    'specialCategory':  'special_category',
+    'disruptionReason': 'disruption',
+    'geoCountry':       'geo_country',
+    'geoContinent':     'geo_continent',
+    'geoRegion':        'geo_region',
+  },
 };
 
 export class FieldMappings {
@@ -1369,29 +1416,6 @@ export class FieldMappings {
  * is by eventType; no Date.now/Math.random).
  */
 export class Sources {
-  /** Derive the canonical `kind` for a scan from its free-text status. */
-  private static kindFor(rawStatus: string): CanonicalEvent['kind'] {
-    const eventType = EventClassifier.eventType(rawStatus);
-    if (eventType === 'DELIVERED') return 'delivery-confirmation';
-    if (eventType === 'EXCEPTION') return 'customs-event';
-    // Non-terminal movement scans are split across the three streaming formats
-    // by a stable hash of the shipment+seq, so each format carries a real share.
-    return 'position-ping';
-  }
-
-  /**
-   * Stable 0..2 bucket for a scan (which streaming format carries it).
-   * FNV-1a 32-bit: deterministic, no external dep, synchronous.
-   */
-  private static bucket(scan: RawShipmentEvent): number {
-    const key = `${scan.shipmentId}:${scan.scanSeq}`;
-    let h = 2166136261;
-    for (let i = 0; i < key.length; i++) {
-      h = Math.imul(h ^ key.charCodeAt(i), 16777619) >>> 0;
-    }
-    return h % 3;
-  }
-
   /** A CSV cell: quote and escape embedded quotes/commas/newlines. */
   private static csvCell(value: string): string {
     if (/[",\n]/.test(value)) {
@@ -1472,20 +1496,44 @@ export class Sources {
   }
 
   /**
-   * Encode wire records as NDJSON, gzip via CompressionStream, base64 the result.
-   * Uses Web Streams API (Node 18+ + browser compatible; no node:zlib/Buffer).
+   * Encode wire records as plain NDJSON (one JSON object per line, no compression).
+   * Compression is applied orthogonally by maybeGzip.
    */
-  private static async encodeNdjsonGz(records: Array<Record<string, unknown>>, map: FieldMap): Promise<string> {
-    const lines = records.map((rec) => {
+  private static encodeNdjson(records: Array<Record<string, unknown>>, map: FieldMap): string {
+    return records.map((rec) => {
       const out: Record<string, unknown> = {};
       for (const [canonical, sourceKey] of Object.entries(map)) {
         if (canonical in rec) out[sourceKey] = rec[canonical];
       }
       return JSON.stringify(out);
-    });
-    const ndjson = lines.join('\n');
-    const encoded = new TextEncoder().encode(ndjson);
+    }).join('\n');
+  }
 
+  /**
+   * Encode wire records as a YAML sequence of mappings under the given FieldMap.
+   * Source keys (not canonical keys) are used as YAML mapping keys — mirrors the
+   * other encoder pattern so map-fields aligns by header NAME, not position.
+   */
+  private static encodeYaml(records: Array<Record<string, unknown>>, map: FieldMap): string {
+    const rows = records.map((rec) => {
+      const out: Record<string, unknown> = {};
+      for (const [canonical, sourceKey] of Object.entries(map)) {
+        if (canonical in rec) out[sourceKey] = rec[canonical];
+      }
+      return out;
+    });
+    return yamlStringify(rows);
+  }
+
+  /**
+   * Apply optional gzip compression. Returns text unchanged for 'none'; for
+   * 'gzip' returns base64(gzip(text)) using the Web Streams CompressionStream
+   * API (Node 18+ and browser compatible — no Node-only imports).
+   */
+  static async maybeGzip(text: string, compression: 'none' | 'gzip'): Promise<string> {
+    if (compression === 'none') return text;
+
+    const encoded = new TextEncoder().encode(text);
     const cs = new CompressionStream('gzip');
     const writer = cs.writable.getWriter();
     void writer.write(encoded);
@@ -1499,14 +1547,12 @@ export class Sources {
       chunks.push(value);
     }
 
-    // Concatenate chunks → base64 without Buffer.
     let totalLen = 0;
     for (const c of chunks) totalLen += c.length;
     const merged = new Uint8Array(totalLen);
     let offset = 0;
     for (const c of chunks) { merged.set(c, offset); offset += c.length; }
 
-    // btoa requires a binary string (char per byte).
     let binary = '';
     for (let i = 0; i < merged.length; i++) binary += String.fromCharCode(merged[i]!);
     return btoa(binary);
@@ -1525,99 +1571,98 @@ export class Sources {
   }
 
   /**
-   * Build the fixed list of multi-format source feeds for N journeys.
+   * Build source payloads from a FeedConfig. Each entry with count > 0 generates
+   * count raw scans (taken from the front of the deterministic feed), encodes them
+   * in the entry's format under an appropriate FieldMap, applies optional gzip
+   * compression orthogonally, and returns one SourcePayload.
    *
-   * Returns ≥3 distinct formats (json, csv, ndjson.gz) plus a 4th customs/
-   * delivery JSON feed, covering all five canonical kinds.
+   * CSV output uses a NON-canonical column order (shuffled deterministically) so
+   * the downstream normalize-csv normalization must align by header NAME, not
+   * position — this intentionally proves header-alignment robustness.
+   *
+   * Generation is driven by the configured count per entry. The raw scan generator
+   * is array-based; for large counts generation is still O(n) but the array is
+   * held in memory while encoding. This is acceptable for demo-scale counts.
    */
-  static async build(n: number): Promise<SourcePayload[]> {
-    const scans = ShipmentEvents.buildRawScans(n);
+  static async buildFromConfig(config: FeedConfig): Promise<SourcePayload[]> {
+    const FORMAT_MAP_KEY: Record<string, string> = {
+      'json':   'json-position',
+      'csv':    'csv-facility',
+      'ndjson': 'ndjson-sensor',
+      'yaml':   'yaml-position',
+    };
 
-    const positionScans: RawShipmentEvent[] = [];
-    const facilityScans: RawShipmentEvent[] = [];
-    const sensorScans:   RawShipmentEvent[] = [];
-    const customsScans:  RawShipmentEvent[] = [];
-    const deliveryScans: RawShipmentEvent[] = [];
+    const FORMAT_KIND: Record<string, CanonicalEvent['kind']> = {
+      'json':   'position-ping',
+      'csv':    'facility-scan',
+      'ndjson': 'sensor-reading',
+      'yaml':   'position-ping',
+    };
 
-    for (const scan of scans) {
-      const kind = Sources.kindFor(scan.rawStatus);
-      if (kind === 'delivery-confirmation') {
-        deliveryScans.push(scan);
-      } else if (kind === 'customs-event') {
-        customsScans.push(scan);
+    const results: SourcePayload[] = [];
+
+    for (const entry of config) {
+      if (entry.count <= 0) continue;
+
+      const scans = ShipmentEvents.buildRawScans(entry.count);
+      const mapKey = FORMAT_MAP_KEY[entry.format] ?? 'json-position';
+      const map = FieldMappings.forKey(mapKey);
+      const kind = FORMAT_KIND[entry.format] ?? 'position-ping';
+      const withGeo = entry.format === 'json' || entry.format === 'yaml';
+
+      const wireRecords = scans.map((scan) => {
+        const rec = Sources.wireRecord(scan, withGeo);
+        // Add sensor telemetry for ndjson (sensor-reading) entries.
+        if (entry.format === 'ndjson') {
+          const h = Sources.fnv1a(`${scan.shipmentId}:${scan.scanSeq}:sensor`);
+          const b0 = (h >>> 24) & 0xff;
+          const b1 = (h >>> 16) & 0xff;
+          const b2 = (h >>> 8)  & 0xff;
+          rec['tempC']       = Math.round((2 + (b0 / 255) * 6) * 10) / 10;
+          rec['humidityPct'] = Math.round(40 + (b1 / 255) * 40);
+          rec['shockG']      = Math.round((b2 / 255) * 30) / 10;
+        }
+        return rec;
+      });
+
+      let text: string;
+      if (entry.format === 'json') {
+        text = Sources.encodeJson(wireRecords, map);
+      } else if (entry.format === 'yaml') {
+        text = Sources.encodeYaml(wireRecords, map);
+      } else if (entry.format === 'ndjson') {
+        text = Sources.encodeNdjson(wireRecords, map);
       } else {
-        // Movement scans split deterministically across the three feeds.
-        const b = Sources.bucket(scan);
-        if (b === 0)      positionScans.push(scan);
-        else if (b === 1) facilityScans.push(scan);
-        else              sensorScans.push(scan);
+        // CSV: emit header in a NON-canonical column order (entries reversed then
+        // every-other swapped) so the pipeline must align by header name, not
+        // position. Intentional: proves header-alignment in the normalize-csv node.
+        const entries = Object.entries(map).reverse();
+        const swapped: Array<[string, string]> = [];
+        for (let i = 0; i < entries.length; i += 2) {
+          if (i + 1 < entries.length) {
+            swapped.push(entries[i + 1]!, entries[i]!);
+          } else {
+            swapped.push(entries[i]!);
+          }
+        }
+        const shuffledMap: FieldMap = Object.fromEntries(swapped);
+        text = Sources.encodeCsv(wireRecords, shuffledMap);
       }
+
+      const payload = await Sources.maybeGzip(text, entry.compression);
+      const sourceId = `${entry.format}-${entry.compression}-${entry.count}`;
+
+      results.push({
+        'sourceId':    sourceId,
+        'format':      entry.format,
+        'compression': entry.compression,
+        'mappingKey':  mapKey,
+        'kind':        kind,
+        'payload':     payload,
+      });
     }
 
-    // Add cold-chain telemetry to sensor records (deterministic from coords/seq).
-    // FNV-1a hash provides the same byte-level determinism as SHA-256 for sharding.
-    const sensorRecords = sensorScans.map((scan) => {
-      const rec = Sources.wireRecord(scan, false);
-      const h = Sources.fnv1a(`${scan.shipmentId}:${scan.scanSeq}:sensor`);
-      const b0 = (h >>> 24) & 0xff;
-      const b1 = (h >>> 16) & 0xff;
-      const b2 = (h >>> 8)  & 0xff;
-      rec['tempC']       = Math.round((2 + (b0 / 255) * 6) * 10) / 10;   // 2–8°C cold chain
-      rec['humidityPct'] = Math.round(40 + (b1 / 255) * 40);             // 40–80%
-      rec['shockG']      = Math.round((b2 / 255) * 30) / 10;             // 0–3g
-      return rec;
-    });
-
-    // Customs + delivery records carry their per-kind body fields.
-    const customsRecords = customsScans.map((scan) => {
-      const rec = Sources.wireRecord(scan, false);
-      rec['customsStatus'] = scan.disruptionReason === 'customs hold' ? 'held' : 'cleared';
-      return rec;
-    });
-    const deliveryRecords = deliveryScans.map((scan) => {
-      const rec = Sources.wireRecord(scan, false);
-      rec['delivered'] = true;
-      return rec;
-    });
-
-    const positionMap = FieldMappings.forKey('json-position');
-    const facilityMap = FieldMappings.forKey('csv-facility');
-    const sensorMap   = FieldMappings.forKey('ndjson-sensor');
-    const customsMap  = FieldMappings.forKey('json-customs');
-
-    // Customs + delivery share the customs JSON feed (both per-kind JSON bodies).
-    const customsDeliveryRecords = [...customsRecords, ...deliveryRecords];
-
-    return [
-      {
-        'sourceId':   'sat-json-api',
-        'format':     'json',
-        'mappingKey': 'json-position',
-        'kind':       'position-ping',
-        'payload':    Sources.encodeJson(positionScans.map((s) => Sources.wireRecord(s, true)), positionMap),
-      },
-      {
-        'sourceId':   'depot-csv-dump',
-        'format':     'csv',
-        'mappingKey': 'csv-facility',
-        'kind':       'facility-scan',
-        'payload':    Sources.encodeCsv(facilityScans.map((s) => Sources.wireRecord(s, false)), facilityMap),
-      },
-      {
-        'sourceId':   'coldchain-ndjson-gz',
-        'format':     'ndjson.gz',
-        'mappingKey': 'ndjson-sensor',
-        'kind':       'sensor-reading',
-        'payload':    await Sources.encodeNdjsonGz(sensorRecords, sensorMap),
-      },
-      {
-        'sourceId':   'customs-delivery-json',
-        'format':     'json',
-        'mappingKey': 'json-customs',
-        'kind':       'customs-event',
-        'payload':    Sources.encodeJson(customsDeliveryRecords, customsMap),
-      },
-    ];
+    return results;
   }
 }
 // #endregion sources-service

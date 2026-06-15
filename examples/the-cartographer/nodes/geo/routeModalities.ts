@@ -39,3 +39,5 @@ export class RouteModalitiesNode implements NodeInterface<CartographerState, 'ip
   }
 }
 // #endregion route-modalities-node
+
+export const routeModalities = new RouteModalitiesNode();

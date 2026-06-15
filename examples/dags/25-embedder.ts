@@ -1,11 +1,11 @@
 /**
- * 25-embedder/dags: pure module — state, stub embedder, nodes, and DAG const.
+ * 25-embedder/dags: pure module — state, nodes, and DAG const.
  * No side effects, no dispatcher, no execute.
  * Imported by examples/25-embedder.ts (the executable entry point).
  *
- * Demonstrates: EmbedderRegistry + EmbedderCascade with a deterministic
- * BaseEmbedder stub. A node embeds two text strings and computes cosine
- * similarity between their vectors.
+ * Demonstrates: EmbedderRegistry + EmbedderCascade with OllamaEmbedder.
+ * A node embeds two text strings and computes cosine similarity between
+ * their vectors.
  */
 
 import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,

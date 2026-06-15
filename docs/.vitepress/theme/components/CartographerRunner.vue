@@ -26,26 +26,29 @@ import type { CartographerServices } from '../../../../examples/the-cartographer
 import { cartographerWorkersDAG, cartographerWorkersBundle, eventPipelineDAG } from '../../../../examples/the-cartographer/dag.ts';
 import { canonicalizeDAG, canonicalizeBundle } from '../../../../examples/the-cartographer/embedded-dags/CanonicalizeDAG.ts';
 import { ingestSourceDAG, ingestSourceBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestSourceDAG.ts';
-import { ingestJsonDAG, ingestJsonBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestJsonDAG.ts';
-import { ingestCsvDAG, ingestCsvBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestCsvDAG.ts';
-import { ingestNdjsonGzDAG, ingestNdjsonGzBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestNdjsonGzDAG.ts';
 import { geoResolveDAG, geoResolveBundle } from '../../../../examples/the-cartographer/embedded-dags/GeoResolveDAG.ts';
 import { gdprComplianceDAG, gdprComplianceBundle } from '../../../../examples/the-cartographer/embedded-dags/GdprComplianceDAG.ts';
 import { orderEnrichmentDAG, orderEnrichmentBundle } from '../../../../examples/the-cartographer/embedded-dags/OrderEnrichmentDAG.ts';
 import { GeoResolvers } from '../../../../examples/the-cartographer/services/GeoResolvers.ts';
 import type { EnrichedShipment } from '../../../../examples/the-cartographer/entities/EnrichedShipment.ts';
 import type { CanonicalEvent } from '../../../../examples/the-cartographer/entities/CanonicalEvent.ts';
+import type { FeedConfig } from '../../../../examples/the-cartographer/services.ts';
+import { normalizeCsvDAG } from '../../../../examples/the-cartographer/embedded-dags/NormalizeCsvDAG.ts';
+import { normalizeJsonDAG } from '../../../../examples/the-cartographer/embedded-dags/NormalizeJsonDAG.ts';
+import { normalizeNdjsonDAG } from '../../../../examples/the-cartographer/embedded-dags/NormalizeNdjsonDAG.ts';
+import { normalizeYamlDAG } from '../../../../examples/the-cartographer/embedded-dags/NormalizeYamlDAG.ts';
 
 import { ObservedDagonizer } from './ObservedDagonizer.ts';
 import DagGraph from './DagGraph.vue';
 import PanesTabs from './PanesTabs.vue';
 import AboxAccordion from './AboxAccordion.vue';
 import type { AboxEntity } from './AboxAccordion.vue';
+import Spinner from './Spinner.vue';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type TraceEvent =
   | { readonly kind: 'start'; readonly node: string; readonly ts: number }
-  | { readonly kind: 'end';   readonly node: string; readonly ts: number; readonly output: string | undefined }
+  | { readonly kind: 'end';   readonly node: string; readonly ts: number; readonly output: string | null }
   | { readonly kind: 'error'; readonly node: string; readonly ts: number; readonly message: string };
 
 /** One line in the live stream feed (one gathered record per line). */
@@ -88,15 +91,112 @@ const dagGraph = ref<InstanceType<typeof DagGraph> | null>(null);
 // embeddedDAG calls) to its DAG object so DagGraph can expand them.
 const embeddedDagRegistry = new Map([
   ['ingest-source',    ingestSourceDAG],
-  ['ingest-json',      ingestJsonDAG],
-  ['ingest-csv',       ingestCsvDAG],
-  ['ingest-ndjson-gz', ingestNdjsonGzDAG],
   ['event-pipeline',   eventPipelineDAG],
+  ['normalize-csv',    normalizeCsvDAG],
+  ['normalize-json',   normalizeJsonDAG],
+  ['normalize-ndjson', normalizeNdjsonDAG],
+  ['normalize-yaml',   normalizeYamlDAG],
   ['geo-resolve',      geoResolveDAG],
   ['canonicalize',     canonicalizeDAG],
   ['order-enrichment', orderEnrichmentDAG],
   ['gdpr-compliance',  gdprComplianceDAG],
 ]);
+
+// ── Feed configuration ───────────────────────────────────────────────────────
+
+/** Per-format row type: mirrors FeedConfig entry but mutable for the UI. */
+interface FeedRow {
+  format: 'csv' | 'json' | 'ndjson' | 'yaml';
+  compression: 'none' | 'gzip';
+  count: number;
+}
+
+/** Sample presets for quick-pick. */
+interface FeedPreset {
+  label: string;
+  rows: FeedRow[];
+}
+
+const PRESETS: readonly FeedPreset[] = [
+  {
+    label: 'Mixed (default)',
+    rows: [
+      { format: 'json',   compression: 'none', count: 6 },
+      { format: 'csv',    compression: 'gzip', count: 4 },
+      { format: 'ndjson', compression: 'gzip', count: 4 },
+      { format: 'yaml',   compression: 'none', count: 2 },
+    ],
+  },
+  {
+    label: '1000 × ndjson.gz',
+    rows: [
+      { format: 'json',   compression: 'none', count: 0 },
+      { format: 'csv',    compression: 'none', count: 0 },
+      { format: 'ndjson', compression: 'gzip', count: 1000 },
+      { format: 'yaml',   compression: 'none', count: 0 },
+    ],
+  },
+  {
+    label: 'CSV only (gzip)',
+    rows: [
+      { format: 'json',   compression: 'none', count: 0 },
+      { format: 'csv',    compression: 'gzip', count: 200 },
+      { format: 'ndjson', compression: 'none', count: 0 },
+      { format: 'yaml',   compression: 'none', count: 0 },
+    ],
+  },
+  {
+    label: 'JSON only',
+    rows: [
+      { format: 'json',   compression: 'none', count: 200 },
+      { format: 'csv',    compression: 'none', count: 0 },
+      { format: 'ndjson', compression: 'none', count: 0 },
+      { format: 'yaml',   compression: 'none', count: 0 },
+    ],
+  },
+  {
+    label: 'YAML',
+    rows: [
+      { format: 'json',   compression: 'none', count: 0 },
+      { format: 'csv',    compression: 'none', count: 0 },
+      { format: 'ndjson', compression: 'none', count: 0 },
+      { format: 'yaml',   compression: 'none', count: 100 },
+    ],
+  },
+  {
+    label: 'All gzipped',
+    rows: [
+      { format: 'json',   compression: 'gzip', count: 50 },
+      { format: 'csv',    compression: 'gzip', count: 50 },
+      { format: 'ndjson', compression: 'gzip', count: 50 },
+      { format: 'yaml',   compression: 'gzip', count: 50 },
+    ],
+  },
+];
+
+const feedRows = ref<FeedRow[]>([
+  { format: 'json',   compression: 'none', count: 6 },
+  { format: 'csv',    compression: 'gzip', count: 4 },
+  { format: 'ndjson', compression: 'gzip', count: 4 },
+  { format: 'yaml',   compression: 'none', count: 2 },
+]);
+
+const totalFeedEvents = computed(() =>
+  feedRows.value.reduce((sum, r) => sum + r.count, 0),
+);
+
+function applyPreset(preset: FeedPreset): void {
+  feedRows.value = preset.rows.map((r) => ({ ...r }));
+}
+
+function clampCount(row: FeedRow): void {
+  const v = Math.floor(row.count);
+  row.count = Number.isNaN(v) ? 0 : Math.max(0, Math.min(1000, v));
+}
+
+function toggleCompression(row: FeedRow): void {
+  row.compression = row.compression === 'none' ? 'gzip' : 'none';
+}
 
 // ── Abort control ────────────────────────────────────────────────────────────
 let activeAbortController: AbortController | null = null;
@@ -186,6 +286,12 @@ const leftTabs = computed(() => [
     'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default',
   },
   {
+    'key': 'config',
+    'label': 'Config',
+    'badge': String(totalFeedEvents.value),
+    'tone': 'default' as const,
+  },
+  {
     'key': 'insights',
     'label': 'Insights',
     'badge': isDone.value && continentRows.value.length > 0 ? String(continentRows.value.length) : '',
@@ -250,90 +356,89 @@ async function run(): Promise<void> {
 
   await dagGraph.value?.reset();
 
-  const services: CartographerServices = GeoResolvers.live();
-
-  /** Count of records seen on the previous onNodeEnd call — detect growth. */
-  let prevRecordCount = 0;
-
-  const observer = {
-    onNodeStart(nodeName: string, _state: CartographerState, placementPath: readonly string[] = []) {
-      const fullId = [...placementPath, nodeName].join('/');
-      trace.value = [...trace.value, { 'kind': 'start', 'node': fullId, 'ts': Date.now() }];
-      dagGraph.value?.setActive(fullId);
-    },
-    onNodeEnd(nodeName: string, output: string | undefined, state: CartographerState, placementPath: readonly string[] = []) {
-      const fullId = [...placementPath, nodeName].join('/');
-      trace.value = [...trace.value, { 'kind': 'end', 'node': fullId, output, 'ts': Date.now() }];
-      dagGraph.value?.setCompleted(fullId);
-      if (output !== undefined) dagGraph.value?.markEdgeTraversed(fullId, output);
-
-      // Capture total once the ingest fan-in merge-events node fires.
-      // At that point canonicalEvents is fully populated.
-      if (nodeName === 'merge-events' && state.canonicalEvents.length > 0) {
-        totalEvents = state.canonicalEvents.length;
-      }
-
-      // Detect new gathered records (scatter appends to state.records).
-      const currentCount = state.records.length;
-      if (currentCount > prevRecordCount) {
-        const newRecords = state.records.slice(prevRecordCount, currentCount);
-        for (const rec of newRecords) {
-          streamFeed.value = [...streamFeed.value, {
-            'shipmentId':  rec.shipmentId,
-            'scanSeq':     rec.scanSeq,
-            'eventType':   rec.eventType,
-            'continent':   rec.continent,
-            'redacted':    rec.redactionApplied,
-          }];
-        }
-        prevRecordCount = currentCount;
-
-        // Update progress percentage.
-        if (totalEvents > 0) {
-          progressPct.value = Math.min(100, Math.round((currentCount / totalEvents) * 100));
-        }
-
-        // Auto-scroll feed on next tick (after DOM update).
-        void nextTick(scrollFeedToBottom);
-      }
-    },
-    onError(nodeName: string, error: Error, _state: CartographerState, placementPath: readonly string[] = []) {
-      const fullId = [...placementPath, nodeName].join('/');
-      trace.value = [...trace.value, { 'kind': 'error', 'node': fullId, 'ts': Date.now(), 'message': error.message !== '' ? error.message : String(error) }];
-      dagGraph.value?.setErrored(fullId);
-    },
-    onFlowEnd(_dagName: string, state: CartographerState) {
-      records.value = [...state.records];
-      // Capture pre-stream payload for the Before/After accordion.
-      canonicalEvents.value = [...state.canonicalEvents];
-      insightsMap.value = new Map(state.insights);
-      journeysMap.value = new Map(state.journeys);
-      progressPct.value = 100;
-    },
-  };
-
-  const dispatcher = new ObservedDagonizer<CartographerState, CartographerServices>({
-    services,
-    'observer': observer,
-  });
-
-  // Bundle registration order: sub-DAGs first so their names resolve.
-  dispatcher.registerBundle(geoResolveBundle);
-  dispatcher.registerBundle(canonicalizeBundle);
-  dispatcher.registerBundle(orderEnrichmentBundle);
-  dispatcher.registerBundle(gdprComplianceBundle);
-  dispatcher.registerBundle(ingestJsonBundle);
-  dispatcher.registerBundle(ingestCsvBundle);
-  dispatcher.registerBundle(ingestNdjsonGzBundle);
-  dispatcher.registerBundle(ingestSourceBundle);
-  dispatcher.registerBundle(cartographerWorkersBundle);
-
-  const state = new CartographerState();
-  state.eventCount = 16; // browser-friendly: small N so the demo completes quickly
-
-  activeAbortController = new AbortController();
+  let dispatcher: ObservedDagonizer<CartographerState, CartographerServices> | null = null;
 
   try {
+    const services: CartographerServices = GeoResolvers.live();
+
+    /** Count of records seen on the previous onNodeEnd call — detect growth. */
+    let prevRecordCount = 0;
+
+    const observer = {
+      onNodeStart(nodeName: string, _state: CartographerState, placementPath: readonly string[] = []) {
+        const fullId = [...placementPath, nodeName].join('/');
+        trace.value = [...trace.value, { 'kind': 'start', 'node': fullId, 'ts': Date.now() }];
+        dagGraph.value?.setActive(fullId);
+      },
+      onNodeEnd(nodeName: string, output: string | null, state: CartographerState, placementPath: readonly string[] = []) {
+        const fullId = [...placementPath, nodeName].join('/');
+        trace.value = [...trace.value, { 'kind': 'end', 'node': fullId, output, 'ts': Date.now() }];
+        dagGraph.value?.setCompleted(fullId);
+        if (output !== null) dagGraph.value?.markEdgeTraversed(fullId, output);
+
+        // Capture total once the ingest fan-in merge-events node fires.
+        // At that point canonicalEvents is fully populated.
+        if (nodeName === 'merge-events' && state.canonicalEvents.length > 0) {
+          totalEvents = state.canonicalEvents.length;
+        }
+
+        // Detect new gathered records (scatter appends to state.records).
+        const currentCount = state.records.length;
+        if (currentCount > prevRecordCount) {
+          const newRecords = state.records.slice(prevRecordCount, currentCount);
+          for (const rec of newRecords) {
+            streamFeed.value = [...streamFeed.value, {
+              'shipmentId':  rec.shipmentId,
+              'scanSeq':     rec.scanSeq,
+              'eventType':   rec.eventType,
+              'continent':   rec.continent,
+              'redacted':    rec.redactionApplied,
+            }];
+          }
+          prevRecordCount = currentCount;
+
+          // Update progress percentage.
+          if (totalEvents > 0) {
+            progressPct.value = Math.min(100, Math.round((currentCount / totalEvents) * 100));
+          }
+
+          // Auto-scroll feed on next tick (after DOM update).
+          void nextTick(scrollFeedToBottom);
+        }
+      },
+      onError(nodeName: string, error: Error, _state: CartographerState, placementPath: readonly string[] = []) {
+        const fullId = [...placementPath, nodeName].join('/');
+        trace.value = [...trace.value, { 'kind': 'error', 'node': fullId, 'ts': Date.now(), 'message': error.message !== '' ? error.message : String(error) }];
+        dagGraph.value?.setErrored(fullId);
+      },
+      onFlowEnd(_dagName: string, state: CartographerState) {
+        records.value = [...state.records];
+        // Capture pre-stream payload for the Before/After accordion.
+        canonicalEvents.value = [...state.canonicalEvents];
+        insightsMap.value = new Map(state.insights);
+        journeysMap.value = new Map(state.journeys);
+        progressPct.value = 100;
+      },
+    };
+
+    dispatcher = new ObservedDagonizer<CartographerState, CartographerServices>({
+      services,
+      'observer': observer,
+    });
+
+    // Bundle registration order: sub-DAGs first so their names resolve.
+    dispatcher.registerBundle(geoResolveBundle);
+    dispatcher.registerBundle(canonicalizeBundle);
+    dispatcher.registerBundle(orderEnrichmentBundle);
+    dispatcher.registerBundle(gdprComplianceBundle);
+    dispatcher.registerBundle(ingestSourceBundle);
+    dispatcher.registerBundle(cartographerWorkersBundle);
+
+    const state = new CartographerState();
+    state.eventCount = 16; // browser-friendly: small N so the demo completes quickly
+
+    activeAbortController = new AbortController();
+
     const execution = dispatcher.execute('cartographer', state, { 'signal': activeAbortController.signal });
     for await (const stage of execution) {
       // Each yielded stage lights up a node via the observer hooks above.
@@ -344,7 +449,7 @@ async function run(): Promise<void> {
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error);
   } finally {
-    await dispatcher.destroy();
+    await dispatcher?.destroy();
     activeAbortController = null;
     isRunning.value = false;
     isDone.value = true;
@@ -489,7 +594,7 @@ onMounted(() => {
                   </thead>
                   <tbody>
                     <tr v-for="row in continentRows" :key="row.region">
-                      <td>{{ row.region || row.continent }}</td>
+                      <td>{{ row.region }}</td>
                       <td>{{ row.shipmentCount }}</td>
                       <td>{{ row.shipmentCount > 0 ? pct(row.onTimeCount, row.shipmentCount) : '—' }}</td>
                       <td>{{ usdFromMinor(row.totalSubtotalUsdMinor) }}</td>
@@ -546,7 +651,7 @@ onMounted(() => {
                 class="cr-btn cr-btn--cancel"
                 @click="cancel"
               >
-                <span class="cr-btn-spinner" aria-hidden="true"></span>
+                <Spinner />
                 <span class="cr-btn-glyph">✕</span>
               </button>
               <button
@@ -620,7 +725,7 @@ onMounted(() => {
               >
                 <span class="cr-trace-kind">{{ entry.kind }}</span>
                 <span class="cr-trace-node mono">{{ entry.node }}</span>
-                <template v-if="entry.kind === 'end' && entry.output !== undefined">
+                <template v-if="entry.kind === 'end' && entry.output !== null">
                   <span class="cr-trace-output">→ {{ entry.output }}</span>
                 </template>
                 <template v-else-if="entry.kind === 'error'">
@@ -976,23 +1081,9 @@ onMounted(() => {
   color: var(--dagonizer-brand3);
 }
 
-.cr-btn-spinner {
-  position: absolute;
-  inset: 6px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.18);
-  border-top-color: rgba(255, 255, 255, 0.9);
-  animation: btn-spin 0.9s linear infinite;
-  pointer-events: none;
-}
-
 .cr-btn-glyph {
   position: relative;
   z-index: 1;
-}
-
-@keyframes btn-spin {
-  to { transform: rotate(360deg); }
 }
 
 /* ── Tables ────────────────────────────────────────────────────────────── */

@@ -16,15 +16,14 @@ import { describe, it } from 'node:test';
 import type { DagOutcomeInterface } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ObserverRelay } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -53,24 +52,20 @@ class CounterState extends NodeStateBase {
 // Nodes
 // ---------------------------------------------------------------------------
 
-class IncrementNode implements NodeInterface<CounterState, 'success'> {
+class IncrementNode extends ScalarNode<CounterState, 'success'> {
   readonly name = 'increment';
   readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
-  async execute(state: CounterState) {
+  protected async executeOne(state: CounterState): Promise<NodeOutputInterface<'success'>> {
     state.value += 10;
     return { 'errors': [], 'output': 'success' as const };
   }
 }
 const incrementNode = new IncrementNode();
 
-class TerminalNode implements NodeInterface<CounterState, 'completed'> {
+class TerminalNode extends ScalarNode<CounterState, 'completed'> {
   readonly name = 'done-node';
   readonly outputs = ['completed'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
-  async execute() { return { 'errors': [], 'output': 'completed' as const }; }
+  protected async executeOne(): Promise<NodeOutputInterface<'completed'>> { return { 'errors': [], 'output': 'completed' as const }; }
 }
 const terminalNode = new TerminalNode();
 

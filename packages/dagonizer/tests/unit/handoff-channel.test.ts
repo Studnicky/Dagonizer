@@ -19,15 +19,14 @@ import { describe, it } from 'node:test';
 
 import { InMemoryChannel } from '../../src/channels/InMemoryChannel.js';
 import type { HandoffChannelInterface } from '../../src/contracts/HandoffChannelInterface.js';
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGHandoff } from '../../src/entities/handoff/DAGHandoff.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 import { Validator } from '../../src/validation/Validator.js';
 
 // ---------------------------------------------------------------------------
@@ -57,23 +56,19 @@ class HandoffState extends NodeStateBase {
 // Nodes
 // ---------------------------------------------------------------------------
 
-class IncrementNode implements NodeInterface<HandoffState, 'next'> {
+class IncrementNode extends ScalarNode<HandoffState, 'next'> {
   readonly name = 'increment';
   readonly outputs = ['next'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
-  async execute(state: HandoffState) {
+  protected async executeOne(state: HandoffState): Promise<NodeOutputInterface<'next'>> {
     state.counter += 1;
     return { 'errors': [], 'output': 'next' as const };
   }
 }
 
-class NoopNode implements NodeInterface<HandoffState, 'done'> {
+class NoopNode extends ScalarNode<HandoffState, 'done'> {
   readonly name = 'noop';
   readonly outputs = ['done'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
-  async execute(_state: HandoffState) {
+  protected async executeOne(_state: HandoffState): Promise<NodeOutputInterface<'done'>> {
     return { 'errors': [], 'output': 'done' as const };
   }
 }

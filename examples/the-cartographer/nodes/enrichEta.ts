@@ -43,3 +43,5 @@ export class EnrichEtaNode implements NodeInterface<CartographerState, 'eta-esti
   }
 }
 // #endregion enrich-eta-node
+
+export const enrichEta = new EnrichEtaNode();

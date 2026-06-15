@@ -4,23 +4,39 @@ import { describe, it } from 'node:test';
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import type { OperationContract } from '../../src/contracts/OperationContract.js';
 import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { Batch } from '../../src/core/batch/Batch.js';
+import type { Item } from '../../src/core/batch/Item.js';
+import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
 import type { DAGDeriverEmbeddedDAG } from '../../src/derive/DAGDeriverAnnotations.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
+import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { Timeout } from '../../src/runtime/Timeout.js';
 
 // `DAGDeriver.derive` takes `nodes` with co-located contracts (single source of
 // truth); there is no standalone `contracts` input. Wrap each contract spec in
 // a node whose `contract` carries the topology fields; `execute` is a no-op
 // (derive reads only the contract, never runs the node).
-const contractNode = (c: OperationContract): NodeInterface => ({
-  'name': c.name,
-  'outputs': c.outputs,
-  'contract': { 'hardRequired': c.hardRequired, 'produces': c.produces },
-  'timeout': Timeout.none(),
-  async execute() { return { 'errors': [], 'output': c.outputs[0] as string }; },
-});
+const contractNode = <TState extends NodeStateInterface>(c: OperationContract): NodeInterface<TState> => {
+  const defaultOutput = c.outputs[0] as string;
+  return {
+    'name': c.name,
+    'outputs': c.outputs,
+    'contract': { 'hardRequired': c.hardRequired, 'produces': c.produces },
+    'timeout': Timeout.none(),
+    async execute(batch: Batch<TState>): Promise<RoutedBatch<string, TState>> {
+      const acc = new Map<string, Item<TState>[]>();
+      for (const item of batch) {
+        const bucket = acc.get(defaultOutput);
+        if (bucket !== undefined) { bucket.push(item); } else { acc.set(defaultOutput, [item]); }
+      }
+      const routed = new Map<string, Batch<TState>>();
+      for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
+      return routed;
+    },
+  };
+};
 
 void describe('DAGDeriver.derive', () => {
   void it('produces a linear DAG from a chain of contracts', () => {
@@ -547,7 +563,16 @@ void describe('DAGDeriver.derive', () => {
       'outputs': ['success'],
       'contract': EMPTY_CONTRACT_FRAGMENT,
       'timeout': Timeout.none(),
-      async execute() { return { 'errors': [], 'output': 'success' }; },
+      async execute(batch: Batch<NodeStateBase>): Promise<RoutedBatch<'success', NodeStateBase>> {
+        const acc = new Map<'success', Item<NodeStateBase>[]>();
+        for (const item of batch) {
+          const bucket = acc.get('success');
+          if (bucket !== undefined) { bucket.push(item); } else { acc.set('success', [item]); }
+        }
+        const routed = new Map<'success', Batch<NodeStateBase>>();
+        for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
+        return routed;
+      },
     });
     dispatcher.registerNode(make('prepare'));
     dispatcher.registerNode(make('invoke-child'));
@@ -585,7 +610,16 @@ void describe('DAGDeriver.derive', () => {
       'outputs': ['success'],
       'contract': EMPTY_CONTRACT_FRAGMENT,
       'timeout': Timeout.none(),
-      async execute() { return { 'errors': [], 'output': 'success' }; },
+      async execute(batch: Batch<NodeStateBase>): Promise<RoutedBatch<'success', NodeStateBase>> {
+        const acc = new Map<'success', Item<NodeStateBase>[]>();
+        for (const item of batch) {
+          const bucket = acc.get('success');
+          if (bucket !== undefined) { bucket.push(item); } else { acc.set('success', [item]); }
+        }
+        const routed = new Map<'success', Batch<NodeStateBase>>();
+        for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
+        return routed;
+      },
     });
     dispatcher.registerNode(make('first'));
     dispatcher.registerNode(make('second'));
@@ -668,13 +702,25 @@ void describe('DAGDeriver: terminals with emit variant', () => {
   const make = <TOut extends string>(
     name: string,
     outputs: readonly [TOut, ...TOut[]],
-  ): NodeInterface<NodeStateBase, TOut> => ({
-    name,
-    outputs,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute() { return { 'errors': [], 'output': outputs[0] }; },
-  });
+  ): NodeInterface<NodeStateBase, TOut> => {
+    const defaultOutput = outputs[0];
+    return {
+      name,
+      outputs,
+      'contract': EMPTY_CONTRACT_FRAGMENT,
+      'timeout': Timeout.none(),
+      async execute(batch: Batch<NodeStateBase>): Promise<RoutedBatch<TOut, NodeStateBase>> {
+        const acc = new Map<TOut, Item<NodeStateBase>[]>();
+        for (const item of batch) {
+          const bucket = acc.get(defaultOutput);
+          if (bucket !== undefined) { bucket.push(item); } else { acc.set(defaultOutput, [item]); }
+        }
+        const routed = new Map<TOut, Batch<NodeStateBase>>();
+        for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
+        return routed;
+      },
+    };
+  };
 
   // Helper: make a node that always returns a specific output.
   const makeWith = <TOut extends string>(
@@ -686,7 +732,16 @@ void describe('DAGDeriver: terminals with emit variant', () => {
     outputs,
     'contract': EMPTY_CONTRACT_FRAGMENT,
     'timeout': Timeout.none(),
-    async execute() { return { 'errors': [], 'output': output }; },
+    async execute(batch: Batch<NodeStateBase>): Promise<RoutedBatch<TOut, NodeStateBase>> {
+      const acc = new Map<TOut, Item<NodeStateBase>[]>();
+      for (const item of batch) {
+        const bucket = acc.get(output);
+        if (bucket !== undefined) { bucket.push(item); } else { acc.set(output, [item]); }
+      }
+      const routed = new Map<TOut, Batch<NodeStateBase>>();
+      for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
+      return routed;
+    },
   });
 
   void it('basic emit: synthesizes a TerminalNode placement and routes the output port to it', () => {

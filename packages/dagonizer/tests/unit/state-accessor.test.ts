@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import type { StateAccessor } from '../../src/contracts/StateAccessor.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { DottedPathAccessor } from '../../src/runtime/DottedPathAccessor.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 void describe('DottedPathAccessor', () => {
   void it('reads a top-level field', () => {
@@ -75,12 +74,10 @@ void describe('Dagonizer accepts a custom StateAccessor', () => {
       results: number[] = [];
     }
 
-    class HandlerNode implements NodeInterface<ScatterState, 'success'> {
+    class HandlerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'handler';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: ScatterState) {
+      protected async executeOne(state: ScatterState): Promise<NodeOutputInterface<'success'>> {
         const item = state.getMetadata<number>('item') ?? 0;
         state.results.push(item * 2);
         return { 'errors': [], 'output': 'success' as const };

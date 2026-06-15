@@ -15,16 +15,15 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
 import type { GatherExecution } from '../../src/core/GatherStrategies.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { GatherConfig } from '../../src/entities/dag/GatherConfig.js';
 import type { JsonObject } from '../../src/entities/json.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -63,12 +62,10 @@ class HeterogeneousState extends NodeStateBase {
 // Reads currentItem (the provider descriptor) and produces a per-provider
 // result. Three providers succeed, one returns 'empty'.
 
-class DispatchNode implements NodeInterface<HeterogeneousState, 'success' | 'empty'> {
+class DispatchNode extends ScalarNode<HeterogeneousState, 'success' | 'empty'> {
   readonly name = 'dispatch';
   readonly outputs = ['success', 'empty'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
-  async execute(state: HeterogeneousState): Promise<{ errors: []; output: 'success' | 'empty' }> {
+  protected async executeOne(state: HeterogeneousState): Promise<NodeOutputInterface<'success' | 'empty'>> {
     const provider = state.getMetadata<string>('currentItem') ?? 'unknown';
     switch (provider) {
       case 'alpha': {
@@ -104,7 +101,9 @@ const dispatchNode = new DispatchNode();
 class FlatMergeGather extends GatherStrategy {
   readonly name = 'flat-merge-test';
 
-  async apply<TState extends NodeStateInterface>(
+  reduce(): void { /* accumulate in finalize */ }
+
+  override async finalize<TState extends NodeStateInterface>(
     _config: GatherConfig,
     execution: GatherExecution<TState>,
   ): Promise<void> {
@@ -181,12 +180,10 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
   void it('routes error when all providers return empty', async () => {
     const dispatcher = new Dagonizer<HeterogeneousState>();
 
-    class EmptyDispatchNode implements NodeInterface<HeterogeneousState, 'success' | 'empty'> {
+    class EmptyDispatchNode extends ScalarNode<HeterogeneousState, 'success' | 'empty'> {
       readonly name = 'empty-dispatch';
       readonly outputs = ['success', 'empty'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(_state: HeterogeneousState): Promise<{ errors: []; output: 'success' | 'empty' }> {
+      protected async executeOne(_state: HeterogeneousState): Promise<NodeOutputInterface<'success' | 'empty'>> {
         return { 'errors': [], 'output': 'empty' };
       }
     }

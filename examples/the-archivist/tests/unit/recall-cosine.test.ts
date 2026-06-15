@@ -1,5 +1,5 @@
 /**
- * recall-candidates cosine path: unit tests with a deterministic stub embedder.
+ * recall-candidates cosine path: unit tests with a deterministic embedder.
  *
  * Seeds a MemoryStore with prior runs that have stored `dag:queryEmbedding`
  * literals. Exercises the cosine branch of recallCandidates:
@@ -17,9 +17,9 @@ import { GRAPH_MEMORY, MemoryStore } from '../../memory/MemoryStore.ts';
 
 import type { Embedder } from '@noocodex/dagonizer/contracts';
 
-class StubEmbedder implements Embedder {
-  readonly id = 'stub';
-  readonly displayName = 'stub-embedder';
+class DeterministicEmbedder implements Embedder {
+  readonly id = 'deterministic';
+  readonly displayName = 'deterministic-embedder';
   readonly dimensions = 4;
   readonly #vector: readonly number[];
   #throwOnce: boolean;
@@ -95,7 +95,7 @@ void test('recallCandidates cosine: similar query (cos >= 0.70) loads prior book
     { isbn: '1110000001', title: 'Being and Nothingness' },
   ]);
   // Embedder returns a query vector close to axis 0 → cosine ~ 1.0
-  const embedder = new StubEmbedder([0.95, 0.05, 0, 0]);
+  const embedder = new DeterministicEmbedder([0.95, 0.05, 0, 0]);
   const state = new ArchivistState();
   state.runId = 'cur-cos-1';
   state.query = 'philosophy of being';
@@ -116,7 +116,7 @@ void test('recallCandidates cosine: orthogonal query (cos < 0.70) yields no prio
     { isbn: '1110000002', title: 'Pride and Prejudice' },
   ]);
   // Query along axis 0; orthogonal to axis 1 → cosine ~ 0
-  const embedder = new StubEmbedder([1, 0, 0, 0]);
+  const embedder = new DeterministicEmbedder([1, 0, 0, 0]);
   const state = new ArchivistState();
   state.runId = 'cur-cos-2';
   state.query = 'science fiction';
@@ -134,7 +134,7 @@ void test('recallCandidates cosine: embedder throws → falls back to Jaccard pa
   RecallCosineFixture.seedPriorRun(memory, 'prior-fb-1', 'existentialism science fiction philosophy', null, [
     { isbn: '1110000003', title: 'Nausea' },
   ]);
-  const embedder = new StubEmbedder([1, 0, 0, 0], { throwOnce: true });
+  const embedder = new DeterministicEmbedder([1, 0, 0, 0], { throwOnce: true });
   const state = new ArchivistState();
   state.runId = 'cur-fb-1';
   state.query = 'existentialism philosophy fiction';

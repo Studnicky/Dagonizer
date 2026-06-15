@@ -15,14 +15,14 @@
  *      naming one of the declared ports; nothing throws past the node
  *      boundary.
  *
- * Implements `NodeInterface` and supplies the fields a pattern needs
- * but doesn't vary by domain: name, outputs, contract (defaults to
+ * Extends `ScalarNode` and supplies the fields a pattern needs but
+ * doesn't vary by domain: name, outputs, contract (defaults to
  * `EMPTY_CONTRACT_FRAGMENT`), optional timeout, optional validate/destroy
- * hooks. Subclasses
- * declare what they need (`abstract readonly name`, `abstract readonly
- * outputs`, `abstract execute`) and inherit the rest. Subclasses
- * return output port literals directly in `execute()` — no indirection
- * helpers are provided; return the string literal for V8 monomorphism.
+ * hooks. Subclasses declare what they need (`abstract readonly name`,
+ * `abstract readonly outputs`, `protected abstract executeOne`) and
+ * inherit the rest. Subclasses return output port literals directly in
+ * `executeOne()` — no indirection helpers are provided; return the string
+ * literal for V8 monomorphism.
  *
  * Pattern packages (rag, graph, flow) ship intermediate base classes
  * that extend this root and add their own dispatch loops. Consumers
@@ -30,16 +30,16 @@
  * `RecallContextNode`, `DedupeByKeyNode`, …) and inject domain-specific
  * pieces via the abstract methods those leaves declare.
  *
- * @typeParam TState    the node state the dispatcher passes to execute.
+ * @typeParam TState    the node state the dispatcher passes to executeOne.
  * @typeParam TOutput   the literal union of output port names. Narrows
  *                      the placement-routing surface at compile time.
  * @typeParam TServices the services bag shape. `undefined` for nodes
  *                      that don't need any service.
  */
 
-import type { NodeInterface } from '../contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../contracts/OperationContractFragment.js';
 import type { OperationContractFragment } from '../contracts/OperationContractFragment.js';
+import { EMPTY_CONTRACT_FRAGMENT } from '../contracts/OperationContractFragment.js';
+import { ScalarNode } from '../core/ScalarNode.js';
 import type { NodeContextInterface } from '../entities/node/NodeContext.js';
 import type { NodeOutputInterface } from '../entities/node/NodeOutput.js';
 import type { ValidationResult } from '../entities/validation/ValidationResult.js';
@@ -50,12 +50,12 @@ export abstract class MonadicNode<
   TState extends NodeStateInterface = NodeStateInterface,
   TOutput extends string = 'success' | 'empty' | 'error',
   TServices = undefined,
-> implements NodeInterface<TState, TOutput, TServices> {
+> extends ScalarNode<TState, TOutput, TServices> {
   /** Stable identifier used at registration with the dispatcher. */
-  abstract readonly name: string;
+  abstract override readonly name: string;
 
   /** Literal union of output port names. Narrows placement routing. */
-  abstract readonly outputs: readonly TOutput[];
+  abstract override readonly outputs: readonly TOutput[];
 
   /**
    * Data-flow declaration for `DAGDeriver`. The default `EMPTY_CONTRACT_FRAGMENT`
@@ -63,23 +63,20 @@ export abstract class MonadicNode<
    * Subclasses that participate in contract-derived flow generation override this
    * with a populated fragment.
    */
-  readonly contract: OperationContractFragment = EMPTY_CONTRACT_FRAGMENT;
+  override readonly contract: OperationContractFragment = EMPTY_CONTRACT_FRAGMENT;
 
   /**
    * Per-node wall-clock budget. `Timeout.none()` means no time limit.
    * Subclasses override to set a concrete budget via `Timeout.ofMs(n)`.
-   * The `NodeInterface` contract keeps this optional (external boundary);
-   * `MonadicNode` supplies the concrete required-with-default to keep
-   * V8 hidden-class stable.
    */
-  readonly timeout: Timeout = Timeout.none();
+  override readonly timeout: Timeout = Timeout.none();
 
   /**
-   * Execute the node, mutating state. Returns a result indicating which
-   * output port to route to. Never throws; catches all errors internally
-   * and routes to an error output.
+   * Execute the node for a single item, mutating state. Returns a result
+   * indicating which output port to route to. Never throws; catches all
+   * errors internally and routes to an error output.
    */
-  abstract execute(
+  protected abstract override executeOne(
     state: TState,
     context: NodeContextInterface<TServices>,
   ): Promise<NodeOutputInterface<TOutput>>;

@@ -1,14 +1,15 @@
 /**
- * decompress: shared ingest transform — gzip(NDJSON) bytes → NDJSON text.
+ * decompress: shared ingest transform — gzip bytes → plain text.
  *
- * The gzipped NDJSON source carries its payload base64-encoded (a JSON-safe
- * string that round-trips through state snapshot/restore). This node base64-
- * decodes via atob then decompresses via the Web Streams DecompressionStream
- * API ('gzip'), writing the plain NDJSON text to state.decodedText for the
- * parse-ndjson node. Runs in Node 18+ and browser environments without any
- * Node-only imports.
+ * The gzipped source carries its payload base64-encoded (a JSON-safe string
+ * that round-trips through state snapshot/restore). This node base64-decodes
+ * via atob then decompresses via the Web Streams DecompressionStream API
+ * ('gzip'), writing the plain text to state.decodedText for the downstream
+ * parse node. Compression is format-agnostic: any format may be gzipped and
+ * will pass through this node to route-format, which selects the parser.
+ * Runs in Node 18+ and browser environments without any Node-only imports.
  *
- * Routes 'parse-ndjson' on success; 'invalid' when the payload is not valid
+ * Routes 'route-format' on success; 'invalid' when the payload is not valid
  * gzip (the node never throws for malformed input — it routes).
  */
 
@@ -21,13 +22,13 @@ import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type 
 } from '@noocodex/dagonizer';
 
 // #region decompress-node
-export class DecompressNode implements NodeInterface<CartographerState, 'parse-ndjson' | 'invalid', CartographerServices> {
+export class DecompressNode implements NodeInterface<CartographerState, 'route-format' | 'invalid', CartographerServices> {
   readonly contract = EMPTY_CONTRACT_FRAGMENT;
   readonly timeout = Timeout.none();
   readonly 'name' = 'decompress';
-  readonly 'outputs' = ['parse-ndjson', 'invalid'] as const;
+  readonly 'outputs' = ['route-format', 'invalid'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'parse-ndjson' | 'invalid'>> {
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'route-format' | 'invalid'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -49,7 +50,9 @@ export class DecompressNode implements NodeInterface<CartographerState, 'parse-n
     } catch {
       return NodeOutputBuilder.of('invalid');
     }
-    return NodeOutputBuilder.of('parse-ndjson');
+    return NodeOutputBuilder.of('route-format');
   }
 }
+
+export const decompress = new DecompressNode();
 // #endregion decompress-node

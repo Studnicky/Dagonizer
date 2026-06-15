@@ -13,17 +13,11 @@ import { canonicalizeDAG } from './embedded-dags/CanonicalizeDAG.ts';
 import { gdprComplianceDAG } from './embedded-dags/GdprComplianceDAG.ts';
 import { geoResolveDAG } from './embedded-dags/GeoResolveDAG.ts';
 import { ingestSourceDAG } from './embedded-dags/IngestSourceDAG.ts';
-import { ingestJsonDAG } from './embedded-dags/IngestJsonDAG.ts';
-import { ingestCsvDAG } from './embedded-dags/IngestCsvDAG.ts';
-import { ingestNdjsonGzDAG } from './embedded-dags/IngestNdjsonGzDAG.ts';
 import { orderEnrichmentDAG } from './embedded-dags/OrderEnrichmentDAG.ts';
 
 const dags = [
   { 'label': 'cartographer',      'dag': cartographerDAG },
   { 'label': 'ingest-source',     'dag': ingestSourceDAG },
-  { 'label': 'ingest-json',       'dag': ingestJsonDAG },
-  { 'label': 'ingest-csv',        'dag': ingestCsvDAG },
-  { 'label': 'ingest-ndjson-gz',  'dag': ingestNdjsonGzDAG },
   { 'label': 'geo-resolve',       'dag': geoResolveDAG },
   { 'label': 'canonicalize',      'dag': canonicalizeDAG },
   { 'label': 'order-enrichment',  'dag': orderEnrichmentDAG },

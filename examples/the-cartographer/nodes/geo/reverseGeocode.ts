@@ -41,3 +41,5 @@ export class ReverseGeocodeNode implements NodeInterface<CartographerState, 'geo
   }
 }
 // #endregion reverse-geocode-node
+
+export const reverseGeocode = new ReverseGeocodeNode();

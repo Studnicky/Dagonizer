@@ -41,3 +41,5 @@ export class IpGeolocateNode implements NodeInterface<CartographerState, 'geoloc
   }
 }
 // #endregion ip-geolocate-node
+
+export const ipGeolocate = new IpGeolocateNode();

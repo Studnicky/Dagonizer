@@ -39,3 +39,5 @@ export class ApplyGeoNode implements NodeInterface<CartographerState, 'normalize
   }
 }
 // #endregion apply-geo-node
+
+export const applyGeo = new ApplyGeoNode();

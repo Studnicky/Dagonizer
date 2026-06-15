@@ -10,6 +10,9 @@
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
+import { Batch } from '../../src/core/batch/Batch.js';
+import type { Item } from '../../src/core/batch/Item.js';
+import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { Timeout } from '../../src/runtime/Timeout.js';
 
@@ -19,7 +22,7 @@ export class TestNode {
   /**
    * Create a minimal `NodeInterface<TState>` that returns `outputs[0]`
    * by default, or invokes the optional `exec` callback and returns its result
-   * as the `output` token.
+   * as the output token.
    *
    * @param name     - Node name (must match the DAG placement `node` reference).
    * @param outputs  - Declared output tokens; `outputs[0]` is the default route.
@@ -37,9 +40,16 @@ export class TestNode {
       outputs,
       'contract': EMPTY_CONTRACT_FRAGMENT,
       'timeout': Timeout.none(),
-      async execute(state) {
-        const output = exec !== undefined ? await exec(state) : defaultOutput;
-        return { 'errors': [], output };
+      async execute(batch: Batch<TState>): Promise<RoutedBatch<string, TState>> {
+        const acc = new Map<string, Item<TState>[]>();
+        for (const item of batch) {
+          const output = exec !== undefined ? await exec(item.state) : defaultOutput;
+          const bucket = acc.get(output);
+          if (bucket !== undefined) { bucket.push(item); } else { acc.set(output, [item]); }
+        }
+        const routed = new Map<string, Batch<TState>>();
+        for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
+        return routed;
       },
     };
   }
@@ -64,7 +74,16 @@ export class TestNode {
       outputs,
       contract,
       'timeout': Timeout.none(),
-      async execute() { return { 'errors': [], 'output': defaultOutput }; },
+      async execute(batch: Batch<TState>): Promise<RoutedBatch<string, TState>> {
+        const acc = new Map<string, Item<TState>[]>();
+        for (const item of batch) {
+          const bucket = acc.get(defaultOutput);
+          if (bucket !== undefined) { bucket.push(item); } else { acc.set(defaultOutput, [item]); }
+        }
+        const routed = new Map<string, Batch<TState>>();
+        for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
+        return routed;
+      },
     };
   }
 }

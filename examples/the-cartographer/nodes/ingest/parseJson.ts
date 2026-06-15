@@ -1,12 +1,14 @@
 /**
- * parse-json: shared ingest transform — JSON array text → array of records.
+ * parse-json: ingest transform — JSON array text → array of records.
  *
- * Reads the JSON payload from state.currentSource.payload, parses it, and (when
- * it is an array of objects) writes the records to state.parsedRecords for the
- * map-fields node. JSON sources carry native types (numbers as numbers), which
- * the coerce-types node tolerates.
+ * Reads JSON text from state.decodedText when the source was gzipped
+ * (decodedText populated by the decompress node), else from
+ * state.currentSource.payload for plain JSON sources. Parses the text and
+ * (when it is an array of objects) writes the records to state.parsedRecords.
+ * JSON sources carry native types (numbers as numbers), which the coerce-types
+ * node tolerates.
  *
- * Routes 'map-fields' on success; 'invalid' when the payload is not a JSON array.
+ * Routes 'normalized' on success; 'invalid' when the payload is not a JSON array.
  */
 
 import type { CartographerState } from '../../CartographerState.ts';
@@ -18,19 +20,21 @@ import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type 
 } from '@noocodex/dagonizer';
 
 // #region parse-json-node
-export class ParseJsonNode implements NodeInterface<CartographerState, 'map-fields' | 'invalid', CartographerServices> {
+export class ParseJsonNode implements NodeInterface<CartographerState, 'normalized' | 'invalid', CartographerServices> {
   readonly contract = EMPTY_CONTRACT_FRAGMENT;
   readonly timeout = Timeout.none();
   readonly 'name' = 'parse-json';
-  readonly 'outputs' = ['map-fields', 'invalid'] as const;
+  readonly 'outputs' = ['normalized', 'invalid'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'map-fields' | 'invalid'>> {
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'normalized' | 'invalid'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
+    // Use decompressed text when available (gzip path), else the raw payload.
+    const text = state.decodedText.length > 0 ? state.decodedText : state.currentSource.payload;
     let parsed: unknown;
     try {
-      parsed = JSON.parse(state.currentSource.payload);
+      parsed = JSON.parse(text);
     } catch {
       return NodeOutputBuilder.of('invalid');
     }
@@ -44,7 +48,9 @@ export class ParseJsonNode implements NodeInterface<CartographerState, 'map-fiel
       }
     }
     state.parsedRecords = records;
-    return NodeOutputBuilder.of('map-fields');
+    return NodeOutputBuilder.of('normalized');
   }
 }
+
+export const parseJson = new ParseJsonNode();
 // #endregion parse-json-node

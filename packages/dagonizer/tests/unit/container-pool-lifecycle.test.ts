@@ -154,7 +154,7 @@ class MinimalTask implements DagTaskInterface<NodeStateInterface, undefined> {
 function buildDispatcher(
   container: TestLoopbackContainer,
 ): Dagonizer<NodeStateInterface, undefined> {
-  const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
+  const bundle = ConformanceRegistry.bundle().bundle as unknown as DispatcherBundle<NodeStateInterface, undefined>;
   const containers: Readonly<Record<string, DagContainerInterface<NodeStateInterface>>> = {
     [CONFORMANCE_CONTAINER_ROLE]: container,
   };

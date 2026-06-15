@@ -3,6 +3,9 @@ import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { Batch } from '../../src/core/batch/Batch.js';
+import type { Item } from '../../src/core/batch/Item.js';
+import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { ExecutionResultInterface } from '../../src/entities/execution/ExecutionResult.js';
@@ -40,13 +43,25 @@ class CountingDagonizer<TState extends NodeStateBase> extends Dagonizer<TState> 
 const makeNode = (
   name: string,
   outputs: readonly string[],
-): NodeInterface<NodeStateBase> => ({
-  name,
-  outputs,
-  'contract': EMPTY_CONTRACT_FRAGMENT,
-  'timeout': Timeout.none(),
-  async execute() { return { 'errors': [], 'output': outputs[0] as string }; },
-});
+): NodeInterface<NodeStateBase> => {
+  const defaultOutput = outputs[0] as string;
+  return {
+    name,
+    outputs,
+    'contract': EMPTY_CONTRACT_FRAGMENT,
+    'timeout': Timeout.none(),
+    async execute(batch: Batch<NodeStateBase>): Promise<RoutedBatch<string, NodeStateBase>> {
+      const acc = new Map<string, Item<NodeStateBase>[]>();
+      for (const item of batch) {
+        const bucket = acc.get(defaultOutput);
+        if (bucket !== undefined) { bucket.push(item); } else { acc.set(defaultOutput, [item]); }
+      }
+      const routed = new Map<string, Batch<NodeStateBase>>();
+      for (const [key, items] of acc) { routed.set(key, Batch.from(items)); }
+      return routed;
+    },
+  };
+};
 
 // ── Child DAG (two nodes: start → finish) ────────────────────────────────
 

@@ -115,3 +115,7 @@ export class RedactPiiNode implements NodeInterface<CartographerState, 'ok' | 'v
   }
 }
 // #endregion gdpr-nodes
+
+export const consentGate = new ConsentGateNode();
+export const classifyPii = new ClassifyPiiNode();
+export const redactPii = new RedactPiiNode();

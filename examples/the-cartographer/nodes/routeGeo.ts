@@ -52,3 +52,5 @@ export class RouteGeoNode implements NodeInterface<CartographerState, 'has-geo' 
   }
 }
 // #endregion route-geo-node
+
+export const routeGeo = new RouteGeoNode();

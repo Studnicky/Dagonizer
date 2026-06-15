@@ -84,4 +84,6 @@ export class CoerceTypesNode implements NodeInterface<CartographerState, 'valida
     return NodeOutputBuilder.of('validate-event');
   }
 }
+
+export const coerceTypes = new CoerceTypesNode();
 // #endregion coerce-types-node

@@ -29,4 +29,6 @@ export class ValidateCoordsNode implements NodeInterface<CartographerState, 'val
     return NodeOutputBuilder.of(isValid ? 'valid' : 'rejected');
   }
 }
+
+export const validateCoords = new ValidateCoordsNode();
 // #endregion validate-coords-node

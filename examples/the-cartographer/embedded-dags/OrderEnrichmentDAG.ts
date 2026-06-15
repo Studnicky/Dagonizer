@@ -29,9 +29,9 @@
  */
 
 // #region order-enrichment-dag
-import { EnrichPricingNode }  from '../nodes/enrichPricing.ts';
-import { EnrichShippingNode } from '../nodes/enrichShipping.ts';
-import { EnrichEtaNode }      from '../nodes/enrichEta.ts';
+import { enrichPricing }  from '../nodes/enrichPricing.ts';
+import { enrichShipping } from '../nodes/enrichShipping.ts';
+import { enrichEta }      from '../nodes/enrichEta.ts';
 import type { CartographerState }   from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
@@ -42,17 +42,17 @@ import type { DAG }              from '@noocodex/dagonizer/entities';
 export const orderEnrichmentDAG: DAG = new DAGBuilder('order-enrichment', '1.0')
 
   // 1. enrich-pricing: basket → PricedOrder with FX normalisation.
-  .node('enrich-pricing', new EnrichPricingNode(), {
+  .node('enrich-pricing', enrichPricing, {
     'priced': 'enrich-shipping',
   })
 
   // 2. enrich-shipping: origin→dest haversine + carrier rate → ShippingQuote.
-  .node('enrich-shipping', new EnrichShippingNode(), {
+  .node('enrich-shipping', enrichShipping, {
     'shipping-quoted': 'enrich-eta',
   })
 
   // 3. enrich-eta: SLA promise vs disrupted ETA → DeliveryEstimate.
-  .node('enrich-eta', new EnrichEtaNode(), {
+  .node('enrich-eta', enrichEta, {
     'eta-estimated': 'enriched',
   })
 
@@ -62,7 +62,7 @@ export const orderEnrichmentDAG: DAG = new DAGBuilder('order-enrichment', '1.0')
   .build();
 
 export const orderEnrichmentBundle: DispatcherBundle<CartographerState, CartographerServices> = {
-  'nodes': [new EnrichPricingNode(), new EnrichShippingNode(), new EnrichEtaNode()],
+  'nodes': [enrichPricing, enrichShipping, enrichEta],
   'dags':  [orderEnrichmentDAG],
 };
 // #endregion order-enrichment-dag

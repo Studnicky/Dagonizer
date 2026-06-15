@@ -4,18 +4,20 @@
  *
  * The visitor clicks a node on the MemoryGraph cosmos canvas; the
  * runner sets `selection` and this panel resolves the full subject+
- * object triple set from `MemoryStore`, grouped by named graph layer
- * (memory / state / prov / default). Each row shows
- *   subject / predicate / object   [graph chip]
- * so the viewer can see how this IRI or literal value participates across layers.
+ * object triple set from `MemoryStore`. The header identifies the node
+ * three ways — human label, CURIE, and full IRI — so prefixed terms
+ * that share a local name (e.g. `dag:Activity` vs `prov:Activity`) are
+ * never confused. Each row shows the predicate and the other end of the
+ * triple, rendered as a CURIE, grouped by named-graph layer.
  *
  * Two selection kinds are supported:
  *   - 'iri': named node; show outbound (subject) and inbound (object) triples.
- *   - 'literal': literal value; show only inbound triples (?s ?p <literal>).
+ *   - 'literal': literal value; show inbound triples (?s ?p "value"). Literals
+ *     are matched by their lexical value regardless of datatype or language
+ *     tag, so a language-tagged label like `"Activity"@en` still resolves.
  */
 
 import { computed } from 'vue';
-import type { Quad } from 'n3';
 
 import { MemoryStore } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
 import type { MemorySelection } from './MemoryGraph.vue';
@@ -29,6 +31,23 @@ const props = defineProps<{
 const emit = defineEmits<{
   (event: 'close'): void;
 }>();
+
+const RDFS_LABEL = 'http://www.w3.org/2000/01/rdf-schema#label';
+
+/**
+ * Namespace → CURIE-prefix table. Longest matching namespace wins, so the
+ * `urn:dagonizer:book:` prefix is preferred over a hypothetical shorter one.
+ */
+const PREFIXES: readonly (readonly [string, string])[] = [
+  ['https://noocodex.dev/ontology/dagonizer/',  'dag'],
+  ['http://www.w3.org/1999/02/22-rdf-syntax-ns#', 'rdf'],
+  ['http://www.w3.org/2000/01/rdf-schema#',      'rdfs'],
+  ['http://www.w3.org/2002/07/owl#',             'owl'],
+  ['http://www.w3.org/2001/XMLSchema#',          'xsd'],
+  ['http://www.w3.org/ns/prov#',                 'prov'],
+  ['urn:dagonizer:book:',                        'book'],
+  ['urn:dagonizer:run:',                         'run'],
+];
 
 interface Row {
   readonly key:       string;
@@ -49,21 +68,23 @@ const rows = computed<readonly Row[]>(() => {
     // Outbound: IRI is the subject.
     for (const q of props.store.select({ 'subject': MemoryStore.iri(sel.iri), 'predicate': '?p', 'object': '?o', 'graph': '?g' })) {
       const graph = q['g'];
-      if (graph === undefined) continue;
-      out.push(rowFrom('subject', sel.iri, q['p']?.value ?? '?', q['o'] !== undefined ? formatObject(q['o']) : '?', graph.value));
+      const obj = q['o'];
+      if (graph === undefined || obj === undefined) continue;
+      out.push(rowFrom('subject', sel.iri, q['p']?.value ?? '?', formatTerm(obj), graph.value));
     }
     // Inbound: IRI is the object.
     for (const q of props.store.select({ 'subject': '?s', 'predicate': '?p', 'object': MemoryStore.iri(sel.iri), 'graph': '?g' })) {
       const graph = q['g'];
       if (graph === undefined) continue;
-      out.push(rowFrom('object', q['s']?.value ?? '?', q['p']?.value ?? '?', sel.iri, graph.value));
+      out.push(rowFrom('object', q['s']?.value ?? '?', q['p']?.value ?? '?', displayTerm(sel.iri), graph.value));
     }
   } else {
-    // Literal: only inbound: ?s ?p <literal>
-    for (const q of props.store.select({ 'subject': '?s', 'predicate': '?p', 'object': MemoryStore.lit.str(sel.value), 'graph': '?g' })) {
-      const graph = q['g'];
-      if (graph === undefined) continue;
-      out.push(rowFrom('object', q['s']?.value ?? '?', q['p']?.value ?? '?', `"${sel.value}"`, graph.value));
+    // Literal: match by lexical value across every quad, regardless of the
+    // literal's datatype or language tag. A concrete-term query would miss
+    // `"Activity"@en` when searching for a plain `"Activity"`.
+    for (const q of props.store.triples()) {
+      if (q.object.termType !== 'Literal' || q.object.value !== sel.value) continue;
+      out.push(rowFrom('object', q.subject.value, q.predicate.value, `"${sel.value}"`, q.graph.value));
     }
   }
   return out;
@@ -79,34 +100,76 @@ const grouped = computed<readonly { layer: Row['layer']; rows: readonly Row[] }[
   return [...groups.entries()].map(([layer, list]) => ({ layer, 'rows': list }));
 });
 
-const headerText = computed(() => {
+/** Whether the current selection is an IRI node (vs a literal value). */
+const isIri = computed<boolean>(() => props.selection?.kind === 'iri');
+
+/** Human label: rdfs:label of the IRI when present, else its local name; literal value verbatim. */
+const nodeLabel = computed<string>(() => {
   const sel = props.selection;
   if (sel === null) return '';
-  if (sel.kind === 'literal') return `"${sel.value.length > 40 ? sel.value.slice(0, 38) + '…' : sel.value}"`;
-  return localPart(sel.iri);
+  if (sel.kind === 'literal') return sel.value;
+  const labelRows = props.store.select({ 'subject': MemoryStore.iri(sel.iri), 'predicate': MemoryStore.iri(RDFS_LABEL), 'object': '?o' });
+  const labelTerm = labelRows.map((r) => r['o']).find((o) => o !== undefined && o.termType === 'Literal');
+  return labelTerm?.value ?? localPart(sel.iri);
 });
 
-const subText = computed(() => {
+/** CURIE for an IRI selection (empty when no namespace matches or for literals). */
+const nodeCurie = computed<string>(() => {
   const sel = props.selection;
-  if (sel === null) return '';
-  if (sel.kind === 'literal') return `Literal value`;
-  return sel.iri;
+  if (sel === null || sel.kind !== 'iri') return '';
+  return toCurie(sel.iri) ?? '';
+});
+
+/** Full IRI for an IRI selection; empty for literals. */
+const nodeIri = computed<string>(() => {
+  const sel = props.selection;
+  return sel !== null && sel.kind === 'iri' ? sel.iri : '';
+});
+
+/** Datatype/language descriptor for a literal selection (e.g. `@en`, `xsd:integer`). */
+const literalKind = computed<string>(() => {
+  const sel = props.selection;
+  if (sel === null || sel.kind !== 'literal') return '';
+  for (const q of props.store.triples()) {
+    if (q.object.termType !== 'Literal' || q.object.value !== sel.value) continue;
+    if (q.object.language.length > 0) return `@${q.object.language}`;
+    const dt = q.object.datatype.value;
+    return toCurie(dt) ?? localPart(dt);
+  }
+  return 'literal';
 });
 
 function rowFrom(direction: 'subject' | 'object', s: string, p: string, o: string, graph: string): Row {
-  const layer = graphLayer(graph);
   return {
     'key': `${direction}|${s}|${p}|${o}|${graph}`,
     direction,
-    'subject':   localPart(s),
-    'predicate': localPart(p),
+    'subject':   displayTerm(s),
+    'predicate': displayTerm(p),
     'object':    o,
-    layer,
+    'layer':     graphLayer(graph),
   };
 }
 
-function formatObject(term: Quad['object']): string {
-  return term.termType === 'Literal' ? `"${term.value}"` : localPart(term.value);
+/** Render a term for a row target: quoted lexical value for literals, CURIE for IRIs. */
+function formatTerm(term: { readonly termType: string; readonly value: string }): string {
+  return term.termType === 'Literal' ? `"${term.value}"` : displayTerm(term.value);
+}
+
+/** CURIE when a namespace matches, else the bare local name. */
+function displayTerm(iri: string): string {
+  return toCurie(iri) ?? localPart(iri);
+}
+
+/** Compute a prefixed CURIE for an IRI, or null when no known namespace matches. */
+function toCurie(iri: string): string | null {
+  let best: readonly [string, string] | null = null;
+  for (const entry of PREFIXES) {
+    if (iri.startsWith(entry[0]) && (best === null || entry[0].length > best[0].length)) best = entry;
+  }
+  if (best === null) return null;
+  const local = iri.slice(best[0].length);
+  if (local.length === 0 || local.includes('/') || local.includes('#')) return null;
+  return `${best[1]}:${local}`;
 }
 
 function localPart(iri: string): string {
@@ -128,12 +191,16 @@ function graphLayer(graph: string): Row['layer'] {
 </script>
 
 <template>
-  <aside v-if="selection !== null" class="triple-inspector" role="dialog" :aria-label="`Triples for ${headerText}`">
+  <aside v-if="selection !== null" class="triple-inspector" role="dialog" :aria-label="`Triples for ${nodeLabel}`">
     <header class="ti-header">
-      <span class="ti-local">{{ headerText }}</span>
+      <span class="ti-local" :title="nodeLabel">{{ nodeLabel.length > 42 ? nodeLabel.slice(0, 40) + '…' : nodeLabel }}</span>
       <button class="ti-close" title="Close (Esc)" @click="emit('close')">✕</button>
     </header>
-    <p class="ti-iri" :title="subText">{{ subText }}</p>
+
+    <!-- IRI: show CURIE then full IRI. Literal: show the datatype/language. -->
+    <p v-if="isIri && nodeCurie.length > 0" class="ti-curie">{{ nodeCurie }}</p>
+    <p v-if="isIri" class="ti-iri" :title="nodeIri">{{ nodeIri }}</p>
+    <p v-else class="ti-iri">Literal value · {{ literalKind }}</p>
 
     <p v-if="rows.length === 0" class="ti-empty">No triples mention this node.</p>
 
@@ -179,13 +246,14 @@ function graphLayer(graph: string): Row['layer'] {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.3rem;
 }
 
 .ti-local {
   color: var(--dagonizer-brand);
   font-weight: 700;
   font-size: 0.92rem;
+  overflow-wrap: anywhere;
 }
 
 .ti-close {
@@ -197,6 +265,14 @@ function graphLayer(graph: string): Row['layer'] {
   padding: 0 0.3rem;
 }
 .ti-close:hover { color: var(--dagonizer-brand3); }
+
+.ti-curie {
+  margin: 0 0 0.15rem 0;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--dagonizer-brand2);
+  overflow-wrap: anywhere;
+}
 
 .ti-iri {
   margin: 0 0 0.7rem 0;

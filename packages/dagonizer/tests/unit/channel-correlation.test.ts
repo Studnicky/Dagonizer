@@ -275,7 +275,7 @@ void describe('channel-correlation: single subscription + correlationId demux', 
     // Custom host: collect execute messages and respond in reverse order
     // to prove correlationId routing (not FIFO) assigns responses correctly.
     const pending: Array<{ correlationId: string }> = [];
-    hostSide.onMessage((msg) => {
+    hostSide.onMessage((msg: BridgeMessage) => {
       if (msg.kind === 'init') {
         hostSide.send({
           'kind': 'ready',
@@ -347,7 +347,7 @@ void describe('worker observability: forwarded node events reach the parent obse
 
     // FakeHost: on execute, forward an inner node-start (exactly as DagHost's
     // WorkerObserver does for a contained sub-DAG), then complete the request.
-    hostSide.onMessage((msg) => {
+    hostSide.onMessage((msg: BridgeMessage) => {
       if (msg.kind === 'init') {
         hostSide.send({ 'kind': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
       } else if (msg.kind === 'execute') {

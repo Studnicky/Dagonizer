@@ -33,6 +33,7 @@ import type { DAG } from '../../../../../packages/dagonizer/src/entities/dag/DAG
 import { CytoscapeGraph } from '../../../../../packages/dagonizer/src/viz/CytoscapeGraph.ts';
 import type { CytoscapeGraphOptions } from '../../../../../packages/dagonizer/src/viz/CytoscapeGraph.ts';
 import { CytoscapeRenderer } from '../../../../../packages/dagonizer/src/viz/CytoscapeRenderer.ts';
+import type { CytoscapeElement, CytoscapeNodeData } from '../../../../../packages/dagonizer/src/viz/CytoscapeRenderer.ts';
 
 import { DagVizMachine } from './DagVizMachine.ts';
 import type { DagVizEvent } from './DagVizMachine.ts';
@@ -48,6 +49,15 @@ import type { NodeVizAdapter } from './NodeVizMachine.ts';
  * whether the graph is small or fully expanded to every embedded sub-DAG.
  */
 const FOLLOW_MAX_ZOOM = 0.7;
+
+/**
+ * Absolute ceiling for manual zoom-in. A fully-expanded graph fits at a very
+ * small zoom (e.g. 0.06×), so a purely fit-relative cap would top out well
+ * below 1:1 and make individual nodes impossible to read. The manual zoom cap
+ * is the larger of a generous fit-relative multiple and this absolute value, so
+ * close inspection is always available regardless of graph size.
+ */
+const MAX_ABSOLUTE_ZOOM = 4;
 
 // ---------------------------------------------------------------------------
 // Options
@@ -135,8 +145,8 @@ export class AnimatedDagGraph extends CytoscapeGraph {
     options: AnimatedDagGraphOptions = {},
   ) {
     super(cytoscapeFactory, container, dag, {
-      embeddedDAGs: options.embeddedDAGs,
-      layoutOptions: options.layoutOptions,
+      ...(options.embeddedDAGs !== undefined ? { 'embeddedDAGs': options.embeddedDAGs } : {}),
+      ...(options.layoutOptions !== undefined ? { 'layoutOptions': options.layoutOptions } : {}),
     });
 
     this.#nodeKinds  = options.nodeKinds  ?? {};
@@ -169,20 +179,24 @@ export class AnimatedDagGraph extends CytoscapeGraph {
 
   // ── CytoscapeGraph hook overrides ─────────────────────────────────────────
 
-  protected override buildElements(): ReadonlyArray<cytoscape.ElementDefinition> {
+  protected override buildElements(): ReadonlyArray<CytoscapeElement> {
     const filtered = this.#filteredRegistry();
-    const raw = CytoscapeRenderer.render(this.dag, {
-      embeddedDAGs: filtered,
-    }) as ReadonlyArray<cytoscape.ElementDefinition>;
+    const raw = CytoscapeRenderer.render(this.dag, { embeddedDAGs: filtered });
 
     // Enrich each node element with data.kind from nodeKinds map.
     return raw.map((el) => {
       if (el.group !== 'nodes') return el;
-      const data = el.data as { id?: string; node?: string };
-      const nodeName = data.node ?? data.id;
-      const kind = nodeName !== undefined ? this.#nodeKinds[nodeName] : undefined;
+      const nodeData = el.data;
+      const nodeName = (nodeData as { node?: string }).node ?? nodeData.id;
+      const rawKind = nodeName !== undefined ? this.#nodeKinds[nodeName] : undefined;
+      if (rawKind === undefined) return el;
+      // Narrow the raw string to the CytoscapeNodeData kind union; unknown
+      // values are dropped so the stylesheet never receives an invalid kind.
+      const kind = (rawKind === 'deterministic' || rawKind === 'non-deterministic')
+        ? rawKind as CytoscapeNodeData['kind']
+        : undefined;
       if (kind === undefined) return el;
-      return { ...el, data: { ...el.data, kind } };
+      return { ...el, 'data': { ...el.data, 'kind': kind } };
     });
   }
 
@@ -449,7 +463,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
     cy.fit(undefined, 40);
     const fitZoom = cy.zoom();
     cy.minZoom(fitZoom);
-    cy.maxZoom(fitZoom * 8);
+    cy.maxZoom(Math.max(fitZoom * 8, MAX_ABSOLUTE_ZOOM));
     this.#pollZoom(cy);
   }
 
@@ -551,7 +565,6 @@ export class AnimatedDagGraph extends CytoscapeGraph {
       cy.destroy();
     }
 
-    this.cyInstance    = null;
     this.#machine      = null;
   }
 }

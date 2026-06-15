@@ -34,3 +34,5 @@ export class EnrichPricingNode implements NodeInterface<CartographerState, 'pric
   }
 }
 // #endregion enrich-pricing-node
+
+export const enrichPricing = new EnrichPricingNode();

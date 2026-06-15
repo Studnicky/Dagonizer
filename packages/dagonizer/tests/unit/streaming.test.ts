@@ -1,21 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
+import { TestNode } from '../_support/TestNode.js';
 
-const node = (name: string, outputs: readonly string[]): NodeInterface<NodeStateBase> => ({
-  name,
-  outputs,
-  'contract': EMPTY_CONTRACT_FRAGMENT,
-  'timeout': Timeout.none(),
-  async execute() { return { 'errors': [], 'output': outputs[0] as string }; },
-});
+const node = (name: string, outputs: readonly string[]) => TestNode.make<NodeStateBase>(name, outputs, () => outputs[0] as string);
 
 const makeDAG = (name: string, entrypoint: string, nodes: DAG['nodes']): DAG => ({
   '@context': DAG_CONTEXT, '@id': `urn:noocodex:dag:${name}`, '@type': 'DAG',

@@ -204,4 +204,6 @@ export class SummarizeInsightsNode implements NodeInterface<CartographerState, '
     return NodeOutputBuilder.of('success');
   }
 }
+
+export const summarizeInsights = new SummarizeInsightsNode();
 // #endregion summarize-insights-node

@@ -2,16 +2,15 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Checkpoint, CheckpointRestoreAdapterFn } from '../../src/checkpoint/Checkpoint.js';
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
 import type { ScatterProgress } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 /** State carrying a typed items / processed array plus an optional second
  *  scatter source, and a `results` array for the map-gather fix scenario.
@@ -55,12 +54,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
   void it('clean run executes every item and leaves no progress entry', async () => {
     const dispatcher = new Dagonizer<ScatterState>();
     let calls = 0;
-    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+    class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: ScatterState) {
+      protected async executeOne(state: ScatterState): Promise<NodeOutputInterface<'success'>> {
         calls++;
         const item = state.getMetadata<number>('item') ?? 0;
         state.setMetadata('processedItem', item);
@@ -103,12 +100,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     // Concurrency 1 to make per-item ack writes deterministic.
     // Worker throws after two completions so the scatter aborts before
     // the loop drains; the acked progress entries survive on state.metadata.
-    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+    class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() {
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
         const idx = ++completedCount;
         if (idx === 3) {
           throw new Error('simulated mid-flight failure');
@@ -160,12 +155,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
   void it('resume skips already-acked indices and re-executes only the rest', async () => {
     const dispatcher = new Dagonizer<ScatterState>();
     let calls = 0;
-    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+    class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() {
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
         calls++;
         return { 'errors': [], 'output': 'success' as const };
       }
@@ -213,12 +206,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
 
   void it('resumed aggregate output reflects every item including prior-run ones', async () => {
     const dispatcher = new Dagonizer<ScatterState>();
-    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+    class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() {
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
         return { 'errors': [], 'output': 'success' as const };
       }
     }
@@ -276,12 +267,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     // --- Phase 1: run to interruption ---------------------------------------
     const interruptDispatcher = new Dagonizer<ScatterState>();
     let runCount = 0;
-    class InterruptingWorkerNode implements NodeInterface<ScatterState, 'success'> {
+    class InterruptingWorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'producer';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: ScatterState) {
+      protected async executeOne(state: ScatterState): Promise<NodeOutputInterface<'success'>> {
         const item = state.getMetadata<number>('item') ?? 0;
         const idx = ++runCount;
         if (idx === 3) {
@@ -329,10 +318,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       assert.equal(r.mappingValues['produced'], f(interruptState.items[r.index] as number));
     }
     // The parent results array must NOT carry the prior-run produced values
-    // yet; incremental gather fires per-ack so for map strategy the values
-    // ARE folded incrementally. However the map strategy's applyIncremental
-    // appends each item as it lands — so after the interruption at item 2,
-    // results should contain 2 entries (items 0 and 1).
+    // yet; reduce fires per-ack so for map strategy the values are folded
+    // per-clone. The map strategy's reduce appends each item as it lands —
+    // so after the interruption at item 2, results should contain 2 entries
+    // (items 0 and 1).
     assert.equal(partial.state.results.length, 2);
 
     // --- Phase 2: round-trip through snapshot, then resume ------------------
@@ -343,12 +332,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
 
     const resumeDispatcher = new Dagonizer<ScatterState>();
     let resumeRunCount = 0;
-    class ResumeWorkerNode implements NodeInterface<ScatterState, 'success'> {
+    class ResumeWorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'producer';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: ScatterState) {
+      protected async executeOne(state: ScatterState): Promise<NodeOutputInterface<'success'>> {
         resumeRunCount++;
         const item = state.getMetadata<number>('item') ?? 0;
         state.produced = f(item);
@@ -365,9 +352,9 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.equal(result.cursor, null);
 
     // The parent `results` array is COMPLETE: one entry per item, in
-    // SOURCE ORDER, with NO duplicates. Map strategy with applyIncremental
-    // appends in the order items complete. With concurrency=1 and the inbox
-    // items (none — inbox was empty) followed by fresh items (indices 2,3,4),
+    // SOURCE ORDER, with NO duplicates. Map strategy's reduce appends in
+    // the order items complete. With concurrency=1 and the inbox items
+    // (none — inbox was empty) followed by fresh items (indices 2,3,4),
     // the final results array is [f(2), f(4), f(6), f(8), f(10)] but the
     // first two were folded in phase 1; on resume items 2,3,4 are folded.
     // Total: 5 entries.
@@ -383,22 +370,18 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     const dispatcher = new Dagonizer<ScatterState>();
     let aCalls = 0;
     let bCalls = 0;
-    class WorkerANode implements NodeInterface<ScatterState, 'success'> {
+    class WorkerANode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'workerA';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() {
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
         aCalls++;
         return { 'errors': [], 'output': 'success' as const };
       }
     }
-    class WorkerBNode implements NodeInterface<ScatterState, 'success'> {
+    class WorkerBNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'workerB';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() {
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
         bCalls++;
         return { 'errors': [], 'output': 'success' as const };
       }
@@ -480,12 +463,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       originalSet(key, value);
     };
 
-    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+    class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() {
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
         return { 'errors': [], 'output': 'success' as const };
       }
     }
@@ -517,12 +498,10 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
   void it('survives snapshot/restore through Checkpoint and resumes correctly', async () => {
     const dispatcher = new Dagonizer<ScatterState>();
     let calls = 0;
-    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+    class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() {
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
         calls++;
         return { 'errors': [], 'output': 'success' as const };
       }
@@ -578,12 +557,10 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
 
   void it('end-to-end Checkpoint capture/load round-trip preserves progress', async () => {
     const dispatcher = new Dagonizer<ScatterState>();
-    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+    class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(_state: ScatterState, context: NodeContextInterface) {
+      protected async executeOne(_state: ScatterState, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
         // Long-running so we can abort mid-flight.
         await new Promise<void>((resolve, reject) => {
           const t = setTimeout(resolve, 1000);

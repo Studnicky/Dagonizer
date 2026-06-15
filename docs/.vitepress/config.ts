@@ -115,9 +115,9 @@ const sidebar = [
     text: 'Examples — LLM / Agent',
     collapsed: false,
     items: [
-      { text: 'Example 24: LLM adapter',              link: '/examples/24-llm-adapter' },
-      { text: 'Example 25: Embedder',                 link: '/examples/25-embedder' },
-      { text: 'Example 26: Tool use',                 link: '/examples/26-tool-use' },
+      { text: 'Example 24: LLM adapter', link: '/examples/24-llm-adapter' },
+      { text: 'Example 25: Embedder',    link: '/examples/25-embedder' },
+      { text: 'Example 26: Tool use',    link: '/examples/26-tool-use' },
     ],
   },
   {
@@ -694,7 +694,10 @@ export default withMermaid(defineConfig({
       },
     },
     optimizeDeps: {
-      include: ['tz-lookup', '@rapideditor/country-coder'],
+      // `yaml`'s browser entry re-exports a CJS core (`export * from
+      // './dist/index.js'`); without pre-bundling, the named `stringify`/`parse`
+      // imports resolve to `undefined` in the browser. Pre-bundling fixes interop.
+      include: ['tz-lookup', '@rapideditor/country-coder', 'yaml'],
     },
     // The base tsconfig targets `ES2024`, which the Vite-bundled esbuild does
     // not accept. Pin a target esbuild supports so the docs bundle transpiles

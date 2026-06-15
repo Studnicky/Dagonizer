@@ -1,15 +1,15 @@
 /**
  * selectSource: reads the per-source feed from the ingestion-scatter metadata
- * and writes it to state.currentSource, then routes by format so IngestSourceDAG
- * can embed the correct per-format sub-DAG.
+ * and writes it to state.currentSource, then routes by compression so the
+ * decompress node runs for gzipped sources and all formats skip straight to
+ * route-format for plain text.
  *
  * The ingestion scatter writes each SourcePayload under the itemKey 'source' in
  * the clone metadata. This node retrieves it and routes:
- *   - 'ndjson.gz' → 'gz'     (embedded ingest-ndjson-gz sub-DAG)
- *   - 'csv'       → 'csv'    (embedded ingest-csv sub-DAG)
- *   - 'json'      → 'json'   (embedded ingest-json sub-DAG)
+ *   - compression === 'gzip'  → 'compressed'  (decompress → route-format)
+ *   - compression === 'none'  → 'plain'        (route-format directly)
  *
- * Routes 'invalid' when the metadata item is absent.
+ * Routes 'invalid' when the metadata item is absent or empty.
  */
 
 import type { CartographerState } from '../../CartographerState.ts';
@@ -22,19 +22,13 @@ import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type 
 } from '@noocodex/dagonizer';
 
 // #region select-source-node
-const FORMAT_ROUTE: Readonly<Record<SourcePayload['format'], 'json' | 'csv' | 'gz'>> = {
-  'ndjson.gz': 'gz',
-  'csv':       'csv',
-  'json':      'json',
-};
-
-export class SelectSourceNode implements NodeInterface<CartographerState, 'json' | 'csv' | 'gz' | 'invalid', CartographerServices> {
+export class SelectSourceNode implements NodeInterface<CartographerState, 'compressed' | 'plain' | 'invalid', CartographerServices> {
   readonly contract = EMPTY_CONTRACT_FRAGMENT;
   readonly timeout = Timeout.none();
   readonly 'name' = 'select-source';
-  readonly 'outputs' = ['json', 'csv', 'gz', 'invalid'] as const;
+  readonly 'outputs' = ['compressed', 'plain', 'invalid'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'json' | 'csv' | 'gz' | 'invalid'>> {
+  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'compressed' | 'plain' | 'invalid'>> {
     if (context.signal.aborted) {
       throw new Error('Aborted');
     }
@@ -43,7 +37,9 @@ export class SelectSourceNode implements NodeInterface<CartographerState, 'json'
       return NodeOutputBuilder.of('invalid');
     }
     state.currentSource = item;
-    return NodeOutputBuilder.of(FORMAT_ROUTE[item.format]);
+    return NodeOutputBuilder.of(item.compression === 'gzip' ? 'compressed' : 'plain');
   }
 }
+
+export const selectSource = new SelectSourceNode();
 // #endregion select-source-node

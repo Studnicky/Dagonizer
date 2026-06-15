@@ -65,4 +65,6 @@ export class RouteKindNode implements NodeInterface<CartographerState, KindRoute
     return NodeOutputBuilder.of(route);
   }
 }
+
+export const routeKind = new RouteKindNode();
 // #endregion route-kind-node

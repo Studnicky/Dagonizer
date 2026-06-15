@@ -24,12 +24,12 @@ export interface DispatcherObserver<TState extends NodeStateInterface> {
   readonly onFlowStart?:  (dagName: string, state: TState) => void;
   readonly onFlowEnd?:    (dagName: string, state: TState, result: ExecutionResultInterface<TState>) => void;
   readonly onNodeStart?:  (nodeName: string, state: TState, placementPath: readonly string[]) => void;
-  readonly onNodeEnd?:    (nodeName: string, output: string | undefined, state: TState, placementPath: readonly string[]) => void;
+  readonly onNodeEnd?:    (nodeName: string, output: string | null, state: TState, placementPath: readonly string[]) => void;
   readonly onError?:      (nodeName: string, error: Error, state: TState, placementPath: readonly string[]) => void;
 }
 
-export interface ObservedDagonizerOptions<TServices> extends DagonizerOptionsInterface<TServices> {
-  readonly observer?: DispatcherObserver<never>;
+export interface ObservedDagonizerOptions<TState extends NodeStateInterface, TServices> extends DagonizerOptionsInterface<TState, TServices> {
+  readonly observer?: DispatcherObserver<TState>;
 }
 
 export class ObservedDagonizer<
@@ -38,9 +38,9 @@ export class ObservedDagonizer<
 > extends Dagonizer<TState, TServices> {
   #observer: DispatcherObserver<TState>;
 
-  constructor(options: ObservedDagonizerOptions<TServices> = {}) {
+  constructor(options: ObservedDagonizerOptions<TState, TServices> = {}) {
     super(options);
-    this.#observer = (options.observer ?? {}) as DispatcherObserver<TState>;
+    this.#observer = options.observer ?? {};
   }
 
   /** Swap the observer mid-life. Useful for Vue components whose ref
@@ -61,7 +61,7 @@ export class ObservedDagonizer<
     this.#observer.onNodeStart?.(nodeName, state, placementPath);
   }
 
-  protected override onNodeEnd(nodeName: string, output: string | undefined, state: TState, placementPath: readonly string[] = []): void {
+  protected override onNodeEnd(nodeName: string, output: string | null, state: TState, placementPath: readonly string[] = []): void {
     this.#observer.onNodeEnd?.(nodeName, output, state, placementPath);
   }
 

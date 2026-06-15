@@ -76,4 +76,6 @@ export class RouteRedactionNode implements NodeInterface<CartographerState, 'nee
     return NodeOutputBuilder.of('needs-redaction');
   }
 }
+
+export const routeRedaction = new RouteRedactionNode();
 // #endregion route-redaction-node

@@ -87,4 +87,6 @@ export class ParseEventNode implements NodeInterface<CartographerState, 'parsed'
     return NodeOutputBuilder.of('parsed');
   }
 }
+
+export const parseEvent = new ParseEventNode();
 // #endregion parse-event-node
