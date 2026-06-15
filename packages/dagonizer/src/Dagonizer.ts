@@ -8,10 +8,12 @@ import type { NodeInvoker } from './contracts/NodeInvoker.js';
 import type { StateAccessor } from './contracts/StateAccessor.js';
 import type { WarningEmitter } from './contracts/WarningEmitter.js';
 import { Batch } from './core/batch/Batch.js';
+import { Frontier } from './core/Frontier.js';
 import { GatherStrategies } from './core/GatherStrategies.js';
 import type { GatherExecution, GatherRecord, GatherStrategy } from './core/GatherStrategies.js';
 import { OutcomeReducers } from './core/OutcomeReducers.js';
 import type { OutcomeRecord } from './core/OutcomeReducers.js';
+import { PlacementRank } from './core/PlacementRank.js';
 import { ContractRegistryValidator } from './derive/ContractRegistryValidator.js';
 import type { DAG } from './entities/dag/DAG.js';
 import { EmbeddedDAGNodeDefaults } from './entities/dag/EmbeddedDAGNode.js';
@@ -718,6 +720,11 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
         if (!Placement.isScatter(entry)) throw new DAGError(`Dispatch type mismatch: expected ScatterNode`);
         return this.executeScatter(entry, state, dagName, signal, placementPath);
       },
+      // SingleNode is handled structurally by the frontier scheduler (via
+      // #fireSinglePlacement) before executeDAGNode is called; this entry is
+      // unreachable in normal operation but keeps the dispatch table exhaustive
+      // over the DAGNodeAtType union. executeSingleNode is preserved here so
+      // the method is not flagged as unused by static analysis.
       'SingleNode': (entry, state, dagName, signal) => {
         if (!Placement.isSingle(entry)) throw new DAGError(`Dispatch type mismatch: expected SingleNode`);
         return this.executeSingleNode(entry, state, dagName, signal);
@@ -1025,125 +1032,204 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
       }
     }
 
-    let currentNodeName: null | string = fromStage ?? dag.entrypoint;
-    let cursor: null | string = currentNodeName;
+    let cursor: null | string = fromStage ?? dag.entrypoint;
     let terminalOutcome: 'completed' | 'failed' | null = null;
 
     // Skip phase placements in the main loop; they are out-of-band and
     // never the entrypoint. If the consumer's fromStage / entrypoint happens
     // to name a phase placement, treat it as if the main loop is empty.
-    if (currentNodeName !== null && this.isPhaseEntry(dagName, currentNodeName)) {
-      currentNodeName = null;
+    if (cursor !== null && this.isPhaseEntry(dagName, cursor)) {
       cursor = null;
     }
 
-    mainLoop: while (currentNodeName !== null) {
-      if (signal?.aborted) {
-        const abortInfo = this.handleAbort(state, signal);
-        this.onError(currentNodeName, abortInfo.error, state, placementPath);
-        const interruptedAt: InterruptionInfo = {
-          'nodeName': currentNodeName,
-          'reason':   abortInfo.reason,
-        };
-        const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
-        await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
-        return result;
+    // ── Frontier scheduler ────────────────────────────────────────────────────
+    // Seed the frontier with the initial state at the entry placement.
+    // When cursor is null (phase-entry guard tripped), skip the main loop.
+    if (cursor !== null) {
+      // Build rank and declaration-index maps once per walk.
+      const rankMap = PlacementRank.compute(dag);
+      const declIndex = new Map<string, number>();
+      for (let i = 0; i < dag.nodes.length; i++) {
+        declIndex.set((dag.nodes[i] as DAGNodeType).name, i);
       }
 
-      const node = this.nodeIndex.get(`${dagName}:${currentNodeName}`);
+      const rankOf = (name: string): number => rankMap.get(name) ?? Number.MAX_SAFE_INTEGER;
+      const declIndexOf = (name: string): number => declIndex.get(name) ?? Number.MAX_SAFE_INTEGER;
 
-      if (!node) {
-        const error = new DAGError(`Unknown node: ${currentNodeName} in DAG ${dagName}`);
-        this.onError(currentNodeName, error, state, placementPath);
-        if (!runOptions.embedded) {
-          try { state.markFailed(error); } catch { /* already terminal */ }
-        }
-        const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, null, state);
-        await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
-        return result;
-      }
+      const frontier = new Frontier<TState>();
+      frontier.merge(cursor, Batch.of(state));
 
-      this.onNodeStart(node.name, state, placementPath);
+      // The frontier loop replaces the single-cursor mainLoop.
+      // For size-1 input: exactly one placement holds exactly one item at all
+      // times; pickReady returns that placement, SingleNode fires over the
+      // size-1 batch returning one route with one item, and the item advances
+      // to the next placement — byte-identical to the old cursor walk.
+      frontierLoop: while (true) {
+        const currentPlacementName = frontier.pickReady(rankOf, declIndexOf);
+        if (currentPlacementName === null) break frontierLoop;
 
-      // TerminalNode is a no-op execution: capture outcome, synthesize result,
-      // fire onNodeEnd, and break the loop. No call to executeDAGNode needed.
-      if (Placement.isTerminal(node)) {
-        const terminal = node;
-        terminalOutcome = terminal.outcome;
-        terminalNodeName = terminal.name;
-        executedNodes.push(terminal.name);
-        const terminalResult: NodeResultInterface<TState> = {
-          'output': terminal.outcome,
-          'skipped': false,
-          'nodeName': terminal.name,
-          state,
-          'intermediateResults': [],
-        };
-        this.onNodeEnd(terminal.name, terminal.outcome, state, placementPath);
-        yield terminalResult;
-        break mainLoop;
-      }
+        // Advance cursor to the placement about to fire. This matches the old
+        // single-cursor walk where `currentNodeName` was updated at the END of
+        // each iteration (set to `nextStage`) so it held the NEXT placement at
+        // the TOP of the next iteration — before the abort check ran. Here we
+        // advance cursor immediately after picking so the abort-check result
+        // correctly identifies the placement that would have fired.
+        cursor = currentPlacementName;
 
-      let nodeOutcome: _InternalNodeResult<TState>;
-      try {
-        nodeOutcome = await this.executeDAGNode(node, state, dagName, signal, placementPath);
-      } catch (caughtError) {
-        const error = caughtError instanceof Error ? caughtError : new ExecutionError(String(caughtError));
-        this.onError(currentNodeName, error, state, placementPath);
-        let interruptedAt: InterruptionInfo | null = null;
+        // Abort check: fires before each placement, identical to old loop.
         if (signal?.aborted) {
-          // Run-level signal aborted: classify abort vs timeout via handleAbort.
-          // handleAbort inspects signal.reason for TimeoutError, which
-          // covers the run-level deadline TimeoutError. The per-node
-          // `NodeTimeoutError` does NOT abort the parent signal; that
-          // case is handled below.
+          const abortInfo = this.handleAbort(state, signal);
+          this.onError(currentPlacementName, abortInfo.error, state, placementPath);
+          const interruptedAt: InterruptionInfo = {
+            'nodeName': currentPlacementName,
+            'reason':   abortInfo.reason,
+          };
+          const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
+          await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
+          return result;
+        }
+
+        // Take the batch from the frontier for this placement.
+        const batch = frontier.take(currentPlacementName) as Batch<TState>;
+
+        const node = this.nodeIndex.get(`${dagName}:${currentPlacementName}`);
+
+        if (!node) {
+          const error = new DAGError(`Unknown node: ${currentPlacementName} in DAG ${dagName}`);
+          this.onError(currentPlacementName, error, state, placementPath);
           if (!runOptions.embedded) {
-            const abortInfo = this.handleAbort(state, signal);
-            interruptedAt = { 'nodeName': currentNodeName, 'reason': abortInfo.reason };
-          } else {
-            // Embedded-DAG: do not flip lifecycle, but still classify reason.
-            const isTimeout = signal.reason instanceof Error && signal.reason.name === 'TimeoutError';
-            interruptedAt = { 'nodeName': currentNodeName, 'reason': isTimeout ? 'timeout' : 'abort' };
-          }
-        } else if (error instanceof NodeTimeoutError) {
-          // Per-node `timeoutMs` expired. The parent signal isn't aborted
-          // (the deadline is scoped to a child controller), but the node
-          // was interrupted by a timeout. Lifecycle becomes `failed` per
-          // existing per-node-timeout semantics; record the cancellation
-          // telemetry alongside.
-          interruptedAt = { 'nodeName': currentNodeName, 'reason': 'timeout' };
-          if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
             try { state.markFailed(error); } catch { /* already terminal */ }
           }
-        } else if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
-          try { state.markFailed(error); } catch { /* already terminal */ }
+          const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, null, state);
+          await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
+          return result;
         }
-        const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
-        await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
-        return result;
+
+        // Representative state: first item in the batch. For size-1 batches
+        // this is identical to the single cursor state — byte-identical to today.
+        const repState = batch.row(0).state;
+
+        this.onNodeStart(node.name, repState, placementPath);
+
+        // TerminalNode: no-op execution — capture outcome, synthesize result,
+        // fire onNodeEnd, break the frontier loop.
+        if (Placement.isTerminal(node)) {
+          const terminal = node;
+          terminalOutcome = terminal.outcome;
+          terminalNodeName = terminal.name;
+          executedNodes.push(terminal.name);
+          const terminalResult: NodeResultInterface<TState> = {
+            'output': terminal.outcome,
+            'skipped': false,
+            'nodeName': terminal.name,
+            'state': repState,
+            'intermediateResults': [],
+          };
+          this.onNodeEnd(terminal.name, terminal.outcome, repState, placementPath);
+          yield terminalResult;
+          break frontierLoop;
+        }
+
+        // SingleNode: batch-native path.
+        if (Placement.isSingle(node)) {
+          let nodeResult: NodeResultInterface<TState>;
+          try {
+            nodeResult = await this.#fireSinglePlacement(node, batch, dagName, signal, frontier);
+          } catch (caughtError) {
+            const error = caughtError instanceof Error ? caughtError : new ExecutionError(String(caughtError));
+            this.onError(currentPlacementName, error, repState, placementPath);
+            let interruptedAt: InterruptionInfo | null = null;
+            if (signal?.aborted) {
+              if (!runOptions.embedded) {
+                const abortInfo = this.handleAbort(state, signal);
+                interruptedAt = { 'nodeName': currentPlacementName, 'reason': abortInfo.reason };
+              } else {
+                const isTimeout = signal.reason instanceof Error && signal.reason.name === 'TimeoutError';
+                interruptedAt = { 'nodeName': currentPlacementName, 'reason': isTimeout ? 'timeout' : 'abort' };
+              }
+            } else if (error instanceof NodeTimeoutError) {
+              interruptedAt = { 'nodeName': currentPlacementName, 'reason': 'timeout' };
+              if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
+                try { state.markFailed(error); } catch { /* already terminal */ }
+              }
+            } else if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
+              try { state.markFailed(error); } catch { /* already terminal */ }
+            }
+            const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
+            await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
+            return result;
+          }
+
+          executedNodes.push(nodeResult.nodeName);
+          this.onNodeEnd(node.name, nodeResult.output, repState, placementPath);
+          yield nodeResult;
+          continue frontierLoop;
+        }
+
+        // ScatterNode / EmbeddedDAGNode: size-1 only in this sub-wave.
+        // Assert single item, then call the existing executeDAGNode path.
+        if (batch.size !== 1) {
+          const error = new DAGError(
+            `Placement '${currentPlacementName}' (@type ${node['@type']}) received a batch of ${batch.size} items; multi-item batches for Scatter/EmbeddedDAG are not yet supported.`,
+          );
+          this.onError(currentPlacementName, error, repState, placementPath);
+          if (!runOptions.embedded) {
+            try { state.markFailed(error); } catch { /* already terminal */ }
+          }
+          const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, null, state);
+          await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
+          return result;
+        }
+
+        let nodeOutcome: _InternalNodeResult<TState>;
+        try {
+          nodeOutcome = await this.executeDAGNode(node, repState, dagName, signal, placementPath);
+        } catch (caughtError) {
+          const error = caughtError instanceof Error ? caughtError : new ExecutionError(String(caughtError));
+          this.onError(currentPlacementName, error, repState, placementPath);
+          let interruptedAt: InterruptionInfo | null = null;
+          if (signal?.aborted) {
+            if (!runOptions.embedded) {
+              const abortInfo = this.handleAbort(state, signal);
+              interruptedAt = { 'nodeName': currentPlacementName, 'reason': abortInfo.reason };
+            } else {
+              const isTimeout = signal.reason instanceof Error && signal.reason.name === 'TimeoutError';
+              interruptedAt = { 'nodeName': currentPlacementName, 'reason': isTimeout ? 'timeout' : 'abort' };
+            }
+          } else if (error instanceof NodeTimeoutError) {
+            interruptedAt = { 'nodeName': currentPlacementName, 'reason': 'timeout' };
+            if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
+              try { state.markFailed(error); } catch { /* already terminal */ }
+            }
+          } else if (!runOptions.embedded && !DAGLifecycleMachine.isTerminal(state.lifecycle)) {
+            try { state.markFailed(error); } catch { /* already terminal */ }
+          }
+          const result = this.buildResult(cursor, executedNodes, skippedNodes, terminalOutcome, interruptedAt, state);
+          await this.runPostPhasesAndFinalize(dag, dagName, state, result, runOptions, terminalNodeName, placementPath);
+          return result;
+        }
+
+        const { nextStage, 'result': nodeResult } = nodeOutcome;
+
+        // Stream composite node intermediates before the node's own result.
+        for (const intermediate of nodeResult.intermediateResults) {
+          yield intermediate;
+        }
+
+        if (nodeResult.skipped) {
+          skippedNodes.push(nodeResult.nodeName);
+        } else {
+          executedNodes.push(nodeResult.nodeName);
+        }
+
+        this.onNodeEnd(node.name, nodeResult.output, repState, placementPath);
+        yield nodeResult;
+
+        // Route the single item to the next placement.
+        if (nextStage !== null) {
+          frontier.merge(nextStage, Batch.of(repState));
+        }
       }
-
-      const { nextStage, "result": nodeResult } = nodeOutcome;
-
-      // Stream the per-step results a composite node (parallel / scatter /
-      // embedded-DAG) produced internally, before the node's own result.
-      // Empty for leaf nodes.
-      for (const intermediate of nodeResult.intermediateResults) {
-        yield intermediate;
-      }
-
-      if (nodeResult.skipped) {
-        skippedNodes.push(nodeResult.nodeName);
-      } else {
-        executedNodes.push(nodeResult.nodeName);
-      }
-
-      this.onNodeEnd(node.name, nodeResult.output, state, placementPath);
-
-      yield nodeResult;
-
-      currentNodeName = nextStage;
-      cursor = nextStage;
     }
 
     if (!runOptions.embedded) {
@@ -1350,6 +1436,69 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
       );
     }
     return output;
+  }
+
+  /**
+   * Fire a SingleNode placement over a batch in the frontier scheduler.
+   *
+   * Calls `node.execute(batch, context)` via `withNodeTimeout`, merges each
+   * output port's sub-batch into the frontier, and returns a representative
+   * `NodeResultInterface` for the firing.
+   *
+   * For a size-1 batch: exactly one route is produced with exactly one item,
+   * so `output` equals the single port key and `state` equals the single item
+   * — byte-identical to the old `executeSingleNode` + `#runNodeOnState` path.
+   *
+   * For a multi-item batch: items may split across multiple output ports.
+   * `output` is `null` (no single representative output) and `state` is the
+   * representative state (`batch.row(0).state`). Each sub-batch is merged into
+   * the frontier for downstream placement processing.
+   *
+   * Throws `DAGError` when the placement routing map has no entry for a returned
+   * output port (same error message as the previous `executeSingleNode`).
+   */
+  async #fireSinglePlacement(
+    nodeConfig: SingleNodePlacementInterface,
+    batch: Batch<TState>,
+    dagName: string,
+    signal: AbortSignal | null,
+    frontier: Frontier<TState>,
+  ): Promise<NodeResultInterface<TState>> {
+    const dagNode = this.nodes.get(nodeConfig.node);
+
+    if (!dagNode) {
+      throw new DAGError(`Unknown node: ${nodeConfig.node}`);
+    }
+
+    const routed = await this.withNodeTimeout(dagNode, signal, (nodeSignal) => {
+      const context = this.buildContext(dagName, nodeConfig.name, nodeSignal);
+      return dagNode.execute(batch, context);
+    });
+
+    // Merge each output port's sub-batch into the frontier.
+    for (const [outputPort, subBatch] of routed.entries()) {
+      const nextPlacement = nodeConfig.outputs[outputPort];
+      if (nextPlacement === undefined) {
+        throw new DAGError(
+          `Node ${dagNode.name} returned output '${outputPort}' but node ${nodeConfig.name} has no routing for it. `
+          + `Available outputs: ${Object.keys(nodeConfig.outputs).join(', ')}`,
+        );
+      }
+      frontier.merge(nextPlacement, subBatch);
+    }
+
+    // For size-1 batches: exactly one route, one item → single representative output.
+    // For multi-item batches: items may split → null representative output.
+    const repState = batch.row(0).state;
+    const output = routed.size === 1 ? (routed.keys().next().value as string) : null;
+
+    return {
+      output,
+      'skipped': false,
+      'nodeName': nodeConfig.name,
+      'state': repState,
+      'intermediateResults': [],
+    };
   }
 
   /**

@@ -1,10 +1,11 @@
 # RFC 0003 — Batch-native walk (the plural executor core)
 
-Status: **Approved, not yet built — THIS IS THE NEXT MAJOR WORK** · Depends on: RFC 0001
-(plural-native), Phase 2a (one-fold gather) · Supersedes: RFC 0002 §2 "DAG bodies iterate per
-item" (DAG bodies are now batch-native). §10 decisions are resolved. Build per §9 sub-waves,
-starting with sub-wave 1 (frontier scheduler, acyclic, size-1 parity exact). Read
-`0000-status.md` first.
+Status: **In progress — sub-wave 1 BUILT & GREEN (778 tests); sub-wave 2 next** · Depends on:
+RFC 0001 (plural-native), Phase 2a (one-fold gather) · Supersedes: RFC 0002 §2 "DAG bodies
+iterate per item" (DAG bodies are now batch-native). §10 decisions are resolved. Build per §9
+sub-waves. Sub-wave 1 (frontier scheduler `PlacementRank` + `Frontier`, acyclic, size-1 parity
+byte-identical) is built; `SingleNode` fires batch-native, `ScatterNode`/`EmbeddedDAGNode` stay
+size-1 until sub-wave 4. Read `0000-status.md` first.
 
 The walk (`runNodes`) becomes a **batch dataflow**. A DAG processes a `Batch<N>`
 natively — partition at nodes, merge at joins — so a DAG body has the exact same
@@ -132,6 +133,8 @@ green.
 1. **Frontier scheduler over acyclic DAGs** — replace the single-cursor `mainLoop`
    with the frontier model + drained firing + topo-rank scheduling; size-1 parity is
    byte-identical; multi-item tests over linear + branching + join DAGs (no cycles).
+   **BUILT & GREEN** — `src/core/PlacementRank.ts` + `src/core/Frontier.ts` +
+   `#fireSinglePlacement`; 22 new tests incl. the diamond-join coalescing proof.
 2. **Cycles/retry** — back-edge handling + re-entry batching; port the existing
    retry-loop tests to multi-item; Cartographer-style retry self-edges.
 3. **Reservoir as a firing policy** — generalize RFC 0002's `reservoir` from

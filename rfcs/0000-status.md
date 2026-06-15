@@ -51,8 +51,9 @@ agent needs to avoid going off the rails is here or in the linked RFCs.
 ## Current baseline (as-built, all in the dagonizer package, GREEN)
 
 Verified: `npm run typecheck` clean, `npm run lint -- --max-warnings 0` clean,
-`npm run test` → **756 pass / 0 fail**, `npm run build` clean. **Nothing is committed**
-(see "First actions" below).
+`npm run test` → **778 pass / 0 fail**, `npm run build` clean. The green baseline
+(Phases 1a/1b/2a + RFC-0002 sub-wave-1) is committed at `362ac38`; RFC-0003
+sub-wave-1 (below) is built & green on top of it, uncommitted.
 
 Built and green:
 - **Phase 1a** — `src/core/batch/{Item,Batch,RoutedBatch}.ts`
@@ -75,9 +76,24 @@ Built and green:
   `DAGValidator.validateReservoir`. **Config only — no executor behavior** (the
   partial executor attempt was reverted; the executor processes one item per
   dispatch, post-2a).
+- **RFC 0003 sub-wave 1** — the single-cursor `mainLoop` in `Dagonizer.runNodes`
+  is replaced by a frontier scheduler: `src/core/PlacementRank.ts`
+  (`PlacementRank.compute(dag)` → topo rank over forward edges, back-edges
+  excluded) and `src/core/Frontier.ts` (`Frontier<TState>` —
+  `merge/take/pickReady/isEmpty/peek`). `SingleNode` fires batch-native via
+  `#fireSinglePlacement` (multi-route partition merged into the frontier);
+  `ScatterNode`/`EmbeddedDAGNode` stay size-1 (guarded; batch-native deferred to
+  sub-wave 4). Size-1 input is byte-identical to the old cursor walk — `cursor`
+  advances right after `pickReady`, before the abort check, so abort/timeout/
+  error/lifecycle/phase/yield semantics are unchanged. New tests:
+  `tests/unit/{placement-rank,frontier,frontier-walk}.test.ts` (22 tests:
+  rank/cycle-termination, frontier ops, multi-item linear/branch, and the
+  diamond-join coalescing proof — the join fires once over all merged items).
 
-Not built (and intentionally so): the reservoir runtime, the batch-native walk,
-consumer migration, the Cartographer adoption.
+Not built (and intentionally so): cycles/retry over multi-item batches
+(sub-wave 2), the reservoir runtime (sub-wave 3), batch-native scatter/embedded
+(sub-wave 4), frontier checkpoint (sub-wave 5), viz (sub-wave 6), consumer
+migration, the Cartographer adoption.
 
 ## State of the rest of the repo (expected, not a bug)
 
@@ -96,8 +112,8 @@ throwaway.
 ## Build order from here
 
 1. **0003 batch-native walk** (the executor heart), sub-waves in `0003-batch-native-walk.md` §9:
-   1. Frontier scheduler over acyclic DAGs (drained firing, topo-rank), size-1 parity exact.
-   2. Cycles/retry (back-edges re-enter, re-batch).
+   1. Frontier scheduler over acyclic DAGs (drained firing, topo-rank), size-1 parity exact. **BUILT & GREEN.**
+   2. Cycles/retry (back-edges re-enter, re-batch). **← next.**
    3. Reservoir as a firing policy (wire the 0002 config to capacity/idle/complete).
    4. Embedded-DAG + scatter integration under the frontier model.
    5. Checkpoint of the frontier + resume parity.
