@@ -1,8 +1,12 @@
 # RFC 0001 — Plural-Native Core
 
-Status: **In progress** · Target: pre-1.0 redesign · Decision: **adopt plural-native execution**
-Build status: **Phases 1a, 1b, 2a built & green** (dagonizer package, 756 tests). Phase 2
-onward pending. Read `0000-status.md` first for the authoritative state and build order.
+Status: **COMPLETE** · Target: pre-1.0 redesign · Decision: **adopt plural-native execution**
+Build status: **All phases built & green.** The plural-native engine (RFC 0003, six
+sub-waves), the corrected node taxonomy (`MonadicNode` root → `ScalarNode`), the
+full consumer migration (every package + example), the docs, and the Cartographer
+adoption are landed. **`npm run ci` is green** (dagonizer 820 tests + all packages +
+examples + docs + lint + 28 DAGs well-formed). Read `0000-status.md` for the
+per-component map.
 
 > The fundamental unit of work flowing through a DAG is a **batch**.
 > A single item is a batch of one. The engine never processes a scalar; it
@@ -277,13 +281,19 @@ contract alive — there is no old contract after wave 1.
   CI-blocking `executor-node` conformance fixture was migrated. **Full workspace
   `npm run ci` is GREEN** (typecheck + examples + docs + lint + all package
   tests + lint:dags).
-- **Phase 4** — Cartographer adoption. **In progress.** The cartographer is
-  migrated & green; keyed reservoirs at the decision points, batch-aware
-  enrichment with LRU-cached services, and an async streaming source
-  (configurable count 1k–1M, per-format mix, orthogonal compression already
-  landed) are being adopted on top of the new engine. web-worker enrichment
-  (`executor-web`) and the throughput / progress / sliding-window / live-insights
-  UI are the heaviest remaining showcase pieces.
+- **Phase 4** — Cartographer adoption. **DONE.** On the new engine: a keyed
+  reservoir at a decision point (`batch-by-kind` scatter, key=`kind`, capacity 50,
+  idle 100ms); batch-native enrichment (`MonadicNode`) for pricing/shipping/eta,
+  amortizing service-table lookups across the batch; an async streaming source
+  that is genuinely lazy (a generator stepping the seeded LCG + per-record
+  encoding — 350k scans under a 256MB heap cap, extrapolating to 1M+); web-worker
+  enrichment via `executor-node`'s `WorkerThreadContainer` bound on the enrichment
+  scatter (`cartographerWorkersDAG`); and the in-browser live-insights UI
+  (`docs/.vitepress/theme/components/CartographerRunner.vue` — progress / streaming
+  %, continent insights via observer hooks) plus the static reservoir glyph (SW6).
+  `npm run ci` green. (Remaining polish, not phase-blocking: per-key live-fill
+  animation on the reservoir glyph; 4 pre-existing synthetic data-generator smoke
+  quirks.)
 - **Phase 5** — docs/concepts. **DONE** — `concepts.md` Node + gather sections
   rewritten for the batch contract and the taxonomy; new `guide/{plural-native,
   reservoir,migrating-to-batch}.md`; sidebar wired; `typecheck:docs` green.
