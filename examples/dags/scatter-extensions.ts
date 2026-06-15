@@ -15,14 +15,14 @@ import {
   NodeStateBase,
   OutcomeReducer,
   OutcomeReducers,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 import type {
   GatherConfig,
   GatherExecution,
   NodeStateInterface,
-  OutcomeRecord, NodeInterface} from '@noocodex/dagonizer';
+  OutcomeRecord } from '@noocodex/dagonizer';
+import type { StateAccessor } from '@noocodex/dagonizer/contracts';
 
 // ── Domain state (re-exported so entry can reference the type) ────────────────
 
@@ -39,13 +39,11 @@ export class RankingState extends NodeStateBase {
 
 // #region score-node
 // Worker node: produces a scored candidate from each scatter item.
-export class ScoreNode implements NodeInterface<RankingState, 'success' | 'error'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ScoreNode extends ScalarNode<RankingState, 'success' | 'error'> {
   readonly name    = 'score';
   readonly outputs = ['success', 'error'] as const;
 
-  async execute(state: RankingState) {
+  protected override async executeOne(state: RankingState) {
     const item = state.getMetadata<string>('item') ?? '';
     // Synthetic score: proportional to string length
     state.candidate = { title: item, score: item.length };
@@ -68,9 +66,18 @@ interface ScoredItem {
 class TopNGatherStrategy extends GatherStrategy {
   readonly name = 'top-n';
 
-  async apply<TState extends NodeStateInterface>(
+  override reduce(
+    _config: GatherConfig,
+    _batch: Parameters<GatherStrategy['reduce']>[1],
+    _state: NodeStateInterface,
+    _accessor: StateAccessor,
+  ): void {
+    // accumulate nothing per-clone — finalize handles all records
+  }
+
+  override async finalize(
     config: GatherConfig,
-    execution: GatherExecution<TState>,
+    execution: GatherExecution<NodeStateInterface>,
   ): Promise<void> {
     const target = config.target ?? 'topCandidates';
     const n = 3;

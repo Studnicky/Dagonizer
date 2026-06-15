@@ -10,10 +10,9 @@ import {
   DAG_CONTEXT,
   NodeOutputBuilder,
   NodeStateBase,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface} from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
@@ -44,12 +43,10 @@ export class PipelineState extends NodeStateBase {
 // Nodes: each stage marks its name, increments tally, and appends to trail
 // ---------------------------------------------------------------------------
 
-export class IngestNode implements NodeInterface<PipelineState, 'success'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class IngestNode extends ScalarNode<PipelineState, 'success'> {
   readonly name = 'ingest';
   readonly outputs = ['success'] as const;
-  async execute(state: PipelineState) {
+  protected override async executeOne(state: PipelineState) {
     state.stage = 'ingest';
     state.tally++;
     state.trail.push('ingest');
@@ -57,12 +54,10 @@ export class IngestNode implements NodeInterface<PipelineState, 'success'> {
   }
 }
 
-export class ProcessNode implements NodeInterface<PipelineState, 'success'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ProcessNode extends ScalarNode<PipelineState, 'success'> {
   readonly name = 'process';
   readonly outputs = ['success'] as const;
-  async execute(state: PipelineState) {
+  protected override async executeOne(state: PipelineState) {
     state.stage = 'process';
     state.tally++;
     state.trail.push('process');
@@ -70,12 +65,10 @@ export class ProcessNode implements NodeInterface<PipelineState, 'success'> {
   }
 }
 
-export class ExportNode implements NodeInterface<PipelineState, 'success'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ExportNode extends ScalarNode<PipelineState, 'success'> {
   readonly name = 'export';
   readonly outputs = ['success'] as const;
-  async execute(state: PipelineState) {
+  protected override async executeOne(state: PipelineState) {
     state.stage = 'export';
     state.tally++;
     state.trail.push('export');

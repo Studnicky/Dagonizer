@@ -1,19 +1,22 @@
 /**
- * monadic-node/dags: demonstrates MonadicNode from @noocodex/dagonizer/patterns.
+ * monadic-node/dags: demonstrates the node taxonomy from @noocodex/dagonizer.
  *
- * Abstract base class extending MonadicNode wires `name`, `outputs`, and
- * `execute`. A concrete subclass fills in the domain logic. The pattern
+ * Defines an abstract `LoggingNode` that extends `ScalarNode` and adds
+ * structured timing around `executeOne`. A concrete subclass fills in the
+ * domain logic by implementing the abstract `run` method. The pattern
  * guarantees every code path returns a declared output port — nothing throws
  * past the node boundary.
+ *
+ * Use `ScalarNode` (the per-item base) for domain nodes that process one state
+ * at a time. Extend `MonadicNode` directly only for batch-native nodes that
+ * must process the whole batch in one `execute(batch, ctx)` call.
  *
  * Pure module: no side effects, no dispatcher, no execute.
  */
 
 // #region monadic-node
-import { NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
-import type { NodeContextInterface } from '@noocodex/dagonizer';
-import { MonadicNode } from '@noocodex/dagonizer/patterns';
-import type { NodeOutputInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, NodeStateBase, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeOutputInterface } from '@noocodex/dagonizer';
 
 // ── Domain state ──────────────────────────────────────────────────────────────
 
@@ -27,8 +30,8 @@ export class CatalogueState extends NodeStateBase {
 abstract class LoggingNode<
   TState extends NodeStateBase,
   TOutput extends string,
-> extends MonadicNode<TState, TOutput> {
-  async execute(
+> extends ScalarNode<TState, TOutput> {
+  protected override async executeOne(
     state: TState,
     context: NodeContextInterface,
   ): Promise<NodeOutputInterface<TOutput>> {

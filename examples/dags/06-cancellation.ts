@@ -8,10 +8,9 @@ import {
   DAG_CONTEXT,
   NodeOutputBuilder,
   NodeStateBase,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface} from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
 import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
@@ -19,13 +18,11 @@ import type { NodeContextInterface } from '@noocodex/dagonizer';
 // ---------------------------------------------------------------------------
 
 // #region node-cancellation-aware
-export class SlowNode implements NodeInterface<NodeStateBase, 'success'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class SlowNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'slow';
   readonly outputs = ['success'] as const;
 
-  async execute(_state: NodeStateBase, context: NodeContextInterface) {
+  protected override async executeOne(_state: NodeStateBase, context: NodeContextInterface) {
     // Wrap the delay in a manual Promise that listens for abort. If the node
     // ignores context.signal, cancellation would not take effect until the
     // current node finishes, even if the signal fires.

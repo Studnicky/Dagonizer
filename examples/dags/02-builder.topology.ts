@@ -13,10 +13,8 @@ import {
   DAGBuilder,
   NodeOutputBuilder,
   NodeStateBase,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
 // #endregion imports
 
 // ---------------------------------------------------------------------------
@@ -34,25 +32,21 @@ export class ChatState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // #region nodes
-export class ClassifyNode implements NodeInterface<ChatState, 'on_topic' | 'off_topic'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ClassifyNode extends ScalarNode<ChatState, 'on_topic' | 'off_topic'> {
   readonly name = 'classify';
   readonly outputs = ['on_topic', 'off_topic'] as const;
 
-  async execute(state: ChatState) {
+  protected override async executeOne(state: ChatState) {
     state.topic = state.input.toLowerCase().includes('weather') ? 'off_topic' : 'on_topic';
     return NodeOutputBuilder.of(state.topic);
   }
 }
 
-export class RespondNode implements NodeInterface<ChatState, 'success'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class RespondNode extends ScalarNode<ChatState, 'success'> {
   readonly name = 'respond';
   readonly outputs = ['success'] as const;
 
-  async execute(state: ChatState) {
+  protected override async executeOne(state: ChatState) {
     state.reply = state.topic === 'on_topic'
       ? `Echo: ${state.input}`
       : `I only talk about coding, not the weather.`;

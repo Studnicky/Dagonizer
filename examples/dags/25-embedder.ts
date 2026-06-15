@@ -9,9 +9,9 @@
  */
 
 import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,
-  EMPTY_CONTRACT_FRAGMENT, Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface} from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
 import type { Embedder } from '@noocodex/dagonizer/adapter';
 
 // ---------------------------------------------------------------------------
@@ -53,12 +53,10 @@ export class VectorSimilarity {
 // Nodes
 // ---------------------------------------------------------------------------
 
-export class EmbedNode implements NodeInterface<EmbedderState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class EmbedNode extends ScalarNode<EmbedderState, 'done'> {
   readonly name = 'embed';
   readonly outputs = ['done'] as const;
-  async execute(state: EmbedderState) {
+  protected override async executeOne(state: EmbedderState) {
     if (state.embedder === null) throw new Error('embed: embedder not set');
     const [vecA, vecB] = await Promise.all([
       state.embedder.embed(state.textA),
@@ -71,12 +69,10 @@ export class EmbedNode implements NodeInterface<EmbedderState, 'done'> {
   }
 }
 
-export class ReportNode implements NodeInterface<EmbedderState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ReportNode extends ScalarNode<EmbedderState, 'done'> {
   readonly name = 'report';
   readonly outputs = ['done'] as const;
-  async execute(state: EmbedderState) {
+  protected override async executeOne(state: EmbedderState) {
     process.stdout.write(`  similarity("${state.textA}", "${state.textB}") = ${state.similarity.toFixed(4)}\n`);
     return NodeOutputBuilder.of('done');
   }

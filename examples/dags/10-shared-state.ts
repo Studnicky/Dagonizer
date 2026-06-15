@@ -8,10 +8,9 @@ import {
   DAGBuilder,
   NodeOutputBuilder,
   NodeStateBase,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface} from '@noocodex/dagonizer';
+import type { NodeContextInterface} from '@noocodex/dagonizer';
 import { MemoryStore } from '@noocodex/dagonizer/store';
 import type { Store } from '@noocodex/dagonizer/contracts';
 
@@ -29,13 +28,11 @@ export interface Services {
 // Nodes: each appends its own name to the store's 'entries' key
 // ---------------------------------------------------------------------------
 
-export class StepANode implements NodeInterface<NodeStateBase, 'done', Services> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class StepANode extends ScalarNode<NodeStateBase, 'done', Services> {
   readonly name = 'step-a';
   readonly outputs = ['done'] as const;
 
-  async execute(_state: NodeStateBase, context: NodeContextInterface<Services>) {
+  protected override async executeOne(_state: NodeStateBase, context: NodeContextInterface<Services>) {
     await context.services.log.update<string>('entries', (current) => {
       const existing = current?.split(',').filter(Boolean) ?? [];
       return [...existing, 'step-a'].join(',');
@@ -44,13 +41,11 @@ export class StepANode implements NodeInterface<NodeStateBase, 'done', Services>
   }
 }
 
-export class StepBNode implements NodeInterface<NodeStateBase, 'done', Services> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class StepBNode extends ScalarNode<NodeStateBase, 'done', Services> {
   readonly name = 'step-b';
   readonly outputs = ['done'] as const;
 
-  async execute(_state: NodeStateBase, context: NodeContextInterface<Services>) {
+  protected override async executeOne(_state: NodeStateBase, context: NodeContextInterface<Services>) {
     await context.services.log.update<string>('entries', (current) => {
       const existing = current?.split(',').filter(Boolean) ?? [];
       return [...existing, 'step-b'].join(',');
@@ -59,13 +54,11 @@ export class StepBNode implements NodeInterface<NodeStateBase, 'done', Services>
   }
 }
 
-export class ChildStepNode implements NodeInterface<NodeStateBase, 'done', Services> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ChildStepNode extends ScalarNode<NodeStateBase, 'done', Services> {
   readonly name = 'child-step';
   readonly outputs = ['done'] as const;
 
-  async execute(_state: NodeStateBase, context: NodeContextInterface<Services>) {
+  protected override async executeOne(_state: NodeStateBase, context: NodeContextInterface<Services>) {
     await context.services.log.update<string>('entries', (current) => {
       const existing = current?.split(',').filter(Boolean) ?? [];
       return [...existing, 'child-step'].join(',');

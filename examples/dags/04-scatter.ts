@@ -8,10 +8,9 @@ import {
   DAG_CONTEXT,
   NodeOutputBuilder,
   NodeStateBase,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface} from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
 import { GatherStrategyName } from '@noocodex/dagonizer/constants';
 
 // #region state
@@ -23,13 +22,11 @@ export class ScrapeState extends NodeStateBase {
 // #endregion state
 
 // #region worker-node
-export class ProbeNode implements NodeInterface<ScrapeState, 'ok' | 'fail'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ProbeNode extends ScalarNode<ScrapeState, 'ok' | 'fail'> {
   readonly name = 'probe';
   readonly outputs = ['ok', 'fail'] as const;
 
-  async execute(state: ScrapeState) {
+  protected override async executeOne(state: ScrapeState) {
     // Each item is written to state under the itemKey ('url') before execute.
     const url = state.getMetadata<string>('url') ?? '';
     // Fake probe: even-length URLs succeed, odd-length fail.

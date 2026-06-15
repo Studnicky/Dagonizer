@@ -23,7 +23,7 @@
  * Run: npx tsx examples/26-tool-use.ts
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
+import { Batch, Dagonizer } from '@noocodex/dagonizer';
 import { ToolCallCodec } from '@noocodex/dagonizer/adapter';
 import { OllamaApiAdapter } from '@noocodex/dagonizer-adapter-ollama';
 
@@ -146,9 +146,15 @@ stateC.toolCallRaw = unknownProse;
 const unknownCalls = ToolCallCodec.decode(unknownProse, 'error-demo');
 stateC.dispatchedTool = unknownCalls[0]?.name ?? '';
 
-// Execute only the dispatch path: manually drive DispatchToolNode
+// Execute only the dispatch path: manually drive DispatchToolNode via execute(batch, ctx)
 const dispatchNode = new DispatchToolNode();
-await dispatchNode.execute(stateC);
+const ac = new AbortController();
+await dispatchNode.execute(Batch.of(stateC), {
+  dagName: 'tool-use-demo',
+  nodeName: 'dispatchTool',
+  signal: ac.signal,
+  services: undefined,
+});
 
 process.stdout.write(`  finalAnswer:   "${stateC.finalAnswer}"\n\n`);
 

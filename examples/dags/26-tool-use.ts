@@ -9,9 +9,9 @@
  */
 
 import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,
-  EMPTY_CONTRACT_FRAGMENT, Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface} from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
 import type { LlmAdapter, ToolCall, ToolDefinition } from '@noocodex/dagonizer/adapter';
 import { ChatRequestBuilder, ToolCallCodec } from '@noocodex/dagonizer/adapter';
 import type { Tool } from '@noocodex/dagonizer/tool';
@@ -90,12 +90,10 @@ export class ToolUseState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 /** Call the adapter; inspect the response for tool calls. */
-export class CallLlmNode implements NodeInterface<ToolUseState, 'tool_call' | 'text'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class CallLlmNode extends ScalarNode<ToolUseState, 'tool_call' | 'text'> {
   readonly name = 'callLlm';
   readonly outputs = ['tool_call', 'text'] as const;
-  async execute(state: ToolUseState) {
+  protected override async executeOne(state: ToolUseState) {
     if (state.adapter === null) throw new Error('callLlm: adapter not set');
 
     const tools = state.registry.definitions();
@@ -138,12 +136,10 @@ export class CallLlmNode implements NodeInterface<ToolUseState, 'tool_call' | 't
 }
 
 /** Dispatch the tool call to the registered Tool and collect the result. */
-export class DispatchToolNode implements NodeInterface<ToolUseState, 'done' | 'error'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class DispatchToolNode extends ScalarNode<ToolUseState, 'done' | 'error'> {
   readonly name = 'dispatchTool';
   readonly outputs = ['done', 'error'] as const;
-  async execute(state: ToolUseState) {
+  protected override async executeOne(state: ToolUseState) {
     // Decode from raw text (works for both native JSON and prose-wrapped)
     const calls: ToolCall[] = ToolCallCodec.decode(state.toolCallRaw, 'dispatch');
 
@@ -166,34 +162,28 @@ export class DispatchToolNode implements NodeInterface<ToolUseState, 'done' | 'e
   }
 }
 
-export class OnTextNode implements NodeInterface<ToolUseState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class OnTextNode extends ScalarNode<ToolUseState, 'done'> {
   readonly name = 'onText';
   readonly outputs = ['done'] as const;
-  async execute(state: ToolUseState) {
+  protected override async executeOne(state: ToolUseState) {
     process.stdout.write(`  [onText] direct answer: "${state.finalAnswer}"\n`);
     return NodeOutputBuilder.of('done');
   }
 }
 
-export class OnToolDoneNode implements NodeInterface<ToolUseState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class OnToolDoneNode extends ScalarNode<ToolUseState, 'done'> {
   readonly name = 'onToolDone';
   readonly outputs = ['done'] as const;
-  async execute(state: ToolUseState) {
+  protected override async executeOne(state: ToolUseState) {
     process.stdout.write(`  [onToolDone] tool="${state.dispatchedTool}" result=${JSON.stringify(state.toolResult)}\n`);
     return NodeOutputBuilder.of('done');
   }
 }
 
-export class OnToolErrorNode implements NodeInterface<ToolUseState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class OnToolErrorNode extends ScalarNode<ToolUseState, 'done'> {
   readonly name = 'onToolError';
   readonly outputs = ['done'] as const;
-  async execute(state: ToolUseState) {
+  protected override async executeOne(state: ToolUseState) {
     process.stdout.write(`  [onToolError] ${state.finalAnswer}\n`);
     return NodeOutputBuilder.of('done');
   }

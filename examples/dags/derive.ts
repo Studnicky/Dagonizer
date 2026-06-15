@@ -11,8 +11,7 @@
  */
 
 import { DAGDeriver } from '@noocodex/dagonizer/derive';
-import { NodeOutputBuilder, NodeStateBase, Timeout } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, NodeStateBase, ScalarNode } from '@noocodex/dagonizer';
 import type { OperationContractFragment } from '@noocodex/dagonizer/contracts';
 
 // ---------------------------------------------------------------------------
@@ -27,46 +26,43 @@ export class PipelineState extends NodeStateBase {
 }
 
 // ---------------------------------------------------------------------------
-// Nodes: class-per-node, implements NodeInterface
+// Nodes: class-per-node, extends ScalarNode
 // ---------------------------------------------------------------------------
 
-export class PrepareNode implements NodeInterface<PipelineState, 'success'> {
+export class PrepareNode extends ScalarNode<PipelineState, 'success'> {
   readonly name     = 'prepare';
   readonly outputs  = ['success'] as const;
-  readonly contract: OperationContractFragment = { "hardRequired": ['input'], "produces": ['intermediate'] };
-  readonly timeout  = Timeout.none();
+  override readonly contract: OperationContractFragment ={ "hardRequired": ['input'], "produces": ['intermediate'] };
 
-  async execute(state: PipelineState) {
+  protected override async executeOne(state: PipelineState) {
     state.intermediate = state.input.toUpperCase();
     return NodeOutputBuilder.of('success');
   }
 }
 
-export class ValidateNode implements NodeInterface<PipelineState, 'success' | 'error'> {
+export class ValidateNode extends ScalarNode<PipelineState, 'success' | 'error'> {
   readonly name     = 'validate';
   readonly outputs  = ['success', 'error'] as const;
-  readonly contract: OperationContractFragment = { "hardRequired": ['intermediate'], "produces": ['validated'] };
-  readonly timeout  = Timeout.none();
+  override readonly contract: OperationContractFragment ={ "hardRequired": ['intermediate'], "produces": ['validated'] };
 
-  async execute(state: PipelineState) {
+  protected override async executeOne(state: PipelineState) {
     if (state.intermediate.length === 0) return NodeOutputBuilder.of('error');
     return NodeOutputBuilder.of('success');
   }
 }
 
-export class TransformNode implements NodeInterface<PipelineState, 'success'> {
+export class TransformNode extends ScalarNode<PipelineState, 'success'> {
   readonly name     = 'transform';
   readonly outputs  = ['success'] as const;
-  readonly contract: OperationContractFragment = { "hardRequired": ['validated'], "produces": ['childResult'] };
-  readonly timeout  = Timeout.none();
+  override readonly contract: OperationContractFragment ={ "hardRequired": ['validated'], "produces": ['childResult'] };
 
-  async execute(state: PipelineState) {
+  protected override async executeOne(state: PipelineState) {
     state.childResult = `[${state.intermediate}]`;
     return NodeOutputBuilder.of('success');
   }
 }
 
-export class InvokePluginNode implements NodeInterface<PipelineState, 'success' | 'error'> {
+export class InvokePluginNode extends ScalarNode<PipelineState, 'success' | 'error'> {
   // invoke-plugin carries the contract (hardRequired/produces) the deriver
   // uses to place this stage in the topology. The embeddedDAGs annotation
   // renders it as an EmbeddedDAGNode whose `dag` runs the child DAG;
@@ -74,21 +70,19 @@ export class InvokePluginNode implements NodeInterface<PipelineState, 'success' 
   // Its `outputs` declare the ports the EmbeddedDAGNode routes on.
   readonly name     = 'invoke-plugin';
   readonly outputs  = ['success', 'error'] as const;
-  readonly contract: OperationContractFragment = { "hardRequired": ['intermediate'], "produces": ['childResult'] };
-  readonly timeout  = Timeout.none();
+  override readonly contract: OperationContractFragment ={ "hardRequired": ['intermediate'], "produces": ['childResult'] };
 
-  async execute(_state: PipelineState) {
+  protected override async executeOne(_state: PipelineState) {
     return NodeOutputBuilder.of('success');
   }
 }
 
-export class FinalizeNode implements NodeInterface<PipelineState, 'success'> {
+export class FinalizeNode extends ScalarNode<PipelineState, 'success'> {
   readonly name     = 'finalize';
   readonly outputs  = ['success'] as const;
-  readonly contract: OperationContractFragment = { "hardRequired": ['childResult'], "produces": ['final'] };
-  readonly timeout  = Timeout.none();
+  override readonly contract: OperationContractFragment ={ "hardRequired": ['childResult'], "produces": ['final'] };
 
-  async execute(state: PipelineState) {
+  protected override async executeOne(state: PipelineState) {
     state.final = `done: ${state.childResult}`;
     return NodeOutputBuilder.of('success');
   }
