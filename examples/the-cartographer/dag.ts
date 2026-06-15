@@ -47,6 +47,7 @@ import { aggregateEvent }    from './nodes/aggregateEvent.ts';
 import { mergeEvents }       from './nodes/mergeEvents.ts';
 import { summarizeInsights } from './nodes/summarizeInsights.ts';
 import { seedEvents }        from './nodes/seedEvents.ts';
+import { classifyBatch }     from './nodes/classifyBatch.ts';
 
 import type { CartographerState } from './CartographerState.ts';
 import type { CartographerServices } from './CartographerServices.ts';
@@ -90,8 +91,32 @@ export const cartographerDAG: DAG = new DAGBuilder('cartographer', '1.0')
 
   // merge-events: flatten the per-source buckets into one canonicalEvents model.
   .node('merge-events', mergeEvents, {
-    'merged': 'process-events',
+    'merged': 'batch-by-kind',
   })
+
+  // Reservoir scatter (DEMO): batch canonical events by kind before enrichment.
+  // Uses a keyed reservoir (keyField: 'kind') so the engine groups events by
+  // their canonical kind and releases a same-kind batch when capacity=50 is
+  // reached or 100 ms of idle elapses. The body (classifyBatch) is a
+  // pass-through that records the batch size for observability and routes
+  // all items to 'classified'. gather: discard — no clone state flows back;
+  // the original canonicalEvents array is untouched for process-events.
+  .scatter<CartographerState, 'classified', CartographerServices>(
+    'batch-by-kind',
+    'canonicalEvents',
+    classifyBatch,
+    {
+      'all-success': 'process-events',
+      'partial':     'process-events',
+      'all-error':   'process-events',
+      'empty':       'process-events',
+    },
+    {
+      'itemKey': 'canonical-event',
+      'gather': { 'strategy': 'discard' },
+      'reservoir': { 'keyField': 'kind', 'capacity': 50, 'idleMs': 100 },
+    },
+  )
 
   // Streaming enrichment: scatter over the merged canonical events at
   // concurrency 16. Each clone's state.enriched is appended into state.records.
@@ -335,8 +360,27 @@ export const cartographerWorkersDAG: DAG = new DAGBuilder('cartographer', '1.0')
   )
 
   .node('merge-events', mergeEvents, {
-    'merged': 'process-events',
+    'merged': 'batch-by-kind',
   })
+
+  // Reservoir scatter (DEMO): same as cartographerDAG — kind-keyed batching
+  // pass before the enrichment scatter. See cartographerDAG for rationale.
+  .scatter<CartographerState, 'classified', CartographerServices>(
+    'batch-by-kind',
+    'canonicalEvents',
+    classifyBatch,
+    {
+      'all-success': 'process-events',
+      'partial':     'process-events',
+      'all-error':   'process-events',
+      'empty':       'process-events',
+    },
+    {
+      'itemKey': 'canonical-event',
+      'gather': { 'strategy': 'discard' },
+      'reservoir': { 'keyField': 'kind', 'capacity': 50, 'idleMs': 100 },
+    },
+  )
 
   // Streaming enrichment — container: 'cpu' routes each event's enrichment
   // body to a WorkerThreadContainer (real worker threads) instead of in-process.
@@ -383,6 +427,7 @@ export const cartographerBundle: DispatcherBundle<CartographerState, Cartographe
   'nodes': [
     seedEvents,
     mergeEvents,
+    classifyBatch,
     parseEvent,
     routeGeo,
     applyGeo,
@@ -407,6 +452,7 @@ export const cartographerWorkersBundle: DispatcherBundle<CartographerState, Cart
   'nodes': [
     seedEvents,
     mergeEvents,
+    classifyBatch,
     parseEvent,
     routeGeo,
     applyGeo,

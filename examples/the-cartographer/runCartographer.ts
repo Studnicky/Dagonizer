@@ -51,6 +51,8 @@ import { ExecutionError } from '@noocodex/dagonizer/errors';
 let eventCount = 200;
 let forceRecorded = false;
 let useWorkers = process.env['CARTO_WORKERS'] === '1';
+let useStreaming = process.env['CARTO_STREAM'] === '1';
+let streamCount = 0;
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--events' && args[i + 1] !== undefined) {
@@ -60,6 +62,12 @@ for (let i = 0; i < args.length; i++) {
     forceRecorded = true;
   } else if (args[i] === '--workers') {
     useWorkers = true;
+  } else if (args[i] === '--stream') {
+    useStreaming = true;
+  } else if (args[i] === '--stream-count' && args[i + 1] !== undefined) {
+    const parsed = parseInt(args[i + 1] ?? '0', 10);
+    if (!isNaN(parsed) && parsed > 0) streamCount = parsed;
+    i++;
   } else if (/^\d+$/.test(args[i] ?? '')) {
     const parsed = parseInt(args[i] ?? '200', 10);
     if (!isNaN(parsed) && parsed > 0) eventCount = parsed;
@@ -189,10 +197,14 @@ if (useWorkers) {
 
 const state = new CartographerState();
 state.eventCount = eventCount;
+state.useStreamingSource = useStreaming;
+state.streamCount = streamCount;
 
 const executionMode = useWorkers
   ? 'WORKER THREADS (container: cpu, pool=4)'
-  : 'IN-PROCESS (no container)';
+  : useStreaming
+    ? `IN-PROCESS + STREAMING SOURCE${streamCount > 0 ? ` (count=${streamCount})` : ''}`
+    : 'IN-PROCESS (no container)';
 
 console.log(`\nCartographer: ${eventCount} journeys → multi-format sources → fan-in → streaming enrichment (concurrency=16)`);
 console.log(`Execution mode: ${executionMode}`);
@@ -239,14 +251,27 @@ for (const ev of state.canonicalEvents) {
   eventsBySource.set(ev.sourceId, (eventsBySource.get(ev.sourceId) ?? 0) + 1);
 }
 const formatBySource = new Map<string, string>();
-for (const s of state.sources) formatBySource.set(s.sourceId, s.format);
 const distinctFormats = new Set<string>();
-for (const s of state.sources) distinctFormats.add(s.format);
-for (const s of state.sources) {
-  const count = eventsBySource.get(s.sourceId) ?? 0;
+// state.sources may be an AsyncIterable<SourcePayload> when --stream is
+// active; after the pipeline completes the iterable is exhausted. Derive the
+// per-source format summary from canonicalEvents (always an array) instead.
+if (Array.isArray(state.sources)) {
+  for (const s of state.sources) {
+    formatBySource.set(s.sourceId, s.format);
+    distinctFormats.add(s.format);
+  }
+}
+// Merge in any sourceId/format pairs visible in canonicalEvents (covers both
+// array and streaming paths since canonicalEvents is always materialised).
+for (const ev of state.canonicalEvents) {
+  if (!formatBySource.has(ev.sourceId)) formatBySource.set(ev.sourceId, ev.sourceFormat);
+  distinctFormats.add(ev.sourceFormat);
+}
+for (const [sourceId, format] of formatBySource) {
+  const count = eventsBySource.get(sourceId) ?? 0;
   console.log(
-    s.sourceId.slice(0, COL_SRC - 1).padEnd(COL_SRC) +
-    s.format.padEnd(COL_FMT) +
+    sourceId.slice(0, COL_SRC - 1).padEnd(COL_SRC) +
+    format.padEnd(COL_FMT) +
     String(count).padStart(8),
   );
 }

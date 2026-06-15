@@ -125,11 +125,33 @@ export class CartographerState extends NodeStateBase {
   ];
 
   /**
+   * When true, `seedEvents` sets `sources` to an `AsyncIterable<SourcePayload>`
+   * from `EventStreamSource.stream(feedConfig, streamCount)` rather than
+   * awaiting a fully materialised array from `Sources.buildFromConfig`. The
+   * engine's scatter reads the async iterable with backpressure. Defaults to
+   * false (materialised array path).
+   */
+  useStreamingSource: boolean = false;
+
+  /**
+   * Override for the total event count when `useStreamingSource` is true.
+   * When 0 (default), `EventStreamSource` derives the count from the feed
+   * config sum or the `CARTO_EVENT_COUNT` env var.
+   */
+  streamCount: number = 0;
+
+  /**
    * The multi-format source feeds, seeded by the seed phase node. Each is a
    * `{ sourceId, format, mappingKey, kind, payload }` — a different on-the-wire
    * encoding (JSON / CSV / gzip NDJSON) of a partition of the raw scan feed.
+   *
+   * When `useStreamingSource` is true this field holds an
+   * `AsyncIterable<SourcePayload>` from `EventStreamSource.stream()` rather
+   * than a materialised array. The engine's scatter accepts either form
+   * transparently. Snapshot/restore serialises the array path only; the async
+   * iterable is re-seeded by the pre-phase node on resume.
    */
-  sources: SourcePayload[] = [];
+  sources: SourcePayload[] | AsyncIterable<SourcePayload> = [];
 
   /**
    * Ingestion fan-in buckets: the `append` gather of the ingestion scatter
@@ -363,6 +385,14 @@ export class CartographerState extends NodeStateBase {
   /** Leg distance (legFrom → this scan) in km, set by enrich-leg node. */
   legKm: number = 0;
 
+  /**
+   * Batch size recorded by the classifyBatch node during the batch-by-kind
+   * reservoir scatter. Set per-clone to the number of items in the batch
+   * released by the reservoir for this clone's kind. Used for observability
+   * of the keyed reservoir batching mechanism.
+   */
+  batchKindCount: number = 0;
+
   /** Cold-chain breach flag (sensor lane only; set by cold-chain-check). */
   coldChainBreach: boolean = false;
 
@@ -454,7 +484,14 @@ export class CartographerState extends NodeStateBase {
     const copy = super.clone(); // new Constructor() + _metadata copy from base
     copy.eventCount = this.eventCount;
     copy.feedConfig  = this.feedConfig.map((e) => ({ ...e })) as FeedConfig;
-    copy.sources    = this.sources.map((s) => ({ ...s }));
+    // AsyncIterable sources are shared by reference — the engine iterates the
+    // parent's source before cloning for scatters, so this is safe. Array
+    // sources are shallow-copied (each payload is a value object).
+    copy.sources    = Array.isArray(this.sources)
+      ? this.sources.map((s) => ({ ...s }))
+      : this.sources;
+    copy.useStreamingSource = this.useStreamingSource;
+    copy.streamCount = this.streamCount;
     copy.ingestBuckets = this.ingestBuckets.map((bucket) => bucket.map((e) => CartographerState.cloneCanonical(e)));
     copy.canonicalEvents = this.canonicalEvents.map((e) => CartographerState.cloneCanonical(e));
     copy.records    = [...this.records];
@@ -501,6 +538,7 @@ export class CartographerState extends NodeStateBase {
     copy.legKm = this.legKm;
     copy.coldChainBreach = this.coldChainBreach;
     copy.customsDwellHours = this.customsDwellHours;
+    copy.batchKindCount = this.batchKindCount;
 
     copy.gpsCandidate = { ...this.gpsCandidate };
     copy.ipCandidate  = { ...this.ipCandidate };
@@ -529,7 +567,14 @@ export class CartographerState extends NodeStateBase {
     return {
       'eventCount': this.eventCount,
       'feedConfig': this.feedConfig.map((e) => ({ 'format': e.format, 'compression': e.compression, 'count': e.count })),
-      'sources':    this.sources.map((s) => CartographerState.sourceToJson(s)),
+      // AsyncIterable sources are not checkpointable. The pre-phase node
+      // re-seeds them on resume using feedConfig + streamCount. Snapshot as
+      // empty array so restoreData leaves sources = [] (re-seeded by pre-phase).
+      'sources':    Array.isArray(this.sources)
+        ? this.sources.map((s) => CartographerState.sourceToJson(s))
+        : [],
+      'useStreamingSource': this.useStreamingSource,
+      'streamCount': this.streamCount,
       'ingestBuckets': this.ingestBuckets.map((bucket) => bucket.map((e) => CartographerState.canonicalToJson(e))),
       'canonicalEvents': this.canonicalEvents.map((e) => CartographerState.canonicalToJson(e)),
       'canonical':  CartographerState.canonicalToJson(this.canonical),
@@ -566,6 +611,7 @@ export class CartographerState extends NodeStateBase {
       'legKm': this.legKm,
       'coldChainBreach': this.coldChainBreach,
       'customsDwellHours': this.customsDwellHours,
+      'batchKindCount': this.batchKindCount,
       'routing': {
         'path':             this.routing.path,
         'geoLookupRun':     this.routing.geoLookupRun,
@@ -601,6 +647,8 @@ export class CartographerState extends NodeStateBase {
 
   protected override restoreData(snap: JsonObject): void {
     if (typeof snap['eventCount'] === 'number') this.eventCount = snap['eventCount'];
+    if (typeof snap['useStreamingSource'] === 'boolean') this.useStreamingSource = snap['useStreamingSource'];
+    if (typeof snap['streamCount'] === 'number') this.streamCount = snap['streamCount'];
     if (Array.isArray(snap['feedConfig'])) {
       const loaded: FeedConfig = (snap['feedConfig'] as unknown[])
         .map((e) => CartographerState.asObject(e as unknown))
@@ -689,6 +737,7 @@ export class CartographerState extends NodeStateBase {
     if (typeof snap['legKm'] === 'number') this.legKm = snap['legKm'];
     if (typeof snap['coldChainBreach'] === 'boolean') this.coldChainBreach = snap['coldChainBreach'];
     if (typeof snap['customsDwellHours'] === 'number') this.customsDwellHours = snap['customsDwellHours'];
+    if (typeof snap['batchKindCount'] === 'number') this.batchKindCount = snap['batchKindCount'];
 
     if (snap['routing'] !== undefined) this.routing = CartographerState.routingFromJson(snap['routing']);
 

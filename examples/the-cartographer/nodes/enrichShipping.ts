@@ -1,10 +1,15 @@
 /**
- * enrichShipping: shipment-level shipping cost for the whole journey.
+ * enrichShipping: batch-native shipping cost node for the order lane.
  *
  * Shipping is a shipment-level fact: distance is origin → destination (the full
  * journey), not the current leg. Every scan of a journey computes the same
  * quote deterministically. Reads state.normalized origin/dest coords + carrier +
- * weight + serviceTier, writes state.shippingQuote.
+ * weight + serviceTier, writes state.shippingQuote per item.
+ *
+ * Implemented as a MonadicNode for batch-native processing: a single
+ * execute call covers the whole batch, amortising carrier rate table
+ * lookups across all items in one pass rather than dispatching N
+ * separate ScalarNode iterations.
  *
  * Always routes 'shipping-quoted'.
  */
@@ -13,30 +18,35 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { ShippingCalculator } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
-  ScalarNode,
-} from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
+import { MonadicNode, RoutedBatchBuilder } from '@noocodex/dagonizer';
+import type { Batch, RoutedBatch } from '@noocodex/dagonizer';
 
 // #region enrich-shipping-node
-export class EnrichShippingNode extends ScalarNode<CartographerState, 'shipping-quoted', CartographerServices> {
+export class EnrichShippingNode extends MonadicNode<CartographerState, 'shipping-quoted', CartographerServices> {
   readonly 'name' = 'enrich-shipping';
   readonly 'outputs' = ['shipping-quoted'] as const;
 
-  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'shipping-quoted'>> {
-    const norm = state.normalized;
-    const distanceKm = ShippingCalculator.distanceKm(
-      norm.originLat,
-      norm.originLng,
-      norm.destLat,
-      norm.destLng,
-    );
-    state.shippingQuote = ShippingCalculator.quote(
-      distanceKm,
-      norm.weightGrams,
-      norm.serviceTier,
-      norm.carrierId,
-    );
-    return NodeOutputBuilder.of('shipping-quoted');
+  override async execute(
+    batch: Batch<CartographerState>,
+    _context: NodeContextInterface<CartographerServices>,
+  ): Promise<RoutedBatch<'shipping-quoted', CartographerState>> {
+    for (const item of batch) {
+      const norm = item.state.normalized;
+      const distanceKm = ShippingCalculator.distanceKm(
+        norm.originLat,
+        norm.originLng,
+        norm.destLat,
+        norm.destLng,
+      );
+      item.state.shippingQuote = ShippingCalculator.quote(
+        distanceKm,
+        norm.weightGrams,
+        norm.serviceTier,
+        norm.carrierId,
+      );
+    }
+    return RoutedBatchBuilder.of('shipping-quoted', batch);
   }
 }
 // #endregion enrich-shipping-node
