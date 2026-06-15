@@ -34,11 +34,8 @@
  * output: 'recalled': always routes forward, even on empty recall.
  */
 
-import { NodeOutputBuilder,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 import type { RecalledContext } from '../ArchivistState.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -62,13 +59,11 @@ const MAX_RECENT_CANDIDATES = 6;
 const MAX_PRIOR_CANDIDATES_CONTEXT = 5;
 const JACCARD_THRESHOLD_CONTEXT = 0.35;
 
-export class RecallContextNode implements NodeInterface<ArchivistState, 'recalled', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class RecallContextNode extends ScalarNode<ArchivistState, 'recalled', ArchivistServices> {
   readonly name = 'recall-context';
   readonly outputs = ['recalled'] as const;
 
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const memory = context.services.memory;
     const currentGraphIri = MemoryStore.stateGraphIri(state.runId).value;
     const currentTokens   = TextSimilarity.tokenise(state.query);

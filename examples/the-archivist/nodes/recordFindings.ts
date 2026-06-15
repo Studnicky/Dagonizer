@@ -23,11 +23,8 @@
  *   SPARQL ASK gate can rely on the store as ground truth.
  */
 
-import { NodeOutputBuilder,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 import { GRAPH_MEMORY, MemoryStore } from '../memory/MemoryStore.ts';
 import { PROV, ProvIris } from '../provenance/PROV.ts';
@@ -52,13 +49,11 @@ const dagQueryEmbedding    = MemoryStore.dagIri('queryEmbedding');
 // asserted as type prov:SoftwareAgent.
 const ARCHIVIST_AGENT      = ProvIris.agent('archivist-software');
 
-export class RecordFindingsNode implements NodeInterface<ArchivistState, 'recorded', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class RecordFindingsNode extends ScalarNode<ArchivistState, 'recorded', ArchivistServices> {
   readonly name = 'record-findings';
   readonly outputs = ['recorded'] as const;
 
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const memory = context.services.memory;
     const embedder = context.services.embedder;
     const shortlistIsbns = new Set(state.shortlist.map((c) => c.book.identity.isbn));

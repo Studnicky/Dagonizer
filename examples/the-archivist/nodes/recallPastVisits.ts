@@ -10,11 +10,8 @@
  * so we never echo back the question the visitor just asked.
  */
 
-import { NodeOutputBuilder,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 import { MemoryStore, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -27,13 +24,11 @@ const dagInShortlist  = MemoryStore.dagIri('inShortlist');
 const MAX_PRIOR_QUERIES = 4;
 const MAX_PRIOR_TITLES  = 6;
 
-export class RecallPastVisitsNode implements NodeInterface<ArchivistState, 'recalled', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class RecallPastVisitsNode extends ScalarNode<ArchivistState, 'recalled', ArchivistServices> {
   readonly name = 'recall-past-visits';
   readonly outputs = ['recalled'] as const;
 
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const memory = context.services.memory;
     const currentGraph = MemoryStore.stateGraphIri(state.runId).value;
 

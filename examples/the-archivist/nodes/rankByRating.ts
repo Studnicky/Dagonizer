@@ -17,23 +17,18 @@
  * so the merge node can soft-gate downstream.
  */
 
-import { NodeOutputBuilder,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 import type { Candidate } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
-export class RankByRatingNode implements NodeInterface<ArchivistState, 'ranked', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class RankByRatingNode extends ScalarNode<ArchivistState, 'ranked', ArchivistServices> {
   readonly name = 'rank-by-rating';
   readonly outputs = ['ranked'] as const;
 
-  execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     if (state.candidates.length === 0) {
       context.services.logger.info('rank-by-rating: no candidates');
       return Promise.resolve(NodeOutputBuilder.of('ranked'));

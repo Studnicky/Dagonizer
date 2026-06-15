@@ -23,11 +23,8 @@
  * named output union narrower than the default `'success'`.
  */
 
-import { NodeOutputBuilder,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeOutputInterface } from '@noocodex/dagonizer';
 
 import type { Candidate } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -37,13 +34,16 @@ import { CanonicalId } from '@noocodex/dagonizer-book-entities';
 
 const SHORTLIST_LIMIT = 5;
 
-export class MergeCandidatesNode implements NodeInterface<ArchivistState, 'ranked' | 'empty', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class MergeCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'empty', ArchivistServices> {
   readonly name = 'merge-candidates';
   readonly outputs = ['ranked', 'empty'] as const;
 
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  /** Public per-item entry point for tests and dispatch delegation. */
+  public async runItem(state: ArchivistState, context: NodeContextInterface<ArchivistServices>): Promise<NodeOutputInterface<'ranked' | 'empty'>> {
+    return this.executeOne(state, context);
+  }
+
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const targetIso2 = UserLanguage.toIso6392(state.userLanguage);
 
     // ── Both pools empty → soft gate ──────────────────────────────────────

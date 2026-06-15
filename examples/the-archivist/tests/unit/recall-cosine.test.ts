@@ -57,7 +57,7 @@ class RecallCosineFixture {
           warn(msg: string) { logs.push(`WARN: ${msg}`); },
         },
       },
-    } as unknown as Parameters<typeof recallCandidates.execute>[1];
+    } as unknown as Parameters<typeof recallCandidates.runItem>[1];
   }
 
   static seedPriorRun(
@@ -101,7 +101,7 @@ void test('recallCandidates cosine: similar query (cos >= 0.70) loads prior book
   state.query = 'philosophy of being';
   state.terms = ['philosophy', 'being'];
 
-  await recallCandidates.execute(state, RecallCosineFixture.makeContext(memory, embedder));
+  await recallCandidates.runItem(state, RecallCosineFixture.makeContext(memory, embedder));
 
   assert.equal(state.priorCandidates.length, 1, 'should load 1 prior book via cosine');
   const cs = state.priorCandidates[0]?.notes?.['cosineSimilarity'];
@@ -122,7 +122,7 @@ void test('recallCandidates cosine: orthogonal query (cos < 0.70) yields no prio
   state.query = 'science fiction';
   state.terms = ['science', 'fiction'];
 
-  await recallCandidates.execute(state, RecallCosineFixture.makeContext(memory, embedder));
+  await recallCandidates.runItem(state, RecallCosineFixture.makeContext(memory, embedder));
 
   assert.equal(state.priorCandidates.length, 0, 'orthogonal query must not match');
 });
@@ -140,7 +140,7 @@ void test('recallCandidates cosine: embedder throws → falls back to Jaccard pa
   state.query = 'existentialism philosophy fiction';
   state.terms = ['existentialism', 'philosophy', 'fiction'];
 
-  await recallCandidates.execute(state, RecallCosineFixture.makeContext(memory, embedder));
+  await recallCandidates.runItem(state, RecallCosineFixture.makeContext(memory, embedder));
 
   // Jaccard should populate from the prior run.
   assert.equal(state.priorCandidates.length, 1, 'Jaccard fallback should populate');
@@ -158,7 +158,7 @@ void test('recallCandidates cosine: embedder=null uses Jaccard path with logged 
   state.query = 'space adventure';
   state.terms = ['space', 'adventure'];
 
-  await recallCandidates.execute(state, RecallCosineFixture.makeContext(memory, null));
+  await recallCandidates.runItem(state, RecallCosineFixture.makeContext(memory, null));
 
   assert.equal(state.priorCandidates.length, 1);
   assert.ok(

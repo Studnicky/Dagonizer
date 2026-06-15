@@ -32,7 +32,7 @@ class RecallCandidatesFixture {
           warn(msg: string) { logs.push(`WARN: ${msg}`); },
         },
       },
-    } as unknown as Parameters<typeof recallCandidates.execute>[1];
+    } as unknown as Parameters<typeof recallCandidates.runItem>[1];
   }
 
   static seedPriorRun(memory: MemoryStore, runId: string, visitorQuery: string, books: Array<{ isbn: string; title: string }>) {
@@ -71,7 +71,7 @@ void test('recallCandidates: high-overlap query loads prior shortlisted books', 
   state.query  = 'existentialism fiction philosophy';
   state.terms  = ['existentialism', 'fiction', 'philosophy'];
 
-  await recallCandidates.execute(state, RecallCandidatesFixture.makeContext(memory));
+  await recallCandidates.runItem(state, RecallCandidatesFixture.makeContext(memory));
 
   assert.equal(state.priorCandidates.length, 3, 'should load 3 prior books');
   assert.equal(
@@ -100,7 +100,7 @@ void test('recallCandidates: unrelated query yields no prior candidates', async 
   state.query  = 'romance historical fiction';
   state.terms  = ['romance', 'historical', 'fiction'];
 
-  await recallCandidates.execute(state, RecallCandidatesFixture.makeContext(memory));
+  await recallCandidates.runItem(state, RecallCandidatesFixture.makeContext(memory));
 
   // Jaccard("romance historical fiction" vs "existentialism science fiction philosophy"):
   // intersection = {"fiction"} = 1; union = 5; Jaccard = 0.2 < 0.35 → no match.
@@ -121,7 +121,7 @@ void test('recallCandidates: skips the current run', async () => {
   state.query  = 'existentialism science fiction';
   state.terms  = ['existentialism', 'science', 'fiction'];
 
-  await recallCandidates.execute(state, RecallCandidatesFixture.makeContext(memory));
+  await recallCandidates.runItem(state, RecallCandidatesFixture.makeContext(memory));
 
   assert.equal(state.priorCandidates.length, 0, 'current run must not self-match');
 });
@@ -144,7 +144,7 @@ void test('recallCandidates: deduplicates books seen in multiple runs', async ()
   state.query  = 'artificial intelligence robots';
   state.terms  = ['artificial', 'intelligence', 'robots'];
 
-  await recallCandidates.execute(state, RecallCandidatesFixture.makeContext(memory));
+  await recallCandidates.runItem(state, RecallCandidatesFixture.makeContext(memory));
 
   const isbns = state.priorCandidates.map((c) => c.book.identity.isbn);
   const uniqueIsbns = new Set(isbns);
@@ -168,7 +168,7 @@ void test('recallCandidates: salvage path, never throws on corrupted memory entr
   state.terms  = ['existentialism', 'fiction', 'philosophy'];
 
   // Should not throw.
-  await assert.doesNotReject(() => recallCandidates.execute(state, RecallCandidatesFixture.makeContext(memory)));
+  await assert.doesNotReject(() => recallCandidates.runItem(state, RecallCandidatesFixture.makeContext(memory)));
   // Book still materialises with fallback title (isbn).
   assert.equal(state.priorCandidates.length, 1);
   assert.equal(state.priorCandidates[0]?.book.identity.isbn, '0000000099');

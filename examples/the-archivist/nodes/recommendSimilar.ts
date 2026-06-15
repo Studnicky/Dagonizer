@@ -17,11 +17,8 @@
  *                description of a previous read instead.
  */
 
-import { NodeOutputBuilder,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 import type { Binding } from '../memory/MemoryStore.ts';
 import { MemoryStore, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';
@@ -36,13 +33,11 @@ const dagRunTimestamp = MemoryStore.dagIri('runTimestamp');
 
 const MAX_TERMS = 6;
 
-export class RecommendSimilarNode implements NodeInterface<ArchivistState, 'seeded' | 'empty', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class RecommendSimilarNode extends ScalarNode<ArchivistState, 'seeded' | 'empty', ArchivistServices> {
   readonly name = 'recommend-similar';
   readonly outputs = ['seeded', 'empty'] as const;
 
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const memory = context.services.memory;
     const currentGraph = MemoryStore.stateGraphIri(state.runId).value;
 

@@ -31,11 +31,8 @@
  * the same query text so all scouts run.
  */
 
-import { NodeOutputBuilder,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
@@ -218,13 +215,11 @@ const NODE_TIMEOUT_MS = 30_000;
 /** Total attempts (initial + retries) before routing to salvage. */
 const RETRY_BUDGET = 2;
 
-export class DecideToolsNode implements NodeInterface<ArchivistState, 'tools' | 'no-tools' | 'retry' | 'salvage', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class DecideToolsNode extends ScalarNode<ArchivistState, 'tools' | 'no-tools' | 'retry' | 'salvage', ArchivistServices> {
   readonly name = 'decide-tools';
   readonly outputs = ['tools', 'no-tools', 'retry', 'salvage'] as const;
 
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     // ── Deterministic shortcut prelude ────────────────────────────────────
     // Pattern-match common query shapes (author lookup, single quoted title,
     // "books about X", catalog browsing). When a pattern fires, populate

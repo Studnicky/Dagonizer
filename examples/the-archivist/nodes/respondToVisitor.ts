@@ -15,11 +15,8 @@
  */
 
 
-import { NodeOutputBuilder,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
@@ -28,25 +25,21 @@ import type { ArchivistServices } from '../services.ts';
 const EMPTY_TIMEOUT_MS = 60_000;
 const EMPTY_RETRY_BUDGET = 2;
 
-export class RespondToVisitorNode implements NodeInterface<ArchivistState, 'success', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class RespondToVisitorNode extends ScalarNode<ArchivistState, 'success', ArchivistServices> {
   readonly name = 'respond-to-visitor';
   readonly outputs = ['success'] as const;
 
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     context.services.logger.info(`responded with ${String(state.shortlist.length)} candidates`);
     return NodeOutputBuilder.of('success');
   }
 }
 
-export class DeclineOffTopicNode implements NodeInterface<ArchivistState, 'success', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class DeclineOffTopicNode extends ScalarNode<ArchivistState, 'success', ArchivistServices> {
   readonly name = 'decline-off-topic';
   readonly outputs = ['success'] as const;
 
-  async execute(state: ArchivistState, _context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, _context: NodeContextInterface<ArchivistServices>) {
     state.draft = "I only help with finding and identifying books. What title or topic interests you?";
     return NodeOutputBuilder.of('success');
   }
@@ -66,13 +59,11 @@ export class DeclineOffTopicNode implements NodeInterface<ArchivistState, 'succe
  * salvage edge; not in this node's catch. No in-node `RetryPolicy`, no engine
  * `timeoutMs` crutch.
  */
-export class ComposeEmptyResponseNode implements NodeInterface<ArchivistState, 'drafted' | 'retry' | 'salvage', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ComposeEmptyResponseNode extends ScalarNode<ArchivistState, 'drafted' | 'retry' | 'salvage', ArchivistServices> {
   readonly name = 'compose-empty';
   readonly outputs = ['drafted', 'retry', 'salvage'] as const;
 
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     state.collectWarning({
       "code":      'EMPTY_SHORTLIST',
       "message":   'no candidates after merge; composing empty response',

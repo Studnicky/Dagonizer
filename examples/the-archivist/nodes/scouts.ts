@@ -46,16 +46,17 @@ import {
   GatherStrategy,
   NodeErrorBuilder,
   NodeOutputBuilder,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 import type {
   GatherConfig,
-  GatherExecution,
+  GatherRecord,
   NodeContextInterface,
-  NodeInterface,
+  NodeOutputInterface,
   NodeStateInterface,
 } from '@noocodex/dagonizer';
+import type { Batch } from '@noocodex/dagonizer';
+import type { StateAccessor } from '@noocodex/dagonizer/contracts';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { Candidate } from '../entities/Book.ts';
@@ -164,13 +165,18 @@ const SCOUT_TIMEOUT_MS = 60_000;
 // Gates on `state.toolPlan` for a `web_search_books` call. Writes to
 // `state.candidates`. Non-deterministic (live network).
 
-export class OpenLibraryScoutNode implements NodeInterface<ArchivistState, 'success' | 'empty', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class OpenLibraryScoutNode extends ScalarNode<ArchivistState, 'success' | 'empty', ArchivistServices> {
   readonly name = 'open-library-scout';
   readonly outputs = ['success', 'empty'] as const;
 
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  async runItem(
+    state: ArchivistState,
+    context: NodeContextInterface<ArchivistServices>,
+  ): Promise<NodeOutputInterface<'success' | 'empty'>> {
+    return this.executeOne(state, context);
+  }
+
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const planned = state.toolPlan.find((call) => call.name === 'web_search_books');
     if (planned === undefined) return NodeOutputBuilder.of('empty');
     const args = planned.arguments as {
@@ -248,13 +254,18 @@ export class OpenLibraryScoutNode implements NodeInterface<ArchivistState, 'succ
 // Gates on `state.toolPlan` for a `google_books_search` call. Writes to
 // `state.candidates`. Non-deterministic (live network).
 
-export class GoogleBooksScoutNode implements NodeInterface<ArchivistState, 'success' | 'empty', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class GoogleBooksScoutNode extends ScalarNode<ArchivistState, 'success' | 'empty', ArchivistServices> {
   readonly name = 'google-books-scout';
   readonly outputs = ['success', 'empty'] as const;
 
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  async runItem(
+    state: ArchivistState,
+    context: NodeContextInterface<ArchivistServices>,
+  ): Promise<NodeOutputInterface<'success' | 'empty'>> {
+    return this.executeOne(state, context);
+  }
+
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const planned = state.toolPlan.find((call) => call.name === 'google_books_search');
     if (planned === undefined) return NodeOutputBuilder.of('empty');
     const args = planned.arguments as { query?: string; maxResults?: number };
@@ -302,13 +313,18 @@ export class GoogleBooksScoutNode implements NodeInterface<ArchivistState, 'succ
 // Gates on `state.toolPlan` for a `subject_search` call. Writes to
 // `state.candidates`. Non-deterministic (live network + LLM-supplied args).
 
-export class SubjectScoutNode implements NodeInterface<ArchivistState, 'success' | 'empty', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class SubjectScoutNode extends ScalarNode<ArchivistState, 'success' | 'empty', ArchivistServices> {
   readonly name = 'subject-scout';
   readonly outputs = ['success', 'empty'] as const;
 
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  async runItem(
+    state: ArchivistState,
+    context: NodeContextInterface<ArchivistServices>,
+  ): Promise<NodeOutputInterface<'success' | 'empty'>> {
+    return this.executeOne(state, context);
+  }
+
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const planned = state.toolPlan.find((call) => call.name === 'subject_search');
     if (planned === undefined) return NodeOutputBuilder.of('empty');
     const args = planned.arguments as { subject?: string; limit?: number };
@@ -359,13 +375,18 @@ export class SubjectScoutNode implements NodeInterface<ArchivistState, 'success'
 // Enrichment-only. Runs even without a toolPlan entry; uses `state.terms`
 // as the query. Skips only when terms is empty. Non-deterministic (live network).
 
-export class WikipediaScoutNode implements NodeInterface<ArchivistState, 'success' | 'empty', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class WikipediaScoutNode extends ScalarNode<ArchivistState, 'success' | 'empty', ArchivistServices> {
   readonly name = 'wikipedia-scout';
   readonly outputs = ['success', 'empty'] as const;
 
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  async runItem(
+    state: ArchivistState,
+    context: NodeContextInterface<ArchivistServices>,
+  ): Promise<NodeOutputInterface<'success' | 'empty'>> {
+    return this.executeOne(state, context);
+  }
+
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     // Wikipedia shaping: the REST summary endpoint resolves exact article
     // titles best. Prefer the first capitalised term (proper noun heuristic
     // e.g. "Neuromancer", "Philip K. Dick". Fall back to joining all terms.
@@ -423,19 +444,20 @@ const googleBooksScoutNode = new GoogleBooksScoutNode();
 const subjectScoutNode = new SubjectScoutNode();
 const wikipediaScoutNode = new WikipediaScoutNode();
 
-export class ScoutDispatchNode implements NodeInterface<ArchivistState, 'success' | 'empty', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ScoutDispatchNode extends ScalarNode<ArchivistState, 'success' | 'empty', ArchivistServices> {
   readonly name = 'scout-dispatch';
   readonly outputs = ['success', 'empty'] as const;
 
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(
+    state: ArchivistState,
+    context: NodeContextInterface<ArchivistServices>,
+  ): Promise<NodeOutputInterface<'success' | 'empty'>> {
     const provider = state.getMetadata<ScoutProvider>('currentItem');
     switch (provider) {
-      case 'openlibrary': return openLibraryScoutNode.execute(state, context);
-      case 'googlebooks': return googleBooksScoutNode.execute(state, context);
-      case 'subject':     return subjectScoutNode.execute(state, context);
-      case 'wikipedia':   return wikipediaScoutNode.execute(state, context);
+      case 'openlibrary': return openLibraryScoutNode.runItem(state, context);
+      case 'googlebooks': return googleBooksScoutNode.runItem(state, context);
+      case 'subject':     return subjectScoutNode.runItem(state, context);
+      case 'wikipedia':   return wikipediaScoutNode.runItem(state, context);
       default:
         context.services.logger.warn(`scout-dispatch: unknown provider '${String(provider)}'`);
         return NodeOutputBuilder.of('empty');
@@ -456,17 +478,19 @@ export class ScoutDispatchNode implements NodeInterface<ArchivistState, 'success
 class ScoutGatherStrategy extends GatherStrategy {
   readonly name = 'scout-merge';
 
-  async apply(
+  override reduce(
     _config: GatherConfig,
-    execution: GatherExecution<NodeStateInterface>,
-  ): Promise<void> {
+    batch: Batch<GatherRecord<NodeStateInterface>>,
+    state: NodeStateInterface,
+    _accessor: StateAccessor,
+  ): void {
     // This strategy is registered for use with ArchivistState exclusively;
     // the cast is safe because only ArchivistState DAGs register 'scout-merge'.
-    const parentState = execution.state as ArchivistState;
-    const merged: Candidate[] = [...parentState.candidates];
-    let failureText = parentState.failureCause;
+    const parentState = state as ArchivistState;
 
-    for (const record of execution.records) {
+    const merged: Candidate[] = [...parentState.candidates];
+    for (const item of batch) {
+      const record = item.state;
       const cloneState = record.cloneState as ArchivistState;
       // Flat-merge the clone's candidates into parent (order is source-index order
       // because GatherExecution.records is guaranteed source-index ordered).
@@ -475,12 +499,10 @@ class ScoutGatherStrategy extends GatherStrategy {
       }
       // Concatenate failure text (empty when the scout succeeded).
       if (cloneState.failureCause.length > 0) {
-        failureText += cloneState.failureCause;
+        parentState.failureCause += cloneState.failureCause;
       }
     }
-
     parentState.candidates = merged;
-    parentState.failureCause = failureText;
   }
 }
 

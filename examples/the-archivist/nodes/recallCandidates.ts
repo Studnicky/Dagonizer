@@ -29,11 +29,8 @@
  * kind:   'deterministic': pure SPARQL pattern-match over a stable store.
  */
 
-import { NodeOutputBuilder,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeOutputInterface } from '@noocodex/dagonizer';
 
 import type { Candidate } from '../entities/Book.ts';
 import { BookBuilder } from '../entities/Book.ts';
@@ -75,13 +72,16 @@ class EmbeddingParser {
   }
 }
 
-export class RecallCandidatesNode implements NodeInterface<ArchivistState, 'recalled', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class RecallCandidatesNode extends ScalarNode<ArchivistState, 'recalled', ArchivistServices> {
   readonly name = 'recall-candidates';
   readonly outputs = ['recalled'] as const;
 
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  /** Public per-item entry point for tests and dispatch delegation. */
+  public async runItem(state: ArchivistState, context: NodeContextInterface<ArchivistServices>): Promise<NodeOutputInterface<'recalled'>> {
+    return this.executeOne(state, context);
+  }
+
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const memory   = context.services.memory;
     const embedder = context.services.embedder;
 
