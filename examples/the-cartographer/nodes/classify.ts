@@ -20,22 +20,16 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { EventClassifier } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region classify-node
-export class ClassifyNode implements NodeInterface<CartographerState, 'classified', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ClassifyNode extends ScalarNode<CartographerState, 'classified', CartographerServices> {
   readonly 'name' = 'classify';
   readonly 'outputs' = ['classified'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'classified'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'classified'>> {
     const norm = state.normalized;
 
     // Derive the canonical classification from the raw status + normalized scalars.

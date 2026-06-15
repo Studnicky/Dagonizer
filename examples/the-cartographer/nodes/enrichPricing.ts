@@ -13,22 +13,16 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { PricingCatalog } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region enrich-pricing-node
-export class EnrichPricingNode implements NodeInterface<CartographerState, 'priced', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class EnrichPricingNode extends ScalarNode<CartographerState, 'priced', CartographerServices> {
   readonly 'name' = 'enrich-pricing';
   readonly 'outputs' = ['priced'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'priced'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'priced'>> {
     state.pricedOrder = PricingCatalog.order(state.normalized.lineItems);
     return NodeOutputBuilder.of('priced');
   }

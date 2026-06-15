@@ -23,15 +23,12 @@ import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 import type { CanonicalEvent } from '../../entities/CanonicalEvent.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region validate-event-node
-export class ValidateEventNode implements NodeInterface<CartographerState, 'validated', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ValidateEventNode extends ScalarNode<CartographerState, 'validated', CartographerServices> {
   readonly 'name' = 'validate-event';
   readonly 'outputs' = ['validated'] as const;
 
@@ -82,10 +79,7 @@ export class ValidateEventNode implements NodeInterface<CartographerState, 'vali
     return sourceKind;
   }
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'validated'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'validated'>> {
     const source = state.currentSource;
     const events: CanonicalEvent[] = [];
 

@@ -16,22 +16,16 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region decompress-node
-export class DecompressNode implements NodeInterface<CartographerState, 'route-format' | 'invalid', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class DecompressNode extends ScalarNode<CartographerState, 'route-format' | 'invalid', CartographerServices> {
   readonly 'name' = 'decompress';
   readonly 'outputs' = ['route-format', 'invalid'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'route-format' | 'invalid'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'route-format' | 'invalid'>> {
     try {
       const binary = atob(state.currentSource.payload);
       const bytes = new Uint8Array(binary.length);

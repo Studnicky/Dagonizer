@@ -13,22 +13,16 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { GeoLookup } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region apply-geo-node
-export class ApplyGeoNode implements NodeInterface<CartographerState, 'normalize', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ApplyGeoNode extends ScalarNode<CartographerState, 'normalize', CartographerServices> {
   readonly 'name' = 'apply-geo';
   readonly 'outputs' = ['normalize'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'normalize'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'normalize'>> {
     const geo = state.canonical.geo;
     // route-geo guarantees geo is present on this branch; fall back defensively.
     const country   = geo?.country ?? state.raw.recipientCountry;

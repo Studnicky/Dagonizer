@@ -20,22 +20,16 @@ import type {
   RegionInsights,
 } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region summarize-insights-node
-export class SummarizeInsightsNode implements NodeInterface<CartographerState, 'success', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class SummarizeInsightsNode extends ScalarNode<CartographerState, 'success', CartographerServices> {
   readonly 'name' = 'summarize';
   readonly 'outputs' = ['success'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'success'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'success'>> {
     state.insights = new Map<string, RegionInsights>();
     state.journeys = new Map<string, JourneyInsights>();
 

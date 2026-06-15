@@ -14,22 +14,16 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { EtaEstimator } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region enrich-eta-node
-export class EnrichEtaNode implements NodeInterface<CartographerState, 'eta-estimated', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class EnrichEtaNode extends ScalarNode<CartographerState, 'eta-estimated', CartographerServices> {
   readonly 'name' = 'enrich-eta';
   readonly 'outputs' = ['eta-estimated'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'eta-estimated'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'eta-estimated'>> {
     const norm = state.normalized;
     state.deliveryEstimate = EtaEstimator.estimate(
       state.shippingQuote.distanceKm,

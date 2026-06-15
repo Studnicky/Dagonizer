@@ -12,22 +12,16 @@ import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 import { FieldMappings } from '../../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region normalize-ndjson-node
-export class NormalizeNdjsonNode implements NodeInterface<CartographerState, 'normalized', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class NormalizeNdjsonNode extends ScalarNode<CartographerState, 'normalized', CartographerServices> {
   readonly 'name' = 'normalize-ndjson-map';
   readonly 'outputs' = ['normalized'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'normalized'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'normalized'>> {
     const map = FieldMappings.forKey(state.currentSource.mappingKey);
     const mapped: Array<Record<string, unknown>> = state.parsedRecords.map((rec) => {
       const out: Record<string, unknown> = {};

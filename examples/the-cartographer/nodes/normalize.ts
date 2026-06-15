@@ -27,22 +27,16 @@ import {
   Units,
 } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region normalize-node
-export class NormalizeNode implements NodeInterface<CartographerState, 'normalized' | 'rejected', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class NormalizeNode extends ScalarNode<CartographerState, 'normalized' | 'rejected', CartographerServices> {
   readonly 'name' = 'normalize';
   readonly 'outputs' = ['normalized', 'rejected'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'normalized' | 'rejected'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'normalized' | 'rejected'>> {
     const raw = state.raw;
 
     const epochMs = TimeNormalizer.toEpochMs(raw.rawTimestamp);

@@ -15,22 +15,16 @@
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region route-geo-node
-export class RouteGeoNode implements NodeInterface<CartographerState, 'has-geo' | 'needs-geo', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class RouteGeoNode extends ScalarNode<CartographerState, 'has-geo' | 'needs-geo', CartographerServices> {
   readonly 'name' = 'route-geo';
   readonly 'outputs' = ['has-geo', 'needs-geo'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'has-geo' | 'needs-geo'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'has-geo' | 'needs-geo'>> {
     const geo = state.canonical.geo;
     // A source's pre-resolved geo only lets us skip the lookup when it actually
     // resolved a location — an 'UNK'/'Unmapped' placeholder (e.g. a ping whose

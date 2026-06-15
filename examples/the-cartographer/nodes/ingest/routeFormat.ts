@@ -19,9 +19,8 @@ import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 import type { SourcePayload } from '../../entities/SourcePayload.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region route-format-node
@@ -32,16 +31,11 @@ const FORMAT_ROUTE: Readonly<Record<SourcePayload['format'], 'csv' | 'json' | 'n
   'yaml':  'yaml',
 };
 
-export class RouteFormatNode implements NodeInterface<CartographerState, 'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class RouteFormatNode extends ScalarNode<CartographerState, 'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid', CartographerServices> {
   readonly 'name' = 'route-format';
   readonly 'outputs' = ['csv', 'json', 'ndjson', 'yaml', 'invalid'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'csv' | 'json' | 'ndjson' | 'yaml' | 'invalid'>> {
     const route = FORMAT_ROUTE[state.currentSource.format];
     if (route === undefined) {
       return NodeOutputBuilder.of('invalid');

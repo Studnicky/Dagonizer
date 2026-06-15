@@ -21,9 +21,8 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import type { CanonicalEvent } from '../entities/CanonicalEvent.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region route-kind-node
@@ -37,16 +36,11 @@ const KIND_ROUTE: Readonly<Record<CanonicalEvent['kind'], KindRoute>> = {
   'customs-event':         'customs',
 };
 
-export class RouteKindNode implements NodeInterface<CartographerState, KindRoute, CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class RouteKindNode extends ScalarNode<CartographerState, KindRoute, CartographerServices> {
   readonly 'name' = 'route-kind';
   readonly 'outputs' = ['geo-only', 'sensor', 'order', 'customs'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<KindRoute>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<KindRoute>> {
     const route = KIND_ROUTE[state.canonical.kind];
     // The 'order' lane runs pricing + eta; every other lane skips them.
     const runsOrder = route === 'order';

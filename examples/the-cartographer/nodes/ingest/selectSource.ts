@@ -16,22 +16,16 @@ import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 import type { SourcePayload } from '../../entities/SourcePayload.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region select-source-node
-export class SelectSourceNode implements NodeInterface<CartographerState, 'compressed' | 'plain' | 'invalid', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class SelectSourceNode extends ScalarNode<CartographerState, 'compressed' | 'plain' | 'invalid', CartographerServices> {
   readonly 'name' = 'select-source';
   readonly 'outputs' = ['compressed', 'plain', 'invalid'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'compressed' | 'plain' | 'invalid'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'compressed' | 'plain' | 'invalid'>> {
     const item = state.getMetadata<SourcePayload>('source');
     if (item === null || item === undefined || !item.sourceId || !item.payload) {
       return NodeOutputBuilder.of('invalid');

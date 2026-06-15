@@ -13,22 +13,16 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { ShippingCalculator } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region enrich-shipping-node
-export class EnrichShippingNode implements NodeInterface<CartographerState, 'shipping-quoted', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class EnrichShippingNode extends ScalarNode<CartographerState, 'shipping-quoted', CartographerServices> {
   readonly 'name' = 'enrich-shipping';
   readonly 'outputs' = ['shipping-quoted'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'shipping-quoted'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'shipping-quoted'>> {
     const norm = state.normalized;
     const distanceKm = ShippingCalculator.distanceKm(
       norm.originLat,

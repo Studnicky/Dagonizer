@@ -8,22 +8,16 @@
 
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region validate-coords-node
-export class ValidateCoordsNode implements NodeInterface<CartographerState, 'valid' | 'rejected', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ValidateCoordsNode extends ScalarNode<CartographerState, 'valid' | 'rejected', CartographerServices> {
   readonly 'name' = 'validate-coords';
   readonly 'outputs' = ['valid', 'rejected'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'valid' | 'rejected'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'valid' | 'rejected'>> {
     const { latitude, longitude } = state.raw;
     const isValid = latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180;
     return NodeOutputBuilder.of(isValid ? 'valid' : 'rejected');

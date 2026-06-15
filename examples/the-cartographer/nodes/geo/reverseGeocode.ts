@@ -15,22 +15,16 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region reverse-geocode-node
-export class ReverseGeocodeNode implements NodeInterface<CartographerState, 'geocoded', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ReverseGeocodeNode extends ScalarNode<CartographerState, 'geocoded', CartographerServices> {
   readonly 'name' = 'reverse-geocode';
   readonly 'outputs' = ['geocoded'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'geocoded'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'geocoded'>> {
     state.gpsCandidate = await context.services.reverseGeocoder.lookup(
       state.raw.latitude,
       state.raw.longitude,

@@ -16,22 +16,16 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region ip-geolocate-node
-export class IpGeolocateNode implements NodeInterface<CartographerState, 'geolocated', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class IpGeolocateNode extends ScalarNode<CartographerState, 'geolocated', CartographerServices> {
   readonly 'name' = 'ip-geolocate';
   readonly 'outputs' = ['geolocated'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'geolocated'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'geolocated'>> {
     state.ipCandidate = await context.services.ipGeolocator.lookup(
       state.canonical.body.ipAddress,
       context.signal,

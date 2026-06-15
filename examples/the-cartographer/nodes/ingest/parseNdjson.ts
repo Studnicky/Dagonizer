@@ -13,22 +13,16 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region parse-ndjson-node
-export class ParseNdjsonNode implements NodeInterface<CartographerState, 'normalized' | 'invalid', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ParseNdjsonNode extends ScalarNode<CartographerState, 'normalized' | 'invalid', CartographerServices> {
   readonly 'name' = 'parse-ndjson';
   readonly 'outputs' = ['normalized', 'invalid'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'normalized' | 'invalid'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'normalized' | 'invalid'>> {
     // Use decompressed text when available (gzip path), else the raw payload.
     const text = state.decodedText.length > 0 ? state.decodedText : state.currentSource.payload;
     const lines = text.split('\n').filter((l) => l.trim().length > 0);
