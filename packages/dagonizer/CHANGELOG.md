@@ -1,5 +1,15 @@
 # @noocodex/dagonizer
 
+## [Unreleased]
+
+### Added
+
+- `DagHost` accepts a statically-injected registry via `DagHostOptions.registry`, and `WebWorkerEntry.start(scope, registry?)` forwards it. When set, the host uses that registry directly instead of importing the `init` message's `registryModule` by URL — the required path for bundlers that forbid runtime dynamic import (a Vite browser/worker build): the worker entry imports its registry at module top, so the whole dependency graph is statically analysable and bundled into the worker chunk. When omitted, `DagHost` falls back to importing `registryModule` by URL (the Node `WorkerThreadContainer` path).
+
+### Changed
+
+- Scatter checkpoint for compactable gathers (all built-in strategies except `custom`) now stores a watermark, bounded ahead-acked window, and outcome tally instead of an unbounded per-item acked array. Memory is O(1) with respect to item count for compactable gathers. Non-compactable gathers (`custom` strategy, where `retainsRecordsForFinalize` is `true`) retain full records unchanged.
+
 ## 0.20.0
 
 ### Minor Changes

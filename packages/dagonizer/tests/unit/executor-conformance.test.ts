@@ -349,7 +349,9 @@ describe('DagConformance Law 8 — returns-transport-error mid-scatter (no throw
     const progress = state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
     const fan = (progress ?? {})['fan'];
     assert.ok(fan !== undefined, 'checkpoint must survive — ScatterCheckpoint.clear must NOT run on infra failure');
-    const ackedCount = fan?.ackedResults.length ?? 0;
+    const ackedCount = fan.mode === 'bounded'
+      ? fan.watermark + fan.aheadAcked.length
+      : fan.ackedResults.length;
     assert.strictEqual(ackedCount, 1, `exactly one item must have acked before the transport error, got ${ackedCount}`);
     assert.ok(ackedCount < 3, 'the transport-failed item must NOT be acked (no silent loss)');
 

@@ -38,11 +38,13 @@ import { WorkerObserver } from './WorkerObserver.js';
 // ---------------------------------------------------------------------------
 
 /**
- * DagHost construction options. Currently carries no fields; the type exists
- * as the extension point for future host configuration (e.g. custom error
- * reporters) and to keep the constructor's options-object shape canonical.
+ * DagHost construction options. `registry` statically injects the isolate
+ * registry: when set, init uses it directly instead of importing
+ * `registryModule` by URL. Omit it for the URL-import path.
  */
-export type DagHostOptions = Record<string, never>;
+export interface DagHostOptions {
+  registry?: RegistryModuleInterface;
+}
 
 // ---------------------------------------------------------------------------
 // DagHost
@@ -52,12 +54,15 @@ export class DagHost {
   readonly #channel: MessageChannelInterface;
   /** In-flight requests: correlationId → AbortController. */
   readonly #inflight: Map<string, AbortController>;
+  /** Statically-injected registry, or null when init imports by URL. */
+  readonly #registry: RegistryModuleInterface | null;
   /** Bundle loaded after init. */
   #bundle: RegistryBundleInterface | null;
 
-  constructor(channel: MessageChannelInterface, _options: DagHostOptions = {}) {
+  constructor(channel: MessageChannelInterface, options: DagHostOptions = {}) {
     this.#channel = channel;
     this.#inflight = new Map();
+    this.#registry = options.registry ?? null;
     this.#bundle = null;
   }
 
@@ -155,32 +160,39 @@ export class DagHost {
     servicesConfig: JsonObject,
   ): Promise<void> {
     try {
-      // Dynamic import is the module ingest boundary: the loaded module is
-      // unknown at compile time, so the cast to { default?: unknown } is the
-      // entry point for runtime narrowing that follows.
-      const mod = await import(registryModule) as { default?: unknown };
+      let registry: RegistryModuleInterface;
+      if (this.#registry !== null) {
+        // Statically injected: no dynamic import; `registryModule` is ignored.
+        registry = this.#registry;
+      } else {
+        // Dynamic import is the module ingest boundary: the loaded module is
+        // unknown at compile time, so the cast to { default?: unknown } is the
+        // entry point for runtime narrowing that follows.
+        const mod = await import(registryModule) as { default?: unknown };
 
-      // Runtime-narrow the default export via typeof checks before the cast.
-      // The guard below confirms `createBundle` is a function before the cast
-      // to RegistryModuleInterface, making the subsequent typed call safe.
-      const registryInterface = mod.default;
-      if (
-        registryInterface === null ||
-        typeof registryInterface !== 'object' ||
-        typeof (registryInterface as Record<string, unknown>)['createBundle'] !== 'function'
-      ) {
-        this.#channel.send({
-          'kind': 'error',
-          'correlationId': null,
-          'code': 'INVALID_REGISTRY_MODULE',
-          'message': `Registry module default export does not implement RegistryModuleInterface (missing createBundle)`,
-          'recoverable': false,
-        });
-        return;
+        // Runtime-narrow the default export via typeof checks before the cast.
+        // The guard below confirms `createBundle` is a function before the cast
+        // to RegistryModuleInterface, making the subsequent typed call safe.
+        const registryInterface = mod.default;
+        if (
+          registryInterface === null ||
+          typeof registryInterface !== 'object' ||
+          typeof (registryInterface as Record<string, unknown>)['createBundle'] !== 'function'
+        ) {
+          this.#channel.send({
+            'kind': 'error',
+            'correlationId': null,
+            'code': 'INVALID_REGISTRY_MODULE',
+            'message': `Registry module default export does not implement RegistryModuleInterface (missing createBundle)`,
+            'recoverable': false,
+          });
+          return;
+        }
+
+        // Cast is safe: the typeof guard above confirms createBundle exists as a function.
+        registry = registryInterface as RegistryModuleInterface;
       }
 
-      // Cast is safe: the typeof guard above confirms createBundle exists as a function.
-      const registry = registryInterface as RegistryModuleInterface;
       const bundle = await registry.createBundle(servicesConfig);
 
       if (bundle.registryVersion !== expectedVersion) {

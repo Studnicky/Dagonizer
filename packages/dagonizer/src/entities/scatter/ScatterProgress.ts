@@ -5,7 +5,8 @@
  * Shape summary:
  *   ScatterInboxItem      — one item pulled from the source but not yet acked.
  *   ScatterAckedResult    — one successfully completed item; discriminated on `kind`.
- *   ScatterProgress       — per-placement resume bookkeeping (inbox + ackedResults).
+ *   ScatterProgress       — per-placement resume bookkeeping; discriminated on `mode`:
+ *                           'retained' (full acked results) or 'bounded' (watermark).
  *   StoredScatterProgress — map keyed by placement name stored in metadata.
  */
 
@@ -81,26 +82,105 @@ export const ScatterAckedResultSchema = {
 export type ScatterAckedResult = FromSchema<typeof ScatterAckedResultSchema>;
 
 // ---------------------------------------------------------------------------
-// ScatterProgress
+// ScatterProgress (discriminated union: 'retained' | 'bounded')
 // ---------------------------------------------------------------------------
+
+/** Inline inbox-item shape for use inside ScatterProgressSchema oneOf branches. */
+const _InboxItemInline = {
+  'type': 'object',
+  'required': ['index', 'item'],
+  'properties': {
+    'index':     { 'type': 'integer', 'minimum': 0 },
+    'item':      {},
+    'bufferKey': { 'type': 'string' },
+  },
+  'additionalProperties': false,
+} as const;
+
+/** Inline acked-result shape for use inside the retained branch. */
+const _AckedResultInline = {
+  'oneOf': [
+    {
+      'type': 'object',
+      'required': ['kind', 'index', 'item', 'output', 'mappingValues'],
+      'properties': {
+        'kind':          { 'type': 'string', 'const': 'map' },
+        'index':         { 'type': 'integer', 'minimum': 0 },
+        'item':          {},
+        'output':        { 'type': 'string' },
+        'mappingValues': { 'type': 'object' },
+      },
+      'additionalProperties': false,
+    },
+    {
+      'type': 'object',
+      'required': ['kind', 'index', 'item', 'output', 'fieldValue'],
+      'properties': {
+        'kind':       { 'type': 'string', 'const': 'field' },
+        'index':      { 'type': 'integer', 'minimum': 0 },
+        'item':       {},
+        'output':     { 'type': 'string' },
+        'fieldValue': {},
+      },
+      'additionalProperties': false,
+    },
+    {
+      'type': 'object',
+      'required': ['kind', 'index', 'item', 'output'],
+      'properties': {
+        'kind':   { 'type': 'string', 'const': 'plain' },
+        'index':  { 'type': 'integer', 'minimum': 0 },
+        'item':   {},
+        'output': { 'type': 'string' },
+      },
+      'additionalProperties': false,
+    },
+  ],
+} as const;
 
 export const ScatterProgressSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/ScatterProgress',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
-  'type': 'object',
-  'required': ['placementName', 'inbox', 'ackedResults'],
-  'properties': {
-    'placementName': { 'type': 'string', 'minLength': 1 },
-    'inbox': {
-      'type': 'array',
-      'items': ScatterInboxItemSchema,
+  'oneOf': [
+    {
+      'type': 'object',
+      'required': ['mode', 'placementName', 'inbox', 'ackedResults'],
+      'properties': {
+        'mode':          { 'type': 'string', 'const': 'retained' },
+        'placementName': { 'type': 'string', 'minLength': 1 },
+        'inbox':         { 'type': 'array', 'items': _InboxItemInline },
+        'ackedResults':  { 'type': 'array', 'items': _AckedResultInline },
+      },
+      'additionalProperties': false,
     },
-    'ackedResults': {
-      'type': 'array',
-      'items': ScatterAckedResultSchema,
+    {
+      'type': 'object',
+      'required': ['mode', 'placementName', 'inbox', 'watermark', 'aheadAcked', 'outcomeTally'],
+      'properties': {
+        'mode':          { 'type': 'string', 'const': 'bounded' },
+        'placementName': { 'type': 'string', 'minLength': 1 },
+        'inbox':         { 'type': 'array', 'items': _InboxItemInline },
+        'watermark':     { 'type': 'integer', 'minimum': 0 },
+        'aheadAcked':    {
+          'type': 'array',
+          'items': {
+            'type': 'object',
+            'required': ['index', 'output'],
+            'properties': {
+              'index':  { 'type': 'integer', 'minimum': 0 },
+              'output': { 'type': 'string' },
+            },
+            'additionalProperties': false,
+          },
+        },
+        'outcomeTally':  {
+          'type': 'object',
+          'additionalProperties': { 'type': 'integer', 'minimum': 0 },
+        },
+      },
+      'additionalProperties': false,
     },
-  },
-  'additionalProperties': false,
+  ],
 } as const;
 
 /** TypeScript type derived from `ScatterProgressSchema` via `json-schema-to-ts`. */

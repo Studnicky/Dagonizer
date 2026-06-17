@@ -274,12 +274,12 @@ void describe('Scatter: resume mid-stream (array source)', () => {
     // Seed checkpoint: items 0 and 1 already acked.
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       'fan': {
+        'mode':          'bounded' as const,
         'placementName': 'fan',
-        'inbox': [],
-        'ackedResults': [
-          { 'kind': 'plain' as const, 'index': 0, 'item': 10, 'output': 'success' },
-          { 'kind': 'plain' as const, 'index': 1, 'item': 20, 'output': 'success' },
-        ],
+        'inbox':         [],
+        'watermark':     2,
+        'aheadAcked':    [],
+        'outcomeTally':  { 'success': 2 },
       },
     });
 
@@ -322,11 +322,12 @@ void describe('Scatter: resume mid-stream (array source)', () => {
     state.processed = [1]; // item 0 already gathered
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       'fan': {
+        'mode':          'bounded' as const,
         'placementName': 'fan',
-        'inbox': [{ 'index': 1, 'item': 2 }],  // item 1 (value=2) was in-flight
-        'ackedResults': [
-          { 'kind': 'plain' as const, 'index': 0, 'item': 1, 'output': 'success' },
-        ],
+        'inbox':         [{ 'index': 1, 'item': 2 }],  // item 1 (value=2) was in-flight
+        'watermark':     1,
+        'aheadAcked':    [],
+        'outcomeTally':  { 'success': 1 },
       },
     });
 
@@ -388,12 +389,12 @@ void describe('Scatter: resume mid-stream (AsyncIterable source)', () => {
     // Checkpoint: indices 0,1 acked; index 2 in inbox (value 30).
     st.setMetadata(SCATTER_PROGRESS_KEY, {
       'fan': {
+        'mode':          'bounded' as const,
         'placementName': 'fan',
-        'inbox': [{ 'index': 2, 'item': 30 }],
-        'ackedResults': [
-          { 'kind': 'plain' as const, 'index': 0, 'item': 10, 'output': 'success' },
-          { 'kind': 'plain' as const, 'index': 1, 'item': 20, 'output': 'success' },
-        ],
+        'inbox':         [{ 'index': 2, 'item': 30 }],
+        'watermark':     2,
+        'aheadAcked':    [],
+        'outcomeTally':  { 'success': 2 },
       },
     });
 
@@ -669,12 +670,18 @@ void describe('Scatter: progress shape (inbox model)', () => {
     // 3 items → 3 ack writes.
     assert.equal(progressSnapshots.length, 3);
 
-    // After each ack: inbox shrinks (item acked → removed), ackedResults grows.
+    // After each ack: inbox shrinks (item acked → removed), acked count grows.
+    // append is compactable (retainsRecordsForFinalize=false) → bounded checkpoint.
     for (let i = 0; i < progressSnapshots.length; i++) {
       const snap = progressSnapshots[i];
       assert.ok(snap !== undefined);
-      assert.equal(snap.ackedResults.length, i + 1,
-        `after ack ${i + 1}, ackedResults should have ${i + 1} entries`);
+      // With concurrency=1, items complete in order so watermark advances
+      // contiguously; aheadAcked stays empty.
+      const totalAcked = snap.mode === 'bounded'
+        ? snap.watermark + snap.aheadAcked.length
+        : snap.ackedResults.length;
+      assert.equal(totalAcked, i + 1,
+        `after ack ${i + 1}, total acked should be ${i + 1}`);
       // inbox should be empty (concurrency=1, item acked immediately after body).
       assert.equal(snap.inbox.length, 0,
         `after ack ${i + 1} with concurrency=1, inbox should be empty`);
@@ -757,8 +764,11 @@ void describe('Scatter: run-level abort + exactly-once resume', () => {
     assert.ok(entry !== undefined, 'expected a progress entry for placement "fan"');
 
     // 3. Not all items were acked — fewer than total. If the pull-loop ignored
-    //    signal.aborted, ackedResults.length === TOTAL_ITEMS (silent data-loss).
-    const ackedCount = entry.ackedResults.length;
+    //    signal.aborted, the acked count would equal TOTAL_ITEMS (silent data-loss).
+    // append is compactable → bounded checkpoint.
+    const ackedCount = entry.mode === 'bounded'
+      ? entry.watermark + entry.aheadAcked.length
+      : entry.ackedResults.length;
     assert.ok(
       ackedCount < TOTAL_ITEMS,
       `only ${ackedCount} of ${TOTAL_ITEMS} items should be acked after abort; ` +

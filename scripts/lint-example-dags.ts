@@ -45,12 +45,12 @@ import {
 import { childDag as sharedChildDAG, parentDag as sharedParentDAG } from '../examples/dags/10-shared-state.js';
 import { childDAG as deriveChildDAG, parentDAG as deriveParentDAG } from '../examples/dags/derive.js';
 
-import { cartographerDAG, eventPipelineDAG }      from '../examples/the-cartographer/dag.js';
-import { canonicalizeDAG }                        from '../examples/the-cartographer/embedded-dags/CanonicalizeDAG.js';
-import { gdprComplianceDAG }                      from '../examples/the-cartographer/embedded-dags/GdprComplianceDAG.js';
-import { geoResolveDAG }                          from '../examples/the-cartographer/embedded-dags/GeoResolveDAG.js';
-import { ingestSourceDAG }                        from '../examples/the-cartographer/embedded-dags/IngestSourceDAG.js';
-import { orderEnrichmentDAG }                     from '../examples/the-cartographer/embedded-dags/OrderEnrichmentDAG.js';
+import { cartographerDAG, eventPipelineTypedDAG }  from '../examples/the-cartographer/dag.js';
+import { streamEventDAG }                          from '../examples/the-cartographer/embedded-dags/StreamEventDAG.js';
+import { gdprComplianceDAG }                       from '../examples/the-cartographer/embedded-dags/GdprComplianceDAG.js';
+import { geoResolveDAG }                           from '../examples/the-cartographer/embedded-dags/GeoResolveDAG.js';
+import { ingestSourceDAG }                         from '../examples/the-cartographer/embedded-dags/IngestSourceDAG.js';
+import { orderEnrichmentDAG }                      from '../examples/the-cartographer/embedded-dags/OrderEnrichmentDAG.js';
 
 const dags: ReadonlyArray<readonly [string, DAG]> = [
   ['the-archivist / archivistDAG',           archivistDAG],
@@ -74,13 +74,13 @@ const dags: ReadonlyArray<readonly [string, DAG]> = [
   ['dags / 10-shared-state (main-flow)',     sharedParentDAG],
   ['dags / derive (plugin:transform)',       deriveChildDAG],
   ['dags / derive (parent)',                 deriveParentDAG],
-  ['the-cartographer / cartographerDAG',     cartographerDAG],
-  ['the-cartographer / ingestSourceDAG',     ingestSourceDAG],
-  ['the-cartographer / geoResolveDAG',       geoResolveDAG],
-  ['the-cartographer / canonicalizeDAG',     canonicalizeDAG],
-  ['the-cartographer / orderEnrichmentDAG',  orderEnrichmentDAG],
-  ['the-cartographer / eventPipelineDAG',    eventPipelineDAG],
-  ['the-cartographer / gdprComplianceDAG',   gdprComplianceDAG],
+  ['the-cartographer / cartographerDAG',       cartographerDAG],
+  ['the-cartographer / ingestSourceDAG',       ingestSourceDAG],
+  ['the-cartographer / geoResolveDAG',         geoResolveDAG],
+  ['the-cartographer / streamEventDAG',        streamEventDAG],
+  ['the-cartographer / orderEnrichmentDAG',    orderEnrichmentDAG],
+  ['the-cartographer / eventPipelineTypedDAG', eventPipelineTypedDAG],
+  ['the-cartographer / gdprComplianceDAG',     gdprComplianceDAG],
 ];
 
 let totalViolations = 0;

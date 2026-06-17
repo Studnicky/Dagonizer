@@ -402,6 +402,33 @@ interface _ScatterRunContext<TState extends NodeStateInterface> {
   readonly allFreshRecords: GatherRecord<TState>[];
   readonly intermediateResults: Array<NodeResultInterface<TState>>;
   readonly gatherStrategy: GatherStrategy | null;
+  readonly compactable: boolean;
+  readonly watermarkRef: { value: number };
+  readonly aheadAcked: Map<number, string>;
+  readonly outcomeTally: Map<string, number>;
+}
+
+/**
+ * Records the item in `outcomeTally` and `aheadAcked`, then drains
+ * consecutive indices from `aheadAcked` into the watermark so that
+ * the watermark always equals the highest contiguous completed prefix.
+ */
+function advanceWatermark(
+  watermarkRef: { value: number },
+  aheadAcked: Map<number, string>,
+  outcomeTally: Map<string, number>,
+  index: number,
+  output: string,
+): void {
+  // Always fold output into tally for every acked item.
+  outcomeTally.set(output, (outcomeTally.get(output) ?? 0) + 1);
+  // Place acked index into the ahead window (handles any index >= watermark).
+  aheadAcked.set(index, output);
+  // Greedily advance watermark while contiguous indices exist.
+  while (aheadAcked.has(watermarkRef.value)) {
+    aheadAcked.delete(watermarkRef.value);
+    watermarkRef.value++;
+  }
 }
 
 /**
@@ -481,20 +508,19 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
         const childOptions: ExecuteOptionsInterface = { ...(signal !== null && { 'signal': signal }) };
         const iter = this.#adapter.runNodes(scatter.body.dag, cloneState, null, childOptions, { 'embedded': true }, innerPath);
 
+        // Drain the iterator to drive execution; each inner node fires its
+        // onNodeStart/onNodeEnd observers live inside runNodes. Buffering each
+        // inner result into intermediateResults is intentionally omitted: at
+        // scatter scale (N items × M inner nodes) that accumulation is O(N*M)
+        // and causes unbounded heap growth. The scatter's own representative
+        // result is returned below; inner-node observability is delivered
+        // through the observer relay, not through buffered intermediates.
         while (true) {
           const step = await iter.next();
           if (step.done) {
             terminalOutcome = step.value.terminalOutcome;
             break;
           }
-          const nr = step.value;
-          this.#ctx.intermediateResults.push({
-            'output': nr.output,
-            'skipped': nr.skipped,
-            'nodeName': `${scatter.name}.${nr.nodeName}`,
-            state,
-            'intermediateResults': [],
-          });
         }
       } else {
         // ── Contained path ─────────────────────────────────────────────────
@@ -538,16 +564,9 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
         }
         for (const err of outcome.errors) cloneState.collectError(err);
 
-        // Re-yield each intermediate as a NodeResultInterface with scatter prefix.
-        for (const wi of outcome.intermediates) {
-          this.#ctx.intermediateResults.push({
-            'output': wi.output,
-            'skipped': wi.skipped,
-            'nodeName': `${scatter.name}.${wi.nodeName}`,
-            state,
-            'intermediateResults': [],
-          });
-        }
+        // Contained inner-node intermediates are not buffered into
+        // intermediateResults: the contained body's observer relay delivers
+        // per-node observability live, and buffering at scatter scale is O(N*M).
 
         // Derive terminalOutcome from the container's terminal output.
         terminalOutcome = outcome.terminalOutput === 'failed' ? 'failed' : 'completed';
@@ -564,35 +583,12 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
   }
 
   async ackItem(res: ScatterItemResult<TState>): Promise<void> {
-    const { scatter, state, inbox, ackedResults, ackedByIndex, itemOutputs, allFreshRecords, gatherStrategy } = this.#ctx;
+    const { scatter, state, inbox, ackedResults, ackedByIndex, itemOutputs, allFreshRecords, gatherStrategy, compactable, watermarkRef, aheadAcked, outcomeTally } = this.#ctx;
     const { 'index': itemIndex, 'item': item, 'output': output, 'terminalOutcome': terminalOutcome, 'cloneState': cloneState } = res;
 
     // Remove from inbox.
     const inboxIdx = inbox.findIndex((e) => e.index === itemIndex);
     if (inboxIdx !== -1) inbox.splice(inboxIdx, 1);
-
-    // Build acked result with gather persistence values.
-    // SC-8: discriminated union keyed on `kind`.
-    const ackedResult: ScatterAckedResult = (() => {
-      if (scatter.gather?.strategy === 'map' && scatter.gather.mapping !== undefined) {
-        const snapshot: Record<string, unknown> = {};
-        for (const clonePath of Object.keys(scatter.gather.mapping)) {
-          snapshot[clonePath] = this.#adapter.accessor.get(cloneState, clonePath);
-        }
-        return { 'kind': 'map' as const, 'index': itemIndex, 'item': item, output, 'mappingValues': snapshot };
-      }
-      if (
-        (scatter.gather?.strategy === 'append' || scatter.gather?.strategy === 'partition') &&
-        scatter.gather.field !== undefined
-      ) {
-        return { 'kind': 'field' as const, 'index': itemIndex, 'item': item, output, 'fieldValue': this.#adapter.accessor.get(cloneState, scatter.gather.field) };
-      }
-      return { 'kind': 'plain' as const, 'index': itemIndex, 'item': item, output };
-    })();
-
-    ackedResults.push(ackedResult);
-    ackedByIndex.set(itemIndex, ackedResult);
-    itemOutputs.set(itemIndex, output);
 
     const freshRecord: GatherRecord<TState> = {
       'index': itemIndex,
@@ -609,10 +605,44 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
     }
 
     // Accumulate for the finalize pass and outcome-reducer.
-    allFreshRecords.push(freshRecord);
+    // Compactable gathers fold all state into parent via reduce; finalize builds
+    // derived state from its own private accumulators and does not read records.
+    // Skip the push in compactable mode so each cloneState is GC-eligible
+    // immediately after reduce returns — preserving the bounded-memory guarantee.
+    if (!compactable) allFreshRecords.push(freshRecord);
 
-    // Persist checkpoint after the fold so gathered state is captured.
-    ScatterCheckpoint.write(state, scatter.name, [...inbox], [...ackedResults]);
+    if (compactable) {
+      // Bounded mode: advance watermark bookkeeping; skip full ackedResult storage.
+      // shape changed for compactable gathers; result assertion unchanged.
+      advanceWatermark(watermarkRef, aheadAcked, outcomeTally, itemIndex, output);
+      ScatterCheckpoint.writeBounded(
+        state, scatter.name, [...inbox], watermarkRef.value,
+        [...aheadAcked.entries()].map(([i, o]) => ({ 'index': i, 'output': o })),
+        Object.fromEntries(outcomeTally),
+      );
+    } else {
+      // Retained mode: persist full acked result for reconstruct on resume.
+      const ackedResult: ScatterAckedResult = (() => {
+        if (scatter.gather?.strategy === 'map' && scatter.gather.mapping !== undefined) {
+          const snapshot: Record<string, unknown> = {};
+          for (const clonePath of Object.keys(scatter.gather.mapping)) {
+            snapshot[clonePath] = this.#adapter.accessor.get(cloneState, clonePath);
+          }
+          return { 'kind': 'map' as const, 'index': itemIndex, 'item': item, output, 'mappingValues': snapshot };
+        }
+        if (
+          (scatter.gather?.strategy === 'append' || scatter.gather?.strategy === 'partition') &&
+          scatter.gather.field !== undefined
+        ) {
+          return { 'kind': 'field' as const, 'index': itemIndex, 'item': item, output, 'fieldValue': this.#adapter.accessor.get(cloneState, scatter.gather.field) };
+        }
+        return { 'kind': 'plain' as const, 'index': itemIndex, 'item': item, output };
+      })();
+      ackedResults.push(ackedResult);
+      ackedByIndex.set(itemIndex, ackedResult);
+      itemOutputs.set(itemIndex, output);
+      ScatterCheckpoint.writeRetained(state, scatter.name, [...inbox], [...ackedResults]);
+    }
   }
 
   /**
@@ -685,7 +715,7 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
    * write the checkpoint ONCE for the entire batch.
    */
   async ackBatch(batchResult: ScatterItemBatchResult<TState>): Promise<void> {
-    const { scatter, state, inbox, ackedResults, ackedByIndex, itemOutputs, allFreshRecords, gatherStrategy } = this.#ctx;
+    const { scatter, state, inbox, ackedResults, ackedByIndex, itemOutputs, allFreshRecords, gatherStrategy, compactable, watermarkRef, aheadAcked, outcomeTally } = this.#ctx;
 
     const freshRecordsForBatch: GatherRecord<TState>[] = [];
 
@@ -696,31 +726,37 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
       const inboxIdx = inbox.findIndex((e) => e.index === itemIndex);
       if (inboxIdx !== -1) inbox.splice(inboxIdx, 1);
 
-      // Build acked result (same discriminated logic as ackItem).
-      const ackedResult: ScatterAckedResult = (() => {
-        if (scatter.gather?.strategy === 'map' && scatter.gather.mapping !== undefined) {
-          const snapshot: Record<string, unknown> = {};
-          for (const clonePath of Object.keys(scatter.gather.mapping)) {
-            snapshot[clonePath] = this.#adapter.accessor.get(cloneState, clonePath);
-          }
-          return { 'kind': 'map' as const, 'index': itemIndex, 'item': item, output, 'mappingValues': snapshot };
-        }
-        if (
-          (scatter.gather?.strategy === 'append' || scatter.gather?.strategy === 'partition') &&
-          scatter.gather.field !== undefined
-        ) {
-          return { 'kind': 'field' as const, 'index': itemIndex, 'item': item, output, 'fieldValue': this.#adapter.accessor.get(cloneState, scatter.gather.field) };
-        }
-        return { 'kind': 'plain' as const, 'index': itemIndex, 'item': item, output };
-      })();
-
-      ackedResults.push(ackedResult);
-      ackedByIndex.set(itemIndex, ackedResult);
-      itemOutputs.set(itemIndex, output);
-
       const freshRecord: GatherRecord<TState> = { 'index': itemIndex, item, output, terminalOutcome, cloneState };
       freshRecordsForBatch.push(freshRecord);
-      allFreshRecords.push(freshRecord);
+      // Compactable mode: skip accumulation so each cloneState is GC-eligible
+      // after the batch reduce below — same bounded-memory invariant as ackItem.
+      if (!compactable) allFreshRecords.push(freshRecord);
+
+      if (compactable) {
+        // Bounded mode: advance watermark per item.
+        advanceWatermark(watermarkRef, aheadAcked, outcomeTally, itemIndex, output);
+      } else {
+        // Retained mode: build full acked result.
+        const ackedResult: ScatterAckedResult = (() => {
+          if (scatter.gather?.strategy === 'map' && scatter.gather.mapping !== undefined) {
+            const snapshot: Record<string, unknown> = {};
+            for (const clonePath of Object.keys(scatter.gather.mapping)) {
+              snapshot[clonePath] = this.#adapter.accessor.get(cloneState, clonePath);
+            }
+            return { 'kind': 'map' as const, 'index': itemIndex, 'item': item, output, 'mappingValues': snapshot };
+          }
+          if (
+            (scatter.gather?.strategy === 'append' || scatter.gather?.strategy === 'partition') &&
+            scatter.gather.field !== undefined
+          ) {
+            return { 'kind': 'field' as const, 'index': itemIndex, 'item': item, output, 'fieldValue': this.#adapter.accessor.get(cloneState, scatter.gather.field) };
+          }
+          return { 'kind': 'plain' as const, 'index': itemIndex, 'item': item, output };
+        })();
+        ackedResults.push(ackedResult);
+        ackedByIndex.set(itemIndex, ackedResult);
+        itemOutputs.set(itemIndex, output);
+      }
     }
 
     // Single reduce call for the whole batch.
@@ -730,7 +766,16 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
     }
 
     // Single checkpoint write for the entire batch.
-    ScatterCheckpoint.write(state, scatter.name, [...inbox], [...ackedResults]);
+    if (compactable) {
+      // shape changed for compactable gathers; result assertion unchanged.
+      ScatterCheckpoint.writeBounded(
+        state, scatter.name, [...inbox], watermarkRef.value,
+        [...aheadAcked.entries()].map(([i, o]) => ({ 'index': i, 'output': o })),
+        Object.fromEntries(outcomeTally),
+      );
+    } else {
+      ScatterCheckpoint.writeRetained(state, scatter.name, [...inbox], [...ackedResults]);
+    }
   }
 }
 
@@ -813,6 +858,7 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
     dagName: string,
     signal: AbortSignal | null,
     placementPath: readonly string[],
+    bufferIntermediates: boolean,
   ) => Promise<_InternalNodeResult<TState>>>>;
 
   /**
@@ -846,11 +892,11 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
       'onContractWarning': (m) => this.onContractWarning(m),
     };
     this.dispatch = {
-      'EmbeddedDAGNode': (entry, state, _dagName, signal, placementPath) => {
+      'EmbeddedDAGNode': (entry, state, _dagName, signal, placementPath, bufferIntermediates) => {
         // Placement.isEmbeddedDAG guard: @type === 'EmbeddedDAGNode' confirmed by
         // the dispatch table key; guard makes the narrowing explicit.
         if (!Placement.isEmbeddedDAG(entry)) throw new DAGError(`Dispatch type mismatch: expected EmbeddedDAGNode`);
-        return this.executeEmbeddedDAG(entry, state, signal, placementPath);
+        return this.executeEmbeddedDAG(entry, state, signal, placementPath, bufferIntermediates);
       },
       'ScatterNode': (entry, state, dagName, signal, placementPath) => {
         if (!Placement.isScatter(entry)) throw new DAGError(`Dispatch type mismatch: expected ScatterNode`);
@@ -1388,7 +1434,11 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
         const composite: Array<{ 'state': TState; 'nextStage': string | null; 'result': NodeResultInterface<TState> }> = [];
         for (const item of batch) {
           try {
-            const outcome = await this.executeDAGNode(node, item.state, dagName, signal, placementPath);
+            // bufferIntermediates: only accumulate inner-node results when
+            // running at the top level (not embedded). Inside a scatter body
+            // or nested embedded DAG, intermediates are discarded by the caller
+            // anyway, and buffering at N×M×L scale causes unbounded heap growth.
+            const outcome = await this.executeDAGNode(node, item.state, dagName, signal, placementPath, !runOptions.embedded);
             composite.push({ 'state': item.state, 'nextStage': outcome.nextStage, 'result': outcome.result });
           } catch (caughtError) {
             // A thrown firing fails the whole fired batch (RFC 0003 §10.2). Same
@@ -1824,6 +1874,7 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
     state: TState,
     signal: AbortSignal | null,
     placementPath: readonly string[],
+    bufferIntermediates: boolean = true,
   ): Promise<_InternalNodeResult<TState>> {
     const inputMapping = EmbeddedDAGNodeDefaults.inputMapping(placement);
     const outputMapping = EmbeddedDAGNodeDefaults.outputMapping(placement);
@@ -1836,24 +1887,41 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
     const container = this.resolveContainer(placement.container);
 
     if (container === null) {
-      // ── In-process path (byte-identical to the original) ───────────────────
+      // ── In-process path ────────────────────────────────────────────────────
       const childOptions: ExecuteOptionsInterface = { ...(signal !== null && { 'signal': signal }) };
       const iter = this.runNodes(placement.dag, cloneState, null, childOptions, { 'embedded': true }, innerPath);
 
-      let step = await iter.next();
-      while (!step.done) {
-        const nr = step.value;
-        const intermediate: NodeResultInterface<TState> = {
-          'output': nr.output,
-          'skipped': nr.skipped,
-          'nodeName': `${placement.name}.${nr.nodeName}`,
-          state,
-          'intermediateResults': [],
-        };
-        intermediateResults.push(intermediate);
-        step = await iter.next();
+      // When bufferIntermediates is true (top-level streaming context), collect
+      // each inner stage so the parent runNodes loop can yield them to the
+      // consumer before the embedding placement's own result. When false (inside
+      // a scatter body or another embedded DAG), skip buffering: at scatter scale
+      // (N items × M inner nodes × L nesting levels) the accumulation is
+      // O(N*M*L) and causes unbounded heap growth. Inner-node observability is
+      // delivered live through onNodeStart/onNodeEnd regardless of this flag.
+      if (bufferIntermediates) {
+        let step = await iter.next();
+        while (!step.done) {
+          const nr = step.value;
+          intermediateResults.push({
+            'output': nr.output,
+            'skipped': nr.skipped,
+            'nodeName': `${placement.name}.${nr.nodeName}`,
+            state,
+            'intermediateResults': [],
+          });
+          step = await iter.next();
+        }
+        terminalOutcome = step.value.terminalOutcome;
+      } else {
+        // Drain without buffering.
+        while (true) {
+          const step = await iter.next();
+          if (step.done) {
+            terminalOutcome = step.value.terminalOutcome;
+            break;
+          }
+        }
       }
-      terminalOutcome = step.value.terminalOutcome;
     } else {
       // ── Contained path ─────────────────────────────────────────────────────
       const correlationId = this.nextCorrelationId(placement.dag);
@@ -1888,15 +1956,20 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
       }
       for (const err of outcome.errors) cloneState.collectError(err);
 
-      // Re-yield each intermediate as a NodeResultInterface.
-      for (const wi of outcome.intermediates) {
-        intermediateResults.push({
-          'output': wi.output,
-          'skipped': wi.skipped,
-          'nodeName': `${placement.name}.${wi.nodeName}`,
-          state,
-          'intermediateResults': [],
-        });
+      // Re-yield each intermediate as a NodeResultInterface only when buffering
+      // is requested (top-level streaming). Inside a scatter body the observer
+      // relay delivers per-node observability live; buffering at scatter scale
+      // is O(N*M*L).
+      if (bufferIntermediates) {
+        for (const wi of outcome.intermediates) {
+          intermediateResults.push({
+            'output': wi.output,
+            'skipped': wi.skipped,
+            'nodeName': `${placement.name}.${wi.nodeName}`,
+            state,
+            'intermediateResults': [],
+          });
+        }
       }
 
       // Derive terminalOutcome from terminalOutput.
@@ -1989,40 +2062,89 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
     // than causing silent type mismatches deep in the scatter loop.
     const storedProgress = ScatterCheckpoint.read(state, scatter.name);
 
-    // Mutable inbox: items pulled but not yet acked.
-    // Seed from checkpoint on resume, drain first.
-    const inbox: ScatterInboxItem[] = [...(storedProgress?.inbox ?? [])];
-
-    // Acked results: items that completed in a prior run.
-    const ackedResults: ScatterAckedResult[] = [...(storedProgress?.ackedResults ?? [])];
-
-    // Index for quick lookup by index number.
-    const ackedByIndex = new Map<number, ScatterAckedResult>();
-    for (const r of ackedResults) ackedByIndex.set(r.index, r);
-
-    // Determine which index to assign to the next pulled item.
-    // Start after the highest index seen (inbox + acked).
-    let nextIndex = 0;
-    for (const item of [...inbox, ...ackedResults]) {
-      if (item.index >= nextIndex) nextIndex = item.index + 1;
-    }
-
-    // ── 3. Gather strategy: resolve, initialise, and prepare accumulators ───
+    // Determine gather strategy (needed before compactable check).
     const gatherStrategy = scatter.gather !== undefined
       ? GatherStrategies.resolve(scatter.gather.strategy)
       : null;
 
-    // initial: initialise accumulator in state before any clones run.
-    if (gatherStrategy !== null && scatter.gather !== undefined) {
-      gatherStrategy.initial(scatter.gather, state, this.accessor);
+    // Compactable: all built-in strategies except custom (retainsRecordsForFinalize=true).
+    const compactable = gatherStrategy === null || !gatherStrategy.retainsRecordsForFinalize;
+
+    // Mutable inbox: items pulled but not yet acked; seed from checkpoint on resume.
+    const inbox: ScatterInboxItem[] = [...(storedProgress?.inbox ?? [])];
+
+    // V8 shape stability: all accumulators initialised in declaration order
+    // regardless of branch. Compactable path uses watermarkRef/aheadAcked/outcomeTally;
+    // retained path uses ackedResults/ackedByIndex/itemOutputs.
+    const ackedResults: ScatterAckedResult[] = [];
+    const ackedByIndex = new Map<number, ScatterAckedResult>();
+    const itemOutputs = new Map<number, string>();
+    const watermarkRef: { value: number } = { 'value': 0 };
+    const aheadAcked = new Map<number, string>();
+    const outcomeTally = new Map<string, number>();
+
+    // All indices already accounted for (acked + inbox from prior run).
+    const seenIndices = new Set<number>();
+    let nextIndex = 0;
+
+    if (compactable) {
+      if (storedProgress?.mode === 'bounded') {
+        // Restore bounded checkpoint.
+        watermarkRef.value = storedProgress.watermark;
+        for (const entry of storedProgress.aheadAcked) aheadAcked.set(entry.index, entry.output);
+        for (const [output, count] of Object.entries(storedProgress.outcomeTally)) outcomeTally.set(output, count);
+        // seenIndices = {0..watermark-1} ∪ aheadAcked.keys() ∪ inbox.indices
+        for (let i = 0; i < watermarkRef.value; i++) seenIndices.add(i);
+        for (const k of aheadAcked.keys()) seenIndices.add(k);
+        for (const entry of inbox) seenIndices.add(entry.index);
+        // nextIndex = max(watermark, max(aheadAcked.keys)+1, max(inbox.index)+1, 0)
+        nextIndex = watermarkRef.value;
+        if (aheadAcked.size > 0) {
+          const maxAhead = Math.max(...aheadAcked.keys());
+          if (maxAhead + 1 > nextIndex) nextIndex = maxAhead + 1;
+        }
+        if (inbox.length > 0) {
+          const maxInbox = Math.max(...inbox.map((e) => e.index));
+          if (maxInbox + 1 > nextIndex) nextIndex = maxInbox + 1;
+        }
+      } else if (storedProgress?.mode === 'retained') {
+        // Defensive: translate retained checkpoint into bounded in-memory form.
+        for (const r of storedProgress.ackedResults) {
+          advanceWatermark(watermarkRef, aheadAcked, outcomeTally, r.index, r.output);
+        }
+        for (let i = 0; i < watermarkRef.value; i++) seenIndices.add(i);
+        for (const k of aheadAcked.keys()) seenIndices.add(k);
+        for (const entry of inbox) seenIndices.add(entry.index);
+        nextIndex = watermarkRef.value;
+        if (aheadAcked.size > 0) {
+          const maxAhead = Math.max(...aheadAcked.keys());
+          if (maxAhead + 1 > nextIndex) nextIndex = maxAhead + 1;
+        }
+        if (inbox.length > 0) {
+          const maxInbox = Math.max(...inbox.map((e) => e.index));
+          if (maxInbox + 1 > nextIndex) nextIndex = maxInbox + 1;
+        }
+      }
+    } else {
+      // Non-compactable (retained mode): restore full ackedResults.
+      if (storedProgress?.mode === 'retained') {
+        for (const r of storedProgress.ackedResults) {
+          ackedResults.push(r);
+          ackedByIndex.set(r.index, r);
+          itemOutputs.set(r.index, r.output);
+          seenIndices.add(r.index);
+        }
+      }
+      for (const entry of inbox) seenIndices.add(entry.index);
+      for (const item of [...inbox, ...ackedResults]) {
+        if (item.index >= nextIndex) nextIndex = item.index + 1;
+      }
     }
 
+    // ── 3. Gather strategy: prepare accumulators ────────────────────────────
     // Accumulate fresh records for the finalize pass and outcome-reducer.
     const allFreshRecords: GatherRecord<TState>[] = [];
     const intermediateResults: Array<NodeResultInterface<TState>> = [];
-    const itemOutputs = new Map<number, string>();
-    // Populate itemOutputs from prior acked results.
-    for (const r of ackedResults) itemOutputs.set(r.index, r.output);
 
     // NOTE: Gather contributions from acked items in a prior run are already
     // present in the state snapshot (they were folded per-ack via reduce).
@@ -2045,11 +2167,6 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
     const isIndexStableSource = raw !== null && typeof raw === 'object' &&
       Symbol.iterator in (raw as object) &&
       !(Symbol.asyncIterator in (raw as object));
-
-    // All indices already accounted for (acked + inbox from prior run).
-    const seenIndices = new Set<number>();
-    for (const r of ackedResults) seenIndices.add(r.index);
-    for (const entry of inbox) seenIndices.add(entry.index);
 
     const rawIter = Dagonizer.toAsyncIterator(raw);
 
@@ -2110,6 +2227,10 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
       allFreshRecords,
       intermediateResults,
       gatherStrategy,
+      compactable,
+      watermarkRef,
+      aheadAcked,
+      outcomeTally,
     };
 
     // ── 6. Drive the worker pool or reservoir buffer ─────────────────────────
@@ -2141,41 +2262,50 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
       await pool.drain();
     }
 
-    // ── 7. Synthesise acked records for finalize ─────────────────────────────
-    // Acked-only records (from a prior run) were already folded into state via
-    // reduce during that run — do NOT re-reduce them. Synthetic records exist
-    // only so finalize (e.g. custom) can see the full record set.
+    // ── 7. Finalize ──────────────────────────────────────────────────────────
+    // `reduce` already folded every clone into state per-ack. `finalize` runs
+    // once for EVERY gather (compactable and non-compactable) for end-of-gather
+    // work such as building derived state or invoking a registered node.
     if (gatherStrategy !== null && scatter.gather !== undefined) {
-      const freshIndices = new Set<number>(allFreshRecords.map((r) => r.index));
-      const syntheticRecords: GatherRecord<TState>[] = [];
-      for (const acked of ackedResults) {
-        if (freshIndices.has(acked.index)) continue; // already in allFreshRecords
-        // clone() returns `this` — TState preserved without a cast.
-        const syntheticClone = state.clone();
-        // SC-8: switch on `kind` discriminant instead of checking optional fields.
-        if (acked.kind === 'map') {
-          for (const [clonePath, val] of Object.entries(acked.mappingValues)) {
-            this.accessor.set(syntheticClone, clonePath, val);
-          }
-        } else if (acked.kind === 'field' && scatter.gather.field !== undefined) {
-          this.accessor.set(syntheticClone, scatter.gather.field, acked.fieldValue);
-        }
-        // kind === 'plain': gather value is item itself; no clone mutation needed.
-        syntheticRecords.push({
-          'index': acked.index,
-          'item': acked.item,
-          'output': acked.output,
-          'terminalOutcome': null,
-          'cloneState': syntheticClone,
-        });
-      }
-      // Merge synthetic + fresh, sorted by index, for the finalize execution context.
-      const merged = [...syntheticRecords, ...allFreshRecords]
-        .sort((a, b) => a.index - b.index);
-
-      if (merged.length > 0) {
-        const gatherExecution = this.buildGatherExecution(state, merged, dagName, signal);
+      if (compactable) {
+        // Compactable: the gather's result is fully in state via per-clone
+        // `reduce`. Compactable finalize (e.g. InsightsFoldGather) builds derived
+        // state from its own private accumulators and does NOT read the records
+        // arg — so `allFreshRecords` is intentionally empty here (ackItem and
+        // ackBatch skip the push in compactable mode to allow per-clone GC).
+        // Pass an empty list; `finalize` must not depend on it.
+        const gatherExecution = this.buildGatherExecution(state, [], dagName, signal);
         await gatherStrategy.finalize(scatter.gather, gatherExecution);
+      } else {
+        // Non-compactable finalize: synthesise records for prior acked items too,
+        // reconstructing each prior-run clone from its persisted gather values so
+        // the strategy sees the full record set.
+        const freshIndices = new Set<number>(allFreshRecords.map((r) => r.index));
+        const syntheticRecords: GatherRecord<TState>[] = [];
+        for (const acked of ackedResults) {
+          if (freshIndices.has(acked.index)) continue;
+          const syntheticClone = state.clone();
+          if (acked.kind === 'map') {
+            for (const [clonePath, val] of Object.entries(acked.mappingValues)) {
+              this.accessor.set(syntheticClone, clonePath, val);
+            }
+          } else if (acked.kind === 'field' && scatter.gather.field !== undefined) {
+            this.accessor.set(syntheticClone, scatter.gather.field, acked.fieldValue);
+          }
+          syntheticRecords.push({
+            'index': acked.index,
+            'item': acked.item,
+            'output': acked.output,
+            'terminalOutcome': null,
+            'cloneState': syntheticClone,
+          });
+        }
+        const merged = [...syntheticRecords, ...allFreshRecords]
+          .sort((a, b) => a.index - b.index);
+        if (merged.length > 0) {
+          const gatherExecution = this.buildGatherExecution(state, merged, dagName, signal);
+          await gatherStrategy.finalize(scatter.gather, gatherExecution);
+        }
       }
     }
 
@@ -2184,10 +2314,17 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
 
     // ── 9. Reduce to route ───────────────────────────────────────────────────
     const outcomeRecords: OutcomeRecord[] = [];
-    for (const [index, output] of itemOutputs) {
-      // terminalOutcome is not tracked in itemOutputs; use null for all (reducer
-      // does not need it for aggregate/fail-fast modes).
-      outcomeRecords.push({ index, output, 'terminalOutcome': null });
+    if (compactable) {
+      // Expand outcomeTally to OutcomeRecord array (count per output string).
+      for (const [output, count] of outcomeTally) {
+        for (let c = 0; c < count; c++) {
+          outcomeRecords.push({ 'index': -1, output, 'terminalOutcome': null });
+        }
+      }
+    } else {
+      for (const [index, output] of itemOutputs) {
+        outcomeRecords.push({ index, output, 'terminalOutcome': null });
+      }
     }
     const routeOutput = OutcomeReducers.resolve(reducerName).reduce(outcomeRecords);
     const nextStage = scatter.outputs[routeOutput] ?? null;
@@ -2365,12 +2502,13 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
     dagName: string,
     signal: AbortSignal | null,
     placementPath: readonly string[],
+    bufferIntermediates: boolean = true,
   ): Promise<_InternalNodeResult<TState>> {
     const handler = this.dispatch[entry['@type']];
     if (handler === undefined) {
       throw new DAGError(`Unknown node type: ${entry['@type']}`);
     }
-    return handler(entry, state, dagName, signal, placementPath);
+    return handler(entry, state, dagName, signal, placementPath, bufferIntermediates);
   }
 
 

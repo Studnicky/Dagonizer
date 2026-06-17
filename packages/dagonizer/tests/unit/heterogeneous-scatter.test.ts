@@ -14,8 +14,9 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
+import type { StateAccessor } from '../../src/contracts/StateAccessor.js';
+import type { GatherRecord } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
-import type { GatherExecution } from '../../src/core/GatherStrategies.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { GatherConfig } from '../../src/entities/dag/GatherConfig.js';
@@ -100,32 +101,27 @@ const dispatchNode = new DispatchNode();
 class FlatMergeGather extends GatherStrategy {
   readonly name = 'flat-merge-test';
 
-  reduce(): void { /* accumulate in finalize */ }
-
-  override async finalize<TState extends NodeStateInterface>(
+  override reduce(
     _config: GatherConfig,
-    execution: GatherExecution<TState>,
-  ): Promise<void> {
-    const { state, accessor, records } = execution;
+    batch: Parameters<GatherStrategy['reduce']>[1],
+    state: NodeStateInterface,
+    accessor: StateAccessor,
+  ): void {
+    for (const item of batch) {
+      const record: GatherRecord<NodeStateInterface> = item.state;
+      const existingResults = accessor.get<string[]>(state, 'results')      ?? [];
+      const existingFails   = accessor.get<string[]>(state, 'failMessages') ?? [];
 
-    const existingResults   = accessor.get<string[]>(state, 'results')     ?? [];
-    const existingFails     = accessor.get<string[]>(state, 'failMessages') ?? [];
-    const merged: string[]     = [...existingResults];
-    const mergedFails: string[] = [...existingFails];
-
-    for (const record of records) {
       const result = accessor.get<string>(record.cloneState, 'providerResult') ?? '';
-      if (result.length > 0) {
-        merged.push(result);
-      }
       const cloneFails = accessor.get<string[]>(record.cloneState, 'failMessages') ?? [];
-      for (const msg of cloneFails) {
-        mergedFails.push(msg);
+
+      if (result.length > 0) {
+        accessor.set(state, 'results', [...existingResults, result]);
+      }
+      if (cloneFails.length > 0) {
+        accessor.set(state, 'failMessages', [...existingFails, ...cloneFails]);
       }
     }
-
-    accessor.set(state, 'results',      merged);
-    accessor.set(state, 'failMessages', mergedFails);
   }
 }
 

@@ -1,16 +1,17 @@
 /**
- * summarizeInsights: folds state.records into TWO views.
+ * summarizeInsights: finalizes the cartographer's insight views after the
+ * process-stream scatter completes.
  *
- * (a) per-region (state.insights): shipments, exceptions, on-time/late counts,
- *     revenue (Σ subtotalUsdMinor), shipping cost, distance, delay, size-tier
- *     and consent mix.
- * (b) per-journey (state.journeys): records grouped by shipmentId, ordered by
- *     epoch — scan count, path distance (Σ legKm), elapsed (last−first epoch),
- *     timezones/offsets crossed, jurisdictions traversed, status progression,
- *     last status & location, and on-time at delivery.
+ * In the streaming topology the insights-fold gather strategy accumulates
+ * state.insights (exact per-region rollup), state.journeys (bounded
+ * per-journey sample), and state.sampleRecords (capped FIFO of scans)
+ * incrementally as each scatter clone completes. Memory stays O(1) regardless
+ * of event count. When that path ran (state.insights.size > 0 OR
+ * state.journeys.size > 0) this node is a pure pass-through.
  *
- * Called once at the parent DAG level after all scatter clones are gathered.
- * Routes 'success' to the done terminal.
+ * The records-based fold (iterating state.records) is retained as a fallback
+ * for callers that populate state.records via the array path and do not use
+ * the insights-fold gather. Routes 'success' to the done terminal in both paths.
  */
 
 import type {
@@ -30,6 +31,14 @@ export class SummarizeInsightsNode extends ScalarNode<CartographerState, 'succes
   readonly 'outputs' = ['success'] as const;
 
   protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'success'>> {
+    // Streaming path: insights-fold gather already produced state.insights,
+    // state.journeys, and state.sampleRecords with bounded memory. Nothing to do.
+    if (state.insights.size > 0 || state.journeys.size > 0) {
+      return NodeOutputBuilder.of('success');
+    }
+
+    // Array-path fallback: fold state.records into insights and journeys for
+    // callers that did not use the insights-fold gather strategy.
     state.insights = new Map<string, RegionInsights>();
     state.journeys = new Map<string, JourneyInsights>();
 

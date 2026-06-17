@@ -43,7 +43,6 @@
 import assert from 'node:assert/strict';
 
 // The relative '../dist/' imports below are type-only and erased at compile time.
-
 import type { DagContainerInterface } from '../dist/contracts/DagContainerInterface.js';
 import type { DagonizerInterface, DispatcherBundle } from '../dist/Dagonizer.js';
 import type { NodeStateInterface } from '../dist/NodeStateBase.js';
@@ -55,10 +54,9 @@ import {
   CONFORMANCE_DAG,
 } from './ConformanceRegistry.js';
 
-import type { ScatterProgress } from '@noocodex/dagonizer';
-import { SCATTER_PROGRESS_KEY } from '@noocodex/dagonizer';
-
 // Runtime value imported from the package entry (resolves via package exports).
+import { SCATTER_PROGRESS_KEY } from '@noocodex/dagonizer';
+import type { ScatterProgress } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -469,7 +467,10 @@ export class DagConformance {
         // At least one item must have been acked before the kill.
         const progress = state1.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
         const progressEntry = (progress ?? {})['fan'];
-        const ackedBefore = progressEntry?.ackedResults.length ?? 0;
+        const ackedBefore = progressEntry === undefined ? 0
+          : progressEntry.mode === 'bounded'
+            ? progressEntry.watermark + progressEntry.aheadAcked.length
+            : progressEntry.ackedResults.length;
 
         assert.ok(
           ackedBefore >= 1,

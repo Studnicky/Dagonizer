@@ -207,6 +207,15 @@ export class CartographerState extends NodeStateBase {
   /** Enriched shipment records gathered from scatter clones. */
   records: EnrichedShipment[] = [];
 
+  /**
+   * Bounded FIFO sample of enriched scans (cap 200) produced by the
+   * insights-fold gather strategy. The gather writes to this field
+   * incrementally as scatter clones complete; memory does not grow
+   * with event count. In the streaming path state.records stays empty;
+   * this field holds the representative sample the UI consumes.
+   */
+  sampleRecords: EnrichedShipment[] = [];
+
   /** Fixed-size regional insights aggregate produced by summarizeInsights. */
   insights: Map<string, RegionInsights> = new Map();
 
@@ -461,7 +470,8 @@ export class CartographerState extends NodeStateBase {
     copy.streamCount = this.streamCount;
     copy.ingestBuckets = this.ingestBuckets.map((bucket) => bucket.map((e) => CartographerState.cloneVariant(e)));
     copy.canonicalEvents = this.canonicalEvents.map((e) => CartographerState.cloneVariant(e));
-    copy.records    = [...this.records];
+    copy.records      = [...this.records];
+    copy.sampleRecords = [...this.sampleRecords];
     copy.insights   = new Map(this.insights);
     copy.journeys   = new Map(this.journeys);
 
@@ -547,7 +557,8 @@ export class CartographerState extends NodeStateBase {
       'canonicalEvents': this.canonicalEvents.map((e) => CartographerState.variantToJson(e)),
       'canonical':        CartographerState.variantToJson(this.canonical),
       'canonicalVariant': CartographerState.variantToJson(this.canonicalVariant),
-      'records':    this.records.map((r) => CartographerState.enrichedToJson(r)),
+      'records':      this.records.map((r) => CartographerState.enrichedToJson(r)),
+      'sampleRecords': this.sampleRecords.map((r) => CartographerState.enrichedToJson(r)),
       'raw':        CartographerState.rawToJson(this.raw),
       'normalized': CartographerState.normalizedToJson(this.normalized),
       'currentEvent': CartographerState.eventToJson(this.currentEvent),
@@ -659,6 +670,9 @@ export class CartographerState extends NodeStateBase {
     if (cvObj !== null) this.canonicalVariant = CartographerState.variantFromJson(cvObj);
     if (Array.isArray(snap['records'])) {
       this.records = snap['records'].map((r) => CartographerState.enrichedFromJson(CartographerState.asObject(r) ?? {}));
+    }
+    if (Array.isArray(snap['sampleRecords'])) {
+      this.sampleRecords = snap['sampleRecords'].map((r) => CartographerState.enrichedFromJson(CartographerState.asObject(r) ?? {}));
     }
 
     const rawObj = CartographerState.asObject(snap['raw']);

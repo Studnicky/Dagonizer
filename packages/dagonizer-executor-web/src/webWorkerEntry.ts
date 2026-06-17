@@ -20,6 +20,7 @@
  */
 
 import { DagHost } from '@noocodex/dagonizer/container';
+import type { RegistryModuleInterface } from '@noocodex/dagonizer/contracts';
 
 import { PostMessageChannel } from './PostMessageChannel.js';
 import type { WorkerScopeLikeInterface } from './WebWorkerLike.js';
@@ -40,10 +41,13 @@ export class WebWorkerEntry {
    *
    * Returns the DagHost so callers can hold a reference if needed for
    * testing or advanced lifecycle management.
+   *
+   * `registry` statically injects the isolate registry so the host runs no
+   * dynamic import. Omit it to import the init `registryModule` by URL.
    */
-  static start(scope: WorkerScopeLikeInterface): DagHost {
+  static start(scope: WorkerScopeLikeInterface, registry?: RegistryModuleInterface): DagHost {
     const channel = new PostMessageChannel(scope);
-    const host = new DagHost(channel);
+    const host = new DagHost(channel, registry !== undefined ? { 'registry': registry } : {});
     host.start();
     return host;
   }

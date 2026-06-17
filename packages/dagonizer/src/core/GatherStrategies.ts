@@ -60,6 +60,15 @@ export abstract class GatherStrategy {
   abstract readonly name: string;
 
   /**
+   * When true, `finalize` consumes the full per-clone record set; the engine
+   * retains every acked record across resume (retained checkpoint). When false
+   * (default), `finalize`'s result is fully in state during `reduce`, so the
+   * engine keeps only bounded bookkeeping (watermark + ahead-acked + tally)
+   * and the checkpoint is O(1) with respect to item count.
+   */
+  readonly retainsRecordsForFinalize: boolean = false;
+
+  /**
    * Initialise the accumulator in state before any clones run.
    * Called once per scatter, before the first `reduce`. Default: no-op.
    */
@@ -161,6 +170,10 @@ class PartitionGatherStrategy extends GatherStrategy {
 
 class CustomGatherStrategy extends GatherStrategy {
   readonly name = 'custom';
+
+  // Custom finalize reads the full per-clone record set, so the engine must
+  // retain every acked record across resume (retained checkpoint).
+  override readonly retainsRecordsForFinalize = true;
 
   // Custom strategy accumulates nothing per-clone — all work is in finalize.
   reduce(): void { /* no-op */ }

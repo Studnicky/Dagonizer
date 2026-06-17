@@ -18,6 +18,7 @@ import { describe, it } from 'node:test';
 import { Checkpoint } from '../../src/checkpoint/Checkpoint.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
+import type { ScatterProgress } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGHandoff } from '../../src/entities/handoff/DAGHandoff.js';
 import type { DAG } from '../../src/entities/index.js';
@@ -577,12 +578,15 @@ void describe('TST-15: abort mid-contained-dag-body scatter — checkpoint survi
       'SCATTER_PROGRESS_KEY must be preserved after abort (checkpoint must survive)');
 
     // (c) Fewer than all items were acked.
-    const entry = progress['fan'] as { ackedResults: unknown[] } | undefined;
+    const entry = progress['fan'] as ScatterProgress | undefined;
     assert.ok(entry !== undefined, 'progress must have an entry for placement "fan"');
+    const ackedCount = entry.mode === 'bounded'
+      ? entry.watermark + entry.aheadAcked.length
+      : entry.ackedResults.length;
     assert.ok(
-      entry.ackedResults.length < state.items.length,
+      ackedCount < state.items.length,
       `fewer than ${state.items.length} items must be acked after mid-scatter abort; ` +
-      `got ${entry.ackedResults.length}`,
+      `got ${ackedCount}`,
     );
   });
 });

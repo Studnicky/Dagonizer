@@ -1,23 +1,22 @@
 /**
  * The Cartographer: DAGs proving data orchestration = the same engine, on a
- * multi-source ingestion fan-in + a streaming enrichment scatter.
+ * single streaming scatter over raw source payloads.
  *
  * 1. cartographer (top-level):
- *    seed (pre-phase: build the multi-format source feeds)
- *      → scatter('ingest-sources', 'sources', { dag: 'ingest-source' },
- *                gather: append ingestedEvents → canonicalEvents)   [THE FAN-IN]
- *      → scatter('process-events', 'canonicalEvents', { dag: 'event-pipeline-typed' },
- *                gather: append enriched → records)                 [STREAMING]
+ *    seed (pre-phase: build or stream the source feeds into state.sources)
+ *      → scatter('process-stream', 'sources', { dag: 'stream-event' },
+ *                gather: insights-fold)                             [STREAMING]
  *      → summarize → done
  *
- * 2. ingest-source (ingestion scatter body, one run per source feed):
- *    select-source → (decompress?) → route-format
- *      → parse-{csv,json,ndjson,yaml} → [normalize-{csv,json,ndjson,yaml}]
- *      → coerce-types → validate-event → ingested
- *    (compression is orthogonal; each format has its own parse + normalize sub-DAG;
- *     see embedded-dags/IngestSourceDAG.ts)
+ *    The insights-fold gather folds each clone's state.enriched into three bounded
+ *    accumulators (state.insights, state.journeys, state.sampleRecords) as clones
+ *    complete. Memory is O(1) regardless of event count.
  *
- * 3. event-pipeline-typed (enrichment scatter body, one run per canonical event):
+ * 2. stream-event (streaming scatter body, one run per source payload):
+ *    decode-payload → route-event-type-variant → per-type embedded DAG → done/rejected
+ *    (see embedded-dags/StreamEventDAG.ts)
+ *
+ * 3. event-pipeline-typed (retained for dag-validate.ts and direct consumers):
  *    route-event-type-variant → {position-ping|sensor-reading|customs-event|
  *      facility-scan|delivery-confirmation}
  *    Each branch is a per-type embedded DAG that starts with parse-variant,
@@ -34,16 +33,15 @@ import { customsDwell }      from './nodes/customsDwell.ts';
 import { enrichLeg }         from './nodes/enrichLeg.ts';
 import { routeRedaction }    from './nodes/routeRedaction.ts';
 import { aggregateEvent }    from './nodes/aggregateEvent.ts';
-import { mergeEvents }       from './nodes/mergeEvents.ts';
 import { summarizeInsights } from './nodes/summarizeInsights.ts';
 import { seedEvents }        from './nodes/seedEvents.ts';
-import { classifyBatch }     from './nodes/classifyBatch.ts';
 import { routeEventType }    from './nodes/routeEventType.ts';
 import { parseVariant }      from './nodes/parseVariant.ts';
 import { canonicalizeCore }  from './nodes/canonicalizeCore.ts';
 import { canonicalizeFacility }  from './nodes/canonicalizeFacility.ts';
 import { canonicalizeRecipient } from './nodes/canonicalizeRecipient.ts';
 import { confirmDelivery }   from './nodes/confirmDelivery.ts';
+import { decodePayload }     from './nodes/decodePayload.ts';
 
 import { reverseGeocode }  from './nodes/geo/reverseGeocode.ts';
 import { routeModalities } from './nodes/geo/routeModalities.ts';
@@ -63,83 +61,54 @@ import { pipelineSensorReadingDAG }       from './embedded-dags/PipelineSensorRe
 import { pipelineCustomsEventDAG }        from './embedded-dags/PipelineCustomsEventDAG.ts';
 import { pipelineFacilityScanDAG }        from './embedded-dags/PipelineFacilityScanDAG.ts';
 import { pipelineDeliveryConfirmationDAG } from './embedded-dags/PipelineDeliveryConfirmationDAG.ts';
+import { streamEventDAG } from './embedded-dags/StreamEventDAG.ts';
 
 import type { CartographerState } from './CartographerState.ts';
 import type { CartographerServices } from './CartographerServices.ts';
 
 import type { DAG, DispatcherBundle } from '@noocodex/dagonizer';
 import { DAGBuilder } from '@noocodex/dagonizer';
+
+import './core/InsightsFoldGather.ts';
 // #endregion cartographer-dag-imports
 
 // ── DAG 1: cartographer (top-level) ─────────────────────────────────────────
 
 // #region cartographer-dag
+/**
+ * cartographerDAG: single streaming scatter over raw source payloads.
+ *
+ * The pre-phase seeds state.sources with an AsyncIterable<SourcePayload>
+ * (streaming path) or a materialised SourcePayload[] (array path). The
+ * scatter reads either form transparently at concurrency 16, running the
+ * stream-event DAG per item. Each stream-event body decodes the payload,
+ * routes to the per-type pipeline DAG, and produces state.enriched. The
+ * insights-fold gather accumulates state.insights (exact region rollup),
+ * state.journeys (bounded journey sample), and state.sampleRecords (capped
+ * FIFO of scans) into the parent as each clone completes. Memory is O(1)
+ * regardless of event count.
+ *
+ * Topology:
+ *   seed (pre)
+ *     → scatter('process-stream', 'sources', { dag: 'stream-event' },
+ *               gather: { strategy: 'insights-fold' }, concurrency: 16)
+ *     → summarize → done
+ */
 export const cartographerDAG: DAG = new DAGBuilder('cartographer', '1.0')
 
-  // Pre-phase: seeds state.sources = Sources.buildTypedFeed(state.eventConfig) — the
-  // per-type source feeds — before the ingestion scatter reads them.
+  // Pre-phase: seeds state.sources before the scatter reads it. When
+  // state.useStreamingSource is true, sources is an AsyncIterable<SourcePayload>;
+  // otherwise a materialised SourcePayload[].
   .phase('seed', 'pre', seedEvents)
 
-  // Ingestion FAN-IN: scatter over the source feeds; each runs its ingest-source
-  // sub-DAG in an isolated clone; the append gather appends each clone's
-  // state.ingestedEvents array as one bucket of state.ingestBuckets.
+  // Single streaming scatter over state.sources. Each item is a SourcePayload
+  // placed on metadata key 'source-payload'; the stream-event body decodes it
+  // and routes to the matching per-type pipeline DAG. The insights-fold gather
+  // folds each clone's state.enriched into the parent's bounded accumulators.
   .scatter(
-    'ingest-sources',
+    'process-stream',
     'sources',
-    { 'dag': 'ingest-source' },
-    {
-      'all-success': 'merge-events',
-      'partial':     'merge-events',
-      'all-error':   'merge-events',
-      'empty':       'merge-events',
-    },
-    {
-      'itemKey':     'source',
-      'concurrency': 4,
-      'gather': {
-        'strategy': 'append',
-        'field':    'ingestedEvents',
-        'target':   'ingestBuckets',
-      },
-    },
-  )
-
-  // merge-events: flatten the per-source buckets into one canonicalEvents model.
-  .node('merge-events', mergeEvents, {
-    'merged': 'batch-by-event-type',
-  })
-
-  // Reservoir scatter (DEMO): batch canonical events by event type before enrichment.
-  // Uses a keyed reservoir (keyField: 'eventType') so the engine groups events by
-  // their canonical event type and releases a same-event-type batch when capacity=50
-  // is reached or 100 ms of idle elapses. The body (classifyBatch) is a
-  // pass-through that records the batch size for observability and routes
-  // all items to 'classified'. gather: discard — no clone state flows back;
-  // the original canonicalEvents array is untouched for process-events.
-  .scatter<CartographerState, 'classified', CartographerServices>(
-    'batch-by-event-type',
-    'canonicalEvents',
-    classifyBatch,
-    {
-      'all-success': 'process-events',
-      'partial':     'process-events',
-      'all-error':   'process-events',
-      'empty':       'process-events',
-    },
-    {
-      'itemKey': 'canonical-event',
-      'gather': { 'strategy': 'discard' },
-      'reservoir': { 'keyField': 'eventType', 'capacity': 50, 'idleMs': 100 },
-    },
-  )
-
-  // Streaming enrichment: scatter over the merged canonical events at
-  // concurrency 16. Each clone's state.enriched is appended into state.records.
-  // Uses event-pipeline-typed: each event routes through its per-type sub-DAG.
-  .scatter(
-    'process-events',
-    'canonicalEvents',
-    { 'dag': 'event-pipeline-typed' },
+    { 'dag': 'stream-event' },
     {
       'all-success': 'summarize',
       'partial':     'summarize',
@@ -147,17 +116,15 @@ export const cartographerDAG: DAG = new DAGBuilder('cartographer', '1.0')
       'empty':       'summarize',
     },
     {
-      'itemKey':     'canonical-event',
+      'itemKey':     'source-payload',
       'concurrency': 16,
-      'gather': {
-        'strategy': 'append',
-        'field':    'enriched',
-        'target':   'records',
-      },
+      'gather': { 'strategy': 'insights-fold' },
     },
   )
 
-  // Fold gathered records into the fixed-size regional + per-journey insights.
+  // Pass-through in the streaming path (insights-fold already populated
+  // state.insights, state.journeys, and state.sampleRecords). Falls back
+  // to the records-based fold for non-streaming callers.
   .node('summarize', summarizeInsights, {
     'success': 'done',
   })
@@ -314,67 +281,26 @@ export const eventPipelineTypedDAG: DAG = new DAGBuilder('event-pipeline-typed',
 
 // #region cartographer-workers-dag
 /**
- * cartographerWorkersDAG: the same top-level orchestration as cartographerDAG
- * with one difference — the `process-events` scatter binds `container: 'cpu'`
- * so each canonical-event enrichment body runs inside a WorkerThreadContainer
- * instead of in-process. The ingestion fan-in (ingest-sources scatter) still
- * runs in-process; only the CPU-bound enrichment is offloaded.
+ * cartographerWorkersDAG: identical topology to cartographerDAG with one
+ * difference — the process-stream scatter binds container: 'cpu' so each
+ * stream-event body runs inside a WorkerThreadContainer (real worker threads)
+ * rather than in-process. Useful for CPU-bound decode + enrichment workloads.
  *
- * Uses event-pipeline-typed for the per-type scatter body.
+ * Topology:
+ *   seed (pre)
+ *     → scatter('process-stream', 'sources', { dag: 'stream-event' },
+ *               gather: { strategy: 'insights-fold' }, concurrency: 16,
+ *               container: 'cpu')
+ *     → summarize → done
  */
 export const cartographerWorkersDAG: DAG = new DAGBuilder('cartographer', '1.0')
 
   .phase('seed', 'pre', seedEvents)
 
   .scatter(
-    'ingest-sources',
+    'process-stream',
     'sources',
-    { 'dag': 'ingest-source' },
-    {
-      'all-success': 'merge-events',
-      'partial':     'merge-events',
-      'all-error':   'merge-events',
-      'empty':       'merge-events',
-    },
-    {
-      'itemKey':     'source',
-      'concurrency': 4,
-      'gather': {
-        'strategy': 'append',
-        'field':    'ingestedEvents',
-        'target':   'ingestBuckets',
-      },
-    },
-  )
-
-  .node('merge-events', mergeEvents, {
-    'merged': 'batch-by-event-type',
-  })
-
-  .scatter<CartographerState, 'classified', CartographerServices>(
-    'batch-by-event-type',
-    'canonicalEvents',
-    classifyBatch,
-    {
-      'all-success': 'process-events',
-      'partial':     'process-events',
-      'all-error':   'process-events',
-      'empty':       'process-events',
-    },
-    {
-      'itemKey': 'canonical-event',
-      'gather': { 'strategy': 'discard' },
-      'reservoir': { 'keyField': 'eventType', 'capacity': 50, 'idleMs': 100 },
-    },
-  )
-
-  // Streaming enrichment — container: 'cpu' routes each event's enrichment
-  // body to a WorkerThreadContainer (real worker threads) instead of in-process.
-  // Uses event-pipeline-typed for the per-type scatter body.
-  .scatter(
-    'process-events',
-    'canonicalEvents',
-    { 'dag': 'event-pipeline-typed' },
+    { 'dag': 'stream-event' },
     {
       'all-success': 'summarize',
       'partial':     'summarize',
@@ -382,14 +308,10 @@ export const cartographerWorkersDAG: DAG = new DAGBuilder('cartographer', '1.0')
       'empty':       'summarize',
     },
     {
-      'itemKey':     'canonical-event',
+      'itemKey':     'source-payload',
       'concurrency': 16,
       'container':   'cpu',
-      'gather': {
-        'strategy': 'append',
-        'field':    'enriched',
-        'target':   'records',
-      },
+      'gather': { 'strategy': 'insights-fold' },
     },
   )
 
@@ -406,11 +328,13 @@ export const cartographerWorkersDAG: DAG = new DAGBuilder('cartographer', '1.0')
 
 // #region dispatcher-bundle
 /**
- * eventPipelineBundle: complete bundle for the event-pipeline-typed scatter body.
+ * eventPipelineBundle: complete bundle for the stream-event scatter body. It is
+ * self-contained — a worker registry that registers it can run the whole
+ * stream-event sub-tree (decode → route → 5 per-type pipelines).
  *
  * Registration order: leaf DAGs before DAGs that embed them.
  *   geo-resolve → geo-pipeline → order-enrichment → gdpr-compliance
- *   → 5 pipeline-* DAGs → event-pipeline-typed
+ *   → 5 pipeline-* DAGs → event-pipeline-typed → stream-event
  *
  * registerBundle is idempotent for same-instance nodes and DAGs (throws only
  * when a different instance with the same name is registered). Nodes shared
@@ -436,8 +360,8 @@ export const eventPipelineBundle: DispatcherBundle<CartographerState, Cartograph
     confirmDelivery,
     // cold-chain (sensor lane) + customs-dwell (customs lane)
     coldChainCheck, customsDwell,
-    // top-level router for event-pipeline-typed
-    routeEventType,
+    // stream-event body: decode-payload + the event-type router
+    decodePayload, routeEventType,
   ],
   'dags': [
     // Leaf embedded DAG first, then DAGs that embed it.
@@ -451,45 +375,51 @@ export const eventPipelineBundle: DispatcherBundle<CartographerState, Cartograph
     pipelineCustomsEventDAG,
     pipelineFacilityScanDAG,
     pipelineDeliveryConfirmationDAG,
-    // Top-level typed scatter body
+    // Typed scatter bodies: event-pipeline-typed (pre-decoded) and stream-event
+    // (decode-inline). stream-event is the live container scatter body.
     eventPipelineTypedDAG,
+    streamEventDAG,
   ],
 };
 
 /**
  * cartographerBundle: top-level bundle for the cartographer DAG.
  *
- * Extends eventPipelineBundle with the top-level cartographer-specific nodes
- * and the cartographerDAG itself. Register AFTER all embedded sub-DAG bundles.
+ * Registration order for the streaming topology:
+ *   leaf DAGs (geo-resolve, geo-pipeline, order-enrichment, gdpr-compliance)
+ *   → 5 per-type pipeline DAGs
+ *   → event-pipeline-typed (embeds the 5 pipeline DAGs)
+ *   → stream-event (embeds the 5 pipeline DAGs, reuses routeEventType + decodePayload)
+ *   → cartographerDAG (embeds stream-event)
+ *
  * The ingest-source DAG and its nodes are registered separately by IngestSourceDAG.ts.
+ * routeEventType appearing in both eventPipelineBundle.nodes and streamEventBundle.nodes
+ * is safe: the bundle registrar is idempotent for same-instance re-registration.
  */
 export const cartographerBundle: DispatcherBundle<CartographerState, CartographerServices> = {
   'nodes': [
     ...eventPipelineBundle.nodes,
-    // Top-level cartographer nodes not in the event pipeline
+    // Top-level cartographer nodes
     seedEvents,
-    mergeEvents,
-    classifyBatch,
     summarizeInsights,
   ],
   'dags': [
+    // eventPipelineBundle already registers stream-event and its sub-tree;
+    // cartographerDAG embeds stream-event, so it comes last.
     ...eventPipelineBundle.dags,
-    // The top-level DAG registered last
     cartographerDAG,
   ],
 };
 
 /**
- * cartographerWorkersBundle: same nodes as cartographerBundle, but the DAG is
- * cartographerWorkersDAG (which binds container: 'cpu' on process-events).
- * Used by runCartographer.ts when `--workers` is active.
+ * cartographerWorkersBundle: identical to cartographerBundle but uses
+ * cartographerWorkersDAG, which binds container: 'cpu' on the process-stream
+ * scatter. Used by runCartographer.ts when --workers is active.
  */
 export const cartographerWorkersBundle: DispatcherBundle<CartographerState, CartographerServices> = {
   'nodes': [
     ...eventPipelineBundle.nodes,
     seedEvents,
-    mergeEvents,
-    classifyBatch,
     summarizeInsights,
   ],
   'dags': [

@@ -139,17 +139,16 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.ok(stored !== undefined, 'expected progress entry after interruption');
     const entry = stored['fan'];
     assert.ok(entry !== undefined, 'expected an entry under scatter name');
-    // Items 0 and 1 completed before item 2 threw; they appear in ackedResults.
-    assert.equal(entry.ackedResults.length, 2);
-    for (const r of entry.ackedResults) {
-      assert.equal(r.output, 'success');
+    // append is a compactable strategy (retainsRecordsForFinalize=false), so the
+    // checkpoint is bounded mode — acked items are tracked as watermark + aheadAcked.
+    // Items 0 and 1 completed before item 2 threw; watermark should be 2.
+    assert.equal(entry.mode, 'bounded', 'expected bounded checkpoint for append strategy');
+    if (entry.mode === 'bounded') {
+      // With concurrency=1 items complete in order: watermark should advance to 2.
+      const totalAcked = entry.watermark + entry.aheadAcked.length;
+      assert.equal(totalAcked, 2, `expected 2 acked items; got watermark=${entry.watermark} aheadAcked.length=${entry.aheadAcked.length}`);
+      assert.equal(entry.outcomeTally['success'] ?? 0, 2, 'expected 2 success acked');
     }
-    // Inbox should be empty (item 2 threw — the error propagates immediately so
-    // the inbox entry for item 2 is never cleaned up, but with concurrency=1
-    // only one item was in-flight when the throw occurred).
-    // The inbox may hold item 2 (pulled but not acked); check ackedResults only.
-    const ackedIndices = entry.ackedResults.map((r) => r.index).sort((a, b) => a - b);
-    assert.deepEqual(ackedIndices, [0, 1]);
   });
 
   void it('resume skips already-acked indices and re-executes only the rest', async () => {
@@ -180,17 +179,18 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     };
     dispatcher.registerDAG(dag);
 
-    // Pre-seed progress for items 0 and 1 using the new inbox model.
+    // Pre-seed progress for items 0 and 1 using bounded checkpoint mode.
+    // Append is compactable → bounded shape; result assertions are unchanged.
     const state = new ScatterState();
     state.items = [10, 20, 30, 40, 50];
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       'fan': {
+        'mode': 'bounded' as const,
         'placementName': 'fan',
         'inbox': [],
-        'ackedResults': [
-          { 'kind': 'plain' as const, 'index': 0, 'item': 10, 'output': 'success' },
-          { 'kind': 'plain' as const, 'index': 1, 'item': 20, 'output': 'success' },
-        ],
+        'watermark': 2,
+        'aheadAcked': [],
+        'outcomeTally': { 'success': 2 },
       },
     });
 
@@ -236,14 +236,15 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     // during the prior run. Their gather contributions (append: item values)
     // are already in state.processed as they would be in a real state snapshot.
     state.processed = [11, 22];
+    // Append is compactable → bounded checkpoint shape; result assertions unchanged.
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       'fan': {
+        'mode': 'bounded' as const,
         'placementName': 'fan',
         'inbox': [],
-        'ackedResults': [
-          { 'kind': 'plain' as const, 'index': 0, 'item': 11, 'output': 'success' },
-          { 'kind': 'plain' as const, 'index': 1, 'item': 22, 'output': 'success' },
-        ],
+        'watermark': 2,
+        'aheadAcked': [],
+        'outcomeTally': { 'success': 2 },
       },
     });
 
@@ -310,18 +311,17 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.ok(persisted !== undefined, 'expected progress after interruption');
     const persistedEntry = persisted['fan'];
     assert.ok(persistedEntry !== undefined);
-    assert.equal(persistedEntry.ackedResults.length, 2);
-    // The persisted ackedResults carry the per-clone mapping values so the
-    // resume can reconstruct the gather contribution.
-    for (const r of persistedEntry.ackedResults) {
-      assert.ok(r.kind === 'map', 'expected mappingValues persisted for map gather');
-      assert.equal(r.mappingValues['produced'], f(interruptState.items[r.index] as number));
+    // map is a compactable strategy (retainsRecordsForFinalize=false), so the
+    // checkpoint is bounded mode — mapping values are already folded into parent
+    // state via reduce; no per-acked-result mapping values are persisted.
+    assert.equal(persistedEntry.mode, 'bounded', 'expected bounded checkpoint for map strategy');
+    if (persistedEntry.mode === 'bounded') {
+      const totalAcked = persistedEntry.watermark + persistedEntry.aheadAcked.length;
+      assert.equal(totalAcked, 2, 'expected 2 acked items in bounded checkpoint');
     }
-    // The parent results array must NOT carry the prior-run produced values
-    // yet; reduce fires per-ack so for map strategy the values are folded
-    // per-clone. The map strategy's reduce appends each item as it lands —
-    // so after the interruption at item 2, results should contain 2 entries
-    // (items 0 and 1).
+    // The parent results array holds the two folded values (reduce fires per-ack,
+    // so map strategy appends as each item lands).
+    // After interruption at item 2, results must contain 2 entries (items 0 and 1).
     assert.equal(partial.state.results.length, 2);
 
     // --- Phase 2: round-trip through snapshot, then resume ------------------
@@ -417,19 +417,26 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     state.items2 = [1, 2, 3, 4];
     state.processed = [100];        // fanA: index 0 already gathered
     state.processed2 = [1, 3];      // fanB: indices 0 and 2 already gathered
+    // Append is compactable → bounded checkpoint shape for both placements.
+    // fanA: index 0 acked (watermark=1). fanB: indices 0 and 2 acked (non-contiguous:
+    // watermark=1 because index 1 is missing; aheadAcked=[{index:2}]).
+    // Result assertions (aCalls/bCalls/processed lengths) are unchanged.
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       'fanA': {
+        'mode': 'bounded' as const,
         'placementName': 'fanA',
         'inbox': [],
-        'ackedResults': [{ 'kind': 'plain' as const, 'index': 0, 'item': 100, 'output': 'success' }],
+        'watermark': 1,
+        'aheadAcked': [],
+        'outcomeTally': { 'success': 1 },
       },
       'fanB': {
+        'mode': 'bounded' as const,
         'placementName': 'fanB',
         'inbox': [],
-        'ackedResults': [
-          { 'kind': 'plain' as const, 'index': 0, 'item': 1, 'output': 'success' },
-          { 'kind': 'plain' as const, 'index': 2, 'item': 3, 'output': 'success' },
-        ],
+        'watermark': 1,
+        'aheadAcked': [{ 'index': 2, 'output': 'success' }],
+        'outcomeTally': { 'success': 2 },
       },
     });
 
@@ -532,21 +539,29 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
     const state = new ScatterState();
     state.items = [7, 14, 21, 28];
     state.processed = [7, 14]; // items 0 and 1 already gathered
+    // Append is compactable → bounded checkpoint shape; result assertions unchanged.
+    // Items 0 and 1 acked contiguously → watermark=2, aheadAcked empty.
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       'fan': {
+        'mode': 'bounded' as const,
         'placementName': 'fan',
         'inbox': [],
-        'ackedResults': [
-          { 'kind': 'plain' as const, 'index': 0, 'item': 7, 'output': 'success' },
-          { 'kind': 'plain' as const, 'index': 1, 'item': 14, 'output': 'success' },
-        ],
+        'watermark': 2,
+        'aheadAcked': [],
+        'outcomeTally': { 'success': 2 },
       },
     });
     const snap = state.snapshot();
     const restored = ScatterState.restore(snap);
     const storedRestored = restored.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
     assert.ok(storedRestored !== undefined);
-    assert.equal(storedRestored['fan']?.ackedResults.length, 2);
+    const fanEntry = storedRestored['fan'];
+    assert.ok(fanEntry !== undefined);
+    // Bounded checkpoint survives snapshot/restore; shape changed from retained.
+    assert.equal(fanEntry.mode, 'bounded');
+    if (fanEntry.mode === 'bounded') {
+      assert.equal(fanEntry.watermark, 2);
+    }
 
     const result = await dispatcher.resume('scatter-ckpt', restored, 'fan');
     // fan ran 2 fresh items + tail node = 3 calls.
@@ -591,12 +606,16 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
 
     const state = new ScatterState();
     state.items = [1, 2, 3, 4];
-    // Pre-seed one acked index so the partial-result path is exercised.
+    // Pre-seed one acked index. Append is compactable → bounded checkpoint shape.
+    // shape changed for compactable gather; result assertions (cursor/dagName) unchanged.
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       'fan': {
+        'mode': 'bounded' as const,
         'placementName': 'fan',
         'inbox': [],
-        'ackedResults': [{ 'kind': 'plain' as const, 'index': 0, 'item': 1, 'output': 'success' }],
+        'watermark': 1,
+        'aheadAcked': [],
+        'outcomeTally': { 'success': 1 },
       },
     });
 
@@ -616,8 +635,13 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
 
     const stored = rehydrated.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
     assert.ok(stored !== undefined, 'progress key should survive checkpoint codec');
-    // At minimum the pre-seeded acked entry should persist.
-    assert.ok((stored['fan']?.ackedResults.length ?? 0) >= 1);
+    // At minimum one item should have been acked (the pre-seeded entry or any fresh ack).
+    const fanStored = stored['fan'];
+    assert.ok(fanStored !== undefined, 'expected progress entry for fan scatter');
+    const ackedCount = fanStored.mode === 'bounded'
+      ? fanStored.watermark + fanStored.aheadAcked.length
+      : fanStored.ackedResults.length;
+    assert.ok(ackedCount >= 1, 'at least one item should be acked after partial run');
 
     // Sanity: dagName/state types route through the resume path.
     assert.equal(dagName, 'scatter-e2e');

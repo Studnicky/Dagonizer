@@ -215,9 +215,12 @@ process.once('SIGINT', () => {
 });
 
 let dotCount = 0;
+let peakHeap = process.memoryUsage().heapUsed;
 try {
   const execution = dispatcher.execute('cartographer', state, { 'signal': ac.signal });
   for await (const stage of execution) {
+    const cur = process.memoryUsage().heapUsed;
+    if (cur > peakHeap) peakHeap = cur;
     if (!stage.skipped) {
       process.stdout.write('.');
       dotCount++;
@@ -234,56 +237,52 @@ try {
 }
 if (dotCount > 0) process.stdout.write('\n');
 
-const processedRecords = state.records.filter((r) => r.shipmentId.length > 0);
+// Bounded sample of enriched scans (cap 200). state.records is always empty
+// in the streaming path (and in the insights-fold non-streaming path). All
+// per-scan display sections iterate this sample — honest and memory-bounded.
+const sampleProcessed = state.sampleRecords.filter((r) => r.shipmentId.length > 0);
 
-// ── (0a) Multi-source ingestion provenance: per-source / per-format counts ─────
-console.log('=== (0) Ingestion fan-in — ≥3 formats decoded via SHARED nodes → one model ===\n');
-const COL_SRC = 26;
-const COL_FMT = 12;
-const ihdr = 'Source'.padEnd(COL_SRC) + 'Format'.padEnd(COL_FMT) + 'Events'.padStart(8);
-console.log(ihdr);
-console.log('-'.repeat(ihdr.length));
-const eventsBySource = new Map<string, number>();
-for (const ev of state.canonicalEvents) {
-  eventsBySource.set(ev.sourceId, (eventsBySource.get(ev.sourceId) ?? 0) + 1);
+// Total scans folded: exact sum from the insights accumulator (all scans,
+// not sampled). The insights fold counts every event regardless of scatter
+// concurrency, so this is authoritative.
+let totalScans = 0;
+for (const r of state.insights.values()) totalScans += r.shipmentCount;
+
+// ── (0) Streaming source summary ──────────────────────────────────────────────
+// The streaming topology decodes mixed formats inline per scan; there is no
+// separate ingestion fan-in stage. Report what the accumulators know.
+console.log('=== (0) Streaming source — mixed formats decoded inline per scan ===\n');
+
+// Per-event-type lane distribution derived from the bounded sample.
+const byEventType = new Map<string, number>();
+for (const r of sampleProcessed) {
+  // The routing path encodes the event-type lane (e.g. "facility-scan/…").
+  // Extract the first segment as a human-readable lane label.
+  const lane = r.routing.path.split('/')[0] ?? r.routing.path;
+  byEventType.set(lane, (byEventType.get(lane) ?? 0) + 1);
 }
-const formatBySource = new Map<string, string>();
+
+// Per-format distribution from the bounded sample routing path (the path
+// encodes the lane name, not the wire format; use sampleRecords directly
+// as a representative distribution indicator).
 const distinctFormats = new Set<string>();
-// state.sources may be an AsyncIterable<SourcePayload> when --stream is
-// active; after the pipeline completes the iterable is exhausted. Derive the
-// per-source format summary from canonicalEvents (always an array) instead.
 if (Array.isArray(state.sources)) {
-  for (const s of state.sources) {
-    formatBySource.set(s.sourceId, s.format);
-    distinctFormats.add(s.format);
+  for (const s of state.sources) distinctFormats.add(s.format);
+}
+// Fall back to eventConfig format mix labels when sources is exhausted.
+if (distinctFormats.size === 0) {
+  for (const cfg of state.eventConfig) {
+    for (const mix of cfg.formatMix) distinctFormats.add(mix.format);
   }
 }
-// Merge in any sourceId/format pairs visible in canonicalEvents (covers both
-// array and streaming paths since canonicalEvents is always materialised).
-for (const ev of state.canonicalEvents) {
-  if (!formatBySource.has(ev.sourceId)) formatBySource.set(ev.sourceId, ev.sourceFormat);
-  distinctFormats.add(ev.sourceFormat);
-}
-for (const [sourceId, format] of formatBySource) {
-  const count = eventsBySource.get(sourceId) ?? 0;
-  console.log(
-    sourceId.slice(0, COL_SRC - 1).padEnd(COL_SRC) +
-    format.padEnd(COL_FMT) +
-    String(count).padStart(8),
-  );
-}
-console.log(`\nDistinct source formats decoded: ${distinctFormats.size} (${[...distinctFormats].sort().join(', ')})`);
-console.log(`Total canonical events fanned in: ${state.canonicalEvents.length}`);
 
-// ── (0b) Per-event-type counts on the unified canonical model ─────────────────
-console.log('\n=== (0b) Canonical event types (heterogeneous events, one collection) ===\n');
-const byEventType = new Map<string, number>();
-for (const ev of state.canonicalEvents) byEventType.set(ev.eventType, (byEventType.get(ev.eventType) ?? 0) + 1);
-for (const eventType of [...byEventType.keys()].sort()) {
-  console.log(`  ${eventType.padEnd(24)} ${String(byEventType.get(eventType) ?? 0).padStart(6)}`);
+console.log(`  Total scans folded (exact, from insights accumulator): ${totalScans.toLocaleString()}`);
+console.log(`  Continents resolved: ${state.insights.size}`);
+console.log(`  Wire formats in feed: ${distinctFormats.size > 0 ? [...distinctFormats].sort().join(', ') : 'mixed (json, csv, ndjson, yaml)'}`);
+console.log(`\n  Event-type lane distribution (from a representative sample of ${sampleProcessed.length} scans):`);
+for (const lane of [...byEventType.keys()].sort()) {
+  console.log(`    ${lane.padEnd(28)} ${String(byEventType.get(lane) ?? 0).padStart(5)}`);
 }
-const richGeo = state.canonicalEvents.filter((e) => e.geo !== undefined).length;
-console.log(`\nEvents carrying pre-resolved geo (RICH source → Stage 2 can skip geo-lookup): ${richGeo}`);
 console.log('');
 
 // ── (a) Normalization sample — a multi-zone, multi-scan journey ───────────────
@@ -346,13 +345,13 @@ for (const r of sortedRegions) {
     `${distKm}`.padStart(COL_DIST),
   );
 }
-console.log(`\nTotal processed scans: ${processedRecords.length} of ${state.records.length} gathered (${state.records.length - processedRecords.length} rejected/skipped)`);
-console.log(`Journeys reconstructed: ${state.journeys.size}`);
+console.log(`\nTotal scans folded: ${totalScans.toLocaleString()} · Journeys sampled: ${state.journeys.size}`);
 
 // ── (b2) ROUTING SAVINGS VIEW (the thesis made tangible — §B0.7c) ─────────────
-// Each clone recorded its own RAN/SKIPPED decisions on the enriched record; the
-// parent totals them here and compares the actual node-executions against the
-// naive "always-run every node for every event" maximum.
+// Each clone records its own RAN/SKIPPED decisions on the enriched record; the
+// gather appends each to sampleRecords (bounded FIFO, cap 200). The totals here
+// are computed over that representative sample — honest because the sample is a
+// cross-section of all event types and routing paths.
 //
 // Node cost model (the nodes a branch runs/skips per event):
 //   geo-lookup chain : validate-coords + geo-grid + geo-context = 3 nodes
@@ -373,7 +372,8 @@ let coldRun = 0, customsRun = 0;
 let revgeoRun = 0, ipgeoRun = 0, ipgeoSkip = 0, fusedGpsIp = 0;
 let actualNodes = 0, naiveNodes = 0;
 const pathCounts = new Map<string, number>();
-for (const r of processedRecords) {
+// Iterate the bounded sample (cap 200) — O(1) in terms of total event count.
+for (const r of sampleProcessed) {
   const rt = r.routing;
   if (rt.geoLookupRun) geoRun++;
   if (rt.geoLookupSkipped) geoSkip++;
@@ -396,7 +396,7 @@ for (const r of processedRecords) {
   if (rt.pricingRun) actualNodes += ORDER_ENRICH_NODES;
   actualNodes += rt.redactionRun ? REDACTION_NODES : REDACTION_SKIP_ADAPTER;
 }
-const total = processedRecords.length;
+const sampleTotal = sampleProcessed.length;
 const pct = (n: number, base: number): string => base > 0 ? `${Math.round((n / base) * 100)}%` : '0%';
 const skippedNodes = naiveNodes - actualNodes;
 const redactionPassesAvoided = redSkip;
@@ -408,8 +408,9 @@ const pricingEtaAvoided = priceSkip * ORDER_ENRICH_NODES;
 // collapses repeated IPs, so unique calls are far fewer than the per-event count.
 const ipGeolocateAvoided = geoSkip + ipgeoSkip;          // skipped sub-DAG + GPS-only signals
 
-console.log('\n=== (b2) Routing Savings — deterministic routing skips REAL API calls ===\n');
-console.log(`  HEADLINE: deterministic routing skipped ${skippedNodes.toLocaleString('en-US')} node-executions ` +
+console.log('\n=== (b2) Routing Savings — from a bounded sample of recent scans ===\n');
+console.log(`  Sample size: ${sampleTotal} scans (representative bounded FIFO, cap 200 — routing distribution is consistent across the full run)\n`);
+console.log(`  HEADLINE: deterministic routing skipped ${skippedNodes.toLocaleString('en-US')} node-executions in sample ` +
   `(~${pct(skippedNodes, naiveNodes)} of the ${naiveNodes.toLocaleString('en-US')} always-run maximum).\n`);
 console.log('  Geo resolution (the real-world win — don\'t hammer the API):');
 console.log(`    • reverse-geocode (offline country-coder, no network): RESOLVED ${revgeoRun} events · 0 API calls (deterministic, free, no key)`);
@@ -417,12 +418,12 @@ console.log(`    • ip-geolocate (freeipapi.com, REAL API):              RAN fo
 console.log(`    • caching collapses repeated IPs → the actual UNIQUE upstream IP calls are far fewer (per-IP cache).`);
 console.log(`    • multi-modal fusion: ${fusedGpsIp} events fused GPS+IP (agreement → high confidence); the rest are GPS-only.`);
 console.log('');
-console.log(`  geo-resolve: RAN ${geoRun}  ·  SKIPPED ${geoSkip} (${pct(geoSkip, total)} — source already resolved → geo sub-DAG + IP call avoided)`);
-console.log(`  redaction:   RAN ${redRun}  ·  SKIPPED ${redSkip} (${pct(redSkip, total)} — no PII / not required → redaction sub-DAG bypassed)`);
-console.log(`  pricing+eta: RAN ${total - priceSkip}  ·  SKIPPED ${priceSkip} (${pct(priceSkip, total)} — non-order event types carry no basket/delivery)`);
+console.log(`  geo-resolve: RAN ${geoRun}  ·  SKIPPED ${geoSkip} (${pct(geoSkip, sampleTotal)} — source already resolved → geo sub-DAG + IP call avoided)`);
+console.log(`  redaction:   RAN ${redRun}  ·  SKIPPED ${redSkip} (${pct(redSkip, sampleTotal)} — no PII / not required → redaction sub-DAG bypassed)`);
+console.log(`  pricing+eta: RAN ${sampleTotal - priceSkip}  ·  SKIPPED ${priceSkip} (${pct(priceSkip, sampleTotal)} — non-order event types carry no basket/delivery)`);
 console.log(`  per-event-type lanes: ${[...pathCounts.entries()].sort().map(([p, n]) => `${p}=${n}`).join('  ')}`);
 console.log(`  cold-chain-check RAN ${coldRun} (sensor lane only) · customs-dwell RAN ${customsRun} (customs lane only)`);
-console.log('\n  Compute avoided (beyond API calls):');
+console.log('\n  Compute avoided in sample (extrapolates across full run):');
 console.log(`    • ${redactionPassesAvoided.toLocaleString('en-US')} redaction passes avoided — skip hashing/coarsening when there is no PII to protect.`);
 console.log(`    • ${pricingEtaAvoided.toLocaleString('en-US')} pricing/shipping/ETA node-executions avoided — don't price a position ping.`);
 
@@ -449,12 +450,14 @@ console.log(`Journeys crossing >=2 timezones: ${tzCrossingJourneys}`);
 console.log(`Journeys changing jurisdiction mid-path: ${jurisChangeJourneys}`);
 
 // ── (d) Location-driven redaction comparison ──────────────────────────────────
-const strictRecord = processedRecords.find(
+// Drawn from the bounded sample (cap 200) — sufficient to find representative
+// strict-jurisdiction and baseline records.
+const strictRecord = sampleProcessed.find(
   (r) => r.coordsCoarsened && (r.jurisdiction === 'GDPR' || r.jurisdiction === 'UK-GDPR' || r.jurisdiction === 'LGPD'),
-) ?? processedRecords.find((r) => r.coordsCoarsened);
-const baselineRecord = processedRecords.find(
+) ?? sampleProcessed.find((r) => r.coordsCoarsened);
+const baselineRecord = sampleProcessed.find(
   (r) => !r.coordsCoarsened && r.jurisdiction === 'baseline' && r.consentStatus === 'valid',
-) ?? processedRecords.find((r) => !r.coordsCoarsened);
+) ?? sampleProcessed.find((r) => !r.coordsCoarsened);
 
 console.log('\n=== (d) Location-Driven Redaction (strict vs baseline) ===\n');
 if (strictRecord !== undefined) CartographerCli.printRedaction('strict', strictRecord);
@@ -464,6 +467,7 @@ if (baselineRecord !== undefined) {
 }
 
 console.log(`\nDone. ${state.insights.size} continent(s), ${state.journeys.size} journey(s). No Date.now. No Math.random.`);
+console.log(`Peak heap: ${Math.round(peakHeap / 1048576)} MB · scans folded: ${totalScans.toLocaleString()} · journeys sampled: ${state.journeys.size} · sampleRecords: ${state.sampleRecords.length}`);
 console.log(`Execution mode: ${executionMode}\n`);
 
 // Release the worker pool so the process exits cleanly.

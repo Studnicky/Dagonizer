@@ -23,26 +23,38 @@ import { computed, nextTick, onMounted, ref } from 'vue';
 import { CartographerState } from '../../../../examples/the-cartographer/CartographerState.ts';
 import type { JourneyInsights, RegionInsights } from '../../../../examples/the-cartographer/CartographerState.ts';
 import type { CartographerServices } from '../../../../examples/the-cartographer/CartographerServices.ts';
-import { cartographerWorkersDAG, cartographerWorkersBundle } from '../../../../examples/the-cartographer/dag.ts';
-import { ingestSourceDAG, ingestSourceBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestSourceDAG.ts';
-import { geoResolveDAG, geoResolveBundle } from '../../../../examples/the-cartographer/embedded-dags/GeoResolveDAG.ts';
-import { gdprComplianceDAG, gdprComplianceBundle } from '../../../../examples/the-cartographer/embedded-dags/GdprComplianceDAG.ts';
-import { orderEnrichmentDAG, orderEnrichmentBundle } from '../../../../examples/the-cartographer/embedded-dags/OrderEnrichmentDAG.ts';
+import { cartographerWorkersDAG, cartographerWorkersBundle, eventPipelineBundle } from '../../../../examples/the-cartographer/dag.ts';
+import { ingestSourceBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestSourceDAG.ts';
+import { geoResolveBundle } from '../../../../examples/the-cartographer/embedded-dags/GeoResolveDAG.ts';
+import { gdprComplianceBundle } from '../../../../examples/the-cartographer/embedded-dags/GdprComplianceDAG.ts';
+import { orderEnrichmentBundle } from '../../../../examples/the-cartographer/embedded-dags/OrderEnrichmentDAG.ts';
 import { GeoResolvers } from '../../../../examples/the-cartographer/services/GeoResolvers.ts';
 import type { EnrichedShipment } from '../../../../examples/the-cartographer/entities/EnrichedShipment.ts';
 import type { CanonicalEventVariant } from '../../../../examples/the-cartographer/entities/CanonicalEvent.ts';
-import type { EventTypeConfig, FormatMix } from '../../../../examples/the-cartographer/services.ts';
-import { normalizeCsvDAG } from '../../../../examples/the-cartographer/embedded-dags/NormalizeCsvDAG.ts';
-import { normalizeJsonDAG } from '../../../../examples/the-cartographer/embedded-dags/NormalizeJsonDAG.ts';
-import { normalizeNdjsonDAG } from '../../../../examples/the-cartographer/embedded-dags/NormalizeNdjsonDAG.ts';
-import { normalizeYamlDAG } from '../../../../examples/the-cartographer/embedded-dags/NormalizeYamlDAG.ts';
+import type { FormatMix } from '../../../../examples/the-cartographer/services.ts';
 
 import { ObservedDagonizer } from './ObservedDagonizer.ts';
+import { WebWorkerContainer } from '@noocodex/dagonizer-executor-web';
+import type { WebWorkerLikeInterface } from '@noocodex/dagonizer-executor-web';
 import DagGraph from './DagGraph.vue';
 import PanesTabs from './PanesTabs.vue';
 import AboxAccordion from './AboxAccordion.vue';
 import type { AboxEntity } from './AboxAccordion.vue';
 import Spinner from './Spinner.vue';
+
+// ── Web-worker container ───────────────────────────────────────────────────────
+// Runs the CPU-heavy stream-event scatter body (decode → route → per-type
+// pipelines) off the main thread. `createWorker` is the consumer seam Vite needs
+// to chunk the worker entry; the entry statically injects its registry so no
+// dynamic import runs in the worker.
+class CartographerWorkerContainer extends WebWorkerContainer {
+  protected override createWorker(): WebWorkerLikeInterface {
+    return new Worker(
+      new URL('./cartographerWorkerEntry.ts', import.meta.url),
+      { 'type': 'module' },
+    ) as unknown as WebWorkerLikeInterface;
+  }
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type TraceEvent =
@@ -86,116 +98,83 @@ const journeysMap = ref<Map<string, JourneyInsights>>(new Map());
 
 const dagGraph = ref<InstanceType<typeof DagGraph> | null>(null);
 
-// The DAG embedded-DAG registry: maps each sub-DAG key (used in the event-pipeline's
-// embeddedDAG calls) to its DAG object so DagGraph can expand them.
-const embeddedDagRegistry = new Map([
-  ['ingest-source',    ingestSourceDAG],
-  ['normalize-csv',    normalizeCsvDAG],
-  ['normalize-json',   normalizeJsonDAG],
-  ['normalize-ndjson', normalizeNdjsonDAG],
-  ['normalize-yaml',   normalizeYamlDAG],
-  ['geo-resolve',      geoResolveDAG],
-  ['order-enrichment', orderEnrichmentDAG],
-  ['gdpr-compliance',  gdprComplianceDAG],
-]);
+// Every sub-DAG the cartographer DAG embeds, keyed by name, derived from the
+// scatter-body bundle so it never drifts. Lets the graph expand the full
+// topology (process-stream → stream-event → 5 per-type pipelines → geo-pipeline
+// → leaves) and animate inner nodes as the worker relay reports them.
+const embeddedDagRegistry = new Map(
+  eventPipelineBundle.dags.map((d) => [d.name, d] as const),
+);
 
 // ── Feed configuration ───────────────────────────────────────────────────────
 
-/** Per-event-type row (mutable UI state). */
+/**
+ * Per-payload-type row (mutable UI state). The visitor controls each type's
+ * SHARE of the total; the absolute count is apportioned from the global total
+ * at run time. Streaming is the only execution mode.
+ */
 interface TypeRow {
   eventType: CanonicalEventVariant['eventType'];
-  count: number;
+  pct: number;
 }
 
-/** A single global format-mix row (shared across all event types). */
-interface FormatMixRow {
-  format: 'csv' | 'json' | 'ndjson' | 'yaml';
-  compression: 'none' | 'gzip';
-  weight: number;
-}
-
-/** Sample presets for quick-pick. */
-interface TypePreset {
-  label: string;
-  rows: TypeRow[];
-}
-
-const PRESETS: readonly TypePreset[] = [
-  {
-    label: 'Balanced',
-    rows: [
-      { eventType: 'position-ping',         count: 6  },
-      { eventType: 'facility-scan',         count: 5  },
-      { eventType: 'sensor-reading',        count: 4  },
-      { eventType: 'customs-event',         count: 3  },
-      { eventType: 'delivery-confirmation', count: 3  },
-    ],
-  },
-  {
-    label: 'Sensor-heavy',
-    rows: [
-      { eventType: 'position-ping',         count: 2  },
-      { eventType: 'facility-scan',         count: 2  },
-      { eventType: 'sensor-reading',        count: 15 },
-      { eventType: 'customs-event',         count: 1  },
-      { eventType: 'delivery-confirmation', count: 1  },
-    ],
-  },
-  {
-    label: 'Customs-heavy',
-    rows: [
-      { eventType: 'position-ping',         count: 2  },
-      { eventType: 'facility-scan',         count: 3  },
-      { eventType: 'sensor-reading',        count: 2  },
-      { eventType: 'customs-event',         count: 12 },
-      { eventType: 'delivery-confirmation', count: 2  },
-    ],
-  },
-  {
-    label: '100 × position',
-    rows: [
-      { eventType: 'position-ping',         count: 100 },
-      { eventType: 'facility-scan',         count: 0   },
-      { eventType: 'sensor-reading',        count: 0   },
-      { eventType: 'customs-event',         count: 0   },
-      { eventType: 'delivery-confirmation', count: 0   },
-    ],
-  },
-  {
-    label: 'All types (1k)',
-    rows: [
-      { eventType: 'position-ping',         count: 200 },
-      { eventType: 'facility-scan',         count: 200 },
-      { eventType: 'sensor-reading',        count: 200 },
-      { eventType: 'customs-event',         count: 200 },
-      { eventType: 'delivery-confirmation', count: 200 },
-    ],
-  },
-];
-
-const typeRows = ref<TypeRow[]>([
-  { eventType: 'position-ping',         count: 6 },
-  { eventType: 'facility-scan',         count: 5 },
-  { eventType: 'sensor-reading',        count: 4 },
-  { eventType: 'customs-event',         count: 3 },
-  { eventType: 'delivery-confirmation', count: 3 },
-]);
-
-const formatMixRows = ref<FormatMixRow[]>([
+/**
+ * Default wire-format spread applied to every payload type. Format is an
+ * internal axis — the panel exposes total + type spread only — but the
+ * generator still emits mixed JSON / CSV / gzip-NDJSON / YAML so the streaming
+ * decoder is exercised across every wire format.
+ */
+const DEFAULT_FORMAT_MIX: FormatMix = [
   { format: 'json',   compression: 'none', weight: 3 },
   { format: 'csv',    compression: 'none', weight: 2 },
   { format: 'ndjson', compression: 'gzip', weight: 2 },
   { format: 'yaml',   compression: 'none', weight: 1 },
+];
+
+const typeRows = ref<TypeRow[]>([
+  { eventType: 'position-ping',         pct: 40 },
+  { eventType: 'facility-scan',         pct: 25 },
+  { eventType: 'sensor-reading',        pct: 20 },
+  { eventType: 'customs-event',         pct: 10 },
+  { eventType: 'delivery-confirmation', pct: 5  },
 ]);
 
-const totalTypeEvents = computed(() =>
-  typeRows.value.reduce((sum, r) => sum + r.count, 0),
+/** Total events to stream this run; clamped to [1, 1,000,000] at run time. */
+const totalEventsInput = ref(100000);
+
+/** Sum of the per-type shares — normalises the spread into absolute counts. */
+const sumPct = computed(() =>
+  typeRows.value.reduce((s, r) => s + Math.max(0, r.pct), 0),
 );
 
-/** When true, the run uses the lazy generative streamer (up to 1,000,000 events). */
-const streamingEnabled = ref(false);
-/** Total events for the generative streamer; clamped to [1, 1,000,000] at run time. */
-const streamCountInput = ref(100000);
+/** The clamped total events the next run will stream. */
+const clampedTotal = computed(() => {
+  const v = Math.floor(totalEventsInput.value);
+  return Math.min(1_000_000, Math.max(1, Number.isNaN(v) ? 1 : v));
+});
+
+/**
+ * Per-type absolute counts apportioned from the total by share, using the
+ * largest-remainder method so the counts sum exactly to the total.
+ */
+const derivedCounts = computed<number[]>(() => {
+  const total = clampedTotal.value;
+  const denom = sumPct.value;
+  if (denom <= 0) return typeRows.value.map(() => 0);
+  const exact = typeRows.value.map((r) => (total * Math.max(0, r.pct)) / denom);
+  const counts = exact.map((x) => Math.floor(x));
+  let remainder = total - counts.reduce((s, x) => s + x, 0);
+  const byFraction = exact
+    .map((x, i) => ({ i, frac: x - Math.floor(x) }))
+    .sort((a, b) => b.frac - a.frac);
+  for (let k = 0; k < byFraction.length && remainder > 0; k++) {
+    const entry = byFraction[k];
+    if (entry === undefined) break;
+    counts[entry.i] = (counts[entry.i] ?? 0) + 1;
+    remainder--;
+  }
+  return counts;
+});
 
 /** Maximum number of feed lines held in DOM at any time (virtualization). */
 const MAX_VISIBLE_FEED = 200;
@@ -203,22 +182,9 @@ const MAX_VISIBLE_FEED = 200;
 /** True total of records appended across the entire run (never trimmed). */
 const processedCount = ref(0);
 
-function applyPreset(preset: TypePreset): void {
-  typeRows.value = preset.rows.map((r) => ({ ...r }));
-}
-
-function clampTypeCount(row: TypeRow): void {
-  const v = Math.floor(row.count);
-  row.count = Number.isNaN(v) ? 0 : Math.max(0, Math.min(10000, v));
-}
-
-function toggleFormatCompression(row: FormatMixRow): void {
-  row.compression = row.compression === 'none' ? 'gzip' : 'none';
-}
-
-function clampWeight(row: FormatMixRow): void {
-  const v = Math.floor(row.weight);
-  row.weight = Number.isNaN(v) ? 1 : Math.max(1, Math.min(100, v));
+function clampTypePct(row: TypeRow): void {
+  const v = Math.floor(row.pct);
+  row.pct = Number.isNaN(v) ? 0 : Math.max(0, Math.min(100, v));
 }
 
 // ── Abort control ────────────────────────────────────────────────────────────
@@ -311,9 +277,7 @@ const leftTabs = computed(() => [
   {
     'key': 'config',
     'label': 'Config',
-    'badge': streamingEnabled.value
-      ? String(Math.min(1_000_000, Math.max(1, Math.floor(streamCountInput.value))))
-      : String(totalTypeEvents.value),
+    'badge': String(clampedTotal.value),
     'tone': 'default' as const,
   },
   {
@@ -363,6 +327,88 @@ function scrollFeedToBottom(): void {
   }
 }
 
+// ── Live-update throttling (survives 1,000,000-event runs) ───────────────────
+// The streaming scatter fires onNodeStart/onNodeEnd for every inner node of
+// every clone — N events × M sub-DAG nodes is millions of observer calls.
+// Mutating a reactive ref on each call is O(n²) and freezes the tab. The
+// observer instead writes plain buffers and schedules a single
+// requestAnimationFrame flush, so the DOM updates at most once per frame
+// regardless of event throughput. Node-id and edge sets are bounded by the
+// static sub-DAG (~dozens), never by event count.
+const MAX_TRACE = 60;
+
+let latestRunState: CartographerState | null = null;
+let traceBuffer: TraceEvent[] = [];
+const frameActiveNodes = new Set<string>();
+const frameCompletedNodes = new Set<string>();
+const frameTraversedEdges = new Set<string>();
+let frameErroredNode: string | null = null;
+let flushScheduled = false;
+let flushHandle = 0;
+
+/** Exact processed-event count from the bounded region rollup. */
+function exactProcessed(state: CartographerState): number {
+  let sum = 0;
+  for (const region of state.insights.values()) sum += region.shipmentCount;
+  return sum;
+}
+
+/** Push progress, feed, and processed-count from a state snapshot. */
+function applyLiveState(state: CartographerState): void {
+  const processed = exactProcessed(state);
+  processedCount.value = processed;
+  if (totalEvents > 0) {
+    progressPct.value = Math.min(100, Math.round((processed / totalEvents) * 100));
+  }
+  streamFeed.value = state.sampleRecords.slice(-MAX_VISIBLE_FEED).map((rec) => ({
+    shipmentId: rec.shipmentId,
+    scanSeq:    rec.scanSeq,
+    status:     rec.status,
+    continent:  rec.continent,
+    redacted:   rec.redactionApplied,
+  }));
+}
+
+/** Apply all buffered observer state to the DOM. Runs at most once per frame. */
+function flushLiveState(): void {
+  flushScheduled = false;
+  for (const id of frameCompletedNodes) dagGraph.value?.setCompleted(id);
+  frameCompletedNodes.clear();
+  for (const id of frameActiveNodes) dagGraph.value?.setActive(id);
+  frameActiveNodes.clear();
+  for (const edge of frameTraversedEdges) {
+    const sep = edge.lastIndexOf('|');
+    dagGraph.value?.markEdgeTraversed(edge.slice(0, sep), edge.slice(sep + 1));
+  }
+  frameTraversedEdges.clear();
+  if (frameErroredNode !== null) { dagGraph.value?.setErrored(frameErroredNode); frameErroredNode = null; }
+
+  trace.value = traceBuffer.slice(-MAX_TRACE);
+  if (latestRunState !== null) {
+    applyLiveState(latestRunState);
+    void nextTick(scrollFeedToBottom);
+  }
+}
+
+function scheduleFlush(): void {
+  if (flushScheduled) return;
+  flushScheduled = true;
+  flushHandle = requestAnimationFrame(flushLiveState);
+}
+
+/** Reset throttle buffers between runs. */
+function resetLiveBuffers(): void {
+  if (flushHandle !== 0) cancelAnimationFrame(flushHandle);
+  flushHandle = 0;
+  flushScheduled = false;
+  latestRunState = null;
+  traceBuffer = [];
+  frameActiveNodes.clear();
+  frameCompletedNodes.clear();
+  frameTraversedEdges.clear();
+  frameErroredNode = null;
+}
+
 // ── Run ───────────────────────────────────────────────────────────────────────
 async function run(): Promise<void> {
   if (isRunning.value) return;
@@ -378,74 +424,72 @@ async function run(): Promise<void> {
   streamFeed.value = [];
   processedCount.value = 0;
   progressPct.value = 0;
-  totalEvents = 0;
+  totalEvents = clampedTotal.value;
+  resetLiveBuffers();
 
   await dagGraph.value?.reset();
 
   let dispatcher: ObservedDagonizer<CartographerState, CartographerServices> | null = null;
 
   try {
-    const services: CartographerServices = GeoResolvers.live();
+    // Offline recorded geo on both sides: the worker registry builds its own
+    // recorded services bag; the main thread (seed + summarize + gather) needs
+    // no network. Deterministic and infeasible-to-network-at-1M.
+    const services: CartographerServices = GeoResolvers.recorded();
 
-    /** Count of records seen on the previous onNodeEnd call — detect growth. */
-    let prevRecordCount = 0;
+    // One worker pool drives the scatter fanout off the main thread, sized to
+    // the host minus the main thread and a spare. The scatter binds container
+    // 'cpu' (cartographerWorkersDAG), so the body runs in these workers.
+    const hw = typeof navigator !== 'undefined' && navigator.hardwareConcurrency > 0
+      ? navigator.hardwareConcurrency
+      : 4;
+    const container = new CartographerWorkerContainer({
+      'registryModule':  new URL('./cartographerWorkerEntry.ts', import.meta.url).href,
+      'registryVersion': '1.0.0',
+      'servicesConfig':  { 'useRecordedIp': true },
+      'poolSize':        Math.max(2, hw - 2),
+    });
 
     const observer = {
       onNodeStart(nodeName: string, _state: CartographerState, placementPath: readonly string[] = []) {
         const fullId = [...placementPath, nodeName].join('/');
-        trace.value = [...trace.value, { 'kind': 'start', 'node': fullId, 'ts': Date.now() }];
-        dagGraph.value?.setActive(fullId);
+        frameActiveNodes.add(fullId);
+        // Trace records top-level node events only; inner per-clone activity is
+        // conveyed through the progress bar, feed, and throttled graph lighting.
+        if (placementPath.length === 0) {
+          traceBuffer.push({ kind: 'start', node: fullId, ts: Date.now() });
+        }
+        scheduleFlush();
       },
       onNodeEnd(nodeName: string, output: string | null, state: CartographerState, placementPath: readonly string[] = []) {
         const fullId = [...placementPath, nodeName].join('/');
-        trace.value = [...trace.value, { 'kind': 'end', 'node': fullId, output, 'ts': Date.now() }];
-        dagGraph.value?.setCompleted(fullId);
-        if (output !== null) dagGraph.value?.markEdgeTraversed(fullId, output);
-
-        // Capture total once the ingest fan-in merge-events node fires.
-        // At that point canonicalEvents is fully populated.
-        if (nodeName === 'merge-events' && state.canonicalEvents.length > 0) {
-          totalEvents = state.canonicalEvents.length;
+        latestRunState = state;
+        frameActiveNodes.delete(fullId);
+        frameCompletedNodes.add(fullId);
+        if (output !== null) frameTraversedEdges.add(`${fullId}|${output}`);
+        if (placementPath.length === 0) {
+          traceBuffer.push({ kind: 'end', node: fullId, ts: Date.now(), output });
         }
-
-        // Detect new gathered records (scatter appends to state.records).
-        const currentCount = state.records.length;
-        if (currentCount > prevRecordCount) {
-          const newRecords = state.records.slice(prevRecordCount, currentCount);
-          const newLines = newRecords.map((rec) => ({
-            'shipmentId':  rec.shipmentId,
-            'scanSeq':     rec.scanSeq,
-            'status':      rec.status,
-            'continent':   rec.continent,
-            'redacted':    rec.redactionApplied,
-          }));
-          processedCount.value += newLines.length;
-          const combined = [...streamFeed.value, ...newLines];
-          streamFeed.value = combined.length > MAX_VISIBLE_FEED
-            ? combined.slice(-MAX_VISIBLE_FEED)
-            : combined;
-          prevRecordCount = currentCount;
-
-          // Update progress percentage.
-          if (totalEvents > 0) {
-            progressPct.value = Math.min(100, Math.round((currentCount / totalEvents) * 100));
-          }
-
-          // Auto-scroll feed on next tick (after DOM update).
-          void nextTick(scrollFeedToBottom);
-        }
+        scheduleFlush();
       },
       onError(nodeName: string, error: Error, _state: CartographerState, placementPath: readonly string[] = []) {
         const fullId = [...placementPath, nodeName].join('/');
-        trace.value = [...trace.value, { 'kind': 'error', 'node': fullId, 'ts': Date.now(), 'message': error.message !== '' ? error.message : String(error) }];
-        dagGraph.value?.setErrored(fullId);
+        frameErroredNode = fullId;
+        traceBuffer.push({ kind: 'error', node: fullId, ts: Date.now(), message: error.message !== '' ? error.message : String(error) });
+        scheduleFlush();
       },
       onFlowEnd(_dagName: string, state: CartographerState) {
-        records.value = [...state.records];
-        // Capture pre-stream payload for the Before/After accordion.
-        canonicalEvents.value = [...state.canonicalEvents];
+        // Final synchronous flush — capture the terminal state exactly.
+        latestRunState = state;
+        records.value = [...state.sampleRecords];
+        // The streaming flow decodes inline; there is no materialised
+        // canonical-event array. The Before/After accordion's pre-stream source
+        // panel is wired in the separate UI follow-up.
+        canonicalEvents.value = [];
         insightsMap.value = new Map(state.insights);
         journeysMap.value = new Map(state.journeys);
+        trace.value = traceBuffer.slice(-MAX_TRACE);
+        applyLiveState(state);
         progressPct.value = 100;
       },
     };
@@ -453,6 +497,7 @@ async function run(): Promise<void> {
     dispatcher = new ObservedDagonizer<CartographerState, CartographerServices>({
       services,
       'observer': observer,
+      'containers': { 'cpu': container },
     });
 
     // Bundle registration order: sub-DAGs first so their names resolve.
@@ -464,29 +509,19 @@ async function run(): Promise<void> {
 
     const state = new CartographerState();
 
-    // Build the EventTypeConfig from the per-type rows and the global format mix.
-    const sharedFormatMix: FormatMix = formatMixRows.value.map((r) => ({
-      'format':      r.format,
-      'compression': r.compression,
-      'weight':      r.weight,
-    }));
-
-    state.eventConfig = typeRows.value.map((r) => ({
+    // Apportion the total across payload types by share. Streaming is the only
+    // execution mode — the generative streamer yields events lazily so memory
+    // stays flat regardless of total.
+    const counts = derivedCounts.value;
+    state.eventConfig = typeRows.value.map((r, i) => ({
       'eventType':  r.eventType,
-      'count':      r.count,
-      'formatMix':  sharedFormatMix,
+      'count':      counts[i] ?? 0,
+      'formatMix':  DEFAULT_FORMAT_MIX,
     }));
 
-    state.useStreamingSource = streamingEnabled.value;
-    if (streamingEnabled.value) {
-      const requested = Math.floor(streamCountInput.value);
-      state.streamCount = Math.min(1_000_000, Math.max(1, Number.isNaN(requested) ? 1 : requested));
-    } else {
-      state.streamCount = 0;
-    }
-    // eventCount is not the finite-path driver anymore; derive from per-type sum
-    // for checkpoint/progress hints.
-    state.eventCount = totalTypeEvents.value > 0 ? totalTypeEvents.value : 21;
+    state.useStreamingSource = true;
+    state.streamCount = clampedTotal.value;
+    state.eventCount = clampedTotal.value;
 
     activeAbortController = new AbortController();
 
@@ -518,6 +553,7 @@ function reset(): void {
   processedCount.value = 0;
   progressPct.value = 0;
   totalEvents = 0;
+  resetLiveBuffers();
   isDone.value = false;
   errorMessage.value = null;
   void dagGraph.value?.reset();
@@ -593,103 +629,12 @@ onMounted(() => {
             </div>
           </template>
 
-          <!-- Config tab: feed preset picker, per-format table, streaming controls -->
+          <!-- Config tab: total events + payload-type spread (always streaming) -->
           <template #config>
             <div class="cr-left-pane cr-config-pane">
 
-              <!-- Preset picker -->
+              <!-- Total events -->
               <div class="cr-config-section">
-                <div class="cr-section-head">Presets</div>
-                <div class="cr-preset-row">
-                  <button
-                    v-for="preset in PRESETS"
-                    :key="preset.label"
-                    type="button"
-                    class="cr-btn cr-btn--preset"
-                    @click="applyPreset(preset)"
-                  >{{ preset.label }}</button>
-                </div>
-              </div>
-
-              <!-- Per-event-type table -->
-              <div class="cr-config-section">
-                <div class="cr-section-head">Event types</div>
-                <table class="cr-table cr-table--compact cr-feed-table">
-                  <thead>
-                    <tr>
-                      <th>Event Type</th>
-                      <th>Count (0–10000)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="row in typeRows" :key="row.eventType">
-                      <td class="cr-feed-fmt mono">{{ row.eventType }}</td>
-                      <td>
-                        <input
-                          type="number"
-                          min="0"
-                          max="10000"
-                          class="cr-count-input"
-                          v-model.number="row.count"
-                          @change="clampTypeCount(row)"
-                        />
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <!-- Format mix (independent axis) -->
-              <div class="cr-config-section">
-                <div class="cr-section-head">Format mix (shared across types)</div>
-                <table class="cr-table cr-table--compact cr-feed-table">
-                  <thead>
-                    <tr>
-                      <th>Format</th>
-                      <th>Compression</th>
-                      <th>Weight (1–100)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="row in formatMixRows" :key="row.format">
-                      <td class="cr-feed-fmt mono">{{ row.format }}</td>
-                      <td>
-                        <button
-                          type="button"
-                          :class="['cr-btn', 'cr-btn--compression', row.compression === 'gzip' ? 'cr-btn--compression-active' : '']"
-                          @click="toggleFormatCompression(row)"
-                        >{{ row.compression }}</button>
-                      </td>
-                      <td>
-                        <input
-                          type="number"
-                          min="1"
-                          max="100"
-                          class="cr-count-input"
-                          v-model.number="row.weight"
-                          @change="clampWeight(row)"
-                        />
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <!-- Streaming toggle -->
-              <div class="cr-config-section">
-                <div class="cr-section-head">Source mode</div>
-                <label class="cr-toggle-label">
-                  <input
-                    type="checkbox"
-                    class="cr-toggle-check"
-                    v-model="streamingEnabled"
-                  />
-                  <span class="cr-toggle-text">Generative streaming source (lazy, up to 1,000,000 events)</span>
-                </label>
-              </div>
-
-              <!-- Streaming count (shown when streaming is enabled) -->
-              <div v-if="streamingEnabled" class="cr-config-section">
                 <div class="cr-section-head">Total events</div>
                 <div class="cr-stream-count-row">
                   <input
@@ -697,30 +642,56 @@ onMounted(() => {
                     min="1"
                     max="1000000"
                     class="cr-count-input cr-count-input--wide"
-                    v-model.number="streamCountInput"
+                    v-model.number="totalEventsInput"
                   />
-                  <button type="button" class="cr-btn cr-btn--quickpick" @click="streamCountInput = 10000">10k</button>
-                  <button type="button" class="cr-btn cr-btn--quickpick" @click="streamCountInput = 100000">100k</button>
-                  <button type="button" class="cr-btn cr-btn--quickpick" @click="streamCountInput = 1000000">1M</button>
+                  <button type="button" class="cr-btn cr-btn--quickpick" @click="totalEventsInput = 1000">1k</button>
+                  <button type="button" class="cr-btn cr-btn--quickpick" @click="totalEventsInput = 10000">10k</button>
+                  <button type="button" class="cr-btn cr-btn--quickpick" @click="totalEventsInput = 100000">100k</button>
+                  <button type="button" class="cr-btn cr-btn--quickpick" @click="totalEventsInput = 1000000">1M</button>
                 </div>
+              </div>
+
+              <!-- Payload-type spread -->
+              <div class="cr-config-section">
+                <div class="cr-section-head">Payload type spread</div>
+                <table class="cr-table cr-table--compact cr-feed-table">
+                  <thead>
+                    <tr>
+                      <th>Payload type</th>
+                      <th>Share %</th>
+                      <th>≈ events</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(row, i) in typeRows" :key="row.eventType">
+                      <td class="cr-feed-fmt mono">{{ row.eventType }}</td>
+                      <td>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          class="cr-count-input"
+                          v-model.number="row.pct"
+                          @change="clampTypePct(row)"
+                        />
+                      </td>
+                      <td class="cr-feed-fmt mono">{{ (derivedCounts[i] ?? 0).toLocaleString() }}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
 
               <!-- Summary line -->
               <div class="cr-config-summary">
-                <template v-if="!streamingEnabled">
-                  Finite feed: <span class="cr-config-count">{{ totalTypeEvents }}</span> events across {{ typeRows.filter(r => r.count > 0).length }} type(s)
-                </template>
-                <template v-else>
-                  Streaming: <span class="cr-config-count">{{ Math.min(1000000, Math.max(1, Math.floor(streamCountInput))) }}</span> events
-                </template>
+                Always streaming: <span class="cr-config-count">{{ clampedTotal.toLocaleString() }}</span>
+                events across {{ typeRows.filter(r => r.pct > 0).length }} payload type(s)
               </div>
 
-              <!-- Helper note for streaming mode -->
-              <div v-if="streamingEnabled" class="cr-config-note">
-                In streaming mode the format-mix weights control format selection across all event types.
-                The live feed is virtualized — only the most recent {{ MAX_VISIBLE_FEED }} lines are shown in the DOM,
-                so a 1,000,000-event run does not freeze the tab. The Stream tab badge shows the true
-                processed count.
+              <div class="cr-config-note">
+                The generative streamer yields events lazily — heap stays flat regardless of total.
+                The live feed is virtualized to the most recent {{ MAX_VISIBLE_FEED }} lines and the
+                DAG/trace updates are frame-throttled, so a 1,000,000-event run does not freeze the
+                tab. The Stream badge shows the true processed count.
               </div>
 
             </div>
