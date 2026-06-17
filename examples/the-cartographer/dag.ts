@@ -281,49 +281,65 @@ export const eventPipelineTypedDAG: DAG = new DAGBuilder('event-pipeline-typed',
 // ── DAG 1b: cartographer-workers (container variant) ─────────────────────────
 
 // #region cartographer-workers-dag
+/** Default reservoir capacity for the process-stream scatter in the workers DAG. */
+export const DEFAULT_RESERVOIR_CAPACITY = 1000;
+
 /**
- * cartographerWorkersDAG: identical topology to cartographerDAG with one
- * difference — the process-stream scatter binds container: 'cpu' so each
- * stream-event body runs inside a WorkerThreadContainer (real worker threads)
- * rather than in-process. Useful for CPU-bound decode + enrichment workloads.
+ * buildCartographerWorkersDAG: factory that constructs the cartographer-workers
+ * DAG with a configurable reservoir capacity on the process-stream scatter.
+ *
+ * Identical topology to cartographerDAG with two differences:
+ *   - container: 'cpu' so each stream-event body runs inside a
+ *     WorkerThreadContainer (real worker threads) rather than in-process.
+ *   - reservoir.capacity is parameterised; callers pass their UI-controlled
+ *     batch size rather than relying on the compile-time default.
  *
  * Topology:
  *   seed (pre)
  *     → scatter('process-stream', 'sources', { dag: 'stream-event' },
  *               gather: { strategy: 'insights-fold' }, concurrency: 16,
- *               container: 'cpu')
+ *               container: 'cpu', reservoir: { capacity })
  *     → summarize → done
  */
-export const cartographerWorkersDAG: DAG = new DAGBuilder('cartographer', '1.0')
+export function buildCartographerWorkersDAG(capacity: number = DEFAULT_RESERVOIR_CAPACITY): DAG {
+  return new DAGBuilder('cartographer', '1.0')
 
-  .phase('seed', 'pre', seedEvents)
+    .phase('seed', 'pre', seedEvents)
 
-  .scatter(
-    'process-stream',
-    'sources',
-    { 'dag': 'stream-event' },
-    {
-      'all-success': 'summarize',
-      'partial':     'summarize',
-      'all-error':   'summarize',
-      'empty':       'summarize',
-    },
-    {
-      'itemKey':     'source-payload',
-      'concurrency': 16,
-      'container':   'cpu',
-      'gather': { 'strategy': 'insights-fold' },
-      'reservoir': { 'keyField': 'eventType', 'capacity': 1000 },
-    },
-  )
+    .scatter(
+      'process-stream',
+      'sources',
+      { 'dag': 'stream-event' },
+      {
+        'all-success': 'summarize',
+        'partial':     'summarize',
+        'all-error':   'summarize',
+        'empty':       'summarize',
+      },
+      {
+        'itemKey':     'source-payload',
+        'concurrency': 16,
+        'container':   'cpu',
+        'gather': { 'strategy': 'insights-fold' },
+        'reservoir': { 'keyField': 'eventType', 'capacity': capacity },
+      },
+    )
 
-  .node('summarize', summarizeInsights, {
-    'success': 'done',
-  })
+    .node('summarize', summarizeInsights, {
+      'success': 'done',
+    })
 
-  .terminal('done', { outcome: 'completed' })
+    .terminal('done', { outcome: 'completed' })
 
-  .build();
+    .build();
+}
+
+/**
+ * cartographerWorkersDAG: pre-built workers DAG at DEFAULT_RESERVOIR_CAPACITY.
+ * CLI, smoke tests, and dag-validate consumers use this constant; the browser
+ * demo uses buildCartographerWorkersDAG(capacity) with a UI-controlled value.
+ */
+export const cartographerWorkersDAG: DAG = buildCartographerWorkersDAG();
 // #endregion cartographer-workers-dag
 
 // ── Bundle registration ───────────────────────────────────────────────────────
@@ -414,19 +430,35 @@ export const cartographerBundle: DispatcherBundle<CartographerState, Cartographe
 };
 
 /**
+ * buildCartographerWorkersBundle: factory that builds the workers bundle with a
+ * configurable reservoir capacity. The returned bundle is identical to
+ * cartographerWorkersBundle except that its cartographer DAG is built with
+ * buildCartographerWorkersDAG(capacity) so the process-stream scatter uses the
+ * caller-supplied batch size.
+ *
+ * Used by the browser demo to wire UI-controlled knobs into each run() without
+ * mutating the shared default-capacity constants.
+ */
+export function buildCartographerWorkersBundle(
+  capacity: number = DEFAULT_RESERVOIR_CAPACITY,
+): DispatcherBundle<CartographerState, CartographerServices> {
+  return {
+    'nodes': [
+      ...eventPipelineBundle.nodes,
+      seedEvents,
+      summarizeInsights,
+    ],
+    'dags': [
+      ...eventPipelineBundle.dags,
+      buildCartographerWorkersDAG(capacity),
+    ],
+  };
+}
+
+/**
  * cartographerWorkersBundle: identical to cartographerBundle but uses
  * cartographerWorkersDAG, which binds container: 'cpu' on the process-stream
  * scatter. Used by runCartographer.ts when --workers is active.
  */
-export const cartographerWorkersBundle: DispatcherBundle<CartographerState, CartographerServices> = {
-  'nodes': [
-    ...eventPipelineBundle.nodes,
-    seedEvents,
-    summarizeInsights,
-  ],
-  'dags': [
-    ...eventPipelineBundle.dags,
-    cartographerWorkersDAG,
-  ],
-};
+export const cartographerWorkersBundle: DispatcherBundle<CartographerState, CartographerServices> = buildCartographerWorkersBundle();
 // #endregion dispatcher-bundle

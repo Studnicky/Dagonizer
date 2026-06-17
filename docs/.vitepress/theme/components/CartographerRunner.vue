@@ -23,7 +23,7 @@ import { computed, nextTick, onMounted, ref } from 'vue';
 import { CartographerState } from '../../../../examples/the-cartographer/CartographerState.ts';
 import type { JourneyInsights, RegionInsights } from '../../../../examples/the-cartographer/CartographerState.ts';
 import type { CartographerServices } from '../../../../examples/the-cartographer/CartographerServices.ts';
-import { cartographerWorkersDAG, cartographerWorkersBundle, eventPipelineBundle } from '../../../../examples/the-cartographer/dag.ts';
+import { cartographerWorkersDAG, buildCartographerWorkersBundle, eventPipelineBundle } from '../../../../examples/the-cartographer/dag.ts';
 import { ingestSourceBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestSourceDAG.ts';
 import { geoResolveBundle } from '../../../../examples/the-cartographer/embedded-dags/GeoResolveDAG.ts';
 import { gdprComplianceBundle } from '../../../../examples/the-cartographer/embedded-dags/GdprComplianceDAG.ts';
@@ -142,6 +142,16 @@ const typeRows = ref<TypeRow[]>([
 /** Total events to stream this run; clamped to [1, 1,000,000] at run time. */
 const totalEventsInput = ref(100000);
 
+/** Worker pool size; clamped to [1, 32] at run time. */
+const poolSizeInput = ref(
+  typeof navigator !== 'undefined' && navigator.hardwareConcurrency > 0
+    ? Math.max(2, navigator.hardwareConcurrency - 2)
+    : 4,
+);
+
+/** Reservoir capacity (events per worker dispatch batch); clamped to [1, 10000] at run time. */
+const batchCapacityInput = ref(1000);
+
 /** Sum of the per-type shares — normalises the spread into absolute counts. */
 const sumPct = computed(() =>
   typeRows.value.reduce((s, r) => s + Math.max(0, r.pct), 0),
@@ -151,6 +161,18 @@ const sumPct = computed(() =>
 const clampedTotal = computed(() => {
   const v = Math.floor(totalEventsInput.value);
   return Math.min(1_000_000, Math.max(1, Number.isNaN(v) ? 1 : v));
+});
+
+/** The clamped worker pool size for the next run. */
+const clampedPoolSize = computed(() => {
+  const v = Math.floor(poolSizeInput.value);
+  return Math.min(32, Math.max(1, Number.isNaN(v) ? 1 : v));
+});
+
+/** The clamped reservoir capacity (batch size) for the next run. */
+const clampedBatchCapacity = computed(() => {
+  const v = Math.floor(batchCapacityInput.value);
+  return Math.min(10_000, Math.max(1, Number.isNaN(v) ? 1 : v));
 });
 
 /**
@@ -437,17 +459,15 @@ async function run(): Promise<void> {
     // no network. Deterministic and infeasible-to-network-at-1M.
     const services: CartographerServices = GeoResolvers.recorded();
 
-    // One worker pool drives the scatter fanout off the main thread, sized to
-    // the host minus the main thread and a spare. The scatter binds container
-    // 'cpu' (cartographerWorkersDAG), so the body runs in these workers.
-    const hw = typeof navigator !== 'undefined' && navigator.hardwareConcurrency > 0
-      ? navigator.hardwareConcurrency
-      : 4;
+    // One worker pool drives the scatter fanout off the main thread. Pool size
+    // and reservoir capacity are visitor-controlled via the Config panel.
+    // The scatter binds container 'cpu' (cartographerWorkersDAG), so the body
+    // runs in these workers.
     const container = new CartographerWorkerContainer({
       'registryModule':  new URL('./cartographerWorkerEntry.ts', import.meta.url).href,
       'registryVersion': '1.0.0',
       'servicesConfig':  { 'useRecordedIp': true },
-      'poolSize':        Math.max(2, hw - 2),
+      'poolSize':        clampedPoolSize.value,
     });
 
     const observer = {
@@ -505,7 +525,7 @@ async function run(): Promise<void> {
     dispatcher.registerBundle(orderEnrichmentBundle);
     dispatcher.registerBundle(gdprComplianceBundle);
     dispatcher.registerBundle(ingestSourceBundle);
-    dispatcher.registerBundle(cartographerWorkersBundle);
+    dispatcher.registerBundle(buildCartographerWorkersBundle(clampedBatchCapacity.value));
 
     const state = new CartographerState();
 
@@ -681,10 +701,47 @@ onMounted(() => {
                 </table>
               </div>
 
+              <!-- Execution knobs -->
+              <div class="cr-config-section">
+                <div class="cr-section-head">Execution</div>
+                <table class="cr-table cr-table--compact cr-feed-table">
+                  <tbody>
+                    <tr>
+                      <td>Worker pool size</td>
+                      <td>
+                        <input
+                          type="number"
+                          min="1"
+                          max="32"
+                          class="cr-count-input"
+                          v-model.number="poolSizeInput"
+                        />
+                      </td>
+                      <td class="cr-feed-fmt">threads (1–32)</td>
+                    </tr>
+                    <tr>
+                      <td>Batch size</td>
+                      <td>
+                        <input
+                          type="number"
+                          min="1"
+                          max="10000"
+                          class="cr-count-input"
+                          v-model.number="batchCapacityInput"
+                        />
+                      </td>
+                      <td class="cr-feed-fmt">events per worker dispatch (1–10 000)</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
               <!-- Summary line -->
               <div class="cr-config-summary">
                 Always streaming: <span class="cr-config-count">{{ clampedTotal.toLocaleString() }}</span>
-                events across {{ typeRows.filter(r => r.pct > 0).length }} payload type(s)
+                events across {{ typeRows.filter(r => r.pct > 0).length }} payload type(s),
+                {{ clampedPoolSize }} worker{{ clampedPoolSize !== 1 ? 's' : '' }},
+                batch size {{ clampedBatchCapacity.toLocaleString() }}
               </div>
 
               <div class="cr-config-note">
