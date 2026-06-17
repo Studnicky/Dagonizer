@@ -1146,6 +1146,8 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
     options: ExecuteOptionsInterface,
     runOptions: _RunOptions = { 'embedded': false },
     placementPath: readonly string[] = [],
+    inputBatch?: Batch<TState>,
+    terminalByItemId?: Map<string, 'completed' | 'failed'>,
   ): AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void> {
     const dag = this.dags.get(dagName);
 
@@ -1278,10 +1280,17 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
           pending.add(cursor, Batch.of(state));
         }
       } else {
-        // Fresh execute (fromStage === null) or embedded: always seed with
-        // the top-level state at the entry placement.
-        pending.add(cursor, Batch.of(state));
+        // Fresh execute (fromStage === null) or embedded: seed with the
+        // provided inputBatch when supplied (batch-native embedded path),
+        // otherwise seed with the single top-level state.
+        pending.add(cursor, inputBatch ?? Batch.of(state));
       }
+
+      // Terminal accumulator: collects batches per terminal name so all items
+      // reaching terminal nodes are processed before outcome is determined.
+      // For size-1 batches this is a map with exactly one entry of size 1,
+      // and the behaviour is byte-identical to the prior break-on-first path.
+      const terminalAccumulator = new Map<string, { 'outcome': 'completed' | 'failed'; 'batch': Batch<TState> }>();
 
       // Work-set scheduling loop.
       // For size-1 input: exactly one placement holds exactly one item at all
@@ -1370,11 +1379,29 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
         this.onNodeStart(node.name, repState, placementPath);
 
         // TerminalNode: no-op execution — capture outcome, synthesize result,
-        // fire onNodeEnd, break the work-set loop.
+        // fire onNodeEnd, and continue the work-set loop so remaining items
+        // can reach their own terminals (which may differ in multi-item batches).
         if (Placement.isTerminal(node)) {
           const terminal = node;
-          terminalOutcome = terminal.outcome;
-          terminalNodeName = terminal.name;
+          // Accumulate this terminal's batch. Multiple items may arrive at the
+          // same terminal (coalesced by the work-set) or at different terminals.
+          const existing = terminalAccumulator.get(terminal.name);
+          if (existing === undefined) {
+            terminalAccumulator.set(terminal.name, { 'outcome': terminal.outcome, 'batch': batch });
+          } else {
+            // Same terminal reached by items in separate work-set turns; merge.
+            const merged: Array<{ 'id': string; 'state': TState }> = [];
+            for (const item of existing.batch) merged.push({ 'id': item.id, 'state': item.state });
+            for (const item of batch) merged.push({ 'id': item.id, 'state': item.state });
+            terminalAccumulator.set(terminal.name, { 'outcome': terminal.outcome, 'batch': Batch.from(merged) });
+          }
+          // Populate per-item terminal map when the caller requested it (batch-native
+          // embedded path needs to know which items ended at which terminal kind).
+          if (terminalByItemId !== undefined) {
+            for (const item of batch) {
+              terminalByItemId.set(item.id, terminal.outcome);
+            }
+          }
           executedNodes.push(terminal.name);
           const terminalResult: NodeResultInterface<TState> = {
             'output': terminal.outcome,
@@ -1385,7 +1412,7 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
           };
           this.onNodeEnd(terminal.name, terminal.outcome, repState, placementPath);
           yield terminalResult;
-          break scheduleLoop;
+          continue scheduleLoop;
         }
 
         // SingleNode: batch-native path.
@@ -1421,6 +1448,119 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
           executedNodes.push(nodeResult.nodeName);
           this.onNodeEnd(node.name, nodeResult.output, repState, placementPath);
           yield nodeResult;
+          continue scheduleLoop;
+        }
+
+        // EmbeddedDAGNode batch-native path (in-process only): run the child DAG
+        // once over all N items as a single batch rather than N separate calls.
+        // This avoids N redundant DAG setups and preserves batch semantics in
+        // the child flow. Only applies when the container resolves to null (in-
+        // process); the contained path uses per-item executeDAGNode below.
+        if (Placement.isEmbeddedDAG(node) && this.resolveContainer(node.container) === null) {
+          const inputMapping = EmbeddedDAGNodeDefaults.inputMapping(node);
+          const outputMapping = EmbeddedDAGNodeDefaults.outputMapping(node);
+          const innerPath: readonly string[] = [...placementPath, node.name];
+
+          // Build child batch: one clone per parent item, seeded via inputMapping.
+          const parentItems = [...batch];
+          const childItems: Array<{ 'id': string; 'state': TState }> = [];
+          for (const item of parentItems) {
+            const childClone = this.stateMapper.createChild(item.state, inputMapping);
+            childItems.push({ 'id': item.id, 'state': childClone });
+          }
+          const childBatch = Batch.from(childItems);
+
+          // Per-item terminal outcome map: populated by the child runNodes when
+          // each item reaches a TerminalNode. Maps item.id → terminal outcome.
+          const childTerminalByItemId = new Map<string, 'completed' | 'failed'>();
+
+          // Run the child DAG once over all N items (batch-native embedded).
+          // `childRepState` is a standalone clone used as the `state` argument
+          // required by the runNodes signature; the actual items are in childBatch.
+          const childRepState = repState.clone();
+          const childOptions: ExecuteOptionsInterface = { ...(signal !== null && { 'signal': signal }) };
+          const intermediateResults: Array<NodeResultInterface<TState>> = [];
+          const iter = this.runNodes(node.dag, childRepState, null, childOptions, { 'embedded': true }, innerPath, childBatch, childTerminalByItemId);
+
+          // Collect inner intermediates when streaming (top-level only); at nested
+          // or composite scale, drain without buffering to avoid O(N*M*L) heap.
+          if (!runOptions.embedded) {
+            let step = await iter.next();
+            while (!step.done) {
+              const nr = step.value;
+              intermediateResults.push({
+                'output': nr.output,
+                'skipped': nr.skipped,
+                'nodeName': `${node.name}.${nr.nodeName}`,
+                'state': repState,
+                'intermediateResults': [],
+              });
+              step = await iter.next();
+            }
+          } else {
+            while (true) {
+              const step = await iter.next();
+              if (step.done) break;
+            }
+          }
+
+          // Route each parent item by its child clone's terminal outcome + errors.
+          const routeOutputByItemId = new Map<string, string>();
+          for (let i = 0; i < parentItems.length; i++) {
+            // parentItems and childItems are parallel arrays built above, so both
+            // index i are always within bounds inside this loop.
+            const parentItem = parentItems[i] as (typeof parentItems)[number];
+            const childClone = (childItems[i] as (typeof childItems)[number]).state;
+
+            // Propagate errors and warnings from child clone to parent.
+            for (const err of childClone.errors) parentItem.state.collectError(err);
+            for (const warn of childClone.warnings) parentItem.state.collectWarning(warn);
+
+            // Apply output state mapping: child → parent.
+            this.stateMapper.mapOutput(childClone, parentItem.state, outputMapping);
+
+            // Determine route from per-item terminal outcome + unrecoverable errors.
+            // childTerminalByItemId is populated by runNodes when each item hits a
+            // TerminalNode, giving accurate per-item failed/completed status.
+            const childTerminalOutcome = childTerminalByItemId.get(parentItem.id) ?? 'completed';
+            const hasUnrecoverable = childClone.errors.some((e) => e.recoverable === false);
+            const routeOutput = (childTerminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
+            routeOutputByItemId.set(parentItem.id, routeOutput);
+            const nextPlacement = node.outputs[routeOutput] ?? null;
+
+            if (nextPlacement !== null) {
+              pending.add(nextPlacement, Batch.of(parentItem.state, parentItem.id));
+            }
+          }
+
+          // Representative observability output for the batch firing.
+          // Unanimous when all items routed to the same port, else null.
+          let repOutput: string | null = null;
+          let allSameOutput = true;
+          for (const [, output] of routeOutputByItemId) {
+            if (repOutput === null) {
+              repOutput = output;
+            } else if (output !== repOutput) {
+              allSameOutput = false;
+              break;
+            }
+          }
+          if (!allSameOutput) repOutput = null;
+
+          // Stream intermediates before this node's own result.
+          for (const intermediate of intermediateResults) {
+            yield intermediate;
+          }
+
+          executedNodes.push(node.name);
+          this.onNodeEnd(node.name, repOutput, repState, placementPath);
+          yield {
+            'output': repOutput,
+            'skipped': false,
+            'nodeName': node.name,
+            'state': repState,
+            'intermediateResults': [],
+          };
           continue scheduleLoop;
         }
 
@@ -1512,6 +1652,26 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
           if (entry.nextStage !== null) {
             pending.add(entry.nextStage, Batch.of(entry.state));
           }
+        }
+      }
+
+      // Resolve terminalOutcome and terminalNodeName from the accumulator after
+      // the work-set loop drains. For size-1 batches with a single terminal this
+      // is identical to the prior break-on-first behaviour. For multi-item batches
+      // with multiple terminals: any 'failed' terminal makes the overall outcome
+      // 'failed'; terminalNodeName is set only when all items converged on a single
+      // terminal (otherwise left null for the lifecycle code below to handle).
+      if (terminalAccumulator.size > 0) {
+        let allSameTerminal = terminalAccumulator.size === 1;
+        let overallFailed = false;
+        for (const [tName, { outcome }] of terminalAccumulator) {
+          if (outcome === 'failed') overallFailed = true;
+          terminalNodeName = tName;
+        }
+        terminalOutcome = overallFailed ? 'failed' : 'completed';
+        if (!allSameTerminal) {
+          // Multiple terminal nodes reached — no single representative terminal.
+          terminalNodeName = null;
         }
       }
     }
