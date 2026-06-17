@@ -428,6 +428,41 @@ export class CartographerState extends NodeStateBase {
     'coordsCoarsened':     false,
   };
 
+  // ── Batch fields (Wave 1 sprout: homogeneous per-type batch path) ─────────
+  // These fields coexist alongside the per-event scalars; the per-event path is
+  // UNCHANGED. Per-stage transient arrays are never snapshotted (like the scalar
+  // scratch fields they pair with). Only `enrichedBatch` is snapshotted because
+  // the gather reads it off the returned worker clone.
+
+  /** Discriminant for the homogeneous batch (all items share this eventType). */
+  batchEventType: CanonicalEventVariant['eventType'] = 'position-ping';
+
+  /** Decoded variants for the whole batch (decode-batch output). */
+  variantBatch: CanonicalEventVariant[] = [];
+
+  /** Per-stage transient working arrays (NOT snapshotted). */
+  rawBatch:              RawShipmentEvent[]                     = [];
+  normalizedBatch:       NormalizedShipment[]                   = [];
+  currentEventBatch:     ShipmentEvent[]                        = [];
+  geoContextBatch:       GeoContext[]                           = [];
+  resolvedGeoBatch:      ResolvedGeo[]                          = [];
+  pricedOrderBatch:      PricedOrder[]                          = [];
+  shippingQuoteBatch:    ShippingQuote[]                        = [];
+  deliveryEstimateBatch: DeliveryEstimate[]                     = [];
+  legKmBatch:            number[]                               = [];
+  coldChainBreachBatch:  boolean[]                              = [];
+  customsDwellHoursBatch: number[]                              = [];
+  gdprResultBatch:       GdprResult[]                           = [];
+  routingBatch:          Array<EnrichedShipment['routing']>     = [];
+  gpsCandidateBatch:     GeoCandidate[]                         = [];
+  ipCandidateBatch:      GeoCandidate[]                         = [];
+
+  /**
+   * Aggregate-batch output: one EnrichedShipment per item in the batch.
+   * Snapshotted so the gather can read it off the returned worker clone.
+   */
+  enrichedBatch: EnrichedShipment[] = [];
+
   /** Compact enriched per-scan record written by aggregate-event; parent gather appends it. */
   enriched: EnrichedShipment = {
     'shipmentId':       '',
@@ -545,6 +580,35 @@ export class CartographerState extends NodeStateBase {
       'redactedSample': { ...this.enriched.redactedSample },
     };
 
+    // ── Batch fields (Wave 1 sprout) ──────────────────────────────────────────
+    copy.batchEventType = this.batchEventType;
+    copy.variantBatch   = this.variantBatch.map((e) => CartographerState.cloneVariant(e));
+
+    // Transient per-stage arrays: shallow-copy the array, deep-copy each element
+    // using the same strategy as the corresponding scalar field.
+    copy.rawBatch = this.rawBatch.map((r) => ({ ...r, 'lineItems': r.lineItems.map((li) => ({ ...li })) }));
+    copy.normalizedBatch = this.normalizedBatch.map((n) => ({ ...n, 'lineItems': n.lineItems.map((li) => ({ ...li })) }));
+    copy.currentEventBatch = this.currentEventBatch.map((e) => ({ ...e }));
+    copy.geoContextBatch = this.geoContextBatch.map((g) => ({ ...g, 'countries': [...g.countries], 'waterBodies': [...g.waterBodies] }));
+    copy.resolvedGeoBatch = this.resolvedGeoBatch.map((r) => ({ ...r, 'modalities': [...r.modalities] }));
+    copy.pricedOrderBatch = this.pricedOrderBatch.map((p) => ({ ...p, 'lines': p.lines.map((l) => ({ ...l })) }));
+    copy.shippingQuoteBatch = this.shippingQuoteBatch.map((q) => ({ ...q, 'breakdown': { ...q.breakdown } }));
+    copy.deliveryEstimateBatch = this.deliveryEstimateBatch.map((d) => ({ ...d }));
+    copy.legKmBatch = [...this.legKmBatch];
+    copy.coldChainBreachBatch = [...this.coldChainBreachBatch];
+    copy.customsDwellHoursBatch = [...this.customsDwellHoursBatch];
+    copy.gdprResultBatch = this.gdprResultBatch.map((g) => ({
+      ...g,
+      'personalDataFields':  [...g.personalDataFields],
+      'sensitiveDataFields': [...g.sensitiveDataFields],
+      'retention': { ...g.retention },
+    }));
+    copy.routingBatch = this.routingBatch.map((r) => ({ ...r, 'geoModalities': [...r.geoModalities] }));
+    copy.gpsCandidateBatch = this.gpsCandidateBatch.map((c) => ({ ...c }));
+    copy.ipCandidateBatch  = this.ipCandidateBatch.map((c) => ({ ...c }));
+
+    copy.enrichedBatch = this.enrichedBatch.map((e) => ({ ...e, 'redactedSample': { ...e.redactedSample } }));
+
     return copy;
   }
   // #endregion clone
@@ -567,6 +631,9 @@ export class CartographerState extends NodeStateBase {
       'records':      this.records.map((r) => CartographerState.enrichedToJson(r)),
       'sampleRecords': this.sampleRecords.map((r) => CartographerState.enrichedToJson(r)),
       'enriched': CartographerState.enrichedToJson(this.enriched),
+      // Batch accumulator — only enrichedBatch is checkpointable; the per-stage
+      // transient arrays are recomputed per dispatch (same as the scalar scratch).
+      'enrichedBatch': this.enrichedBatch.map((e) => CartographerState.enrichedToJson(e)),
     };
   }
 
@@ -617,6 +684,12 @@ export class CartographerState extends NodeStateBase {
     }
     const enObj = CartographerState.asObject(snap['enriched']);
     if (enObj !== null) this.enriched = CartographerState.enrichedFromJson(enObj);
+    // Batch accumulator restore.
+    if (Array.isArray(snap['enrichedBatch'])) {
+      this.enrichedBatch = snap['enrichedBatch'].map((e) => CartographerState.enrichedFromJson(CartographerState.asObject(e) ?? {}));
+    } else {
+      this.enrichedBatch = [];
+    }
   }
   // #endregion snapshot-restore
 

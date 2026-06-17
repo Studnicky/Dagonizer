@@ -1849,6 +1849,42 @@ export class Sources {
 
     return results;
   }
+
+  /**
+   * Build source payloads grouped into homogeneous per-type batches.
+   *
+   * Calls `buildTypedFeed` to get the per-event feed, then groups all payloads by
+   * `eventType` and chunks each group into arrays of at most `batchSize` items.
+   * Each emitted `SourcePayload[]` is a homogeneous batch (single eventType) of
+   * length ≤ batchSize.
+   *
+   * Deterministic: a pure function of config and batchSize — no Date.now or
+   * Math.random. Reuses the existing per-event payload construction.
+   *
+   * @param config    Typed feed configuration.
+   * @param batchSize Maximum items per homogeneous batch (default 1000).
+   */
+  static async buildTypedBatchFeed(config: EventTypeConfig, batchSize: number = 1000): Promise<SourcePayload[][]> {
+    const perEvent = await Sources.buildTypedFeed(config);
+
+    // Group by eventType preserving encounter order.
+    const groups = new Map<string, SourcePayload[]>();
+    for (const payload of perEvent) {
+      let group = groups.get(payload.eventType);
+      if (group === undefined) { group = []; groups.set(payload.eventType, group); }
+      group.push(payload);
+    }
+
+    const batches: SourcePayload[][] = [];
+    const cap = Math.max(1, Math.floor(batchSize));
+    for (const group of groups.values()) {
+      for (let start = 0; start < group.length; start += cap) {
+        batches.push(group.slice(start, start + cap));
+      }
+    }
+
+    return batches;
+  }
 }
 // #endregion sources-service
 
