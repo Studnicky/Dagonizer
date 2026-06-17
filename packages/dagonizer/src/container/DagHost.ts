@@ -381,11 +381,13 @@ export class DagHost {
               break;
             }
             const nodeResult = next.value;
-            intermediates.push({
-              'output': nodeResult.output,
-              'skipped': nodeResult.skipped,
-              'nodeName': nodeResult.nodeName,
-            });
+            // Batch path: send live only — do NOT buffer into `intermediates`.
+            // Live relay delivers observability to the parent in real-time.
+            // `ExecutionResponse.intermediates` is unused by Dagonizer for the
+            // batch/scatter path (only outcome, errors, and stateSnapshot are
+            // consumed), so buffering here is pure O(N × M) retention with no
+            // benefit. The `intermediates` array remains empty for the batch
+            // path and is sent as `[]` in the ExecutionResponse below.
             this.#channel.send({
               'kind': 'intermediate',
               'correlationId': correlationId,

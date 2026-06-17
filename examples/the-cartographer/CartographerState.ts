@@ -469,12 +469,25 @@ export class CartographerState extends NodeStateBase {
     }
     copy.useStreamingSource = this.useStreamingSource;
     copy.streamCount = this.streamCount;
-    copy.ingestBuckets = this.ingestBuckets.map((bucket) => bucket.map((e) => CartographerState.cloneVariant(e)));
-    copy.canonicalEvents = this.canonicalEvents.map((e) => CartographerState.cloneVariant(e));
-    copy.records      = [...this.records];
-    copy.sampleRecords = [...this.sampleRecords];
-    copy.insights   = new Map(this.insights);
-    copy.journeys   = new Map(this.journeys);
+    // Parent-level accumulators: reset to defaults in child clones.
+    //
+    // ingestBuckets, canonicalEvents, records, sampleRecords, insights, and
+    // journeys are scatter-gather accumulators written by the parent DAG's
+    // gather strategy (InsightsFoldGather) or by post-scatter summary nodes.
+    // Scatter body clones (stream-event, ingestion) never read these fields —
+    // they only read the item placed on metadata by the engine. Copying them
+    // into clones would send up to 200 EnrichedShipment JSON objects per clone
+    // over the worker channel (60 KB × 16,000 in-flight clones = ~960 MB at
+    // concurrencyLimit=16 / capacity=1000), producing the O(peak-concurrency)
+    // heap spike. Resetting to defaults eliminates that overhead with no loss
+    // of correctness: the child never reads them, and the parent retains its
+    // own live copies.
+    copy.ingestBuckets   = [];
+    copy.canonicalEvents = [];
+    copy.records         = [];
+    copy.sampleRecords   = [];
+    copy.insights        = new Map();
+    copy.journeys        = new Map();
 
     copy.currentSource  = { ...this.currentSource };
     copy.decodedText    = this.decodedText;

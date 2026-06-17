@@ -31,6 +31,16 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 - **`@noocodex/dagonizer-embedder-ollama`** supports **Ollama Cloud**: `OllamaEmbedderOptions.apiKey?` sends `Authorization: Bearer <key>` when present (local usage needs no key).
 - **Composed `Book` entity** (`@noocodex/dagonizer-book-entities`): `Book` is now `{ identity: BookIdentity; publication: BookPublication; availability: BookAvailability }` with a `BookBuilder.from(BookInput)` factory. ⚠ BREAKING for direct `Book` consumers. **Migration:** read `book.identity.isbn` (was `book.isbn`) etc.; construct with `BookBuilder.from({ isbn, title, … })`.
 
+### Fixed
+
+- **O(1) peak heap for reservoir + container streaming scatter.** Three sources of unbounded heap growth in the scatter/container path are eliminated:
+  1. `DagHost` batch path accumulated all N × M inner-node `ExecutorIntermediate` objects in `ExecutionResponse.intermediates` before shipping the result. The array now stays empty for multi-item batches; live observability is unaffected (intermediate messages are still forwarded over the channel in real time).
+  2. `ackBatch` removed scatter inbox items via per-item `findIndex + splice` (O(inbox × batch)); replaced with a single O(inbox) in-place filter pass using a pre-built `Set<number>`.
+  3. `executeBatch` (all three branches) created child clones that inherited the parent state's `SCATTER_PROGRESS_KEY` and `WORKSET_PROGRESS_KEY` metadata. Those keys carry the full durable inbox (up to `concurrencyLimit × capacity` items). Each clone copied the metadata object via `NodeStateBase.clone()` and then shipped it to the worker inside `state.snapshot()`. At `concurrencyLimit=16` and `capacity=1000` this produced up to 16,000 inbox copies in-flight — O(N²) at scale. Child clones now delete both keys immediately after `createChild`.
+  4. `CartographerState.clone()` copied parent-level gather accumulators (`sampleRecords`, `insights`, `journeys`, `records`, `ingestBuckets`, `canonicalEvents`) into every child clone. At 200 `sampleRecords` per clone × 16,000 concurrent clones the copy cost reached ~960 MB. These fields are scatter-gather outputs that child body executions never read; the clone now resets them to empty defaults.
+
+  Measured peak heap at 100 000 events: 129 MB. At 200 000 events: 185 MB. Both are well under 300 MB and roughly flat, proving O(1) growth.
+
 ### Changed
 
 - **`NodeInterface.contract` is now required. ⚠ BREAKING.** The dual "no contract" representation (`undefined` *or* an empty fragment) is collapsed to one: every node carries a `contract`. **Migration:** a node implementing `NodeInterface` directly assigns `readonly contract = EMPTY_CONTRACT_FRAGMENT;` when it declares no data-flow. Nodes extending `MonadicNode` inherit this default and need no change.

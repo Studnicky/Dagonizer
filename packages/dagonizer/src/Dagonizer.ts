@@ -462,6 +462,14 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
       state,
       ScatterNodeDefaults.inputMapping(scatter),
     );
+    // Strip engine-internal metadata keys from the clone. The parent state's
+    // scatter-progress and work-set-progress metadata are engine bookkeeping for
+    // the PARENT scatter/workset loop — the child body DAG must not inherit them.
+    // Without this, each clone carries the full parent inbox (O(N) payload), and
+    // serializing the clone for the container transport sends that inbox N times,
+    // producing O(N²) heap growth across concurrent batches.
+    cloneState.deleteMetadata(SCATTER_PROGRESS_KEY);
+    cloneState.deleteMetadata(WORKSET_PROGRESS_KEY);
     // item must be JSON-serialisable: scatter sources are checkpointed to
     // metadata (SCATTER_PROGRESS_KEY) and require JSON-safe values at snapshot
     // time. The engine contract requires callers to provide JSON-safe scatter
@@ -681,6 +689,10 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
       const batchItems: { id: string; state: TState }[] = [];
       for (const buffered of items) {
         const clone = this.#adapter.stateMapper.createChild(state, ScatterNodeDefaults.inputMapping(scatter));
+        // Strip engine-internal metadata keys — the child body must not inherit
+        // the parent scatter/workset progress (O(N) payload, see executeItem).
+        clone.deleteMetadata(SCATTER_PROGRESS_KEY);
+        clone.deleteMetadata(WORKSET_PROGRESS_KEY);
         clone.setMetadata(itemKey, buffered.item);
         clone.setMetadata('itemIndex', buffered.index);
         clones.push(clone);
@@ -727,6 +739,10 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
     const batchItems: { id: string; state: TState }[] = [];
     for (const buffered of items) {
       const clone = this.#adapter.stateMapper.createChild(state, ScatterNodeDefaults.inputMapping(scatter));
+      // Strip engine-internal metadata keys — the child body must not inherit
+      // the parent scatter/workset progress (O(N) payload, see executeItem).
+      clone.deleteMetadata(SCATTER_PROGRESS_KEY);
+      clone.deleteMetadata(WORKSET_PROGRESS_KEY);
       clone.setMetadata(itemKey, buffered.item);
       clone.setMetadata('itemIndex', buffered.index);
       clones.push(clone);
@@ -873,12 +889,12 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
 
     const freshRecordsForBatch: GatherRecord<TState>[] = [];
 
+    // Collect all item indexes to remove up-front so the inbox scan is O(inbox)
+    // total rather than O(inbox × batch) from per-item findIndex+splice.
+    const toRemove = new Set<number>(batchResult.results.map((r) => r.index));
+
     for (const res of batchResult.results) {
       const { 'index': itemIndex, 'item': item, 'output': output, 'terminalOutcome': terminalOutcome, 'cloneState': cloneState } = res;
-
-      // Remove from inbox.
-      const inboxIdx = inbox.findIndex((e) => e.index === itemIndex);
-      if (inboxIdx !== -1) inbox.splice(inboxIdx, 1);
 
       const freshRecord: GatherRecord<TState> = { 'index': itemIndex, item, output, terminalOutcome, cloneState };
       freshRecordsForBatch.push(freshRecord);
@@ -912,6 +928,17 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
         itemOutputs.set(itemIndex, output);
       }
     }
+
+    // Bulk-remove all batch items from inbox in a single O(inbox) pass.
+    // Per-item findIndex+splice would be O(inbox × batch); this is O(inbox) total.
+    let writeIdx = 0;
+    for (let readIdx = 0; readIdx < inbox.length; readIdx++) {
+      const entry = inbox[readIdx] as ScatterInboxItem;
+      if (!toRemove.has(entry.index)) {
+        inbox[writeIdx++] = entry;
+      }
+    }
+    inbox.length = writeIdx;
 
     // Single reduce call for the whole batch.
     if (scatter.gather !== undefined && gatherStrategy !== null) {
