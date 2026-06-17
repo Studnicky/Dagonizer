@@ -21,38 +21,63 @@
  *   Confirms that Branch A (node body) continues to work correctly with a
  *   reservoir + two-group source (6 items). Guards against the executeBatch
  *   refactor breaking the node-body path.
+ *
+ * Suite D — reservoir + DAG body through a REAL DagContainerBase (Branch C
+ *   runDagBatch path):
+ *   Wires a real DagHost + LoopbackChannel behind a DagContainerBase subclass
+ *   so Branch C takes the `instanceof DagContainerBase` → runDagBatch branch
+ *   (one transport round-trip per released batch). The host genuinely runs the
+ *   sub-DAG, so per-item routing is real: even values route to the `accept`
+ *   terminal (outcome completed → success), odd values to the `reject` terminal
+ *   (outcome failed → error). Asserts (a) clean completion, (b) the per-item
+ *   even/odd split is preserved across the transport, (c) the execute-message
+ *   count equals the number of BATCHES (2), not items (8) — the proof the
+ *   batch round-trip ran — and (d) parity with the in-process Branch B run.
  */
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { CheckpointRestoreAdapterFn } from '../../src/checkpoint/Checkpoint.js';
+import type { InitMessageShape } from '../../src/container/ChannelDispatch.js';
+import { DagContainerBase } from '../../src/container/DagContainerBase.js';
+import type { PoolEntry } from '../../src/container/DagContainerBase.js';
+import { DagHost } from '../../src/container/DagHost.js';
 import type { DagOutcomeInterface } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
+import type { CheckpointRestoreAdapter } from '../../src/contracts/CheckpointRestoreAdapter.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
+import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
+import type { RegistryBundleInterface, RegistryModuleInterface } from '../../src/contracts/RegistryModuleInterface.js';
 import type { StateAccessor } from '../../src/contracts/StateAccessor.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import type { ObserverRelay } from '../../src/Dagonizer.js';
+import type { DispatcherBundle, ObserverRelay } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { GatherConfig } from '../../src/entities/dag/GatherConfig.js';
+import type { BridgeMessage } from '../../src/entities/executor/BridgeMessage.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
 import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 
 // ── shared state ──────────────────────────────────────────────────────────────
 
 class ReservoirDispatchState extends NodeStateBase {
   counter: number = 0;
   items: Array<{ group: string; value: number }> = [];
+  /** Per-item output recorded by the recording gather: value → 'success'|'error'. */
+  outputByValue: Record<string, string> = {};
 
   protected override snapshotData(): JsonObject {
     return {
       'counter': this.counter,
       'items': this.items as unknown as JsonObject,
+      'outputByValue': this.outputByValue as unknown as JsonObject,
     };
   }
 
@@ -61,6 +86,10 @@ class ReservoirDispatchState extends NodeStateBase {
     const items = snap['items'];
     if (Array.isArray(items)) {
       this.items = items as Array<{ group: string; value: number }>;
+    }
+    const recorded = snap['outputByValue'];
+    if (recorded !== null && typeof recorded === 'object' && !Array.isArray(recorded)) {
+      this.outputByValue = recorded as Record<string, string>;
     }
   }
 }
@@ -87,6 +116,37 @@ class ReservoirDispatchGather extends GatherStrategy {
 }
 
 GatherStrategies.register(new ReservoirDispatchGather());
+
+/**
+ * ReservoirRecordingGather: like the counting gather, but also records each
+ * item's routing output keyed by the item's `value`. Lets Suite D assert the
+ * per-item even/odd → success/error split survived the transport round-trip.
+ */
+class ReservoirRecordingGather extends GatherStrategy {
+  readonly name = 'recording-test-reservoir';
+
+  reduce(
+    _config: GatherConfig,
+    batch: Parameters<GatherStrategy['reduce']>[1],
+    state: NodeStateInterface,
+    accessor: StateAccessor,
+  ): void {
+    const current = accessor.get<number>(state, 'counter') ?? 0;
+    accessor.set(state, 'counter', current + batch.size);
+
+    const recorded = accessor.get<Record<string, string>>(state, 'outputByValue') ?? {};
+    for (const entry of batch) {
+      const record = entry.state;
+      const item = record.item as { group: string; value: number } | undefined;
+      if (item !== undefined) {
+        recorded[String(item.value)] = record.output;
+      }
+    }
+    accessor.set(state, 'outputByValue', recorded);
+  }
+}
+
+GatherStrategies.register(new ReservoirRecordingGather());
 
 // ── Suite A + B: sub-DAG route body ──────────────────────────────────────────
 
@@ -431,5 +491,333 @@ void describe('Scatter reservoir: node body regression (Branch A)', () => {
       6,
       `gather counter must equal 6 (one per item); got ${result.state.counter}`,
     );
+  });
+});
+
+// ── Suite D: reservoir + DAG body through a REAL DagContainerBase ──────────────
+
+// Sub-DAG: router → (even → accept[completed], odd → reject[failed]) → terminal.
+// The `reject` terminal carries `outcome: 'failed'` so odd items route to the
+// scatter's `error` output, producing a genuine success/error split that the
+// transport must carry back per item.
+const ROUTE_BODY_D_DAG_NAME = 'route-body-d';
+
+const routeBodyDDag: DAG = Validator.dag.validate({
+  '@context': DAG_CONTEXT,
+  '@id': 'urn:noocodex:dag:route-body-d',
+  '@type': 'DAG',
+  'name': ROUTE_BODY_D_DAG_NAME,
+  'version': '1',
+  'entrypoint': 'router',
+  'nodes': [
+    {
+      '@id': 'urn:noocodex:dag:route-body-d/node/router',
+      '@type': 'SingleNode',
+      'name': 'router',
+      'node': 'router',
+      'outputs': { 'even': 'accept', 'odd': 'reject' },
+    },
+    {
+      '@id': 'urn:noocodex:dag:route-body-d/node/accept',
+      '@type': 'TerminalNode',
+      'name': 'accept',
+      'outcome': 'completed',
+    },
+    {
+      '@id': 'urn:noocodex:dag:route-body-d/node/reject',
+      '@type': 'TerminalNode',
+      'name': 'reject',
+      'outcome': 'failed',
+    },
+  ],
+});
+
+// Parent DAG dispatched through the container (Branch C runDagBatch).
+const RESERVOIR_D_CONTAINER_NAME = 'scatter-reservoir-d-container';
+const RESERVOIR_D_INPROCESS_NAME = 'scatter-reservoir-d-inprocess';
+
+const reservoirDContainerDag: DAG = Validator.dag.validate({
+  '@context': DAG_CONTEXT,
+  '@id': 'urn:noocodex:dag:scatter-reservoir-d-container',
+  '@type': 'DAG',
+  'name': RESERVOIR_D_CONTAINER_NAME,
+  'version': '1',
+  'entrypoint': 'fan',
+  'nodes': [
+    {
+      '@id': 'urn:noocodex:dag:scatter-reservoir-d-container/node/fan',
+      '@type': 'ScatterNode',
+      'name': 'fan',
+      'body': { 'dag': ROUTE_BODY_D_DAG_NAME },
+      'source': 'items',
+      'itemKey': 'currentItem',
+      'reservoir': { 'keyField': 'group', 'capacity': 4 },
+      'gather': { 'strategy': 'recording-test-reservoir' },
+      'concurrency': 4,
+      'container': CONTAINER_ROLE,
+      'outputs': {
+        'all-success': 'end',
+        'partial': 'end',
+        'all-error': 'end',
+        'empty': 'end',
+      },
+    },
+    {
+      '@id': 'urn:noocodex:dag:scatter-reservoir-d-container/node/end',
+      '@type': 'TerminalNode',
+      'name': 'end',
+      'outcome': 'completed',
+    },
+  ],
+});
+
+// Identical parent DAG, but no container → Branch B (in-process batch-native).
+const reservoirDInProcessDag: DAG = Validator.dag.validate({
+  '@context': DAG_CONTEXT,
+  '@id': 'urn:noocodex:dag:scatter-reservoir-d-inprocess',
+  '@type': 'DAG',
+  'name': RESERVOIR_D_INPROCESS_NAME,
+  'version': '1',
+  'entrypoint': 'fan',
+  'nodes': [
+    {
+      '@id': 'urn:noocodex:dag:scatter-reservoir-d-inprocess/node/fan',
+      '@type': 'ScatterNode',
+      'name': 'fan',
+      'body': { 'dag': ROUTE_BODY_D_DAG_NAME },
+      'source': 'items',
+      'itemKey': 'currentItem',
+      'reservoir': { 'keyField': 'group', 'capacity': 4 },
+      'gather': { 'strategy': 'recording-test-reservoir' },
+      'concurrency': 4,
+      'outputs': {
+        'all-success': 'end',
+        'partial': 'end',
+        'all-error': 'end',
+        'empty': 'end',
+      },
+    },
+    {
+      '@id': 'urn:noocodex:dag:scatter-reservoir-d-inprocess/node/end',
+      '@type': 'TerminalNode',
+      'name': 'end',
+      'outcome': 'completed',
+    },
+  ],
+});
+
+// Registry version used for the init ↔ ready handshake.
+const SUITE_D_REGISTRY_VERSION = '1.0.0';
+
+/**
+ * Static registry injected into the real DagHost. Carries the router node and
+ * the route-body-d sub-DAG so the host genuinely runs per-item routing. The
+ * restore adapter rehydrates a fresh ReservoirDispatchState (metadata, set by
+ * the scatter clone seeding, survives the snapshot round-trip — that is how the
+ * router reads `currentItem` on the host side).
+ */
+const suiteDRestoreAdapter: CheckpointRestoreAdapter<NodeStateInterface> =
+  CheckpointRestoreAdapterFn.fromFn((snap: JsonObject): NodeStateInterface => {
+    const state = new ReservoirDispatchState();
+    state.applySnapshot(snap);
+    return state;
+  });
+
+const suiteDBundle: DispatcherBundle<NodeStateInterface, unknown> = {
+  // The router node is typed for ReservoirDispatchState; the host bundle is
+  // typed for the NodeStateInterface base. NodeInterface is invariant in TState
+  // through its method parameters, so the array is widened to the base type —
+  // the same pattern ConformanceRegistry's CONFORMANCE_NODES uses.
+  'nodes': [new RouterNode()] as unknown as DispatcherBundle<NodeStateInterface, unknown>['nodes'],
+  'dags': [routeBodyDDag],
+};
+
+const suiteDRegistry: RegistryModuleInterface = {
+  createBundle(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
+    return Promise.resolve({
+      'bundle': suiteDBundle,
+      'services': undefined,
+      'registryVersion': SUITE_D_REGISTRY_VERSION,
+      'restoreState': suiteDRestoreAdapter,
+    });
+  },
+};
+
+/**
+ * Counting wrapper around a channel: delegates everything to the wrapped side
+ * but increments `executeCount` for each outbound `execute` BridgeMessage. The
+ * proof that the batch round-trip ran is `executeCount === number of batches`.
+ */
+class ExecuteCountingChannel implements MessageChannelInterface {
+  readonly #inner: MessageChannelInterface;
+  executeCount: number = 0;
+
+  constructor(inner: MessageChannelInterface) {
+    this.#inner = inner;
+  }
+
+  send(msg: BridgeMessage): void {
+    if (msg.kind === 'execute') this.executeCount += 1;
+    this.#inner.send(msg);
+  }
+
+  onMessage(handler: (msg: BridgeMessage) => void): void {
+    this.#inner.onMessage(handler);
+  }
+
+  close(): void {
+    this.#inner.close();
+  }
+}
+
+/**
+ * SingleChannelContainer: DagContainerBase subclass that always routes through
+ * one pre-built channel. Pool seams are no-ops; the channel is the real
+ * LoopbackChannel parent side wired to a real DagHost. The init handshake uses
+ * the SAME registryVersion the host's bundle reports.
+ */
+const SUITE_D_INIT: InitMessageShape = {
+  'registryModule': 'suite-d',
+  'registryVersion': SUITE_D_REGISTRY_VERSION,
+  'servicesConfig': {},
+};
+
+class SingleChannelContainer extends DagContainerBase<ReservoirDispatchState, null> {
+  readonly #channel: MessageChannelInterface;
+  /** Single-flight init promise: shared across concurrent acquireChannel calls. */
+  #initPromise: Promise<void> | null = null;
+
+  constructor(channel: MessageChannelInterface) {
+    super({
+      ...DagContainerBase.defaultOptions,
+      'poolSize': 1,
+      'init': SUITE_D_INIT,
+    });
+    this.#channel = channel;
+  }
+
+  // The init↔ready handshake runs once before the first request. The base
+  // `acquireChannel` drives init through the pool; this override bypasses the
+  // pool, so it performs the same one-time handshake against the real host via
+  // the protected `initializeChannel` seam. Concurrent acquireChannel calls
+  // (the reservoir releases batches in parallel) share ONE init promise so the
+  // init message is sent exactly once — a second in-flight init would corrupt
+  // the channel's init waiter.
+  protected override async acquireChannel(): Promise<MessageChannelInterface> {
+    if (this.#initPromise === null) {
+      this.#initPromise = this.initializeChannel(this.#channel, SUITE_D_INIT);
+    }
+    await this.#initPromise;
+    return this.#channel;
+  }
+
+  protected override releaseChannel(_channel: MessageChannelInterface): void { /* bypass pool */ }
+
+  protected override createEntry(): PoolEntry<null> {
+    return { 'worker': null, 'channel': this.#channel, 'initialized': false };
+  }
+
+  protected override attachDeathListeners(_entry: PoolEntry<null>): void { /* no-op */ }
+  protected override terminateWorker(_worker: null): void { /* no-op */ }
+  protected override awaitWorkerExit(_worker: null): Promise<void> {
+    return new Promise(() => { /* never */ });
+  }
+}
+
+const SUITE_D_ITEMS: Array<{ group: string; value: number }> = [
+  { 'group': 'A', 'value': 0 },
+  { 'group': 'A', 'value': 1 },
+  { 'group': 'A', 'value': 2 },
+  { 'group': 'A', 'value': 3 },
+  { 'group': 'A', 'value': 4 },
+  { 'group': 'A', 'value': 5 },
+  { 'group': 'A', 'value': 6 },
+  { 'group': 'A', 'value': 7 },
+];
+
+void describe('Scatter reservoir: DAG body through real DagContainerBase (Branch C runDagBatch)', () => {
+  void it('routes 8 items through runDagBatch (2 batches, 2 execute messages); even→success, odd→error; parity with in-process', async () => {
+    // ── Real DagHost behind a LoopbackChannel, fronted by DagContainerBase ──
+    const [parentSide, hostSide] = LoopbackChannel.pair();
+    const countingParent = new ExecuteCountingChannel(parentSide);
+    const host = new DagHost(hostSide, { 'registry': suiteDRegistry });
+    host.start();
+
+    const container = new SingleChannelContainer(countingParent);
+
+    const dispatcher = new Dagonizer<ReservoirDispatchState>({
+      'containers': { [CONTAINER_ROLE]: container },
+    });
+    dispatcher.registerNode(new RouterNode());
+    dispatcher.registerDAG(routeBodyDDag);
+    dispatcher.registerDAG(reservoirDContainerDag);
+
+    const state = new ReservoirDispatchState();
+    state.items = [...SUITE_D_ITEMS];
+
+    const result = await dispatcher.execute(RESERVOIR_D_CONTAINER_NAME, state);
+
+    // (a) Clean completion.
+    assert.strictEqual(result.cursor, null, 'flow must complete without a resume cursor');
+
+    // (b) All 8 items folded by the recording gather.
+    assert.strictEqual(
+      result.state.counter,
+      8,
+      `gather counter must equal 8 (one per item); got ${result.state.counter}`,
+    );
+
+    // (b) Per-item routing carried back through the transport: even→success, odd→error.
+    const containerOutputs = result.state.outputByValue;
+    for (let v = 0; v < 8; v++) {
+      const expected = v % 2 === 0 ? 'success' : 'error';
+      assert.strictEqual(
+        containerOutputs[String(v)],
+        expected,
+        `value ${v} must route to ${expected} through runDagBatch; got ${containerOutputs[String(v)]}`,
+      );
+    }
+    // Prove the failed terminal was genuinely reached for odd items.
+    assert.strictEqual(
+      Object.values(containerOutputs).filter((o) => o === 'error').length,
+      4,
+      'exactly 4 odd items must reach the failed (reject) terminal',
+    );
+
+    // (c) PROOF the runDagBatch path ran: one execute message PER BATCH (2),
+    //     not per item (8). reservoir capacity 4 over 8 same-group items → 2
+    //     released batches → 2 transport round-trips.
+    assert.strictEqual(
+      countingParent.executeCount,
+      2,
+      `execute messages must equal the number of batches (2), not items (8); got ${countingParent.executeCount}`,
+    );
+
+    await dispatcher.destroy();
+
+    // ── (d) PARITY: same items through the in-process Branch B run ──────────
+    const inProcDispatcher = new Dagonizer<ReservoirDispatchState>();
+    inProcDispatcher.registerNode(new RouterNode());
+    inProcDispatcher.registerDAG(routeBodyDDag);
+    inProcDispatcher.registerDAG(reservoirDInProcessDag);
+
+    const inProcState = new ReservoirDispatchState();
+    inProcState.items = [...SUITE_D_ITEMS];
+
+    const inProcResult = await inProcDispatcher.execute(RESERVOIR_D_INPROCESS_NAME, inProcState);
+
+    assert.strictEqual(inProcResult.cursor, null, 'in-process flow must complete cleanly');
+    assert.strictEqual(
+      inProcResult.state.counter,
+      result.state.counter,
+      'gather counter must match between container and in-process runs',
+    );
+    assert.deepStrictEqual(
+      inProcResult.state.outputByValue,
+      result.state.outputByValue,
+      'per-item output map must be identical between runDagBatch and in-process batch-native',
+    );
+
+    await inProcDispatcher.destroy();
   });
 });

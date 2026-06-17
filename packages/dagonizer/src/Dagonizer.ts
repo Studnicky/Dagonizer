@@ -656,8 +656,9 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
    *
    * - **Branch A (node body):** builds a size-N Batch, calls `node.execute(batch)`
    *   once, and derives each item's output from the routed entries.
-   * - **Branch B (DAG body, in-process):** runs each clone's sub-DAG in-process
-   *   sequentially via `runNodes`, collects `terminalOutcome` per clone.
+   * - **Branch B (DAG body, in-process):** runs the released batch through the
+   *   sub-DAG in a single batch-native `runNodes` call (the `inputBatch` +
+   *   `terminalByItemId` seam), deriving each item's `terminalOutcome` from the map.
    * - **Branch C (DAG body, container):** routes to `DagContainerBase.runDagBatch`
    *   when the container is a `DagContainerBase` instance (one transport round-trip
    *   for all items); falls back to per-item `container.runDag` for plain
@@ -734,26 +735,25 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
     const batch = Batch.from(batchItems);
 
     if (container === null) {
-      // ── Branch B: DAG body, in-process ──────────────────────────────────────
+      // ── Branch B: DAG body, in-process (batch-native) ───────────────────────
+      // Run the child DAG once over all N items as a single batch via the wave-1
+      // seam (inputBatch + terminalByItemId), mirroring the batch-native embedded
+      // -DAG firing in runNodes. The per-item items live in `batch`; `repClone`
+      // is a standalone clone supplied only to satisfy the `state` argument.
       const childOptions: ExecuteOptionsInterface = { ...(signal !== null && { 'signal': signal }) };
+      const terminalByItemId = new Map<string, 'completed' | 'failed'>();
+      const repClone = state.clone();
+      const iter = this.#adapter.runNodes(scatter.body.dag, repClone, null, childOptions, { 'embedded': true }, innerPath, batch, terminalByItemId);
 
-      // Run each clone's DAG body in-process sequentially (bounded concurrency is
-      // managed by the ReservoirBuffer; each batch is already size-controlled).
-      const terminalOutcomes: Array<'completed' | 'failed' | null> = [];
-      for (let i = 0; i < items.length; i++) {
-        const clone = clones[i] as TState;
-        const iter = this.#adapter.runNodes(scatter.body.dag, clone, null, childOptions, { 'embedded': true }, innerPath);
-        // Drain the generator and capture the terminal outcome from the return value.
-        let step = await iter.next();
-        while (!step.done) {
-          step = await iter.next();
-        }
-        terminalOutcomes.push(step.value.terminalOutcome);
+      // Drain the generator fully; per-item terminal outcomes land in the map.
+      let step = await iter.next();
+      while (!step.done) {
+        step = await iter.next();
       }
 
       const results: ScatterItemResult<TState>[] = items.map((buffered, i) => {
         const clone = clones[i] as TState;
-        const terminalOutcome = terminalOutcomes[i] ?? null;
+        const terminalOutcome = terminalByItemId.get(String(buffered.index)) ?? null;
         const hasUnrecoverable = clone.errors.some((e) => e.recoverable === false);
         const output = (terminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
         for (const err of clone.errors) state.collectError(err);
