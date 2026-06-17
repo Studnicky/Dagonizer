@@ -15,7 +15,7 @@ seeAlso:
 
 Contract-derived flow generation. Ships through `@noocodex/dagonizer/derive`.
 
-```ts
+```ts twoslash
 import { DAGDeriver, ContractRegistryValidator } from '@noocodex/dagonizer/derive';
 import type {
   DAGDeriverAnnotations,
@@ -24,17 +24,23 @@ import type {
   DAGDeriverScatter,
   DAGDeriverTerminal,
   DAGDeriverOptions,
+} from '@noocodex/dagonizer/derive';
+import type {
   OperationContract,
   OperationContractFragment,
-} from '@noocodex/dagonizer/derive';
+} from '@noocodex/dagonizer/contracts';
 ```
 
 ## DAGDeriver
 
 Static class.
 
-```ts
-class DAGDeriver {
+```ts twoslash
+import type { DAGDeriverOptions } from '@noocodex/dagonizer/derive';
+import type { DAG } from '@noocodex/dagonizer';
+import type { NodeInterface, OperationContract } from '@noocodex/dagonizer/contracts';
+// ---cut---
+declare class DAGDeriver {
   static derive(opts: DAGDeriverOptions): DAG;
   static extractContracts(nodes: readonly NodeInterface[]): OperationContract[];
   static edges(contracts: readonly OperationContract[]): ReadonlyMap<string, ReadonlySet<string>>;
@@ -49,14 +55,17 @@ class DAGDeriver {
 
 Build a `DAG` from a node registry plus declared annotations. Each node co-locates its own `contract` field (`{ hardRequired, produces }`); the node's `name` and `outputs` complete the full `OperationContract` surface. At least one node must declare a `contract`.
 
-```ts
+```ts twoslash
+import type { DAGDeriverAnnotations } from '@noocodex/dagonizer/derive';
+import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+// ---cut---
 interface DAGDeriverOptions {
-  readonly name: string;
-  readonly version: string;
-  readonly entrypoint: string;
+  name: string;
+  version: string;
+  entrypoint: string;
   /** Node registry. Each node with a co-located `contract` participates in topology derivation. */
-  readonly nodes: readonly NodeInterface[];
-  readonly annotations?: DAGDeriverAnnotations;
+  nodes: NodeInterface[];
+  annotations?: DAGDeriverAnnotations;
 }
 ```
 
@@ -80,41 +89,49 @@ Topological depth buckets. Operations sharing a depth share a bucket. Useful for
 
 ## DAGDeriverAnnotations
 
-```ts
-interface DAGDeriverAnnotations {
-  readonly terminals?:    Readonly<Record<string, readonly DAGDeriverTerminal[]>>;
-  readonly scatters?:     Readonly<Record<string, DAGDeriverScatter>>;
-  readonly embeddedDAGs?: Readonly<Record<string, DAGDeriverEmbeddedDAG>>;
+```ts twoslash
+import type { NodeStateInterface } from '@noocodex/dagonizer';
+// ---cut---
+interface DAGDeriverEmitTerminal {
+  name:    string;                    // placement name for the synthesized TerminalNode
+  outcome: 'completed' | 'failed';   // lifecycle outcome triggered when reached
 }
 
 type DAGDeriverTerminal =
-  | { readonly outcome: string; readonly target: string }
-  | { readonly outcome: string; readonly emit: DAGDeriverEmitTerminal };
-
-interface DAGDeriverEmitTerminal {
-  readonly name:    string;                    // placement name for the synthesized TerminalNode
-  readonly outcome: 'completed' | 'failed';   // lifecycle outcome triggered when reached
-}
+  | { outcome: string; target: string }
+  | { outcome: string; emit: DAGDeriverEmitTerminal };
 
 type DAGDeriverScatter = {
-  readonly source:       string;
-  readonly itemKey:      string;
-  readonly node:         string;
-  readonly concurrency?: number;
-  readonly outcomes:     readonly string[];
+  source:      string;
+  itemKey:     string;
+  node:        string;
+  concurrency: number;
+  outcomes:    string[];
 } & (
-  | { readonly strategy: 'custom';    readonly customNode: string }
-  | { readonly strategy: 'partition'; readonly partitions: Readonly<Record<string, string>> }
-  | { readonly strategy: 'append';    readonly target:     string }
+  | { strategy: 'custom';    customNode: string;
+      partitions?: never;    target?: never }
+  | { strategy: 'partition'; partitions: Record<string, string>;
+      customNode?: never;    target?: never }
+  | { strategy: 'append';    target: string;
+      customNode?: never;    partitions?: never }
 );
 
+type ChildKey<T extends NodeStateInterface> =
+  NodeStateInterface extends T ? string : keyof T & string;
+
 interface DAGDeriverEmbeddedDAG<TChildState extends NodeStateInterface = NodeStateInterface> {
-  readonly dag:           string;
-  readonly stateMapping?: {
-    readonly input?:  Readonly<Partial<Record<keyof TChildState & string, string>>>;
-    readonly output?: Readonly<Partial<Record<string, keyof TChildState & string>>>;
+  dag:           string;
+  stateMapping?: {
+    input?:  Partial<Record<ChildKey<TChildState>, string>>;
+    output?: Partial<Record<string, ChildKey<TChildState>>>;
   };
-  readonly outputs:       readonly string[];
+  outputs:       string[];
+}
+
+interface DAGDeriverAnnotations {
+  terminals?:   Record<string, DAGDeriverTerminal[]>;
+  scatters?:    Record<string, DAGDeriverScatter>;
+  embeddedDAGs?: Record<string, DAGDeriverEmbeddedDAG>;
 }
 ```
 
@@ -130,29 +147,31 @@ An operation cannot appear in more than one of `scatters` or `embeddedDAGs`. Pla
 
 ## OperationContract
 
-```ts
+```ts twoslash
+import type { OperationContractFragment } from '@noocodex/dagonizer/contracts';
+// ---cut---
 interface OperationContract extends OperationContractFragment {
-  readonly name:         string;
-  readonly hardRequired: readonly string[];
-  readonly produces:     readonly string[];
-  readonly outputs:      readonly string[];
+  name:         string;
+  hardRequired: string[];
+  produces:     string[];
+  outputs:      string[];
 }
 ```
 
-Defined in `@noocodex/dagonizer/contracts`; re-exported from `@noocodex/dagonizer/derive` for convenience.
+Defined in `@noocodex/dagonizer/contracts`.
 
 `outputs` declares every port the node can emit. `DAGDeriver` auto-wires each port to the next derived stage; `DAGDeriverAnnotations.terminals[name]` overrides individual ports per-operation. Terminals declaring a port not in the contract's `outputs` throw `DAGError` at derive time.
 
 ## OperationContractFragment
 
-```ts
+```ts twoslash
 interface OperationContractFragment {
-  readonly hardRequired: readonly string[];
-  readonly produces:     readonly string[];
+  hardRequired: string[];
+  produces:     string[];
 }
 ```
 
-Defined in `@noocodex/dagonizer/contracts`; re-exported from `@noocodex/dagonizer/derive`. Co-located on `NodeInterface.contract` when the consumer wants the node itself to be the single source of truth for its data flow. The node's `name` and `outputs` complete the full `OperationContract` surface at registration time.
+Defined in `@noocodex/dagonizer/contracts`. Co-located on `NodeInterface.contract` when the consumer wants the node itself to be the single source of truth for its data flow. The node's `name` and `outputs` complete the full `OperationContract` surface at registration time.
 
 ---
 
@@ -160,12 +179,18 @@ Defined in `@noocodex/dagonizer/contracts`; re-exported from `@noocodex/dagonize
 
 Static class. Registration-time checker for co-located node contracts.
 
-```ts
-class ContractRegistryValidator {
+```ts twoslash
+import type { OperationContract } from '@noocodex/dagonizer/contracts';
+// ---cut---
+interface WarningEmitter {
+  warn(message: string): void;
+}
+
+declare class ContractRegistryValidator {
   static validate(
     contracts: readonly OperationContract[],
-    onWarning: (message: string) => void,
-    entrypointName?: string,
+    warningEmitter: WarningEmitter,
+    options?: { entrypointName: string },
   ): void;
 }
 ```
@@ -173,7 +198,7 @@ class ContractRegistryValidator {
 Surfaces two categories of drift:
 
 - **Dangling-read.** A non-entrypoint node declares `hardRequired: ['foo.bar']` but no upstream-in-DAG node produces `'foo.bar'`. Thrown as `DAGError`. The entrypoint's `hardRequired` is external initial state and is not checked.
-- **Dead-write.** A node declares `produces: ['baz']` but no downstream-in-DAG node `hardRequires` `'baz'`. Emitted as a non-fatal warning via `onWarning`.
+- **Dead-write.** A node declares `produces: ['baz']` but no downstream-in-DAG node `hardRequires` `'baz'`. Emitted as a non-fatal warning via `warningEmitter.warn`.
 
 Edge semantics match `DAGDeriver.edges` (`produces ↔ hardRequired`). Invoked automatically by `Dagonizer.registerDAG` when any registered node on the DAG carries a `contract` fragment; warnings flow to the dispatcher's `onContractWarning` hook.
 

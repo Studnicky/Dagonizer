@@ -65,7 +65,7 @@ Use it to disambiguate same-named inner placements across multiple embedded-DAG 
 
 ## Structured logging
 
-```ts
+```ts twoslash
 import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
 
 interface Span {
@@ -78,15 +78,15 @@ interface Span {
 class TracingDispatcher<TState extends NodeStateBase> extends Dagonizer<TState> {
   readonly spans: Span[] = [];
 
-  protected override onNodeStart(nodeName: string): void {
+  protected override onNodeStart(nodeName: string, state: TState, placementPath: readonly string[]): void {
     this.spans.push({ name: nodeName, start: Date.now() });
   }
 
-  protected override onNodeEnd(nodeName: string, output: string | null): void {
+  protected override onNodeEnd(nodeName: string, output: string | null, state: TState, placementPath: readonly string[]): void {
     const span = this.spans.find((s) => s.name === nodeName && s.end === undefined);
     if (span) {
       span.end = Date.now();
-      span.output = output ?? undefined;
+      if (output !== null) span.output = output;
     }
   }
 }
@@ -94,14 +94,24 @@ class TracingDispatcher<TState extends NodeStateBase> extends Dagonizer<TState> 
 
 ## OpenTelemetry sketch
 
-```ts
-import { trace, SpanStatusCode } from '@opentelemetry/api';
-import { Dagonizer } from '@noocodex/dagonizer';
+```ts twoslash
+import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
 
+// Minimal OTel surface — replace with @opentelemetry/api in production.
+interface OtelSpan {
+  end(): void;
+  setAttribute(key: string, value: string): void;
+  recordException(error: Error): void;
+  setStatus(status: { code: number }): void;
+}
+interface OtelTracer { startSpan(name: string): OtelSpan; }
+declare const trace: { getTracer(name: string): OtelTracer };
+declare const SpanStatusCode: { readonly ERROR: number };
+// ---cut---
 const tracer = trace.getTracer('dagonizer');
 
-class OtelDispatcher<TState> extends Dagonizer<TState> {
-  #spans = new Map<string, ReturnType<typeof tracer.startSpan>>();
+class OtelDispatcher<TState extends NodeStateBase> extends Dagonizer<TState> {
+  #spans = new Map<string, OtelSpan>();
 
   protected override onFlowStart(dagName: string): void {
     this.#spans.set(dagName, tracer.startSpan(`flow.${dagName}`));
@@ -112,11 +122,11 @@ class OtelDispatcher<TState> extends Dagonizer<TState> {
     this.#spans.delete(dagName);
   }
 
-  protected override onNodeStart(nodeName: string): void {
+  protected override onNodeStart(nodeName: string, state: TState, placementPath: readonly string[]): void {
     this.#spans.set(nodeName, tracer.startSpan(`node.${nodeName}`));
   }
 
-  protected override onNodeEnd(nodeName: string, output: string | null): void {
+  protected override onNodeEnd(nodeName: string, output: string | null, state: TState, placementPath: readonly string[]): void {
     const span = this.#spans.get(nodeName);
     if (span) {
       span.setAttribute('output', output ?? '');
@@ -125,7 +135,7 @@ class OtelDispatcher<TState> extends Dagonizer<TState> {
     }
   }
 
-  protected override onError(nodeName: string, error: Error): void {
+  protected override onError(nodeName: string, error: Error, state: TState, placementPath: readonly string[]): void {
     const span = this.#spans.get(nodeName);
     if (span) {
       span.recordException(error);
@@ -139,9 +149,19 @@ class OtelDispatcher<TState> extends Dagonizer<TState> {
 
 When one consumer owns the dispatcher, the subclass pattern is sufficient. For multiple observers (logger plus tracer plus metrics), compose them inside the subclass:
 
-```ts
+```ts twoslash
+// ---cut---
 import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+import type { DagonizerOptionsInterface } from '@noocodex/dagonizer';
 
+declare class Logger {
+  info(msg: string): void;
+}
+declare class Tracer {
+  startSpan(name: string): void;
+  endSpan(name: string): void;
+}
+// ---cut---
 class ComposedDispatcher<TState extends NodeStateBase> extends Dagonizer<TState> {
   readonly #logger: Logger;
   readonly #tracer: Tracer;

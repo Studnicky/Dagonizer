@@ -23,7 +23,7 @@ nextSteps:
 
 ## Basic subclass
 
-```ts
+```ts twoslash
 import { NodeStateBase, Dagonizer } from '@noocodex/dagonizer';
 
 class PipelineState extends NodeStateBase {
@@ -57,7 +57,13 @@ Two invariants the override must hold:
 
 The dispatcher calls `clone()` before scatter clones so each clone operates on its own state copy. The base implementation copies metadata via `structuredClone` and resets the lifecycle plus error/warning lists. Override `clone()` when the subclass carries reference-typed fields the base class does not know about:
 
-```ts
+```ts twoslash
+import { NodeStateBase } from '@noocodex/dagonizer';
+
+interface Config {
+  retries: number;
+}
+// ---cut---
 class S extends NodeStateBase {
   items: string[] = [];
   config: Config;
@@ -67,8 +73,8 @@ class S extends NodeStateBase {
     this.config = config;
   }
 
-  override clone(): S {
-    const cloned = new S(this.config); // shared reference is fine here
+  override clone(): this {
+    const cloned = new S(this.config) as this; // shared reference is fine here
     // NodeStateBase.clone() copies _metadata via structuredClone
     // but does not know about `items`. Copy it explicitly.
     cloned.items = [...this.items];
@@ -79,11 +85,19 @@ class S extends NodeStateBase {
 
 The base `clone()` resets lifecycle to `pending` and clears errors and warnings. Call `super.clone()` to keep that behaviour and layer the domain copy on top:
 
-```ts
-override clone(): S {
-  const base = super.clone() as S;
+```ts twoslash
+import { NodeStateBase } from '@noocodex/dagonizer';
+
+class S extends NodeStateBase {
+  items: string[] = [];
+
+// ---cut---
+override clone(): this {
+  const base = super.clone(); // new Constructor() + _metadata copy from base
   base.items = [...this.items];
   return base;
+}
+// ---cut-after---
 }
 ```
 
@@ -91,7 +105,15 @@ override clone(): S {
 
 `NodeStateBase.restore` is a static method with `this`-polymorphism. Subclasses inherit it without re-declaration:
 
-```ts
+```ts twoslash
+import { NodeStateBase } from '@noocodex/dagonizer';
+
+class PipelineState extends NodeStateBase {
+  items: string[] = [];
+}
+
+const state = new PipelineState();
+// ---cut---
 const snap = state.snapshot();
 const restored = PipelineState.restore(snap);
 // restored is PipelineState, not NodeStateBase
@@ -101,11 +123,11 @@ When `restoreData()` is overridden, `restore()` calls `applySnapshot()` which ca
 
 ## Full example
 
-```ts
-import { NodeStateBase, Dagonizer, Checkpoint, DAG_CONTEXT } from '@noocodex/dagonizer';
+```ts twoslash
+import { NodeStateBase, Dagonizer, Checkpoint, DAG_CONTEXT, ScalarNode, NodeOutputBuilder } from '@noocodex/dagonizer';
 import { CheckpointRestoreAdapterFn } from '@noocodex/dagonizer/checkpoint';
-import { NodeOutputBuilder, EMPTY_CONTRACT_FRAGMENT } from '@noocodex/dagonizer';
-import type { JsonObject, NodeInterface, DAG } from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
+import type { JsonObject } from '@noocodex/dagonizer/entities';
 
 class CountState extends NodeStateBase {
   count = 0;
@@ -123,11 +145,10 @@ class CountState extends NodeStateBase {
   }
 }
 
-class TickNode implements NodeInterface<CountState, 'success'> {
+class TickNode extends ScalarNode<CountState, 'success'> {
   readonly name = 'tick';
   readonly outputs = ['success'] as const;
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  async execute(state: CountState) {
+  protected override async executeOne(state: CountState) {
     state.count++;
     state.log.push(`tick:${state.count}`);
     return NodeOutputBuilder.of('success');
@@ -154,22 +175,24 @@ dispatcher.registerNode(tick);
 dispatcher.registerDAG(dag);
 
 // Run, abort after one node, checkpoint, restore, resume.
-const ctl = new AbortController();
-const s1 = new CountState();
-const exec = dispatcher.execute('count', s1, { signal: ctl.signal });
-for await (const node of exec) {
-  if (node.nodeName === 'a') ctl.abort(new Error('pause after a'));
-}
-const partial = await exec;
-// partial.state.count === 1, partial.cursor === 'b'
+async function main() {
+  const ctl = new AbortController();
+  const s1 = new CountState();
+  const exec = dispatcher.execute('count', s1, { signal: ctl.signal });
+  for await (const node of exec) {
+    if (node.nodeName === 'a') ctl.abort(new Error('pause after a'));
+  }
+  const partial = await exec;
+  // partial.state.count === 1, partial.cursor === 'b'
 
-const ckpt = await Checkpoint.capture('count', partial);
-const ckpt2 = Checkpoint.load(JSON.parse(ckpt.toJson()) as unknown);
-const { state: s2, dagName, cursor } = ckpt2.restoreState(
-  CheckpointRestoreAdapterFn.fromFn((snap) => CountState.restore(snap)),
-);
-const final = await dispatcher.resume(dagName, s2, cursor);
-// final.state.count === 3, final.state.log.length === 3
+  const ckpt = await Checkpoint.capture('count', partial);
+  const ckpt2 = Checkpoint.load(JSON.parse(ckpt.toJson()) as unknown);
+  const { state: s2, dagName, cursor } = ckpt2.restoreState(
+    CheckpointRestoreAdapterFn.fromFn((snap) => CountState.restore(snap)),
+  );
+  const final = await dispatcher.resume(dagName, s2, cursor);
+  // final.state.count === 3, final.state.log.length === 3
+}
 ```
 
 ## Retry-attempt tracking
@@ -185,16 +208,18 @@ const final = await dispatcher.resume(dagName, s2, cursor);
 
 A typical node that participates in a retry loop:
 
-```ts
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
-import { EMPTY_CONTRACT_FRAGMENT } from '@noocodex/dagonizer';
+```ts twoslash
+import { NodeStateBase, NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
 
-class FetchNode implements NodeInterface<MyState, 'success' | 'retry' | 'salvage'> {
+class MyState extends NodeStateBase {
+  data: unknown = null;
+}
+// ---cut---
+class FetchNode extends ScalarNode<MyState, 'success' | 'retry' | 'salvage'> {
   readonly name = 'fetch';
   readonly outputs = ['success', 'retry', 'salvage'] as const;
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  async execute(state: MyState, context: NodeContextInterface) {
+  protected override async executeOne(state: MyState, context: NodeContextInterface) {
     try {
       state.data = await fetch('/api', { signal: context.signal }).then((r) => r.json());
       state.clearAttempts(context.nodeName);

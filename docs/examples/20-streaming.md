@@ -22,7 +22,12 @@ seeAlso:
 
 The two consumption modes share a single internal generator. Iterating and then awaiting returns the cached final result; the flow body runs exactly once.
 
-```ts
+```ts twoslash
+import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+
+declare const dispatcher: Dagonizer<NodeStateBase>;
+declare const state: NodeStateBase;
+// ---cut---
 // Mode A: await only
 const result = await dispatcher.execute('pipeline', state);
 
@@ -31,7 +36,7 @@ const execution = dispatcher.execute('pipeline', state);
 for await (const stage of execution) {
   console.log(stage.nodeName, stage.output);
 }
-const result = await execution; // returns cached final result
+const streamedResult = await execution; // returns cached final result
 ```
 
 ## Code

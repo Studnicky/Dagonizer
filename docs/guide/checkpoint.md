@@ -86,7 +86,22 @@ When a DAG stops early (cancellation, timeout, error), `result.cursor` holds the
 
 `Checkpoint.capture(dagName, result, { stores })` snapshots named stores into the checkpoint envelope alongside the state, and `ckpt.restoreStores(map)` repopulates fresh instances on resume:
 
-```ts
+```ts twoslash
+import { Checkpoint } from '@noocodex/dagonizer/checkpoint';
+import { NodeStateBase } from '@noocodex/dagonizer';
+import type { ExecutionResultInterface } from '@noocodex/dagonizer/entities';
+import type { Snapshottable, StoreSnapshot } from '@noocodex/dagonizer/contracts';
+
+class MyStore implements Snapshottable {
+  async snapshot(): Promise<StoreSnapshot> { return { version: 1, type: 'my', entries: [] }; }
+  async restore(_snap: StoreSnapshot): Promise<void> {}
+}
+class MyState extends NodeStateBase {}
+declare const result: ExecutionResultInterface<MyState> & { cursor: string };
+declare const recalled: Checkpoint;
+declare const memory: MyStore;
+
+// ---cut---
 const ckpt = await Checkpoint.capture('my-dag', result, { stores: { memory } });
 // ...persist, then on resume:
 const fresh = new MyStore();
@@ -99,19 +114,23 @@ Both take `Record<string, Snapshottable>`: the capability, not the key-value `St
 
 `snapshot()` captures metadata, warnings, and the retry budget (`retries`). Engine errors are intentionally excluded from the snapshot — they flow via `outcome.errors` as the single authoritative channel. Domain fields are excluded unless the subclass overrides `snapshotData()`:
 
-```ts
+```ts twoslash
+import { NodeStateBase } from '@noocodex/dagonizer';
+import type { JsonObject } from '@noocodex/dagonizer/entities';
+
+// ---cut---
 class PipelineState extends NodeStateBase {
   items: string[] = [];
   processedCount = 0;
 
-  protected override snapshotData() {
+  protected override snapshotData(): JsonObject {
     return {
       items: [...this.items],
       processedCount: this.processedCount,
     };
   }
 
-  protected override restoreData(snap: JsonObject) {
+  protected override restoreData(snap: JsonObject): void {
     const raw = snap['items'];
     if (Array.isArray(raw)) this.items = raw as string[];
     const n = snap['processedCount'];
@@ -133,9 +152,16 @@ class PipelineState extends NodeStateBase {
 
 `CheckpointStore` is the adapter contract for persistence backends. `ckpt.persist(store, key)` and `Checkpoint.recall(store, key)` compose the codec with a store so save and resume become a single call per side.
 
-```ts
+```ts twoslash
 import { Checkpoint, CheckpointRestoreAdapterFn, MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
+import { NodeStateBase, Dagonizer } from '@noocodex/dagonizer';
+import type { ExecutionResultInterface } from '@noocodex/dagonizer/entities';
 
+class MyState extends NodeStateBase {}
+declare const result: ExecutionResultInterface<MyState> & { cursor: string };
+declare const dispatcher: Dagonizer<MyState>;
+
+// ---cut---
 const store = new MemoryCheckpointStore();
 
 const ckpt = await Checkpoint.capture('my-dag', result);
@@ -158,7 +184,7 @@ A `ScatterNode` with a `source` records per-item progress on `state.metadata` so
 
 ### Reserved metadata key
 
-```ts
+```ts twoslash
 import { SCATTER_PROGRESS_KEY } from '@noocodex/dagonizer';
 // SCATTER_PROGRESS_KEY === '__dagonizer_scatter_progress__'
 ```
@@ -167,7 +193,7 @@ Consumer nodes must not write to this key. It is engine-internal and may be over
 
 The stored shape is a record keyed by the scatter placement's `name`, so multiple `ScatterNode` placements in one DAG keep independent progress entries:
 
-```ts
+```ts twoslash
 interface ScatterProgress {
   readonly placementName: string;
   readonly completedIndices: readonly number[];
@@ -175,6 +201,7 @@ interface ScatterProgress {
 }
 
 type StoredScatterProgress = Readonly<Record<string, ScatterProgress>>;
+export {};
 ```
 
 ### Lifecycle

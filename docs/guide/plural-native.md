@@ -9,8 +9,14 @@ into place.
 
 A node consumes a `Batch<TState>` and returns a `RoutedBatch<TOutput>`:
 
-```ts
-execute(batch: Batch<TState>, context): Promise<RoutedBatch<TOutput, TState>>
+```ts twoslash
+import type { NodeStateInterface, RoutedBatch } from '@noocodex/dagonizer';
+import type { Batch } from '@noocodex/dagonizer';
+// ---cut---
+declare function execute<TState extends NodeStateInterface, TOutput extends string>(
+  batch: Batch<TState>,
+  context: unknown,
+): Promise<RoutedBatch<TOutput, TState>>;
 ```
 
 A `Batch<TState>` is an ordered collection of items, each carrying a stable id
@@ -37,7 +43,13 @@ write the work, not by what the engine does:
 `contract` / `timeout` / `validate` / `destroy` and leaves `execute` abstract.
 `ScalarNode` is the per-item specialization: "a scalar is a batch of one."
 
-```ts
+```ts twoslash
+import type { NodeStateInterface, NodeContextInterface, RoutedBatch } from '@noocodex/dagonizer';
+import { ScalarNode, MonadicNode, Batch, RoutedBatchBuilder, NodeOutputBuilder } from '@noocodex/dagonizer';
+
+type EventState = NodeStateInterface & { coords: string | null; region: string };
+declare const geoCache: { lookup(coords: string): string };
+
 // per-item (the common case)
 class GeoNode extends ScalarNode<EventState, 'has-geo' | 'needs-geo'> {
   readonly name = 'route-geo';
@@ -51,8 +63,8 @@ class GeoNode extends ScalarNode<EventState, 'has-geo' | 'needs-geo'> {
 class EnrichNode extends MonadicNode<EventState, 'enriched'> {
   readonly name = 'enrich';
   readonly outputs = ['enriched'] as const;
-  async execute(batch: Batch<EventState>, ctx) {
-    for (const item of batch) item.state.region = ctx.services.geoCache.lookup(item.state.coords);
+  async execute(batch: Batch<EventState>, ctx: NodeContextInterface) {
+    for (const item of batch) item.state.region = geoCache.lookup(item.state.coords ?? '');
     return RoutedBatchBuilder.of('enriched', batch);
   }
 }
@@ -92,11 +104,24 @@ releases a `Batch<N>` per key when one of three triggers fires:
 - **idle** — the key has been idle for `idleMs` (driven by the swappable scheduler);
 - **complete** — the source drains, flushing every partial buffer.
 
-```ts
-.scatter('classify', source, {
+```ts twoslash
+import { DAGBuilder, ScalarNode, NodeOutputBuilder } from '@noocodex/dagonizer';
+import type { NodeStateInterface, NodeOutputInterface } from '@noocodex/dagonizer';
+
+class ClassifyNode extends ScalarNode<NodeStateInterface, 'success' | 'error'> {
+  readonly name = 'classify';
+  readonly outputs = ['success', 'error'] as const;
+  protected override async executeOne(_state: NodeStateInterface): Promise<NodeOutputInterface<'success' | 'error'>> {
+    return NodeOutputBuilder.of('success');
+  }
+}
+const classifyNode = new ClassifyNode();
+// ---cut---
+declare const builder: DAGBuilder;
+builder.scatter('classify', 'events', classifyNode, { 'success': 'persist', 'error': 'salvage' }, {
   reservoir: { keyField: 'route', capacity: 100, idleMs: 2000 },
   gather: { strategy: 'append', target: 'results' },
-}, routes)
+});
 ```
 
 The body node then runs once over each released batch, and the gather folds the

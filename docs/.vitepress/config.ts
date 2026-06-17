@@ -2,6 +2,7 @@ import { fileURLToPath, URL }                from 'node:url';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve }                               from 'node:path';
 import { defineConfig, type HeadConfig }          from 'vitepress';
+import { transformerTwoslash }                    from '@shikijs/vitepress-twoslash';
 import { withMermaid }                           from 'vitepress-plugin-mermaid';
 import type { MermaidConfig }                    from 'mermaid';
 
@@ -230,8 +231,6 @@ export default withMermaid(defineConfig({
   appearance: false,
   cleanUrls: true,
   lastUpdated: true,
-  // Exclude plans/** from the built site (audit ledger + stale plans docs).
-  srcExclude: ['plans/**'],
   head: [
     /* Favicon stack. The SVG is the canonical icon (modern browsers,
        crisp at every size). The PNG variants stay as fallbacks for
@@ -568,6 +567,29 @@ export default withMermaid(defineConfig({
   // pre-built theme that already meets contrast guarantees.
   markdown: {
     theme: 'night-owl',
+    // Twoslash type-checks fenced blocks against the package at build time.
+    // Only blocks tagged ```ts twoslash are processed; plain ```ts is left
+    // untouched. A type error in a tagged block fails the docs build, so
+    // reference snippets cannot drift from the shipped types. Compiler
+    // options mirror docs/tsconfig.json so the package's subpath exports
+    // (`@noocodex/dagonizer/derive`, `/contracts`, …) resolve.
+    codeTransformers: [
+      transformerTwoslash({
+        twoslashOptions: {
+          compilerOptions: {
+            target: 99,            // ES2022+
+            module: 99,            // ESNext
+            moduleResolution: 100, // Bundler
+            lib: ['lib.es2022.d.ts', 'lib.dom.d.ts', 'lib.dom.iterable.d.ts'],
+            types: ['node'],
+            strict: true,
+            exactOptionalPropertyTypes: true,
+            noUncheckedIndexedAccess: true,
+            skipLibCheck: true,
+          },
+        },
+      }),
+    ],
   },
   mermaid: ({
     // Theme colors are owned by base.css overrides on the rendered SVG so

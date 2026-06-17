@@ -45,13 +45,22 @@ Nodes receive the composed signal in the `context` argument and must propagate i
 
 ## Detecting abort inside a node
 
-```ts
-async execute(state, context) {
-  for (const item of items) {
-    if (context.signal.aborted) break;   // check between iterations
-    await process(item, context.signal); // propagate to every IO call
+```ts twoslash
+import { NodeStateBase, NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
+declare const items: string[];
+declare function process(item: string, signal: AbortSignal): Promise<void>;
+// ---cut---
+class DemoNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'demo';
+  readonly outputs = ['success'] as const;
+  protected async executeOne(state: NodeStateBase, context: NodeContextInterface): Promise<ReturnType<typeof NodeOutputBuilder.of<'success'>>> {
+    for (const item of items) {
+      if (context.signal.aborted) break;   // check between iterations
+      await process(item, context.signal); // propagate to every IO call
+    }
+    return NodeOutputBuilder.of('success');
   }
-  return NodeOutputBuilder.of('success');
 }
 ```
 
@@ -65,7 +74,11 @@ Once the signal fires:
 - `result.cursor` holds the node that would have run next. Pass it to `dispatcher.resume()` to continue from that point.
 - `result.state.lifecycle.kind` is `'cancelled'` (caller signal) or `'timed_out'` (deadline).
 
-```ts
+```ts twoslash
+import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+declare const dispatcher: Dagonizer<NodeStateBase>;
+declare const state: NodeStateBase;
+// ---cut---
 const ctl = new AbortController();
 setTimeout(() => ctl.abort(new Error('user cancelled')), 500);
 
@@ -81,7 +94,7 @@ if (result.cursor !== null) {
 
 When a flow exits via abort or timeout, `result.interruptedAt` carries structured cancellation telemetry:
 
-```ts
+```ts twoslash
 interface InterruptionInfo {
   readonly nodeName: string;
   readonly reason:   'abort' | 'timeout';
@@ -90,7 +103,12 @@ interface InterruptionInfo {
 
 `result.interruptedAt` is `null` on clean exits (completed, terminal-reached, configuration error, node throw without abort). When a signal aborts the run or a deadline expires, it carries the node that was current when the signal fired and the discriminant:
 
-```ts
+```ts twoslash
+import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+declare const dispatcher: Dagonizer<NodeStateBase>;
+declare const state: NodeStateBase;
+declare const ctl: AbortController;
+// ---cut---
 const result = await dispatcher.execute('pipeline', state, { signal: ctl.signal });
 
 if (result.interruptedAt !== null) {
@@ -105,7 +123,12 @@ if (result.interruptedAt !== null) {
 
 The dispatcher uses `AbortSignal.any()` to merge signals. Callers can do the same to compose multiple concerns before passing them in:
 
-```ts
+```ts twoslash
+import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+declare const dispatcher: Dagonizer<NodeStateBase>;
+declare const state: NodeStateBase;
+declare const userAbortController: AbortController;
+// ---cut---
 const userSignal = userAbortController.signal;
 const requestSignal = AbortSignal.timeout(10_000);
 const combined = AbortSignal.any([userSignal, requestSignal]);

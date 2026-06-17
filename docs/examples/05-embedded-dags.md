@@ -49,15 +49,22 @@ The `#embedded-dag-placements` region covers only the `.embeddedDAG(...)` calls:
 
 An `EmbeddedDAGNode` placement's outputs map routes each output to a named `TerminalNode` placement declared via `.terminal(name, options?)`. Every output must target a named node — all flow branches end at an explicit `TerminalNode`.
 
-```ts
+```ts twoslash
+import { DAGBuilder } from '@noocodex/dagonizer';
+
+const builder = new DAGBuilder('example', '1').entrypoint('invoke');
+// ---cut---
 // named terminals: error path marks the parent flow as failed
-.embeddedDAG('invoke', 'child', { success: 'end-ok', error: 'end-fail' })
-.terminal('end-ok')
-.terminal('end-fail', { outcome: 'failed' })
+builder
+  .embeddedDAG('invoke', 'child', { success: 'end-ok', error: 'end-fail' })
+  .terminal('end-ok')
+  .terminal('end-fail', { outcome: 'failed' });
 
 // single outcome: both outputs end as completed
-.embeddedDAG('invoke', 'child', { success: 'end', error: 'end' })
-.terminal('end')
+const builder2 = new DAGBuilder('example2', '1').entrypoint('invoke2');
+builder2
+  .embeddedDAG('invoke2', 'child', { success: 'end2', error: 'end2' })
+  .terminal('end2');
 ```
 
 See [Phase 09: Terminal placements](./09-terminals) for the full pattern with runnable examples.
@@ -77,9 +84,15 @@ See this in action in the [Archivist live demo](./the-archivist).
 
 An `EmbeddedDAGNode` placement can run the sub-DAG in an isolate by adding a `container` key to the placement and binding a `DagContainerInterface` backend at dispatcher construction:
 
-```ts
+```ts twoslash
 import { WorkerThreadContainer } from '@noocodex/dagonizer-executor-node';
+import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
 
+interface AppServices { [key: string]: unknown }
+class AppState extends NodeStateBase {}
+
+declare const services: AppServices;
+// ---cut---
 const dispatcher = new Dagonizer<AppState, AppServices>({
   services,
   containers: {
@@ -97,12 +110,20 @@ In the DAG document, add `container: "isolated"` to the `EmbeddedDAGNode` placem
 
 The `.embeddedDAG()` call accepts `TChildState` and `TParentState` generic parameters that narrow `options.inputs` keys and `options.outputs` paths to dotted paths that exist on the respective state at compile time:
 
-```ts
+```ts twoslash
+import { DAGBuilder, NodeStateBase } from '@noocodex/dagonizer';
+
+class ChildState extends NodeStateBase {
+  query = '';
+  searchResults: string[] = [];
+}
+
 class ParentState extends NodeStateBase {
   userQuery = '';
   candidates: string[] = [];
 }
 
+const builder = new DAGBuilder('parent', '1').entrypoint('search');
 builder.embeddedDAG<ChildState, ParentState>('search', 'book-search-scatter',
   { success: 'compose-loop', error: 'compose-empty' },
   {
@@ -110,6 +131,8 @@ builder.embeddedDAG<ChildState, ParentState>('search', 'book-search-scatter',
     outputs: { 'candidates': 'searchResults' },    // 'searchResults' must be a path on ChildState
   },
 );
+builder.terminal('compose-loop');
+builder.terminal('compose-empty');
 ```
 
 A misspelled parent-state path is a compile error.
@@ -120,16 +143,37 @@ A misspelled parent-state path is a compile error.
 
 The DAGBuilder `.embeddedDAG(...)` path above is the deterministic authoring surface. The same `EmbeddedDAGNode` can be produced declaratively via the `DAGDeriver` `embeddedDAGs` annotation when the surrounding flow is agent-style:
 
-```ts
+```ts twoslash
+import { DAGDeriver } from '@noocodex/dagonizer/derive';
+import { ScalarNode, NodeOutputBuilder, NodeStateBase, EMPTY_CONTRACT_FRAGMENT } from '@noocodex/dagonizer';
+import type { OperationContractFragment } from '@noocodex/dagonizer/contracts';
+
+class FlowState extends NodeStateBase {}
+
+class PrepareNode extends ScalarNode<FlowState, 'success'> {
+  readonly name = 'prepare';
+  readonly outputs = ['success'] as const;
+  override readonly contract: OperationContractFragment = { hardRequired: ['input'], produces: ['intermediate'] };
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+class InvokePluginNode extends ScalarNode<FlowState, 'success' | 'error'> {
+  readonly name = 'invoke-plugin';
+  readonly outputs = ['success', 'error'] as const;
+  override readonly contract: OperationContractFragment = { hardRequired: ['intermediate'], produces: ['childResult'] };
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+class FinalizeNode extends ScalarNode<FlowState, 'success'> {
+  readonly name = 'finalize';
+  readonly outputs = ['success'] as const;
+  override readonly contract: OperationContractFragment = { hardRequired: ['childResult'], produces: ['final'] };
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+// ---cut---
 DAGDeriver.derive({
   name: 'parent',
   version: '1',
   entrypoint: 'prepare',
-  contracts: [
-    { name: 'prepare',       hardRequired: ['input'],         produces: ['intermediate'], outputs: ['success'] },
-    { name: 'invoke-plugin', hardRequired: ['intermediate'],  produces: ['childResult'],  outputs: ['success', 'error'] },
-    { name: 'finalize',      hardRequired: ['childResult'],   produces: ['final'],        outputs: ['success'] },
-  ],
+  nodes: [new PrepareNode(), new InvokePluginNode(), new FinalizeNode()],
   annotations: {
     embeddedDAGs: {
       'invoke-plugin': {

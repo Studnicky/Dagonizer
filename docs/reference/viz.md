@@ -15,7 +15,7 @@ seeAlso:
 
 DAG visualization helpers. Ship through `@noocodex/dagonizer/viz`.
 
-```ts
+```ts twoslash
 import {
   MermaidRenderer,
   JsonLdRenderer,
@@ -29,16 +29,20 @@ import type {
   CytoscapeNodeElement,
   CytoscapeEdgeElement,
 } from '@noocodex/dagonizer/viz';
+
+export {};
 ```
 
 ## MermaidRenderer
 
 Static class.
 
-```ts
-class MermaidRenderer {
-  static render(dag: DAG): string;
-}
+```ts twoslash
+import { MermaidRenderer } from '@noocodex/dagonizer/viz';
+import type { DAG } from '@noocodex/dagonizer';
+// ---cut---
+declare const dag: DAG;
+const mermaid: string = MermaidRenderer.render(dag);
 ```
 
 Render a `DAG` as Mermaid `flowchart` source. The output is a complete Mermaid block ready to embed in a Markdown ```` ```mermaid ```` fence.
@@ -79,7 +83,12 @@ flowchart LR
 
 ### Combining with the dispatcher's read accessors
 
-```ts
+```ts twoslash
+import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+import { MermaidRenderer } from '@noocodex/dagonizer/viz';
+class MyState extends NodeStateBase {}
+// ---cut---
+const dispatcher = new Dagonizer<MyState>();
 const sources = dispatcher.listDAGs().map((dag) => ({
   name: dag.name,
   mermaid: MermaidRenderer.render(dag),
@@ -94,10 +103,13 @@ const sources = dispatcher.listDAGs().map((dag) => ({
 
 Static class.
 
-```ts
-class JsonLdRenderer {
-  static render(dag: DAG): DagJsonLdDocument;
-}
+```ts twoslash
+import { JsonLdRenderer } from '@noocodex/dagonizer/viz';
+import type { DAG } from '@noocodex/dagonizer';
+import type { DagJsonLdDocument } from '@noocodex/dagonizer/viz';
+// ---cut---
+declare const dag: DAG;
+const doc: DagJsonLdDocument = JsonLdRenderer.render(dag);
 ```
 
 Renders a `DAG` as a JSON-LD document with a `@context` and a `@graph` containing the DAG root plus every placement, all typed against the Dagonizer vocabulary (`DAGONIZER_VOCAB`). The output is a plain object; serialize with `JSON.stringify`.
@@ -110,25 +122,27 @@ Each placement's `@type` is prefixed with `dag:`: `dag:SingleNode`, `dag:Scatter
 
 ### `DAGONIZER_VOCAB`
 
-```ts
-const DAGONIZER_VOCAB = 'https://noocodex.dev/ontology/dagonizer/';
+```ts twoslash
+import { DAGONIZER_VOCAB } from '@noocodex/dagonizer/viz';
+// ---cut---
+const vocab = DAGONIZER_VOCAB;
+//    ^? const vocab: "https://noocodex.dev/ontology/dagonizer/"
 ```
 
 Stable JSON-LD vocabulary URI for the Dagonizer DAG vocabulary. Prefixed as `dag:` in rendered documents.
 
 ### Types
 
-```ts
-interface DagJsonLdDocument {
-  readonly '@context': Record<string, string>;
-  readonly '@graph': readonly JsonLdGraphEntry[];
-}
+```ts twoslash
+import type { DagJsonLdDocument, JsonLdGraphEntry } from '@noocodex/dagonizer/viz';
+// ---cut---
+declare const doc: DagJsonLdDocument;
+const ctx: Record<string, string> = doc['@context'];
+const graph: readonly JsonLdGraphEntry[] = doc['@graph'];
 
-interface JsonLdGraphEntry {
-  readonly '@id': string;
-  readonly '@type': string;
-  readonly [key: string]: unknown;
-}
+declare const entry: JsonLdGraphEntry;
+const id: string = entry['@id'];
+const type: string = entry['@type'];
 ```
 
 ---
@@ -137,23 +151,30 @@ interface JsonLdGraphEntry {
 
 Subclassable factory class for mounting an interactive cytoscape graph in a DOM container. `cytoscape` and `@dagrejs/dagre` are optional peer dependencies; install them to use this class. The cytoscape constructor is dependency-injected: consumers pass it to the `CytoscapeGraph` constructor so the factory never bundles cytoscape directly.
 
-```ts
+```ts twoslash
 import { CytoscapeGraph } from '@noocodex/dagonizer/viz';
+import type { DAG } from '@noocodex/dagonizer';
 import cytoscape from 'cytoscape';
-
-const graph = new CytoscapeGraph(cytoscape, container, dag, options?);
-await graph.mount(); // returns cytoscape.Core
+// ---cut---
+declare const container: HTMLElement;
+declare const dag: DAG;
+const graph = new CytoscapeGraph(cytoscape, container, dag);
+const cy = await graph.mount(); // returns cytoscape.Core
 ```
 
 ### Constructor
 
-```ts
-new CytoscapeGraph(
-  cytoscapeFactory: typeof cytoscape,
-  container:        HTMLElement,
-  dag:              DAG,
-  options?:         CytoscapeGraphOptions,
-)
+```ts twoslash
+import { CytoscapeGraph } from '@noocodex/dagonizer/viz';
+import type { CytoscapeGraphOptions } from '@noocodex/dagonizer/viz';
+import type { DAG } from '@noocodex/dagonizer';
+import cytoscape from 'cytoscape';
+// ---cut---
+declare const container: HTMLElement;
+declare const dag: DAG;
+declare const options: CytoscapeGraphOptions;
+// new CytoscapeGraph(cytoscapeFactory, container, dag, options?)
+const graph = new CytoscapeGraph(cytoscape, container, dag, options);
 ```
 
 | Parameter | Type | Description |
@@ -178,8 +199,16 @@ Builds elements via `CytoscapeRenderer.render`, computes layout via `CompositeLa
 
 ### `cy` getter
 
-```ts
-get cy(): cytoscape.Core | null
+```ts twoslash
+import { CytoscapeGraph } from '@noocodex/dagonizer/viz';
+import type { DAG } from '@noocodex/dagonizer';
+import cytoscape from 'cytoscape';
+// ---cut---
+declare const container: HTMLElement;
+declare const dag: DAG;
+const graph = new CytoscapeGraph(cytoscape, container, dag);
+// cy is null before mount, cytoscape.Core after
+const cy = graph.cy;
 ```
 
 Returns the `cytoscape.Core` after a successful `mount()`, or `null` if the graph has not yet been mounted.
@@ -211,10 +240,13 @@ The Archivist example's `ArchivistGraph` extends `CytoscapeGraph` and overrides 
 
 Static class. Returns a plain element array with NO computed positions. Layout is performed separately by `CompositeLayout.compute` or handled internally by `CytoscapeGraph`.
 
-```ts
-class CytoscapeRenderer {
-  static render(dag: DAG, options?: RenderOptions): readonly CytoscapeElement[];
-}
+```ts twoslash
+import { CytoscapeRenderer } from '@noocodex/dagonizer/viz';
+import type { CytoscapeElement, RenderOptions } from '@noocodex/dagonizer/viz';
+import type { DAG } from '@noocodex/dagonizer';
+// ---cut---
+declare const dag: DAG;
+const elements: readonly CytoscapeElement[] = CytoscapeRenderer.render(dag);
 ```
 
 Renders a `DAG` as a Cytoscape elements array.
@@ -230,11 +262,14 @@ Renders a `DAG` as a Cytoscape elements array.
 
 ### `RenderOptions`
 
-```ts
-interface RenderOptions {
-  readonly embeddedDAGs?: ReadonlyMap<string, DAG>;
-  readonly maxDepth?:     number;  // default 6
-}
+```ts twoslash
+import type { RenderOptions } from '@noocodex/dagonizer/viz';
+import type { DAG } from '@noocodex/dagonizer';
+// ---cut---
+declare const opts: RenderOptions;
+// embeddedDAGs?: ReadonlyMap<string, DAG>
+// maxDepth?: number  (default 6)
+export {};
 ```
 
 Note: `computeLayout` and `layoutOptions` are not options on `CytoscapeRenderer.render`. Positioning is performed by `CompositeLayout.compute` (async) or handled internally by `CytoscapeGraph`.
@@ -251,46 +286,46 @@ Select contained nodes via `.dag-contained` (class selector) or `node[container]
 
 ### Types
 
-```ts
-type CytoscapeElement = CytoscapeNodeElement | CytoscapeEdgeElement;
+```ts twoslash
+import type {
+  CytoscapeElement,
+  CytoscapeNodeElement,
+  CytoscapeEdgeElement,
+} from '@noocodex/dagonizer/viz';
+// ---cut---
+declare const el: CytoscapeElement;
 
-interface CytoscapeNodeElement {
-  readonly group: 'nodes';
-  readonly data: {
-    readonly id: string;
-    readonly label: string;
-    readonly type: 'single' | 'scatter' | 'embedded-dag' | 'terminal' | 'phase';
-    readonly container?: string;         // container role; present only on contained placements
-    readonly containerColor?: string;    // per-role fill; present only on contained placements
-    readonly containerStroke?: string;   // per-role border; present only on contained placements
-    readonly containerText?: string;     // per-role label color; present only on contained placements
-    readonly [key: string]: unknown;
-  };
-  readonly classes?: string;
-  readonly position?: { readonly x: number; readonly y: number };
-}
+// CytoscapeNodeElement
+declare const node: CytoscapeNodeElement;
+const _group: 'nodes' = node.group;
+const _id: string = node.data.id;
+const _label: string = node.data.label;
+const _type: 'single' | 'scatter' | 'embedded-dag' | 'terminal' | 'phase' = node.data.type;
+const _classes: string = node.classes;
 
-interface CytoscapeEdgeElement {
-  readonly group: 'edges';
-  readonly data: {
-    readonly id: string;
-    readonly source: string;
-    readonly target: string;
-    readonly label: string;
-    readonly route: string;
-  };
-  readonly classes?: string;
-}
+// CytoscapeEdgeElement
+declare const edge: CytoscapeEdgeElement;
+const _eg: 'edges' = edge.group;
+const _eid: string = edge.data.id;
+const _src: string = edge.data.source;
+const _tgt: string = edge.data.target;
+const _lbl: string = edge.data.label;
+const _route: string = edge.data.route;
+const _eclasses: string = edge.classes;
 ```
 
 ## CompositeLayout
 
 Static class that computes node positions for a `DAG` using `@dagrejs/dagre`. `compute` is async: it lazy-loads dagre, recursively lays out embedded-DAG sub-graphs bottom-up, and returns a `LayoutResult` with a position map and bounding-box dimensions.
 
-```ts
+```ts twoslash
 import { CompositeLayout } from '@noocodex/dagonizer/viz';
-
-const result = await CompositeLayout.compute(dag, embeddedDAGs?, options?);
+import type { LayoutResult } from '@noocodex/dagonizer/viz';
+import type { DAG } from '@noocodex/dagonizer';
+// ---cut---
+declare const dag: DAG;
+const embeddedDAGs: ReadonlyMap<string, DAG> = new Map();
+const result: LayoutResult = await CompositeLayout.compute(dag, embeddedDAGs);
 // result.positions: ReadonlyMap<string, { x: number; y: number }>
 // result.width:     number  (total bounding-box width)
 // result.height:    number  (total bounding-box height)
@@ -298,27 +333,30 @@ const result = await CompositeLayout.compute(dag, embeddedDAGs?, options?);
 
 `CytoscapeGraph.mount()` calls `CompositeLayout.compute` internally via `applyLayout`; direct use is for consumers managing their own cytoscape instances outside the factory.
 
-```ts
-static async compute(
-  dag:          DAG,
-  embeddedDAGs: ReadonlyMap<string, DAG> = new Map(),
-  options:      CompositeLayoutOptions   = {},
-): Promise<LayoutResult>
+```ts twoslash
+import { CompositeLayout } from '@noocodex/dagonizer/viz';
+import type { LayoutResult, CompositeLayoutOptions } from '@noocodex/dagonizer/viz';
+import type { DAG } from '@noocodex/dagonizer';
+// ---cut---
+declare const dag: DAG;
+declare const embeddedDAGs: ReadonlyMap<string, DAG>;
+declare const options: CompositeLayoutOptions;
+const result: LayoutResult = await CompositeLayout.compute(dag, embeddedDAGs, options);
 ```
 
 `LayoutResult`:
 
-```ts
-interface LayoutResult {
-  readonly positions: ReadonlyMap<string, NodePosition>;
-  readonly width:     number;
-  readonly height:    number;
-}
+```ts twoslash
+import type { LayoutResult, NodePosition } from '@noocodex/dagonizer/viz';
+// ---cut---
+declare const result: LayoutResult;
+const positions: ReadonlyMap<string, NodePosition> = result.positions;
+const width: number = result.width;
+const height: number = result.height;
 
-interface NodePosition {
-  readonly x: number;
-  readonly y: number;
-}
+declare const pos: NodePosition;
+const x: number = pos.x;
+const y: number = pos.y;
 ```
 
 ---

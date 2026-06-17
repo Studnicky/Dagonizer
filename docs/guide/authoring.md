@@ -10,7 +10,7 @@ seeAlso:
     description: 'sugar for agentic, tool-driven flows'
   - text: 'JSON-LD export and import'
     link: './json-ld'
-    description: 'raw DAG literals via Dagonizer.serialize and Dagonizer.load'
+    description: 'raw DAG literals via DAGDocument.serialize and DAGDocument.load'
   - text: 'Concepts'
     link: '../concepts'
     description: 'the DAG type itself and its placement vocabulary'
@@ -75,44 +75,7 @@ DAGDeriver is for agentic flows where reaching the final state matters more than
 
 The mental model: *these operations declare what they need and what they produce; the system figures out the order.* Adding a new operation is a one-line registration; the data graph (`produces` paired with `hardRequired`) derives the edges.
 
-```ts
-import { NodeOutputBuilder, DAGDeriver } from '@noocodex/dagonizer';
-
-const classifyIntent = {
-  name: 'classify-intent',
-  outputs: ['lookup', 'similar', 'off-topic'] as const,
-  contract: { hardRequired: ['query'] as const, produces: ['intent'] as const },
-  async execute(state) { return NodeOutputBuilder.of('lookup'); },
-};
-const fetchCandidates = {
-  name: 'fetch-candidates',
-  outputs: ['success', 'empty'] as const,
-  contract: { hardRequired: ['intent'] as const, produces: ['candidates'] as const },
-  async execute(state) { return NodeOutputBuilder.of('success'); },
-};
-const rank = {
-  name: 'rank',
-  outputs: ['success'] as const,
-  contract: { hardRequired: ['candidates'] as const, produces: ['shortlist'] as const },
-  async execute(state) { return NodeOutputBuilder.of('success'); },
-};
-const compose = {
-  name: 'compose',
-  outputs: ['success', 'retry'] as const,
-  contract: { hardRequired: ['shortlist'] as const, produces: ['response'] as const },
-  async execute(state) { return NodeOutputBuilder.of('success'); },
-};
-
-const dag = DAGDeriver.derive({
-  name:       'research-agent',
-  version:    '1',
-  entrypoint: 'classify-intent',
-  nodes: [classifyIntent, fetchCandidates, rank, compose],
-  annotations: {
-    terminals: { 'classify-intent': [{ outcome: 'off-topic', target: 'compose' }] },
-  },
-});
-```
+<<< @/../examples/dags/authoring-derive.topology.ts#research-agent
 
 Add a new candidate source: write one contract, the topology rewires automatically. The author cares about the operation set, not the order.
 
@@ -127,10 +90,12 @@ Choose DAGDeriver when:
 
 Both sugar layers produce the same `DAG` object. A literal can also be written directly: useful for code generation, JSON loaded from disk, fixture data in tests, or programmatic composition.
 
-```ts
-import { Dagonizer } from '@noocodex/dagonizer';
-
-const dag = Dagonizer.load(await fs.readFile('dag.json', 'utf8'));
+```ts twoslash
+import { DAGDocument, Dagonizer } from '@noocodex/dagonizer';
+declare const rawJson: string;
+const dispatcher = new Dagonizer();
+// ---cut---
+const dag = DAGDocument.load(rawJson);
 dispatcher.registerDAG(dag);
 ```
 
@@ -187,27 +152,53 @@ The bottom two rows are imperative patterns. A node that recursively dispatches 
 
 Every DAG branch must end at a named `TerminalNode` placement. Declare one with `.terminal(name, options?)`:
 
-```ts
-.node('finalize', finalizeNode, { success: 'end' })
-.terminal('end')
+```ts twoslash
+import { DAGBuilder, NodeOutputBuilder, NodeStateBase, ScalarNode } from '@noocodex/dagonizer';
+class FinalizeNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'finalize';
+  readonly outputs = ['success'] as const;
+  protected override async executeOne() {
+    return NodeOutputBuilder.of('success');
+  }
+}
+const builder = new DAGBuilder('demo', '1');
+// ---cut---
+builder
+  .node('finalize', new FinalizeNode(), { success: 'end' })
+  .terminal('end');
 ```
 
 `.terminal(name, options?)` emits a `TerminalNode` placement. When the engine reaches it, the flow ends with the declared `outcome` (`'completed'` by default). To mark a branch as `failed`, pass `{ outcome: 'failed' }`:
 
-```ts
-.node('check', checkNode, { pass: 'end-ok', fail: 'end-fail' })
-.terminal('end-ok')
-.terminal('end-fail', { outcome: 'failed' })
+```ts twoslash
+import { DAGBuilder, NodeOutputBuilder, NodeStateBase, ScalarNode } from '@noocodex/dagonizer';
+class CheckNode extends ScalarNode<NodeStateBase, 'pass' | 'fail'> {
+  readonly name = 'check';
+  readonly outputs = ['pass', 'fail'] as const;
+  protected override async executeOne() {
+    return NodeOutputBuilder.of('pass');
+  }
+}
+const builder = new DAGBuilder('demo', '1');
+// ---cut---
+builder
+  .node('check', new CheckNode(), { pass: 'end-ok', fail: 'end-fail' })
+  .terminal('end-ok')
+  .terminal('end-fail', { outcome: 'failed' });
 ```
 
 Named terminals appear as discrete nodes in the visualisation. Use descriptive names (`end-ok`, `response-sent`, `workflow-failed`) when the endpoint name carries meaning.
 
 An `EmbeddedDAGNode` placement targets named terminals directly. This is the idiomatic way to surface a child DAG's error as a `failed` lifecycle in the parent:
 
-```ts
-.embeddedDAG('run-child', 'child-dag', { success: 'end-ok', error: 'end-fail' })
-.terminal('end-ok')
-.terminal('end-fail', { outcome: 'failed' })
+```ts twoslash
+import { DAGBuilder } from '@noocodex/dagonizer';
+const builder = new DAGBuilder('demo', '1');
+// ---cut---
+builder
+  .embeddedDAG('run-child', 'child-dag', { success: 'end-ok', error: 'end-fail' })
+  .terminal('end-ok')
+  .terminal('end-fail', { outcome: 'failed' });
 ```
 
 See [DAGBuilder, `.terminal()`](./builder#terminal-name-outcome) and [Phase 09, Terminal placements](../examples/09-terminals) for runnable examples.
@@ -216,7 +207,7 @@ See [DAGBuilder, `.terminal()`](./builder#terminal-name-outcome) and [Phase 09, 
 
 The output is the same JSON-LD `DAG`. A flow authored via DAGBuilder can be:
 
-- Serialized via `Dagonizer.serialize(dag)` to JSON and reloaded later via `Dagonizer.load`.
+- Serialized via `DAGDocument.serialize(dag)` to JSON and reloaded later via `DAGDocument.load`.
 - Compared against a DAGDeriver-derived DAG of the same flow (they match modulo `@id` URN choices).
 - Rewritten in the other authoring journey without changing the dispatcher contract.
 
@@ -231,7 +222,7 @@ The sugar layers exist for ergonomics. Drop down to raw `DAG` literals when:
 - You're writing tests and want the fixture to be transparent.
 - The sugar layer's invariants get in your way (rare; usually a sign the flow is misshapen).
 
-Use `Dagonizer.load(jsonString)` to validate the raw shape at the ingest boundary; the engine refuses anything that does not match `DAGSchema`. See [JSON-LD export and import](./json-ld) for details.
+Use `DAGDocument.load(jsonString)` to validate the raw shape at the ingest boundary; the engine refuses anything that does not match `DAGSchema`. See [JSON-LD export and import](./json-ld) for details.
 
 ## Related reference
 

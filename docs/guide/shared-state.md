@@ -115,9 +115,22 @@ The runnable example declares a `Services` interface whose `log` field has type 
 
 `RdfStore` from `@noocodex/dagonizer-patterns-graph` implements both `Store` and `TripleStore`. Plugin authors using the graph node patterns (`RecallContextNode`, `RecordFindingsNode`, `MemoryDigestNode`) pass an `RdfStore` directly as `services.memory`: it satisfies both the pattern's `TripleStore` requirement and the engine's `Store` contract for snapshot/restore.
 
-```ts
-import { RdfStore } from '@noocodex/dagonizer-patterns-graph';
-
+```ts twoslash
+interface _RdfStore {
+  set(key: string, value: unknown): Promise<void>;
+  update<T>(key: string, fn: (n: T | undefined) => T): Promise<T>;
+  assert(
+    s: { termType: string; value: string },
+    p: { termType: string; value: string },
+    o: { termType: string; value: string },
+  ): void;
+  select(pattern: {
+    predicate: { termType: string; value: string };
+    subject: string;
+  }): Array<Record<string, unknown>>;
+}
+declare const RdfStore: new () => _RdfStore;
+// ---cut---
 const store = new RdfStore();
 
 // Use as a Store: set/get/has/delete/update/snapshot/restore.
@@ -144,7 +157,7 @@ See `@noocodex/dagonizer-patterns-graph` for `RdfStoreOptions`, subclassing guid
 
 `TypedStore<Schema>` wraps any `Store` and constrains the key and value types to a declared schema. Consumers with a fixed, known key set use `TypedStore` to get inferred types at every call site without specifying `<T>` explicitly. Consumers with dynamic or open-ended keys use `Store` directly.
 
-```ts
+```ts twoslash
 import { MemoryStore, TypedStore } from '@noocodex/dagonizer/store';
 
 interface PipelineSchema {
@@ -167,7 +180,19 @@ await typed.update('messages', (msgs) => [...(msgs ?? []), 'hello']);
 
 `TypedStore` passes `snapshot()`, `restore()`, `connect()`, and `disconnect()` through to the underlying `Store`. Use `.inner` to access the full `Store` interface for operations that need the wider, heterogeneous contract.
 
-```ts
+```ts twoslash
+import { MemoryStore, TypedStore } from '@noocodex/dagonizer/store';
+import type { Store } from '@noocodex/dagonizer/contracts';
+
+interface PipelineSchema {
+  tokenBudget:  number;
+  messages:     string[];
+  lastNodeName: string;
+}
+
+const inner = new MemoryStore();
+const typed = new TypedStore<PipelineSchema>(inner);
+// ---cut---
 const raw: Store = typed.inner;
 await raw.set<boolean>('someFlag', true);
 ```
@@ -182,7 +207,7 @@ Every `Store` method returns a `Promise`. There is no sync variant. Always `awai
 
 **`set + get` is NOT atomic.** If two concurrent paths each call `get` then `set`, the second write silently discards the first. Use `update` for every read-modify-write:
 
-```ts
+```ts twoslash
 import { MemoryStore } from '@noocodex/dagonizer/store';
 
 const store = new MemoryStore();
@@ -204,8 +229,22 @@ Stores do not synchronize across process boundaries. The concurrency contract is
 
 Extend `BaseStore` and implement six `protected abstract` methods plus two `protected abstract get` accessors. Subclasses must override `update` to satisfy the atomicity contract; the base-class default is a fallback that is safe only when no concurrent calls touch the same key.
 
-```ts
-import type { StoreSnapshotEntry } from '@noocodex/dagonizer/contracts';
+```ts twoslash
+import type { JsonValue } from '@noocodex/dagonizer/entities';
+
+interface RedisClient {
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string): Promise<void>;
+  exists(key: string): Promise<number>;
+  del(key: string): Promise<number>;
+  keys(pattern: string): Promise<string[]>;
+  flushDb(): Promise<void>;
+  atomicRmw<T>(key: string, fn: (current: T | undefined) => T): Promise<T>;
+  connect(): Promise<void>;
+  quit(): Promise<void>;
+}
+// ---cut---
+import type { StoreSnapshotEntry } from '@noocodex/dagonizer/store';
 import { BaseStore, type BaseStoreOptions } from '@noocodex/dagonizer/store';
 
 export class RedisStore extends BaseStore {
@@ -275,7 +314,21 @@ The `type` string is the stable discriminant for the resume path; include a vers
 
 `Checkpoint.capture` is the async factory for checkpoints that include named stores. It accepts a `dagName`, execution `result`, and optional `stores` map. All stores are snapshotted in parallel.
 
-```ts
+```ts twoslash
+import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+
+class MyState extends NodeStateBase {}
+
+declare const dispatcher: Dagonizer<MyState>;
+declare const ctl: AbortController;
+
+interface CheckpointStoreLike {
+  save(id: string, data: unknown): Promise<void>;
+  load(id: string): Promise<string>;
+}
+declare const checkpointStore: CheckpointStoreLike;
+declare const runId: string;
+// ---cut---
 import { Checkpoint, CheckpointRestoreAdapterFn, MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
 import { MemoryStore } from '@noocodex/dagonizer/store';
 
@@ -283,6 +336,7 @@ import { MemoryStore } from '@noocodex/dagonizer/store';
 const memory = new MemoryStore();
 const audit  = new MemoryStore();
 
+const state = new MyState();
 const result = await dispatcher.execute('my-dag', state, { signal: ctl.signal });
 
 if (result.cursor !== null) {
@@ -318,7 +372,7 @@ await dispatcher.resume(dagName, restored, cursor);
 
 `RemoteStore` extends `Store` with three coordination primitives for plugins whose backing lives over the network or is replicated across processes. Local `MemoryStore` and single-node-durable stores implement `Store` directly; plugins that talk over HTTP, gRPC, or WebSocket implement `RemoteStore`.
 
-```ts
+```ts twoslash
 import type { RemoteStore } from '@noocodex/dagonizer/contracts';
 ```
 
@@ -353,7 +407,11 @@ Three `StoreErrorClassification` reasons cover remote-specific failure modes:
 
 Discriminate by `reason`:
 
-```ts
+```ts twoslash
+import type { RemoteStore } from '@noocodex/dagonizer/contracts';
+
+declare const store: RemoteStore;
+// ---cut---
 import { StoreError } from '@noocodex/dagonizer/store';
 
 try {

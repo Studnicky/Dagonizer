@@ -30,14 +30,13 @@ seeAlso:
 
 ## The contract
 
-```ts
-import type { CheckpointStore } from '@noocodex/dagonizer/contracts';
-
+```ts twoslash
 interface CheckpointStore {
   save(key: string, json: string): Promise<void>;
   load(key: string): Promise<string | null>;
   delete(key: string): Promise<void>;
 }
+export {};
 ```
 
 `load` returns `null` when no entry exists. Implementations handle their own concurrency, retries, and serialization details.
@@ -81,10 +80,15 @@ The diagram traces method invocations across the save and resume halves. It is n
 
 Implement the three methods against the backend.
 
-```ts
+```ts twoslash
 import type { CheckpointStore } from '@noocodex/dagonizer/contracts';
-import type { Pool } from 'pg';
 
+// Stub for the pg Pool type — replace with `import type { Pool } from 'pg'` in a real project.
+interface Pool {
+  query<R = Record<string, unknown>>(sql: string, values?: unknown[]): Promise<{ rows: R[] }>;
+}
+
+// ---cut---
 export class PostgresCheckpointStore implements CheckpointStore {
   readonly #pool: Pool;
   readonly #table: string;
@@ -123,9 +127,18 @@ The same pattern works for Redis, S3, file system, etcd, or any other key/value 
 
 `Checkpoint.capture` and `ckpt.restoreStores` both depend on the `Snapshottable` capability, not the full key-value `Store` surface. Any object that implements `snapshot(): Promise<StoreSnapshot>` and `restore(snapshot: StoreSnapshot): Promise<void>` participates in checkpointing. `Store extends Snapshottable`, so every store qualifies, but a non-KV backing (an RDF triple store, a vector index, an append-only log) can ride along in a checkpoint without implementing `get`/`set`/`has`/`delete`/`update`.
 
-```ts
+```ts twoslash
 import type { Snapshottable, StoreSnapshot } from '@noocodex/dagonizer/contracts';
+import { Checkpoint } from '@noocodex/dagonizer/checkpoint';
+import { NodeStateBase } from '@noocodex/dagonizer';
+import type { ExecutionResultInterface } from '@noocodex/dagonizer/entities';
 
+// Setup: a minimal state and result for the capture call.
+class MyState extends NodeStateBase {}
+declare const result: ExecutionResultInterface<MyState> & { cursor: string };
+declare const recalled: Checkpoint;
+
+// ---cut---
 class FactLog implements Snapshottable {
   #facts: string[] = [];
   add(fact: string): void { this.#facts.push(fact); }
@@ -159,7 +172,11 @@ await recalled.restoreStores({ log: freshLog });
 
 `Checkpoint.capture` calls `state.snapshot()` and packages the result with the cursor and execution history. State subclasses that carry domain-specific fields override `snapshotData()` and `restoreData()`:
 
-```ts
+```ts twoslash
+import { NodeStateBase } from '@noocodex/dagonizer';
+import type { JsonObject } from '@noocodex/dagonizer/entities';
+
+// ---cut---
 class PipelineState extends NodeStateBase {
   processed: string[] = [];
   failed: string[] = [];
@@ -186,7 +203,7 @@ Lifecycle resets to `pending` on restore. Resume starts a fresh lifecycle run on
 
 ## Testing with `MemoryCheckpointStore`
 
-```ts
+```ts twoslash
 import { MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
 
 const store = new MemoryCheckpointStore();

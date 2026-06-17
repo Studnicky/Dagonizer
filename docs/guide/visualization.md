@@ -137,7 +137,12 @@ Classes appear in the output as prefixed IRIs under the `dag:` prefix (e.g. `dag
 
 ## Combining with read accessors
 
-```ts
+```ts twoslash
+import { MermaidRenderer } from '@noocodex/dagonizer/viz';
+import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+
+declare const dispatcher: Dagonizer<NodeStateBase>;
+// ---cut---
 const sources = dispatcher.listDAGs().map((dag) => ({
   name: dag.name,
   mermaid: MermaidRenderer.render(dag),

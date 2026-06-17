@@ -58,13 +58,24 @@ The built DAG visualised:
 
 When the node declares a narrow `TOutput` union, `.node()` enforces exhaustive routing at compile time:
 
-```ts
+```ts twoslash
+// @errors: 2345
+import { DAGBuilder, ScalarNode, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
+class S extends NodeStateBase {}
+class CheckNode extends ScalarNode<S, 'ok' | 'warn' | 'error'> {
+  readonly name = 'check';
+  readonly outputs = ['ok', 'warn', 'error'] as const;
+  protected override async executeOne() { return NodeOutputBuilder.of('ok' as const); }
+}
+const checkNode = new CheckNode();
+const builder = new DAGBuilder('demo', '1');
+// ---cut---
 // NodeInterface<S, 'ok' | 'warn' | 'error'>
-.node('check', checkNode, {
+builder.node('check', checkNode, {
   ok:    'save',
   warn:  'log',
   // error: ???   ← TypeScript error: property 'error' is missing
-})
+});
 ```
 
 ## Contract-aware authoring
@@ -74,41 +85,58 @@ When the underlying `NodeInterface` carries a `contract` field (`hardRequired` p
 - **Dangling read**. A non-entrypoint node declares `hardRequired: ['foo']` but no upstream node produces `'foo'`. Throws `DAGError`.
 - **Dead write**. A node declares `produces: ['bar']` but no downstream node `hardRequires` `'bar'`. Calls `warningEmitter.warn` (non-fatal).
 
-```ts
-import { DAGBuilder, DAGError, NodeOutputBuilder } from '@noocodex/dagonizer';
-import type { NodeStateBase } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
-import type { WarningEmitter } from '@noocodex/dagonizer/contracts';
+```ts twoslash
+import { DAGBuilder, DAGError, ScalarNode, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
+import type { OperationContractFragment } from '@noocodex/dagonizer/contracts';
 
-class FetchNode implements NodeInterface<NodeStateBase, 'success'> {
+class FetchNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'fetch';
   readonly outputs = ['success'] as const;
-  readonly contract = { hardRequired: ['url'], produces: ['raw'] };
-  async execute() { return NodeOutputBuilder.of('success'); }
+  override readonly contract: OperationContractFragment = { hardRequired: ['url'], produces: ['raw'] };
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
 }
 
-class ParseNode implements NodeInterface<NodeStateBase, 'success'> {
+class ParseNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'parse';
   readonly outputs = ['success'] as const;
   // Deliberate mismatch: hardRequires 'data' but upstream only produces 'raw'
-  readonly contract = { hardRequired: ['data'], produces: ['record'] };
-  async execute() { return NodeOutputBuilder.of('success'); }
+  override readonly contract: OperationContractFragment = { hardRequired: ['data'], produces: ['record'] };
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
 }
 
 const fetchNode = new FetchNode();
 const parseNode = new ParseNode();
 
 // Throws DAGError: node 'parse' hardRequires 'data' but no upstream node produces it.
-new DAGBuilder('pipeline', '1.0')
-  .node('fetch', fetchNode, { success: 'parse' })
-  .node('parse', parseNode, { success: 'end' })
-  .terminal('end')
-  .build();
+try {
+  new DAGBuilder('pipeline', '1.0')
+    .node('fetch', fetchNode, { success: 'parse' })
+    .node('parse', parseNode, { success: 'end' })
+    .terminal('end')
+    .build();
+} catch (err) {
+  if (err instanceof DAGError) console.error(err.message);
+}
 ```
 
 Pass a `warningEmitter` to capture dead writes:
 
-```ts
+```ts twoslash
+import { DAGBuilder, ScalarNode, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
+import type { WarningEmitter } from '@noocodex/dagonizer/contracts';
+class FetchNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'fetch';
+  readonly outputs = ['success'] as const;
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+class ParseNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'parse';
+  readonly outputs = ['success'] as const;
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+const fetchNode = new FetchNode();
+const parseNode = new ParseNode();
+// ---cut---
 const emitter: WarningEmitter = { warn(message) { console.warn('[contract]', message); } };
 
 const dag = new DAGBuilder('pipeline', '1.0')
@@ -126,20 +154,57 @@ The `warningEmitter` passed to `build()` fires at construction time and is local
 
 For the common case where the flow is linear and every node carries a contract, skip the fluent chain:
 
-```ts
-import { DAGBuilder } from '@noocodex/dagonizer';
-
-const dag = DAGBuilder.fromNodes({
-  name: 'pipeline',
-  version: '1.0',
-  entrypoint: 'fetch',
-  nodes: [fetchNode, parseNode, saveNode],
-});
+```ts twoslash
+import { DAGBuilder, ScalarNode, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
+import type { OperationContractFragment } from '@noocodex/dagonizer/contracts';
+class FetchNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'fetch';
+  readonly outputs = ['success'] as const;
+  override readonly contract: OperationContractFragment = { hardRequired: [], produces: ['raw'] };
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+class ParseNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'parse';
+  readonly outputs = ['success'] as const;
+  override readonly contract: OperationContractFragment = { hardRequired: ['raw'], produces: ['record'] };
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+class SaveNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'save';
+  readonly outputs = ['success'] as const;
+  override readonly contract: OperationContractFragment = { hardRequired: ['record'], produces: [] };
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+const fetchNode = new FetchNode();
+const parseNode = new ParseNode();
+const saveNode = new SaveNode();
+// ---cut---
+const dag = DAGBuilder.fromNodes('pipeline', '1.0', 'fetch', [fetchNode, parseNode, saveNode]);
 ```
 
 Equivalent fluent form:
 
-```ts
+```ts twoslash
+import { DAGBuilder, ScalarNode, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
+class FetchNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'fetch';
+  readonly outputs = ['success'] as const;
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+class ParseNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'parse';
+  readonly outputs = ['success'] as const;
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+class SaveNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'save';
+  readonly outputs = ['success'] as const;
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+const fetchNode = new FetchNode();
+const parseNode = new ParseNode();
+const saveNode = new SaveNode();
+// ---cut---
 const dag = new DAGBuilder('pipeline', '1.0')
   .node('fetch', fetchNode, { success: 'parse' })
   .node('parse', parseNode, { success: 'save'  })
@@ -161,7 +226,15 @@ const dag = new DAGBuilder('pipeline', '1.0')
 
 `gather` is required on every scatter. Use `{ strategy: 'discard' }` to express a side-effect-only fan-out where no clone state flows back to the parent:
 
-```ts
+```ts twoslash
+import { DAGBuilder, ScalarNode, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
+class NotifyNode extends ScalarNode<NodeStateBase, 'success' | 'error'> {
+  readonly name = 'notify';
+  readonly outputs = ['success', 'error'] as const;
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+const notifyNode = new NotifyNode();
+// ---cut---
 const dag = new DAGBuilder('notify', '1')
   .scatter('fan-out', 'targets', notifyNode,
     { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
@@ -176,7 +249,21 @@ const dag = new DAGBuilder('notify', '1')
 
 Heterogeneous fan-out — running different logic per item — is expressed by authoring the `source` as a descriptor array and writing a body node that dispatches on `state.metadata.currentItem`:
 
-```ts
+```ts twoslash
+import { DAGBuilder, ScalarNode, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
+class ScoutDispatchNode extends ScalarNode<NodeStateBase, 'success' | 'error'> {
+  readonly name = 'scout-dispatch';
+  readonly outputs = ['success', 'error'] as const;
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+class MergeNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'merge';
+  readonly outputs = ['success'] as const;
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+const scoutDispatchNode = new ScoutDispatchNode();
+const mergeNode = new MergeNode();
+// ---cut---
 // state.scoutProviders = ['openlibrary', 'googlebooks', 'wikipedia']
 const dag = new DAGBuilder('search', '1')
   .scatter('scout', 'scoutProviders', scoutDispatchNode,
@@ -198,7 +285,21 @@ const dag = new DAGBuilder('search', '1')
 
 Each source item gets one clone. After all clones finish, the `gather.mapping` writes produced artifacts back in source-index order:
 
-```ts
+```ts twoslash
+import { DAGBuilder, ScalarNode, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
+class GenerateNode extends ScalarNode<NodeStateBase, 'success' | 'error'> {
+  readonly name = 'generate';
+  readonly outputs = ['success', 'error'] as const;
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+class SelectNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'select';
+  readonly outputs = ['success'] as const;
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+const generateNode = new GenerateNode();
+const selectNode = new SelectNode();
+// ---cut---
 const dag = new DAGBuilder('batch', '1')
   .scatter('generate', 'providers', generateNode,
     { 'all-success': 'select', 'partial': 'select', 'all-error': 'end', 'empty': 'end' },
@@ -214,26 +315,33 @@ const dag = new DAGBuilder('batch', '1')
 
 `gather.strategy: 'partition'` groups clones by their output token:
 
-```ts
-scatter('process-items', 'items', processNode,
+```ts twoslash
+import { DAGBuilder, ScalarNode, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
+class ProcessNode extends ScalarNode<NodeStateBase, 'success' | 'error'> {
+  readonly name = 'process';
+  readonly outputs = ['success', 'error'] as const;
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+const processNode = new ProcessNode();
+const builder = new DAGBuilder('batch', '1');
+// ---cut---
+builder.scatter('process-items', 'items', processNode,
   { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
   {
     gather: { strategy: 'partition', partitions: { success: 'processed', error: 'failed' } },
     concurrency: 4,
   },
-)
+);
 ```
 
 The full signature:
 
-```ts
-scatter<TState extends NodeStateInterface, TOutput extends string, TServices = undefined>(
-  name:    string,
-  source:  string,
-  body:    NodeInterface<TState, TOutput, TServices> | { readonly dag: string },
-  outputs: Record<string, null | string>,
-  options: ScatterOptionsInterface<TState> = {},
-): this
+```ts twoslash
+import { DAGBuilder } from '@noocodex/dagonizer';
+declare const b: DAGBuilder;
+// ---cut---
+b.scatter
+// ^?
 ```
 
 `ScatterOptionsInterface<TState>`:
@@ -248,9 +356,10 @@ scatter<TState extends NodeStateInterface, TOutput extends string, TServices = u
 
 `Path<T>` enumerates valid dotted-path strings over a state shape recursively:
 
-```ts
+```ts twoslash
 // Path<{ user: { name: string; age: number } }>
 //   = 'user' | 'user.name' | 'user.age'
+export {};
 ```
 
 Arrays contribute `${number}` and `${number}.${ElementPath}` paths. The depth cap is 8 levels; deeper nesting falls back to `string`. The type is exported from the `@noocodex/dagonizer/builder` subpath.
@@ -265,9 +374,19 @@ For patterns where nodes across multiple scatter placements accumulate to shared
 
 `.embeddedDAG()` places an `EmbeddedDAGNode` in the parent flow. It invokes a registered sub-DAG exactly once (cardinality 1) and routes the parent on the child's terminal outcome (`success` | `error`). `options.inputs` seeds the child from the parent before it runs; `options.outputs` copies child fields back into the parent after the child completes.
 
-```ts
+```ts twoslash
+import { DAGBuilder, ScalarNode, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
+class ChildState extends NodeStateBase { payload = ''; result = 0; }
+class ParentState extends NodeStateBase { user = { name: '', age: 0 }; }
+class FinalizeNode extends ScalarNode<ParentState, 'success'> {
+  readonly name = 'finalize';
+  readonly outputs = ['success'] as const;
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+const finalizeNode = new FinalizeNode();
+// ---cut---
 const dag = new DAGBuilder('parent', '1')
-  .embeddedDAG('run-child', 'child-dag',
+  .embeddedDAG<ChildState, ParentState>('run-child', 'child-dag',
     { success: 'finalize', error: 'finalize' },
     {
       inputs:  { payload: 'user.name' },   // child key ← parent path
@@ -281,14 +400,12 @@ const dag = new DAGBuilder('parent', '1')
 
 The full signature:
 
-```ts
-embeddedDAG<TChildState extends NodeStateInterface = NodeStateInterface,
-            TParentState extends NodeStateInterface = NodeStateInterface>(
-  name:    string,
-  dagName: string,
-  outputs: Record<'success' | 'error', string>,
-  options?: TypedEmbeddedDAGOptionsInterface<TChildState, TParentState>,
-): this
+```ts twoslash
+import { DAGBuilder } from '@noocodex/dagonizer';
+declare const b: DAGBuilder;
+// ---cut---
+b.embeddedDAG
+//  ^?
 ```
 
 `TypedEmbeddedDAGOptionsInterface<TChildState, TParentState>`:
@@ -302,8 +419,12 @@ Supply `TChildState` and `TParentState` to narrow path strings at compile time; 
 
 ## `.terminal(name, options?)`
 
-```ts
-.terminal(name: string, options?: { outcome?: 'completed' | 'failed' }): this
+```ts twoslash
+import { DAGBuilder } from '@noocodex/dagonizer';
+declare const b: DAGBuilder;
+// ---cut---
+b.terminal
+// ^?
 ```
 
 Appends a `TerminalNode` placement. When the engine reaches it, the flow ends with the declared `outcome`. The default is `'completed'`. Passing `{ outcome: 'failed' }` marks the state as failed before resolving.
@@ -314,7 +435,9 @@ TerminalNodes carry no `outputs` map. They are placement-only constructs with no
 
 An `EmbeddedDAGNode` placement targets named terminals directly:
 
-```ts
+```ts twoslash
+import { DAGBuilder } from '@noocodex/dagonizer';
+// ---cut---
 const dag = new DAGBuilder('parent', '1')
   .embeddedDAG('run-child', 'child-dag', {
     success: 'end-ok',
@@ -329,11 +452,20 @@ When the child DAG exits with a failed terminal, the `error` output arrives at `
 
 ### Example, two explicit terminals
 
-```ts
-import { DAGBuilder } from '@noocodex/dagonizer';
+```ts twoslash
+import { DAGBuilder, ScalarNode, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
 
 class S extends NodeStateBase { shouldPass = true; }
 
+class CheckNode extends ScalarNode<S, 'pass' | 'fail'> {
+  readonly name = 'check';
+  readonly outputs = ['pass', 'fail'] as const;
+  protected override async executeOne(state: S) {
+    return NodeOutputBuilder.of(state.shouldPass ? 'pass' as const : 'fail' as const);
+  }
+}
+const checkNode = new CheckNode();
+// ---cut---
 const dag = new DAGBuilder('demo', '1')
   .node('check', checkNode, { pass: 'end-ok', fail: 'end-fail' })
   .terminal('end-ok')
@@ -345,12 +477,12 @@ Running with `state.shouldPass = true` produces `lifecycle.kind = 'completed'`; 
 
 ## `.phase(name, phase, node)`
 
-```ts
-.phase<TState, TOutput, TServices>(
-  name: string,
-  phase: 'pre' | 'post',
-  dagNode: NodeInterface<TState, TOutput, TServices>,
-): this
+```ts twoslash
+import { DAGBuilder } from '@noocodex/dagonizer';
+declare const b: DAGBuilder;
+// ---cut---
+b.phase
+// ^?
 ```
 
 Appends a `PhaseNode` placement: a lifecycle-attached task that runs around the main DAG loop rather than inside it. `phase: 'pre'` placements run before the entrypoint in DAG declaration order. `phase: 'post'` placements run after the main loop drains, in DAG declaration order, on every exit path (completion, abort, timeout, terminal-failed, node throw).
@@ -375,9 +507,27 @@ The dispatcher invokes `onPhaseEnter(dagName, 'pre' | 'post', placementName, sta
 
 ### Example
 
-```ts
-import { DAGBuilder } from '@noocodex/dagonizer';
-
+```ts twoslash
+import { DAGBuilder, ScalarNode, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
+class ProcessNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'process';
+  readonly outputs = ['success'] as const;
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+class WarmCacheNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'warm-cache';
+  readonly outputs = ['success'] as const;
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+class FlushLogsNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'flush-logs';
+  readonly outputs = ['success'] as const;
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+const processNode = new ProcessNode();
+const warmCacheNode = new WarmCacheNode();
+const flushLogsNode = new FlushLogsNode();
+// ---cut---
 const dag = new DAGBuilder('with-phases', '1')
   .node('process', processNode, { success: 'end' })
   .phase('warm-cache', 'pre',  warmCacheNode)
@@ -390,7 +540,21 @@ const dag = new DAGBuilder('with-phases', '1')
 
 By default the first added node is the entrypoint. Override explicitly:
 
-```ts
+```ts twoslash
+import { DAGBuilder, ScalarNode, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
+class SetupNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'setup';
+  readonly outputs = ['success'] as const;
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+class MainNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'main';
+  readonly outputs = ['success'] as const;
+  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
+}
+const setupNode = new SetupNode();
+const mainNode = new MainNode();
+// ---cut---
 new DAGBuilder('dag', '1')
   .node('setup', setupNode, { success: 'main' })
   .node('main', mainNode, { success: 'end' })

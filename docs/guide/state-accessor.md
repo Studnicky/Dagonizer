@@ -24,13 +24,10 @@ Scatter source reads, scatter state-mapping input copies, and gather writes all 
 
 ## The contract
 
-```ts
+```ts twoslash
 import type { StateAccessor } from '@noocodex/dagonizer/contracts';
 
-interface StateAccessor {
-  get(state: object, path: string): unknown;
-  set(state: object, path: string, value: unknown): void;
-}
+declare const accessor: StateAccessor;
 ```
 
 Implementations are stateless. The same instance is shared across every scatter source read, state-mapping input copy, and gather write.
@@ -66,21 +63,28 @@ The same accessor flows through every code path that resolves a state path:
 
 Custom `GatherStrategy` subclasses receive the dispatcher's accessor on the execution context:
 
-```ts
-import { GatherStrategy } from '@noocodex/dagonizer';
+```ts twoslash
+import { GatherStrategy, GatherStrategies } from '@noocodex/dagonizer';
+import type { NodeStateInterface, Batch } from '@noocodex/dagonizer';
+import type { GatherRecord } from '@noocodex/dagonizer';
+import type { GatherConfig } from '@noocodex/dagonizer/entities';
+import type { StateAccessor } from '@noocodex/dagonizer/contracts';
 
 class AverageGather extends GatherStrategy {
   readonly name = 'average';
-  async apply<TState extends NodeStateInterface>(
+  reduce(
     config: GatherConfig,
-    execution: GatherExecution<TState>,
-  ): Promise<void> {
+    batch: Batch<GatherRecord<NodeStateInterface>>,
+    state: NodeStateInterface,
+    accessor: StateAccessor,
+  ): void {
     if (config.target === undefined) return;
-    const all = execution.records.map((r) =>
-      execution.accessor.get(r.cloneState, config.field ?? 'score') as number,
-    );
+    const all: number[] = [];
+    for (const item of batch) {
+      all.push(accessor.get(item.state.cloneState, config.field ?? 'score') as number);
+    }
     const avg = all.reduce((a, b) => a + b, 0) / Math.max(1, all.length);
-    execution.accessor.set(execution.state, config.target, avg);
+    accessor.set(state, config.target, avg);
   }
 }
 ```

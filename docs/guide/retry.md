@@ -78,7 +78,9 @@ All strategies apply `jitterFactor` (default `0.1`, plus or minus 10%) to spread
 
 ### Error filtering
 
-```ts
+```ts twoslash
+import { RetryPolicy, BackoffStrategy } from '@noocodex/dagonizer/runtime';
+// ---cut---
 class NetworkError extends Error {}
 class AuthError extends Error {}
 
@@ -101,7 +103,11 @@ Precedence:
 
 `policy.run(task, { signal: context.signal })` checks the signal before each attempt. During a backoff wait, if the signal fires the wait resolves with the abort reason (thrown). A cancelled flow stops cleanly mid-retry:
 
-```ts
+```ts twoslash
+import { RetryPolicy } from '@noocodex/dagonizer/runtime';
+declare const task: () => Promise<void>;
+declare const context: { signal: AbortSignal };
+// ---cut---
 const policy = RetryPolicy.from({ maxAttempts: 10, baseDelay: 1000 });
 // If context.signal aborts during a 1 s sleep, run() throws immediately.
 await policy.run(task, { signal: context.signal });
@@ -111,9 +117,11 @@ await policy.run(task, { signal: context.signal });
 
 Subclass `RetryPolicy` and override `getDelay` for non-standard curves:
 
-```ts
+```ts twoslash
+import { RetryPolicy } from '@noocodex/dagonizer/runtime';
+// ---cut---
 class FibonacciRetry extends RetryPolicy {
-  override getDelay(attempt: number, _error: Error | null = null): number {
+  override getDelay(attempt: number, options: { readonly error?: Error | null } = {}): number {
     const fib = (n: number): number => n <= 1 ? n : fib(n - 1) + fib(n - 2);
     return Math.min(fib(attempt) * 100, this.maxDelay);
   }
@@ -126,10 +134,10 @@ Override `shouldRetry` to express conditional logic without modifying the constr
 
 Install `VirtualScheduler` before the test so retry sleeps do not block:
 
-```ts
+```ts twoslash
 import { VirtualScheduler, VirtualClockProvider } from '@noocodex/dagonizer/testing';
 import { Scheduler, Clock } from '@noocodex/dagonizer/runtime';
-
+// ---cut---
 const clock = new VirtualClockProvider(0n);
 const scheduler = new VirtualScheduler();
 Clock.configure(clock);

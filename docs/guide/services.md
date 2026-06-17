@@ -60,15 +60,27 @@ The diagram captures the wiring, not a DAG. The bag is constructor-scoped; the d
 
 `NodeInterface<TState, TOutput, TServices>` propagates the same parameter to `context.services`:
 
-```ts
-import { NodeOutputBuilder, EMPTY_CONTRACT_FRAGMENT } from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+```ts twoslash
+import { ScalarNode, NodeOutputBuilder } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
+import type { NodeStateInterface } from '@noocodex/dagonizer';
 
-class FetchNode implements NodeInterface<S, 'success' | 'error', AppServices> {
+interface AppServices {
+  logger: { info(msg: string): void; error(meta: object, msg: string): void };
+  cache: { get(key: string): Promise<unknown> };
+  db: { query(sql: string): Promise<unknown> };
+}
+
+interface S extends NodeStateInterface {
+  key: string;
+  out: unknown;
+}
+
+class FetchNode extends ScalarNode<S, 'success' | 'error', AppServices> {
   readonly name = 'fetch';
   readonly outputs = ['success', 'error'] as const;
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  async execute(state: S, context: NodeContextInterface<AppServices>) {
+
+  protected async executeOne(state: S, context: NodeContextInterface<AppServices>) {
     context.services.logger.info('fetch start');
     const cached = await context.services.cache.get(state.key);
     if (cached) {

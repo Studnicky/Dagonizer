@@ -26,18 +26,21 @@ This example runs a scatter-dag-body placement over a real `WorkerThreadContaine
 
 DAG authoring does not change between the in-process and worker-thread paths. The only difference is the `container` key on the scatter placement and the `containers` option on the dispatcher:
 
-```ts
+```ts twoslash
+import type { ScatterNode } from '@noocodex/dagonizer/entities';
+// ---cut---
 // DAG document fragment — identical in both paths.
 // Adding 'container: "cpu"' activates the worker path for each clone.
-{
+const placement = {
+  '@id':   'urn:noocodex:dag:pipeline/node/process-items',
   '@type': 'ScatterNode',
-  name: 'process-items',
-  source: 'items',
-  body: { dag: 'item-pipeline' },
+  name:    'process-items',
+  source:  'items',
+  body:    { dag: 'item-pipeline' },
   container: 'cpu',   // logical role; bound to WorkerThreadContainer at dispatch time
-  gather: 'append',
+  gather:  { strategy: 'append' },
   outputs: { success: 'save', error: 'end-fail' },
-}
+} satisfies ScatterNode;
 ```
 
 The dispatcher resolves `"cpu"` to the bound backend. If `"cpu"` is not bound, the scatter runs in-process and fires `contractWarning`. The scatter inbox / work-queue, gather strategies, and outcome reducer are identical in both cases.
@@ -46,17 +49,21 @@ The dispatcher resolves `"cpu"` to the bound backend. If `"cpu"` is not bound, t
 
 Worker threads load a separate Node.js module — the main process's in-memory registry is not accessible across thread boundaries. The registry module exports a `RegistryModuleInterface` default that reconstructs the bundle and services inside the worker from an opaque `servicesConfig` JSON object:
 
-```ts
+```ts twoslash
+// myBundle / AppState / buildServices come from this project's own modules:
+//   import { myBundle } from './bundle.js';
+//   import { AppState } from './state.js';
+//   import { buildServices } from './services.js';
+declare const myBundle: import('@noocodex/dagonizer/contracts').RegistryBundleInterface['bundle'];
+declare const AppState: { restore: import('@noocodex/dagonizer/contracts').RegistryBundleInterface['restoreState'] };
+declare const buildServices: (c: import('@noocodex/dagonizer/entities').JsonObject) => unknown;
+// ---cut---
 // registry.ts — loaded by DagHost inside the worker via dynamic import
 import type {
   RegistryModuleInterface,
   RegistryBundleInterface,
 } from '@noocodex/dagonizer/contracts';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
-
-import { myBundle } from './bundle.js';
-import { AppState } from './state.js';
-import { buildServices } from './services.js';
 
 const registry: RegistryModuleInterface = {
   async createBundle(servicesConfig: JsonObject): Promise<RegistryBundleInterface> {

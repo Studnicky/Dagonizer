@@ -18,7 +18,8 @@
     "typecheck:docs": "vue-tsc --noEmit -p docs/tsconfig.json",
     "lint": "pnpm -r --filter \"./packages/*\" run lint",
     "lint:dags": "tsx scripts/lint-example-dags.ts",
-    "ci": "pnpm run typecheck && pnpm run typecheck:examples && pnpm run typecheck:docs && pnpm run lint && pnpm run test && pnpm run lint:dags",
+    "check:docs": "tsx scripts/check-doc-snippets.ts",
+    "ci": "pnpm run typecheck && pnpm run typecheck:examples && pnpm run typecheck:docs && pnpm run lint && pnpm run test && pnpm run lint:dags && pnpm run check:docs",
     "changeset": "changeset",
     "version-packages": "changeset version && pnpm install --lockfile-only",
     "release": "pnpm run ci && changeset publish",
@@ -65,6 +66,7 @@
     "@noocodex/dagonizer-tool-googlebooks": "workspace:^",
     "@noocodex/dagonizer-tool-openlibrary": "workspace:^",
     "@noocodex/dagonizer-tool-wikipedia": "workspace:^",
+    "@shikijs/vitepress-twoslash": "^2.5.0",
     "tsx": "^4.20.0",
     "vitepress": "^1.6.4",
     "vue-tsc": "^2.2.12"
@@ -73,6 +75,9 @@
     "onlyBuiltDependencies": [
       "esbuild",
       "unrs-resolver"
-    ]
+    ],
+    "overrides": {
+      "vue": "3.5.38"
+    }
   }
 }

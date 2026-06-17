@@ -65,7 +65,7 @@ Source: [`examples/11-handoff.ts`](../../examples/11-handoff.ts)
 
 Replace `InMemoryChannel` with a class that implements `HandoffChannelInterface` and sends to your queue:
 
-```ts
+```ts twoslash
 import type { HandoffChannelInterface } from '@noocodex/dagonizer/contracts';
 import type { DAGHandoff } from '@noocodex/dagonizer/entities';
 

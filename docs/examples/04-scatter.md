@@ -48,9 +48,15 @@ See this in action in the [Archivist live demo](./the-archivist).
 
 A scatter placement whose body is a DAG (rather than a single node) can run each clone's sub-DAG in an isolate. Add `container: "cpu"` to the scatter placement and bind a `DagContainerInterface` backend at dispatcher construction:
 
-```ts
+```ts twoslash
 import { WorkerThreadContainer } from '@noocodex/dagonizer-executor-node';
+import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
 
+interface AppServices { [key: string]: unknown }
+class AppState extends NodeStateBase {}
+
+declare const services: AppServices;
+// ---cut---
 const dispatcher = new Dagonizer<AppState, AppServices>({
   services,
   containers: {

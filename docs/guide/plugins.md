@@ -44,11 +44,11 @@ The adapter subpath exposes everything an LLM-provider adapter needs:
 
 ### Using an adapter
 
-```ts
+```ts twoslash
 import { GroqApiAdapter } from '@noocodex/dagonizer-adapter-groq';
 import { ChatRequestBuilder } from '@noocodex/dagonizer/adapter';
 
-const adapter = new GroqApiAdapter({ apiKey: process.env.GROQ_API_KEY! });
+const adapter = new GroqApiAdapter(process.env['GROQ_API_KEY']!);
 const response = await adapter.chat(ChatRequestBuilder.from({
   messages: [{ role: 'user', content: 'Hello' }],
 }));
@@ -61,7 +61,7 @@ if (response.message.kind === 'text') {
 
 Extend `BaseAdapter` and implement `performChat`:
 
-```ts
+```ts twoslash
 import { BaseAdapter, ChatResponseMessageBuilder, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
 import type { ChatRequest, ChatResponse } from '@noocodex/dagonizer/adapter';
 
@@ -93,7 +93,7 @@ The tool subpath exposes a small surface for external-service wrappers:
 
 ### Using a tool
 
-```ts
+```ts twoslash
 import { OpenLibrarySearchTool } from '@noocodex/dagonizer-tool-openlibrary';
 
 const tool = new OpenLibrarySearchTool();
@@ -102,9 +102,10 @@ const candidates = await tool.execute({ query: 'labyrinths' });
 
 ### Writing a tool
 
-```ts
-import type { Tool, ToolDefinition } from '@noocodex/dagonizer/tool';
-import type { AbortableOptionsInterface } from '@noocodex/dagonizer';
+```ts twoslash
+import type { Tool } from '@noocodex/dagonizer/tool';
+import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
+import type { AbortableOptionsInterface } from '@noocodex/dagonizer/contracts';
 import { HttpTransport } from '@noocodex/dagonizer/tool';
 
 export class MyTool implements Tool<{ q: string }, readonly string[]> {
@@ -115,9 +116,10 @@ export class MyTool implements Tool<{ q: string }, readonly string[]> {
     strict: true,
   };
   async execute(input: { q: string }, options?: AbortableOptionsInterface): Promise<readonly string[]> {
+    const transportOptions = options?.signal !== undefined ? { signal: options.signal } : {};
     const data = await HttpTransport.getJson<{ items: string[] }>(
       `https://api.example.com/search?q=${encodeURIComponent(input.q)}`,
-      { signal: options?.signal },
+      transportOptions,
     );
     return data.items;
   }
@@ -159,7 +161,7 @@ MonadicNode<TState, TOutput, TServices>            (root: main package)
 
 ### Example: classifying intent
 
-```ts
+```ts twoslash
 import { DecisionNode } from '@noocodex/dagonizer-patterns-rag';
 import { NodeStateBase } from '@noocodex/dagonizer';
 

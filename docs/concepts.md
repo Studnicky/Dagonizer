@@ -28,8 +28,12 @@ Vocabulary that the rest of the docs assume. The engine is domain-agnostic: agen
 
 The fundamental unit of work is a **batch**. A **node** consumes a `Batch<TState>` and returns a `RoutedBatch<TOutput>` — it **partitions** the batch's items across its named output ports. That single operation is the one node contract:
 
-```ts
-execute(batch: Batch<TState>, context): Promise<RoutedBatch<TOutput, TState>>
+```ts twoslash
+import type { NodeInterface } from '@noocodex/dagonizer';
+declare const node: NodeInterface;
+// ---cut---
+node.execute
+//   ^?
 ```
 
 A single item is a batch of one; the engine never processes a scalar specially. **Routing is partitioning**: a node distributing items across `needs-gdpr` / `geo-only` ports, micro-batching, and the reservoir are all the same mechanism — `Map<output, Batch>`.
@@ -41,7 +45,16 @@ You almost never write `execute` by hand. Nodes descend from the **taxonomy**:
 
 The classify-intent node in the Archivist is a typical `ScalarNode`: its `executeOne` reads the user query, writes a classification to state, and returns one of `'discover' | 'identify' | 'recall' | 'rejected'`.
 
-```ts
+```ts twoslash
+import { NodeStateBase, ScalarNode, NodeOutputBuilder } from '@noocodex/dagonizer';
+import type { NodeOutputInterface } from '@noocodex/dagonizer';
+// ---cut---
+class ArchivistState extends NodeStateBase {
+  query = '';
+  classification = '';
+}
+declare function classify(query: string): 'on-topic' | 'rejected';
+
 class ClassifyIntentNode extends ScalarNode<ArchivistState, 'on-topic' | 'off-topic'> {
   readonly name = 'classify-intent';
   readonly outputs = ['on-topic', 'off-topic'] as const;
@@ -113,13 +126,17 @@ Terminal states are sticky. Once a flow is `completed`, `failed`, `cancelled`, o
 
 The discriminated union carries timestamps appropriate to each state:
 
-```ts
-| { kind: 'pending';   startedAt: null;   finishedAt: null;   error: null;  reason: null }
-| { kind: 'running';   startedAt: number; finishedAt: null;   error: null;  reason: null }
-| { kind: 'completed'; startedAt: number; finishedAt: number; error: null;  reason: null }
-| { kind: 'failed';    startedAt: number; finishedAt: number; error: Error; reason: null }
-| { kind: 'cancelled'; startedAt: number; finishedAt: number; error: null;  reason: string }
-| { kind: 'timed_out'; startedAt: number; finishedAt: number; error: null;  reason: null }
+```ts twoslash
+import type { DAGLifecycleState } from '@noocodex/dagonizer/lifecycle';
+// ---cut---
+type _LifecycleDoc = DAGLifecycleState;
+//   ^? type _LifecycleDoc =
+//        | { kind: 'pending';   startedAt: null;   finishedAt: null;   error: null;  reason: null }
+//        | { kind: 'running';   startedAt: number; finishedAt: null;   error: null;  reason: null }
+//        | { kind: 'completed'; startedAt: number; finishedAt: number; error: null;  reason: null }
+//        | { kind: 'failed';    startedAt: number; finishedAt: number; error: Error; reason: null }
+//        | { kind: 'cancelled'; startedAt: number; finishedAt: number; error: null;  reason: string }
+//        | { kind: 'timed_out'; startedAt: number; finishedAt: number; error: null;  reason: null }
 ```
 
 Timestamps are monotonic milliseconds from `Clock.monotonicMs()`, not wall-clock. Use them for duration math, not for display.
@@ -151,8 +168,11 @@ A **route** is the directed edge in the DAG: an output name on one placement map
 
 Cancellation flows through `AbortSignal`. Pass `{ signal }` or `{ deadlineMs }` to `execute()` or `resume()`. The dispatcher composes them:
 
-```ts
-AbortSignal.any([callerSignal, AbortSignal.timeout(deadlineMs)])
+```ts twoslash
+declare const callerSignal: AbortSignal;
+declare const deadlineMs: number;
+// ---cut---
+AbortSignal.any([callerSignal, AbortSignal.timeout(deadlineMs)]);
 ```
 
 Each node receives the composed signal as `context.signal`. Nodes propagate it to every awaitable IO call. `RetryPolicy.run()` resolves its backoff sleep early when the signal fires.
@@ -167,50 +187,69 @@ After all clones finish, a gather strategy merges clone state back into the pare
 
 **`map`** copies fields from each clone into the parent. One clone writes a scalar; N clones produce an index-ordered array append. This is the generate-collect pattern: each clone writes a produced artifact and all artifacts land in one parent array.
 
-```ts
-gather: { strategy: 'map', mapping: { 'candidate': 'candidates' } }
+```ts twoslash
+import type { GatherConfig } from '@noocodex/dagonizer/entities';
+// ---cut---
+const config: GatherConfig = { strategy: 'map', mapping: { 'candidate': 'candidates' } };
 ```
 
 **`append`** requires `target` (dotted path). Flattens the clone's `field` (or the source item when `field` is absent) across all clones into the target array.
 
-```ts
-gather: { strategy: 'append', target: 'results' }
+```ts twoslash
+import type { GatherConfig } from '@noocodex/dagonizer/entities';
+// ---cut---
+const config: GatherConfig = { strategy: 'append', target: 'results' };
 ```
 
 **`partition`** requires `partitions: Record<outputToken, targetPath>`. Buckets clones by their output token and writes each group to its declared path.
 
-```ts
-gather: { strategy: 'partition', partitions: { success: 'passed', error: 'failed' } }
+```ts twoslash
+import type { GatherConfig } from '@noocodex/dagonizer/entities';
+// ---cut---
+const config: GatherConfig = { strategy: 'partition', partitions: { success: 'passed', error: 'failed' } };
 ```
 
 **`collect`** requires `target` (dotted path) and an optional `field`. Collects each clone's output token (or `field` value when specified) into `target` in source-index order. Unlike `append`, `collect` preserves positional correspondence between source items and their collected values.
 
-```ts
-gather: { strategy: 'collect', target: 'outputTokens' }
+```ts twoslash
+import type { GatherConfig } from '@noocodex/dagonizer/entities';
+// ---cut---
+const config: GatherConfig = { strategy: 'collect', target: 'outputTokens' };
 ```
 
 **`discard`** is a no-op merge. Clones run for side-effects only; no clone state flows back to the parent. Use when the body node writes to an external store and the parent state needs no update.
 
-```ts
-gather: { strategy: 'discard' }
+```ts twoslash
+import type { GatherConfig } from '@noocodex/dagonizer/entities';
+// ---cut---
+const config: GatherConfig = { strategy: 'discard' };
 ```
 
 **`custom`** requires `customNode: string`. The dispatcher stages the per-clone records under `state.metadata.gatherResults` and dispatches the named registered node. The Archivist's `mergeCandidates` node uses `custom` to deduplicate scout results by canonical book id.
 
-```ts
-gather: { strategy: 'custom', customNode: 'mergeCandidates' }
+```ts twoslash
+import type { GatherConfig } from '@noocodex/dagonizer/entities';
+// ---cut---
+const config: GatherConfig = { strategy: 'custom', customNode: 'mergeCandidates' };
 ```
 
 ### Authoring a custom gather strategy
 
 A gather strategy is **one fold** over batches — `initial → reduce → finalize`:
 
-```ts
+```ts twoslash
+import { GatherStrategies, GatherStrategy } from '@noocodex/dagonizer';
+import type { GatherRecord, GatherExecution } from '@noocodex/dagonizer';
+import type { GatherConfig } from '@noocodex/dagonizer/entities';
+import type { StateAccessor } from '@noocodex/dagonizer/contracts';
+import type { NodeStateInterface } from '@noocodex/dagonizer';
+import type { Batch } from '@noocodex/dagonizer';
+// ---cut---
 class TopNGather extends GatherStrategy {
   readonly name = 'top-n';
-  override initial(config, state, accessor): void { /* seed the accumulator in state */ }
-  override reduce(config, batch: Batch<GatherRecord>, state, accessor): void { /* fold a batch of clone results */ }
-  override async finalize(config, execution): Promise<void> { /* end-of-gather work (e.g. invoke a node) */ }
+  override initial(_config: GatherConfig, _state: NodeStateInterface, _accessor: StateAccessor): void { /* seed the accumulator in state */ }
+  override reduce(_config: GatherConfig, _batch: Batch<GatherRecord<NodeStateInterface>>, _state: NodeStateInterface, _accessor: StateAccessor): void { /* fold a batch of clone results */ }
+  override async finalize(_config: GatherConfig, _execution: GatherExecution<NodeStateInterface>): Promise<void> { /* end-of-gather work (e.g. invoke a node) */ }
 }
 GatherStrategies.register(new TopNGather());
 ```
@@ -239,8 +278,13 @@ After gather, an outcome reducer maps the set of per-clone records to one routin
 
 `stateMapping.input` seeds each clone before the body runs. Keys are dotted paths on the clone; values are dotted paths on the parent. The copy runs once per clone, before the body starts.
 
-```ts
-stateMapping: { input: { 'query': 'request.query' } }
+```ts twoslash
+import type { ScatterNode } from '@noocodex/dagonizer/entities';
+// ---cut---
+// stateMapping.input: child-state key → parent-state dotted path
+const stateMapping: NonNullable<ScatterNode['stateMapping']> = {
+  input: { 'query': 'request.query' },
+};
 ```
 
 Authored via the `inputs` option on `.scatter()` (or `.embeddedDAG()` for embedded-DAG placements). Without `stateMapping.input`, the clone starts with the parent's metadata and no domain-field seeds beyond what `clone()` copies.
