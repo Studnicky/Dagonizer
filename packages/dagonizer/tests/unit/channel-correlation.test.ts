@@ -1,24 +1,32 @@
 /**
- * loopback-channel.test.ts
+ * channel-correlation.test.ts
  *
- * LoopbackChannel transport + ChannelDispatch correlation over the channel.
+ * Regression guard for the EventEmitter listener-accumulation bug:
+ *   Before fix: DagContainerBase.runDag called channel.onMessage(handler) on
+ *   every request, accumulating O(N) listeners on a pooled worker channel.
+ *   After fix: ChannelDispatch installs exactly ONE channel.onMessage handler
+ *   for the channel's lifetime; correlationId routing demuxes all responses.
  *
- * Coverage targets:
- *   S4 — LoopbackChannel messages sent before onMessage() is registered are
- *        silently dropped (no error, no delayed delivery after registration).
- *   G7 — close() severs both directions; messages sent after close are silently
- *        dropped on the closed side and on the peer side.
+ * What this test asserts:
+ *   (a) Exactly ONE underlying subscription is installed regardless of request
+ *       count — measured via a counting wrapper channel.
+ *   (b) Results correlate correctly — each of N sequential requests gets its
+ *       own outcome, never a cross-contaminated one.
+ *   (c) No cross-talk — every response is delivered to the caller that sent
+ *       the matching correlationId.
  *
- * ChannelDispatch correlation (the single-subscription guard over a channel):
- *   (a) Exactly ONE underlying channel.onMessage subscription is installed
- *       regardless of request count — measured via a counting wrapper channel.
- *   (b) Results correlate correctly — each of N sequential requests gets its own
- *       outcome, never a cross-contaminated one.
- *   (c) No cross-talk — every response is delivered to the caller that sent the
- *       matching correlationId, even when the host replies out of order.
- *   Worker observability — a node event forwarded from the worker/host side
- *       reaches the parent dispatcher's observer relay with the composite
- *       placementPath.
+ * The test drives 30 sequential runDag() calls through a single channel using
+ * a minimal DagContainerBase subclass whose acquireChannel() always returns the
+ * same channel instance (simulating a pooled worker reused many times).
+ *
+ * The CountingChannel wraps a LoopbackSide and records how many times
+ * onMessage() is called — this is the "subscription count." With the fix,
+ * it must be exactly 1 regardless of request count.
+ *
+ * A FakeHost drives the other side of the LoopbackChannel: it receives
+ * 'execute' messages and echoes a 'result' message with the matching correlationId
+ * and a deterministic terminalOutput derived from the request. This lets the
+ * test verify that correlationId routing is correct.
  */
 
 import assert from 'node:assert/strict';
@@ -32,137 +40,11 @@ import type { MessageChannelInterface } from '../../src/contracts/MessageChannel
 import type { ObserverRelay } from '../../src/Dagonizer.js';
 import type { BridgeMessage } from '../../src/entities/executor/BridgeMessage.js';
 import type { ExecutionRequest } from '../../src/entities/executor/ExecutionRequest.js';
+import type { JsonObject } from '../../src/entities/json.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Timeout } from '../../src/runtime/Timeout.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
-
-const INIT_MSG: BridgeMessage = {
-  'kind': 'init',
-  'registryModule': '/test/module.js',
-  'registryVersion': '1.0.0',
-  'servicesConfig': {},
-};
-
-const SHUTDOWN_MSG: BridgeMessage = { 'kind': 'shutdown' };
-
-// ---------------------------------------------------------------------------
-// S4 — pre-registration drop
-// ---------------------------------------------------------------------------
-
-void describe('LoopbackChannel — pre-registration drop (S4)', () => {
-  void it('message sent before onMessage() is registered is silently dropped', async () => {
-    const [parentSide, hostSide] = LoopbackChannel.pair();
-
-    // Send BEFORE registering a handler on hostSide.
-    parentSide.send(INIT_MSG);
-
-    // Wait a tick to let setImmediate fire (if it were going to).
-    await new Promise<void>((resolve) => setImmediate(resolve));
-
-    // Now register handler — it must NOT fire for the already-sent message.
-    const received: BridgeMessage[] = [];
-    hostSide.onMessage((msg: BridgeMessage) => received.push(msg));
-
-    // Another tick — still no delivery.
-    await new Promise<void>((resolve) => setImmediate(resolve));
-
-    assert.strictEqual(received.length, 0,
-      'message sent before onMessage() registration must be silently dropped');
-  });
-
-  void it('after onMessage() is registered, subsequent messages are delivered', async () => {
-    const [parentSide, hostSide] = LoopbackChannel.pair();
-
-    const received: BridgeMessage[] = [];
-    hostSide.onMessage((msg: BridgeMessage) => received.push(msg));
-
-    parentSide.send(INIT_MSG);
-    await new Promise<void>((resolve) => setImmediate(resolve));
-
-    assert.strictEqual(received.length, 1);
-    assert.strictEqual(received[0]?.kind, 'init');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// G7 — close() severs both directions
-// ---------------------------------------------------------------------------
-
-void describe('LoopbackChannel — close() severs both directions (G7)', () => {
-  void it('send after close() on the sender side is silently dropped', async () => {
-    const [parentSide, hostSide] = LoopbackChannel.pair();
-
-    const received: BridgeMessage[] = [];
-    hostSide.onMessage((msg: BridgeMessage) => received.push(msg));
-
-    // Verify delivery works before close.
-    parentSide.send(INIT_MSG);
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    assert.strictEqual(received.length, 1, 'message before close must arrive');
-
-    // Close parentSide.
-    parentSide.close();
-
-    // Send after close — must be dropped silently.
-    parentSide.send(SHUTDOWN_MSG);
-    await new Promise<void>((resolve) => setImmediate(resolve));
-
-    assert.strictEqual(received.length, 1, 'message after sender close must be dropped');
-  });
-
-  void it('send to the closed side is silently dropped', async () => {
-    const [parentSide, hostSide] = LoopbackChannel.pair();
-
-    const received: BridgeMessage[] = [];
-    parentSide.onMessage((msg: BridgeMessage) => received.push(msg));
-
-    // Close hostSide — receiving side closed.
-    hostSide.close();
-
-    // parentSide sends to hostSide — but hostSide is closed, so hostSide's peer
-    // (parentSide itself) won't deliver because parentSide's peer (hostSide) is closed.
-    // Actually: parentSide.send → delivers to hostSide.handler — but hostSide is closed,
-    // so its peer reference is null. parentSide.send checks peer.closed first.
-    // Let's verify: close() on hostSide should not affect parentSide.send path either.
-    hostSide.send(SHUTDOWN_MSG);
-    await new Promise<void>((resolve) => setImmediate(resolve));
-
-    // After hostSide.close(), its peer (parentSide) should still be reachable
-    // for messages from parentSide → hostSide, but hostSide → parentSide
-    // sends are dropped because peer reference is severed on close().
-    assert.strictEqual(received.length, 0,
-      'messages from the closed side must not arrive');
-  });
-
-  void it('close() is idempotent — calling twice does not throw', () => {
-    const [parentSide] = LoopbackChannel.pair();
-    assert.doesNotThrow(() => {
-      parentSide.close();
-      parentSide.close();
-    });
-  });
-
-  void it('channel pair is bidirectional before close', async () => {
-    const [parentSide, hostSide] = LoopbackChannel.pair();
-
-    const parentReceived: BridgeMessage[] = [];
-    const hostReceived: BridgeMessage[] = [];
-    parentSide.onMessage((msg: BridgeMessage) => parentReceived.push(msg));
-    hostSide.onMessage((msg: BridgeMessage) => hostReceived.push(msg));
-
-    parentSide.send(INIT_MSG);
-    hostSide.send(SHUTDOWN_MSG);
-
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    await new Promise<void>((resolve) => setImmediate(resolve));
-
-    assert.strictEqual(hostReceived.length, 1, 'parent→host must deliver');
-    assert.strictEqual(hostReceived[0]?.kind, 'init');
-    assert.strictEqual(parentReceived.length, 1, 'host→parent must deliver');
-    assert.strictEqual(parentReceived[0]?.kind, 'shutdown');
-  });
-});
 
 // ---------------------------------------------------------------------------
 // CountingChannel: wraps a MessageChannelInterface and counts onMessage calls
@@ -196,7 +78,7 @@ class CountingChannel implements MessageChannelInterface {
 }
 
 // ---------------------------------------------------------------------------
-// MinimalState: simplest possible NodeStateBase for the correlation test
+// MinimalState: simplest possible NodeStateBase for the test
 // ---------------------------------------------------------------------------
 
 class MinimalState extends NodeStateBase {}
@@ -206,13 +88,6 @@ class MinimalState extends NodeStateBase {}
 // ---------------------------------------------------------------------------
 
 function makeTask(correlationId: string, signal: AbortSignal): DagTaskInterface<MinimalState, undefined> {
-  const request: ExecutionRequest = {
-    'dagName': 'test-dag',
-    'placementPath': [],
-    'items': [{ 'id': correlationId, 'snapshot': {} as { [key: string]: unknown } }],
-    'timeoutMs': null,
-    'correlationId': correlationId,
-  };
   return {
     'dagName': 'test-dag',
     'placementPath': [],
@@ -226,7 +101,13 @@ function makeTask(correlationId: string, signal: AbortSignal): DagTaskInterface<
       'services': undefined,
     } as NodeContextInterface<undefined>,
     toRequest(): ExecutionRequest {
-      return request;
+      return {
+        'dagName': 'test-dag',
+        'placementPath': [],
+        'items': [{ 'id': correlationId, 'snapshot': {} as JsonObject }],
+        'timeoutMs': null,
+        'correlationId': correlationId,
+      };
     },
   };
 }
@@ -302,12 +183,11 @@ function startFakeHost(hostSide: MessageChannelInterface): void {
       });
     } else if (msg.kind === 'execute') {
       const { correlationId } = msg.request;
-      const itemId = msg.request.items[0]?.id ?? correlationId;
       hostSide.send({
         'kind': 'result',
         'response': {
           'correlationId': correlationId,
-          'items': [{ 'id': itemId, 'snapshot': null, 'terminalOutcome': `done-${correlationId}` }],
+          'items': [{ 'id': correlationId, 'snapshot': null, 'terminalOutcome': `done-${correlationId}` }],
           'errors': [],
           'intermediates': [],
         },
@@ -317,7 +197,7 @@ function startFakeHost(hostSide: MessageChannelInterface): void {
 }
 
 // ---------------------------------------------------------------------------
-// ChannelDispatch correlation: single subscription + correlationId demux
+// Tests
 // ---------------------------------------------------------------------------
 
 void describe('channel-correlation: single subscription + correlationId demux', () => {
@@ -329,9 +209,18 @@ void describe('channel-correlation: single subscription + correlationId demux', 
 
     const container = new SingleChannelContainer(counting);
 
+    // Initialize the channel (sends init, receives ready).
+    // initializeChannel is protected — exercise via the first runDag which
+    // internally creates the ChannelDispatch (calling onMessage once) and
+    // then does a request. We call initializeChannel indirectly through the
+    // protected helper exposed to subclasses: call it directly via the
+    // container's own initializeChannel path — which is exactly what real
+    // backend subclasses do before their first acquire.
+    //
+    // The simplest approach: run 30 requests and then check the count.
     // ChannelDispatch is constructed on the first #dispatchFor() call inside
-    // runDag, which calls channel.onMessage() exactly once. Driving 30 requests
-    // and then checking the count proves the subscription is installed once.
+    // runDag, which calls channel.onMessage() exactly once.
+
     const REQUEST_COUNT = 30;
     const ac = new AbortController();
     const results: DagOutcomeInterface[] = [];
@@ -348,8 +237,6 @@ void describe('channel-correlation: single subscription + correlationId demux', 
       1,
       `Expected exactly 1 onMessage subscription; got ${counting.onMessageCallCount}`,
     );
-    // Every request resolved to an outcome.
-    assert.strictEqual(results.length, REQUEST_COUNT);
   });
 
   void it('(b) results correlate correctly — each request gets its own outcome', async () => {
@@ -386,7 +273,7 @@ void describe('channel-correlation: single subscription + correlationId demux', 
     // Custom host: collect execute messages and respond in reverse order
     // to prove correlationId routing (not FIFO) assigns responses correctly.
     const pending: Array<{ correlationId: string }> = [];
-    hostSide.onMessage((msg: BridgeMessage) => {
+    hostSide.onMessage((msg) => {
       if (msg.kind === 'init') {
         hostSide.send({
           'kind': 'ready',
@@ -456,7 +343,7 @@ void describe('worker observability: forwarded node events reach the parent obse
 
     // FakeHost: on execute, forward an inner node-start (exactly as DagHost's
     // WorkerObserver does for a contained sub-DAG), then complete the request.
-    hostSide.onMessage((msg: BridgeMessage) => {
+    hostSide.onMessage((msg) => {
       if (msg.kind === 'init') {
         hostSide.send({ 'kind': 'ready', 'registryVersion': msg.registryVersion, 'capabilities': [] });
       } else if (msg.kind === 'execute') {

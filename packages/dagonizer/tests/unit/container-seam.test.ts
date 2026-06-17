@@ -366,10 +366,12 @@ void describe('Container seam — W1', () => {
     // Test double: a DagContainerInterface that delegates to a second Dagonizer instance.
     const fakeContainer: DagContainerInterface<CounterState> = {
       async runDag(task: DagTaskInterface<CounterState, unknown>, _options?: { readonly relay?: ObserverRelay }): Promise<DagOutcomeInterface> {
-        // Restore child clone from the snapshot in the task
+        // Restore child clone from the snapshot in the task.
+        // items[0].snapshot is JsonObject at the wire boundary; cast is safe here.
         const request = task.toRequest();
-        // stateSnapshot is JsonObject at the wire boundary; cast is safe here.
-        const childState = CounterState.restore(request.stateSnapshot as JsonObject);
+        const firstItem = request.items[0];
+        if (firstItem === undefined) throw new Error('No items in request');
+        const childState = CounterState.restore(firstItem.snapshot as JsonObject);
 
         // Run the child DAG in-process (in an inner dispatcher)
         const inner = new Dagonizer<CounterState>();

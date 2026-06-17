@@ -86,7 +86,7 @@ void describe('ExecutorIntermediate schema', () => {
 const validRequest = {
   'dagName':       'child',
   'placementPath': ['parent', 'embed'],
-  'stateSnapshot': { 'metadata': {}, 'retries': {}, 'warnings': [] },
+  'items':         [{ 'id': 'child:1', 'snapshot': { 'metadata': {}, 'retries': {}, 'warnings': [] } }],
   'timeoutMs':     null,
   'correlationId': 'child:1',
 };
@@ -130,10 +130,9 @@ void describe('ExecutionRequest schema', () => {
 // ---------------------------------------------------------------------------
 
 const validResponse = {
-  'correlationId':  'child:1',
-  'terminalOutput': 'success',
+  'correlationId': 'child:1',
+  'items': [{ 'id': 'child:1', 'snapshot': { 'metadata': {}, 'retries': {}, 'warnings': [], 'value': 10 }, 'terminalOutcome': 'success' }],
   'errors': [],
-  'stateSnapshot': { 'metadata': {}, 'retries': {}, 'warnings': [], 'value': 10 },
   'intermediates': [
     { 'output': 'success', 'skipped': false, 'nodeName': 'increment' },
   ],
@@ -144,8 +143,12 @@ void describe('ExecutionResponse schema', () => {
     assert.equal(responseValidator(validResponse), true);
   });
 
-  void it('accepts null stateSnapshot', () => {
-    assert.equal(responseValidator({ ...validResponse, 'stateSnapshot': null }), true);
+  void it('accepts null snapshot in items[0]', () => {
+    const withNullSnapshot = {
+      ...validResponse,
+      'items': [{ 'id': 'child:1', 'snapshot': null, 'terminalOutcome': 'failed' }],
+    };
+    assert.equal(responseValidator(withNullSnapshot), true);
   });
 
   void it('accepts an error item in errors array', () => {
@@ -163,20 +166,18 @@ void describe('ExecutionResponse schema', () => {
     assert.equal(responseValidator(withError), true);
   });
 
-  void it('rejects old output field name (should be terminalOutput)', () => {
-
-    const { 'terminalOutput': _terminalOutput, ...rest } = validResponse;
-    // Missing terminalOutput — add old `output` field instead
-    assert.equal(responseValidator({ ...rest, 'output': 'success' }), false);
+  void it('rejects old terminalOutput field name (should be items[].terminalOutcome)', () => {
+    // Missing items entirely — add old `terminalOutput` field instead
+    const { 'items': _items, ...rest } = validResponse;
+    assert.equal(responseValidator({ ...rest, 'terminalOutput': 'success' }), false);
   });
 
   void it('rejects additionalProperties', () => {
     assert.equal(responseValidator({ ...validResponse, 'extra': true }), false);
   });
 
-  void it('rejects missing required terminalOutput', () => {
-
-    const { 'terminalOutput': _terminalOutput2, ...rest } = validResponse;
+  void it('rejects missing required items', () => {
+    const { 'items': _items2, ...rest } = validResponse;
     assert.equal(responseValidator(rest), false);
   });
 });
@@ -252,7 +253,7 @@ const validExecute: BridgeMessage = {
   'request': {
     'dagName': 'my-dag',
     'placementPath': ['a', 'b'],
-    'stateSnapshot': { 'value': 42 },
+    'items': [{ 'id': 'req-1', 'snapshot': { 'value': 42 } }],
     'timeoutMs': 5000,
     'correlationId': 'req-1',
   },
@@ -263,7 +264,7 @@ const validExecuteNullTimeout: BridgeMessage = {
   'request': {
     'dagName': 'my-dag',
     'placementPath': [],
-    'stateSnapshot': {},
+    'items': [{ 'id': 'req-2', 'snapshot': {} }],
     'timeoutMs': null,
     'correlationId': 'req-2',
   },
@@ -289,9 +290,8 @@ const validResult: BridgeMessage = {
   'kind': 'result',
   'response': {
     'correlationId': 'req-1',
-    'terminalOutput': 'completed',
+    'items': [{ 'id': 'req-1', 'snapshot': { 'value': 99 }, 'terminalOutcome': 'completed' }],
     'errors': [],
-    'stateSnapshot': { 'value': 99 },
     'intermediates': [
       { 'output': 'done', 'skipped': false, 'nodeName': 'step1' },
     ],
@@ -302,7 +302,7 @@ const validResultNullSnapshot: BridgeMessage = {
   'kind': 'result',
   'response': {
     'correlationId': 'req-1',
-    'terminalOutput': 'failed',
+    'items': [{ 'id': 'req-1', 'snapshot': null, 'terminalOutcome': 'failed' }],
     'errors': [{
       'code': 'ERR',
       'context': {},
@@ -311,7 +311,6 @@ const validResultNullSnapshot: BridgeMessage = {
       'recoverable': false,
       'timestamp': '2024-01-01T00:00:00.000Z',
     }],
-    'stateSnapshot': null,
     'intermediates': [],
   },
 };

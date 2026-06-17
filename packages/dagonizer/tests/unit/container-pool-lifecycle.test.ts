@@ -145,7 +145,7 @@ class MinimalTask implements DagTaskInterface<NodeStateInterface, undefined> {
     return {
       'dagName': this.dagName,
       'placementPath': this.placementPath,
-      'stateSnapshot': this.state.snapshot(),
+      'items': [{ 'id': this.correlationId, 'snapshot': this.state.snapshot() as { [key: string]: unknown } }],
       'timeoutMs': this.timeout.toWire(),
       'correlationId': this.correlationId,
     };
@@ -339,7 +339,7 @@ void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)'
           return {
             'dagName': this.dagName,
             'placementPath': this.placementPath,
-            'stateSnapshot': this.state.snapshot(),
+            'items': [{ 'id': this.correlationId, 'snapshot': this.state.snapshot() as { [key: string]: unknown } }],
             'timeoutMs': this.timeout.toWire(),
             'correlationId': this.correlationId,
           };

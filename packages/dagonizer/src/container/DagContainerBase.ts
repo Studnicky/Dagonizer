@@ -21,6 +21,8 @@ import type { DagContainerInterface } from '../contracts/DagContainerInterface.j
 import type { DagOutcomeInterface } from '../contracts/DagOutcomeInterface.js';
 import type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
+import type { Batch } from '../core/batch/Batch.js';
+import type { Item } from '../core/batch/Item.js';
 import type { ObserverRelay } from '../Dagonizer.js';
 import type { JsonObject } from '../entities/json.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
@@ -29,6 +31,7 @@ import { ChannelDispatch } from './ChannelDispatch.js';
 import type { InitMessageShape } from './ChannelDispatch.js';
 import { DagContainerError } from './DagContainerError.js';
 import { DagOutcome } from './DagOutcome.js';
+import type { BatchRunResult } from './DagOutcome.js';
 import { DAG_CONTAINER_TRANSPORT, DAG_CONTAINER_WORKER_DIED } from './TransportErrorCode.js';
 
 // ---------------------------------------------------------------------------
@@ -246,6 +249,59 @@ export abstract class DagContainerBase<
       // than the generic transport-failure message.
       const message = err instanceof Error ? err.message : String(err);
       return DagOutcome.transportError(task.correlationId, { message });
+    } finally {
+      if (acquiredChannel !== null) {
+        this.releaseChannel(acquiredChannel);
+      }
+    }
+  }
+
+  /**
+   * Run a batch of items through the same DAG in a single transport round-trip.
+   * Returns one `BatchRunResult` per item in the batch, preserving item order.
+   *
+   * `task` supplies the DAG name, placement path, timeout, and abort signal.
+   * `batch` carries the per-item states. `task.state` is used only for the
+   * abort signal and task identity; items come from `batch`.
+   *
+   * Never throws — transport failures resolve to transport-error `BatchRunResult`
+   * entries, one per item.
+   */
+  async runDagBatch(
+    task: DagTaskInterface<TState, unknown>,
+    batch: Batch<TState>,
+    options?: { readonly relay?: ObserverRelay },
+  ): Promise<BatchRunResult[]> {
+    const relay: ObserverRelay | null = options?.relay ?? null;
+    let acquiredChannel: MessageChannelInterface | null = null;
+    const correlationId = task.correlationId;
+
+    try {
+      acquiredChannel = await this.acquireChannel(task.context.signal);
+      const channel = acquiredChannel;
+      const dispatch = this.#dispatchFor(channel);
+
+      const baseRequest = task.toRequest();
+      const batchItems = batch.items().map((item: Item<TState>) => ({
+        'id': item.id,
+        'snapshot': item.state.snapshot() as { [key: string]: unknown },
+      }));
+
+      const batchRequest = {
+        'dagName':       baseRequest.dagName,
+        'placementPath': baseRequest.placementPath,
+        'items':         batchItems,
+        'timeoutMs':     baseRequest.timeoutMs,
+        'correlationId': correlationId,
+      };
+
+      return await dispatch.requestBatch(batchRequest, task.context.signal, relay);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // Return one transport-error result per item.
+      return batch.items().map((item: Item<TState>) =>
+        DagOutcome.batchItemTransportError(item.id, correlationId, { message }),
+      );
     } finally {
       if (acquiredChannel !== null) {
         this.releaseChannel(acquiredChannel);

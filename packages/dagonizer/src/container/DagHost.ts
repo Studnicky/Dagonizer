@@ -7,9 +7,13 @@
  *
  * Lifecycle:
  *   init     → dynamic-import registry module; createBundle; reply ready
- *   execute  → restore state; run whole DAG; reply result + stream intermediates
+ *   execute  → restore state(s); run whole DAG per item; reply result + stream intermediates
  *   abort    → fire AbortController for that correlationId
  *   shutdown → destroy registered nodes; close channel
+ *
+ * For single-item requests (N=1), the existing `dagonizer.execute()` path is
+ * used unchanged. For multi-item batch requests (N>1), `executeBatch()` runs
+ * all items through the same DAG in one round-trip.
  *
  * WorkerObserver is constructed per-execute, bound to the channel and
  * correlationId. Its protected hook overrides post `instrumentation`
@@ -17,6 +21,9 @@
  * WorkerObserver per host lifetime would require a mutable correlationId
  * (unsafe for concurrent executions); per-execute construction is cheap and
  * gives exact per-correlationId routing without synchronisation.
+ *
+ * `registry` in `DagHostOptions` statically injects the isolate registry: when
+ * set, init uses it directly instead of importing `registryModule` by URL.
  *
  * All properties are initialised in constructor for V8 hidden-class stability.
  */
@@ -261,8 +268,12 @@ export class DagHost {
     controller: AbortController,
     bundle: RegistryBundleInterface,
   ): Promise<void> {
-    const stateSnapshot = request.stateSnapshot as JsonObject;
-    const state = bundle.restoreState.restore(stateSnapshot);
+    // Restore all item states from the request's items array.
+    const requestItems = request.items;
+    const restoredItems = requestItems.map(({ id, snapshot }) => ({
+      'id': id,
+      'state': bundle.restoreState.restore(snapshot as JsonObject),
+    }));
 
     // Set up timeout abort if specified.
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
@@ -285,84 +296,146 @@ export class DagHost {
     dagonizer.registerBundle(bundle.bundle);
 
     try {
-      const execution = dagonizer.execute(request.dagName, state, {
-        'signal': controller.signal,
-      });
-
-      // Drain the async generator, forwarding each NodeResult as an intermediate
-      // message and collecting it for the result response.
-      const generator = execution[Symbol.asyncIterator]();
-      let terminalOutcome: string | null = null;
       const intermediates: ExecutorIntermediate[] = [];
 
-      while (true) {
-        const next = await generator.next();
-        if (next.done === true) {
-          terminalOutcome = next.value.terminalOutcome ?? null;
-          break;
-        }
-        const nodeResult = next.value;
-        const intermediate: ExecutorIntermediate = {
-          'output': nodeResult.output,
-          'skipped': nodeResult.skipped,
-          'nodeName': nodeResult.nodeName,
-        };
-        intermediates.push(intermediate);
-        this.#channel.send({
-          'kind': 'intermediate',
-          'correlationId': correlationId,
-          'nodeName': nodeResult.nodeName,
-          'output': nodeResult.output,
-          'placementPath': [...request.placementPath],
+      if (restoredItems.length === 1) {
+        // Single-item path: use the standard execute() API.
+        const item = restoredItems[0] as { id: string; state: NodeStateInterface };
+        const execution = dagonizer.execute(request.dagName, item.state, {
+          'signal': controller.signal,
         });
+
+        // Drain the async generator, forwarding each NodeResult as an intermediate
+        // message and collecting it for the result response.
+        const generator = execution[Symbol.asyncIterator]();
+        let terminalOutcome: string | null = null;
+
+        while (true) {
+          const next = await generator.next();
+          if (next.done === true) {
+            terminalOutcome = next.value.terminalOutcome ?? null;
+            break;
+          }
+          const nodeResult = next.value;
+          const intermediate: ExecutorIntermediate = {
+            'output': nodeResult.output,
+            'skipped': nodeResult.skipped,
+            'nodeName': nodeResult.nodeName,
+          };
+          intermediates.push(intermediate);
+          this.#channel.send({
+            'kind': 'intermediate',
+            'correlationId': correlationId,
+            'nodeName': nodeResult.nodeName,
+            'output': nodeResult.output,
+            'placementPath': [...request.placementPath],
+          });
+        }
+
+        const lifecycle = item.state.lifecycle;
+        const derivedTerminal = terminalOutcome !== null
+          ? terminalOutcome
+          : lifecycle.kind === 'completed'
+            ? 'completed'
+            : 'failed';
+
+        const collectedErrors = [
+          ...item.state.errors,
+          ...(terminalOutcome === null && lifecycle.kind !== 'completed'
+            ? [NodeErrorBuilder.from(
+              'DAG_EXECUTION_FAILED',
+              `DAG '${request.dagName}' did not complete normally (lifecycle: ${lifecycle.kind})`,
+              request.dagName,
+              false,
+              new Date().toISOString(),
+            )]
+            : []),
+        ];
+
+        const response: ExecutionResponse = {
+          'correlationId': correlationId,
+          'items': [{ 'id': item.id, 'snapshot': item.state.snapshot(), 'terminalOutcome': derivedTerminal }],
+          'errors': collectedErrors,
+          intermediates,
+        };
+
+        this.#channel.send({ 'kind': 'result', 'response': response });
+      } else {
+        // Multi-item batch path: run each item sequentially through the same DAG.
+        // The representative state (first item) is used for lifecycle/flow hooks
+        // on the WorkerObserver.
+        const terminalByItemId = new Map<string, string>();
+
+        for (const item of restoredItems) {
+          const execution = dagonizer.execute(request.dagName, item.state, {
+            'signal': controller.signal,
+          });
+
+          const generator = execution[Symbol.asyncIterator]();
+          let terminalOutcome: string | null = null;
+
+          while (true) {
+            const next = await generator.next();
+            if (next.done === true) {
+              terminalOutcome = next.value.terminalOutcome ?? null;
+              break;
+            }
+            const nodeResult = next.value;
+            intermediates.push({
+              'output': nodeResult.output,
+              'skipped': nodeResult.skipped,
+              'nodeName': nodeResult.nodeName,
+            });
+            this.#channel.send({
+              'kind': 'intermediate',
+              'correlationId': correlationId,
+              'nodeName': nodeResult.nodeName,
+              'output': nodeResult.output,
+              'placementPath': [...request.placementPath],
+            });
+          }
+
+          const lifecycle = item.state.lifecycle;
+          const derivedTerminal = terminalOutcome !== null
+            ? terminalOutcome
+            : lifecycle.kind === 'completed'
+              ? 'completed'
+              : 'failed';
+
+          terminalByItemId.set(item.id, derivedTerminal);
+        }
+
+        // Collect all errors across all items.
+        const allErrors = restoredItems.flatMap(({ state }) => [...state.errors]);
+
+        const responseItems = restoredItems.map(({ id, state }) => ({
+          'id': id,
+          'snapshot': state.snapshot(),
+          'terminalOutcome': terminalByItemId.get(id) ?? 'failed',
+        }));
+
+        const response: ExecutionResponse = {
+          'correlationId': correlationId,
+          'items': responseItems,
+          'errors': allErrors,
+          intermediates,
+        };
+
+        this.#channel.send({ 'kind': 'result', 'response': response });
       }
-
-      // Derive terminalOutput from terminalOutcome. When terminalOutcome is null
-      // the DAG did not route to a TerminalNode. Any lifecycle that is not
-      // 'completed' (including 'running', 'pending', 'failed') is treated as
-      // failed — a non-completed lifecycle with no terminal output is never
-      // reported as success.
-      const lifecycle = state.lifecycle;
-      const derivedTerminal = terminalOutcome !== null
-        ? terminalOutcome
-        : lifecycle.kind === 'completed'
-          ? 'completed'
-          : 'failed';
-
-      // Collect errors from state. Surface a synthetic DAG_EXECUTION_FAILED error
-      // whenever terminalOutcome is null AND the lifecycle is not 'completed'.
-      // This covers unknown DAG names, never-started DAGs (pending), aborted runs
-      // still in 'running', and explicit 'failed' lifecycle. DAGs that run to
-      // completion without a TerminalNode (lifecycle completed, terminalOutcome
-      // null) are normal — no synthetic error.
-      const collectedErrors = [
-        ...state.errors,
-        ...(terminalOutcome === null && lifecycle.kind !== 'completed'
-          ? [NodeErrorBuilder.from(
-            'DAG_EXECUTION_FAILED',
-            `DAG '${request.dagName}' did not complete normally (lifecycle: ${lifecycle.kind})`,
-            request.dagName,
-            false,
-            new Date().toISOString(),
-          )]
-          : []),
-      ];
-
-      const response: ExecutionResponse = {
-        'correlationId': correlationId,
-        'terminalOutput': derivedTerminal,
-        'errors': collectedErrors,
-        'stateSnapshot': state.snapshot(),
-        intermediates,
-      };
-
-      this.#channel.send({ 'kind': 'result', 'response': response });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
 
+      // On unhandled exception, return failed items for all items in the request.
+      const failedItems = restoredItems.map(({ id, state }) => ({
+        'id': id,
+        'snapshot': state.snapshot() as JsonObject | null,
+        'terminalOutcome': 'failed',
+      }));
+
       const response: ExecutionResponse = {
         'correlationId': correlationId,
-        'terminalOutput': 'failed',
+        'items': failedItems,
         'errors': [NodeErrorBuilder.from(
           'DAG_EXECUTION_FAILED',
           message,
@@ -370,7 +443,6 @@ export class DagHost {
           false,
           new Date().toISOString(),
         )],
-        'stateSnapshot': state.snapshot(),
         'intermediates': [],
       };
 

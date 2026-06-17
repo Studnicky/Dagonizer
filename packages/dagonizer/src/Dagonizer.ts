@@ -1112,6 +1112,26 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
   }
 
   /**
+   * Execute the same DAG over multiple item states, returning one
+   * `Execution<TState>` per item. Each item runs independently so that
+   * abort, lifecycle, and error isolation are per-item. This is the
+   * container-side seam: `DagHost` calls it to run a received batch
+   * without exposing the batch loop as public API.
+   *
+   * Each item produces an independent `Execution`; callers iterate them and
+   * collect outcomes.
+   */
+  protected executeBatch(
+    dagName: string,
+    batchStates: readonly TState[],
+    options: ExecuteOptionsInterface = {},
+  ): readonly Execution<TState>[] {
+    return batchStates.map((state) =>
+      new Execution<TState>(() => this.runNodes(dagName, state, null, options)),
+    );
+  }
+
+  /**
    * Resume a flow from `fromStage`. Same generator as `execute()` but
    * begins at the given cursor instead of the flow's entrypoint. Caller
    * is responsible for rehydrating `state` (typically via
