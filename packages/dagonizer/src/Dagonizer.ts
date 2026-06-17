@@ -1,3 +1,5 @@
+import { DagContainerBase } from './container/DagContainerBase.js';
+import type { BatchRunResult } from './container/DagOutcome.js';
 import { DagTask } from './container/DagTask.js';
 import { TransportErrorCode } from './container/TransportErrorCode.js';
 import type { DagContainerInterface } from './contracts/DagContainerInterface.js';
@@ -374,6 +376,8 @@ interface _ScatterDispatchAdapter<TState extends NodeStateInterface, TServices> 
     options: ExecuteOptionsInterface,
     runOptions: _RunOptions,
     placementPath: readonly string[],
+    inputBatch?: Batch<TState>,
+    terminalByItemId?: Map<string, 'completed' | 'failed'>,
   ): AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void>;
   resolveContainer(role: string | undefined): DagContainerInterface<TState> | null;
   nextCorrelationId(dagName: string): string;
@@ -648,26 +652,76 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
   /**
    * Execute a batch of buffered reservoir items.
    *
-   * Builds N child clones, assembles a size-N Batch, calls `node.execute(batch)`
-   * once, and derives each item's output from the routed entries. Errors and
-   * warnings from each clone are collected into the parent state.
+   * Dispatches to one of three branches depending on the scatter body:
    *
-   * Only node bodies are supported for reservoir scatter (DAG bodies and
-   * containers execute per-item via the existing `executeItem` path).
+   * - **Branch A (node body):** builds a size-N Batch, calls `node.execute(batch)`
+   *   once, and derives each item's output from the routed entries.
+   * - **Branch B (DAG body, in-process):** runs each clone's sub-DAG in-process
+   *   sequentially via `runNodes`, collects `terminalOutcome` per clone.
+   * - **Branch C (DAG body, container):** routes to `DagContainerBase.runDagBatch`
+   *   when the container is a `DagContainerBase` instance (one transport round-trip
+   *   for all items); falls back to per-item `container.runDag` for plain
+   *   `DagContainerInterface` implementations.
+   *
+   * Errors and warnings from each clone are collected into the parent state.
    */
   async executeBatch(items: { index: number; item: unknown; bufferKey: string }[]): Promise<ScatterItemBatchResult<TState>> {
-    const { scatter, state, dagName, signal, itemKey } = this.#ctx;
+    const { scatter, state, dagName, signal, placementPath, itemKey } = this.#ctx;
 
-    if (!('node' in scatter.body)) {
-      throw new DAGError(`ScatterNode '${scatter.name}': reservoir is only supported for node bodies`);
+    if ('node' in scatter.body) {
+      // ── Branch A: node body ─────────────────────────────────────────────────
+      const dagNode = this.#adapter.nodes.get(scatter.body.node);
+      if (!dagNode) {
+        throw new DAGError(`ScatterNode '${scatter.name}': unknown node '${scatter.body.node}'`);
+      }
+
+      // Build N child clones and a size-N Batch.
+      const clones: TState[] = [];
+      const batchItems: { id: string; state: TState }[] = [];
+      for (const buffered of items) {
+        const clone = this.#adapter.stateMapper.createChild(state, ScatterNodeDefaults.inputMapping(scatter));
+        clone.setMetadata(itemKey, buffered.item);
+        clone.setMetadata('itemIndex', buffered.index);
+        clones.push(clone);
+        batchItems.push({ 'id': String(buffered.index), 'state': clone });
+      }
+
+      const batch = Batch.from(batchItems);
+      const routed = await this.#adapter.withNodeTimeout(dagNode, signal, async (nodeSignal) => {
+        const context = this.#adapter.buildContext(dagName, scatter.name, nodeSignal);
+        return dagNode.execute(batch, context);
+      });
+
+      // Map item id → route key.
+      const outputById = new Map<string, string>();
+      for (const [routeKey, routeBatch] of routed.entries()) {
+        for (const batchEntry of routeBatch) {
+          outputById.set(batchEntry.id, routeKey);
+        }
+      }
+
+      // Collect errors/warnings from each clone and build results.
+      const results: ScatterItemResult<TState>[] = items.map((buffered, i) => {
+        const clone = clones[i] as TState;
+        for (const err of clone.errors) state.collectError(err);
+        for (const warn of clone.warnings) state.collectWarning(warn);
+        return {
+          'index': buffered.index,
+          'item': buffered.item,
+          'output': outputById.get(String(buffered.index)) ?? 'error',
+          'terminalOutcome': null,
+          'cloneState': clone,
+        };
+      });
+
+      return { results };
     }
 
-    const dagNode = this.#adapter.nodes.get(scatter.body.node);
-    if (!dagNode) {
-      throw new DAGError(`ScatterNode '${scatter.name}': unknown node '${scatter.body.node}'`);
-    }
+    // ── Branch B / C: DAG body ────────────────────────────────────────────────
+    const innerPath: readonly string[] = [...placementPath, scatter.name];
+    const container = this.#adapter.resolveContainer(scatter.container);
 
-    // Build N child clones and a size-N Batch.
+    // Build N child clones (same seeding as per-item executeItem dag path).
     const clones: TState[] = [];
     const batchItems: { id: string; state: TState }[] = [];
     for (const buffered of items) {
@@ -677,31 +731,131 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
       clones.push(clone);
       batchItems.push({ 'id': String(buffered.index), 'state': clone });
     }
-
     const batch = Batch.from(batchItems);
-    const routed = await this.#adapter.withNodeTimeout(dagNode, signal, async (nodeSignal) => {
-      const context = this.#adapter.buildContext(dagName, scatter.name, nodeSignal);
-      return dagNode.execute(batch, context);
-    });
 
-    // Map item id → route key.
-    const outputById = new Map<string, string>();
-    for (const [routeKey, routeBatch] of routed.entries()) {
-      for (const batchEntry of routeBatch) {
-        outputById.set(batchEntry.id, routeKey);
+    if (container === null) {
+      // ── Branch B: DAG body, in-process ──────────────────────────────────────
+      const childOptions: ExecuteOptionsInterface = { ...(signal !== null && { 'signal': signal }) };
+
+      // Run each clone's DAG body in-process sequentially (bounded concurrency is
+      // managed by the ReservoirBuffer; each batch is already size-controlled).
+      const terminalOutcomes: Array<'completed' | 'failed' | null> = [];
+      for (let i = 0; i < items.length; i++) {
+        const clone = clones[i] as TState;
+        const iter = this.#adapter.runNodes(scatter.body.dag, clone, null, childOptions, { 'embedded': true }, innerPath);
+        // Drain the generator and capture the terminal outcome from the return value.
+        let step = await iter.next();
+        while (!step.done) {
+          step = await iter.next();
+        }
+        terminalOutcomes.push(step.value.terminalOutcome);
+      }
+
+      const results: ScatterItemResult<TState>[] = items.map((buffered, i) => {
+        const clone = clones[i] as TState;
+        const terminalOutcome = terminalOutcomes[i] ?? null;
+        const hasUnrecoverable = clone.errors.some((e) => e.recoverable === false);
+        const output = (terminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
+        for (const err of clone.errors) state.collectError(err);
+        for (const warn of clone.warnings) state.collectWarning(warn);
+        return {
+          'index': buffered.index,
+          'item': buffered.item,
+          output,
+          terminalOutcome,
+          'cloneState': clone,
+        };
+      });
+
+      return { results };
+    }
+
+    // ── Branch C: DAG body with container ─────────────────────────────────────
+    const correlationId = this.#adapter.nextCorrelationId(scatter.body.dag);
+    const context = this.#adapter.buildContext(scatter.body.dag, scatter.name, signal);
+    const scatterRelay = this.#adapter.buildObserverRelay(state);
+
+    let outcomes: BatchRunResult[];
+
+    if (container instanceof DagContainerBase) {
+      // runDagBatch: one transport round-trip for all items.
+      // Build a representative task for signal/context/timeout; per-item states come from the batch.
+      const task = new DagTask<TState, TServices>(
+        scatter.body.dag,
+        innerPath,
+        correlationId,
+        Timeout.none(),
+        clones[0] as TState,
+        context,
+      );
+      outcomes = await (container as DagContainerBase<TState, TServices>).runDagBatch(task, batch, { 'relay': scatterRelay });
+    } else {
+      // Fallback: per-item sequential runDag for custom DagContainerInterface implementations.
+      outcomes = [];
+      for (let i = 0; i < items.length; i++) {
+        const clone = clones[i] as TState;
+        const buffered = items[i] as { index: number; item: unknown; bufferKey: string };
+        const itemCorrelationId = this.#adapter.nextCorrelationId(scatter.body.dag);
+        const itemContext = this.#adapter.buildContext(scatter.body.dag, scatter.name, signal);
+        const task = new DagTask<TState, TServices>(
+          scatter.body.dag,
+          innerPath,
+          itemCorrelationId,
+          Timeout.none(),
+          clone,
+          itemContext,
+        );
+        const outcome = await container.runDag(task, { 'relay': scatterRelay });
+        outcomes.push({ 'id': String(buffered.index), ...outcome });
       }
     }
 
-    // Collect errors/warnings from each clone and build results.
+    // Infrastructure failure check: any item with an infrastructure error → throw (at-least-once).
+    for (const outcome of outcomes) {
+      if (outcome.errors.some((e) => TransportErrorCode.isInfrastructureFailure(e.code))) {
+        const infra = outcome.errors.find((e) => TransportErrorCode.isInfrastructureFailure(e.code));
+        throw new ExecutionError(
+          `ScatterNode '${scatter.name}': container infrastructure failure — ${infra?.message ?? 'transport lost'}`,
+        );
+      }
+    }
+
+    // Build results from outcomes.
     const results: ScatterItemResult<TState>[] = items.map((buffered, i) => {
       const clone = clones[i] as TState;
+      const outcome = outcomes.find((o) => o.id === String(buffered.index));
+
+      if (outcome === undefined) {
+        // No outcome for this item — treat as infrastructure failure path (should not happen).
+        for (const err of clone.errors) state.collectError(err);
+        for (const warn of clone.warnings) state.collectWarning(warn);
+        return {
+          'index': buffered.index,
+          'item': buffered.item,
+          'output': 'error',
+          'terminalOutcome': 'failed' as const,
+          'cloneState': clone,
+        };
+      }
+
+      // Apply terminal state snapshot back to clone for domain state.
+      if (outcome.stateSnapshot !== null) {
+        clone.applySnapshot(outcome.stateSnapshot);
+      }
+      for (const err of outcome.errors) clone.collectError(err);
+
+      const terminalOutcome: 'completed' | 'failed' = outcome.terminalOutput === 'failed' ? 'failed' : 'completed';
+      const hasUnrecoverable = clone.errors.some((e) => e.recoverable === false);
+      const output = (terminalOutcome === 'failed' || hasUnrecoverable) ? 'error' : 'success';
+
       for (const err of clone.errors) state.collectError(err);
       for (const warn of clone.warnings) state.collectWarning(warn);
+
       return {
         'index': buffered.index,
         'item': buffered.item,
-        'output': outputById.get(String(buffered.index)) ?? 'error',
-        'terminalOutcome': null,
+        output,
+        terminalOutcome,
         'cloneState': clone,
       };
     });
@@ -2387,7 +2541,7 @@ implements DagonizerInterface<TState, TServices>, WarningEmitter {
       'accessor':           this.accessor,
       'withNodeTimeout':    (n, s, fn) => this.withNodeTimeout(n, s, fn),
       'buildContext':       (d, n, s) => this.buildContext(d, n, s),
-      'runNodes':           (d, st, f, o, ro, pp) => this.runNodes(d, st, f, o, ro, pp),
+      'runNodes':           (d, st, f, o, ro, pp, ib, tb) => this.runNodes(d, st, f, o, ro, pp, ib, tb),
       'resolveContainer':   (role) => this.resolveContainer(role),
       'nextCorrelationId':  (d) => this.nextCorrelationId(d),
       'buildObserverRelay': (st) => this.buildObserverRelay(st),

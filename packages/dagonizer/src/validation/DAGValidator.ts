@@ -182,10 +182,5 @@ export class DAGValidator {
       errors.push(`ScatterNode '${scatter.name}' reservoir.idleMs must be > 0 when present (got ${reservoir.idleMs})`);
     }
 
-    // RFC §2 body constraint: reservoir requires a node body.
-    // DAG bodies (in-process or container) are not supported with reservoir.
-    if ('dag' in scatter.body || scatter.container !== undefined) {
-      errors.push(`ScatterNode '${scatter.name}' reservoir requires a node body; DAG/container bodies are not supported`);
-    }
   }
 }
