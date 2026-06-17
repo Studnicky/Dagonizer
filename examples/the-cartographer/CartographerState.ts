@@ -19,10 +19,19 @@
  *   - `enriched`         – compact EnrichedShipment written by aggregate-event;
  *                          the parent gather appends this to state.records
  *
- * Checkpoint/resume: snapshotData/restoreData round-trip every scalar.
- * The `events` generator is not checkpointed (it is re-seeded by the pre-phase
- * node on resume via `eventCount`). The scatter durable-inbox handles exactly-once
- * delivery; un-acked items are reprocessed from the inbox, not re-read from source.
+ * Checkpoint/resume: snapshotData/restoreData round-trip durable state only.
+ * Durable: eventCount, eventConfig, useStreamingSource, streamCount, sources,
+ * ingestBuckets, canonicalEvents, records, sampleRecords, enriched.
+ * Per-event scratch (currentSource, decodedText, parsedRecords, mappedRecords,
+ * ingestedEvents, canonical, canonicalVariant, raw, normalized, currentEvent,
+ * geoContext, pricedOrder, shippingQuote, deliveryEstimate, legKm,
+ * batchEventTypeCount, coldChainBreach, customsDwellHours, gpsCandidate,
+ * ipCandidate, routing, gdprResult, resolvedGeo) is never serialized; workers
+ * recompute it from the source-payload metadata on each dispatch.
+ * The `sources` AsyncIterable is not checkpointable (snapshots as empty array;
+ * re-seeded by the pre-phase node on resume via eventConfig + streamCount).
+ * The scatter durable-inbox handles exactly-once delivery; un-acked items are
+ * reprocessed from the inbox, not re-read from source.
  */
 
 import { CanonicalEventVariantBuilder } from './entities/CanonicalEvent.ts';
@@ -555,72 +564,8 @@ export class CartographerState extends NodeStateBase {
       'streamCount': this.streamCount,
       'ingestBuckets': this.ingestBuckets.map((bucket) => bucket.map((e) => CartographerState.variantToJson(e))),
       'canonicalEvents': this.canonicalEvents.map((e) => CartographerState.variantToJson(e)),
-      'canonical':        CartographerState.variantToJson(this.canonical),
-      'canonicalVariant': CartographerState.variantToJson(this.canonicalVariant),
       'records':      this.records.map((r) => CartographerState.enrichedToJson(r)),
       'sampleRecords': this.sampleRecords.map((r) => CartographerState.enrichedToJson(r)),
-      'raw':        CartographerState.rawToJson(this.raw),
-      'normalized': CartographerState.normalizedToJson(this.normalized),
-      'currentEvent': CartographerState.eventToJson(this.currentEvent),
-      'geoContext': {
-        'gridZone':     this.geoContext.gridZone,
-        'country':      this.geoContext.country,
-        'continent':    this.geoContext.continent,
-        'countries':    [...this.geoContext.countries],
-        'region':       this.geoContext.region,
-        'hub':          this.geoContext.hub,
-        'status':       this.geoContext.status,
-        'waterBodies':  [...this.geoContext.waterBodies],
-        'timezone':     this.geoContext.timezone,
-        'jurisdiction': this.geoContext.jurisdiction,
-      },
-      'pricedOrder': CartographerState.pricedOrderToJson(this.pricedOrder),
-      'shippingQuote': {
-        'distanceKm':   this.shippingQuote.distanceKm,
-        'costUsdMinor': this.shippingQuote.costUsdMinor,
-        'breakdown': { ...this.shippingQuote.breakdown },
-      },
-      'deliveryEstimate': {
-        'transitHours':    this.deliveryEstimate.transitHours,
-        'etaEpochMs':      this.deliveryEstimate.etaEpochMs,
-        'etaIso':          this.deliveryEstimate.etaIso,
-        'promisedEpochMs': this.deliveryEstimate.promisedEpochMs,
-        'onTime':          this.deliveryEstimate.onTime,
-        'delayHours':      this.deliveryEstimate.delayHours,
-      },
-      'legKm': this.legKm,
-      'coldChainBreach': this.coldChainBreach,
-      'customsDwellHours': this.customsDwellHours,
-      'batchEventTypeCount': this.batchEventTypeCount,
-      'routing': {
-        'path':             this.routing.path,
-        'geoLookupRun':     this.routing.geoLookupRun,
-        'geoLookupSkipped': this.routing.geoLookupSkipped,
-        'redactionRun':     this.routing.redactionRun,
-        'redactionSkipped': this.routing.redactionSkipped,
-        'pricingRun':       this.routing.pricingRun,
-        'pricingSkipped':   this.routing.pricingSkipped,
-        'etaRun':           this.routing.etaRun,
-        'etaSkipped':       this.routing.etaSkipped,
-        'coldChainRun':     this.routing.coldChainRun,
-        'customsDwellRun':  this.routing.customsDwellRun,
-      },
-      'gdprResult': {
-        'personalDataFields':  [...this.gdprResult.personalDataFields],
-        'sensitiveDataFields': [...this.gdprResult.sensitiveDataFields],
-        'consentStatus':   this.gdprResult.consentStatus,
-        'lawfulBasis':     this.gdprResult.lawfulBasis,
-        'jurisdiction':    this.gdprResult.jurisdiction,
-        'strictness':      this.gdprResult.strictness,
-        'complianceScore': this.gdprResult.complianceScore,
-        'retention': {
-          'retainUntil': this.gdprResult.retention.retainUntil,
-          'autoDelete':  this.gdprResult.retention.autoDelete,
-        },
-        'redactionApplied': this.gdprResult.redactionApplied,
-        'marketingAnalyticsEligible': this.gdprResult.marketingAnalyticsEligible,
-        'coordsCoarsened': this.gdprResult.coordsCoarsened,
-      },
       'enriched': CartographerState.enrichedToJson(this.enriched),
     };
   }
@@ -664,100 +609,12 @@ export class CartographerState extends NodeStateBase {
         });
       if (loadedEvtCfg.length > 0) this.eventConfig = loadedEvtCfg;
     }
-    const canObj = CartographerState.asObject(snap['canonical']);
-    if (canObj !== null) this.canonical = CartographerState.variantFromJson(canObj);
-    const cvObj = CartographerState.asObject(snap['canonicalVariant']);
-    if (cvObj !== null) this.canonicalVariant = CartographerState.variantFromJson(cvObj);
     if (Array.isArray(snap['records'])) {
       this.records = snap['records'].map((r) => CartographerState.enrichedFromJson(CartographerState.asObject(r) ?? {}));
     }
     if (Array.isArray(snap['sampleRecords'])) {
       this.sampleRecords = snap['sampleRecords'].map((r) => CartographerState.enrichedFromJson(CartographerState.asObject(r) ?? {}));
     }
-
-    const rawObj = CartographerState.asObject(snap['raw']);
-    if (rawObj !== null) this.raw = CartographerState.rawFromJson(rawObj);
-
-    const normObj = CartographerState.asObject(snap['normalized']);
-    if (normObj !== null) this.normalized = CartographerState.normalizedFromJson(normObj);
-
-    const ceObj = CartographerState.asObject(snap['currentEvent']);
-    if (ceObj !== null) this.currentEvent = CartographerState.eventFromJson(ceObj);
-
-    const gcObj = CartographerState.asObject(snap['geoContext']);
-    if (gcObj !== null) {
-      this.geoContext = {
-        'gridZone':     CartographerState.str(gcObj['gridZone']),
-        'country':      CartographerState.str(gcObj['country']),
-        'continent':    CartographerState.str(gcObj['continent'], 'Unmapped'),
-        'countries':    CartographerState.strArr(gcObj['countries']),
-        'region':       CartographerState.str(gcObj['region']),
-        'hub':          CartographerState.str(gcObj['hub']),
-        'status':       CartographerState.geoStatus(gcObj['status']),
-        'waterBodies':  CartographerState.strArr(gcObj['waterBodies']),
-        'timezone':     CartographerState.str(gcObj['timezone'], 'UTC'),
-        'jurisdiction': CartographerState.jurisdiction(gcObj['jurisdiction']),
-      };
-    }
-
-    const poObj = CartographerState.asObject(snap['pricedOrder']);
-    if (poObj !== null) this.pricedOrder = CartographerState.pricedOrderFromJson(poObj);
-
-    const sqObj = CartographerState.asObject(snap['shippingQuote']);
-    if (sqObj !== null) {
-      const bdObj = CartographerState.asObject(sqObj['breakdown']) ?? {};
-      this.shippingQuote = {
-        'distanceKm':   CartographerState.num(sqObj['distanceKm']),
-        'costUsdMinor': CartographerState.num(sqObj['costUsdMinor']),
-        'breakdown': {
-          'baseMinor':      CartographerState.num(bdObj['baseMinor']),
-          'perKmMinor':     CartographerState.num(bdObj['perKmMinor']),
-          'perKgMinor':     CartographerState.num(bdObj['perKgMinor']),
-          'tierMultiplier': CartographerState.num(bdObj['tierMultiplier'], 1.0),
-        },
-      };
-    }
-
-    const deObj = CartographerState.asObject(snap['deliveryEstimate']);
-    if (deObj !== null) {
-      this.deliveryEstimate = {
-        'transitHours':    CartographerState.num(deObj['transitHours']),
-        'etaEpochMs':      CartographerState.num(deObj['etaEpochMs']),
-        'etaIso':          CartographerState.str(deObj['etaIso']),
-        'promisedEpochMs': CartographerState.num(deObj['promisedEpochMs']),
-        'onTime':          CartographerState.bool(deObj['onTime']),
-        'delayHours':      CartographerState.num(deObj['delayHours']),
-      };
-    }
-
-    if (typeof snap['legKm'] === 'number') this.legKm = snap['legKm'];
-    if (typeof snap['coldChainBreach'] === 'boolean') this.coldChainBreach = snap['coldChainBreach'];
-    if (typeof snap['customsDwellHours'] === 'number') this.customsDwellHours = snap['customsDwellHours'];
-    if (typeof snap['batchEventTypeCount'] === 'number') this.batchEventTypeCount = snap['batchEventTypeCount'];
-
-    if (snap['routing'] !== undefined) this.routing = CartographerState.routingFromJson(snap['routing']);
-
-    const grObj = CartographerState.asObject(snap['gdprResult']);
-    if (grObj !== null) {
-      const retObj = CartographerState.asObject(grObj['retention']) ?? {};
-      this.gdprResult = {
-        'personalDataFields':  CartographerState.strArr(grObj['personalDataFields']),
-        'sensitiveDataFields': CartographerState.strArr(grObj['sensitiveDataFields']),
-        'consentStatus':    CartographerState.consentStatus(grObj['consentStatus']),
-        'lawfulBasis':      CartographerState.lawfulBasis(grObj['lawfulBasis']),
-        'jurisdiction':     CartographerState.jurisdiction(grObj['jurisdiction']),
-        'strictness':       CartographerState.strictness(grObj['strictness']),
-        'complianceScore':  CartographerState.num(grObj['complianceScore']),
-        'retention': {
-          'retainUntil': CartographerState.str(retObj['retainUntil']),
-          'autoDelete':  CartographerState.bool(retObj['autoDelete']),
-        },
-        'redactionApplied': CartographerState.bool(grObj['redactionApplied']),
-        'marketingAnalyticsEligible': CartographerState.bool(grObj['marketingAnalyticsEligible']),
-        'coordsCoarsened':  CartographerState.bool(grObj['coordsCoarsened']),
-      };
-    }
-
     const enObj = CartographerState.asObject(snap['enriched']);
     if (enObj !== null) this.enriched = CartographerState.enrichedFromJson(enObj);
   }
@@ -1111,17 +968,6 @@ export class CartographerState extends NodeStateBase {
       : 'baseline';
   }
 
-  private static strictness(value: unknown): GdprResult['strictness'] {
-    return value === 'strict' || value === 'moderate' || value === 'light' ? value : 'light';
-  }
-
-  private static eventType(value: unknown): ShipmentEvent['eventType'] {
-    return value === 'SCAN' || value === 'DEPARTURE' || value === 'ARRIVAL'
-      || value === 'OUT_FOR_DELIVERY' || value === 'DELIVERED' || value === 'EXCEPTION'
-      ? value
-      : 'SCAN';
-  }
-
   private static lifecycleStatus(value: unknown): NormalizedShipment['status'] {
     return value === 'SCAN' || value === 'DEPARTURE' || value === 'ARRIVAL'
       || value === 'OUT_FOR_DELIVERY' || value === 'DELIVERED' || value === 'EXCEPTION'
@@ -1161,176 +1007,6 @@ export class CartographerState extends NodeStateBase {
   }
 
   // ── Entity ↔ JSON reconstruction (field-by-field) ──────────────────────────
-  private static rawToJson(r: RawShipmentEvent): JsonObject {
-    return {
-      'shipmentId': r.shipmentId, 'scanSeq': r.scanSeq, 'rawTimestamp': r.rawTimestamp,
-      'rawDispatchAt': r.rawDispatchAt, 'rawStatus': r.rawStatus,
-      'carrier': r.carrier, 'ipAddress': r.ipAddress, 'latitude': r.latitude, 'longitude': r.longitude,
-      'legFromLat': r.legFromLat, 'legFromLng': r.legFromLng,
-      'originLat': r.originLat, 'originLng': r.originLng, 'destLat': r.destLat, 'destLng': r.destLng,
-      'weight': r.weight, 'weightUnit': r.weightUnit,
-      'recipientName': r.recipientName, 'recipientEmail': r.recipientEmail, 'recipientPhone': r.recipientPhone,
-      'recipientAddress': r.recipientAddress, 'recipientCountry': r.recipientCountry,
-      'marketingConsent': r.marketingConsent, 'rawPromisedDeliveryAt': r.rawPromisedDeliveryAt,
-      'lineItems': r.lineItems.map((li) => ({ 'productId': li.productId, 'quantity': li.quantity })),
-      'facilityId': r.facilityId, 'lawfulBasis': r.lawfulBasis, 'specialCategory': r.specialCategory,
-      'disruptionReason': r.disruptionReason,
-    };
-  }
-
-  private static rawFromJson(o: Record<string, unknown>): RawShipmentEvent {
-    return {
-      'shipmentId': CartographerState.str(o['shipmentId']),
-      'scanSeq': CartographerState.num(o['scanSeq']),
-      'rawTimestamp': CartographerState.str(o['rawTimestamp']),
-      'rawDispatchAt': CartographerState.str(o['rawDispatchAt']),
-      'rawStatus': CartographerState.str(o['rawStatus']),
-      'carrier': CartographerState.str(o['carrier']),
-      'ipAddress': CartographerState.str(o['ipAddress']),
-      'latitude': CartographerState.num(o['latitude']),
-      'longitude': CartographerState.num(o['longitude']),
-      'legFromLat': CartographerState.num(o['legFromLat']),
-      'legFromLng': CartographerState.num(o['legFromLng']),
-      'originLat': CartographerState.num(o['originLat']),
-      'originLng': CartographerState.num(o['originLng']),
-      'destLat': CartographerState.num(o['destLat']),
-      'destLng': CartographerState.num(o['destLng']),
-      'weight': CartographerState.num(o['weight']),
-      'weightUnit': CartographerState.weightUnit(o['weightUnit']),
-      'recipientName': CartographerState.str(o['recipientName']),
-      'recipientEmail': CartographerState.str(o['recipientEmail']),
-      'recipientPhone': CartographerState.str(o['recipientPhone']),
-      'recipientAddress': CartographerState.str(o['recipientAddress']),
-      'recipientCountry': CartographerState.str(o['recipientCountry']),
-      'marketingConsent': CartographerState.bool(o['marketingConsent']),
-      'rawPromisedDeliveryAt': CartographerState.str(o['rawPromisedDeliveryAt']),
-      'lineItems': CartographerState.lineItemsFromJson(o['lineItems']),
-      'facilityId': CartographerState.str(o['facilityId']),
-      'lawfulBasis': CartographerState.lawfulBasis(o['lawfulBasis']),
-      'specialCategory': CartographerState.specialCategory(o['specialCategory']),
-      'disruptionReason': CartographerState.str(o['disruptionReason']),
-    };
-  }
-
-  private static normalizedToJson(n: NormalizedShipment): JsonObject {
-    return {
-      'shipmentId': n.shipmentId, 'scanSeq': n.scanSeq, 'epochMs': n.epochMs, 'dispatchEpochMs': n.dispatchEpochMs,
-      'isoTimestamp': n.isoTimestamp, 'localIso': n.localIso, 'utcOffset': n.utcOffset,
-      'carrierId': n.carrierId, 'carrierName': n.carrierName, 'countryIso3': n.countryIso3,
-      'weightGrams': n.weightGrams, 'status': n.status, 'serviceTier': n.serviceTier, 'sizeTier': n.sizeTier,
-      'lineItems': n.lineItems.map((li) => ({ 'productId': li.productId, 'quantity': li.quantity })),
-      'facilityId': n.facilityId, 'latitude': n.latitude, 'longitude': n.longitude,
-      'legFromLat': n.legFromLat, 'legFromLng': n.legFromLng,
-      'originLat': n.originLat, 'originLng': n.originLng, 'destLat': n.destLat, 'destLng': n.destLng,
-      'recipientName': n.recipientName, 'recipientEmail': n.recipientEmail, 'recipientPhone': n.recipientPhone,
-      'recipientAddress': n.recipientAddress, 'recipientCountry': n.recipientCountry,
-      'marketingConsent': n.marketingConsent, 'promisedEpochMs': n.promisedEpochMs,
-      'disruptionHours': n.disruptionHours, 'disruptionReason': n.disruptionReason,
-    };
-  }
-
-  private static normalizedFromJson(o: Record<string, unknown>): NormalizedShipment {
-    return {
-      'shipmentId': CartographerState.str(o['shipmentId']),
-      'scanSeq': CartographerState.num(o['scanSeq']),
-      'epochMs': CartographerState.num(o['epochMs']),
-      'dispatchEpochMs': CartographerState.num(o['dispatchEpochMs']),
-      'isoTimestamp': CartographerState.str(o['isoTimestamp']),
-      'localIso': CartographerState.str(o['localIso']),
-      'utcOffset': CartographerState.str(o['utcOffset']),
-      'carrierId': CartographerState.str(o['carrierId']),
-      'carrierName': CartographerState.str(o['carrierName']),
-      'countryIso3': CartographerState.str(o['countryIso3'], 'UNK'),
-      'weightGrams': CartographerState.num(o['weightGrams']),
-      'status': CartographerState.lifecycleStatus(o['status']),
-      'serviceTier': CartographerState.serviceTier(o['serviceTier']),
-      'sizeTier': CartographerState.sizeTier(o['sizeTier']),
-      'lineItems': CartographerState.lineItemsFromJson(o['lineItems']),
-      'facilityId': CartographerState.str(o['facilityId']),
-      'latitude': CartographerState.num(o['latitude']),
-      'longitude': CartographerState.num(o['longitude']),
-      'legFromLat': CartographerState.num(o['legFromLat']),
-      'legFromLng': CartographerState.num(o['legFromLng']),
-      'originLat': CartographerState.num(o['originLat']),
-      'originLng': CartographerState.num(o['originLng']),
-      'destLat': CartographerState.num(o['destLat']),
-      'destLng': CartographerState.num(o['destLng']),
-      'recipientName': CartographerState.str(o['recipientName']),
-      'recipientEmail': CartographerState.str(o['recipientEmail']),
-      'recipientPhone': CartographerState.str(o['recipientPhone']),
-      'recipientAddress': CartographerState.str(o['recipientAddress']),
-      'recipientCountry': CartographerState.str(o['recipientCountry']),
-      'marketingConsent': CartographerState.bool(o['marketingConsent']),
-      'promisedEpochMs': CartographerState.num(o['promisedEpochMs']),
-      'disruptionHours': CartographerState.num(o['disruptionHours']),
-      'disruptionReason': CartographerState.str(o['disruptionReason']),
-    };
-  }
-
-  private static eventToJson(e: ShipmentEvent): JsonObject {
-    return {
-      'shipmentId': e.shipmentId, 'timestamp': e.timestamp, 'eventType': e.eventType,
-      'latitude': e.latitude, 'longitude': e.longitude, 'carrier': e.carrier, 'facilityId': e.facilityId,
-      'recipientName': e.recipientName, 'recipientEmail': e.recipientEmail, 'recipientPhone': e.recipientPhone,
-      'recipientAddress': e.recipientAddress, 'recipientCountry': e.recipientCountry,
-      'marketingConsent': e.marketingConsent, 'promisedDeliveryAt': e.promisedDeliveryAt,
-    };
-  }
-
-  private static eventFromJson(o: Record<string, unknown>): ShipmentEvent {
-    return {
-      'shipmentId': CartographerState.str(o['shipmentId']),
-      'timestamp': CartographerState.str(o['timestamp']),
-      'eventType': CartographerState.eventType(o['eventType']),
-      'latitude': CartographerState.num(o['latitude']),
-      'longitude': CartographerState.num(o['longitude']),
-      'carrier': CartographerState.str(o['carrier']),
-      'facilityId': CartographerState.str(o['facilityId']),
-      'recipientName': CartographerState.str(o['recipientName']),
-      'recipientEmail': CartographerState.str(o['recipientEmail']),
-      'recipientPhone': CartographerState.str(o['recipientPhone']),
-      'recipientAddress': CartographerState.str(o['recipientAddress']),
-      'recipientCountry': CartographerState.str(o['recipientCountry']),
-      'marketingConsent': CartographerState.bool(o['marketingConsent']),
-      'promisedDeliveryAt': CartographerState.str(o['promisedDeliveryAt']),
-    };
-  }
-
-  private static pricedOrderToJson(p: PricedOrder): JsonObject {
-    return {
-      'lines': p.lines.map((l) => ({
-        'productId': l.productId, 'name': l.name, 'category': l.category, 'quantity': l.quantity,
-        'unitPriceMinor': l.unitPriceMinor, 'currency': l.currency, 'lineTotalMinor': l.lineTotalMinor,
-      })),
-      'subtotalMinor': p.subtotalMinor, 'currency': p.currency,
-      'subtotalUsdMinor': p.subtotalUsdMinor, 'fxRate': p.fxRate,
-    };
-  }
-
-  private static pricedOrderFromJson(o: Record<string, unknown>): PricedOrder {
-    const lines = Array.isArray(o['lines'])
-      ? o['lines']
-          .map((l) => CartographerState.asObject(l))
-          .filter((l): l is Record<string, unknown> => l !== null)
-          .map((l) => ({
-            'productId': CartographerState.str(l['productId']),
-            'name': CartographerState.str(l['name']),
-            'category': CartographerState.str(l['category']),
-            'quantity': CartographerState.num(l['quantity'], 1),
-            'unitPriceMinor': CartographerState.num(l['unitPriceMinor']),
-            'currency': CartographerState.str(l['currency'], 'USD'),
-            'lineTotalMinor': CartographerState.num(l['lineTotalMinor']),
-          }))
-      : [];
-    return {
-      'lines': lines,
-      'subtotalMinor': CartographerState.num(o['subtotalMinor']),
-      'currency': CartographerState.str(o['currency'], 'USD'),
-      'subtotalUsdMinor': CartographerState.num(o['subtotalUsdMinor']),
-      'fxRate': CartographerState.num(o['fxRate'], 1.0),
-    };
-  }
-
   private static enrichedToJson(e: EnrichedShipment): JsonObject {
     return {
       'shipmentId': e.shipmentId, 'scanSeq': e.scanSeq, 'epochMs': e.epochMs,
