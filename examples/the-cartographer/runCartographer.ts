@@ -267,7 +267,14 @@ for (const r of sampleProcessed) {
 // as a representative distribution indicator).
 const distinctFormats = new Set<string>();
 if (Array.isArray(state.sources)) {
-  for (const s of state.sources) distinctFormats.add(s.format);
+  for (const item of state.sources) {
+    if (Array.isArray(item)) {
+      // SourcePayload[][] (batch path): flatten inner arrays
+      for (const s of item) distinctFormats.add(s.format);
+    } else {
+      distinctFormats.add(item.format);
+    }
+  }
 }
 // Fall back to eventConfig format mix labels when sources is exhausted.
 if (distinctFormats.size === 0) {

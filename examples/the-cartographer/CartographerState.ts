@@ -166,8 +166,14 @@ export class CartographerState extends NodeStateBase {
    * than a materialised array. The engine's scatter accepts either form
    * transparently. Snapshot/restore serialises the array path only; the async
    * iterable is re-seeded by the pre-phase node on resume.
+   *
+   * For the batch scatter path (stream-event-batch) the field may hold a
+   * `SourcePayload[][]` (materialised batches) or an
+   * `AsyncIterable<SourcePayload[]>` from `EventStreamSource.streamTypedBatches()`.
+   * The engine's scatter iterates each yielded `SourcePayload[]` item and places it
+   * on the configured itemKey (`'source-batch'`).
    */
-  sources: SourcePayload[] | AsyncIterable<SourcePayload> = [];
+  sources: SourcePayload[] | SourcePayload[][] | AsyncIterable<SourcePayload> | AsyncIterable<SourcePayload[]> = [];
 
   /**
    * Ingestion fan-in buckets: the `append` gather of the ingestion scatter
@@ -456,6 +462,13 @@ export class CartographerState extends NodeStateBase {
   routingBatch:          Array<EnrichedShipment['routing']>     = [];
   gpsCandidateBatch:     GeoCandidate[]                         = [];
   ipCandidateBatch:      GeoCandidate[]                         = [];
+  /**
+   * Per-item skip mask: true means the item should be excluded from enrichedBatch.
+   * Set by geo-pipeline-batch for items with invalid WGS-84 coordinates (matching
+   * the per-event behaviour where validate-coords routes to the 'rejected' terminal
+   * and the item produces no enriched output).
+   */
+  batchSkipMask:         boolean[]                              = [];
 
   /**
    * Aggregate-batch output: one EnrichedShipment per item in the batch.
@@ -507,9 +520,23 @@ export class CartographerState extends NodeStateBase {
     // AsyncIterable sources are shared by reference — the engine iterates the
     // parent's source before cloning for scatters, so this is safe. Array
     // sources are shallow-copied (each payload is a value object).
-    copy.sources    = Array.isArray(this.sources)
-      ? this.sources.map((s) => ({ ...s }))
-      : this.sources;
+    // SourcePayload[][] (batch materialised) and AsyncIterable<SourcePayload[]>
+    // (batch streaming) are also handled: the inner arrays/iterables are shared
+    // by reference since the scatter consumes them before any clone runs.
+    if (Array.isArray(this.sources)) {
+      const sources = this.sources as SourcePayload[] | SourcePayload[][];
+      const firstItem = sources[0];
+      if (Array.isArray(firstItem)) {
+        // SourcePayload[][] — shallow copy outer array, share inner arrays
+        copy.sources = (sources as SourcePayload[][]).map((batch) => [...batch]);
+      } else {
+        // SourcePayload[] — shallow copy each payload
+        copy.sources = (sources as SourcePayload[]).map((s) => ({ ...s }));
+      }
+    } else {
+      // AsyncIterable (per-event or batch streaming) — shared by reference
+      copy.sources = this.sources;
+    }
     copy.useStreamingSource = this.useStreamingSource;
     copy.streamCount = this.streamCount;
     copy.ingestBuckets = this.ingestBuckets.map((bucket) => bucket.map((e) => CartographerState.cloneVariant(e)));
@@ -606,6 +633,7 @@ export class CartographerState extends NodeStateBase {
     copy.routingBatch = this.routingBatch.map((r) => ({ ...r, 'geoModalities': [...r.geoModalities] }));
     copy.gpsCandidateBatch = this.gpsCandidateBatch.map((c) => ({ ...c }));
     copy.ipCandidateBatch  = this.ipCandidateBatch.map((c) => ({ ...c }));
+    copy.batchSkipMask = [...this.batchSkipMask];
 
     copy.enrichedBatch = this.enrichedBatch.map((e) => ({ ...e, 'redactedSample': { ...e.redactedSample } }));
 
@@ -621,8 +649,9 @@ export class CartographerState extends NodeStateBase {
       // AsyncIterable sources are not checkpointable. The pre-phase node
       // re-seeds them on resume using eventConfig + streamCount. Snapshot as
       // empty array so restoreData leaves sources = [] (re-seeded by pre-phase).
-      'sources':    Array.isArray(this.sources)
-        ? this.sources.map((s) => CartographerState.sourceToJson(s))
+      // Batch SourcePayload[][] is also not checkpointable; snapshot as [].
+      'sources':    Array.isArray(this.sources) && !Array.isArray((this.sources as unknown[])[0])
+        ? (this.sources as SourcePayload[]).map((s) => CartographerState.sourceToJson(s))
         : [],
       'useStreamingSource': this.useStreamingSource,
       'streamCount': this.streamCount,

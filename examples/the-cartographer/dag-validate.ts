@@ -19,6 +19,8 @@ import { pipelineSensorReadingDAG } from './embedded-dags/PipelineSensorReadingD
 import { pipelineCustomsEventDAG } from './embedded-dags/PipelineCustomsEventDAG.ts';
 import { pipelineFacilityScanDAG } from './embedded-dags/PipelineFacilityScanDAG.ts';
 import { pipelineDeliveryConfirmationDAG } from './embedded-dags/PipelineDeliveryConfirmationDAG.ts';
+import { pipelinePositionPingBatchDAG } from './embedded-dags/PipelinePositionPingBatchDAG.ts';
+import { streamEventBatchDAG } from './embedded-dags/StreamEventBatchDAG.ts';
 
 const dags = [
   { 'label': 'cartographer',      'dag': cartographerDAG },
@@ -33,7 +35,10 @@ const dags = [
   { 'label': 'pipeline-sensor-reading',       'dag': pipelineSensorReadingDAG },
   { 'label': 'pipeline-customs-event',        'dag': pipelineCustomsEventDAG },
   { 'label': 'pipeline-facility-scan',        'dag': pipelineFacilityScanDAG },
-  { 'label': 'pipeline-delivery-confirmation', 'dag': pipelineDeliveryConfirmationDAG },
+  { 'label': 'pipeline-delivery-confirmation',  'dag': pipelineDeliveryConfirmationDAG },
+  // Batch pipeline DAGs (Wave 2 sprout).
+  { 'label': 'pipeline-position-ping-batch',   'dag': pipelinePositionPingBatchDAG },
+  { 'label': 'stream-event-batch',             'dag': streamEventBatchDAG },
 ] as const;
 
 let anyViolation = false;
