@@ -119,6 +119,7 @@ export const cartographerDAG: DAG = new DAGBuilder('cartographer', '1.0')
       'itemKey':     'source-payload',
       'concurrency': 16,
       'gather': { 'strategy': 'insights-fold' },
+      'reservoir': { 'keyField': 'eventType', 'capacity': 1000 },
     },
   )
 
@@ -312,6 +313,7 @@ export const cartographerWorkersDAG: DAG = new DAGBuilder('cartographer', '1.0')
       'concurrency': 16,
       'container':   'cpu',
       'gather': { 'strategy': 'insights-fold' },
+      'reservoir': { 'keyField': 'eventType', 'capacity': 1000 },
     },
   )
 

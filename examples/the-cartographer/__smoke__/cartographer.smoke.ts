@@ -90,11 +90,9 @@ await SmokeRunner.check('sources fan in from >=3 distinct source formats and >=2
   // and the eventType. The streaming scatter routes each source directly to its
   // per-type pipeline without an ingest/merge stage, so canonical event counts
   // are not separately tracked; derive coverage from sampleRecords.
-  // Flatten per-event sources (SourcePayload[]) to a flat list; batch sources
-  // (SourcePayload[][]) are flattened from their inner arrays. Non-array sources
-  // (AsyncIterable) are treated as empty since they are consumed by the scatter.
-  const rawSources = Array.isArray(state.sources) ? state.sources : [];
-  const sources = rawSources.flatMap((item) => Array.isArray(item) ? item : [item]);
+  // Per-event sources (SourcePayload[]); AsyncIterable sources are consumed by
+  // the scatter and treated as empty here.
+  const sources = Array.isArray(state.sources) ? state.sources : [];
   assert.ok(sources.length > 0, `Expected sources to be populated, got 0`);
   const formats = new Set(sources.map((s) => `${s.format}/${s.compression}`));
   assert.ok(formats.size >= 3, `Expected >=3 distinct format/compression combos, got ${formats.size} (${[...formats].join(', ')})`);

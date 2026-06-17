@@ -25,7 +25,7 @@
  * Per-event scratch (currentSource, decodedText, parsedRecords, mappedRecords,
  * ingestedEvents, canonical, canonicalVariant, raw, normalized, currentEvent,
  * geoContext, pricedOrder, shippingQuote, deliveryEstimate, legKm,
- * batchEventTypeCount, coldChainBreach, customsDwellHours, gpsCandidate,
+ * coldChainBreach, customsDwellHours, gpsCandidate,
  * ipCandidate, routing, gdprResult, resolvedGeo) is never serialized; workers
  * recompute it from the source-payload metadata on each dispatch.
  * The `sources` AsyncIterable is not checkpointable (snapshots as empty array;
@@ -166,14 +166,8 @@ export class CartographerState extends NodeStateBase {
    * than a materialised array. The engine's scatter accepts either form
    * transparently. Snapshot/restore serialises the array path only; the async
    * iterable is re-seeded by the pre-phase node on resume.
-   *
-   * For the batch scatter path (stream-event-batch) the field may hold a
-   * `SourcePayload[][]` (materialised batches) or an
-   * `AsyncIterable<SourcePayload[]>` from `EventStreamSource.streamTypedBatches()`.
-   * The engine's scatter iterates each yielded `SourcePayload[]` item and places it
-   * on the configured itemKey (`'source-batch'`).
    */
-  sources: SourcePayload[] | SourcePayload[][] | AsyncIterable<SourcePayload> | AsyncIterable<SourcePayload[]> = [];
+  sources: SourcePayload[] | AsyncIterable<SourcePayload> = [];
 
   /**
    * Ingestion fan-in buckets: the `append` gather of the ingestion scatter
@@ -376,14 +370,6 @@ export class CartographerState extends NodeStateBase {
   /** Leg distance (legFrom → this scan) in km, set by enrich-leg node. */
   legKm: number = 0;
 
-  /**
-   * Batch size recorded by the classifyBatch node during the batch-by-event-type
-   * reservoir scatter. Set per-clone to the number of items in the batch
-   * released by the reservoir for this clone's event type. Used for observability
-   * of the keyed reservoir batching mechanism.
-   */
-  batchEventTypeCount: number = 0;
-
   /** Cold-chain breach flag (sensor lane only; set by cold-chain-check). */
   coldChainBreach: boolean = false;
 
@@ -434,48 +420,6 @@ export class CartographerState extends NodeStateBase {
     'coordsCoarsened':     false,
   };
 
-  // ── Batch fields (Wave 1 sprout: homogeneous per-type batch path) ─────────
-  // These fields coexist alongside the per-event scalars; the per-event path is
-  // UNCHANGED. Per-stage transient arrays are never snapshotted (like the scalar
-  // scratch fields they pair with). Only `enrichedBatch` is snapshotted because
-  // the gather reads it off the returned worker clone.
-
-  /** Discriminant for the homogeneous batch (all items share this eventType). */
-  batchEventType: CanonicalEventVariant['eventType'] = 'position-ping';
-
-  /** Decoded variants for the whole batch (decode-batch output). */
-  variantBatch: CanonicalEventVariant[] = [];
-
-  /** Per-stage transient working arrays (NOT snapshotted). */
-  rawBatch:              RawShipmentEvent[]                     = [];
-  normalizedBatch:       NormalizedShipment[]                   = [];
-  currentEventBatch:     ShipmentEvent[]                        = [];
-  geoContextBatch:       GeoContext[]                           = [];
-  resolvedGeoBatch:      ResolvedGeo[]                          = [];
-  pricedOrderBatch:      PricedOrder[]                          = [];
-  shippingQuoteBatch:    ShippingQuote[]                        = [];
-  deliveryEstimateBatch: DeliveryEstimate[]                     = [];
-  legKmBatch:            number[]                               = [];
-  coldChainBreachBatch:  boolean[]                              = [];
-  customsDwellHoursBatch: number[]                              = [];
-  gdprResultBatch:       GdprResult[]                           = [];
-  routingBatch:          Array<EnrichedShipment['routing']>     = [];
-  gpsCandidateBatch:     GeoCandidate[]                         = [];
-  ipCandidateBatch:      GeoCandidate[]                         = [];
-  /**
-   * Per-item skip mask: true means the item should be excluded from enrichedBatch.
-   * Set by geo-pipeline-batch for items with invalid WGS-84 coordinates (matching
-   * the per-event behaviour where validate-coords routes to the 'rejected' terminal
-   * and the item produces no enriched output).
-   */
-  batchSkipMask:         boolean[]                              = [];
-
-  /**
-   * Aggregate-batch output: one EnrichedShipment per item in the batch.
-   * Snapshotted so the gather can read it off the returned worker clone.
-   */
-  enrichedBatch: EnrichedShipment[] = [];
-
   /** Compact enriched per-scan record written by aggregate-event; parent gather appends it. */
   enriched: EnrichedShipment = {
     'shipmentId':       '',
@@ -517,24 +461,10 @@ export class CartographerState extends NodeStateBase {
     const copy = super.clone(); // new Constructor() + _metadata copy from base
     copy.eventCount = this.eventCount;
     copy.eventConfig = this.eventConfig.map((e) => ({ 'eventType': e.eventType, 'count': e.count, 'formatMix': e.formatMix.map((m) => ({ ...m })) }));
-    // AsyncIterable sources are shared by reference — the engine iterates the
-    // parent's source before cloning for scatters, so this is safe. Array
-    // sources are shallow-copied (each payload is a value object).
-    // SourcePayload[][] (batch materialised) and AsyncIterable<SourcePayload[]>
-    // (batch streaming) are also handled: the inner arrays/iterables are shared
-    // by reference since the scatter consumes them before any clone runs.
     if (Array.isArray(this.sources)) {
-      const sources = this.sources as SourcePayload[] | SourcePayload[][];
-      const firstItem = sources[0];
-      if (Array.isArray(firstItem)) {
-        // SourcePayload[][] — shallow copy outer array, share inner arrays
-        copy.sources = (sources as SourcePayload[][]).map((batch) => [...batch]);
-      } else {
-        // SourcePayload[] — shallow copy each payload
-        copy.sources = (sources as SourcePayload[]).map((s) => ({ ...s }));
-      }
+      copy.sources = (this.sources as SourcePayload[]).map((s) => ({ ...s }));
     } else {
-      // AsyncIterable (per-event or batch streaming) — shared by reference
+      // AsyncIterable — shared by reference
       copy.sources = this.sources;
     }
     copy.useStreamingSource = this.useStreamingSource;
@@ -587,7 +517,6 @@ export class CartographerState extends NodeStateBase {
     copy.legKm = this.legKm;
     copy.coldChainBreach = this.coldChainBreach;
     copy.customsDwellHours = this.customsDwellHours;
-    copy.batchEventTypeCount = this.batchEventTypeCount;
 
     copy.gpsCandidate = { ...this.gpsCandidate };
     copy.ipCandidate  = { ...this.ipCandidate };
@@ -607,36 +536,6 @@ export class CartographerState extends NodeStateBase {
       'redactedSample': { ...this.enriched.redactedSample },
     };
 
-    // ── Batch fields (Wave 1 sprout) ──────────────────────────────────────────
-    copy.batchEventType = this.batchEventType;
-    copy.variantBatch   = this.variantBatch.map((e) => CartographerState.cloneVariant(e));
-
-    // Transient per-stage arrays: shallow-copy the array, deep-copy each element
-    // using the same strategy as the corresponding scalar field.
-    copy.rawBatch = this.rawBatch.map((r) => ({ ...r, 'lineItems': r.lineItems.map((li) => ({ ...li })) }));
-    copy.normalizedBatch = this.normalizedBatch.map((n) => ({ ...n, 'lineItems': n.lineItems.map((li) => ({ ...li })) }));
-    copy.currentEventBatch = this.currentEventBatch.map((e) => ({ ...e }));
-    copy.geoContextBatch = this.geoContextBatch.map((g) => ({ ...g, 'countries': [...g.countries], 'waterBodies': [...g.waterBodies] }));
-    copy.resolvedGeoBatch = this.resolvedGeoBatch.map((r) => ({ ...r, 'modalities': [...r.modalities] }));
-    copy.pricedOrderBatch = this.pricedOrderBatch.map((p) => ({ ...p, 'lines': p.lines.map((l) => ({ ...l })) }));
-    copy.shippingQuoteBatch = this.shippingQuoteBatch.map((q) => ({ ...q, 'breakdown': { ...q.breakdown } }));
-    copy.deliveryEstimateBatch = this.deliveryEstimateBatch.map((d) => ({ ...d }));
-    copy.legKmBatch = [...this.legKmBatch];
-    copy.coldChainBreachBatch = [...this.coldChainBreachBatch];
-    copy.customsDwellHoursBatch = [...this.customsDwellHoursBatch];
-    copy.gdprResultBatch = this.gdprResultBatch.map((g) => ({
-      ...g,
-      'personalDataFields':  [...g.personalDataFields],
-      'sensitiveDataFields': [...g.sensitiveDataFields],
-      'retention': { ...g.retention },
-    }));
-    copy.routingBatch = this.routingBatch.map((r) => ({ ...r, 'geoModalities': [...r.geoModalities] }));
-    copy.gpsCandidateBatch = this.gpsCandidateBatch.map((c) => ({ ...c }));
-    copy.ipCandidateBatch  = this.ipCandidateBatch.map((c) => ({ ...c }));
-    copy.batchSkipMask = [...this.batchSkipMask];
-
-    copy.enrichedBatch = this.enrichedBatch.map((e) => ({ ...e, 'redactedSample': { ...e.redactedSample } }));
-
     return copy;
   }
   // #endregion clone
@@ -649,8 +548,7 @@ export class CartographerState extends NodeStateBase {
       // AsyncIterable sources are not checkpointable. The pre-phase node
       // re-seeds them on resume using eventConfig + streamCount. Snapshot as
       // empty array so restoreData leaves sources = [] (re-seeded by pre-phase).
-      // Batch SourcePayload[][] is also not checkpointable; snapshot as [].
-      'sources':    Array.isArray(this.sources) && !Array.isArray((this.sources as unknown[])[0])
+      'sources':    Array.isArray(this.sources)
         ? (this.sources as SourcePayload[]).map((s) => CartographerState.sourceToJson(s))
         : [],
       'useStreamingSource': this.useStreamingSource,
@@ -660,9 +558,6 @@ export class CartographerState extends NodeStateBase {
       'records':      this.records.map((r) => CartographerState.enrichedToJson(r)),
       'sampleRecords': this.sampleRecords.map((r) => CartographerState.enrichedToJson(r)),
       'enriched': CartographerState.enrichedToJson(this.enriched),
-      // Batch accumulator — only enrichedBatch is checkpointable; the per-stage
-      // transient arrays are recomputed per dispatch (same as the scalar scratch).
-      'enrichedBatch': this.enrichedBatch.map((e) => CartographerState.enrichedToJson(e)),
     };
   }
 
@@ -713,12 +608,6 @@ export class CartographerState extends NodeStateBase {
     }
     const enObj = CartographerState.asObject(snap['enriched']);
     if (enObj !== null) this.enriched = CartographerState.enrichedFromJson(enObj);
-    // Batch accumulator restore.
-    if (Array.isArray(snap['enrichedBatch'])) {
-      this.enrichedBatch = snap['enrichedBatch'].map((e) => CartographerState.enrichedFromJson(CartographerState.asObject(e) ?? {}));
-    } else {
-      this.enrichedBatch = [];
-    }
   }
   // #endregion snapshot-restore
 
