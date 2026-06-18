@@ -1,6 +1,6 @@
 /**
  * virtual-clock: deterministic retry timing under VirtualClockProvider +
- * VirtualScheduler from @noocodex/dagonizer/testing.
+ * VirtualScheduler from @studnicky/dagonizer/testing.
  *
  * Virtual time providers replace the real wall-clock so retry backoff intervals
  * are driven by programmatic calls to scheduler.advance(ms) rather than actual
@@ -16,8 +16,8 @@
  * Run: npx tsx examples/virtual-clock.ts
  */
 
-import { BackoffStrategy, Clock, RetryPolicy, Scheduler } from '@noocodex/dagonizer/runtime';
-import { VirtualClockProvider, VirtualScheduler } from '@noocodex/dagonizer/testing';
+import { BackoffStrategy, Clock, RetryPolicy, Scheduler } from '@studnicky/dagonizer/runtime';
+import { VirtualClockProvider, VirtualScheduler } from '@studnicky/dagonizer/testing';
 
 process.stdout.write('\n=== VirtualClock: deterministic retry under programmatic time ===\n\n');
 

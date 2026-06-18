@@ -35,9 +35,9 @@ import { enrichEta }      from '../nodes/enrichEta.ts';
 import type { CartographerState }   from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
-import type { DispatcherBundle } from '@noocodex/dagonizer';
-import { DAGBuilder } from '@noocodex/dagonizer';
-import type { DAG }              from '@noocodex/dagonizer/entities';
+import type { DispatcherBundle } from '@studnicky/dagonizer';
+import { DAGBuilder } from '@studnicky/dagonizer';
+import type { DAG }              from '@studnicky/dagonizer/entities';
 
 export const orderEnrichmentDAG: DAG = new DAGBuilder('order-enrichment', '1.0')
 

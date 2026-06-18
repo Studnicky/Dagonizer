@@ -47,9 +47,9 @@
 import assert from 'node:assert/strict';
 import { after, afterEach, describe, it } from 'node:test';
 
-import { Dagonizer, SCATTER_PROGRESS_KEY } from '@noocodex/dagonizer';
-import type { DagonizerInterface, DispatcherBundle, NodeStateInterface, ScatterProgress } from '@noocodex/dagonizer';
-import type { DagContainerInterface } from '@noocodex/dagonizer/contracts';
+import { Dagonizer, SCATTER_PROGRESS_KEY } from '@studnicky/dagonizer';
+import type { DagonizerInterface, DispatcherBundle, NodeStateInterface, ScatterProgress } from '@studnicky/dagonizer';
+import type { DagContainerInterface } from '@studnicky/dagonizer/contracts';
 import {
   ConformanceRegistry,
   ConformanceState,
@@ -57,8 +57,8 @@ import {
   CONFORMANCE_DAG,
   CONFORMANCE_REGISTRY_VERSION,
   DagConformance,
-} from '@noocodex/dagonizer/testing';
-import type { DagConformanceHarnessInterface } from '@noocodex/dagonizer/testing';
+} from '@studnicky/dagonizer/testing';
+import type { DagConformanceHarnessInterface } from '@studnicky/dagonizer/testing';
 
 import { ClusterContainer } from '../../src/ClusterContainer.js';
 import { ForkContainer } from '../../src/ForkContainer.js';

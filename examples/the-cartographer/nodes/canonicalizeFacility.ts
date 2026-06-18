@@ -13,7 +13,7 @@ import { EventClassifier, Units } from '../services.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region canonicalize-facility-node
 export class CanonicalizeFacilityNode extends ScalarNode<CartographerState, 'done', CartographerServices> {

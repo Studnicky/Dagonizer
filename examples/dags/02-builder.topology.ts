@@ -15,8 +15,8 @@ import {
   NodeOutputBuilder,
   NodeStateBase,
   ScalarNode,
-} from '@noocodex/dagonizer';
-import type { OperationContractFragment, WarningEmitter } from '@noocodex/dagonizer/contracts';
+} from '@studnicky/dagonizer';
+import type { OperationContractFragment, WarningEmitter } from '@studnicky/dagonizer/contracts';
 // #endregion imports
 
 // ---------------------------------------------------------------------------

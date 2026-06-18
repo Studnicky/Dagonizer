@@ -2,7 +2,7 @@
  * LlmAdapter: provider-agnostic chat contract for one round-trip per call.
  *
  * Entity schemas and TypeScript interfaces live in `src/entities/adapter/`;
- * this module re-exports them ergonomically so `@noocodex/dagonizer/adapter`
+ * this module re-exports them ergonomically so `@studnicky/dagonizer/adapter`
  * consumers continue to see a single import path.
  *
  * `ChatRequestBuilder` and `ChatResponseMessageBuilder` remain here because
@@ -29,7 +29,7 @@ import { SignalComposer } from '../runtime/SignalComposer.js';
 //
 // Schemas and `FromSchema`-derived types are wire-shape entities and live in
 // `src/entities/adapter/`. Re-exported here so every consumer of
-// `@noocodex/dagonizer/adapter` sees them at the familiar import path.
+// `@studnicky/dagonizer/adapter` sees them at the familiar import path.
 
 export type { AdapterCapabilities } from '../entities/adapter/AdapterCapabilities.js';
 

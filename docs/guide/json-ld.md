@@ -34,7 +34,7 @@ Dagonizer DAGs are JSON-LD 1.1 documents. There is no separate wire format or pr
 
 A DAG document carries these top-level fields:
 
-- `@context`. The canonical Dagonizer JSON-LD context inlined as an object literal. The full context is exported from `@noocodex/dagonizer` as `DAG_CONTEXT` (source: `packages/dagonizer/src/entities/dag/DAG.ts`). `DAGBuilder.build()` embeds it verbatim.
+- `@context`. The canonical Dagonizer JSON-LD context inlined as an object literal. The full context is exported from `@studnicky/dagonizer` as `DAG_CONTEXT` (source: `packages/dagonizer/src/entities/dag/DAG.ts`). `DAGBuilder.build()` embeds it verbatim.
 - `@id`. URN identifier for the DAG document. Convention: `urn:noocodex:dag:<name>`.
 - `@type`. RDF class. `"DAG"` for the document; one of `"SingleNode"`, `"ScatterNode"`, `"EmbeddedDAGNode"`, `"TerminalNode"`, or `"PhaseNode"` for placements.
 - `name`, `version`, `entrypoint`. The dispatcher uses `name` and `entrypoint` to register and execute.

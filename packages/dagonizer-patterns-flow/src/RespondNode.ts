@@ -7,8 +7,8 @@
  * and removes convention-coupled casts from the base.
  */
 
-import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@noocodex/dagonizer';
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer';
+import { NodeOutputBuilder } from '@studnicky/dagonizer';
 
 import { FlowNode } from './FlowNode.js';
 

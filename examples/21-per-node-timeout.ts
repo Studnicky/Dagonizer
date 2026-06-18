@@ -24,7 +24,7 @@
  * Run: npx tsx examples/21-per-node-timeout.ts
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
 import { TaskState, FastTaskNode, SlowTaskNode, fastDag, slowDag } from './dags/21-per-node-timeout.js';
 
 // ---------------------------------------------------------------------------

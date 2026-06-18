@@ -28,9 +28,9 @@
  *   (or: tsc -p examples/tsconfig.multibackend.json && node examples/dist/13-multibackend.js)
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
-import { MermaidRenderer } from '@noocodex/dagonizer/viz';
-import { ForkContainer, WorkerThreadContainer } from '@noocodex/dagonizer-executor-node';
+import { Dagonizer } from '@studnicky/dagonizer';
+import { MermaidRenderer } from '@studnicky/dagonizer/viz';
+import { ForkContainer, WorkerThreadContainer } from '@studnicky/dagonizer-executor-node';
 
 import { dag, squareItemDag, SquareNode, SumNode, sumResultsDag, MultiBackendState } from './dags/13-multibackend.js';
 

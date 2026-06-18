@@ -1,7 +1,7 @@
 {
-  "name": "@noocodex/dagonizer-executor-web",
+  "name": "@studnicky/dagonizer-executor-web",
   "version": "0.21.0",
-  "description": "Browser isolating executor backend for @noocodex/dagonizer: Web Worker pools over the bridge protocol.",
+  "description": "Browser isolating executor backend for @studnicky/dagonizer: Web Worker pools over the bridge protocol.",
   "private": false,
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
@@ -35,7 +35,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@noocodex/dagonizer": "workspace:>=0.21.0"
+    "@studnicky/dagonizer": "workspace:>=0.21.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

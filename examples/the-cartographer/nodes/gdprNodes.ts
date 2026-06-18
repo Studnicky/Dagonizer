@@ -19,7 +19,7 @@ import { Consent, GdprRedactor, GeoCoarsener, Jurisdictions } from '../services.
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region gdpr-nodes
 

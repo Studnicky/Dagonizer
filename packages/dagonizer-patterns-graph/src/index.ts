@@ -1,5 +1,5 @@
 /**
- * @noocodex/dagonizer-patterns-graph: triple-store node pattern bases.
+ * @studnicky/dagonizer-patterns-graph: triple-store node pattern bases.
  *
  * Each pattern operates against a TripleStore service the consumer
  * provides on `services.memory`. Subclass and inject the SPARQL

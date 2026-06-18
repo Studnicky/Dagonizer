@@ -10,9 +10,9 @@
  */
 
 // #region research-agent
-import { DAGDeriver } from '@noocodex/dagonizer/derive';
-import { NodeOutputBuilder, NodeStateBase, ScalarNode } from '@noocodex/dagonizer';
-import type { OperationContractFragment } from '@noocodex/dagonizer/contracts';
+import { DAGDeriver } from '@studnicky/dagonizer/derive';
+import { NodeOutputBuilder, NodeStateBase, ScalarNode } from '@studnicky/dagonizer';
+import type { OperationContractFragment } from '@studnicky/dagonizer/contracts';
 
 export class ResearchState extends NodeStateBase {
   query     = '';

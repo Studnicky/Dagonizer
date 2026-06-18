@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test, after } from 'node:test';
 
-import { StoreError } from '@noocodex/dagonizer/store';
+import { StoreError } from '@studnicky/dagonizer/store';
 
 import { EventLogStore } from '../../src/index.js';
 

@@ -22,7 +22,7 @@
  * verifies the union narrowed correctly at the type level.
  */
 
-import type { Embedder } from '@noocodex/dagonizer/contracts';
+import type { Embedder } from '@studnicky/dagonizer/contracts';
 
 import type { ClassifiedIntent } from '../services.ts';
 

@@ -37,7 +37,7 @@ From zero to a running DAG in three steps.
 ## Install
 
 ```bash
-npm install @noocodex/dagonizer
+npm install @studnicky/dagonizer
 ```
 
 Requires Node.js 24 or later and TypeScript 5.6 or later with `strict: true`.

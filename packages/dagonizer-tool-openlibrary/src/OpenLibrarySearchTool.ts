@@ -24,11 +24,11 @@
  * cite in its prose response.
  */
 
-import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
-import type { AbortableOptionsInterface } from '@noocodex/dagonizer/contracts';
-import { HttpTransport } from '@noocodex/dagonizer/tool';
-import type { Tool } from '@noocodex/dagonizer/tool';
-import type { Candidate } from '@noocodex/dagonizer-book-entities';
+import type { ToolDefinition } from '@studnicky/dagonizer/adapter';
+import type { AbortableOptionsInterface } from '@studnicky/dagonizer/contracts';
+import { HttpTransport } from '@studnicky/dagonizer/tool';
+import type { Tool } from '@studnicky/dagonizer/tool';
+import type { Candidate } from '@studnicky/dagonizer-book-entities';
 
 
 import { OPENLIBRARY_ENDPOINT, narrowOpenLibraryResponse, OpenLibraryDocs } from './openLibraryTypes.js';

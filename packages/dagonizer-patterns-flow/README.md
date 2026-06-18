@@ -1,11 +1,11 @@
-# @noocodex/dagonizer-patterns-flow
+# @studnicky/dagonizer-patterns-flow
 
-Pure flow primitives for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Deterministic transforms on state: no LLM, no triple store, no HTTP. The shape-changing utilities every DAG eventually needs.
+Pure flow primitives for [@studnicky/dagonizer](https://npmjs.com/package/@studnicky/dagonizer). Deterministic transforms on state: no LLM, no triple store, no HTTP. The shape-changing utilities every DAG eventually needs.
 
 ## Install
 
 ```bash
-npm install @noocodex/dagonizer @noocodex/dagonizer-patterns-flow
+npm install @studnicky/dagonizer @studnicky/dagonizer-patterns-flow
 ```
 
 ## Taxonomy

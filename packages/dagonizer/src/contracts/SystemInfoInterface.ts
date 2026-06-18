@@ -2,9 +2,9 @@
  * SystemInfoInterface: host-environment probe for pool sizing recommendations.
  *
  * Adapter contract. Implementations are environment-specific:
- * - NodeSystemInfo (`@noocodex/dagonizer-executor-node`): uses
+ * - NodeSystemInfo (`@studnicky/dagonizer-executor-node`): uses
  *   `os.availableParallelism()` + `os.totalmem()`/`os.freemem()`.
- * - WebSystemInfo (`@noocodex/dagonizer-executor-web`): uses
+ * - WebSystemInfo (`@studnicky/dagonizer-executor-web`): uses
  *   `navigator.hardwareConcurrency`.
  *
  * The formula follows the quadrascope pattern:

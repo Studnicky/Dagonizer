@@ -10,9 +10,9 @@
 
 import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,
   ScalarNode,
-} from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { Embedder } from '@noocodex/dagonizer/adapter';
+} from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
+import type { Embedder } from '@studnicky/dagonizer/adapter';
 
 // ---------------------------------------------------------------------------
 // State

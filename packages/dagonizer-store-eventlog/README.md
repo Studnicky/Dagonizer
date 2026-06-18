@@ -1,6 +1,6 @@
-# @noocodex/dagonizer-store-eventlog
+# @studnicky/dagonizer-store-eventlog
 
-Append-only event-log `Store` implementation for [`@noocodex/dagonizer`](https://github.com/Studnicky/Dagonizer).
+Append-only event-log `Store` implementation for [`@studnicky/dagonizer`](https://github.com/Studnicky/Dagonizer).
 
 Every `set` appends a `{ kind: 'set' }` event; every `delete` appends a `{ kind: 'delete' }` tombstone. `get` returns the latest value for a key by scanning the log in reverse. `snapshot()` compacts the log to a last-write-wins map. `restore()` reseeds the log from snapshot entries. Optional file persistence via `node:fs/promises`; no external dependencies.
 
@@ -8,7 +8,7 @@ Every `set` appends a `{ kind: 'set' }` event; every `delete` appends a `{ kind:
 
 ```sh
 # within the Dagonizer workspace
-pnpm add @noocodex/dagonizer-store-eventlog
+pnpm add @studnicky/dagonizer-store-eventlog
 ```
 
 ## Usage
@@ -16,7 +16,7 @@ pnpm add @noocodex/dagonizer-store-eventlog
 ### In-memory mode
 
 ```ts
-import { EventLogStore } from '@noocodex/dagonizer-store-eventlog';
+import { EventLogStore } from '@studnicky/dagonizer-store-eventlog';
 
 const store = new EventLogStore();
 
@@ -39,7 +39,7 @@ console.log(store.log());
 ### File-backed mode
 
 ```ts
-import { EventLogStore } from '@noocodex/dagonizer-store-eventlog';
+import { EventLogStore } from '@studnicky/dagonizer-store-eventlog';
 
 // Write session.
 const store = new EventLogStore({ filePath: '/tmp/my-dag.log' });

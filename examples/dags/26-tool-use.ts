@@ -10,11 +10,11 @@
 
 import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,
   ScalarNode,
-} from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { LlmAdapter, ToolCall, ToolDefinition } from '@noocodex/dagonizer/adapter';
-import { ChatRequestBuilder, ToolCallCodec } from '@noocodex/dagonizer/adapter';
-import type { Tool } from '@noocodex/dagonizer/tool';
+} from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
+import type { LlmAdapter, ToolCall, ToolDefinition } from '@studnicky/dagonizer/adapter';
+import { ChatRequestBuilder, ToolCallCodec } from '@studnicky/dagonizer/adapter';
+import type { Tool } from '@studnicky/dagonizer/tool';
 
 // ---------------------------------------------------------------------------
 // Tool: calculator — adds two numbers

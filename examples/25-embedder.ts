@@ -22,12 +22,12 @@
  * Run: npx tsx examples/25-embedder.ts
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
 import {
   EmbedderRegistry,
   EmbedderCascade,
-} from '@noocodex/dagonizer/adapter';
-import { OllamaEmbedder } from '@noocodex/dagonizer-embedder-ollama';
+} from '@studnicky/dagonizer/adapter';
+import { OllamaEmbedder } from '@studnicky/dagonizer-embedder-ollama';
 
 import { EmbedderState, EmbedNode, ReportNode, dag, VectorSimilarity } from './dags/25-embedder.js';
 

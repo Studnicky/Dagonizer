@@ -21,11 +21,11 @@
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 
-import type { NodeStateInterface } from '@noocodex/dagonizer';
-import { DagContainerBase, DAG_CONTAINER_WORKER_DIED } from '@noocodex/dagonizer/container';
-import type { PoolEntry } from '@noocodex/dagonizer/container';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
-import { RecommendedWorkerCountConfigDefault } from '@noocodex/dagonizer/entities';
+import type { NodeStateInterface } from '@studnicky/dagonizer';
+import { DagContainerBase, DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
+import type { PoolEntry } from '@studnicky/dagonizer/container';
+import type { JsonObject } from '@studnicky/dagonizer/entities';
+import { RecommendedWorkerCountConfigDefault } from '@studnicky/dagonizer/entities';
 
 import { NdjsonChannel } from './NdjsonChannel.js';
 import { NodeSystemInfo } from './NodeSystemInfo.js';

@@ -1,17 +1,17 @@
-# @noocodex/dagonizer-tool-wikipedia
+# @studnicky/dagonizer-tool-wikipedia
 
-Wikipedia page summary tool for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Returns enrichment context for any topic, person, place, or book the agent needs background on.
+Wikipedia page summary tool for [@studnicky/dagonizer](https://npmjs.com/package/@studnicky/dagonizer). Returns enrichment context for any topic, person, place, or book the agent needs background on.
 
 ## Install
 
 ```bash
-npm install @noocodex/dagonizer @noocodex/dagonizer-tool-wikipedia
+npm install @studnicky/dagonizer @studnicky/dagonizer-tool-wikipedia
 ```
 
 ## Usage
 
 ```ts
-import { WikipediaSummaryTool } from '@noocodex/dagonizer-tool-wikipedia';
+import { WikipediaSummaryTool } from '@studnicky/dagonizer-tool-wikipedia';
 
 const results = await WikipediaSummaryTool.execute({ query: 'House of Leaves' });
 // Returns a Candidate-shaped record with summary, subjects, year, etc.

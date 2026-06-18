@@ -14,10 +14,10 @@
  * All properties initialised in constructor for V8 hidden-class stability.
  */
 
-import type { MessageChannelInterface } from '@noocodex/dagonizer/contracts';
-import { BridgeMessageBuilder } from '@noocodex/dagonizer/entities';
-import type { BridgeMessage } from '@noocodex/dagonizer/entities';
-import { Validator } from '@noocodex/dagonizer/validation';
+import type { MessageChannelInterface } from '@studnicky/dagonizer/contracts';
+import { BridgeMessageBuilder } from '@studnicky/dagonizer/entities';
+import type { BridgeMessage } from '@studnicky/dagonizer/entities';
+import { Validator } from '@studnicky/dagonizer/validation';
 
 // ---------------------------------------------------------------------------
 // IpcEndpoint: structural shape injectable from parent or child side

@@ -56,8 +56,8 @@ import {
   CONFORMANCE_DAG,
 } from './ConformanceRegistry.js';
 
-import type { ScatterProgress } from '@noocodex/dagonizer';
-import { SCATTER_PROGRESS_KEY } from '@noocodex/dagonizer';
+import type { ScatterProgress } from '@studnicky/dagonizer';
+import { SCATTER_PROGRESS_KEY } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -287,7 +287,7 @@ export class DagConformance {
         const nodeStartPaths: string[][] = [];
 
         // Import Dagonizer as a value (dist/ resolves via package exports).
-        const { Dagonizer } = await import('@noocodex/dagonizer');
+        const { Dagonizer } = await import('@studnicky/dagonizer');
 
         class RecordingDispatcher extends (Dagonizer as typeof Dagonizer<NodeStateInterface, undefined>) {
           protected override onNodeStart(nodeName: string, _state: NodeStateInterface, placementPath: readonly string[]): void {

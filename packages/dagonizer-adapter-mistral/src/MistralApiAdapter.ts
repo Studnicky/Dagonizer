@@ -5,8 +5,8 @@
  * original OpenAI spec, not the newer `max_completion_tokens`).
  */
 
-import { OpenAiCompatibleAdapter } from '@noocodex/dagonizer/adapter';
-import type { OpenAiCompatibleAdapterOptions } from '@noocodex/dagonizer/adapter';
+import { OpenAiCompatibleAdapter } from '@studnicky/dagonizer/adapter';
+import type { OpenAiCompatibleAdapterOptions } from '@studnicky/dagonizer/adapter';
 
 export class MistralApiAdapter extends OpenAiCompatibleAdapter {
   constructor(apiKey: string, options: OpenAiCompatibleAdapterOptions = {}) {

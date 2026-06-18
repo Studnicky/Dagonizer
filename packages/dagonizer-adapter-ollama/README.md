@@ -1,13 +1,13 @@
-# @noocodex/dagonizer-adapter-ollama
+# @studnicky/dagonizer-adapter-ollama
 
 > **Beta:** not yet published to npm. Ships in v0.10.0 as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format compatibility is verified via intercepted-fetch smoke tests. Expect minor adjustments before 1.0.
 
-Local-first Ollama adapter for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Targets the [Ollama daemon](https://ollama.com/) on the loopback by default; any model pulled to the host is selectable by name.
+Local-first Ollama adapter for [@studnicky/dagonizer](https://npmjs.com/package/@studnicky/dagonizer). Targets the [Ollama daemon](https://ollama.com/) on the loopback by default; any model pulled to the host is selectable by name.
 
 ## Install
 
 ```bash
-npm install @noocodex/dagonizer @noocodex/dagonizer-adapter-ollama
+npm install @studnicky/dagonizer @studnicky/dagonizer-adapter-ollama
 ```
 
 Pull a model on the host:
@@ -20,8 +20,8 @@ ollama pull llama3.2
 ## Usage
 
 ```ts
-import { OllamaApiAdapter } from '@noocodex/dagonizer-adapter-ollama';
-import { ChatRequestBuilder } from '@noocodex/dagonizer/adapter';
+import { OllamaApiAdapter } from '@studnicky/dagonizer-adapter-ollama';
+import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
 
 const llm = new OllamaApiAdapter({ model: 'llama3.2:latest' });
 

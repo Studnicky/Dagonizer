@@ -16,7 +16,7 @@
  * Run: npx tsx examples/04-scatter.ts
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
 import { ScrapeState, ProbeNode, dag } from './dags/04-scatter.js';
 
 // ---------------------------------------------------------------------------

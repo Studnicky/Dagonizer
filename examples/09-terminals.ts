@@ -25,7 +25,7 @@
  * Run: npx tsx examples/09-terminals.ts
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
 import {
   GateState,
   StepANode,

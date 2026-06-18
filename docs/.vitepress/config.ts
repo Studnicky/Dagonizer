@@ -218,7 +218,7 @@ const SITE_KEYWORDS = 'dagonizer, dag, workflow, orchestration, dispatcher, node
 const SITE_AUTHOR_NAME = 'Andrew Studnicky';
 const SITE_AUTHOR_URL = 'https://github.com/Studnicky';
 const SITE_REPO       = 'https://github.com/Studnicky/Dagonizer';
-const SITE_NPM        = 'https://www.npmjs.com/package/@noocodex/dagonizer';
+const SITE_NPM        = 'https://www.npmjs.com/package/@studnicky/dagonizer';
 const SITE_LOGO       = `${SITE_URL}dagonizer-icon.svg`;
 
 export default withMermaid(defineConfig({
@@ -572,7 +572,7 @@ export default withMermaid(defineConfig({
     // untouched. A type error in a tagged block fails the docs build, so
     // reference snippets cannot drift from the shipped types. Compiler
     // options mirror docs/tsconfig.json so the package's subpath exports
-    // (`@noocodex/dagonizer/derive`, `/contracts`, …) resolve.
+    // (`@studnicky/dagonizer/derive`, `/contracts`, …) resolve.
     codeTransformers: [
       transformerTwoslash({
         twoslashOptions: {
@@ -709,7 +709,7 @@ export default withMermaid(defineConfig({
     // Aliases so the in-browser runners can import the canonical
     // domain files straight from `examples/` and the
     // renderer source from `src/viz/`. Browser bundles use these; the
-    // package's own consumers see the published `@noocodex/dagonizer/*`.
+    // package's own consumers see the published `@studnicky/dagonizer/*`.
     resolve: {
       alias: {
         '@archivist':    ARCHIVIST,

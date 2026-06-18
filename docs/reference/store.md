@@ -13,7 +13,7 @@ seeAlso:
 
 # Store
 
-`@noocodex/dagonizer/store`
+`@studnicky/dagonizer/store`
 
 The store module provides the shared key-value store contract and its
 implementations. Stores live in the services bag and survive scatter clone
@@ -21,22 +21,22 @@ boundaries within a run. Checkpoint integration snapshots named stores
 alongside parent state for deterministic resume.
 
 ```ts twoslash
-import { BaseStore, MemoryStore, StoreError } from '@noocodex/dagonizer/store';
-import type { Snapshottable, Store, StoreSnapshot, StoreSnapshotEntry } from '@noocodex/dagonizer/contracts';
+import { BaseStore, MemoryStore, StoreError } from '@studnicky/dagonizer/store';
+import type { Snapshottable, Store, StoreSnapshot, StoreSnapshotEntry } from '@studnicky/dagonizer/contracts';
 ```
 
 ---
 
 ## Interface: `Snapshottable`
 
-`@noocodex/dagonizer/contracts`
+`@studnicky/dagonizer/contracts`
 
 The capability checkpointing depends on: a named container that serializes
 itself to a `StoreSnapshot` and rehydrates from one. It declares only two
 methods.
 
 ```ts twoslash
-import type { StoreSnapshot } from '@noocodex/dagonizer/contracts';
+import type { StoreSnapshot } from '@studnicky/dagonizer/contracts';
 // ---cut---
 interface Snapshottable {
   snapshot(): Promise<StoreSnapshot>;
@@ -61,7 +61,7 @@ extends Snapshottable`, so every `Store` is also `Snapshottable`. The
 
 ## Interface: `Store`
 
-`@noocodex/dagonizer/contracts`
+`@studnicky/dagonizer/contracts`
 
 Shared key-value store contract, extending `Snapshottable`. Every method returns
 a `Promise`. There is no sync variant; always `await` store calls.
@@ -71,7 +71,7 @@ class-level value generic. A `Store` instance can hold heterogeneous values
 under different keys; type narrowing happens at the call site.
 
 ```ts twoslash
-import type { JsonValue, StoreSnapshot, StoreSnapshotEntry } from '@noocodex/dagonizer/entities';
+import type { JsonValue, StoreSnapshot, StoreSnapshotEntry } from '@studnicky/dagonizer/entities';
 // ---cut---
 interface Snapshottable {
   snapshot(): Promise<StoreSnapshot>;
@@ -108,13 +108,13 @@ Implementations are responsible for delivering this. See the `update` note on
 
 ## Interface: `StoreSnapshot`
 
-`@noocodex/dagonizer/contracts`
+`@studnicky/dagonizer/contracts`
 
 Versioned snapshot envelope returned by `Snapshottable.snapshot()` and consumed
 by `Snapshottable.restore()`.
 
 ```ts twoslash
-import type { StoreSnapshotEntry } from '@noocodex/dagonizer/contracts';
+import type { StoreSnapshotEntry } from '@studnicky/dagonizer/contracts';
 // ---cut---
 interface StoreSnapshot {
   readonly version: number;
@@ -133,12 +133,12 @@ interface StoreSnapshot {
 
 ## Interface: `StoreSnapshotEntry`
 
-`@noocodex/dagonizer/contracts`
+`@studnicky/dagonizer/contracts`
 
 A single entry in a `StoreSnapshot`.
 
 ```ts twoslash
-import type { JsonValue } from '@noocodex/dagonizer/entities';
+import type { JsonValue } from '@studnicky/dagonizer/entities';
 // ---cut---
 interface StoreSnapshotEntry {
   readonly key:   string;
@@ -155,15 +155,15 @@ capture time.
 
 ## Class: `BaseStore`
 
-`@noocodex/dagonizer/store`
+`@studnicky/dagonizer/store`
 
 Abstract base class every concrete store extends. Owns the snapshot envelope,
 the `update` default, optional namespace prefix, and lifecycle no-ops.
 Concrete stores implement the `protected abstract` hooks listed below.
 
 ```ts twoslash
-import { BaseStore } from '@noocodex/dagonizer/store';
-import type { BaseStoreOptions } from '@noocodex/dagonizer/store';
+import { BaseStore } from '@studnicky/dagonizer/store';
+import type { BaseStoreOptions } from '@studnicky/dagonizer/store';
 // ---cut---
 // BaseStore is an abstract class — extend it:
 abstract class MyStore extends BaseStore {
@@ -226,12 +226,12 @@ arguments receive the qualified key (namespace prefix already applied).
 
 ## Class: `MemoryStore`
 
-`@noocodex/dagonizer/store`
+`@studnicky/dagonizer/store`
 
 Reference implementation of `BaseStore` backed by a `Map`.
 
 ```ts twoslash
-import { MemoryStore } from '@noocodex/dagonizer/store';
+import { MemoryStore } from '@studnicky/dagonizer/store';
 
 const store = new MemoryStore();
 await store.set<string>('greeting', 'hello');
@@ -241,8 +241,8 @@ const v = await store.get<string>('greeting'); // 'hello'
 ### Constructor
 
 ```ts twoslash
-import { MemoryStore } from '@noocodex/dagonizer/store';
-import type { BaseStoreOptions } from '@noocodex/dagonizer/store';
+import { MemoryStore } from '@studnicky/dagonizer/store';
+import type { BaseStoreOptions } from '@studnicky/dagonizer/store';
 // ---cut---
 const opts: BaseStoreOptions = { namespace: 'my-ns' };
 const store = new MemoryStore(opts);
@@ -265,7 +265,7 @@ microtask can interleave between the read and the write; the
 read-modify-write is atomic within the store instance.
 
 ```ts twoslash
-import { MemoryStore } from '@noocodex/dagonizer/store';
+import { MemoryStore } from '@studnicky/dagonizer/store';
 const store = new MemoryStore();
 // ---cut---
 // Concurrent updates produce no lost writes.
@@ -280,14 +280,14 @@ const v = await store.get<number>('counter'); // → 2
 
 ## Class: `StoreError`
 
-`@noocodex/dagonizer/store`
+`@studnicky/dagonizer/store`
 
 Error class for store operations. Carries a structured `classification`
 object so callers discriminate by `reason` without `instanceof` chains.
 
 ```ts twoslash
-import { StoreError, MemoryStore } from '@noocodex/dagonizer/store';
-import type { StoreSnapshot } from '@noocodex/dagonizer/contracts';
+import { StoreError, MemoryStore } from '@studnicky/dagonizer/store';
+import type { StoreSnapshot } from '@studnicky/dagonizer/contracts';
 declare const store: MemoryStore;
 declare const incompatibleSnapshot: StoreSnapshot;
 // ---cut---
@@ -354,7 +354,7 @@ and `UNREACHABLE` are for `RemoteStore` implementations.
 
 ## Interface: `RemoteStore`
 
-`@noocodex/dagonizer/contracts`
+`@studnicky/dagonizer/contracts`
 
 Extension of `Store` for distributed or network-backed implementations.
 Plugins that talk over HTTP, gRPC, or WebSocket, or that replicate state
@@ -362,11 +362,11 @@ across processes, implement `RemoteStore` rather than `Store` directly.
 Single-process and single-node-durable stores implement `Store` directly.
 
 ```ts twoslash
-import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '@noocodex/dagonizer/contracts';
+import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '@studnicky/dagonizer/contracts';
 ```
 
 ```ts twoslash
-import type { Store, RemoteStoreEndpoint, RemoteStoreLease } from '@noocodex/dagonizer/contracts';
+import type { Store, RemoteStoreEndpoint, RemoteStoreLease } from '@studnicky/dagonizer/contracts';
 // ---cut---
 interface RemoteStore extends Store {
   readonly endpoint: RemoteStoreEndpoint;
@@ -438,7 +438,7 @@ Extend `BaseStore` and implement the three additional methods plus the
 
 ## Class: `TypedStore<Schema>`
 
-`@noocodex/dagonizer/store`
+`@studnicky/dagonizer/store`
 
 Schema-narrowed wrapper over any `Store`. Constrains keys to the declared
 `Schema` and infers the value type from `Schema[K]`. Callers never specify
@@ -455,8 +455,8 @@ wider, heterogeneous contract.
 ### Constructor
 
 ```ts twoslash
-import { TypedStore, MemoryStore } from '@noocodex/dagonizer/store';
-import type { JsonValue } from '@noocodex/dagonizer/entities';
+import { TypedStore, MemoryStore } from '@studnicky/dagonizer/store';
+import type { JsonValue } from '@studnicky/dagonizer/entities';
 // ---cut---
 interface MySchema { count: number; label: string; }
 const store = new TypedStore<MySchema>(new MemoryStore());

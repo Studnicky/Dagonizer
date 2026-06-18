@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import type { Binding, SlotPattern, TripleStore } from '@noocodex/dagonizer/patterns';
+import type { Binding, SlotPattern, TripleStore } from '@studnicky/dagonizer/patterns';
 
 import { RecallContextNode } from '../src/index.js';
 

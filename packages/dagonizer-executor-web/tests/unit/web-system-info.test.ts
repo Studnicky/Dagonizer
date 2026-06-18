@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { RecommendedWorkerCountConfig } from '@noocodex/dagonizer/entities';
+import type { RecommendedWorkerCountConfig } from '@studnicky/dagonizer/entities';
 
 import { WebSystemInfo } from '../../src/WebSystemInfo.js';
 

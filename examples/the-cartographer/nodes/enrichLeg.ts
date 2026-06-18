@@ -15,7 +15,7 @@ import { ShippingCalculator } from '../services.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region enrich-leg-node
 export class EnrichLegNode extends ScalarNode<CartographerState, 'leg-measured', CartographerServices> {

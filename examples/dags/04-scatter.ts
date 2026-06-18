@@ -11,12 +11,12 @@ import {
   NodeOutputBuilder,
   NodeStateBase,
   ScalarNode,
-} from '@noocodex/dagonizer';
-import type { Batch, GatherExecution, GatherRecord, NodeStateInterface } from '@noocodex/dagonizer';
-import type { GatherConfig } from '@noocodex/dagonizer/entities';
-import type { DAG } from '@noocodex/dagonizer';
-import type { StateAccessor } from '@noocodex/dagonizer/contracts';
-import { GatherStrategyName } from '@noocodex/dagonizer/constants';
+} from '@studnicky/dagonizer';
+import type { Batch, GatherExecution, GatherRecord, NodeStateInterface } from '@studnicky/dagonizer';
+import type { GatherConfig } from '@studnicky/dagonizer/entities';
+import type { DAG } from '@studnicky/dagonizer';
+import type { StateAccessor } from '@studnicky/dagonizer/contracts';
+import { GatherStrategyName } from '@studnicky/dagonizer/constants';
 
 // #region state
 export class ScrapeState extends NodeStateBase {

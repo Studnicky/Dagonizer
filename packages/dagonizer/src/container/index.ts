@@ -1,5 +1,5 @@
 /**
- * Container subpath barrel (`@noocodex/dagonizer/container`).
+ * Container subpath barrel (`@studnicky/dagonizer/container`).
  *
  * Exports the full container surface: pool-lifecycle base, channel request
  * correlator, isolate-side host runtime, task and outcome value types,

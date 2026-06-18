@@ -1,11 +1,11 @@
-# @noocodex/dagonizer-patterns-rag
+# @studnicky/dagonizer-patterns-rag
 
-LLM-driven node pattern bases for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Each pattern is an abstract class consumers extend to inject domain-specific prompts, state shape, and routing.
+LLM-driven node pattern bases for [@studnicky/dagonizer](https://npmjs.com/package/@studnicky/dagonizer). Each pattern is an abstract class consumers extend to inject domain-specific prompts, state shape, and routing.
 
 ## Install
 
 ```bash
-npm install @noocodex/dagonizer @noocodex/dagonizer-patterns-rag
+npm install @studnicky/dagonizer @studnicky/dagonizer-patterns-rag
 ```
 
 ## Taxonomy
@@ -30,14 +30,14 @@ MonadicNode<TState, TOutput, TServices>     (root: main package's ./patterns)
 Every pattern in this package expects `services.llm: LlmClient` (any `LlmAdapter` satisfies it).
 
 ```ts
-import type { RagServices } from '@noocodex/dagonizer-patterns-rag';
+import type { RagServices } from '@studnicky/dagonizer-patterns-rag';
 ```
 
 ## Worked example: extending ClassifyIntentNode
 
 ```ts
-import { ClassifyIntentNode } from '@noocodex/dagonizer-patterns-rag';
-import { NodeStateBase } from '@noocodex/dagonizer';
+import { ClassifyIntentNode } from '@studnicky/dagonizer-patterns-rag';
+import { NodeStateBase } from '@studnicky/dagonizer';
 
 type Intent = 'search' | 'describe' | 'recommend' | 'off-topic';
 

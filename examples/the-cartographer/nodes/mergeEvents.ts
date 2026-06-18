@@ -17,7 +17,7 @@ import type { CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region merge-events-node
 export class MergeEventsNode extends ScalarNode<CartographerState, 'merged', CartographerServices> {

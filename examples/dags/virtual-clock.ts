@@ -7,6 +7,6 @@
  */
 
 // #region virtual-time
-export { BackoffStrategy, Clock, RetryPolicy, Scheduler } from '@noocodex/dagonizer/runtime';
-export { VirtualClockProvider, VirtualScheduler } from '@noocodex/dagonizer/testing';
+export { BackoffStrategy, Clock, RetryPolicy, Scheduler } from '@studnicky/dagonizer/runtime';
+export { VirtualClockProvider, VirtualScheduler } from '@studnicky/dagonizer/testing';
 // #endregion virtual-time

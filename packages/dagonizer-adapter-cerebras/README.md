@@ -1,20 +1,20 @@
-# @noocodex/dagonizer-adapter-cerebras
+# @studnicky/dagonizer-adapter-cerebras
 
 > **Beta:** not yet published to npm. Ships in v0.10.0 as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format compatibility is verified via intercepted-fetch smoke tests. Expect minor adjustments before 1.0.
 
-Cerebras REST adapter for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Defaults to `gpt-oss-120b` on Cerebras's Wafer-Scale Engine inference hardware.
+Cerebras REST adapter for [@studnicky/dagonizer](https://npmjs.com/package/@studnicky/dagonizer). Defaults to `gpt-oss-120b` on Cerebras's Wafer-Scale Engine inference hardware.
 
 ## Install
 
 ```bash
-npm install @noocodex/dagonizer @noocodex/dagonizer-adapter-cerebras
+npm install @studnicky/dagonizer @studnicky/dagonizer-adapter-cerebras
 ```
 
 ## Usage
 
 ```ts
-import { CerebrasApiAdapter } from '@noocodex/dagonizer-adapter-cerebras';
-import { ChatRequestBuilder } from '@noocodex/dagonizer/adapter';
+import { CerebrasApiAdapter } from '@studnicky/dagonizer-adapter-cerebras';
+import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
 
 const llm = new CerebrasApiAdapter({ apiKey: process.env.CEREBRAS_API_KEY! });
 

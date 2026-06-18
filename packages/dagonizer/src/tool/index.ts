@@ -1,5 +1,5 @@
 /**
- * @noocodex/dagonizer/tool: public tool contract surface.
+ * @studnicky/dagonizer/tool: public tool contract surface.
  *
  * Ships:
  *   - `Tool<TInput, TOutput>`: canonical executable-tool interface

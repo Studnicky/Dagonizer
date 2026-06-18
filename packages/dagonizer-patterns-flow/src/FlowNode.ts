@@ -6,8 +6,8 @@
  * extract a field, respond. No LLM, no triple store, no HTTP.
  */
 
-import type { NodeStateInterface } from '@noocodex/dagonizer';
-import { ScalarNode } from '@noocodex/dagonizer';
+import type { NodeStateInterface } from '@studnicky/dagonizer';
+import { ScalarNode } from '@studnicky/dagonizer';
 
 export abstract class FlowNode<
   TState extends NodeStateInterface,

@@ -17,8 +17,8 @@
  *                description of a previous read instead.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
-import type { NodeContextInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
+import type { NodeContextInterface } from '@studnicky/dagonizer';
 
 import type { Binding } from '../memory/MemoryStore.ts';
 import { MemoryStore, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';

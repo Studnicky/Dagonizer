@@ -55,7 +55,7 @@ features:
 
 ## ⦿ One engine, two applications
 
-`@noocodex/dagonizer` is a single type-safe, resumable, abortable DAG/workflow engine. Agentic LLM orchestration and data-orchestration / ETL run on the identical core — only the node domain differs. Two runnable in-browser demos prove it: The Archivist (LLM agents, bibliographic assistant) and The Cartographer (streaming multi-format satellite tracking feeds, geo-resolution, GDPR redaction, continent-level insights — no LLM).
+`@studnicky/dagonizer` is a single type-safe, resumable, abortable DAG/workflow engine. Agentic LLM orchestration and data-orchestration / ETL run on the identical core — only the node domain differs. Two runnable in-browser demos prove it: The Archivist (LLM agents, bibliographic assistant) and The Cartographer (streaming multi-format satellite tracking feeds, geo-resolution, GDPR redaction, continent-level insights — no LLM).
 
 ## ⦿ What it is
 

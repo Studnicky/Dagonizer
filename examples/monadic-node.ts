@@ -16,8 +16,8 @@
  * Run: npx tsx examples/monadic-node.ts
  */
 
-import { DAG_CONTEXT, Dagonizer } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
+import { DAG_CONTEXT, Dagonizer } from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
 import { CatalogueState, SearchCatalogueNode } from './dags/monadic-node.js';
 
 // ── Build a minimal DAG: search-catalogue → end ─────────────────────────────

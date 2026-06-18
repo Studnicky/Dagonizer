@@ -16,7 +16,7 @@ import type { CartographerServices } from '../../CartographerServices.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region route-modalities-node
 export class RouteModalitiesNode extends ScalarNode<CartographerState, 'ip' | 'gps-only', CartographerServices> {

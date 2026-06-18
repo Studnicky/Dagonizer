@@ -1,4 +1,4 @@
-# @noocodex/dagonizer-executor-node
+# @studnicky/dagonizer-executor-node
 
 ## 0.21.0
 
@@ -6,21 +6,21 @@
 
 - Updated dependencies [0296d9d]
 - Updated dependencies [0296d9d]
-  - @noocodex/dagonizer@0.21.0
+  - @studnicky/dagonizer@0.21.0
 
 ## 0.20.0
 
 ### Patch Changes
 
 - Updated dependencies [dcbc4b5]
-  - @noocodex/dagonizer@0.20.0
+  - @studnicky/dagonizer@0.20.0
 
 ## 0.19.0
 
 ### Patch Changes
 
 - Updated dependencies [d5a95ea]
-  - @noocodex/dagonizer@0.19.0
+  - @studnicky/dagonizer@0.19.0
 
 ## [Unreleased]
 

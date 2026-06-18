@@ -13,8 +13,8 @@
  */
 
 // #region mermaid-render
-import { MermaidRenderer } from '@noocodex/dagonizer/viz';
-import { Dagonizer }       from '@noocodex/dagonizer';
+import { MermaidRenderer } from '@studnicky/dagonizer/viz';
+import { Dagonizer }       from '@studnicky/dagonizer';
 import { archivistDAG }    from '../dag.ts';
 
 const flowchartSource = MermaidRenderer.render(archivistDAG);

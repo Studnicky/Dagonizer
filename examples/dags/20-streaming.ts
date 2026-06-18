@@ -9,7 +9,7 @@ import {
   NodeOutputBuilder,
   NodeStateBase,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State

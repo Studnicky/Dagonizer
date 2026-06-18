@@ -132,7 +132,7 @@ The full signature is shown in the scatter placement example:
 | `gather` | `GatherConfig` | **Required.** How produced clone state merges back into the parent. Use `{ strategy: 'discard' }` for side-effect-only fan-outs. |
 | `reducer?` | `string` | Outcome reducer name. Defaults to `'aggregate'`. Built-in reducers: `'aggregate'`, `'terminal'`, `'all-success'`, `'any-success'`. Custom reducers registered via `OutcomeReducers.register` are referenceable by name. |
 
-`Path<T>` enumerates valid dotted-path strings over a state shape recursively. For example `Path<{ user: { name: string; age: number } }>` resolves to `'user' | 'user.name' | 'user.age'`. Arrays contribute `${number}` and `${number}.${ElementPath}` paths. The depth cap is 8 levels; deeper nesting falls back to `string`. The type is exported from the `@noocodex/dagonizer/builder` subpath.
+`Path<T>` enumerates valid dotted-path strings over a state shape recursively. For example `Path<{ user: { name: string; age: number } }>` resolves to `'user' | 'user.name' | 'user.age'`. Arrays contribute `${number}` and `${number}.${ElementPath}` paths. The depth cap is 8 levels; deeper nesting falls back to `string`. The type is exported from the `@studnicky/dagonizer/builder` subpath.
 
 The `inputs` option in a scatter call uses `Path<TState>` to constrain parent dotted paths at compile time:
 

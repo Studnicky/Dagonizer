@@ -17,7 +17,7 @@ import type { CartographerServices } from '../../CartographerServices.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region reverse-geocode-node
 export class ReverseGeocodeNode extends ScalarNode<CartographerState, 'geocoded', CartographerServices> {

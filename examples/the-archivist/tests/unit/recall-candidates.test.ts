@@ -25,7 +25,7 @@ import { ArchivistState } from '../../ArchivistState.ts';
 import { recallCandidates } from '../../nodes/recallCandidates.ts';
 import { GRAPH_MEMORY, MemoryStore } from '../../memory/MemoryStore.ts';
 
-import type { Embedder } from '@noocodex/dagonizer/contracts';
+import type { Embedder } from '@studnicky/dagonizer/contracts';
 
 // ── Deterministic embedder ───────────────────────────────────────────────────
 

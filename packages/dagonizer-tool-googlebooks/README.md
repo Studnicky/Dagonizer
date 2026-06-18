@@ -1,17 +1,17 @@
-# @noocodex/dagonizer-tool-googlebooks
+# @studnicky/dagonizer-tool-googlebooks
 
-Google Books v1 volume search tool for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Adds rating signals (`notes.rating`, `notes.ratingsCount`) to the canonical `Candidate` shape so review-weighted ranking has real data to work with.
+Google Books v1 volume search tool for [@studnicky/dagonizer](https://npmjs.com/package/@studnicky/dagonizer). Adds rating signals (`notes.rating`, `notes.ratingsCount`) to the canonical `Candidate` shape so review-weighted ranking has real data to work with.
 
 ## Install
 
 ```bash
-npm install @noocodex/dagonizer @noocodex/dagonizer-tool-googlebooks
+npm install @studnicky/dagonizer @studnicky/dagonizer-tool-googlebooks
 ```
 
 ## Usage
 
 ```ts
-import { GoogleBooksTool } from '@noocodex/dagonizer-tool-googlebooks';
+import { GoogleBooksTool } from '@studnicky/dagonizer-tool-googlebooks';
 
 const candidates = await GoogleBooksTool.execute({ query: 'Murakami', limit: 10 });
 console.log(candidates[0].notes?.rating);     // 4.5
@@ -33,7 +33,7 @@ No API key required for read-only volume search (Google's free tier covers anony
 
 ## Composition with OpenLibrary
 
-`GoogleBooksTool` outputs are mergeable with `@noocodex/dagonizer-tool-openlibrary` via `CanonicalId.dedupe`: both tools emit `Candidate` shapes with stable canonical ids, so cross-source duplicates collapse to a single richer record.
+`GoogleBooksTool` outputs are mergeable with `@studnicky/dagonizer-tool-openlibrary` via `CanonicalId.dedupe`: both tools emit `Candidate` shapes with stable canonical ids, so cross-source duplicates collapse to a single richer record.
 
 ## License
 

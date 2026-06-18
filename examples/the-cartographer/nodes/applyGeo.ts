@@ -15,7 +15,7 @@ import { GeoLookup } from '../services.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region apply-geo-node
 export class ApplyGeoNode extends ScalarNode<CartographerState, 'normalize', CartographerServices> {

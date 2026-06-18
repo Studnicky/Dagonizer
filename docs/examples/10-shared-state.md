@@ -16,8 +16,8 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { DAGBuilder, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import { DAGBuilder, NodeOutputBuilder, NodeStateBase } from '@studnicky/dagonizer';
+import type { NodeInterface } from '@studnicky/dagonizer/contracts';
 
 interface Services { log: { update: (k: string, fn: (c?: string) => string) => Promise<void> } }
 

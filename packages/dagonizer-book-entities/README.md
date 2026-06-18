@@ -1,11 +1,11 @@
-# @noocodex/dagonizer-book-entities
+# @studnicky/dagonizer-book-entities
 
-Shared book-domain entity types + canonical-id derivation for the `@noocodex/dagonizer-tool-*` book search plugins. Pulled out of OpenLibrary in v0.10.0 so the three book-search tools (`-openlibrary`, `-googlebooks`, `-wikipedia`) share one Candidate shape and one dedupe utility.
+Shared book-domain entity types + canonical-id derivation for the `@studnicky/dagonizer-tool-*` book search plugins. Pulled out of OpenLibrary in v0.10.0 so the three book-search tools (`-openlibrary`, `-googlebooks`, `-wikipedia`) share one Candidate shape and one dedupe utility.
 
 ## Install
 
 ```bash
-npm install @noocodex/dagonizer-book-entities
+npm install @studnicky/dagonizer-book-entities
 ```
 
 You usually don't depend on this package directly; the book-search tool packages re-export the types and `CanonicalId` for ergonomic single-package imports.
@@ -22,7 +22,7 @@ You usually don't depend on this package directly; the book-search tool packages
 ## CanonicalId
 
 ```ts
-import { CanonicalId } from '@noocodex/dagonizer-book-entities';
+import { CanonicalId } from '@studnicky/dagonizer-book-entities';
 
 CanonicalId.fromIsbns(['1234567890', '9781234567897']);
 // → '9781234567897' (ISBN-13 wins)

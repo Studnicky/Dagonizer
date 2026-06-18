@@ -9,8 +9,8 @@ import {
   NodeOutputBuilder,
   NodeStateBase,
   ScalarNode,
-} from '@noocodex/dagonizer';
-import { DAGDocument } from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
+import { DAGDocument } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Node
@@ -30,7 +30,7 @@ export class EchoNode extends ScalarNode<NodeStateBase, 'success'> {
 // Canonical JSON-LD DAG as a JSON string (the wire format).
 //
 // Note the required JSON-LD fields:
-//   '@context': the DAG_CONTEXT constant (imported from '@noocodex/dagonizer')
+//   '@context': the DAG_CONTEXT constant (imported from '@studnicky/dagonizer')
 //   '@id':      a URN uniquely identifying this DAG document
 //   '@type':    must be the string literal 'DAG'
 //

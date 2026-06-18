@@ -1,5 +1,5 @@
 /**
- * @noocodex/dagonizer/adapter: public adapter contract surface.
+ * @studnicky/dagonizer/adapter: public adapter contract surface.
  *
  * Every LLM transport plugin in the ecosystem (Gemini API, Groq, Mistral,
  * Cerebras, OpenRouter, …) implements `LlmAdapter` and typically extends

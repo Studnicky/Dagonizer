@@ -23,8 +23,8 @@ import {
   NodeOutputBuilder,
   NodeStateBase,
   ScalarNode,
-} from '@noocodex/dagonizer';
-import { DAGDocument } from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
+import { DAGDocument } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Node: a minimal transform node for the demo DAG

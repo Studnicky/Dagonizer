@@ -9,9 +9,9 @@ import {
   NodeOutputBuilder,
   NodeStateBase,
   ScalarNode,
-} from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { NodeContextInterface } from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
+import type { NodeContextInterface } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Node: iterates a list while checking context.signal.aborted between items

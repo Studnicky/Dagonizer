@@ -15,12 +15,12 @@
 
 import { strict as assert } from 'node:assert';
 
-import { CerebrasApiAdapter }  from '@noocodex/dagonizer-adapter-cerebras';
-import { GroqApiAdapter }      from '@noocodex/dagonizer-adapter-groq';
-import { MistralApiAdapter }   from '@noocodex/dagonizer-adapter-mistral';
-import { OpenRouterApiAdapter } from '@noocodex/dagonizer-adapter-openrouter';
-import { ChatRequestBuilder }  from '@noocodex/dagonizer/adapter';
-import type { ChatRequest }    from '@noocodex/dagonizer/adapter';
+import { CerebrasApiAdapter }  from '@studnicky/dagonizer-adapter-cerebras';
+import { GroqApiAdapter }      from '@studnicky/dagonizer-adapter-groq';
+import { MistralApiAdapter }   from '@studnicky/dagonizer-adapter-mistral';
+import { OpenRouterApiAdapter } from '@studnicky/dagonizer-adapter-openrouter';
+import { ChatRequestBuilder }  from '@studnicky/dagonizer/adapter';
+import type { ChatRequest }    from '@studnicky/dagonizer/adapter';
 
 interface CapturedRequest {
   readonly url: string;

@@ -14,7 +14,7 @@ import type { CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region parse-variant-node
 export class ParseVariantNode extends ScalarNode<CartographerState, 'parsed' | 'invalid', CartographerServices> {
