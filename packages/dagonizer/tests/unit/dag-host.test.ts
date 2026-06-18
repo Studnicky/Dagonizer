@@ -13,7 +13,7 @@
  *   - init version mismatch: error with VERSION_MISMATCH code
  *   - init non-existent module: error with INIT_FAILED code
  *   - init invalid module (no createBundle): INVALID_REGISTRY_MODULE error
- *   - execute a dag: result with terminalOutput + stateSnapshot + intermediates
+ *   - execute a dag: result with items[0].terminalOutcome + items[0].snapshot + intermediates
  *   - execute forwards intermediate messages
  *   - abort fires the AbortController (sleeper terminates)
  *   - shutdown closes the channel
@@ -146,7 +146,7 @@ void describe('DagHost — init handshake', () => {
 // ---------------------------------------------------------------------------
 
 void describe('DagHost — execute returns result', () => {
-  void it('runs a dag and returns result with terminalOutput + stateSnapshot + intermediates', async () => {
+  void it('runs a dag and returns result with items[0].terminalOutcome + items[0].snapshot + intermediates', async () => {
     const { parentSide } = buildHostPair();
 
     const ready = await sendInit(parentSide);
@@ -165,7 +165,7 @@ void describe('DagHost — execute returns result', () => {
       'request': {
         'dagName': 'conformance-body-law2',   // mutator: sets value=99
         'placementPath': ['parent'],
-        'stateSnapshot': initialState.snapshot(),
+        'items': [{ 'id': 'req-exec-1', 'snapshot': initialState.snapshot() }],
         'timeoutMs': 5000,
         'correlationId': 'req-exec-1',
       },
@@ -175,8 +175,12 @@ void describe('DagHost — execute returns result', () => {
     assert.strictEqual(result.kind, 'result');
     if (result.kind === 'result') {
       assert.strictEqual(result.response.correlationId, 'req-exec-1');
-      assert.strictEqual(result.response.terminalOutput, 'completed');
-      assert.ok(result.response.stateSnapshot !== null, 'stateSnapshot must be non-null');
+      assert.ok(Array.isArray(result.response.items), 'items must be an array');
+      assert.strictEqual(result.response.items.length, 1, 'single-item request must produce 1 item result');
+      const item0 = result.response.items[0];
+      assert.ok(item0 !== undefined, 'items[0] must exist');
+      assert.strictEqual(item0.terminalOutcome, 'completed');
+      assert.ok(item0.snapshot !== null, 'items[0].snapshot must be non-null');
       assert.ok(Array.isArray(result.response.intermediates));
       assert.ok(result.response.intermediates.length > 0, 'must have at least 1 intermediate (mutator node)');
     }
@@ -202,7 +206,7 @@ void describe('DagHost — execute returns result', () => {
       'request': {
         'dagName': 'conformance-body-law1',   // recorder node → done
         'placementPath': ['host'],
-        'stateSnapshot': initialState.snapshot(),
+        'items': [{ 'id': 'req-exec-2', 'snapshot': initialState.snapshot() }],
         'timeoutMs': 5000,
         'correlationId': 'req-exec-2',
       },
@@ -220,7 +224,7 @@ void describe('DagHost — execute returns result', () => {
     }
   });
 
-  void it('returns result with terminalOutput failed on execution error', async () => {
+  void it('returns result with items[0].terminalOutcome failed on execution error', async () => {
     const { parentSide } = buildHostPair();
 
     const ready = await sendInit(parentSide);
@@ -239,7 +243,7 @@ void describe('DagHost — execute returns result', () => {
       'request': {
         'dagName': 'dag-does-not-exist',
         'placementPath': [],
-        'stateSnapshot': initialState.snapshot(),
+        'items': [{ 'id': 'req-exec-fail', 'snapshot': initialState.snapshot() }],
         'timeoutMs': 1000,
         'correlationId': 'req-exec-fail',
       },
@@ -248,7 +252,10 @@ void describe('DagHost — execute returns result', () => {
     const result = await resultPromise;
     assert.strictEqual(result.kind, 'result');
     if (result.kind === 'result') {
-      assert.strictEqual(result.response.terminalOutput, 'failed');
+      assert.ok(Array.isArray(result.response.items), 'items must be an array');
+      const item0 = result.response.items[0];
+      assert.ok(item0 !== undefined, 'items[0] must exist');
+      assert.strictEqual(item0.terminalOutcome, 'failed');
       assert.ok(result.response.errors.length > 0, 'must have at least 1 error');
     }
   });
@@ -277,7 +284,7 @@ void describe('DagHost — abort', () => {
       'request': {
         'dagName': 'conformance-body-law5',   // abort-sleeper: waits until aborted
         'placementPath': ['host'],
-        'stateSnapshot': initialState.snapshot(),
+        'items': [{ 'id': 'req-abort', 'snapshot': initialState.snapshot() }],
         'timeoutMs': null,
         'correlationId': 'req-abort',
       },
@@ -338,7 +345,7 @@ void describe('DagHost — execute before init (G8)', () => {
       'request': {
         'dagName': 'conformance-body-law1',
         'placementPath': [],
-        'stateSnapshot': initialState.snapshot(),
+        'items': [{ 'id': 'req-no-init', 'snapshot': initialState.snapshot() }],
         'timeoutMs': null,
         'correlationId': 'req-no-init',
       },
@@ -365,7 +372,7 @@ void describe('DagHost — execute before init (G8)', () => {
       'request': {
         'dagName': 'conformance-body-law1',
         'placementPath': [],
-        'stateSnapshot': initialState.snapshot(),
+        'items': [{ 'id': 'req-pre-init-probe', 'snapshot': initialState.snapshot() }],
         'timeoutMs': null,
         'correlationId': 'req-pre-init-probe',
       },

@@ -63,3 +63,35 @@ process.stdout.write(`typeof dispatcher = ${typeof dispatcher}\n`);
 
 process.stdout.write('\nLesson: implement StateAccessor to swap the path resolver;\n');
 process.stdout.write('        scatter reads and gather writes use the custom accessor.\n');
+
+// #region gather-strategy
+import {
+  GatherStrategies,
+  GatherStrategy,
+  Batch,
+} from '@noocodex/dagonizer';
+import type { GatherRecord, NodeStateInterface } from '@noocodex/dagonizer';
+import type { GatherConfig } from '@noocodex/dagonizer/entities';
+import type { StateAccessor } from '@noocodex/dagonizer/contracts';
+
+class AverageGather extends GatherStrategy {
+  readonly name = 'average';
+  reduce(
+    config: GatherConfig,
+    batch: Batch<GatherRecord<NodeStateInterface>>,
+    state: NodeStateInterface,
+    accessor: StateAccessor,
+  ): void {
+    if (config.target === undefined) return;
+    const all: number[] = [];
+    for (const item of batch) {
+      all.push(accessor.get<number>(item.state.cloneState, config.field ?? 'score') ?? 0);
+    }
+    const avg = all.reduce((a, b) => a + b, 0) / Math.max(1, all.length);
+    accessor.set(state, config.target, avg);
+  }
+}
+
+// Register with the engine so it's available in DAG topology configs.
+GatherStrategies.register(new AverageGather());
+// #endregion gather-strategy

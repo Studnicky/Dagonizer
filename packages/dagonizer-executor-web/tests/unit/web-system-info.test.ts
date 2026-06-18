@@ -69,30 +69,31 @@ void describe('WebSystemInfo', () => {
 
   // ── Safe fallbacks for missing / bad probes ────────────────────────────────
 
-  void it('falls back to hardwareConcurrency=1 when probe is absent', () => {
-    const info = new WebSystemInfo({});
-    const count = info.recommendedWorkerCount(config({ 'maximumWorkers': 8, 'mainThreadReservation': 0, 'fallbackWorkerCount': 1 }));
-    // hardwareConcurrency=1, reservation=0 → raw=1; min(1,8)=1
-    assert.strictEqual(count, 1);
-  });
+  void it('treats absent, zero, and negative concurrency probes as hardwareConcurrency=1', () => {
+    // Each unusable probe normalizes to 1; with reservation=0 → raw=1; min(1,8)=1.
+    // Construction styles covered: no-arg, empty probe object, explicit bad values.
+    const fallbackConfig = config({ 'maximumWorkers': 8, 'mainThreadReservation': 0, 'fallbackWorkerCount': 1 });
 
-  void it('falls back to hardwareConcurrency=1 when probe is zero', () => {
-    const info = new WebSystemInfo({ 'hardwareConcurrency': 0 });
-    const count = info.recommendedWorkerCount(config({ 'maximumWorkers': 8, 'mainThreadReservation': 0, 'fallbackWorkerCount': 1 }));
-    assert.strictEqual(count, 1);
-  });
-
-  void it('falls back to hardwareConcurrency=1 when probe is negative', () => {
-    const info = new WebSystemInfo({ 'hardwareConcurrency': -4 });
-    const count = info.recommendedWorkerCount(config({ 'maximumWorkers': 8, 'mainThreadReservation': 0, 'fallbackWorkerCount': 1 }));
-    assert.strictEqual(count, 1);
-  });
-
-  void it('defaults constructor probes to safe values when none provided', () => {
-    const info = new WebSystemInfo();
-    // No probes: hardwareConcurrency defaults to 1.
-    const count = info.recommendedWorkerCount(config({ 'maximumWorkers': 8, 'mainThreadReservation': 0, 'fallbackWorkerCount': 1 }));
-    assert.strictEqual(count, 1);
+    assert.strictEqual(
+      new WebSystemInfo().recommendedWorkerCount(fallbackConfig),
+      1,
+      'no-arg constructor defaults hardwareConcurrency to 1',
+    );
+    assert.strictEqual(
+      new WebSystemInfo({}).recommendedWorkerCount(fallbackConfig),
+      1,
+      'empty probe object falls back to hardwareConcurrency=1',
+    );
+    assert.strictEqual(
+      new WebSystemInfo({ 'hardwareConcurrency': 0 }).recommendedWorkerCount(fallbackConfig),
+      1,
+      'zero probe falls back to hardwareConcurrency=1',
+    );
+    assert.strictEqual(
+      new WebSystemInfo({ 'hardwareConcurrency': -4 }).recommendedWorkerCount(fallbackConfig),
+      1,
+      'negative probe falls back to hardwareConcurrency=1',
+    );
   });
 
   // ── memoryPerWorkerBytes is ignored (no memory API in browsers) ────────────

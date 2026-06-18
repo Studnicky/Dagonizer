@@ -18,7 +18,7 @@ seeAlso:
 
 Hand-off channel implementations. Ships through `@noocodex/dagonizer/channels`.
 
-```ts
+```ts twoslash
 import { InMemoryChannel } from '@noocodex/dagonizer/channels';
 import type { InMemoryChannelOptions } from '@noocodex/dagonizer/channels';
 ```
@@ -29,57 +29,76 @@ import type { InMemoryChannelOptions } from '@noocodex/dagonizer/channels';
 
 Local default and loopback `HandoffChannelInterface` implementation. Stores every published `DAGHandoff` envelope in an in-memory array. Deep-clones each envelope on publish via `structuredClone` to ensure full serialization fidelity.
 
-```ts
-class InMemoryChannel implements HandoffChannelInterface {
-  constructor(options?: InMemoryChannelOptions)
-  get published(): readonly DAGHandoff[]
-  async publish(handoff: DAGHandoff): Promise<void>
-  protected async onPublished(handoff: DAGHandoff): Promise<void>
-}
+```ts twoslash
+import { InMemoryChannel } from '@noocodex/dagonizer/channels';
+import type { InMemoryChannelOptions, } from '@noocodex/dagonizer/channels';
+import type { HandoffChannelInterface } from '@noocodex/dagonizer/contracts';
+import type { DAGHandoff } from '@noocodex/dagonizer/entities';
+// ---cut---
+// class InMemoryChannel implements HandoffChannelInterface
+//   constructor(options?: InMemoryChannelOptions)
+//   get published(): readonly DAGHandoff[]
+//   get publishErrors(): readonly Error[]
+//   publish(handoff: DAGHandoff): Promise<void>
+//   protected onPublished(handoff: DAGHandoff): Promise<void>
+const _check: HandoffChannelInterface = new InMemoryChannel();
 ```
 
 ### Constructor
 
-```ts
-new InMemoryChannel(options?: InMemoryChannelOptions)
+```ts twoslash
+import { InMemoryChannel } from '@noocodex/dagonizer/channels';
+// ---cut---
+new InMemoryChannel();
+new InMemoryChannel({});
 ```
 
 `InMemoryChannelOptions` carries no fields; the type is the extension point for future channel configuration.
 
 ### `published`
 
-```ts
-get published(): readonly DAGHandoff[]
+```ts twoslash
+import { InMemoryChannel } from '@noocodex/dagonizer/channels';
+import type { DAGHandoff } from '@noocodex/dagonizer/entities';
+const channel = new InMemoryChannel();
+// ---cut---
+const envelopes: readonly DAGHandoff[] = channel.published;
 ```
 
 All envelopes in publish order. Each entry is the deep-cloned, stored copy — independent from the dispatcher's internal state.
 
 ### `publish(handoff)`
 
-```ts
-async publish(handoff: DAGHandoff): Promise<void>
+```ts twoslash
+import { InMemoryChannel } from '@noocodex/dagonizer/channels';
+import type { DAGHandoff } from '@noocodex/dagonizer/entities';
+const channel = new InMemoryChannel();
+declare const handoff: DAGHandoff;
+// ---cut---
+await channel.publish(handoff);
 ```
 
-Deep-clones `handoff` via `structuredClone`, appends to `published`, then awaits `onPublished`. Any error thrown by `onPublished` is swallowed; the envelope is already recorded.
+Deep-clones `handoff` via `structuredClone`, appends to `published`, then awaits `onPublished`. Errors thrown by `onPublished` are collected in `publishErrors` rather than re-thrown; the envelope is already recorded.
 
 ### `onPublished(handoff)` (protected)
-
-```ts
-protected async onPublished(handoff: DAGHandoff): Promise<void>
-```
 
 Default no-op. Override in a subclass to chain a downstream DAG. Receives the deep-cloned, stored envelope (same instance as the last entry in `published`).
 
 **Extension via subclass, zero callbacks.** The dispatcher calls `channel.publish(handoff)` when a non-embedded flow reaches a terminal bound in `DagonizerOptionsInterface.channels`. The default `onPublished` is a no-op; subclass to restore state and run the continuation:
 
-```ts
+```ts twoslash
 import { InMemoryChannel } from '@noocodex/dagonizer/channels';
+import { Dagonizer } from '@noocodex/dagonizer';
+import { NodeStateBase } from '@noocodex/dagonizer';
 import type { DAGHandoff } from '@noocodex/dagonizer/entities';
-
+class AppState extends NodeStateBase {}
+declare const downstreamDispatcher: Dagonizer<AppState>;
+// ---cut---
 class HandoffChannel extends InMemoryChannel {
   protected override async onPublished(handoff: DAGHandoff): Promise<void> {
-    if (!('stateSnapshot' in handoff)) return;
-    const state = AppState.restore(handoff.stateSnapshot as JsonObject);
+    if (!('stateSnapshot' in handoff) || handoff.stateSnapshot == null) return;
+    const snapshot = handoff.stateSnapshot as import('@noocodex/dagonizer/entities').JsonObject;
+    const state = AppState.restore(snapshot);
     await downstreamDispatcher.execute('continuation-dag', state);
   }
 }
@@ -93,8 +112,10 @@ const dispatcher = new Dagonizer<AppState>({
 
 ## Type: `InMemoryChannelOptions`
 
-```ts
-type InMemoryChannelOptions = Record<string, never>
+```ts twoslash
+import type { InMemoryChannelOptions } from '@noocodex/dagonizer/channels';
+// ---cut---
+const _opts: InMemoryChannelOptions = {};
 ```
 
 Constructor options for `InMemoryChannel`. Currently carries no fields. The type is the extension point for future channel configuration: adding a field here is non-breaking (callers that pass `{}` continue to compile).
@@ -105,10 +126,11 @@ Constructor options for `InMemoryChannel`. Currently carries no fields. The type
 
 Replace `InMemoryChannel` with any class that implements `HandoffChannelInterface`:
 
-```ts
+```ts twoslash
 import type { HandoffChannelInterface } from '@noocodex/dagonizer/contracts';
 import type { DAGHandoff } from '@noocodex/dagonizer/entities';
-
+declare const sqsClient: { sendMessage(params: { Body: string }): Promise<void> };
+// ---cut---
 class SqsChannel implements HandoffChannelInterface {
   async publish(handoff: DAGHandoff): Promise<void> {
     // Never throw: the dispatcher does not catch channel errors.

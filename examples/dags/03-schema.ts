@@ -8,23 +8,19 @@ import {
   DAG_CONTEXT,
   NodeOutputBuilder,
   NodeStateBase,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 import { DAGDocument } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Node
 // ---------------------------------------------------------------------------
 
-export class EchoNode implements NodeInterface<NodeStateBase, 'success'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class EchoNode extends ScalarNode<NodeStateBase, 'success'> {
   readonly name = 'echo';
   readonly outputs = ['success'] as const;
 
-  async execute(state: NodeStateBase) {
+  protected override async executeOne(state: NodeStateBase) {
     state.setMetadata('seen', true);
     return NodeOutputBuilder.of('success');
   }

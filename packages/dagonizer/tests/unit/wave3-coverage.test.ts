@@ -72,9 +72,8 @@ void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via
       'kind': 'result',
       'response': {
         'correlationId': 'test-1',
-        'terminalOutput': 'completed',
+        'items': [{ 'id': 'test-1', 'snapshot': null, 'terminalOutcome': 'completed' }],
         'errors': [validNodeError],
-        'stateSnapshot': null,
         'intermediates': [],
       },
     };
@@ -102,9 +101,8 @@ void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via
       'kind': 'result',
       'response': {
         'correlationId': 'test-2',
-        'terminalOutput': 'completed',
+        'items': [{ 'id': 'test-2', 'snapshot': null, 'terminalOutcome': 'completed' }],
         'errors': [withExtra],
-        'stateSnapshot': null,
         'intermediates': [],
       },
     };
@@ -129,9 +127,8 @@ void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via
       'kind': 'result',
       'response': {
         'correlationId': 'test-3',
-        'terminalOutput': 'completed',
+        'items': [{ 'id': 'test-3', 'snapshot': null, 'terminalOutcome': 'completed' }],
         'errors': [missingTimestamp],
-        'stateSnapshot': null,
         'intermediates': [],
       },
     };
@@ -145,7 +142,7 @@ void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via
     const validRequest = {
       'dagName': 'pipeline',
       'placementPath': ['parent', 'child'],
-      'stateSnapshot': { 'count': 0 },
+      'items': [{ 'id': 'corr-1', 'snapshot': { 'count': 0 } }],
       'timeoutMs': 5000,
       'correlationId': 'corr-1',
     };
@@ -165,7 +162,7 @@ void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via
     const withExtra = {
       'dagName': 'pipeline',
       'placementPath': [],
-      'stateSnapshot': {},
+      'items': [{ 'id': 'corr-x', 'snapshot': {} }],
       'timeoutMs': null,
       'correlationId': 'corr-x',
       'nodeName': 'step1',   // additionalProperties: false must reject this
@@ -187,9 +184,8 @@ void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via
   void it('a value valid per ExecutionResponseSchema is accepted in the result.response branch', () => {
     const validResponse = {
       'correlationId': 'corr-1',
-      'terminalOutput': 'completed',
+      'items': [{ 'id': 'corr-1', 'snapshot': { 'done': true }, 'terminalOutcome': 'completed' }],
       'errors': [],
-      'stateSnapshot': { 'done': true },
       'intermediates': [{ 'output': 'ok', 'skipped': false, 'nodeName': 'step1' }],
     };
 
@@ -207,9 +203,8 @@ void describe('TST-W3-1: BridgeMessage inline shapes — structural identity via
   void it('a response with extra field on intermediate item is rejected by both', () => {
     const withExtra = {
       'correlationId': 'corr-2',
-      'terminalOutput': 'failed',
+      'items': [{ 'id': 'corr-2', 'snapshot': null, 'terminalOutcome': 'failed' }],
       'errors': [],
-      'stateSnapshot': null,
       'intermediates': [{
         'output': 'done',
         'skipped': false,

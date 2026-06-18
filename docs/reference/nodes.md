@@ -31,9 +31,14 @@ Every schema's `$id` is `https://noocodex.dev/schemas/dagonizer/<TypeName>`.
 
 ## `SingleNode`
 
-```ts
+```ts twoslash
 import { SingleNodeSchema } from '@noocodex/dagonizer/entities';
 import type { SingleNode, SingleNodePlacementInterface } from '@noocodex/dagonizer/entities';
+// ---cut---
+declare const placement: SingleNode;
+const name: string = placement.name;
+const outputs: Record<string, string> = placement.outputs;
+export {};
 ```
 
 ```json
@@ -60,9 +65,14 @@ import type { SingleNode, SingleNodePlacementInterface } from '@noocodex/dagoniz
 
 ## `ScatterNode`
 
-```ts
+```ts twoslash
 import { ScatterNodeSchema } from '@noocodex/dagonizer/entities';
 import type { ScatterNode } from '@noocodex/dagonizer/entities';
+// ---cut---
+declare const placement: ScatterNode;
+const name: string = placement.name;
+const source: string = placement.source;
+export {};
 ```
 
 Generate-collect pattern (one clone per source-array item):
@@ -104,9 +114,14 @@ Per-item resume bookkeeping is persisted under the reserved metadata key `SCATTE
 
 ## `EmbeddedDAGNode`
 
-```ts
+```ts twoslash
 import { EmbeddedDAGNodeSchema } from '@noocodex/dagonizer/entities';
 import type { EmbeddedDAGNode } from '@noocodex/dagonizer/entities';
+// ---cut---
+declare const placement: EmbeddedDAGNode;
+const name: string = placement.name;
+const dag: string = placement.dag;
+export {};
 ```
 
 ```json
@@ -138,9 +153,13 @@ import type { EmbeddedDAGNode } from '@noocodex/dagonizer/entities';
 
 ## `TerminalNode`
 
-```ts
+```ts twoslash
 import { TerminalNodeSchema } from '@noocodex/dagonizer/entities';
 import type { TerminalNode } from '@noocodex/dagonizer/entities';
+// ---cut---
+declare const placement: TerminalNode;
+const name: string = placement.name;
+const outcome: 'completed' | 'failed' = placement.outcome;
 ```
 
 ```json
@@ -165,9 +184,13 @@ No `outputs` map. Placement-only (no backing `NodeInterface`). On reach, the eng
 
 ## `PhaseNode`
 
-```ts
+```ts twoslash
 import { PhaseNodeSchema } from '@noocodex/dagonizer/entities';
 import type { PhaseNode } from '@noocodex/dagonizer/entities';
+// ---cut---
+declare const placement: PhaseNode;
+const name: string = placement.name;
+const phase: 'pre' | 'post' = placement.phase;
 ```
 
 ```json
@@ -196,20 +219,27 @@ No `outputs` map. Pre-phase placements run in DAG declaration order before the e
 
 `GatherConfig` is referenced from `ScatterNode.gather` and is also exported as a standalone schema and type.
 
-```ts
+```ts twoslash
 import { GatherConfigSchema } from '@noocodex/dagonizer/entities';
 import type { GatherConfig } from '@noocodex/dagonizer/entities';
+// ---cut---
+declare const gc: GatherConfig;
+const strategy: string = gc.strategy;
+export {};
 ```
 
-```ts
-interface GatherConfig {
-  strategy: string;  // open: any name registered via GatherStrategies.register
-  mapping?:    Record<string, string>;   // map: clone path → parent path
-  field?:      string;                   // append/partition/collect: clone field to read (omit ⇒ source item)
-  target?:     string;                   // append/collect: parent array path
-  partitions?: Record<string, string>;   // partition: output token → parent array path
-  customNode?: string;                   // custom: registered node name
-}
+```ts twoslash
+import type { GatherConfig } from '@noocodex/dagonizer/entities';
+// ---cut---
+// GatherConfig shape (all fields beyond `strategy` are optional):
+declare const _: GatherConfig;
+// strategy: string — any name registered via GatherStrategies.register
+// mapping?: Record<string, string>   — map: clone path → parent path
+// field?:   string                   — append/partition/collect: clone field to read
+// target?:  string                   — append/collect: parent array path
+// partitions?: Record<string, string> — partition: output token → parent array path
+// customNode?: string                — custom: registered node name
+export {};
 ```
 
 | Strategy | Key fields | Behaviour |

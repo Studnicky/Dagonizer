@@ -5,8 +5,8 @@
  * clone's state.enriched into parent.state.records.
  *
  * Sources:
- *   - state.normalized      → shipmentId, scanSeq, epochMs, local time, eventType, tiers
- *   - state.geoContext      → region, country, hub, status, timezone, jurisdiction
+ *   - state.normalized      → shipmentId, scanSeq, epochMs, local time, status, tiers
+ *   - state.geoContext      → region, country, hub, geoStatus, timezone, jurisdiction
  *   - state.currentEvent    → stored lat/lng (possibly GDPR-coarsened) + redactedSample
  *   - state.gdprResult      → consentStatus, redactionApplied, coordsCoarsened
  *   - state.pricedOrder     → subtotalUsdMinor, currency  (shipment-level)
@@ -17,22 +17,16 @@
 
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region aggregate-event-node
-export class AggregateEventNode implements NodeInterface<CartographerState, 'done', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class AggregateEventNode extends ScalarNode<CartographerState, 'done', CartographerServices> {
   readonly 'name' = 'aggregate-event';
   readonly 'outputs' = ['done'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'done'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'done'>> {
     const norm = state.normalized;
     const geo  = state.geoContext;
     const gdpr = state.gdprResult;
@@ -41,7 +35,7 @@ export class AggregateEventNode implements NodeInterface<CartographerState, 'don
     const de   = state.deliveryEstimate;
     const ev   = state.currentEvent;
 
-    const isException = norm.eventType === 'EXCEPTION';
+    const isException = norm.status === 'EXCEPTION';
 
     state.enriched = {
       'shipmentId':       norm.shipmentId,
@@ -56,14 +50,14 @@ export class AggregateEventNode implements NodeInterface<CartographerState, 'don
       'region':           geo.region,
       'country':          geo.country,
       'hub':              geo.hub,
-      'status':           geo.status,
+      'geoStatus':        geo.status,
       // Stored coords come from currentEvent, which GDPR coarsened in-place
       // when the jurisdiction is strict or consent is not valid.
       'lat':              ev.latitude,
       'lng':              ev.longitude,
       'coordsCoarsened':  gdpr.coordsCoarsened,
       'legKm':            state.legKm,
-      'eventType':        norm.eventType,
+      'status':           norm.status,
       'serviceTier':      norm.serviceTier,
       'sizeTier':         norm.sizeTier,
       'onTime':           de.onTime,
@@ -92,3 +86,5 @@ export class AggregateEventNode implements NodeInterface<CartographerState, 'don
   }
 }
 // #endregion aggregate-event-node
+
+export const aggregateEvent = new AggregateEventNode();

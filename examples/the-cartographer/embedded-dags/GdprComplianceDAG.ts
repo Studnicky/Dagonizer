@@ -23,7 +23,7 @@
  */
 
 // #region gdpr-compliance-dag
-import { ConsentGateNode, ClassifyPiiNode, RedactPiiNode } from '../nodes/gdprNodes.ts';
+import { consentGate, classifyPii, redactPii } from '../nodes/gdprNodes.ts';
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
@@ -36,19 +36,19 @@ export const gdprComplianceDAG: DAG = new DAGBuilder('gdpr-compliance', '1.0')
   // Resolves the consent status from marketingConsent + simulated expiry.
   // Always routes 'classify' (both consented and non-consented proceed;
   // the consent status drives redaction rules downstream).
-  .node('consent-gate', new ConsentGateNode(), {
+  .node('consent-gate', consentGate, {
     'classify': 'classify-pii',
   })
 
   // ── 2. classify-pii ──────────────────────────────────────────────────────
   // Records which fields are personal/sensitive; no routing decision yet.
-  .node('classify-pii', new ClassifyPiiNode(), {
+  .node('classify-pii', classifyPii, {
     'redact': 'redact-pii',
   })
 
   // ── 3. redact-pii ────────────────────────────────────────────────────────
   // Applies GdprRedactor.redact. Routes to 'compliant' (ok) or 'violation'.
-  .node('redact-pii', new RedactPiiNode(), {
+  .node('redact-pii', redactPii, {
     'ok':        'compliant',
     'violation': 'violation',
   })
@@ -61,6 +61,6 @@ export const gdprComplianceDAG: DAG = new DAGBuilder('gdpr-compliance', '1.0')
 // #endregion gdpr-compliance-dag
 
 export const gdprComplianceBundle: DispatcherBundle<CartographerState, CartographerServices> = {
-  'nodes': [new ConsentGateNode(), new ClassifyPiiNode(), new RedactPiiNode()],
+  'nodes': [consentGate, classifyPii, redactPii],
   'dags': [gdprComplianceDAG],
 };

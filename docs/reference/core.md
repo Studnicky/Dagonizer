@@ -21,7 +21,7 @@ seeAlso:
 
 Pluggable execution primitives. Ship through `@noocodex/dagonizer/core`.
 
-```ts
+```ts twoslash
 import {
   GatherStrategy,
   GatherStrategies,
@@ -33,48 +33,79 @@ import type { GatherExecution, GatherRecord, OutcomeRecord } from '@noocodex/dag
 
 ## GatherStrategy
 
-Abstract class. Subclass and override `apply`; register the instance with `GatherStrategies.register`.
+Abstract class. Subclass and implement `reduce`; optionally override `initial` and `finalize`; register the instance with `GatherStrategies.register`.
 
-```ts
-abstract class GatherStrategy {
-  abstract readonly name: string;
-  abstract apply<TState extends NodeStateInterface>(
-    config: GatherConfig,
-    execution: GatherExecution<TState>,
-  ): Promise<void>;
+```ts twoslash
+import { GatherStrategy, GatherStrategies, Batch } from '@noocodex/dagonizer/core';
+import type { GatherRecord } from '@noocodex/dagonizer/core';
+import type { GatherConfig } from '@noocodex/dagonizer/entities';
+import type { NodeStateInterface } from '@noocodex/dagonizer';
+import type { StateAccessor } from '@noocodex/dagonizer/contracts';
+// ---cut---
+class MyGather extends GatherStrategy {
+  readonly name = 'my-gather';
+  reduce(
+    _config: GatherConfig,
+    _batch: Batch<GatherRecord<NodeStateInterface>>,
+    _state: NodeStateInterface,
+    _accessor: StateAccessor,
+  ): void {
+    // fold clone results into state
+  }
 }
+GatherStrategies.register(new MyGather());
 ```
 
-The dispatcher resolves a strategy by `name` (the `GatherConfig.strategy` field) and calls `.apply(...)` once every scatter clone has reported. Strategies mutate `execution.state` in place; the `custom` strategy uses `execution.invoker.invokeNode(name)` to dispatch a registered node back through the engine.
+The dispatcher resolves a strategy by `name` (the `GatherConfig.strategy` field) and calls `reduce` for each incoming batch of scatter clone results. Strategies mutate `state` in place via `accessor`; the `custom` strategy uses `execution.invoker.invokeNode(name)` in `finalize` to dispatch a registered node back through the engine.
+
+### `GatherStrategy` contract
+
+| Member | Description |
+|--------|-------------|
+| `abstract name` | Wire-shape identifier; matches `GatherConfig.strategy`. |
+| `retainsRecordsForFinalize` | When `true`, the engine retains every acked record across resume (retained checkpoint). When `false` (default), checkpoint is O(1) with respect to item count. |
+| `initial(config, state, accessor)` | Called once per scatter before any clones run. Default: no-op. |
+| `abstract reduce(config, batch, state, accessor)` | Fold a batch of clone results into state. Called per-batch during streaming or once with all results for bulk strategies. |
+| `finalize(config, execution)` | End-of-gather work after all clones complete. Default: no-op. |
 
 ### GatherRecord
 
-```ts
-interface GatherRecord<TState extends NodeStateInterface> {
-  readonly index: number;
-  readonly item: unknown;
-  readonly output: string;
-  readonly terminalOutcome: 'completed' | 'failed' | null;
-  readonly cloneState: TState;
-}
+```ts twoslash
+import type { GatherRecord } from '@noocodex/dagonizer/core';
+import type { NodeStateInterface } from '@noocodex/dagonizer';
+// ---cut---
+// GatherRecord carries per-clone results from the scatter loop.
+declare const record: GatherRecord<NodeStateInterface>;
 ```
 
-Per-clone record produced by the scatter loop. Carries the source item (or `undefined` for a singleton scatter), the routing output, the terminal outcome of a DAG body (or `null` for a node body), and the live clone state after the body ran.
+| Field | Type | Description |
+|-------|------|-------------|
+| `index` | `number` | Source array index (scatter-ordered). |
+| `item` | `unknown` | Source item, or `undefined` for a singleton scatter. |
+| `output` | `string` | Routing output returned by the clone body. |
+| `terminalOutcome` | `'completed' \| 'failed' \| null` | Terminal outcome of a DAG body, or `null` for a node body. |
+| `cloneState` | `TState` | Live clone state after the body ran. |
+
+Per-clone record produced by the scatter loop. Records are ordered by source index (ascending) and strategies must not re-sort.
 
 ### GatherExecution
 
-```ts
-interface GatherExecution<TState extends NodeStateInterface> {
-  readonly state: TState;
-  readonly records: ReadonlyArray<GatherRecord<TState>>;
-  readonly dagName: string;
-  readonly signal: AbortSignal | null;
-  readonly accessor: StateAccessor;
-  readonly invoker: NodeInvoker;
-}
+```ts twoslash
+import type { GatherExecution } from '@noocodex/dagonizer/core';
+import type { NodeStateInterface } from '@noocodex/dagonizer';
+// ---cut---
+// GatherExecution is the invocation context handed to GatherStrategy.finalize.
+declare const execution: GatherExecution<NodeStateInterface>;
 ```
 
-Per-invocation context handed to the strategy. `state` is the live parent state; `records` carries per-clone results in source-index order; `accessor` is the dispatcher's configured `StateAccessor`; `invoker` carries `invokeNode(nodeName)` for the `custom` strategy.
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `TState` | Live parent state object (mutated in place by the strategy). |
+| `records` | `GatherRecord<TState>[]` | Per-clone records in source-index order. |
+| `dagName` | `string` | Name of the enclosing DAG. |
+| `signal` | `AbortSignal \| null` | Active abort signal, or `null` when none. |
+| `accessor` | `StateAccessor` | The dispatcher's configured state accessor. |
+| `invoker` | `NodeInvoker` | The only way for `custom` strategies to dispatch a registered node back through the engine. |
 
 ### Defaults
 
@@ -89,38 +120,54 @@ Per-invocation context handed to the strategy. `state` is the live parent state;
 
 Static registry.
 
-```ts
-class GatherStrategies {
-  static register(strategy: GatherStrategy): void;
-  static resolve(name: string): GatherStrategy;           // throws DAGError on unknown name
-  static list(): readonly string[];
-}
+```ts twoslash
+import { GatherStrategies } from '@noocodex/dagonizer/core';
+// ---cut---
+const names: readonly string[] = GatherStrategies.list();
 ```
 
-Last-write-wins on `name`. `resolve` throws `DAGError` when the strategy is not registered.
+| Method | Description |
+|--------|-------------|
+| `register(strategy)` | Register a strategy. Throws `DAGError` when a strategy with the same `name` is already registered. Use `replace()` for intentional overrides. |
+| `replace(strategy)` | Explicitly replace an existing registration without throwing. Use for test-time or plugin-override substitution. |
+| `resolve(name)` | Return the strategy by name. Throws `DAGError` when not registered. |
+| `list()` | Names of every registered strategy, in registration order. |
+| `unregister(name)` | Remove a strategy by name. No-op when absent. Used in test `afterEach` to undo `register` calls. |
+| `reset()` | Restore the registry to the built-in strategies, discarding consumer-registered entries. |
 
 ## OutcomeReducer
 
-Abstract class. Subclass and override `reduce`; register the instance with `OutcomeReducers.register`.
+Abstract class. Subclass and implement `reduce`; register the instance with `OutcomeReducers.register`.
 
-```ts
-abstract class OutcomeReducer {
-  abstract readonly name: string;
-  abstract reduce(records: ReadonlyArray<OutcomeRecord>): string;
+```ts twoslash
+import { OutcomeReducer, OutcomeReducers } from '@noocodex/dagonizer/core';
+import type { OutcomeRecord } from '@noocodex/dagonizer/core';
+// ---cut---
+class MyReducer extends OutcomeReducer {
+  readonly name = 'my-reducer';
+  reduce(records: ReadonlyArray<OutcomeRecord>): string {
+    return records.every((r) => r.output === 'success') ? 'all-success' : 'partial';
+  }
 }
+OutcomeReducers.register(new MyReducer());
 ```
 
 The dispatcher resolves a reducer by `name` (the `ScatterNode.reducer` field, defaulting to `'aggregate'` when `source` is present and `'terminal'` when absent) and calls `.reduce(records)` after gather completes. Returns an output token that maps to a key in the scatter placement's `outputs` map.
 
 ### OutcomeRecord
 
-```ts
-interface OutcomeRecord {
-  readonly index: number;
-  readonly output: string;
-  readonly terminalOutcome: 'completed' | 'failed' | null;
-}
+```ts twoslash
+import type { OutcomeRecord } from '@noocodex/dagonizer/core';
+// ---cut---
+// OutcomeRecord carries per-clone summary for routing.
+declare const record: OutcomeRecord;
 ```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `index` | `number` | Source array index. |
+| `output` | `string` | Routing output returned by the clone body. |
+| `terminalOutcome` | `'completed' \| 'failed' \| null` | Terminal outcome of a DAG body, or `null` for a node body. |
 
 ### Defaults
 
@@ -133,15 +180,17 @@ interface OutcomeRecord {
 
 Static registry.
 
-```ts
-class OutcomeReducers {
-  static register(reducer: OutcomeReducer): void;
-  static resolve(name: string): OutcomeReducer;           // throws DAGError on unknown name
-  static list(): readonly string[];
-}
+```ts twoslash
+import { OutcomeReducers } from '@noocodex/dagonizer/core';
+// ---cut---
+const names: readonly string[] = OutcomeReducers.list();
 ```
 
-Last-write-wins on `name`. `resolve` throws `DAGError` when the reducer is not registered.
+| Method | Description |
+|--------|-------------|
+| `register(reducer)` | Register a reducer. Throws `DAGError` when a reducer with the same `name` is already registered. |
+| `resolve(name)` | Return the reducer by name. Throws `DAGError` when not registered. |
+| `list()` | Names of every registered reducer, in registration order. |
 
 ## Related guides
 

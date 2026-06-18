@@ -58,14 +58,7 @@ The built DAG visualised:
 
 When the node declares a narrow `TOutput` union, `.node()` enforces exhaustive routing at compile time:
 
-```ts
-// NodeInterface<S, 'ok' | 'warn' | 'error'>
-.node('check', checkNode, {
-  ok:    'save',
-  warn:  'log',
-  // error: ???   ← TypeScript error: property 'error' is missing
-})
-```
+<<< @/../examples/dags/02-builder.topology.ts#type-safe-routing
 
 ## Contract-aware authoring
 
@@ -74,49 +67,11 @@ When the underlying `NodeInterface` carries a `contract` field (`hardRequired` p
 - **Dangling read**. A non-entrypoint node declares `hardRequired: ['foo']` but no upstream node produces `'foo'`. Throws `DAGError`.
 - **Dead write**. A node declares `produces: ['bar']` but no downstream node `hardRequires` `'bar'`. Calls `warningEmitter.warn` (non-fatal).
 
-```ts
-import { DAGBuilder, DAGError, NodeOutputBuilder } from '@noocodex/dagonizer';
-import type { NodeStateBase } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
-import type { WarningEmitter } from '@noocodex/dagonizer/contracts';
-
-class FetchNode implements NodeInterface<NodeStateBase, 'success'> {
-  readonly name = 'fetch';
-  readonly outputs = ['success'] as const;
-  readonly contract = { hardRequired: ['url'], produces: ['raw'] };
-  async execute() { return NodeOutputBuilder.of('success'); }
-}
-
-class ParseNode implements NodeInterface<NodeStateBase, 'success'> {
-  readonly name = 'parse';
-  readonly outputs = ['success'] as const;
-  // Deliberate mismatch: hardRequires 'data' but upstream only produces 'raw'
-  readonly contract = { hardRequired: ['data'], produces: ['record'] };
-  async execute() { return NodeOutputBuilder.of('success'); }
-}
-
-const fetchNode = new FetchNode();
-const parseNode = new ParseNode();
-
-// Throws DAGError: node 'parse' hardRequires 'data' but no upstream node produces it.
-new DAGBuilder('pipeline', '1.0')
-  .node('fetch', fetchNode, { success: 'parse' })
-  .node('parse', parseNode, { success: 'end' })
-  .terminal('end')
-  .build();
-```
+<<< @/../examples/dags/02-builder.topology.ts#contract-error
 
 Pass a `warningEmitter` to capture dead writes:
 
-```ts
-const emitter: WarningEmitter = { warn(message) { console.warn('[contract]', message); } };
-
-const dag = new DAGBuilder('pipeline', '1.0')
-  .node('fetch', fetchNode, { success: 'parse' })
-  .node('parse', parseNode, { success: 'end' })
-  .terminal('end')
-  .build({ warningEmitter: emitter });
-```
+<<< @/../examples/dags/02-builder.topology.ts#contract-warning
 
 Placements added via `.scatter()` with a `{ dag }` body do not receive a `NodeInterface` and are not tracked in the impl registry; they are silently skipped during contract validation, preventing false-positive dangling-read errors for node names declared elsewhere.
 
@@ -126,27 +81,11 @@ The `warningEmitter` passed to `build()` fires at construction time and is local
 
 For the common case where the flow is linear and every node carries a contract, skip the fluent chain:
 
-```ts
-import { DAGBuilder } from '@noocodex/dagonizer';
-
-const dag = DAGBuilder.fromNodes({
-  name: 'pipeline',
-  version: '1.0',
-  entrypoint: 'fetch',
-  nodes: [fetchNode, parseNode, saveNode],
-});
-```
+<<< @/../examples/dags/02-builder.topology.ts#from-nodes
 
 Equivalent fluent form:
 
-```ts
-const dag = new DAGBuilder('pipeline', '1.0')
-  .node('fetch', fetchNode, { success: 'parse' })
-  .node('parse', parseNode, { success: 'save'  })
-  .node('save',  saveNode,  { success: 'end'   })
-  .terminal('end')
-  .build();
-```
+<<< @/../examples/dags/02-builder.topology.ts#from-nodes-fluent
 
 `DAGBuilder.fromNodes()` delegates to `DAGDeriver.derive({ nodes })`, the same deriver that powers contract-first topology. Use it when the shape is linear and all nodes carry contracts. Drop into the fluent `.node()` API when you need:
 
@@ -161,36 +100,11 @@ const dag = new DAGBuilder('pipeline', '1.0')
 
 `gather` is required on every scatter. Use `{ strategy: 'discard' }` to express a side-effect-only fan-out where no clone state flows back to the parent:
 
-```ts
-const dag = new DAGBuilder('notify', '1')
-  .scatter('fan-out', 'targets', notifyNode,
-    { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
-    {
-      gather:      { strategy: 'discard' },
-      concurrency: 10,
-    },
-  )
-  .terminal('end')
-  .build();
-```
+<<< @/../examples/dags/02-builder.topology.ts#scatter-discard
 
 Heterogeneous fan-out — running different logic per item — is expressed by authoring the `source` as a descriptor array and writing a body node that dispatches on `state.metadata.currentItem`:
 
-```ts
-// state.scoutProviders = ['openlibrary', 'googlebooks', 'wikipedia']
-const dag = new DAGBuilder('search', '1')
-  .scatter('scout', 'scoutProviders', scoutDispatchNode,
-    { 'any-success': 'merge', 'all-error': 'end', 'empty': 'end' },
-    {
-      gather:      { strategy: 'collect', target: 'scoutResults' },
-      reducer:     'any-success',
-      concurrency: 3,
-    },
-  )
-  .node('merge', mergeNode, { success: 'end' })
-  .terminal('end')
-  .build();
-```
+<<< @/../examples/dags/02-builder.topology.ts#scatter-heterogeneous
 
 `scoutDispatchNode` reads `state.metadata.currentItem` and routes to the matching scout logic. Whether bodies are identical or all different is the implementer's choice; the engine is indifferent.
 
@@ -198,43 +112,15 @@ const dag = new DAGBuilder('search', '1')
 
 Each source item gets one clone. After all clones finish, the `gather.mapping` writes produced artifacts back in source-index order:
 
-```ts
-const dag = new DAGBuilder('batch', '1')
-  .scatter('generate', 'providers', generateNode,
-    { 'all-success': 'select', 'partial': 'select', 'all-error': 'end', 'empty': 'end' },
-    {
-      gather:      { strategy: 'map', mapping: { 'candidate': 'candidates' } },
-      concurrency: 4,
-    },
-  )
-  .node('select', selectNode, { success: 'end' })
-  .terminal('end')
-  .build();
-```
+<<< @/../examples/dags/02-builder.topology.ts#scatter-map
 
 `gather.strategy: 'partition'` groups clones by their output token:
 
-```ts
-scatter('process-items', 'items', processNode,
-  { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
-  {
-    gather: { strategy: 'partition', partitions: { success: 'processed', error: 'failed' } },
-    concurrency: 4,
-  },
-)
-```
+<<< @/../examples/dags/02-builder.topology.ts#scatter-partition
 
-The full signature:
+The full signature is shown in the scatter placement example:
 
-```ts
-scatter<TState extends NodeStateInterface, TOutput extends string, TServices = undefined>(
-  name:    string,
-  source:  string,
-  body:    NodeInterface<TState, TOutput, TServices> | { readonly dag: string },
-  outputs: Record<string, null | string>,
-  options: ScatterOptionsInterface<TState> = {},
-): this
-```
+<<< @/../examples/dags/04-scatter.ts#scatter-placement
 
 `ScatterOptionsInterface<TState>`:
 
@@ -246,14 +132,11 @@ scatter<TState extends NodeStateInterface, TOutput extends string, TServices = u
 | `gather` | `GatherConfig` | **Required.** How produced clone state merges back into the parent. Use `{ strategy: 'discard' }` for side-effect-only fan-outs. |
 | `reducer?` | `string` | Outcome reducer name. Defaults to `'aggregate'`. Built-in reducers: `'aggregate'`, `'terminal'`, `'all-success'`, `'any-success'`. Custom reducers registered via `OutcomeReducers.register` are referenceable by name. |
 
-`Path<T>` enumerates valid dotted-path strings over a state shape recursively:
+`Path<T>` enumerates valid dotted-path strings over a state shape recursively. For example `Path<{ user: { name: string; age: number } }>` resolves to `'user' | 'user.name' | 'user.age'`. Arrays contribute `${number}` and `${number}.${ElementPath}` paths. The depth cap is 8 levels; deeper nesting falls back to `string`. The type is exported from the `@noocodex/dagonizer/builder` subpath.
 
-```ts
-// Path<{ user: { name: string; age: number } }>
-//   = 'user' | 'user.name' | 'user.age'
-```
+The `inputs` option in a scatter call uses `Path<TState>` to constrain parent dotted paths at compile time:
 
-Arrays contribute `${number}` and `${number}.${ElementPath}` paths. The depth cap is 8 levels; deeper nesting falls back to `string`. The type is exported from the `@noocodex/dagonizer/builder` subpath.
+<<< @/../examples/dags/02-builder.topology.ts#scatter-inputs
 
 When `body` is a `NodeInterface`, the impl is registered automatically and the placement emits `body: { node: body.name }`.
 
@@ -265,31 +148,11 @@ For patterns where nodes across multiple scatter placements accumulate to shared
 
 `.embeddedDAG()` places an `EmbeddedDAGNode` in the parent flow. It invokes a registered sub-DAG exactly once (cardinality 1) and routes the parent on the child's terminal outcome (`success` | `error`). `options.inputs` seeds the child from the parent before it runs; `options.outputs` copies child fields back into the parent after the child completes.
 
-```ts
-const dag = new DAGBuilder('parent', '1')
-  .embeddedDAG('run-child', 'child-dag',
-    { success: 'finalize', error: 'finalize' },
-    {
-      inputs:  { payload: 'user.name' },   // child key ← parent path
-      outputs: { 'user.age': 'result' },   // parent path ← child key
-    },
-  )
-  .node('finalize', finalizeNode, { success: 'end' })
-  .terminal('end')
-  .build();
-```
+<<< @/../examples/dags/09-terminals.ts#embedded-terminals
 
-The full signature:
+The pattern with inputs and outputs field mapping is shown in the embedded DAG parent:
 
-```ts
-embeddedDAG<TChildState extends NodeStateInterface = NodeStateInterface,
-            TParentState extends NodeStateInterface = NodeStateInterface>(
-  name:    string,
-  dagName: string,
-  outputs: Record<'success' | 'error', string>,
-  options?: TypedEmbeddedDAGOptionsInterface<TChildState, TParentState>,
-): this
-```
+<<< @/../examples/dags/05-embedded-dags.ts#parent-dag
 
 `TypedEmbeddedDAGOptionsInterface<TChildState, TParentState>`:
 
@@ -302,9 +165,7 @@ Supply `TChildState` and `TParentState` to narrow path strings at compile time; 
 
 ## `.terminal(name, options?)`
 
-```ts
-.terminal(name: string, options?: { outcome?: 'completed' | 'failed' }): this
-```
+<<< @/../examples/dags/09-terminals.ts#terminal-completed
 
 Appends a `TerminalNode` placement. When the engine reaches it, the flow ends with the declared `outcome`. The default is `'completed'`. Passing `{ outcome: 'failed' }` marks the state as failed before resolving.
 
@@ -314,44 +175,19 @@ TerminalNodes carry no `outputs` map. They are placement-only constructs with no
 
 An `EmbeddedDAGNode` placement targets named terminals directly:
 
-```ts
-const dag = new DAGBuilder('parent', '1')
-  .embeddedDAG('run-child', 'child-dag', {
-    success: 'end-ok',
-    error:   'end-fail',
-  })
-  .terminal('end-ok')
-  .terminal('end-fail', { outcome: 'failed' })
-  .build();
-```
+<<< @/../examples/dags/09-terminals.ts#embedded-terminals
 
 When the child DAG exits with a failed terminal, the `error` output arrives at `end-fail`, which marks the parent flow `failed`. Without a named terminal, the author would need a dedicated SingleNode to call `state.markFailed()`. The terminal collapses that to one `.terminal(name, { outcome: 'failed' })` call.
 
 ### Example, two explicit terminals
 
-```ts
-import { DAGBuilder } from '@noocodex/dagonizer';
-
-class S extends NodeStateBase { shouldPass = true; }
-
-const dag = new DAGBuilder('demo', '1')
-  .node('check', checkNode, { pass: 'end-ok', fail: 'end-fail' })
-  .terminal('end-ok')
-  .terminal('end-fail', { outcome: 'failed' })
-  .build();
-```
+<<< @/../examples/dags/09-terminals.ts#terminal-failed
 
 Running with `state.shouldPass = true` produces `lifecycle.kind = 'completed'`; running with `false` produces `'failed'`.
 
 ## `.phase(name, phase, node)`
 
-```ts
-.phase<TState, TOutput, TServices>(
-  name: string,
-  phase: 'pre' | 'post',
-  dagNode: NodeInterface<TState, TOutput, TServices>,
-): this
-```
+<<< @/../examples/dags/19-phase-nodes.ts#phase-dag
 
 Appends a `PhaseNode` placement: a lifecycle-attached task that runs around the main DAG loop rather than inside it. `phase: 'pre'` placements run before the entrypoint in DAG declaration order. `phase: 'post'` placements run after the main loop drains, in DAG declaration order, on every exit path (completion, abort, timeout, terminal-failed, node throw).
 
@@ -375,29 +211,13 @@ The dispatcher invokes `onPhaseEnter(dagName, 'pre' | 'post', placementName, sta
 
 ### Example
 
-```ts
-import { DAGBuilder } from '@noocodex/dagonizer';
-
-const dag = new DAGBuilder('with-phases', '1')
-  .node('process', processNode, { success: 'end' })
-  .phase('warm-cache', 'pre',  warmCacheNode)
-  .phase('flush-logs', 'post', flushLogsNode)
-  .terminal('end')
-  .build();
-```
+<<< @/../examples/dags/19-phase-nodes.ts#phase-dag
 
 ## `.entrypoint()`
 
 By default the first added node is the entrypoint. Override explicitly:
 
-```ts
-new DAGBuilder('dag', '1')
-  .node('setup', setupNode, { success: 'main' })
-  .node('main', mainNode, { success: 'end' })
-  .entrypoint('main')  // skip setup during a resume, for example
-  .terminal('end')
-  .build();
-```
+<<< @/../examples/dags/02-builder.topology.ts#entrypoint-override
 
 ## `.build()`
 

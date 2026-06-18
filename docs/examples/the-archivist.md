@@ -40,7 +40,7 @@ seeAlso:
 
 The Archivist is the running demo every Dagonizer example refers to. It is a bookstore help-bot: a visitor describes a book or asks for a recommendation, and the Archivist composes a response by classifying the question, scattering four parallel scouts across the shop's local catalog and external sources, merging the candidates, and composing plus validating a draft response in a bounded retry loop.
 
-Try it live below; the demo runs in your browser. The runner uses an `LlmAdapterCascade` over the providers below and surfaces which one is answering. Cloud-first when keys are present (Groq, Cerebras, Gemini API, Mistral, OpenRouter), local-first when reachable (Ollama on desktop), then on-device fallbacks (Gemini Nano, WebLLM), with the offline stub as the last resort. Intent classification runs through a parallel `EmbedderCascade` (Ollama, Gemini API, Mistral) when an embedder is reachable; otherwise the LLM classifies directly.
+Try it live below; the demo runs in your browser. The runner uses an `LlmAdapterCascade` over the providers below and surfaces which one is answering. Cloud-first when keys are present (Groq, Cerebras, Gemini API, Mistral, OpenRouter), local-first when reachable (Ollama on desktop), then on-device fallbacks (Gemini Nano, WebLLM). The demo only runs against a real model: when none is reachable it shows a setup gate with links to free backends rather than fabricating a response. Intent classification runs through a parallel `EmbedderCascade` (Ollama, Gemini API, Mistral) when an embedder is reachable; otherwise the LLM classifies directly.
 
 The Archivist exercises two placement types for nested DAG execution: `EmbeddedDAGNode` for the three search branches and the compose loop (cardinality 1), and `ScatterNode` for the within-branch scouts — four providers run as clones over a descriptor source (`state.scoutProviders`), a `scoutDispatch` body node routes each clone to the matching scout logic, and a `collect` gather strategy accumulates candidates before ranking. A `PhaseNode` (`phase: 'pre'`, placement name `setup`) runs `pre-run-setup` before the entrypoint: it stamps a `runId` on state and clears any stale draft from a prior interrupted execution. Phase nodes are out-of-band; they do not participate in output routing.
 
@@ -73,18 +73,19 @@ The Archivist runs against a real model in any of these environments. `detectBac
 | 5 | **OpenRouter** (cloud, free tier) | Free key from [openrouter.ai/keys](https://openrouter.ai/keys). Routes to llama-3.3-70b-instruct:free. Works on any device. |
 | 6 | **Browser built-in model** (local, via `window.LanguageModel`) | Chrome 138+ or Edge. No key, no network, ~2 GB one-shot model download. Desktop only. |
 | 7 | **WebLLM** (in-browser, WebGPU) | Browser with `navigator.gpu`. Lazy-loads `@mlc-ai/web-llm` + Phi-3.5 mini (~780 MB) on first use; cached after. Desktop only. |
-| 8 | **Stub** | Always available. Hand-coded canned answers. Always available on mobile as a zero-setup fallback; hidden from the desktop picker since on-device options exist. |
+
+When none of these is reachable, the runner renders a no-model gate (with links to the free cloud keys above) instead of running. There is no canned-response fallback.
 
 ## Seed library
 
-On mount, 18 sci-fi and philosophy titles are pre-loaded into `urn:dagonizer:memory` so the Memory tab has content from first paint and stub responses cite real books from the visible graph. The seed covers:
+On mount, 18 sci-fi and philosophy titles are pre-loaded into `urn:dagonizer:memory` so the Memory tab has content from first paint. The seed covers:
 
 - **Science fiction**: Liu Cixin, William Gibson, Ursula K. Le Guin (×2), Stanisław Lem, Ted Chiang, Jeff VanderMeer, Dan Simmons, Vernor Vinge, the Strugatsky brothers.
 - **Philosophy and philosophical literature**: Borges, Wittgenstein, Camus, Foucault, Deleuze, Hofstadter, Marcus Aurelius, Hegel.
 
 `SeedLibrary.loadInto(memoryStore)` clears `urn:dagonizer:memory` and reasserts all 18 books as RDF triples using the same `dag:title`, `dag:author`, `dag:subject`, `dag:firstPublishYear`, `dag:summary`, and `rdf:type dag:Book` predicates that `StateProjection` uses for run candidates. Because the vocabulary is shared, the MemoryGraph renders seed books and run candidates uniformly.
 
-The seed is not stub-specific. Real LLM backends receive the pre-seeded triples through the `recall-memories` node's SPARQL digest; the library is a shared starting point for every backend. `reset()` restores the seed alongside the TBox ontology so a manual reset never leaves the Memory tab empty.
+Every backend receives the pre-seeded triples through the `recall-memories` node's SPARQL digest; the library is a shared starting point for every run. `reset()` restores the seed alongside the TBox ontology so a manual reset never leaves the Memory tab empty.
 
 ### Intent classification (vector-similarity)
 
@@ -102,7 +103,7 @@ Drafts ship as conversational prose. The composer prompt forbids markdown headin
 
 `MobileDetection.isLikelyMobile()` triangulates three signals: touch points (`navigator.maxTouchPoints > 1`), coarse pointer media query (`(pointer: coarse)`), and narrow viewport (`innerWidth < 900`). All three must indicate mobile; a single signal is not enough. A "Treat as desktop" link in the mobile banner lets tablet visitors opt out of mobile detection and stores the override in `localStorage` (`dagonizer-device-override`).
 
-If no API key is set on a mobile device, the demo runs with canned stub responses so the DAG still executes. The mobile banner makes the canned-vs-real distinction explicit: it reads "running with canned responses (not real AI)" when stub is active, and "using cloud backend [name]" once a key is entered and a cloud backend takes over. Adding any cloud key causes `pickBestBackend` to re-rank and swap the active backend automatically.
+The on-device and WebGPU backends are desktop-only, so on mobile the demo needs a cloud API key (Groq, Cerebras, Gemini API, Mistral, or OpenRouter). Until one is set, the no-model gate is shown with links to free keys; the demo does not run without a real backend. Once a key is entered the mobile banner reads "using cloud backend [name]", and adding any cloud key causes `pickBestBackend` to re-rank and swap the active backend automatically.
 
 ### Enable the browser built-in model + tool calling
 
@@ -149,18 +150,11 @@ free tier**:
 CORS is open on the Gemini REST endpoint, so this works from GitHub Pages
 or any other static host without a proxy.
 
-### Use the offline stub
-
-To watch the DAG animate without an LLM, pick
-*Canned responses (offline stub)* from the backend dropdown. The stub adapter
-pattern-matches the visitor's query and emits a `web_search_books` tool call
-when it sees ISBN-like patterns or quoted titles, exercising the same
-tool-calling path the real models take, without the GPU.
-
 ---
 
 ```bash
-# CLI: picks the offline stub when no key is set, Gemini REST when GEMINI_API_KEY is present.
+# CLI: cascade is Ollama (localhost) → Gemini API → Cerebras → Groq; first reachable wins.
+# Throws NO_ADAPTER_AVAILABLE if none is reachable — there is no canned fallback.
 npx tsx examples/the-archivist/runArchivist.ts
 
 # Force Gemini REST with your key:
@@ -211,16 +205,7 @@ The DAG is JSON-LD natively. `DAGBuilder.build()` returns a plain JavaScript obj
 
 There is no separate projection layer or dual configuration. The object `DAGBuilder.build()` returns is the same object the engine consumes and the same object that serializes to JSON-LD. Load a DAG from JSON, register it, execute it: one surface throughout.
 
-```ts
-import { Dagonizer } from '@noocodex/dagonizer';
-
-// Serialize the Archivist DAG to JSON for persistence or transfer:
-const json = Dagonizer.serialize(archivistDAG);
-
-// Restore it in another process or reload:
-const dag = Dagonizer.load(json);
-dispatcher.registerDAG(dag);
-```
+<<< ../../examples/the-archivist/dag-roundtrip.ts#dag-roundtrip
 
 Embedded-DAG placements in the JSON-LD output look like:
 

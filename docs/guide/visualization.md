@@ -137,12 +137,7 @@ Classes appear in the output as prefixed IRIs under the `dag:` prefix (e.g. `dag
 
 ## Combining with read accessors
 
-```ts
-const sources = dispatcher.listDAGs().map((dag) => ({
-  name: dag.name,
-  mermaid: MermaidRenderer.render(dag),
-}));
-```
+<<< @/../examples/the-archivist/viz/render-mermaid.ts#list-dags-render
 
 The dispatcher's read accessors (`getDAG`, `listDAGs`, `getNode`, `listNodes`) make documentation generation straightforward: pull every registered DAG, render it, write the markdown.
 

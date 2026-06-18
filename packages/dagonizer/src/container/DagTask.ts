@@ -47,12 +47,14 @@ export class DagTask<
   /**
    * Materialise the wire form by snapshotting the live clone. Called by
    * isolating containers before sending the task across the transport boundary.
+   * Produces a single-item request (N=1); multi-item batch requests are
+   * built by `DagContainerBase.runDagBatch` directly.
    */
   toRequest(): ExecutionRequest {
     return {
       'dagName':       this.dagName,
       'placementPath': [...this.placementPath],
-      'stateSnapshot': this.state.snapshot(),
+      'items':         [{ 'id': this.correlationId, 'snapshot': this.state.snapshot() }],
       'timeoutMs':     this.timeout.toWire(),
       'correlationId': this.correlationId,
     };

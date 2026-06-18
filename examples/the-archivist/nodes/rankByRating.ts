@@ -2,9 +2,9 @@
  * rankByRating: deterministic rating-weighted ranker for the
  * `find-reviews` branch.
  *
- * Replaces the LLM-based `rankCandidates` for the reviews branch so
- * the ranking is objective and reproducible: a candidate with 4.5 stars
- * across 10,000 ratings outranks one with 5 stars across 3 ratings.
+ * Ranks the reviews branch objectively and reproducibly, without an
+ * LLM: a candidate with 4.5 stars across 10,000 ratings outranks one
+ * with 5 stars across 3 ratings.
  *
  * Weight formula:
  *   weight = (notes.rating ?? 0) * log10(1 + (notes.ratingsCount ?? 0))
@@ -17,23 +17,18 @@
  * so the merge node can soft-gate downstream.
  */
 
-import { NodeOutputBuilder,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 import type { Candidate } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
-export class RankByRatingNode implements NodeInterface<ArchivistState, 'ranked', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class RankByRatingNode extends ScalarNode<ArchivistState, 'ranked', ArchivistServices> {
   readonly name = 'rank-by-rating';
   readonly outputs = ['ranked'] as const;
 
-  execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     if (state.candidates.length === 0) {
       context.services.logger.info('rank-by-rating: no candidates');
       return Promise.resolve(NodeOutputBuilder.of('ranked'));
@@ -69,5 +64,5 @@ export class RankByRatingNode implements NodeInterface<ArchivistState, 'ranked',
   }
 }
 
-/** Backward-compatible const export for existing bundle/DAG references. */
+/** Singleton node instance referenced by the DAG wiring. */
 export const rankByRating = new RankByRatingNode();

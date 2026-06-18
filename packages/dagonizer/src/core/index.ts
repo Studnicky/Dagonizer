@@ -11,7 +11,6 @@
 export {
   GatherStrategies,
   GatherStrategy,
-  IncrementalGatherStrategy,
 } from './GatherStrategies.js';
 export type { GatherExecution, GatherRecord } from './GatherStrategies.js';
 
@@ -20,3 +19,11 @@ export {
   OutcomeReducers,
 } from './OutcomeReducers.js';
 export type { OutcomeRecord } from './OutcomeReducers.js';
+
+export { Batch } from './batch/Batch.js';
+export type { Item, ItemId } from './batch/Item.js';
+export { RoutedBatchBuilder } from './batch/RoutedBatch.js';
+export type { RoutedBatch } from './batch/RoutedBatch.js';
+export { MonadicNode } from './MonadicNode.js';
+export { ScalarNode } from './ScalarNode.js';
+export { NodeRunner } from './NodeRunner.js';

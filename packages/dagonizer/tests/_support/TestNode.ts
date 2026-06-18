@@ -2,16 +2,18 @@
  * TestNode: shared static factory for building minimal `NodeInterface`
  * instances in unit tests.
  *
- * Replaces the 6+ copies of the `makeNode` freestanding helper that existed
- * across test files. Every test that needs a trivial node should use
- * `TestNode.make(name, outputs, exec?)` rather than defining a local helper.
+ * The single source for trivial test nodes across test files. Every test that
+ * needs a trivial node uses `TestNode.make(name, outputs, exec?)` rather than
+ * defining a local helper.
  */
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
+import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import { NodeOutputBuilder } from '../../src/entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 export class TestNode {
   private constructor() { /* static class */ }
@@ -19,7 +21,7 @@ export class TestNode {
   /**
    * Create a minimal `NodeInterface<TState>` that returns `outputs[0]`
    * by default, or invokes the optional `exec` callback and returns its result
-   * as the `output` token.
+   * as the output token.
    *
    * @param name     - Node name (must match the DAG placement `node` reference).
    * @param outputs  - Declared output tokens; `outputs[0]` is the default route.
@@ -32,16 +34,21 @@ export class TestNode {
     exec?: (state: TState) => string | Promise<string>,
   ): NodeInterface<TState> {
     const defaultOutput = outputs[0] as string;
-    return {
-      name,
-      outputs,
-      'contract': EMPTY_CONTRACT_FRAGMENT,
-      'timeout': Timeout.none(),
-      async execute(state) {
+
+    class MakeNode extends ScalarNode<TState, string> {
+      override readonly name = name;
+      override readonly outputs = outputs as readonly string[];
+
+      override async executeOne(
+        state: TState,
+        _context: NodeContextInterface,
+      ): Promise<NodeOutputInterface<string>> {
         const output = exec !== undefined ? await exec(state) : defaultOutput;
-        return { 'errors': [], output };
-      },
-    };
+        return NodeOutputBuilder.of(output);
+      }
+    }
+
+    return new MakeNode();
   }
 
   /**
@@ -59,12 +66,20 @@ export class TestNode {
     contract: OperationContractFragment,
   ): NodeInterface<TState, string> {
     const defaultOutput = outputs[0] ?? 'success';
-    return {
-      name,
-      outputs,
-      contract,
-      'timeout': Timeout.none(),
-      async execute() { return { 'errors': [], 'output': defaultOutput }; },
-    };
+
+    class WithContractNode extends ScalarNode<TState, string> {
+      override readonly name = name;
+      override readonly outputs = outputs as readonly string[];
+      override readonly contract: OperationContractFragment = contract;
+
+      override async executeOne(
+        _state: TState,
+        _context: NodeContextInterface,
+      ): Promise<NodeOutputInterface<string>> {
+        return NodeOutputBuilder.of(defaultOutput);
+      }
+    }
+
+    return new WithContractNode();
   }
 }

@@ -28,7 +28,6 @@ import CARRIER_RATES_RAW from './data/carrier-rates.json' with { type: 'json' };
 import FX_RATES_RAW from './data/fx-rates.json' with { type: 'json' };
 import JURISDICTION_TABLE_RAW from './data/jurisdictions.json' with { type: 'json' };
 
-import type { CanonicalEvent } from './entities/CanonicalEvent.ts';
 import type { DeliveryEstimate } from './entities/DeliveryEstimate.ts';
 import type { GdprResult } from './entities/GdprResult.ts';
 import type { GeoContext } from './entities/GeoContext.ts';
@@ -38,7 +37,28 @@ import type { RawShipmentEvent } from './entities/RawShipmentEvent.ts';
 import type { ShipmentEvent } from './entities/ShipmentEvent.ts';
 import type { ShippingQuote } from './entities/ShippingQuote.ts';
 import type { SourcePayload } from './entities/SourcePayload.ts';
+import type { CanonicalEventVariant } from './entities/index.ts';
 import { OfflineGeo } from './services/OfflineGeo.ts';
+import { stringify as yamlStringify, parse as yamlParse } from 'yaml';
+
+export type FormatMix = ReadonlyArray<{
+  readonly format: 'csv' | 'json' | 'ndjson' | 'yaml';
+  readonly compression: 'none' | 'gzip';
+  readonly weight: number;
+}>;
+
+export type EventTypeConfig = ReadonlyArray<{
+  readonly eventType: CanonicalEventVariant['eventType'];
+  readonly count: number;
+  readonly formatMix: FormatMix;
+}>;
+
+export type TypedScan =
+  | (RawShipmentEvent & { readonly eventType: 'position-ping' })
+  | (RawShipmentEvent & { readonly eventType: 'facility-scan' })
+  | (RawShipmentEvent & { readonly eventType: 'sensor-reading'; readonly tempC: number; readonly humidityPct: number; readonly shockG: number })
+  | (RawShipmentEvent & { readonly eventType: 'customs-event'; readonly customsStatus: 'held' | 'cleared' | 'inspection' })
+  | (RawShipmentEvent & { readonly eventType: 'delivery-confirmation'; readonly delivered: true; readonly podSignature: string; readonly deliveredAt: string });
 
 // ── tz-lookup: CJS package; import-default works under tsx (Node CJS interop)
 // and under Vite (with optimizeDeps.include — see docs/.vitepress/config.ts).
@@ -516,19 +536,19 @@ export class Units {
 // Order matters: the more specific 'out for delivery' must be tested BEFORE the
 // generic 'deliver' (which 'out for delivery' also contains), or an OFD scan
 // would be mis-classified as the DELIVERED terminal.
-const STATUS_DISPATCH: Array<{ 'pattern': RegExp; 'eventType': NormalizedShipment['eventType'] }> = [
-  { 'pattern': /out.?for.?delivery|out_for_delivery/i, 'eventType': 'OUT_FOR_DELIVERY' },
-  { 'pattern': /deliver/i,                           'eventType': 'DELIVERED' },
-  { 'pattern': /exception|address|hold|customs|delay|damage/i, 'eventType': 'EXCEPTION' },
-  { 'pattern': /arrival|arrived|arrival.scan/i,      'eventType': 'ARRIVAL' },
-  { 'pattern': /depart|departed|dispatch/i,          'eventType': 'DEPARTURE' },
-  { 'pattern': /scan|transit|in.transit|picked.?up|pickup/i, 'eventType': 'SCAN' },
+const STATUS_DISPATCH: Array<{ 'pattern': RegExp; 'status': NormalizedShipment['status'] }> = [
+  { 'pattern': /out.?for.?delivery|out_for_delivery/i, 'status': 'OUT_FOR_DELIVERY' },
+  { 'pattern': /deliver/i,                           'status': 'DELIVERED' },
+  { 'pattern': /exception|address|hold|customs|delay|damage/i, 'status': 'EXCEPTION' },
+  { 'pattern': /arrival|arrived|arrival.scan/i,      'status': 'ARRIVAL' },
+  { 'pattern': /depart|departed|dispatch/i,          'status': 'DEPARTURE' },
+  { 'pattern': /scan|transit|in.transit|picked.?up|pickup/i, 'status': 'SCAN' },
 ];
 
 export class EventClassifier {
-  static eventType(rawStatus: string): NormalizedShipment['eventType'] {
-    for (const { pattern, eventType } of STATUS_DISPATCH) {
-      if (pattern.test(rawStatus)) return eventType;
+  static eventType(rawStatus: string): NormalizedShipment['status'] {
+    for (const { pattern, status } of STATUS_DISPATCH) {
+      if (pattern.test(rawStatus)) return status;
     }
     return 'SCAN'; // default for unrecognised but non-exceptional statuses
   }
@@ -778,7 +798,7 @@ export class Disruptions {
  *
  * A breach is a temperature outside the 2–8°C window or a shock event above 2.5g.
  * Pure deterministic thresholds — only `sensor-reading` events carry telemetry,
- * so this check runs ONLY on the sensor lane (the per-kind skip showcase).
+ * so this check runs ONLY on the sensor lane (the per-event-type skip showcase).
  */
 const COLD_CHAIN_MIN_C = 2;
 const COLD_CHAIN_MAX_C = 8;
@@ -835,10 +855,16 @@ export class Consent {
  * Each entity (shipmentId) has a JOURNEY: an ordered sequence of M~2–5 scans
  * moving origin → destination with monotonically increasing timestamps and
  * coords along the path. Scans from many journeys are interleaved in time order
- * (a real feed); one scan per scatter item. The eventType progression is
+ * (a real feed); one scan per scatter item. The status progression is
  * DEPARTURE → SCAN/ARRIVAL → OUT_FOR_DELIVERY → DELIVERED, with a disrupted
  * scan flagged EXCEPTION. Seeded LCG (Knuth params) — no Date.now/Math.random;
  * tz-lookup + Intl are pure on the fixed epochs.
+ *
+ * Memory model:
+ *   journeyGenerator() yields ONE journey at a time (a small RawShipmentEvent[]).
+ *   Peak memory is O(1 journey) regardless of how many journeys are consumed.
+ *   typedScansGenerator consumes journeyGenerator lazily — no full-feed array.
+ *   buildRawScans(n) pulls n journeys, collects then time-sorts — O(n journeys).
  */
 export class ShipmentEvents {
   private static lcg(seed: number): () => number {
@@ -902,274 +928,465 @@ export class ShipmentEvents {
     { 'reason': 'lost in transit',  'hours': 96 },
   ];
 
+  // Static lookup tables shared by journeyGenerator and buildRawScans.
+  private static readonly CARRIERS: Array<{ 'alias': string; 'carrierId': string }> = [
+    { 'alias': 'FEDEX',                  'carrierId': 'fedex' },
+    { 'alias': 'FedEx',                  'carrierId': 'fedex' },
+    { 'alias': 'Federal Express',        'carrierId': 'fedex' },
+    { 'alias': 'fedex ground',           'carrierId': 'fedex' },
+    { 'alias': 'UPS',                    'carrierId': 'ups' },
+    { 'alias': 'United Parcel Service',  'carrierId': 'ups' },
+    { 'alias': 'DHL Express',            'carrierId': 'dhl' },
+    { 'alias': 'DHL',                    'carrierId': 'dhl' },
+    { 'alias': 'USPS',                   'carrierId': 'usps' },
+    { 'alias': 'Royal Mail',             'carrierId': 'royal-mail' },
+    { 'alias': 'DPD',                    'carrierId': 'dpd' },
+  ];
+
+  private static readonly REGIONS: Array<{ 'lat': number; 'lng': number; 'country': string; 'countryVariants': string[]; 'gatewayIp': string }> = [
+    { 'lat':  39.9,  'lng':  -75.2, 'country': 'USA',  'countryVariants': ['US', 'USA', 'United States'],        'gatewayIp': '8.8.8.8' },
+    { 'lat':  51.5,  'lng':   -0.1, 'country': 'GBR',  'countryVariants': ['GB', 'GBR', 'United Kingdom'],       'gatewayIp': '212.58.244.1' },
+    { 'lat':  48.9,  'lng':    2.3, 'country': 'FRA',  'countryVariants': ['FR', 'FRA', 'France'],               'gatewayIp': '80.67.169.12' },
+    { 'lat':  52.5,  'lng':   13.4, 'country': 'DEU',  'countryVariants': ['DE', 'DEU', 'Germany'],              'gatewayIp': '194.150.168.168' },
+    { 'lat':  35.7,  'lng':  139.7, 'country': 'JPN',  'countryVariants': ['JP', 'JPN', 'Japan'],                'gatewayIp': '210.130.1.1' },
+    { 'lat':  31.2,  'lng':  121.5, 'country': 'CHN',  'countryVariants': ['CN', 'CHN', 'China'],                'gatewayIp': '114.114.114.114' },
+    { 'lat': -33.9,  'lng':  151.2, 'country': 'AUS',  'countryVariants': ['AU', 'AUS', 'Australia'],            'gatewayIp': '1.1.1.1' },
+    { 'lat': -23.5,  'lng':  -46.6, 'country': 'BRA',  'countryVariants': ['BR', 'BRA', 'Brazil'],               'gatewayIp': '200.160.2.3' },
+    { 'lat':  19.4,  'lng':  -99.1, 'country': 'MEX',  'countryVariants': ['MX', 'MEX', 'Mexico'],               'gatewayIp': '200.33.146.249' },
+    { 'lat':  28.6,  'lng':   77.2, 'country': 'IND',  'countryVariants': ['IN', 'IND', 'India'],                'gatewayIp': '49.44.79.1' },
+    { 'lat':  25.2,  'lng':   55.3, 'country': 'ARE',  'countryVariants': ['AE', 'ARE', 'United Arab Emirates'], 'gatewayIp': '94.200.200.200' },
+    { 'lat': -26.2,  'lng':   28.0, 'country': 'ZAF',  'countryVariants': ['ZA', 'ZAF', 'South Africa'],         'gatewayIp': '196.4.160.4' },
+  ];
+
+  private static readonly ORIGIN_HUBS: Array<{ 'lat': number; 'lng': number; 'name': string }> = [
+    { 'lat':  35.0,  'lng':  -89.9, 'name': 'Memphis' },
+    { 'lat':  51.4,  'lng':   12.2, 'name': 'Leipzig' },
+    { 'lat':  22.3,  'lng':  113.9, 'name': 'Hong Kong' },
+    { 'lat':  25.3,  'lng':   55.4, 'name': 'Dubai' },
+    { 'lat':  40.6,  'lng':  -73.8, 'name': 'New York' },
+    { 'lat':  -3.1,  'lng':  -38.5, 'name': 'Fortaleza' },
+  ];
+
+  private static readonly NAMES: string[] = [
+    'Alice Müller', 'Bob Chen', 'Carol Smith', 'David García', 'Eve Johnson',
+    'Frank Kim', 'Grace Lee', 'Henry Brown', 'Isabelle Dubois', 'Jack Okonkwo',
+  ];
+
+  private static readonly DOMAINS: string[] = [
+    'example.com', 'test.org', 'mail.net', 'inbox.io', 'post.co',
+  ];
+
+  private static readonly STATUS_DEPARTURE: string[] = ['departed facility', 'dispatch', 'picked up'];
+  private static readonly STATUS_TRANSIT:   string[] = ['in transit', 'arrival scan', 'arrived at hub', 'en route'];
+  private static readonly STATUS_OFD:       string[] = ['out for delivery'];
+  private static readonly STATUS_DELIVERED: string[] = ['delivered', 'DELIVERED'];
+  private static readonly STATUS_EXCEPTION: string[] = ['exception - address', 'customs hold'];
+
+  private static readonly WEIGHT_UNITS: Array<RawShipmentEvent['weightUnit']> = ['lb', 'kg', 'g', 'oz'];
+  private static readonly BASE_EPOCH_MS = 1735689600000; // 2026-01-01T00:00:00Z
+  private static readonly FORMAT_CYCLE = [0, 1, 2, 4] as const;
+
+  // FNV-1a 32-bit hash — deterministic sensor channel sharding for typedScansGenerator.
+  private static fnv1a(key: string): number {
+    let h = 2166136261;
+    for (let i = 0; i < key.length; i++) {
+      h = Math.imul(h ^ key.charCodeAt(i), 16777619) >>> 0;
+    }
+    return h;
+  }
+
+  /**
+   * Lazy per-journey generator. Yields one journey (a small RawShipmentEvent[],
+   * 2–5 scans) at a time using the same seeded LCG (seed 42) and construction
+   * logic as buildRawScans. Peak memory is O(1 journey) — journeys are NOT
+   * interleaved by time here; the caller decides ordering.
+   *
+   * The shared `rand` and `formatIdxBox` are advanced identically to
+   * buildRawScans so that the first N journeys from journeyGenerator are
+   * byte-identical to the first N journeys produced by buildRawScans before
+   * the final time-sort.
+   *
+   * @param rand        Seeded LCG function (call ShipmentEvents.lcg(42) externally).
+   * @param formatIdxBox Mutable box { v: number } for the per-scan format cycle counter.
+   * @param journeyIndex The ordinal of this journey (0-based) — used for shipmentId
+   *                    and the lossless timestamp format selector.
+   */
+  private static buildJourney(
+    rand: () => number,
+    formatIdxBox: { v: number },
+    journeyIndex: number,
+  ): RawShipmentEvent[] {
+    const pick = <T>(arr: readonly T[]): T => arr[Math.floor(rand() * arr.length)] ?? arr[0]!;
+
+    const dest = pick(ShipmentEvents.REGIONS);
+    const hasGatewayIp = rand() < 0.8;
+    const gatewayIp = hasGatewayIp ? dest.gatewayIp : '';
+    const destLat = dest.lat + (rand() - 0.5) * 4;
+    const destLng = dest.lng + (rand() - 0.5) * 4;
+
+    const hub = pick(ShipmentEvents.ORIGIN_HUBS);
+    const originLat = hub.lat + (rand() - 0.5) * 4;
+    const originLng = hub.lng + (rand() - 0.5) * 4;
+
+    const carrierEntry = pick(ShipmentEvents.CARRIERS);
+    const carrier   = carrierEntry.alias;
+    const carrierId = carrierEntry.carrierId;
+
+    const name       = pick(ShipmentEvents.NAMES);
+    const domain     = pick(ShipmentEvents.DOMAINS);
+    const localPart  = `user${journeyIndex}`;
+    const countryRaw = pick(dest.countryVariants);
+
+    const weightValue = 10 + Math.floor(rand() * 3490) / 10;
+    const weightUnit  = pick(ShipmentEvents.WEIGHT_UNITS);
+    const weightGrams = Units.toGrams(weightValue, weightUnit);
+    const serviceTier = EventClassifier.serviceTier(carrierId, weightGrams);
+
+    const shipDistanceKm = ShippingCalculator.distanceKm(originLat, originLng, destLat, destLng);
+    const nominalTransitH = EtaEstimator.transitHours(shipDistanceKm, carrierId, serviceTier);
+
+    const slaBase = ShipmentEvents.slaBaseHours(serviceTier);
+    const tightRoll = rand();
+    const tightSla = tightRoll < 0.5;
+    const slaHours = tightSla
+      ? Math.max(nominalTransitH + 1, nominalTransitH * (1.0 + rand() * 0.1))
+      : Math.max(nominalTransitH + 1, nominalTransitH + 6 + rand() * Math.min(slaBase, 36));
+
+    const disruptProb = shipDistanceKm > 8000 ? 0.42 : 0.32;
+    const disrupted = rand() < disruptProb;
+    const disruptionPick = disrupted
+      ? (ShipmentEvents.DISRUPTIONS[1 + Math.floor(rand() * (ShipmentEvents.DISRUPTIONS.length - 1))] ?? ShipmentEvents.DISRUPTIONS[0]!)
+      : ShipmentEvents.DISRUPTIONS[0]!;
+    const disruptionHours  = disruptionPick.hours;
+    const disruptionReason = disruptionPick.reason;
+
+    const daysOffset  = Math.floor(rand() * 60);
+    const hoursOffset = Math.floor(rand() * 24);
+    const dispatchEpochMs = ShipmentEvents.BASE_EPOCH_MS + daysOffset * 86_400_000 + hoursOffset * 3_600_000;
+
+    const promisedMs = dispatchEpochMs + Math.round(slaHours * 3_600_000);
+    const i = journeyIndex;
+    const rawPromisedDeliveryAt = ShipmentEvents.formatTimestamp(promisedMs, i % 2 === 0 ? 0 : 2);
+    const rawDispatchAt = ShipmentEvents.formatTimestamp(dispatchEpochMs, i % 2 === 0 ? 2 : 0);
+
+    const consent = rand() < 0.6;
+    const violationRoll = rand();
+    const isViolation = violationRoll < 0.02;
+    const lawfulBasis: RawShipmentEvent['lawfulBasis'] = isViolation ? 'none' : 'contract';
+    const specialCategory: RawShipmentEvent['specialCategory'] = isViolation ? 'health' : 'none';
+
+    const catalogIds = PricingCatalog.catalogIds();
+    const lineCount = 1 + Math.floor(rand() * 4);
+    const lineItems: Array<{ 'productId': string; 'quantity': number }> = [];
+    for (let j = 0; j < lineCount; j++) {
+      const productId = catalogIds[Math.floor(rand() * catalogIds.length)] ?? 'PROD-001';
+      const quantity  = 1 + Math.floor(rand() * 3);
+      lineItems.push({ 'productId': productId, 'quantity': quantity });
+    }
+    const phonePrefix = 100 + Math.floor(rand() * 900);
+    const phoneMid    = 100 + Math.floor(rand() * 900);
+    const phoneSuffix = 1000 + Math.floor(rand() * 9000);
+    const recipientEmail   = `${localPart}@${domain}`;
+    const recipientPhone   = `+1-${phonePrefix}-${phoneMid}-${phoneSuffix}`;
+    const recipientAddress = `${1000 + Math.floor(rand() * 8000)} Main St, ${dest.country}`;
+    const facilityId       = `FAC-${hub.name.replace(/\s+/g, '').toUpperCase().slice(0, 3)}-${String(Math.floor(rand() * 100)).padStart(3, '0')}`;
+
+    const scanCount = 2 + Math.floor(rand() * 4);
+    const journeyFails = rand() < 0.12;
+    const disruptScanIdx = disrupted && scanCount > 2
+      ? 1 + Math.floor(rand() * (scanCount - 2))
+      : -1;
+
+    const scans: RawShipmentEvent[] = [];
+    let prevLat = originLat;
+    let prevLng = originLng;
+    let cursorMs = dispatchEpochMs;
+
+    for (let s = 0; s < scanCount; s++) {
+      const t = scanCount === 1 ? 0 : s / (scanCount - 1);
+      const lat = originLat + (destLat - originLat) * t;
+      const lng = originLng + (destLng - originLng) * t;
+
+      if (s > 0) {
+        const legShare = nominalTransitH / (scanCount - 1);
+        let legHours = legShare;
+        if (s === disruptScanIdx) legHours += disruptionHours;
+        cursorMs += Math.round(legHours * 3_600_000);
+      }
+
+      const isLast  = s === scanCount - 1;
+      const isFirst = s === 0;
+      const isTransientException = s === disruptScanIdx;
+
+      const rawStatus = isLast
+          ? (journeyFails ? pick(ShipmentEvents.STATUS_EXCEPTION) : pick(ShipmentEvents.STATUS_DELIVERED))
+        : isFirst ? pick(ShipmentEvents.STATUS_DEPARTURE)
+        : isTransientException ? pick(ShipmentEvents.STATUS_EXCEPTION)
+        : (s === scanCount - 2) ? pick(ShipmentEvents.STATUS_OFD)
+        : pick(ShipmentEvents.STATUS_TRANSIT);
+
+      const invalid = rand() < 0.06;
+      const finalLat = invalid ? 95 + rand() * 10  : lat;
+      const finalLng = invalid ? 185 + rand() * 10 : lng;
+
+      const variant = ShipmentEvents.FORMAT_CYCLE[formatIdxBox.v % ShipmentEvents.FORMAT_CYCLE.length] ?? 0;
+      const rawTimestamp = ShipmentEvents.formatTimestamp(cursorMs, variant);
+      formatIdxBox.v++;
+
+      scans.push({
+        'shipmentId':            `SHP-${String(i).padStart(6, '0')}`,
+        'scanSeq':               s,
+        'rawTimestamp':          rawTimestamp,
+        'rawDispatchAt':         rawDispatchAt,
+        'rawStatus':             rawStatus,
+        'carrier':               carrier,
+        'ipAddress':             gatewayIp,
+        'latitude':              finalLat,
+        'longitude':             finalLng,
+        'legFromLat':            prevLat,
+        'legFromLng':            prevLng,
+        'originLat':             originLat,
+        'originLng':             originLng,
+        'destLat':               destLat,
+        'destLng':               destLng,
+        'weight':                weightValue,
+        'weightUnit':            weightUnit,
+        'recipientName':         name,
+        'recipientEmail':        recipientEmail,
+        'recipientPhone':        recipientPhone,
+        'recipientAddress':      recipientAddress,
+        'recipientCountry':      countryRaw,
+        'marketingConsent':      consent,
+        'rawPromisedDeliveryAt': rawPromisedDeliveryAt,
+        'lineItems':             lineItems.map((li) => ({ ...li })),
+        'facilityId':            facilityId,
+        'lawfulBasis':           lawfulBasis,
+        'specialCategory':       specialCategory,
+        'disruptionReason':      disruptionReason,
+      });
+
+      prevLat = lat;
+      prevLng = lng;
+    }
+
+    return scans;
+  }
+
+  /**
+   * Lazy per-journey generator. Yields one journey (RawShipmentEvent[], 2–5 scans)
+   * at a time. Uses the same seeded LCG (seed 42) and construction logic as
+   * buildRawScans. Peak memory is O(1 journey) regardless of total journeys consumed.
+   *
+   * Scans within each journey are in scanSeq order (0..M-1). Journeys are NOT
+   * time-sorted across each other — the caller applies ordering if needed.
+   * buildRawScans collects all journeys then sorts by epoch; typedScansGenerator
+   * processes journeys in emission order (no cross-journey sort required).
+   */
+  static * journeyGenerator(): Generator<RawShipmentEvent[]> {
+    const rand = ShipmentEvents.lcg(42);
+    const formatIdxBox = { v: 0 };
+    for (let i = 0; ; i++) {
+      yield ShipmentEvents.buildJourney(rand, formatIdxBox, i);
+    }
+  }
+
+  /**
+   * Typed generator: yields one TypedScan at a time, INTERLEAVED across all
+   * EventTypeConfig entries using a deterministic fractional-accumulator scheduler
+   * (coin-sorter / weighted round-robin). Each type's total scan count equals
+   * entry.count exactly. Types are mixed throughout the stream so the feed looks
+   * like a live heterogeneous source rather than sequential blocks.
+   *
+   * Scheduler: each active entry holds an accumulator initialised to 0. On every
+   * step, all accumulators advance by (entry.count / totalCount). The entry with
+   * the highest accumulator wins, has 1.0 subtracted, and yields its next scan.
+   * Ties are broken by config order (stable, deterministic). This is Bresenham
+   * line-drawing applied to type selection — no randomness, no floating-point
+   * drift beyond per-step addition.
+   *
+   * Memory: O(numTypes) — one journeyGenerator iterator per active type, each
+   * buffering at most one journey (2–5 scans) at a time. No full-feed array is
+   * materialised regardless of entry.count.
+   *
+   * Per-type fields:
+   *   - sensor-reading → tempC, humidityPct, shockG (fnv1a-sharded)
+   *   - customs-event  → customsStatus ('held' | 'cleared' | 'inspection')
+   *   - delivery-confirmation → delivered: true, podSignature, deliveredAt
+   *   - position-ping / facility-scan → no extra fields beyond the base
+   *
+   * Terminal/non-terminal selection: delivery-confirmation takes the LAST scan of
+   * each journey; all other types take the NON-terminal scans (everything except
+   * the last) — identical semantics to the previous sequential implementation.
+   */
+  static * typedScansGenerator(config: EventTypeConfig): Generator<TypedScan> {
+    const CUSTOMS_STATUSES: Array<'held' | 'cleared' | 'inspection'> = ['held', 'cleared', 'inspection'];
+    // Independent LCG for customs-status picks — does not share state with
+    // journeyGenerator's encapsulated LCG (seed 42 inside journeyGenerator).
+    const customsRand = ShipmentEvents.lcg(42);
+    const pickCustoms = (): 'held' | 'cleared' | 'inspection' =>
+      CUSTOMS_STATUSES[Math.floor(customsRand() * CUSTOMS_STATUSES.length)] ?? 'held';
+
+    // ── Build per-type sub-iterators ──────────────────────────────────────────
+    // Each slot holds the state for one config entry. journeyIter is a fresh
+    // independent journeyGenerator() per type so journey-LCG state is not shared
+    // across types. candidateBuffer holds the remaining scans of the current
+    // journey being drained for this type.
+    interface TypeSlot {
+      readonly entryIdx: number;
+      readonly eventType: EventTypeConfig[number]['eventType'];
+      readonly terminalOnly: boolean;
+      remaining: number;
+      accumulator: number;
+      journeyIter: Iterator<RawShipmentEvent[]>;
+      candidateBuffer: RawShipmentEvent[];
+    }
+
+    const totalCount = config.reduce((s, e) => s + e.count, 0);
+    if (totalCount <= 0) return;
+
+    const activeSlots: TypeSlot[] = [];
+    for (let i = 0; i < config.length; i++) {
+      const entry = config[i]!;
+      if (entry.count <= 0) continue;
+      activeSlots.push({
+        entryIdx:       i,
+        eventType:      entry.eventType,
+        terminalOnly:   entry.eventType === 'delivery-confirmation',
+        remaining:      entry.count,
+        accumulator:    0,
+        journeyIter:    ShipmentEvents.journeyGenerator(),
+        candidateBuffer: [],
+      });
+    }
+
+    if (activeSlots.length === 0) return;
+
+    // ── Fractional accumulator scheduler ─────────────────────────────────────
+    // step() advances all accumulators by their weight (entry.count / totalCount),
+    // then returns the index into activeSlots of the winner (highest accumulator,
+    // ties broken by slot order). The winner's accumulator is decremented by 1.0.
+    const weights: number[] = activeSlots.map((s) => {
+      const entry = config[s.entryIdx]!;
+      return entry.count / totalCount;
+    });
+
+    const stepWinner = (): number => {
+      for (let i = 0; i < activeSlots.length; i++) {
+        activeSlots[i]!.accumulator += weights[i]!;
+      }
+      let best = 0;
+      for (let i = 1; i < activeSlots.length; i++) {
+        if (activeSlots[i]!.accumulator > activeSlots[best]!.accumulator) best = i;
+      }
+      activeSlots[best]!.accumulator -= 1.0;
+      return best;
+    };
+
+    // ── Emit loop ─────────────────────────────────────────────────────────────
+    // Drain activeSlots until all types are exhausted. After each yield the slot
+    // remains active (accumulator keeps accumulating); when remaining hits 0 the
+    // slot is spliced out and its weight rebalanced across the survivors.
+    while (activeSlots.length > 0) {
+      const winnerIdx = stepWinner();
+      const slot = activeSlots[winnerIdx]!;
+
+      // Fill candidate buffer for this type if it is empty.
+      while (slot.candidateBuffer.length === 0 && slot.remaining > 0) {
+        const step = slot.journeyIter.next();
+        if (step.done === true) break;
+        const journey = step.value;
+        const candidates: RawShipmentEvent[] = slot.terminalOnly
+          ? [journey[journey.length - 1]!]
+          : journey.length > 1
+            ? journey.slice(0, -1)
+            : journey;
+        for (const c of candidates) slot.candidateBuffer.push(c);
+      }
+
+      if (slot.candidateBuffer.length === 0) {
+        // This type has no more scans — remove it from active set.
+        activeSlots.splice(winnerIdx, 1);
+        weights.splice(winnerIdx, 1);
+        continue;
+      }
+
+      const scan = slot.candidateBuffer.shift()!;
+
+      // Materialise the typed scan with per-type fields.
+      let typed: TypedScan;
+      switch (slot.eventType) {
+        case 'sensor-reading': {
+          const h = ShipmentEvents.fnv1a(`${scan.shipmentId}:${scan.scanSeq}:sensor`);
+          const b0 = (h >>> 24) & 0xff;
+          const b1 = (h >>> 16) & 0xff;
+          const b2 = (h >>> 8)  & 0xff;
+          typed = {
+            ...scan,
+            'eventType':   'sensor-reading',
+            'tempC':       Math.round((2 + (b0 / 255) * 6) * 10) / 10,
+            'humidityPct': Math.round(40 + (b1 / 255) * 40),
+            'shockG':      Math.round((b2 / 255) * 30) / 10,
+          };
+          break;
+        }
+        case 'customs-event': {
+          typed = {
+            ...scan,
+            'eventType':     'customs-event',
+            'customsStatus': pickCustoms(),
+          };
+          break;
+        }
+        case 'delivery-confirmation': {
+          const dh = ShipmentEvents.fnv1a(`${scan.shipmentId}:${scan.scanSeq}:delivery`);
+          const deliveredAtMs = 1735689600000 + (dh % 31_536_000_000); // within 2026
+          typed = {
+            ...scan,
+            'eventType':    'delivery-confirmation',
+            'delivered':    true,
+            'podSignature': `SIG-${scan.shipmentId}-${scan.scanSeq}`,
+            'deliveredAt':  new Date(deliveredAtMs).toISOString(),
+          };
+          break;
+        }
+        case 'position-ping': {
+          typed = { ...scan, 'eventType': 'position-ping' };
+          break;
+        }
+        case 'facility-scan': {
+          typed = { ...scan, 'eventType': 'facility-scan' };
+          break;
+        }
+      }
+
+      yield typed;
+      slot.remaining--;
+
+      if (slot.remaining <= 0) {
+        // Type quota exhausted — remove from active set.
+        activeSlots.splice(winnerIdx, 1);
+        weights.splice(winnerIdx, 1);
+      }
+    }
+  }
+
   /**
    * Build the deterministic raw scan feed: N journeys, each M~2–5 scans, all
    * scans interleaved by timestamp. This is the single source of truth for the
    * synthetic data; the multi-format `Sources` encode a partition of it.
+   *
+   * Pulls from journeyGenerator() for the first n journeys, collects all scans,
+   * then time-sorts — identical observable behaviour to the original implementation.
    */
   static buildRawScans(n: number): RawShipmentEvent[] {
-    const rand = ShipmentEvents.lcg(42);
-
-    const CARRIERS: Array<{ 'alias': string; 'carrierId': string }> = [
-      { 'alias': 'FEDEX',                  'carrierId': 'fedex' },
-      { 'alias': 'FedEx',                  'carrierId': 'fedex' },
-      { 'alias': 'Federal Express',        'carrierId': 'fedex' },
-      { 'alias': 'fedex ground',           'carrierId': 'fedex' },
-      { 'alias': 'UPS',                    'carrierId': 'ups' },
-      { 'alias': 'United Parcel Service',  'carrierId': 'ups' },
-      { 'alias': 'DHL Express',            'carrierId': 'dhl' },
-      { 'alias': 'DHL',                    'carrierId': 'dhl' },
-      { 'alias': 'USPS',                   'carrierId': 'usps' },
-      { 'alias': 'Royal Mail',             'carrierId': 'royal-mail' },
-      { 'alias': 'DPD',                    'carrierId': 'dpd' },
-    ];
-
-    // Free-text statuses keyed by journey position (the eventType progression
-    // DEPARTURE → SCAN/ARRIVAL → OUT_FOR_DELIVERY → DELIVERED). A disrupted
-    // scan emits an EXCEPTION-flavoured status.
-    const STATUS_DEPARTURE = ['departed facility', 'dispatch', 'picked up'];
-    const STATUS_TRANSIT   = ['in transit', 'arrival scan', 'arrived at hub', 'en route'];
-    const STATUS_OFD       = ['out for delivery'];
-    const STATUS_DELIVERED = ['delivered', 'DELIVERED'];
-    const STATUS_EXCEPTION = ['exception - address', 'customs hold'];
-
-    // Destination region anchors — coords land well inside country polygons.
-    // Each region carries a REAL public per-region gateway IP (an in-region
-    // public DNS resolver / datacenter anycast endpoint) — the IP modality's
-    // signal. The IP API geolocates these to a real country to fuse with the GPS
-    // reverse-geocode. These are sample SIGNAL inputs, not a resolution table.
-    const REGIONS: Array<{ 'lat': number; 'lng': number; 'country': string; 'countryVariants': string[]; 'gatewayIp': string }> = [
-      { 'lat':  39.9,  'lng':  -75.2, 'country': 'USA',  'countryVariants': ['US', 'USA', 'United States'],        'gatewayIp': '8.8.8.8' },
-      { 'lat':  51.5,  'lng':   -0.1, 'country': 'GBR',  'countryVariants': ['GB', 'GBR', 'United Kingdom'],       'gatewayIp': '212.58.244.1' },
-      { 'lat':  48.9,  'lng':    2.3, 'country': 'FRA',  'countryVariants': ['FR', 'FRA', 'France'],               'gatewayIp': '80.67.169.12' },
-      { 'lat':  52.5,  'lng':   13.4, 'country': 'DEU',  'countryVariants': ['DE', 'DEU', 'Germany'],              'gatewayIp': '194.150.168.168' },
-      { 'lat':  35.7,  'lng':  139.7, 'country': 'JPN',  'countryVariants': ['JP', 'JPN', 'Japan'],                'gatewayIp': '210.130.1.1' },
-      { 'lat':  31.2,  'lng':  121.5, 'country': 'CHN',  'countryVariants': ['CN', 'CHN', 'China'],                'gatewayIp': '114.114.114.114' },
-      { 'lat': -33.9,  'lng':  151.2, 'country': 'AUS',  'countryVariants': ['AU', 'AUS', 'Australia'],            'gatewayIp': '1.1.1.1' },
-      { 'lat': -23.5,  'lng':  -46.6, 'country': 'BRA',  'countryVariants': ['BR', 'BRA', 'Brazil'],               'gatewayIp': '200.160.2.3' },
-      { 'lat':  19.4,  'lng':  -99.1, 'country': 'MEX',  'countryVariants': ['MX', 'MEX', 'Mexico'],               'gatewayIp': '200.33.146.249' },
-      { 'lat':  28.6,  'lng':   77.2, 'country': 'IND',  'countryVariants': ['IN', 'IND', 'India'],                'gatewayIp': '49.44.79.1' },
-      { 'lat':  25.2,  'lng':   55.3, 'country': 'ARE',  'countryVariants': ['AE', 'ARE', 'United Arab Emirates'], 'gatewayIp': '94.200.200.200' },
-      { 'lat': -26.2,  'lng':   28.0, 'country': 'ZAF',  'countryVariants': ['ZA', 'ZAF', 'South Africa'],         'gatewayIp': '196.4.160.4' },
-    ];
-
-    // Global dispatch hubs — origin picked INDEPENDENTLY of destination so a
-    // meaningful fraction of journeys are cross-region / intercontinental.
-    const ORIGIN_HUBS: Array<{ 'lat': number; 'lng': number; 'name': string }> = [
-      { 'lat':  35.0,  'lng':  -89.9, 'name': 'Memphis' },
-      { 'lat':  51.4,  'lng':   12.2, 'name': 'Leipzig' },
-      { 'lat':  22.3,  'lng':  113.9, 'name': 'Hong Kong' },
-      { 'lat':  25.3,  'lng':   55.4, 'name': 'Dubai' },
-      { 'lat':  40.6,  'lng':  -73.8, 'name': 'New York' },
-      { 'lat':  -3.1,  'lng':  -38.5, 'name': 'Fortaleza' },
-    ];
-
-    const NAMES   = ['Alice Müller', 'Bob Chen', 'Carol Smith', 'David García', 'Eve Johnson',
-                     'Frank Kim', 'Grace Lee', 'Henry Brown', 'Isabelle Dubois', 'Jack Okonkwo'];
-    const DOMAINS = ['example.com', 'test.org', 'mail.net', 'inbox.io', 'post.co'];
-
-    const catalogIds = PricingCatalog.catalogIds();
-    const BASE_EPOCH_MS = 1735689600000; // 2026-01-01T00:00:00Z
-    const WEIGHT_UNITS: Array<RawShipmentEvent['weightUnit']> = ['lb', 'kg', 'g', 'oz'];
-
-    const pick = <T>(arr: readonly T[]): T => arr[Math.floor(rand() * arr.length)] ?? arr[0]!;
-
-    // Build every journey's scans, then interleave all scans by timestamp so the
-    // emitted feed looks like a real stream of individual scans from many
-    // journeys in flight at once.
     const allScans: RawShipmentEvent[] = [];
-    let formatIdx = 0; // advances per scan so all 5 timestamp formats appear
-
-    for (let i = 0; i < n; i++) {
-      const dest = pick(REGIONS);
-      // The asset's per-region gateway IP (the IP modality's signal). ~20% of
-      // assets report NO gateway IP → route-modalities skips ip-geolocate for
-      // them (a real IP-lookup avoided — the savings showcase).
-      const hasGatewayIp = rand() < 0.8;
-      const gatewayIp = hasGatewayIp ? dest.gatewayIp : '';
-      const destLat = dest.lat + (rand() - 0.5) * 4;
-      const destLng = dest.lng + (rand() - 0.5) * 4;
-
-      const hub = pick(ORIGIN_HUBS);
-      const originLat = hub.lat + (rand() - 0.5) * 4;
-      const originLng = hub.lng + (rand() - 0.5) * 4;
-
-      const carrierEntry = pick(CARRIERS);
-      const carrier   = carrierEntry.alias;
-      const carrierId = carrierEntry.carrierId;
-
-      const name       = pick(NAMES);
-      const domain     = pick(DOMAINS);
-      const localPart  = `user${i}`;
-      const countryRaw = pick(dest.countryVariants);
-
-      const weightValue = 10 + Math.floor(rand() * 3490) / 10;
-      const weightUnit  = pick(WEIGHT_UNITS);
-      const weightGrams = Units.toGrams(weightValue, weightUnit);
-      const serviceTier = EventClassifier.serviceTier(carrierId, weightGrams);
-
-      // Shipment-level shipping distance (origin → destination) and nominal transit.
-      const shipDistanceKm = ShippingCalculator.distanceKm(originLat, originLng, destLat, destLng);
-      const nominalTransitH = EtaEstimator.transitHours(shipDistanceKm, carrierId, serviceTier);
-
-      // SLA promise (committed window at dispatch, ALWAYS >= dispatch). A
-      // meaningful share commits a TIGHT window (near nominal transit) so even a
-      // modest disruption — or simply a slow leg — misses it; the rest commit a
-      // looser window. Floor is nominalTransit + 1h so promised never precedes
-      // dispatch and a clean fast run can still beat a tight promise.
-      const slaBase = ShipmentEvents.slaBaseHours(serviceTier);
-      const tightRoll = rand();
-      const tightSla = tightRoll < 0.5;
-      // Tight SLA ≈ nominal transit (zero slack), so ANY disruption misses it.
-      // Loose SLA gives a few hours' slack so small disruptions are absorbed.
-      const slaHours = tightSla
-        ? Math.max(nominalTransitH + 1, nominalTransitH * (1.0 + rand() * 0.1))
-        : Math.max(nominalTransitH + 1, nominalTransitH + 6 + rand() * Math.min(slaBase, 36));
-
-      // Journey-level disruption (heavy-tailed). About a third of journeys hit a
-      // disruption; long-haul more often. Disruption adds to delivery time and
-      // can exceed nominal transit.
-      const disruptProb = shipDistanceKm > 8000 ? 0.42 : 0.32;
-      const disrupted = rand() < disruptProb;
-      const disruptionPick = disrupted
-        ? (ShipmentEvents.DISRUPTIONS[1 + Math.floor(rand() * (ShipmentEvents.DISRUPTIONS.length - 1))] ?? ShipmentEvents.DISRUPTIONS[0]!)
-        : ShipmentEvents.DISRUPTIONS[0]!;
-      const disruptionHours  = disruptionPick.hours;
-      const disruptionReason = disruptionPick.reason;
-
-      // Dispatch epoch (the journey's seq-0 time), spread across ~60 days.
-      const daysOffset  = Math.floor(rand() * 60);
-      const hoursOffset = Math.floor(rand() * 24);
-      const dispatchEpochMs = BASE_EPOCH_MS + daysOffset * 86_400_000 + hoursOffset * 3_600_000;
-
-      // SLA promise timestamp (lossless format so it round-trips exactly).
-      const promisedMs = dispatchEpochMs + Math.round(slaHours * 3_600_000);
-      const rawPromisedDeliveryAt = ShipmentEvents.formatTimestamp(promisedMs, i % 2 === 0 ? 0 : 2);
-      // Dispatch timestamp also lossless so the pipeline reconstructs the exact
-      // dispatch epoch (the ETA anchor) regardless of per-scan format messiness.
-      const rawDispatchAt = ShipmentEvents.formatTimestamp(dispatchEpochMs, i % 2 === 0 ? 2 : 0);
-
-      const consent = rand() < 0.6;
-      const violationRoll = rand();
-      const isViolation = violationRoll < 0.02;
-      const lawfulBasis: RawShipmentEvent['lawfulBasis'] = isViolation ? 'none' : 'contract';
-      const specialCategory: RawShipmentEvent['specialCategory'] = isViolation ? 'health' : 'none';
-
-      const lineCount = 1 + Math.floor(rand() * 4);
-      const lineItems: Array<{ 'productId': string; 'quantity': number }> = [];
-      for (let j = 0; j < lineCount; j++) {
-        const productId = catalogIds[Math.floor(rand() * catalogIds.length)] ?? 'PROD-001';
-        const quantity  = 1 + Math.floor(rand() * 3);
-        lineItems.push({ 'productId': productId, 'quantity': quantity });
+    let journeyCount = 0;
+    for (const journey of ShipmentEvents.journeyGenerator()) {
+      for (const scan of journey) {
+        allScans.push(scan);
       }
-      const phonePrefix = 100 + Math.floor(rand() * 900);
-      const phoneMid    = 100 + Math.floor(rand() * 900);
-      const phoneSuffix = 1000 + Math.floor(rand() * 9000);
-      const recipientEmail   = `${localPart}@${domain}`;
-      const recipientPhone   = `+1-${phonePrefix}-${phoneMid}-${phoneSuffix}`;
-      const recipientAddress = `${1000 + Math.floor(rand() * 8000)} Main St, ${dest.country}`;
-      const facilityId       = `FAC-${hub.name.replace(/\s+/g, '').toUpperCase().slice(0, 3)}-${String(Math.floor(rand() * 100)).padStart(3, '0')}`;
-
-      // Journey length M ~2–5 scans along origin → destination.
-      const scanCount = 2 + Math.floor(rand() * 4);
-      // A small fraction of journeys FAIL: they end EXCEPTION with NO DELIVERED
-      // (single-terminal enforcement — exactly one terminal per journey).
-      const journeyFails = rand() < 0.12;
-      // The intermediate scan that carries a transient disruption EXCEPTION (a
-      // mid leg, never the first or last), if disrupted. The last scan is always
-      // the single terminal (DELIVERED or, for a failed journey, EXCEPTION).
-      const disruptScanIdx = disrupted && scanCount > 2
-        ? 1 + Math.floor(rand() * (scanCount - 2))
-        : -1;
-
-      let prevLat = originLat;
-      let prevLng = originLng;
-      let cursorMs = dispatchEpochMs;
-
-      for (let s = 0; s < scanCount; s++) {
-        const t = scanCount === 1 ? 0 : s / (scanCount - 1); // 0..1 along path
-        const lat = originLat + (destLat - originLat) * t;
-        const lng = originLng + (destLng - originLng) * t;
-
-        // Time advances by the leg's share of nominal transit; the disrupted
-        // scan adds the disruption hours, pushing later scans (and delivery) out.
-        if (s > 0) {
-          const legShare = nominalTransitH / (scanCount - 1);
-          let legHours = legShare;
-          if (s === disruptScanIdx) legHours += disruptionHours;
-          cursorMs += Math.round(legHours * 3_600_000);
-        }
-
-        const isLast  = s === scanCount - 1;
-        const isFirst = s === 0;
-        // A transient disruption EXCEPTION can fall ONLY on an intermediate scan.
-        const isTransientException = s === disruptScanIdx;
-
-        // Single-terminal enforcement: exactly one terminal per journey.
-        //   - last scan  → DELIVERED (normal) OR EXCEPTION (failed journey)
-        //   - first scan → DEPARTURE
-        //   - second-to-last → OUT_FOR_DELIVERY (when not a transient exception)
-        //   - other intermediate → SCAN/ARRIVAL, or a transient EXCEPTION
-        const rawStatus = isLast
-            ? (journeyFails ? pick(STATUS_EXCEPTION) : pick(STATUS_DELIVERED))
-          : isFirst ? pick(STATUS_DEPARTURE)
-          : isTransientException ? pick(STATUS_EXCEPTION)
-          : (s === scanCount - 2) ? pick(STATUS_OFD)
-          : pick(STATUS_TRANSIT);
-
-        // ~6% invalid scan coords (out of WGS-84 range) to exercise reject path.
-        const invalid = rand() < 0.06;
-        const finalLat = invalid ? 95 + rand() * 10  : lat;
-        const finalLng = invalid ? 185 + rand() * 10 : lng;
-
-        // Per-scan timestamps cycle through the 4 time-of-day-preserving formats
-        // (ISO-8601, MM/DD HH:mm, unix-seconds, RFC-2822) — skipping the
-        // date-only format (variant 3) so each scan's LOCAL time stays accurate
-        // within a journey. The messy-format normalization showcase still
-        // exercises all formats across the feed.
-        const FORMAT_CYCLE = [0, 1, 2, 4] as const;
-        const variant = FORMAT_CYCLE[formatIdx % FORMAT_CYCLE.length] ?? 0;
-        const rawTimestamp = ShipmentEvents.formatTimestamp(cursorMs, variant);
-        formatIdx++;
-
-        allScans.push({
-          'shipmentId':          `SHP-${String(i).padStart(6, '0')}`,
-          'scanSeq':             s,
-          'rawTimestamp':        rawTimestamp,
-          'rawDispatchAt':       rawDispatchAt,
-          'rawStatus':           rawStatus,
-          'carrier':             carrier,
-          'ipAddress':           gatewayIp,
-          'latitude':            finalLat,
-          'longitude':           finalLng,
-          'legFromLat':          prevLat,
-          'legFromLng':          prevLng,
-          'originLat':           originLat,
-          'originLng':           originLng,
-          'destLat':             destLat,
-          'destLng':             destLng,
-          'weight':              weightValue,
-          'weightUnit':          weightUnit,
-          'recipientName':       name,
-          'recipientEmail':      recipientEmail,
-          'recipientPhone':      recipientPhone,
-          'recipientAddress':    recipientAddress,
-          'recipientCountry':    countryRaw,
-          'marketingConsent':    consent,
-          'rawPromisedDeliveryAt': rawPromisedDeliveryAt,
-          'lineItems':           lineItems.map((li) => ({ ...li })),
-          'facilityId':          facilityId,
-          'lawfulBasis':         lawfulBasis,
-          'specialCategory':     specialCategory,
-          // The journey's disruption (if any) is carried on EVERY scan so the
-          // shipment-level enrich-eta can reconstruct the same delivery delay
-          // regardless of which scan is being processed.
-          'disruptionReason':    disruptionReason,
-        });
-
-        prevLat = lat;
-        prevLng = lng;
-      }
+      journeyCount++;
+      if (journeyCount >= n) break;
     }
 
     // Interleave all scans by their UTC epoch (the real feed: many journeys'
@@ -1187,8 +1404,8 @@ export class ShipmentEvents {
  * FieldMappings: per-source field-name → canonical-body-field maps.
  *
  * Each source feed names its columns/keys differently (the heterogeneity the
- * `map-fields` shared node resolves). A mapping is `{ canonicalBodyField:
- * sourceFieldName }`; `map-fields` reads the source record's `sourceFieldName`
+ * format-specific normalize nodes resolve). A mapping is `{ canonicalBodyField:
+ * sourceFieldName }`; each normalize node reads the source record's `sourceFieldName`
  * and writes the value under `canonicalBodyField`. Both the generator (encoding)
  * and the ingest pipeline (decoding) use the SAME mapping, so they cannot drift.
  *
@@ -1304,40 +1521,41 @@ const FIELD_MAPPINGS: Readonly<Record<string, FieldMap>> = {
     'humidityPct':      'humidity',
     'shockG':           'shock_g',
   },
-  // Customs/Delivery feed (JSON). customs-events + delivery-confirmations.
-  'json-customs': {
-    'shipmentId':       'shipment',
-    'eventId':          'event_id',
-    'scanSeq':          'sequence',
-    'epochRaw':         'event_time',
-    'dispatchRaw':      'dispatch_time',
-    'promisedRaw':      'promise_time',
-    'status':           'event_status',
+  // YAML sequence feed (position-pings). RICH: same fields as json-position.
+  'yaml-position': {
+    'shipmentId':       'asset_id',
+    'eventId':          'ping_id',
+    'scanSeq':          'seq',
+    'epochRaw':         'observed_at',
+    'dispatchRaw':      'dispatched_at',
+    'promisedRaw':      'promised_at',
+    'status':           'movement',
     'ipAddress':        'gateway_ip',
-    'latitude':         'latitude',
-    'longitude':        'longitude',
-    'legFromLat':       'from_latitude',
-    'legFromLng':       'from_longitude',
-    'originLat':        'origin_latitude',
-    'originLng':        'origin_longitude',
-    'destLat':          'dest_latitude',
-    'destLng':          'dest_longitude',
-    'carrier':          'carrier_name',
-    'facilityId':       'facility_id',
-    'weight':           'weight_value',
-    'weightUnit':       'weight_uom',
-    'lineItems':        'line_items',
-    'recipientName':    'consignee_name',
-    'recipientEmail':   'consignee_email',
-    'recipientPhone':   'consignee_phone',
-    'recipientAddress': 'consignee_address',
-    'recipientCountry': 'consignee_country',
-    'marketingConsent': 'marketing_ok',
+    'latitude':         'lat',
+    'longitude':        'lon',
+    'legFromLat':       'prev_lat',
+    'legFromLng':       'prev_lon',
+    'originLat':        'origin_lat',
+    'originLng':        'origin_lon',
+    'destLat':          'dest_lat',
+    'destLng':          'dest_lon',
+    'carrier':          'carrier',
+    'facilityId':       'facility',
+    'weight':           'weight',
+    'weightUnit':       'weight_unit',
+    'lineItems':        'basket',
+    'recipientName':    'recipient_name',
+    'recipientEmail':   'recipient_email',
+    'recipientPhone':   'recipient_phone',
+    'recipientAddress': 'recipient_address',
+    'recipientCountry': 'recipient_country',
+    'marketingConsent': 'consent',
     'lawfulBasis':      'lawful_basis',
     'specialCategory':  'special_category',
-    'disruptionReason': 'disruption_reason',
-    'customsStatus':    'customs_state',
-    'delivered':        'delivered_flag',
+    'disruptionReason': 'disruption',
+    'geoCountry':       'geo_country',
+    'geoContinent':     'geo_continent',
+    'geoRegion':        'geo_region',
   },
 };
 
@@ -1354,7 +1572,7 @@ export class FieldMappings {
  * on-the-wire source feeds (the multi-format fan-in showcase).
  *
  * The single raw feed (ShipmentEvents.buildRawScans) is partitioned by each
- * scan's eventType-derived `kind`, then each partition is encoded in its
+ * scan's assigned SourcePayload `kind`, then each partition is encoded in its
  * source's native format under that source's field-name mapping:
  *   - position-ping        → JSON API array string         (RICH: carries geo)
  *   - facility-scan        → CSV string (header + rows)     (RAW PII)
@@ -1366,32 +1584,9 @@ export class FieldMappings {
  * reverses it (base64 → gunzip → text).
  *
  * Deterministic: a pure function of `n` (the raw feed is seeded; partitioning
- * is by eventType; no Date.now/Math.random).
+ * is by SourcePayload kind; no Date.now/Math.random).
  */
 export class Sources {
-  /** Derive the canonical `kind` for a scan from its free-text status. */
-  private static kindFor(rawStatus: string): CanonicalEvent['kind'] {
-    const eventType = EventClassifier.eventType(rawStatus);
-    if (eventType === 'DELIVERED') return 'delivery-confirmation';
-    if (eventType === 'EXCEPTION') return 'customs-event';
-    // Non-terminal movement scans are split across the three streaming formats
-    // by a stable hash of the shipment+seq, so each format carries a real share.
-    return 'position-ping';
-  }
-
-  /**
-   * Stable 0..2 bucket for a scan (which streaming format carries it).
-   * FNV-1a 32-bit: deterministic, no external dep, synchronous.
-   */
-  private static bucket(scan: RawShipmentEvent): number {
-    const key = `${scan.shipmentId}:${scan.scanSeq}`;
-    let h = 2166136261;
-    for (let i = 0; i < key.length; i++) {
-      h = Math.imul(h ^ key.charCodeAt(i), 16777619) >>> 0;
-    }
-    return h % 3;
-  }
-
   /** A CSV cell: quote and escape embedded quotes/commas/newlines. */
   private static csvCell(value: string): string {
     if (/[",\n]/.test(value)) {
@@ -1472,20 +1667,44 @@ export class Sources {
   }
 
   /**
-   * Encode wire records as NDJSON, gzip via CompressionStream, base64 the result.
-   * Uses Web Streams API (Node 18+ + browser compatible; no node:zlib/Buffer).
+   * Encode wire records as plain NDJSON (one JSON object per line, no compression).
+   * Compression is applied orthogonally by maybeGzip.
    */
-  private static async encodeNdjsonGz(records: Array<Record<string, unknown>>, map: FieldMap): Promise<string> {
-    const lines = records.map((rec) => {
+  private static encodeNdjson(records: Array<Record<string, unknown>>, map: FieldMap): string {
+    return records.map((rec) => {
       const out: Record<string, unknown> = {};
       for (const [canonical, sourceKey] of Object.entries(map)) {
         if (canonical in rec) out[sourceKey] = rec[canonical];
       }
       return JSON.stringify(out);
-    });
-    const ndjson = lines.join('\n');
-    const encoded = new TextEncoder().encode(ndjson);
+    }).join('\n');
+  }
 
+  /**
+   * Encode wire records as a YAML sequence of mappings under the given FieldMap.
+   * Source keys (not canonical keys) are used as YAML mapping keys — mirrors the
+   * other encoder pattern so map-fields aligns by header NAME, not position.
+   */
+  private static encodeYaml(records: Array<Record<string, unknown>>, map: FieldMap): string {
+    const rows = records.map((rec) => {
+      const out: Record<string, unknown> = {};
+      for (const [canonical, sourceKey] of Object.entries(map)) {
+        if (canonical in rec) out[sourceKey] = rec[canonical];
+      }
+      return out;
+    });
+    return yamlStringify(rows);
+  }
+
+  /**
+   * Apply optional gzip compression. Returns text unchanged for 'none'; for
+   * 'gzip' returns base64(gzip(text)) using the Web Streams CompressionStream
+   * API (Node 18+ and browser compatible — no Node-only imports).
+   */
+  static async maybeGzip(text: string, compression: 'none' | 'gzip'): Promise<string> {
+    if (compression === 'none') return text;
+
+    const encoded = new TextEncoder().encode(text);
     const cs = new CompressionStream('gzip');
     const writer = cs.writable.getWriter();
     void writer.write(encoded);
@@ -1499,14 +1718,12 @@ export class Sources {
       chunks.push(value);
     }
 
-    // Concatenate chunks → base64 without Buffer.
     let totalLen = 0;
     for (const c of chunks) totalLen += c.length;
     const merged = new Uint8Array(totalLen);
     let offset = 0;
     for (const c of chunks) { merged.set(c, offset); offset += c.length; }
 
-    // btoa requires a binary string (char per byte).
     let binary = '';
     for (let i = 0; i < merged.length; i++) binary += String.fromCharCode(merged[i]!);
     return btoa(binary);
@@ -1525,99 +1742,429 @@ export class Sources {
   }
 
   /**
-   * Build the fixed list of multi-format source feeds for N journeys.
+   * Encode a single RawShipmentEvent into a SourcePayload.
    *
-   * Returns ≥3 distinct formats (json, csv, ndjson.gz) plus a 4th customs/
-   * delivery JSON feed, covering all five canonical kinds.
+   * The payload contains exactly one record encoded in the requested format.
+   * For CSV the header row is always included so each payload is self-describing
+   * and can be fed directly to the normalize-csv node unchanged.
+   *
+   * For the CSV path the shuffled-column order (header-alignment proof) is
+   * derived deterministically from the FieldMap so it is consistent with the
+   * full-batch encoder above.
+   *
+   * `scanIndex` is the global scan counter used to pick the sensor telemetry
+   * shard (fnv1a key) and to form the CSV column shuffle — it must increment
+   * monotonically across calls from a single stream so per-record determinism
+   * holds across the generator sequence.
    */
-  static async build(n: number): Promise<SourcePayload[]> {
-    const scans = ShipmentEvents.buildRawScans(n);
+  static async buildPayloadFromScan(
+    scan: RawShipmentEvent & Partial<{ tempC: number; humidityPct: number; shockG: number; customsStatus: string; delivered: boolean; podSignature: string; deliveredAt: string }>,
+    format: 'csv' | 'json' | 'ndjson' | 'yaml',
+    compression: 'none' | 'gzip',
+    scanIndex: number,
+    eventType: CanonicalEventVariant['eventType'],
+  ): Promise<SourcePayload> {
+    const FORMAT_MAP_KEY: Record<string, string> = {
+      'json':   'json-position',
+      'csv':    'csv-facility',
+      'ndjson': 'ndjson-sensor',
+      'yaml':   'yaml-position',
+    };
 
-    const positionScans: RawShipmentEvent[] = [];
-    const facilityScans: RawShipmentEvent[] = [];
-    const sensorScans:   RawShipmentEvent[] = [];
-    const customsScans:  RawShipmentEvent[] = [];
-    const deliveryScans: RawShipmentEvent[] = [];
+    const mapKey = FORMAT_MAP_KEY[format] ?? 'json-position';
+    const map = FieldMappings.forKey(mapKey);
+    const kind = eventType;
+    const withGeo = format === 'json' || format === 'yaml';
 
-    for (const scan of scans) {
-      const kind = Sources.kindFor(scan.rawStatus);
-      if (kind === 'delivery-confirmation') {
-        deliveryScans.push(scan);
-      } else if (kind === 'customs-event') {
-        customsScans.push(scan);
-      } else {
-        // Movement scans split deterministically across the three feeds.
-        const b = Sources.bucket(scan);
-        if (b === 0)      positionScans.push(scan);
-        else if (b === 1) facilityScans.push(scan);
-        else              sensorScans.push(scan);
+    const rec = Sources.wireRecord(scan, withGeo);
+
+    // Sensor telemetry for ndjson entries or when explicit sensor fields are present.
+    if (format === 'ndjson' || scan.tempC !== undefined) {
+      if (scan.tempC !== undefined && scan.humidityPct !== undefined && scan.shockG !== undefined) {
+        rec['tempC']       = scan.tempC;
+        rec['humidityPct'] = scan.humidityPct;
+        rec['shockG']      = scan.shockG;
+      } else if (format === 'ndjson') {
+        const h = Sources.fnv1a(`${scan.shipmentId}:${scan.scanSeq}:sensor`);
+        const b0 = (h >>> 24) & 0xff;
+        const b1 = (h >>> 16) & 0xff;
+        const b2 = (h >>> 8)  & 0xff;
+        rec['tempC']       = Math.round((2 + (b0 / 255) * 6) * 10) / 10;
+        rec['humidityPct'] = Math.round(40 + (b1 / 255) * 40);
+        rec['shockG']      = Math.round((b2 / 255) * 30) / 10;
       }
     }
 
-    // Add cold-chain telemetry to sensor records (deterministic from coords/seq).
-    // FNV-1a hash provides the same byte-level determinism as SHA-256 for sharding.
-    const sensorRecords = sensorScans.map((scan) => {
-      const rec = Sources.wireRecord(scan, false);
-      const h = Sources.fnv1a(`${scan.shipmentId}:${scan.scanSeq}:sensor`);
-      const b0 = (h >>> 24) & 0xff;
-      const b1 = (h >>> 16) & 0xff;
-      const b2 = (h >>> 8)  & 0xff;
-      rec['tempC']       = Math.round((2 + (b0 / 255) * 6) * 10) / 10;   // 2–8°C cold chain
-      rec['humidityPct'] = Math.round(40 + (b1 / 255) * 40);             // 40–80%
-      rec['shockG']      = Math.round((b2 / 255) * 30) / 10;             // 0–3g
-      return rec;
-    });
+    // Build augmented map to pass typed extra fields through the encoder.
+    // Extra fields use canonical name as the source key (identity mapping).
+    const extraEntries: Array<[string, string]> = [];
+    if (scan.customsStatus !== undefined) { rec['customsStatus'] = scan.customsStatus; extraEntries.push(['customsStatus', 'customsStatus']); }
+    if (scan.delivered !== undefined)     { rec['delivered']     = scan.delivered;     extraEntries.push(['delivered',     'delivered']);     }
+    if (scan.podSignature !== undefined)  { rec['podSignature']  = scan.podSignature;  extraEntries.push(['podSignature',  'podSignature']);  }
+    if (scan.deliveredAt !== undefined)   { rec['deliveredAt']   = scan.deliveredAt;   extraEntries.push(['deliveredAt',   'deliveredAt']);   }
 
-    // Customs + delivery records carry their per-kind body fields.
-    const customsRecords = customsScans.map((scan) => {
-      const rec = Sources.wireRecord(scan, false);
-      rec['customsStatus'] = scan.disruptionReason === 'customs hold' ? 'held' : 'cleared';
-      return rec;
-    });
-    const deliveryRecords = deliveryScans.map((scan) => {
-      const rec = Sources.wireRecord(scan, false);
-      rec['delivered'] = true;
-      return rec;
-    });
+    const effectiveMap: FieldMap = extraEntries.length > 0
+      ? { ...map, ...Object.fromEntries(extraEntries) }
+      : map;
 
-    const positionMap = FieldMappings.forKey('json-position');
-    const facilityMap = FieldMappings.forKey('csv-facility');
-    const sensorMap   = FieldMappings.forKey('ndjson-sensor');
-    const customsMap  = FieldMappings.forKey('json-customs');
+    let text: string;
+    if (format === 'json') {
+      // Single-element JSON array — self-describing for the parseJson node.
+      text = Sources.encodeJson([rec], effectiveMap);
+    } else if (format === 'yaml') {
+      text = Sources.encodeYaml([rec], effectiveMap);
+    } else if (format === 'ndjson') {
+      text = Sources.encodeNdjson([rec], effectiveMap);
+    } else {
+      // CSV: header + single data row using the same shuffled column order as the
+      // batch encoder so header-alignment remains consistent.
+      const entries = Object.entries(effectiveMap).reverse();
+      const swapped: Array<[string, string]> = [];
+      for (let i = 0; i < entries.length; i += 2) {
+        if (i + 1 < entries.length) {
+          swapped.push(entries[i + 1]!, entries[i]!);
+        } else {
+          swapped.push(entries[i]!);
+        }
+      }
+      const shuffledMap: FieldMap = Object.fromEntries(swapped);
+      text = Sources.encodeCsv([rec], shuffledMap);
+    }
 
-    // Customs + delivery share the customs JSON feed (both per-kind JSON bodies).
-    const customsDeliveryRecords = [...customsRecords, ...deliveryRecords];
+    const payload = await Sources.maybeGzip(text, compression);
+    // sourceId encodes format, compression, and the scan's global index so each
+    // yielded payload has a distinct ID in the stream.
+    const sourceId = `${format}-${compression}-${scanIndex}`;
 
-    return [
-      {
-        'sourceId':   'sat-json-api',
-        'format':     'json',
-        'mappingKey': 'json-position',
-        'kind':       'position-ping',
-        'payload':    Sources.encodeJson(positionScans.map((s) => Sources.wireRecord(s, true)), positionMap),
-      },
-      {
-        'sourceId':   'depot-csv-dump',
-        'format':     'csv',
-        'mappingKey': 'csv-facility',
-        'kind':       'facility-scan',
-        'payload':    Sources.encodeCsv(facilityScans.map((s) => Sources.wireRecord(s, false)), facilityMap),
-      },
-      {
-        'sourceId':   'coldchain-ndjson-gz',
-        'format':     'ndjson.gz',
-        'mappingKey': 'ndjson-sensor',
-        'kind':       'sensor-reading',
-        'payload':    await Sources.encodeNdjsonGz(sensorRecords, sensorMap),
-      },
-      {
-        'sourceId':   'customs-delivery-json',
-        'format':     'json',
-        'mappingKey': 'json-customs',
-        'kind':       'customs-event',
-        'payload':    Sources.encodeJson(customsDeliveryRecords, customsMap),
-      },
-    ];
+    return {
+      'sourceId':    sourceId,
+      'format':      format,
+      'compression': compression,
+      'mappingKey':  mapKey,
+      'eventType':   kind,
+      'payload':     payload,
+    };
   }
+
+  /**
+   * Build source payloads from an EventTypeConfig. Each entry generates exactly
+   * entry.count typed scans (via ShipmentEvents.typedScansGenerator), encodes each
+   * scan in a format chosen from entry.formatMix by cumulative weight thresholds, and
+   * returns one SourcePayload per scan. The eventType on each payload is the
+   * entry's authoritative eventType from the EventTypeConfig entry.
+   *
+   * Format selection is deterministic: weight → proportional threshold; local scan
+   * index 0..count-1 maps to a {format, compression} via ascending limit thresholds.
+   * The last mix item absorbs the remainder so all count scans are covered.
+   */
+  static async buildTypedFeed(config: EventTypeConfig): Promise<SourcePayload[]> {
+    const results: SourcePayload[] = [];
+    let globalIndex = 0;
+
+    for (const entry of config) {
+      if (entry.count <= 0) continue;
+
+      // Build per-entry format thresholds from formatMix weights.
+      const totalWeight = entry.formatMix.reduce((sum, m) => sum + m.weight, 0);
+      const mixThresholds: Array<{ format: 'csv' | 'json' | 'ndjson' | 'yaml'; compression: 'none' | 'gzip'; limit: number }> = [];
+      let allocated = 0;
+      for (let mi = 0; mi < entry.formatMix.length; mi++) {
+        const mix = entry.formatMix[mi]!;
+        const isLast = mi === entry.formatMix.length - 1;
+        const count = isLast
+          ? Math.max(0, entry.count - allocated)
+          : totalWeight > 0
+            ? Math.round((mix.weight / totalWeight) * entry.count)
+            : 0;
+        allocated += count;
+        if (count > 0) {
+          mixThresholds.push({ format: mix.format, compression: mix.compression, limit: allocated });
+        }
+      }
+
+      // Pull exactly entry.count typed scans from a single-entry config.
+      const scansGen = ShipmentEvents.typedScansGenerator([entry]);
+      let localIndex = 0;
+      for (const scan of scansGen) {
+        // Determine format from thresholds.
+        let format: 'csv' | 'json' | 'ndjson' | 'yaml' = entry.formatMix[0]?.format ?? 'json';
+        let compression: 'none' | 'gzip' = entry.formatMix[0]?.compression ?? 'none';
+        for (const threshold of mixThresholds) {
+          if (localIndex < threshold.limit) {
+            format = threshold.format;
+            compression = threshold.compression;
+            break;
+          }
+        }
+
+        const sourceId = `${entry.eventType}-${format}-${compression}-${globalIndex}`;
+        const payload = await Sources.buildPayloadFromScan(scan, format, compression, globalIndex, entry.eventType);
+
+        results.push({ ...payload, 'sourceId': sourceId, 'eventType': entry.eventType });
+
+        localIndex++;
+        globalIndex++;
+      }
+    }
+
+    return results;
+  }
+
 }
 // #endregion sources-service
+
+// #region typed-payload-decoder-service
+/**
+ * TypedPayloadDecoder: decodes a typed SourcePayload into a canonical-field
+ * record suitable for CanonicalEventVariantBuilder.fromSourcePayload.
+ *
+ * Decode is type-aware: the payload's authoritative eventType determines which
+ * identity-mapped extra fields are picked up from the parsed wire record after
+ * the FieldMap normalization step. The FieldMap itself is selected by format
+ * (matching the encoder's FORMAT_MAP_KEY), and type-owned extra fields injected
+ * by the encoder via identity mapping are recovered by checking for their
+ * canonical key directly in the parsed record.
+ *
+ * Coercion mirrors the coerce-types node: numeric fields → number, boolean
+ * fields → boolean, epochRaw → epochMs, lineItems string → parsed array.
+ */
+
+/** Maps format → the FieldMap key the encoder used. */
+const DECODER_FORMAT_MAP_KEY: Readonly<Record<string, string>> = {
+  'json':   'json-position',
+  'csv':    'csv-facility',
+  'ndjson': 'ndjson-sensor',
+  'yaml':   'yaml-position',
+} as const;
+
+/** Canonical names that the encoder identity-maps as extras per eventType. */
+export const IDENTITY_EXTRAS_BY_TYPE: Readonly<Record<string, readonly string[]>> = {
+  'customs-event':         ['customsStatus'],
+  'delivery-confirmation': ['delivered', 'podSignature', 'deliveredAt'],
+  'sensor-reading':        ['tempC', 'humidityPct', 'shockG'],
+  'position-ping':         [],
+  'facility-scan':         [],
+} as const;
+
+const DECODER_NUMERIC_FIELDS: readonly string[] = [
+  'scanSeq', 'latitude', 'longitude', 'legFromLat', 'legFromLng',
+  'originLat', 'originLng', 'destLat', 'destLng', 'weight',
+  'tempC', 'humidityPct', 'shockG',
+] as const;
+
+const DECODER_BOOLEAN_FIELDS: readonly string[] = [
+  'marketingConsent', 'delivered',
+] as const;
+
+export class TypedPayloadDecoder {
+  /**
+   * Select the FieldMap key used by the encoder for the given format.
+   * This matches Sources.buildPayloadFromScan's FORMAT_MAP_KEY.
+   */
+  static mapKeyFor(format: SourcePayload['format']): string {
+    return DECODER_FORMAT_MAP_KEY[format] ?? 'json-position';
+  }
+
+  /** Gunzip base64-encoded gzip text → plain text string. */
+  private static async gunzip(base64: string): Promise<string> {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const ds = new DecompressionStream('gzip');
+    const writer = ds.writable.getWriter();
+    void writer.write(bytes);
+    void writer.close();
+    const chunks: Uint8Array[] = [];
+    const reader = ds.readable.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    let total = 0;
+    for (const c of chunks) total += c.length;
+    const merged = new Uint8Array(total);
+    let off = 0;
+    for (const c of chunks) { merged.set(c, off); off += c.length; }
+    return new TextDecoder().decode(merged);
+  }
+
+  /** Split one CSV line into cells, honouring double-quoted fields. */
+  private static splitCsvLine(line: string): string[] {
+    const cells: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (line[i + 1] === '"') { current += '"'; i++; }
+          else { inQuotes = false; }
+        } else {
+          current += ch;
+        }
+      } else if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        cells.push(current);
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+    cells.push(current);
+    return cells;
+  }
+
+  /** Parse the raw text for the given format into an array of source-keyed records. */
+  private static parseText(text: string, format: SourcePayload['format']): Array<Record<string, unknown>> {
+    if (format === 'json') {
+      const parsed: unknown = JSON.parse(text);
+      if (!Array.isArray(parsed)) return [];
+      const records: Array<Record<string, unknown>> = [];
+      for (const row of parsed) {
+        if (row !== null && typeof row === 'object' && !Array.isArray(row)) {
+          records.push({ ...row });
+        }
+      }
+      return records;
+    }
+    if (format === 'ndjson') {
+      const lines = text.split('\n').filter((l) => l.trim().length > 0);
+      const records: Array<Record<string, unknown>> = [];
+      for (const line of lines) {
+        try {
+          const parsed: unknown = JSON.parse(line);
+          if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            records.push({ ...parsed });
+          }
+        } catch {
+          // Skip malformed lines.
+        }
+      }
+      return records;
+    }
+    if (format === 'csv') {
+      const lines = text.split('\n').filter((l) => l.length > 0);
+      const headerLine = lines[0];
+      if (headerLine === undefined) return [];
+      const header = TypedPayloadDecoder.splitCsvLine(headerLine);
+      const records: Array<Record<string, unknown>> = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cells = TypedPayloadDecoder.splitCsvLine(lines[i] ?? '');
+        const record: Record<string, unknown> = {};
+        for (let c = 0; c < header.length; c++) {
+          record[header[c] ?? `col${c}`] = cells[c] ?? '';
+        }
+        records.push(record);
+      }
+      return records;
+    }
+    // yaml
+    const parsed: unknown = yamlParse(text);
+    if (!Array.isArray(parsed)) return [];
+    const records: Array<Record<string, unknown>> = [];
+    for (const row of parsed) {
+      if (row !== null && typeof row === 'object' && !Array.isArray(row)) {
+        records.push({ ...row });
+      }
+    }
+    return records;
+  }
+
+  /** Apply FieldMap normalization: source-keyed record → canonical-keyed record. */
+  private static applyMap(sourceRecord: Record<string, unknown>, map: FieldMap): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const [canonical, sourceKey] of Object.entries(map)) {
+      if (sourceKey in sourceRecord) out[canonical] = sourceRecord[sourceKey];
+    }
+    return out;
+  }
+
+  /**
+   * Pick up identity-mapped extra fields the encoder injected under their
+   * canonical name directly. These are type-owned fields the format's base
+   * FieldMap does not cover (e.g. customsStatus on a json-position payload).
+   * For ndjson sensor-reading the ndjson-sensor map already decodes the sensor
+   * channels (temp_c→tempC etc.), so this step is a no-op for that combo.
+   */
+  private static pickIdentityExtras(
+    sourceRecord: Record<string, unknown>,
+    mapped: Record<string, unknown>,
+    eventType: SourcePayload['eventType'],
+  ): void {
+    const extras = IDENTITY_EXTRAS_BY_TYPE[eventType] ?? [];
+    for (const canonical of extras) {
+      if (!(canonical in mapped) && canonical in sourceRecord) {
+        mapped[canonical] = sourceRecord[canonical];
+      }
+    }
+  }
+
+  /** Coerce canonical-keyed record fields to their expected types. */
+  private static coerce(rec: Record<string, unknown>): Record<string, unknown> {
+    const out: Record<string, unknown> = { ...rec };
+    for (const field of DECODER_NUMERIC_FIELDS) {
+      if (field in out) {
+        const v = out[field];
+        if (typeof v === 'number') {
+          out[field] = v;
+        } else if (typeof v === 'string') {
+          const n = Number(v);
+          out[field] = isFinite(n) ? n : 0;
+        } else {
+          out[field] = 0;
+        }
+      }
+    }
+    for (const field of DECODER_BOOLEAN_FIELDS) {
+      if (field in out) {
+        const v = out[field];
+        if (typeof v === 'boolean') {
+          out[field] = v;
+        } else if (typeof v === 'string') {
+          out[field] = v === 'true' || v === '1';
+        } else {
+          out[field] = false;
+        }
+      }
+    }
+    if ('epochRaw' in out) {
+      out['epochMs'] = TimeNormalizer.toEpochMs(String(out['epochRaw'] ?? ''));
+    }
+    if ('lineItems' in out && typeof out['lineItems'] === 'string') {
+      try {
+        out['lineItems'] = JSON.parse(out['lineItems']);
+      } catch {
+        out['lineItems'] = [];
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Decode a single SourcePayload into a canonical-field record.
+   *
+   * Decompresses gzip if needed, parses the format, applies the format-driven
+   * FieldMap, picks up identity-mapped extras the encoder injected for the
+   * payload's authoritative eventType, then coerces types. Returns the first
+   * decoded record (typed payloads carry exactly one scan per payload).
+   */
+  static async decode(payload: SourcePayload): Promise<Record<string, unknown>> {
+    const text = payload.compression === 'gzip'
+      ? await TypedPayloadDecoder.gunzip(payload.payload)
+      : payload.payload;
+
+    const sourceRecords = TypedPayloadDecoder.parseText(text, payload.format);
+    const sourceRecord = sourceRecords[0] ?? {};
+
+    const mapKey = TypedPayloadDecoder.mapKeyFor(payload.format);
+    const map = FieldMappings.forKey(mapKey);
+    const mapped = TypedPayloadDecoder.applyMap(sourceRecord, map);
+
+    TypedPayloadDecoder.pickIdentityExtras(sourceRecord, mapped, payload.eventType);
+
+    return TypedPayloadDecoder.coerce(mapped);
+  }
+}
+// #endregion typed-payload-decoder-service

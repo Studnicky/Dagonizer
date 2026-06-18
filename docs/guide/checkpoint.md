@@ -84,14 +84,9 @@ When a DAG stops early (cancellation, timeout, error), `result.cursor` holds the
 
 ## Named stores ride along
 
-`Checkpoint.capture(dagName, result, { stores })` snapshots named stores into the checkpoint envelope alongside the state, and `ckpt.restoreStores(map)` repopulates fresh instances on resume:
+`Checkpoint.capture(dagName, result, { stores })` snapshots named stores into the checkpoint envelope alongside the state, and `ckpt.restoreStores(map)` repopulates fresh instances on resume. The following shows the full abort-capture-restore-resume cycle with a `MemoryStore` riding along in the checkpoint:
 
-```ts
-const ckpt = await Checkpoint.capture('my-dag', result, { stores: { memory } });
-// ...persist, then on resume:
-const fresh = new MyStore();
-await recalled.restoreStores({ memory: fresh });
-```
+<<< @/../examples/10-shared-state.ts#store-checkpoint
 
 Both take `Record<string, Snapshottable>`: the capability, not the key-value `Store` surface. A non-KV backing (an RDF triple store, a vector index) checkpoints by implementing `snapshot()` / `restore()` only. A name present in the checkpoint but absent from the restore map throws `DAGError`; an extra name in the map is a no-op. See [Store, `Snapshottable`](../reference/store).
 
@@ -99,26 +94,7 @@ Both take `Record<string, Snapshottable>`: the capability, not the key-value `St
 
 `snapshot()` captures metadata, warnings, and the retry budget (`retries`). Engine errors are intentionally excluded from the snapshot — they flow via `outcome.errors` as the single authoritative channel. Domain fields are excluded unless the subclass overrides `snapshotData()`:
 
-```ts
-class PipelineState extends NodeStateBase {
-  items: string[] = [];
-  processedCount = 0;
-
-  protected override snapshotData() {
-    return {
-      items: [...this.items],
-      processedCount: this.processedCount,
-    };
-  }
-
-  protected override restoreData(snap: JsonObject) {
-    const raw = snap['items'];
-    if (Array.isArray(raw)) this.items = raw as string[];
-    const n = snap['processedCount'];
-    if (typeof n === 'number') this.processedCount = n;
-  }
-}
-```
+<<< @/../examples/dags/08-checkpoint.ts#counting-state
 
 `restoreData` is called by `NodeStateBase.restore(snap)`. The static `restore` method is typed with `this`-polymorphism so subclasses return the correct instance type.
 
@@ -133,22 +109,7 @@ class PipelineState extends NodeStateBase {
 
 `CheckpointStore` is the adapter contract for persistence backends. `ckpt.persist(store, key)` and `Checkpoint.recall(store, key)` compose the codec with a store so save and resume become a single call per side.
 
-```ts
-import { Checkpoint, CheckpointRestoreAdapterFn, MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
-
-const store = new MemoryCheckpointStore();
-
-const ckpt = await Checkpoint.capture('my-dag', result);
-await ckpt.persist(store, 'ckpt:my-dag');
-
-const recalled = await Checkpoint.recall(store, 'ckpt:my-dag');
-if (recalled !== null) {
-  const { dagName, state, cursor } = recalled.restoreState(
-    CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap)),
-  );
-  await dispatcher.resume(dagName, state, cursor);
-}
-```
+<<< @/../examples/23-checkpoint-store.ts#store-lifecycle
 
 `MemoryCheckpointStore` is for tests and demos. Production deployments implement `CheckpointStore` against a database, object store, or filesystem (see [persistence](./persistence)).
 
@@ -158,23 +119,35 @@ A `ScatterNode` with a `source` records per-item progress on `state.metadata` so
 
 ### Reserved metadata key
 
-```ts
-import { SCATTER_PROGRESS_KEY } from '@noocodex/dagonizer';
-// SCATTER_PROGRESS_KEY === '__dagonizer_scatter_progress__'
-```
+`SCATTER_PROGRESS_KEY` is exported from `@noocodex/dagonizer` as the string `'__dagonizer_scatter_progress__'`.
 
 Consumer nodes must not write to this key. It is engine-internal and may be overwritten or cleared between batch boundaries by `executeScatter`.
 
 The stored shape is a record keyed by the scatter placement's `name`, so multiple `ScatterNode` placements in one DAG keep independent progress entries:
 
-```ts
-interface ScatterProgress {
-  readonly placementName: string;
-  readonly completedIndices: readonly number[];
-  readonly itemResults: readonly { readonly index: number; readonly output: string }[];
+```ts twoslash
+import type { ScatterProgress, StoredScatterProgress } from '@noocodex/dagonizer/entities';
+// ---cut---
+// ScatterProgress is a discriminated union on `mode`.
+// `retained` mode stores full per-item results; `bounded` stores a watermark.
+declare const stored: StoredScatterProgress;
+declare const progress: ScatterProgress;
+
+// Fields common to both branches:
+const name: string = progress.placementName;
+
+// Narrow to access mode-specific fields:
+if (progress.mode === 'retained') {
+  const results = progress.ackedResults;   // ScatterAckedResult[]
+  void results;
+} else {
+  const mark: number = progress.watermark; // bounded watermark index
+  void mark;
 }
 
-type StoredScatterProgress = Readonly<Record<string, ScatterProgress>>;
+void name;
+void stored;
+export {};
 ```
 
 ### Lifecycle

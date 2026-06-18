@@ -7,11 +7,11 @@ import {
   OutcomeReducer,
   OutcomeReducers,
 } from '../../src/core/index.js';
-import type { GatherExecution, OutcomeRecord } from '../../src/core/index.js';
+import type { OutcomeRecord } from '../../src/core/index.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
-import type { DAG, GatherConfig } from '../../src/entities/index.js';
-import type { NodeStateBase, NodeStateInterface } from '../../src/NodeStateBase.js';
+import type { DAG } from '../../src/entities/index.js';
+import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
 const makeNode = TestNode.make;
@@ -39,13 +39,7 @@ void describe('GatherStrategies registry', () => {
   void it('custom strategy class extends and registers', () => {
     class TopOneGather extends GatherStrategy {
       readonly name = 'top-one';
-      async apply<TState extends NodeStateInterface>(
-        _config: GatherConfig,
-        execution: GatherExecution<TState>,
-      ): Promise<void> {
-        const first = execution.records[0];
-        execution.accessor.set(execution.state, 'top', first?.item ?? null);
-      }
+      reduce(): void { /* no-op for registry test */ }
     }
     GatherStrategies.register(new TopOneGather());
     const strategy = GatherStrategies.resolve('top-one');
@@ -55,7 +49,7 @@ void describe('GatherStrategies registry', () => {
   void it('unregister removes the named strategy; resolve throws afterward', () => {
     class TempGather extends GatherStrategy {
       readonly name = 'temp-gather';
-      async apply(): Promise<void> { /* no-op */ }
+      reduce(): void { /* no-op */ }
     }
     GatherStrategies.register(new TempGather());
     assert.equal(GatherStrategies.resolve('temp-gather').name, 'temp-gather');
@@ -66,7 +60,7 @@ void describe('GatherStrategies registry', () => {
   void it('reset restores only the built-in strategies', () => {
     class ExtraGather extends GatherStrategy {
       readonly name = 'extra';
-      async apply(): Promise<void> { /* no-op */ }
+      reduce(): void { /* no-op */ }
     }
     GatherStrategies.register(new ExtraGather());
     assert.ok(GatherStrategies.list().includes('extra'));
@@ -78,7 +72,7 @@ void describe('GatherStrategies registry', () => {
   void it('register throws when the name is already registered', () => {
     class DupeGather extends GatherStrategy {
       readonly name = 'dupe-gather';
-      async apply(): Promise<void> { /* no-op */ }
+      reduce(): void { /* no-op */ }
     }
     GatherStrategies.register(new DupeGather());
     assert.throws(
@@ -90,11 +84,11 @@ void describe('GatherStrategies registry', () => {
   void it('replace() overwrites an existing registration without throwing', () => {
     class V1Gather extends GatherStrategy {
       readonly name = 'v-gather';
-      async apply(): Promise<void> { /* v1 */ }
+      reduce(): void { /* v1 */ }
     }
     class V2Gather extends GatherStrategy {
       readonly name = 'v-gather';
-      async apply(): Promise<void> { /* v2 */ }
+      reduce(): void { /* v2 */ }
     }
     GatherStrategies.register(new V1Gather());
     // replace() must NOT throw
@@ -257,7 +251,7 @@ void describe('OutcomeReducers registry', () => {
 
 void describe('Dagonizer.getDAG / listDAGs / getNode / listNodes', () => {
   void it('returns undefined for missing names', () => {
-    const dispatcher = new Dagonizer<NodeStateBase>();
+    const dispatcher = new Dagonizer<NodeStateInterface>();
     assert.equal(dispatcher.getDAG('nope'), undefined);
     assert.equal(dispatcher.getNode('nope'), undefined);
     assert.deepEqual(dispatcher.listDAGs(), []);
@@ -265,7 +259,7 @@ void describe('Dagonizer.getDAG / listDAGs / getNode / listNodes', () => {
   });
 
   void it('snapshots return registered DAGs and nodes', () => {
-    const dispatcher = new Dagonizer<NodeStateBase>();
+    const dispatcher = new Dagonizer<NodeStateInterface>();
     const node = makeNode('greet', ['done'], () => 'done');
     dispatcher.registerNode(node);
     const dag: DAG = {
@@ -292,7 +286,7 @@ void describe('Dagonizer.getDAG / listDAGs / getNode / listNodes', () => {
   });
 
   void it('list snapshots are independent of the registry', () => {
-    const dispatcher = new Dagonizer<NodeStateBase>();
+    const dispatcher = new Dagonizer<NodeStateInterface>();
     dispatcher.registerNode(makeNode('a', ['done'], () => 'done'));
     const before = dispatcher.listNodes();
     dispatcher.registerNode(makeNode('b', ['done'], () => 'done'));
@@ -323,7 +317,7 @@ const makeSingleNodeDAG = (dagName: string, nodeName: string): DAG => ({
 
 void describe('Dagonizer.registerBundle', () => {
   void it('registers every node then every DAG from the bundle', () => {
-    const dispatcher = new Dagonizer<NodeStateBase>();
+    const dispatcher = new Dagonizer<NodeStateInterface>();
     const nodeA = makeNode('a', ['done'], () => 'done');
     const nodeB = makeNode('b', ['done'], () => 'done');
     const dagA = makeSingleNodeDAG('flowA', 'a');
@@ -340,7 +334,7 @@ void describe('Dagonizer.registerBundle', () => {
   });
 
   void it('accepts an empty nodes array when DAGs reference already-registered nodes', () => {
-    const dispatcher = new Dagonizer<NodeStateBase>();
+    const dispatcher = new Dagonizer<NodeStateInterface>();
     const nodeA = makeNode('a', ['done'], () => 'done');
     dispatcher.registerNode(nodeA);
     const dagA = makeSingleNodeDAG('flowA', 'a');
@@ -353,7 +347,7 @@ void describe('Dagonizer.registerBundle', () => {
   });
 
   void it('accepts an empty dags array and registers nodes only', () => {
-    const dispatcher = new Dagonizer<NodeStateBase>();
+    const dispatcher = new Dagonizer<NodeStateInterface>();
     const nodeA = makeNode('a', ['done'], () => 'done');
     const nodeB = makeNode('b', ['done'], () => 'done');
 
@@ -365,7 +359,7 @@ void describe('Dagonizer.registerBundle', () => {
   });
 
   void it('throws on a DAG referencing an unregistered node, with earlier nodes still registered', () => {
-    const dispatcher = new Dagonizer<NodeStateBase>();
+    const dispatcher = new Dagonizer<NodeStateInterface>();
     const nodeA = makeNode('a', ['done'], () => 'done');
     const danglingDAG = makeSingleNodeDAG('dangling', 'missing');
 
@@ -380,7 +374,7 @@ void describe('Dagonizer.registerBundle', () => {
   });
 
   void it('resolves DAG references to nodes defined in the same bundle (nodes register first)', () => {
-    const dispatcher = new Dagonizer<NodeStateBase>();
+    const dispatcher = new Dagonizer<NodeStateInterface>();
     const nodeA = makeNode('a', ['done'], () => 'done');
     const dagA = makeSingleNodeDAG('flowA', 'a');
 

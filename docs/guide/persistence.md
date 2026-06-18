@@ -30,14 +30,14 @@ seeAlso:
 
 ## The contract
 
-```ts
+```ts twoslash
 import type { CheckpointStore } from '@noocodex/dagonizer/contracts';
-
-interface CheckpointStore {
-  save(key: string, json: string): Promise<void>;
-  load(key: string): Promise<string | null>;
-  delete(key: string): Promise<void>;
-}
+// ---cut---
+declare const store: CheckpointStore;
+await store.save('run-42', '{"cursor":null}');
+const json: string | null = await store.load('run-42');
+await store.delete('run-42');
+export {};
 ```
 
 `load` returns `null` when no entry exists. Implementations handle their own concurrency, retries, and serialization details.
@@ -79,12 +79,17 @@ The diagram traces method invocations across the save and resume halves. It is n
 
 ## Implementing a custom store
 
-Implement the three methods against the backend.
+Implement the three methods against the backend. A Postgres implementation using the `pg` driver looks like:
 
-```ts
+```ts twoslash
+// pg is not a workspace dependency — declare a minimal surface for type checking.
+// Users: `npm install pg` before importing from 'pg'.
 import type { CheckpointStore } from '@noocodex/dagonizer/contracts';
-import type { Pool } from 'pg';
-
+interface Pool {
+  query(text: string, values?: readonly unknown[]): Promise<{ rows: Array<Record<string, unknown>> }>;
+  query<T>(text: string, values?: readonly unknown[]): Promise<{ rows: T[] }>;
+}
+// ---cut---
 export class PostgresCheckpointStore implements CheckpointStore {
   readonly #pool: Pool;
   readonly #table: string;
@@ -117,14 +122,15 @@ export class PostgresCheckpointStore implements CheckpointStore {
 }
 ```
 
-The same pattern works for Redis, S3, file system, etcd, or any other key/value store.
+The same three-method pattern applies for Redis (`GET`/`SET`/`DEL`), S3 (`GetObject`/`PutObject`/`DeleteObject`), a file system, or any other key/value store. The contract is intentionally thin so it maps cleanly to any backing.
 
 ## Named stores and `Snapshottable`
 
 `Checkpoint.capture` and `ckpt.restoreStores` both depend on the `Snapshottable` capability, not the full key-value `Store` surface. Any object that implements `snapshot(): Promise<StoreSnapshot>` and `restore(snapshot: StoreSnapshot): Promise<void>` participates in checkpointing. `Store extends Snapshottable`, so every store qualifies, but a non-KV backing (an RDF triple store, a vector index, an append-only log) can ride along in a checkpoint without implementing `get`/`set`/`has`/`delete`/`update`.
 
-```ts
+```ts twoslash
 import type { Snapshottable, StoreSnapshot } from '@noocodex/dagonizer/contracts';
+import { Checkpoint } from '@noocodex/dagonizer/checkpoint';
 
 class FactLog implements Snapshottable {
   #facts: string[] = [];
@@ -146,11 +152,15 @@ class FactLog implements Snapshottable {
 
 // Pass it to capture just like any MemoryStore:
 const log = new FactLog();
-const ckpt = await Checkpoint.capture('my-dag', result, { stores: { log } });
+// const ckpt = await Checkpoint.capture('my-dag', result, { stores: { log } });
 
 // And restore it on resume:
 const freshLog = new FactLog();
-await recalled.restoreStores({ log: freshLog });
+// await recalled.restoreStores({ log: freshLog });
+void Checkpoint;
+void log;
+void freshLog;
+export {};
 ```
 
 `CheckpointData.stores` is a **required** field. `Checkpoint.capture` always writes it: as an empty object `{}` when no stores are passed, or as a keyed map of `StoreSnapshot` envelopes when stores are supplied. Any checkpoint payload lacking a `stores` field is rejected by `Checkpoint.load`.
@@ -159,24 +169,7 @@ await recalled.restoreStores({ log: freshLog });
 
 `Checkpoint.capture` calls `state.snapshot()` and packages the result with the cursor and execution history. State subclasses that carry domain-specific fields override `snapshotData()` and `restoreData()`:
 
-```ts
-class PipelineState extends NodeStateBase {
-  processed: string[] = [];
-  failed: string[] = [];
-
-  protected override snapshotData(): JsonObject {
-    return {
-      processed: [...this.processed],
-      failed: [...this.failed],
-    };
-  }
-
-  protected override restoreData(snap: JsonObject): void {
-    if (Array.isArray(snap['processed'])) this.processed = snap['processed'] as string[];
-    if (Array.isArray(snap['failed']))    this.failed    = snap['failed']    as string[];
-  }
-}
-```
+<<< @/../examples/dags/23-checkpoint-store.ts#pipeline-state
 
 Lifecycle resets to `pending` on restore. Resume starts a fresh lifecycle run on the recovered state data.
 
@@ -186,12 +179,7 @@ Lifecycle resets to `pending` on restore. Resume starts a fresh lifecycle run on
 
 ## Testing with `MemoryCheckpointStore`
 
-```ts
-import { MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
-
-const store = new MemoryCheckpointStore();
-// drive the test against `store` exactly as production code would
-```
+<<< @/../examples/23-checkpoint-store.ts#store-init
 
 `MemoryCheckpointStore` exposes a read-only `size` getter for assertions about how many entries the store holds.
 

@@ -377,7 +377,13 @@ void describe('WorkerThreadContainer — silent worker death (Law 4 backstop + L
     const progress = state.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
     const fan = (progress ?? {})['fan'];
     assert.ok(fan !== undefined, 'checkpoint must survive the worker death (not cleared)');
-    const ackedBefore = fan?.ackedResults.length ?? 0;
+    // The map gather is compactable, so its checkpoint is bounded mode: the
+    // acked count is watermark + ahead-acked window. Non-compactable gathers
+    // retain the full ackedResults array. Both express the same acked count.
+    const ackedBefore = fan === undefined ? 0
+      : fan.mode === 'bounded'
+        ? fan.watermark + fan.aheadAcked.length
+        : fan.ackedResults.length;
     assert.ok(ackedBefore >= 1, `at least item 10 must ack before the kill, got ${ackedBefore} acked`);
     assert.ok(ackedBefore < 3, `not all items may have acked (item 20 died), got ${ackedBefore} acked`);
 

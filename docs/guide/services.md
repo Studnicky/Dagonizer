@@ -60,32 +60,7 @@ The diagram captures the wiring, not a DAG. The bag is constructor-scoped; the d
 
 `NodeInterface<TState, TOutput, TServices>` propagates the same parameter to `context.services`:
 
-```ts
-import { NodeOutputBuilder, EMPTY_CONTRACT_FRAGMENT } from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
-
-class FetchNode implements NodeInterface<S, 'success' | 'error', AppServices> {
-  readonly name = 'fetch';
-  readonly outputs = ['success', 'error'] as const;
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  async execute(state: S, context: NodeContextInterface<AppServices>) {
-    context.services.logger.info('fetch start');
-    const cached = await context.services.cache.get(state.key);
-    if (cached) {
-      state.out = cached;
-      return NodeOutputBuilder.of('success');
-    }
-    try {
-      const rows = await context.services.db.query('SELECT 1');
-      state.out = rows;
-      return NodeOutputBuilder.of('success');
-    } catch (error) {
-      context.services.logger.error({ err: error }, 'fetch failed');
-      return NodeOutputBuilder.of('error');
-    }
-  }
-}
-```
+<<< @/../examples/dags/10-shared-state.ts#services-node
 
 The generic parameter narrows `context.services` inside the node body.
 

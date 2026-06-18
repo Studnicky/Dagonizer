@@ -1,16 +1,17 @@
 /**
- * summarizeInsights: folds state.records into TWO views.
+ * summarizeInsights: finalizes the cartographer's insight views after the
+ * process-stream scatter completes.
  *
- * (a) per-region (state.insights): shipments, exceptions, on-time/late counts,
- *     revenue (Σ subtotalUsdMinor), shipping cost, distance, delay, size-tier
- *     and consent mix.
- * (b) per-journey (state.journeys): records grouped by shipmentId, ordered by
- *     epoch — scan count, path distance (Σ legKm), elapsed (last−first epoch),
- *     timezones/offsets crossed, jurisdictions traversed, status progression,
- *     last status & location, and on-time at delivery.
+ * In the streaming topology the insights-fold gather strategy accumulates
+ * state.insights (exact per-region rollup), state.journeys (bounded
+ * per-journey sample), and state.sampleRecords (capped FIFO of scans)
+ * incrementally as each scatter clone completes. Memory stays O(1) regardless
+ * of event count. When that path ran (state.insights.size > 0 OR
+ * state.journeys.size > 0) this node is a pure pass-through.
  *
- * Called once at the parent DAG level after all scatter clones are gathered.
- * Routes 'success' to the done terminal.
+ * The records-based fold (iterating state.records) is retained as a fallback
+ * for callers that populate state.records via the array path and do not use
+ * the insights-fold gather. Routes 'success' to the done terminal in both paths.
  */
 
 import type {
@@ -20,22 +21,24 @@ import type {
   RegionInsights,
 } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region summarize-insights-node
-export class SummarizeInsightsNode implements NodeInterface<CartographerState, 'success', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class SummarizeInsightsNode extends ScalarNode<CartographerState, 'success', CartographerServices> {
   readonly 'name' = 'summarize';
   readonly 'outputs' = ['success'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'success'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'success'>> {
+    // Streaming path: insights-fold gather already produced state.insights,
+    // state.journeys, and state.sampleRecords with bounded memory. Nothing to do.
+    if (state.insights.size > 0 || state.journeys.size > 0) {
+      return NodeOutputBuilder.of('success');
     }
+
+    // Array-path fallback: fold state.records into insights and journeys for
+    // callers that did not use the insights-fold gather strategy.
     state.insights = new Map<string, RegionInsights>();
     state.journeys = new Map<string, JourneyInsights>();
 
@@ -51,7 +54,7 @@ export class SummarizeInsightsNode implements NodeInterface<CartographerState, '
       // water → no continent) collapse into one 'International Waters / Maritime'
       // bucket. The continent is always present (default 'Unmapped' upstream),
       // so the key is consistent — never a bare country code or subdivision.
-      const key = record.status === 'water'
+      const key = record.geoStatus === 'water'
         ? 'International Waters / Maritime'
         : record.continent;
       let entry = state.insights.get(key);
@@ -96,7 +99,7 @@ export class SummarizeInsightsNode implements NodeInterface<CartographerState, '
           entry.totalDelayHours += record.delayHours;
         }
       }
-      if (record.eventType === 'DELIVERED') entry.deliveries++;
+      if (record.status === 'DELIVERED') entry.deliveries++;
       if (record.exception) entry.exceptions++;
       if (record.consentStatus === 'valid')   entry.consentValid++;
       if (record.consentStatus === 'missing') entry.consentMissing++;
@@ -123,7 +126,7 @@ export class SummarizeInsightsNode implements NodeInterface<CartographerState, '
         'utcOffset':        record.utcOffset,
         'timezone':         record.timezone,
         'jurisdiction':     record.jurisdiction,
-        'eventType':        record.eventType,
+        'status':           record.status,
         'hub':              record.hub,
         'region':           record.region,
         'country':          record.country,
@@ -160,8 +163,8 @@ export class SummarizeInsightsNode implements NodeInterface<CartographerState, '
         if (!offsets.includes(s.utcOffset)) offsets.push(s.utcOffset);
         if (!timezones.includes(s.timezone)) timezones.push(s.timezone);
         if (!jurisdictions.includes(s.jurisdiction)) jurisdictions.push(s.jurisdiction);
-        statusProgression.push(s.eventType);
-        if (s.eventType === 'DELIVERED') delivered = true;
+        statusProgression.push(s.status);
+        if (s.status === 'DELIVERED') delivered = true;
       }
 
       // Shipment-level facts (on-time, delay, pricing) come from an ORDER-lane
@@ -190,7 +193,7 @@ export class SummarizeInsightsNode implements NodeInterface<CartographerState, '
         'offsets':           offsets,
         'jurisdictions':     jurisdictions,
         'statusProgression': statusProgression,
-        'lastStatus':        last.eventType,
+        'lastStatus':        last.status,
         'lastHub':           last.hub,
         'delivered':         delivered,
         'onTime':            onTime,
@@ -204,4 +207,6 @@ export class SummarizeInsightsNode implements NodeInterface<CartographerState, '
     return NodeOutputBuilder.of('success');
   }
 }
+
+export const summarizeInsights = new SummarizeInsightsNode();
 // #endregion summarize-insights-node

@@ -18,11 +18,8 @@
  * Output route is always 'picked'.
  */
 
-import { NodeOutputBuilder,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 import type { Candidate } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -31,13 +28,11 @@ import { TextSimilarity } from './textUtils.ts';
 
 const TOP_K = 3;
 
-export class PickBestMatchNode implements NodeInterface<ArchivistState, 'picked', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class PickBestMatchNode extends ScalarNode<ArchivistState, 'picked', ArchivistServices> {
   readonly name = 'pick-best-match';
   readonly outputs = ['picked'] as const;
 
-  execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     if (state.candidates.length === 0) {
       context.services.logger.info('pick-best-match: no candidates');
       return Promise.resolve(NodeOutputBuilder.of('picked'));
@@ -75,5 +70,5 @@ export class PickBestMatchNode implements NodeInterface<ArchivistState, 'picked'
   }
 }
 
-/** Backward-compatible const export for existing bundle/DAG references. */
+/** Singleton node instance referenced by the DAG wiring. */
 export const pickBestMatch = new PickBestMatchNode();

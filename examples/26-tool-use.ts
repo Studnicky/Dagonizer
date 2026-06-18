@@ -2,27 +2,30 @@
  * 26-tool-use: tool-use surface — Tool definition, ToolCallCodec, and adapter dispatch.
  *
  * Shows how to:
- *   1. Define a `Tool<TInput, TOutput>` with a JSON-Schema `ToolDefinition`
- *      that the adapter surface forwards to the model's tool channel.
- *   2. Use a `StubAdapter` subclass that returns a tool call in two different
- *      modes to demonstrate both paths:
- *        a) Native `tools` channel: adapter emits a typed `ToolCall[]`.
- *        b) Text-channel fallback: adapter embeds JSON in prose; `ToolCallCodec.decode`
- *           extracts the `{ tool_calls: [...] }` envelope — tolerant of surrounding text.
- *   3. Dispatch the decoded tool call to the matching registered `Tool` instance
- *      and route the DAG on whether the call succeeded or failed.
+ *   1. Define a Tool<TInput, TOutput> with a JSON-Schema ToolDefinition that
+ *      the adapter surface forwards to the model's tool channel.
+ *   2. Drive it with a real OllamaApiAdapter (llama3.2). When the model
+ *      supports tool calling it emits a typed ToolCall[] via the native
+ *      'tools' channel; the DAG node dispatches the call directly.
+ *   3. Demonstrate the ToolCallCodec text-channel fallback path: feed a
+ *      sample assistant message string with embedded JSON to ToolCallCodec.decode
+ *      and dispatch the result. This path requires no model — it shows the
+ *      codec decoding a fixed string so the reader understands how the text
+ *      fallback works for models that embed tool calls in prose.
  *
- * No credentials required: `StubAdapter` returns canned tool calls offline.
+ * Prerequisites:
+ *   - Ollama installed and running on the default port (11434).
+ *   - A tool-capable model pulled: ollama pull llama3.2
+ *     (change OLLAMA_MODEL below to any tool-capable model you have pulled)
  *
  * DAG definition: examples/dags/26-tool-use.ts
  *
  * Run: npx tsx examples/26-tool-use.ts
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
-import { ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
-import type { ChatRequest, ChatResponse } from '@noocodex/dagonizer/adapter';
-import { StubAdapter } from '@noocodex/dagonizer-adapter-stub';
+import { Batch, Dagonizer } from '@noocodex/dagonizer';
+import { ToolCallCodec } from '@noocodex/dagonizer/adapter';
+import { OllamaApiAdapter } from '@noocodex/dagonizer-adapter-ollama';
 
 import {
   ToolUseState,
@@ -37,64 +40,10 @@ import {
 } from './dags/26-tool-use.js';
 
 // ---------------------------------------------------------------------------
-// Stub adapter A: returns tool call via the native `tools` channel.
-//   Demonstrates: adapter emits a structured ToolCall; the node routes on
-//   response.message.kind === 'tools' and extracts the call directly.
+// The model to use. Change to any tool-capable model you have pulled.
 // ---------------------------------------------------------------------------
 
-class NativeToolCallAdapter extends StubAdapter {
-  constructor() {
-    super();
-  }
-
-  override async probe(): Promise<boolean> {
-    return Promise.resolve(true);
-  }
-
-  protected override async performChat(_request: ChatRequest): Promise<ChatResponse> {
-    // Simulate a model that returns a well-formed native tool call
-    return Promise.resolve({
-      'message': {
-        'kind':      'tools',
-        'toolCalls': [
-          { 'id': 'call-0', 'name': 'calculator', 'arguments': { 'a': 7, 'b': 35 } },
-        ],
-      },
-      'finishReason': 'tool_call',
-      'usage':        ZERO_TOKEN_USAGE,
-    });
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Stub adapter B: returns tool call encoded in prose text.
-//   Demonstrates: ToolCallCodec.decode extracts { tool_calls: [...] } from
-//   arbitrary prose. The tolerant parser strips surrounding text and parses
-//   the outermost JSON object.
-// ---------------------------------------------------------------------------
-
-class TextChannelToolCallAdapter extends StubAdapter {
-  constructor() {
-    super();
-  }
-
-  override async probe(): Promise<boolean> {
-    return Promise.resolve(true);
-  }
-
-  protected override async performChat(_request: ChatRequest): Promise<ChatResponse> {
-    // Simulate a model that embeds the tool call in prose (Nano / WebLLM style)
-    const prose =
-      'Sure! I will compute that for you. '
-      + '{"tool_calls":[{"name":"calculator","arguments":{"a":100,"b":23}}]} '
-      + 'Let me process the result.';
-    return Promise.resolve({
-      'message':      { 'kind': 'text', 'content': prose },
-      'finishReason': 'stop',
-      'usage':        ZERO_TOKEN_USAGE,
-    });
-  }
-}
+const OLLAMA_MODEL = 'llama3.2';
 
 // ---------------------------------------------------------------------------
 // Tool registry
@@ -105,7 +54,7 @@ const registry = new ToolRegistry();
 registry.register(calculatorTool);
 
 process.stdout.write(`\nTool registered: "${calculatorTool.definition.name}" — ${calculatorTool.definition.description}\n`);
-process.stdout.write(`Tool input schema: ${JSON.stringify(calculatorTool.definition.inputSchema['required'])}\n\n`);
+process.stdout.write(`Tool input schema required fields: ${JSON.stringify(calculatorTool.definition.inputSchema['required'])}\n\n`);
 
 // ---------------------------------------------------------------------------
 // DAG setup
@@ -120,14 +69,20 @@ dispatcher.registerNode(new OnToolErrorNode());
 dispatcher.registerDAG(dag);
 
 // ---------------------------------------------------------------------------
-// Run A: native tool_calls channel
+// Run A: real OllamaApiAdapter — native tool_calls channel.
+//
+//   Sends the tool definition to llama3.2. When the model calls the tool,
+//   the adapter returns response.message.kind === 'tools' with a typed
+//   ToolCall[]. The CallLlmNode dispatches the call without codec decoding.
 // ---------------------------------------------------------------------------
 
-process.stdout.write('--- Run A: native tool_calls channel ---\n');
+process.stdout.write('--- Run A: OllamaApiAdapter — native tool_calls channel ---\n');
+
+const adapter = new OllamaApiAdapter({ 'model': OLLAMA_MODEL });
 
 const stateA = new ToolUseState();
 stateA.question = 'What is 7 + 35?';
-stateA.adapter  = new NativeToolCallAdapter();
+stateA.adapter  = adapter;
 stateA.registry = registry;
 
 await dispatcher.execute('tool-use-demo', stateA);
@@ -137,48 +92,72 @@ process.stdout.write(`  dispatched:    "${stateA.dispatchedTool}"\n`);
 process.stdout.write(`  finalAnswer:   "${stateA.finalAnswer}"\n\n`);
 
 // ---------------------------------------------------------------------------
-// Run B: text-channel ToolCallCodec decode
+// Run B: ToolCallCodec text-channel fallback demonstration.
+//
+//   No model call here. Feed a fixed assistant message string — the kind a
+//   model that embeds tool calls in prose would return — to ToolCallCodec.decode.
+//   Decode extracts the { tool_calls: [...] } envelope from arbitrary prose,
+//   then dispatches the result to the CalculatorTool.
+//
+//   This demonstrates the codec without requiring the model to produce this
+//   format. The real-world use case: nano models or WebLLM that embed tool
+//   calls in prose rather than using the structured tool channel.
 // ---------------------------------------------------------------------------
 
-process.stdout.write('--- Run B: text-channel (ToolCallCodec.decode) ---\n');
+process.stdout.write('--- Run B: ToolCallCodec.decode text-channel fallback ---\n');
 
-const stateB = new ToolUseState();
-stateB.question = 'What is 100 + 23?';
-stateB.adapter  = new TextChannelToolCallAdapter();
-stateB.registry = registry;
+const sampleProse =
+  'Sure! I will compute that for you. '
+  + '{"tool_calls":[{"name":"calculator","arguments":{"a":100,"b":23}}]} '
+  + 'Let me process the result.';
 
-await dispatcher.execute('tool-use-demo', stateB);
+process.stdout.write(`  Input prose: ${sampleProse}\n`);
 
-process.stdout.write(`  question:      "${stateB.question}"\n`);
-process.stdout.write(`  dispatched:    "${stateB.dispatchedTool}"\n`);
-process.stdout.write(`  finalAnswer:   "${stateB.finalAnswer}"\n\n`);
+const decodedCalls = ToolCallCodec.decode(sampleProse, 'codec-demo');
+process.stdout.write(`  Decoded calls: ${JSON.stringify(decodedCalls)}\n`);
+
+if (decodedCalls.length > 0 && decodedCalls[0] !== undefined) {
+  const call = decodedCalls[0];
+  const tool = registry.resolve(call.name);
+  if (tool !== null) {
+    const result = await tool.execute(call.arguments);
+    process.stdout.write(`  Tool "${call.name}" result: ${JSON.stringify(result)}\n`);
+  }
+}
+process.stdout.write(`\n`);
 
 // ---------------------------------------------------------------------------
 // Run C: unknown tool → error route
+//
+//   Feeds a decoded call for a tool that is not registered. The DAG routes
+//   through the error node.
 // ---------------------------------------------------------------------------
 
 process.stdout.write('--- Run C: unknown tool → error route ---\n');
 
-class UnknownToolAdapter extends StubAdapter {
-  override async probe(): Promise<boolean> { return Promise.resolve(true); }
-  protected override async performChat(_r: ChatRequest): Promise<ChatResponse> {
-    return Promise.resolve({
-      'message':      { 'kind': 'text', 'content': '{"tool_calls":[{"name":"nonexistent","arguments":{}}]}' },
-      'finishReason': 'stop',
-      'usage':        ZERO_TOKEN_USAGE,
-    });
-  }
-}
+const unknownProse = '{"tool_calls":[{"name":"nonexistent","arguments":{}}]}';
 
 const stateC = new ToolUseState();
-stateC.question = 'Do something unknown.';
-stateC.adapter  = new UnknownToolAdapter();
-stateC.registry = registry;
+stateC.question    = 'Do something unknown.';
+stateC.adapter     = adapter;
+stateC.registry    = registry;
+stateC.toolCallRaw = unknownProse;
+// Pre-populate dispatchedTool so DispatchToolNode can decode and route to error
+const unknownCalls = ToolCallCodec.decode(unknownProse, 'error-demo');
+stateC.dispatchedTool = unknownCalls[0]?.name ?? '';
 
-await dispatcher.execute('tool-use-demo', stateC);
+// Execute only the dispatch path: manually drive DispatchToolNode via execute(batch, ctx)
+const dispatchNode = new DispatchToolNode();
+const ac = new AbortController();
+await dispatchNode.execute(Batch.of(stateC), {
+  dagName: 'tool-use-demo',
+  nodeName: 'dispatchTool',
+  signal: ac.signal,
+  services: undefined,
+});
 
-process.stdout.write(`  question:      "${stateC.question}"\n`);
 process.stdout.write(`  finalAnswer:   "${stateC.finalAnswer}"\n\n`);
 
 process.stdout.write('Lesson: ToolCallCodec.decode extracts tool calls from arbitrary prose.\n');
 process.stdout.write('        Tool<TInput,TOutput>.execute() dispatches the call; the DAG routes on success/error.\n');
+process.stdout.write('        OllamaApiAdapter with a tool-capable model emits ToolCall[] via the native channel.\n');

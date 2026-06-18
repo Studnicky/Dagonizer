@@ -32,10 +32,11 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeTimeoutError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
@@ -89,12 +90,11 @@ void describe('per-node timeout', () => {
 
     let receivedSignal: AbortSignal | undefined;
 
-    class SlowNode implements NodeInterface<NodeStateBase, 'success'> {
+    class SlowNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'slow';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.ofMs(500);
-      async execute(_state: NodeStateBase, context: NodeContextInterface): Promise<{ errors: []; output: 'success' }> {
+      override readonly timeout = Timeout.ofMs(500);
+      protected async executeOne(_state: NodeStateBase, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
         receivedSignal = context.signal;
         // Suspend indefinitely; the per-node deadline race wins.
         await new Promise<never>((_resolve, _reject) => {
@@ -152,12 +152,11 @@ void describe('per-node timeout', () => {
       }
     }
 
-    class TardyNode implements NodeInterface<NodeStateBase, 'success'> {
+    class TardyNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'tardy';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.ofMs(200);
-      async execute(_state: NodeStateBase, context: NodeContextInterface): Promise<{ errors: []; output: 'success' }> {
+      override readonly timeout = Timeout.ofMs(200);
+      protected async executeOne(_state: NodeStateBase, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
         await new Promise<never>((_resolve, _reject) => {
           context.signal.addEventListener('abort', () => { _reject(context.signal.reason); }, { 'once': true });
         });
@@ -200,12 +199,10 @@ void describe('per-node timeout', () => {
     const sched = new VirtualScheduler();
     Scheduler.configure(sched);
 
-    class FastNode implements NodeInterface<NodeStateBase, 'done'> {
+    class FastNode extends ScalarNode<NodeStateBase, 'done'> {
       readonly name = 'fast';
       readonly outputs = ['done'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(_state: NodeStateBase): Promise<{ errors: []; output: 'done' }> {
+      protected async executeOne(_state: NodeStateBase): Promise<NodeOutputInterface<'done'>> {
         return { 'errors': [], 'output': 'done' };
       }
     }
@@ -227,12 +224,11 @@ void describe('per-node timeout', () => {
     const sched = new VirtualScheduler();
     Scheduler.configure(sched);
 
-    class SlowCancelNode implements NodeInterface<NodeStateBase, 'success'> {
+    class SlowCancelNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'slow-cancel';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.ofMs(60_000); // very long node budget; run-level cancel wins
-      async execute(_state: NodeStateBase, context: NodeContextInterface): Promise<{ errors: []; output: 'success' }> {
+      override readonly timeout = Timeout.ofMs(60_000); // very long node budget; run-level cancel wins
+      protected async executeOne(_state: NodeStateBase, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
         await new Promise<never>((_resolve, _reject) => {
           context.signal.addEventListener('abort', () => { _reject(context.signal.reason); }, { 'once': true });
         });

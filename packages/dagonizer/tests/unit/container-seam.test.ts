@@ -1,30 +1,46 @@
 /**
  * container-seam.test.ts
  *
- * Tests for W1 container seam:
- * (a) embedded DAG with NO container resolves in-process (byte-identical outputs).
- * (b) embedded DAG bound to a fake DagContainerInterface (test double) that runs
- *     the child in-process and returns the outcome via the contract — parent state
- *     reflects child mutations after applySnapshot, intermediates re-yield, and
- *     result.state === initialState.
- * (c) unbound container role on a placement fires contractWarning at registerDAG.
+ * Register/build-time behavior of the W1 container seam at the Dagonizer and
+ * DAGBuilder level (no worker process, no transport):
+ *
+ * Builder container key:
+ *   - scatter({ container }) and embeddedDAG({ container }) emit the container
+ *     property on the placement; omitting the option leaves it absent; a
+ *     plain node() placement never carries a container property.
+ *
+ * Container seam execution:
+ *   (a) embedded DAG with NO container resolves in-process (byte-identical).
+ *   (b) embedded DAG bound to a fake DagContainerInterface (test double) that
+ *       runs the child in-process and returns the outcome via the contract —
+ *       parent state reflects child mutations, intermediates re-yield, and
+ *       result.state === initialState.
+ *   (c) an unbound container role on a placement fires contractWarning at
+ *       registerDAG.
+ *   (d) the in-process path is identical whether or not an empty containers
+ *       option is supplied.
+ *
+ * Container validation at registerDAG:
+ *   - a ScatterNode with a node body AND a container key throws ValidationError.
+ *   - a ScatterNode with a dag body AND a container key is valid (no throw).
  */
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
 import type { DagOutcomeInterface } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ObserverRelay } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import { ValidationError } from '../../src/errors/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 // ---------------------------------------------------------------------------
 // State
@@ -53,26 +69,36 @@ class CounterState extends NodeStateBase {
 // Nodes
 // ---------------------------------------------------------------------------
 
-class IncrementNode implements NodeInterface<CounterState, 'success'> {
+class NoopNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'noop';
+  readonly outputs = ['success'] as const;
+  protected async executeOne(_state: NodeStateBase): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+}
+const noop = new NoopNode();
+
+class IncrementNode extends ScalarNode<CounterState, 'success'> {
   readonly name = 'increment';
   readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
-  async execute(state: CounterState) {
+  protected async executeOne(state: CounterState): Promise<NodeOutputInterface<'success'>> {
     state.value += 10;
     return { 'errors': [], 'output': 'success' as const };
   }
 }
 const incrementNode = new IncrementNode();
 
-class TerminalNode implements NodeInterface<CounterState, 'completed'> {
+class TerminalNode extends ScalarNode<CounterState, 'completed'> {
   readonly name = 'done-node';
   readonly outputs = ['completed'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
-  async execute() { return { 'errors': [], 'output': 'completed' as const }; }
+  protected async executeOne(): Promise<NodeOutputInterface<'completed'>> { return { 'errors': [], 'output': 'completed' as const }; }
 }
 const terminalNode = new TerminalNode();
+
+class BodyNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'body-node';
+  readonly outputs = ['success'] as const;
+  protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
+}
+const bodyNode = new BodyNode();
 
 // ---------------------------------------------------------------------------
 // DAGs
@@ -150,6 +176,82 @@ const parentContainerDAG: DAG = {
   ],
 };
 
+// A ScatterNode with a node body AND a container key — this is a validation error.
+const invalidScatterDAG: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id':      'urn:noocodex:dag:invalid',
+  '@type':    'DAG',
+  'name':     'invalid',
+  'version':  '1',
+  'entrypoint': 'scatter',
+  'nodes': [
+    {
+      '@id':       'urn:noocodex:dag:invalid/node/scatter',
+      '@type':     'ScatterNode',
+      'name':      'scatter',
+      'source':    'items',
+      'body':      { 'node': 'body-node' },
+      'gather':    { 'strategy': 'discard' },
+      'container': 'cpu',
+      'outputs':   {
+        'all-success': 'end',
+        'partial': 'end',
+        'all-error': 'end',
+        'empty': 'end',
+      },
+    },
+    { '@id': 'urn:noocodex:dag:invalid/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+  ],
+};
+
+// A ScatterNode with a dag body AND a container key — this is valid.
+const validDagBodyScatterDAG: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id':      'urn:noocodex:dag:valid-dag-body',
+  '@type':    'DAG',
+  'name':     'valid-dag-body',
+  'version':  '1',
+  'entrypoint': 'scatter',
+  'nodes': [
+    {
+      '@id':       'urn:noocodex:dag:valid-dag-body/node/scatter',
+      '@type':     'ScatterNode',
+      'name':      'scatter',
+      'source':    'items',
+      'body':      { 'dag': 'body-child' },
+      'gather':    { 'strategy': 'discard' },
+      'container': 'cpu',
+      'outputs':   {
+        'all-success': 'end',
+        'partial': 'end',
+        'all-error': 'end',
+        'empty': 'end',
+      },
+    },
+    { '@id': 'urn:noocodex:dag:valid-dag-body/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+  ],
+};
+
+// Child DAG referenced by the valid dag-body scatter.
+const bodyChildDAG: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id':      'urn:noocodex:dag:body-child',
+  '@type':    'DAG',
+  'name':     'body-child',
+  'version':  '1',
+  'entrypoint': 'body-node',
+  'nodes': [
+    {
+      '@id':     'urn:noocodex:dag:body-child/node/body-node',
+      '@type':   'SingleNode',
+      'name':    'body-node',
+      'node':    'body-node',
+      'outputs': { 'success': 'end' },
+    },
+    { '@id': 'urn:noocodex:dag:body-child/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+  ],
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -164,7 +266,75 @@ function makeInProcessDispatcher(): Dagonizer<CounterState> {
 }
 
 // ---------------------------------------------------------------------------
-// Tests
+// Builder container key
+// ---------------------------------------------------------------------------
+
+void describe('Builder container key', () => {
+  void it('scatter with container option emits container property on placement', () => {
+    const dag = new DAGBuilder('scatter-c', '1')
+      .scatter('fan-out', 'items', { 'dag': 'child-dag' }, { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' }, {
+        'container': 'cpu',
+        'gather': { 'strategy': 'discard' },
+      })
+      .build();
+
+    const placement = dag.nodes[0];
+    assert.ok(placement !== undefined);
+    assert.equal(placement['@type'], 'ScatterNode');
+    assert.equal((placement as Record<string, unknown>)['container'], 'cpu');
+  });
+
+  void it('scatter without container option has no container property', () => {
+    const dag = new DAGBuilder('scatter-nc', '1')
+      .scatter('fan-out', 'items', noop, { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' }, {
+        'gather': { 'strategy': 'discard' },
+      })
+      .build();
+
+    const placement = dag.nodes[0];
+    assert.ok(placement !== undefined);
+    assert.equal(placement['@type'], 'ScatterNode');
+    assert.equal('container' in placement, false, 'container should be absent when not provided');
+  });
+
+  void it('embeddedDAG with container option emits container property on placement', () => {
+    const dag = new DAGBuilder('embed-c', '1')
+      .embeddedDAG('invoke', 'child-dag', { 'success': 'end', 'error': 'end' }, {
+        'container': 'isolated',
+      })
+      .build();
+
+    const placement = dag.nodes[0];
+    assert.ok(placement !== undefined);
+    assert.equal(placement['@type'], 'EmbeddedDAGNode');
+    assert.equal((placement as Record<string, unknown>)['container'], 'isolated');
+  });
+
+  void it('embeddedDAG without container option has no container property', () => {
+    const dag = new DAGBuilder('embed-nc', '1')
+      .embeddedDAG('invoke', 'child-dag', { 'success': 'end', 'error': 'end' })
+      .build();
+
+    const placement = dag.nodes[0];
+    assert.ok(placement !== undefined);
+    assert.equal(placement['@type'], 'EmbeddedDAGNode');
+    assert.equal('container' in placement, false, 'container should be absent when not provided');
+  });
+
+  void it('node() placement has no container property', () => {
+    const dag = new DAGBuilder('node-nc', '1')
+      .node('noop', noop, { 'success': 'end' })
+      .build();
+
+    const placement = dag.nodes[0];
+    assert.ok(placement !== undefined);
+    assert.equal(placement['@type'], 'SingleNode');
+    assert.equal('container' in placement, false, 'SingleNode never has a container property');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Container seam — W1
 // ---------------------------------------------------------------------------
 
 void describe('Container seam — W1', () => {
@@ -196,10 +366,12 @@ void describe('Container seam — W1', () => {
     // Test double: a DagContainerInterface that delegates to a second Dagonizer instance.
     const fakeContainer: DagContainerInterface<CounterState> = {
       async runDag(task: DagTaskInterface<CounterState, unknown>, _options?: { readonly relay?: ObserverRelay }): Promise<DagOutcomeInterface> {
-        // Restore child clone from the snapshot in the task
+        // Restore child clone from the snapshot in the task.
+        // items[0].snapshot is JsonObject at the wire boundary; cast is safe here.
         const request = task.toRequest();
-        // stateSnapshot is JsonObject at the wire boundary; cast is safe here.
-        const childState = CounterState.restore(request.stateSnapshot as JsonObject);
+        const firstItem = request.items[0];
+        if (firstItem === undefined) throw new Error('No items in request');
+        const childState = CounterState.restore(firstItem.snapshot as JsonObject);
 
         // Run the child DAG in-process (in an inner dispatcher)
         const inner = new Dagonizer<CounterState>();
@@ -291,5 +463,36 @@ void describe('Container seam — W1', () => {
 
     assert.equal(resultA.state.value, resultB.state.value);
     assert.equal(resultA.executedNodes.join(','), resultB.executedNodes.join(','));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Container validation — node-body scatter
+// ---------------------------------------------------------------------------
+
+void describe('Container validation — node-body scatter', () => {
+  void it('throws ValidationError when ScatterNode has node body AND container key', () => {
+    const dispatcher = new Dagonizer<NodeStateBase>();
+    dispatcher.registerNode(bodyNode);
+
+    assert.throws(
+      () => dispatcher.registerDAG(invalidScatterDAG),
+      ValidationError,
+      'Expected a ValidationError for node-body scatter with container',
+    );
+  });
+
+  void it('does not throw when ScatterNode has dag body AND container key', () => {
+    const warnings: string[] = [];
+    class ObserveDagonizer extends Dagonizer<NodeStateBase> {
+      protected override onContractWarning(msg: string) { warnings.push(msg); }
+    }
+
+    const dispatcher = new ObserveDagonizer();
+    dispatcher.registerNode(bodyNode);
+    dispatcher.registerDAG(bodyChildDAG);
+
+    // Should not throw — dag body with container is valid
+    assert.doesNotThrow(() => dispatcher.registerDAG(validDagBodyScatterDAG));
   });
 });

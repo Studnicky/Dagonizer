@@ -24,10 +24,9 @@ import {
   NodeOutputBuilder,
   NodeStateBase,
   SCATTER_PROGRESS_KEY,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface} from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 import { GatherStrategyName } from '@noocodex/dagonizer/constants';
 
@@ -94,13 +93,11 @@ export const observable = {
   controller: null as AbortController | null,
 };
 
-export class ProcessJobNode implements NodeInterface<ResumeState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ProcessJobNode extends ScalarNode<ResumeState, 'done'> {
   readonly name = 'process-job';
   readonly outputs = ['done'] as const;
 
-  async execute(state: ResumeState) {
+  protected override async executeOne(state: ResumeState) {
     const job   = state.getMetadata<string>('job') ?? '?';
     const label = `${job}(run-${observable.run})`;
     // Write a scalar to `processed` on the clone. The map gather reads

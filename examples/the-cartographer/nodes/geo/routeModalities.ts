@@ -14,22 +14,16 @@
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region route-modalities-node
-export class RouteModalitiesNode implements NodeInterface<CartographerState, 'ip' | 'gps-only', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class RouteModalitiesNode extends ScalarNode<CartographerState, 'ip' | 'gps-only', CartographerServices> {
   readonly 'name' = 'route-modalities';
   readonly 'outputs' = ['ip', 'gps-only'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'ip' | 'gps-only'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'ip' | 'gps-only'>> {
     const hasIp = state.canonical.body.ipAddress.length > 0;
     if (hasIp) {
       return NodeOutputBuilder.of('ip');
@@ -39,3 +33,5 @@ export class RouteModalitiesNode implements NodeInterface<CartographerState, 'ip
   }
 }
 // #endregion route-modalities-node
+
+export const routeModalities = new RouteModalitiesNode();

@@ -1,102 +1,114 @@
 /**
  * The Cartographer: DAGs proving data orchestration = the same engine, on a
- * multi-source ingestion fan-in + a streaming enrichment scatter.
+ * single streaming scatter over raw source payloads.
  *
  * 1. cartographer (top-level):
- *    seed (pre-phase: build the multi-format source feeds)
- *      → scatter('ingest-sources', 'sources', { dag: 'ingest-source' },
- *                gather: append ingestedEvents → canonicalEvents)   [THE FAN-IN]
- *      → scatter('process-events', 'canonicalEvents', { dag: 'event-pipeline' },
- *                gather: append enriched → records)                 [STREAMING]
+ *    seed (pre-phase: build or stream the source feeds into state.sources)
+ *      → scatter('process-stream', 'sources', { dag: 'stream-event' },
+ *                gather: insights-fold)                             [STREAMING]
  *      → summarize → done
  *
- * 2. ingest-source (ingestion scatter body, one run per source feed):
- *    select-source → (decompress) → parse-{csv,json,ndjson} → map-fields
- *      → coerce-types → validate-event → ingested
- *    (the SHARED transform nodes; see embedded-dags/IngestSourceDAG.ts)
+ *    The insights-fold gather folds each clone's state.enriched into three bounded
+ *    accumulators (state.insights, state.journeys, state.sampleRecords) as clones
+ *    complete. Memory is O(1) regardless of event count.
  *
- * 3. event-pipeline (enrichment scatter body, one run per canonical event):
- *    parse (canonical → raw) → validate-coords → geo-grid → geo-context
- *      → normalize → classify → enrich-pricing → enrich-shipping → enrich-eta
- *      → enrich-leg → gdpr (embedded) → aggregate-event → done
- *    (Stage 1: LINEAR / always-run enrichment — no skip-routing yet.)
+ * 2. stream-event (streaming scatter body, one run per source payload):
+ *    decode-payload → route-event-type-variant → per-type embedded DAG → done/rejected
+ *    (see embedded-dags/StreamEventDAG.ts)
  *
- * 4. gdpr-compliance (embedded in event-pipeline).
- *
- * Fan-in mechanism: the ingestion scatter over `state.sources` (a few fixed
- * source feeds) runs each source's `ingest-source` sub-DAG in an isolated clone
- * and gathers each clone's `ingestedEvents` via the engine's `append` strategy
- * into one `state.canonicalEvents` collection. The streaming enrichment scatter
- * then processes that merged collection. Two scatters: ingestion fan-in +
- * streaming enrichment, both native engine combinators.
+ * 3. event-pipeline-typed (retained for dag-validate.ts and direct consumers):
+ *    route-event-type-variant → {position-ping|sensor-reading|customs-event|
+ *      facility-scan|delivery-confirmation}
+ *    Each branch is a per-type embedded DAG that starts with parse-variant,
+ *    embeds geo-pipeline, runs type-specific enrichment, and converges on
+ *    aggregate-event → done.
  */
 
 // #region cartographer-dag-imports
-import { ParseEventNode }        from './nodes/parseEvent.ts';
-import { RouteGeoNode }          from './nodes/routeGeo.ts';
-import { ApplyGeoNode }          from './nodes/applyGeo.ts';
-import { ValidateCoordsNode }    from './nodes/validateCoords.ts';
-import { RouteKindNode }         from './nodes/routeKind.ts';
-import { ColdChainCheckNode }    from './nodes/coldChainCheck.ts';
-import { CustomsDwellNode }      from './nodes/customsDwell.ts';
-import { EnrichLegNode }         from './nodes/enrichLeg.ts';
-import { RouteRedactionNode }    from './nodes/routeRedaction.ts';
-import { AggregateEventNode }    from './nodes/aggregateEvent.ts';
-import { MergeEventsNode }       from './nodes/mergeEvents.ts';
-import { SummarizeInsightsNode } from './nodes/summarizeInsights.ts';
-import { SeedEventsNode }        from './nodes/seedEvents.ts';
+import { routeGeo }          from './nodes/routeGeo.ts';
+import { applyGeo }          from './nodes/applyGeo.ts';
+import { validateCoords }    from './nodes/validateCoords.ts';
+import { coldChainCheck }    from './nodes/coldChainCheck.ts';
+import { customsDwell }      from './nodes/customsDwell.ts';
+import { enrichLeg }         from './nodes/enrichLeg.ts';
+import { routeRedaction }    from './nodes/routeRedaction.ts';
+import { aggregateEvent }    from './nodes/aggregateEvent.ts';
+import { summarizeInsights } from './nodes/summarizeInsights.ts';
+import { seedEvents }        from './nodes/seedEvents.ts';
+import { routeEventType }    from './nodes/routeEventType.ts';
+import { parseVariant }      from './nodes/parseVariant.ts';
+import { canonicalizeCore }  from './nodes/canonicalizeCore.ts';
+import { canonicalizeFacility }  from './nodes/canonicalizeFacility.ts';
+import { canonicalizeRecipient } from './nodes/canonicalizeRecipient.ts';
+import { confirmDelivery }   from './nodes/confirmDelivery.ts';
+import { decodePayload }     from './nodes/decodePayload.ts';
+
+import { reverseGeocode }  from './nodes/geo/reverseGeocode.ts';
+import { routeModalities } from './nodes/geo/routeModalities.ts';
+import { ipGeolocate }     from './nodes/geo/ipGeolocate.ts';
+import { fuseGeo }         from './nodes/geo/fuseGeo.ts';
+import { enrichPricing }   from './nodes/enrichPricing.ts';
+import { enrichShipping }  from './nodes/enrichShipping.ts';
+import { enrichEta }       from './nodes/enrichEta.ts';
+import { consentGate, classifyPii, redactPii } from './nodes/gdprNodes.ts';
+
+import { geoResolveDAG }      from './embedded-dags/GeoResolveDAG.ts';
+import { geoPipelineDAG }     from './embedded-dags/GeoPipelineDAG.ts';
+import { orderEnrichmentDAG } from './embedded-dags/OrderEnrichmentDAG.ts';
+import { gdprComplianceDAG }  from './embedded-dags/GdprComplianceDAG.ts';
+import { pipelinePositionPingDAG }        from './embedded-dags/PipelinePositionPingDAG.ts';
+import { pipelineSensorReadingDAG }       from './embedded-dags/PipelineSensorReadingDAG.ts';
+import { pipelineCustomsEventDAG }        from './embedded-dags/PipelineCustomsEventDAG.ts';
+import { pipelineFacilityScanDAG }        from './embedded-dags/PipelineFacilityScanDAG.ts';
+import { pipelineDeliveryConfirmationDAG } from './embedded-dags/PipelineDeliveryConfirmationDAG.ts';
+import { streamEventDAG } from './embedded-dags/StreamEventDAG.ts';
 
 import type { CartographerState } from './CartographerState.ts';
 import type { CartographerServices } from './CartographerServices.ts';
 
 import type { DAG, DispatcherBundle } from '@noocodex/dagonizer';
 import { DAGBuilder } from '@noocodex/dagonizer';
+
+import './core/InsightsFoldGather.ts';
 // #endregion cartographer-dag-imports
 
 // ── DAG 1: cartographer (top-level) ─────────────────────────────────────────
 
 // #region cartographer-dag
+/**
+ * cartographerDAG: single streaming scatter over raw source payloads.
+ *
+ * The pre-phase seeds state.sources with an AsyncIterable<SourcePayload>
+ * (streaming path) or a materialised SourcePayload[] (array path). The
+ * scatter reads either form transparently at concurrency 16, running the
+ * stream-event DAG per item. Each stream-event body decodes the payload,
+ * routes to the per-type pipeline DAG, and produces state.enriched. The
+ * insights-fold gather accumulates state.insights (exact region rollup),
+ * state.journeys (bounded journey sample), and state.sampleRecords (capped
+ * FIFO of scans) into the parent as each clone completes. Memory is O(1)
+ * regardless of event count.
+ *
+ * Topology:
+ *   seed (pre)
+ *     → scatter('process-stream', 'sources', { dag: 'stream-event' },
+ *               gather: { strategy: 'insights-fold' }, concurrency: 16)
+ *     → summarize → done
+ */
 export const cartographerDAG: DAG = new DAGBuilder('cartographer', '1.0')
 
-  // Pre-phase: seeds state.sources = Sources.build(state.eventCount) — the
-  // multi-format source feeds — before the ingestion scatter reads them.
-  .phase('seed', 'pre', new SeedEventsNode())
+  // Pre-phase: seeds state.sources before the scatter reads it. When
+  // state.useStreamingSource is true, sources is an AsyncIterable<SourcePayload>;
+  // otherwise a materialised SourcePayload[].
+  .phase('seed', 'pre', seedEvents)
 
-  // Ingestion FAN-IN: scatter over the source feeds; each runs its ingest-source
-  // sub-DAG in an isolated clone; the append gather appends each clone's
-  // state.ingestedEvents array as one bucket of state.ingestBuckets.
+  // Single streaming scatter over state.sources. Each item is a SourcePayload
+  // placed on metadata key 'source-payload'; the stream-event body decodes it
+  // and routes to the matching per-type pipeline DAG. The insights-fold gather
+  // folds each clone's state.enriched into the parent's bounded accumulators.
   .scatter(
-    'ingest-sources',
+    'process-stream',
     'sources',
-    { 'dag': 'ingest-source' },
-    {
-      'all-success': 'merge-events',
-      'partial':     'merge-events',
-      'all-error':   'merge-events',
-      'empty':       'merge-events',
-    },
-    {
-      'itemKey':     'source',
-      'concurrency': 4,
-      'gather': {
-        'strategy': 'append',
-        'field':    'ingestedEvents',
-        'target':   'ingestBuckets',
-      },
-    },
-  )
-
-  // merge-events: flatten the per-source buckets into one canonicalEvents model.
-  .node('merge-events', new MergeEventsNode(), {
-    'merged': 'process-events',
-  })
-
-  // Streaming enrichment: scatter over the merged canonical events at
-  // concurrency 16. Each clone's state.enriched is appended into state.records.
-  .scatter(
-    'process-events',
-    'canonicalEvents',
-    { 'dag': 'event-pipeline' },
+    { 'dag': 'stream-event' },
     {
       'all-success': 'summarize',
       'partial':     'summarize',
@@ -104,18 +116,17 @@ export const cartographerDAG: DAG = new DAGBuilder('cartographer', '1.0')
       'empty':       'summarize',
     },
     {
-      'itemKey':     'canonical-event',
+      'itemKey':     'source-payload',
       'concurrency': 16,
-      'gather': {
-        'strategy': 'append',
-        'field':    'enriched',
-        'target':   'records',
-      },
+      'gather': { 'strategy': 'insights-fold' },
+      'reservoir': { 'keyField': 'eventType', 'capacity': 1000 },
     },
   )
 
-  // Fold gathered records into the fixed-size regional + per-journey insights.
-  .node('summarize', new SummarizeInsightsNode(), {
+  // Pass-through in the streaming path (insights-fold already populated
+  // state.insights, state.journeys, and state.sampleRecords). Falls back
+  // to the records-based fold for non-streaming callers.
+  .node('summarize', summarizeInsights, {
     'success': 'done',
   })
 
@@ -124,299 +135,330 @@ export const cartographerDAG: DAG = new DAGBuilder('cartographer', '1.0')
   .build();
 // #endregion cartographer-dag
 
-// ── DAG 2: event-pipeline (one run per canonical event) ──────────────────────
+// ── DAG 2: event-pipeline-typed (the LIVE scatter body, typed per-event-type paths) ──
 
-// #region event-pipeline-dag
+// #region event-pipeline-typed-dag
 /**
- * event-pipeline (BRANCHING — the headline): each event routes ONLY through the
- * nodes it needs. Four embedded sub-DAGs compose the domain logic; the parent is
- * a thin orchestrator. Three conditional branches + per-kind enrichment lanes,
- * all converging on aggregate-event:
+ * event-pipeline-typed: the live enrichment scatter body for process-events.
  *
- *   parse ─invalid→ rejected
- *         └parsed→ route-geo
- *                   ├has-geo→  apply-geo ──────────────┐  (SKIP geo-resolve lookup)
- *                   └needs-geo→ validate-coords         │
- *                                ├rejected→ rejected    │
- *                                └valid→ [geo-resolve]──┘ (embedded: reverse-geocode+ip+fuse)
- *                                                        ▼ (converge)
- *                                                [canonicalize] (embedded: normalize → classify)
- *                                                        ▼
- *                                                   route-kind
- *      ┌──────────────────────────────────────────────────────────────────────┘
- *      ├geo-only (position-ping)→ enrich-leg
- *      ├sensor   (sensor-reading)→ cold-chain-check → enrich-leg
- *      ├order    (facility-scan / delivery-confirmation)→
- *      │            [order-enrichment] (embedded: pricing→shipping→eta) → enrich-leg
- *      └customs  (customs-event)→ customs-dwell → enrich-leg
- *                                                   ▼ (converge)
- *                                              route-redaction
- *                                               ├needs-redaction→ [gdpr] → aggregate-event
- *                                               └skip-redaction→ aggregate-event (direct bypass)
- *   aggregate-event ─done→ done
+ * Reads the scattered CanonicalEventVariant from metadata key 'canonical-event'
+ * and routes it to one of five per-type embedded DAGs via route-event-type-variant.
+ * Each per-type DAG starts with parse-variant (which also reads from metadata),
+ * embeds geo-pipeline for geo resolution, runs type-specific enrichment nodes,
+ * and converges on aggregate-event → done.
  *
- * Each routing decision is recorded on the clone's state.routing (RAN vs
- * SKIPPED) and copied onto the enriched record so summarize totals the savings.
+ *   route-event-type-variant
+ *     ├─position-ping──────────► pipeline-position-ping (embedded)
+ *     ├─sensor-reading─────────► pipeline-sensor-reading (embedded)
+ *     ├─customs-event──────────► pipeline-customs-event (embedded)
+ *     ├─facility-scan──────────► pipeline-facility-scan (embedded)
+ *     └─delivery-confirmation──► pipeline-delivery-confirmation (embedded)
+ *   Each per-type DAG:
+ *     parse-variant → geo-pipeline → canonicalize-core → [type-specific] → aggregate-event → done
+ *
+ * Metadata propagation: the scatter sets 'canonical-event' on each clone's
+ * metadata. NodeStateBase.clone() copies _metadata, so metadata propagates
+ * to embedded child clones. Both route-event-type-variant and parse-variant
+ * read 'canonical-event' from metadata.
  */
-export const eventPipelineDAG: DAG = new DAGBuilder('event-pipeline', '1.0')
+export const eventPipelineTypedDAG: DAG = new DAGBuilder('event-pipeline-typed', '1.0')
 
-  // 1. parse: adapt the canonical event (from metadata) into state.raw.
-  .node('parse', new ParseEventNode(), {
-    'parsed':  'route-geo',
-    'invalid': 'rejected',
+  // 1. route-event-type-variant: read eventType from 'canonical-event' metadata
+  //    and dispatch to the corresponding per-type sub-DAG.
+  .node('route-event-type-variant', routeEventType, {
+    'position-ping':         'pipeline-position-ping',
+    'sensor-reading':        'pipeline-sensor-reading',
+    'customs-event':         'pipeline-customs-event',
+    'facility-scan':         'pipeline-facility-scan',
+    'delivery-confirmation': 'pipeline-delivery-confirmation',
   })
 
-  // 2. route-geo: SKIP the geo lookup when the source pre-resolved location.
-  .node('route-geo', new RouteGeoNode(), {
-    'has-geo':   'apply-geo',
-    'needs-geo': 'validate-coords',
-  })
-
-  // 2a. apply-geo (skip path): materialise GeoContext from carried geo.
-  .node('apply-geo', new ApplyGeoNode(), {
-    'normalize': 'canonicalize',
-  })
-
-  // 2b. validate-coords (lookup path): WGS-84 bounds check on the scan coords.
-  .node('validate-coords', new ValidateCoordsNode(), {
-    'valid':    'geo-resolve',
-    'rejected': 'rejected',
-  })
-
-  // 2c. geo-resolve: embedded multi-modal geo-resolution sub-DAG (REAL APIs):
-  //     reverse-geocode ∥ ip-geolocate → fuse-geo. Writes state.geoContext +
-  //     state.resolvedGeo. This is the work route-geo SKIPS when geo is
-  //     pre-resolved (both real API calls avoided).
-  .embeddedDAG<CartographerState, CartographerState>('geo-resolve', 'geo-resolve', {
-    'success': 'canonicalize',
-    'error':   'canonicalize',
-  }, {
-    'inputs': {
-      // Seed the child with the fields the geo nodes read + the routing record
-      // route-geo already started, so the child's geo-call flags accumulate onto it.
-      'raw':       'raw',
-      'canonical': 'canonical',
-      'routing':   'routing',
-    },
-    'outputs': {
-      'geoContext':  'geoContext',
-      'resolvedGeo': 'resolvedGeo',
-      'routing':     'routing',
-    },
-  })
-
-  // 3. canonicalize: embedded sub-DAG that normalizes scalars and classifies the
-  //    event. Runs AFTER geo so normalize has the timezone from state.geoContext.
-  //    normalize (scalar canonicalization + local time) → classify (eventType/tiers)
-  .embeddedDAG<CartographerState, CartographerState>('canonicalize', 'canonicalize', {
-    'success': 'route-kind',
+  // 2a. pipeline-position-ping: geo + leg measurement.
+  .embeddedDAG<CartographerState, CartographerState>('pipeline-position-ping', 'pipeline-position-ping', {
+    'success': 'done',
     'error':   'rejected',
   }, {
-    'inputs': {
-      'raw':        'raw',
-      'geoContext': 'geoContext',
-    },
     'outputs': {
-      'normalized':   'normalized',
-      'currentEvent': 'currentEvent',
+      'canonicalVariant': 'canonicalVariant',
+      'raw':              'raw',
+      'normalized':       'normalized',
+      'currentEvent':     'currentEvent',
+      'geoContext':       'geoContext',
+      'resolvedGeo':      'resolvedGeo',
+      'legKm':            'legKm',
+      'routing':          'routing',
+      'enriched':         'enriched',
     },
   })
 
-  // 4. route-kind: per-kind enrichment dispatch (skip irrelevant work).
-  .node('route-kind', new RouteKindNode(), {
-    'geo-only': 'enrich-leg',
-    'sensor':   'cold-chain-check',
-    'order':    'order-enrichment',
-    'customs':  'customs-dwell',
-  })
-
-  // 4a. cold-chain-check (sensor lane): temp/shock breach evaluation.
-  .node('cold-chain-check', new ColdChainCheckNode(), {
-    'checked': 'enrich-leg',
-  })
-
-  // 4b. customs-dwell (customs lane): clearance dwell hours.
-  .node('customs-dwell', new CustomsDwellNode(), {
-    'dwelled': 'enrich-leg',
-  })
-
-  // 4c. order-enrichment (order lane): embedded sub-DAG for value enrichment:
-  //     enrich-pricing → enrich-shipping → enrich-eta.
-  .embeddedDAG<CartographerState, CartographerState>('order-enrichment', 'order-enrichment', {
-    'success': 'enrich-leg',
-    'error':   'enrich-leg',
+  // 2b. pipeline-sensor-reading: geo + cold-chain + leg measurement.
+  .embeddedDAG<CartographerState, CartographerState>('pipeline-sensor-reading', 'pipeline-sensor-reading', {
+    'success': 'done',
+    'error':   'rejected',
   }, {
-    'inputs': {
-      'normalized': 'normalized',
-    },
     'outputs': {
+      'canonicalVariant': 'canonicalVariant',
+      'raw':              'raw',
+      'normalized':       'normalized',
+      'currentEvent':     'currentEvent',
+      'geoContext':       'geoContext',
+      'resolvedGeo':      'resolvedGeo',
+      'coldChainBreach':  'coldChainBreach',
+      'legKm':            'legKm',
+      'routing':          'routing',
+      'enriched':         'enriched',
+    },
+  })
+
+  // 2c. pipeline-customs-event: geo + customs-dwell + leg measurement.
+  .embeddedDAG<CartographerState, CartographerState>('pipeline-customs-event', 'pipeline-customs-event', {
+    'success': 'done',
+    'error':   'rejected',
+  }, {
+    'outputs': {
+      'canonicalVariant':  'canonicalVariant',
+      'raw':               'raw',
+      'normalized':        'normalized',
+      'currentEvent':      'currentEvent',
+      'geoContext':        'geoContext',
+      'resolvedGeo':       'resolvedGeo',
+      'customsDwellHours': 'customsDwellHours',
+      'legKm':             'legKm',
+      'routing':           'routing',
+      'enriched':          'enriched',
+    },
+  })
+
+  // 2d. pipeline-facility-scan: geo + facility canonicalization + order enrichment
+  //     + GDPR-gated redaction.
+  .embeddedDAG<CartographerState, CartographerState>('pipeline-facility-scan', 'pipeline-facility-scan', {
+    'success': 'done',
+    'error':   'rejected',
+  }, {
+    'outputs': {
+      'canonicalVariant':  'canonicalVariant',
+      'raw':               'raw',
+      'normalized':        'normalized',
+      'currentEvent':      'currentEvent',
+      'geoContext':        'geoContext',
+      'resolvedGeo':       'resolvedGeo',
       'pricedOrder':       'pricedOrder',
       'shippingQuote':     'shippingQuote',
       'deliveryEstimate':  'deliveryEstimate',
+      'legKm':             'legKm',
+      'gdprResult':        'gdprResult',
+      'routing':           'routing',
+      'enriched':          'enriched',
     },
   })
 
-  // 5. enrich-leg: legFrom → scan distance (every lane converges here).
-  .node('enrich-leg', new EnrichLegNode(), {
-    'leg-measured': 'route-redaction',
-  })
-
-  // 6. route-redaction: SKIP the redaction sub-DAG when not required.
-  //    skip-redaction routes directly to aggregate-event (no intermediate node).
-  .node('route-redaction', new RouteRedactionNode(), {
-    'needs-redaction': 'gdpr',
-    'skip-redaction':  'aggregate-event',
-  })
-
-  // 6a. gdpr (run path): embedded gdpr-compliance sub-DAG.
-  .embeddedDAG('gdpr', 'gdpr-compliance', {
-    'success': 'aggregate-event',
-    'error':   'gdpr-violation',
+  // 2e. pipeline-delivery-confirmation: geo + recipient canonicalization +
+  //     delivery confirmation + GDPR-gated redaction.
+  .embeddedDAG<CartographerState, CartographerState>('pipeline-delivery-confirmation', 'pipeline-delivery-confirmation', {
+    'success': 'done',
+    'error':   'rejected',
   }, {
     'outputs': {
-      'currentEvent': 'currentEvent',
-      'gdprResult':   'gdprResult',
+      'canonicalVariant': 'canonicalVariant',
+      'raw':              'raw',
+      'normalized':       'normalized',
+      'currentEvent':     'currentEvent',
+      'geoContext':       'geoContext',
+      'resolvedGeo':      'resolvedGeo',
+      'legKm':            'legKm',
+      'gdprResult':       'gdprResult',
+      'routing':          'routing',
+      'enriched':         'enriched',
     },
   })
 
-  // 7. aggregate-event: write compact EnrichedShipment to state.enriched.
-  .node('aggregate-event', new AggregateEventNode(), {
-    'done': 'done',
-  })
-
-  // Terminals
-  .terminal('done',           { outcome: 'completed' })
-  .terminal('rejected',       { outcome: 'failed' })
-  .terminal('gdpr-violation', { outcome: 'failed' })
+  .terminal('done',     { outcome: 'completed' })
+  .terminal('rejected', { outcome: 'failed' })
 
   .build();
-// #endregion event-pipeline-dag
+// #endregion event-pipeline-typed-dag
 
 // ── DAG 1b: cartographer-workers (container variant) ─────────────────────────
 
 // #region cartographer-workers-dag
+/** Default reservoir capacity for the process-stream scatter in the workers DAG. */
+export const DEFAULT_RESERVOIR_CAPACITY = 1000;
+
 /**
- * cartographerWorkersDAG: the same top-level orchestration as cartographerDAG
- * with one difference — the `process-events` scatter binds `container: 'cpu'`
- * so each canonical-event enrichment body runs inside a WorkerThreadContainer
- * instead of in-process. The ingestion fan-in (ingest-sources scatter) still
- * runs in-process; only the CPU-bound enrichment is offloaded.
+ * buildCartographerWorkersDAG: factory that constructs the cartographer-workers
+ * DAG with a configurable reservoir capacity on the process-stream scatter.
  *
- * Used by runCartographer.ts when launched with `--workers` (or CARTO_WORKERS=1).
- * The companion registry module (workers/eventPipelineRegistry.ts, compiled to
- * workers/eventPipelineRegistry.js) reconstructs the event-pipeline bundle
- * inside each worker thread.
+ * Identical topology to cartographerDAG with two differences:
+ *   - container: 'cpu' so each stream-event body runs inside a
+ *     WorkerThreadContainer (real worker threads) rather than in-process.
+ *   - reservoir.capacity is parameterised; callers pass their UI-controlled
+ *     batch size rather than relying on the compile-time default.
+ *
+ * Topology:
+ *   seed (pre)
+ *     → scatter('process-stream', 'sources', { dag: 'stream-event' },
+ *               gather: { strategy: 'insights-fold' }, concurrency: 16,
+ *               container: 'cpu', reservoir: { capacity })
+ *     → summarize → done
  */
-export const cartographerWorkersDAG: DAG = new DAGBuilder('cartographer', '1.0')
+export function buildCartographerWorkersDAG(capacity: number = DEFAULT_RESERVOIR_CAPACITY): DAG {
+  return new DAGBuilder('cartographer', '1.0')
 
-  .phase('seed', 'pre', new SeedEventsNode())
+    .phase('seed', 'pre', seedEvents)
 
-  .scatter(
-    'ingest-sources',
-    'sources',
-    { 'dag': 'ingest-source' },
-    {
-      'all-success': 'merge-events',
-      'partial':     'merge-events',
-      'all-error':   'merge-events',
-      'empty':       'merge-events',
-    },
-    {
-      'itemKey':     'source',
-      'concurrency': 4,
-      'gather': {
-        'strategy': 'append',
-        'field':    'ingestedEvents',
-        'target':   'ingestBuckets',
+    .scatter(
+      'process-stream',
+      'sources',
+      { 'dag': 'stream-event' },
+      {
+        'all-success': 'summarize',
+        'partial':     'summarize',
+        'all-error':   'summarize',
+        'empty':       'summarize',
       },
-    },
-  )
-
-  .node('merge-events', new MergeEventsNode(), {
-    'merged': 'process-events',
-  })
-
-  // Streaming enrichment — container: 'cpu' routes each event's enrichment
-  // body to a WorkerThreadContainer (real worker threads) instead of in-process.
-  .scatter(
-    'process-events',
-    'canonicalEvents',
-    { 'dag': 'event-pipeline' },
-    {
-      'all-success': 'summarize',
-      'partial':     'summarize',
-      'all-error':   'summarize',
-      'empty':       'summarize',
-    },
-    {
-      'itemKey':     'canonical-event',
-      'concurrency': 16,
-      'container':   'cpu',
-      'gather': {
-        'strategy': 'append',
-        'field':    'enriched',
-        'target':   'records',
+      {
+        'itemKey':     'source-payload',
+        'concurrency': 16,
+        'container':   'cpu',
+        'gather': { 'strategy': 'insights-fold' },
+        'reservoir': { 'keyField': 'eventType', 'capacity': capacity },
       },
-    },
-  )
+    )
 
-  .node('summarize', new SummarizeInsightsNode(), {
-    'success': 'done',
-  })
+    .node('summarize', summarizeInsights, {
+      'success': 'done',
+    })
 
-  .terminal('done', { outcome: 'completed' })
+    .terminal('done', { outcome: 'completed' })
 
-  .build();
+    .build();
+}
+
+/**
+ * cartographerWorkersDAG: pre-built workers DAG at DEFAULT_RESERVOIR_CAPACITY.
+ * CLI, smoke tests, and dag-validate consumers use this constant; the browser
+ * demo uses buildCartographerWorkersDAG(capacity) with a UI-controlled value.
+ */
+export const cartographerWorkersDAG: DAG = buildCartographerWorkersDAG();
 // #endregion cartographer-workers-dag
 
 // ── Bundle registration ───────────────────────────────────────────────────────
 
 // #region dispatcher-bundle
 /**
- * Top-level bundle. Register AFTER all embedded sub-DAG bundles so the
- * dispatcher can resolve 'geo-resolve', 'canonicalize', 'order-enrichment',
- * 'gdpr-compliance', and 'ingest-source' references.
+ * eventPipelineBundle: complete bundle for the stream-event scatter body. It is
+ * self-contained — a worker registry that registers it can run the whole
+ * stream-event sub-tree (decode → route → 5 per-type pipelines).
+ *
+ * Registration order: leaf DAGs before DAGs that embed them.
+ *   geo-resolve → geo-pipeline → order-enrichment → gdpr-compliance
+ *   → 5 pipeline-* DAGs → event-pipeline-typed → stream-event
+ *
+ * registerBundle is idempotent for same-instance nodes and DAGs (throws only
+ * when a different instance with the same name is registered). Nodes shared
+ * across per-type bundles (e.g. parseVariant, enrichLeg, aggregateEvent) appear
+ * in multiple bundle.nodes arrays; since they are the same singleton instances,
+ * repeated registration is a no-op.
  */
-export const cartographerBundle: DispatcherBundle<CartographerState, CartographerServices> = {
+export const eventPipelineBundle: DispatcherBundle<CartographerState, CartographerServices> = {
   'nodes': [
-    new SeedEventsNode(),
-    new MergeEventsNode(),
-    new ParseEventNode(),
-    new RouteGeoNode(),
-    new ApplyGeoNode(),
-    new ValidateCoordsNode(),
-    new RouteKindNode(),
-    new ColdChainCheckNode(),
-    new CustomsDwellNode(),
-    new EnrichLegNode(),
-    new RouteRedactionNode(),
-    new AggregateEventNode(),
-    new SummarizeInsightsNode(),
+    // geo-resolve leaf nodes
+    reverseGeocode, routeModalities, ipGeolocate, fuseGeo,
+    // geo-pipeline nodes
+    routeGeo, applyGeo, validateCoords,
+    // order-enrichment nodes
+    enrichPricing, enrichShipping, enrichEta,
+    // gdpr-compliance nodes
+    consentGate, classifyPii, redactPii,
+    // typed pipeline nodes shared across all per-type DAGs
+    parseVariant, canonicalizeCore, enrichLeg, aggregateEvent,
+    // facility-scan + delivery-confirmation specific
+    canonicalizeFacility, canonicalizeRecipient, routeRedaction,
+    // delivery-confirmation specific
+    confirmDelivery,
+    // cold-chain (sensor lane) + customs-dwell (customs lane)
+    coldChainCheck, customsDwell,
+    // stream-event body: decode-payload + the event-type router
+    decodePayload, routeEventType,
   ],
-  'dags': [eventPipelineDAG, cartographerDAG],
+  'dags': [
+    // Leaf embedded DAG first, then DAGs that embed it.
+    geoResolveDAG,
+    geoPipelineDAG,
+    orderEnrichmentDAG,
+    gdprComplianceDAG,
+    // 5 per-type pipeline DAGs (each embeds geo-pipeline)
+    pipelinePositionPingDAG,
+    pipelineSensorReadingDAG,
+    pipelineCustomsEventDAG,
+    pipelineFacilityScanDAG,
+    pipelineDeliveryConfirmationDAG,
+    // Typed scatter bodies: event-pipeline-typed (pre-decoded) and stream-event
+    // (decode-inline). stream-event is the live container scatter body.
+    eventPipelineTypedDAG,
+    streamEventDAG,
+  ],
 };
 
 /**
- * cartographerWorkersBundle: same nodes as cartographerBundle, but the DAG is
- * cartographerWorkersDAG (which binds container: 'cpu' on process-events).
- * Used by runCartographer.ts when `--workers` is active.
+ * cartographerBundle: top-level bundle for the cartographer DAG.
+ *
+ * Registration order for the streaming topology:
+ *   leaf DAGs (geo-resolve, geo-pipeline, order-enrichment, gdpr-compliance)
+ *   → 5 per-type pipeline DAGs
+ *   → event-pipeline-typed (embeds the 5 pipeline DAGs)
+ *   → stream-event (embeds the 5 pipeline DAGs, reuses routeEventType + decodePayload)
+ *   → cartographerDAG (embeds stream-event)
+ *
+ * The ingest-source DAG and its nodes are registered separately by IngestSourceDAG.ts.
+ * routeEventType appearing in both eventPipelineBundle.nodes and streamEventBundle.nodes
+ * is safe: the bundle registrar is idempotent for same-instance re-registration.
  */
-export const cartographerWorkersBundle: DispatcherBundle<CartographerState, CartographerServices> = {
+export const cartographerBundle: DispatcherBundle<CartographerState, CartographerServices> = {
   'nodes': [
-    new SeedEventsNode(),
-    new MergeEventsNode(),
-    new ParseEventNode(),
-    new RouteGeoNode(),
-    new ApplyGeoNode(),
-    new ValidateCoordsNode(),
-    new RouteKindNode(),
-    new ColdChainCheckNode(),
-    new CustomsDwellNode(),
-    new EnrichLegNode(),
-    new RouteRedactionNode(),
-    new AggregateEventNode(),
-    new SummarizeInsightsNode(),
+    ...eventPipelineBundle.nodes,
+    // Top-level cartographer nodes
+    seedEvents,
+    summarizeInsights,
   ],
-  'dags': [eventPipelineDAG, cartographerWorkersDAG],
+  'dags': [
+    // eventPipelineBundle already registers stream-event and its sub-tree;
+    // cartographerDAG embeds stream-event, so it comes last.
+    ...eventPipelineBundle.dags,
+    cartographerDAG,
+  ],
 };
+
+/**
+ * buildCartographerWorkersBundle: factory that builds the workers bundle with a
+ * configurable reservoir capacity. The returned bundle is identical to
+ * cartographerWorkersBundle except that its cartographer DAG is built with
+ * buildCartographerWorkersDAG(capacity) so the process-stream scatter uses the
+ * caller-supplied batch size.
+ *
+ * Used by the browser demo to wire UI-controlled knobs into each run() without
+ * mutating the shared default-capacity constants.
+ */
+export function buildCartographerWorkersBundle(
+  capacity: number = DEFAULT_RESERVOIR_CAPACITY,
+): DispatcherBundle<CartographerState, CartographerServices> {
+  return {
+    'nodes': [
+      ...eventPipelineBundle.nodes,
+      seedEvents,
+      summarizeInsights,
+    ],
+    'dags': [
+      ...eventPipelineBundle.dags,
+      buildCartographerWorkersDAG(capacity),
+    ],
+  };
+}
+
+/**
+ * cartographerWorkersBundle: identical to cartographerBundle but uses
+ * cartographerWorkersDAG, which binds container: 'cpu' on the process-stream
+ * scatter. Used by runCartographer.ts when --workers is active.
+ */
+export const cartographerWorkersBundle: DispatcherBundle<CartographerState, CartographerServices> = buildCartographerWorkersBundle();
 // #endregion dispatcher-bundle

@@ -25,9 +25,8 @@
  * the worker thread, not the parent.
  */
 
-import { EMPTY_CONTRACT_FRAGMENT, Timeout } from '@noocodex/dagonizer';
+import { ScalarNode } from '@noocodex/dagonizer';
 import type {
-  NodeInterface,
   RegistryBundleInterface,
   RegistryModuleInterface,
 } from '@noocodex/dagonizer/contracts';
@@ -45,13 +44,11 @@ export const KILL_ITEM = 20;
  * result — the silent-death simulation. Reads the current item from metadata
  * via the node context's itemKey ('currentItem').
  */
-class ScatterKillerNode implements NodeInterface<ConformanceState, 'done'> {
+class ScatterKillerNode extends ScalarNode<ConformanceState, 'done'> {
   readonly 'name' = 'scatter-counter';
   readonly 'outputs' = ['done'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-  readonly 'timeout' = Timeout.none();
 
-  async execute(state: ConformanceState, _context: NodeContextInterface): Promise<NodeOutputInterface<'done'>> {
+  protected override async executeOne(state: ConformanceState, _context: NodeContextInterface): Promise<NodeOutputInterface<'done'>> {
     const current = state.getMetadata<number>('currentItem');
     if (current === KILL_ITEM) {
       // Silent death: terminate this worker thread mid-request. No result is

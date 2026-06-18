@@ -45,15 +45,7 @@ Nodes receive the composed signal in the `context` argument and must propagate i
 
 ## Detecting abort inside a node
 
-```ts
-async execute(state, context) {
-  for (const item of items) {
-    if (context.signal.aborted) break;   // check between iterations
-    await process(item, context.signal); // propagate to every IO call
-  }
-  return NodeOutputBuilder.of('success');
-}
-```
+<<< @/../examples/dags/06-cancellation.ts#signal-iteration
 
 A node that ignores `context.signal` runs to completion even after the signal fires. The dispatcher stops the iterator once the current node returns, but the in-flight node body still races to finish on its own.
 
@@ -65,39 +57,15 @@ Once the signal fires:
 - `result.cursor` holds the node that would have run next. Pass it to `dispatcher.resume()` to continue from that point.
 - `result.state.lifecycle.kind` is `'cancelled'` (caller signal) or `'timed_out'` (deadline).
 
-```ts
-const ctl = new AbortController();
-setTimeout(() => ctl.abort(new Error('user cancelled')), 500);
-
-const result = await dispatcher.execute('pipeline', state, { signal: ctl.signal });
-
-if (result.cursor !== null) {
-  console.log('paused at', result.cursor);
-  console.log('lifecycle', result.state.lifecycle.kind); // 'cancelled'
-}
-```
+<<< @/../examples/06-cancellation.ts#cursor-check
 
 ## `interruptedAt`
 
-When a flow exits via abort or timeout, `result.interruptedAt` carries structured cancellation telemetry:
-
-```ts
-interface InterruptionInfo {
-  readonly nodeName: string;
-  readonly reason:   'abort' | 'timeout';
-}
-```
+When a flow exits via abort or timeout, `result.interruptedAt` carries structured cancellation telemetry: `{ nodeName: string; reason: 'abort' | 'timeout' }`.
 
 `result.interruptedAt` is `null` on clean exits (completed, terminal-reached, configuration error, node throw without abort). When a signal aborts the run or a deadline expires, it carries the node that was current when the signal fired and the discriminant:
 
-```ts
-const result = await dispatcher.execute('pipeline', state, { signal: ctl.signal });
-
-if (result.interruptedAt !== null) {
-  console.log('interrupted at', result.interruptedAt.nodeName);
-  console.log('reason',         result.interruptedAt.reason); // 'abort' or 'timeout'
-}
-```
+<<< @/../examples/06-cancellation.ts#interrupted-at
 
 `reason: 'timeout'` is set when the abort reason is a `TimeoutError` (either the run-level `deadlineMs` deadline or a per-node `timeoutMs` budget). `reason: 'abort'` is set when the caller-supplied `signal` fired with any other reason.
 
@@ -105,13 +73,7 @@ if (result.interruptedAt !== null) {
 
 The dispatcher uses `AbortSignal.any()` to merge signals. Callers can do the same to compose multiple concerns before passing them in:
 
-```ts
-const userSignal = userAbortController.signal;
-const requestSignal = AbortSignal.timeout(10_000);
-const combined = AbortSignal.any([userSignal, requestSignal]);
-
-const result = await dispatcher.execute('flow', state, { signal: combined });
-```
+<<< @/../examples/06-cancellation.ts#signal-composition
 
 This is equivalent to passing both as `signal` plus `deadlineMs`. Pick whichever form fits the call site.
 

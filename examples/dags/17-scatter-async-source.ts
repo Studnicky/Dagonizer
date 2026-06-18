@@ -33,10 +33,9 @@ import {
   DAG_CONTEXT,
   NodeOutputBuilder,
   NodeStateBase,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface} from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
 import { GatherStrategyName } from '@noocodex/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
@@ -79,13 +78,11 @@ export class AsyncSourceState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // #region worker-node
-export class ConsumeNode implements NodeInterface<AsyncSourceState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ConsumeNode extends ScalarNode<AsyncSourceState, 'done'> {
   readonly name = 'consume';
   readonly outputs = ['done'] as const;
 
-  async execute(state: AsyncSourceState) {
+  protected override async executeOne(state: AsyncSourceState) {
     const raw = state.getMetadata<string>('stream-item') ?? '?';
     state.item = `[processed:${raw}]`;
     eventLog.push(`process  ${raw}`);

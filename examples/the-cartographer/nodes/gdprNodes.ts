@@ -17,23 +17,17 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { Consent, GdprRedactor, GeoCoarsener, Jurisdictions } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region gdpr-nodes
 
-export class ConsentGateNode implements NodeInterface<CartographerState, 'classify', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ConsentGateNode extends ScalarNode<CartographerState, 'classify', CartographerServices> {
   readonly 'name' = 'consent-gate';
   readonly 'outputs' = ['classify'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'classify'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'classify'>> {
     // Resolve marketing consent (10% of consented treated as lapsed/expired).
     const consentStatus = Consent.statusFor(state.currentEvent.shipmentId, state.currentEvent.marketingConsent);
     state.gdprResult = {
@@ -46,16 +40,11 @@ export class ConsentGateNode implements NodeInterface<CartographerState, 'classi
   }
 }
 
-export class ClassifyPiiNode implements NodeInterface<CartographerState, 'redact', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ClassifyPiiNode extends ScalarNode<CartographerState, 'redact', CartographerServices> {
   readonly 'name' = 'classify-pii';
   readonly 'outputs' = ['redact'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'redact'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'redact'>> {
     const classification = GdprRedactor.classify(state.currentEvent);
     state.gdprResult = {
       ...state.gdprResult,
@@ -66,16 +55,11 @@ export class ClassifyPiiNode implements NodeInterface<CartographerState, 'redact
   }
 }
 
-export class RedactPiiNode implements NodeInterface<CartographerState, 'ok' | 'violation', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class RedactPiiNode extends ScalarNode<CartographerState, 'ok' | 'violation', CartographerServices> {
   readonly 'name' = 'redact-pii';
   readonly 'outputs' = ['ok', 'violation'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'ok' | 'violation'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'ok' | 'violation'>> {
     // Genuine violation: special-category data with no lawful basis (rare drop).
     if (!GdprRedactor.hasLawfulBasis(state.raw.lawfulBasis, state.raw.specialCategory)) {
       return NodeOutputBuilder.of('violation');
@@ -115,3 +99,7 @@ export class RedactPiiNode implements NodeInterface<CartographerState, 'ok' | 'v
   }
 }
 // #endregion gdpr-nodes
+
+export const consentGate = new ConsentGateNode();
+export const classifyPii = new ClassifyPiiNode();
+export const redactPii = new RedactPiiNode();

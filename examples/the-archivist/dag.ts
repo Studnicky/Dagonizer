@@ -67,11 +67,11 @@
  *   scouts) to produce an in-character message that acknowledges what was
  *   searched and offers a concrete next step.
  *
- * Builder vs literal equivalence:
- *   DAGBuilder.node(placementName, nodeImpl, routes) emits the same
+ * Builder output shape:
+ *   DAGBuilder.node(placementName, nodeImpl, routes) emits a
  *   { type: 'single', name, node: nodeImpl.name, outputs: routes }
- *   object that the hand-written literal used. build() returns a plain
- *   DAG: identical wire shape, same DAGDocument.load() call.
+ *   object. build() returns a plain DAG passed straight to
+ *   DAGDocument.load().
  *
  * DAG containment (WorkerThreadContainer) — why the archivist stays in-process:
  *   The container/worker feature is most natural for CPU-bound, self-contained
@@ -226,7 +226,7 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
   // scout logic. scout-merge gather flat-merges candidates + failureCause
   // from all four clones back into parent state. any-success reducer routes
   // 'success' when at least one scout found results, 'error' when all returned
-  // empty. Both routes proceed to reviews-rank (same as old collect behavior).
+  // empty. Both routes proceed to reviews-rank.
   .scatter('reviews-scatter', 'scoutProviders', scoutDispatch, {
     'success': 'reviews-rank',
     'error':   'reviews-rank',
@@ -252,8 +252,7 @@ export const archivistDAG = new DAGBuilder('the-archivist', '6.0')
   .node('describe-decide-tools-salvage', decideToolsSalvage, { 'done': 'describe-scatter' })
   // Heterogeneous scatter: same descriptor source, same dispatching body.
   // any-success reducer: 'success' → describe-pick, 'error' → compose-empty.
-  // (The old collect combiner always returned 'success'; 'error' now fires when
-  // all four scouts return empty — more correct than the previous dead route.)
+  // 'error' fires when all four scouts return empty.
   .scatter('describe-scatter', 'scoutProviders', scoutDispatch, {
     'success': 'describe-pick',
     'error':   'compose-empty',

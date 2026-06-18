@@ -20,7 +20,7 @@ The validation module provides the Ajv instance and the unified entity validator
 
 Unified Ajv-backed entity validator. Access per-entity sub-validators via static fields.
 
-```ts
+```ts twoslash
 import { Validator } from '@noocodex/dagonizer/validation';
 ```
 
@@ -32,28 +32,37 @@ Validates raw values against `DAGSchema` (Ajv 2020-12). Used internally by `Dago
 
 #### `Validator.dag.validate(value)`
 
-```ts
-Validator.dag.validate(value: unknown): DAG
+```ts twoslash
+import { Validator } from '@noocodex/dagonizer/validation';
+import type { DAG } from '@noocodex/dagonizer/entities';
+// ---cut---
+declare const raw: unknown;
+const dag: DAG = Validator.dag.validate(raw);
 ```
 
 Validates `value` against `DAGSchema`. Returns a typed `DAG` on success. Throws `ValidationError` with a multi-line message listing every Ajv failure on error.
 
-```ts
-<<< @/../examples/03-schema.ts#validate
-```
-
 #### `Validator.dag.is(value)`
 
-```ts
-Validator.dag.is(value: unknown): value is DAG
+```ts twoslash
+import { Validator } from '@noocodex/dagonizer/validation';
+import type { DAG } from '@noocodex/dagonizer/entities';
+// ---cut---
+declare const raw: unknown;
+if (Validator.dag.is(raw)) {
+  const dag: DAG = raw;
+}
 ```
 
 Type predicate. Returns `true` when `value` satisfies `DAGSchema`.
 
 #### `Validator.dag.errors(value)`
 
-```ts
-Validator.dag.errors(value: unknown): string[] | null
+```ts twoslash
+import { Validator } from '@noocodex/dagonizer/validation';
+// ---cut---
+declare const raw: unknown;
+const errs: string[] | null = Validator.dag.errors(raw);
 ```
 
 Returns formatted `path: message` error strings, or `null` if valid.
@@ -66,8 +75,12 @@ Type: `EntityValidator<CheckpointData>`
 
 Validates raw values against `CheckpointDataSchema`. Used by `Checkpoint.load`.
 
-```ts
-Validator.checkpoint.validate(value: unknown): CheckpointData
+```ts twoslash
+import { Validator } from '@noocodex/dagonizer/validation';
+import type { CheckpointData } from '@noocodex/dagonizer/entities';
+// ---cut---
+declare const raw: unknown;
+const data: CheckpointData = Validator.checkpoint.validate(raw);
 ```
 
 Returns a typed `CheckpointData` or throws `ValidationError`. Called by `Checkpoint.load` before any field access.
@@ -108,16 +121,13 @@ Every entry exposes the same `EntityValidator<T>` surface: `is(value)`, `validat
 
 Per-entity validator interface. Every `Validator.<entity>` field is an `EntityValidator`.
 
-```ts
+```ts twoslash
 import type { EntityValidator } from '@noocodex/dagonizer/validation';
-```
-
-```ts
-interface EntityValidator<T> {
-  is(value: unknown): value is T;
-  validate(value: unknown): T;
-  errors(value: unknown): string[] | null;
-}
+// EntityValidator<T>:
+//   is(value: unknown): value is T
+//   validate(value: unknown): T
+//   errors(value: unknown): string[] | null
+declare const _v: EntityValidator<unknown>;
 ```
 ## Related guides
 

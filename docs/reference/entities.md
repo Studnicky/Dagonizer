@@ -17,7 +17,7 @@ JSON Schema constants for every shape in the package. Each schema is assigned a 
 
 ## `DAGSchema`
 
-```ts
+```ts twoslash
 import { DAGSchema } from '@noocodex/dagonizer/entities';
 ```
 
@@ -25,7 +25,7 @@ import { DAGSchema } from '@noocodex/dagonizer/entities';
 
 Top-level DAG declaration in JSON-LD 1.1 canonical form. Required properties: `@context`, `@id`, `@type: 'DAG'`, `name`, `version`, `entrypoint`, `nodes`. Each entry in `nodes` is validated against a `oneOf` covering every placement kind (`SingleNode`, `ScatterNode`, `EmbeddedDAGNode`, `TerminalNode`, `PhaseNode`).
 
-```ts
+```ts twoslash
 import type { DAG } from '@noocodex/dagonizer/entities';
 ```
 
@@ -37,7 +37,7 @@ import type { DAG } from '@noocodex/dagonizer/entities';
 
 Single-node placement. Required: `@id`, `@type: 'SingleNode'`, `name`, `node`, `outputs`.
 
-```ts
+```ts twoslash
 import { SingleNodeSchema } from '@noocodex/dagonizer/entities';
 import type { SingleNode } from '@noocodex/dagonizer/entities';
 ```
@@ -52,7 +52,7 @@ import type { SingleNode } from '@noocodex/dagonizer/entities';
 
 Scatter placement: fork a source array (one clone per item), run a body (node or sub-DAG) in each clone, fold clone state back through a required `gather`, and route on the aggregate outcome. Required: `@id`, `@type: 'ScatterNode'`, `name`, `body`, `source`, `gather`, `outputs`. Optional: `itemKey` (default `currentItem`), `concurrency`, `stateMapping.input`, `reducer`.
 
-```ts
+```ts twoslash
 import { ScatterNodeSchema } from '@noocodex/dagonizer/entities';
 import type { ScatterNode } from '@noocodex/dagonizer/entities';
 ```
@@ -69,7 +69,7 @@ import type { ScatterNode } from '@noocodex/dagonizer/entities';
 
 Embedded-DAG placement: invoke a nested DAG exactly once (cardinality 1) with optional bidirectional state mapping. Required: `@id`, `@type: 'EmbeddedDAGNode'`, `name`, `dag` (registered DAG name), `outputs`. Optional: `stateMapping`.
 
-```ts
+```ts twoslash
 import { EmbeddedDAGNodeSchema } from '@noocodex/dagonizer/entities';
 import type { EmbeddedDAGNode } from '@noocodex/dagonizer/entities';
 ```
@@ -95,7 +95,7 @@ Gather strategy configuration for scatter nodes. Required: `strategy` (open `str
 | `discard` | (none) — no-op; use for side-effect-only fan-outs |
 | `custom` | `customNode: string` (registered node name) |
 
-```ts
+```ts twoslash
 import { GatherConfigSchema } from '@noocodex/dagonizer/entities';
 import type { GatherConfig } from '@noocodex/dagonizer/entities';
 ```
@@ -108,7 +108,7 @@ import type { GatherConfig } from '@noocodex/dagonizer/entities';
 
 Explicit terminal placement. Required: `@id`, `@type: 'TerminalNode'`, `name`, `outcome` (enum: `completed` | `failed`). No `outputs` field. TerminalNodes are leaves.
 
-```ts
+```ts twoslash
 import { TerminalNodeSchema } from '@noocodex/dagonizer/entities';
 import type { TerminalNode } from '@noocodex/dagonizer/entities';
 ```
@@ -123,7 +123,7 @@ When the engine reaches a `TerminalNode`, the flow ends with the declared `outco
 
 Lifecycle-attached placement that runs outside the main DAG loop. Required: `@id`, `@type: 'PhaseNode'`, `name`, `node` (registered node name), `phase` (enum: `pre` | `post`). No `outputs` field.
 
-```ts
+```ts twoslash
 import { PhaseNodeSchema } from '@noocodex/dagonizer/entities';
 import type { PhaseNode } from '@noocodex/dagonizer/entities';
 ```
@@ -138,7 +138,7 @@ import type { PhaseNode } from '@noocodex/dagonizer/entities';
 
 JSON-serializable wire shape of `DAGLifecycleState`. Covers all six `kind` variants with their required timestamp fields.
 
-```ts
+```ts twoslash
 import { DAGLifecycleStateSchema } from '@noocodex/dagonizer/entities';
 import type { DAGLifecycleStateData } from '@noocodex/dagonizer/entities';
 ```
@@ -151,7 +151,7 @@ import type { DAGLifecycleStateData } from '@noocodex/dagonizer/entities';
 
 Persistable snapshot of an in-flight DAG execution. Required: `version`, `dagName`, `cursor` (string or null), `state` (object), `executedNodes`, `skippedNodes`, `stores` (named-store snapshots keyed by store name; empty object when no stores were captured).
 
-```ts
+```ts twoslash
 import { CheckpointDataSchema, CHECKPOINT_DATA_VERSION } from '@noocodex/dagonizer/entities';
 import type { CheckpointData } from '@noocodex/dagonizer/entities';
 ```
@@ -172,7 +172,7 @@ Runtime wire shapes used during execution. Each schema has a derived TS type wit
 | `NodeWarningSchema` | `NodeWarning` | Collected warning envelope |
 | `NodeStateDataSchema` | `NodeStateData` | JSON snapshot shape of `NodeStateBase` |
 
-```ts
+```ts twoslash
 import {
   NodeSchema,
   NodeContextSchema,
@@ -217,7 +217,7 @@ Each constant has a matching `*Schema` JSON Schema for `oneOf`-style validation.
 
 ## JSON types
 
-```ts
+```ts twoslash
 import type { JsonValue, JsonObject, JsonArray, JsonPrimitive } from '@noocodex/dagonizer/entities';
 ```
 
