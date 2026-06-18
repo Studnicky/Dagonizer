@@ -51,7 +51,7 @@ class RecordingPolicy extends RetryPolicy {
 
   get delays(): readonly number[] { return this.#delays; }
 
-  override getDelay(attempt: number, options: { readonly error?: Error | null } = {}): number {
+  override getDelay(attempt: number, options: { readonly error: Error | null } = { 'error': null }): number {
     const delay = super.getDelay(attempt, options);
     this.#delays.push(delay);
     return delay;

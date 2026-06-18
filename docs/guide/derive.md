@@ -264,11 +264,9 @@ The entrypoint node's `hardRequired` paths are treated as external initial state
 
 ### Registration-time: dead writes
 
-When a node `produces` a path that no downstream node `hardRequires`, `ContractRegistryValidator` calls `Dagonizer.onContractWarning` (a no-op by default). Subclass `Dagonizer` and override `onContractWarning` to surface these warnings:
+When a node `produces` a path that no downstream node `hardRequires`, `ContractRegistryValidator` throws a `DAGError` at registration/derive time. The DAG does not register.
 
-<<< @/../examples/dags/derive.ts#contract-warning
-
-Dead-write warnings are non-fatal; the DAG registers and executes normally. They indicate an operation that writes state no downstream node consumes, which may be intentional (terminal outputs, observability writes) or an authoring oversight.
+A dead write marks an operation that writes state no downstream node consumes. Model a genuinely terminal output so it is consumed or emitted — declare it in `annotations.terminals` or route it to a node that reads it — rather than leaving a `produces` path with no reader.
 
 ## Inspecting derived state
 

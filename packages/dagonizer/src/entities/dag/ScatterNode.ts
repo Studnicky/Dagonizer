@@ -19,8 +19,8 @@
  * body is a `dag` body (a `{dag: string}` body). A node body with `container`
  * set is a validation error — a node body is one node, not a DAG, and cannot be
  * contained. Bound at dispatcher construction via
- * `DagonizerOptionsInterface.containers`. When declared but unbound, the scatter
- * dag-body resolves to in-process and fires a `contractWarning`.
+ * `DagonizerOptionsInterface.containers`. A declared-but-unbound role throws a
+ * `DAGError` at `registerDAG` time.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';

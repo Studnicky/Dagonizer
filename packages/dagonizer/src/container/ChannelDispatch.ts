@@ -371,9 +371,6 @@ export class ChannelDispatch {
               relay.onPhaseExit(m.dagName, m.phase, m.nodeName, path);
             }
           },
-          'contractWarning': (m) => {
-            relay.onContractWarning(m.message);
-          },
         };
         hookDispatch[msg.hook]?.(msg as InstrMsg);
         break;
@@ -404,8 +401,8 @@ export class ChannelDispatch {
         break;
       }
 
-      // 'intermediate', 'log', and all other message kinds are observability-
-      // only and do not require correlation action at this layer.
+      // 'intermediate' and all other message kinds are observability-only and
+      // do not require correlation action at this layer.
       default:
         break;
     }

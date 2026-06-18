@@ -17,7 +17,7 @@
 ### Changed
 
 - `WikipediaSummaryTool.execute` replaces `(err as { status?: number }).status` with `err instanceof ToolError && err.status === 404`; imports `ToolError` from `@studnicky/dagonizer/tool`.
-- API response narrowed via `isWikiSummary` typed guard at the `HttpTransport.getJson` boundary; throws `ToolError('PARSE_ERROR')` on shape mismatch.
+- The Wikipedia REST `page/summary` response is a JSON Schema 2020-12 `*Schema` const (`WikipediaSummaryResponseSchema`) with a `FromSchema`-derived type and a module-load-compiled `EntityValidator` in `WikipediaSummaryResponse.ts`. The validator compiles through `Validator.compile` from `@studnicky/dagonizer/validation` against the framework's single shared Ajv; the package carries no Ajv dependency of its own. `WikipediaSummaryTool.execute` passes the validator to `HttpTransport.getJson`, which narrows the `unknown` body and throws `ToolError('PARSE_ERROR')` on a schema mismatch. The hand-written `isWikiSummary` predicate and `WikiSummary` interface are removed.
 - Convenience re-exports of `Book`, `Candidate`, `Money`, `CanonicalId` removed from the package barrel. Consumers import these directly from `@studnicky/dagonizer-book-entities`.
 - `@studnicky/dagonizer-book-entities` promoted from `peerDependencies` to `dependencies`.
 

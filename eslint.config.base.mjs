@@ -146,5 +146,32 @@ export function dagonizerEslintConfig(tsconfigRootDir, options = {}) {
         'import-x/no-duplicates': 'error',
       },
     },
+    // Framework-purity gate: package runtime (`src/**`) emits nothing. No
+    // `console.*`, no direct `process.stdout`/`process.stderr` writes. Logging
+    // and observability are the consumer's job; the framework throws on
+    // conditions it cannot continue past. `examples/**`, `tests/**`, and
+    // `testing/**` are exempt — they are not the framework runtime. The single
+    // sanctioned exception (the stdin/stdout transport in
+    // `dagonizer-executor-node/src/spawnEntry.ts`) is re-allowed in that
+    // package's own flat config.
+    {
+      files: ['src/**/*.ts'],
+      rules: {
+        'no-console': 'error',
+        'no-restricted-properties': [
+          'error',
+          {
+            'object': 'process',
+            'property': 'stdout',
+            'message': 'Framework runtime must not write to process.stdout; logging is the consumer\'s job (subclass Dagonizer and emit from lifecycle hooks).',
+          },
+          {
+            'object': 'process',
+            'property': 'stderr',
+            'message': 'Framework runtime must not write to process.stderr; logging is the consumer\'s job (subclass Dagonizer and emit from lifecycle hooks).',
+          },
+        ],
+      },
+    },
   );
 }

@@ -182,25 +182,20 @@ Static class. Registration-time checker for co-located node contracts.
 ```ts twoslash
 import type { OperationContract } from '@studnicky/dagonizer/contracts';
 // ---cut---
-interface WarningEmitter {
-  warn(message: string): void;
-}
-
 declare class ContractRegistryValidator {
   static validate(
     contracts: readonly OperationContract[],
-    warningEmitter: WarningEmitter,
     options?: { entrypointName: string },
   ): void;
 }
 ```
 
-Surfaces two categories of drift:
+Surfaces two categories of drift, both fatal:
 
 - **Dangling-read.** A non-entrypoint node declares `hardRequired: ['foo.bar']` but no upstream-in-DAG node produces `'foo.bar'`. Thrown as `DAGError`. The entrypoint's `hardRequired` is external initial state and is not checked.
-- **Dead-write.** A node declares `produces: ['baz']` but no downstream-in-DAG node `hardRequires` `'baz'`. Emitted as a non-fatal warning via `warningEmitter.warn`.
+- **Dead-write.** A node declares `produces: ['baz']` but no downstream-in-DAG node `hardRequires` `'baz'`. Thrown as `DAGError`.
 
-Edge semantics match `DAGDeriver.edges` (`produces ↔ hardRequired`). Invoked automatically by `Dagonizer.registerDAG` when any registered node on the DAG carries a `contract` fragment; warnings flow to the dispatcher's `onContractWarning` hook.
+Edge semantics match `DAGDeriver.edges` (`produces ↔ hardRequired`). Invoked automatically by `Dagonizer.registerDAG` when any registered node on the DAG carries a `contract` fragment; a drift in either category throws before the DAG registers.
 
 ---
 

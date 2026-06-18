@@ -343,14 +343,6 @@ const validError: BridgeMessage = {
   'recoverable': false,
 };
 
-const validLog: BridgeMessage = {
-  'kind': 'log',
-  'level': 'info',
-  'component': 'DagHost',
-  'operation': 'init',
-  'message': 'host started',
-};
-
 describe('BridgeMessage schema — valid branches', () => {
   it('validates init branch', () => {
     assert.ok(Validator.bridgeMessage.is(validInit));
@@ -394,10 +386,6 @@ describe('BridgeMessage schema — valid branches', () => {
 
   it('validates error branch with null correlationId', () => {
     assert.ok(Validator.bridgeMessage.is(validError));
-  });
-
-  it('validates log branch', () => {
-    assert.ok(Validator.bridgeMessage.is(validLog));
   });
 });
 

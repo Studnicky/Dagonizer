@@ -6,7 +6,7 @@
  *
  *   TST-16: NodeStateBase.restoreData with a malformed snapshot — silent-skip.
  *   TST-17: DAGHandoff stateSnapshotRef (by-reference) publishing path.
- *   TST-18: registerBundle unbound-role warning idempotency.
+ *   TST-18: registerBundle/registerDAG unbound container role → throws DAGError.
  *   TST-19: Checkpoint.restoreStores with a store type/version mismatch.
  *   TST-20: SignalComposer.compose with a pre-aborted signal.
  *   TST-15: Abort mid-scatter dag-body (contained): checkpoint survives abort.
@@ -16,15 +16,19 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Checkpoint } from '../../src/checkpoint/Checkpoint.js';
+import type { DagOutcomeInterface } from '../../src/container/DagOutcome.js';
+import type { DagTaskInterface } from '../../src/container/DagTask.js';
+import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
-import type { ScatterProgress } from '../../src/Dagonizer.js';
+import type { ObserverRelay, ScatterProgress } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAGHandoff } from '../../src/entities/handoff/DAGHandoff.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
 import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import { DAGError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { SignalComposer } from '../../src/runtime/SignalComposer.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
@@ -197,19 +201,11 @@ void describe('TST-17: DAGHandoff stateSnapshotRef publishing path', () => {
   });
 });
 
-// ── TST-18: registerBundle unbound-role warning idempotency ──────────────────
+// ── TST-18: registerBundle node-body scatter without container role ──────────
 
-void describe('TST-18: registerBundle unbound-role warning idempotency', () => {
-  void it('registers once → exactly one warning per unbound container role per registration', () => {
-    const warnings: string[] = [];
-
-    class WarningCapture extends Dagonizer<NodeStateBase> {
-      protected override onContractWarning(message: string): void {
-        warnings.push(message);
-      }
-    }
-
-    const dispatcher = new WarningCapture();
+void describe('TST-18: registerBundle node-body scatter without container role', () => {
+  void it('registers a node-body scatter (no container declared) without throwing', () => {
+    const dispatcher = new Dagonizer<NodeStateBase>();
 
     class NoopBundleNode extends ScalarNode<NodeStateBase, 'done'> {
       readonly name = 'noop-bundle';
@@ -242,30 +238,22 @@ void describe('TST-18: registerBundle unbound-role warning idempotency', () => {
       ],
     });
 
-    // Register the bundle once — 0 unbound-role warnings (node-body scatter
-    // does not emit a container warning because container is not declared).
-    dispatcher.registerBundle({ 'nodes': [noop], 'dags': [dag] });
-    const afterFirst = warnings.length;
-
-    // Registering a duplicate DAG should throw (already registered), so we
-    // register a second bundle that references the same pattern but a fresh DAG.
-    // The test pinned behaviour: warnings.length is deterministic per call.
-    assert.ok(
-      afterFirst === 0,
-      `node-body scatter without container= field must emit 0 warnings; got ${afterFirst}`,
-    );
+    // A node-body scatter declares no container role, so it never trips the
+    // unbound-role check: registration succeeds without throwing.
+    assert.doesNotThrow(() => dispatcher.registerBundle({ 'nodes': [noop], 'dags': [dag] }));
   });
 
-  void it('DAG with explicit unbound container role emits one warning on registerDAG', () => {
-    const warnings: string[] = [];
-
-    class CapturingDispatcher extends Dagonizer<NodeStateBase> {
-      protected override onContractWarning(message: string): void {
-        warnings.push(message);
-      }
-    }
-
-    const dispatcher = new CapturingDispatcher();
+  void it('DAG with explicit unbound container role throws DAGError on registerDAG', () => {
+    // Bind one role so the dispatcher is in container-dispatch mode; the DAG
+    // below declares a DIFFERENT, unbound role, which is the misalignment.
+    const fakeContainer: DagContainerInterface<NodeStateBase> = {
+      async runDag(_task: DagTaskInterface<NodeStateBase, unknown>, _options?: { readonly relay?: ObserverRelay }): Promise<DagOutcomeInterface> {
+        return { 'terminalOutput': 'success', 'errors': [], 'stateSnapshot': {}, 'intermediates': [] };
+      },
+    };
+    const dispatcher = new Dagonizer<NodeStateBase>({
+      'containers': { 'bound-worker-role': fakeContainer },
+    });
 
     class NoopUnboundNode extends ScalarNode<NodeStateBase, 'done'> {
       readonly name = 'noop-unbound';
@@ -320,16 +308,17 @@ void describe('TST-18: registerBundle unbound-role warning idempotency', () => {
       ],
     });
 
-    dispatcher.registerDAG(dag);
-
-    // Exactly one warning for the one unbound-role placement.
-    assert.equal(warnings.length, 1,
-      `expected 1 unbound-role warning; got ${warnings.length}`);
-    assert.ok(warnings[0]?.includes('unbound-worker-role'),
-      `warning must name the unbound role; got: "${warnings[0]}"`);
-
-    // Warning count must remain at 1 (no double-warn on the same registration).
-    assert.equal(warnings.length, 1, 'warning count must remain 1 after registration');
+    // The placement declares container role 'unbound-worker-role' which is not
+    // bound in this dispatcher's containers → fatal misalignment (D2 = throw).
+    assert.throws(
+      () => dispatcher.registerDAG(dag),
+      (err: unknown) => {
+        assert.ok(err instanceof DAGError);
+        assert.ok(err.message.includes('unbound-worker-role'),
+          `error must name the unbound role; got: "${err.message}"`);
+        return true;
+      },
+    );
   });
 });
 

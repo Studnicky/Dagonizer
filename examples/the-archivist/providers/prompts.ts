@@ -688,14 +688,14 @@ export class PromptFormat {
     parts.push(`${String(n)}. isbn=${c.book.identity.isbn}`);
     parts.push(`"${c.book.identity.title}"`);
     parts.push(`by ${c.book.identity.authors.join(', ') || '<unknown author>'}`);
-    if (c.book.publication.firstPublishYear !== undefined) parts.push(`(${String(c.book.publication.firstPublishYear)})`);
+    if (c.book.publication.firstPublishYear !== null) parts.push(`(${String(c.book.publication.firstPublishYear)})`);
     if (c.book.publication.subjects.length > 0) {
       parts.push(`subjects: ${c.book.publication.subjects.slice(0, 5).join(', ')}`);
     }
     if (c.book.publication.publishers.length > 0) {
       parts.push(`pub: ${c.book.publication.publishers[0]}`);
     }
-    if (c.book.publication.summary !== undefined && c.book.publication.summary.length > 0) {
+    if (c.book.publication.summary !== null && c.book.publication.summary.length > 0) {
       parts.push(`summary: ${c.book.publication.summary}`);
     }
     if (c.reason !== undefined && c.reason.length > 0) {

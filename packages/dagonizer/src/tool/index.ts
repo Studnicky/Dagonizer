@@ -9,9 +9,16 @@
  *   - `HttpTransport`: static class providing the shared fetch
  *     wrapper every HTTP-backed tool needs (timeout, retry, abort
  *     propagation, JSON parsing).
+ *   - `OpenApiGuard`: static class narrowing a fetched JSON body to a
+ *     schema-derived type via a compiled `EntityValidator`, throwing
+ *     `ToolError(PARSE_ERROR)` on a shape mismatch.
  */
 
 export type { Tool } from './Tool.js';
+
+export {
+  OpenApiGuard,
+} from './OpenApiGuard.js';
 
 export {
   ToolError,

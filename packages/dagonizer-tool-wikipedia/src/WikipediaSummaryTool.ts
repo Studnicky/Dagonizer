@@ -20,26 +20,12 @@ import type { Tool } from '@studnicky/dagonizer/tool';
 import type { Candidate } from '@studnicky/dagonizer-book-entities';
 import { BookBuilder, CanonicalId, LanguageCode } from '@studnicky/dagonizer-book-entities';
 
-interface WikiSummary {
-  readonly title?:           string;
-  readonly description?:     string;
-  readonly extract?:         string;
-  readonly type?:            string;
-  readonly content_urls?:    { desktop?: { page?: string } };
-  readonly thumbnail?:       { source?: string };
-}
+import type { WikipediaSummaryResponse } from './WikipediaSummaryResponse.js';
+import { WikipediaSummaryResponseValidator } from './WikipediaSummaryResponse.js';
 
 interface WikipediaInput extends Record<string, unknown> {
   readonly query: string;
   readonly lang?: string;
-}
-
-function isWikiSummary(value: unknown): value is WikiSummary {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
-  if ('title' in v && typeof v['title'] !== 'string') return false;
-  if ('extract' in v && typeof v['extract'] !== 'string') return false;
-  return true;
 }
 
 const DEFAULT_LANG = 'en';
@@ -77,10 +63,11 @@ export class WikipediaSummaryTool implements Tool<WikipediaInput, readonly Candi
     const endpoint = WikipediaSummaryTool.endpointFor(lang);
     const title = encodeURIComponent(input.query.trim().replace(/\s+/gu, '_'));
 
-    let raw: unknown;
+    let payload: WikipediaSummaryResponse;
     try {
-      raw = await HttpTransport.getJson<unknown>(
+      payload = await HttpTransport.getJson(
         `${endpoint}${title}`,
+        WikipediaSummaryResponseValidator,
         { ...(signal !== undefined && { signal }), 'headers': { 'accept': 'application/json' } },
       );
     } catch (err) {
@@ -88,13 +75,6 @@ export class WikipediaSummaryTool implements Tool<WikipediaInput, readonly Candi
       if (err instanceof ToolError && err.status === 404) return [];
       throw err;
     }
-    if (!isWikiSummary(raw)) {
-      throw new ToolError('Unexpected Wikipedia API response shape', {
-        'reason': 'PARSE_ERROR',
-        'retryable': false,
-      });
-    }
-    const payload = raw;
 
     if (payload.title === undefined || payload.extract === undefined) return [];
 

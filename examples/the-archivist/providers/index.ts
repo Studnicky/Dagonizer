@@ -40,8 +40,8 @@ import {
   OpenRouterApiAdapter,
   WebLlmAdapter,
   OllamaProbe,
-  type GeminiNanoAvailability,
-  type WebLlmInitReport,
+  type GeminiNanoAvailabilityType,
+  type WebLlmInitReportInterface,
 } from './adapters/index.ts';
 import { LlmError } from '@studnicky/dagonizer/adapter';
 import { BaseLlmClient } from './BaseLlmClient.ts';
@@ -132,7 +132,7 @@ export interface PickBestOptions {
 export interface InstantiateInputs {
   readonly apiKeys?: Partial<Record<ProviderId, string>>;
   readonly webLlmModel?: string;
-  readonly onWebLlmProgress?: (report: WebLlmInitReport) => void;
+  readonly onWebLlmProgress?: (report: WebLlmInitReportInterface) => void;
   /**
    * Ollama chat model to use. Defaults to the installed model the detector
    * resolved from the daemon's tag list (e.g. 'llama3.2:3b'); pass a value to
@@ -222,7 +222,7 @@ export class BackendMatrix {
     const keys = inputs.apiKeys ?? {};
     const out: BackendAvailability[] = [];
 
-    const nanoStatus: GeminiNanoAvailability = await GeminiNanoAdapter.detect();
+    const nanoStatus: GeminiNanoAvailabilityType = await GeminiNanoAdapter.detect();
     out.push({
       'id': 'gemini-nano',
       'displayName': 'Browser built-in LanguageModel (on-device)',
@@ -380,7 +380,7 @@ export class ProviderInstantiator {
         return new BaseLlmClient(new GeminiApiAdapter(key));
       }
       case 'web-llm': {
-        const options: { model?: string; onProgress?: (report: WebLlmInitReport) => void } = {};
+        const options: { model?: string; onProgress?: (report: WebLlmInitReportInterface) => void } = {};
         if (inputs.webLlmModel !== undefined) options.model = inputs.webLlmModel;
         if (inputs.onWebLlmProgress !== undefined) options.onProgress = inputs.onWebLlmProgress;
         return new BaseLlmClient(new WebLlmAdapter(options));
@@ -470,4 +470,4 @@ export {
   listOllamaModels,
 } from './adapters/index.ts';
 export { MobileDetection } from './MobileDetection.ts';
-export type { GeminiNanoAvailability, WebLlmInitReport };
+export type { GeminiNanoAvailabilityType, WebLlmInitReportInterface };

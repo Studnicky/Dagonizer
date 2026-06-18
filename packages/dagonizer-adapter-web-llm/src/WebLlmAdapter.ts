@@ -18,31 +18,30 @@ import type {
 } from '@studnicky/dagonizer/adapter';
 import { BaseAdapter, ChatResponseMessageBuilder, Classifications, LlmError, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
 
+import type {
+  WebLlmCompletionResultInterface,
+  WebLlmEngineInterface,
+  WebLlmInitReportInterface,
+} from './WebLlmHost.js';
+import {
+  webLlmEngineValidator,
+  webLlmModuleValidator,
+} from './WebLlmHost.js';
+
 const DEFAULT_MODEL = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
 const WEBLLM_ESM = 'https://esm.run/@mlc-ai/web-llm';
 const WEBLLM_MAX_ATTEMPTS = 2;
 const GPU_PROBE_TIMEOUT_MS = 1_500;
 
-export interface WebLlmInitReport {
-  readonly progress: number;
-  readonly text: string;
-}
-
-interface WebLlmEngine {
-  chat: {
-    completions: {
-      create(params: {
-        messages: ReadonlyArray<{ role: 'system' | 'user' | 'assistant'; content: string }>;
-        temperature?: number;
-        response_format?: { type: 'json_object' | 'text' };
-      }): Promise<{ choices: ReadonlyArray<{ message: { content: string } }> }>;
-    };
-  };
-}
-
-interface WebLlmModule {
-  CreateMLCEngine(model: string, options?: { initProgressCallback?: (report: WebLlmInitReport) => void }): Promise<WebLlmEngine>;
-}
+/**
+ * Pending-engine registry keyed on the adapter instance. Holding the lazy
+ * boot promise here (rather than in a `Promise | null` instance field that
+ * flips type after construction) keeps every `WebLlmAdapter` instance's
+ * hidden class stable: the instance shape is fixed at construction and
+ * never transitions a property's type. The entry is set once on first
+ * `#engine()` call and reused for the adapter's lifetime.
+ */
+const enginePromises = new WeakMap<WebLlmAdapter, Promise<WebLlmEngineInterface>>();
 
 export interface WebLlmAdapterOptions {
   readonly model?: string;
@@ -51,12 +50,23 @@ export interface WebLlmAdapterOptions {
 
 export class WebLlmAdapter extends BaseAdapter {
   readonly #model: string;
-  #enginePromise: Promise<WebLlmEngine> | null = null;
+
+  /**
+   * Resolve `navigator.gpu` from the global scope as `unknown`. The
+   * standard lib `Navigator` typings predate WebGPU, so the WebGPU object
+   * enters as `unknown` at this foreign boundary and is probed structurally
+   * by the callers — never cast to a fabricated shape.
+   */
+  private static gpu(): object | undefined {
+    const nav: unknown = Reflect.get(globalThis, 'navigator');
+    if (typeof nav !== 'object' || nav === null) return undefined;
+    const gpu: unknown = Reflect.get(nav, 'gpu');
+    if (typeof gpu !== 'object' || gpu === null) return undefined;
+    return gpu;
+  }
 
   private static detectWebGpu(): boolean {
-    const nav = (globalThis as { navigator?: { gpu?: unknown } }).navigator;
-    if (nav === undefined) return false;
-    return 'gpu' in nav;
+    return WebLlmAdapter.gpu() !== undefined;
   }
 
   constructor(options: WebLlmAdapterOptions = {}) {
@@ -77,7 +87,7 @@ export class WebLlmAdapter extends BaseAdapter {
    * (e.g. update a loading indicator). The default implementation is a
    * no-op; the adapter is usable without overriding this method.
    */
-  protected onInitProgress(_report: WebLlmInitReport): void {
+  protected onInitProgress(_report: WebLlmInitReportInterface): void {
     // no-op default — subclasses override to handle progress events
   }
 
@@ -90,14 +100,14 @@ export class WebLlmAdapter extends BaseAdapter {
    * driver call cannot delay cascade selection. Never throws.
    */
   override async probe(): Promise<boolean> {
-    // Cast at a foreign-API boundary: standard lib `Navigator`
-    // typings predate WebGPU shipping.
-    const nav = (globalThis as { navigator?: { gpu?: { requestAdapter: () => Promise<unknown | null> } } }).navigator;
-    if (nav === undefined || nav.gpu === undefined) return false;
-    const gpu = nav.gpu;
+    const gpu = WebLlmAdapter.gpu();
+    if (gpu === undefined) return false;
+    const requestAdapter: unknown = Reflect.get(gpu, 'requestAdapter');
+    if (typeof requestAdapter !== 'function') return false;
     try {
+      const pending: unknown = Reflect.apply(requestAdapter, gpu, []);
       const adapter = await Promise.race<unknown>([
-        gpu.requestAdapter(),
+        Promise.resolve(pending),
         new Promise((resolve) => setTimeout(() => { resolve(null); }, GPU_PROBE_TIMEOUT_MS)),
       ]);
       return adapter !== null;
@@ -115,12 +125,13 @@ export class WebLlmAdapter extends BaseAdapter {
     const wantsJson = (request.tools.length > 0)
       || request.outputSchema.kind === 'schema';
 
-    let result;
+    const responseFormat: { type: 'json_object' | 'text' } = { 'type': wantsJson ? 'json_object' : 'text' };
+    let result: WebLlmCompletionResultInterface;
     try {
       result = await engine.chat.completions.create({
-        'messages':         messages,
-        'temperature':      request.temperature,
-        ...(wantsJson ? { 'response_format': { 'type': 'json_object' as const } } : {}),
+        'messages':        messages,
+        'temperature':     request.temperature,
+        'response_format': responseFormat,
       });
     } catch (err) {
       throw this.#classifyWebLlmError(err);
@@ -172,17 +183,24 @@ export class WebLlmAdapter extends BaseAdapter {
     return messages;
   }
 
-  #engine(): Promise<WebLlmEngine> {
-    if (this.#enginePromise === null) this.#enginePromise = this.#boot();
-    return this.#enginePromise;
+  #engine(): Promise<WebLlmEngineInterface> {
+    const existing = enginePromises.get(this);
+    if (existing !== undefined) return existing;
+    const pending = this.#boot();
+    enginePromises.set(this, pending);
+    return pending;
   }
 
-  async #boot(): Promise<WebLlmEngine> {
+  async #boot(): Promise<WebLlmEngineInterface> {
     if (!WebLlmAdapter.detectWebGpu()) {
       throw new LlmError('navigator.gpu unavailable', Classifications['MODEL_NOT_FOUND']);
     }
-    const mod = await import(/* @vite-ignore */ WEBLLM_ESM) as WebLlmModule;
-    return mod.CreateMLCEngine(this.#model, { 'initProgressCallback': (report) => { this.onInitProgress(report); } });
+    const rawModule: unknown = await import(/* @vite-ignore */ WEBLLM_ESM);
+    const mod = webLlmModuleValidator.validate(rawModule);
+    const rawEngine: unknown = await mod.CreateMLCEngine(this.#model, {
+      'initProgressCallback': (report) => { this.onInitProgress(report); },
+    });
+    return webLlmEngineValidator.validate(rawEngine);
   }
 
   #classifyWebLlmError(err: unknown): LlmError {

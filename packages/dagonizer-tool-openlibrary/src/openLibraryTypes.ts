@@ -1,62 +1,38 @@
 /**
- * Shared OpenLibrary API types and helpers used by both
- * OpenLibrarySearchTool and SubjectSearchTool.
+ * Shared OpenLibrary API helpers used by both OpenLibrarySearchTool and
+ * SubjectSearchTool.
+ *
+ * The response wire shape lives in `OpenLibraryResponse.ts` as a JSON Schema
+ * 2020-12 `*Schema` const with `FromSchema`-derived types and a module-load
+ * `EntityValidator`. `OpenLibraryDocs` maps narrowed docs to the canonical
+ * `Candidate` shape and exposes `narrowResponse` for callers that hold a raw
+ * `unknown` body (the search tools fetch through `HttpTransport.getJson`, which
+ * narrows for them; `narrowResponse` covers any direct-narrowing caller).
  */
 
-import { ToolError } from '@studnicky/dagonizer/tool';
+import { OpenApiGuard } from '@studnicky/dagonizer/tool';
 import type { Candidate } from '@studnicky/dagonizer-book-entities';
 import { BookBuilder, CanonicalId } from '@studnicky/dagonizer-book-entities';
+
+import type { OpenLibraryDoc, OpenLibraryResponse } from './OpenLibraryResponse.js';
+import { OpenLibraryResponseValidator } from './OpenLibraryResponse.js';
 
 export const OPENLIBRARY_ENDPOINT = 'https://openlibrary.org/search.json';
 
 const MAX_SUBJECTS = 8;
 const MAX_PUBLISHERS = 4;
 
-export interface OpenLibraryDoc {
-  readonly title?: string;
-  readonly subtitle?: string;
-  readonly author_name?: readonly string[];
-  readonly isbn?: readonly string[];
-  readonly first_publish_year?: number;
-  readonly publisher?: readonly string[];
-  readonly subject?: readonly string[];
-  /** Stable OpenLibrary identifier (`/works/OL...W`). Always present. */
-  readonly key?: string;
-  readonly first_sentence?: readonly string[];
-  /** Some search responses include a description; many don't. */
-  readonly description?: string | { value?: string };
-  /** ISO 639-2 (alpha-3) language codes the work is published in. */
-  readonly language?: readonly string[];
-}
-
-export interface OpenLibraryResponse {
-  readonly docs?: readonly OpenLibraryDoc[];
-  readonly numFound?: number;
-}
-
-function isOpenLibraryResponse(value: unknown): value is OpenLibraryResponse {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
-  if ('numFound' in v && typeof v['numFound'] !== 'number') return false;
-  if (!('docs' in v)) return true; // docs is optional
-  if (!Array.isArray(v['docs'])) return false;
-  return true;
-}
-
-/** Narrow an `unknown` value returned by `HttpTransport.getJson` to `OpenLibraryResponse`.
- *  Throws `ToolError` with reason `'PARSE_ERROR'` when the shape does not match. */
-export function narrowOpenLibraryResponse(raw: unknown): OpenLibraryResponse {
-  if (!isOpenLibraryResponse(raw)) {
-    throw new ToolError('Unexpected OpenLibrary API response shape', {
-      'reason': 'PARSE_ERROR',
-      'retryable': false,
-    });
-  }
-  return raw;
-}
-
 export class OpenLibraryDocs {
   private constructor() { /* static class */ }
+
+  /**
+   * Narrow an `unknown` value (e.g. a directly-fetched JSON body) to
+   * `OpenLibraryResponse` via the compiled schema validator. Throws a
+   * non-retryable `ToolError(PARSE_ERROR)` when the shape does not match.
+   */
+  static narrowResponse(raw: unknown): OpenLibraryResponse {
+    return OpenApiGuard.assertShape(raw, OpenLibraryResponseValidator, 'OpenLibrary search.json');
+  }
 
   static pickDescription(doc: OpenLibraryDoc): string | undefined {
     if (typeof doc.description === 'string' && doc.description.length > 0) return doc.description;

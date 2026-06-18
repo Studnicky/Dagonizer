@@ -167,11 +167,11 @@ export class CanonicalId {
    * each branch access only the fields it was designed for.
    */
   private static mergePublication(a: BookPublication, b: BookPublication): BookPublication {
-    let summary: string | undefined;
-    let firstPublishYear: number | undefined;
-    let languages: readonly string[] = [];
-    let publishers: readonly string[] = [];
-    let subjects: readonly string[] = [];
+    let summary: string | null = null;
+    let firstPublishYear: number | null = null;
+    let languages: string[] = [];
+    let publishers: string[] = [];
+    let subjects: string[] = [];
 
     for (const entry of PUBLICATION_MERGE_MAP) {
       switch (entry.kind) {
@@ -212,9 +212,9 @@ export class CanonicalId {
     return out;
   }
 
-  private static longest(a: string | undefined, b: string | undefined): string | undefined {
-    if (a === undefined) return b;
-    if (b === undefined) return a;
+  private static longest(a: string | null, b: string | null): string | null {
+    if (a === null) return b;
+    if (b === null) return a;
     return a.length >= b.length ? a : b;
   }
 

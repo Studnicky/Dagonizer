@@ -8,6 +8,7 @@ import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { ExecutionResultInterface } from '../../src/entities/execution/ExecutionResult.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import { DAGError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { TestNode } from '../_support/TestNode.js';
 
@@ -37,9 +38,6 @@ class RecordingDagonizer extends Dagonizer<NodeStateBase> {
   }
   protected override onNodeEnd(nodeName: string, output: string | null, state: NodeStateBase, placementPath: readonly string[]): void {
     this.calls.push({ 'hook': 'nodeEnd', 'args': [nodeName, output, state, placementPath] });
-  }
-  protected override onContractWarning(message: string): void {
-    this.calls.push({ 'hook': 'contractWarning', 'args': [message] });
   }
   protected override onError(nodeName: string, error: Error, state: NodeStateBase, placementPath: readonly string[]): void {
     this.calls.push({ 'hook': 'error', 'args': [nodeName, error, state, placementPath] });
@@ -254,33 +252,31 @@ void describe('Dagonizer subclass hooks contract', () => {
     assert.equal(dispatcher.hooksOfType('flowEnd')[0]?.args[0],   'inst-parent');
   });
 
-  void it('onContractWarning fires when a contract-bearing DAG has a dead-write', () => {
-    const dispatcher = new RecordingDagonizer();
-
+  void it('throws DAGError when a contract-bearing DAG has a dead-write', () => {
     const rootNode = makeNodeWithContract<NodeStateBase>('root', ['success'], { 'hardRequired': [], 'produces': ['input'] });
     const aNode    = makeNodeWithContract<NodeStateBase>('a',    ['success'], { 'hardRequired': ['input'], 'produces': ['x', 'unused'] });
-    const bNode    = makeNodeWithContract<NodeStateBase>('b',    ['success'], { 'hardRequired': ['x'],     'produces': ['done'] });
+    const bNode    = makeNodeWithContract<NodeStateBase>('b',    ['success'], { 'hardRequired': ['x'],     'produces': [] });
 
-    dispatcher.registerNode(rootNode);
-    dispatcher.registerNode(aNode);
-    dispatcher.registerNode(bNode);
-
-    const dag = DAGDeriver.derive({
-      'name':       'inst-warn',
-      'version':    '1',
-      'entrypoint': 'root',
-      'nodes':      [rootNode, aNode, bNode],
-      'annotations': {
-        'terminals': {
-          'b': [{ 'outcome': 'success', 'emit': { 'name': 'inst-warn-end', 'outcome': 'completed' } }],
+    // 'unused' is produced by 'a' but no node hardRequires it → dead write → throw
+    // at derive-time preflight (the same check registerDAG runs).
+    assert.throws(
+      () => DAGDeriver.derive({
+        'name':       'inst-warn',
+        'version':    '1',
+        'entrypoint': 'root',
+        'nodes':      [rootNode, aNode, bNode],
+        'annotations': {
+          'terminals': {
+            'b': [{ 'outcome': 'success', 'emit': { 'name': 'inst-warn-end', 'outcome': 'completed' } }],
+          },
         },
+      }),
+      (err: unknown) => {
+        assert.ok(err instanceof DAGError);
+        assert.ok(err.message.includes("'unused'"));
+        return true;
       },
-    });
-    dispatcher.registerDAG(dag);
-
-    const warnings = dispatcher.hooksOfType('contractWarning').map((c) => c.args[0] as string);
-    const deadWrite = warnings.find((w) => w.includes("'unused'"));
-    assert.ok(deadWrite !== undefined, `expected dead-write warning; got: ${JSON.stringify(warnings)}`);
+    );
   });
 
   void it('onError fires when a node throws', async () => {

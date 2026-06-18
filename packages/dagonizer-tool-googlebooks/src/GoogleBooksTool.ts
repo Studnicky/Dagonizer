@@ -16,51 +16,18 @@
 
 import type { ToolDefinition } from '@studnicky/dagonizer/adapter';
 import type { AbortableOptionsInterface } from '@studnicky/dagonizer/contracts';
-import { HttpTransport, ToolError } from '@studnicky/dagonizer/tool';
+import { HttpTransport } from '@studnicky/dagonizer/tool';
 import type { Tool } from '@studnicky/dagonizer/tool';
 import type { Candidate } from '@studnicky/dagonizer-book-entities';
 import { BookBuilder, CanonicalId, LanguageCode } from '@studnicky/dagonizer-book-entities';
 
-interface VolumeInfo {
-  readonly title?:           string;
-  readonly subtitle?:        string;
-  readonly authors?:         readonly string[];
-  readonly publishedDate?:   string;
-  readonly description?:     string;
-  readonly publisher?:       string;
-  readonly categories?:      readonly string[];
-  readonly averageRating?:   number;
-  readonly ratingsCount?:    number;
-  readonly industryIdentifiers?: readonly { type?: string; identifier?: string }[];
-  readonly imageLinks?:      { thumbnail?: string };
-  /** ISO 639-1 language code Google Books reports for this volume (e.g. 'en'). */
-  readonly language?:        string;
-}
-
-interface Volume {
-  readonly id?:         string;
-  readonly volumeInfo?: VolumeInfo;
-}
-
-interface GoogleBooksResponse {
-  readonly items?:      readonly Volume[];
-  readonly totalItems?: number;
-}
+import { GoogleBooksResponseValidator } from './GoogleBooksResponse.js';
 
 interface GoogleBooksInput extends Record<string, unknown> {
   readonly query:     string;
   readonly maxResults?: number;
   readonly orderBy?:  'relevance' | 'newest';
   readonly langRestrict?: string;
-}
-
-function isGoogleBooksResponse(value: unknown): value is GoogleBooksResponse {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
-  if ('totalItems' in v && typeof v['totalItems'] !== 'number') return false;
-  if (!('items' in v)) return true; // items is optional
-  if (!Array.isArray(v['items'])) return false;
-  return true;
 }
 
 const ENDPOINT = 'https://www.googleapis.com/books/v1/volumes';
@@ -117,16 +84,11 @@ export class GoogleBooksTool implements Tool<GoogleBooksInput, readonly Candidat
       params.set('langRestrict', input.langRestrict);
     }
 
-    const raw = await HttpTransport.getJson<unknown>(
+    const raw = await HttpTransport.getJson(
       `${ENDPOINT}?${params.toString()}`,
+      GoogleBooksResponseValidator,
       { ...(signal !== undefined && { signal }) },
     );
-    if (!isGoogleBooksResponse(raw)) {
-      throw new ToolError('Unexpected Google Books API response shape', {
-        'reason': 'PARSE_ERROR',
-        'retryable': false,
-      });
-    }
     const volumes = raw.items ?? [];
     const candidates: Candidate[] = [];
     for (const vol of volumes) {

@@ -76,6 +76,30 @@ export abstract class BaseEmbedder extends BaseAdapterCore implements Embedder {
     return results;
   }
 
+  /**
+   * Fetch a JSON body at the embedder's HTTP boundary. Wraps `fetch`,
+   * re-throwing a `fetch()` rejection as a NETWORK-classified `LlmError`,
+   * classifying a non-ok response via `LlmError.classifyHttp`, and
+   * returning the parsed body typed `unknown`. The caller validates the
+   * `unknown` against its own provider schema before typed access — this
+   * method never casts the body to a wire type. `signal` is threaded
+   * explicitly into `fetch` so caller aborts propagate.
+   */
+  protected async fetchJson(url: string, init: RequestInit, signal: AbortSignal): Promise<unknown> {
+    let res: Response;
+    try {
+      res = await fetch(url, { ...init, signal });
+    } catch (err) {
+      throw LlmError.fromNetworkError(err);
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      throw new LlmError(`${this.displayName} ${String(res.status)}: ${text}`, LlmError.classifyHttp(res.status, { 'body': text }));
+    }
+    const body: unknown = await res.json();
+    return body;
+  }
+
   /** Concrete embedder: perform the actual API call. `signal` is always a valid AbortSignal. */
   protected abstract performEmbed(text: string, signal: AbortSignal): Promise<readonly number[]>;
 }

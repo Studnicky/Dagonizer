@@ -1,5 +1,13 @@
 # @studnicky/dagonizer-embedder-gemini-api
 
+## [Unreleased]
+
+### Changed
+
+- The embed response wire shape is schema-backed. `GeminiApiEmbedResponseSchema` (JSON Schema 2020-12) and its `FromSchema`-derived `GeminiApiEmbedResponse` type live in `GeminiApiEmbedResponse.ts`, with a `GeminiApiEmbedResponseValidator` compiled once at module load through the framework's shared Ajv via `Validator.compile`. The schema, type, and validator are exported from the package root.
+- `performEmbed` routes its HTTP call through the inherited `BaseEmbedder.fetchJson`, narrows the returned body via `GeminiApiEmbedResponseValidator.is`, and throws an `LlmError` on a missing or empty `embedding.values`. The hand-written `GeminiEmbedResponse` interface, the `isGeminiEmbedResponse` predicate, and the local `fetch`/network-catch/`!res.ok` scaffold are removed.
+- Model and dimension defaults resolve through a module-level `GEMINI_API_EMBEDDER_DEFAULTS` const spread over the options bag.
+
 ## 0.21.0
 
 ## 0.20.0

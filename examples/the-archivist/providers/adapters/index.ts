@@ -29,7 +29,7 @@ export { CerebrasApiAdapter }       from '@studnicky/dagonizer-adapter-cerebras'
 export { GeminiApiAdapter }         from '@studnicky/dagonizer-adapter-gemini-api';
 export type { GeminiApiAdapterOptions } from '@studnicky/dagonizer-adapter-gemini-api';
 export { GeminiNanoAdapter } from '@studnicky/dagonizer-adapter-gemini-nano';
-export type { GeminiNanoAvailability } from '@studnicky/dagonizer-adapter-gemini-nano';
+export type { GeminiNanoAvailabilityType } from '@studnicky/dagonizer-adapter-gemini-nano';
 export { GroqApiAdapter }           from '@studnicky/dagonizer-adapter-groq';
 export { MistralApiAdapter }        from '@studnicky/dagonizer-adapter-mistral';
 export { OllamaApiAdapter }         from '@studnicky/dagonizer-adapter-ollama';
@@ -38,4 +38,4 @@ export { OllamaProbe, detectOllama, listOllamaModels } from './detectOllama.ts';
 export { OpenRouterApiAdapter }     from '@studnicky/dagonizer-adapter-openrouter';
 export type { OpenRouterApiAdapterOptions } from '@studnicky/dagonizer-adapter-openrouter';
 export { WebLlmAdapter } from '@studnicky/dagonizer-adapter-web-llm';
-export type { WebLlmAdapterOptions, WebLlmInitReport } from '@studnicky/dagonizer-adapter-web-llm';
+export type { WebLlmAdapterOptions, WebLlmInitReportInterface } from '@studnicky/dagonizer-adapter-web-llm';

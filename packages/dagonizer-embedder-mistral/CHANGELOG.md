@@ -1,5 +1,13 @@
 # @studnicky/dagonizer-embedder-mistral
 
+## [Unreleased]
+
+### Changed
+
+- The embed response wire shape is schema-backed. `MistralEmbedResponseSchema` (JSON Schema 2020-12) and its `FromSchema`-derived `MistralEmbedResponse` type live in `MistralEmbedResponse.ts`, with a `MistralEmbedResponseValidator` compiled once at module load through the framework's shared Ajv via `Validator.compile`. The schema, type, and validator are exported from the package root.
+- `performEmbed` routes its HTTP call through the inherited `BaseEmbedder.fetchJson`, narrows the returned body via `MistralEmbedResponseValidator.is`, and throws an `LlmError` on a missing or empty `data[0].embedding`. The hand-written `MistralEmbedResponse` interface, the `isMistralEmbedResponse` predicate, and the local `fetch`/network-catch/`!res.ok` scaffold are removed.
+- Model and dimension defaults resolve through a module-level `MISTRAL_EMBEDDER_DEFAULTS` const spread over the options bag.
+
 ## 0.21.0
 
 ## 0.20.0

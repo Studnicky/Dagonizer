@@ -57,7 +57,6 @@ export type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '../cont
 export type { Snapshottable, StoreSnapshot, StoreSnapshotEntry } from '../contracts/Snapshottable.js';
 export type { Store } from '../contracts/Store.js';
 export type { Binding, Quad, SlotPattern, Term, TripleStore } from '../contracts/TripleStore.js';
-export type { WarningEmitter } from '../contracts/WarningEmitter.js';
 
 // ---------------------------------------------------------------------------
 // Entity-narrowing interfaces

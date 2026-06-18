@@ -9,8 +9,9 @@
  *     The entrypoint node's `hardRequired` are external initial-state fields and
  *     are not validated (they are seeded before execution starts).
  *   - **Dead-write**: a node declares `produces: ['baz']` but no downstream-in-DAG
- *     node `hardRequires` `'baz'`. Emitted as a non-fatal warning via the supplied
- *     `onWarning` callback.
+ *     node `hardRequires` `'baz'`. Thrown as a `DAGError`: a declared production
+ *     that nothing consumes is contract misalignment, fatal exactly like a
+ *     dangling read.
  *
  * Validation walks the full contract set via the same edge semantics
  * (`produces ↔ hardRequired`) that `DAGDeriver` uses to build topology, so the
@@ -18,7 +19,6 @@
  */
 
 import type { OperationContract } from '../contracts/OperationContract.js';
-import type { WarningEmitter } from '../contracts/WarningEmitter.js';
 import { DAGError } from '../errors/DAGError.js';
 
 /** Co-located defaults for `ContractRegistryValidator.validate()` options. */
@@ -94,18 +94,17 @@ export class ContractRegistryValidator {
    * Validate a contract set for dangling reads and dead writes.
    *
    * @param contracts - The full set of contracts derived from the node registry.
-   * @param warningEmitter - Receives each dead-write warning (non-fatal).
    * @param options.entrypointName - Entrypoint operation name. The entrypoint's
    *   `hardRequired` paths are treated as external initial-state fields and are
    *   not checked for dangling reads. Pass an empty string when there is no
    *   named entrypoint (skips external-key seeding).
    *
    * @throws {DAGError} When any non-entrypoint node declares a `hardRequired` path
-   *   that no upstream-in-DAG node produces.
+   *   that no upstream-in-DAG node produces, or when a node declares a `produces`
+   *   path that no node in the registry `hardRequires`.
    */
   static validate(
     contracts: readonly OperationContract[],
-    warningEmitter: WarningEmitter,
     options: { entrypointName: string } = CONTRACT_VALIDATION_DEFAULTS,
   ): void {
     const { entrypointName } = { ...CONTRACT_VALIDATION_DEFAULTS, ...options };
@@ -147,7 +146,7 @@ export class ContractRegistryValidator {
     for (const contract of contracts) {
       for (const path of contract.produces) {
         if (!allRequired.has(path)) {
-          warningEmitter.warn(
+          throw new DAGError(
             `ContractRegistryValidator: node '${contract.name}' produces '${path}' but no node in the registry hardRequires it`,
           );
         }

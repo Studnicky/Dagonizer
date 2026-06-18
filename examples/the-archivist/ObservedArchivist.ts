@@ -165,16 +165,5 @@ export class ObservedArchivist extends Dagonizer<ArchivistState, ArchivistServic
   ): void {
     this.#logger.info(`[archivist:phase] exit dag=${dagName} phase=${phase} placement=${placementName}`);
   }
-
-  /**
-   * Fires for each non-fatal dead-write warning surfaced during DAG
-   * registration when the DAG was derived from a node registry.
-   *
-   * Extension point: route to a structured warning collector so operators
-   * can audit DAG definitions for unreachable output routes.
-   */
-  protected override onContractWarning(message: string): void {
-    this.#logger.warn(`[archivist:contract] ${message}`);
-  }
 }
 // #endregion observed-archivist

@@ -26,7 +26,6 @@ export type { RetryPolicyOptionsInterface } from './RetryPolicyOptionsInterface.
 export type { SchedulerProvider } from './SchedulerProvider.js';
 export type { StateAccessor } from './StateAccessor.js';
 export type { Binding, Quad, SlotPattern, Term, TripleStore } from './TripleStore.js';
-export type { WarningEmitter } from './WarningEmitter.js';
 export type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from './RemoteStore.js';
 export type { Snapshottable, StoreSnapshot, StoreSnapshotEntry } from './Snapshottable.js';
 export type { Store } from './Store.js';

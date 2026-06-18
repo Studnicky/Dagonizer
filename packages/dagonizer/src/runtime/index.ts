@@ -1,6 +1,5 @@
 export { Clock } from './Clock.js';
 export { DottedPathAccessor } from './DottedPathAccessor.js';
-export { NoopWarningEmitter } from './NoopWarningEmitter.js';
 export { RealTimeScheduler } from './RealTimeScheduler.js';
 export { Scheduler } from './Scheduler.js';
 export { SignalComposer } from './SignalComposer.js';

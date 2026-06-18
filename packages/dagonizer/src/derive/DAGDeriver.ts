@@ -39,7 +39,6 @@ import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
 import type { TerminalNode } from '../entities/dag/TerminalNode.js';
 import { DAGError } from '../errors/DAGError.js';
-import { NoopWarningEmitter } from '../runtime/NoopWarningEmitter.js';
 
 import { ContractRegistryValidator } from './ContractRegistryValidator.js';
 import type {
@@ -119,7 +118,7 @@ export class DAGDeriver {
     // registration time: surface drift before the DAG is even built. Pass
     // entrypoint so the entrypoint's hardRequired (external initial state) are
     // not flagged as dangling reads.
-    ContractRegistryValidator.validate(contracts, new NoopWarningEmitter(), { 'entrypointName': opts.entrypoint });
+    ContractRegistryValidator.validate(contracts, { 'entrypointName': opts.entrypoint });
 
     // Operations referenced only as a gather step (the `customNode`
     // for a 'custom' strategy scatter) are emitted alongside the

@@ -15,8 +15,9 @@
  *       runs the child in-process and returns the outcome via the contract —
  *       parent state reflects child mutations, intermediates re-yield, and
  *       result.state === initialState.
- *   (c) an unbound container role on a placement fires contractWarning at
- *       registerDAG.
+ *   (c) on a container-dispatching dispatcher, an unbound container role on a
+ *       placement throws DAGError at registerDAG; a pure in-process dispatcher
+ *       registers the same DAG without throwing.
  *   (d) the in-process path is identical whether or not an empty containers
  *       option is supplied.
  *
@@ -39,7 +40,7 @@ import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
 import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
-import { ValidationError } from '../../src/errors/index.js';
+import { DAGError, ValidationError } from '../../src/errors/index.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 
 // ---------------------------------------------------------------------------
@@ -176,6 +177,14 @@ const parentContainerDAG: DAG = {
   ],
 };
 
+// Minimal CounterState container test double used only to put a dispatcher in
+// container-dispatch mode (its runDag is never invoked by the registration tests).
+const fakeCounterContainer: DagContainerInterface<CounterState> = {
+  async runDag(_task: DagTaskInterface<CounterState, unknown>, _options?: { readonly relay?: ObserverRelay }): Promise<DagOutcomeInterface> {
+    return { 'terminalOutput': 'success', 'errors': [], 'stateSnapshot': {}, 'intermediates': [] };
+  },
+};
+
 // A ScatterNode with a node body AND a container key — this is a validation error.
 const invalidScatterDAG: DAG = {
   '@context': DAG_CONTEXT,
@@ -230,6 +239,15 @@ const validDagBodyScatterDAG: DAG = {
     },
     { '@id': 'urn:noocodex:dag:valid-dag-body/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
+};
+
+// Minimal container test double bound to role 'cpu' so a dag-body scatter that
+// declares that role registers without tripping the unbound-role throw. Its
+// runDag is never invoked by the registration-only test below.
+const fakeDagContainer: DagContainerInterface<NodeStateBase> = {
+  async runDag(_task: DagTaskInterface<NodeStateBase, unknown>, _options?: { readonly relay?: ObserverRelay }): Promise<DagOutcomeInterface> {
+    return { 'terminalOutput': 'success', 'errors': [], 'stateSnapshot': {}, 'intermediates': [] };
+  },
 };
 
 // Child DAG referenced by the valid dag-body scatter.
@@ -354,15 +372,6 @@ void describe('Container seam — W1', () => {
 
   // (b) Bound container: test double that runs child in-process and returns via contract
   void it('bound container receives runDag call and outcome is applied to parent state', async () => {
-    const warnings: string[] = [];
-
-    // Subclass to capture any contract warnings (should be none when role is bound).
-    class WatchDagonizer extends Dagonizer<CounterState> {
-      protected override onContractWarning(message: string) {
-        warnings.push(message);
-      }
-    }
-
     // Test double: a DagContainerInterface that delegates to a second Dagonizer instance.
     const fakeContainer: DagContainerInterface<CounterState> = {
       async runDag(task: DagTaskInterface<CounterState, unknown>, _options?: { readonly relay?: ObserverRelay }): Promise<DagOutcomeInterface> {
@@ -394,16 +403,14 @@ void describe('Container seam — W1', () => {
       },
     };
 
-    const dispatcher = new WatchDagonizer({
+    const dispatcher = new Dagonizer<CounterState>({
       'containers': { 'isolated': fakeContainer },
     });
     dispatcher.registerNode(incrementNode);
     dispatcher.registerNode(terminalNode);
     dispatcher.registerDAG(childDAG);
+    // Role 'isolated' is bound, so registerDAG accepts the placement.
     dispatcher.registerDAG(parentContainerDAG);
-
-    // No warnings: role is bound
-    assert.equal(warnings.length, 0);
 
     const state = new CounterState();
     const result = await dispatcher.execute('parent-c', state);
@@ -417,33 +424,42 @@ void describe('Container seam — W1', () => {
     assert.ok(result.executedNodes.includes('embed'));
   });
 
-  // (c) Unbound container role fires contractWarning at registerDAG
-  void it('unbound container role fires contractWarning at registerDAG', () => {
-    const warnings: string[] = [];
-
-    // Subclass to capture warnings
-    class ObserveDagonizer extends Dagonizer<CounterState> {
-      protected override onContractWarning(message: string) {
-        warnings.push(message);
-      }
-    }
-
-    const dispatcher = new ObserveDagonizer();
+  // (c) A container-dispatching dispatcher with an unbound declared role throws
+  // DAGError at registerDAG (D2 = throw). The dispatcher opts into containers by
+  // binding one role; the placement declares a DIFFERENT, unbound role.
+  void it('unbound container role throws DAGError at registerDAG when the dispatcher uses containers', () => {
+    // Bind some-other-role so the dispatcher is in container-dispatch mode, but
+    // leave the 'isolated' role parentContainerDAG declares unbound.
+    const dispatcher = new Dagonizer<CounterState>({
+      'containers': { 'some-other-role': fakeCounterContainer },
+    });
     dispatcher.registerNode(incrementNode);
     dispatcher.registerNode(terminalNode);
     dispatcher.registerDAG(childDAG);
-    // Parent declares container 'isolated' but no containers option was provided
-    dispatcher.registerDAG(parentContainerDAG);
 
-    assert.equal(warnings.length, 1);
-    assert.ok(
-      warnings[0]?.includes('isolated') === true,
-      `Warning should mention 'isolated', got: ${warnings[0]}`,
+    assert.throws(
+      () => dispatcher.registerDAG(parentContainerDAG),
+      (err: unknown) => {
+        assert.ok(err instanceof DAGError);
+        assert.ok(
+          err.message.includes('isolated'),
+          `error should mention 'isolated', got: ${err.message}`,
+        );
+        return true;
+      },
     );
-    assert.ok(
-      warnings[0]?.includes('resolving to in-process') === true,
-      `Warning should mention in-process, got: ${warnings[0]}`,
-    );
+  });
+
+  // (c2) A pure in-process dispatcher (no containers bound) registers a
+  // container-declaring DAG without throwing: declared roles are inert and every
+  // body runs in-process. This is the path DagHost relies on.
+  void it('pure in-process dispatcher registers a container-declaring DAG without throwing', () => {
+    const dispatcher = new Dagonizer<CounterState>();
+    dispatcher.registerNode(incrementNode);
+    dispatcher.registerNode(terminalNode);
+    dispatcher.registerDAG(childDAG);
+
+    assert.doesNotThrow(() => dispatcher.registerDAG(parentContainerDAG));
   });
 
   // Verify in-process path is byte-identical regardless of whether containers is set
@@ -482,17 +498,14 @@ void describe('Container validation — node-body scatter', () => {
     );
   });
 
-  void it('does not throw when ScatterNode has dag body AND container key', () => {
-    const warnings: string[] = [];
-    class ObserveDagonizer extends Dagonizer<NodeStateBase> {
-      protected override onContractWarning(msg: string) { warnings.push(msg); }
-    }
-
-    const dispatcher = new ObserveDagonizer();
+  void it('does not throw when ScatterNode has dag body AND a bound container key', () => {
+    const dispatcher = new Dagonizer<NodeStateBase>({
+      'containers': { 'cpu': fakeDagContainer },
+    });
     dispatcher.registerNode(bodyNode);
     dispatcher.registerDAG(bodyChildDAG);
 
-    // Should not throw — dag body with container is valid
+    // Should not throw — dag body with a BOUND container role is valid.
     assert.doesNotThrow(() => dispatcher.registerDAG(validDagBodyScatterDAG));
   });
 });

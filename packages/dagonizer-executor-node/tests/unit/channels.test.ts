@@ -33,8 +33,8 @@ function readyMessage(): BridgeMessage {
   return { 'kind': 'ready', 'registryVersion': '1.0.0', 'capabilities': [] };
 }
 
-function logMessage(): BridgeMessage {
-  return { 'kind': 'log', 'level': 'info', 'component': 'test', 'operation': 'test', 'message': 'hi' };
+function errorMessage(): BridgeMessage {
+  return { 'kind': 'error', 'correlationId': null, 'code': 'TEST', 'message': 'hi', 'recoverable': false };
 }
 
 // ---------------------------------------------------------------------------
@@ -165,13 +165,13 @@ void describe('NdjsonChannel.onMessage — framing', () => {
     const messages = collectNdjsonMessages(channel);
 
     const m1 = JSON.stringify(readyMessage()) + '\n';
-    const m2 = JSON.stringify(logMessage() satisfies BridgeMessage) + '\n';
+    const m2 = JSON.stringify(errorMessage() satisfies BridgeMessage) + '\n';
 
     await new Promise<void>((resolve) => { readable.write(m1 + m2, () => resolve()); });
 
     assert.strictEqual(messages.length, 2);
     assert.strictEqual(messages[0]?.kind, 'ready');
-    assert.strictEqual(messages[1]?.kind, 'log');
+    assert.strictEqual(messages[1]?.kind, 'error');
   });
 
   void it('stops delivering messages after close', async () => {

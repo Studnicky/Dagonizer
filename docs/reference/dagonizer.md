@@ -72,7 +72,7 @@ export {};
 |---|---|---|
 | `accessor` | `StateAccessor` | Path resolver for scatter source reads, gather writes, and state-mapping copies. Defaults to `DottedPathAccessor`. |
 | `services` | `TServices` | Typed services bag exposed to every node via `context.services`. Defaults to `undefined`. |
-| `containers` | `Readonly<Record<string, DagContainerInterface<TState>>>` | Named container backends keyed by logical role name. An unbound role falls back to in-process and fires `onContractWarning`. Defaults to an empty registry (all placements run in-process). |
+| `containers` | `Readonly<Record<string, DagContainerInterface<TState>>>` | Named container backends keyed by logical role name. On a non-empty registry, a placement that declares a role this map does not bind throws `DAGError` at `registerDAG` time. Defaults to an empty registry, where declared roles are inert and all placements run in-process. |
 | `channels` | `Readonly<Record<string, HandoffChannelInterface>>` | Named egress channels keyed by terminal placement name. When a non-embedded flow reaches a named terminal, the dispatcher builds a `DAGHandoff` envelope and calls `channel.publish(handoff)`. Unbound terminals do not publish. |
 | `registryVersion` | `string` | Registry version string included in every `DAGHandoff` envelope for receiver version-handshake validation. Defaults to `'0'`. |
 
@@ -148,7 +148,7 @@ Registers a DAG after two validation passes, followed by an optional contract ch
 1. **Schema pass.** `Validator.dag.validate(dag)` checks structure (required fields, valid `type` and `strategy` enumerations).
 2. **Semantic pass.** Verifies entrypoint exists, all node references are resolvable, no circular embedded-DAG references, and every registered node output has a routing entry in the placement's `outputs` map.
 
-After both passes, `ContractRegistryValidator` runs a data-flow check for each placement whose backing node carries a co-located contract. Dangling reads (a non-entrypoint node requires a path no upstream node produces) throw `DAGError`; dead writes call `onContractWarning`. This check is skipped for placements without a contract.
+After both passes, `ContractRegistryValidator` runs a data-flow check for each placement whose backing node carries a co-located contract. Dangling reads (a non-entrypoint node requires a path no upstream node produces) and dead writes (a node produces a path no downstream node requires) both throw `DAGError`. This check is skipped for placements without a contract.
 
 Throws `DAGError` with a multi-line message listing all failures.
 
@@ -300,7 +300,7 @@ Calls the optional `destroy()` method on every registered node, then clears all 
 
 ### Observability hooks
 
-Six protected no-op methods. Subclass `Dagonizer` and override to attach metrics, logging, or tracing.
+Five protected no-op methods. Subclass `Dagonizer` and override to attach metrics, logging, or tracing.
 
 ```ts twoslash
 import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
@@ -317,7 +317,6 @@ class ObservableDagonizer extends Dagonizer<MyState> {
   protected override onNodeStart(nodeName: string, state: MyState, placementPath: readonly string[]): void {}
   protected override onNodeEnd(nodeName: string, output: string | null, state: MyState, placementPath: readonly string[]): void {}
   protected override onError(nodeName: string, error: Error, state: MyState, placementPath: readonly string[]): void {}
-  protected override onContractWarning(message: string): void {}
 }
 ```
 
@@ -328,11 +327,10 @@ class ObservableDagonizer extends Dagonizer<MyState> {
 | `onNodeStart` | Before `node.execute()` for each node entry point |
 | `onNodeEnd` | After each node resolves, before the result is yielded; `output` is `string \| null` (`null` = no route emitted) |
 | `onError` | When the signal fires or a node throws |
-| `onContractWarning` | When `ContractRegistryValidator` detects a dead-write during `registerDAG` |
 
 `placementPath` is the ordered array of parent embedded-DAG placement names leading to the current node. Top-level nodes receive `[]`; a node inside an `EmbeddedDAGNode` named `'search'` receives `['search']`. The full cytoscape-style node id is `[...placementPath, nodeName].join('/')`.
 
-See [Observability](/guide/observability) for usage examples. See [catching contract drift](../guide/derive.md#catching-contract-drift) for `onContractWarning` usage.
+See [Observability](/guide/observability) for usage examples. Contract misalignment — a dangling read or a dead write — throws a `DAGError` at `registerDAG`/`build` time rather than surfacing a warning; see [catching contract drift](../guide/derive.md#catching-contract-drift).
 
 ---
 

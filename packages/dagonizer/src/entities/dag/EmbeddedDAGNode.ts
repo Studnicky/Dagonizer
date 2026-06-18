@@ -9,9 +9,9 @@
  *
  * `container` (optional): logical container role name. The dispatcher binds
  * role names to `DagContainerInterface` instances at construction via
- * `DagonizerOptionsInterface.containers`. When declared but unbound, the
- * placement resolves to in-process and fires a `contractWarning`. When absent,
- * the embedded DAG always runs in-process.
+ * `DagonizerOptionsInterface.containers`. A declared-but-unbound role throws a
+ * `DAGError` at `registerDAG` time. When absent, the embedded DAG always runs
+ * in-process.
  */
 
 import type { FromSchema } from 'json-schema-to-ts';

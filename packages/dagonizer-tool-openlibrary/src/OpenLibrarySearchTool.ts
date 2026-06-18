@@ -31,7 +31,8 @@ import type { Tool } from '@studnicky/dagonizer/tool';
 import type { Candidate } from '@studnicky/dagonizer-book-entities';
 
 
-import { OPENLIBRARY_ENDPOINT, narrowOpenLibraryResponse, OpenLibraryDocs } from './openLibraryTypes.js';
+import { OpenLibraryResponseValidator } from './OpenLibraryResponse.js';
+import { OPENLIBRARY_ENDPOINT, OpenLibraryDocs } from './openLibraryTypes.js';
 
 interface OpenLibrarySearchInput extends Record<string, unknown> {
   readonly query?: string;
@@ -113,11 +114,11 @@ export class OpenLibrarySearchTool implements Tool<OpenLibrarySearchInput, reado
     if (input.isbn !== undefined && input.isbn.length > 0) {
       const isbnParams = new URLSearchParams({ 'q': input.isbn, 'limit': String(limit) });
       if (input.lang !== undefined) isbnParams.set('lang', String(input.lang));
-      const isbnRaw = await HttpTransport.getJson<unknown>(
+      const isbnPayload = await HttpTransport.getJson(
         `${OPENLIBRARY_ENDPOINT}?${isbnParams.toString()}`,
+        OpenLibraryResponseValidator,
         { ...(signal !== undefined && { signal }) },
       );
-      const isbnPayload = narrowOpenLibraryResponse(isbnRaw);
       return OpenLibraryDocs.candidates(isbnPayload.docs ?? [], 'web-search', 'web-search');
     }
 
@@ -139,11 +140,11 @@ export class OpenLibrarySearchTool implements Tool<OpenLibrarySearchInput, reado
       return [];
     }
 
-    const raw = await HttpTransport.getJson<unknown>(
+    const payload = await HttpTransport.getJson(
       `${OPENLIBRARY_ENDPOINT}?${params.toString()}`,
+      OpenLibraryResponseValidator,
       { ...(signal !== undefined && { signal }) },
     );
-    const payload = narrowOpenLibraryResponse(raw);
     return OpenLibraryDocs.candidates(payload.docs ?? [], 'web-search', 'web-search');
   }
 }

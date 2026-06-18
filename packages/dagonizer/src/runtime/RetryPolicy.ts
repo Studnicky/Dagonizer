@@ -142,12 +142,12 @@ export class RetryPolicy {
    * Override for custom backoff. The base implementation honors the
    * configured strategy + jitter.
    */
-  getDelay(attempt: number, options: { readonly error?: Error | null } = {}): number {
+  getDelay(attempt: number, options: { readonly error: Error | null } = { 'error': null }): number {
     // `options.error` is reserved for subclass overrides; the base implementation ignores it.
     void options;
     const computer = BACKOFF_COMPUTERS[this.strategy];
     if (computer === undefined) {
-      throw new DAGError(`Unknown backoff strategy: ${this.strategy as string}`);
+      throw new DAGError(`Unknown backoff strategy: ${this.strategy}`);
     }
     let delay = computer(attempt, this.baseDelay, this.multiplier);
 

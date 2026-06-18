@@ -1,5 +1,16 @@
 # @studnicky/dagonizer-adapter-gemini-nano
 
+## [Unreleased]
+
+### Changed
+
+- The browser `window.LanguageModel` host object is now schema-backed. `LanguageModelStaticSchema` and `LanguageModelSessionSchema` (JSON Schema 2020-12) describe the host members; the base types derive via `FromSchema` and the tier-3 narrowing interfaces `LanguageModelStaticInterface` / `LanguageModelSessionInterface` add the call signatures the schema cannot express. The adapter reads `globalThis.LanguageModel` as `unknown` and narrows it through `languageModelStaticValidator` (and the live session through `languageModelSessionValidator`) before use. Both validators are compiled once at module load through the engine's shared `Validator.compile` (`@studnicky/dagonizer/validation`). The hand-written `LanguageModelStatic`/`LanguageModelSession`/`PromptOptions` interfaces and the cast-based `getLanguageModel` accessor are removed.
+- `GeminiNanoAvailability` is renamed to `GeminiNanoAvailabilityType`. This is a breaking rename of the exported type.
+
+### Added
+
+- Public schema surface: `LanguageModelStaticSchema`, `LanguageModelSessionSchema`, the `LanguageModelStaticInterface` / `LanguageModelSessionInterface` / `PromptOptionsInterface` types, the `*BaseType` derivations, and the `languageModelStaticValidator` / `languageModelSessionValidator`.
+
 ## 0.21.0
 
 ## 0.20.0

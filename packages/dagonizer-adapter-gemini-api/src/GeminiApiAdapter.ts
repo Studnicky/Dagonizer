@@ -30,45 +30,13 @@ import type {
 } from '@studnicky/dagonizer/adapter';
 import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
 
+import type { GeminiResponseBodyType } from './GeminiResponseBody.js';
+import { geminiResponseBodyValidator } from './GeminiResponseBody.js';
+
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 const DEFAULT_MODEL = 'gemini-2.0-flash';
 /** Per-request timeout in ms before the adapter aborts and surfaces TIMEOUT. */
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
-
-// ── Gemini response body JSON Schema + validator ──────────────────────────
-
-/**
- * Structural type for the Gemini `generateContent` response body.
- * Defined explicitly (not via json-schema-to-ts) because the gemini-api
- * package does not carry a json-schema-to-ts dependency.
- */
-interface GeminiResponseBody {
-  candidates?: ReadonlyArray<{
-    content?:      { parts?: readonly GeminiPart[] };
-    finishReason?: string;
-  }>;
-  usageMetadata?: {
-    promptTokenCount?:     number;
-    candidatesTokenCount?: number;
-  };
-}
-
-interface GeminiPart {
-  readonly text?: string;
-  readonly functionCall?: { readonly name: string; readonly args?: Record<string, unknown> };
-}
-
-/**
- * Validate that an unknown value has the minimum shape required to call
- * `#parseResponse` without a raw cast. We only assert structural presence;
- * optional fields remain optional.
- */
-function isGeminiResponseBody(value: unknown): value is GeminiResponseBody {
-  if (value === null || typeof value !== 'object') return false;
-  const v = value as Record<string, unknown>;
-  if ('candidates' in v && !Array.isArray(v['candidates'])) return false;
-  return true;
-}
 
 export interface GeminiApiAdapterOptions {
   readonly model?: string;
@@ -138,7 +106,7 @@ export class GeminiApiAdapter extends BaseAdapter {
     }
 
     const rawBody: unknown = await res.json();
-    if (!isGeminiResponseBody(rawBody)) {
+    if (!geminiResponseBodyValidator.is(rawBody)) {
       throw new LlmError(
         'Gemini API: response body schema violation — unexpected structure',
         Classifications['SCHEMA_VIOLATION'],
@@ -182,7 +150,7 @@ export class GeminiApiAdapter extends BaseAdapter {
     return body;
   }
 
-  #parseResponse(payload: GeminiResponseBody): ChatResponse {
+  #parseResponse(payload: GeminiResponseBodyType): ChatResponse {
     const candidate = payload.candidates?.[0];
     const parts = candidate?.content?.parts ?? [];
     const toolCalls: ToolCall[] = [];

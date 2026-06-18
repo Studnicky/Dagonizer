@@ -22,27 +22,21 @@ import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/ad
 import type { BaseAdapterCoreOptions } from '@studnicky/dagonizer/adapter';
 import type { AbortableOptionsInterface } from '@studnicky/dagonizer/contracts';
 
-const DEFAULT_MODEL = 'text-embedding-004';
-const DEFAULT_DIMENSIONS = 768;
+import { GeminiApiEmbedResponseValidator } from './GeminiApiEmbedResponse.js';
+
 const ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
+
+/** Module-level defaults; the producer fills them so the consumer never sees absence. */
+const GEMINI_API_EMBEDDER_DEFAULTS = {
+  'model': 'text-embedding-004',
+  'dimensions': 768,
+} as const;
 
 export interface GeminiApiEmbedderOptions extends BaseAdapterCoreOptions {
   /** Override the embedding model. Defaults to `text-embedding-004`. */
   readonly model?: string;
   /** Override dimensions when targeting a non-`text-embedding-004` model. */
   readonly dimensions?: number;
-}
-
-interface GeminiEmbedResponse {
-  readonly embedding: { readonly values: readonly number[] };
-}
-
-function isGeminiEmbedResponse(v: unknown): v is GeminiEmbedResponse {
-  if (typeof v !== 'object' || v === null) return false;
-  const obj = v as Record<string, unknown>;
-  if (typeof obj['embedding'] !== 'object' || obj['embedding'] === null) return false;
-  const emb = obj['embedding'] as Record<string, unknown>;
-  return Array.isArray(emb['values']);
 }
 
 export class GeminiApiEmbedder extends BaseEmbedder {
@@ -57,41 +51,24 @@ export class GeminiApiEmbedder extends BaseEmbedder {
    * it cleanly.
    */
   constructor(apiKey: string, options: GeminiApiEmbedderOptions = {}) {
-    const model = options.model ?? DEFAULT_MODEL;
-    const dimensions = options.dimensions ?? DEFAULT_DIMENSIONS;
-    super('gemini-api', `Gemini REST (${model})`, dimensions, options);
+    const resolved = { ...GEMINI_API_EMBEDDER_DEFAULTS, ...options };
+    super('gemini-api', `Gemini REST (${resolved.model})`, resolved.dimensions, options);
     this.#apiKey = apiKey;
-    this.#model = model;
+    this.#model = resolved.model;
   }
 
   protected async performEmbed(text: string, signal: AbortSignal): Promise<readonly number[]> {
     const url = `${ENDPOINT}/${encodeURIComponent(this.#model)}:embedContent?key=${encodeURIComponent(this.#apiKey)}`;
-    let res: Response;
-    try {
-      res = await fetch(url, {
+    const raw = await this.fetchJson(
+      url,
+      {
         'method': 'POST',
         'headers': { 'Content-Type': 'application/json' },
         'body': JSON.stringify({ 'content': { 'parts': [{ 'text': text }] } }),
-        signal,
-      });
-    } catch (err) {
-      throw new LlmError(
-        `Gemini embed network error: ${err instanceof Error ? err.message : String(err)}`,
-        Classifications['NETWORK'],
-        { 'cause': err },
-      );
-    }
-
-    if (!res.ok) {
-      const body = await res.text();
-      throw new LlmError(
-        `Gemini embed failed: ${String(res.status)} ${body}`,
-        LlmError.classifyHttp(res.status, { 'body': body }),
-      );
-    }
-
-    const raw: unknown = await res.json();
-    if (!isGeminiEmbedResponse(raw) || raw.embedding.values.length === 0) {
+      },
+      signal,
+    );
+    if (!GeminiApiEmbedResponseValidator.is(raw) || raw.embedding.values.length === 0) {
       throw new LlmError(
         `Gemini embed: missing or empty 'embedding.values' field`,
         Classifications['SCHEMA_VIOLATION'],
