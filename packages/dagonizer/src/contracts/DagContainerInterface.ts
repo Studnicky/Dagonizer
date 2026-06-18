@@ -11,11 +11,11 @@
  * pool resources when the dispatcher shuts down.
  */
 
-import type { ObserverRelay } from '../Dagonizer.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { DagOutcomeInterface } from './DagOutcomeInterface.js';
 import type { DagTaskInterface } from './DagTaskInterface.js';
+import type { ObserverRelay } from './ObserverRelay.js';
 
 export interface DagContainerInterface<
   TState extends NodeStateInterface = NodeStateInterface,

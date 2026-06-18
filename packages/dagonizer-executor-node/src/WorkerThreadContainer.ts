@@ -19,11 +19,11 @@
 
 import { Worker } from 'node:worker_threads';
 
-import type { NodeStateInterface } from '@studnicky/dagonizer';
 import { DagContainerBase, DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
 import type { PoolEntry } from '@studnicky/dagonizer/container';
 import type { JsonObject } from '@studnicky/dagonizer/entities';
 import { RecommendedWorkerCountConfigDefault } from '@studnicky/dagonizer/entities';
+import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { MessagePortChannel } from './MessagePortChannel.js';
 import type { MessagePortLike } from './MessagePortChannel.js';

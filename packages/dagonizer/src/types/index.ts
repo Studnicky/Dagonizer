@@ -176,7 +176,8 @@ export type {
   StoredScatterProgress,
 } from '../entities/scatter/ScatterProgress.js';
 
-export type { DispatcherBundle } from '../Dagonizer.js';
+export type { DispatcherBundle } from '../contracts/DispatcherBundle.js';
+export type { ObserverRelay } from '../contracts/ObserverRelay.js';
 
 // ---------------------------------------------------------------------------
 // Checkpoint
@@ -208,5 +209,5 @@ export type { StoreErrorClassification } from '../store/StoreError.js';
 // Plural-native batch types + contracts
 // ---------------------------------------------------------------------------
 
-export type { Item, ItemId } from '../core/batch/Item.js';
-export type { RoutedBatch } from '../core/batch/RoutedBatch.js';
+export type { Item, ItemId } from '../entities/batch/Item.js';
+export type { RoutedBatch } from '../entities/batch/RoutedBatch.js';

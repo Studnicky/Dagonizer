@@ -21,9 +21,9 @@ import type { DagContainerInterface } from '../contracts/DagContainerInterface.j
 import type { DagOutcomeInterface } from '../contracts/DagOutcomeInterface.js';
 import type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
-import type { Batch } from '../core/batch/Batch.js';
-import type { Item } from '../core/batch/Item.js';
-import type { ObserverRelay } from '../Dagonizer.js';
+import type { ObserverRelay } from '../contracts/ObserverRelay.js';
+import type { Batch } from '../entities/batch/Batch.js';
+import type { Item } from '../entities/batch/Item.js';
 import type { JsonObject } from '../entities/json.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 

@@ -8,10 +8,9 @@
  * on dispatcher state — they operate purely on the wire shape.
  */
 
-import { ValidationError } from '../../errors/index.js';
-import { Validator } from '../../validation/Validator.js';
-
-import type { DAG } from './DAG.js';
+import type { DAG } from '../entities/dag/DAG.js';
+import { ValidationError } from '../errors/index.js';
+import { Validator } from '../validation/Validator.js';
 
 /**
  * DAG document (de)serialization domain.

@@ -7,9 +7,9 @@
  * (write the recalled context back to state).
  */
 
-import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer';
 import { NodeOutputBuilder } from '@studnicky/dagonizer';
 import type { Binding, SlotPattern } from '@studnicky/dagonizer/patterns';
+import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { GraphNode, type GraphServices } from './GraphNode.js';
 

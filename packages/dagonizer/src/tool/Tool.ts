@@ -17,8 +17,8 @@
  * tool-execution boundary speak the same vocabulary.
  */
 
-import type { ToolDefinition } from '../adapter/index.js';
 import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
+import type { ToolDefinition } from '../entities/adapter/ToolDefinition.js';
 
 export interface Tool<TInput extends Record<string, unknown>, TOutput> {
   /** JSON-Schema-shaped declaration the LLM sees in its tool list. */

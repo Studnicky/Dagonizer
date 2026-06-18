@@ -46,8 +46,6 @@ export { DAGSchema, DAG_CONTEXT, DAG } from './dag/DAG.js';
 export { Placement } from './dag/Placement.js';
 export type { DAGNodeType } from './dag/Placement.js';
 
-export { DAGDocument } from './dag/DAGDocument.js';
-
 // ---------------------------------------------------------------------------
 // state-machines
 // ---------------------------------------------------------------------------

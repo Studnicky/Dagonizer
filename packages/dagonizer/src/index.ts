@@ -63,8 +63,12 @@ export type { EntityValidator } from './validation/index.js';
 // ENTITIES (schemas + derived types)
 // =============================================================================
 
+// `DAGDocument` is engine-coupled (it validates against the compiled
+// `Validator`), so it lives at `src/dag/` and ships through `./dag`. It is
+// re-exported on the root barrel so the existing root-barrel `DAGDocument`
+// export resolves unchanged.
+export { DAGDocument } from './dag/index.js';
 export {
-  DAGDocument,
   Placement,
   NodeErrorBuilder,
   NodeOutputBuilder,
@@ -182,7 +186,8 @@ export type { DagContainerOptions } from './container/DagContainerBase.js';
 // FUNCTIONS
 // =============================================================================
 
-export { Dagonizer, SCATTER_PROGRESS_KEY, WORKSET_PROGRESS_KEY } from './Dagonizer.js';
+export { Dagonizer } from './Dagonizer.js';
+export { SCATTER_PROGRESS_KEY, WORKSET_PROGRESS_KEY } from './entities/constants/ProgressKey.js';
 export type { DagonizerOptionsInterface, ScatterAckedResult, ScatterInboxItem, ScatterProgress, StoredScatterProgress } from './Dagonizer.js';
 export { Execution } from './Execution.js';
 
@@ -194,16 +199,16 @@ export {
   GatherStrategies,
   GatherStrategy,
 } from './core/GatherStrategies.js';
-export type { GatherExecution, GatherRecord } from './core/GatherStrategies.js';
+export type { GatherExecution, GatherRecord } from './contracts/GatherExecution.js';
 export {
   OutcomeReducers,
   OutcomeReducer,
 } from './core/OutcomeReducers.js';
-export type { OutcomeRecord } from './core/OutcomeReducers.js';
-export { Batch } from './core/batch/Batch.js';
-export type { Item, ItemId } from './core/batch/Item.js';
-export { RoutedBatchBuilder } from './core/batch/RoutedBatch.js';
-export type { RoutedBatch } from './core/batch/RoutedBatch.js';
+export type { OutcomeRecord } from './contracts/OutcomeRecord.js';
+export { Batch } from './entities/batch/Batch.js';
+export type { Item, ItemId } from './entities/batch/Item.js';
+export { RoutedBatchBuilder } from './entities/batch/RoutedBatch.js';
+export type { RoutedBatch } from './entities/batch/RoutedBatch.js';
 export { MonadicNode } from './core/MonadicNode.js';
 export { ScalarNode } from './core/ScalarNode.js';
 export { NodeRunner } from './core/NodeRunner.js';
@@ -226,7 +231,8 @@ export type { BaseStoreOptions, StoreErrorClassification } from './store/index.j
 // CLASS-SHAPE INTERFACES (colocated with their class)
 // =============================================================================
 
-export type { DagonizerInterface, DispatcherBundle } from './Dagonizer.js';
+export type { DagonizerInterface } from './Dagonizer.js';
+export type { DispatcherBundle } from './contracts/DispatcherBundle.js';
 export type { NodeStateInterface } from './NodeStateBase.js';
 export type { DAGErrorInterface } from './errors/DAGError.js';
 

@@ -36,11 +36,11 @@
 
 import type { GatherExecution, GatherRecord } from '../contracts/GatherExecution.js';
 import type { StateAccessor } from '../contracts/StateAccessor.js';
+import type { Batch } from '../entities/batch/Batch.js';
 import type { GatherConfig } from '../entities/dag/GatherConfig.js';
 import { DAGError } from '../errors/DAGError.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-import type { Batch } from './batch/Batch.js';
 
 export type { GatherExecution, GatherRecord };
 

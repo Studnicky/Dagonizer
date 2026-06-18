@@ -27,14 +27,14 @@ import { DagHost } from '../../src/container/DagHost.js';
 import type { DagOutcomeInterface } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { DagContainerInterface } from '../../src/contracts/DagContainerInterface.js';
+import type { DispatcherBundle } from '../../src/contracts/DispatcherBundle.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
-import type { DispatcherBundle } from '../../src/Dagonizer.js';
 import type { JsonObject } from '../../src/entities/json.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 import {
   ConformanceRegistry,
   ConformanceState,

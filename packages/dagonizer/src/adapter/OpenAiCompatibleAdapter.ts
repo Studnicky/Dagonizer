@@ -20,6 +20,7 @@
  * error signal, causing the adapter to retry the request without tools.
  */
 
+import type { OpenAiResponseBody } from '../entities/adapter/OpenAiResponseBody.js';
 import { Validator } from '../validation/Validator.js';
 
 import { BaseAdapter } from './BaseAdapter.js';
@@ -39,7 +40,6 @@ import type {
 } from './LlmAdapter.js';
 import { Classifications, LlmError } from './LlmError.js';
 import type { ErrorClassification } from './LlmError.js';
-import type { OpenAiResponseBody } from './OpenAiResponseBody.js';
 
 /** Provider-specific configuration the subclass passes in. */
 export interface OpenAiCompatibleConfig {

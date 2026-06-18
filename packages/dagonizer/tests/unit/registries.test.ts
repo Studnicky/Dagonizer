@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
+import type { OutcomeRecord } from '../../src/contracts/OutcomeRecord.js';
 import {
   GatherStrategies,
   GatherStrategy,
   OutcomeReducer,
   OutcomeReducers,
 } from '../../src/core/index.js';
-import type { OutcomeRecord } from '../../src/core/index.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
