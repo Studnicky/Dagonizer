@@ -23,7 +23,6 @@ import type {
   ChatMessage,
   ChatRequest,
   ChatResponse,
-  ErrorClassification,
   ToolCall,
   ToolChoice,
   ToolDefinition,
@@ -113,12 +112,6 @@ export class GeminiApiAdapter extends BaseAdapter {
       );
     }
     return this.#parseResponse(rawBody);
-  }
-
-  protected override classify(error: unknown): ErrorClassification {
-    if (error instanceof LlmError) return error.classification;
-    if (error instanceof Error && /aborted|timeout/iu.test(error.message)) return Classifications['TIMEOUT'];
-    return Classifications['UNKNOWN'];
   }
 
   #buildBody(request: ChatRequest): Record<string, unknown> {

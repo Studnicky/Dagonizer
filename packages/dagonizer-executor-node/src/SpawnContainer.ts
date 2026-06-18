@@ -21,57 +21,34 @@
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 
-import { DagContainerBase, DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
+import { DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
 import type { PoolEntry } from '@studnicky/dagonizer/container';
-import type { JsonObject } from '@studnicky/dagonizer/entities';
-import { RecommendedWorkerCountConfigDefault } from '@studnicky/dagonizer/entities';
-import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { NdjsonChannel } from './NdjsonChannel.js';
-import { NodeSystemInfo } from './NodeSystemInfo.js';
+import { NodeContainerBase } from './NodeContainerBase.js';
+import type { NodeContainerBaseOptions } from './NodeContainerBase.js';
 
 // ---------------------------------------------------------------------------
 // SpawnContainerOptions
 // ---------------------------------------------------------------------------
 
-export interface SpawnContainerOptions {
-  readonly registryModule: string;
-  readonly registryVersion: string;
-  readonly servicesConfig?: JsonObject;
-  readonly poolSize?: number;
+export interface SpawnContainerOptions extends NodeContainerBaseOptions {
   readonly command?: string;
   readonly args?: readonly string[];
-  readonly entryUrl?: URL;
 }
 
 // ---------------------------------------------------------------------------
 // SpawnContainer
 // ---------------------------------------------------------------------------
 
-export class SpawnContainer extends DagContainerBase<NodeStateInterface, ChildProcess> {
+export class SpawnContainer extends NodeContainerBase<ChildProcess> {
   readonly #command: string;
   readonly #args: readonly string[];
   readonly #entryUrl: URL;
 
   constructor(options: SpawnContainerOptions) {
-    const sysInfo = new NodeSystemInfo();
-    const defaultPoolSize = sysInfo.recommendedWorkerCount({
-      ...RecommendedWorkerCountConfigDefault,
-      'maximumWorkers': 8,
-    });
-    // Resolve entryUrl before super() so #args can reference it safely via
-    // a local binding (super() must be the first statement).
-    const entryUrl = options.entryUrl ?? new URL('./spawnEntry.js', import.meta.url);
-    super({
-      ...DagContainerBase.defaultOptions,
-      'poolSize': options.poolSize ?? defaultPoolSize,
-      'init': {
-        'registryModule': options.registryModule,
-        'registryVersion': options.registryVersion,
-        'servicesConfig': options.servicesConfig ?? {},
-      },
-    });
-    this.#entryUrl = entryUrl;
+    super(NodeContainerBase.resolveOptions(options));
+    this.#entryUrl = options.entryUrl ?? new URL('./spawnEntry.js', import.meta.url);
     this.#command = options.command ?? process.execPath;
     this.#args = options.args ?? [this.#entryUrl.pathname];
   }

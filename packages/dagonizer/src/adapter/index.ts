@@ -90,6 +90,7 @@ export { LlmAdapterCascade } from './LlmAdapterCascade.js';
 export type { Embedder } from '../contracts/Embedder.js';
 
 export { BaseEmbedder } from './BaseEmbedder.js';
+export type { BaseEmbedderOptions } from './BaseEmbedder.js';
 
 export { EmbedderRegistry } from './EmbedderRegistry.js';
 export type { EmbedderFactory } from './EmbedderRegistry.js';

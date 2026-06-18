@@ -1,5 +1,27 @@
 # @studnicky/dagonizer-executor-node
 
+## [Unreleased]
+
+### Changed
+
+- The three message channels (`IpcChannel`, `MessagePortChannel`, `NdjsonChannel`)
+  extend the shared `BaseMessageChannel` from `@studnicky/dagonizer/container`.
+  The duplicated inbound-handler, closed-latch, `onMessage`, and guarded-dispatch
+  members live once in the base; each channel keeps only its transport `send` and
+  endpoint subscription. Runtime behavior is unchanged.
+- The four containers (`ForkContainer`, `ClusterContainer`, `SpawnContainer`,
+  `WorkerThreadContainer`) extend the new `NodeContainerBase`, which owns the
+  recommended-worker-count pool-size resolution and the `DagContainerBase`
+  defaults spread. `NodeSystemInfo` is instantiated once at module load and
+  shared across every container construction.
+
+### Added
+
+- `NodeContainerBase` abstract base class and its `NodeContainerBaseOptions`
+  shared constructor-input interface, exported from the package root. Each
+  container's options type extends `NodeContainerBaseOptions` with only its
+  transport-specific extras.
+
 ## 0.21.0
 
 ### Patch Changes

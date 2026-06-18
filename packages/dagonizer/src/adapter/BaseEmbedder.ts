@@ -26,6 +26,23 @@ import { SignalComposer } from '../runtime/SignalComposer.js';
 import { BaseAdapterCore, type BaseAdapterCoreOptions } from './BaseAdapterCore.js';
 import { LlmError, MAX_QUOTA_WAIT_MS } from './LlmError.js';
 
+/**
+ * Caller-facing options shared by every concrete embedder.
+ *
+ * Extends `BaseAdapterCoreOptions` (retry tuning) with the two fields every
+ * embedder exposes: `model` and `dimensions`. Both are caller overrides — the
+ * concrete embedder owns the provider-specific default and materialises a
+ * complete value by spreading its own `DEFAULTS` over the caller partial, so
+ * the base never needs a default for either. A concrete embedder extends this
+ * interface and adds only its own extras.
+ */
+export interface BaseEmbedderOptions extends BaseAdapterCoreOptions {
+  /** Override the embedding model. The concrete embedder supplies the default. */
+  readonly model?: string;
+  /** Override the output dimensionality. The concrete embedder supplies the default. */
+  readonly dimensions?: number;
+}
+
 export abstract class BaseEmbedder extends BaseAdapterCore implements Embedder {
   readonly dimensions: number;
 

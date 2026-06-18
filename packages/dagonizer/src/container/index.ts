@@ -11,6 +11,7 @@
  * death eviction, and graceful shutdown.
  */
 
+export { BaseMessageChannel } from './BaseMessageChannel.js';
 export { DagTask } from './DagTask.js';
 export type { DagTaskInterface } from '../contracts/DagTaskInterface.js';
 export { DagHost } from './DagHost.js';

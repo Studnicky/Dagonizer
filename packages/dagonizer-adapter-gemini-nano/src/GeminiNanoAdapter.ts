@@ -132,11 +132,9 @@ export class GeminiNanoAdapter extends BaseAdapter {
   }
 
   protected override classify(error: unknown): ErrorClassification {
-    if (error instanceof LlmError) return error.classification;
     const msg = error instanceof Error ? error.message : String(error);
     if (/availability|not present/iu.test(msg)) return Classifications['MODEL_NOT_FOUND'];
-    if (/aborted|timeout/iu.test(msg)) return Classifications['TIMEOUT'];
-    return Classifications['UNKNOWN'];
+    return super.classify(error);
   }
 
   #collapseUserMessages(request: ChatRequest): string {
@@ -146,7 +144,7 @@ export class GeminiNanoAdapter extends BaseAdapter {
     return request.messages
       .filter((m) => m.role !== 'system')
       .map((m) => {
-        if (m.role === 'tool') return `[tool ${m.toolName.length > 0 ? m.toolName : 'unknown'} result] ${m.content}`;
+        if (m.role === 'tool') return BaseAdapter.formatToolResult(m);
         return m.content;
       })
       .join('\n\n');

@@ -17,6 +17,11 @@ export type { IpcEndpoint, IpcProcessLike } from './IpcChannel.js';
 export { MessagePortChannel } from './MessagePortChannel.js';
 export type { MessagePortLike } from './MessagePortChannel.js';
 export { NdjsonChannel } from './NdjsonChannel.js';
+export { NodeContainerBase } from './NodeContainerBase.js';
+export type {
+  NodeContainerBaseInterface,
+  NodeContainerBaseOptions,
+} from './NodeContainerBase.js';
 export { NodeSystemInfo } from './NodeSystemInfo.js';
 export type { NodeSystemInfoServices, OsServices } from './NodeSystemInfo.js';
 export { SpawnContainer } from './SpawnContainer.js';

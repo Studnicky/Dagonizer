@@ -86,9 +86,18 @@ export abstract class BaseAdapterCore {
     return Promise.resolve(true);
   }
 
-  /** Map a provider-native error into the shared classification. */
+  /**
+   * Map a provider-native error into the shared classification.
+   *
+   * Handles the two branches every adapter shares: an `LlmError` already
+   * carries its classification, and an abort/timeout `Error` message maps to
+   * `TIMEOUT`. Provider-specific subclasses add only their own branch (e.g.
+   * `MODEL_NOT_FOUND`) and then delegate to `super.classify` for these shared
+   * cases and the `UNKNOWN` fallback.
+   */
   protected classify(error: unknown): ErrorClassification {
     if (error instanceof LlmError) return error.classification;
+    if (error instanceof Error && /aborted|timeout/iu.test(error.message)) return Classifications['TIMEOUT'];
     return Classifications['UNKNOWN'];
   }
 

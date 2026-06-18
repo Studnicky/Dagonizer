@@ -25,7 +25,7 @@ export abstract class ComposeNode<
     context: NodeContextInterface<RagServices>,
   ): Promise<NodeOutputInterface<'success'>> {
     const response = await this.dispatch(state, context);
-    const draft = response.message.kind === 'tools' ? '' : response.message.content;
+    const draft = this.extractContent(response);
     this.applyDraft(state, draft);
     return NodeOutputBuilder.of('success');
   }

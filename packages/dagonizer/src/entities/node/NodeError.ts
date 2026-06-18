@@ -14,19 +14,31 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
+/**
+ * Single source of the `NodeError` JSON Schema `properties` block.
+ *
+ * Every entity that embeds an inline `NodeError` item shape (`NodeOutput`,
+ * `NodeStateData`, `ExecutionResponse`, `BridgeMessage`) references this const
+ * structurally (`properties: NodeErrorProperties`) instead of hand-copying the
+ * property block. `json-schema-to-ts` reads the literal at compile time, so the
+ * derived `FromSchema` types stay identical while a field change propagates
+ * from one place. Pair it with `NodeErrorSchema.required` at each inline site.
+ */
+export const NodeErrorProperties = {
+  'code': { 'type': 'string' },
+  'context': { 'type': 'object' },
+  'message': { 'type': 'string' },
+  'operation': { 'type': 'string' },
+  'recoverable': { 'type': 'boolean' },
+  'timestamp': { 'type': 'string' },
+} as const;
+
 export const NodeErrorSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/NodeError',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
   'required': ['code', 'context', 'message', 'operation', 'recoverable', 'timestamp'],
-  'properties': {
-    'code': { 'type': 'string' },
-    'context': { 'type': 'object' },
-    'message': { 'type': 'string' },
-    'operation': { 'type': 'string' },
-    'recoverable': { 'type': 'boolean' },
-    'timestamp': { 'type': 'string' },
-  },
+  'properties': NodeErrorProperties,
   'additionalProperties': false,
 } as const;
 

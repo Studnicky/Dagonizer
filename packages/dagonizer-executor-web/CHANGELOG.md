@@ -1,5 +1,15 @@
 # @studnicky/dagonizer-executor-web
 
+## [Unreleased]
+
+### Changed
+
+- `PostMessageChannel` extends the shared `BaseMessageChannel` from
+  `@studnicky/dagonizer/container`. The duplicated inbound-handler, closed-latch,
+  `onMessage`, and guarded-dispatch members live once in the base; the channel
+  keeps only its `postMessage` transport `send` and `addEventListener`
+  subscription. Runtime behavior is unchanged.
+
 ## 0.21.0
 
 ### Patch Changes

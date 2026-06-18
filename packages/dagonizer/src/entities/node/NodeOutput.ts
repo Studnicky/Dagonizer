@@ -4,11 +4,12 @@
  * The `output` field is the named port used to route to the next node.
  * Errors are collected and forwarded to state; they do not stop execution.
  *
- * The NodeError shape is inlined here (same approach used by DAGSchema
- * which inlines GatherConfig). Standalone NodeErrorSchema is authoritative for
- * that shape; this is a structural copy to avoid $ref resolution at compile time.
+ * The NodeError item shape references the single-source `NodeErrorProperties`
+ * const and `NodeErrorSchema.required` from `NodeError.ts` structurally;
+ * `json-schema-to-ts` reads the literal at compile time, so the derived type is
+ * identical to an inline copy while field changes propagate from one place.
  *
- * Both `errors` (on NodeOutput) and `context` (on each inlined error item) are
+ * Both `errors` (on NodeOutput) and `context` (on each error item) are
  * required — always present, no optional fields, one hidden class per shape.
  * V8 monomorphic.
  *
@@ -18,6 +19,7 @@
 
 import type { FromSchema } from 'json-schema-to-ts';
 
+import { NodeErrorProperties, NodeErrorSchema } from './NodeError.js';
 import type { NodeErrorInterface } from './NodeError.js';
 
 export const NodeOutputSchema = {
@@ -31,15 +33,8 @@ export const NodeOutputSchema = {
       'type': 'array',
       'items': {
         'type': 'object',
-        'required': ['code', 'context', 'message', 'operation', 'recoverable', 'timestamp'],
-        'properties': {
-          'code': { 'type': 'string' },
-          'context': { 'type': 'object' },
-          'message': { 'type': 'string' },
-          'operation': { 'type': 'string' },
-          'recoverable': { 'type': 'boolean' },
-          'timestamp': { 'type': 'string' },
-        },
+        'required': NodeErrorSchema.required,
+        'properties': NodeErrorProperties,
         'additionalProperties': false,
       },
     },

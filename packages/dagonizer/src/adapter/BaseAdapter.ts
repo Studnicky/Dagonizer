@@ -20,6 +20,7 @@
  */
 
 import type { LlmAdapter } from '../contracts/LlmAdapter.js';
+import type { ChatMessage } from '../entities/adapter/ChatMessage.js';
 
 import { BaseAdapterCore, type BaseAdapterCoreOptions } from './BaseAdapterCore.js';
 import type { AdapterCapabilities, ChatRequest, ChatResponse } from './LlmAdapter.js';
@@ -27,6 +28,20 @@ import { LlmError, MAX_QUOTA_WAIT_MS } from './LlmError.js';
 
 export abstract class BaseAdapter extends BaseAdapterCore implements LlmAdapter {
   readonly capabilities: AdapterCapabilities;
+
+  /**
+   * Format a `tool`-role message as the conversational line every text-only
+   * adapter feeds back into the next turn: `[tool <name> result] <content>`.
+   *
+   * Adapters whose provider has no native tool-result channel (gemini-nano,
+   * web-llm) flatten tool results into the prompt; this static is the single
+   * source of that string so the format never drifts between them. A blank
+   * `toolName` falls back to `unknown`.
+   */
+  static formatToolResult(message: Extract<ChatMessage, { 'role': 'tool' }>): string {
+    const toolName = message.toolName.length > 0 ? message.toolName : 'unknown';
+    return `[tool ${toolName} result] ${message.content}`;
+  }
 
   protected constructor(
     id: string,

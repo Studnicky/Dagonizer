@@ -21,7 +21,7 @@
  */
 
 import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
-import type { BaseAdapterCoreOptions } from '@studnicky/dagonizer/adapter';
+import type { BaseEmbedderOptions } from '@studnicky/dagonizer/adapter';
 import type { AbortableOptionsInterface } from '@studnicky/dagonizer/contracts';
 
 import { MistralEmbedResponseValidator } from './MistralEmbedResponse.js';
@@ -34,12 +34,12 @@ const MISTRAL_EMBEDDER_DEFAULTS = {
   'dimensions': 1024,
 } as const;
 
-export interface MistralEmbedderOptions extends BaseAdapterCoreOptions {
-  /** Override the embedding model. Defaults to `mistral-embed`. */
-  readonly model?: string;
-  /** Override dimensions when targeting a non-`mistral-embed` model. */
-  readonly dimensions?: number;
-}
+/**
+ * Constructor options for `MistralEmbedder`. Inherits `model?`/`dimensions?`
+ * from `BaseEmbedderOptions`; the provider default (`mistral-embed`, 1024-dim)
+ * is supplied by `MISTRAL_EMBEDDER_DEFAULTS`.
+ */
+export type MistralEmbedderOptions = BaseEmbedderOptions;
 
 export class MistralEmbedder extends BaseEmbedder {
   readonly #apiKey: string;

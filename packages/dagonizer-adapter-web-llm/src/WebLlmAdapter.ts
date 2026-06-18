@@ -148,11 +148,9 @@ export class WebLlmAdapter extends BaseAdapter {
   }
 
   protected override classify(error: unknown): ErrorClassification {
-    if (error instanceof LlmError) return error.classification;
     const msg = error instanceof Error ? error.message : String(error);
     if (/webgpu/iu.test(msg)) return Classifications['MODEL_NOT_FOUND'];
-    if (/aborted|timeout/iu.test(msg)) return Classifications['TIMEOUT'];
-    return Classifications['UNKNOWN'];
+    return super.classify(error);
   }
 
   #buildMessages(request: ChatRequest): ReadonlyArray<{ role: 'system' | 'user' | 'assistant'; content: string }> {
@@ -160,7 +158,7 @@ export class WebLlmAdapter extends BaseAdapter {
     for (const m of request.messages) {
       if (m.role === 'tool') {
         // Tool result rolled into the user channel as scaffolding.
-        messages.push({ 'role': 'user', 'content': `[tool ${m.toolName.length > 0 ? m.toolName : 'unknown'} result] ${m.content}` });
+        messages.push({ 'role': 'user', 'content': BaseAdapter.formatToolResult(m) });
         continue;
       }
       if (m.role === 'system' || m.role === 'user' || m.role === 'assistant') {

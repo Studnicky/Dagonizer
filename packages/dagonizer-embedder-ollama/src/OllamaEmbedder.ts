@@ -31,7 +31,7 @@
  */
 
 import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
-import type { BaseAdapterCoreOptions } from '@studnicky/dagonizer/adapter';
+import type { BaseEmbedderOptions } from '@studnicky/dagonizer/adapter';
 import type { AbortableOptionsInterface } from '@studnicky/dagonizer/contracts';
 
 import { OllamaEmbedResponseValidator } from './OllamaEmbedResponse.js';
@@ -82,23 +82,13 @@ const KNOWN_DIMENSIONS: Readonly<Record<string, number>> = {
  * needs no key at all. `apiKey` therefore lives in the options bag and is
  * omitted for local usage.
  */
-export interface OllamaEmbedderOptions extends BaseAdapterCoreOptions {
-  /**
-   * Embedding model name. Must match a model pulled on the target server.
-   * Defaults to `'nomic-embed-text'`.
-   */
-  readonly model?: string;
+export interface OllamaEmbedderOptions extends BaseEmbedderOptions {
   /**
    * Base URL of the Ollama server.
    * Local default: `'http://127.0.0.1:11434'`.
    * Ollama Cloud: set to `'https://api.ollama.ai'` (or the documented cloud endpoint).
    */
   readonly baseUrl?: string;
-  /**
-   * Explicit dimensions. Required for models not in the built-in table.
-   * Otherwise auto-resolved from `KNOWN_DIMENSIONS`.
-   */
-  readonly dimensions?: number;
   /**
    * API key for Ollama Cloud authentication.
    * When present, requests include `Authorization: Bearer <apiKey>`.

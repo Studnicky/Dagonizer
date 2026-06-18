@@ -1,5 +1,13 @@
 # @studnicky/dagonizer-patterns-rag
 
+## [Unreleased]
+
+### Changed
+
+- `LlmDispatchNode` owns `extractContent(response)`, which extracts prose
+  from the chat-response discriminated union once. `DecisionNode` and
+  `ComposeNode` call it instead of repeating the tool-vs-text guard.
+
 ## 0.21.0
 
 ## 0.20.0
