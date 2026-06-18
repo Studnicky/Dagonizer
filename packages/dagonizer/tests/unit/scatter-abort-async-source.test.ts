@@ -20,16 +20,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
 import type { ScatterProgress } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 // ── test state ────────────────────────────────────────────────────────────────
 
@@ -110,12 +109,10 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
 
     const dispatcher = new Dagonizer<AbortState>();
 
-    class WorkerNode implements NodeInterface<AbortState, 'success'> {
+    class WorkerNode extends ScalarNode<AbortState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: AbortState, context: NodeContextInterface) {
+      protected async executeOne(state: AbortState, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
         // Simulate some async work.
         await new Promise<void>((resolve, reject) => {
           const handle = setTimeout(resolve, 2);
@@ -165,9 +162,11 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     assert.ok(entry !== undefined, 'expected a progress entry for placement "fan"');
 
     // 3. Not all items were acked — the acked count must be fewer than total.
-    //    If the defect is present, ackedResults.length === TOTAL_ITEMS and the
+    //    If the defect is present, ackedCount === TOTAL_ITEMS and the
     //    test fails here, exposing the silent data-loss.
-    const ackedCount = entry.ackedResults.length;
+    const ackedCount = entry.mode === 'bounded'
+      ? entry.watermark + entry.aheadAcked.length
+      : entry.ackedResults.length;
     assert.ok(
       ackedCount < TOTAL_ITEMS,
       `only ${ackedCount} of ${TOTAL_ITEMS} items should be acked after abort; ` +
@@ -184,12 +183,10 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     //    must supply the remainder. We test the simpler array-based resume path
     //    to confirm the checkpoint is usable.)
     const resumeDispatcher = new Dagonizer<AbortState>();
-    class ResumeWorkerNode implements NodeInterface<AbortState, 'success'> {
+    class ResumeWorkerNode extends ScalarNode<AbortState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: AbortState) {
+      protected async executeOne(state: AbortState): Promise<NodeOutputInterface<'success'>> {
         state.processed.push(state.getMetadata<number>('item') ?? -1);
         return { 'errors': [], 'output': 'success' as const };
       }
@@ -256,12 +253,10 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
   void it('pre-aborted signal: pull-loop exits before processing any items', async () => {
     const dispatcher = new Dagonizer<AbortState>();
 
-    class PreAbortWorkerNode implements NodeInterface<AbortState, 'success'> {
+    class PreAbortWorkerNode extends ScalarNode<AbortState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: AbortState) {
+      protected async executeOne(state: AbortState): Promise<NodeOutputInterface<'success'>> {
         state.processed.push(state.getMetadata<number>('item') ?? -1);
         return { 'errors': [], 'output': 'success' as const };
       }
@@ -301,12 +296,10 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     const executedItems: number[] = [];
 
     const dispatcher = new Dagonizer<AbortState>();
-    class ExactlyOnceWorkerNode implements NodeInterface<AbortState, 'success'> {
+    class ExactlyOnceWorkerNode extends ScalarNode<AbortState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: AbortState, context: NodeContextInterface) {
+      protected async executeOne(state: AbortState, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
         await new Promise<void>((resolve, reject) => {
           const handle = setTimeout(resolve, 1);
           context.signal.addEventListener('abort', () => {
@@ -360,12 +353,10 @@ void describe('R1 — scatter abort with async-iterable source: data-loss regres
     // Resume with fresh dispatcher.
     const resumeItems: number[] = [];
     const resumeDispatcher = new Dagonizer<AbortState>();
-    class ExactlyOnceResumeWorkerNode implements NodeInterface<AbortState, 'success'> {
+    class ExactlyOnceResumeWorkerNode extends ScalarNode<AbortState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: AbortState) {
+      protected async executeOne(state: AbortState): Promise<NodeOutputInterface<'success'>> {
         const item = state.getMetadata<number>('item') ?? -1;
         resumeItems.push(item);
         state.processed.push(item);

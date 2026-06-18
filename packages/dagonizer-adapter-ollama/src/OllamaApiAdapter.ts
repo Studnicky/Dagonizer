@@ -109,9 +109,10 @@ export class OllamaApiAdapter extends OpenAiCompatibleAdapter {
   /**
    * Probe true when the Ollama daemon answers a GET against
    * `/api/tags` (the native model-list endpoint) with 2xx inside a
-   * short timeout. Replaces the inherited key-presence probe. Ollama
-   * uses a placeholder bearer and gates availability on the daemon
-   * being reachable, not on credentials. Never throws.
+   * short timeout. Ollama uses a placeholder bearer and gates
+   * availability on the daemon being reachable, not on credentials,
+   * so availability turns on the daemon answering rather than on
+   * key presence. Never throws.
    */
   override async probe(): Promise<boolean> {
     const controller = new AbortController();

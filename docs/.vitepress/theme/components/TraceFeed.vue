@@ -18,7 +18,7 @@ import type { ConsoleLogger, LogEvent } from '../../../../examples/the-archivist
 
 type TraceEntry =
   | { readonly kind: 'start'; readonly node: string; readonly ts: number }
-  | { readonly kind: 'end';   readonly node: string; readonly ts: number; readonly output: string | undefined }
+  | { readonly kind: 'end';   readonly node: string; readonly ts: number; readonly output: string | null }
   | { readonly kind: 'error'; readonly node: string; readonly ts: number; readonly message: string };
 
 /** Discriminated union for the merged feed. */
@@ -84,7 +84,7 @@ function timeFor(ts: number): string {
         <template v-if="item.feedKind === 'trace'">
           <span :class="['tf-kind', `tf-kind-${item.entry.kind}`]">{{ item.entry.kind }}</span>
           <code class="tf-node tf-node-clickable" role="button" tabindex="0" @click="emit('node-click', item.entry.node)" @keydown.enter="emit('node-click', item.entry.node)">{{ item.entry.node }}</code>
-          <span v-if="item.entry.kind === 'end' && item.entry.output !== undefined" class="tf-output">→ {{ item.entry.output }}</span>
+          <span v-if="item.entry.kind === 'end' && item.entry.output !== null" class="tf-output">→ {{ item.entry.output }}</span>
           <span v-else-if="item.entry.kind === 'error'" class="tf-error-message">{{ item.entry.message }}</span>
           <span v-else class="tf-output"></span>
         </template>

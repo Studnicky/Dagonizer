@@ -16,6 +16,7 @@
  * The compiled output lands at examples/dist/dags/12-workers.registry.js.
  */
 
+// #region registry
 import type { RegistryBundleInterface, RegistryModuleInterface } from '@noocodex/dagonizer/contracts';
 import { CheckpointRestoreAdapterFn } from '@noocodex/dagonizer/checkpoint';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
@@ -37,3 +38,4 @@ const registry: RegistryModuleInterface = {
 };
 
 export default registry;
+// #endregion registry

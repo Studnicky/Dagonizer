@@ -43,3 +43,52 @@ process.stdout.write(`  off_topic → "${offTopic.reply}"\n`);
 process.stdout.write('\nLesson: both outputs of classify route to the same placement;\n');
 process.stdout.write('        a TerminalNode marks the explicit end of the flow.\n');
 // #endregion run
+
+// #region registry-read
+// Read accessors: getDAG, getNode, listDAGs, listNodes.
+// All return fresh shallow copies; mutations do not affect the registry.
+const registeredDag  = dispatcher.getDAG('chat');       // DAG | undefined
+const registeredNode = dispatcher.getNode('classify');  // NodeInterface<...> | undefined
+const allDags        = dispatcher.listDAGs();            // readonly DAG[]
+const allNodes       = dispatcher.listNodes();           // readonly NodeInterface<...>[]
+void registeredDag; void registeredNode; void allDags; void allNodes;
+// #endregion registry-read
+
+// ---------------------------------------------------------------------------
+// execute() return modes: awaitable and async-iterable (doc regions)
+// ---------------------------------------------------------------------------
+
+// #region execute-await
+// Awaitable form: await the execution for the final ExecutionResultInterface.
+//   result.state         the final state (same reference as input)
+//   result.cursor        null if completed; a node name if interrupted
+//   result.executedNodes ordered array of nodes that ran
+//   result.skippedNodes  nodes that were skipped (e.g. empty scatter source)
+const awaitDispatcher = new Dagonizer<ChatState>();
+awaitDispatcher.registerNode(new ClassifyNode());
+awaitDispatcher.registerNode(new RespondNode());
+awaitDispatcher.registerDAG(dag);
+
+const awaitState = new ChatState();
+awaitState.input = 'How do I await a Promise in TypeScript?';
+const result = await awaitDispatcher.execute('chat', awaitState);
+void result; // result.state, result.cursor, result.executedNodes, result.skippedNodes
+// #endregion execute-await
+
+// #region execute-iterable
+// Async-iterable form: one NodeResult event per node as the flow runs.
+// The flow body runs once; both modes share the same internal generator.
+const iterDispatcher = new Dagonizer<ChatState>();
+iterDispatcher.registerNode(new ClassifyNode());
+iterDispatcher.registerNode(new RespondNode());
+iterDispatcher.registerDAG(dag);
+
+const iterState = new ChatState();
+iterState.input = 'Explain generics in TypeScript';
+const execution = iterDispatcher.execute('chat', iterState);
+for await (const nodeResult of execution) {
+  process.stdout.write(`  node=${nodeResult.nodeName} output=${String(nodeResult.output)}\n`);
+}
+const iterResult = await execution; // cached — generator ran once; returns same result
+void iterResult;
+// #endregion execute-iterable

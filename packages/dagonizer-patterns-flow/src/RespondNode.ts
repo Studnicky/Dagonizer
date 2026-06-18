@@ -25,7 +25,7 @@ export abstract class RespondNode<
 
   protected abstract emit(state: TState, draft: string): void;
 
-  async execute(
+  protected override async executeOne(
     state: TState,
     _context: NodeContextInterface<undefined>,
   ): Promise<NodeOutputInterface<'success'>> {

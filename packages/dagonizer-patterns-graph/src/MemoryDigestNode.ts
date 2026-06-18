@@ -20,7 +20,7 @@ export abstract class MemoryDigestNode<
   protected abstract applyDigest(state: TState, digest: TDigest): void;
 
 
-  async execute(
+  protected override async executeOne(
     state: TState,
     context: NodeContextInterface<GraphServices>,
   ): Promise<NodeOutputInterface<'success'>> {

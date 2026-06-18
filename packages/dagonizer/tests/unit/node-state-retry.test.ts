@@ -57,13 +57,18 @@ void describe('NodeStateBase: retry attempts', () => {
     state.recordAttempt('decide-tools');
 
     const snap = state.snapshot();
+    // The snapshot carries the retry counter alongside empty metadata/warnings.
     assert.deepEqual(snap['retries'], { 'extract-query': 2, 'decide-tools': 1 });
+    assert.deepEqual(snap['metadata'], {});
+    assert.deepEqual(snap['warnings'], []);
 
     const restored = NodeStateBase.restore(snap);
     assert.equal(restored.retriesFor('extract-query'), 2);
     assert.equal(restored.retriesFor('decide-tools'), 1);
+    assert.equal(restored.retriesFor('never-recorded'), 0);
 
     // A resumed node continues counting from where it paused.
     assert.equal(restored.withinRetryBudget('extract-query', 3), false); // attempt 3 → salvage
+    assert.equal(restored.retriesFor('extract-query'), 3);
   });
 });

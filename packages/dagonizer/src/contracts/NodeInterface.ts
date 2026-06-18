@@ -1,9 +1,11 @@
+import type { Batch } from '../core/batch/Batch.js';
+import type { RoutedBatch } from '../core/batch/RoutedBatch.js';
 import type { Node } from '../entities/node/Node.js';
 import type { NodeContextInterface } from '../entities/node/NodeContext.js';
-import type { NodeOutputInterface } from '../entities/node/NodeOutput.js';
 import type { ValidationResult } from '../entities/validation/ValidationResult.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import type { Timeout } from '../runtime/Timeout.js';
+
 
 import type { OperationContractFragment } from './OperationContractFragment.js';
 
@@ -52,15 +54,15 @@ export interface NodeInterface<
   readonly 'timeout': Timeout;
 
   /**
-   * Execute the node, mutating state.
-   * Returns a result indicating which output port to route to.
+   * Execute the node over a batch of states.
+   * Returns a `RoutedBatch` mapping each output port to the items that routed there.
    * Never throws; catches all errors internally and routes to error output.
    *
    * `context` carries the abort signal, the names of the flow/stage being
    * executed, and the dispatcher's services bag. Long-running nodes should
    * propagate `context.signal` to any awaitable IO.
    */
-  execute(state: TState, context: NodeContextInterface<TServices>): Promise<NodeOutputInterface<TOutput>>;
+  execute(batch: Batch<TState>, context: NodeContextInterface<TServices>): Promise<RoutedBatch<TOutput, TState>>;
 
   readonly 'name': string;
 

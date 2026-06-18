@@ -19,9 +19,8 @@ import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 import { TimeNormalizer } from '../../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region coerce-types-node
@@ -33,9 +32,7 @@ const NUMERIC_FIELDS = [
 
 const BOOLEAN_FIELDS = ['marketingConsent', 'delivered'] as const;
 
-export class CoerceTypesNode implements NodeInterface<CartographerState, 'validate-event', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class CoerceTypesNode extends ScalarNode<CartographerState, 'validate-event', CartographerServices> {
   readonly 'name' = 'coerce-types';
   readonly 'outputs' = ['validate-event'] as const;
 
@@ -54,10 +51,7 @@ export class CoerceTypesNode implements NodeInterface<CartographerState, 'valida
     return false;
   }
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'validate-event'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'validate-event'>> {
     const coerced: Array<Record<string, unknown>> = state.mappedRecords.map((rec) => {
       const out: Record<string, unknown> = { ...rec };
       for (const field of NUMERIC_FIELDS) {
@@ -84,4 +78,6 @@ export class CoerceTypesNode implements NodeInterface<CartographerState, 'valida
     return NodeOutputBuilder.of('validate-event');
   }
 }
+
+export const coerceTypes = new CoerceTypesNode();
 // #endregion coerce-types-node

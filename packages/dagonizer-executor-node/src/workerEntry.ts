@@ -10,7 +10,7 @@
  *   new URL('./workerEntry.js', import.meta.url)
  */
 
-import { parentPort } from 'node:worker_threads';
+import { isMainThread, parentPort } from 'node:worker_threads';
 
 import { DagHost } from '@noocodex/dagonizer/container';
 
@@ -44,4 +44,9 @@ export class WorkerEntry {
   }
 }
 
-WorkerEntry.start();
+// Auto-start only inside a worker thread (new Worker(workerEntry.js) under
+// WorkerThreadContainer). Importing this module via the package barrel on the
+// main thread leaves isMainThread true, so the bootstrap is skipped.
+if (!isMainThread) {
+  WorkerEntry.start();
+}

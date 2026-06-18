@@ -15,6 +15,8 @@
  *   new URL('./spawnEntry.js', import.meta.url)
  */
 
+import { pathToFileURL } from 'node:url';
+
 import { DagHost } from '@noocodex/dagonizer/container';
 
 import { NdjsonChannel } from './NdjsonChannel.js';
@@ -43,4 +45,9 @@ export class SpawnEntry {
   }
 }
 
-SpawnEntry.start();
+// Auto-start only when this module is the process entrypoint (node spawnEntry.js
+// under SpawnContainer). Importing it via the package barrel leaves argv[1]
+// pointing at the host's own entry, so the bootstrap is skipped.
+if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  SpawnEntry.start();
+}

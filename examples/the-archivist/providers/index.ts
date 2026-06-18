@@ -8,7 +8,6 @@
  *   cerebras     →  Cerebras REST (llama-3.3-70b, free tier)
  *   mistral      →  Mistral AI REST (mistral-small-latest, free tier)
  *   openrouter   →  OpenRouter REST (llama-3.3-70b-instruct:free, free-tier models)
- *   stub         →  canned responses, always available
  *
  * Every backend is one `LlmAdapter` (transport + native tool format)
  * wrapped by `BaseLlmClient` (prompt choreography). The choice between
@@ -22,14 +21,13 @@
  * `BackendMatrix.pickBest(backends, { isMobile })` excludes on-device backends
  * when `isMobile` is true, then ranks remaining runnable entries by
  * priority: groq → cerebras → gemini-api → mistral → openrouter →
- * gemini-nano (browser built-in) → web-llm → stub.
+ * gemini-nano (browser built-in) → web-llm.
  *
  * API keys are stored as a JSON blob in `dagonizer-api-keys` in
  * localStorage, keyed by `ProviderId`. Use `ApiKeyStore.load()` /
  * `ApiKeyStore.save()` to read/write.
  */
 
-import type { MemoryStore } from '../memory/MemoryStore.ts';
 import type { LlmClient } from '../services.ts';
 
 import {
@@ -40,7 +38,6 @@ import {
   MistralApiAdapter,
   OllamaApiAdapter,
   OpenRouterApiAdapter,
-  ArchivistStub,
   WebLlmAdapter,
   OllamaProbe,
   type GeminiNanoAvailability,
@@ -57,12 +54,9 @@ export type ProviderId =
   | 'cerebras'
   | 'mistral'
   | 'openrouter'
-  | 'ollama'
-  | 'stub';
+  | 'ollama';
 
-/** Backends visible in the browser picker. Stub is included so mobile
- *  callers can surface it as a zero-setup fallback; `BackendMatrix.browserVisible`
- *  filters it out for desktop where on-device options exist. */
+/** Backends visible in the browser picker. */
 const BROWSER_VISIBLE: readonly ProviderId[] = [
   'gemini-nano',
   'gemini-api',
@@ -72,13 +66,12 @@ const BROWSER_VISIBLE: readonly ProviderId[] = [
   'mistral',
   'openrouter',
   'ollama',
-  'stub',
 ];
 
 /**
  * Priority order for `BackendMatrix.pickBest`. Cloud APIs first (no download,
  * works everywhere with a free key), then local daemon, then on-device
- * inference. Lower index = higher priority.
+ * inference.
  */
 const PRIORITY_ORDER: readonly ProviderId[] = [
   'groq',          // cloud, fast, reliable structured output
@@ -89,7 +82,6 @@ const PRIORITY_ORDER: readonly ProviderId[] = [
   'ollama',        // local daemon (needs model pulled)
   'gemini-nano',   // browser built-in LanguageModel
   'web-llm',       // browser WASM
-  'stub',          // last-resort fallback
 ];
 
 /** Backends that need a local/desktop runtime, excluded on mobile. */
@@ -147,8 +139,6 @@ export interface InstantiateInputs {
    * override with a specific model the host has pulled.
    */
   readonly ollamaModel?: string;
-  /** Passed to StubAdapter so canned responses cite real seed-library titles. */
-  readonly memoryStore?: MemoryStore;
 }
 
 /**
@@ -328,24 +318,12 @@ export class BackendMatrix {
           : `Local daemon detected; using installed model "${ollamaModel}".`,
     });
 
-    // Stub is always emitted last. The picker uses BackendMatrix.browserVisible
-    // to hide it on desktop (where on-device options exist), but on mobile
-    // it is the guaranteed zero-setup fallback.
-    out.push({
-      'id':           'stub',
-      'displayName':  'Canned responses (no real LLM)',
-      'runnable':     true,
-      'needsAction':  null,
-      'hint':         'Pattern-matched offline responses. Demonstrates the DAG without an API key. Add a key above for real model output.',
-    });
     return out;
   }
 
   /**
    * Pick the highest-priority runnable backend. Filters desktop-only backends
-   * when `options.isMobile` is true. On mobile, falls back to the stub row
-   * when no cloud backend is runnable so the demo always starts. Returns
-   * `null` only on desktop when nothing is runnable.
+   * when `options.isMobile` is true. Returns `null` when nothing is runnable.
    */
   static pickBest(
     available: readonly BackendAvailability[],
@@ -356,8 +334,6 @@ export class BackendMatrix {
 
     for (const id of PRIORITY_ORDER) {
       if (isMobile && DESKTOP_ONLY.includes(id)) continue;
-      // On desktop, skip stub: visitors have real keyless options via Nano/WebLLM.
-      if (!isMobile && id === 'stub') continue;
       if (!BROWSER_VISIBLE.includes(id)) continue;
       const entry = byId.get(id);
       if (entry !== undefined && entry.runnable) return entry;
@@ -366,32 +342,24 @@ export class BackendMatrix {
   }
 
   /**
-   * True when no real model is available and the visitor must enable one.
-   * On mobile this always returns false. The stub is the guaranteed fallback,
-   * so mobile visitors never see the no-model gate.
+   * True when no model is available and the visitor must enable one.
    */
   static hasNoRunnableModel(
     available: readonly BackendAvailability[],
     options: PickBestOptions = {},
   ): boolean {
-    // Mobile path: stub is always runnable, so bypass the gate entirely.
-    if (options.isMobile === true) return false;
     return BackendMatrix.pickBest(available, options) === null;
   }
 
   /**
    * Returns the subset of `BROWSER_VISIBLE` backends appropriate for the
-   * given device context. On mobile, stub is included (zero-setup fallback)
-   * and desktop-only backends are excluded. On desktop, stub is excluded
-   * (on-device options like Browser built-in LanguageModel and WebLLM are available).
+   * given device context. On mobile, desktop-only backends are excluded.
    */
   static browserVisible(isMobile: boolean): readonly ProviderId[] {
     if (isMobile) {
-      // Stub IS visible on mobile (zero-setup fallback); desktop-only backends hidden.
       return BROWSER_VISIBLE.filter((id) => !DESKTOP_ONLY.includes(id));
     }
-    // Desktop: hide stub (visitors have real keyless options via nano/web-llm).
-    return BROWSER_VISIBLE.filter((id) => id !== 'stub');
+    return BROWSER_VISIBLE;
   }
 }
 
@@ -455,12 +423,6 @@ export class ProviderInstantiator {
           typeof model === 'string' && model.length > 0 ? { 'model': model } : {},
         ));
       }
-      case 'stub': {
-        if (inputs.memoryStore === undefined) {
-          throw new LlmError('stub requires a memoryStore so canned responses cite real seed-library titles', { 'reason': 'AUTH_FAILED', 'retryable': false });
-        }
-        return new BaseLlmClient(new ArchivistStub({ 'memoryStore': inputs.memoryStore }));
-      }
       default: {
         const exhaustive: never = id;
         throw new LlmError(`unknown provider id: ${String(exhaustive)}`, { 'reason': 'UNKNOWN', 'retryable': false });
@@ -470,7 +432,7 @@ export class ProviderInstantiator {
 }
 
 /**
- * Backward-compatible named exports for existing call sites.
+ * Free-function aliases for the provider store and detection static methods.
  */
 export const loadApiKeys = (): Partial<Record<ProviderId, string>> => ApiKeyStore.load();
 export const saveApiKeys = (keys: Partial<Record<ProviderId, string>>): void => { ApiKeyStore.save(keys); };
@@ -502,7 +464,6 @@ export {
   MistralApiAdapter,
   OllamaApiAdapter,
   OpenRouterApiAdapter,
-  ArchivistStub,
   WebLlmAdapter,
   OllamaProbe,
   detectOllama,

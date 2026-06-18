@@ -3,11 +3,10 @@
  * memory graph.
  *
  * Loaded into `urn:dagonizer:memory` on mount so the Memory tab has
- * content from first paint. The stub adapter queries this library to
- * ground canned responses in real titles from the visible graph.
+ * content from first paint.
  *
  * All ISBNs are ISBN-13, search-engine-verifiable. Subjects are
- * lowercase with hyphens; used for substring matching by the stub.
+ * lowercase with hyphens.
  */
 
 import { GRAPH_MEMORY, MemoryStore } from '../memory/MemoryStore.js';

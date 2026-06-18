@@ -2,18 +2,20 @@
  * 25-embedder: embedding surface — registry, cascade, and cosine similarity.
  *
  * Shows how to:
- *   1. Subclass `BaseEmbedder` to create a deterministic stub embedder
- *      (no API key, no network). The stub produces a fixed-dimension vector
- *      where each element is a hash-derived value so identical strings yield
- *      the same vector and similar strings yield a measurably higher cosine
- *      similarity than unrelated ones.
- *   2. Register the stub in an `EmbedderRegistry` under a (provider, model) key.
- *   3. Wire an `EmbedderCascade` with a preference list; it probes and selects
+ *   1. Register two OllamaEmbedder instances in an EmbedderRegistry under
+ *      different (provider, model) keys.
+ *   2. Wire an EmbedderCascade with a preference list; it probes and selects
  *      the first available embedder.
- *   4. Inject the selected embedder into state and embed two text strings inside
+ *   3. Inject the selected embedder into state and embed two text strings inside
  *      a DAG node, then compute cosine similarity between their vectors.
  *
- * No credentials required: the stub embedder runs entirely offline.
+ * Prerequisites:
+ *   - Ollama installed and running on the default port (11434).
+ *   - The embedding model pulled: ollama pull nomic-embed-text
+ *
+ * Cascade shape: the primary embedder targets port 1 (unreachable) so its
+ * probe() returns false and the cascade skips it. The fallback targets the
+ * default loopback and is selected when Ollama is running.
  *
  * DAG definition: examples/dags/25-embedder.ts
  *
@@ -22,77 +24,51 @@
 
 import { Dagonizer } from '@noocodex/dagonizer';
 import {
-  BaseEmbedder,
   EmbedderRegistry,
   EmbedderCascade,
 } from '@noocodex/dagonizer/adapter';
+import { OllamaEmbedder } from '@noocodex/dagonizer-embedder-ollama';
 
 import { EmbedderState, EmbedNode, ReportNode, dag, VectorSimilarity } from './dags/25-embedder.js';
 
 // ---------------------------------------------------------------------------
-// 1. Deterministic stub embedder.
+// 1. Registry + Cascade
 //
-//    Produces a 16-dimensional vector from a simple djb2 hash of the input
-//    text. The vector is deterministic (same text → same vector) and
-//    normalised to unit length. Semantically identical strings produce
-//    identical vectors (cosine = 1.0); different strings produce vectors
-//    with measurably lower similarity.
-//
-//    This class is a minimal but complete BaseEmbedder subclass: it fills
-//    the required `id`, `displayName`, `dimensions` constructor args and
-//    implements the one abstract method `performEmbed()`.
-// ---------------------------------------------------------------------------
-
-const DIMS = 16;
-
-class DeterministicStubEmbedder extends BaseEmbedder {
-  constructor() {
-    super('stub', 'Deterministic hash embedder (no model)', DIMS);
-  }
-
-  protected override async performEmbed(text: string, _signal: AbortSignal): Promise<readonly number[]> {
-    const raw: number[] = Array<number>(DIMS).fill(0);
-
-    // djb2 hash spread across dimensions
-    let hash = 5381;
-    for (let ci = 0; ci < text.length; ci++) {
-      const ch = text.charCodeAt(ci);
-      hash = ((hash << 5) + hash) ^ ch;  // hash * 33 XOR charCode
-      hash = hash | 0;                   // keep as int32
-      const dim = ci % DIMS;
-      raw[dim] = (raw[dim] ?? 0) + Math.sin(hash);
-    }
-
-    // Normalize to unit length so cosine = dot product
-    const norm = Math.sqrt(raw.reduce((acc, v) => acc + v * v, 0));
-    const unit: number[] = norm === 0 ? raw : raw.map((v) => v / norm);
-    return Promise.resolve(unit);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 2. Registry + Cascade
+//    Primary: points at port 1 (unreachable). probe() returns false → skipped.
+//    Fallback: default loopback, nomic-embed-text (768-dim). probe() returns
+//    true when Ollama is running → selected.
 // ---------------------------------------------------------------------------
 
 const embedderRegistry = new EmbedderRegistry();
+
 embedderRegistry.register(
   {
-    'provider':     'stub',
-    'model':        'deterministic-hash-v1',
+    'provider':     'ollama-remote',
+    'model':        'nomic-embed-text',
     'capabilities': { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false },
   },
-  () => new DeterministicStubEmbedder(),
+  () => new OllamaEmbedder({ 'model': 'nomic-embed-text', 'baseUrl': 'http://127.0.0.1:1' }), // unreachable → probe false
+);
+
+embedderRegistry.register(
+  {
+    'provider':     'ollama-local',
+    'model':        'nomic-embed-text',
+    'capabilities': { 'toolUse': 'none', 'structuredOutput': false, 'jsonMode': false },
+  },
+  () => new OllamaEmbedder({ 'model': 'nomic-embed-text' }),  // default loopback → probe true when Ollama is running
 );
 
 const cascade = new EmbedderCascade(embedderRegistry, [
-  { 'provider': 'stub', 'model': 'deterministic-hash-v1' },
+  { 'provider': 'ollama-remote', 'model': 'nomic-embed-text' },  // probes false → skipped
+  { 'provider': 'ollama-local',  'model': 'nomic-embed-text' },  // probes true → selected
 ]);
 
 const embedder = await cascade.select();
 process.stdout.write(`\nEmbedder cascade selected: "${embedder.displayName}" (${embedder.id}, ${String(embedder.dimensions)}d)\n\n`);
 
 // ---------------------------------------------------------------------------
-// 3. DAG execution: embed two pairs and compute similarity
+// 2. DAG execution: embed two pairs and compute similarity
 // ---------------------------------------------------------------------------
 
 const dispatcher = new Dagonizer<EmbedderState>();
@@ -118,7 +94,7 @@ stateC.textA    = 'avocado toast';
 stateC.textB    = 'quantum entanglement';
 stateC.embedder = embedder;
 
-process.stdout.write('Cosine similarities (deterministic hash embedder):\n');
+process.stdout.write('Cosine similarities (nomic-embed-text via Ollama):\n');
 await dispatcher.execute('embedder-demo', stateA);
 await dispatcher.execute('embedder-demo', stateB);
 await dispatcher.execute('embedder-demo', stateC);
@@ -126,8 +102,8 @@ await dispatcher.execute('embedder-demo', stateC);
 // Verify dimensions and unit-norm contract
 const vec = await embedder.embed('hello world');
 const norm = Math.sqrt(vec.reduce((acc, v) => acc + v * v, 0));
-process.stdout.write(`\nVector dimensions: ${String(vec.length)}  (expected ${String(DIMS)})\n`);
-process.stdout.write(`Vector L2 norm:    ${norm.toFixed(6)}  (expected 1.000000 — unit normalised)\n`);
+process.stdout.write(`\nVector dimensions: ${String(vec.length)}  (expected 768 for nomic-embed-text)\n`);
+process.stdout.write(`Vector L2 norm:    ${norm.toFixed(6)}\n`);
 process.stdout.write(`Self-similarity:   ${VectorSimilarity.cosine(vec, vec).toFixed(4)}  (expected 1.0000)\n`);
 process.stdout.write(`\nLesson: EmbedderCascade selects the first embedder whose probe() is true.\n`);
-process.stdout.write(`        BaseEmbedder subclasses implement one method: performEmbed(text, signal).\n`);
+process.stdout.write(`        OllamaEmbedder.embed(text) returns a float[] from nomic-embed-text.\n`);

@@ -2,11 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 void describe('Dagonizer scatter gather strategies', () => {
   void it('partition routes items by output into distinct target paths', async () => {
@@ -16,12 +15,10 @@ void describe('Dagonizer scatter gather strategies', () => {
       odds: number[];
     }
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class ClassifyNode implements NodeInterface<NodeStateBase, 'even' | 'odd'> {
+    class ClassifyNode extends ScalarNode<NodeStateBase, 'even' | 'odd'> {
       readonly name = 'classify';
       readonly outputs = ['even', 'odd'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: NodeStateBase) {
+      protected async executeOne(state: NodeStateBase): Promise<NodeOutputInterface<'even' | 'odd'>> {
         const n = state.getMetadata<number>('item') ?? 0;
         return { 'errors': [], 'output': n % 2 === 0 ? 'even' as const : 'odd' as const };
       }
@@ -58,19 +55,15 @@ void describe('Dagonizer scatter gather strategies', () => {
     let seenResults: GatherResultRecord[] | undefined;
 
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class ClsNode implements NodeInterface<NodeStateBase, 'success'> {
+    class ClsNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'classify';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(_state: NodeStateBase) { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
-    class MergeNode implements NodeInterface<NodeStateBase, 'success'> {
+    class MergeNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'merge';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: NodeStateBase) {
+      protected async executeOne(state: NodeStateBase): Promise<NodeOutputInterface<'success'>> {
         seenResults = state.getMetadata<GatherResultRecord[]>('gatherResults');
         return { 'errors': [], 'output': 'success' as const };
       }
@@ -112,12 +105,10 @@ void describe('Dagonizer scatter gather strategies', () => {
     interface S extends NodeStateBase { items: number[]; out: number[] }
 
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class PassThroughNode implements NodeInterface<NodeStateBase, 'success'> {
+    class PassThroughNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'passThrough';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(_state: NodeStateBase) { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     const passThrough = new PassThroughNode();
     dispatcher.registerNode(passThrough);
@@ -152,12 +143,10 @@ void describe('Dagonizer scatter gather strategies', () => {
     // so the target is always an array. This is the documented behavior change
     // introduced with native streaming scatter (§A.3.4).
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class ProduceNode implements NodeInterface<NodeStateBase, 'success'> {
+    class ProduceNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'produce';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: NodeStateBase) {
+      protected async executeOne(state: NodeStateBase): Promise<NodeOutputInterface<'success'>> {
         state.setMetadata('answer', 'hello');
         return { 'errors': [], 'output': 'success' as const };
       }
@@ -201,12 +190,10 @@ void describe('Dagonizer scatter gather strategies', () => {
     let inFlight = 0;
     let peak = 0;
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class SlowNode implements NodeInterface<NodeStateBase, 'success'> {
+    class SlowNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'slow';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(_state: NodeStateBase) {
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
         inFlight++;
         peak = Math.max(peak, inFlight);
         await new Promise<void>((r) => setImmediate(r));

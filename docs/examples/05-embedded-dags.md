@@ -49,16 +49,7 @@ The `#embedded-dag-placements` region covers only the `.embeddedDAG(...)` calls:
 
 An `EmbeddedDAGNode` placement's outputs map routes each output to a named `TerminalNode` placement declared via `.terminal(name, options?)`. Every output must target a named node — all flow branches end at an explicit `TerminalNode`.
 
-```ts
-// named terminals: error path marks the parent flow as failed
-.embeddedDAG('invoke', 'child', { success: 'end-ok', error: 'end-fail' })
-.terminal('end-ok')
-.terminal('end-fail', { outcome: 'failed' })
-
-// single outcome: both outputs end as completed
-.embeddedDAG('invoke', 'child', { success: 'end', error: 'end' })
-.terminal('end')
-```
+<<< @/../examples/dags/05-embedded-dags.ts#parent-dag
 
 See [Phase 09: Terminal placements](./09-terminals) for the full pattern with runnable examples.
 
@@ -77,19 +68,7 @@ See this in action in the [Archivist live demo](./the-archivist).
 
 An `EmbeddedDAGNode` placement can run the sub-DAG in an isolate by adding a `container` key to the placement and binding a `DagContainerInterface` backend at dispatcher construction:
 
-```ts
-import { WorkerThreadContainer } from '@noocodex/dagonizer-executor-node';
-
-const dispatcher = new Dagonizer<AppState, AppServices>({
-  services,
-  containers: {
-    isolated: new WorkerThreadContainer({
-      registryModule: new URL('./registry.js', import.meta.url).href,
-      registryVersion: '1.0.0',
-    }),
-  },
-});
-```
+<<< @/../examples/12-workers.ts#dispatcher
 
 In the DAG document, add `container: "isolated"` to the `EmbeddedDAGNode` placement. The `stateMapping.input` seed and `stateMapping.output` copy operate identically in both paths — only the execution location changes. An unbound role falls back to in-process and fires `contractWarning`. See [Example 12: Worker pool](./12-workers) for a complete walkthrough of the registry module and pool lifecycle.
 
@@ -97,20 +76,7 @@ In the DAG document, add `container: "isolated"` to the `EmbeddedDAGNode` placem
 
 The `.embeddedDAG()` call accepts `TChildState` and `TParentState` generic parameters that narrow `options.inputs` keys and `options.outputs` paths to dotted paths that exist on the respective state at compile time:
 
-```ts
-class ParentState extends NodeStateBase {
-  userQuery = '';
-  candidates: string[] = [];
-}
-
-builder.embeddedDAG<ChildState, ParentState>('search', 'book-search-scatter',
-  { success: 'compose-loop', error: 'compose-empty' },
-  {
-    inputs:  { query: 'userQuery' },               // 'userQuery' must be a path on ParentState
-    outputs: { 'candidates': 'searchResults' },    // 'searchResults' must be a path on ChildState
-  },
-);
-```
+<<< @/../examples/dags/05-embedded-dags.ts#builder-state-mapping
 
 A misspelled parent-state path is a compile error.
 
@@ -120,30 +86,7 @@ A misspelled parent-state path is a compile error.
 
 The DAGBuilder `.embeddedDAG(...)` path above is the deterministic authoring surface. The same `EmbeddedDAGNode` can be produced declaratively via the `DAGDeriver` `embeddedDAGs` annotation when the surrounding flow is agent-style:
 
-```ts
-DAGDeriver.derive({
-  name: 'parent',
-  version: '1',
-  entrypoint: 'prepare',
-  contracts: [
-    { name: 'prepare',       hardRequired: ['input'],         produces: ['intermediate'], outputs: ['success'] },
-    { name: 'invoke-plugin', hardRequired: ['intermediate'],  produces: ['childResult'],  outputs: ['success', 'error'] },
-    { name: 'finalize',      hardRequired: ['childResult'],   produces: ['final'],        outputs: ['success'] },
-  ],
-  annotations: {
-    embeddedDAGs: {
-      'invoke-plugin': {
-        dag:     'plugin:transform',
-        outputs: ['success', 'error'],
-        stateMapping: {
-          input:  { intermediate: 'intermediate' },
-          output: { childResult:  'childResult' },
-        },
-      },
-    },
-  },
-});
-```
+<<< @/../examples/dags/derive.ts#derive
 
 - The contract's `produces` to `hardRequired` chain still drives topology; the `embeddedDAGs` annotation renders an `EmbeddedDAGNode`. `stateMapping.input` seeds the child; `stateMapping.output` copies child fields back.
 - Every port in `embeddedDAG.outputs` auto-wires to the next derived stage. `terminals` overrides individual ports if the error path needs a different target.

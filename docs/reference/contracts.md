@@ -21,7 +21,7 @@ seeAlso:
 
 Adapter contracts live at the root of `src/contracts/` and ship through `@noocodex/dagonizer/contracts`. Single source of truth: never re-exported from a sibling module.
 
-```ts
+```ts twoslash
 import type {
   // Core dispatcher contracts
   HandoffChannelInterface,
@@ -68,7 +68,12 @@ import type {
 
 ## NodeInterface
 
-```ts
+```ts twoslash
+import type { OperationContractFragment } from '@noocodex/dagonizer/contracts';
+import type { NodeStateInterface, ValidationResult, NodeContextInterface } from '@noocodex/dagonizer';
+import type { Batch, RoutedBatch } from '@noocodex/dagonizer';
+import { Timeout } from '@noocodex/dagonizer';
+// ---cut---
 interface NodeInterface<
   TState extends NodeStateInterface = NodeStateInterface,
   TOutput extends string = string,
@@ -76,9 +81,9 @@ interface NodeInterface<
 > {
   readonly name: string;
   readonly outputs: readonly TOutput[];
-  readonly timeout?: Timeout;
+  readonly timeout: Timeout;
   readonly contract: OperationContractFragment;
-  execute(state: TState, context: NodeContextInterface<TServices>): Promise<NodeOutputInterface<TOutput>>;
+  execute(batch: Batch<TState>, context: NodeContextInterface<TServices>): Promise<RoutedBatch<TOutput, TState>>;
   destroy?(): Promise<void>;
   validate?(): ValidationResult;
 }
@@ -92,7 +97,8 @@ The contract every consumer node implements. Nodes are stateless; they mutate st
 
 ## ExecuteOptionsInterface
 
-```ts
+```ts twoslash
+// ---cut---
 interface ExecuteOptionsInterface {
   readonly signal?: AbortSignal;
   readonly deadlineMs?: number;
@@ -103,7 +109,8 @@ interface ExecuteOptionsInterface {
 
 ## ClockProvider
 
-```ts
+```ts twoslash
+// ---cut---
 interface ClockProvider {
   hrtime(): bigint;
 }
@@ -113,7 +120,8 @@ Backend for the `Clock` singleton. Implement to swap time sources (typically in 
 
 ## SchedulerProvider
 
-```ts
+```ts twoslash
+// ---cut---
 interface SchedulerProvider {
   after(delayMs: number, signal?: AbortSignal): Promise<void>;
   at(atMs: number, signal?: AbortSignal): Promise<void>;
@@ -126,7 +134,8 @@ interface SchedulerProvider {
 
 ## StateAccessor
 
-```ts
+```ts twoslash
+// ---cut---
 interface StateAccessor {
   get(state: object, path: string): unknown;
   set(state: object, path: string, value: unknown): void;
@@ -137,7 +146,9 @@ Path resolver used for scatter source reads, state-mapping input copies, and gat
 
 ## Snapshottable
 
-```ts
+```ts twoslash
+import type { StoreSnapshot } from '@noocodex/dagonizer/contracts';
+// ---cut---
 interface Snapshottable {
   snapshot(): Promise<StoreSnapshot>;
   restore(snapshot: StoreSnapshot): Promise<void>;
@@ -148,7 +159,8 @@ The capability checkpointing depends on. `Checkpoint.capture(dag, result, { stor
 
 ## CheckpointStore
 
-```ts
+```ts twoslash
+// ---cut---
 interface CheckpointStore {
   save(key: string, json: string): Promise<void>;
   load(key: string): Promise<string | null>;
@@ -160,7 +172,8 @@ Persistence backend for checkpoints. `ckpt.persist(store, key)` and `Checkpoint.
 
 ## Embedder
 
-```ts
+```ts twoslash
+// ---cut---
 interface Embedder {
   readonly id: string;
   readonly displayName: string;
@@ -187,7 +200,8 @@ Produces a fixed-dimensionality vector for a text input. Plugins implement this 
 
 ## OperationContractFragment
 
-```ts
+```ts twoslash
+// ---cut---
 interface OperationContractFragment {
   readonly hardRequired: readonly string[];
   readonly produces:     readonly string[];
@@ -200,7 +214,13 @@ Use `OperationContractFragment` when co-locating the contract on a node. The der
 
 ## OperationContract
 
-```ts
+```ts twoslash
+// ---cut---
+interface OperationContractFragment {
+  readonly hardRequired: readonly string[];
+  readonly produces:     readonly string[];
+}
+
 interface OperationContract extends OperationContractFragment {
   readonly name:    string;
   readonly outputs: readonly string[];
@@ -211,20 +231,20 @@ Per-operation contract consumed by `DAGDeriver.derive` to compute DAG topology a
 
 **Co-located pattern.** Declare the contract directly on the node so the node is the single source of truth. `DAGDeriver.derive({ nodes })` reads `node.contract` alongside `node.name` and `node.outputs`:
 
-```ts
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface, OperationContractFragment } from '@noocodex/dagonizer';
-
-class FetchNode implements NodeInterface {
+```ts twoslash
+import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { OperationContractFragment } from '@noocodex/dagonizer/contracts';
+import type { NodeStateInterface } from '@noocodex/dagonizer';
+// ---cut---
+class FetchNode extends ScalarNode<NodeStateInterface, 'success' | 'cached' | 'error'> {
   readonly name = 'fetch';
   readonly outputs = ['success', 'cached', 'error'] as const;
-  readonly contract = {
+  override readonly contract: OperationContractFragment = {
     hardRequired: ['url'],
     produces:     ['raw'],
-  } satisfies OperationContractFragment;
-  async execute(state: NodeStateInterface, ctx: NodeContextInterface) {
-    // ...
-    return NodeOutputBuilder.of('success');
+  };
+  protected override async executeOne(_state: NodeStateInterface) {
+    return NodeOutputBuilder.of('success' as const);
   }
 }
 ```
@@ -233,7 +253,9 @@ See [co-located contracts](../guide/derive.md#co-located-contracts) and [Referen
 
 ## RetryPolicyOptionsInterface / ErrorConstructorType
 
-```ts
+```ts twoslash
+import { BackoffStrategy } from '@noocodex/dagonizer';
+// ---cut---
 type ErrorConstructorType = new (...args: never[]) => Error;
 
 interface RetryPolicyOptionsInterface {
@@ -257,7 +279,7 @@ other adapter interfaces. Full documentation (concurrency contract,
 `BaseStore` authoring guide, `StoreErrorClassification` taxonomy) lives in
 [Reference: Store](./store).
 
-```ts
+```ts twoslash
 import type { Store, StoreSnapshot, StoreSnapshotEntry } from '@noocodex/dagonizer/contracts';
 ```
 
@@ -269,7 +291,7 @@ Extension of `Store` for network-backed or replicated store plugins. Implements
 the same `Store` surface plus `endpoint`, `acquireLease`, `releaseLease`, and
 `health` for distributed coordination.
 
-```ts
+```ts twoslash
 import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '@noocodex/dagonizer/contracts';
 ```
 
@@ -278,7 +300,9 @@ See [Reference: Store](./store#interface-remotestore) for the full interface and
 
 ## DagContainerInterface
 
-```ts
+```ts twoslash
+import type { NodeStateInterface, DagTaskInterface, DagOutcomeInterface } from '@noocodex/dagonizer';
+// ---cut---
 interface DagContainerInterface<TState extends NodeStateInterface = NodeStateInterface> {
   runDag(task: DagTaskInterface<TState, unknown>): Promise<DagOutcomeInterface>;
   destroy?(): Promise<void>;
@@ -293,7 +317,9 @@ Adapter contract for running an embedded DAG in an isolate (worker thread, forke
 
 ## HandoffChannelInterface
 
-```ts
+```ts twoslash
+import type { DAGHandoff } from '@noocodex/dagonizer';
+// ---cut---
 interface HandoffChannelInterface {
   publish(handoff: DAGHandoff): Promise<void>;
   destroy?(): Promise<void>;
@@ -304,7 +330,9 @@ Adapter contract for publishing completed-DAG hand-off envelopes to a downstream
 
 ## MessageChannelInterface
 
-```ts
+```ts twoslash
+import type { BridgeMessage } from '@noocodex/dagonizer';
+// ---cut---
 interface MessageChannelInterface {
   send(message: BridgeMessage): void;
   onMessage(handler: (message: BridgeMessage) => void): void;
@@ -316,17 +344,21 @@ Duplex channel contract between a parent dispatcher and a `DagHost`. `send` is f
 
 ## RegistryModuleInterface / RegistryBundleInterface
 
-```ts
-interface RegistryModuleInterface {
-  createBundle(servicesConfig: JsonObject): Promise<RegistryBundleInterface>;
-}
-
+```ts twoslash
+import type { CheckpointRestoreAdapter } from '@noocodex/dagonizer/contracts';
+import type { DispatcherBundle, NodeStateInterface } from '@noocodex/dagonizer';
+import type { JsonObject } from '@noocodex/dagonizer/entities';
+// ---cut---
 interface RegistryBundleInterface {
   readonly bundle:          DispatcherBundle<NodeStateInterface, unknown>;
   readonly services:        unknown;
   readonly registryVersion: string;
   readonly restoreState:    CheckpointRestoreAdapter<NodeStateInterface>;
   destroy?():               Promise<void>;
+}
+
+interface RegistryModuleInterface {
+  createBundle(servicesConfig: JsonObject): Promise<RegistryBundleInterface>;
 }
 ```
 
@@ -336,7 +368,10 @@ interface RegistryBundleInterface {
 
 ## DagOutcomeInterface
 
-```ts
+```ts twoslash
+import type { NodeError, ExecutorIntermediate } from '@noocodex/dagonizer';
+import type { JsonObject } from '@noocodex/dagonizer/entities';
+// ---cut---
 interface DagOutcomeInterface {
   readonly terminalOutput: string;
   readonly errors:         readonly NodeError[];
@@ -349,7 +384,9 @@ Result returned by `DagContainerInterface.runDag()` after an embedded DAG comple
 
 ## DagTaskInterface
 
-```ts
+```ts twoslash
+import type { NodeStateInterface, NodeContextInterface, ExecutionRequest } from '@noocodex/dagonizer';
+// ---cut---
 interface DagTaskInterface<TState extends NodeStateInterface = NodeStateInterface, TServices = undefined> {
   readonly dagName:        string;
   readonly placementPath:  readonly string[];
@@ -365,7 +402,9 @@ Engine-side descriptor of a contained DAG execution. Carries a live seeded child
 
 ## SystemInfoInterface
 
-```ts
+```ts twoslash
+import type { RecommendedWorkerCountConfig } from '@noocodex/dagonizer';
+// ---cut---
 interface SystemInfoInterface {
   recommendedWorkerCount(config: RecommendedWorkerCountConfig): number;
 }
@@ -377,7 +416,7 @@ Host-environment probe for pool sizing recommendations. Implementations are envi
 
 These contracts ship through `@noocodex/dagonizer/contracts` for use by custom gather strategy and outcome reducer implementations. See [Reference: Core](./core) for the full authoring guide.
 
-```ts
+```ts twoslash
 import type { GatherExecution, GatherRecord, OutcomeRecord } from '@noocodex/dagonizer/contracts';
 ```
 
@@ -385,7 +424,9 @@ import type { GatherExecution, GatherRecord, OutcomeRecord } from '@noocodex/dag
 
 ## LlmAdapter / LlmClient
 
-```ts
+```ts twoslash
+import type { AdapterCapabilities, ChatRequest, ChatResponse } from '@noocodex/dagonizer/adapter';
+// ---cut---
 interface LlmAdapter {
   readonly id:           string;
   readonly displayName:  string;
@@ -405,7 +446,8 @@ interface LlmClient {
 
 ## WarningEmitter
 
-```ts
+```ts twoslash
+// ---cut---
 interface WarningEmitter {
   warn(message: string): void;
 }
@@ -413,9 +455,11 @@ interface WarningEmitter {
 
 Typed contract for emitting diagnostic warnings without introducing a callback seam. Accepted by `DAGBuilder.build({ warningEmitter })` to surface dead-write warnings detected during contract validation at build time. The `NoopWarningEmitter` from `@noocodex/dagonizer/runtime` is the default when no emitter is passed.
 
-```ts
+```ts twoslash
 import type { WarningEmitter } from '@noocodex/dagonizer/contracts';
-
+import { DAGBuilder } from '@noocodex/dagonizer';
+declare const builder: DAGBuilder;
+// ---cut---
 const emitter: WarningEmitter = {
   warn(message) { console.warn('[contract]', message); },
 };
@@ -425,7 +469,8 @@ const dag = builder.build({ warningEmitter: emitter });
 
 ## NodeInvoker
 
-```ts
+```ts twoslash
+// ---cut---
 interface NodeInvoker {
   invokeNode(nodeName: string): Promise<void>;
 }

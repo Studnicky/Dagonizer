@@ -8,10 +8,8 @@ import {
   DAGBuilder,
   NodeOutputBuilder,
   NodeStateBase,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State
@@ -25,34 +23,28 @@ export class PipelineState extends NodeStateBase {
 // Nodes: each stage appends to `items` so the consumer can see progress
 // ---------------------------------------------------------------------------
 
-export class IngestNode implements NodeInterface<PipelineState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class IngestNode extends ScalarNode<PipelineState, 'done'> {
   readonly name = 'ingest';
   readonly outputs = ['done'] as const;
-  async execute(state: PipelineState) {
+  protected override async executeOne(state: PipelineState) {
     state.items.push('raw-data');
     return NodeOutputBuilder.of('done');
   }
 }
 
-export class EnrichNode implements NodeInterface<PipelineState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class EnrichNode extends ScalarNode<PipelineState, 'done'> {
   readonly name = 'enrich';
   readonly outputs = ['done'] as const;
-  async execute(state: PipelineState) {
+  protected override async executeOne(state: PipelineState) {
     state.items.push('enriched-data');
     return NodeOutputBuilder.of('done');
   }
 }
 
-export class PersistNode implements NodeInterface<PipelineState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class PersistNode extends ScalarNode<PipelineState, 'done'> {
   readonly name = 'persist';
   readonly outputs = ['done'] as const;
-  async execute(state: PipelineState) {
+  protected override async executeOne(state: PipelineState) {
     state.items.push('persisted');
     return NodeOutputBuilder.of('done');
   }

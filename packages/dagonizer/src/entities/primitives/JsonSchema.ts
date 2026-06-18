@@ -18,6 +18,10 @@
  * (`true` accepts everything, `false` rejects everything).
  */
 
+/**
+ * Union of the seven primitive type names defined by JSON Schema 2020-12.
+ * Used as the type for the `type` keyword in `JsonSchemaObject`.
+ */
 export type JsonSchemaTypeName =
   | 'array'
   | 'boolean'
@@ -27,6 +31,17 @@ export type JsonSchemaTypeName =
   | 'object'
   | 'string';
 
+/**
+ * TypeScript model of a JSON Schema 2020-12 keyword object.
+ *
+ * All keyword fields are optional; only the keywords applicable to the
+ * schema's type need be present. A `JsonSchema` is either a
+ * `JsonSchemaObject` or a boolean (`true` accepts everything, `false`
+ * rejects everything).
+ *
+ * See `JsonSchema` for the full union, and the file-level comment for the
+ * list of draft-07 keywords intentionally omitted.
+ */
 export interface JsonSchemaObject {
   // ── Core: identifiers and references ────────────────────────────
   $schema?: string;
@@ -112,4 +127,9 @@ export interface JsonSchemaObject {
   examples?: unknown[];
 }
 
+/**
+ * A JSON Schema 2020-12 value: either a keyword-object or a boolean.
+ * `true` is the schema that accepts every instance; `false` is the schema
+ * that rejects every instance.
+ */
 export type JsonSchema = JsonSchemaObject | boolean;

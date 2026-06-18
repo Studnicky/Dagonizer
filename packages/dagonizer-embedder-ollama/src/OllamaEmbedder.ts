@@ -4,8 +4,8 @@
  * (requires an API key). Mirrors `OllamaApiAdapter` (its sibling under
  * the `adapter` surface) on construction shape and probe behaviour.
  *
- * Wire format (Ollama native; no OpenAI-compatible alternative for
- * embeddings as of this writing):
+ * Wire format (Ollama native; no OpenAI-compatible alternative exists
+ * for embeddings):
  *
  *   POST {baseUrl}/api/embeddings
  *   Authorization: Bearer <apiKey>   (omitted when no apiKey is set)
@@ -126,7 +126,7 @@ export class OllamaEmbedder extends BaseEmbedder {
     const model = options.model ?? DEFAULT_MODEL;
     // Resolve dimensions: explicit override → known-model table → DEFAULT_DIMENSIONS (768).
     // DEFAULT_DIMENSIONS mirrors KNOWN_DIMENSIONS[DEFAULT_MODEL] and is a concrete constant,
-    // so the fallback chain always terminates with a number — no unreachable literal appended.
+    // so the fallback chain always terminates with a number.
     const dimensions = options.dimensions ?? KNOWN_DIMENSIONS[model] ?? DEFAULT_DIMENSIONS;
     super('ollama', `Ollama (${model})`, dimensions, options);
     this.#baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;

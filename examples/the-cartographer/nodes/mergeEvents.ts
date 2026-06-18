@@ -13,25 +13,19 @@
 
 import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
-import type { CanonicalEvent } from '../entities/CanonicalEvent.ts';
+import type { CanonicalEventVariant } from '../entities/CanonicalEvent.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region merge-events-node
-export class MergeEventsNode implements NodeInterface<CartographerState, 'merged', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class MergeEventsNode extends ScalarNode<CartographerState, 'merged', CartographerServices> {
   readonly 'name' = 'merge-events';
   readonly 'outputs' = ['merged'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'merged'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
-    const merged: CanonicalEvent[] = [];
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'merged'>> {
+    const merged: CanonicalEventVariant[] = [];
     for (const bucket of state.ingestBuckets) {
       for (const event of bucket) {
         merged.push(event);
@@ -42,3 +36,5 @@ export class MergeEventsNode implements NodeInterface<CartographerState, 'merged
   }
 }
 // #endregion merge-events-node
+
+export const mergeEvents = new MergeEventsNode();

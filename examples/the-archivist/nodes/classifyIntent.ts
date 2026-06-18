@@ -7,7 +7,7 @@
  *   find-reviews       → `find-reviews`             (ratings tool branch)
  *   describe-book      → `describe-web-search`      (one-hit description branch)
  *   recommend-similar  → `recommend-similar`        (prior-shortlist seeding branch)
- *   search | describe | recommend → `extract-query` (legacy on-topic pipeline)
+ *   search | describe | recommend → `extract-query` (general on-topic pipeline)
  *   off-topic          → `decline-off-topic`
  *
  * Demonstrates: a wide narrowly-typed output union and dispatch into
@@ -19,11 +19,8 @@
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
-import { NodeOutputBuilder,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 type IntentOutput =
   | 'lookup-author'
@@ -42,12 +39,11 @@ const NODE_TIMEOUT_MS = 30_000;
 /** Total attempts (initial + retries) before routing to salvage. */
 const RETRY_BUDGET = 2;
 
-export class ClassifyIntentNode implements NodeInterface<ArchivistState, IntentOutput, ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ClassifyIntentNode extends ScalarNode<ArchivistState, IntentOutput, ArchivistServices> {
   readonly name = 'classify-intent';
   readonly outputs = ['lookup-author', 'find-reviews', 'describe-book', 'recommend-similar', 'recall-memories', 'on-topic', 'off-topic', 'retry', 'salvage'] as const;
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const summary = state.recalledContext.summary.length > 0
       ? state.recalledContext.summary
       : undefined;
@@ -90,5 +86,5 @@ export class ClassifyIntentNode implements NodeInterface<ArchivistState, IntentO
 }
 // #endregion node-class
 
-/** Backward-compatible const export for existing bundle/DAG references. */
+/** Singleton node instance referenced by the DAG wiring. */
 export const classifyIntent = new ClassifyIntentNode();

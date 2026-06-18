@@ -131,15 +131,9 @@ Terminal states are sticky: once reached, all further events are silently ignore
 
 ### Lifecycle timestamps
 
-```ts
-type DAGLifecycleState =
-  | { kind: 'pending';   startedAt: null;   finishedAt: null;   error: null;  reason: null }
-  | { kind: 'running';   startedAt: number; finishedAt: null;   error: null;  reason: null }
-  | { kind: 'completed'; startedAt: number; finishedAt: number; error: null;  reason: null }
-  | { kind: 'failed';    startedAt: number; finishedAt: number; error: Error; reason: null }
-  | { kind: 'cancelled'; startedAt: number; finishedAt: number; error: null;  reason: string }
-  | { kind: 'timed_out'; startedAt: number; finishedAt: number; error: null;  reason: null };
-```
+Narrowing `state.lifecycle.kind` unlocks the typed fields:
+
+<<< @/../examples/18-observability.ts#lifecycle-state
 
 Timestamps are monotonic milliseconds from `Clock.monotonicMs()`. Use them for duration math; do not display them as wall-clock values.
 
@@ -174,10 +168,16 @@ Containment attaches to exactly two sites — both run a whole child DAG:
 
 ### Hand-off channel binding
 
-```ts
+```ts twoslash
+import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+import type { HandoffChannelInterface } from '@noocodex/dagonizer';
+// ---cut---
+declare const myQueueChannel: HandoffChannelInterface;
+declare const myDlqChannel: HandoffChannelInterface;
+
 // options.channels keys are terminal placement names.
 // A terminal not bound here follows today's path: no publish.
-new Dagonizer<S, Svc>({
+new Dagonizer<NodeStateBase>({
   channels: {
     done:      myQueueChannel,    // publishes DAGHandoff on 'done' terminal
     escalate:  myDlqChannel,      // routes to a different channel

@@ -28,7 +28,7 @@ import type { ClassifiedIntent } from '../services.ts';
 
 import { TextSimilarity } from '../nodes/textUtils.ts';
 
-/** Cosine similarity re-export for backward-compatible test imports. */
+/** Cosine similarity over two equal-length vectors, delegating to `TextSimilarity.cosine`. */
 export const cosineSimilarity = (a: readonly number[], b: readonly number[]): number =>
   TextSimilarity.cosine(a, b);
 

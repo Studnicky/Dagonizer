@@ -20,7 +20,7 @@ implementations. Stores live in the services bag and survive scatter clone
 boundaries within a run. Checkpoint integration snapshots named stores
 alongside parent state for deterministic resume.
 
-```ts
+```ts twoslash
 import { BaseStore, MemoryStore, StoreError } from '@noocodex/dagonizer/store';
 import type { Snapshottable, Store, StoreSnapshot, StoreSnapshotEntry } from '@noocodex/dagonizer/contracts';
 ```
@@ -35,7 +35,9 @@ The capability checkpointing depends on: a named container that serializes
 itself to a `StoreSnapshot` and rehydrates from one. It declares only two
 methods.
 
-```ts
+```ts twoslash
+import type { StoreSnapshot } from '@noocodex/dagonizer/contracts';
+// ---cut---
 interface Snapshottable {
   snapshot(): Promise<StoreSnapshot>;
   restore(snapshot: StoreSnapshot): Promise<void>;
@@ -68,7 +70,13 @@ Values are typed per-call via the method's `<T>` parameter. There is no
 class-level value generic. A `Store` instance can hold heterogeneous values
 under different keys; type narrowing happens at the call site.
 
-```ts
+```ts twoslash
+import type { JsonValue, StoreSnapshot, StoreSnapshotEntry } from '@noocodex/dagonizer/entities';
+// ---cut---
+interface Snapshottable {
+  snapshot(): Promise<StoreSnapshot>;
+  restore(snapshot: StoreSnapshot): Promise<void>;
+}
 interface Store extends Snapshottable {
   get<T extends JsonValue>(key: string): Promise<T | null>;
   set<T extends JsonValue>(key: string, value: T): Promise<void>;
@@ -105,7 +113,9 @@ Implementations are responsible for delivering this. See the `update` note on
 Versioned snapshot envelope returned by `Snapshottable.snapshot()` and consumed
 by `Snapshottable.restore()`.
 
-```ts
+```ts twoslash
+import type { StoreSnapshotEntry } from '@noocodex/dagonizer/contracts';
+// ---cut---
 interface StoreSnapshot {
   readonly version: number;
   readonly type:    string;
@@ -127,7 +137,9 @@ interface StoreSnapshot {
 
 A single entry in a `StoreSnapshot`.
 
-```ts
+```ts twoslash
+import type { JsonValue } from '@noocodex/dagonizer/entities';
+// ---cut---
 interface StoreSnapshotEntry {
   readonly key:   string;
   readonly value: JsonValue;
@@ -149,17 +161,19 @@ Abstract base class every concrete store extends. Owns the snapshot envelope,
 the `update` default, optional namespace prefix, and lifecycle no-ops.
 Concrete stores implement the `protected abstract` hooks listed below.
 
-```ts
-import { BaseStore, type BaseStoreOptions } from '@noocodex/dagonizer/store';
-
-abstract class BaseStore implements Store {
-  protected constructor(options?: BaseStoreOptions);
+```ts twoslash
+import { BaseStore } from '@noocodex/dagonizer/store';
+import type { BaseStoreOptions } from '@noocodex/dagonizer/store';
+// ---cut---
+// BaseStore is an abstract class — extend it:
+abstract class MyStore extends BaseStore {
+  protected constructor(options?: BaseStoreOptions) { super(options); }
 }
 ```
 
 ### `BaseStoreOptions`
 
-```ts
+```ts twoslash
 interface BaseStoreOptions {
   readonly namespace?: string;
 }
@@ -216,7 +230,7 @@ arguments receive the qualified key (namespace prefix already applied).
 
 Reference implementation of `BaseStore` backed by a `Map`.
 
-```ts
+```ts twoslash
 import { MemoryStore } from '@noocodex/dagonizer/store';
 
 const store = new MemoryStore();
@@ -226,8 +240,12 @@ const v = await store.get<string>('greeting'); // 'hello'
 
 ### Constructor
 
-```ts
-new MemoryStore(options?: BaseStoreOptions)
+```ts twoslash
+import { MemoryStore } from '@noocodex/dagonizer/store';
+import type { BaseStoreOptions } from '@noocodex/dagonizer/store';
+// ---cut---
+const opts: BaseStoreOptions = { namespace: 'my-ns' };
+const store = new MemoryStore(opts);
 ```
 
 Accepts the same `BaseStoreOptions` as `BaseStore` (namespace prefix).
@@ -246,7 +264,10 @@ intermediate `await`. Because the body contains no yield point, no concurrent
 microtask can interleave between the read and the write; the
 read-modify-write is atomic within the store instance.
 
-```ts
+```ts twoslash
+import { MemoryStore } from '@noocodex/dagonizer/store';
+const store = new MemoryStore();
+// ---cut---
 // Concurrent updates produce no lost writes.
 await Promise.all([
   store.update<number>('counter', (n) => (n ?? 0) + 1),
@@ -264,9 +285,12 @@ const v = await store.get<number>('counter'); // → 2
 Error class for store operations. Carries a structured `classification`
 object so callers discriminate by `reason` without `instanceof` chains.
 
-```ts
-import { StoreError } from '@noocodex/dagonizer/store';
-
+```ts twoslash
+import { StoreError, MemoryStore } from '@noocodex/dagonizer/store';
+import type { StoreSnapshot } from '@noocodex/dagonizer/contracts';
+declare const store: MemoryStore;
+declare const incompatibleSnapshot: StoreSnapshot;
+// ---cut---
 try {
   await store.restore(incompatibleSnapshot);
 } catch (err) {
@@ -278,7 +302,7 @@ try {
 
 ### `StoreErrorClassification`
 
-```ts
+```ts twoslash
 type StoreErrorClassification =
   | {
       readonly reason:           'INCOMPATIBLE_SNAPSHOT';
@@ -337,11 +361,13 @@ Plugins that talk over HTTP, gRPC, or WebSocket, or that replicate state
 across processes, implement `RemoteStore` rather than `Store` directly.
 Single-process and single-node-durable stores implement `Store` directly.
 
-```ts
+```ts twoslash
 import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '@noocodex/dagonizer/contracts';
 ```
 
-```ts
+```ts twoslash
+import type { Store, RemoteStoreEndpoint, RemoteStoreLease } from '@noocodex/dagonizer/contracts';
+// ---cut---
 interface RemoteStore extends Store {
   readonly endpoint: RemoteStoreEndpoint;
   acquireLease(subject: string, ttlMs: number, maxWaitMs: number): Promise<RemoteStoreLease>;
@@ -356,7 +382,7 @@ distributed execution is wired in.
 
 ### Interface: `RemoteStoreEndpoint`
 
-```ts
+```ts twoslash
 interface RemoteStoreEndpoint {
   readonly url:    string;
   readonly region: string;
@@ -372,7 +398,7 @@ interface RemoteStoreEndpoint {
 
 ### Interface: `RemoteStoreLease`
 
-```ts
+```ts twoslash
 interface RemoteStoreLease {
   readonly token:     string;
   readonly expiresAt: number;
@@ -428,8 +454,12 @@ wider, heterogeneous contract.
 
 ### Constructor
 
-```ts
-new TypedStore<Schema extends Record<string, JsonValue>>(inner: Store)
+```ts twoslash
+import { TypedStore, MemoryStore } from '@noocodex/dagonizer/store';
+import type { JsonValue } from '@noocodex/dagonizer/entities';
+// ---cut---
+interface MySchema { count: number; label: string; }
+const store = new TypedStore<MySchema>(new MemoryStore());
 ```
 
 `Schema` must be a `Record<string, JsonValue>`: every value type must be JSON-serializable.

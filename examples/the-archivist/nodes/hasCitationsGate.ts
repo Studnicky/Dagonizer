@@ -15,11 +15,8 @@
  * dereferencing typed fields.
  */
 
-import { NodeOutputBuilder,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 import { MemoryStore } from '../memory/MemoryStore.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -28,13 +25,11 @@ import type { ArchivistServices } from '../services.ts';
 const dagSource      = MemoryStore.dagIri('source');
 const dagInShortlist = MemoryStore.dagIri('inShortlist');
 
-export class HasCitationsGateNode implements NodeInterface<ArchivistState, 'pass' | 'fail', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class HasCitationsGateNode extends ScalarNode<ArchivistState, 'pass' | 'fail', ArchivistServices> {
   readonly name = 'has-citations-gate';
   readonly outputs = ['pass', 'fail'] as const;
 
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const memory = context.services.memory;
     const graph = MemoryStore.stateGraphIri(state.runId);
     const shortlisted = memory.select({
@@ -71,5 +66,5 @@ export class HasCitationsGateNode implements NodeInterface<ArchivistState, 'pass
   }
 }
 
-/** Backward-compatible const export for existing bundle/DAG references. */
+/** Singleton node instance referenced by the DAG wiring. */
 export const hasCitationsGate = new HasCitationsGateNode();

@@ -8,10 +8,8 @@ import {
   DAGBuilder,
   NodeOutputBuilder,
   NodeStateBase,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State: tracks execution order so the example proves ordering guarantees
@@ -32,13 +30,11 @@ export class PhaseState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // #region pre-phase-node
-export class PreSetupNode implements NodeInterface<PhaseState, 'ready'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class PreSetupNode extends ScalarNode<PhaseState, 'ready'> {
   readonly name = 'pre-setup';
   readonly outputs = ['ready'] as const;
 
-  async execute(state: PhaseState) {
+  protected override async executeOne(state: PhaseState) {
     state.executionLog.push('pre-setup');
     state.seedValue = 42;
     return NodeOutputBuilder.of('ready');
@@ -50,13 +46,11 @@ export class PreSetupNode implements NodeInterface<PhaseState, 'ready'> {
 // Main node: the flow entrypoint. Reads seedValue left by the pre-phase.
 // ---------------------------------------------------------------------------
 
-export class ComputeNode implements NodeInterface<PhaseState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ComputeNode extends ScalarNode<PhaseState, 'done'> {
   readonly name = 'compute';
   readonly outputs = ['done'] as const;
 
-  async execute(state: PhaseState) {
+  protected override async executeOne(state: PhaseState) {
     state.executionLog.push('compute');
     state.result = `computed:${String(state.seedValue * 2)}`;
     return NodeOutputBuilder.of('done');
@@ -70,13 +64,11 @@ export class ComputeNode implements NodeInterface<PhaseState, 'done'> {
 // ---------------------------------------------------------------------------
 
 // #region post-phase-node
-export class PostAuditNode implements NodeInterface<PhaseState, 'audited'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class PostAuditNode extends ScalarNode<PhaseState, 'audited'> {
   readonly name = 'post-audit';
   readonly outputs = ['audited'] as const;
 
-  async execute(state: PhaseState) {
+  protected override async executeOne(state: PhaseState) {
     state.executionLog.push('post-audit');
     // State is already finalized; this is the last observer.
     state.executionLog.push(`final-result:${state.result}`);

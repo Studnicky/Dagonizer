@@ -21,7 +21,6 @@ withDefaults(defineProps<{
    *  label implies (a zoom step, a fullscreen toggle, etc.). */
   expandTitle?: string;
 }>(), {
-  zoomLevel: undefined,
   panEnabled: true,
   expandTitle: 'Expand zoom',
 });

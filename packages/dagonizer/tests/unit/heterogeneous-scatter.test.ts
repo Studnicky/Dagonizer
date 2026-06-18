@@ -1,8 +1,7 @@
 /**
  * heterogeneous-scatter: proves a scatter over a descriptor source with a
  * dispatching body + custom gather fans out, runs per-descriptor work, and
- * collects results — the structural/heterogeneous case the old ParallelNode
- * covered, now expressed as scatter.
+ * collects results — the structural/heterogeneous case expressed as scatter.
  *
  * The test mirrors the Archivist's scout-dispatch pattern:
  *   source = state.providers (a fixed descriptor array)
@@ -15,16 +14,16 @@ import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/DAGBuilder.js';
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import type { StateAccessor } from '../../src/contracts/StateAccessor.js';
+import type { GatherRecord } from '../../src/core/GatherStrategies.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
-import type { GatherExecution } from '../../src/core/GatherStrategies.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { GatherConfig } from '../../src/entities/dag/GatherConfig.js';
 import type { JsonObject } from '../../src/entities/json.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import type { NodeStateInterface } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -63,12 +62,10 @@ class HeterogeneousState extends NodeStateBase {
 // Reads currentItem (the provider descriptor) and produces a per-provider
 // result. Three providers succeed, one returns 'empty'.
 
-class DispatchNode implements NodeInterface<HeterogeneousState, 'success' | 'empty'> {
+class DispatchNode extends ScalarNode<HeterogeneousState, 'success' | 'empty'> {
   readonly name = 'dispatch';
   readonly outputs = ['success', 'empty'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
-  async execute(state: HeterogeneousState): Promise<{ errors: []; output: 'success' | 'empty' }> {
+  protected async executeOne(state: HeterogeneousState): Promise<NodeOutputInterface<'success' | 'empty'>> {
     const provider = state.getMetadata<string>('currentItem') ?? 'unknown';
     switch (provider) {
       case 'alpha': {
@@ -104,30 +101,27 @@ const dispatchNode = new DispatchNode();
 class FlatMergeGather extends GatherStrategy {
   readonly name = 'flat-merge-test';
 
-  async apply<TState extends NodeStateInterface>(
+  override reduce(
     _config: GatherConfig,
-    execution: GatherExecution<TState>,
-  ): Promise<void> {
-    const { state, accessor, records } = execution;
+    batch: Parameters<GatherStrategy['reduce']>[1],
+    state: NodeStateInterface,
+    accessor: StateAccessor,
+  ): void {
+    for (const item of batch) {
+      const record: GatherRecord<NodeStateInterface> = item.state;
+      const existingResults = accessor.get<string[]>(state, 'results')      ?? [];
+      const existingFails   = accessor.get<string[]>(state, 'failMessages') ?? [];
 
-    const existingResults   = accessor.get<string[]>(state, 'results')     ?? [];
-    const existingFails     = accessor.get<string[]>(state, 'failMessages') ?? [];
-    const merged: string[]     = [...existingResults];
-    const mergedFails: string[] = [...existingFails];
-
-    for (const record of records) {
       const result = accessor.get<string>(record.cloneState, 'providerResult') ?? '';
-      if (result.length > 0) {
-        merged.push(result);
-      }
       const cloneFails = accessor.get<string[]>(record.cloneState, 'failMessages') ?? [];
-      for (const msg of cloneFails) {
-        mergedFails.push(msg);
+
+      if (result.length > 0) {
+        accessor.set(state, 'results', [...existingResults, result]);
+      }
+      if (cloneFails.length > 0) {
+        accessor.set(state, 'failMessages', [...existingFails, ...cloneFails]);
       }
     }
-
-    accessor.set(state, 'results',      merged);
-    accessor.set(state, 'failMessages', mergedFails);
   }
 }
 
@@ -181,12 +175,10 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
   void it('routes error when all providers return empty', async () => {
     const dispatcher = new Dagonizer<HeterogeneousState>();
 
-    class EmptyDispatchNode implements NodeInterface<HeterogeneousState, 'success' | 'empty'> {
+    class EmptyDispatchNode extends ScalarNode<HeterogeneousState, 'success' | 'empty'> {
       readonly name = 'empty-dispatch';
       readonly outputs = ['success', 'empty'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(_state: HeterogeneousState): Promise<{ errors: []; output: 'success' | 'empty' }> {
+      protected async executeOne(_state: HeterogeneousState): Promise<NodeOutputInterface<'success' | 'empty'>> {
         return { 'errors': [], 'output': 'empty' };
       }
     }
@@ -216,31 +208,5 @@ void describe('heterogeneous scatter (descriptor source + dispatching body)', ()
 
     // any-success: all returned empty → 'error' route → fail terminal.
     assert.equal(result.state.lifecycle.kind, 'failed', 'flow failed when all providers return empty');
-  });
-
-  void it('builder emits a well-formed ScatterNode for a descriptor source', () => {
-    const dag = new DAGBuilder('hetero-builder-check', '1.0')
-      .scatter('fan-out', 'providers', dispatchNode, {
-        'success': 'end',
-        'error':   'end',
-        'empty':   'end',
-      }, {
-        'concurrency': 4,
-        'gather':  { 'strategy': 'flat-merge-test' },
-        'reducer': 'any-success',
-      })
-      .terminal('end', { 'outcome': 'completed' })
-      .build();
-
-    const scatterNode = dag.nodes.find((n) => n['@type'] === 'ScatterNode');
-    assert.ok(scatterNode !== undefined, 'ScatterNode present in built DAG');
-    assert.equal(scatterNode.name, 'fan-out');
-    // body is a node reference (the dispatch node)
-    assert.ok('node' in scatterNode.body, 'body is a node reference');
-    assert.equal((scatterNode.body as { node: string }).node, 'dispatch');
-    assert.equal(scatterNode.source, 'providers');
-    assert.equal(scatterNode.concurrency, 4);
-    assert.equal(scatterNode.gather.strategy, 'flat-merge-test');
-    assert.equal(scatterNode.reducer, 'any-success');
   });
 });

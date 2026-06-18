@@ -16,6 +16,9 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 ### Added
 
+- **O(1)-memory scatter checkpoint (`bounded` mode).** `ScatterProgress` is now a discriminated union keyed by `mode: 'bounded' | 'retained'`. Compactable gather strategies (all built-ins: `append`, `map`, `collect`, `partition`, `discard`) persist a `watermark` (highest contiguous completed index), `aheadAcked` (out-of-order completions not yet contiguous with the watermark), and `outcomeTally` (per-output-token count) instead of an unbounded `ackedResults` array. Memory usage during scatter execution is now O(concurrency) rather than O(n). The `retained` mode is preserved for custom gather strategies (via `CustomGatherStrategy`) that require full record sets at finalize time. `ScatterCheckpoint` exposes `writeBounded` and `writeRetained` in place of the removed `write` method. `GatherStrategy` gains a `retainsRecordsForFinalize` property (default `false`); `CustomGatherStrategy` overrides it `true`.
+- **`GatherFinalizeRecord`** (`@noocodex/dagonizer/contracts`): a lightweight record carrying `index`, `item`, `output`, and `terminalOutcome` without `cloneState`, used for the batch-apply finalize pass. `GatherExecution.records` is now `GatherFinalizeRecord[]`.
+
 - **`EMPTY_CONTRACT_FRAGMENT` is now public** (root barrel and `@noocodex/dagonizer/contracts`). It is the canonical value a node assigns to `contract` when it declares no data-flow for `DAGDeriver`.
 - **`IncrementalGatherStrategy`** (`@noocodex/dagonizer/core`): an abstract subclass of `GatherStrategy` that makes `applyIncremental` a required member for strategies advertising `supportsIncremental`. Batch-only strategies extend `GatherStrategy`; incremental strategies extend `IncrementalGatherStrategy`.
 - **`StoreSnapshotSchema` / `StoreSnapshotEntrySchema`** (`@noocodex/dagonizer/entities`): the store-snapshot wire shape is now schema-derived (`FromSchema`) rather than hand-written.
@@ -24,8 +27,19 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 - **`maxAttempts?`** is now a uniform option across every adapter (including `GeminiNanoAdapter` and `WebLlmAdapter`, which previously hard-coded it).
 - **`SystemInfo.recommendedWorkerCount(config, probes)`** (root barrel + `@noocodex/dagonizer/entities`): the canonical worker-count clamp, now shared by both `@noocodex/dagonizer-executor-node` and `-web` (the duplicate per-package formulas are removed).
 - **`@noocodex/dagonizer-executor-node`** exports `ForkEntry`/`SpawnEntry`/`WorkerEntry` static classes — the process-entry bootstraps are now importable/testable (mirroring `WebWorkerEntry`).
+- **`DagHost` static registry injection.** `DagHostOptions.registry` and `WebWorkerEntry.start(scope, registry?)` let a worker entry inject its registry directly, so the host runs no runtime dynamic import — the required path for bundlers that forbid it (a Vite browser/worker build). Without it, `DagHost` imports the `init` message's `registryModule` by URL (the Node `WorkerThreadContainer` path).
 - **`@noocodex/dagonizer-embedder-ollama`** supports **Ollama Cloud**: `OllamaEmbedderOptions.apiKey?` sends `Authorization: Bearer <key>` when present (local usage needs no key).
 - **Composed `Book` entity** (`@noocodex/dagonizer-book-entities`): `Book` is now `{ identity: BookIdentity; publication: BookPublication; availability: BookAvailability }` with a `BookBuilder.from(BookInput)` factory. ⚠ BREAKING for direct `Book` consumers. **Migration:** read `book.identity.isbn` (was `book.isbn`) etc.; construct with `BookBuilder.from({ isbn, title, … })`.
+
+### Fixed
+
+- **O(1) peak heap for reservoir + container streaming scatter.** Three sources of unbounded heap growth in the scatter/container path are eliminated:
+  1. `DagHost` batch path accumulated all N × M inner-node `ExecutorIntermediate` objects in `ExecutionResponse.intermediates` before shipping the result. The array now stays empty for multi-item batches; live observability is unaffected (intermediate messages are still forwarded over the channel in real time).
+  2. `ackBatch` removed scatter inbox items via per-item `findIndex + splice` (O(inbox × batch)); replaced with a single O(inbox) in-place filter pass using a pre-built `Set<number>`.
+  3. `executeBatch` (all three branches) created child clones that inherited the parent state's `SCATTER_PROGRESS_KEY` and `WORKSET_PROGRESS_KEY` metadata. Those keys carry the full durable inbox (up to `concurrencyLimit × capacity` items). Each clone copied the metadata object via `NodeStateBase.clone()` and then shipped it to the worker inside `state.snapshot()`. At `concurrencyLimit=16` and `capacity=1000` this produced up to 16,000 inbox copies in-flight — O(N²) at scale. Child clones now delete both keys immediately after `createChild`.
+  4. `CartographerState.clone()` copied parent-level gather accumulators (`sampleRecords`, `insights`, `journeys`, `records`, `ingestBuckets`, `canonicalEvents`) into every child clone. At 200 `sampleRecords` per clone × 16,000 concurrent clones the copy cost reached ~960 MB. These fields are scatter-gather outputs that child body executions never read; the clone now resets them to empty defaults.
+
+  Measured peak heap at 100 000 events: 129 MB. At 200 000 events: 185 MB. Both are well under 300 MB and roughly flat, proving O(1) growth.
 
 ### Changed
 

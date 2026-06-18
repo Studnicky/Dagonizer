@@ -2,8 +2,12 @@
  * ExecutionResponse: wire-safe result returned from an isolating container
  * backend to the dispatcher after completing a whole embedded DAG.
  *
- * `terminalOutput` is the routing output the child DAG's terminal outcome
- * resolved to.
+ * `items` carries one per-item result `{ id, snapshot, terminalOutcome }`.
+ * Single-item responses (N=1) use `items[0]`; multi-item batch responses
+ * (N>1) carry one entry per item in the original request. The per-item
+ * `terminalOutcome` is the routing output the child DAG resolved to for
+ * that item. The per-item `snapshot` is the terminal state snapshot; null
+ * when the item's DAG failed before producing a snapshot.
  *
  * The NodeError shape is inlined here (same approach as NodeOutput which
  * inlines it). The standalone NodeErrorSchema is authoritative for that
@@ -21,10 +25,23 @@ export const ExecutionResponseSchema = {
   '$id': 'https://noocodex.dev/schemas/dagonizer/ExecutionResponse',
   '$schema': 'https://json-schema.org/draft/2020-12/schema',
   'type': 'object',
-  'required': ['correlationId', 'terminalOutput', 'errors', 'stateSnapshot', 'intermediates'],
+  'required': ['correlationId', 'items', 'errors', 'intermediates'],
   'properties': {
-    'correlationId':  { 'type': 'string', 'minLength': 1 },
-    'terminalOutput': { 'type': 'string' },
+    'correlationId': { 'type': 'string', 'minLength': 1 },
+    'items': {
+      'type': 'array',
+      'minItems': 1,
+      'items': {
+        'type': 'object',
+        'required': ['id', 'snapshot', 'terminalOutcome'],
+        'properties': {
+          'id':              { 'type': 'string', 'minLength': 1 },
+          'snapshot':        { 'type': ['object', 'null'] },
+          'terminalOutcome': { 'type': 'string' },
+        },
+        'additionalProperties': false,
+      },
+    },
     'errors': {
       'type': 'array',
       'items': {
@@ -41,7 +58,6 @@ export const ExecutionResponseSchema = {
         'additionalProperties': false,
       },
     },
-    'stateSnapshot': { 'type': ['object', 'null'] },
     'intermediates': {
       'type': 'array',
       'items': {

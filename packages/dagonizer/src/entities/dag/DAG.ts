@@ -142,6 +142,16 @@ const DAGNodeEntrySchema = {
           'additionalProperties': { 'type': 'string' },
         },
         'container': { 'type': 'string', 'minLength': 1 },
+        'reservoir': {
+          'type': 'object',
+          'required': ['keyField', 'capacity'],
+          'properties': {
+            'keyField':  { 'type': 'string', 'minLength': 1 },
+            'capacity':  { 'type': 'integer', 'minimum': 1 },
+            'idleMs':    { 'type': 'integer', 'minimum': 1 },
+          },
+          'additionalProperties': false,
+        },
       },
       'additionalProperties': false,
     },

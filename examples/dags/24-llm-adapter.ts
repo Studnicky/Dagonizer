@@ -3,16 +3,17 @@
  * No side effects, no dispatcher, no execute.
  * Imported by examples/24-llm-adapter.ts (the executable entry point).
  *
- * Demonstrates: LlmAdapterRegistry + LlmAdapterCascade with two StubAdapter
- * instances (primary + fallback). The primary stub has probe() overridden to
- * return false, so the cascade skips it and selects the fallback. A ChatNode
- * calls the selected adapter and routes on the response kind.
+ * Demonstrates: LlmAdapterRegistry + LlmAdapterCascade with two OllamaApiAdapter
+ * instances (primary at an unreachable port, fallback at the default loopback).
+ * The primary adapter's probe() returns false, so the cascade skips it and
+ * selects the fallback. A ChatNode calls the selected adapter and routes on
+ * the response kind.
  */
 
 import { DAG_CONTEXT, NodeOutputBuilder, NodeStateBase,
-  EMPTY_CONTRACT_FRAGMENT, Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface} from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
 import type { LlmAdapter } from '@noocodex/dagonizer/adapter';
 import { ChatRequestBuilder } from '@noocodex/dagonizer/adapter';
 
@@ -31,12 +32,10 @@ export class ChatAdapterState extends NodeStateBase {
 // Nodes
 // ---------------------------------------------------------------------------
 
-export class ChatNode implements NodeInterface<ChatAdapterState, 'text' | 'tools'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ChatNode extends ScalarNode<ChatAdapterState, 'text' | 'tools'> {
   readonly name = 'chat';
   readonly outputs = ['text', 'tools'] as const;
-  async execute(state: ChatAdapterState) {
+  protected override async executeOne(state: ChatAdapterState) {
     if (state.adapter === null) throw new Error('chat: adapter not set');
     const request = ChatRequestBuilder.from({
       'messages': [
@@ -59,24 +58,20 @@ export class ChatNode implements NodeInterface<ChatAdapterState, 'text' | 'tools
   }
 }
 
-export class HandleTextNode implements NodeInterface<ChatAdapterState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class HandleTextNode extends ScalarNode<ChatAdapterState, 'done'> {
   readonly name = 'handleText';
   readonly outputs = ['done'] as const;
-  async execute(state: ChatAdapterState) {
+  protected override async executeOne(state: ChatAdapterState) {
     // Slot for downstream text-processing logic; identity pass-through here
     process.stdout.write(`  [handleText] response="${state.response}"\n`);
     return NodeOutputBuilder.of('done');
   }
 }
 
-export class HandleToolsNode implements NodeInterface<ChatAdapterState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class HandleToolsNode extends ScalarNode<ChatAdapterState, 'done'> {
   readonly name = 'handleTools';
   readonly outputs = ['done'] as const;
-  async execute(state: ChatAdapterState) {
+  protected override async executeOne(state: ChatAdapterState) {
     process.stdout.write(`  [handleTools] tool dispatched: ${state.response}\n`);
     return NodeOutputBuilder.of('done');
   }

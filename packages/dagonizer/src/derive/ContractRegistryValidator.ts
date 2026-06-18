@@ -55,7 +55,7 @@ export class ContractRegistryValidator {
     // For each node, collect the union of all produces from its ancestors
     // (nodes that can reach it via topological paths).
     // Index contracts by name once for O(1) lookup inside the BFS loop,
-    // avoiding an O(n) linear scan per iteration (was O(n^2+) on transitive closure).
+    // avoiding an O(n) linear scan per iteration.
     const contractByName = new Map<string, OperationContract>(
       contracts.map((c) => [c.name, c]),
     );

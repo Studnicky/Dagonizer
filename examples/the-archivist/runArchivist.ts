@@ -29,7 +29,7 @@
  *
  * If no adapter is reachable the cascade throws
  * `LlmError(NO_ADAPTER_AVAILABLE)`: that's the design. There is no
- * stub fallback in the CLI; the stub exists only for tests.
+ * fallback in the CLI.
  *
  * Run:  npx tsx examples/the-archivist/runArchivist.ts
  */

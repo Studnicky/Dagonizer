@@ -5,15 +5,15 @@
  *
  * Demonstrates the difference between incremental and batch gather:
  *
- *   Incremental strategies (`map`, `append`, `collect`, `partition`) call
- *   `applyIncremental` after EACH clone body completes, folding results into
- *   parent state as they arrive. The engine also supports batch strategies
- *   (`custom`, and any consumer strategy without `applyIncremental`) that
- *   accumulate all records and call `apply` once at the end.
+ *   Strategies that override `reduce` are called after EACH clone body
+ *   completes (or per micro-batch), folding results into parent state as they
+ *   arrive. Strategies that leave `reduce` as a no-op and override `finalize`
+ *   instead accumulate all records and call `finalize` once after every clone
+ *   completes.
  *
- *   This module registers two strategies that extend the built-in `map` and
- *   `custom` behaviours respectively, but add a print-log call so the timing
- *   of each fold is observable from the outside.
+ *   This module registers two strategies that extend `GatherStrategy` directly,
+ *   but add a print-log call so the timing of each fold is observable from the
+ *   outside.
  */
 
 import {
@@ -22,11 +22,9 @@ import {
   GatherStrategy,
   NodeOutputBuilder,
   NodeStateBase,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
-import { IncrementalGatherStrategy } from '@noocodex/dagonizer/core';
-import type { DAG, NodeInterface} from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
 import type { GatherExecution, GatherRecord } from '@noocodex/dagonizer';
 import type { GatherConfig } from '@noocodex/dagonizer';
 import type { StateAccessor } from '@noocodex/dagonizer/contracts';
@@ -53,13 +51,11 @@ export class IncrementalState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // #region worker-node
-export class ShoutNode implements NodeInterface<IncrementalState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ShoutNode extends ScalarNode<IncrementalState, 'done'> {
   readonly name = 'shout';
   readonly outputs = ['done'] as const;
 
-  async execute(state: IncrementalState) {
+  protected override async executeOne(state: IncrementalState) {
     const word = state.getMetadata<string>('word') ?? '?';
     // Write a scalar to `processed` on the clone. The map gather reads
     // `processed` off each clone and appends it to the parent's `results`.
@@ -76,11 +72,11 @@ export class ShoutNode implements NodeInterface<IncrementalState, 'done'> {
 
 // #region observable-strategies
 /**
- * Wraps the built-in `map` strategy's `applyIncremental` logic and
- * emits a log line each time a single record is folded into parent state.
- * Makes the streaming accumulation of `state.results` visible during execution.
+ * Wraps per-clone `reduce` logic and emits a log line each time a single
+ * record is folded into parent state. Makes the streaming accumulation of
+ * `state.results` visible during execution.
  */
-export class LoggingMapStrategy extends IncrementalGatherStrategy {
+export class LoggingMapStrategy extends GatherStrategy {
   readonly name = 'logging-map';
 
   private readonly foldLog: string[];
@@ -90,42 +86,33 @@ export class LoggingMapStrategy extends IncrementalGatherStrategy {
     this.foldLog = foldLog;
   }
 
-  // Called after EACH clone body completes (streaming fold).
-  override applyIncremental(
+  // Called after EACH clone body completes (or per micro-batch).
+  override reduce(
     config: GatherConfig,
-    record: GatherRecord<NodeStateInterface>,
+    batch: Parameters<GatherStrategy['reduce']>[1],
     state: NodeStateInterface,
     accessor: StateAccessor,
   ): void {
     const mapping = config.mapping ?? {};
-    for (const [clonePath, parentPath] of Object.entries(mapping)) {
-      const value = accessor.get(record.cloneState, clonePath);
-      const existing = accessor.get<readonly unknown[]>(state, parentPath) ?? [];
-      const next = [...existing, value];
-      accessor.set(state, parentPath, next);
-      this.foldLog.push(
-        `[incremental] clone[${record.index}] folded → results now ${JSON.stringify(next)}`,
-      );
+    for (const item of batch) {
+      const record = item.state as GatherRecord<NodeStateInterface>;
+      for (const [clonePath, parentPath] of Object.entries(mapping)) {
+        const value = accessor.get(record.cloneState, clonePath);
+        const existing = accessor.get<readonly unknown[]>(state, parentPath) ?? [];
+        const next = [...existing, value];
+        accessor.set(state, parentPath, next);
+        this.foldLog.push(
+          `[incremental] clone[${record.index}] folded → results now ${JSON.stringify(next)}`,
+        );
+      }
     }
-  }
-
-  // Called once after ALL clones complete for strategies that bypass
-  // applyIncremental (ours never accumulates records for batch).
-  async apply<TState extends NodeStateInterface>(
-    _config: GatherConfig,
-    execution: GatherExecution<TState>,
-  ): Promise<void> {
-    // No-op for this strategy: applyIncremental already handled every record.
-    // The batch apply is only reached when the strategy has NO applyIncremental
-    // or when acked records are replayed from a prior run. Neither applies here.
-    this.foldLog.push(`[batch-apply called] ${execution.records.length} records (should be 0 for incremental)`);
   }
 }
 
 /**
- * Custom gather strategy: accumulates ALL records into a single array
- * in one batch call after every clone completes. No `applyIncremental`
- * override — the engine falls back to calling `apply` once at the end.
+ * Custom gather strategy: accumulates ALL records into a single array in one
+ * call after every clone completes. `reduce` is a no-op; `finalize` handles
+ * all records at the end.
  */
 export class BatchOnlyStrategy extends GatherStrategy {
   readonly name = 'batch-only';
@@ -137,11 +124,19 @@ export class BatchOnlyStrategy extends GatherStrategy {
     this.foldLog = foldLog;
   }
 
-  // NO applyIncremental override — engine uses batch mode.
-
-  async apply<TState extends NodeStateInterface>(
+  // accumulate nothing per-clone — finalize handles all records
+  override reduce(
     _config: GatherConfig,
-    execution: GatherExecution<TState>,
+    _batch: Parameters<GatherStrategy['reduce']>[1],
+    _state: NodeStateInterface,
+    _accessor: StateAccessor,
+  ): void {
+    // no-op
+  }
+
+  override async finalize(
+    _config: GatherConfig,
+    execution: GatherExecution<NodeStateInterface>,
   ): Promise<void> {
     const values = execution.records.map((r) =>
       execution.accessor.get(r.cloneState, 'processed'),
@@ -242,7 +237,7 @@ export const batchDag: DAG = {
       "itemKey":   'word',
       "concurrency": 1,
       "gather": {
-        "strategy": 'batch-only',            // no applyIncremental → batch at end
+        "strategy": 'batch-only',            // reduce is no-op → finalize handles all records at end
         "mapping":  { "results": 'results' },
       },
       "outputs": {

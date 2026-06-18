@@ -33,7 +33,7 @@ const validExecute: BridgeMessage = {
   'request': {
     'dagName': 'my-dag',
     'placementPath': ['a', 'b'],
-    'stateSnapshot': { 'value': 42 },
+    'items': [{ 'id': 'req-1', 'snapshot': { 'value': 42 } }],
     'timeoutMs': 5000,
     'correlationId': 'req-1',
   },
@@ -44,7 +44,7 @@ const validExecuteNullTimeout: BridgeMessage = {
   'request': {
     'dagName': 'my-dag',
     'placementPath': [],
-    'stateSnapshot': {},
+    'items': [{ 'id': 'req-2', 'snapshot': {} }],
     'timeoutMs': null,
     'correlationId': 'req-2',
   },
@@ -70,9 +70,8 @@ const validResult: BridgeMessage = {
   'kind': 'result',
   'response': {
     'correlationId': 'req-1',
-    'terminalOutput': 'completed',
+    'items': [{ 'id': 'req-1', 'snapshot': { 'value': 99 }, 'terminalOutcome': 'completed' }],
     'errors': [],
-    'stateSnapshot': { 'value': 99 },
     'intermediates': [
       { 'output': 'done', 'skipped': false, 'nodeName': 'step1' },
     ],
@@ -83,7 +82,7 @@ const validResultNullSnapshot: BridgeMessage = {
   'kind': 'result',
   'response': {
     'correlationId': 'req-1',
-    'terminalOutput': 'failed',
+    'items': [{ 'id': 'req-1', 'snapshot': null, 'terminalOutcome': 'failed' }],
     'errors': [{
       'code': 'ERR',
       'context': {},
@@ -92,7 +91,6 @@ const validResultNullSnapshot: BridgeMessage = {
       'recoverable': false,
       'timestamp': '2024-01-01T00:00:00.000Z',
     }],
-    'stateSnapshot': null,
     'intermediates': [],
   },
 };
@@ -162,11 +160,11 @@ describe('BridgeMessage schema — valid branches', () => {
     assert.ok(Validator.bridgeMessage.is(validReady));
   });
 
-  it('validates result branch with stateSnapshot', () => {
+  it('validates result branch with item snapshot', () => {
     assert.ok(Validator.bridgeMessage.is(validResult));
   });
 
-  it('validates result branch with null stateSnapshot', () => {
+  it('validates result branch with null item snapshot', () => {
     assert.ok(Validator.bridgeMessage.is(validResultNullSnapshot));
   });
 
@@ -194,7 +192,7 @@ describe('BridgeMessage schema — dag-only proof (execute request)', () => {
       'request': {
         'dagName': 'my-dag',
         'placementPath': [],
-        'stateSnapshot': {},
+        'items': [{ 'id': 'req-1', 'snapshot': {} }],
         'timeoutMs': null,
         'correlationId': 'req-1',
         'nodeName': 'step1',   // must be rejected: no per-node routing
@@ -210,7 +208,7 @@ describe('BridgeMessage schema — dag-only proof (execute request)', () => {
         'kind': 'dag',          // must be rejected: no kind in dag-only request
         'dagName': 'my-dag',
         'placementPath': [],
-        'stateSnapshot': {},
+        'items': [{ 'id': 'req-1', 'snapshot': {} }],
         'timeoutMs': null,
         'correlationId': 'req-1',
       },
@@ -223,7 +221,7 @@ describe('BridgeMessage schema — dag-only proof (execute request)', () => {
       'kind': 'execute',
       'request': {
         'placementPath': [],
-        'stateSnapshot': {},
+        'items': [{ 'id': 'req-1', 'snapshot': {} }],
         'timeoutMs': null,
         'correlationId': 'req-1',
       },
@@ -237,7 +235,7 @@ describe('BridgeMessage schema — dag-only proof (execute request)', () => {
       'request': {
         'dagName': 'my-dag',
         'placementPath': [],
-        'stateSnapshot': {},
+        'items': [{ 'id': 'req-1', 'snapshot': {} }],
         'timeoutMs': null,
       },
     };
@@ -262,9 +260,8 @@ describe('BridgeMessage schema — additionalProperties rejection', () => {
       'kind': 'result',
       'response': {
         'correlationId': 'req-1',
-        'terminalOutput': 'completed',
+        'items': [{ 'id': 'req-1', 'snapshot': null, 'terminalOutcome': 'completed' }],
         'errors': [],
-        'stateSnapshot': null,
         'intermediates': [
           { 'output': 'done', 'skipped': false, 'nodeName': 'step1', 'extra': 1 },
         ],

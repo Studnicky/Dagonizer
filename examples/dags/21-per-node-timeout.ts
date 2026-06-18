@@ -18,10 +18,10 @@ import {
   DAGBuilder,
   NodeOutputBuilder,
   NodeStateBase,
-  EMPTY_CONTRACT_FRAGMENT,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 import { Timeout } from '@noocodex/dagonizer/runtime';
-import type { NodeContextInterface, NodeInterface} from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State
@@ -36,13 +36,12 @@ export class TaskState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // #region fast-node
-export class FastTaskNode implements NodeInterface<TaskState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+export class FastTaskNode extends ScalarNode<TaskState, 'done'> {
   readonly name = 'fast-task';
   readonly outputs = ['done'] as const;
   // Per-node timeout budget: 200 ms. This node resolves in ~0 ms → no timeout.
-  readonly timeout = Timeout.ofMs(200);
-  async execute(state: TaskState) {
+  override readonly timeout = Timeout.ofMs(200);
+  protected override async executeOne(state: TaskState) {
     state.output = 'fast-done';
     return NodeOutputBuilder.of('done');
   }
@@ -57,13 +56,12 @@ export class FastTaskNode implements NodeInterface<TaskState, 'done'> {
 // ---------------------------------------------------------------------------
 
 // #region slow-node
-export class SlowTaskNode implements NodeInterface<TaskState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
+export class SlowTaskNode extends ScalarNode<TaskState, 'done'> {
   readonly name = 'slow-task';
   readonly outputs = ['done'] as const;
   // Per-node timeout budget: 50 ms. The node tries to wait 5 s → NodeTimeoutError.
-  readonly timeout = Timeout.ofMs(50);
-  async execute(_state: TaskState, context: NodeContextInterface) {
+  override readonly timeout = Timeout.ofMs(50);
+  protected override async executeOne(_state: TaskState, context: NodeContextInterface) {
     // Await a 5-second delay, but honour context.signal so the engine's
     // per-node abort terminates the wait promptly at the 50 ms boundary.
     await new Promise<void>((_resolve, reject) => {

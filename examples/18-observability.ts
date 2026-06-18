@@ -98,7 +98,52 @@ class TracingDispatcher extends Dagonizer<PipelineState> {
 // #endregion subclass-observer
 
 // ---------------------------------------------------------------------------
-// Run
+// Multi-observer composition pattern
+//
+// When a single consumer needs multiple orthogonal observers (e.g. a logger
+// AND a tracer), pass the cross-cutting concerns into the subclass via its
+// constructor. Each concern is a plain function; the subclass dispatches to
+// both in every hook. No callbacks on Dagonizer itself — the composition
+// lives entirely inside the subclass body.
+// ---------------------------------------------------------------------------
+
+// #region multi-observer
+class ComposedDispatcher extends Dagonizer<PipelineState> {
+  readonly #logA: (msg: string) => void;
+  readonly #logB: (msg: string) => void;
+
+  constructor(logA: (msg: string) => void, logB: (msg: string) => void) {
+    super();
+    this.#logA = logA;
+    this.#logB = logB;
+  }
+
+  protected override onNodeStart(
+    nodeName: string,
+    _state: PipelineState,
+    placementPath: readonly string[],
+  ): void {
+    const path = placementPath.length > 0 ? `[${placementPath.join('/')}] ` : '';
+    this.#logA(`nodeStart  ${path}${nodeName}`);
+    this.#logB(`nodeStart  ${path}${nodeName}`);
+  }
+
+  protected override onNodeEnd(
+    nodeName: string,
+    output: string | null,
+    _state: PipelineState,
+    placementPath: readonly string[],
+  ): void {
+    const path   = placementPath.length > 0 ? `[${placementPath.join('/')}] ` : '';
+    const outTag = output ?? '(terminal)';
+    this.#logA(`nodeEnd    ${path}${nodeName} → ${outTag}`);
+    this.#logB(`nodeEnd    ${path}${nodeName} → ${outTag}`);
+  }
+}
+// #endregion multi-observer
+
+// ---------------------------------------------------------------------------
+// Run: TracingDispatcher (single observer)
 // ---------------------------------------------------------------------------
 
 const dispatcher = new TracingDispatcher('[trace]');
@@ -123,3 +168,77 @@ process.stdout.write('\nSubclass hooks fire at every execution boundary.\n');
 process.stdout.write('For worker/container nodes the same hooks fire via ObserverRelay —\n');
 process.stdout.write('the placementPath carries the full ancestry so inner nodes are\n');
 process.stdout.write('identifiable even when they share names across placements.\n');
+
+// ---------------------------------------------------------------------------
+// Run: ComposedDispatcher (multi-observer — two log sinks in one subclass)
+// ---------------------------------------------------------------------------
+
+const logA: string[] = [];
+const logB: string[] = [];
+const composed = new ComposedDispatcher(
+  (msg) => logA.push(`[A] ${msg}`),
+  (msg) => logB.push(`[B] ${msg}`),
+);
+composed.registerNode(new ValidateNode());
+composed.registerNode(new TransformNode());
+composed.registerDAG(dag);
+
+const composedState = new PipelineState();
+await composed.execute('observe-demo', composedState);
+
+process.stdout.write('\nComposedDispatcher: two log sinks in one subclass\n');
+process.stdout.write(`  logA lines: ${String(logA.length)} | logB lines: ${String(logB.length)}\n`);
+
+// ---------------------------------------------------------------------------
+// AbortSignal composition: how execute() composes caller signal + deadline
+// (doc region — illustrates the signal-compose pattern used internally)
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Lifecycle state access: how to read kind + timestamps after execution
+// (doc region — illustrates discriminated union usage)
+// ---------------------------------------------------------------------------
+
+// #region lifecycle-state
+// state.lifecycle is a discriminated union narrowed by `kind`.
+// Timestamps are monotonic milliseconds from Clock.monotonicMs().
+//
+//   { kind: 'pending',    startedAt: null,   finishedAt: null,   error: null,  reason: null }
+//   { kind: 'running',    startedAt: number, finishedAt: null,   error: null,  reason: null }
+//   { kind: 'completed',  startedAt: number, finishedAt: number, error: null,  reason: null }
+//   { kind: 'failed',     startedAt: number, finishedAt: number, error: Error, reason: null }
+//   { kind: 'cancelled',  startedAt: number, finishedAt: number, error: null,  reason: string }
+//   { kind: 'timed_out',  startedAt: number, finishedAt: number, error: null,  reason: null }
+
+const lifecycleDispatcher = new TracingDispatcher('[lifecycle]');
+lifecycleDispatcher.registerNode(new ValidateNode());
+lifecycleDispatcher.registerNode(new TransformNode());
+lifecycleDispatcher.registerDAG(dag);
+
+const lifecycleState = new PipelineState();
+await lifecycleDispatcher.execute('observe-demo', lifecycleState);
+
+const lc = lifecycleState.lifecycle;
+if (lc.kind === 'completed') {
+  // Both startedAt and finishedAt are numbers; no null-check needed here.
+  const durationMs = lc.finishedAt - lc.startedAt;
+  process.stdout.write(`  completed in ${String(durationMs)} ms\n`);
+} else if (lc.kind === 'failed') {
+  process.stdout.write(`  failed: ${lc.error.message}\n`);
+} else if (lc.kind === 'cancelled') {
+  process.stdout.write(`  cancelled: ${lc.reason}\n`);
+}
+// #endregion lifecycle-state
+
+// #region signal-compose
+// execute() composes an optional caller AbortSignal and an optional deadlineMs
+// into one composed signal via AbortSignal.any. Both are optional; either alone
+// is also valid. Each node receives the composed signal as context.signal.
+function composeSignal(callerSignal: AbortSignal | undefined, deadlineMs: number | undefined): AbortSignal {
+  const sources: AbortSignal[] = [];
+  if (callerSignal !== undefined) sources.push(callerSignal);
+  if (deadlineMs !== undefined) sources.push(AbortSignal.timeout(deadlineMs));
+  return sources.length > 0 ? AbortSignal.any(sources) : new AbortController().signal;
+}
+void composeSignal; // documentation region — not called at runtime
+// #endregion signal-compose
