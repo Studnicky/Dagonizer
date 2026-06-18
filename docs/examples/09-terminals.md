@@ -19,9 +19,9 @@ import {
   DAGBuilder,
   NodeOutputBuilder,
   NodeStateBase,
-} from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+} from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
+import type { NodeInterface } from '@studnicky/dagonizer/contracts';
 
 class S extends NodeStateBase { shouldPass = true; }
 

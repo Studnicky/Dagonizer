@@ -25,15 +25,15 @@
  * the worker thread, not the parent.
  */
 
-import { ScalarNode } from '@noocodex/dagonizer';
+import { ScalarNode } from '@studnicky/dagonizer';
 import type {
   RegistryBundleInterface,
   RegistryModuleInterface,
-} from '@noocodex/dagonizer/contracts';
-import { NodeOutputBuilder } from '@noocodex/dagonizer/entities';
-import type { JsonObject, NodeContextInterface, NodeOutputInterface } from '@noocodex/dagonizer/entities';
-import { ConformanceRegistry } from '@noocodex/dagonizer/testing';
-import type { ConformanceState } from '@noocodex/dagonizer/testing';
+} from '@studnicky/dagonizer/contracts';
+import { NodeOutputBuilder } from '@studnicky/dagonizer/entities';
+import type { JsonObject, NodeContextInterface, NodeOutputInterface } from '@studnicky/dagonizer/entities';
+import { ConformanceRegistry } from '@studnicky/dagonizer/testing';
+import type { ConformanceState } from '@studnicky/dagonizer/testing';
 
 /** The scatter item value whose worker self-terminates mid-request. */
 export const KILL_ITEM = 20;

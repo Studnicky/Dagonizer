@@ -1,6 +1,6 @@
 # Dagonizer: Project Standards
 
-`@noocodex/dagonizer` is a DAG dispatcher. Type-safe nodes, abortable
+`@studnicky/dagonizer` is a DAG dispatcher. Type-safe nodes, abortable
 execution, deterministic resume. Backbone of the noocodex orchestration
 stack; consumers extend and compose, never patch.
 

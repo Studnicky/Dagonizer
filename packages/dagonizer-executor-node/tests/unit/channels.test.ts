@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import { PassThrough } from 'node:stream';
 import { describe, it } from 'node:test';
 
-import type { BridgeMessage } from '@noocodex/dagonizer/entities';
+import type { BridgeMessage } from '@studnicky/dagonizer/entities';
 
 import { IpcChannel } from '../../src/IpcChannel.js';
 import type { IpcEndpoint } from '../../src/IpcChannel.js';

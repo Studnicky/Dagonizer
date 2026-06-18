@@ -41,7 +41,7 @@ When the dispatcher reaches the `enrich` placement, it delegates the sub-DAG to 
 
 ### Available Node.js backends
 
-All four backends are in `@noocodex/dagonizer-executor-node`:
+All four backends are in `@studnicky/dagonizer-executor-node`:
 
 | Backend | Transport | When to use |
 |---------|-----------|-------------|
@@ -50,7 +50,7 @@ All four backends are in `@noocodex/dagonizer-executor-node`:
 | `ClusterContainer` | IPC pipe | Reuse a pre-forked cluster worker pool |
 | `SpawnContainer` | NDJSON over stdio | Polyglot isolates; any executable that speaks the wire protocol |
 
-The browser package `@noocodex/dagonizer-executor-web` ships `WebWorkerContainer` over `postMessage`.
+The browser package `@studnicky/dagonizer-executor-web` ships `WebWorkerContainer` over `postMessage`.
 
 ### Pool sizing
 
@@ -89,10 +89,10 @@ When a top-level DAG completes at a terminal placement bound to a `HandoffChanne
 Subclass `InMemoryChannel` and override the protected `onPublished` hook to chain a downstream DAG. `InMemoryChannel` carries no constructor options; passing a callback object is not supported — extension via subclass is the only mechanism.
 
 ```ts twoslash
-import { NodeStateBase, Dagonizer } from '@noocodex/dagonizer';
-import { InMemoryChannel } from '@noocodex/dagonizer/channels';
-import type { DAGHandoff } from '@noocodex/dagonizer/entities';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
+import { NodeStateBase, Dagonizer } from '@studnicky/dagonizer';
+import { InMemoryChannel } from '@studnicky/dagonizer/channels';
+import type { DAGHandoff } from '@studnicky/dagonizer/entities';
+import type { JsonObject } from '@studnicky/dagonizer/entities';
 
 class AppState extends NodeStateBase {}
 interface AppServices { db: unknown }
@@ -136,10 +136,10 @@ A publish failure collects a `HANDOFF_PUBLISH_FAILED` error on the run's state; 
 A serverless function receives a `DAGHandoff` envelope, restores state, runs the DAG to completion, and lets the bound egress channels publish the next envelope. The function itself requires no Dagonizer-specific runtime; it is a plain `Dagonizer` instance.
 
 ```ts twoslash
-import { NodeStateBase, Dagonizer } from '@noocodex/dagonizer';
-import type { DispatcherBundle } from '@noocodex/dagonizer';
-import type { HandoffChannelInterface } from '@noocodex/dagonizer/contracts';
-import type { DAGHandoff, JsonObject } from '@noocodex/dagonizer/entities';
+import { NodeStateBase, Dagonizer } from '@studnicky/dagonizer';
+import type { DispatcherBundle } from '@studnicky/dagonizer';
+import type { HandoffChannelInterface } from '@studnicky/dagonizer/contracts';
+import type { DAGHandoff, JsonObject } from '@studnicky/dagonizer/entities';
 
 class AppState extends NodeStateBase {}
 interface AppServices { db: unknown }

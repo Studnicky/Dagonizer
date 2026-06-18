@@ -1,7 +1,7 @@
 /**
  * Recursive JSON value types. The single permitted boundary type for any
  * shape that must be serializable (state snapshots, checkpoint records,
- * wire payloads). Shape matches what `@noocodex/jsontology` will consume
+ * wire payloads). Shape matches what `@studnicky/jsontology` will consume
  * when that workspace package lands.
  */
 

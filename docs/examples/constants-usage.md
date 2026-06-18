@@ -1,6 +1,6 @@
 ---
 title: 'Example: Constants usage'
-description: 'Every typed constant from @noocodex/dagonizer/constants used as runtime guards: GatherStrategyName, MetadataKey, NodeType, Output, and ScatterOutput.'
+description: 'Every typed constant from @studnicky/dagonizer/constants used as runtime guards: GatherStrategyName, MetadataKey, NodeType, Output, and ScatterOutput.'
 seeAlso:
   - text: 'Example 14: Gather strategies'
     link: './14-gather-strategies'
@@ -12,7 +12,7 @@ seeAlso:
 
 # Example: Constants usage
 
-Every typed constant from `@noocodex/dagonizer/constants` is both a frozen runtime lookup object and a `FromSchema`-derived TypeScript type of the same name. This example exercises each constant as a runtime guard and prints the results — no dispatcher, no DAG execution required.
+Every typed constant from `@studnicky/dagonizer/constants` is both a frozen runtime lookup object and a `FromSchema`-derived TypeScript type of the same name. This example exercises each constant as a runtime guard and prints the results — no dispatcher, no DAG execution required.
 
 Constants demonstrated:
 

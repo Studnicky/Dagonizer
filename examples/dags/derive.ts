@@ -10,12 +10,12 @@
  * the child DAG.
  */
 
-import { DAGDeriver } from '@noocodex/dagonizer/derive';
-import { Dagonizer, NodeOutputBuilder, NodeStateBase, ScalarNode } from '@noocodex/dagonizer';
-import type { OperationContract } from '@noocodex/dagonizer/contracts';
-import type { OperationContractFragment } from '@noocodex/dagonizer/contracts';
-import type { Chainable } from '@noocodex/dagonizer/contracts';
-import type { DAGDeriverAnnotations, DAGDeriverEmbeddedDAG } from '@noocodex/dagonizer/derive';
+import { DAGDeriver } from '@studnicky/dagonizer/derive';
+import { Dagonizer, NodeOutputBuilder, NodeStateBase, ScalarNode } from '@studnicky/dagonizer';
+import type { OperationContract } from '@studnicky/dagonizer/contracts';
+import type { OperationContractFragment } from '@studnicky/dagonizer/contracts';
+import type { Chainable } from '@studnicky/dagonizer/contracts';
+import type { DAGDeriverAnnotations, DAGDeriverEmbeddedDAG } from '@studnicky/dagonizer/derive';
 
 // ---------------------------------------------------------------------------
 // State

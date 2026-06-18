@@ -66,8 +66,8 @@ import { streamEventDAG } from './embedded-dags/StreamEventDAG.ts';
 import type { CartographerState } from './CartographerState.ts';
 import type { CartographerServices } from './CartographerServices.ts';
 
-import type { DAG, DispatcherBundle } from '@noocodex/dagonizer';
-import { DAGBuilder } from '@noocodex/dagonizer';
+import type { DAG, DispatcherBundle } from '@studnicky/dagonizer';
+import { DAGBuilder } from '@studnicky/dagonizer';
 
 import './core/InsightsFoldGather.ts';
 // #endregion cartographer-dag-imports

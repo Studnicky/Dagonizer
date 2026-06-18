@@ -17,9 +17,9 @@
  */
 
 // #region observed-archivist
-import type { ExecutionResultInterface } from '@noocodex/dagonizer';
-import { Dagonizer } from '@noocodex/dagonizer';
-import type { DagonizerOptionsInterface } from '@noocodex/dagonizer';
+import type { ExecutionResultInterface } from '@studnicky/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
+import type { DagonizerOptionsInterface } from '@studnicky/dagonizer';
 
 import type { ArchivistState } from './ArchivistState.ts';
 import type { ArchivistServices } from './services.ts';

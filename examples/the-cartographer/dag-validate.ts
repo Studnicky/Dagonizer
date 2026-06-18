@@ -6,7 +6,7 @@
  */
 
 // #region well-formed-validate
-import { WellFormedValidator } from '@noocodex/dagonizer/validation';
+import { WellFormedValidator } from '@studnicky/dagonizer/validation';
 
 import { cartographerDAG, eventPipelineTypedDAG } from './dag.ts';
 import { gdprComplianceDAG } from './embedded-dags/GdprComplianceDAG.ts';

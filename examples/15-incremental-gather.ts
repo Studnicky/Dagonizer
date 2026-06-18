@@ -25,7 +25,7 @@
  * Run: npx tsx examples/15-incremental-gather.ts
  */
 
-import { Dagonizer, GatherStrategies } from '@noocodex/dagonizer';
+import { Dagonizer, GatherStrategies } from '@studnicky/dagonizer';
 import {
   IncrementalState,
   ObservableStrategies,

@@ -1,6 +1,6 @@
 /**
  * constants-usage/dags: demonstrates every constant from
- * @noocodex/dagonizer/constants as typed guards.
+ * @studnicky/dagonizer/constants as typed guards.
  *
  * Each constant is both a runtime value (frozen lookup object) and a
  * FromSchema-derived type of the same name. Import the object for
@@ -17,7 +17,7 @@ import {
   NodeType,
   Output,
   ScatterOutput,
-} from '@noocodex/dagonizer/constants';
+} from '@studnicky/dagonizer/constants';
 
 // ── Item type narrowed at the scatter boundary ────────────────────────────────
 export interface CatalogueItem {

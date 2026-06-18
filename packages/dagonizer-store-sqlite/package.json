@@ -1,7 +1,7 @@
 {
-  "name": "@noocodex/dagonizer-store-sqlite",
-  "version": "0.20.0",
-  "description": "SQLite-backed Store for @noocodex/dagonizer using Node's built-in node:sqlite.",
+  "name": "@studnicky/dagonizer-store-sqlite",
+  "version": "0.21.0",
+  "description": "SQLite-backed Store for @studnicky/dagonizer using Node's built-in node:sqlite.",
   "private": false,
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
@@ -35,7 +35,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@noocodex/dagonizer": "workspace:>=0.20.0"
+    "@studnicky/dagonizer": "workspace:>=0.21.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

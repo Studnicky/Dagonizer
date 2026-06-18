@@ -1,5 +1,5 @@
 /**
- * monadic-node/dags: demonstrates the node taxonomy from @noocodex/dagonizer.
+ * monadic-node/dags: demonstrates the node taxonomy from @studnicky/dagonizer.
  *
  * Defines an abstract `LoggingNode` that extends `ScalarNode` and adds
  * structured timing around `executeOne`. A concrete subclass fills in the
@@ -15,9 +15,9 @@
  */
 
 // #region execute-contract
-import { MonadicNode, RoutedBatchBuilder } from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeStateInterface, RoutedBatch } from '@noocodex/dagonizer';
-import { Batch } from '@noocodex/dagonizer';
+import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { NodeContextInterface, NodeStateInterface, RoutedBatch } from '@studnicky/dagonizer';
+import { Batch } from '@studnicky/dagonizer';
 
 // The execute signature: consume Batch<TState>, return RoutedBatch<TOutput, TState>.
 // Items are partitioned across output ports — routing IS partitioning.
@@ -31,8 +31,8 @@ export class EchoNode extends MonadicNode<NodeStateInterface, 'out'> {
 // #endregion execute-contract
 
 // #region monadic-node
-import { NodeOutputBuilder, NodeStateBase, ScalarNode } from '@noocodex/dagonizer';
-import type { NodeOutputInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, NodeStateBase, ScalarNode } from '@studnicky/dagonizer';
+import type { NodeOutputInterface } from '@studnicky/dagonizer';
 
 // ── Domain state ──────────────────────────────────────────────────────────────
 

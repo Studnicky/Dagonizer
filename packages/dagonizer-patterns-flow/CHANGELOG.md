@@ -1,4 +1,6 @@
-# @noocodex/dagonizer-patterns-flow
+# @studnicky/dagonizer-patterns-flow
+
+## 0.21.0
 
 ## 0.20.0
 
@@ -19,7 +21,7 @@
   - **Fork** is `ScatterNode` / `.scatter(name, source, body, outputs, options?)`. `source` is required (a fork is always 1→N). `FanOutNode` / `.fanOut()` are removed.
   - **Embed** is `EmbeddedDAGNode` / `.embeddedDAG(name, dagName, outputs, options?)`: invoke a sub-DAG once (cardinality 1) with `stateMapping { input, output }` (`input` seeds the child from the parent, `output` copies child fields back). Distinct from fork; never a flag on `scatter`.
   - **Merge** machinery is `GatherConfig` + the `GatherStrategies` (`map`/`append`/`partition`/`custom`) and `OutcomeReducers` (`aggregate`/`terminal`) registries. `FanInConfig`, `FanInStrategies`/`FanInStrategy`/`FanInExecution` are removed.
-  - Renames: `FAN_OUT_PROGRESS_KEY`→`SCATTER_PROGRESS_KEY` (and `FanOutProgress`/`StoredFanOutProgress`→`ScatterProgress`/`StoredScatterProgress`); `MetadataKey.fanInResults`→`gatherResults`; derive `annotations.fanouts`→`annotations.scatters`, `DAGDeriverFanOut`→`DAGDeriverScatter`, `fanInOperation`→`customNode` (the `embeddedDAGs` annotation now renders an `EmbeddedDAGNode`); `@noocodex/dagonizer-patterns-flow`'s `FanInReducerNode`→`MergeReducerNode`.
+  - Renames: `FAN_OUT_PROGRESS_KEY`→`SCATTER_PROGRESS_KEY` (and `FanOutProgress`/`StoredFanOutProgress`→`ScatterProgress`/`StoredScatterProgress`); `MetadataKey.fanInResults`→`gatherResults`; derive `annotations.fanouts`→`annotations.scatters`, `DAGDeriverFanOut`→`DAGDeriverScatter`, `fanInOperation`→`customNode` (the `embeddedDAGs` annotation now renders an `EmbeddedDAGNode`); `@studnicky/dagonizer-patterns-flow`'s `FanInReducerNode`→`MergeReducerNode`.
   - Visualization gains an `embedded-dag` placement type (Cytoscape) / subroutine shape (Mermaid) / `dag:EmbeddedDAGNode` (JSON-LD), distinct from `scatter`.
 
   `NodeResult.output` is now required and typed `string | null` (`null` = no route emitted; previously optional `string`), and every `NodeResultInterface` carries a required `intermediateResults` array (`[]` for leaf nodes): one stable result shape, no post-construction mutation. `onNodeEnd` and `Instrumentation.nodeEnd` take `output: string | null` to match.
@@ -47,14 +49,14 @@
 ### Patch Changes
 
 - Updated dependencies [d3a4e7b]
-  - @noocodex/dagonizer@0.14.0
+  - @studnicky/dagonizer@0.14.0
 
 ## 0.13.2
 
 ### Patch Changes
 
 - Updated dependencies [238a94d]
-  - @noocodex/dagonizer@0.13.2
+  - @studnicky/dagonizer@0.13.2
 
 ## 0.12.0
 
@@ -62,4 +64,4 @@
 
 - Updated dependencies [7c0e38a]
 - Updated dependencies [3286d07]
-  - @noocodex/dagonizer@0.12.0
+  - @studnicky/dagonizer@0.12.0

@@ -8,10 +8,10 @@ name: Release
 #      CHANGELOGs, and refreshes the lockfile.
 #   2. When that PR merges: each package whose version differs from
 #      the GitHub Packages registry gets published. Tags are pushed for
-#      each released package (e.g. `@noocodex/dagonizer@0.16.0`).
+#      each released package (e.g. `@studnicky/dagonizer@0.16.0`).
 #
 # All packages publish to GitHub Packages (https://npm.pkg.github.com).
-# Packages are scoped to @noocodex and the fixed-group lockstep ensures
+# Packages are scoped to @studnicky and the fixed-group lockstep ensures
 # every package in the monorepo releases together on each minor/major bump.
 
 on:

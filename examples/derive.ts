@@ -26,7 +26,7 @@
  * the path that matches your mental model.
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
 import {
   PipelineState,
   PrepareNode,

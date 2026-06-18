@@ -23,12 +23,12 @@
  * Run: npx tsx examples/24-llm-adapter.ts
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
 import {
   LlmAdapterRegistry,
   LlmAdapterCascade,
-} from '@noocodex/dagonizer/adapter';
-import { OllamaApiAdapter } from '@noocodex/dagonizer-adapter-ollama';
+} from '@studnicky/dagonizer/adapter';
+import { OllamaApiAdapter } from '@studnicky/dagonizer-adapter-ollama';
 
 import { ChatAdapterState, ChatNode, HandleTextNode, HandleToolsNode, dag } from './dags/24-llm-adapter.js';
 

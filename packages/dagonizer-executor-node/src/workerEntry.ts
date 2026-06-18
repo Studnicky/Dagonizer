@@ -12,7 +12,7 @@
 
 import { isMainThread, parentPort } from 'node:worker_threads';
 
-import { DagHost } from '@noocodex/dagonizer/container';
+import { DagHost } from '@studnicky/dagonizer/container';
 
 import { MessagePortChannel } from './MessagePortChannel.js';
 

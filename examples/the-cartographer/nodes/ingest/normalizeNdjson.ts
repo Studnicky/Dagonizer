@@ -14,7 +14,7 @@ import { FieldMappings } from '../../services.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region normalize-ndjson-node
 export class NormalizeNdjsonNode extends ScalarNode<CartographerState, 'normalized', CartographerServices> {

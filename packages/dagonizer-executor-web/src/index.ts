@@ -1,7 +1,7 @@
 /**
- * @noocodex/dagonizer-executor-web
+ * @studnicky/dagonizer-executor-web
  *
- * Browser isolating container backend for @noocodex/dagonizer.
+ * Browser isolating container backend for @studnicky/dagonizer.
  * Web Worker pool over the bridge protocol. A WebWorkerContainer runs a
  * whole embedded DAG inside a Web Worker isolate.
  *

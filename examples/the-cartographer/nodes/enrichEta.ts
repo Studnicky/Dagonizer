@@ -19,9 +19,9 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { EtaEstimator } from '../services.ts';
 
-import type { NodeContextInterface } from '@noocodex/dagonizer';
-import { MonadicNode, RoutedBatchBuilder } from '@noocodex/dagonizer';
-import type { Batch, RoutedBatch } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { Batch, RoutedBatch } from '@studnicky/dagonizer';
 
 // #region enrich-eta-node
 export class EnrichEtaNode extends MonadicNode<CartographerState, 'eta-estimated', CartographerServices> {

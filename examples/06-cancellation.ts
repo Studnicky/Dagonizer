@@ -16,7 +16,7 @@
  * Run: npx tsx examples/06-cancellation.ts
  */
 
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
 import { BatchProcessNode, SlowNode, batchDag, dag } from './dags/06-cancellation.js';
 
 const dispatcher = new Dagonizer<NodeStateBase>();

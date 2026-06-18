@@ -5,8 +5,8 @@
  * `new Worker(new URL('./cartographerWorkerEntry.ts', import.meta.url), { type: 'module' })`.
  */
 
-import { WebWorkerEntry } from '@noocodex/dagonizer-executor-web';
-import type { WorkerScopeLikeInterface } from '@noocodex/dagonizer-executor-web';
+import { WebWorkerEntry } from '@studnicky/dagonizer-executor-web';
+import type { WorkerScopeLikeInterface } from '@studnicky/dagonizer-executor-web';
 
 import cartographerRegistry from './cartographerWorkerRegistry.ts';
 

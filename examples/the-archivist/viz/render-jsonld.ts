@@ -14,7 +14,7 @@
  */
 
 // #region jsonld-render
-import { JsonLdRenderer, DAGONIZER_VOCAB } from '@noocodex/dagonizer/viz';
+import { JsonLdRenderer, DAGONIZER_VOCAB } from '@studnicky/dagonizer/viz';
 import { archivistDAG }                    from '../dag.ts';
 
 const doc = JsonLdRenderer.render(archivistDAG);

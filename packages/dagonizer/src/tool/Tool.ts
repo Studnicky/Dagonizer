@@ -13,7 +13,7 @@
  * this interface, not any concrete implementation.
  *
  * `ToolDefinition` and `ToolCall` shapes are reused from
- * `@noocodex/dagonizer/adapter` so the LLM tool-channel and the
+ * `@studnicky/dagonizer/adapter` so the LLM tool-channel and the
  * tool-execution boundary speak the same vocabulary.
  */
 

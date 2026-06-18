@@ -1,20 +1,20 @@
-# @noocodex/dagonizer-adapter-gemini-api
+# @studnicky/dagonizer-adapter-gemini-api
 
 > **Beta:** not yet published to npm. Ships in v0.10.0 as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format compatibility is verified via intercepted-fetch smoke tests. Expect minor adjustments before 1.0.
 
-Google Gemini REST adapter for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Targets `gemini-2.0-flash` via the AI Studio API.
+Google Gemini REST adapter for [@studnicky/dagonizer](https://npmjs.com/package/@studnicky/dagonizer). Targets `gemini-2.0-flash` via the AI Studio API.
 
 ## Install
 
 ```bash
-npm install @noocodex/dagonizer @noocodex/dagonizer-adapter-gemini-api
+npm install @studnicky/dagonizer @studnicky/dagonizer-adapter-gemini-api
 ```
 
 ## Usage
 
 ```ts
-import { GeminiApiAdapter } from '@noocodex/dagonizer-adapter-gemini-api';
-import { ChatRequestBuilder } from '@noocodex/dagonizer/adapter';
+import { GeminiApiAdapter } from '@studnicky/dagonizer-adapter-gemini-api';
+import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
 
 const llm = new GeminiApiAdapter({ apiKey: process.env.GEMINI_API_KEY! });
 

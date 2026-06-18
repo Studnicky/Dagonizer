@@ -18,7 +18,7 @@ import type { SourcePayload } from '../../entities/SourcePayload.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region select-source-node
 export class SelectSourceNode extends ScalarNode<CartographerState, 'compressed' | 'plain' | 'invalid', CartographerServices> {

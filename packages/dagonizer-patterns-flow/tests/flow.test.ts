@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { Batch } from '@noocodex/dagonizer';
+import { Batch } from '@studnicky/dagonizer';
 
 import { PredicateGateNode, DedupeByKeyNode } from '../src/index.js';
 

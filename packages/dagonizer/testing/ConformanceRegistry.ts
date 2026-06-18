@@ -64,7 +64,7 @@ import type { NodeContextInterface } from '../dist/entities/node/NodeContext.js'
 import type { NodeOutputInterface } from '../dist/entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../dist/NodeStateBase.js';
 
-import { CheckpointRestoreAdapterFn, NodeStateBase, ScalarNode, Timeout } from '@noocodex/dagonizer';
+import { CheckpointRestoreAdapterFn, NodeStateBase, ScalarNode, Timeout } from '@studnicky/dagonizer';
 
 
 // ---------------------------------------------------------------------------

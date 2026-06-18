@@ -36,8 +36,8 @@ import {
   CheckpointRestoreAdapterFn,
   Dagonizer,
   SCATTER_PROGRESS_KEY,
-} from '@noocodex/dagonizer';
-import type { StoredScatterProgress } from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
+import type { StoredScatterProgress } from '@studnicky/dagonizer';
 import {
   ResumeState,
   ProcessJobNode,

@@ -14,7 +14,7 @@
  * Run: npx tsx examples/01-linear.ts
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
 import { ChatState, ClassifyNode, RespondNode, dag } from './dags/01-linear.js';
 
 // ---------------------------------------------------------------------------

@@ -18,9 +18,9 @@
  */
 
 // #region custom-store
-import type { JsonValue } from '@noocodex/dagonizer/entities';
-import type { StoreSnapshotEntry } from '@noocodex/dagonizer/store';
-import { BaseStore, type BaseStoreOptions } from '@noocodex/dagonizer/store';
+import type { JsonValue } from '@studnicky/dagonizer/entities';
+import type { StoreSnapshotEntry } from '@studnicky/dagonizer/store';
+import { BaseStore, type BaseStoreOptions } from '@studnicky/dagonizer/store';
 
 /**
  * MapStore: a fully functional custom store backed by a plain Map.

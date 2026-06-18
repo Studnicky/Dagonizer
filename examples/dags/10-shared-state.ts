@@ -9,10 +9,10 @@ import {
   NodeOutputBuilder,
   NodeStateBase,
   ScalarNode,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface} from '@noocodex/dagonizer';
-import { MemoryStore } from '@noocodex/dagonizer/store';
-import type { Store } from '@noocodex/dagonizer/contracts';
+} from '@studnicky/dagonizer';
+import type { NodeContextInterface} from '@studnicky/dagonizer';
+import { MemoryStore } from '@studnicky/dagonizer/store';
+import type { Store } from '@studnicky/dagonizer/contracts';
 
 // ---------------------------------------------------------------------------
 // Services bag type
@@ -104,7 +104,7 @@ export { MemoryStore };
 // ---------------------------------------------------------------------------
 
 // #region typed-store
-import { TypedStore } from '@noocodex/dagonizer/store';
+import { TypedStore } from '@studnicky/dagonizer/store';
 
 interface PipelineSchema {
   tokenBudget:  number;
@@ -153,8 +153,8 @@ export async function storeConcurrencyDemo(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 // #region store-error-discrimination
-import { StoreError } from '@noocodex/dagonizer/store';
-import type { RemoteStore } from '@noocodex/dagonizer/contracts';
+import { StoreError } from '@studnicky/dagonizer/store';
+import type { RemoteStore } from '@studnicky/dagonizer/contracts';
 
 export async function storeErrorDemo(store: RemoteStore): Promise<void> {
   try {

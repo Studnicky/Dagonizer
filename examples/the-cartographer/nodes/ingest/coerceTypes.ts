@@ -21,7 +21,7 @@ import { TimeNormalizer } from '../../services.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region coerce-types-node
 const NUMERIC_FIELDS = [

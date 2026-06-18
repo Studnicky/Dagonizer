@@ -1,4 +1,14 @@
-# @noocodex/dagonizer
+# @studnicky/dagonizer
+
+## 0.21.0
+
+### Minor Changes
+
+- 0296d9d: Remove the `@studnicky/dagonizer-adapter-stub` package and every stub backend. The Archivist demo, its CLI, and the LLM/embedder/tool-use examples now run only against real models (Ollama locally, or a cloud key); when no real backend is reachable the demo shows its no-model gate and the CLI throws `NO_ADAPTER_AVAILABLE` rather than returning canned responses. Examples 24–26 are rewritten against `OllamaApiAdapter` / `OllamaEmbedder`.
+
+### Patch Changes
+
+- 0296d9d: Node and DAG registration is idempotent by identity — re-registering the same instance (reference equality) is a no-op, enabling node reuse across multiple bundles. Only a different implementation claiming an already-registered name throws `DAGError`, with the message updated to `'X' is already registered with a different implementation` to distinguish the collision from the no-op case.
 
 ## [Unreleased]
 
@@ -116,7 +126,7 @@ single trailing `options` object.
 
 - **`ChannelInterface` renamed to `HandoffChannelInterface`** — distinguishes the completed-DAG hand-off publish channel from the duplex `MessageChannelInterface`.
 - **`DagOutcomeInterface` and `DagTaskInterface`** ship through the `./container` subpath only. The `./contracts` re-exports and forwarder modules are removed.
-- **`@noocodex/dagonizer/patterns` `LlmClient` and `TripleStore` re-export modules removed.** `LlmClient` and `TripleStore` ship through `./contracts`.
+- **`@studnicky/dagonizer/patterns` `LlmClient` and `TripleStore` re-export modules removed.** `LlmClient` and `TripleStore` ship through `./contracts`.
 - **`./derive` no longer re-exports `OperationContract` / `OperationContractFragment`**; they ship through `./contracts`.
 
 ### Breaking — adapter layer
@@ -155,7 +165,7 @@ Shared adapter behaviour and config live on the canonical base class; concrete c
 
 ### Breaking — Timeout value object
 
-`Timeout` reifies per-node and per-DAG-task execution timeouts as a typed value object. `Timeout.none()` is the single "no deadline" sentinel; `Timeout.ofMs(n)` expresses a millisecond budget; `Timeout.fromWire(n)` / `Timeout.toWire()` bridge the wire representation. `Timeout` ships through the root barrel (`.`) and `@noocodex/dagonizer/runtime`.
+`Timeout` reifies per-node and per-DAG-task execution timeouts as a typed value object. `Timeout.none()` is the single "no deadline" sentinel; `Timeout.ofMs(n)` expresses a millisecond budget; `Timeout.fromWire(n)` / `Timeout.toWire()` bridge the wire representation. `Timeout` ships through the root barrel (`.`) and `@studnicky/dagonizer/runtime`.
 
 - **`NodeInterface.timeout?: Timeout`** replaces `timeoutMs?: number`; absent means `Timeout.none()`.
 - **`MonadicNode.timeout: Timeout`** defaults to `Timeout.none()` (was `timeoutMs: number = 0`).
@@ -229,8 +239,8 @@ Shared adapter behaviour and config live on the canonical base class; concrete c
 **Fan-out is now expressed solely via `ScatterNode` + a required `gather`.** `ParallelNode` and all associated surface are removed. The following specific symbols are deleted:
 
 - **`ParallelNode` placement type removed.** DAGs with `'@type': 'ParallelNode'` fail schema validation and dispatch.
-- **`ParallelCombine` constant removed.** `import { ParallelCombine } from '@noocodex/dagonizer/constants'` no longer resolves.
-- **`ParallelCombiners` registry removed.** `import { ParallelCombiners } from '@noocodex/dagonizer/core'` no longer resolves.
+- **`ParallelCombine` constant removed.** `import { ParallelCombine } from '@studnicky/dagonizer/constants'` no longer resolves.
+- **`ParallelCombiners` registry removed.** `import { ParallelCombiners } from '@studnicky/dagonizer/core'` no longer resolves.
 - **`DAGBuilder.parallel()` removed.** Call sites that used `.parallel(name, nodes, combine, routes)` must be rewritten as `.scatter(name, source, body, routes, { gather, reducer })`.
 - **`MetadataKey.PARALLEL_OUTPUTS` removed.** The `'parallelOutputs'` metadata key is no longer written by the engine. Migrate consumers reading `state.getMetadata('parallelOutputs')` to the scatter gather result written to the `target` key declared in `GatherConfig`.
 - **`NodeType.PARALLEL` removed.** The `'parallel'` node type string is no longer in the schema enum or the `NodeType` const.
@@ -354,7 +364,7 @@ The visualizer colors container-bound (worker) sub-DAG placements per container 
 - 8b47957: Native streaming scatter: unified executor with bounded worker pool, durable-inbox checkpoint, and incremental gather.
 - 8b47957: viz: ship a subclassable `CytoscapeGraph` factory, make the visualizer opt-in, and fix self-loop node rendering.
 
-  - **`CytoscapeGraph`** (new, `@noocodex/dagonizer/viz`): given a `DAG`, `await new CytoscapeGraph(cytoscape, container, dag, options).mount()` returns a fully-configured `cytoscape.Core` — elements (via `CytoscapeRenderer`), the canonical stylesheet, the bottom-up dagre `preset` layout, and pan/zoom/box-select defaults. Cytoscape is dependency-injected; protected hooks (`buildElements`, `stylesheet`, `presetLayout`, `interactionDefaults`, `layoutRegistry`, `applyLayout`, `enforceVisibility`, `onReady`) are the extension surface. Ships with `CytoscapeGraphInterface` and `CytoscapeGraphOptions`.
+  - **`CytoscapeGraph`** (new, `@studnicky/dagonizer/viz`): given a `DAG`, `await new CytoscapeGraph(cytoscape, container, dag, options).mount()` returns a fully-configured `cytoscape.Core` — elements (via `CytoscapeRenderer`), the canonical stylesheet, the bottom-up dagre `preset` layout, and pan/zoom/box-select defaults. Cytoscape is dependency-injected; protected hooks (`buildElements`, `stylesheet`, `presetLayout`, `interactionDefaults`, `layoutRegistry`, `applyLayout`, `enforceVisibility`, `onReady`) are the extension surface. Ships with `CytoscapeGraphInterface` and `CytoscapeGraphOptions`.
   - **`cytoscape` and `@dagrejs/dagre` are now optional peer dependencies.** The visualizer is opt-in: consumers who do not import `./viz` install neither. `@dagrejs/dagre` was previously a devDependency while `dist/viz/CompositeLayout` imported it at runtime, so external consumers of the cytoscape renderer crashed with `Cannot find module '@dagrejs/dagre'`.
   - **`CompositeLayout.compute` is now `async`** and lazy-imports `@dagrejs/dagre`, so `MermaidRenderer` / `JsonLdRenderer` consumers never load the layout engine. **`CytoscapeRenderer.render` returns elements only** — the `computeLayout` / `layoutOptions` options are removed; positioning is owned by `CompositeLayout` / `CytoscapeGraph`.
   - **Fixed:** DAG nodes carrying a self-loop edge (a `retry` route to self) rendered invisible. The canonical stylesheet used deprecated `width: 'label'` / `height: 'label'` auto-sizing, which left a degenerate size cache on self-loop nodes that cytoscape culled. It now uses explicit numeric node dimensions and a concrete monospace font stack, with a post-layout visibility sweep as a guard.
@@ -366,7 +376,7 @@ The visualizer colors container-bound (worker) sub-DAG placements per container 
 
 - b5b931f: Audit-driven cleanup across the monorepo (performance, V8 shape, consistency) — every confirmed and advisory finding addressed.
 
-  Core (`@noocodex/dagonizer`):
+  Core (`@studnicky/dagonizer`):
 
   - perf: `Scheduler.current()` returns the active provider directly (no per-call wrapper allocation on the node/scatter hot path); `SchedulerProvider` structurally satisfies `SchedulerHandle`, so the public return type is unchanged.
   - perf: gather strategies (`map`/`append`/`partition`) no longer re-sort `execution.records` — records are now documented as an invariant to be source-index ordered (the scatter loop builds them so on every path including resume), eliminating a redundant `.slice().sort()` per gather. `executeScatter` builds the reducer input by iterating the outputs map directly (no intermediate spread).
@@ -375,7 +385,7 @@ The visualizer colors container-bound (worker) sub-DAG placements per container 
 
   Plugin packages: provider adapters' wire-format/error helpers consolidated onto their adapter classes; `StubAdapter` constructor arg `opts`→`options`; redundant `public` modifier dropped; `OpenLibrarySearchTool` populates `notes` provenance consistently with the other tools.
 
-  Tool packages (`-tool-googlebooks`, `-tool-wikipedia`): now re-export the `@noocodex/dagonizer-book-entities` types (`Book`, `Candidate`, `Money`, `CanonicalId`) they expose in their public surface, matching `-tool-openlibrary`.
+  Tool packages (`-tool-googlebooks`, `-tool-wikipedia`): now re-export the `@studnicky/dagonizer-book-entities` types (`Book`, `Candidate`, `Money`, `CanonicalId`) they expose in their public surface, matching `-tool-openlibrary`.
 
 - a338274: Add `WellFormedValidator` (`./validation`): an opt-in authoring lint that flags hacky/legacy DAG shapes the structural Ajv schema cannot express — bare `null` flow-ends (route to a canonical `TerminalNode` instead), dangling output targets, and malformed scatter/embedded/terminal placements. It returns human-readable violations and is NOT wired into the permissive runtime `registerDAG` (where `null` routes remain a supported natural-end). The repo's flagship example DAGs are gated against it via a new `lint:dags` CI step.
 
@@ -392,7 +402,7 @@ The visualizer colors container-bound (worker) sub-DAG placements per container 
   - **Fork** is `ScatterNode` / `.scatter(name, source, body, outputs, options?)`. `source` is required (a fork is always 1→N). `FanOutNode` / `.fanOut()` are removed.
   - **Embed** is `EmbeddedDAGNode` / `.embeddedDAG(name, dagName, outputs, options?)`: invoke a sub-DAG once (cardinality 1) with `stateMapping { input, output }` (`input` seeds the child from the parent, `output` copies child fields back). Distinct from fork; never a flag on `scatter`.
   - **Merge** machinery is `GatherConfig` + the `GatherStrategies` (`map`/`append`/`partition`/`custom`) and `OutcomeReducers` (`aggregate`/`terminal`) registries. `FanInConfig`, `FanInStrategies`/`FanInStrategy`/`FanInExecution` are removed.
-  - Renames: `FAN_OUT_PROGRESS_KEY`→`SCATTER_PROGRESS_KEY` (and `FanOutProgress`/`StoredFanOutProgress`→`ScatterProgress`/`StoredScatterProgress`); `MetadataKey.fanInResults`→`gatherResults`; derive `annotations.fanouts`→`annotations.scatters`, `DAGDeriverFanOut`→`DAGDeriverScatter`, `fanInOperation`→`customNode` (the `embeddedDAGs` annotation now renders an `EmbeddedDAGNode`); `@noocodex/dagonizer-patterns-flow`'s `FanInReducerNode`→`MergeReducerNode`.
+  - Renames: `FAN_OUT_PROGRESS_KEY`→`SCATTER_PROGRESS_KEY` (and `FanOutProgress`/`StoredFanOutProgress`→`ScatterProgress`/`StoredScatterProgress`); `MetadataKey.fanInResults`→`gatherResults`; derive `annotations.fanouts`→`annotations.scatters`, `DAGDeriverFanOut`→`DAGDeriverScatter`, `fanInOperation`→`customNode` (the `embeddedDAGs` annotation now renders an `EmbeddedDAGNode`); `@studnicky/dagonizer-patterns-flow`'s `FanInReducerNode`→`MergeReducerNode`.
   - Visualization gains an `embedded-dag` placement type (Cytoscape) / subroutine shape (Mermaid) / `dag:EmbeddedDAGNode` (JSON-LD), distinct from `scatter`.
 
   `NodeResult.output` is now required and typed `string | null` (`null` = no route emitted; previously optional `string`), and every `NodeResultInterface` carries a required `intermediateResults` array (`[]` for leaf nodes): one stable result shape, no post-construction mutation. `onNodeEnd` and `Instrumentation.nodeEnd` take `output: string | null` to match.
@@ -421,7 +431,7 @@ The visualizer colors container-bound (worker) sub-DAG placements per container 
 
 ### Patch Changes
 
-- 238a94d: Hotfix: align every package in the workspace to 0.13.1 and lockstep them via the new `fixed:` group in `.changeset/config.json`. Eliminates the v0.13.0 release artifact where peer-dep range churn caused most packages to jump to 1.0.0 while the engine itself sat at 0.12.0; the tag `v0.13.0` was correct but the per-package version numbers disagreed. All packages in the `@noocodex/dagonizer*` group now move together; peer ranges restored to `workspace:^0.13.1` across the workspace.
+- 238a94d: Hotfix: align every package in the workspace to 0.13.1 and lockstep them via the new `fixed:` group in `.changeset/config.json`. Eliminates the v0.13.0 release artifact where peer-dep range churn caused most packages to jump to 1.0.0 while the engine itself sat at 0.12.0; the tag `v0.13.0` was correct but the per-package version numbers disagreed. All packages in the `@studnicky/dagonizer*` group now move together; peer ranges restored to `workspace:^0.13.1` across the workspace.
 
 ## 0.12.0
 

@@ -1,4 +1,6 @@
-# @noocodex/dagonizer-book-entities
+# @studnicky/dagonizer-book-entities
+
+## 0.21.0
 
 ## 0.20.0
 

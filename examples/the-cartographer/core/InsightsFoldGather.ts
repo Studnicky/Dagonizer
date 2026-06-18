@@ -18,11 +18,11 @@
  * executions are safe because executions run one at a time.
  */
 
-import { GatherStrategies, GatherStrategy } from '@noocodex/dagonizer/core';
-import type { GatherExecution, GatherRecord } from '@noocodex/dagonizer/core';
-import type { GatherConfig } from '@noocodex/dagonizer';
-import type { NodeStateInterface } from '@noocodex/dagonizer';
-import type { StateAccessor } from '@noocodex/dagonizer/contracts';
+import { GatherStrategies, GatherStrategy } from '@studnicky/dagonizer/core';
+import type { GatherExecution, GatherRecord } from '@studnicky/dagonizer/core';
+import type { GatherConfig } from '@studnicky/dagonizer';
+import type { NodeStateInterface } from '@studnicky/dagonizer';
+import type { StateAccessor } from '@studnicky/dagonizer/contracts';
 
 import type { EnrichedShipment } from '../entities/EnrichedShipment.ts';
 import type { JourneyInsights, JourneyScan, RegionInsights } from '../CartographerState.ts';

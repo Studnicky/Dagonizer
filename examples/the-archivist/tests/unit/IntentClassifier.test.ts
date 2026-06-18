@@ -11,7 +11,7 @@
 import { test } from 'node:test';
 import { strict as assert } from 'node:assert';
 
-import type { Embedder } from '@noocodex/dagonizer/contracts';
+import type { Embedder } from '@studnicky/dagonizer/contracts';
 
 import type { ClassifiedIntent } from '../../services.ts';
 import {

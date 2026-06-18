@@ -14,7 +14,7 @@ import { Customs } from '../services.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region customs-dwell-node
 export class CustomsDwellNode extends ScalarNode<CartographerState, 'dwelled', CartographerServices> {

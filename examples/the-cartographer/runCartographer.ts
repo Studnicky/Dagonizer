@@ -43,8 +43,8 @@ import { orderEnrichmentBundle } from './embedded-dags/OrderEnrichmentDAG.ts';
 import type { EnrichedShipment } from './entities/EnrichedShipment.ts';
 import { GeoResolvers } from './services/GeoResolvers.ts';
 
-import { Dagonizer } from '@noocodex/dagonizer';
-import { ExecutionError } from '@noocodex/dagonizer/errors';
+import { Dagonizer } from '@studnicky/dagonizer';
+import { ExecutionError } from '@studnicky/dagonizer/errors';
 
 // ── Parse CLI args ────────────────────────────────────────────────────────────
 let eventCount = 200;
@@ -154,7 +154,7 @@ let dispatcher: Dagonizer<CartographerState, CartographerServices>;
 if (useWorkers) {
   // Dynamic import keeps WorkerThreadContainer out of the tsx bundle; workers
   // are only instantiated when the compiled path is active.
-  const { WorkerThreadContainer } = await import('@noocodex/dagonizer-executor-node');
+  const { WorkerThreadContainer } = await import('@studnicky/dagonizer-executor-node');
   const registryUrl = new URL('./workers/eventPipelineRegistry.js', import.meta.url).href;
   const container = new WorkerThreadContainer({
     'registryModule':  registryUrl,

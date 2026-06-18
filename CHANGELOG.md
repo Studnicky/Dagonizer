@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `@noocodex/dagonizer` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adheres to [Semantic Versioning](https://semver.org/).
+All notable changes to `@studnicky/dagonizer` are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
@@ -8,28 +8,28 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 - **`Instrumentation` plugin contract removed. ⚠ BREAKING.** `Instrumentation<TState>`, `InstrumentationSink`, `NoopInstrumentation`, and `ForwardingInstrumentation` are removed from all subpaths. The `instrumentation` field on `DagonizerOptionsInterface` and `DagContainerOptions` is removed. Observability is now exclusively via the protected `on*` hooks on `Dagonizer` subclasses (`onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`, `onPhaseEnter`, `onPhaseExit`, `onContractWarning`). For contained (worker/process) DAGs, `WorkerObserver` bridges events from the isolate through `ObserverRelay` to the parent dispatcher's protected hooks — no consumer change required for containment observability. **Migration:** delete any `instrumentation: new MyInstrumentation()` constructor argument; fold the hook logic into `protected override on*` methods on your `Dagonizer` subclass.
 - **`HttpTransport.validate` callback option removed. ⚠ BREAKING.** The `validate` field on `HttpRequestOptions` is gone — callback-based extension is forbidden. `getJson`/`postJson`/`request` return the parsed JSON typed as the caller's `TResponse`; narrow it in your own domain layer (a type-guard or schema validator). **Migration:** drop `validate: …` from request options and validate the returned value at the call site.
-- **Adapter option-type aliases removed. ⚠ BREAKING.** `CerebrasApiAdapterOptions`, `GroqApiAdapterOptions`, and `MistralApiAdapterOptions` (re-aliases of `OpenAiCompatibleAdapterOptions`) are removed. **Migration:** import `OpenAiCompatibleAdapterOptions` from `@noocodex/dagonizer/adapter` directly.
-- **Tool packages no longer re-export `@noocodex/dagonizer-book-entities` symbols. ⚠ BREAKING.** `Book`, `Candidate`, `Money`, and `CanonicalId` are no longer re-exported from the `dagonizer-tool-*` barrels. **Migration:** import them from `@noocodex/dagonizer-book-entities` (now a direct dependency of each tool).
-- **`WebSystemInfo.crossOriginIsolated` removed.** The unused reserved field/getter is dropped from `@noocodex/dagonizer-executor-web`.
-- **`Dagonizer.load` / `fromValue` / `serialize` / `serializeCompact` static methods removed. ⚠ BREAKING.** DAG-document (de)serialization moved to the dedicated `DAGDocument` static class (root barrel + `@noocodex/dagonizer/entities`). **Migration:** replace `Dagonizer.serialize(dag)` / `Dagonizer.load(json)` with `DAGDocument.serialize(dag)` / `DAGDocument.load(json)`. (The instance `dispatcher.load` for registering a DAG into a running dispatcher is unchanged.)
+- **Adapter option-type aliases removed. ⚠ BREAKING.** `CerebrasApiAdapterOptions`, `GroqApiAdapterOptions`, and `MistralApiAdapterOptions` (re-aliases of `OpenAiCompatibleAdapterOptions`) are removed. **Migration:** import `OpenAiCompatibleAdapterOptions` from `@studnicky/dagonizer/adapter` directly.
+- **Tool packages no longer re-export `@studnicky/dagonizer-book-entities` symbols. ⚠ BREAKING.** `Book`, `Candidate`, `Money`, and `CanonicalId` are no longer re-exported from the `dagonizer-tool-*` barrels. **Migration:** import them from `@studnicky/dagonizer-book-entities` (now a direct dependency of each tool).
+- **`WebSystemInfo.crossOriginIsolated` removed.** The unused reserved field/getter is dropped from `@studnicky/dagonizer-executor-web`.
+- **`Dagonizer.load` / `fromValue` / `serialize` / `serializeCompact` static methods removed. ⚠ BREAKING.** DAG-document (de)serialization moved to the dedicated `DAGDocument` static class (root barrel + `@studnicky/dagonizer/entities`). **Migration:** replace `Dagonizer.serialize(dag)` / `Dagonizer.load(json)` with `DAGDocument.serialize(dag)` / `DAGDocument.load(json)`. (The instance `dispatcher.load` for registering a DAG into a running dispatcher is unchanged.)
 - **`TypedStore` no longer re-exposes the store lifecycle. ⚠ BREAKING.** `snapshot`/`restore`/`connect`/`disconnect` are removed from `TypedStore`; access them via `typedStore.inner`. `TypedStore` keeps only its typed `set`/get surface.
 
 ### Added
 
 - **O(1)-memory scatter checkpoint (`bounded` mode).** `ScatterProgress` is now a discriminated union keyed by `mode: 'bounded' | 'retained'`. Compactable gather strategies (all built-ins: `append`, `map`, `collect`, `partition`, `discard`) persist a `watermark` (highest contiguous completed index), `aheadAcked` (out-of-order completions not yet contiguous with the watermark), and `outcomeTally` (per-output-token count) instead of an unbounded `ackedResults` array. Memory usage during scatter execution is now O(concurrency) rather than O(n). The `retained` mode is preserved for custom gather strategies (via `CustomGatherStrategy`) that require full record sets at finalize time. `ScatterCheckpoint` exposes `writeBounded` and `writeRetained` in place of the removed `write` method. `GatherStrategy` gains a `retainsRecordsForFinalize` property (default `false`); `CustomGatherStrategy` overrides it `true`.
-- **`GatherFinalizeRecord`** (`@noocodex/dagonizer/contracts`): a lightweight record carrying `index`, `item`, `output`, and `terminalOutcome` without `cloneState`, used for the batch-apply finalize pass. `GatherExecution.records` is now `GatherFinalizeRecord[]`.
+- **`GatherFinalizeRecord`** (`@studnicky/dagonizer/contracts`): a lightweight record carrying `index`, `item`, `output`, and `terminalOutcome` without `cloneState`, used for the batch-apply finalize pass. `GatherExecution.records` is now `GatherFinalizeRecord[]`.
 
-- **`EMPTY_CONTRACT_FRAGMENT` is now public** (root barrel and `@noocodex/dagonizer/contracts`). It is the canonical value a node assigns to `contract` when it declares no data-flow for `DAGDeriver`.
-- **`IncrementalGatherStrategy`** (`@noocodex/dagonizer/core`): an abstract subclass of `GatherStrategy` that makes `applyIncremental` a required member for strategies advertising `supportsIncremental`. Batch-only strategies extend `GatherStrategy`; incremental strategies extend `IncrementalGatherStrategy`.
-- **`StoreSnapshotSchema` / `StoreSnapshotEntrySchema`** (`@noocodex/dagonizer/entities`): the store-snapshot wire shape is now schema-derived (`FromSchema`) rather than hand-written.
+- **`EMPTY_CONTRACT_FRAGMENT` is now public** (root barrel and `@studnicky/dagonizer/contracts`). It is the canonical value a node assigns to `contract` when it declares no data-flow for `DAGDeriver`.
+- **`IncrementalGatherStrategy`** (`@studnicky/dagonizer/core`): an abstract subclass of `GatherStrategy` that makes `applyIncremental` a required member for strategies advertising `supportsIncremental`. Batch-only strategies extend `GatherStrategy`; incremental strategies extend `IncrementalGatherStrategy`.
+- **`StoreSnapshotSchema` / `StoreSnapshotEntrySchema`** (`@studnicky/dagonizer/entities`): the store-snapshot wire shape is now schema-derived (`FromSchema`) rather than hand-written.
 - **`'ABORTED'` `ToolErrorReason`**: a caller-aborted HTTP request now classifies as `ABORTED` (non-retryable) instead of the misleading `UNKNOWN`.
 - **`OpenRouterApiAdapterOptions`** gains `referer?` and `title?` so the `HTTP-Referer`/`X-Title` attribution headers are overridable per deployment.
 - **`maxAttempts?`** is now a uniform option across every adapter (including `GeminiNanoAdapter` and `WebLlmAdapter`, which previously hard-coded it).
-- **`SystemInfo.recommendedWorkerCount(config, probes)`** (root barrel + `@noocodex/dagonizer/entities`): the canonical worker-count clamp, now shared by both `@noocodex/dagonizer-executor-node` and `-web` (the duplicate per-package formulas are removed).
-- **`@noocodex/dagonizer-executor-node`** exports `ForkEntry`/`SpawnEntry`/`WorkerEntry` static classes — the process-entry bootstraps are now importable/testable (mirroring `WebWorkerEntry`).
+- **`SystemInfo.recommendedWorkerCount(config, probes)`** (root barrel + `@studnicky/dagonizer/entities`): the canonical worker-count clamp, now shared by both `@studnicky/dagonizer-executor-node` and `-web` (the duplicate per-package formulas are removed).
+- **`@studnicky/dagonizer-executor-node`** exports `ForkEntry`/`SpawnEntry`/`WorkerEntry` static classes — the process-entry bootstraps are now importable/testable (mirroring `WebWorkerEntry`).
 - **`DagHost` static registry injection.** `DagHostOptions.registry` and `WebWorkerEntry.start(scope, registry?)` let a worker entry inject its registry directly, so the host runs no runtime dynamic import — the required path for bundlers that forbid it (a Vite browser/worker build). Without it, `DagHost` imports the `init` message's `registryModule` by URL (the Node `WorkerThreadContainer` path).
-- **`@noocodex/dagonizer-embedder-ollama`** supports **Ollama Cloud**: `OllamaEmbedderOptions.apiKey?` sends `Authorization: Bearer <key>` when present (local usage needs no key).
-- **Composed `Book` entity** (`@noocodex/dagonizer-book-entities`): `Book` is now `{ identity: BookIdentity; publication: BookPublication; availability: BookAvailability }` with a `BookBuilder.from(BookInput)` factory. ⚠ BREAKING for direct `Book` consumers. **Migration:** read `book.identity.isbn` (was `book.isbn`) etc.; construct with `BookBuilder.from({ isbn, title, … })`.
+- **`@studnicky/dagonizer-embedder-ollama`** supports **Ollama Cloud**: `OllamaEmbedderOptions.apiKey?` sends `Authorization: Bearer <key>` when present (local usage needs no key).
+- **Composed `Book` entity** (`@studnicky/dagonizer-book-entities`): `Book` is now `{ identity: BookIdentity; publication: BookPublication; availability: BookAvailability }` with a `BookBuilder.from(BookInput)` factory. ⚠ BREAKING for direct `Book` consumers. **Migration:** read `book.identity.isbn` (was `book.isbn`) etc.; construct with `BookBuilder.from({ isbn, title, … })`.
 
 ### Fixed
 
@@ -45,7 +45,7 @@ All notable changes to `@noocodex/dagonizer` are documented here. Format follows
 
 - **`NodeInterface.contract` is now required. ⚠ BREAKING.** The dual "no contract" representation (`undefined` *or* an empty fragment) is collapsed to one: every node carries a `contract`. **Migration:** a node implementing `NodeInterface` directly assigns `readonly contract = EMPTY_CONTRACT_FRAGMENT;` when it declares no data-flow. Nodes extending `MonadicNode` inherit this default and need no change.
 - **`NodeInterface.timeout` is now required. ⚠ BREAKING.** Parallel to `contract`: every node carries a `timeout` for V8 shape stability; `Timeout.none()` means "no per-node budget". **Migration:** a node implementing `NodeInterface` directly assigns `readonly timeout = Timeout.none();`. Nodes extending `MonadicNode` inherit the default and need no change.
-- **Adapter wire-shape entities relocated to `entities/adapter/`.** `ChatRequest`/`ChatResponse`/`ChatMessage`/`ChatResponseMessage`/`ToolCall`/`ToolDefinition`/`TokenUsage`/`AdapterCapabilities` schemas + `FromSchema` types now live under `@noocodex/dagonizer/entities` (and remain re-exported from `@noocodex/dagonizer/adapter` — no consumer change). This breaks the former `contracts → adapter` import cycle.
+- **Adapter wire-shape entities relocated to `entities/adapter/`.** `ChatRequest`/`ChatResponse`/`ChatMessage`/`ChatResponseMessage`/`ToolCall`/`ToolDefinition`/`TokenUsage`/`AdapterCapabilities` schemas + `FromSchema` types now live under `@studnicky/dagonizer/entities` (and remain re-exported from `@studnicky/dagonizer/adapter` — no consumer change). This breaks the former `contracts → adapter` import cycle.
 - **`DAGDeriver` scatter annotation `concurrency` is now required** (default sentinel `0` = unbounded / resolve to source length). The `DEFAULT_SCATTER_CONCURRENCY` constant is exported.
 - **`DAGError.toJSON()` emits a stable shape**: `cause` and `stack` are always present (`null` when absent) rather than conditionally omitted; `DAGErrorJSONSchema` reflects this.
 - **`GatherStrategies.register` / `OutcomeReducers.register` now throw on a duplicate name. ⚠ BREAKING.** This protects built-ins from silent override; use the new `replace(name, …)` method for an intentional override. (Matches the `LlmAdapterRegistry` throw-on-duplicate semantics.)
@@ -70,7 +70,7 @@ migrate using the guide below.
 ### Breaking Changes — migration guide
 
 - **`Store.get` / `StateAccessor.get` return `T | null`** (was `T | undefined`) for an absent key/path. Replace `=== undefined` absent-checks on these results with `=== null`.
-- **Adapter infrastructure ships only via `@noocodex/dagonizer/adapter`.** `AdapterDescriptor`, `BaseEmbedder`, `Classifications`, `EmbedderCascade`, `EmbedderRegistry`, `LlmAdapterCascade`, `LlmAdapterRegistry`, and `LlmError` are no longer on the root barrel — import them from `@noocodex/dagonizer/adapter`.
+- **Adapter infrastructure ships only via `@studnicky/dagonizer/adapter`.** `AdapterDescriptor`, `BaseEmbedder`, `Classifications`, `EmbedderCascade`, `EmbedderRegistry`, `LlmAdapterCascade`, `LlmAdapterRegistry`, and `LlmError` are no longer on the root barrel — import them from `@studnicky/dagonizer/adapter`.
 - **`OpenAiCompatibleConfig.toolsFallback` removed.** Override `protected shouldFallbackWithoutTools(error)` on your adapter subclass instead.
 - **`Embedder.embed`/`embedBatch` take a trailing `signal?: AbortSignal`** (not `{ signal }`); `performEmbed(text, signal)` gains a required signal; `probe`/`connect`/`disconnect` take an optional trailing `signal?`.
 - **`ErrorClassification` is a discriminated union** on `retryable`; retryable variants carry `retryAfterMs: number | null`. Replace `retryAfterMs !== undefined` with `retryable && retryAfterMs !== null`.
@@ -86,12 +86,12 @@ migrate using the guide below.
 ### Changed
 
 - **ADP-1: `toolsFallback` callback removed from `OpenAiCompatibleConfig`. ⚠ BREAKING.** The `toolsFallback?: (error: unknown) => boolean` property is removed. Concrete subclasses that need the retry-without-tools path override the new `protected shouldFallbackWithoutTools(error: unknown): boolean` method (default returns `false`). **Migration:** delete `toolsFallback` from any config object literal; add `protected override shouldFallbackWithoutTools(error: unknown): boolean { return <your predicate>; }` to your `extends OpenAiCompatibleAdapter` subclass.
-- **ADP-2b: `LlmAdapter` interface source migrated to `src/contracts/LlmAdapter.ts`.** The interface declaration has moved to `contracts/`; `adapter/LlmAdapter.ts` re-exports it from there for `./adapter` consumers. `BaseAdapter`, `LlmAdapterRegistry`, and `LlmAdapterCascade` import from `contracts/` directly. No consumer-facing import path changes — both `@noocodex/dagonizer/adapter` and `@noocodex/dagonizer/contracts` export `LlmAdapter` as before.
+- **ADP-2b: `LlmAdapter` interface source migrated to `src/contracts/LlmAdapter.ts`.** The interface declaration has moved to `contracts/`; `adapter/LlmAdapter.ts` re-exports it from there for `./adapter` consumers. `BaseAdapter`, `LlmAdapterRegistry`, and `LlmAdapterCascade` import from `contracts/` directly. No consumer-facing import path changes — both `@studnicky/dagonizer/adapter` and `@studnicky/dagonizer/contracts` export `LlmAdapter` as before.
 - **ADP-3: `performEmbed` receives `AbortSignal`.** The abstract `performEmbed(text, signal)` signature gains a required `AbortSignal` parameter. `BaseEmbedder.embed()` always materialises a signal (never-aborting when the caller omits one) so `performEmbed` is always called with a valid signal. **Migration:** update `protected override performEmbed(text: string): Promise<readonly number[]>` to `protected override performEmbed(text: string, signal: AbortSignal): Promise<readonly number[]>` in every concrete embedder.
 - **ADP-6: `ErrorClassification` is now a discriminated union.** `retryable: true` variants carry `retryAfterMs: number | null` (null = no provider hint); `retryable: false` variants omit `retryAfterMs`. Retryable `Classifications` constants now carry `retryAfterMs: null`. Retry-site checks updated from `!== undefined` to `!== null`. **Migration:** code that checks `classification.retryAfterMs !== undefined` must change to `classification.retryable && classification.retryAfterMs !== null`.
 - **ADP-7: `embed` / `embedBatch` signatures flattened. ⚠ BREAKING.** `embed(text, options?: { signal?: AbortSignal })` is now `embed(text, signal?: AbortSignal)`. `embedBatch(texts, options?: { signal?: AbortSignal })` is now `embedBatch(texts, signal?: AbortSignal)`. `Embedder` contract updated identically. **Migration:** replace `.embed(text, { signal })` with `.embed(text, signal)` and `.embedBatch(texts, { signal })` with `.embedBatch(texts, signal)`.
-- **ADP-8: JSON Schema 2020-12 added for adapter wire shapes.** `ChatMessageSchema`, `ToolDefinitionSchema`, `ToolCallSchema`, `TokenUsageSchema`, `ChatResponseMessageSchema`, and `ChatResponseSchema` are exported from `@noocodex/dagonizer/adapter`. Each carries a `$id` under `https://noocodex.dev/schemas/dagonizer/adapter/`. Enables Ajv-based validation of provider responses at the JSON-ingest boundary.
-- **ADP-9: Adapter infrastructure removed from root barrel. ⚠ BREAKING.** `AdapterDescriptor`, `BaseEmbedder`, `Classifications`, `EmbedderCascade`, `EmbedderRegistry`, `LlmAdapterCascade`, `LlmAdapterRegistry`, and `LlmError` (and their associated types) are no longer exported from `@noocodex/dagonizer`. They ship exclusively via `@noocodex/dagonizer/adapter`. **Migration:** change `from '@noocodex/dagonizer'` to `from '@noocodex/dagonizer/adapter'` for any of these symbols.
+- **ADP-8: JSON Schema 2020-12 added for adapter wire shapes.** `ChatMessageSchema`, `ToolDefinitionSchema`, `ToolCallSchema`, `TokenUsageSchema`, `ChatResponseMessageSchema`, and `ChatResponseSchema` are exported from `@studnicky/dagonizer/adapter`. Each carries a `$id` under `https://noocodex.dev/schemas/dagonizer/adapter/`. Enables Ajv-based validation of provider responses at the JSON-ingest boundary.
+- **ADP-9: Adapter infrastructure removed from root barrel. ⚠ BREAKING.** `AdapterDescriptor`, `BaseEmbedder`, `Classifications`, `EmbedderCascade`, `EmbedderRegistry`, `LlmAdapterCascade`, `LlmAdapterRegistry`, and `LlmError` (and their associated types) are no longer exported from `@studnicky/dagonizer`. They ship exclusively via `@studnicky/dagonizer/adapter`. **Migration:** change `from '@studnicky/dagonizer'` to `from '@studnicky/dagonizer/adapter'` for any of these symbols.
 - **ADP-10: `BaseAdapter.defaultOptions()` static added.** Returns a fully-resolved `BaseAdapterOptionsResolved` (both `maxAttempts` and `baseDelayMs` always present). Subclasses can spread this as a base before forwarding a partial options object to `super()`.
 - **CTR-15: `probe`, `connect`, and `disconnect` on `Embedder` contract accept an optional `signal?: AbortSignal`.** `BaseEmbedder` default implementations accept and ignore the parameter; concrete subclasses may thread it into real lifecycle calls.
 
@@ -169,7 +169,7 @@ migrate using the guide below.
 - **`ExecutionError.fromSignal(signal?)` static method.** Normalises `AbortSignal.reason` into a typed `Error`.
 - **Named constants** replace inline magic numbers across adapter and tool packages: `DEFAULT_MAX_ATTEMPTS`, `WEBLLM_MAX_ATTEMPTS`, `GPU_PROBE_TIMEOUT_MS`, `DEFAULT_GEMINI_MAX_ATTEMPTS`, `DEFAULT_TOKEN_COUNT`, `GOOGLE_BOOKS_MAX_RESULTS`, `GOOGLE_BOOKS_MIN_RESULTS`, `GOOGLE_BOOKS_DEFAULT_RESULTS`, `GOOGLE_BOOKS_MAX_SUBJECTS`, `MAX_SUBJECTS`, `MAX_PUBLISHERS`, `GEMINI_NANO_MAX_ATTEMPTS`.
 - **`RunOptions` internal interface** on `Dagonizer`. Replaces the positional `isEmbeddedDAG: boolean` parameter on `runNodes` and `runPostPhasesAndFinalize` with `runOptions: RunOptions` carrying `embedded: boolean`.
-- **`BookEntitiesError`** base error class for `@noocodex/dagonizer-book-entities`.
+- **`BookEntitiesError`** base error class for `@studnicky/dagonizer-book-entities`.
 
 ### Changed
 
@@ -177,10 +177,10 @@ migrate using the guide below.
 
 ### Removed
 
-- **`detectGeminiNano` free function** from `@noocodex/dagonizer-adapter-gemini-nano`. Use `GeminiNanoAdapter.detect()`.
-- **`decodeToolCallsJson` free function** from `@noocodex/dagonizer/adapter`. Use `ToolCallCodec.decode(raw, idPrefix)`.
-- **`classifyHttp` free function** from `@noocodex/dagonizer/adapter`. Use `LlmError.classifyHttp(status, body)`.
-- **`asNetworkError` free function** from `@noocodex/dagonizer/adapter`. Use `LlmError.fromNetworkError(err)`.
+- **`detectGeminiNano` free function** from `@studnicky/dagonizer-adapter-gemini-nano`. Use `GeminiNanoAdapter.detect()`.
+- **`decodeToolCallsJson` free function** from `@studnicky/dagonizer/adapter`. Use `ToolCallCodec.decode(raw, idPrefix)`.
+- **`classifyHttp` free function** from `@studnicky/dagonizer/adapter`. Use `LlmError.classifyHttp(status, body)`.
+- **`asNetworkError` free function** from `@studnicky/dagonizer/adapter`. Use `LlmError.fromNetworkError(err)`.
 
 ### Added
 
@@ -198,7 +198,7 @@ migrate using the guide below.
 
 ### Added
 
-- **`CytoscapeGraph`: subclassable Cytoscape factory in `@noocodex/dagonizer/viz`.** Given a `DAG`, `await new CytoscapeGraph(cytoscape, container, dag, options).mount()` returns a fully-configured `cytoscape.Core`: elements (via `CytoscapeRenderer`), the canonical dark-pearl stylesheet, the bottom-up dagre `preset` layout, and pan/zoom/box-select interaction defaults. Cytoscape is dependency-injected (the package never imports it), so any consumer can render their flows with no bespoke wiring. Protected hooks — `buildElements`, `stylesheet`, `presetLayout`, `interactionDefaults`, `layoutRegistry`, `applyLayout`, `enforceVisibility`, `onReady` — are the extension surface; subclass it to layer on live-run animation. Shipped with `CytoscapeGraphInterface` and `CytoscapeGraphOptions`.
+- **`CytoscapeGraph`: subclassable Cytoscape factory in `@studnicky/dagonizer/viz`.** Given a `DAG`, `await new CytoscapeGraph(cytoscape, container, dag, options).mount()` returns a fully-configured `cytoscape.Core`: elements (via `CytoscapeRenderer`), the canonical dark-pearl stylesheet, the bottom-up dagre `preset` layout, and pan/zoom/box-select interaction defaults. Cytoscape is dependency-injected (the package never imports it), so any consumer can render their flows with no bespoke wiring. Protected hooks — `buildElements`, `stylesheet`, `presetLayout`, `interactionDefaults`, `layoutRegistry`, `applyLayout`, `enforceVisibility`, `onReady` — are the extension surface; subclass it to layer on live-run animation. Shipped with `CytoscapeGraphInterface` and `CytoscapeGraphOptions`.
 - **`cytoscape` and `@dagrejs/dagre` are optional peer dependencies.** The visualizer is opt-in: consumers who do not import `./viz` install neither. Consumers who do install both and pass the `cytoscape` constructor in.
 
 ### Changed
@@ -218,7 +218,7 @@ migrate using the guide below.
 
 ### Changed
 
-- Every `@noocodex/dagonizer*` package now versions in lockstep via `.changeset/config.json` `fixed:` group. A single minor/major bump on any package in the group applies to all of them. Eliminates the v0.13.0 release artifact where peer-dependency range churn caused most packages to jump to 1.0.0 while the engine itself sat at 0.12.0; the tag `v0.13.0` was correct, but the per-package version numbers disagreed.
+- Every `@studnicky/dagonizer*` package now versions in lockstep via `.changeset/config.json` `fixed:` group. A single minor/major bump on any package in the group applies to all of them. Eliminates the v0.13.0 release artifact where peer-dependency range churn caused most packages to jump to 1.0.0 while the engine itself sat at 0.12.0; the tag `v0.13.0` was correct, but the per-package version numbers disagreed.
 - Peer- and regular-dependency ranges restored to `workspace:^0.13.1` across every adapter / embedder / tool / pattern / store / book-entities package. With the `fixed:` group bumping all packages together on every release, this range is always satisfied without forcing dependent major bumps on minor engine releases.
 
 ## [0.13.0] - 2026-05-25
@@ -400,9 +400,9 @@ changes.
 ### Added: LLM adapter cascade and Embedder pipeline
 
 - `LlmAdapter.probe()` on the adapter contract: returns a liveness signal; `BaseAdapter` default returns `true`.
-- `LlmAdapterCascade`: tries adapters in priority order, falling back on `probe()` failure or error. Ships in `@noocodex/dagonizer/adapter`.
+- `LlmAdapterCascade`: tries adapters in priority order, falling back on `probe()` failure or error. Ships in `@studnicky/dagonizer/adapter`.
 - `EmbedderAdapter` contract + `EmbedderRegistry` + `EmbedderCascade`: plugin-supplied embedding backends with cosine-similarity cascade fallback.
-- Three embedder plugin packages: `@noocodex/dagonizer-embedder-ollama`, `@noocodex/dagonizer-embedder-gemini-rest`, `@noocodex/dagonizer-embedder-mistral`.
+- Three embedder plugin packages: `@studnicky/dagonizer-embedder-ollama`, `@studnicky/dagonizer-embedder-gemini-rest`, `@studnicky/dagonizer-embedder-mistral`.
 - `IntentClassifier`: cosine-similarity intent classification with LLM fallback when similarity scores are below threshold.
 
 ### Added: User-language threading
@@ -444,34 +444,34 @@ changes.
 
 ### Added: main package gains three stable subpaths
 
-- `@noocodex/dagonizer/adapter`: `LlmAdapter`, `BaseAdapter`, `OpenAiCompatibleAdapter`, `ChatRequestBuilder`, capability metadata, error taxonomy.
-- `@noocodex/dagonizer/patterns`: `MonadicNode` root + service contracts (`LlmClient`, `TripleStore`, `SearchTool`).
-- `@noocodex/dagonizer/tool`: `Tool` interface, `ToolError`, `HttpTransport`.
+- `@studnicky/dagonizer/adapter`: `LlmAdapter`, `BaseAdapter`, `OpenAiCompatibleAdapter`, `ChatRequestBuilder`, capability metadata, error taxonomy.
+- `@studnicky/dagonizer/patterns`: `MonadicNode` root + service contracts (`LlmClient`, `TripleStore`, `SearchTool`).
+- `@studnicky/dagonizer/tool`: `Tool` interface, `ToolError`, `HttpTransport`.
 
 ### Added: 8 cloud / on-device adapter packages
 
-- `@noocodex/dagonizer-adapter-{gemini-api,gemini-nano,web-llm,groq,cerebras,mistral,openrouter,stub}`.
+- `@studnicky/dagonizer-adapter-{gemini-api,gemini-nano,web-llm,groq,cerebras,mistral,openrouter,stub}`.
 - All four OpenAI-shaped cloud adapters now extend `OpenAiCompatibleAdapter`; each provider is ~30 LOC of configuration. Removed ~600 LOC of duplication.
 - Cerebras default switched to `gpt-oss-120b` (was `llama-3.3-70b` which doesn't exist in Cerebras's catalog).
 - StubAdapter gains test-fixture primitives: `invocations` snapshot, `enqueueResponse`, `setError`, `clear`. Six unit tests cover the new surface.
 
 ### Added: local adapter
 
-- `@noocodex/dagonizer-adapter-ollama`: local-first via Ollama's OpenAI-compatible endpoint. Browser-side picker auto-detects the daemon via a 600 ms ping; model name persists to localStorage.
+- `@studnicky/dagonizer-adapter-ollama`: local-first via Ollama's OpenAI-compatible endpoint. Browser-side picker auto-detects the daemon via a 600 ms ping; model name persists to localStorage.
 
 ### Added: 3 tool packages
 
-- `@noocodex/dagonizer-tool-{openlibrary,googlebooks,wikipedia}`: book-domain external searches. `HttpTransport` (in `@noocodex/dagonizer/tool`) consolidates retry + abort + timeout.
+- `@studnicky/dagonizer-tool-{openlibrary,googlebooks,wikipedia}`: book-domain external searches. `HttpTransport` (in `@studnicky/dagonizer/tool`) consolidates retry + abort + timeout.
 
 ### Added: book-entities shared package
 
-- `@noocodex/dagonizer-book-entities`: `Book` / `Candidate` / `Money` types + `CanonicalId` dedupe. Replaces duplicated entity files across the three book-search tools.
+- `@studnicky/dagonizer-book-entities`: `Book` / `Candidate` / `Money` types + `CanonicalId` dedupe. Replaces duplicated entity files across the three book-search tools.
 
 ### Added: 3 pattern packages
 
-- `@noocodex/dagonizer-patterns-rag`: `LlmDispatchNode` parent + `DecisionNode` (with `ClassifyIntentNode`, `DecideToolsNode`, `ValidateResponseNode`, `RankCandidatesNode` leaves), `ComposeNode` (with `ComposeResponseNode`, `ComposeEmptyResponseNode`, `ComposeMemoryResponseNode`, `DeclineNode` leaves), `ScoutNode`.
-- `@noocodex/dagonizer-patterns-graph`: `GraphNode` + `RecallContextNode`, `RecordFindingsNode`, `MemoryDigestNode`.
-- `@noocodex/dagonizer-patterns-flow`: `FlowNode` + `SelectNode` (→ `PickByScoreNode`, `SortByNode`), `ReduceNode` (→ `DedupeByKeyNode`, `GroupByFieldNode`, `FanInReducerNode`), `PredicateGateNode`, `ExtractFieldNode`, `RespondNode`.
+- `@studnicky/dagonizer-patterns-rag`: `LlmDispatchNode` parent + `DecisionNode` (with `ClassifyIntentNode`, `DecideToolsNode`, `ValidateResponseNode`, `RankCandidatesNode` leaves), `ComposeNode` (with `ComposeResponseNode`, `ComposeEmptyResponseNode`, `ComposeMemoryResponseNode`, `DeclineNode` leaves), `ScoutNode`.
+- `@studnicky/dagonizer-patterns-graph`: `GraphNode` + `RecallContextNode`, `RecordFindingsNode`, `MemoryDigestNode`.
+- `@studnicky/dagonizer-patterns-flow`: `FlowNode` + `SelectNode` (→ `PickByScoreNode`, `SortByNode`), `ReduceNode` (→ `DedupeByKeyNode`, `GroupByFieldNode`, `FanInReducerNode`), `PredicateGateNode`, `ExtractFieldNode`, `RespondNode`.
 
 ### Changed: adapter contract surface
 
@@ -553,11 +553,11 @@ changes.
 ⦿ `OperationContractFragment`: new adapter contract (`src/contracts/OperationContractFragment.ts`) carrying only the deriver-facing fields (`hardRequired`, `produces`). `OperationContract` extends the fragment with `name` and `outputs` for backward compatibility.
 ⦿ `NodeInterface.contract?: OperationContractFragment`: optional co-located data-flow declaration on every node. When present, `DAGDeriver.derive({ nodes })` projects the node into a full `OperationContract` using the node's own `name` and `outputs` fields. The node is the single source of truth for its contract.
 ⦿ `DAGDeriverOptions.nodes?: readonly NodeInterface[]`: alternative to `contracts`; mutually exclusive. Nodes without a `contract` field are silently skipped in topology derivation.
-⦿ `DAGDeriver.extractContracts(nodes)`: static helper that projects contract-bearing nodes into `OperationContract[]`, skipping contract-less nodes. Exported from `@noocodex/dagonizer/derive`.
+⦿ `DAGDeriver.extractContracts(nodes)`: static helper that projects contract-bearing nodes into `OperationContract[]`, skipping contract-less nodes. Exported from `@studnicky/dagonizer/derive`.
 ⦿ `ContractRegistryValidator`: new static class (`src/derive/ContractRegistryValidator.ts`) that validates co-located contracts for dangling reads (throws `DAGError`) and dead writes (calls `onContractWarning`). Runs automatically during `Dagonizer.registerDAG` for DAGs derived from a `nodes` registry.
 ⦿ `Dagonizer.onContractWarning(message)`: new protected observability hook, no-op by default. Fires when `ContractRegistryValidator` detects a dead-write (a node produces a path no downstream node consumes). Subclass and override to surface these warnings.
 ⦿ `Chainable<A, B>`: compile-time type utility exported from `NodeInterface`. Resolves to `true` when `B`'s `hardRequired` set is fully satisfied by `A`'s `produces` set, `never` otherwise. Most useful with `as const` literal-tuple contracts.
-⦿ Exports: `OperationContractFragment` and `Chainable` added to `@noocodex/dagonizer/contracts`, `@noocodex/dagonizer/types`, and the root barrel. `ContractRegistryValidator` exported from `@noocodex/dagonizer/derive`.
+⦿ Exports: `OperationContractFragment` and `Chainable` added to `@studnicky/dagonizer/contracts`, `@studnicky/dagonizer/types`, and the root barrel. `ContractRegistryValidator` exported from `@studnicky/dagonizer/derive`.
 ⦿ `DAGBuilder.build(onContractWarning?)` runs dangling-read / dead-write contract validation when any node placement registered via `.node()` or `.fanOut()` carries a `contract` field on its `NodeInterface`. Dangling reads throw `DAGError`; dead writes call the optional `onContractWarning` callback (no-op when omitted). Matches the validation `DAGDeriver` runs at derive time; drift fails at build time, before the DAG is registered.
 ⦿ `DAGBuilder.fromNodes({ name, version, entrypoint, nodes, annotations? })`: static convenience method that delegates to `DAGDeriver.derive({ nodes })` for the linear-topology common case. Produces the same canonical `DAG` document as the equivalent `.node()` chain, without requiring manual placement. Throws `DAGError` when no node carries a `contract` field (matches deriver behavior).
 
@@ -613,7 +613,7 @@ changes.
 
 ### Breaking
 
-⦿ **`FlowDeriver` → `DAGDeriver`**. Class, type vocabulary, and module file renamed to align with the rest of the DAG-prefixed surface (`DAGError`, `DAGSchema`, `DAGBuilder`, etc.). `FlowAnnotations` → `DAGDeriverAnnotations`, `FlowFanOut` → `DAGDeriverFanOut`, `FlowTerminal` → `DAGDeriverTerminal`, `FlowDeepDAG` → `DAGDeriverSubDAG`, `FlowDeriverOptions` → `DAGDeriverOptions`. Source paths `src/derive/FlowDeriver.ts` → `src/derive/DAGDeriver.ts`, `src/derive/FlowAnnotations.ts` → `src/derive/DAGDeriverAnnotations.ts`. The `@noocodex/dagonizer/derive` subpath is unchanged; consumers re-import the renamed identifiers.
+⦿ **`FlowDeriver` → `DAGDeriver`**. Class, type vocabulary, and module file renamed to align with the rest of the DAG-prefixed surface (`DAGError`, `DAGSchema`, `DAGBuilder`, etc.). `FlowAnnotations` → `DAGDeriverAnnotations`, `FlowFanOut` → `DAGDeriverFanOut`, `FlowTerminal` → `DAGDeriverTerminal`, `FlowDeepDAG` → `DAGDeriverSubDAG`, `FlowDeriverOptions` → `DAGDeriverOptions`. Source paths `src/derive/FlowDeriver.ts` → `src/derive/DAGDeriver.ts`, `src/derive/FlowAnnotations.ts` → `src/derive/DAGDeriverAnnotations.ts`. The `@studnicky/dagonizer/derive` subpath is unchanged; consumers re-import the renamed identifiers.
 
 ⦿ **`DAGDeriverFanOut` is now a discriminated union over `strategy`**. The flat `{ fanInOperation, ... }` shape from v0.7.0 is replaced by three variants: `'custom'` (with `fanInOperation`), `'partition'` (with `partitions: Record<outcome, statePath>`), and `'append'` (with `target: statePath`), each carrying its strategy-specific required fields. The top-level `node: string` field is required (registered node invoked per item). Existing fan-out annotations fail at `tsc` with "Property 'strategy' is missing" until updated.
 
@@ -635,7 +635,7 @@ changes.
 
 ### Added
 
-⦿ `FlowAnnotations.subDAGs`: declarative sub-DAG composition for `FlowDeriver`-derived flows. An operation listed in `subDAGs[name]` renders as a `DeepDAGNode` placement instead of `SingleNode`. The contract still declares `produces ↔ hardRequired` so topology derivation is unchanged; the annotation only swaps the rendered placement kind. `FlowDeepDAG` exports from `@noocodex/dagonizer/derive`:
+⦿ `FlowAnnotations.subDAGs`: declarative sub-DAG composition for `FlowDeriver`-derived flows. An operation listed in `subDAGs[name]` renders as a `DeepDAGNode` placement instead of `SingleNode`. The contract still declares `produces ↔ hardRequired` so topology derivation is unchanged; the annotation only swaps the rendered placement kind. `FlowDeepDAG` exports from `@studnicky/dagonizer/derive`:
 
   ```ts
   interface FlowDeepDAG {
@@ -741,7 +741,7 @@ changes.
 
 ⦿ Archivist demo: `OntologyGraph.vue`, `MemoryPane.vue`, `LogStream.vue`, `TraceList.vue`, `TimeoutDrawer.vue`: superseded by the merged Memory tab, `TraceFeed`, and `TimeoutPane`.
 
-⦿ `./types` subpath export: type-only barrel of every public interface and entity-derived type. Consumers import the type surface without pulling runtime classes (`import type { DAG, NodeInterface } from '@noocodex/dagonizer/types'`).
+⦿ `./types` subpath export: type-only barrel of every public interface and entity-derived type. Consumers import the type surface without pulling runtime classes (`import type { DAG, NodeInterface } from '@studnicky/dagonizer/types'`).
 ⦿ `./core` subpath export: pluggable execution primitives (`ParallelCombiner`/`ParallelCombiners`, `FanInStrategy`/`FanInStrategies`).
 ⦿ `DAGErrorInterface` exported from `./errors`.
 ⦿ Three-tier interface taxonomy documented in `CLAUDE.md` and `docs/architecture.md`: class-shape interfaces colocated with their class, adapter contracts at the root of `src/contracts/`, entity-narrowing interfaces colocated with the entity.
@@ -770,7 +770,7 @@ changes.
 ⦿ **DAG wire format is canonically JSON-LD.** The flat `'type'` discriminator field is removed. Node placements use `@type` with string IRIs: `"SingleNode"`, `"ParallelNode"`, `"FanOutNode"`, `"DeepDAGNode"`. Persisted DAG JSON using the old flat `type` shape does not parse.
 ⦿ **`SubDAGNode` → `DeepDAGNode`.** The entity, schema, and TypeScript type are renamed. `Validator.subDAGNode` → `Validator.deepDAGNode`. `SubDAGNodeSchema` → `DeepDAGNodeSchema`. All identifiers that referenced `SubDAG` now reference `DeepDAG`.
 ⦿ **`DAGBuilder.subDAG()` → `DAGBuilder.deepDAG()`.** The builder method is renamed. Call sites using `.subDAG(name, dagName, routes, options)` must change to `.deepDAG(name, dagName, routes, options)`.
-⦿ **`DagJsonLd` projection module removed.** The DAG IS JSON-LD natively; there is no separate projection layer and there are no `toJsonLd` / `fromJsonLd` helpers. Code that imported `{ toJsonLd, fromJsonLd } from '@noocodex/dagonizer'` or `from '@noocodex/dagonizer/entities'` must be deleted; the DAG value returned by `DAGBuilder.build()` (or read off the wire) IS the JSON-LD document. `Dagonizer.load(json)` / `serialize(dag)` remain the standard parse/stringify surface.
+⦿ **`DagJsonLd` projection module removed.** The DAG IS JSON-LD natively; there is no separate projection layer and there are no `toJsonLd` / `fromJsonLd` helpers. Code that imported `{ toJsonLd, fromJsonLd } from '@studnicky/dagonizer'` or `from '@studnicky/dagonizer/entities'` must be deleted; the DAG value returned by `DAGBuilder.build()` (or read off the wire) IS the JSON-LD document. `Dagonizer.load(json)` / `serialize(dag)` remain the standard parse/stringify surface.
 ⦿ **`examples/the-archivist/subdags/` directory renamed to `examples/the-archivist/deepdags/`.** Any import paths that referenced `subdags/` must be updated to `deepdags/`.
 
 ## [0.4.0] - 2026-05-15
@@ -806,7 +806,7 @@ changes.
   ⦿ `CheckpointData.flowName` field → `dagName`; `CheckpointDataSchema` required property updated; `Checkpoint.from(dagName, result)` and `Checkpoint.restore` return `dagName`.
   ⦿ `Validator.flow` → `Validator.dag`.
   ⦿ `entities/flow/` directory → `entities/dag/`; `FlowConfig.ts` → `DAG.ts`; `SubFlowNode.ts` → `SubDAGNode.ts`.
-  ⦿ `@noocodex/dagonizer/entities/flow` subpath export → `entities/dag`.
+  ⦿ `@studnicky/dagonizer/entities/flow` subpath export → `entities/dag`.
 ⦿ **Static codec methods on `Dagonizer`.** `FlowLoader` and `FlowSerializer` deleted; equivalent surface moved onto `Dagonizer` as static methods.
   ⦿ `Dagonizer.load(json: string): DAG`: parses JSON and validates against `DAGSchema`. Throws `ValidationError` for malformed JSON or schema violations.
   ⦿ `Dagonizer.fromValue(value: unknown): DAG`: validates an already-decoded value.
@@ -849,7 +849,7 @@ changes.
 ⦿ `CheckpointDataValidator` (`schema/CheckpointDataValidator.ts`): pre-compiled Ajv validator. Shares the `sharedAjv` 2020-12 instance with `FlowConfigValidator`.
 ⦿ `Checkpoint` (`checkpoint/Checkpoint.ts`): `from(flowName, result)` builds a `CheckpointData`; `restore(data, restoreFn)` parses + validates + rehydrates via a state-factory callback; `toJson(checkpoint)` for serialization.
 ⦿ `JsonValue` / `JsonObject` / `JsonArray` / `JsonPrimitive` types at `entities/json.ts`.
-⦿ New subpath export: `@noocodex/dagonizer/checkpoint`.
+⦿ New subpath export: `@studnicky/dagonizer/checkpoint`.
 ⦿ Example `08-checkpoint.ts`: abort, persist as JSON, parse back, resume.
 ⦿ 8 new unit tests covering snapshot/restore round-trip (base + subclass), cursor population on abort vs clean completion, full abort → snapshot → restore → resume cycle using `VirtualClock` / `VirtualScheduler` for deterministic time, schema rejection of malformed checkpoints.
 
@@ -879,7 +879,7 @@ changes.
 ⦿ `FlowLoader.fromJson(text)` / `fromValue(value)`: single permitted ingest boundary where `unknown` enters the package. JSON.parse → Ajv-narrow → `FlowConfig`.
 ⦿ `FlowSerializer.toJson(flow)` / `toCompactJson(flow)`: symmetric counterpart for the round-trip.
 ⦿ `Dagonizer.registerFlow()` now runs the schema validator as a structural pre-pass before semantic validation. Schema errors surface as `ValidationError`; semantic errors (unknown nodes, missing outputs, sub-flow cycles) continue to surface as `DAGError`.
-⦿ New subpath exports: `@noocodex/dagonizer/schema`, `@noocodex/dagonizer/entities`.
+⦿ New subpath exports: `@studnicky/dagonizer/schema`, `@studnicky/dagonizer/entities`.
 ⦿ Example `07-schema.ts`: load + validate + execute + round-trip a JSON flow.
 ⦿ 12 new unit tests covering Ajv success/failure paths, FlowLoader malformed-JSON handling, round-trip equality, and the `ValidationError` vs `DAGError` boundary.
 
@@ -910,7 +910,7 @@ The schema bodies and `$id`s are stable. Type derivation can be migrated to a fu
 ⦿ Class-extension hooks on `Dagonizer`: `protected onFlowStart`, `onFlowEnd`, `onNodeStart`, `onNodeEnd`, `onError`. Subclass and override; no callbacks.
 ⦿ Type-safe node outputs: `NodeInterface<TState, TOutput extends string>` and `SingleNodeInterface<TOutput>` parameterize the output union. `outputs: Record<TOutput, string | null>` is exhaustiveness-checked at compile time when the node declares a narrow union.
 ⦿ `FlowBuilder` (in `builder/`): chainable authoring of `FlowConfig`. `node()`, `parallel()`, `fanOut()`, `subFlow()`, `entrypoint()`, `build()`.
-⦿ New subpath exports: `@noocodex/dagonizer/runtime`, `@noocodex/dagonizer/builder`.
+⦿ New subpath exports: `@studnicky/dagonizer/runtime`, `@studnicky/dagonizer/builder`.
 ⦿ Examples 01–06 runnable via `tsx`: linear chain, fan-out + partition, sub-flows, cancellation + deadline, RetryPolicy, FlowBuilder.
 ⦿ 32 new unit tests covering runtime, retry, cancellation, hooks, builder, fan-in strategies (partition / custom), fan-out concurrency cap, and `NodeStateBase.clone` semantics.
 
@@ -936,7 +936,7 @@ The schema bodies and `$id`s are stable. Type derivation can be migrated to a fu
 ⦿ `NodeStateBase` with bundled `DAGLifecycleMachine` (pending → running → completed | failed | cancelled | timed_out).
 ⦿ Validation: duplicate node names, missing entrypoints, unknown nodes, unwired outputs, fan-in strategy/config consistency, circular sub-flow detection.
 ⦿ `DAGError` hierarchy: `ConfigurationError`, `ExecutionError`, `NotFoundError`, `ValidationError`.
-⦿ Public exports under `@noocodex/dagonizer`, `/types`, `/errors`, `/constants`, `/lifecycle`.
+⦿ Public exports under `@studnicky/dagonizer`, `/types`, `/errors`, `/constants`, `/lifecycle`.
 ⦿ Constants: `FanInStrategy`, `FanOutOutput`, `MetadataKey`, `Output`, `ParallelCombine`, `NodeType`.
 
 [0.11.0]: https://github.com/Studnicky/Dagonizer/compare/v0.10.0...v0.11.0

@@ -18,8 +18,8 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { DAG_CONTEXT } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
+import { DAG_CONTEXT } from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
 import DagGraph from './.vitepress/theme/components/DagGraph.vue';
 
 // Sample three-node DAG used to illustrate output routing.
@@ -169,8 +169,8 @@ Containment attaches to exactly two sites — both run a whole child DAG:
 ### Hand-off channel binding
 
 ```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-import type { HandoffChannelInterface } from '@noocodex/dagonizer';
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
+import type { HandoffChannelInterface } from '@studnicky/dagonizer';
 // ---cut---
 declare const myQueueChannel: HandoffChannelInterface;
 declare const myDlqChannel: HandoffChannelInterface;
@@ -299,5 +299,5 @@ Class extension is the only extension mechanism. Zero callbacks. Zero function-p
 - **Domain state**: subclass `NodeStateBase`. Override `snapshotData()` and `restoreData()` for checkpointable fields.
 - **Nodes**: implement `NodeInterface<TState, TOutput>`. Nodes never throw; they route to a named output.
 - **Time and scheduling**: implement `ClockProvider` and `SchedulerProvider`. `Clock.configure()` and `Scheduler.configure()` install the provider. Production runs the default `RealTimeScheduler` and the wrapped `process.hrtime.bigint()`; tests install `VirtualClockProvider` and `VirtualScheduler` for deterministic time.
-- **Isolating compute**: implement `DagContainerInterface` to run an embedded DAG or scatter-dag-body in any isolate. Bind roles to backend instances at dispatcher construction via `options.containers`. The `@noocodex/dagonizer-executor-node` package ships `WorkerThreadContainer`, `ForkContainer`, `ClusterContainer`, and `SpawnContainer` for Node.js deployments.
+- **Isolating compute**: implement `DagContainerInterface` to run an embedded DAG or scatter-dag-body in any isolate. Bind roles to backend instances at dispatcher construction via `options.containers`. The `@studnicky/dagonizer-executor-node` package ships `WorkerThreadContainer`, `ForkContainer`, `ClusterContainer`, and `SpawnContainer` for Node.js deployments.
 - **Cross-host egress**: implement `HandoffChannelInterface` to publish `DAGHandoff` envelopes to any transport (queue, message bus, HTTP endpoint). Bind to terminal names at construction via `options.channels`. `InMemoryChannel` (from `./channels`) is the reference implementation for tests and demos.

@@ -21,10 +21,10 @@ seeAlso:
 
 | Symbol | Source | Role |
 |--------|--------|------|
-| `Dagonizer<TState, TServices>` | `@noocodex/dagonizer` | Carries the services type as a generic parameter |
-| `DagonizerOptionsInterface.services` | `@noocodex/dagonizer` | The bag passed at construction |
-| `NodeInterface<TState, TOutput, TServices>` | `@noocodex/dagonizer` | Propagates `TServices` to `context.services` |
-| `NodeContextInterface.services` | `@noocodex/dagonizer` | The per-call view of the bag |
+| `Dagonizer<TState, TServices>` | `@studnicky/dagonizer` | Carries the services type as a generic parameter |
+| `DagonizerOptionsInterface.services` | `@studnicky/dagonizer` | The bag passed at construction |
+| `NodeInterface<TState, TOutput, TServices>` | `@studnicky/dagonizer` | Propagates `TServices` to `context.services` |
+| `NodeContextInterface.services` | `@studnicky/dagonizer` | The per-call view of the bag |
 
 `TServices` defaults to `undefined`. Dispatchers that need nothing typed through services work as `new Dagonizer<S>()`.
 

@@ -9,7 +9,7 @@ seeAlso:
 
 # Lifecycle
 
-`@noocodex/dagonizer/lifecycle`
+`@studnicky/dagonizer/lifecycle`
 
 The lifecycle module exports the discriminated union type, the event union type, and the pure reducer machine.
 
@@ -18,13 +18,13 @@ The lifecycle module exports the discriminated union type, the event union type,
 ## Type: `DAGLifecycleState`
 
 ```ts twoslash
-import type { DAGLifecycleState } from '@noocodex/dagonizer/lifecycle';
+import type { DAGLifecycleState } from '@studnicky/dagonizer/lifecycle';
 ```
 
 Discriminated union of the six states a DAG lifecycle can occupy:
 
 ```ts twoslash
-import type { DAGLifecycleState } from '@noocodex/dagonizer/lifecycle';
+import type { DAGLifecycleState } from '@studnicky/dagonizer/lifecycle';
 // DAGLifecycleState is:
 //   | { kind: 'pending';   startedAt: null;   finishedAt: null;   error: null;  reason: null }
 //   | { kind: 'running';   startedAt: number; finishedAt: null;   error: null;  reason: null }
@@ -48,7 +48,7 @@ Inspect via `state.lifecycle.kind`. Narrow to a terminal variant to access its p
 Events consumed by `DAGLifecycleMachine.transition()`.
 
 ```ts twoslash
-import type { DAGLifecycleEvent } from '@noocodex/dagonizer/lifecycle';
+import type { DAGLifecycleEvent } from '@studnicky/dagonizer/lifecycle';
 // DAGLifecycleEvent is:
 //   | { type: 'start';   at: number }
 //   | { type: 'succeed'; at: number }
@@ -67,13 +67,13 @@ The `at` field carries the monotonic clock value for the transition. Supply `Clo
 Pure reducer for `DAGLifecycleState`. Static class; never instantiated.
 
 ```ts twoslash
-import { DAGLifecycleMachine } from '@noocodex/dagonizer/lifecycle';
+import { DAGLifecycleMachine } from '@studnicky/dagonizer/lifecycle';
 ```
 
 ### `DAGLifecycleMachine.initial()`
 
 ```ts twoslash
-import { DAGLifecycleMachine } from '@noocodex/dagonizer/lifecycle';
+import { DAGLifecycleMachine } from '@studnicky/dagonizer/lifecycle';
 // ---cut---
 const initial = DAGLifecycleMachine.initial();
 // Returns: { kind: 'pending', startedAt: null, finishedAt: null, error: null, reason: null }
@@ -84,8 +84,8 @@ Seed value for a new state object.
 ### `DAGLifecycleMachine.transition(state, event)`
 
 ```ts twoslash
-import { DAGLifecycleMachine } from '@noocodex/dagonizer/lifecycle';
-import type { DAGLifecycleState, DAGLifecycleEvent } from '@noocodex/dagonizer/lifecycle';
+import { DAGLifecycleMachine } from '@studnicky/dagonizer/lifecycle';
+import type { DAGLifecycleState, DAGLifecycleEvent } from '@studnicky/dagonizer/lifecycle';
 // ---cut---
 declare const state: DAGLifecycleState;
 declare const event: DAGLifecycleEvent;
@@ -113,8 +113,8 @@ All other transitions return the input unchanged (illegal, detected by `NodeStat
 `true` if the state is one of `completed`, `failed`, `cancelled`, or `timed_out`.
 
 ```ts twoslash
-import { DAGLifecycleMachine } from '@noocodex/dagonizer/lifecycle';
-import type { DAGLifecycleState } from '@noocodex/dagonizer/lifecycle';
+import { DAGLifecycleMachine } from '@studnicky/dagonizer/lifecycle';
+import type { DAGLifecycleState } from '@studnicky/dagonizer/lifecycle';
 // ---cut---
 declare const lifecycle: DAGLifecycleState;
 if (DAGLifecycleMachine.isTerminal(lifecycle)) {
@@ -129,9 +129,9 @@ if (DAGLifecycleMachine.isTerminal(lifecycle)) {
 Callers implementing `NodeStateInterface` without extending `NodeStateBase` use `DAGLifecycleMachine` directly to drive lifecycle transitions:
 
 ```ts twoslash
-import { DAGLifecycleMachine } from '@noocodex/dagonizer/lifecycle';
-import type { DAGLifecycleState } from '@noocodex/dagonizer/lifecycle';
-import { Clock } from '@noocodex/dagonizer/runtime';
+import { DAGLifecycleMachine } from '@studnicky/dagonizer/lifecycle';
+import type { DAGLifecycleState } from '@studnicky/dagonizer/lifecycle';
+import { Clock } from '@studnicky/dagonizer/runtime';
 // ---cut---
 let lifecycle: DAGLifecycleState = DAGLifecycleMachine.initial();
 

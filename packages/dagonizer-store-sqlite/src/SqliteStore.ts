@@ -14,9 +14,9 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { DatabaseSyncOptions } from 'node:sqlite';
 
-import type { StoreSnapshotEntry } from '@noocodex/dagonizer/contracts';
-import type { JsonValue } from '@noocodex/dagonizer/entities';
-import { BASE_STORE_DEFAULTS, BaseStore, type BaseStoreOptions } from '@noocodex/dagonizer/store';
+import type { StoreSnapshotEntry } from '@studnicky/dagonizer/contracts';
+import type { JsonValue } from '@studnicky/dagonizer/entities';
+import { BASE_STORE_DEFAULTS, BaseStore, type BaseStoreOptions } from '@studnicky/dagonizer/store';
 
 export interface SqliteStoreOptions extends BaseStoreOptions {
   /** SQLite DatabaseSync options (e.g. readOnly). */

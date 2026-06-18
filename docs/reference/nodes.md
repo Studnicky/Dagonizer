@@ -13,7 +13,7 @@ seeAlso:
 
 # Nodes
 
-Placement types: the appearances of nodes inside a `DAG`. Each placement is a discriminated union member keyed by `@type`, ships with a JSON Schema in `@noocodex/dagonizer/entities`, and resolves to a typed TS shape via `json-schema-to-ts`.
+Placement types: the appearances of nodes inside a `DAG`. Each placement is a discriminated union member keyed by `@type`, ships with a JSON Schema in `@studnicky/dagonizer/entities`, and resolves to a typed TS shape via `json-schema-to-ts`.
 
 A registered `NodeInterface` (the consumer-implemented unit of work) is referenced from a placement by name. A "node" is the unit of work. A "placement" is its appearance inside a `DAG`. `TerminalNode` is placement-only and references no registered node.
 
@@ -32,8 +32,8 @@ Every schema's `$id` is `https://noocodex.dev/schemas/dagonizer/<TypeName>`.
 ## `SingleNode`
 
 ```ts twoslash
-import { SingleNodeSchema } from '@noocodex/dagonizer/entities';
-import type { SingleNode, SingleNodePlacementInterface } from '@noocodex/dagonizer/entities';
+import { SingleNodeSchema } from '@studnicky/dagonizer/entities';
+import type { SingleNode, SingleNodePlacementInterface } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const placement: SingleNode;
 const name: string = placement.name;
@@ -66,8 +66,8 @@ export {};
 ## `ScatterNode`
 
 ```ts twoslash
-import { ScatterNodeSchema } from '@noocodex/dagonizer/entities';
-import type { ScatterNode } from '@noocodex/dagonizer/entities';
+import { ScatterNodeSchema } from '@studnicky/dagonizer/entities';
+import type { ScatterNode } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const placement: ScatterNode;
 const name: string = placement.name;
@@ -115,8 +115,8 @@ Per-item resume bookkeeping is persisted under the reserved metadata key `SCATTE
 ## `EmbeddedDAGNode`
 
 ```ts twoslash
-import { EmbeddedDAGNodeSchema } from '@noocodex/dagonizer/entities';
-import type { EmbeddedDAGNode } from '@noocodex/dagonizer/entities';
+import { EmbeddedDAGNodeSchema } from '@studnicky/dagonizer/entities';
+import type { EmbeddedDAGNode } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const placement: EmbeddedDAGNode;
 const name: string = placement.name;
@@ -154,8 +154,8 @@ export {};
 ## `TerminalNode`
 
 ```ts twoslash
-import { TerminalNodeSchema } from '@noocodex/dagonizer/entities';
-import type { TerminalNode } from '@noocodex/dagonizer/entities';
+import { TerminalNodeSchema } from '@studnicky/dagonizer/entities';
+import type { TerminalNode } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const placement: TerminalNode;
 const name: string = placement.name;
@@ -185,8 +185,8 @@ No `outputs` map. Placement-only (no backing `NodeInterface`). On reach, the eng
 ## `PhaseNode`
 
 ```ts twoslash
-import { PhaseNodeSchema } from '@noocodex/dagonizer/entities';
-import type { PhaseNode } from '@noocodex/dagonizer/entities';
+import { PhaseNodeSchema } from '@studnicky/dagonizer/entities';
+import type { PhaseNode } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const placement: PhaseNode;
 const name: string = placement.name;
@@ -220,8 +220,8 @@ No `outputs` map. Pre-phase placements run in DAG declaration order before the e
 `GatherConfig` is referenced from `ScatterNode.gather` and is also exported as a standalone schema and type.
 
 ```ts twoslash
-import { GatherConfigSchema } from '@noocodex/dagonizer/entities';
-import type { GatherConfig } from '@noocodex/dagonizer/entities';
+import { GatherConfigSchema } from '@studnicky/dagonizer/entities';
+import type { GatherConfig } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const gc: GatherConfig;
 const strategy: string = gc.strategy;
@@ -229,7 +229,7 @@ export {};
 ```
 
 ```ts twoslash
-import type { GatherConfig } from '@noocodex/dagonizer/entities';
+import type { GatherConfig } from '@studnicky/dagonizer/entities';
 // ---cut---
 // GatherConfig shape (all fields beyond `strategy` are optional):
 declare const _: GatherConfig;
