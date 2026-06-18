@@ -1,5 +1,15 @@
 # @noocodex/dagonizer
 
+## 0.21.0
+
+### Minor Changes
+
+- 0296d9d: Remove the `@noocodex/dagonizer-adapter-stub` package and every stub backend. The Archivist demo, its CLI, and the LLM/embedder/tool-use examples now run only against real models (Ollama locally, or a cloud key); when no real backend is reachable the demo shows its no-model gate and the CLI throws `NO_ADAPTER_AVAILABLE` rather than returning canned responses. Examples 24–26 are rewritten against `OllamaApiAdapter` / `OllamaEmbedder`.
+
+### Patch Changes
+
+- 0296d9d: Node and DAG registration is idempotent by identity — re-registering the same instance (reference equality) is a no-op, enabling node reuse across multiple bundles. Only a different implementation claiming an already-registered name throws `DAGError`, with the message updated to `'X' is already registered with a different implementation` to distinguish the collision from the no-op case.
+
 ## [Unreleased]
 
 ### Added
