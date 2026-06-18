@@ -45,8 +45,8 @@ const VALID_INTENTS: readonly ClassifiedIntent[] = [
  * `intentClassifier` is the optional vector-similarity classifier. When
  * supplied, `classifyIntent` tries the vector path first; only when the
  * top-scoring intent falls below the classifier's confidence floor does
- * it fall through to the LLM. Pass `undefined` (or omit) to keep the
- * legacy LLM-only behaviour (typically the right default in browser
+ * it fall through to the LLM. Pass `undefined` (or omit) for
+ * LLM-only classification (typically the right default in browser
  * environments where no embedder is reachable).
  */
 export interface BaseLlmClientOptions {

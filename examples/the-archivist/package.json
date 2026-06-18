@@ -20,7 +20,6 @@
     "@noocodex/dagonizer-adapter-mistral": "workspace:^",
     "@noocodex/dagonizer-adapter-ollama": "workspace:^",
     "@noocodex/dagonizer-adapter-openrouter": "workspace:^",
-    "@noocodex/dagonizer-adapter-stub": "workspace:^",
     "@noocodex/dagonizer-adapter-web-llm": "workspace:^",
     "@noocodex/dagonizer-book-entities": "workspace:^",
     "@noocodex/dagonizer-embedder-gemini-api": "workspace:^",

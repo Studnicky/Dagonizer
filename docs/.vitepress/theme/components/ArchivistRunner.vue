@@ -18,7 +18,7 @@
 
 import { computed, onMounted, ref, watch } from 'vue';
 
-import { Checkpoint } from '@noocodex/dagonizer/checkpoint';
+import { Checkpoint, CheckpointRestoreAdapterFn } from '@noocodex/dagonizer/checkpoint';
 import type { ExecutionResultInterface } from '@noocodex/dagonizer';
 
 import { ArchivistState } from '../../../../examples/the-archivist/ArchivistState.ts';
@@ -66,7 +66,7 @@ const backends = ref<readonly BackendAvailability[]>([]);
 const savedBackend = typeof localStorage !== 'undefined'
   ? (localStorage.getItem('dagonizer-active-backend') as ProviderId | null)
   : null;
-const activeBackend = ref<ProviderId>(savedBackend ?? 'stub');
+const activeBackend = ref<ProviderId | null>(savedBackend);
 const noModel = ref(false);
 const isMobile = ref(false);
 const apiKeys = ref<Partial<Record<ProviderId, string>>>(loadApiKeys());
@@ -98,7 +98,7 @@ const isRunning = ref(false);
 const conversation = ref<Array<{ role: 'visitor' | 'archivist'; text: string; ts: number }>>([]);
 type TraceEvent =
   | { readonly kind: 'start'; readonly node: string; readonly ts: number }
-  | { readonly kind: 'end';   readonly node: string; readonly ts: number; readonly output: string | undefined }
+  | { readonly kind: 'end';   readonly node: string; readonly ts: number; readonly output: string | null }
   | { readonly kind: 'error'; readonly node: string; readonly ts: number; readonly message: string };
 
 const trace = ref<TraceEvent[]>([]);
@@ -110,6 +110,15 @@ memoryStore.enablePersistence();
 const memoryTick = ref(0); // bumped after each write so MemoryGraph re-renders
 const isPersisted = ref(memoryStore.isPersisted);
 const logger = new ConsoleLogger();
+
+// `memoryStore` is a plain class, not a reactive object, so a bare
+// `memoryStore.size` read in the template never re-evaluates on its own. Route
+// every count display through this computed so it tracks `memoryTick` (bumped
+// after every store mutation, including clear) and refreshes in lockstep.
+const tripleCount = computed(() => {
+  void memoryTick.value;
+  return memoryStore.size;
+});
 
 // ── Conversation context window ───────────────────────────────────────────
 const conversationContextWindow = ref(6);
@@ -158,15 +167,14 @@ const hasCheckpoint = ref(
 let lastResult: ExecutionResultInterface<ArchivistState> | null = null;
 let lastDagName = 'the-archivist';
 
-function saveCheckpoint(): void {
+async function saveCheckpoint(): Promise<void> {
   if (lastResult === null || lastResult.cursor === null) {
     logger.warn('no resumable checkpoint available (run completed fully, or no run yet)');
     return;
   }
   try {
-    const data = Checkpoint.from(lastDagName, lastResult);
-    const json = Checkpoint.toJson(data);
-    localStorage.setItem(CHECKPOINT_KEY, json);
+    const ckpt = await Checkpoint.capture(lastDagName, lastResult, { 'stores': { 'memory': memoryStore } });
+    localStorage.setItem(CHECKPOINT_KEY, ckpt.toJson());
     checkpointNode.value = lastResult.cursor;
     hasCheckpoint.value = true;
     dagGraph.value?.setCompleted(lastResult.cursor);
@@ -183,7 +191,7 @@ function saveCheckpoint(): void {
 }
 
 async function resumeFromCheckpoint(): Promise<void> {
-  if (isRunning.value) return;
+  if (isRunning.value || activeBackend.value === null) return;
   const raw = typeof localStorage !== 'undefined'
     ? localStorage.getItem(CHECKPOINT_KEY)
     : null;
@@ -194,11 +202,11 @@ async function resumeFromCheckpoint(): Promise<void> {
   let restored: { state: ArchivistState; dagName: string; cursor: string } | null = null;
   try {
     const parsed = JSON.parse(raw) as unknown;
-    restored = Checkpoint.restore(parsed, (snap) => ArchivistState.restore(snap)) as {
-      state: ArchivistState;
-      dagName: string;
-      cursor: string;
-    };
+    const ckpt = Checkpoint.load(parsed);
+    await ckpt.restoreStores({ 'memory': memoryStore });
+    restored = ckpt.restoreState(
+      CheckpointRestoreAdapterFn.fromFn((snap) => ArchivistState.restore(snap)),
+    );
   } catch (err) {
     logger.warn(`checkpoint restore failed: ${err instanceof Error ? err.message : String(err)}`);
     return;
@@ -225,20 +233,22 @@ async function resumeFromCheckpoint(): Promise<void> {
     'dispatcherAgentId':  `dispatcher:${activeBackend.value}`,
   });
 
-  const services = buildServices();
-  const dispatcher = new ObservedDagonizer<ArchivistState, ArchivistServices>({
-    services,
-    'observer': buildObserver(restored.cursor, prov),
-  });
-
-  dispatcher.registerBundle(bookSearchScatterBundle);
-  dispatcher.registerBundle(composeRetryLoopBundle);
-  dispatcher.registerBundle(archivistBundle);
-
-  activeAbortController = new AbortController();
-  const deadlineMs = overallDeadlineMs();
+  let dispatcher: ObservedDagonizer<ArchivistState, ArchivistServices> | null = null;
 
   try {
+    const services = buildServices();
+    dispatcher = new ObservedDagonizer<ArchivistState, ArchivistServices>({
+      services,
+      'observer': buildObserver(restored.cursor, prov),
+    });
+
+    dispatcher.registerBundle(bookSearchScatterBundle);
+    dispatcher.registerBundle(composeRetryLoopBundle);
+    dispatcher.registerBundle(archivistBundle);
+
+    activeAbortController = new AbortController();
+    const deadlineMs = overallDeadlineMs();
+
     await dispatcher.resume(
       restored.dagName,
       restored.state,
@@ -252,7 +262,7 @@ async function resumeFromCheckpoint(): Promise<void> {
       'ts': Date.now(),
     }];
   } finally {
-    await dispatcher.destroy();
+    await dispatcher?.destroy();
     activeAbortController = null;
     isRunning.value = false;
   }
@@ -328,11 +338,11 @@ const resolvedOllamaModel = computed<string>(() => {
   return entry?.resolvedModel ?? '';
 });
 
-/** Construct an LLM client for the active backend, always including memoryStore. */
+/** Construct an LLM client for the active backend, or null when none is selected. */
 function makeLlm() {
+  if (activeBackend.value === null) return null;
   return instantiateProvider(activeBackend.value, {
     'apiKeys':     apiKeys.value,
-    'memoryStore': memoryStore,
     'ollamaModel': resolvedOllamaModel.value,
   });
 }
@@ -341,20 +351,25 @@ function makeLlm() {
 const currentLlm = computed(() => makeLlm());
 
 function clearMemory(): void {
+  // Drop the accumulated memory facts but keep the schema: re-insert the TBox
+  // ontology so the graph re-renders with its structure rather than going fully
+  // empty. The seed library (run/book facts) is intentionally not restored —
+  // that is what "clear" removes; use "Reset conversation" to reseed books.
   memoryStore.clear();
+  memoryStore.loadOntology(ONTOLOGY_NTRIPLES);
   memoryTick.value++;
-  logger.info('memory store cleared');
+  logger.info('memory store cleared; ontology restored');
 }
 
 // Re-detect backend availability when apiKeys change.
 watch(apiKeys, async () => {
-  backends.value = await detectBackends({ 'apiKeys': apiKeys.value, 'preferredOllamaModel': ollamaModel.value.length > 0 ? ollamaModel.value : undefined });
+  backends.value = await detectBackends({ 'apiKeys': apiKeys.value, ...(ollamaModel.value.length > 0 ? { 'preferredOllamaModel': ollamaModel.value } : {}) });
   noModel.value = hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value });
 }, { 'deep': true });
 
 // Persist the visitor's backend selection so it survives page reloads.
 watch(activeBackend, (id) => {
-  if (typeof localStorage !== 'undefined') {
+  if (typeof localStorage !== 'undefined' && id !== null) {
     localStorage.setItem('dagonizer-active-backend', id);
   }
 });
@@ -370,7 +385,7 @@ const rightTabs = computed(() => {
   const traceCount = trace.value.length + logger.history().length;
   return [
     { 'key': 'dag',    'label': 'DAG',    'badge': isRunning.value ? 'live' : '',   'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
-    { 'key': 'memory', 'label': 'Memory', 'badge': String(memoryStore.size || ''), 'tone': 'accent' as const },
+    { 'key': 'memory', 'label': 'Memory', 'badge': String(tripleCount.value || ''), 'tone': 'accent' as const },
     { 'key': 'trace',  'label': 'Trace',  'badge': String(traceCount || ''),        'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default' },
   ];
 });
@@ -384,14 +399,25 @@ const embeddedDagRegistry = new Map([
   ['compose-retry-loop', ComposeRetryLoopDAG],
 ]);
 
+// Stable tool instances. The scout nodes call `tool.execute(...)`, which is an
+// instance method on each Tool class (`new OpenLibrarySearchTool()`), so the
+// services must carry instances, not the class constructors. One instance each,
+// reused across every run — the HTTP tools are stateless.
+const webSearchTool        = new OpenLibrarySearchTool();
+const googleBooksTool      = new GoogleBooksTool();
+const subjectSearchTool    = new SubjectSearchTool();
+const wikipediaSummaryTool = new WikipediaSummaryTool();
+
 function buildServices(): ArchivistServices {
+  const llm = makeLlm();
+  if (llm === null) throw new Error('no backend selected');
   return {
-    'webSearch':         OpenLibrarySearchTool,
-    'googleBooks':       GoogleBooksTool,
-    'subjectSearch':     SubjectSearchTool,
-    'wikipediaSummary':  WikipediaSummaryTool,
+    'webSearch':         webSearchTool,
+    'googleBooks':       googleBooksTool,
+    'subjectSearch':     subjectSearchTool,
+    'wikipediaSummary':  wikipediaSummaryTool,
     'memory':            memoryStore,
-    'llm':               makeLlm(),
+    'llm':               llm,
     // Docs runtime: no embedder wired (browser-only). Cosine recall and
     // hybrid ranking fall back to Jaccard / heuristics when embedder is null.
     'embedder':          null,
@@ -425,15 +451,15 @@ function buildObserver(fromCursor: string | null, prov: RdfProvObserver) {
       prov.recordNodeStart(nodeName);
       runnerMachine.pulse({ 'type': 'nodeStart', 'node': nodeName });
     },
-    onNodeEnd(nodeName: string, output: string | undefined, state: ArchivistState, placementPath: readonly string[] = []) {
+    onNodeEnd(nodeName: string, output: string | null, state: ArchivistState, placementPath: readonly string[] = []) {
       const fullId = [...placementPath, nodeName].join('/');
       trace.value = [...trace.value, { 'node': fullId, output, 'ts': Date.now(), 'kind': 'end' }];
       dagGraph.value?.setCompleted(fullId);
-      if (output !== undefined) dagGraph.value?.markEdgeTraversed(fullId, output);
+      if (output !== null) dagGraph.value?.markEdgeTraversed(fullId, output);
       StateProjection.project(state, memoryStore);
-      prov.recordNodeEnd(nodeName, output);
+      prov.recordNodeEnd(nodeName, output ?? undefined);
       memoryTick.value++;
-      runnerMachine.pulse(output === undefined
+      runnerMachine.pulse(output === null
         ? { 'type': 'nodeEnd', 'node': nodeName }
         : { 'type': 'nodeEnd', 'node': nodeName, 'output': output });
     },
@@ -508,10 +534,9 @@ onMounted(async () => {
 
   isMobile.value = MobileDetection.isLikelyMobile();
 
-  backends.value = await detectBackends({ 'apiKeys': apiKeys.value, 'preferredOllamaModel': ollamaModel.value.length > 0 ? ollamaModel.value : undefined });
+  backends.value = await detectBackends({ 'apiKeys': apiKeys.value, ...(ollamaModel.value.length > 0 ? { 'preferredOllamaModel': ollamaModel.value } : {}) });
 
-  // On mobile, hasNoRunnableModel always returns false (stub is the floor).
-  // On desktop, it returns true when no real backend is runnable.
+  // Show the no-model gate when no real backend is available on this device.
   if (hasNoRunnableModel(backends.value, { 'isMobile': isMobile.value })) {
     noModel.value = true;
     logger.warn('no LLM backend detected; visitor must enable one');
@@ -520,7 +545,6 @@ onMounted(async () => {
   noModel.value = false;
 
   // Auto-pick the best backend only when no saved user preference exists.
-  // pickBestBackend falls back to stub on mobile when no cloud key is set.
   if (savedBackend === null) {
     const picked = pickBestBackend(backends.value, { 'isMobile': isMobile.value });
     if (picked !== null) {
@@ -540,10 +564,12 @@ onMounted(async () => {
 
     // Step 1: generate greeting.
     let greeting = STATIC_GREETINGS[Date.now() % STATIC_GREETINGS.length] as string;
-    try {
-      const generated = await llm.suggestGreeting();
-      if (generated.length > 0) greeting = generated;
-    } catch { /* use static fallback */ }
+    if (llm !== null) {
+      try {
+        const generated = await llm.suggestGreeting();
+        if (generated.length > 0) greeting = generated;
+      } catch { /* use static fallback */ }
+    }
 
     if (isFreshSession()) {
       conversation.value = [{ 'role': 'archivist', 'text': greeting, 'ts': Date.now() }];
@@ -551,12 +577,16 @@ onMounted(async () => {
 
     // Step 2: generate a visitor reply keyed to the greeting.
     if (isFreshSession() && visitorQuery.value.length === 0) {
-      try {
-        const reply = await llm.suggestVisitorReplyTo(greeting);
-        if (reply.length > 0 && isFreshSession() && visitorQuery.value.length === 0) {
-          visitorQuery.value = reply;
+      if (llm !== null) {
+        try {
+          const reply = await llm.suggestVisitorReplyTo(greeting);
+          if (reply.length > 0 && isFreshSession() && visitorQuery.value.length === 0) {
+            visitorQuery.value = reply;
+          }
+        } catch {
+          visitorQuery.value = STATIC_VISITOR_REPLIES[Date.now() % STATIC_VISITOR_REPLIES.length] as string;
         }
-      } catch {
+      } else {
         visitorQuery.value = STATIC_VISITOR_REPLIES[Date.now() % STATIC_VISITOR_REPLIES.length] as string;
       }
     }
@@ -568,7 +598,7 @@ watch(ollamaModel, (next) => { saveOllamaModel(next); });
 
 // ── Run ──────────────────────────────────────────────────────────────────
 async function ask(): Promise<void> {
-  if (isRunning.value || visitorQuery.value.trim().length === 0) return;
+  if (isRunning.value || visitorQuery.value.trim().length === 0 || activeBackend.value === null) return;
   runnerMachine.dispatch({ 'type': 'submit' });
   isRunning.value = true;
   terminalKind.value = 'pending';
@@ -599,13 +629,15 @@ async function ask(): Promise<void> {
   });
 
   const { composeMs, webSearchMs, rankMs } = timeoutSettings.value;
+  const resolvedLlm = makeLlm();
+  if (resolvedLlm === null) throw new Error('no backend selected');
   const services: ArchivistServices = {
-    'webSearch':         OpenLibrarySearchTool,
-    'googleBooks':       GoogleBooksTool,
-    'subjectSearch':     SubjectSearchTool,
-    'wikipediaSummary':  WikipediaSummaryTool,
+    'webSearch':         webSearchTool,
+    'googleBooks':       googleBooksTool,
+    'subjectSearch':     subjectSearchTool,
+    'wikipediaSummary':  wikipediaSummaryTool,
     'memory':            memoryStore,
-    'llm':               makeLlm(),
+    'llm':               resolvedLlm,
     'embedder':          null,
     'nodeTimeouts': {
       'compose-response':        composeMs,
@@ -619,27 +651,29 @@ async function ask(): Promise<void> {
     },
     'logger':            logger,
   };
-  const dispatcher = new ObservedDagonizer<ArchivistState, ArchivistServices>({
-    services,
-    'observer': buildObserver(null, prov),
-  });
-
-  dispatcher.registerBundle(bookSearchScatterBundle);
-  dispatcher.registerBundle(composeRetryLoopBundle);
-  dispatcher.registerBundle(archivistBundle);
-
-  const visitor = new ArchivistState();
-  visitor.query = queryText;
-  visitor.runId = runId;
-  // Slice the display conversation to the configured window and assign to state
-  // so every LLM prompt receives prior-turn context for pronoun resolution.
-  const recentTurns = conversation.value.slice(-conversationContextWindow.value);
-  visitor.conversation = recentTurns.map((t) => ({ 'role': t.role, 'text': t.text, 'ts': t.ts }));
-
-  activeAbortController = new AbortController();
-  const deadlineMs = overallDeadlineMs();
+  let dispatcher: ObservedDagonizer<ArchivistState, ArchivistServices> | null = null;
 
   try {
+    dispatcher = new ObservedDagonizer<ArchivistState, ArchivistServices>({
+      services,
+      'observer': buildObserver(null, prov),
+    });
+
+    dispatcher.registerBundle(bookSearchScatterBundle);
+    dispatcher.registerBundle(composeRetryLoopBundle);
+    dispatcher.registerBundle(archivistBundle);
+
+    const visitor = new ArchivistState();
+    visitor.query = queryText;
+    visitor.runId = runId;
+    // Slice the display conversation to the configured window and assign to state
+    // so every LLM prompt receives prior-turn context for pronoun resolution.
+    const recentTurns = conversation.value.slice(-conversationContextWindow.value);
+    visitor.conversation = recentTurns.map((t) => ({ 'role': t.role, 'text': t.text, 'ts': t.ts }));
+
+    activeAbortController = new AbortController();
+    const deadlineMs = overallDeadlineMs();
+
     await dispatcher.execute(
       'the-archivist',
       visitor,
@@ -652,7 +686,7 @@ async function ask(): Promise<void> {
       'ts': Date.now(),
     }];
   } finally {
-    await dispatcher.destroy();
+    await dispatcher?.destroy();
     activeAbortController = null;
     isRunning.value = false;
   }
@@ -681,22 +715,28 @@ function reset(): void {
   const llm = makeLlm();
   void (async () => {
     let greeting = STATIC_GREETINGS[Date.now() % STATIC_GREETINGS.length] as string;
-    try {
-      const generated = await llm.suggestGreeting();
-      if (generated.length > 0) greeting = generated;
-    } catch { /* use static fallback */ }
+    if (llm !== null) {
+      try {
+        const generated = await llm.suggestGreeting();
+        if (generated.length > 0) greeting = generated;
+      } catch { /* use static fallback */ }
+    }
 
     if (isFreshSession()) {
       conversation.value = [{ 'role': 'archivist', 'text': greeting, 'ts': Date.now() }];
     }
 
     if (isFreshSession() && visitorQuery.value.length === 0) {
-      try {
-        const reply = await llm.suggestVisitorReplyTo(greeting);
-        if (reply.length > 0 && isFreshSession() && visitorQuery.value.length === 0) {
-          visitorQuery.value = reply;
+      if (llm !== null) {
+        try {
+          const reply = await llm.suggestVisitorReplyTo(greeting);
+          if (reply.length > 0 && isFreshSession() && visitorQuery.value.length === 0) {
+            visitorQuery.value = reply;
+          }
+        } catch {
+          visitorQuery.value = STATIC_VISITOR_REPLIES[Date.now() % STATIC_VISITOR_REPLIES.length] as string;
         }
-      } catch {
+      } else {
         visitorQuery.value = STATIC_VISITOR_REPLIES[Date.now() % STATIC_VISITOR_REPLIES.length] as string;
       }
     }
@@ -707,27 +747,14 @@ function reset(): void {
 <template>
   <div :class="['archivist-runner', { 'is-running': isRunning }]">
 
-    <!-- Mobile banner: shown when device is detected as mobile.
-         Three states:
-           stub active (no keys set): canned-responses notice.
-           cloud backend active (key set): concise cloud-backend notice.
-           desktop override set: banner is not rendered (isMobile === false). -->
-    <div v-if="isMobile && !noModel" class="mobile-banner" role="note">
+    <div v-if="isMobile && !noModel && activeBackend !== null" class="mobile-banner" role="note">
       <span class="mobile-banner-text">
-        <template v-if="activeBackend === 'stub'">
-          Mobile mode: running with canned responses (not real AI). Add an API key below for real model output.
-        </template>
-        <template v-else>
-          Mobile mode: using cloud backend {{ backends.find(b => b.id === activeBackend)?.displayName ?? activeBackend }}.
-        </template>
+        Mobile mode: using cloud backend {{ backends.find(b => b.id === activeBackend)?.displayName ?? activeBackend }}.
       </span>
       <button type="button" class="mobile-banner-link" @click="onTreatAsDesktop">Treat as desktop</button>
     </div>
 
-    <!-- No-model gate: shown before a backend is available.
-         On mobile this block is unreachable: hasNoRunnableModel returns false
-         because stub is the guaranteed fallback. Desktop path: no keys + no
-         Nano + no WebLLM still triggers this gate. -->
+    <!-- No-model gate: shown when no real backend is available on this device. -->
     <section v-if="noModel" class="no-model-gate" role="alert">
       <h3>No LLM backend detected</h3>
 
@@ -771,7 +798,7 @@ function reset(): void {
 
       <BackendPicker
         :backends="backends"
-        :active-id="activeBackend"
+        :active-id="activeBackend ?? ''"
         :api-keys="apiKeys"
         :ollama-model="ollamaModel"
         :is-mobile="isMobile"
@@ -831,7 +858,7 @@ function reset(): void {
                   <h5 class="ar-config-head">Backend</h5>
                   <BackendPicker
                     :backends="backends"
-                    :active-id="activeBackend"
+                    :active-id="activeBackend ?? ''"
                     :api-keys="apiKeys"
                     :ollama-model="ollamaModel"
                     :is-mobile="isMobile"
@@ -869,7 +896,7 @@ function reset(): void {
         <div class="ar-col ar-col--right">
           <div class="ar-col-head">
             <span class="ar-label">Graph</span>
-            <span class="ar-hint">{{ memoryStore.size }} triples</span>
+            <span class="ar-hint">{{ tripleCount }} triples</span>
           </div>
           <PanesTabs :tabs="rightTabs" default-key="dag" class="ar-tabs ar-tabs--right">
             <template #tab-suffix>

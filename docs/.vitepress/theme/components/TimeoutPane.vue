@@ -107,6 +107,7 @@ onMounted(() => {
         <label class="tp-label" for="tp-compose">compose</label>
         <input
           id="tp-compose"
+          name="tp-compose"
           type="range"
           class="tp-slider"
           :value="composeMs"
@@ -116,6 +117,8 @@ onMounted(() => {
           @input="onComposeInput"
         />
         <input
+          id="tp-compose-num"
+          name="tp-compose-num"
           type="number"
           class="tp-num"
           :value="composeMs"
@@ -131,6 +134,7 @@ onMounted(() => {
         <label class="tp-label" for="tp-websearch">web-search</label>
         <input
           id="tp-websearch"
+          name="tp-websearch"
           type="range"
           class="tp-slider"
           :value="webSearchMs"
@@ -140,6 +144,8 @@ onMounted(() => {
           @input="onWebSearchInput"
         />
         <input
+          id="tp-websearch-num"
+          name="tp-websearch-num"
           type="number"
           class="tp-num"
           :value="webSearchMs"
@@ -155,6 +161,7 @@ onMounted(() => {
         <label class="tp-label" for="tp-rank">rank</label>
         <input
           id="tp-rank"
+          name="tp-rank"
           type="range"
           class="tp-slider"
           :value="rankMs"
@@ -164,6 +171,8 @@ onMounted(() => {
           @input="onRankInput"
         />
         <input
+          id="tp-rank-num"
+          name="tp-rank-num"
           type="number"
           class="tp-num"
           :value="rankMs"

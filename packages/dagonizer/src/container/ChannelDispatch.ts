@@ -6,13 +6,15 @@
  * listeners are ever registered.
  *
  * Protocol responsibilities:
- *   init()    — send init, await ready; rejects on version mismatch or error.
- *   request() — send execute, await the correlated result; forwards abort +
- *               observer relay hook calls per request.
+ *   init()         — send init, await ready; rejects on version mismatch or error.
+ *   request()      — send execute (single-item N=1), await result; unpacks items[0].
+ *                    Forwards abort + observer relay hook calls per request.
+ *   requestBatch() — send execute (multi-item N>1), await result; returns BatchRunResult[].
  *
- * Transport-error contract: request() never throws. A closed channel, send
- * failure, or unroutable error message produces a transport-error DagOutcomeInterface.
- * init() may reject; its caller (DagContainerBase.initializeChannel) handles that.
+ * Transport-error contract: request() and requestBatch() never throw. A closed
+ * channel, send failure, or unroutable error message produces transport-error
+ * outcome(s). init() may reject; its caller (DagContainerBase.initializeChannel)
+ * handles that.
  *
  * V8 shape stability: all fields initialised in constructor in declaration order.
  */
@@ -27,6 +29,7 @@ import type { JsonObject } from '../entities/json.js';
 import type { NodeError } from '../entities/node/NodeError.js';
 
 import { DagOutcome } from './DagOutcome.js';
+import type { BatchRunResult } from './DagOutcome.js';
 
 // ---------------------------------------------------------------------------
 // Internal shapes
@@ -41,12 +44,23 @@ import { DagOutcome } from './DagOutcome.js';
  */
 export type InitMessageShape = Omit<BridgeMessage & { kind: 'init' }, 'kind'>;
 
-/** Per-request correlation entry. */
+/** Per-request correlation entry for single-item (N=1) requests. */
 interface PendingEntry {
   correlationId: string;
   settle: (outcome: DagOutcomeInterface) => void;
   relay: ObserverRelay | null;
   settled: boolean;
+  kind: 'single';
+}
+
+/** Per-request correlation entry for multi-item batch (N>1) requests. */
+interface BatchPendingEntry {
+  correlationId: string;
+  settle: (results: BatchRunResult[]) => void;
+  relay: ObserverRelay | null;
+  settled: boolean;
+  kind: 'batch';
+  itemIds: readonly string[];
 }
 
 /** Pending init-waiter state. */
@@ -62,7 +76,7 @@ interface InitWaiter {
 
 export class ChannelDispatch {
   readonly #channel: MessageChannelInterface;
-  readonly #pending: Map<string, PendingEntry>;
+  readonly #pending: Map<string, PendingEntry | BatchPendingEntry>;
   #initWaiter: InitWaiter | null;
   // Stable bound handler — allocated once at construction so the same
   // function reference is always registered with the channel. An inline
@@ -72,7 +86,7 @@ export class ChannelDispatch {
 
   constructor(channel: MessageChannelInterface) {
     this.#channel = channel;
-    this.#pending = new Map<string, PendingEntry>();
+    this.#pending = new Map<string, PendingEntry | BatchPendingEntry>();
     this.#initWaiter = null;
     this.#onMessage = (msg: BridgeMessage): void => { this.#route(msg); };
 
@@ -124,6 +138,7 @@ export class ChannelDispatch {
         'settle': resolve,
         'relay': relay,
         'settled': false,
+        'kind': 'single',
       };
 
       this.#pending.set(correlationId, entry);
@@ -168,6 +183,69 @@ export class ChannelDispatch {
   }
 
   /**
+   * Send a multi-item batch execute request, await the correlated result, and
+   * return a `BatchRunResult[]` — one entry per item in the request. `signal`
+   * is a required positional arg; `relay` receives forwarded worker hook events
+   * and may be null when no observer is bound. Never throws — transport failures
+   * resolve to transport-error `BatchRunResult` entries.
+   */
+  requestBatch(
+    request: ExecutionRequest,
+    signal: AbortSignal,
+    relay: ObserverRelay | null,
+  ): Promise<BatchRunResult[]> {
+    const { correlationId } = request;
+    const itemIds = request.items.map((item) => item.id);
+
+    return new Promise<BatchRunResult[]>((resolve) => {
+      const entry: BatchPendingEntry = {
+        'correlationId': correlationId,
+        'settle': resolve,
+        'relay': relay,
+        'settled': false,
+        'kind': 'batch',
+        'itemIds': itemIds,
+      };
+
+      this.#pending.set(correlationId, entry);
+
+      const onAbort = (): void => {
+        try {
+          const abortReason: 'abort' | 'timeout' =
+            signal.reason instanceof Error && signal.reason.name === 'TimeoutError'
+              ? 'timeout'
+              : 'abort';
+          this.#channel.send({
+            'kind': 'abort',
+            'correlationId': correlationId,
+            'reason': abortReason,
+          });
+        } catch { /* fire-and-forget */ }
+      };
+      signal.addEventListener('abort', onAbort);
+
+      const settleOnce = (results: BatchRunResult[]): void => {
+        if (entry.settled) return;
+        entry.settled = true;
+        signal.removeEventListener('abort', onAbort);
+        this.#pending.delete(correlationId);
+        resolve(results);
+      };
+
+      entry.settle = settleOnce;
+
+      try {
+        this.#channel.send({ 'kind': 'execute', 'request': request });
+      } catch {
+        // Send failure: return transport-error results for all items.
+        settleOnce(itemIds.map((id) =>
+          DagOutcome.batchItemTransportError(id, correlationId),
+        ));
+      }
+    });
+  }
+
+  /**
    * Settle EVERY pending entry with a transport-error outcome and clear the
    * pending map; if an init handshake is in flight, reject its waiter.
    *
@@ -189,7 +267,16 @@ export class ChannelDispatch {
     // Snapshot entries before settling: settleOnce mutates #pending (delete).
     const entries = [...this.#pending.values()];
     for (const entry of entries) {
-      entry.settle(DagOutcome.transportError(entry.correlationId, { code, message }));
+      if (entry.kind === 'single') {
+        entry.settle(DagOutcome.transportError(entry.correlationId, { code, message }));
+      } else {
+        // Batch entry: produce one transport-error result per item.
+        entry.settle(
+          entry.itemIds.map((id) =>
+            DagOutcome.batchItemTransportError(id, entry.correlationId, { code, message }),
+          ),
+        );
+      }
     }
     // settleOnce removes each entry; ensure the map is empty regardless.
     this.#pending.clear();
@@ -225,15 +312,31 @@ export class ChannelDispatch {
         // types but produce distinct FromSchema derivations. Ajv has validated the
         // wire message, so these casts are safe:
         //   errors: same required fields/types as NodeErrorSchema; only nominal gap.
-        //   stateSnapshot: schema { type: ['object', 'null'] } → Ajv-validated JSON
+        //   items[*].snapshot: schema { type: ['object', 'null'] } → Ajv-validated JSON
         //     object, values confirmed JSON-compatible by the validator; safe to narrow
         //     from { [k: string]: unknown } | null to JsonObject | null.
-        entry.settle({
-          'terminalOutput': msg.response.terminalOutput,
-          'errors': msg.response.errors as readonly NodeError[],
-          'stateSnapshot': msg.response.stateSnapshot as JsonObject | null,
-          'intermediates': msg.response.intermediates,
-        });
+
+        if (entry.kind === 'single') {
+          // Single-item (N=1): unpack items[0] into a flat DagOutcomeInterface.
+          const firstItem = msg.response.items[0];
+          entry.settle({
+            'terminalOutput': firstItem?.terminalOutcome ?? 'failed',
+            'errors': msg.response.errors as readonly NodeError[],
+            'stateSnapshot': (firstItem?.snapshot ?? null) as JsonObject | null,
+            'intermediates': msg.response.intermediates,
+          });
+        } else {
+          // Batch (N>1): produce one BatchRunResult per item.
+          const batchErrors = msg.response.errors as readonly NodeError[];
+          const results: BatchRunResult[] = msg.response.items.map((item) => ({
+            'id': item.id,
+            'terminalOutput': item.terminalOutcome,
+            'errors': batchErrors,
+            'stateSnapshot': (item.snapshot ?? null) as JsonObject | null,
+            'intermediates': msg.response.intermediates,
+          }));
+          entry.settle(results);
+        }
         break;
       }
 
@@ -282,7 +385,15 @@ export class ChannelDispatch {
           // Request-scoped error: settle that specific pending entry.
           const entry = this.#pending.get(correlationId);
           if (entry !== undefined) {
-            entry.settle(DagOutcome.transportError(correlationId, { "code": msg.code, "message": msg.message }));
+            if (entry.kind === 'single') {
+              entry.settle(DagOutcome.transportError(correlationId, { 'code': msg.code, 'message': msg.message }));
+            } else {
+              entry.settle(
+                entry.itemIds.map((id) =>
+                  DagOutcome.batchItemTransportError(id, correlationId, { 'code': msg.code, 'message': msg.message }),
+                ),
+              );
+            }
           }
         } else {
           // Channel-scoped error (null correlationId): the host is in a bad state.

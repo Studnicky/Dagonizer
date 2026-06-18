@@ -27,6 +27,26 @@ import { Dagonizer } from '@noocodex/dagonizer';
 import { PhaseState, PreSetupNode, ComputeNode, PostAuditNode, dag } from './dags/19-phase-nodes.js';
 
 // ---------------------------------------------------------------------------
+// Observability: subclass to tap phase boundaries
+// ---------------------------------------------------------------------------
+
+// #region phase-observer
+class PhaseObserver extends Dagonizer<PhaseState> {
+  readonly #events: string[] = [];
+
+  get events(): readonly string[] { return this.#events; }
+
+  protected override onPhaseEnter(_dagName: string, phase: 'pre' | 'post', placementName: string, _state: PhaseState, _placementPath: readonly string[]): void {
+    this.#events.push(`enter:${phase}:${placementName}`);
+  }
+
+  protected override onPhaseExit(_dagName: string, phase: 'pre' | 'post', placementName: string, _state: PhaseState, _placementPath: readonly string[]): void {
+    this.#events.push(`exit:${phase}:${placementName}`);
+  }
+}
+// #endregion phase-observer
+
+// ---------------------------------------------------------------------------
 // Run
 // ---------------------------------------------------------------------------
 
@@ -56,3 +76,21 @@ process.stdout.write('\nLesson: .phase("name", "pre", node)  runs before the ent
 process.stdout.write('        .phase("name", "post", node) runs after every exit path.\n');
 process.stdout.write('        Phase nodes have no output ports; they mutate state in place.\n');
 process.stdout.write('        A pre-phase error aborts the run; a post-phase error is a warning.\n');
+
+// ---------------------------------------------------------------------------
+// Run: PhaseObserver (subclass that records phase enter/exit events)
+// ---------------------------------------------------------------------------
+
+const observer = new PhaseObserver();
+observer.registerNode(new PreSetupNode());
+observer.registerNode(new ComputeNode());
+observer.registerNode(new PostAuditNode());
+observer.registerDAG(dag);
+
+const observedState = new PhaseState();
+await observer.execute('phase-demo', observedState);
+
+process.stdout.write('\nPhaseObserver events:\n');
+for (const ev of observer.events) {
+  process.stdout.write(`  ${ev}\n`);
+}

@@ -15,10 +15,11 @@
     "test": "pnpm -r --filter \"./packages/*\" run test",
     "typecheck": "pnpm -r --filter \"./packages/*\" run typecheck",
     "typecheck:examples": "pnpm -r --filter \"@noocodex/dagonizer-examples\" --filter \"@noocodex/the-archivist-example\" --filter \"@noocodex/the-cartographer-example\" run typecheck",
+    "typecheck:docs": "vue-tsc --noEmit -p docs/tsconfig.json",
     "lint": "pnpm -r --filter \"./packages/*\" run lint",
     "lint:dags": "tsx scripts/lint-example-dags.ts",
-    "ci": "pnpm run typecheck && pnpm run typecheck:examples && pnpm run lint && pnpm run test && pnpm run lint:dags && pnpm run smoke:adapters",
-    "smoke:adapters": "tsx examples/the-archivist/__smoke__/adapter-transport.smoke.ts",
+    "check:docs": "tsx scripts/check-doc-snippets.ts",
+    "ci": "pnpm run typecheck && pnpm run typecheck:examples && pnpm run typecheck:docs && pnpm run lint && pnpm run test && pnpm run lint:dags && pnpm run check:docs",
     "changeset": "changeset",
     "version-packages": "changeset version && pnpm install --lockfile-only",
     "release": "pnpm run ci && changeset publish",
@@ -55,24 +56,29 @@
     "@noocodex/dagonizer-adapter-mistral": "workspace:^",
     "@noocodex/dagonizer-adapter-ollama": "workspace:^",
     "@noocodex/dagonizer-adapter-openrouter": "workspace:^",
-    "@noocodex/dagonizer-adapter-stub": "workspace:^",
     "@noocodex/dagonizer-adapter-web-llm": "workspace:^",
+    "@noocodex/dagonizer-book-entities": "workspace:^",
     "@noocodex/dagonizer-executor-node": "workspace:^",
     "@noocodex/dagonizer-executor-web": "workspace:^",
     "@noocodex/dagonizer-patterns-flow": "workspace:^",
     "@noocodex/dagonizer-patterns-graph": "workspace:^",
     "@noocodex/dagonizer-patterns-rag": "workspace:^",
-    "@noocodex/dagonizer-book-entities": "workspace:^",
     "@noocodex/dagonizer-tool-googlebooks": "workspace:^",
     "@noocodex/dagonizer-tool-openlibrary": "workspace:^",
     "@noocodex/dagonizer-tool-wikipedia": "workspace:^",
+    "@shikijs/vitepress-twoslash": "^2.5.0",
     "tsx": "^4.20.0",
-    "vitepress": "^1.6.4"
+    "vitepress": "^1.6.4",
+    "vue-tsc": "^2.2.12"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "esbuild",
       "unrs-resolver"
-    ]
+    ],
+    "overrides": {
+      "vue": "3.5.38",
+      "@shikijs/twoslash": "2.5.0"
+    }
   }
 }

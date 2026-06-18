@@ -576,7 +576,7 @@ function humanLabel(term: Quad['subject'] | Quad['object'], store: MemoryStore):
     const dt = term.datatype.value;
     if (dt === 'http://www.w3.org/2001/XMLSchema#dateTime') {
       const m = term.value.match(/T(\d{2}:\d{2}:\d{2})/);
-      return m === null ? term.value : m[1];
+      return m === null ? term.value : (m[1] ?? term.value);
     }
     return term.value;
   }
@@ -608,17 +608,23 @@ function humanLabel(term: Quad['subject'] | Quad['object'], store: MemoryStore):
     <template #meta>
       <span class="mg-count">{{ store.size }} {{ store.size === 1 ? 'triple' : 'triples' }}</span>
     </template>
-    <template #controls>
-      <button
-        class="frame-action frame-action-danger"
-        title="Clear all triples (irreversible)"
-        @click="emit('clear')"
-      >🗑</button>
-    </template>
 
     <div class="mg-canvas">
       <div v-if="loading" class="mg-overlay">Loading cosmos.gl…</div>
       <div v-else-if="loadError" class="mg-overlay mg-error">Graph failed: {{ loadError }}</div>
+
+      <!-- Clear-memory control: an in-canvas overlay rather than a frame-header
+           button, because this frame renders `frameless` (no header is drawn,
+           so a `#controls` slot button would never appear). Wipes the whole
+           store and, in persisted mode, the localStorage dump. -->
+      <button
+        v-if="!loading && !loadError"
+        class="mg-clear"
+        type="button"
+        title="Clear all triples (irreversible)"
+        aria-label="Clear all triples"
+        @click="emit('clear')"
+      >🗑 clear</button>
 
       <div ref="containerRef" class="mg-cosmos" aria-label="Live RDF triple graph (cosmos.gl)"></div>
       <canvas ref="labelsRef" class="mg-labels" aria-hidden="true"></canvas>
@@ -660,6 +666,34 @@ function humanLabel(term: Quad['subject'] | Quad['object'], store: MemoryStore):
   font-family: var(--vp-font-family-mono);
   font-size: 0.7rem;
   color: var(--dagonizer-brand2);
+}
+
+/* Clear-memory overlay: top-right corner of the canvas. */
+.mg-clear {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.55rem;
+  background: rgba(20, 22, 28, 0.72);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 5px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  color: var(--vp-c-text-2);
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+
+.mg-clear:hover {
+  border-color: #c0392b;
+  color: #e74c3c;
+  background: rgba(192, 57, 43, 0.12);
 }
 
 .mg-canvas {

@@ -31,11 +31,10 @@ export class ScatterCheckpoint {
   }
 
   /**
-   * Persist the current scatter checkpoint (inbox + acked results) to
-   * metadata. Called after each item ack so the checkpoint always reflects
-   * the latest durable state.
+   * Persist a retained-mode scatter checkpoint (full per-item acked results)
+   * for non-compactable gather strategies.
    */
-  static write(
+  static writeRetained(
     state: NodeStateInterface,
     placementName: string,
     inbox: readonly ScatterInboxItem[],
@@ -43,7 +42,25 @@ export class ScatterCheckpoint {
   ): void {
     const raw = state.getMetadata<StoredScatterProgress>(SCATTER_PROGRESS_KEY) ?? {};
     const next: Record<string, ScatterProgress> = { ...raw };
-    next[placementName] = { placementName, 'inbox': [...inbox], 'ackedResults': [...ackedResults] };
+    next[placementName] = { 'mode': 'retained', placementName, 'inbox': [...inbox], 'ackedResults': [...ackedResults] };
+    state.setMetadata(SCATTER_PROGRESS_KEY, next);
+  }
+
+  /**
+   * Persist a bounded-mode scatter checkpoint (watermark + ahead-acked window
+   * + outcome tally) for compactable gather strategies.
+   */
+  static writeBounded(
+    state: NodeStateInterface,
+    placementName: string,
+    inbox: readonly ScatterInboxItem[],
+    watermark: number,
+    aheadAcked: readonly { index: number; output: string }[],
+    outcomeTally: Readonly<Record<string, number>>,
+  ): void {
+    const raw = state.getMetadata<StoredScatterProgress>(SCATTER_PROGRESS_KEY) ?? {};
+    const next: Record<string, ScatterProgress> = { ...raw };
+    next[placementName] = { 'mode': 'bounded', placementName, 'inbox': [...inbox], watermark, 'aheadAcked': [...aheadAcked], 'outcomeTally': { ...outcomeTally } };
     state.setMetadata(SCATTER_PROGRESS_KEY, next);
   }
 

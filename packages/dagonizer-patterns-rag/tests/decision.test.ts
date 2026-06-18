@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
+import { Batch } from '@noocodex/dagonizer';
 import type { ChatResponse } from '@noocodex/dagonizer/adapter';
 
 import { DecisionNode } from '../src/index.js';
@@ -34,7 +35,8 @@ void test('DecisionNode routes by parsed choice + writes state', async () => {
     'services': { 'llm': { 'chat': async () => mockResponse } },
     'signal': new AbortController().signal,
   } as unknown as Parameters<typeof node.execute>[1];
-  const result = await node.execute(state, ctx);
-  assert.equal(result.output, 'yes');
+  const result = await node.execute(Batch.of(state), ctx);
+  assert.equal(result.has('yes'), true);
+  assert.equal(result.has('no'), false);
   assert.equal(state.intent, 'yes');
 });

@@ -86,6 +86,20 @@ export interface ScatterOptionsInterface<TState extends NodeStateInterface = Nod
    * with `container` set is a validation error.
    */
   container?: string;
+  /**
+   * Input-batching policy. When present, the scatter buffers items by
+   * `keyField` (an accessor path on each item) and releases a batch per key
+   * when `capacity` items accumulate or `idleMs` milliseconds of idle elapses.
+   * Absent means batch-size-1 (today's behavior; no runtime effect yet).
+   */
+  reservoir?: {
+    /** Accessor path on each item whose resolved value is the partition key. */
+    readonly keyField: string;
+    /** Release a key's batch when it reaches this many items. Must be >= 1. */
+    readonly capacity: number;
+    /** Release a key's partial batch after this many idle milliseconds. Must be > 0 when present. */
+    readonly idleMs?: number;
+  };
 }
 
 /**
@@ -237,6 +251,8 @@ export class DAGBuilder {
       ...(resolved.inputs !== undefined ? { 'stateMapping': { 'input': resolved.inputs as Record<string, string> } } : {}),
       // container: left optional — absence means "run in-process" (semantically meaningful).
       ...(resolved.container !== undefined ? { 'container': resolved.container } : {}),
+      // reservoir: left optional — absence means batch-size-1 (today's behavior unchanged).
+      ...(resolved.reservoir !== undefined ? { 'reservoir': resolved.reservoir } : {}),
     };
 
     if (!('dag' in body)) {

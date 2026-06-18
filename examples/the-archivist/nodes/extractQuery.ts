@@ -20,11 +20,8 @@
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
-import { NodeOutputBuilder,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 /** Per-node timeout: generous for Gemini Nano's constrained-output path (20-60 s typical). */
 const NODE_TIMEOUT_MS = 30_000;
@@ -33,12 +30,11 @@ const NODE_TIMEOUT_MS = 30_000;
 const RETRY_BUDGET = 2;
 
 // #region retry-salvage-node
-export class ExtractQueryNode implements NodeInterface<ArchivistState, 'success' | 'retry' | 'salvage', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ExtractQueryNode extends ScalarNode<ArchivistState, 'success' | 'retry' | 'salvage', ArchivistServices> {
   readonly name = 'extract-query';
   readonly outputs = ['success', 'retry', 'salvage'] as const;
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const controller = new AbortController();
     const handle = setTimeout(() => controller.abort(new Error('node-timeout')), context.services.nodeTimeouts[context.nodeName] ?? NODE_TIMEOUT_MS);
     const signal = AbortSignal.any([context.signal, controller.signal]);
@@ -64,5 +60,5 @@ export class ExtractQueryNode implements NodeInterface<ArchivistState, 'success'
 }
 // #endregion retry-salvage-node
 
-/** Backward-compatible const export for existing bundle/DAG references. */
+/** Singleton node instance referenced by the DAG wiring. */
 export const extractQuery = new ExtractQueryNode();

@@ -1,23 +1,20 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 void describe('Dagonizer AbortSignal cancellation', () => {
   void it('marks state cancelled when caller aborts before DAG starts', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class SlowNode implements NodeInterface<NodeStateBase, 'success'> {
+    class SlowNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'slow';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(_state: NodeStateBase, context: NodeContextInterface): Promise<{ errors: []; output: 'success' }> {
+      protected async executeOne(_state: NodeStateBase, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
         await new Promise<void>((resolve, reject) => {
           const t = setTimeout(resolve, 1000);
           context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { 'once': true });
@@ -55,31 +52,25 @@ void describe('Dagonizer AbortSignal cancellation', () => {
   void it('records interruptedAt when caller aborts mid-flow at a downstream node', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     const controller = new AbortController();
-    class FirstNode implements NodeInterface<NodeStateBase, 'success'> {
+    class FirstNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'first';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(_state: NodeStateBase): Promise<{ errors: []; output: 'success' }> { return { 'errors': [], 'output': 'success' }; }
+      protected async executeOne(_state: NodeStateBase): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' }; }
     }
-    class SecondNode implements NodeInterface<NodeStateBase, 'success'> {
+    class SecondNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'second';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(_state: NodeStateBase): Promise<{ errors: []; output: 'success' }> {
+      protected async executeOne(_state: NodeStateBase): Promise<NodeOutputInterface<'success'>> {
         // Trip the controller before this node returns so the next iteration
         // observes `signal.aborted` BEFORE running the downstream stage.
         controller.abort(new Error('mid-flow cancel'));
         return { 'errors': [], 'output': 'success' };
       }
     }
-    class ThirdNode implements NodeInterface<NodeStateBase, 'success'> {
+    class ThirdNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'third';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(_state: NodeStateBase): Promise<{ errors: []; output: 'success' }> { return { 'errors': [], 'output': 'success' }; }
+      protected async executeOne(_state: NodeStateBase): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' }; }
     }
     dispatcher.registerNode(new FirstNode());
     dispatcher.registerNode(new SecondNode());
@@ -113,12 +104,10 @@ void describe('Dagonizer AbortSignal cancellation', () => {
 
   void it('marks state timed_out when deadlineMs elapses', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class SlowTimeoutNode implements NodeInterface<NodeStateBase, 'success'> {
+    class SlowTimeoutNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'slow';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(_state: NodeStateBase, context: NodeContextInterface): Promise<{ errors: []; output: 'success' }> {
+      protected async executeOne(_state: NodeStateBase, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
         await new Promise<void>((resolve, reject) => {
           const t = setTimeout(resolve, 5000);
           context.signal.addEventListener('abort', () => { clearTimeout(t); reject(context.signal.reason); }, { 'once': true });
@@ -154,12 +143,10 @@ void describe('Dagonizer AbortSignal cancellation', () => {
   void it('passes dagName/nodeName through NodeContext', async () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
     const seen: { dag: string; node: string } = { 'dag': '', 'node': '' };
-    class InspectNode implements NodeInterface<NodeStateBase, 'success'> {
+    class InspectNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'inspect';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(_state: NodeStateBase, context: NodeContextInterface): Promise<{ errors: []; output: 'success' }> {
+      protected async executeOne(_state: NodeStateBase, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
         seen.dag = context.dagName;
         seen.node = context.nodeName;
         return { 'errors': [], 'output': 'success' };
@@ -208,12 +195,10 @@ void describe('Dagonizer extension hooks', () => {
     }
 
     const dispatcher = new TracedDagonizer();
-    class OpNode implements NodeInterface<NodeStateBase, 'success'> {
+    class OpNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'op';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(_state: NodeStateBase): Promise<{ errors: []; output: 'success' }> { return { 'errors': [], 'output': 'success' }; }
+      protected async executeOne(_state: NodeStateBase): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' }; }
     }
     dispatcher.registerNode(new OpNode());
     dispatcher.registerDAG({
@@ -254,12 +239,10 @@ void describe('Dagonizer extension hooks', () => {
     }
 
     const dispatcher = new ErrTraced();
-    class BoomNode implements NodeInterface<NodeStateBase, 'success'> {
+    class BoomNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'boom';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(_state: NodeStateBase): Promise<{ errors: []; output: 'success' }> { throw new Error('kaboom'); }
+      protected async executeOne(_state: NodeStateBase): Promise<NodeOutputInterface<'success'>> { throw new Error('kaboom'); }
     }
     dispatcher.registerNode(new BoomNode());
     dispatcher.registerDAG({

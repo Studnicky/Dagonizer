@@ -16,8 +16,11 @@ import type { AbortableOptionsInterface } from './AbortableOptionsInterface.js';
 
 /** Implemented by every LLM provider adapter. */
 export interface LlmAdapter {
+  /** Stable provider identifier (e.g. `'openai'`, `'anthropic'`, `'ollama'`). */
   readonly id: string;
+  /** Human-readable label for logs and UI. */
   readonly displayName: string;
+  /** Declared capabilities; the dispatcher consults these to route tool-call and structured-output paths. */
   readonly capabilities: AdapterCapabilities;
   chat(request: ChatRequest): Promise<ChatResponse>;
   /**

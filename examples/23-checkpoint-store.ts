@@ -74,9 +74,12 @@ if (partial.cursor === null) {
 
 // ── Step 3: capture and persist the checkpoint ────────────────────────────────
 
+// #region store-lifecycle
+// #region store-init
 const store1   = new MemoryCheckpointStore();
 const ckpt     = await Checkpoint.capture('pipeline', partial);
 await ckpt.persist(store1, CHECKPOINT_KEY);
+// #endregion store-init
 
 process.stdout.write(`[checkpoint] persisted to MemoryCheckpointStore under key "${CHECKPOINT_KEY}"\n`);
 process.stdout.write(`[checkpoint] store.size=${String(store1.size)}\n`);
@@ -106,6 +109,7 @@ process.stdout.write(`[resume] restored cursor="${cursor}" tally=${String(state.
 process.stdout.write(`[resume] trail so far: ${JSON.stringify(state.trail)}\n`);
 
 const resumed = await dispatcher2.resume(dagName, state, cursor);
+// #endregion store-lifecycle
 
 process.stdout.write(`[resume] final tally: ${String(resumed.state.tally)}\n`);
 process.stdout.write(`[resume] final trail: ${JSON.stringify(resumed.state.trail)}\n`);

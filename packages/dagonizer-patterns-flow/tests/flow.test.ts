@@ -1,6 +1,8 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
+import { Batch } from '@noocodex/dagonizer';
+
 import { PredicateGateNode, DedupeByKeyNode } from '../src/index.js';
 
 class TestState {
@@ -26,13 +28,20 @@ class TestDedupe extends DedupeByKeyNode<TestState, number> {
 
 void test('PredicateGateNode routes pass/fail', async () => {
   const gate = new TestGate();
-  const ctx = { 'services': undefined, 'signal': new AbortController().signal } as unknown as Parameters<typeof gate.execute>[1];
+  const signal = new AbortController().signal;
+  const ctx = { 'services': undefined, 'signal': signal } as unknown as Parameters<typeof gate.execute>[1];
 
-  const pass = await gate.execute({ 'ok': true } as TestState, ctx);
-  assert.equal(pass.output, 'pass');
+  const passState = new TestState();
+  passState.ok = true;
+  const passResult = await gate.execute(Batch.of(passState), ctx);
+  assert.equal(passResult.has('pass'), true);
+  assert.equal(passResult.has('fail'), false);
 
-  const fail = await gate.execute({ 'ok': false } as TestState, ctx);
-  assert.equal(fail.output, 'fail');
+  const failState = new TestState();
+  failState.ok = false;
+  const failResult = await gate.execute(Batch.of(failState), ctx);
+  assert.equal(failResult.has('fail'), true);
+  assert.equal(failResult.has('pass'), false);
 });
 
 void test('DedupeByKeyNode collapses duplicates', async () => {
@@ -40,6 +49,6 @@ void test('DedupeByKeyNode collapses duplicates', async () => {
   const state = new TestState();
   state.items = [1, 2, 2, 3, 3, 3];
   const ctx = { 'services': undefined, 'signal': new AbortController().signal } as unknown as Parameters<typeof node.execute>[1];
-  await node.execute(state, ctx);
+  await node.execute(Batch.of(state), ctx);
   assert.deepEqual(state.items, [1, 2, 3]);
 });

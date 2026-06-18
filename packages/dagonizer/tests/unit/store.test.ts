@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
+import type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from '../../src/contracts/RemoteStore.js';
 import type { StoreSnapshotEntry } from '../../src/contracts/Snapshottable.js';
 import type { JsonValue } from '../../src/entities/json.js';
 import { BaseStore, type BaseStoreOptions } from '../../src/store/BaseStore.js';
 import { MemoryStore } from '../../src/store/MemoryStore.js';
-import { StoreError } from '../../src/store/StoreError.js';
+import { StoreError, type StoreErrorClassification } from '../../src/store/StoreError.js';
+import { TypedStore } from '../../src/store/TypedStore.js';
 
 // ── Minimum-viable test plugin ──────────────────────────────────────────────
 //
@@ -66,6 +68,94 @@ class PassThroughStore extends BaseStore {
   override async update<T extends JsonValue>(key: string, fn: (current: T | undefined) => T): Promise<T> {
     return this.performUpdateRmw(key, fn);
   }
+}
+
+// ── MockRemoteStore ─────────────────────────────────────────────────────────
+//
+// Minimal no-op implementation. Purpose: prove the RemoteStore contract is
+// fully implementable; no production behavior required.
+
+class MockRemoteStore extends BaseStore implements RemoteStore {
+  readonly endpoint: RemoteStoreEndpoint;
+
+  readonly #backing: Map<string, JsonValue>;
+
+  constructor(endpoint: RemoteStoreEndpoint, options: BaseStoreOptions = { 'namespace': '' }) {
+    super(options);
+    this.endpoint = endpoint;
+    this.#backing = new Map();
+  }
+
+  // ── BaseStore abstract hooks ────────────────────────────────────────────
+
+  protected get snapshotType(): string    { return 'mock-remote-store-v1'; }
+  protected get snapshotVersion(): number { return 1; }
+
+  protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {
+    const value = this.#backing.get(key);
+    return value === undefined ? null : (value as T);
+  }
+
+  protected async performSet<T extends JsonValue>(key: string, value: T): Promise<void> {
+    this.#backing.set(key, value);
+  }
+
+  protected async performHas(key: string): Promise<boolean> {
+    return this.#backing.has(key);
+  }
+
+  protected async performDelete(key: string): Promise<boolean> {
+    return this.#backing.delete(key);
+  }
+
+  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntry[]> {
+    return [...this.#backing.entries()].map(([key, value]) => ({ key, value }));
+  }
+
+  protected async performRestoreEntries(entries: readonly StoreSnapshotEntry[]): Promise<void> {
+    this.#backing.clear();
+    for (const { key, value } of entries) {
+      this.#backing.set(key, value);
+    }
+  }
+
+  // Atomic override: Map access is synchronous, no interleaving possible.
+  override async update<T extends JsonValue>(
+    key: string,
+    fn: (current: T | undefined) => T,
+  ): Promise<T> {
+    const qualified = this.qualifyKey(key);
+    const next      = fn(this.#backing.get(qualified) as T | undefined);
+    this.#backing.set(qualified, next);
+    return next;
+  }
+
+  // ── RemoteStore-specific methods ────────────────────────────────────────
+
+  async acquireLease(subject: string, ttlMs: number, _maxWaitMs: number): Promise<RemoteStoreLease> {
+    return {
+      'token':     `mock-token-${subject}`,
+      'expiresAt': Date.now() + ttlMs,
+      'subject':   subject,
+    };
+  }
+
+  async releaseLease(_lease: RemoteStoreLease): Promise<void> {
+    // no-op; mock never holds state for leases
+  }
+
+  async health(_timeoutMs: number): Promise<boolean> {
+    return true;
+  }
+}
+
+// ── Test schema for TypedStore ────────────────────────────────────────────────
+
+interface AppSchema {
+  count:   number;
+  label:   string;
+  tags:    string[];
+  config:  { readonly retries: number; readonly timeout: number };
 }
 
 // ── MemoryStore tests ───────────────────────────────────────────────────────
@@ -226,5 +316,294 @@ void describe('PassThroughStore (BaseStore plugin smoke test)', () => {
     await store.update<number>('n', (v) => (v ?? 0) + 5);
     await store.update<number>('n', (v) => (v ?? 0) + 5);
     assert.equal(await store.get('n'), 10);
+  });
+});
+
+// ── TypedStore tests ──────────────────────────────────────────────────────────
+
+void describe('TypedStore', () => {
+  void it('construction wraps a MemoryStore without error', () => {
+    const inner = new MemoryStore();
+    const typed = new TypedStore<AppSchema>(inner);
+    assert.ok(typed instanceof TypedStore);
+  });
+
+  void it('set + get round-trip infers value type from Schema[K]', async () => {
+    const inner = new MemoryStore();
+    const typed = new TypedStore<AppSchema>(inner);
+
+    await typed.set('count', 42);
+    const n = await typed.get('count');
+    // n is inferred as number | null; no explicit <T> at the call site.
+    assert.equal(n, 42);
+
+    await typed.set('label', 'hello');
+    const s = await typed.get('label');
+    assert.equal(s, 'hello');
+  });
+
+  void it('has() returns true after set, false before', async () => {
+    const inner = new MemoryStore();
+    const typed = new TypedStore<AppSchema>(inner);
+
+    assert.equal(await typed.has('count'), false);
+    await typed.set('count', 1);
+    assert.equal(await typed.has('count'), true);
+  });
+
+  void it('delete() removes the key and returns correct boolean', async () => {
+    const inner = new MemoryStore();
+    const typed = new TypedStore<AppSchema>(inner);
+
+    await typed.set('label', 'to-delete');
+    const deleted = await typed.delete('label');
+    assert.equal(deleted, true);
+    assert.equal(await typed.has('label'), false);
+    const alreadyGone = await typed.delete('label');
+    assert.equal(alreadyGone, false);
+  });
+
+  void it('update(key, fn): fn receives Schema[K] | undefined as current', async () => {
+    const inner = new MemoryStore();
+    const typed = new TypedStore<AppSchema>(inner);
+
+    // First update: current is undefined; default to 0.
+    const first = await typed.update('count', (current) => (current ?? 0) + 10);
+    assert.equal(first, 10);
+
+    // Second update: current is 10.
+    const second = await typed.update('count', (current) => (current ?? 0) + 5);
+    assert.equal(second, 15);
+
+    assert.equal(await typed.get('count'), 15);
+  });
+
+  void it('update works with object values', async () => {
+    const inner = new MemoryStore();
+    const typed = new TypedStore<AppSchema>(inner);
+
+    const result = await typed.update(
+      'config',
+      (current) => current ?? { 'retries': 3, 'timeout': 5000 },
+    );
+    assert.deepEqual(result, { 'retries': 3, 'timeout': 5000 });
+  });
+
+  void it('inner.snapshot() / inner.restore() pass-through preserves typed values', async () => {
+    const inner = new MemoryStore();
+    const typed = new TypedStore<AppSchema>(inner);
+
+    await typed.set('count', 99);
+    await typed.set('label', 'snap-test');
+
+    const snap = await typed.inner.snapshot();
+    assert.equal(snap.type, 'memory-store');
+    assert.equal(snap.version, 1);
+
+    // Restore into a fresh TypedStore wrapping a new MemoryStore.
+    const fresh = new TypedStore<AppSchema>(new MemoryStore());
+    await fresh.inner.restore(snap);
+
+    assert.equal(await fresh.get('count'), 99);
+    assert.equal(await fresh.get('label'), 'snap-test');
+  });
+
+  void it('.inner provides access to the underlying Store for un-narrowed ops', async () => {
+    const inner = new MemoryStore();
+    const typed = new TypedStore<AppSchema>(inner);
+
+    await typed.set('count', 7);
+
+    // .inner exposes the wide Store interface; caller specifies <T> directly.
+    const raw = await typed.inner.get<number>('count');
+    assert.equal(raw, 7);
+
+    // .inner === the original MemoryStore instance.
+    assert.equal(typed.inner, inner);
+  });
+
+  void it('inner.connect() and inner.disconnect() pass through to the inner store', async () => {
+    const inner = new MemoryStore();
+    const typed = new TypedStore<AppSchema>(inner);
+
+    // MemoryStore no-ops both; callers use .inner for lifecycle operations.
+    await assert.doesNotReject(() => typed.inner.connect());
+    await assert.doesNotReject(() => typed.inner.disconnect());
+  });
+
+  void it('TypedStore composes with a MemoryStore that already has prior data', async () => {
+    const inner = new MemoryStore();
+    // Write directly into the inner store before wrapping.
+    await inner.set<number>('count', 100);
+    await inner.set<string[]>('tags', ['a', 'b']);
+
+    const typed = new TypedStore<AppSchema>(inner);
+
+    // TypedStore reads the pre-existing values with correct inferred types.
+    assert.equal(await typed.get('count'), 100);
+    assert.deepEqual(await typed.get('tags'), ['a', 'b']);
+
+    // Snapshot round-trip preserves those values via .inner lifecycle ops.
+    const snap = await typed.inner.snapshot();
+    const restored = new TypedStore<AppSchema>(new MemoryStore());
+    await restored.inner.restore(snap);
+    assert.equal(await restored.get('count'), 100);
+    assert.deepEqual(await restored.get('tags'), ['a', 'b']);
+  });
+
+  // ── Compile-time rejection tests ─────────────────────────────────────────
+  //
+  // The next two tests use @ts-expect-error to verify that TypeScript rejects
+  // invalid call sites. If TypedStore's key/value constraints are removed, tsc
+  // will report "Unused '@ts-expect-error' directive", which our lint config
+  // treats as an error, so these tests serve as compile-time regression guards.
+
+  void it('@ts-expect-error: set with a key absent from Schema is rejected', async () => {
+    const inner = new MemoryStore();
+    const typed = new TypedStore<AppSchema>(inner);
+
+    // @ts-expect-error: 'missing-key' is not a key of AppSchema.
+    await typed.set('missing-key', 'x');
+  });
+
+  void it('@ts-expect-error: set with wrong value type for a Schema key is rejected', async () => {
+    const inner = new MemoryStore();
+    const typed = new TypedStore<AppSchema>(inner);
+
+    // @ts-expect-error: AppSchema['count'] is number; 'wrong-type' is a string.
+    await typed.set('count', 'wrong-type');
+  });
+});
+
+// ── RemoteStore contract tests ────────────────────────────────────────────────
+
+void describe('RemoteStore contract', () => {
+  void it('MockRemoteStore is assignable to RemoteStore (contract is fully implementable)', () => {
+    const endpoint: RemoteStoreEndpoint = { 'url': 'http://localhost:6379', 'region': '' };
+    const store: RemoteStore = new MockRemoteStore(endpoint);
+    assert.ok(store instanceof MockRemoteStore);
+    assert.equal(store.endpoint.url, 'http://localhost:6379');
+    assert.equal(store.endpoint.region, '');
+  });
+
+  void it('endpoint with region hint round-trips correctly', () => {
+    const endpoint: RemoteStoreEndpoint = { 'url': 'grpc://store.us-east-1.internal:50051', 'region': 'us-east-1' };
+    const store = new MockRemoteStore(endpoint);
+    assert.equal(store.endpoint.region, 'us-east-1');
+  });
+
+  void it('acquireLease returns a well-formed RemoteStoreLease', async () => {
+    const store = new MockRemoteStore({ 'url': 'http://localhost:6379', 'region': '' });
+    const ttl   = 5_000;
+    const before = Date.now();
+    const lease: RemoteStoreLease = await store.acquireLease('run-abc', ttl, 1_000);
+
+    assert.equal(lease.subject, 'run-abc');
+    assert.ok(typeof lease.token === 'string' && lease.token.length > 0);
+    assert.ok(lease.expiresAt >= before + ttl);
+  });
+
+  void it('releaseLease resolves without throwing', async () => {
+    const store = new MockRemoteStore({ 'url': 'http://localhost:6379', 'region': '' });
+    const lease: RemoteStoreLease = {
+      'token':     'tok-xyz',
+      'expiresAt': Date.now() + 1_000,
+      'subject':   'run-xyz',
+    };
+    await assert.doesNotReject(() => store.releaseLease(lease));
+  });
+
+  void it('health() returns true when endpoint is up', async () => {
+    const store = new MockRemoteStore({ 'url': 'http://localhost:6379', 'region': '' });
+    const ok = await store.health(200);
+    assert.equal(ok, true);
+  });
+
+  void it('Store surface (get/set/has/delete) works through RemoteStore', async () => {
+    const store: RemoteStore = new MockRemoteStore({ 'url': 'http://localhost:6379', 'region': '' });
+    await store.set<string>('greeting', 'hello');
+    assert.equal(await store.get('greeting'), 'hello');
+    assert.equal(await store.has('greeting'), true);
+    const deleted = await store.delete('greeting');
+    assert.equal(deleted, true);
+    assert.equal(await store.has('greeting'), false);
+  });
+});
+
+// ── StoreError remote-specific discriminants ─────────────────────────────────
+
+void describe('StoreError: remote-specific classification reasons', () => {
+  void it('LEASE_DENIED classifies and discriminates correctly', () => {
+    const classification: StoreErrorClassification = {
+      'reason':  'LEASE_DENIED',
+      'subject': 'run-abc',
+      'holder':  'worker-7',
+    };
+    const err = new StoreError('lease denied: run-abc held by worker-7', classification);
+
+    assert.ok(err instanceof StoreError);
+    assert.equal(err.classification.reason, 'LEASE_DENIED');
+
+    if (err.classification.reason === 'LEASE_DENIED') {
+      assert.equal(err.classification.subject, 'run-abc');
+      assert.equal(err.classification.holder, 'worker-7');
+    } else {
+      assert.fail('expected LEASE_DENIED reason');
+    }
+  });
+
+  void it('LEASE_EXPIRED classifies and discriminates correctly', () => {
+    const classification: StoreErrorClassification = {
+      'reason':  'LEASE_EXPIRED',
+      'subject': 'run-abc',
+      'token':   'tok-stale-xyz',
+    };
+    const err = new StoreError('lease expired: tok-stale-xyz', classification);
+
+    assert.ok(err instanceof StoreError);
+    assert.equal(err.classification.reason, 'LEASE_EXPIRED');
+
+    if (err.classification.reason === 'LEASE_EXPIRED') {
+      assert.equal(err.classification.subject, 'run-abc');
+      assert.equal(err.classification.token, 'tok-stale-xyz');
+    } else {
+      assert.fail('expected LEASE_EXPIRED reason');
+    }
+  });
+
+  void it('UNREACHABLE classifies and discriminates correctly', () => {
+    const cause = new Error('ECONNREFUSED');
+    const classification: StoreErrorClassification = {
+      'reason':   'UNREACHABLE',
+      'endpoint': 'http://localhost:6379',
+      'cause':    cause,
+    };
+    const err = new StoreError('store unreachable: http://localhost:6379', classification);
+
+    assert.ok(err instanceof StoreError);
+    assert.equal(err.classification.reason, 'UNREACHABLE');
+
+    if (err.classification.reason === 'UNREACHABLE') {
+      assert.equal(err.classification.endpoint, 'http://localhost:6379');
+      assert.equal(err.classification.cause, cause);
+    } else {
+      assert.fail('expected UNREACHABLE reason');
+    }
+  });
+
+  void it('existing BACKING_ERROR reason is unaffected by the new union members', () => {
+    const cause = new Error('disk full');
+    const classification: StoreErrorClassification = {
+      'reason': 'BACKING_ERROR',
+      'cause':  cause,
+    };
+    const err = new StoreError('backing error', classification);
+
+    assert.equal(err.classification.reason, 'BACKING_ERROR');
+    if (err.classification.reason === 'BACKING_ERROR') {
+      assert.equal(err.classification.cause, cause);
+    } else {
+      assert.fail('expected BACKING_ERROR reason');
+    }
   });
 });

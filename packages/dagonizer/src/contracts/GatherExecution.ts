@@ -20,10 +20,18 @@ import type { StateAccessor } from './StateAccessor.js';
  * live clone state after the body ran.
  */
 export interface GatherRecord<TState extends NodeStateInterface> {
+  /** 0-based position of this item in the scatter source array. */
   index: number;
+  /** The source item that was scattered over (the element from the source array). */
   item: unknown;
+  /** Routing output the scatter body emitted for this clone. */
   output: string;
+  /**
+   * Terminal outcome of the DAG body for this clone (`'completed'` or `'failed'`),
+   * or `null` when the body was a node body (not a DAG).
+   */
   terminalOutcome: 'completed' | 'failed' | null;
+  /** Live clone state after the scatter body ran. Strategies fold this into the parent. */
   cloneState: TState;
 }
 
@@ -38,6 +46,7 @@ export interface GatherRecord<TState extends NodeStateInterface> {
  *     a registered node back through the engine
  */
 export interface GatherExecution<TState extends NodeStateInterface> {
+  /** Live parent state object. Strategies mutate it in place. */
   state: TState;
   /**
    * Per-clone records. INVARIANT: ordered by source index (`record.index`
@@ -47,6 +56,7 @@ export interface GatherExecution<TState extends NodeStateInterface> {
    * this and must not re-sort.
    */
   records: GatherRecord<TState>[];
+  /** Name of the DAG being executed. Used by `invoker.invokeNode` to dispatch gather nodes. */
   dagName: string;
   /**
    * The active abort signal for the scatter body, or `null` when the run
@@ -56,6 +66,8 @@ export interface GatherExecution<TState extends NodeStateInterface> {
    * Strategies and invokers check `signal !== null` before forwarding.
    */
   signal: AbortSignal | null;
+  /** State path accessor the dispatcher is configured with; used by built-in strategies to read and write state paths. */
   accessor: StateAccessor;
+  /** The only dispatch seam for `custom` gather strategies to invoke a registered node through the engine. */
   invoker: NodeInvoker;
 }

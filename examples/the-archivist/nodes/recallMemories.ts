@@ -29,11 +29,8 @@
  *   recall result (the digest will have bookCount === 0).
  */
 
-import { NodeOutputBuilder,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 import type { MemoryDigest } from '../ArchivistState.ts';
 import type { ArchivistState } from '../ArchivistState.ts';
@@ -73,13 +70,11 @@ class MemorySummarizer {
   }
 }
 
-export class RecallMemoriesNode implements NodeInterface<ArchivistState, 'recalled', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class RecallMemoriesNode extends ScalarNode<ArchivistState, 'recalled', ArchivistServices> {
   readonly name = 'recall-memories';
   readonly outputs = ['recalled'] as const;
 
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     const memory = context.services.memory;
     const currentGraphIri = state.runId !== '' ? MemoryStore.stateGraphIri(state.runId).value : null;
 
@@ -194,5 +189,5 @@ export class RecallMemoriesNode implements NodeInterface<ArchivistState, 'recall
   }
 }
 
-/** Backward-compatible const export for existing bundle/DAG references. */
+/** Singleton node instance referenced by the DAG wiring. */
 export const recallMemories = new RecallMemoriesNode();

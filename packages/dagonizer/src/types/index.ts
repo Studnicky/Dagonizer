@@ -204,3 +204,10 @@ export type { InMemoryChannelOptions } from '../channels/InMemoryChannel.js';
 
 export type { BaseStoreOptions } from '../store/BaseStore.js';
 export type { StoreErrorClassification } from '../store/StoreError.js';
+
+// ---------------------------------------------------------------------------
+// Plural-native batch types + contracts
+// ---------------------------------------------------------------------------
+
+export type { Item, ItemId } from '../core/batch/Item.js';
+export type { RoutedBatch } from '../core/batch/RoutedBatch.js';

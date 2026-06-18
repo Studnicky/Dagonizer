@@ -20,7 +20,7 @@
  * branching DAG routes each event only through the nodes it needs, and each clone
  * records what RAN vs was SKIPPED on its own record (no shared mutable counters
  * across scatter clones). The parent's summarize folds these into the savings
- * totals. `path` is the per-kind enrichment lane the event took.
+ * totals. `path` is the per-event-type enrichment lane the event took.
  */
 
 // #region enriched-shipment-entity
@@ -32,9 +32,9 @@ export const EnrichedShipmentSchema = {
   'type': 'object',
   'required': [
     'shipmentId', 'scanSeq', 'epochMs', 'localIso', 'utcOffset', 'timezone', 'jurisdiction',
-    'continent', 'region', 'country', 'hub', 'status',
+    'continent', 'region', 'country', 'hub', 'geoStatus',
     'lat', 'lng', 'coordsCoarsened', 'legKm',
-    'eventType', 'serviceTier', 'sizeTier',
+    'status', 'serviceTier', 'sizeTier',
     'onTime', 'exception', 'consentStatus', 'disruptionReason',
     'subtotalUsdMinor', 'currency',
     'shippingUsdMinor', 'distanceKm',
@@ -54,12 +54,12 @@ export const EnrichedShipmentSchema = {
     'region':            { 'type': 'string', 'minLength': 1 },
     'country':           { 'type': 'string', 'minLength': 1 },
     'hub':               { 'type': 'string', 'minLength': 1 },
-    'status':            { 'type': 'string', 'enum': ['land', 'water', 'coastal', 'unmapped'] },
+    'geoStatus':         { 'type': 'string', 'enum': ['land', 'water', 'coastal', 'unmapped'] },
     'lat':               { 'type': 'number' },
     'lng':               { 'type': 'number' },
     'coordsCoarsened':   { 'type': 'boolean' },
     'legKm':             { 'type': 'number', 'minimum': 0 },
-    'eventType':         { 'type': 'string', 'enum': ['SCAN', 'DEPARTURE', 'ARRIVAL', 'OUT_FOR_DELIVERY', 'DELIVERED', 'EXCEPTION'] },
+    'status':            { 'type': 'string', 'enum': ['SCAN', 'DEPARTURE', 'ARRIVAL', 'OUT_FOR_DELIVERY', 'DELIVERED', 'EXCEPTION'] },
     'serviceTier':       { 'type': 'string', 'enum': ['express', 'standard', 'economy'] },
     'sizeTier':          { 'type': 'string', 'enum': ['envelope', 'small', 'medium', 'large', 'freight'] },
     'onTime':            { 'type': 'boolean' },
@@ -98,7 +98,7 @@ export const EnrichedShipmentSchema = {
         'coldChainRun', 'customsDwellRun',
       ],
       'properties': {
-        // The per-kind enrichment lane this event took.
+        // The per-event-type enrichment lane this event took.
         'path':              { 'type': 'string', 'enum': ['geo-only', 'sensor', 'order', 'customs'] },
         // Whether the whole geo-resolve sub-DAG (real API calls) ran or was skipped.
         'geoLookupRun':      { 'type': 'boolean' },

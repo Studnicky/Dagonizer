@@ -20,7 +20,7 @@ export abstract class RecordFindingsNode<
   protected abstract toQuads(entity: TEntity): readonly Quad[];
 
 
-  async execute(
+  protected override async executeOne(
     state: TState,
     context: NodeContextInterface<GraphServices>,
   ): Promise<NodeOutputInterface<'success'>> {

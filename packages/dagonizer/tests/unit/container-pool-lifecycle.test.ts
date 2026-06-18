@@ -9,6 +9,11 @@
  *   G3 — destroy() under in-flight (parked) request: destroy() resolves while
  *        a runDag() is parked; the parked call returns a transport-error outcome.
  *   G4 — double-destroy idempotency: calling destroy() twice does not throw.
+ *   G5 — cross-container abort propagation e2e: aborting the parent dispatcher's
+ *        AbortSignal for an in-flight runDag() forwards the abort over the
+ *        LoopbackChannel to DagHost, which fires its AbortController; the
+ *        in-flight abort-sleeper DAG (Law 5) terminates promptly. A pre-aborted
+ *        signal resolves cleanly without hanging.
  */
 
 import assert from 'node:assert/strict';
@@ -140,7 +145,7 @@ class MinimalTask implements DagTaskInterface<NodeStateInterface, undefined> {
     return {
       'dagName': this.dagName,
       'placementPath': this.placementPath,
-      'stateSnapshot': this.state.snapshot(),
+      'items': [{ 'id': this.correlationId, 'snapshot': this.state.snapshot() as { [key: string]: unknown } }],
       'timeoutMs': this.timeout.toWire(),
       'correlationId': this.correlationId,
     };
@@ -154,7 +159,7 @@ class MinimalTask implements DagTaskInterface<NodeStateInterface, undefined> {
 function buildDispatcher(
   container: TestLoopbackContainer,
 ): Dagonizer<NodeStateInterface, undefined> {
-  const bundle = ConformanceRegistry.bundle().bundle as DispatcherBundle<NodeStateInterface, undefined>;
+  const bundle = ConformanceRegistry.bundle().bundle as unknown as DispatcherBundle<NodeStateInterface, undefined>;
   const containers: Readonly<Record<string, DagContainerInterface<NodeStateInterface>>> = {
     [CONFORMANCE_CONTAINER_ROLE]: container,
   };
@@ -334,7 +339,7 @@ void describe('DagContainerBase — abort signal ejects a parked waiter (CON-1)'
           return {
             'dagName': this.dagName,
             'placementPath': this.placementPath,
-            'stateSnapshot': this.state.snapshot(),
+            'items': [{ 'id': this.correlationId, 'snapshot': this.state.snapshot() as { [key: string]: unknown } }],
             'timeoutMs': this.timeout.toWire(),
             'correlationId': this.correlationId,
           };
@@ -421,5 +426,70 @@ void describe('DagContainerBase — double-destroy idempotency (G4)', () => {
     const outcome = await container.runDag(new MinimalTask('post-destroy'));
     assert.strictEqual(outcome.terminalOutput, 'failed');
     assert.ok(outcome.errors.length > 0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// G5 — cross-container abort propagation e2e
+//
+// The abort path runs end-to-end: parent AbortSignal → ChannelDispatch
+// abort-forwarding → LoopbackChannel → DagHost abort handling → execution
+// cancellation. Law 5 (the abort-sleeper) runs until its signal fires.
+// ---------------------------------------------------------------------------
+
+void describe('Cross-container abort propagation (G5)', () => {
+  void it('aborting the parent signal cancels the in-flight DAG execution promptly', async () => {
+    const container = new TestLoopbackContainer(1);
+    const dispatcher = buildDispatcher(container);
+
+    // Dispatcher-level abort controller — connects to the runDag signal via
+    // Dagonizer.execute(dag, state, { signal }) overload path.
+    const controller = new AbortController();
+
+    const state = new ConformanceState();
+
+    // Law 5: the abort-sleeper node runs until its signal fires. The execution
+    // is routed through the LoopbackContainer (cross-container boundary).
+    const start = Date.now();
+    const executionPromise = dispatcher.execute(CONFORMANCE_DAG.law5, state, {
+      'signal': controller.signal,
+    });
+
+    // Give the sleeper node time to start inside DagHost.
+    await new Promise<void>((r) => setTimeout(r, 50));
+
+    // Abort — signal propagates: Dagonizer → ChannelDispatch → abort BridgeMessage
+    // → LoopbackChannel → DagHost → AbortController for the execution.
+    controller.abort();
+
+    const result = await executionPromise;
+    const elapsed = Date.now() - start;
+
+    // The execution must complete (abort resolves, not hangs) within 2 s.
+    assert.ok(elapsed < 2000,
+      `abort must resolve the execution within 2s (cross-container); elapsed=${elapsed}ms`);
+
+    // After abort the lifecycle is non-running (completed or failed).
+    assert.notStrictEqual(result.state.lifecycle.kind, 'running',
+      `lifecycle must not be 'running' after abort; got '${result.state.lifecycle.kind}'`);
+
+    await container.destroy();
+  });
+
+  void it('abort before the execution starts still resolves cleanly', async () => {
+    const container = new TestLoopbackContainer(1);
+    const dispatcher = buildDispatcher(container);
+
+    const controller = new AbortController();
+    controller.abort(); // abort before execute is called
+
+    const state = new ConformanceState();
+
+    // Should resolve immediately (no hang), even with a pre-aborted signal.
+    await assert.doesNotReject(async () => {
+      await dispatcher.execute(CONFORMANCE_DAG.law5, state, { 'signal': controller.signal });
+    });
+
+    await container.destroy();
   });
 });

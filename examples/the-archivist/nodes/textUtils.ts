@@ -1,8 +1,8 @@
 /**
  * TextSimilarity: shared text-similarity utilities for the Archivist nodes.
  *
- * Extracted from recallCandidates, rankCandidates, recallContext,
- * pickBestMatch, and providers/IntentClassifier to eliminate copy-paste.
+ * Shared by recallCandidates, rankCandidates, recallContext,
+ * pickBestMatch, and providers/IntentClassifier.
  *
  * `TextSimilarity.tokenise`:  split text into lowercase tokens (length > 2).
  * `TextSimilarity.jaccard`:   Jaccard similarity between two token sets.

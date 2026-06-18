@@ -1,6 +1,5 @@
 /**
- * Adapters barrel: re-exports each adapter from its plugin package
- * plus the Archivist-grounded stub subclass that lives in the example.
+ * Adapters barrel: re-exports each adapter from its plugin package.
  *
  * Contract types (LlmAdapter, ChatRequest, etc.) and BaseAdapter come
  * from `@noocodex/dagonizer/adapter`. Concrete provider adapters live
@@ -38,12 +37,5 @@ export type { OllamaApiAdapterOptions } from '@noocodex/dagonizer-adapter-ollama
 export { OllamaProbe, detectOllama, listOllamaModels } from './detectOllama.ts';
 export { OpenRouterApiAdapter }     from '@noocodex/dagonizer-adapter-openrouter';
 export type { OpenRouterApiAdapterOptions } from '@noocodex/dagonizer-adapter-openrouter';
-export { StubAdapter }              from '@noocodex/dagonizer-adapter-stub';
-export type { StubAdapterOptions }  from '@noocodex/dagonizer-adapter-stub';
 export { WebLlmAdapter } from '@noocodex/dagonizer-adapter-web-llm';
 export type { WebLlmAdapterOptions, WebLlmInitReport } from '@noocodex/dagonizer-adapter-web-llm';
-
-// Archivist-grounded stub subclass. Stays in the example since it depends
-// on the Archivist's SeedLibrary + MemoryStore.
-export { ArchivistStub } from './ArchivistStub.ts';
-export type { ArchivistStubOptions } from './ArchivistStub.ts';

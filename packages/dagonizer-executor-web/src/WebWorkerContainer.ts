@@ -22,8 +22,8 @@
  *   });
  *
  * Pool lifecycle is owned by DagContainerBase: demand growth, semaphore
- * waiting, lazy init, death detection (fixes P0 hang), eviction, graceful
- * shutdown. This class implements the four abstract seams only.
+ * waiting, lazy init, death detection, eviction, graceful shutdown. This
+ * class implements the four abstract seams only.
  *
  * All properties initialised in constructor for V8 shape stability.
  */

@@ -2,8 +2,23 @@
  * Cartographer entities: re-export all schema-derived types and their schemas.
  */
 
-export { CanonicalEventSchema } from './CanonicalEvent.ts';
-export type { CanonicalEvent } from './CanonicalEvent.ts';
+export { CanonicalEventVariantSchema, CanonicalEventVariantBuilder } from './CanonicalEvent.ts';
+export type { CanonicalEventVariant } from './CanonicalEvent.ts';
+
+export { PositionPingEventSchema } from './events/PositionPingEvent.ts';
+export type { PositionPingEvent } from './events/PositionPingEvent.ts';
+
+export { FacilityScanEventSchema } from './events/FacilityScanEvent.ts';
+export type { FacilityScanEvent } from './events/FacilityScanEvent.ts';
+
+export { SensorReadingEventSchema } from './events/SensorReadingEvent.ts';
+export type { SensorReadingEvent } from './events/SensorReadingEvent.ts';
+
+export { CustomsEventSchema } from './events/CustomsEvent.ts';
+export type { CustomsEvent } from './events/CustomsEvent.ts';
+
+export { DeliveryConfirmationEventSchema } from './events/DeliveryConfirmationEvent.ts';
+export type { DeliveryConfirmationEvent } from './events/DeliveryConfirmationEvent.ts';
 
 export { GeoCandidateSchema } from './GeoCandidate.ts';
 export type { GeoCandidate } from './GeoCandidate.ts';

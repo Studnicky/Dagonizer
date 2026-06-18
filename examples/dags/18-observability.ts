@@ -8,10 +8,9 @@ import {
   DAGBuilder,
   NodeOutputBuilder,
   NodeStateBase,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer';
+
 
 // ---------------------------------------------------------------------------
 // State
@@ -25,25 +24,21 @@ export class PipelineState extends NodeStateBase {
 // Nodes: a trivial two-step pipeline to give the observer something to trace
 // ---------------------------------------------------------------------------
 
-export class ValidateNode implements NodeInterface<PipelineState, 'ok' | 'invalid'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ValidateNode extends ScalarNode<PipelineState, 'ok' | 'invalid'> {
   readonly name = 'validate';
   readonly outputs = ['ok', 'invalid'] as const;
 
-  async execute(state: PipelineState) {
+  protected override async executeOne(state: PipelineState) {
     state.value = 1;
     return NodeOutputBuilder.of('ok');
   }
 }
 
-export class TransformNode implements NodeInterface<PipelineState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class TransformNode extends ScalarNode<PipelineState, 'done'> {
   readonly name = 'transform';
   readonly outputs = ['done'] as const;
 
-  async execute(state: PipelineState) {
+  protected override async executeOne(state: PipelineState) {
     state.value = state.value * 10;
     return NodeOutputBuilder.of('done');
   }

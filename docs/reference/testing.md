@@ -20,39 +20,50 @@ The testing subpath exports two deterministic replacements for the real-time clo
 
 In-memory monotonic clock. Time advances only when you advance it.
 
-```ts
+```ts twoslash
 import { VirtualClockProvider } from '@noocodex/dagonizer/testing';
 import { Clock } from '@noocodex/dagonizer/runtime';
 ```
 
 ### Constructor
 
-```ts
-new VirtualClockProvider(initialNs?: bigint)
+```ts twoslash
+import { VirtualClockProvider } from '@noocodex/dagonizer/testing';
+// ---cut---
+new VirtualClockProvider(0n);
 ```
 
 `initialNs` is the starting nanosecond value. Defaults to `0n`.
 
 ### `.tickMs(deltaMs)`
 
-```ts
-tickMs(deltaMs: number): void
+```ts twoslash
+import { VirtualClockProvider } from '@noocodex/dagonizer/testing';
+const clock = new VirtualClockProvider(0n);
+// ---cut---
+clock.tickMs(100);
 ```
 
 Advance the virtual clock by `deltaMs` milliseconds.
 
 ### `.tickNs(deltaNs)`
 
-```ts
-tickNs(deltaNs: bigint): void
+```ts twoslash
+import { VirtualClockProvider } from '@noocodex/dagonizer/testing';
+const clock = new VirtualClockProvider(0n);
+// ---cut---
+clock.tickNs(100_000_000n);
 ```
 
 Advance the virtual clock by `deltaNs` nanoseconds.
 
 ### `.setNs(ns)`
 
-```ts
-setNs(ns: bigint): void
+```ts twoslash
+import { VirtualClockProvider } from '@noocodex/dagonizer/testing';
+const clock = new VirtualClockProvider(0n);
+// ---cut---
+clock.setNs(500_000_000n);
 ```
 
 Set the virtual clock to an absolute nanosecond value.
@@ -69,55 +80,72 @@ Set the virtual clock to an absolute nanosecond value.
 
 In-memory min-heap scheduler. No platform timers. Advance time via `advance(ms)`, `runUntil(atMs)`, or `runAll()`.
 
-```ts
+```ts twoslash
 import { VirtualScheduler } from '@noocodex/dagonizer/testing';
 import { Scheduler } from '@noocodex/dagonizer/runtime';
 ```
 
 ### Constructor
 
-```ts
-new VirtualScheduler(initialAtMs?: number)
+```ts twoslash
+import { VirtualScheduler } from '@noocodex/dagonizer/testing';
+// ---cut---
+new VirtualScheduler(0);
 ```
 
 `initialAtMs` is the starting virtual-now value. Defaults to `0`.
 
 ### `.advance(deltaMs)`
 
-```ts
-advance(deltaMs: number): void
+```ts twoslash
+import { VirtualScheduler } from '@noocodex/dagonizer/testing';
+const scheduler = new VirtualScheduler(0);
+// ---cut---
+scheduler.advance(500);
 ```
 
 Advance virtual time by `deltaMs`, firing all tasks scheduled in that window in order.
 
 ### `.runUntil(atMs)`
 
-```ts
-runUntil(atMs: number): void
+```ts twoslash
+import { VirtualScheduler } from '@noocodex/dagonizer/testing';
+const scheduler = new VirtualScheduler(0);
+// ---cut---
+scheduler.runUntil(1000);
 ```
 
 Advance virtual time to `atMs`, firing tasks in order.
 
 ### `.runAll()`
 
-```ts
-runAll(): void
+```ts twoslash
+import { VirtualScheduler } from '@noocodex/dagonizer/testing';
+const scheduler = new VirtualScheduler(0);
+// ---cut---
+scheduler.runAll();
 ```
 
 Fire all pending one-shot tasks in monotonic order.
 
 ### `.virtualNow`
 
-```ts
-get virtualNow(): number
+```ts twoslash
+import { VirtualScheduler } from '@noocodex/dagonizer/testing';
+const scheduler = new VirtualScheduler(0);
+// ---cut---
+const now: number = scheduler.virtualNow;
 ```
 
 Current virtual time in ms.
 
 ### `.pendingCount`
 
-```ts
-get pendingCount(): number
+```ts twoslash
+import { VirtualScheduler } from '@noocodex/dagonizer/testing';
+const scheduler = new VirtualScheduler(0);
+// ---cut---
+const count: number = scheduler.pendingCount;
 ```
 
 Number of active (non-cancelled) pending tasks.
@@ -132,13 +160,15 @@ Number of active (non-cancelled) pending tasks.
 
 Both `VirtualScheduler` and `RealTimeScheduler` implement `SchedulerProvider`:
 
-```ts
-interface SchedulerProvider {
-  after(delayMs: number, signal?: AbortSignal): Promise<void>;
-  at(atMs: number, signal?: AbortSignal): Promise<void>;
-  every(intervalMs: number, signal?: AbortSignal): AsyncIterable<void>;
-  cancelAll(): void;
-}
+```ts twoslash
+import type { SchedulerProvider } from '@noocodex/dagonizer/runtime';
+// ---cut---
+// SchedulerProvider (from @noocodex/dagonizer/runtime):
+//   after(delayMs, options?: { signal? }): Promise<void>
+//   at(atMs, options?: { signal? }): Promise<void>
+//   every(intervalMs, options?: { signal? }): AsyncIterable<void>
+//   cancelAll(): void
+const _scheduler: SchedulerProvider = {} as SchedulerProvider;
 ```
 
 Implement this interface to create a custom test scheduler (e.g. one that records fired tasks for assertions).

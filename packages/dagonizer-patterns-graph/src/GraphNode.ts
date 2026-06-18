@@ -8,7 +8,7 @@
  */
 
 import type { NodeStateInterface } from '@noocodex/dagonizer';
-import { MonadicNode } from '@noocodex/dagonizer/patterns';
+import { ScalarNode } from '@noocodex/dagonizer';
 import type { TripleStore } from '@noocodex/dagonizer/patterns';
 
 export interface GraphServices {
@@ -18,4 +18,4 @@ export interface GraphServices {
 export abstract class GraphNode<
   TState extends NodeStateInterface,
   TOutput extends string = string,
-> extends MonadicNode<TState, TOutput, GraphServices> {}
+> extends ScalarNode<TState, TOutput, GraphServices> {}

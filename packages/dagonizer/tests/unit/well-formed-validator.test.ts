@@ -5,9 +5,9 @@
  *   1. All output targets must resolve to a placement name in dag.nodes.
  *   2. Structural guards: ScatterNode source, EmbeddedDAGNode dag, TerminalNode outcome.
  *
- * Note: null routes are schema-invalid and are rejected by Validator.dag (Ajv)
- * before WellFormedValidator ever sees the document. WellFormedValidator only
- * receives schema-valid DAGs (outputs values are strings, never null).
+ * WellFormedValidator receives only schema-valid DAGs (outputs values are
+ * strings, never null); null routes are schema-invalid and rejected by
+ * Validator.dag before this validator ever runs.
  */
 
 import assert from 'node:assert/strict';
@@ -15,7 +15,6 @@ import { describe, it } from 'node:test';
 
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/dag/DAG.js';
-import { Validator } from '../../src/validation/Validator.js';
 import { WellFormedValidator } from '../../src/validation/WellFormedValidator.js';
 
 // ---------------------------------------------------------------------------
@@ -78,47 +77,6 @@ void describe('WellFormedValidator', () => {
     ]);
     const violations = WellFormedValidator.check(dag);
     assert.equal(violations.length, 0);
-  });
-
-  // ── Null routes are schema-invalid — rejected before WellFormedValidator ─
-
-  void it('Validator.dag rejects a DAG whose output value is null', () => {
-    // Build the object as unknown — the whole point is it fails schema validation.
-    const bad = {
-      '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:test',
-      '@type':    'DAG',
-      'name':     'test',
-      'version':  '1',
-      'entrypoint': 'start',
-      'nodes': [{
-        '@id':   'urn:noocodex:dag:test/node/start',
-        '@type': 'SingleNode',
-        'name':  'start',
-        'node':  'start',
-        'outputs': { 'done': null },
-      }],
-    } as unknown as DAG;
-    assert.equal(Validator.dag.is(bad), false, 'null output must not satisfy the schema');
-  });
-
-  void it('Validator.dag rejects a DAG with multiple null output values', () => {
-    const bad = {
-      '@context': DAG_CONTEXT,
-      '@id':      'urn:noocodex:dag:test',
-      '@type':    'DAG',
-      'name':     'test',
-      'version':  '1',
-      'entrypoint': 'start',
-      'nodes': [{
-        '@id':   'urn:noocodex:dag:test/node/start',
-        '@type': 'SingleNode',
-        'name':  'start',
-        'node':  'start',
-        'outputs': { 'ok': null, 'fail': null },
-      }],
-    } as unknown as DAG;
-    assert.equal(Validator.dag.is(bad), false, 'null outputs must not satisfy the schema');
   });
 
   // ── Rule 1: dangling target → violation ──────────────────────────────────

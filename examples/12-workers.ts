@@ -32,7 +32,8 @@
  */
 
 import { Dagonizer } from '@noocodex/dagonizer';
-import { WorkerThreadContainer } from '@noocodex/dagonizer-executor-node';
+import { NodeSystemInfo, WorkerThreadContainer } from '@noocodex/dagonizer-executor-node';
+import { RecommendedWorkerCountConfigDefault } from '@noocodex/dagonizer/entities';
 
 import { dag, SquareWorkerNode, workerDag, WorkState } from './dags/12-workers.js';
 
@@ -50,6 +51,23 @@ import { dag, SquareWorkerNode, workerDag, WorkState } from './dags/12-workers.j
 // #region registry-url
 const registryUrl = new URL('./dags/12-workers.registry.js', import.meta.url).href;
 // #endregion registry-url
+
+// ---------------------------------------------------------------------------
+// Pool sizing: NodeSystemInfo.recommendedWorkerCount
+//
+// recommendedWorkerCount probes os.availableParallelism() and os.freemem()
+// to derive a cgroup-aware pool size. Spread RecommendedWorkerCountConfigDefault
+// and override only the fields you want to clamp.
+// ---------------------------------------------------------------------------
+
+// #region pool-sizing
+const sysInfo  = new NodeSystemInfo();
+const poolSize = sysInfo.recommendedWorkerCount({
+  ...RecommendedWorkerCountConfigDefault,
+  maximumWorkers: 8,
+});
+process.stdout.write(`Pool sizing: recommendedWorkerCount = ${String(poolSize)} (capped at 8)\n`);
+// #endregion pool-sizing
 
 // ---------------------------------------------------------------------------
 // Container: worker-thread pool, 2 workers

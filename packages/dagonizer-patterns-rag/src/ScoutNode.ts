@@ -12,8 +12,7 @@
  */
 
 import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface  } from '@noocodex/dagonizer';
-import { NodeOutputBuilder } from '@noocodex/dagonizer';
-import { MonadicNode } from '@noocodex/dagonizer/patterns';
+import { NodeOutputBuilder, ScalarNode  } from '@noocodex/dagonizer';
 import type { Tool } from '@noocodex/dagonizer/tool';
 
 export interface ScoutServices<TInput extends Record<string, unknown>, TOutput> {
@@ -25,7 +24,7 @@ export abstract class ScoutNode<
   TInput extends Record<string, unknown>,
   TToolOutput,
   TItem,
-> extends MonadicNode<TState, 'success' | 'empty' | 'error', ScoutServices<TInput, TToolOutput>> {
+> extends ScalarNode<TState, 'success' | 'empty' | 'error', ScoutServices<TInput, TToolOutput>> {
   /** Build the input the tool's `run()` expects, from state. */
   protected abstract buildInput(state: TState): TInput;
 
@@ -36,7 +35,7 @@ export abstract class ScoutNode<
   protected abstract writeBack(state: TState, items: readonly TItem[]): void;
 
 
-  async execute(
+  protected override async executeOne(
     state: TState,
     context: NodeContextInterface<ScoutServices<TInput, TToolOutput>>,
   ): Promise<NodeOutputInterface<'success' | 'empty' | 'error'>> {

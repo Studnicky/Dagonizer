@@ -3,8 +3,11 @@
  *
  * Owns the slot semaphore, active-worker counter, error accumulator, and the
  * drain loop that drives concurrent item execution. Item body execution and
- * acknowledgment are delegated to a `ScatterPoolDriver<TState>` instance so
- * the pool has no knowledge of DAG internals; it only manages concurrency.
+ * acknowledgment are delegated to a `ScatterPoolDriverInterface<TState>`
+ * instance so the pool has no knowledge of DAG internals; it only manages
+ * concurrency.
+ *
+ * Each pulled item is dispatched immediately as a single-item execution.
  *
  * Semantics preserved from the inline implementation:
  * - True backpressure: a new item is only pulled once a worker slot is free.
@@ -21,7 +24,7 @@ import { ExecutionError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 /**
- * The result envelope that `ScatterPoolDriver.executeItem` must return.
+ * The result envelope that `ScatterPoolDriverInterface.executeItem` must return.
  * Shape is stable (all fields initialised, required): V8 sees one hidden class
  * across all item executions.
  */
@@ -52,9 +55,10 @@ export interface ScatterPoolDriverInterface<TState extends NodeStateInterface> {
 
   /**
    * Acknowledge a completed item: remove it from the inbox, record the acked
-   * result, persist the checkpoint, and apply incremental gather if supported.
+   * result, apply incremental gather to fold into parent state, and persist
+   * the checkpoint.
    */
-  ackItem(result: ScatterItemResult<TState>): void;
+  ackItem(result: ScatterItemResult<TState>): Promise<void>;
 }
 
 /**
@@ -198,10 +202,13 @@ export class ScatterWorkerPool<TState extends NodeStateInterface> {
   #spawnWorker(index: number, item: unknown): void {
     this.#activeWorkers++;
     const workerPromise = this.#driver.executeItem(index, item).then(
-      (res) => {
-        this.#driver.ackItem(res);
-        this.#workerDone();
-      },
+      (res) => this.#driver.ackItem(res).then(
+        () => { this.#workerDone(); },
+        (err: unknown) => {
+          this.#poolErrors.push(err);
+          this.#workerDone();
+        },
+      ),
       (err: unknown) => {
         // R7: push to accumulator — never overwrite; concurrent failures all preserved.
         this.#poolErrors.push(err);
@@ -213,9 +220,9 @@ export class ScatterWorkerPool<TState extends NodeStateInterface> {
   }
 
   /**
-   * Drive the pool to completion: pull items, spawn workers up to
-   * `concurrencyLimit`, wait for all workers to settle, and throw if any
-   * errors occurred or the run-level signal was aborted.
+   * Drive the pool to completion: pull items, spawn single-item workers up to
+   * `concurrencyLimit`, wait for all workers to settle, and throw if any errors
+   * occurred or the run-level signal was aborted.
    *
    * Semantics:
    * - R1: exits the pull loop on abort BEFORE pulling more items, so items
@@ -227,6 +234,9 @@ export class ScatterWorkerPool<TState extends NodeStateInterface> {
   async drain(): Promise<void> {
     // Pull loop: fills slots until sources are exhausted, a worker error
     // accumulates, or the run-level signal is aborted.
+    // Check capacity BEFORE pulling so fresh items are only pushed to the
+    // inbox when a worker slot is available (preserves inbox-empty-after-ack
+    // invariant with concurrency=1).
     while (this.#poolErrors.length === 0 && this.#signal?.aborted !== true) {
       if (this.#activeWorkers >= this.#concurrencyLimit) {
         await this.#waitForSlot();

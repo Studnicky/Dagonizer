@@ -15,7 +15,7 @@ export abstract class PredicateGateNode<
 
   protected abstract predicate(state: TState): boolean;
 
-  async execute(
+  protected override async executeOne(
     state: TState,
     _context: NodeContextInterface<undefined>,
   ): Promise<NodeOutputInterface<'pass' | 'fail'>> {

@@ -62,18 +62,7 @@ A pre-phase that threw is not appended. A post-phase that threw is not appended.
 
 The fluent surface lives on `DAGBuilder`:
 
-```ts
-import { DAGBuilder } from '@noocodex/dagonizer';
-
-const dag = new DAGBuilder('pipeline', '1')
-  .node('ingest', ingestNode, { success: 'process' })
-  .node('process', processNode, { success: 'end' })
-  .phase('warm-cache',  'pre',  warmCacheNode)
-  .phase('flush-logs',  'post', flushLogsNode)
-  .phase('close-db',    'post', closeDbNode)
-  .terminal('end')
-  .build();
-```
+<<< @/../examples/dags/19-phase-nodes.ts#phase-dag
 
 Phase placements are recorded in DAG declaration order. Order matters: `warm-cache` runs strictly before `ingest`; `flush-logs` runs strictly before `close-db`.
 
@@ -97,11 +86,7 @@ At `registerDAG` time the engine verifies that every `PhaseNode.node` resolves t
 
 For every phase placement the dispatcher calls the protected hooks on the `Dagonizer` subclass:
 
-```ts
-this.onPhaseEnter(dagName, 'pre' | 'post', placementName, state, placementPath);
-// ... await node.execute(state, context)
-this.onPhaseExit(dagName,  'pre' | 'post', placementName, state, placementPath);
-```
+<<< @/../examples/19-phase-nodes.ts#phase-observer
 
 See [Observability](./observability) for the full hook reference.
 

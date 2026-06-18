@@ -19,11 +19,8 @@
  */
 
 
-import { NodeOutputBuilder,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { Candidate } from '../entities/Book.ts';
@@ -34,13 +31,11 @@ const MAX_COMPOSE_ATTEMPTS = 3;
 /** Default wall-clock budget for the compose phase (ms). Overridden at runtime by the runner. */
 export const COMPOSE_TIMEOUT_MS = 60_000;
 
-export class ComposeResponseNode implements NodeInterface<ArchivistState, 'drafted' | 'retry' | 'salvage', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ComposeResponseNode extends ScalarNode<ArchivistState, 'drafted' | 'retry' | 'salvage', ArchivistServices> {
   readonly name = 'compose-response';
   readonly outputs = ['drafted', 'retry', 'salvage'] as const;
 
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     state.recordAttempt('compose');
     const llm = context.services.llm;
     const prior = state.priorContext.length > 0 ? state.priorContext : undefined;
@@ -195,17 +190,15 @@ export class ResponseAnalysis {
   }
 }
 
-export class ValidateResponseNode implements NodeInterface<
+export class ValidateResponseNode extends ScalarNode<
   ArchivistState,
   'approved' | 'retry' | 'exhausted',
   ArchivistServices
 > {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
   readonly name = 'validate-response';
   readonly outputs = ['approved', 'retry', 'exhausted'] as const;
 
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     // ── Deterministic anti-hallucination pre-check ───────────────────────
     // Runs BEFORE the LLM validator. When it fails we force a retry
     // without paying for an LLM round-trip; we accumulate a
@@ -234,6 +227,6 @@ export class ValidateResponseNode implements NodeInterface<
   }
 }
 
-/** Backward-compatible const exports for existing bundle/DAG references. */
+/** Singleton node instances referenced by the DAG wiring. */
 export const composeResponse = new ComposeResponseNode();
 export const validateResponse = new ValidateResponseNode();

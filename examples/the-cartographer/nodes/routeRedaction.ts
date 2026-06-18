@@ -26,22 +26,16 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { Consent } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region route-redaction-node
-export class RouteRedactionNode implements NodeInterface<CartographerState, 'needs-redaction' | 'skip-redaction', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class RouteRedactionNode extends ScalarNode<CartographerState, 'needs-redaction' | 'skip-redaction', CartographerServices> {
   readonly 'name' = 'route-redaction';
   readonly 'outputs' = ['needs-redaction', 'skip-redaction'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'needs-redaction' | 'skip-redaction'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'needs-redaction' | 'skip-redaction'>> {
     const ev = state.currentEvent;
     const hasPii =
       state.canonical.pii === true ||
@@ -76,4 +70,6 @@ export class RouteRedactionNode implements NodeInterface<CartographerState, 'nee
     return NodeOutputBuilder.of('needs-redaction');
   }
 }
+
+export const routeRedaction = new RouteRedactionNode();
 // #endregion route-redaction-node

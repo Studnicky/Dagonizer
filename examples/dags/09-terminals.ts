@@ -10,10 +10,9 @@ import {
   NodeErrorBuilder,
   NodeOutputBuilder,
   NodeStateBase,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface} from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State
@@ -27,24 +26,20 @@ export class GateState extends NodeStateBase {
 // Nodes
 // ---------------------------------------------------------------------------
 
-export class StepANode implements NodeInterface<GateState, 'ok'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class StepANode extends ScalarNode<GateState, 'ok'> {
   readonly name = 'step-a';
   readonly outputs = ['ok'] as const;
 
-  async execute(_state: GateState) {
+  protected override async executeOne(_state: GateState) {
     return NodeOutputBuilder.of('ok');
   }
 }
 
-export class CheckNode implements NodeInterface<GateState, 'pass' | 'fail'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class CheckNode extends ScalarNode<GateState, 'pass' | 'fail'> {
   readonly name = 'check';
   readonly outputs = ['pass', 'fail'] as const;
 
-  async execute(state: GateState) {
+  protected override async executeOne(state: GateState) {
     return NodeOutputBuilder.of(state.shouldPass ? 'pass' : 'fail');
   }
 }
@@ -53,13 +48,11 @@ export class CheckNode implements NodeInterface<GateState, 'pass' | 'fail'> {
 // ScatterNode projection seeds onto the clone from parent state before the
 // child DAG body runs (a state clone carries metadata, not subclass fields;
 // projection is how parent data reaches the clone).
-export class ChildWorkNode implements NodeInterface<GateState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ChildWorkNode extends ScalarNode<GateState, 'done'> {
   readonly name = 'child-work';
   readonly outputs = ['done'] as const;
 
-  async execute(state: GateState) {
+  protected override async executeOne(state: GateState) {
     if (!state.shouldPass) {
       state.collectError(NodeErrorBuilder.from(
         'CHILD_ERR',

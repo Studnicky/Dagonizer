@@ -1,6 +1,6 @@
 ---
 title: 'JSON-LD export and import'
-description: 'Serialize Dagonizer DAGs as JSON-LD 1.1 documents and round-trip them via Dagonizer.serialize and Dagonizer.load. Every DAG carries @context, @id, and @type so RDF stores, schema validators, and JSON-LD processors read the wire shape natively.'
+description: 'Serialize Dagonizer DAGs as JSON-LD 1.1 documents and round-trip them via DAGDocument.serialize and DAGDocument.load. Every DAG carries @context, @id, and @type so RDF stores, schema validators, and JSON-LD processors read the wire shape natively.'
 seeAlso:
   - text: 'DAGBuilder'
     link: './builder'
@@ -28,7 +28,7 @@ nextSteps:
 
 # JSON-LD export and import
 
-Dagonizer DAGs are JSON-LD 1.1 documents. There is no separate wire format or projection layer. The object `DAGBuilder.build()` returns is the same object the engine consumes and the same object that round-trips through `Dagonizer.serialize` and `Dagonizer.load`. Every DAG carries `@context`, `@id`, and `@type` so RDF stores, schema validators, and generic JSON-LD processors read the shape natively without an adapter.
+Dagonizer DAGs are JSON-LD 1.1 documents. There is no separate wire format or projection layer. The object `DAGBuilder.build()` returns is the same object the engine consumes and the same object that round-trips through `DAGDocument.serialize` and `DAGDocument.load`. Every DAG carries `@context`, `@id`, and `@type` so RDF stores, schema validators, and generic JSON-LD processors read the shape natively without an adapter.
 
 ## The canonical shape
 
@@ -61,62 +61,36 @@ Six placement classes plus the document class:
 
 ## Exporting
 
-`Dagonizer.serialize(dag)` produces pretty-printed JSON (2-space indent):
+`DAGDocument.serialize(dag)` produces pretty-printed JSON (2-space indent):
 
-```ts
-import { Dagonizer } from '@noocodex/dagonizer';
+<<< @/../examples/json-ld.ts#persistence-file
 
-const json = Dagonizer.serialize(dag);
-await fs.writeFile('dag.json', json);
-```
+`DAGDocument.serializeCompact(dag)` produces single-line JSON (no whitespace) for transport over the wire:
 
-`Dagonizer.serializeCompact(dag)` produces single-line JSON (no whitespace) for transport over the wire:
-
-```ts
-const compact = Dagonizer.serializeCompact(dag);
-// → '{"@context":...,"@id":"...","@type":"DAG",...}'
-```
+<<< @/../examples/json-ld.ts#serialize-compact
 
 The serializer is a thin wrapper over `JSON.stringify`. There is no transformation step. The object IS the wire shape.
 
 ## Importing
 
-`Dagonizer.load(json)` parses and validates a JSON-LD string. It is the single ingest boundary for external input. `unknown` enters here and exits as a fully-typed `DAG`:
+`DAGDocument.load(json)` parses and validates a JSON-LD string. It is the single ingest boundary for external input. `unknown` enters here and exits as a fully-typed `DAG`:
 
 <<< @/../examples/dags/03-schema.ts#load
 
-`Dagonizer.load` throws `ValidationError` for:
+`DAGDocument.load` throws `ValidationError` for:
 
 - Malformed JSON (delegates to `JSON.parse`).
 - Schema-noncompliant input (validates against `DAGSchema` via Ajv 2020-12).
 - Missing required fields (`@context`, `@id`, `@type`, `name`, `version`, `entrypoint`, `nodes`).
 - Invalid `@type` discriminator on any placement.
 
-For callers that have already decoded their input (a database row that returned a parsed object, for example), `Dagonizer.fromValue(value)` skips the JSON parse step and runs only the schema validation.
+For callers that have already decoded their input (a database row that returned a parsed object, for example), `DAGDocument.fromValue(value)` skips the JSON parse step and runs only the schema validation.
 
 ## Round-trip
 
-```ts
-import { Dagonizer, DAGBuilder } from '@noocodex/dagonizer';
+<<< @/../examples/json-ld.ts#round-trip
 
-// Author the DAG via the builder
-const original = new DAGBuilder('demo', '1')
-  .node('transform', transformNode, { success: 'end' })
-  .terminal('end')
-  .build();
-
-// Serialize → JSON string
-const json = Dagonizer.serialize(original);
-
-// Load → DAG (validated)
-const reloaded = Dagonizer.load(json);
-
-// Identical structure, fully typed
-console.log(reloaded['@type']);            // 'DAG'
-console.log(reloaded.nodes[0]['@type']);   // 'SingleNode'
-```
-
-The round-trip preserves identity. `Dagonizer.load(Dagonizer.serialize(dag))` produces a value structurally equal to `dag`.
+The round-trip preserves identity. `DAGDocument.load(DAGDocument.serialize(dag))` produces a value structurally equal to `dag`.
 
 ## Placement discriminators
 
@@ -132,26 +106,17 @@ Each placement type carries a distinct `@type` that drives the runtime dispatch:
 
 ## Persistence patterns
 
-The serializer and loader have no opinion about storage. Common patterns:
+The serializer and loader have no opinion about storage. File on disk:
 
-```ts
-// File on disk
-await fs.writeFile('dag.json', Dagonizer.serialize(dag));
-const loaded = Dagonizer.load(await fs.readFile('dag.json', 'utf8'));
+<<< @/../examples/json-ld.ts#persistence-file
 
-// Database column (text or JSON)
-await db.dags.insert({ id: dag['@id'], body: Dagonizer.serialize(dag) });
-const row = await db.dags.findById('urn:noocodex:dag:demo');
-const loaded = Dagonizer.load(row.body);
+Database column (text or JSON body):
 
-// HTTP API
-return new Response(Dagonizer.serializeCompact(dag), {
-  headers: { 'content-type': 'application/ld+json' },
-});
+<<< @/../examples/json-ld.ts#persistence-db
 
-// Already-parsed JSON (a Postgres jsonb column, for example)
-const dag = Dagonizer.fromValue(row.body);  // body is `unknown`
-```
+For HTTP transport, use `serializeCompact` and the `application/ld+json` content-type. For already-parsed values (Postgres `jsonb`, decoded message envelope), use `DAGDocument.fromValue`:
+
+<<< @/../examples/json-ld.ts#from-value-round-trip
 
 The MIME type `application/ld+json` is the canonical content-type for JSON-LD over HTTP. Dagonizer DAGs satisfy that contract.
 

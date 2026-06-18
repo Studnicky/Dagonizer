@@ -5,13 +5,13 @@
  */
 
 import {
+  DAGBuilder,
   DAG_CONTEXT,
   NodeOutputBuilder,
   NodeStateBase,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface} from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State: fields live on the same class; inputs / outputs control which
@@ -29,13 +29,11 @@ export class IncrementState extends NodeStateBase {
 // ---------------------------------------------------------------------------
 
 // The child DAG's working node: increments the payload field
-export class IncrementNode implements NodeInterface<IncrementState, 'success'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class IncrementNode extends ScalarNode<IncrementState, 'success'> {
   readonly name = 'increment';
   readonly outputs = ['success'] as const;
 
-  async execute(state: IncrementState) {
+  protected override async executeOne(state: IncrementState) {
     state.payload = state.payload + 1;
     return NodeOutputBuilder.of('success');
   }
@@ -119,3 +117,25 @@ export const parent: DAG = {
   ],
 };
 // #endregion parent-dag
+
+// ---------------------------------------------------------------------------
+// DAGBuilder equivalent of the parent DAG above (typed stateMapping)
+// ---------------------------------------------------------------------------
+
+// #region builder-state-mapping
+// DAGBuilder equivalent of the JSON-LD parent DAG — typed inputs/outputs
+// narrow the stateMapping keys to paths that exist on IncrementState at
+// compile time.
+const builderParent = new DAGBuilder('parent', '1').entrypoint('invoke');
+builderParent.embeddedDAG<IncrementState, IncrementState>(
+  'invoke',
+  'child',
+  { success: 'end', error: 'end-error' },
+  {
+    inputs:  { payload: 'seed' },    // child.payload ← parent.seed
+    outputs: { result: 'payload' },  // parent.result ← child.payload
+  },
+);
+builderParent.terminal('end');
+builderParent.terminal('end-error', { outcome: 'failed' });
+// #endregion builder-state-mapping

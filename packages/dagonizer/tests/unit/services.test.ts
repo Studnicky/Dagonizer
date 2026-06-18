@@ -1,14 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 interface PaletteServices {
   readonly logger: { entries: string[] };
@@ -26,12 +25,10 @@ void describe('Dagonizer services container', () => {
       out = '';
     }
 
-    class UseServicesNode implements NodeInterface<S, 'success', PaletteServices> {
+    class UseServicesNode extends ScalarNode<S, 'success', PaletteServices> {
       readonly name = 'use-services';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: S, context: NodeContextInterface<PaletteServices>) {
+      protected async executeOne(state: S, context: NodeContextInterface<PaletteServices>): Promise<NodeOutputInterface<'success'>> {
         context.services.logger.entries.push(`hit:${context.services.client.url}`);
         state.out = context.services.client.url;
         return { 'errors': [], 'output': 'success' as const };
@@ -58,6 +55,7 @@ void describe('Dagonizer services container', () => {
     dispatcher.registerDAG(dag);
 
     const result = await dispatcher.execute('svc', new S());
+    assert.equal(result.state.lifecycle.kind, 'completed');
     assert.equal(result.state.out, 'https://example');
     assert.deepEqual(services.logger.entries, ['hit:https://example']);
   });
@@ -67,12 +65,10 @@ void describe('Dagonizer services container', () => {
       out: unknown = 'unset';
     }
 
-    class CheckUndefinedNode implements NodeInterface<S, 'success'> {
+    class CheckUndefinedNode extends ScalarNode<S, 'success'> {
       readonly name = 'check-undefined';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: S, context: NodeContextInterface) {
+      protected async executeOne(state: S, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
         state.out = context.services;
         return { 'errors': [], 'output': 'success' as const };
       }
@@ -97,6 +93,7 @@ void describe('Dagonizer services container', () => {
     });
 
     const result = await dispatcher.execute('svc-default', new S());
+    assert.equal(result.state.lifecycle.kind, 'completed');
     assert.equal(result.state.out, undefined);
   });
 });

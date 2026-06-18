@@ -18,7 +18,7 @@ export abstract class ReduceNode<
   protected abstract writeBack(state: TState, result: TResult): void;
 
 
-  async execute(
+  protected override async executeOne(
     state: TState,
     _context: NodeContextInterface<undefined>,
   ): Promise<NodeOutputInterface<'success'>> {

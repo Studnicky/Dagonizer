@@ -19,19 +19,20 @@ All errors thrown by the dispatcher are `DAGError` instances or subclasses. They
 
 Base error class. Extends `Error`.
 
-```ts
+```ts twoslash
 import { DAGError } from '@noocodex/dagonizer';
 ```
 
 ### Constructor
 
-```ts
-new DAGError(
-  message: string,
-  code?: string,           // default: 'DAG_ERROR'
-  context?: Record<string, unknown>,
-  options?: ErrorOptions,  // cause chaining
-)
+```ts twoslash
+import { DAGError } from '@noocodex/dagonizer';
+// ---cut---
+new DAGError('something failed', {
+  code: 'DAG_ERROR',               // default: 'DAG_ERROR'
+  context: { flowName: 'my-flow' },
+  cause: new Error('root cause'),  // cause chaining
+});
 ```
 
 ### Properties
@@ -41,21 +42,19 @@ new DAGError(
 | `name` | `string` | `'DAGError'` |
 | `code` | `string` | Error classification code |
 | `timestamp` | `Date` | Wall-clock timestamp at construction |
-| `context` | `Record<string, unknown> \| undefined` | Structured context payload |
-| `cause` | `unknown` | Chained cause (from `ErrorOptions`) |
+| `context` | `Record<string, unknown>` | Structured context payload |
+| `cause` | `Error \| undefined` | Chained cause |
 
 ### `toJSON()`
 
-```ts
-toJSON(): DAGErrorJSON
+```ts twoslash
+import { DAGError } from '@noocodex/dagonizer';
+// ---cut---
+const error = new DAGError('something failed', { context: { flowName: 'my-flow' } });
+console.log(JSON.stringify(error.toJSON(), null, 2));
 ```
 
 Returns a JSON-safe representation with all fields including `stack` (if present) and a normalized `cause` shape.
-
-```ts
-const error = new DAGError('something failed', 'DAG_ERROR', { flowName: 'my-flow' });
-console.log(JSON.stringify(error.toJSON(), null, 2));
-```
 
 ---
 
@@ -63,7 +62,7 @@ console.log(JSON.stringify(error.toJSON(), null, 2));
 
 Thrown when flow or node configuration is invalid (registration time).
 
-```ts
+```ts twoslash
 import { ConfigurationError } from '@noocodex/dagonizer';
 ```
 
@@ -77,7 +76,7 @@ Typically thrown by `registerNode` when `validate()` returns `{ valid: false }`.
 
 Thrown during flow execution when the dispatcher encounters an unrecoverable runtime condition.
 
-```ts
+```ts twoslash
 import { ExecutionError } from '@noocodex/dagonizer';
 ```
 
@@ -89,7 +88,7 @@ import { ExecutionError } from '@noocodex/dagonizer';
 
 Thrown when a referenced node or flow is not found during execution.
 
-```ts
+```ts twoslash
 import { NotFoundError } from '@noocodex/dagonizer';
 ```
 
@@ -101,7 +100,7 @@ import { NotFoundError } from '@noocodex/dagonizer';
 
 Thrown when schema validation fails (e.g. `DAGSchema` or `CheckpointDataSchema`).
 
-```ts
+```ts twoslash
 import { ValidationError } from '@noocodex/dagonizer';
 ```
 
@@ -119,7 +118,7 @@ The `message` contains every Ajv failure formatted as `<instancePath>: <message>
 
 Thrown when a node's per-node `timeoutMs` budget expires.
 
-```ts
+```ts twoslash
 import { NodeTimeoutError } from '@noocodex/dagonizer';
 ```
 
@@ -134,8 +133,10 @@ import { NodeTimeoutError } from '@noocodex/dagonizer';
 
 ### Constructor
 
-```ts
-new NodeTimeoutError(nodeName: string, timeoutMs: number, options?: ErrorOptions)
+```ts twoslash
+import { NodeTimeoutError } from '@noocodex/dagonizer';
+// ---cut---
+new NodeTimeoutError('my-node', 5000, { cause: new Error('root') });
 ```
 
 ---
@@ -144,12 +145,14 @@ new NodeTimeoutError(nodeName: string, timeoutMs: number, options?: ErrorOptions
 
 Structural shape of `DAGError` for callers that need to accept it without a class reference:
 
-```ts
-interface DAGErrorInterface extends Error {
-  readonly code: string;
-  readonly timestamp: Date;
-  readonly context?: Record<string, unknown>;
-}
+```ts twoslash
+import type { DAGErrorInterface } from '@noocodex/dagonizer';
+// DAGErrorInterface extends Error and carries:
+//   readonly code: string
+//   readonly timestamp: Date
+//   readonly context: Record<string, unknown>   (always present, never undefined)
+//   readonly cause?: Error
+const _check: DAGErrorInterface = {} as DAGErrorInterface;
 ```
 
 ---
@@ -158,16 +161,17 @@ interface DAGErrorInterface extends Error {
 
 Shape returned by `DAGError.toJSON()`:
 
-```ts
-interface DAGErrorJSON {
-  name: string;
-  message: string;
-  code: string;
-  timestamp: string;       // ISO 8601
-  stack?: string;
-  context?: Record<string, unknown>;
-  cause?: { name: string; message: string; stack?: string } | unknown;
-}
+```ts twoslash
+import type { DAGErrorJSON } from '@noocodex/dagonizer';
+// DAGErrorJSON (schema-derived; all fields required):
+//   name: string
+//   message: string
+//   code: string
+//   timestamp: string               // ISO 8601
+//   stack: string | null            // null when unavailable
+//   context: Record<string, unknown>
+//   cause: { name: string; message: string; stack: string | null } | null
+const _check: DAGErrorJSON = {} as DAGErrorJSON;
 ```
 
 ---

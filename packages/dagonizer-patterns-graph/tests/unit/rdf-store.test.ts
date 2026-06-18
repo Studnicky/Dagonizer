@@ -129,6 +129,8 @@ void describe('RdfStore: TripleStore contract', () => {
 
     const rows = store.select({ "predicate": p, "subject": '?s' });
     assert.equal(rows.length, 2);
+    const subjects = rows.map((r) => r['s']?.value).sort();
+    assert.deepEqual(subjects, ['urn:test:x', 'urn:test:y']);
   });
 
   void it('count returns the number of matching quads', () => {
@@ -189,6 +191,11 @@ void describe('RdfStore: triples()', () => {
     const quads = [...store.triples()];
     // 2 user-asserted + 1 reified.
     assert.equal(quads.length, 3);
+    const userObjects = quads
+      .filter((q) => q.predicate.value === 'urn:test:p')
+      .map((q) => q.object.value)
+      .sort();
+    assert.deepEqual(userObjects, ['1', '2']);
   });
 
   void it('triples() returns an empty iterator on a fresh store', () => {
@@ -237,7 +244,7 @@ void describe('RdfStore: Store entries and native quads coexist', () => {
   });
 });
 
-// ── 7. restore(): trade-off: clears all quads, reseeds from snapshot ─────────
+// ── 7. restore(): clears all quads, reseeds from snapshot, rejects bad input ──
 
 void describe('RdfStore: restore()', () => {
   void it('restores Store entries from a valid snapshot', async () => {
@@ -282,11 +289,7 @@ void describe('RdfStore: restore()', () => {
     assert.equal(store.count({ "subject": namedNode('urn:s') }), 0);
     assert.equal(await store.get<string>('k'), 'v');
   });
-});
 
-// ── 8. restore() with wrong type/version throws StoreError(INCOMPATIBLE_SNAPSHOT)
-
-void describe('RdfStore: restore() incompatible snapshot', () => {
   void it('throws StoreError INCOMPATIBLE_SNAPSHOT for wrong type', async () => {
     const store = new RdfStore();
     const bad = { "version": 1, "type": 'wrong-type', "entries": [] };

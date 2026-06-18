@@ -82,7 +82,7 @@ const sampleRequest: ChatRequest = ChatRequestBuilder.from({
 });
 
 const openAiSuccessResponse = {
-  'id': 'stub',
+  'id': 'chat-completion-0',
   'object': 'chat.completion',
   'choices': [{
     'index': 0,

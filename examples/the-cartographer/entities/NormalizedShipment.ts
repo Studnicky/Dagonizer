@@ -5,7 +5,7 @@
  * (geo runs first so normalize can use the scan's timezone for local time).
  * Timestamps are epoch ms + UTC ISO + LOCAL ISO/offset at the scan's zone,
  * carrier aliases are resolved, country is ISO-3, weight is grams. Classify
- * fills eventType/serviceTier/sizeTier afterward.
+ * fills status/serviceTier/sizeTier afterward.
  *
  * Journey fields (`scanSeq`, leg coords, origin/dest) carry through so the
  * leg-distance node and per-journey aggregation can reconstruct the path.
@@ -22,7 +22,7 @@ export const NormalizedShipmentSchema = {
     'shipmentId', 'scanSeq', 'epochMs', 'dispatchEpochMs', 'isoTimestamp', 'localIso', 'utcOffset',
     'carrierId', 'carrierName',
     'countryIso3', 'weightGrams',
-    'eventType', 'serviceTier', 'sizeTier',
+    'status', 'serviceTier', 'sizeTier',
     'lineItems', 'facilityId',
     'latitude', 'longitude', 'legFromLat', 'legFromLng',
     'originLat', 'originLng', 'destLat', 'destLng',
@@ -42,7 +42,7 @@ export const NormalizedShipmentSchema = {
     'carrierName':      { 'type': 'string', 'minLength': 1 },
     'countryIso3':      { 'type': 'string', 'minLength': 3, 'maxLength': 3 },
     'weightGrams':      { 'type': 'number', 'minimum': 0 },
-    'eventType':        { 'type': 'string', 'enum': ['SCAN', 'DEPARTURE', 'ARRIVAL', 'OUT_FOR_DELIVERY', 'DELIVERED', 'EXCEPTION'] },
+    'status':           { 'type': 'string', 'enum': ['SCAN', 'DEPARTURE', 'ARRIVAL', 'OUT_FOR_DELIVERY', 'DELIVERED', 'EXCEPTION'] },
     'serviceTier':      { 'type': 'string', 'enum': ['express', 'standard', 'economy'] },
     'sizeTier':         { 'type': 'string', 'enum': ['envelope', 'small', 'medium', 'large', 'freight'] },
     'lineItems': {
