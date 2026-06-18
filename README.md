@@ -1,6 +1,6 @@
 <p align="center"><a href="https://studnicky.github.io/Dagonizer/"><img src="https://raw.githubusercontent.com/Studnicky/Dagonizer/main/docs/public/og-image.png" alt="Dagonizer: Omniscient orchestration for directed acyclic graphs" width="1200" /></a></p>
 
-# @noocodex/dagonizer
+# @studnicky/dagonizer
 
 > ⦿ DAG + FSM architecture framework for TypeScript: type-safe nodes, abortable execution, deterministic resume, and JSON-LD canonical wire format.
 
@@ -28,25 +28,25 @@ Dagonizer ships as a workspace of independently versioned plugins:
 
 | Tier | Packages |
 |---|---|
-| **Adapters** (concrete) | `@noocodex/dagonizer-adapter-{gemini-api,gemini-nano,web-llm,groq,cerebras,mistral,openrouter,stub}` |
-| **Tools** (concrete) | `@noocodex/dagonizer-tool-{openlibrary,googlebooks,wikipedia}` |
-| **Patterns** (abstract bases consumers extend) | `@noocodex/dagonizer-patterns-{rag,graph,flow}` |
+| **Adapters** (concrete) | `@studnicky/dagonizer-adapter-{gemini-api,gemini-nano,web-llm,groq,cerebras,mistral,openrouter,stub}` |
+| **Tools** (concrete) | `@studnicky/dagonizer-tool-{openlibrary,googlebooks,wikipedia}` |
+| **Patterns** (abstract bases consumers extend) | `@studnicky/dagonizer-patterns-{rag,graph,flow}` |
 
-Install only what you use. The main `@noocodex/dagonizer` package exposes three stable contract subpaths every plugin builds on: `./adapter`, `./patterns`, `./tool`. See the [plugins guide](https://studnicky.github.io/Dagonizer/guide/plugins) for the full story.
+Install only what you use. The main `@studnicky/dagonizer` package exposes three stable contract subpaths every plugin builds on: `./adapter`, `./patterns`, `./tool`. See the [plugins guide](https://studnicky.github.io/Dagonizer/guide/plugins) for the full story.
 
 ## Install
 
 ```bash
-npm install @noocodex/dagonizer
+npm install @studnicky/dagonizer
 # plus any plugins you want, for example:
-npm install @noocodex/dagonizer-adapter-groq @noocodex/dagonizer-patterns-rag
+npm install @studnicky/dagonizer-adapter-groq @studnicky/dagonizer-patterns-rag
 ```
 
-The package is also mirrored to GitHub Packages as `@noocodex/dagonizer`:
+The package is also mirrored to GitHub Packages as `@studnicky/dagonizer`:
 
 ```bash
-echo '@noocodex:registry=https://npm.pkg.github.com' >> .npmrc
-npm install @noocodex/dagonizer
+echo '@studnicky:registry=https://npm.pkg.github.com' >> .npmrc
+npm install @studnicky/dagonizer
 ```
 
 ## License

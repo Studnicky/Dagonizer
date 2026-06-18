@@ -41,24 +41,24 @@ import { composeRetryLoopBundle } from './embedded-dags/ComposeRetryLoopDAG.ts';
 import { ConsoleLogger } from './logger/ConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { ObservedArchivist } from './ObservedArchivist.ts';
-import { CerebrasApiAdapter }   from '@noocodex/dagonizer-adapter-cerebras';
-import { GeminiApiAdapter }     from '@noocodex/dagonizer-adapter-gemini-api';
-import { GroqApiAdapter }       from '@noocodex/dagonizer-adapter-groq';
-import { MistralApiAdapter }    from '@noocodex/dagonizer-adapter-mistral';
-import { OllamaApiAdapter }     from '@noocodex/dagonizer-adapter-ollama';
-import { OpenRouterApiAdapter } from '@noocodex/dagonizer-adapter-openrouter';
-import { GeminiApiEmbedder }    from '@noocodex/dagonizer-embedder-gemini-api';
-import { MistralEmbedder }      from '@noocodex/dagonizer-embedder-mistral';
-import { OllamaEmbedder }       from '@noocodex/dagonizer-embedder-ollama';
+import { CerebrasApiAdapter }   from '@studnicky/dagonizer-adapter-cerebras';
+import { GeminiApiAdapter }     from '@studnicky/dagonizer-adapter-gemini-api';
+import { GroqApiAdapter }       from '@studnicky/dagonizer-adapter-groq';
+import { MistralApiAdapter }    from '@studnicky/dagonizer-adapter-mistral';
+import { OllamaApiAdapter }     from '@studnicky/dagonizer-adapter-ollama';
+import { OpenRouterApiAdapter } from '@studnicky/dagonizer-adapter-openrouter';
+import { GeminiApiEmbedder }    from '@studnicky/dagonizer-embedder-gemini-api';
+import { MistralEmbedder }      from '@studnicky/dagonizer-embedder-mistral';
+import { OllamaEmbedder }       from '@studnicky/dagonizer-embedder-ollama';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
 import { IntentClassifier } from './providers/IntentClassifier.ts';
 import { OllamaModels } from './providers/index.ts';
 import { OllamaProbe } from './providers/adapters/index.ts';
 import type { ArchivistServices, LlmClient } from './services.ts';
-import { GoogleBooksTool } from '@noocodex/dagonizer-tool-googlebooks';
-import { OpenLibrarySearchTool } from '@noocodex/dagonizer-tool-openlibrary';
-import { SubjectSearchTool } from '@noocodex/dagonizer-tool-openlibrary';
-import { WikipediaSummaryTool } from '@noocodex/dagonizer-tool-wikipedia';
+import { GoogleBooksTool } from '@studnicky/dagonizer-tool-googlebooks';
+import { OpenLibrarySearchTool } from '@studnicky/dagonizer-tool-openlibrary';
+import { SubjectSearchTool } from '@studnicky/dagonizer-tool-openlibrary';
+import { WikipediaSummaryTool } from '@studnicky/dagonizer-tool-wikipedia';
 
 import {
   EmbedderCascade,
@@ -66,11 +66,11 @@ import {
   LlmAdapterCascade,
   LlmAdapterRegistry,
   LlmError,
-} from '@noocodex/dagonizer/adapter';
-import { ExecutionError, NodeTimeoutError } from '@noocodex/dagonizer/errors';
-import type { AdapterCapabilities } from '@noocodex/dagonizer/adapter';
-import type { Embedder } from '@noocodex/dagonizer/contracts';
-import { Checkpoint, CheckpointRestoreAdapterFn, MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
+} from '@studnicky/dagonizer/adapter';
+import { ExecutionError, NodeTimeoutError } from '@studnicky/dagonizer/errors';
+import type { AdapterCapabilities } from '@studnicky/dagonizer/adapter';
+import type { Embedder } from '@studnicky/dagonizer/contracts';
+import { Checkpoint, CheckpointRestoreAdapterFn, MemoryCheckpointStore } from '@studnicky/dagonizer/checkpoint';
 
 const logger = new ConsoleLogger();
 

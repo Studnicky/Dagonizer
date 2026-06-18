@@ -19,7 +19,7 @@
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
-import type { NodeInterface } from '@noocodex/dagonizer';
+import type { NodeInterface } from '@studnicky/dagonizer';
 
 export type NodeKind = 'deterministic' | 'non-deterministic';
 

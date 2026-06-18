@@ -1,13 +1,13 @@
-# @noocodex/dagonizer-executor-web
+# @studnicky/dagonizer-executor-web
 
-Browser isolating container backend for [@noocodex/dagonizer](https://github.com/Studnicky/Dagonizer).
+Browser isolating container backend for [@studnicky/dagonizer](https://github.com/Studnicky/Dagonizer).
 
 Runs a whole embedded DAG in a Web Worker isolate over the bridge protocol. The same DAG document and the same node implementations run unchanged inside the worker — no per-node remoting. State seeds into the container, the DAG runs to completion, and the terminal state crosses back.
 
 ## Installation
 
 ```sh
-npm install @noocodex/dagonizer-executor-web @noocodex/dagonizer
+npm install @studnicky/dagonizer-executor-web @studnicky/dagonizer
 ```
 
 ## Usage
@@ -18,20 +18,20 @@ The worker file calls `WebWorkerEntry.start` with the worker global scope. The c
 
 ```ts
 // worker.ts (your file)
-import { WebWorkerEntry } from '@noocodex/dagonizer-executor-web';
-import type { WorkerScopeLikeInterface } from '@noocodex/dagonizer-executor-web';
+import { WebWorkerEntry } from '@studnicky/dagonizer-executor-web';
+import type { WorkerScopeLikeInterface } from '@studnicky/dagonizer-executor-web';
 
 WebWorkerEntry.start(self as unknown as WorkerScopeLikeInterface);
 ```
 
 ### 2. Create a registry module
 
-The registry module is dynamic-imported by the `DagHost` inside each worker. It implements `RegistryModuleInterface` from `@noocodex/dagonizer/contracts`.
+The registry module is dynamic-imported by the `DagHost` inside each worker. It implements `RegistryModuleInterface` from `@studnicky/dagonizer/contracts`.
 
 ```ts
 // registry.ts
-import type { RegistryModuleInterface, RegistryBundleInterface } from '@noocodex/dagonizer/contracts';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
+import type { RegistryModuleInterface, RegistryBundleInterface } from '@studnicky/dagonizer/contracts';
+import type { JsonObject } from '@studnicky/dagonizer/entities';
 import { MyState } from './MyState.js';
 import { myNode } from './myNode.js';
 import { myDag } from './myDag.js';
@@ -53,9 +53,9 @@ export default registry;
 ### 3. Wire the container on the main thread
 
 ```ts
-import { Dagonizer } from '@noocodex/dagonizer';
-import { WebWorkerContainer } from '@noocodex/dagonizer-executor-web';
-import type { WebWorkerLikeInterface } from '@noocodex/dagonizer-executor-web';
+import { Dagonizer } from '@studnicky/dagonizer';
+import { WebWorkerContainer } from '@studnicky/dagonizer-executor-web';
+import type { WebWorkerLikeInterface } from '@studnicky/dagonizer-executor-web';
 
 // Extension is by subclass (zero callbacks): this package cannot construct
 // browser workers itself, so override createWorker() to supply the real worker.

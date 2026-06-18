@@ -18,9 +18,9 @@ Scatter source reads, scatter state-mapping input copies, and gather writes all 
 
 | Symbol | Source | Role |
 |--------|--------|------|
-| `StateAccessor` | `@noocodex/dagonizer/contracts` | The contract, `get(state, path)` and `set(state, path, value)` |
-| `DottedPathAccessor` | `@noocodex/dagonizer/runtime` | Default impl: `path.split('.')` walks, writes auto-vivify intermediate objects |
-| `DagonizerOptionsInterface.accessor` | `@noocodex/dagonizer` | Constructor slot for a custom accessor |
+| `StateAccessor` | `@studnicky/dagonizer/contracts` | The contract, `get(state, path)` and `set(state, path, value)` |
+| `DottedPathAccessor` | `@studnicky/dagonizer/runtime` | Default impl: `path.split('.')` walks, writes auto-vivify intermediate objects |
+| `DagonizerOptionsInterface.accessor` | `@studnicky/dagonizer` | Constructor slot for a custom accessor |
 
 ## The contract
 
@@ -30,7 +30,7 @@ Implementations are stateless. The same instance is shared across every scatter 
 
 ## Default behavior
 
-`DottedPathAccessor` ships in `@noocodex/dagonizer/runtime`:
+`DottedPathAccessor` ships in `@studnicky/dagonizer/runtime`:
 
 <<< @/../examples/dags/state-accessor.ts#dotted-get
 

@@ -1,5 +1,5 @@
 /**
- * @noocodex/dagonizer/patterns: pattern-tier public surface.
+ * @studnicky/dagonizer/patterns: pattern-tier public surface.
  *
  * Ships:
  *   - `MonadicNode<TState, TOutput, TServices>`: the root node base (the monad —
@@ -12,12 +12,12 @@
  *   - `TripleStore`: minimal RDF quad-store service contract.
  *
  * Tool-shaped patterns (e.g. `ScoutNode`) reference the canonical `Tool`
- * type from `@noocodex/dagonizer/tool` directly — there is no aliased
+ * type from `@studnicky/dagonizer/tool` directly — there is no aliased
  * re-export.
  *
- * Plugin packages (`@noocodex/dagonizer-patterns-rag`,
- * `@noocodex/dagonizer-patterns-graph`,
- * `@noocodex/dagonizer-patterns-flow`) build on top of these.
+ * Plugin packages (`@studnicky/dagonizer-patterns-rag`,
+ * `@studnicky/dagonizer-patterns-graph`,
+ * `@studnicky/dagonizer-patterns-flow`) build on top of these.
  */
 
 export { MonadicNode } from '../core/MonadicNode.js';

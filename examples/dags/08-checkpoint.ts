@@ -9,9 +9,9 @@ import {
   NodeOutputBuilder,
   NodeStateBase,
   ScalarNode,
-} from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
+} from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
+import type { JsonObject } from '@studnicky/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
 // State: overrides snapshot/restore to persist domain fields

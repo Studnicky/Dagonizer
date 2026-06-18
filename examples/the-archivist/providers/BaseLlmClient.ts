@@ -14,9 +14,9 @@ import type { ConversationTurn, MemoryDigest } from '../ArchivistState.ts';
 import type { Candidate } from '../entities/Book.ts';
 import type { ClassifiedIntent, LlmClient, ScoredCandidate } from '../services.ts';
 
-import type { LlmAdapter } from '@noocodex/dagonizer/adapter';
-import { ChatRequestBuilder } from '@noocodex/dagonizer/adapter';
-import type { ChatResponseMessage } from '@noocodex/dagonizer/adapter';
+import type { LlmAdapter } from '@studnicky/dagonizer/adapter';
+import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
+import type { ChatResponseMessage } from '@studnicky/dagonizer/adapter';
 import type { IntentClassifier } from './IntentClassifier.ts';
 import { prompts, schemas } from './prompts.ts';
 

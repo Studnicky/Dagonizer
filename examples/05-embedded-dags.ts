@@ -16,7 +16,7 @@
  * Run: npx tsx examples/05-embedded-dags.ts
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
 import { IncrementState, IncrementNode, child, parent } from './dags/05-embedded-dags.js';
 
 // ---------------------------------------------------------------------------

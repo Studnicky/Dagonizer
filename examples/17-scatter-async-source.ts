@@ -32,7 +32,7 @@
  * Run: npx tsx examples/17-scatter-async-source.ts
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
 import {
   AsyncSourceState,
   ConsumeNode,

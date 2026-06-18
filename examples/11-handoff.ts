@@ -21,8 +21,8 @@
  * Run: npx tsx examples/11-handoff.ts
  */
 
-import { Dagonizer, InMemoryChannel } from '@noocodex/dagonizer';
-import type { DAGHandoff, JsonObject } from '@noocodex/dagonizer/entities';
+import { Dagonizer, InMemoryChannel } from '@studnicky/dagonizer';
+import type { DAGHandoff, JsonObject } from '@studnicky/dagonizer/entities';
 
 import {
   PipelineState,

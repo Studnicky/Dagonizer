@@ -28,10 +28,10 @@
  * Output route is always 'ranked'. mergeCandidates then takes the top-K.
  */
 
-import { NodeErrorBuilder, NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
-import type { NodeContextInterface } from '@noocodex/dagonizer';
+import { NodeErrorBuilder, NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
+import type { NodeContextInterface } from '@studnicky/dagonizer';
 
-import type { Embedder } from '@noocodex/dagonizer/contracts';
+import type { Embedder } from '@studnicky/dagonizer/contracts';
 
 import type { Candidate } from '../entities/Book.ts';
 import type { ArchivistState } from '../ArchivistState.ts';

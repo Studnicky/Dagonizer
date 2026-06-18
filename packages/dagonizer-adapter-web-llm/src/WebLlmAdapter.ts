@@ -15,8 +15,8 @@ import type {
   ChatRequest,
   ChatResponse,
   ErrorClassification,
-} from '@noocodex/dagonizer/adapter';
-import { BaseAdapter, ChatResponseMessageBuilder, Classifications, LlmError, ToolCallCodec, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
+} from '@studnicky/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder, Classifications, LlmError, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
 
 const DEFAULT_MODEL = 'Phi-3.5-mini-instruct-q4f16_1-MLC';
 const WEBLLM_ESM = 'https://esm.run/@mlc-ai/web-llm';

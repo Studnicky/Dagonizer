@@ -5,8 +5,8 @@
  */
 
 // #region execute-contract
-import { MonadicNode, RoutedBatchBuilder, Batch } from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeStateInterface, RoutedBatch } from '@noocodex/dagonizer';
+import { MonadicNode, RoutedBatchBuilder, Batch } from '@studnicky/dagonizer';
+import type { NodeContextInterface, NodeStateInterface, RoutedBatch } from '@studnicky/dagonizer';
 
 // The execute signature: consume Batch<TState>, return RoutedBatch<TOutput, TState>.
 // Items are partitioned across output ports — routing IS partitioning.
@@ -21,7 +21,7 @@ export class EchoNode extends MonadicNode<NodeStateInterface, 'out'> {
 // #endregion execute-contract
 
 // #region node-taxonomy
-import { NodeOutputBuilder, NodeStateBase, ScalarNode } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, NodeStateBase, ScalarNode } from '@studnicky/dagonizer';
 
 // EventState: domain state shared by both node variants below.
 export class EventState extends NodeStateBase {
@@ -68,8 +68,8 @@ export class EnrichNode extends MonadicNode<EventState, 'enriched'> {
 // #endregion node-taxonomy
 
 // #region reservoir-scatter
-import { DAG_CONTEXT } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
+import { DAG_CONTEXT } from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
 
 // ScoreState holds the items array fed to the scatter and the collected results.
 export class ScoreState extends NodeStateBase {

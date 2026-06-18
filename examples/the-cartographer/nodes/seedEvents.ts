@@ -29,7 +29,7 @@ import { EventStreamSource } from '../services/EventStreamSource.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region seed-events-node
 export class SeedEventsNode extends ScalarNode<CartographerState, never, CartographerServices> {

@@ -1,5 +1,5 @@
 /**
- * `@noocodex/dagonizer/core`: pluggable execution primitives.
+ * `@studnicky/dagonizer/core`: pluggable execution primitives.
  *
  *   - `GatherStrategies` registry + `GatherStrategy` extension point
  *   - `OutcomeReducers` registry + `OutcomeReducer` extension point

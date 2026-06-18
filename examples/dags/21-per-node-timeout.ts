@@ -19,9 +19,9 @@ import {
   NodeOutputBuilder,
   NodeStateBase,
   ScalarNode,
-} from '@noocodex/dagonizer';
-import { Timeout } from '@noocodex/dagonizer/runtime';
-import type { NodeContextInterface } from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
+import { Timeout } from '@studnicky/dagonizer/runtime';
+import type { NodeContextInterface } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // State

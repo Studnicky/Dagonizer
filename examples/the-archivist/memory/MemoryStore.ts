@@ -29,7 +29,7 @@
 import { DataFactory, Parser, Store, Writer } from 'n3';
 import type { Quad, Quad_Graph, Quad_Object, Quad_Predicate, Quad_Subject, Term } from 'n3';
 
-import type { Snapshottable, StoreSnapshot } from '@noocodex/dagonizer/contracts';
+import type { Snapshottable, StoreSnapshot } from '@studnicky/dagonizer/contracts';
 
 const { namedNode, literal, quad, defaultGraph } = DataFactory;
 

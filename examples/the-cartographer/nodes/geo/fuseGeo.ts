@@ -21,7 +21,7 @@ import { TimeZoneResolver } from '../../services.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region fuse-geo-node
 export class FuseGeoNode extends ScalarNode<CartographerState, 'fused', CartographerServices> {

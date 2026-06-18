@@ -18,7 +18,7 @@
  *
  * @example
  * ```ts
- * import { JsonLdRenderer } from '@noocodex/dagonizer/viz';
+ * import { JsonLdRenderer } from '@studnicky/dagonizer/viz';
  *
  * const doc = JsonLdRenderer.render(dispatcher.getDAG('pipeline')!);
  * await fs.writeFile('pipeline.jsonld', JSON.stringify(doc, null, 2));

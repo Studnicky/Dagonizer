@@ -1,23 +1,23 @@
-# @noocodex/dagonizer-embedder-mistral
+# @studnicky/dagonizer-embedder-mistral
 
 > **Beta:** not yet published to npm. Ships as part of the Dagonizer
 > plugin ecosystem (GitHub release only). Live-API smoke testing
 > against the provider has not been completed; wire-format
 > compatibility is verified via intercepted-fetch smoke tests.
 
-Mistral la Plateforme embedder for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer).
+Mistral la Plateforme embedder for [@studnicky/dagonizer](https://npmjs.com/package/@studnicky/dagonizer).
 Targets `mistral-embed` (1024 dimensions) by default.
 
 ## Install
 
 ```bash
-npm install @noocodex/dagonizer @noocodex/dagonizer-embedder-mistral
+npm install @studnicky/dagonizer @studnicky/dagonizer-embedder-mistral
 ```
 
 ## Usage
 
 ```ts
-import { MistralEmbedder } from '@noocodex/dagonizer-embedder-mistral';
+import { MistralEmbedder } from '@studnicky/dagonizer-embedder-mistral';
 
 const embedder = new MistralEmbedder(process.env.MISTRAL_API_KEY!);
 const vector = await embedder.embed('the cat sat on the mat');

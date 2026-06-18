@@ -16,8 +16,8 @@ import { normalizeNdjson } from '../nodes/ingest/normalizeNdjson.ts';
 import type { CartographerState }    from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 
-import type { DAG, DispatcherBundle } from '@noocodex/dagonizer';
-import { DAGBuilder } from '@noocodex/dagonizer';
+import type { DAG, DispatcherBundle } from '@studnicky/dagonizer';
+import { DAGBuilder } from '@studnicky/dagonizer';
 
 export const normalizeNdjsonDAG: DAG = new DAGBuilder('normalize-ndjson', '1.0')
 

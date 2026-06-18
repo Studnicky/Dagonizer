@@ -10,7 +10,7 @@ seeAlso:
 
 # Runtime
 
-`@noocodex/dagonizer/runtime`
+`@studnicky/dagonizer/runtime`
 
 Runtime utilities: monotonic clock, scheduler, retry policy, signal composition, and state accessor. All clock and scheduler primitives are swappable via their provider contracts for deterministic tests.
 
@@ -23,14 +23,14 @@ import {
   RetryPolicy,
   Scheduler,
   SignalComposer,
-} from '@noocodex/dagonizer/runtime';
+} from '@studnicky/dagonizer/runtime';
 import type {
   ClockProvider,
   ErrorConstructorType,
   RetryPolicyOptionsInterface,
   SchedulerProvider,
   StateAccessor,
-} from '@noocodex/dagonizer/runtime';
+} from '@studnicky/dagonizer/runtime';
 ```
 
 ---
@@ -42,7 +42,7 @@ Engine-owned monotonic clock. Static class; never instantiated.
 ### `Clock.monotonicMs()`
 
 ```ts twoslash
-import { Clock } from '@noocodex/dagonizer/runtime';
+import { Clock } from '@studnicky/dagonizer/runtime';
 // ---cut---
 const ms: number = Clock.monotonicMs();
 ```
@@ -52,7 +52,7 @@ Monotonic time in integer milliseconds. Derived from `performance.now()`, not wa
 ### `Clock.hrtime()`
 
 ```ts twoslash
-import { Clock } from '@noocodex/dagonizer/runtime';
+import { Clock } from '@studnicky/dagonizer/runtime';
 // ---cut---
 const t: bigint = Clock.hrtime();
 ```
@@ -62,8 +62,8 @@ Raw monotonic high-resolution time in nanoseconds. Available in both Node and br
 ### `Clock.configure(provider)`
 
 ```ts twoslash
-import { Clock } from '@noocodex/dagonizer/runtime';
-import type { ClockProvider } from '@noocodex/dagonizer/runtime';
+import { Clock } from '@studnicky/dagonizer/runtime';
+import type { ClockProvider } from '@studnicky/dagonizer/runtime';
 // ---cut---
 declare const provider: ClockProvider;
 Clock.configure(provider);
@@ -74,7 +74,7 @@ Install a custom clock provider. Use in tests with `VirtualClockProvider` to con
 ### `Clock.reset()`
 
 ```ts twoslash
-import { Clock } from '@noocodex/dagonizer/runtime';
+import { Clock } from '@studnicky/dagonizer/runtime';
 // ---cut---
 Clock.reset();
 ```
@@ -90,8 +90,8 @@ Engine-owned monotonic timer. Static class; never instantiated.
 ### `Scheduler.current()`
 
 ```ts twoslash
-import { Scheduler } from '@noocodex/dagonizer/runtime';
-import type { SchedulerProvider } from '@noocodex/dagonizer/runtime';
+import { Scheduler } from '@studnicky/dagonizer/runtime';
+import type { SchedulerProvider } from '@studnicky/dagonizer/runtime';
 // ---cut---
 const provider: SchedulerProvider = Scheduler.current();
 ```
@@ -101,8 +101,8 @@ Returns the active scheduler. `RetryPolicy` calls `Scheduler.current().after(ms,
 ### `Scheduler.configure(provider)`
 
 ```ts twoslash
-import { Scheduler } from '@noocodex/dagonizer/runtime';
-import type { SchedulerProvider } from '@noocodex/dagonizer/runtime';
+import { Scheduler } from '@studnicky/dagonizer/runtime';
+import type { SchedulerProvider } from '@studnicky/dagonizer/runtime';
 // ---cut---
 declare const provider: SchedulerProvider;
 Scheduler.configure(provider);
@@ -113,7 +113,7 @@ Install a custom scheduler. Use `VirtualScheduler` in tests to advance time with
 ### `Scheduler.reset()`
 
 ```ts twoslash
-import { Scheduler } from '@noocodex/dagonizer/runtime';
+import { Scheduler } from '@studnicky/dagonizer/runtime';
 // ---cut---
 Scheduler.reset();
 ```
@@ -131,10 +131,10 @@ Default `SchedulerProvider`. Wraps `setTimeout` and `setInterval`. Do not instan
 ## Class: `RetryPolicy`
 
 ```ts twoslash
-import { RetryPolicy, BackoffStrategy } from '@noocodex/dagonizer/runtime';
+import { RetryPolicy, BackoffStrategy } from '@studnicky/dagonizer/runtime';
 ```
 
-Also re-exported from `@noocodex/dagonizer` root.
+Also re-exported from `@studnicky/dagonizer` root.
 
 ```ts
 <<< @/../examples/dags/07-retry.ts#policy-config
@@ -145,7 +145,7 @@ See [Retry](/guide/retry) for detailed usage.
 ### `RetryPolicy.run(task, options?)`
 
 ```ts twoslash
-import { RetryPolicy, BackoffStrategy } from '@noocodex/dagonizer/runtime';
+import { RetryPolicy, BackoffStrategy } from '@studnicky/dagonizer/runtime';
 // ---cut---
 const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategy.EXPONENTIAL });
 const result = await policy.run(async (attempt: number) => {
@@ -159,7 +159,7 @@ Runs `task` under the configured policy. Resolves with the function's return val
 ### `RetryPolicy.getDelay(attempt, error?)`
 
 ```ts twoslash
-import { RetryPolicy, BackoffStrategy } from '@noocodex/dagonizer/runtime';
+import { RetryPolicy, BackoffStrategy } from '@studnicky/dagonizer/runtime';
 // ---cut---
 const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategy.CONSTANT });
 const delay: number = policy.getDelay(1);
@@ -170,7 +170,7 @@ Compute the backoff delay (ms) for a 1-based attempt number. Override in subclas
 ### `RetryPolicy.shouldRetry(error, attempt)`
 
 ```ts twoslash
-import { RetryPolicy, BackoffStrategy } from '@noocodex/dagonizer/runtime';
+import { RetryPolicy, BackoffStrategy } from '@studnicky/dagonizer/runtime';
 // ---cut---
 const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategy.CONSTANT });
 const shouldRetry: boolean = policy.shouldRetry(new Error('oops'), 1);
@@ -204,8 +204,8 @@ Fold `signal` and `deadlineMs` from `ExecuteOptionsInterface` into a single `Abo
 ### `SignalComposer.compose(options)`
 
 ```ts twoslash
-import { SignalComposer } from '@noocodex/dagonizer/runtime';
-import type { ExecuteOptionsInterface } from '@noocodex/dagonizer/contracts';
+import { SignalComposer } from '@studnicky/dagonizer/runtime';
+import type { ExecuteOptionsInterface } from '@studnicky/dagonizer/contracts';
 // ---cut---
 declare const ctrl: AbortController;
 declare const url: string;
@@ -228,8 +228,8 @@ if (signal !== null) {
 Default `StateAccessor`. Walks `path.split('.')` to read and write nested fields on a state object. Creates intermediate plain objects on write when they are absent. Treats `null` and `undefined` segments on read as misses (returns `undefined`).
 
 ```ts twoslash
-import { DottedPathAccessor } from '@noocodex/dagonizer/runtime';
-import type { StateAccessor } from '@noocodex/dagonizer/runtime';
+import { DottedPathAccessor } from '@studnicky/dagonizer/runtime';
+import type { StateAccessor } from '@studnicky/dagonizer/runtime';
 // ---cut---
 const accessor: StateAccessor = new DottedPathAccessor();
 ```

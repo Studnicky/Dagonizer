@@ -23,7 +23,7 @@ import { TypedPayloadDecoder } from '../services.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region decode-payload-node
 export class DecodePayloadNode extends ScalarNode<CartographerState, 'decoded' | 'invalid', CartographerServices> {

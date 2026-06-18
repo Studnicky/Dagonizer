@@ -10,7 +10,7 @@
  *   new URL('./forkEntry.js', import.meta.url)
  */
 
-import { DagHost } from '@noocodex/dagonizer/container';
+import { DagHost } from '@studnicky/dagonizer/container';
 
 import { IpcChannel } from './IpcChannel.js';
 

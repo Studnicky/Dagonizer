@@ -1,6 +1,6 @@
-# @noocodex/dagonizer-executor-node
+# @studnicky/dagonizer-executor-node
 
-Node.js isolating DAG container backends for [@noocodex/dagonizer](../dagonizer/README.md).
+Node.js isolating DAG container backends for [@studnicky/dagonizer](../dagonizer/README.md).
 
 Provides `WorkerThreadContainer`, `ForkContainer`, `SpawnContainer`, and `ClusterContainer` — each a `DagContainerBase` subclass that runs a **whole embedded DAG** in an isolate, speaking the same BridgeMessage protocol over different transports. A single DAG document runs unchanged across all topologies; the deployment chooses the container.
 
@@ -9,8 +9,8 @@ The grain is the DAG. A contained execution runs an entire embedded child DAG to
 ## Usage
 
 ```ts
-import { WorkerThreadContainer } from '@noocodex/dagonizer-executor-node';
-import { Dagonizer } from '@noocodex/dagonizer';
+import { WorkerThreadContainer } from '@studnicky/dagonizer-executor-node';
+import { Dagonizer } from '@studnicky/dagonizer';
 
 // The registry module is a file that default-exports a RegistryModuleInterface:
 //   export default { async createBundle(servicesConfig) { return { bundle, services, registryVersion, restoreState }; } }
@@ -54,7 +54,7 @@ await container.destroy();
 `NodeSystemInfo` implements `SystemInfoInterface` using `os.availableParallelism()` with a memory-based cap:
 
 ```ts
-import { NodeSystemInfo } from '@noocodex/dagonizer-executor-node';
+import { NodeSystemInfo } from '@studnicky/dagonizer-executor-node';
 
 const info = new NodeSystemInfo();
 const count = info.recommendedWorkerCount({

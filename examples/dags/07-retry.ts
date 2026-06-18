@@ -11,9 +11,9 @@ import {
   NodeStateBase,
   RetryPolicy,
   ScalarNode,
-} from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { NodeContextInterface, RetryPolicyOptionsInterface } from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
+import type { NodeContextInterface, RetryPolicyOptionsInterface } from '@studnicky/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Simulated flaky downstream: class encapsulates mutable attempt counter

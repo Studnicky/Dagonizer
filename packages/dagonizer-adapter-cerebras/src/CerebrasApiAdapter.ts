@@ -9,8 +9,8 @@
  * retries as plain chat when the provider signals tools are unsupported.
  */
 
-import { LlmError, OpenAiCompatibleAdapter } from '@noocodex/dagonizer/adapter';
-import type { OpenAiCompatibleAdapterOptions } from '@noocodex/dagonizer/adapter';
+import { LlmError, OpenAiCompatibleAdapter } from '@studnicky/dagonizer/adapter';
+import type { OpenAiCompatibleAdapterOptions } from '@studnicky/dagonizer/adapter';
 
 export class CerebrasApiAdapter extends OpenAiCompatibleAdapter {
   constructor(apiKey: string, options: OpenAiCompatibleAdapterOptions = {}) {

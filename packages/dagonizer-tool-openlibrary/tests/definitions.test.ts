@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 
-import { CanonicalId } from '@noocodex/dagonizer-book-entities';
+import { CanonicalId } from '@studnicky/dagonizer-book-entities';
 
 import { OpenLibrarySearchTool, SubjectSearchTool } from '../src/index.js';
 void test('OpenLibrarySearchTool definition is well-formed', () => {

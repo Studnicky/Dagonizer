@@ -14,7 +14,7 @@ import { ColdChain } from '../services.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region cold-chain-check-node
 export class ColdChainCheckNode extends ScalarNode<CartographerState, 'checked', CartographerServices> {

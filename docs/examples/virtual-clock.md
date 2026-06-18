@@ -1,6 +1,6 @@
 ---
 title: 'Example: Virtual clock (deterministic retry timing)'
-description: 'VirtualClockProvider and VirtualScheduler from @noocodex/dagonizer/testing replace the real wall-clock so retry backoff intervals are driven by programmatic scheduler.advance(ms) calls. Zero elapsed wall-clock time.'
+description: 'VirtualClockProvider and VirtualScheduler from @studnicky/dagonizer/testing replace the real wall-clock so retry backoff intervals are driven by programmatic scheduler.advance(ms) calls. Zero elapsed wall-clock time.'
 seeAlso:
   - text: 'Example 22: Backoff strategies'
     link: './22-backoff-strategies'
@@ -18,7 +18,7 @@ seeAlso:
 
 # Example: Virtual clock (deterministic retry timing)
 
-`VirtualClockProvider` and `VirtualScheduler` from `@noocodex/dagonizer/testing` replace the real wall-clock. Retry backoff intervals are driven by programmatic `scheduler.advance(ms)` calls rather than actual waits, making retry behavior testable in zero elapsed wall-clock time.
+`VirtualClockProvider` and `VirtualScheduler` from `@studnicky/dagonizer/testing` replace the real wall-clock. Retry backoff intervals are driven by programmatic `scheduler.advance(ms)` calls rather than actual waits, making retry behavior testable in zero elapsed wall-clock time.
 
 The example uses a flaky operation that fails on the first two attempts and succeeds on the third. Exponential backoff delays are 100ms → 200ms (300ms total virtual time). Both `ClockProvider` and `Scheduler` are restored to real time after the demonstration.
 

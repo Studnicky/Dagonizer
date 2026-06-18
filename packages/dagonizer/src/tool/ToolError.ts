@@ -4,7 +4,7 @@
  * Tools throw `ToolError` so the dispatcher can route to the
  * appropriate output port without losing the failure classification.
  * The `reason` field mirrors the LLM-side classification taxonomy in
- * `@noocodex/dagonizer/adapter`'s `LlmError` so downstream observability
+ * `@studnicky/dagonizer/adapter`'s `LlmError` so downstream observability
  * sees a consistent vocabulary regardless of whether the failure was
  * model-side or tool-side.
  */

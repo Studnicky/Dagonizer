@@ -23,8 +23,8 @@
  *   SPARQL ASK gate can rely on the store as ground truth.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
-import type { NodeContextInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
+import type { NodeContextInterface } from '@studnicky/dagonizer';
 
 import { GRAPH_MEMORY, MemoryStore } from '../memory/MemoryStore.ts';
 import { PROV, ProvIris } from '../provenance/PROV.ts';

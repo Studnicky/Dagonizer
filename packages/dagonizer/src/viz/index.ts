@@ -1,5 +1,5 @@
 /**
- * `@noocodex/dagonizer/viz`: DAG visualization helpers.
+ * `@studnicky/dagonizer/viz`: DAG visualization helpers.
  *
  *   - `MermaidRenderer.render(dag)`: Mermaid `flowchart` source for
  *     embedding in Markdown or feeding to a Mermaid renderer.

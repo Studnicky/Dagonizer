@@ -28,7 +28,7 @@ import {
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region canonicalize-core-node
 export class CanonicalizeCoreNode extends ScalarNode<CartographerState, 'normalized' | 'rejected', CartographerServices> {

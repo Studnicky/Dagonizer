@@ -10,8 +10,8 @@
  * so we never echo back the question the visitor just asked.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
-import type { NodeContextInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
+import type { NodeContextInterface } from '@studnicky/dagonizer';
 
 import { MemoryStore, STATE_GRAPH_PREFIX } from '../memory/MemoryStore.ts';
 import type { ArchivistState } from '../ArchivistState.ts';

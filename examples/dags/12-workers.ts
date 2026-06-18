@@ -22,10 +22,10 @@ import {
   NodeOutputBuilder,
   NodeStateBase,
   ScalarNode,
-} from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
-import { GatherStrategyName } from '@noocodex/dagonizer/constants';
+} from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
+import type { JsonObject } from '@studnicky/dagonizer/entities';
+import { GatherStrategyName } from '@studnicky/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
 // State

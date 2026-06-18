@@ -16,8 +16,8 @@ seeAlso:
 ## Class: `Execution<TState>`
 
 ```ts twoslash
-import { Execution } from '@noocodex/dagonizer';
-import type { NodeStateInterface } from '@noocodex/dagonizer';
+import { Execution } from '@studnicky/dagonizer';
+import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
 declare const _: Execution<NodeStateInterface>;
 export {};
@@ -32,8 +32,8 @@ Not instantiated directly; returned by the dispatcher.
 Iterate stage results as they complete:
 
 ```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-import type { NodeResultInterface } from '@noocodex/dagonizer';
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
+import type { NodeResultInterface } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 declare const dispatcher: Dagonizer<MyState>;
@@ -67,8 +67,8 @@ Phase placements (`PhaseNode`) run out of band and do not yield through the iter
 `Execution` implements `PromiseLike`. Await it for the final `ExecutionResultInterface<TState>`:
 
 ```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-import type { ExecutionResultInterface } from '@noocodex/dagonizer';
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
+import type { ExecutionResultInterface } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 declare const dispatcher: Dagonizer<MyState>;
@@ -93,8 +93,8 @@ If the iterator has already been consumed, the cached result is returned; the ge
 `InterruptionInfo`:
 
 ```ts twoslash
-import type { ExecutionResultInterface } from '@noocodex/dagonizer';
-import type { NodeStateInterface } from '@noocodex/dagonizer';
+import type { ExecutionResultInterface } from '@studnicky/dagonizer';
+import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
 declare const result: ExecutionResultInterface<NodeStateInterface>;
 const interrupted = result.interruptedAt;
@@ -113,7 +113,7 @@ Populated when the flow exited via signal abort or per-run / per-node timeout. `
 **One-shot await:**
 
 ```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 declare const dispatcher: Dagonizer<MyState>;
@@ -128,7 +128,7 @@ if (result.cursor !== null) {
 **Streaming with early exit:**
 
 ```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 declare const dispatcher: Dagonizer<MyState>;
@@ -148,7 +148,7 @@ const result = await execution; // result.cursor holds where we stopped
 **Consuming both modes:**
 
 ```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+import { Dagonizer, NodeStateBase } from '@studnicky/dagonizer';
 class MyState extends NodeStateBase {}
 // ---cut---
 declare const dispatcher: Dagonizer<MyState>;

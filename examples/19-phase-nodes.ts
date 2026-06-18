@@ -23,7 +23,7 @@
  * Run: npx tsx examples/19-phase-nodes.ts
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
 import { PhaseState, PreSetupNode, ComputeNode, PostAuditNode, dag } from './dags/19-phase-nodes.js';
 
 // ---------------------------------------------------------------------------

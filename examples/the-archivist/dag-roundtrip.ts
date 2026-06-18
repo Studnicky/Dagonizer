@@ -7,8 +7,8 @@
  */
 
 // #region dag-roundtrip
-import { DAGDocument } from '@noocodex/dagonizer/entities';
-import { Validator } from '@noocodex/dagonizer/validation';
+import { DAGDocument } from '@studnicky/dagonizer/entities';
+import { Validator } from '@studnicky/dagonizer/validation';
 
 import { archivistDAG } from './dag.ts';
 

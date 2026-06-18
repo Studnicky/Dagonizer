@@ -30,9 +30,9 @@
  * unauthenticated in the same way as the local daemon.
  */
 
-import { BaseEmbedder, Classifications, LlmError } from '@noocodex/dagonizer/adapter';
-import type { BaseAdapterCoreOptions } from '@noocodex/dagonizer/adapter';
-import type { AbortableOptionsInterface } from '@noocodex/dagonizer/contracts';
+import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
+import type { BaseAdapterCoreOptions } from '@studnicky/dagonizer/adapter';
+import type { AbortableOptionsInterface } from '@studnicky/dagonizer/contracts';
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:11434';
 const DEFAULT_MODEL = 'nomic-embed-text';

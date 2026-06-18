@@ -15,9 +15,9 @@
  * Run: npx tsx examples/07-retry.ts
  */
 
-import { BackoffStrategy, RetryPolicy, Scheduler } from '@noocodex/dagonizer';
-import { Clock, Dagonizer } from '@noocodex/dagonizer';
-import { VirtualClockProvider, VirtualScheduler } from '@noocodex/dagonizer/testing';
+import { BackoffStrategy, RetryPolicy, Scheduler } from '@studnicky/dagonizer';
+import { Clock, Dagonizer } from '@studnicky/dagonizer';
+import { VirtualClockProvider, VirtualScheduler } from '@studnicky/dagonizer/testing';
 import { FetchState, FetchNode, FlakyDownstream, TransientError, dag } from './dags/07-retry.js';
 
 // ---------------------------------------------------------------------------

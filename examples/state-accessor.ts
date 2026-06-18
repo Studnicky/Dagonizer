@@ -17,8 +17,8 @@
  * Run: npx tsx examples/state-accessor.ts
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
-import { DottedPathAccessor } from '@noocodex/dagonizer/runtime';
+import { Dagonizer } from '@studnicky/dagonizer';
+import { DottedPathAccessor } from '@studnicky/dagonizer/runtime';
 import { ArchiveState, PrefixAccessor } from './dags/state-accessor.js';
 
 process.stdout.write('\n=== StateAccessor: DottedPathAccessor + PrefixAccessor ===\n\n');
@@ -69,10 +69,10 @@ import {
   GatherStrategies,
   GatherStrategy,
   Batch,
-} from '@noocodex/dagonizer';
-import type { GatherRecord, NodeStateInterface } from '@noocodex/dagonizer';
-import type { GatherConfig } from '@noocodex/dagonizer/entities';
-import type { StateAccessor } from '@noocodex/dagonizer/contracts';
+} from '@studnicky/dagonizer';
+import type { GatherRecord, NodeStateInterface } from '@studnicky/dagonizer';
+import type { GatherConfig } from '@studnicky/dagonizer/entities';
+import type { StateAccessor } from '@studnicky/dagonizer/contracts';
 
 class AverageGather extends GatherStrategy {
   readonly name = 'average';

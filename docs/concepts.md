@@ -214,7 +214,7 @@ Resume is a new execution. `dispatcher.resume(dagName, state, cursor)` starts a 
 
 `Checkpoint.capture(dagName, result)` builds a `Checkpoint` instance from an execution result. It throws if `result.cursor` is `null`.
 
-`Checkpoint.load(raw).restoreState(CheckpointRestoreAdapterFn.fromFn(factory))` validates the persisted data against `CheckpointDataSchema` and rehydrates a state instance via the factory. `CheckpointRestoreAdapterFn` ships from `@noocodex/dagonizer/checkpoint`.
+`Checkpoint.load(raw).restoreState(CheckpointRestoreAdapterFn.fromFn(factory))` validates the persisted data against `CheckpointDataSchema` and rehydrates a state instance via the factory. `CheckpointRestoreAdapterFn` ships from `@studnicky/dagonizer/checkpoint`.
 
 The package does not provide a persistence backend. Serialize the checkpoint as JSON (`ckpt.toJson()`) and store it wherever your infrastructure requires.
 

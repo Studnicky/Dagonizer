@@ -21,7 +21,7 @@ import type { SourcePayload } from '../../entities/SourcePayload.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region route-format-node
 const FORMAT_ROUTE: Readonly<Record<SourcePayload['format'], 'csv' | 'json' | 'ndjson' | 'yaml'>> = {

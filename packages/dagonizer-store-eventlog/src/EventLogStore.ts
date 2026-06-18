@@ -19,10 +19,10 @@
 
 import { open, type FileHandle } from 'node:fs/promises';
 
-import type { StoreSnapshotEntry } from '@noocodex/dagonizer/contracts';
-import type { JsonValue } from '@noocodex/dagonizer/entities';
-import { BASE_STORE_DEFAULTS, BaseStore, StoreError, type BaseStoreOptions } from '@noocodex/dagonizer/store';
-import type { EntityValidator } from '@noocodex/dagonizer/validation';
+import type { StoreSnapshotEntry } from '@studnicky/dagonizer/contracts';
+import type { JsonValue } from '@studnicky/dagonizer/entities';
+import { BASE_STORE_DEFAULTS, BaseStore, StoreError, type BaseStoreOptions } from '@studnicky/dagonizer/store';
+import type { EntityValidator } from '@studnicky/dagonizer/validation';
 
 // ── Schema ────────────────────────────────────────────────────────────────────
 

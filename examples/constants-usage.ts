@@ -1,6 +1,6 @@
 /**
  * constants-usage: demonstrates every typed constant from
- * @noocodex/dagonizer/constants as runtime guards.
+ * @studnicky/dagonizer/constants as runtime guards.
  *
  * Each constant in the package is both a frozen runtime lookup object and a
  * FromSchema-derived TypeScript type of the same name. This example calls the
@@ -17,13 +17,13 @@ import {
   NodeType,
   Output,
   ScatterOutput,
-} from '@noocodex/dagonizer/constants';
+} from '@studnicky/dagonizer/constants';
 import type { CatalogueItem } from './dags/constants-usage.js';
 import { ConstantUsage } from './dags/constants-usage.js';
 
 // ── Exercise every guard and print results ──────────────────────────────────
 
-process.stdout.write('\n=== @noocodex/dagonizer/constants typed-guard demo ===\n\n');
+process.stdout.write('\n=== @studnicky/dagonizer/constants typed-guard demo ===\n\n');
 
 // Output
 process.stdout.write('Output values:\n');

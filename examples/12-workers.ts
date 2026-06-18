@@ -31,9 +31,9 @@
  *   (or: tsc -p examples/tsconfig.workers.json && node examples/dist/12-workers.js)
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
-import { NodeSystemInfo, WorkerThreadContainer } from '@noocodex/dagonizer-executor-node';
-import { RecommendedWorkerCountConfigDefault } from '@noocodex/dagonizer/entities';
+import { Dagonizer } from '@studnicky/dagonizer';
+import { NodeSystemInfo, WorkerThreadContainer } from '@studnicky/dagonizer-executor-node';
+import { RecommendedWorkerCountConfigDefault } from '@studnicky/dagonizer/entities';
 
 import { dag, SquareWorkerNode, workerDag, WorkState } from './dags/12-workers.js';
 

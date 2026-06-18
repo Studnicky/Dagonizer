@@ -6,8 +6,8 @@
  * deterministic offline geo services bag.
  */
 
-import type { RegistryBundleInterface, RegistryModuleInterface } from '@noocodex/dagonizer/contracts';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
+import type { RegistryBundleInterface, RegistryModuleInterface } from '@studnicky/dagonizer/contracts';
+import type { JsonObject } from '@studnicky/dagonizer/entities';
 
 import { CartographerState } from '../../../../examples/the-cartographer/CartographerState.ts';
 import { eventPipelineBundle } from '../../../../examples/the-cartographer/dag.ts';

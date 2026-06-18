@@ -14,8 +14,8 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { DAG_CONTEXT } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
+import { DAG_CONTEXT } from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
 
 const dag: DAG = {
   '@context': DAG_CONTEXT,
@@ -41,14 +41,14 @@ const dag: DAG = {
 
 | Symbol | Source | Role |
 |--------|--------|------|
-| `Checkpoint.capture(dagName, result, options?)` | `@noocodex/dagonizer/checkpoint` | Async factory: turns a paused execution into a `Checkpoint` |
-| `Checkpoint.load(raw)` | `@noocodex/dagonizer/checkpoint` | Schema-validates an unknown value into a `Checkpoint` |
-| `Checkpoint.recall(store, key)` | `@noocodex/dagonizer/checkpoint` | Reads + parses + validates from a `CheckpointStore` |
+| `Checkpoint.capture(dagName, result, options?)` | `@studnicky/dagonizer/checkpoint` | Async factory: turns a paused execution into a `Checkpoint` |
+| `Checkpoint.load(raw)` | `@studnicky/dagonizer/checkpoint` | Schema-validates an unknown value into a `Checkpoint` |
+| `Checkpoint.recall(store, key)` | `@studnicky/dagonizer/checkpoint` | Reads + parses + validates from a `CheckpointStore` |
 | `ckpt.toJson()` | instance method | Serializes to a JSON string |
 | `ckpt.persist(store, key)` | instance method | Writes via a `CheckpointStore` |
 | `ckpt.restoreState(adapter)` | instance method | Rehydrates `{ dagName, state, cursor }` |
 | `ckpt.restoreStores(map)` | instance method | Restores named stores (any `Snapshottable`) from the envelope |
-| `dispatcher.resume(dagName, state, fromStage, options?)` | `@noocodex/dagonizer` | Resumes the flow at `fromStage`; `options` accepts the same `ExecuteOptionsInterface` as `execute` |
+| `dispatcher.resume(dagName, state, fromStage, options?)` | `@studnicky/dagonizer` | Resumes the flow at `fromStage`; `options` accepts the same `ExecuteOptionsInterface` as `execute` |
 
 ## DAG that drives the example
 
@@ -74,7 +74,7 @@ When a DAG stops early (cancellation, timeout, error), `result.cursor` holds the
 
 <<< @/../examples/08-checkpoint.ts#recall
 
-`Checkpoint.load(raw)` validates the unknown value against `CheckpointDataSchema` (Ajv 2020-12) before touching any fields. An invalid or stale payload throws `ValidationError`. `ckpt.restoreState(adapter)` accepts a `CheckpointRestoreAdapter<TState>`; wrap a plain factory function with `CheckpointRestoreAdapterFn.fromFn(fn)` from `@noocodex/dagonizer/checkpoint`.
+`Checkpoint.load(raw)` validates the unknown value against `CheckpointDataSchema` (Ajv 2020-12) before touching any fields. An invalid or stale payload throws `ValidationError`. `ckpt.restoreState(adapter)` accepts a `CheckpointRestoreAdapter<TState>`; wrap a plain factory function with `CheckpointRestoreAdapterFn.fromFn(fn)` from `@studnicky/dagonizer/checkpoint`.
 
 ## Resuming execution
 
@@ -119,14 +119,14 @@ A `ScatterNode` with a `source` records per-item progress on `state.metadata` so
 
 ### Reserved metadata key
 
-`SCATTER_PROGRESS_KEY` is exported from `@noocodex/dagonizer` as the string `'__dagonizer_scatter_progress__'`.
+`SCATTER_PROGRESS_KEY` is exported from `@studnicky/dagonizer` as the string `'__dagonizer_scatter_progress__'`.
 
 Consumer nodes must not write to this key. It is engine-internal and may be overwritten or cleared between batch boundaries by `executeScatter`.
 
 The stored shape is a record keyed by the scatter placement's `name`, so multiple `ScatterNode` placements in one DAG keep independent progress entries:
 
 ```ts twoslash
-import type { ScatterProgress, StoredScatterProgress } from '@noocodex/dagonizer/entities';
+import type { ScatterProgress, StoredScatterProgress } from '@studnicky/dagonizer/entities';
 // ---cut---
 // ScatterProgress is a discriminated union on `mode`.
 // `retained` mode stores full per-item results; `bounded` stores a watermark.

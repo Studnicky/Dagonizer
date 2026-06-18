@@ -17,7 +17,7 @@ import { FieldMappings } from '../../services.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region normalize-csv-node
 export class NormalizeCsvNode extends ScalarNode<CartographerState, 'normalized', CartographerServices> {

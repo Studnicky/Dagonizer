@@ -17,8 +17,8 @@ import {
   Checkpoint,
   Dagonizer,
   NodeStateBase,
-} from '@noocodex/dagonizer';
-import { CheckpointRestoreAdapterFn } from '@noocodex/dagonizer/checkpoint';
+} from '@studnicky/dagonizer';
+import { CheckpointRestoreAdapterFn } from '@studnicky/dagonizer/checkpoint';
 import {
   MemoryStore,
   StepANode,

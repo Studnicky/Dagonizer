@@ -1,10 +1,16 @@
-# @noocodex/dagonizer-tool-openlibrary
+# @studnicky/dagonizer-tool-openlibrary
+
+## 0.21.0
+
+### Patch Changes
+
+- @studnicky/dagonizer-book-entities@0.21.0
 
 ## 0.20.0
 
 ### Patch Changes
 
-- @noocodex/dagonizer-book-entities@0.20.0
+- @studnicky/dagonizer-book-entities@0.20.0
 
 ## [unreleased]
 
@@ -13,8 +19,8 @@
 - `OpenLibrarySearchTool` and `SubjectSearchTool` both narrow the API response via `narrowOpenLibraryResponse` (typed guard in `openLibraryTypes.ts`) at the `HttpTransport.getJson` boundary; throws `ToolError('PARSE_ERROR')` on shape mismatch.
 - `OpenLibrarySearchTool.inputSchema` drops the empty `'required': []` array (no-op; absence is equivalent under JSON Schema).
 - `SubjectSearchTool` removes `// #region` / `// #endregion` fold markers (no other tool uses them).
-- Convenience re-exports of `Book`, `Candidate`, `Money`, `CanonicalId` removed from the package barrel. Consumers import these directly from `@noocodex/dagonizer-book-entities`.
-- `@noocodex/dagonizer-book-entities` promoted from `peerDependencies` to `dependencies`.
+- Convenience re-exports of `Book`, `Candidate`, `Money`, `CanonicalId` removed from the package barrel. Consumers import these directly from `@studnicky/dagonizer-book-entities`.
+- `@studnicky/dagonizer-book-entities` promoted from `peerDependencies` to `dependencies`.
 
 ## 0.19.0
 
@@ -37,16 +43,16 @@
 ### Patch Changes
 
 - Updated dependencies [d3a4e7b]
-  - @noocodex/dagonizer@0.14.0
-  - @noocodex/dagonizer-book-entities@0.14.0
+  - @studnicky/dagonizer@0.14.0
+  - @studnicky/dagonizer-book-entities@0.14.0
 
 ## 0.13.2
 
 ### Patch Changes
 
 - Updated dependencies [238a94d]
-  - @noocodex/dagonizer@0.13.2
-  - @noocodex/dagonizer-book-entities@0.13.2
+  - @studnicky/dagonizer@0.13.2
+  - @studnicky/dagonizer-book-entities@0.13.2
 
 ## 0.12.0
 
@@ -54,4 +60,4 @@
 
 - Updated dependencies [7c0e38a]
 - Updated dependencies [3286d07]
-  - @noocodex/dagonizer@0.12.0
+  - @studnicky/dagonizer@0.12.0

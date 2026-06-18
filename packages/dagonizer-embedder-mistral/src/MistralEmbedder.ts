@@ -20,9 +20,9 @@
  * shape `MistralApiAdapter` ships.
  */
 
-import { BaseEmbedder, Classifications, LlmError } from '@noocodex/dagonizer/adapter';
-import type { BaseAdapterCoreOptions } from '@noocodex/dagonizer/adapter';
-import type { AbortableOptionsInterface } from '@noocodex/dagonizer/contracts';
+import { BaseEmbedder, Classifications, LlmError } from '@studnicky/dagonizer/adapter';
+import type { BaseAdapterCoreOptions } from '@studnicky/dagonizer/adapter';
+import type { AbortableOptionsInterface } from '@studnicky/dagonizer/contracts';
 
 const DEFAULT_MODEL = 'mistral-embed';
 const DEFAULT_DIMENSIONS = 1024;

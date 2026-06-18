@@ -18,11 +18,11 @@ seeAlso:
 
 | Symbol | Source | Role |
 |--------|--------|------|
-| `PhaseNode` | `@noocodex/dagonizer/entities` | JSON Schema-derived placement type |
-| `PhaseNodeSchema` | `@noocodex/dagonizer/entities` | The JSON Schema |
-| `DAGBuilder.phase(name, phase, nodeRef)` | `@noocodex/dagonizer/builder` | Fluent registration |
-| `Dagonizer.onPhaseEnter` | `@noocodex/dagonizer` | Protected hook — fires before each phase placement |
-| `Dagonizer.onPhaseExit` | `@noocodex/dagonizer` | Protected hook — fires after each phase placement |
+| `PhaseNode` | `@studnicky/dagonizer/entities` | JSON Schema-derived placement type |
+| `PhaseNodeSchema` | `@studnicky/dagonizer/entities` | The JSON Schema |
+| `DAGBuilder.phase(name, phase, nodeRef)` | `@studnicky/dagonizer/builder` | Fluent registration |
+| `Dagonizer.onPhaseEnter` | `@studnicky/dagonizer` | Protected hook — fires before each phase placement |
+| `Dagonizer.onPhaseExit` | `@studnicky/dagonizer` | Protected hook — fires after each phase placement |
 
 ## Two arms
 
