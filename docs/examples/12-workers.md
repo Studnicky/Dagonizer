@@ -26,22 +26,7 @@ This example runs a scatter-dag-body placement over a real `WorkerThreadContaine
 
 DAG authoring does not change between the in-process and worker-thread paths. The only difference is the `container` key on the scatter placement and the `containers` option on the dispatcher:
 
-```ts twoslash
-import type { ScatterNode } from '@noocodex/dagonizer/entities';
-// ---cut---
-// DAG document fragment — identical in both paths.
-// Adding 'container: "cpu"' activates the worker path for each clone.
-const placement = {
-  '@id':   'urn:noocodex:dag:pipeline/node/process-items',
-  '@type': 'ScatterNode',
-  name:    'process-items',
-  source:  'items',
-  body:    { dag: 'item-pipeline' },
-  container: 'cpu',   // logical role; bound to WorkerThreadContainer at dispatch time
-  gather:  { strategy: 'append' },
-  outputs: { success: 'save', error: 'end-fail' },
-} satisfies ScatterNode;
-```
+<<< @/../examples/dags/12-workers.ts#parent-dag
 
 The dispatcher resolves `"cpu"` to the bound backend. If `"cpu"` is not bound, the scatter runs in-process and fires `contractWarning`. The scatter inbox / work-queue, gather strategies, and outcome reducer are identical in both cases.
 
@@ -49,36 +34,7 @@ The dispatcher resolves `"cpu"` to the bound backend. If `"cpu"` is not bound, t
 
 Worker threads load a separate Node.js module — the main process's in-memory registry is not accessible across thread boundaries. The registry module exports a `RegistryModuleInterface` default that reconstructs the bundle and services inside the worker from an opaque `servicesConfig` JSON object:
 
-```ts twoslash
-// myBundle / AppState / buildServices come from this project's own modules:
-//   import { myBundle } from './bundle.js';
-//   import { AppState } from './state.js';
-//   import { buildServices } from './services.js';
-declare const myBundle: import('@noocodex/dagonizer/contracts').RegistryBundleInterface['bundle'];
-declare const AppState: { restore: import('@noocodex/dagonizer/contracts').RegistryBundleInterface['restoreState'] };
-declare const buildServices: (c: import('@noocodex/dagonizer/entities').JsonObject) => unknown;
-// ---cut---
-// registry.ts — loaded by DagHost inside the worker via dynamic import
-import type {
-  RegistryModuleInterface,
-  RegistryBundleInterface,
-} from '@noocodex/dagonizer/contracts';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
-
-const registry: RegistryModuleInterface = {
-  async createBundle(servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
-    const services = buildServices(servicesConfig);
-    return {
-      bundle: myBundle,
-      services,
-      registryVersion: '1.0.0',
-      restoreState: AppState.restore,
-    };
-  },
-};
-
-export default registry;
-```
+<<< @/../examples/dags/12-workers.registry.ts#registry
 
 **Why a built JS file is required.** Node.js `worker_threads` loads worker scripts from a file URL; TypeScript source files are not directly executable inside a worker. The registry module must be a compiled `.js` file at a path the worker can `import()`. The example's build step compiles `registry.ts` before running. Pass the compiled URL as `registryModule` to `WorkerThreadContainer`.
 

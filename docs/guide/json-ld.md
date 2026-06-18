@@ -63,24 +63,11 @@ Six placement classes plus the document class:
 
 `DAGDocument.serialize(dag)` produces pretty-printed JSON (2-space indent):
 
-```ts twoslash
-import { DAGDocument, DAGBuilder } from '@noocodex/dagonizer';
-import * as fs from 'node:fs/promises';
-// ---cut---
-declare const dag: ReturnType<DAGBuilder['build']>;
-const json = DAGDocument.serialize(dag);
-await fs.writeFile('dag.json', json);
-```
+<<< @/../examples/json-ld.ts#persistence-file
 
 `DAGDocument.serializeCompact(dag)` produces single-line JSON (no whitespace) for transport over the wire:
 
-```ts twoslash
-import { DAGDocument, DAGBuilder } from '@noocodex/dagonizer';
-// ---cut---
-declare const dag: ReturnType<DAGBuilder['build']>;
-const compact = DAGDocument.serializeCompact(dag);
-// → '{"@context":...,"@id":"...","@type":"DAG",...}'
-```
+<<< @/../examples/json-ld.ts#serialize-compact
 
 The serializer is a thin wrapper over `JSON.stringify`. There is no transformation step. The object IS the wire shape.
 
@@ -101,36 +88,7 @@ For callers that have already decoded their input (a database row that returned 
 
 ## Round-trip
 
-```ts twoslash
-import { DAGDocument, DAGBuilder, ScalarNode, NodeOutputBuilder } from '@noocodex/dagonizer';
-import type { NodeStateInterface, NodeOutputInterface } from '@noocodex/dagonizer';
-
-class TransformNode extends ScalarNode<NodeStateInterface, 'success'> {
-  readonly name = 'transform';
-  readonly outputs = ['success'] as const;
-  protected override async executeOne(_state: NodeStateInterface): Promise<NodeOutputInterface<'success'>> {
-    return NodeOutputBuilder.of('success');
-  }
-}
-const transformNode = new TransformNode();
-// ---cut---
-
-// Author the DAG via the builder
-const original = new DAGBuilder('demo', '1')
-  .node('transform', transformNode, { success: 'end' })
-  .terminal('end')
-  .build();
-
-// Serialize → JSON string
-const json = DAGDocument.serialize(original);
-
-// Load → DAG (validated)
-const reloaded = DAGDocument.load(json);
-
-// Identical structure, fully typed
-console.log(reloaded['@type']);            // 'DAG'
-console.log(reloaded.nodes[0]?.['@type']); // 'SingleNode'
-```
+<<< @/../examples/json-ld.ts#round-trip
 
 The round-trip preserves identity. `DAGDocument.load(DAGDocument.serialize(dag))` produces a value structurally equal to `dag`.
 
@@ -148,37 +106,17 @@ Each placement type carries a distinct `@type` that drives the runtime dispatch:
 
 ## Persistence patterns
 
-The serializer and loader have no opinion about storage. Common patterns:
+The serializer and loader have no opinion about storage. File on disk:
 
-```ts twoslash
-import { DAGDocument, DAGBuilder } from '@noocodex/dagonizer';
-import * as fs from 'node:fs/promises';
-// ---cut---
-declare const dag: ReturnType<DAGBuilder['build']>;
-declare const db: {
-  dags: {
-    insert(row: { id: string; body: string }): Promise<void>;
-    findById(id: string): Promise<{ body: string }>;
-  };
-};
+<<< @/../examples/json-ld.ts#persistence-file
 
-// File on disk
-await fs.writeFile('dag.json', DAGDocument.serialize(dag));
-const loaded = DAGDocument.load(await fs.readFile('dag.json', 'utf8'));
+Database column (text or JSON body):
 
-// Database column (text or JSON)
-await db.dags.insert({ id: dag['@id'], body: DAGDocument.serialize(dag) });
-const row = await db.dags.findById('urn:noocodex:dag:demo');
-const loadedFromDb = DAGDocument.load(row.body);
+<<< @/../examples/json-ld.ts#persistence-db
 
-// HTTP API
-const compact = DAGDocument.serializeCompact(dag);
-// return new Response(compact, { headers: { 'content-type': 'application/ld+json' } });
+For HTTP transport, use `serializeCompact` and the `application/ld+json` content-type. For already-parsed values (Postgres `jsonb`, decoded message envelope), use `DAGDocument.fromValue`:
 
-// Already-parsed JSON (a Postgres jsonb column, for example)
-declare const rawValue: unknown;
-const dagFromValue = DAGDocument.fromValue(rawValue);  // rawValue is `unknown`
-```
+<<< @/../examples/json-ld.ts#from-value-round-trip
 
 The MIME type `application/ld+json` is the canonical content-type for JSON-LD over HTTP. Dagonizer DAGs satisfy that contract.
 

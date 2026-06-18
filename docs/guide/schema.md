@@ -28,20 +28,7 @@ nextSteps:
 
 The single permitted entry point for raw external JSON:
 
-```ts twoslash
-import { DAGDocument, Dagonizer, ValidationError } from '@noocodex/dagonizer';
-declare const rawJsonString: string;
-const dispatcher = new Dagonizer();
-// ---cut---
-try {
-  const dag = DAGDocument.load(rawJsonString);
-  dispatcher.registerDAG(dag);
-} catch (error) {
-  if (error instanceof ValidationError) {
-    console.error(error.message); // formatted Ajv errors, one per line
-  }
-}
-```
+<<< @/../examples/03-schema.ts#load-and-register
 
 `DAGDocument.load` calls `JSON.parse` then validates the result against `DAGSchema`. Both JSON syntax errors and schema violations throw `ValidationError` with a human-readable message listing every failing constraint.
 
@@ -53,12 +40,7 @@ The Phase 03 demo exercises the validation path with a deliberately broken docum
 
 Validate an already-parsed value (a YAML parser's output, for example):
 
-```ts twoslash
-import { DAGDocument } from '@noocodex/dagonizer';
-declare const yamlParsedObject: unknown;
-// ---cut---
-const dag = DAGDocument.fromValue(yamlParsedObject);
-```
+<<< @/../examples/03-schema.ts#from-value
 
 Semantically identical to `DAGDocument.load` but skips the `JSON.parse` step.
 
@@ -66,12 +48,7 @@ Semantically identical to `DAGDocument.load` but skips the `JSON.parse` step.
 
 The schema is exported directly for callers that want to integrate with their own schema registry:
 
-```ts twoslash
-import { DAGSchema } from '@noocodex/dagonizer/entities';
-
-console.log(DAGSchema.$id);
-// 'https://noocodex.dev/schemas/dagonizer/DAG'
-```
+<<< @/../examples/03-schema.ts#schema-id
 
 The schema covers `name`, `version`, `entrypoint`, and `nodes`. Each node variant has its own sub-schema enforcing required fields and valid enumerations for `@type`, `combine`, gather `strategy`, and node-output values.
 
@@ -87,13 +64,7 @@ The schema covers `name`, `version`, `entrypoint`, and `nodes`. Each node varian
 
 The lower-level validator used by `DAGDocument.load` and `registerDAG`:
 
-```ts twoslash
-import { Validator } from '@noocodex/dagonizer/validation';
-declare const unknownValue: unknown;
-// ---cut---
-// validate returns DAG or throws ValidationError
-const dag = Validator.dag.validate(unknownValue);
-```
+<<< @/../examples/03-schema.ts#validator-validate
 
 `registerDAG` calls `Validator.dag.validate` as a pre-pass before the semantic checks (node and DAG cross-references).
 
@@ -101,15 +72,7 @@ const dag = Validator.dag.validate(unknownValue);
 
 Round-trip a validated DAG to JSON:
 
-```ts twoslash
-import { DAGDocument } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer/entities';
-declare const dag: DAG;
-// ---cut---
-const json = DAGDocument.serialize(dag);
-const roundTripped = DAGDocument.load(json);
-// JSON.stringify(roundTripped) === JSON.stringify(dag)
-```
+<<< @/../examples/03-schema.ts#serialize-roundtrip
 
 `DAGDocument.serialize` is `JSON.stringify(dag, null, 2)`. It does not re-validate; the DAG is assumed to already be valid.
 
@@ -119,18 +82,7 @@ const roundTripped = DAGDocument.load(json);
 
 `ValidationError` extends `DAGError` and is thrown for schema violations:
 
-```ts twoslash
-import { DAGDocument, ValidationError } from '@noocodex/dagonizer';
-// ---cut---
-try {
-  DAGDocument.load('{ "name": "broken" }');
-} catch (error) {
-  if (error instanceof ValidationError) {
-    console.error(error.code);    // 'VALIDATION_ERROR'
-    console.error(error.message); // multi-line Ajv failure list
-  }
-}
-```
+<<< @/../examples/03-schema.ts#validation-error
 
 Each Ajv failure is formatted as `<instancePath>: <message>` on a separate line.
 
@@ -138,25 +90,11 @@ Each Ajv failure is formatted as `<instancePath>: <message>` on a separate line.
 
 `Validator` exposes one `EntityValidator<T>` per entity schema. Each sub-validator has three methods:
 
-```ts twoslash
-import { Validator } from '@noocodex/dagonizer/validation';
-declare const x: unknown;
-// ---cut---
-Validator.dag.is(x);         // type predicate, returns boolean
-Validator.dag.validate(x);   // returns narrowed DAG or throws ValidationError
-Validator.dag.errors(x);     // returns string[] | null (null means valid)
-```
+<<< @/../examples/03-schema.ts#validator-methods
 
 Sub-validators are compiled once at module load against the shared Ajv 2020-12 instance (`allErrors: true`, `strict: false`). Every top-level entity schema in `entities/` has a corresponding sub-validator on `Validator`, including `Validator.terminalNode` for `TerminalNodeSchema`:
 
-```ts twoslash
-import { Validator } from '@noocodex/dagonizer/validation';
-declare const x: unknown;
-// ---cut---
-Validator.terminalNode.is(x);       // type predicate
-Validator.terminalNode.validate(x); // returns TerminalNode or throws ValidationError
-Validator.terminalNode.errors(x);   // returns string[] | null
-```
+<<< @/../examples/03-schema.ts#validator-terminal
 
 Re-validating a value calls the precompiled function. There is no Ajv setup cost per call.
 

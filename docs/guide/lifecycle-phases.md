@@ -62,51 +62,7 @@ A pre-phase that threw is not appended. A post-phase that threw is not appended.
 
 The fluent surface lives on `DAGBuilder`:
 
-```ts twoslash
-import { DAGBuilder, ScalarNode, NodeOutputBuilder, NodeStateBase } from '@noocodex/dagonizer';
-
-class PipelineState extends NodeStateBase {}
-
-class IngestNode extends ScalarNode<PipelineState, 'success'> {
-  readonly name = 'ingest';
-  readonly outputs = ['success'] as const;
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
-}
-class ProcessNode extends ScalarNode<PipelineState, 'success'> {
-  readonly name = 'process';
-  readonly outputs = ['success'] as const;
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
-}
-class WarmCacheNode extends ScalarNode<PipelineState, 'success'> {
-  readonly name = 'warm-cache';
-  readonly outputs = ['success'] as const;
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
-}
-class FlushLogsNode extends ScalarNode<PipelineState, 'success'> {
-  readonly name = 'flush-logs';
-  readonly outputs = ['success'] as const;
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
-}
-class CloseDbNode extends ScalarNode<PipelineState, 'success'> {
-  readonly name = 'close-db';
-  readonly outputs = ['success'] as const;
-  protected override async executeOne() { return NodeOutputBuilder.of('success' as const); }
-}
-const ingestNode = new IngestNode();
-const processNode = new ProcessNode();
-const warmCacheNode = new WarmCacheNode();
-const flushLogsNode = new FlushLogsNode();
-const closeDbNode = new CloseDbNode();
-// ---cut---
-const dag = new DAGBuilder('pipeline', '1')
-  .node('ingest', ingestNode, { success: 'process' })
-  .node('process', processNode, { success: 'end' })
-  .phase('warm-cache',  'pre',  warmCacheNode)
-  .phase('flush-logs',  'post', flushLogsNode)
-  .phase('close-db',    'post', closeDbNode)
-  .terminal('end')
-  .build();
-```
+<<< @/../examples/dags/19-phase-nodes.ts#phase-dag
 
 Phase placements are recorded in DAG declaration order. Order matters: `warm-cache` runs strictly before `ingest`; `flush-logs` runs strictly before `close-db`.
 
@@ -130,23 +86,7 @@ At `registerDAG` time the engine verifies that every `PhaseNode.node` resolves t
 
 For every phase placement the dispatcher calls the protected hooks on the `Dagonizer` subclass:
 
-```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-declare const dagName: string;
-declare const placementName: string;
-declare const placementPath: readonly string[];
-class MyState extends NodeStateBase {}
-declare const state: MyState;
-// ---cut---
-class ObservedDispatcher extends Dagonizer<MyState> {
-  protected override onPhaseEnter(d: string, phase: 'pre' | 'post', name: string, s: MyState, path: readonly string[]): void {
-    // fires before phase placement runs
-  }
-  protected override onPhaseExit(d: string, phase: 'pre' | 'post', name: string, s: MyState, path: readonly string[]): void {
-    // fires after phase placement completes
-  }
-}
-```
+<<< @/../examples/19-phase-nodes.ts#phase-observer
 
 See [Observability](./observability) for the full hook reference.
 

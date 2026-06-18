@@ -26,7 +26,8 @@ import {
   ScalarNode,
 } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
+import type { DAGHandoff, JsonObject } from '@noocodex/dagonizer/entities';
+import type { HandoffChannelInterface } from '@noocodex/dagonizer/contracts';
 
 // ---------------------------------------------------------------------------
 // Shared state: both DAGs operate on the same shape so the snapshot round-
@@ -181,3 +182,21 @@ export const dagB: DAG = {
   ],
 };
 // #endregion dag-b
+
+// ---------------------------------------------------------------------------
+// Queue channel pattern: implement HandoffChannelInterface for a real transport
+// ---------------------------------------------------------------------------
+
+// #region queue-channel-pattern
+/**
+ * Skeleton for a real queue-backed channel. Replace the comment with an SDK
+ * call (SQS, Pub/Sub, RabbitMQ, etc.). Never throw from publish; the
+ * dispatcher catches all errors.
+ */
+export class QueueChannel implements HandoffChannelInterface {
+  async publish(handoff: DAGHandoff): Promise<void> {
+    // await myQueueSdk.send(JSON.stringify(handoff));
+    void handoff;
+  }
+}
+// #endregion queue-channel-pattern

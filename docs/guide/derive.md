@@ -126,16 +126,7 @@ The example below derives a parent DAG with one embedded-DAG placement. `prepare
 
 ## OperationContract
 
-```ts twoslash
-import type { OperationContract } from '@noocodex/dagonizer/contracts';
-
-const classify: OperationContract = {
-  name: 'classify',
-  hardRequired: ['input'],
-  produces: ['classification'],
-  outputs: ['success', 'off-topic'],
-};
-```
+<<< @/../examples/dags/derive.ts#operation-contract
 
 Four fields:
 
@@ -170,76 +161,13 @@ When an operation has output ports that should terminate the flow (or route to a
 
 `target: string` routes the output port to the named existing placement. Use this to send an outcome to a placement already in the DAG rather than the auto-derived next stage.
 
-```ts twoslash
-import { NodeOutputBuilder, NodeStateBase, ScalarNode } from '@noocodex/dagonizer';
-import { DAGDeriver } from '@noocodex/dagonizer/derive';
-import type { OperationContractFragment } from '@noocodex/dagonizer/contracts';
-// ---cut---
-class ClassifyNode extends ScalarNode<NodeStateBase, 'success' | 'off-topic' | 'error'> {
-  readonly name = 'classify';
-  readonly outputs = ['success', 'off-topic', 'error'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['input'], produces: ['classification'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success'); }
-}
-class PlanNode extends ScalarNode<NodeStateBase, 'success'> {
-  readonly name = 'plan';
-  readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['classification'], produces: ['plan'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success'); }
-}
-
-const dag = DAGDeriver.derive({
-  name: 'gated',
-  version: '1.0',
-  entrypoint: 'classify',
-  nodes: [new ClassifyNode(), new PlanNode()],
-  annotations: {
-    terminals: {
-      classify: [
-        { outcome: 'off-topic', target: 'plan' }, // re-routes off-topic to the plan placement
-      ],
-    },
-  },
-});
-```
+<<< @/../examples/dags/derive.ts#terminals-target
 
 #### `emit` variant: inline TerminalNode synthesis
 
 Use `emit` to end a flow with an explicit `failed` or `completed` lifecycle outcome. The deriver materializes a [`TerminalNode`](../examples/09-terminals) placement and routes the operation's output port to it. `emit` is the way to declare terminal outcomes in the deriver; leaf nodes with no downstream successor must use `emit` to declare their exit terminal.
 
-```ts twoslash
-import { NodeOutputBuilder, NodeStateBase, ScalarNode } from '@noocodex/dagonizer';
-import { DAGDeriver } from '@noocodex/dagonizer/derive';
-import type { OperationContractFragment } from '@noocodex/dagonizer/contracts';
-// ---cut---
-class ClassifyNode extends ScalarNode<NodeStateBase, 'success' | 'fail' | 'error'> {
-  readonly name = 'classify';
-  readonly outputs = ['success', 'fail', 'error'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['input'], produces: ['classification'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success'); }
-}
-class PlanNode extends ScalarNode<NodeStateBase, 'success'> {
-  readonly name = 'plan';
-  readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['classification'], produces: ['plan'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success'); }
-}
-
-const dag = DAGDeriver.derive({
-  name: 'gated',
-  version: '1.0',
-  entrypoint: 'classify',
-  nodes: [new ClassifyNode(), new PlanNode()],
-  annotations: {
-    terminals: {
-      classify: [
-        { outcome: 'fail',  emit: { name: 'end-fail',  outcome: 'failed' } },
-        { outcome: 'error', emit: { name: 'end-error', outcome: 'failed' } },
-      ],
-    },
-  },
-});
-```
+<<< @/../examples/dags/derive.ts#terminals-emit
 
 The deriver adds two `TerminalNode` placements (`end-fail` and `end-error`) to `dag.nodes`. When the dispatcher reaches either placement it calls `state.markFailed(...)` and the run ends with `state.lifecycle.kind === 'failed'`.
 
@@ -249,16 +177,7 @@ The deriver adds two `TerminalNode` placements (`end-fail` and `end-error`) to `
 
 **Mixing variants.** Both variants can coexist on the same operation:
 
-```ts twoslash
-import type { DAGDeriverAnnotations } from '@noocodex/dagonizer/derive';
-// ---cut---
-const terminals = {
-  classify: [
-    { outcome: 'retry', target: 'classify' },                                         // target: re-route retry back to classify
-    { outcome: 'error', emit: { name: 'end-error', outcome: 'failed' } },             // emit: end the flow as failed
-  ],
-} satisfies DAGDeriverAnnotations['terminals'];
-```
+<<< @/../examples/dags/derive.ts#terminals-mix
 
 Cross-link: [Builder `.terminal()`](./builder#terminal) for the imperative equivalent; [Demo 09 Terminals](../examples/09-terminals).
 
@@ -270,94 +189,19 @@ When an operation dispatches one execution per item from a state-array source, t
 
 #### Strategy `'custom'`: registered gather node
 
-```ts twoslash
-import { NodeOutputBuilder, NodeStateBase, ScalarNode } from '@noocodex/dagonizer';
-import { DAGDeriver } from '@noocodex/dagonizer/derive';
-import type { OperationContractFragment } from '@noocodex/dagonizer/contracts';
-// ---cut---
-class PlanNode extends ScalarNode<NodeStateBase, 'success'> {
-  readonly name = 'plan';
-  readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['input'], produces: ['tasks'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success'); }
-}
-class ScoutNode extends ScalarNode<NodeStateBase, 'success'> {
-  readonly name = 'scout';
-  readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['tasks'], produces: ['scoutResults'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success'); }
-}
-class MergeNode extends ScalarNode<NodeStateBase, 'success'> {
-  readonly name = 'merge';
-  readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['scoutResults'], produces: ['merged'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success'); }
-}
-
-const dag = DAGDeriver.derive({
-  name: 'scout-flow',
-  version: '1.0',
-  entrypoint: 'plan',
-  nodes: [new PlanNode(), new ScoutNode(), new MergeNode()],
-  annotations: {
-    scatters: {
-      scout: {
-        source:      'tasks',
-        itemKey:     'currentTask',
-        node:        'scout',
-        concurrency: 3,
-        strategy:    'custom',
-        customNode:  'merge',
-        outcomes:    ['all-success', 'partial', 'all-error', 'empty'],
-      },
-    },
-  },
-});
-```
+<<< @/../examples/dags/derive.ts#scatter-custom
 
 The gather operation is registered with the dispatcher and invoked through the `custom` strategy; the dispatcher stages the per-clone records under `state.metadata.gatherResults`.
 
 #### Strategy `'partition'`: per-outcome state buckets
 
-```ts twoslash
-import type { DAGDeriverAnnotations } from '@noocodex/dagonizer/derive';
-// ---cut---
-const annotations = {
-  scatters: {
-    scout: {
-      source:     'tasks',
-      itemKey:    'currentTask',
-      node:       'scout',
-      concurrency: 0,
-      strategy:   'partition',
-      partitions: { 'success': 'state.passed', 'error': 'state.failed' },
-      outcomes:   ['success', 'error', 'empty'],
-    },
-  },
-} satisfies DAGDeriverAnnotations;
-```
+<<< @/../examples/dags/derive.ts#scatter-partition
 
 Every per-outcome item array writes to the declared state path. `partitions` keys must appear in `outcomes` (validated at derive time; out-of-band keys throw `DAGError`).
 
 #### Strategy `'append'`: single flat output
 
-```ts twoslash
-import type { DAGDeriverAnnotations } from '@noocodex/dagonizer/derive';
-// ---cut---
-const annotations = {
-  scatters: {
-    scout: {
-      source:   'tasks',
-      itemKey:  'currentTask',
-      node:     'scout',
-      concurrency: 0,
-      strategy: 'append',
-      target:   'state.allResults',
-      outcomes: ['success', 'error'],
-    },
-  },
-} satisfies DAGDeriverAnnotations;
-```
+<<< @/../examples/dags/derive.ts#scatter-append
 
 Every item result (regardless of outcome) is flattened into the array at `target`.
 
@@ -365,52 +209,7 @@ Every item result (regardless of outcome) is flattened into the array at `target
 
 When an operation delegates execution to a nested registered DAG (plugin dispatch, phase composition, runtime-resolved child flows). The contract still declares `produces ↔ hardRequired` for topology derivation; the annotation swaps the rendered placement from `SingleNode` to an `EmbeddedDAGNode`. The `stateMapping.input` seeds child-state fields from the parent before the child runs; `stateMapping.output` copies child-state fields back into the parent after the child completes.
 
-```ts twoslash
-import { NodeOutputBuilder, NodeStateBase, ScalarNode } from '@noocodex/dagonizer';
-import { DAGDeriver } from '@noocodex/dagonizer/derive';
-import type { OperationContractFragment } from '@noocodex/dagonizer/contracts';
-// ---cut---
-class FetchNode extends ScalarNode<NodeStateBase, 'success' | 'cached' | 'error'> {
-  readonly name = 'fetch';
-  readonly outputs = ['success', 'cached', 'error'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['url'], produces: ['html'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success'); }
-}
-class ParseNode extends ScalarNode<NodeStateBase, 'success' | 'error'> {
-  readonly name = 'parse';
-  readonly outputs = ['success', 'error'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['html'], produces: ['record'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success'); }
-}
-class PersistNode extends ScalarNode<NodeStateBase, 'success'> {
-  readonly name = 'persist';
-  readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['record'], produces: ['saved'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success'); }
-}
-
-const dag = DAGDeriver.derive({
-  name: 'page-pipeline',
-  version: '1.0',
-  entrypoint: 'fetch',
-  nodes: [new FetchNode(), new ParseNode(), new PersistNode()],
-  annotations: {
-    embeddedDAGs: {
-      parse: {
-        dag:     'aonprd:parse',         // registered DAG name
-        outputs: ['success', 'error'],   // ports the embedded placement routes on
-        stateMapping: {
-          input:  { html:   'parent.html' },     // input mapping: 'html' clone key ← 'parent.html' parent path
-          output: { 'parent.record': 'record' }, // map gather: 'parent.record' parent path ← 'record' clone path
-        },
-      },
-    },
-    terminals: {
-      parse: [{ outcome: 'error', emit: { name: 'parse-failed', outcome: 'failed' } }],
-    },
-  },
-});
-```
+<<< @/../examples/dags/derive.ts#embedded-dag
 
 - The child DAG name (`'aonprd:parse'`) is resolved at `registerDAG` time. The parent must register the child DAG first; the dispatcher's existing cycle check rejects self-referential embedded-DAG bodies.
 - Every port in `embeddedDAG.outputs` auto-wires to the next derived stage (same semantics as `contract.outputs`). `terminals` overrides individual ports.
@@ -422,26 +221,7 @@ const dag = DAGDeriver.derive({
 
 Supply `TChildState` to narrow `stateMapping.input` keys to names that actually exist on the child state at compile time. The wire shape emitted to the rendered `EmbeddedDAGNode` is always `Record<string, string>`; the generic is for authoring ergonomics only.
 
-```ts twoslash
-import { NodeStateBase } from '@noocodex/dagonizer';
-import type { DAGDeriverEmbeddedDAG } from '@noocodex/dagonizer/derive';
-// ---cut---
-class ParseChildState extends NodeStateBase {
-  html   = '';
-  record = '';
-}
-
-const embeddedDAGs = {
-  parse: {
-    dag:     'aonprd:parse',
-    outputs: ['success', 'error'],
-    stateMapping: {
-      input:  { html:   'parent.html' },   // 'html' must be a key of ParseChildState
-      output: { 'parent.record': 'record' }, // 'record' must be a key of ParseChildState
-    },
-  } satisfies DAGDeriverEmbeddedDAG<ParseChildState>,
-};
-```
+<<< @/../examples/dags/derive.ts#embedded-dag-typed
 
 Omitting `TChildState` (using bare `DAGDeriverEmbeddedDAG`) preserves backward compatibility; the default accepts any string on both sides of the mapping.
 
@@ -449,90 +229,13 @@ Omitting `TChildState` (using bare `DAGDeriverEmbeddedDAG`) preserves backward c
 
 Declare `hardRequired` and `produces` directly on the node via `NodeInterface.contract`. The node's own `name` and `outputs` complete the full contract surface; a single object is the one source of truth for both dispatch and topology derivation.
 
-```ts twoslash
-import { Dagonizer, NodeOutputBuilder, NodeStateBase, ScalarNode } from '@noocodex/dagonizer';
-import { DAGDeriver } from '@noocodex/dagonizer/derive';
-import type { OperationContractFragment } from '@noocodex/dagonizer/contracts';
-
-class MyState extends NodeStateBase {
-  url = '';
-  raw = '';
-}
-class PlanNode extends ScalarNode<MyState, 'success'> {
-  readonly name = 'plan';
-  readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['raw'], produces: ['plan'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success'); }
-}
-class ExecuteNode extends ScalarNode<MyState, 'success'> {
-  readonly name = 'execute';
-  readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['plan'], produces: ['done'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success'); }
-}
-const planNode = new PlanNode();
-const executeNode = new ExecuteNode();
-const dispatcher = new Dagonizer<MyState>();
-// ---cut---
-// Contract lives on the node; single source of truth
-class FetchNode extends ScalarNode<MyState, 'success' | 'cached' | 'error'> {
-  readonly name    = 'fetch';
-  readonly outputs = ['success', 'cached', 'error'] as const;
-  override readonly contract: OperationContractFragment = {
-    hardRequired: ['url'],
-    produces:     ['raw'],
-  };
-  protected override async executeOne(state: MyState) { /* ... */ return NodeOutputBuilder.of('success'); }
-}
-
-const fetchNode = new FetchNode();
-
-// Pass the node registry
-const dag = DAGDeriver.derive({
-  name: 'pipeline', version: '1.0', entrypoint: 'fetch',
-  nodes: [fetchNode, planNode, executeNode],
-});
-dispatcher.registerNode(fetchNode);
-```
+<<< @/../examples/dags/derive.ts#co-located-contracts
 
 Nodes whose `contract` carries empty arrays (`EMPTY_CONTRACT_FRAGMENT`) are silently skipped in topology derivation; the dispatcher still registers and executes them.
 
 Use `DAGDeriver.extractContracts(nodes)` to inspect the projected contracts before derivation:
 
-```ts twoslash
-import { NodeOutputBuilder, NodeStateBase, ScalarNode } from '@noocodex/dagonizer';
-import { DAGDeriver } from '@noocodex/dagonizer/derive';
-import type { OperationContractFragment } from '@noocodex/dagonizer/contracts';
-
-class MyState extends NodeStateBase {
-  url = '';
-  raw = '';
-}
-class FetchNode extends ScalarNode<MyState, 'success'> {
-  readonly name = 'fetch';
-  readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['url'], produces: ['raw'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success'); }
-}
-class PlanNode extends ScalarNode<MyState, 'success'> {
-  readonly name = 'plan';
-  readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['raw'], produces: ['plan'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success'); }
-}
-class ExecuteNode extends ScalarNode<MyState, 'success'> {
-  readonly name = 'execute';
-  readonly outputs = ['success'] as const;
-  override readonly contract: OperationContractFragment = { hardRequired: ['plan'], produces: ['done'] };
-  protected override async executeOne() { return NodeOutputBuilder.of('success'); }
-}
-const fetchNode = new FetchNode();
-const planNode = new PlanNode();
-const executeNode = new ExecuteNode();
-// ---cut---
-const contracts = DAGDeriver.extractContracts([fetchNode, planNode, executeNode]);
-// contracts is OperationContract[]; skips nodes without .contract
-```
+<<< @/../examples/dags/derive.ts#extract-contracts
 
 ## Catching contract drift
 
@@ -544,39 +247,7 @@ Three mechanisms surface drift between what nodes declare they need and what oth
 
 Most useful when nodes are typed with `as const` literal-tuple contracts:
 
-```ts twoslash
-import { NodeOutputBuilder, NodeStateBase, ScalarNode } from '@noocodex/dagonizer';
-import type { Chainable } from '@noocodex/dagonizer/contracts';
-// ---cut---
-class FetchNode extends ScalarNode<NodeStateBase, 'success'> {
-  readonly name    = 'fetch';
-  readonly outputs = ['success'] as const;
-  override readonly contract: { hardRequired: ['url']; produces: ['raw'] } = {
-    hardRequired: ['url'],
-    produces:     ['raw'],
-  };
-  protected override async executeOne() { return NodeOutputBuilder.of('success'); }
-}
-
-class ParseNode extends ScalarNode<NodeStateBase, 'success'> {
-  readonly name    = 'parse';
-  readonly outputs = ['success'] as const;
-  override readonly contract: { hardRequired: ['raw']; produces: ['record'] } = {
-    hardRequired: ['raw'],
-    produces:     ['record'],
-  };
-  protected override async executeOne() { return NodeOutputBuilder.of('success'); }
-}
-
-const fetchNode = new FetchNode();
-const parseNode = new ParseNode();
-
-// Compiles: 'raw' in fetchNode.produces satisfies parseNode.hardRequired
-type FetchThenParse = Chainable<typeof fetchNode, typeof parseNode>; // true
-
-// Would not compile: parseNode.produces is ['record'], not ['raw']
-// type BackwardChain = Chainable<typeof parseNode, typeof fetchNode>; // never
-```
+<<< @/../examples/dags/derive.ts#chainable
 
 ### Registration-time: dangling reads
 
@@ -595,17 +266,7 @@ The entrypoint node's `hardRequired` paths are treated as external initial state
 
 When a node `produces` a path that no downstream node `hardRequires`, `ContractRegistryValidator` calls `Dagonizer.onContractWarning` (a no-op by default). Subclass `Dagonizer` and override `onContractWarning` to surface these warnings:
 
-```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-
-class MyState extends NodeStateBase {}
-// ---cut---
-class ObservingDispatcher extends Dagonizer<MyState> {
-  protected override onContractWarning(message: string): void {
-    console.warn('[contract]', message);
-  }
-}
-```
+<<< @/../examples/dags/derive.ts#contract-warning
 
 Dead-write warnings are non-fatal; the DAG registers and executes normally. They indicate an operation that writes state no downstream node consumes, which may be intentional (terminal outputs, observability writes) or an authoring oversight.
 

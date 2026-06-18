@@ -58,11 +58,14 @@ function onActionClick(): void {
   <footer class="send-form">
     <div class="send-row">
       <textarea
+        id="archivist-send-input"
+        name="archivist-send-input"
         class="send-input"
         :value="query"
         :disabled="running"
         placeholder="Describe a book, ask for a recommendation, or search by title…"
         rows="2"
+        autocomplete="off"
         @input="onInput"
         @keydown="onKey"
       />

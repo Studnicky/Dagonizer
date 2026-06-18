@@ -63,126 +63,27 @@ For scatter and embedded-DAG nodes, `onNodeStart` and `onNodeEnd` fire once for 
 
 Use it to disambiguate same-named inner placements across multiple embedded-DAG instances. The full qualified id of the current node is `[...placementPath, nodeName].join('/')`.
 
-## Structured logging
+## Subclass observer
 
-```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+<<< @/../examples/18-observability.ts#subclass-observer
 
-interface Span {
-  name: string;
-  start: number;
-  end?: number;
-  output?: string;
-}
+## OpenTelemetry integration
 
-class TracingDispatcher<TState extends NodeStateBase> extends Dagonizer<TState> {
-  readonly spans: Span[] = [];
+OpenTelemetry spans map directly onto the `onFlowStart` / `onFlowEnd` and `onNodeStart` / `onNodeEnd` pairs. The pattern is identical to the subclass observer above:
 
-  protected override onNodeStart(nodeName: string, state: TState, placementPath: readonly string[]): void {
-    this.spans.push({ name: nodeName, start: Date.now() });
-  }
+- `onFlowStart` → `tracer.startSpan('flow.<dagName>')`, stash in a `Map`.
+- `onNodeStart` → `tracer.startSpan('node.<nodeName>')`, stash keyed by node name.
+- `onNodeEnd` → retrieve the span, call `span.setAttribute('output', ...)`, then `span.end()`.
+- `onError` → retrieve the span, call `span.recordException(error)` and `span.setStatus({ code: SpanStatusCode.ERROR })`.
+- `onFlowEnd` → end the flow span and clear the map.
 
-  protected override onNodeEnd(nodeName: string, output: string | null, state: TState, placementPath: readonly string[]): void {
-    const span = this.spans.find((s) => s.name === nodeName && s.end === undefined);
-    if (span) {
-      span.end = Date.now();
-      if (output !== null) span.output = output;
-    }
-  }
-}
-```
-
-## OpenTelemetry sketch
-
-```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-
-// Minimal OTel surface — replace with @opentelemetry/api in production.
-interface OtelSpan {
-  end(): void;
-  setAttribute(key: string, value: string): void;
-  recordException(error: Error): void;
-  setStatus(status: { code: number }): void;
-}
-interface OtelTracer { startSpan(name: string): OtelSpan; }
-declare const trace: { getTracer(name: string): OtelTracer };
-declare const SpanStatusCode: { readonly ERROR: number };
-// ---cut---
-const tracer = trace.getTracer('dagonizer');
-
-class OtelDispatcher<TState extends NodeStateBase> extends Dagonizer<TState> {
-  #spans = new Map<string, OtelSpan>();
-
-  protected override onFlowStart(dagName: string): void {
-    this.#spans.set(dagName, tracer.startSpan(`flow.${dagName}`));
-  }
-
-  protected override onFlowEnd(dagName: string): void {
-    this.#spans.get(dagName)?.end();
-    this.#spans.delete(dagName);
-  }
-
-  protected override onNodeStart(nodeName: string, state: TState, placementPath: readonly string[]): void {
-    this.#spans.set(nodeName, tracer.startSpan(`node.${nodeName}`));
-  }
-
-  protected override onNodeEnd(nodeName: string, output: string | null, state: TState, placementPath: readonly string[]): void {
-    const span = this.#spans.get(nodeName);
-    if (span) {
-      span.setAttribute('output', output ?? '');
-      span.end();
-      this.#spans.delete(nodeName);
-    }
-  }
-
-  protected override onError(nodeName: string, error: Error, state: TState, placementPath: readonly string[]): void {
-    const span = this.#spans.get(nodeName);
-    if (span) {
-      span.recordException(error);
-      span.setStatus({ code: SpanStatusCode.ERROR });
-    }
-  }
-}
-```
+Wire `@opentelemetry/api` in through the constructor as a `Tracer` instance. The subclass holds the `Map<string, Span>` as a private field; nothing leaks to Dagonizer's public surface.
 
 ## Multi-observer composition
 
-When one consumer owns the dispatcher, the subclass pattern is sufficient. For multiple observers (logger plus tracer plus metrics), compose them inside the subclass:
+When one consumer owns the dispatcher, the subclass pattern is sufficient. For multiple observers (logger plus tracer plus metrics), accept each as a constructor parameter and dispatch to all inside the relevant hook overrides:
 
-```ts twoslash
-// ---cut---
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-import type { DagonizerOptionsInterface } from '@noocodex/dagonizer';
-
-declare class Logger {
-  info(msg: string): void;
-}
-declare class Tracer {
-  startSpan(name: string): void;
-  endSpan(name: string): void;
-}
-// ---cut---
-class ComposedDispatcher<TState extends NodeStateBase> extends Dagonizer<TState> {
-  readonly #logger: Logger;
-  readonly #tracer: Tracer;
-
-  constructor(options: DagonizerOptionsInterface<TState>, logger: Logger, tracer: Tracer) {
-    super(options);
-    this.#logger = logger;
-    this.#tracer = tracer;
-  }
-
-  protected override onNodeStart(nodeName: string, state: TState, placementPath: readonly string[]): void {
-    this.#logger.info(`node.start nodeName=${nodeName}`);
-    this.#tracer.startSpan(`node.${nodeName}`);
-  }
-
-  protected override onNodeEnd(nodeName: string, output: string | null, state: TState, placementPath: readonly string[]): void {
-    this.#logger.info(`node.end nodeName=${nodeName} output=${output ?? '(terminal)'}`);
-    this.#tracer.endSpan(`node.${nodeName}`);
-  }
-}
-```
+<<< @/../examples/18-observability.ts#multi-observer
 
 ## Related reference
 

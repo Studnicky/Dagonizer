@@ -20,6 +20,7 @@ import type { Tool } from '@noocodex/dagonizer/tool';
 // Tool: calculator — adds two numbers
 // ---------------------------------------------------------------------------
 
+// #region tool-impl
 export interface CalcInput extends Record<string, unknown> {
   readonly a: number;
   readonly b: number;
@@ -29,6 +30,7 @@ export interface CalcOutput {
   readonly result: number;
 }
 
+// #region tool-usage
 export class CalculatorTool implements Tool<CalcInput, CalcOutput> {
   readonly definition = {
     'name':        'calculator',
@@ -48,6 +50,8 @@ export class CalculatorTool implements Tool<CalcInput, CalcOutput> {
     return Promise.resolve({ 'result': input.a + input.b });
   }
 }
+// #endregion tool-usage
+// #endregion tool-impl
 
 // ---------------------------------------------------------------------------
 // Tool registry (simple map; no framework needed for the dispatch pattern)

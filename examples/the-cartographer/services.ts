@@ -859,6 +859,12 @@ export class Consent {
  * DEPARTURE → SCAN/ARRIVAL → OUT_FOR_DELIVERY → DELIVERED, with a disrupted
  * scan flagged EXCEPTION. Seeded LCG (Knuth params) — no Date.now/Math.random;
  * tz-lookup + Intl are pure on the fixed epochs.
+ *
+ * Memory model:
+ *   journeyGenerator() yields ONE journey at a time (a small RawShipmentEvent[]).
+ *   Peak memory is O(1 journey) regardless of how many journeys are consumed.
+ *   typedScansGenerator consumes journeyGenerator lazily — no full-feed array.
+ *   buildRawScans(n) pulls n journeys, collects then time-sorts — O(n journeys).
  */
 export class ShipmentEvents {
   private static lcg(seed: number): () => number {
@@ -922,6 +928,64 @@ export class ShipmentEvents {
     { 'reason': 'lost in transit',  'hours': 96 },
   ];
 
+  // Static lookup tables shared by journeyGenerator and buildRawScans.
+  private static readonly CARRIERS: Array<{ 'alias': string; 'carrierId': string }> = [
+    { 'alias': 'FEDEX',                  'carrierId': 'fedex' },
+    { 'alias': 'FedEx',                  'carrierId': 'fedex' },
+    { 'alias': 'Federal Express',        'carrierId': 'fedex' },
+    { 'alias': 'fedex ground',           'carrierId': 'fedex' },
+    { 'alias': 'UPS',                    'carrierId': 'ups' },
+    { 'alias': 'United Parcel Service',  'carrierId': 'ups' },
+    { 'alias': 'DHL Express',            'carrierId': 'dhl' },
+    { 'alias': 'DHL',                    'carrierId': 'dhl' },
+    { 'alias': 'USPS',                   'carrierId': 'usps' },
+    { 'alias': 'Royal Mail',             'carrierId': 'royal-mail' },
+    { 'alias': 'DPD',                    'carrierId': 'dpd' },
+  ];
+
+  private static readonly REGIONS: Array<{ 'lat': number; 'lng': number; 'country': string; 'countryVariants': string[]; 'gatewayIp': string }> = [
+    { 'lat':  39.9,  'lng':  -75.2, 'country': 'USA',  'countryVariants': ['US', 'USA', 'United States'],        'gatewayIp': '8.8.8.8' },
+    { 'lat':  51.5,  'lng':   -0.1, 'country': 'GBR',  'countryVariants': ['GB', 'GBR', 'United Kingdom'],       'gatewayIp': '212.58.244.1' },
+    { 'lat':  48.9,  'lng':    2.3, 'country': 'FRA',  'countryVariants': ['FR', 'FRA', 'France'],               'gatewayIp': '80.67.169.12' },
+    { 'lat':  52.5,  'lng':   13.4, 'country': 'DEU',  'countryVariants': ['DE', 'DEU', 'Germany'],              'gatewayIp': '194.150.168.168' },
+    { 'lat':  35.7,  'lng':  139.7, 'country': 'JPN',  'countryVariants': ['JP', 'JPN', 'Japan'],                'gatewayIp': '210.130.1.1' },
+    { 'lat':  31.2,  'lng':  121.5, 'country': 'CHN',  'countryVariants': ['CN', 'CHN', 'China'],                'gatewayIp': '114.114.114.114' },
+    { 'lat': -33.9,  'lng':  151.2, 'country': 'AUS',  'countryVariants': ['AU', 'AUS', 'Australia'],            'gatewayIp': '1.1.1.1' },
+    { 'lat': -23.5,  'lng':  -46.6, 'country': 'BRA',  'countryVariants': ['BR', 'BRA', 'Brazil'],               'gatewayIp': '200.160.2.3' },
+    { 'lat':  19.4,  'lng':  -99.1, 'country': 'MEX',  'countryVariants': ['MX', 'MEX', 'Mexico'],               'gatewayIp': '200.33.146.249' },
+    { 'lat':  28.6,  'lng':   77.2, 'country': 'IND',  'countryVariants': ['IN', 'IND', 'India'],                'gatewayIp': '49.44.79.1' },
+    { 'lat':  25.2,  'lng':   55.3, 'country': 'ARE',  'countryVariants': ['AE', 'ARE', 'United Arab Emirates'], 'gatewayIp': '94.200.200.200' },
+    { 'lat': -26.2,  'lng':   28.0, 'country': 'ZAF',  'countryVariants': ['ZA', 'ZAF', 'South Africa'],         'gatewayIp': '196.4.160.4' },
+  ];
+
+  private static readonly ORIGIN_HUBS: Array<{ 'lat': number; 'lng': number; 'name': string }> = [
+    { 'lat':  35.0,  'lng':  -89.9, 'name': 'Memphis' },
+    { 'lat':  51.4,  'lng':   12.2, 'name': 'Leipzig' },
+    { 'lat':  22.3,  'lng':  113.9, 'name': 'Hong Kong' },
+    { 'lat':  25.3,  'lng':   55.4, 'name': 'Dubai' },
+    { 'lat':  40.6,  'lng':  -73.8, 'name': 'New York' },
+    { 'lat':  -3.1,  'lng':  -38.5, 'name': 'Fortaleza' },
+  ];
+
+  private static readonly NAMES: string[] = [
+    'Alice Müller', 'Bob Chen', 'Carol Smith', 'David García', 'Eve Johnson',
+    'Frank Kim', 'Grace Lee', 'Henry Brown', 'Isabelle Dubois', 'Jack Okonkwo',
+  ];
+
+  private static readonly DOMAINS: string[] = [
+    'example.com', 'test.org', 'mail.net', 'inbox.io', 'post.co',
+  ];
+
+  private static readonly STATUS_DEPARTURE: string[] = ['departed facility', 'dispatch', 'picked up'];
+  private static readonly STATUS_TRANSIT:   string[] = ['in transit', 'arrival scan', 'arrived at hub', 'en route'];
+  private static readonly STATUS_OFD:       string[] = ['out for delivery'];
+  private static readonly STATUS_DELIVERED: string[] = ['delivered', 'DELIVERED'];
+  private static readonly STATUS_EXCEPTION: string[] = ['exception - address', 'customs hold'];
+
+  private static readonly WEIGHT_UNITS: Array<RawShipmentEvent['weightUnit']> = ['lb', 'kg', 'g', 'oz'];
+  private static readonly BASE_EPOCH_MS = 1735689600000; // 2026-01-01T00:00:00Z
+  private static readonly FORMAT_CYCLE = [0, 1, 2, 4] as const;
+
   // FNV-1a 32-bit hash — deterministic sensor channel sharding for typedScansGenerator.
   private static fnv1a(key: string): number {
     let h = 2166136261;
@@ -932,129 +996,376 @@ export class ShipmentEvents {
   }
 
   /**
-   * Typed generator: yields one TypedScan at a time per EventTypeConfig entry.
-   * For each entry, generates `entry.count` raw scans and attaches the entry's
-   * `eventType` discriminant plus type-specific fields:
-   *   - sensor-reading → tempC, humidityPct, shockG (fnv1a-sharded from shipmentId+scanSeq)
+   * Lazy per-journey generator. Yields one journey (a small RawShipmentEvent[],
+   * 2–5 scans) at a time using the same seeded LCG (seed 42) and construction
+   * logic as buildRawScans. Peak memory is O(1 journey) — journeys are NOT
+   * interleaved by time here; the caller decides ordering.
+   *
+   * The shared `rand` and `formatIdxBox` are advanced identically to
+   * buildRawScans so that the first N journeys from journeyGenerator are
+   * byte-identical to the first N journeys produced by buildRawScans before
+   * the final time-sort.
+   *
+   * @param rand        Seeded LCG function (call ShipmentEvents.lcg(42) externally).
+   * @param formatIdxBox Mutable box { v: number } for the per-scan format cycle counter.
+   * @param journeyIndex The ordinal of this journey (0-based) — used for shipmentId
+   *                    and the lossless timestamp format selector.
+   */
+  private static buildJourney(
+    rand: () => number,
+    formatIdxBox: { v: number },
+    journeyIndex: number,
+  ): RawShipmentEvent[] {
+    const pick = <T>(arr: readonly T[]): T => arr[Math.floor(rand() * arr.length)] ?? arr[0]!;
+
+    const dest = pick(ShipmentEvents.REGIONS);
+    const hasGatewayIp = rand() < 0.8;
+    const gatewayIp = hasGatewayIp ? dest.gatewayIp : '';
+    const destLat = dest.lat + (rand() - 0.5) * 4;
+    const destLng = dest.lng + (rand() - 0.5) * 4;
+
+    const hub = pick(ShipmentEvents.ORIGIN_HUBS);
+    const originLat = hub.lat + (rand() - 0.5) * 4;
+    const originLng = hub.lng + (rand() - 0.5) * 4;
+
+    const carrierEntry = pick(ShipmentEvents.CARRIERS);
+    const carrier   = carrierEntry.alias;
+    const carrierId = carrierEntry.carrierId;
+
+    const name       = pick(ShipmentEvents.NAMES);
+    const domain     = pick(ShipmentEvents.DOMAINS);
+    const localPart  = `user${journeyIndex}`;
+    const countryRaw = pick(dest.countryVariants);
+
+    const weightValue = 10 + Math.floor(rand() * 3490) / 10;
+    const weightUnit  = pick(ShipmentEvents.WEIGHT_UNITS);
+    const weightGrams = Units.toGrams(weightValue, weightUnit);
+    const serviceTier = EventClassifier.serviceTier(carrierId, weightGrams);
+
+    const shipDistanceKm = ShippingCalculator.distanceKm(originLat, originLng, destLat, destLng);
+    const nominalTransitH = EtaEstimator.transitHours(shipDistanceKm, carrierId, serviceTier);
+
+    const slaBase = ShipmentEvents.slaBaseHours(serviceTier);
+    const tightRoll = rand();
+    const tightSla = tightRoll < 0.5;
+    const slaHours = tightSla
+      ? Math.max(nominalTransitH + 1, nominalTransitH * (1.0 + rand() * 0.1))
+      : Math.max(nominalTransitH + 1, nominalTransitH + 6 + rand() * Math.min(slaBase, 36));
+
+    const disruptProb = shipDistanceKm > 8000 ? 0.42 : 0.32;
+    const disrupted = rand() < disruptProb;
+    const disruptionPick = disrupted
+      ? (ShipmentEvents.DISRUPTIONS[1 + Math.floor(rand() * (ShipmentEvents.DISRUPTIONS.length - 1))] ?? ShipmentEvents.DISRUPTIONS[0]!)
+      : ShipmentEvents.DISRUPTIONS[0]!;
+    const disruptionHours  = disruptionPick.hours;
+    const disruptionReason = disruptionPick.reason;
+
+    const daysOffset  = Math.floor(rand() * 60);
+    const hoursOffset = Math.floor(rand() * 24);
+    const dispatchEpochMs = ShipmentEvents.BASE_EPOCH_MS + daysOffset * 86_400_000 + hoursOffset * 3_600_000;
+
+    const promisedMs = dispatchEpochMs + Math.round(slaHours * 3_600_000);
+    const i = journeyIndex;
+    const rawPromisedDeliveryAt = ShipmentEvents.formatTimestamp(promisedMs, i % 2 === 0 ? 0 : 2);
+    const rawDispatchAt = ShipmentEvents.formatTimestamp(dispatchEpochMs, i % 2 === 0 ? 2 : 0);
+
+    const consent = rand() < 0.6;
+    const violationRoll = rand();
+    const isViolation = violationRoll < 0.02;
+    const lawfulBasis: RawShipmentEvent['lawfulBasis'] = isViolation ? 'none' : 'contract';
+    const specialCategory: RawShipmentEvent['specialCategory'] = isViolation ? 'health' : 'none';
+
+    const catalogIds = PricingCatalog.catalogIds();
+    const lineCount = 1 + Math.floor(rand() * 4);
+    const lineItems: Array<{ 'productId': string; 'quantity': number }> = [];
+    for (let j = 0; j < lineCount; j++) {
+      const productId = catalogIds[Math.floor(rand() * catalogIds.length)] ?? 'PROD-001';
+      const quantity  = 1 + Math.floor(rand() * 3);
+      lineItems.push({ 'productId': productId, 'quantity': quantity });
+    }
+    const phonePrefix = 100 + Math.floor(rand() * 900);
+    const phoneMid    = 100 + Math.floor(rand() * 900);
+    const phoneSuffix = 1000 + Math.floor(rand() * 9000);
+    const recipientEmail   = `${localPart}@${domain}`;
+    const recipientPhone   = `+1-${phonePrefix}-${phoneMid}-${phoneSuffix}`;
+    const recipientAddress = `${1000 + Math.floor(rand() * 8000)} Main St, ${dest.country}`;
+    const facilityId       = `FAC-${hub.name.replace(/\s+/g, '').toUpperCase().slice(0, 3)}-${String(Math.floor(rand() * 100)).padStart(3, '0')}`;
+
+    const scanCount = 2 + Math.floor(rand() * 4);
+    const journeyFails = rand() < 0.12;
+    const disruptScanIdx = disrupted && scanCount > 2
+      ? 1 + Math.floor(rand() * (scanCount - 2))
+      : -1;
+
+    const scans: RawShipmentEvent[] = [];
+    let prevLat = originLat;
+    let prevLng = originLng;
+    let cursorMs = dispatchEpochMs;
+
+    for (let s = 0; s < scanCount; s++) {
+      const t = scanCount === 1 ? 0 : s / (scanCount - 1);
+      const lat = originLat + (destLat - originLat) * t;
+      const lng = originLng + (destLng - originLng) * t;
+
+      if (s > 0) {
+        const legShare = nominalTransitH / (scanCount - 1);
+        let legHours = legShare;
+        if (s === disruptScanIdx) legHours += disruptionHours;
+        cursorMs += Math.round(legHours * 3_600_000);
+      }
+
+      const isLast  = s === scanCount - 1;
+      const isFirst = s === 0;
+      const isTransientException = s === disruptScanIdx;
+
+      const rawStatus = isLast
+          ? (journeyFails ? pick(ShipmentEvents.STATUS_EXCEPTION) : pick(ShipmentEvents.STATUS_DELIVERED))
+        : isFirst ? pick(ShipmentEvents.STATUS_DEPARTURE)
+        : isTransientException ? pick(ShipmentEvents.STATUS_EXCEPTION)
+        : (s === scanCount - 2) ? pick(ShipmentEvents.STATUS_OFD)
+        : pick(ShipmentEvents.STATUS_TRANSIT);
+
+      const invalid = rand() < 0.06;
+      const finalLat = invalid ? 95 + rand() * 10  : lat;
+      const finalLng = invalid ? 185 + rand() * 10 : lng;
+
+      const variant = ShipmentEvents.FORMAT_CYCLE[formatIdxBox.v % ShipmentEvents.FORMAT_CYCLE.length] ?? 0;
+      const rawTimestamp = ShipmentEvents.formatTimestamp(cursorMs, variant);
+      formatIdxBox.v++;
+
+      scans.push({
+        'shipmentId':            `SHP-${String(i).padStart(6, '0')}`,
+        'scanSeq':               s,
+        'rawTimestamp':          rawTimestamp,
+        'rawDispatchAt':         rawDispatchAt,
+        'rawStatus':             rawStatus,
+        'carrier':               carrier,
+        'ipAddress':             gatewayIp,
+        'latitude':              finalLat,
+        'longitude':             finalLng,
+        'legFromLat':            prevLat,
+        'legFromLng':            prevLng,
+        'originLat':             originLat,
+        'originLng':             originLng,
+        'destLat':               destLat,
+        'destLng':               destLng,
+        'weight':                weightValue,
+        'weightUnit':            weightUnit,
+        'recipientName':         name,
+        'recipientEmail':        recipientEmail,
+        'recipientPhone':        recipientPhone,
+        'recipientAddress':      recipientAddress,
+        'recipientCountry':      countryRaw,
+        'marketingConsent':      consent,
+        'rawPromisedDeliveryAt': rawPromisedDeliveryAt,
+        'lineItems':             lineItems.map((li) => ({ ...li })),
+        'facilityId':            facilityId,
+        'lawfulBasis':           lawfulBasis,
+        'specialCategory':       specialCategory,
+        'disruptionReason':      disruptionReason,
+      });
+
+      prevLat = lat;
+      prevLng = lng;
+    }
+
+    return scans;
+  }
+
+  /**
+   * Lazy per-journey generator. Yields one journey (RawShipmentEvent[], 2–5 scans)
+   * at a time. Uses the same seeded LCG (seed 42) and construction logic as
+   * buildRawScans. Peak memory is O(1 journey) regardless of total journeys consumed.
+   *
+   * Scans within each journey are in scanSeq order (0..M-1). Journeys are NOT
+   * time-sorted across each other — the caller applies ordering if needed.
+   * buildRawScans collects all journeys then sorts by epoch; typedScansGenerator
+   * processes journeys in emission order (no cross-journey sort required).
+   */
+  static * journeyGenerator(): Generator<RawShipmentEvent[]> {
+    const rand = ShipmentEvents.lcg(42);
+    const formatIdxBox = { v: 0 };
+    for (let i = 0; ; i++) {
+      yield ShipmentEvents.buildJourney(rand, formatIdxBox, i);
+    }
+  }
+
+  /**
+   * Typed generator: yields one TypedScan at a time, INTERLEAVED across all
+   * EventTypeConfig entries using a deterministic fractional-accumulator scheduler
+   * (coin-sorter / weighted round-robin). Each type's total scan count equals
+   * entry.count exactly. Types are mixed throughout the stream so the feed looks
+   * like a live heterogeneous source rather than sequential blocks.
+   *
+   * Scheduler: each active entry holds an accumulator initialised to 0. On every
+   * step, all accumulators advance by (entry.count / totalCount). The entry with
+   * the highest accumulator wins, has 1.0 subtracted, and yields its next scan.
+   * Ties are broken by config order (stable, deterministic). This is Bresenham
+   * line-drawing applied to type selection — no randomness, no floating-point
+   * drift beyond per-step addition.
+   *
+   * Memory: O(numTypes) — one journeyGenerator iterator per active type, each
+   * buffering at most one journey (2–5 scans) at a time. No full-feed array is
+   * materialised regardless of entry.count.
+   *
+   * Per-type fields:
+   *   - sensor-reading → tempC, humidityPct, shockG (fnv1a-sharded)
    *   - customs-event  → customsStatus ('held' | 'cleared' | 'inspection')
    *   - delivery-confirmation → delivered: true, podSignature, deliveredAt
    *   - position-ping / facility-scan → no extra fields beyond the base
    *
-   * Memory: O(entry.count) per iteration — one batch per entry is held while
-   * yielding. Each entry's base scans are generated via buildRawScans.
+   * Terminal/non-terminal selection: delivery-confirmation takes the LAST scan of
+   * each journey; all other types take the NON-terminal scans (everything except
+   * the last) — identical semantics to the previous sequential implementation.
    */
   static * typedScansGenerator(config: EventTypeConfig): Generator<TypedScan> {
     const CUSTOMS_STATUSES: Array<'held' | 'cleared' | 'inspection'> = ['held', 'cleared', 'inspection'];
-    const rand = ShipmentEvents.lcg(42);
-    const pick = <T>(arr: readonly T[]): T => arr[Math.floor(rand() * arr.length)] ?? arr[0]!;
+    // Independent LCG for customs-status picks — does not share state with
+    // journeyGenerator's encapsulated LCG (seed 42 inside journeyGenerator).
+    const customsRand = ShipmentEvents.lcg(42);
+    const pickCustoms = (): 'held' | 'cleared' | 'inspection' =>
+      CUSTOMS_STATUSES[Math.floor(customsRand() * CUSTOMS_STATUSES.length)] ?? 'held';
 
-    for (const entry of config) {
+    // ── Build per-type sub-iterators ──────────────────────────────────────────
+    // Each slot holds the state for one config entry. journeyIter is a fresh
+    // independent journeyGenerator() per type so journey-LCG state is not shared
+    // across types. candidateBuffer holds the remaining scans of the current
+    // journey being drained for this type.
+    interface TypeSlot {
+      readonly entryIdx: number;
+      readonly eventType: EventTypeConfig[number]['eventType'];
+      readonly terminalOnly: boolean;
+      remaining: number;
+      accumulator: number;
+      journeyIter: Iterator<RawShipmentEvent[]>;
+      candidateBuffer: RawShipmentEvent[];
+    }
+
+    const totalCount = config.reduce((s, e) => s + e.count, 0);
+    if (totalCount <= 0) return;
+
+    const activeSlots: TypeSlot[] = [];
+    for (let i = 0; i < config.length; i++) {
+      const entry = config[i]!;
       if (entry.count <= 0) continue;
-      // Build enough journeys to cover entry.count scans. Journeys average ~3
-      // scans each; multiply by 4 so the budget is always met with whole
-      // journeys to spare. buildRawScans is the single deterministic source of
-      // truth (seeded LCG); its journeys trace an origin-hub → destination-region
-      // corridor whose intermediate legs cross timezone zones and open ocean.
-      const allScans = ShipmentEvents.buildRawScans(entry.count * 4);
-      // Delivery-confirmation is a TERMINAL event: exactly one per shipment, or
-      // the pipeline emits multiple DELIVERED records for one journey (the
-      // confirm-delivery node forces status=DELIVERED on every delivered scan).
-      // So delivery-confirmation keeps the one-scan-per-shipment selection.
-      //
-      // Every other type emits WHOLE journeys MINUS the terminal scan — the
-      // origin and all intermediate legs in scanSeq order — so the reconstructed
-      // journey spans its full corridor (>=2 UTC offsets, ocean-crossing legs)
-      // while the single terminal (DELIVERED / EXCEPTION) stays owned by the
-      // delivery-confirmation lane. Dropping the terminal keeps the per-journey
-      // DELIVERED count at exactly one and keeps the on-time mix (computed on the
-      // facility-scan order lane) anchored on in-transit legs, not terminals.
-      // Scans are taken journey-by-journey until entry.count is reached; a final
-      // partial journey is truncated to land on exactly entry.count, preserving
-      // the count contract.
-      const terminalOnly = entry.eventType === 'delivery-confirmation';
-      const scans: RawShipmentEvent[] = [];
-      if (terminalOnly) {
-        const seenIds = new Set<string>();
-        for (const s of allScans) {
-          if (!seenIds.has(s.shipmentId)) { seenIds.add(s.shipmentId); scans.push(s); }
-          if (scans.length >= entry.count) break;
+      activeSlots.push({
+        entryIdx:       i,
+        eventType:      entry.eventType,
+        terminalOnly:   entry.eventType === 'delivery-confirmation',
+        remaining:      entry.count,
+        accumulator:    0,
+        journeyIter:    ShipmentEvents.journeyGenerator(),
+        candidateBuffer: [],
+      });
+    }
+
+    if (activeSlots.length === 0) return;
+
+    // ── Fractional accumulator scheduler ─────────────────────────────────────
+    // step() advances all accumulators by their weight (entry.count / totalCount),
+    // then returns the index into activeSlots of the winner (highest accumulator,
+    // ties broken by slot order). The winner's accumulator is decremented by 1.0.
+    const weights: number[] = activeSlots.map((s) => {
+      const entry = config[s.entryIdx]!;
+      return entry.count / totalCount;
+    });
+
+    const stepWinner = (): number => {
+      for (let i = 0; i < activeSlots.length; i++) {
+        activeSlots[i]!.accumulator += weights[i]!;
+      }
+      let best = 0;
+      for (let i = 1; i < activeSlots.length; i++) {
+        if (activeSlots[i]!.accumulator > activeSlots[best]!.accumulator) best = i;
+      }
+      activeSlots[best]!.accumulator -= 1.0;
+      return best;
+    };
+
+    // ── Emit loop ─────────────────────────────────────────────────────────────
+    // Drain activeSlots until all types are exhausted. After each yield the slot
+    // remains active (accumulator keeps accumulating); when remaining hits 0 the
+    // slot is spliced out and its weight rebalanced across the survivors.
+    while (activeSlots.length > 0) {
+      const winnerIdx = stepWinner();
+      const slot = activeSlots[winnerIdx]!;
+
+      // Fill candidate buffer for this type if it is empty.
+      while (slot.candidateBuffer.length === 0 && slot.remaining > 0) {
+        const step = slot.journeyIter.next();
+        if (step.done === true) break;
+        const journey = step.value;
+        const candidates: RawShipmentEvent[] = slot.terminalOnly
+          ? [journey[journey.length - 1]!]
+          : journey.length > 1
+            ? journey.slice(0, -1)
+            : journey;
+        for (const c of candidates) slot.candidateBuffer.push(c);
+      }
+
+      if (slot.candidateBuffer.length === 0) {
+        // This type has no more scans — remove it from active set.
+        activeSlots.splice(winnerIdx, 1);
+        weights.splice(winnerIdx, 1);
+        continue;
+      }
+
+      const scan = slot.candidateBuffer.shift()!;
+
+      // Materialise the typed scan with per-type fields.
+      let typed: TypedScan;
+      switch (slot.eventType) {
+        case 'sensor-reading': {
+          const h = ShipmentEvents.fnv1a(`${scan.shipmentId}:${scan.scanSeq}:sensor`);
+          const b0 = (h >>> 24) & 0xff;
+          const b1 = (h >>> 16) & 0xff;
+          const b2 = (h >>> 8)  & 0xff;
+          typed = {
+            ...scan,
+            'eventType':   'sensor-reading',
+            'tempC':       Math.round((2 + (b0 / 255) * 6) * 10) / 10,
+            'humidityPct': Math.round(40 + (b1 / 255) * 40),
+            'shockG':      Math.round((b2 / 255) * 30) / 10,
+          };
+          break;
         }
-      } else {
-        // Group scans by shipmentId, preserving first-appearance order (which is
-        // deterministic: buildRawScans interleaves by epoch). Then emit each
-        // journey's non-terminal scans in scanSeq order so corridor geometry
-        // stays coherent.
-        const byShipment = new Map<string, RawShipmentEvent[]>();
-        for (const s of allScans) {
-          let group = byShipment.get(s.shipmentId);
-          if (group === undefined) { group = []; byShipment.set(s.shipmentId, group); }
-          group.push(s);
+        case 'customs-event': {
+          typed = {
+            ...scan,
+            'eventType':     'customs-event',
+            'customsStatus': pickCustoms(),
+          };
+          break;
         }
-        for (const group of byShipment.values()) {
-          if (scans.length >= entry.count) break;
-          const ordered = [...group].sort((a, b) => a.scanSeq - b.scanSeq);
-          // Drop the terminal scan (highest scanSeq) so the single DELIVERED /
-          // EXCEPTION terminal is not duplicated across non-delivery lanes. A
-          // two-scan journey collapses to its origin only; corridor crossings
-          // come from the longer journeys' intermediate legs.
-          const nonTerminal = ordered.length > 1 ? ordered.slice(0, -1) : ordered;
-          for (const s of nonTerminal) {
-            if (scans.length >= entry.count) break;
-            scans.push(s);
-          }
+        case 'delivery-confirmation': {
+          const dh = ShipmentEvents.fnv1a(`${scan.shipmentId}:${scan.scanSeq}:delivery`);
+          const deliveredAtMs = 1735689600000 + (dh % 31_536_000_000); // within 2026
+          typed = {
+            ...scan,
+            'eventType':    'delivery-confirmation',
+            'delivered':    true,
+            'podSignature': `SIG-${scan.shipmentId}-${scan.scanSeq}`,
+            'deliveredAt':  new Date(deliveredAtMs).toISOString(),
+          };
+          break;
+        }
+        case 'position-ping': {
+          typed = { ...scan, 'eventType': 'position-ping' };
+          break;
+        }
+        case 'facility-scan': {
+          typed = { ...scan, 'eventType': 'facility-scan' };
+          break;
         }
       }
-      for (const scan of scans) {
-        switch (entry.eventType) {
-          case 'sensor-reading': {
-            const h = ShipmentEvents.fnv1a(`${scan.shipmentId}:${scan.scanSeq}:sensor`);
-            const b0 = (h >>> 24) & 0xff;
-            const b1 = (h >>> 16) & 0xff;
-            const b2 = (h >>> 8)  & 0xff;
-            const typed: TypedScan = {
-              ...scan,
-              'eventType':    'sensor-reading',
-              'tempC':        Math.round((2 + (b0 / 255) * 6) * 10) / 10,
-              'humidityPct':  Math.round(40 + (b1 / 255) * 40),
-              'shockG':       Math.round((b2 / 255) * 30) / 10,
-            };
-            yield typed;
-            break;
-          }
-          case 'customs-event': {
-            const typed: TypedScan = {
-              ...scan,
-              'eventType':     'customs-event',
-              'customsStatus': pick(CUSTOMS_STATUSES),
-            };
-            yield typed;
-            break;
-          }
-          case 'delivery-confirmation': {
-            // Derive a deterministic deliveredAt from shipmentId hash + scanSeq offset.
-            const dh = ShipmentEvents.fnv1a(`${scan.shipmentId}:${scan.scanSeq}:delivery`);
-            const deliveredAtMs = 1735689600000 + (dh % 31_536_000_000); // within 2026
-            const typed: TypedScan = {
-              ...scan,
-              'eventType':    'delivery-confirmation',
-              'delivered':    true,
-              'podSignature': `SIG-${scan.shipmentId}-${scan.scanSeq}`,
-              'deliveredAt':  new Date(deliveredAtMs).toISOString(),
-            };
-            yield typed;
-            break;
-          }
-          case 'position-ping': {
-            const typed: TypedScan = { ...scan, 'eventType': 'position-ping' };
-            yield typed;
-            break;
-          }
-          case 'facility-scan': {
-            const typed: TypedScan = { ...scan, 'eventType': 'facility-scan' };
-            yield typed;
-            break;
-          }
-        }
+
+      yield typed;
+      slot.remaining--;
+
+      if (slot.remaining <= 0) {
+        // Type quota exhausted — remove from active set.
+        activeSlots.splice(winnerIdx, 1);
+        weights.splice(winnerIdx, 1);
       }
     }
   }
@@ -1063,270 +1374,19 @@ export class ShipmentEvents {
    * Build the deterministic raw scan feed: N journeys, each M~2–5 scans, all
    * scans interleaved by timestamp. This is the single source of truth for the
    * synthetic data; the multi-format `Sources` encode a partition of it.
+   *
+   * Pulls from journeyGenerator() for the first n journeys, collects all scans,
+   * then time-sorts — identical observable behaviour to the original implementation.
    */
   static buildRawScans(n: number): RawShipmentEvent[] {
-    const rand = ShipmentEvents.lcg(42);
-
-    const CARRIERS: Array<{ 'alias': string; 'carrierId': string }> = [
-      { 'alias': 'FEDEX',                  'carrierId': 'fedex' },
-      { 'alias': 'FedEx',                  'carrierId': 'fedex' },
-      { 'alias': 'Federal Express',        'carrierId': 'fedex' },
-      { 'alias': 'fedex ground',           'carrierId': 'fedex' },
-      { 'alias': 'UPS',                    'carrierId': 'ups' },
-      { 'alias': 'United Parcel Service',  'carrierId': 'ups' },
-      { 'alias': 'DHL Express',            'carrierId': 'dhl' },
-      { 'alias': 'DHL',                    'carrierId': 'dhl' },
-      { 'alias': 'USPS',                   'carrierId': 'usps' },
-      { 'alias': 'Royal Mail',             'carrierId': 'royal-mail' },
-      { 'alias': 'DPD',                    'carrierId': 'dpd' },
-    ];
-
-    // Free-text statuses keyed by journey position (the status progression
-    // DEPARTURE → SCAN/ARRIVAL → OUT_FOR_DELIVERY → DELIVERED). A disrupted
-    // scan emits an EXCEPTION-flavoured status.
-    const STATUS_DEPARTURE = ['departed facility', 'dispatch', 'picked up'];
-    const STATUS_TRANSIT   = ['in transit', 'arrival scan', 'arrived at hub', 'en route'];
-    const STATUS_OFD       = ['out for delivery'];
-    const STATUS_DELIVERED = ['delivered', 'DELIVERED'];
-    const STATUS_EXCEPTION = ['exception - address', 'customs hold'];
-
-    // Destination region anchors — coords land well inside country polygons.
-    // Each region carries a REAL public per-region gateway IP (an in-region
-    // public DNS resolver / datacenter anycast endpoint) — the IP modality's
-    // signal. The IP API geolocates these to a real country to fuse with the GPS
-    // reverse-geocode. These are sample SIGNAL inputs, not a resolution table.
-    const REGIONS: Array<{ 'lat': number; 'lng': number; 'country': string; 'countryVariants': string[]; 'gatewayIp': string }> = [
-      { 'lat':  39.9,  'lng':  -75.2, 'country': 'USA',  'countryVariants': ['US', 'USA', 'United States'],        'gatewayIp': '8.8.8.8' },
-      { 'lat':  51.5,  'lng':   -0.1, 'country': 'GBR',  'countryVariants': ['GB', 'GBR', 'United Kingdom'],       'gatewayIp': '212.58.244.1' },
-      { 'lat':  48.9,  'lng':    2.3, 'country': 'FRA',  'countryVariants': ['FR', 'FRA', 'France'],               'gatewayIp': '80.67.169.12' },
-      { 'lat':  52.5,  'lng':   13.4, 'country': 'DEU',  'countryVariants': ['DE', 'DEU', 'Germany'],              'gatewayIp': '194.150.168.168' },
-      { 'lat':  35.7,  'lng':  139.7, 'country': 'JPN',  'countryVariants': ['JP', 'JPN', 'Japan'],                'gatewayIp': '210.130.1.1' },
-      { 'lat':  31.2,  'lng':  121.5, 'country': 'CHN',  'countryVariants': ['CN', 'CHN', 'China'],                'gatewayIp': '114.114.114.114' },
-      { 'lat': -33.9,  'lng':  151.2, 'country': 'AUS',  'countryVariants': ['AU', 'AUS', 'Australia'],            'gatewayIp': '1.1.1.1' },
-      { 'lat': -23.5,  'lng':  -46.6, 'country': 'BRA',  'countryVariants': ['BR', 'BRA', 'Brazil'],               'gatewayIp': '200.160.2.3' },
-      { 'lat':  19.4,  'lng':  -99.1, 'country': 'MEX',  'countryVariants': ['MX', 'MEX', 'Mexico'],               'gatewayIp': '200.33.146.249' },
-      { 'lat':  28.6,  'lng':   77.2, 'country': 'IND',  'countryVariants': ['IN', 'IND', 'India'],                'gatewayIp': '49.44.79.1' },
-      { 'lat':  25.2,  'lng':   55.3, 'country': 'ARE',  'countryVariants': ['AE', 'ARE', 'United Arab Emirates'], 'gatewayIp': '94.200.200.200' },
-      { 'lat': -26.2,  'lng':   28.0, 'country': 'ZAF',  'countryVariants': ['ZA', 'ZAF', 'South Africa'],         'gatewayIp': '196.4.160.4' },
-    ];
-
-    // Global dispatch hubs — origin picked INDEPENDENTLY of destination so a
-    // meaningful fraction of journeys are cross-region / intercontinental.
-    const ORIGIN_HUBS: Array<{ 'lat': number; 'lng': number; 'name': string }> = [
-      { 'lat':  35.0,  'lng':  -89.9, 'name': 'Memphis' },
-      { 'lat':  51.4,  'lng':   12.2, 'name': 'Leipzig' },
-      { 'lat':  22.3,  'lng':  113.9, 'name': 'Hong Kong' },
-      { 'lat':  25.3,  'lng':   55.4, 'name': 'Dubai' },
-      { 'lat':  40.6,  'lng':  -73.8, 'name': 'New York' },
-      { 'lat':  -3.1,  'lng':  -38.5, 'name': 'Fortaleza' },
-    ];
-
-    const NAMES   = ['Alice Müller', 'Bob Chen', 'Carol Smith', 'David García', 'Eve Johnson',
-                     'Frank Kim', 'Grace Lee', 'Henry Brown', 'Isabelle Dubois', 'Jack Okonkwo'];
-    const DOMAINS = ['example.com', 'test.org', 'mail.net', 'inbox.io', 'post.co'];
-
-    const catalogIds = PricingCatalog.catalogIds();
-    const BASE_EPOCH_MS = 1735689600000; // 2026-01-01T00:00:00Z
-    const WEIGHT_UNITS: Array<RawShipmentEvent['weightUnit']> = ['lb', 'kg', 'g', 'oz'];
-
-    const pick = <T>(arr: readonly T[]): T => arr[Math.floor(rand() * arr.length)] ?? arr[0]!;
-
-    // Build every journey's scans, then interleave all scans by timestamp so the
-    // emitted feed looks like a real stream of individual scans from many
-    // journeys in flight at once.
     const allScans: RawShipmentEvent[] = [];
-    let formatIdx = 0; // advances per scan so all 5 timestamp formats appear
-
-    for (let i = 0; i < n; i++) {
-      const dest = pick(REGIONS);
-      // The asset's per-region gateway IP (the IP modality's signal). ~20% of
-      // assets report NO gateway IP → route-modalities skips ip-geolocate for
-      // them (a real IP-lookup avoided — the savings showcase).
-      const hasGatewayIp = rand() < 0.8;
-      const gatewayIp = hasGatewayIp ? dest.gatewayIp : '';
-      const destLat = dest.lat + (rand() - 0.5) * 4;
-      const destLng = dest.lng + (rand() - 0.5) * 4;
-
-      const hub = pick(ORIGIN_HUBS);
-      const originLat = hub.lat + (rand() - 0.5) * 4;
-      const originLng = hub.lng + (rand() - 0.5) * 4;
-
-      const carrierEntry = pick(CARRIERS);
-      const carrier   = carrierEntry.alias;
-      const carrierId = carrierEntry.carrierId;
-
-      const name       = pick(NAMES);
-      const domain     = pick(DOMAINS);
-      const localPart  = `user${i}`;
-      const countryRaw = pick(dest.countryVariants);
-
-      const weightValue = 10 + Math.floor(rand() * 3490) / 10;
-      const weightUnit  = pick(WEIGHT_UNITS);
-      const weightGrams = Units.toGrams(weightValue, weightUnit);
-      const serviceTier = EventClassifier.serviceTier(carrierId, weightGrams);
-
-      // Shipment-level shipping distance (origin → destination) and nominal transit.
-      const shipDistanceKm = ShippingCalculator.distanceKm(originLat, originLng, destLat, destLng);
-      const nominalTransitH = EtaEstimator.transitHours(shipDistanceKm, carrierId, serviceTier);
-
-      // SLA promise (committed window at dispatch, ALWAYS >= dispatch). A
-      // meaningful share commits a TIGHT window (near nominal transit) so even a
-      // modest disruption — or simply a slow leg — misses it; the rest commit a
-      // looser window. Floor is nominalTransit + 1h so promised never precedes
-      // dispatch and a clean fast run can still beat a tight promise.
-      const slaBase = ShipmentEvents.slaBaseHours(serviceTier);
-      const tightRoll = rand();
-      const tightSla = tightRoll < 0.5;
-      // Tight SLA ≈ nominal transit (zero slack), so ANY disruption misses it.
-      // Loose SLA gives a few hours' slack so small disruptions are absorbed.
-      const slaHours = tightSla
-        ? Math.max(nominalTransitH + 1, nominalTransitH * (1.0 + rand() * 0.1))
-        : Math.max(nominalTransitH + 1, nominalTransitH + 6 + rand() * Math.min(slaBase, 36));
-
-      // Journey-level disruption (heavy-tailed). About a third of journeys hit a
-      // disruption; long-haul more often. Disruption adds to delivery time and
-      // can exceed nominal transit.
-      const disruptProb = shipDistanceKm > 8000 ? 0.42 : 0.32;
-      const disrupted = rand() < disruptProb;
-      const disruptionPick = disrupted
-        ? (ShipmentEvents.DISRUPTIONS[1 + Math.floor(rand() * (ShipmentEvents.DISRUPTIONS.length - 1))] ?? ShipmentEvents.DISRUPTIONS[0]!)
-        : ShipmentEvents.DISRUPTIONS[0]!;
-      const disruptionHours  = disruptionPick.hours;
-      const disruptionReason = disruptionPick.reason;
-
-      // Dispatch epoch (the journey's seq-0 time), spread across ~60 days.
-      const daysOffset  = Math.floor(rand() * 60);
-      const hoursOffset = Math.floor(rand() * 24);
-      const dispatchEpochMs = BASE_EPOCH_MS + daysOffset * 86_400_000 + hoursOffset * 3_600_000;
-
-      // SLA promise timestamp (lossless format so it round-trips exactly).
-      const promisedMs = dispatchEpochMs + Math.round(slaHours * 3_600_000);
-      const rawPromisedDeliveryAt = ShipmentEvents.formatTimestamp(promisedMs, i % 2 === 0 ? 0 : 2);
-      // Dispatch timestamp also lossless so the pipeline reconstructs the exact
-      // dispatch epoch (the ETA anchor) regardless of per-scan format messiness.
-      const rawDispatchAt = ShipmentEvents.formatTimestamp(dispatchEpochMs, i % 2 === 0 ? 2 : 0);
-
-      const consent = rand() < 0.6;
-      const violationRoll = rand();
-      const isViolation = violationRoll < 0.02;
-      const lawfulBasis: RawShipmentEvent['lawfulBasis'] = isViolation ? 'none' : 'contract';
-      const specialCategory: RawShipmentEvent['specialCategory'] = isViolation ? 'health' : 'none';
-
-      const lineCount = 1 + Math.floor(rand() * 4);
-      const lineItems: Array<{ 'productId': string; 'quantity': number }> = [];
-      for (let j = 0; j < lineCount; j++) {
-        const productId = catalogIds[Math.floor(rand() * catalogIds.length)] ?? 'PROD-001';
-        const quantity  = 1 + Math.floor(rand() * 3);
-        lineItems.push({ 'productId': productId, 'quantity': quantity });
+    let journeyCount = 0;
+    for (const journey of ShipmentEvents.journeyGenerator()) {
+      for (const scan of journey) {
+        allScans.push(scan);
       }
-      const phonePrefix = 100 + Math.floor(rand() * 900);
-      const phoneMid    = 100 + Math.floor(rand() * 900);
-      const phoneSuffix = 1000 + Math.floor(rand() * 9000);
-      const recipientEmail   = `${localPart}@${domain}`;
-      const recipientPhone   = `+1-${phonePrefix}-${phoneMid}-${phoneSuffix}`;
-      const recipientAddress = `${1000 + Math.floor(rand() * 8000)} Main St, ${dest.country}`;
-      const facilityId       = `FAC-${hub.name.replace(/\s+/g, '').toUpperCase().slice(0, 3)}-${String(Math.floor(rand() * 100)).padStart(3, '0')}`;
-
-      // Journey length M ~2–5 scans along origin → destination.
-      const scanCount = 2 + Math.floor(rand() * 4);
-      // A small fraction of journeys FAIL: they end EXCEPTION with NO DELIVERED
-      // (single-terminal enforcement — exactly one terminal per journey).
-      const journeyFails = rand() < 0.12;
-      // The intermediate scan that carries a transient disruption EXCEPTION (a
-      // mid leg, never the first or last), if disrupted. The last scan is always
-      // the single terminal (DELIVERED or, for a failed journey, EXCEPTION).
-      const disruptScanIdx = disrupted && scanCount > 2
-        ? 1 + Math.floor(rand() * (scanCount - 2))
-        : -1;
-
-      let prevLat = originLat;
-      let prevLng = originLng;
-      let cursorMs = dispatchEpochMs;
-
-      for (let s = 0; s < scanCount; s++) {
-        const t = scanCount === 1 ? 0 : s / (scanCount - 1); // 0..1 along path
-        const lat = originLat + (destLat - originLat) * t;
-        const lng = originLng + (destLng - originLng) * t;
-
-        // Time advances by the leg's share of nominal transit; the disrupted
-        // scan adds the disruption hours, pushing later scans (and delivery) out.
-        if (s > 0) {
-          const legShare = nominalTransitH / (scanCount - 1);
-          let legHours = legShare;
-          if (s === disruptScanIdx) legHours += disruptionHours;
-          cursorMs += Math.round(legHours * 3_600_000);
-        }
-
-        const isLast  = s === scanCount - 1;
-        const isFirst = s === 0;
-        // A transient disruption EXCEPTION can fall ONLY on an intermediate scan.
-        const isTransientException = s === disruptScanIdx;
-
-        // Single-terminal enforcement: exactly one terminal per journey.
-        //   - last scan  → DELIVERED (normal) OR EXCEPTION (failed journey)
-        //   - first scan → DEPARTURE
-        //   - second-to-last → OUT_FOR_DELIVERY (when not a transient exception)
-        //   - other intermediate → SCAN/ARRIVAL, or a transient EXCEPTION
-        const rawStatus = isLast
-            ? (journeyFails ? pick(STATUS_EXCEPTION) : pick(STATUS_DELIVERED))
-          : isFirst ? pick(STATUS_DEPARTURE)
-          : isTransientException ? pick(STATUS_EXCEPTION)
-          : (s === scanCount - 2) ? pick(STATUS_OFD)
-          : pick(STATUS_TRANSIT);
-
-        // ~6% invalid scan coords (out of WGS-84 range) to exercise reject path.
-        const invalid = rand() < 0.06;
-        const finalLat = invalid ? 95 + rand() * 10  : lat;
-        const finalLng = invalid ? 185 + rand() * 10 : lng;
-
-        // Per-scan timestamps cycle through the 4 time-of-day-preserving formats
-        // (ISO-8601, MM/DD HH:mm, unix-seconds, RFC-2822) — skipping the
-        // date-only format (variant 3) so each scan's LOCAL time stays accurate
-        // within a journey. The messy-format normalization showcase still
-        // exercises all formats across the feed.
-        const FORMAT_CYCLE = [0, 1, 2, 4] as const;
-        const variant = FORMAT_CYCLE[formatIdx % FORMAT_CYCLE.length] ?? 0;
-        const rawTimestamp = ShipmentEvents.formatTimestamp(cursorMs, variant);
-        formatIdx++;
-
-        allScans.push({
-          'shipmentId':          `SHP-${String(i).padStart(6, '0')}`,
-          'scanSeq':             s,
-          'rawTimestamp':        rawTimestamp,
-          'rawDispatchAt':       rawDispatchAt,
-          'rawStatus':           rawStatus,
-          'carrier':             carrier,
-          'ipAddress':           gatewayIp,
-          'latitude':            finalLat,
-          'longitude':           finalLng,
-          'legFromLat':          prevLat,
-          'legFromLng':          prevLng,
-          'originLat':           originLat,
-          'originLng':           originLng,
-          'destLat':             destLat,
-          'destLng':             destLng,
-          'weight':              weightValue,
-          'weightUnit':          weightUnit,
-          'recipientName':       name,
-          'recipientEmail':      recipientEmail,
-          'recipientPhone':      recipientPhone,
-          'recipientAddress':    recipientAddress,
-          'recipientCountry':    countryRaw,
-          'marketingConsent':    consent,
-          'rawPromisedDeliveryAt': rawPromisedDeliveryAt,
-          'lineItems':           lineItems.map((li) => ({ ...li })),
-          'facilityId':          facilityId,
-          'lawfulBasis':         lawfulBasis,
-          'specialCategory':     specialCategory,
-          // The journey's disruption (if any) is carried on EVERY scan so the
-          // shipment-level enrich-eta can reconstruct the same delivery delay
-          // regardless of which scan is being processed.
-          'disruptionReason':    disruptionReason,
-        });
-
-        prevLat = lat;
-        prevLng = lng;
-      }
+      journeyCount++;
+      if (journeyCount >= n) break;
     }
 
     // Interleave all scans by their UTC epoch (the real feed: many journeys'

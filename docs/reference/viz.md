@@ -125,8 +125,9 @@ Each placement's `@type` is prefixed with `dag:`: `dag:SingleNode`, `dag:Scatter
 ```ts twoslash
 import { DAGONIZER_VOCAB } from '@noocodex/dagonizer/viz';
 // ---cut---
-const vocab = DAGONIZER_VOCAB;
-//    ^? const vocab: "https://noocodex.dev/ontology/dagonizer/"
+// DAGONIZER_VOCAB === 'https://noocodex.dev/ontology/dagonizer/'
+const vocab = DAGONIZER_VOCAB; // type: "https://noocodex.dev/ontology/dagonizer/"
+export {};
 ```
 
 Stable JSON-LD vocabulary URI for the Dagonizer DAG vocabulary. Prefixed as `dag:` in rendered documents.

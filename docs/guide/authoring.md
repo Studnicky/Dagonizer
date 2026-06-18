@@ -90,14 +90,7 @@ Choose DAGDeriver when:
 
 Both sugar layers produce the same `DAG` object. A literal can also be written directly: useful for code generation, JSON loaded from disk, fixture data in tests, or programmatic composition.
 
-```ts twoslash
-import { DAGDocument, Dagonizer } from '@noocodex/dagonizer';
-declare const rawJson: string;
-const dispatcher = new Dagonizer();
-// ---cut---
-const dag = DAGDocument.load(rawJson);
-dispatcher.registerDAG(dag);
-```
+<<< @/../examples/dags/03-schema.ts#load
 
 See [JSON-LD export and import](./json-ld) for the canonical shape, round-trip semantics, and persistence patterns.
 
@@ -152,54 +145,17 @@ The bottom two rows are imperative patterns. A node that recursively dispatches 
 
 Every DAG branch must end at a named `TerminalNode` placement. Declare one with `.terminal(name, options?)`:
 
-```ts twoslash
-import { DAGBuilder, NodeOutputBuilder, NodeStateBase, ScalarNode } from '@noocodex/dagonizer';
-class FinalizeNode extends ScalarNode<NodeStateBase, 'success'> {
-  readonly name = 'finalize';
-  readonly outputs = ['success'] as const;
-  protected override async executeOne() {
-    return NodeOutputBuilder.of('success');
-  }
-}
-const builder = new DAGBuilder('demo', '1');
-// ---cut---
-builder
-  .node('finalize', new FinalizeNode(), { success: 'end' })
-  .terminal('end');
-```
+<<< @/../examples/dags/09-terminals.ts#terminal-completed
 
 `.terminal(name, options?)` emits a `TerminalNode` placement. When the engine reaches it, the flow ends with the declared `outcome` (`'completed'` by default). To mark a branch as `failed`, pass `{ outcome: 'failed' }`:
 
-```ts twoslash
-import { DAGBuilder, NodeOutputBuilder, NodeStateBase, ScalarNode } from '@noocodex/dagonizer';
-class CheckNode extends ScalarNode<NodeStateBase, 'pass' | 'fail'> {
-  readonly name = 'check';
-  readonly outputs = ['pass', 'fail'] as const;
-  protected override async executeOne() {
-    return NodeOutputBuilder.of('pass');
-  }
-}
-const builder = new DAGBuilder('demo', '1');
-// ---cut---
-builder
-  .node('check', new CheckNode(), { pass: 'end-ok', fail: 'end-fail' })
-  .terminal('end-ok')
-  .terminal('end-fail', { outcome: 'failed' });
-```
+<<< @/../examples/dags/09-terminals.ts#terminal-failed
 
 Named terminals appear as discrete nodes in the visualisation. Use descriptive names (`end-ok`, `response-sent`, `workflow-failed`) when the endpoint name carries meaning.
 
 An `EmbeddedDAGNode` placement targets named terminals directly. This is the idiomatic way to surface a child DAG's error as a `failed` lifecycle in the parent:
 
-```ts twoslash
-import { DAGBuilder } from '@noocodex/dagonizer';
-const builder = new DAGBuilder('demo', '1');
-// ---cut---
-builder
-  .embeddedDAG('run-child', 'child-dag', { success: 'end-ok', error: 'end-fail' })
-  .terminal('end-ok')
-  .terminal('end-fail', { outcome: 'failed' });
-```
+<<< @/../examples/dags/09-terminals.ts#embedded-terminals
 
 See [DAGBuilder, `.terminal()`](./builder#terminal-name-outcome) and [Phase 09, Terminal placements](../examples/09-terminals) for runnable examples.
 

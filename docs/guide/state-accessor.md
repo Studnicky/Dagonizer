@@ -24,11 +24,7 @@ Scatter source reads, scatter state-mapping input copies, and gather writes all 
 
 ## The contract
 
-```ts twoslash
-import type { StateAccessor } from '@noocodex/dagonizer/contracts';
-
-declare const accessor: StateAccessor;
-```
+<<< @/../examples/dags/state-accessor.ts#contract-declaration
 
 Implementations are stateless. The same instance is shared across every scatter source read, state-mapping input copy, and gather write.
 
@@ -63,31 +59,7 @@ The same accessor flows through every code path that resolves a state path:
 
 Custom `GatherStrategy` subclasses receive the dispatcher's accessor on the execution context:
 
-```ts twoslash
-import { GatherStrategy, GatherStrategies } from '@noocodex/dagonizer';
-import type { NodeStateInterface, Batch } from '@noocodex/dagonizer';
-import type { GatherRecord } from '@noocodex/dagonizer';
-import type { GatherConfig } from '@noocodex/dagonizer/entities';
-import type { StateAccessor } from '@noocodex/dagonizer/contracts';
-
-class AverageGather extends GatherStrategy {
-  readonly name = 'average';
-  reduce(
-    config: GatherConfig,
-    batch: Batch<GatherRecord<NodeStateInterface>>,
-    state: NodeStateInterface,
-    accessor: StateAccessor,
-  ): void {
-    if (config.target === undefined) return;
-    const all: number[] = [];
-    for (const item of batch) {
-      all.push(accessor.get(item.state.cloneState, config.field ?? 'score') as number);
-    }
-    const avg = all.reduce((a, b) => a + b, 0) / Math.max(1, all.length);
-    accessor.set(state, config.target, avg);
-  }
-}
-```
+<<< @/../examples/state-accessor.ts#gather-strategy
 
 Every state-path read and write goes through one resolution strategy.
 

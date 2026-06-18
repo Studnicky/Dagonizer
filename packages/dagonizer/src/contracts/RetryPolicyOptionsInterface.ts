@@ -9,12 +9,20 @@ import type { ErrorConstructorType } from './ErrorConstructorType.js';
  * the fields they want to override.
  */
 export interface RetryPolicyOptionsInterface {
+  /** Maximum number of attempts (initial + retries). Defaults to `RETRY_POLICY_DEFAULTS.maxAttempts`. */
   maxAttempts?: number;
+  /** Delay growth strategy. Defaults to `'exponential'`. */
   strategy?: BackoffStrategy;
+  /** Base delay in milliseconds before the first retry. Defaults to `RETRY_POLICY_DEFAULTS.baseDelay`. */
   baseDelay?: number;
+  /** Upper bound on the computed delay in milliseconds. Defaults to `RETRY_POLICY_DEFAULTS.maxDelay`. */
   maxDelay?: number;
+  /** Exponential growth factor; used by `'exponential'` and `'linear'` strategies. */
   multiplier?: number;
+  /** Fractional jitter applied to the computed delay; `0` = no jitter, `1` = full-width jitter. */
   jitterFactor?: number;
+  /** Error classes that trigger a retry. An error not in this list is re-thrown immediately. */
   retryOn?: ErrorConstructorType[];
+  /** Error classes that abort the retry loop immediately regardless of `retryOn`. */
   abortOn?: ErrorConstructorType[];
 }

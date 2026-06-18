@@ -81,6 +81,7 @@ process.stdout.write(`  Cascade preferences: ollama-remote (skipped, probe=false
 //    routes on the response kind.
 // ---------------------------------------------------------------------------
 
+// #region adapter-usage
 const dispatcher = new Dagonizer<ChatAdapterState>();
 dispatcher.registerNode(new ChatNode());
 dispatcher.registerNode(new HandleTextNode());
@@ -92,6 +93,7 @@ state.prompt  = 'What is a DAG?';
 state.adapter = adapter;
 
 await dispatcher.execute('llm-adapter-demo', state);
+// #endregion adapter-usage
 
 process.stdout.write(`\nDAG result:\n`);
 process.stdout.write(`  prompt:       "${state.prompt}"\n`);

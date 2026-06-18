@@ -2,28 +2,29 @@
  * EventStreamSource: lazy AsyncIterable<SourcePayload> for the scatter source.
  *
  * `streamTyped` pulls from ShipmentEvents.typedScansGenerator — a sync generator
- * that steps the seeded LCG one journey at a time, yielding typed scans without
- * materialising the full array. Each record is encoded per-format via
- * Sources.buildPayloadFromScan and yielded as a SourcePayload, so peak memory is
- * O(1) regardless of total count.
+ * that interleaves typed scans across all config entries using a deterministic
+ * fractional-accumulator scheduler (coin-sorter / weighted round-robin). Each
+ * record is encoded per-format via Sources.buildPayloadFromScan and yielded as a
+ * SourcePayload, so peak memory is O(numTypes) regardless of total count.
  *
  * The engine's scatter natively accepts AsyncIterable as the source value, so
  * assigning the result of EventStreamSource.streamTyped to state.sources wires it
  * transparently with no DAG changes needed.
  *
  * Format distribution: each EventTypeConfig entry's formatMix weights determine
- * the proportional threshold split for that entry's scan budget. Local index
- * within each entry drives the per-entry threshold selector.
+ * the proportional threshold split for that entry's scan budget. Because scans are
+ * now interleaved across types, a PER-TYPE local index (localIndices[configIndex])
+ * drives each entry's threshold selector independently — format assignment is
+ * stable regardless of emission order across the interleaved stream.
  *
- * Determinism: ShipmentEvents.typedScansGenerator uses the same seeded LCG as
- * buildTypedFeed. No Date.now or Math.random in the data path.
+ * Determinism: ShipmentEvents.typedScansGenerator uses independent seeded LCGs
+ * per type sub-iterator. No Date.now or Math.random in the data path.
  *
  * Scale path: when totalCount exceeds the config's natural sum, streamTyped
  * drives typedScansGenerator in bounded cycles (at most CYCLE_CAP events per
- * cycle) so buildRawScans never allocates more than O(CYCLE_CAP) per entry
- * regardless of totalCount. Each cycle receives a proportionally scaled config
- * whose per-entry counts sum to min(CYCLE_CAP, remaining). Per-event-type
- * proportions from the original config are preserved across every cycle.
+ * cycle) so each cycle's interleaved generator holds at most O(CYCLE_CAP *
+ * numTypes) scan candidates across all type buffers. Per-event-type proportions
+ * from the original config are preserved across every cycle.
  */
 
 import type { EventTypeConfig, TypedScan } from '../services.ts';
@@ -136,20 +137,31 @@ export class EventStreamSource {
     const effective = totalCount !== undefined ? clampCount(totalCount) : clampCount(originalSum);
 
     // Backward-compatible single-pass path: effective fits within the config's
-    // natural sum — one generator pass produces exactly `effective` payloads
-    // with byte-identical output to the original implementation.
+    // natural sum — one generator pass produces exactly `effective` payloads.
+    // With the interleaved generator, scans arrive in mixed-type order, so each
+    // type's local format index is tracked by config entry index (looked up from
+    // the scan's eventType) rather than by sequential stream position.
     if (effective <= originalSum) {
       const entryThresholds = config.map((entry) =>
         buildTypedFormatThresholds(entry.formatMix, entry.count),
       );
 
+      // Map eventType → config index for O(1) per-scan format-index lookup.
+      // When config has multiple entries with the same eventType the FIRST index
+      // wins (same tie-break as the generator's slot ordering).
+      const eventTypeToConfigIdx = new Map<string, number>();
+      for (let i = 0; i < config.length; i++) {
+        const et = config[i]!.eventType;
+        if (!eventTypeToConfigIdx.has(et)) eventTypeToConfigIdx.set(et, i);
+      }
+
       return {
         [Symbol.asyncIterator](): AsyncIterator<SourcePayload> {
           const generator = ShipmentEvents.typedScansGenerator(config);
           let globalIndex = 0;
+          // Per-type local index — advances independently for each config entry
+          // so format thresholds apply within each type's budget, not globally.
           const localIndices = new Array<number>(config.length).fill(0);
-          let configPos = 0;
-          let countInCurrentEntry = 0;
 
           return {
             async next(): Promise<IteratorResult<SourcePayload>> {
@@ -164,19 +176,11 @@ export class EventStreamSource {
 
               const scan = step.value;
 
-              while (configPos < config.length - 1) {
-                const entry = config[configPos]!;
-                if (countInCurrentEntry >= entry.count) {
-                  configPos++;
-                  countInCurrentEntry = 0;
-                } else {
-                  break;
-                }
-              }
-
-              const currentEntry = config[configPos]!;
-              const localIdx = localIndices[configPos] ?? 0;
-              const thresholds = entryThresholds[configPos] ?? [];
+              // Resolve config entry by the scan's eventType (interleaved order).
+              const configIdx = eventTypeToConfigIdx.get(scan.eventType) ?? 0;
+              const currentEntry = config[configIdx]!;
+              const localIdx = localIndices[configIdx] ?? 0;
+              const thresholds = entryThresholds[configIdx] ?? [];
 
               let format: 'csv' | 'json' | 'ndjson' | 'yaml' = currentEntry.formatMix[0]?.format ?? 'json';
               let compression: 'none' | 'gzip' = currentEntry.formatMix[0]?.compression ?? 'none';
@@ -191,8 +195,7 @@ export class EventStreamSource {
               const payload = await Sources.buildPayloadFromScan(scan, format, compression, globalIndex, currentEntry.eventType);
               const sourceId = `${currentEntry.eventType}-${format}-${compression}-${globalIndex}`;
 
-              localIndices[configPos] = localIdx + 1;
-              countInCurrentEntry++;
+              localIndices[configIdx] = localIdx + 1;
               globalIndex++;
 
               return {
@@ -209,9 +212,11 @@ export class EventStreamSource {
     //
     // Run typedScansGenerator in bounded cycles of at most CYCLE_CAP events
     // each. Each cycle receives a proportionally scaled config whose per-entry
-    // counts sum to min(CYCLE_CAP, remaining), keeping buildRawScans arrays
-    // bounded at O(CYCLE_CAP * 4) per cycle. A monotonically increasing
-    // globalIndex guarantees unique sourceIds across all cycles.
+    // counts sum to min(CYCLE_CAP, remaining), keeping each cycle's interleaved
+    // generator memory bounded at O(numTypes) scan candidates. A monotonically
+    // increasing globalIndex guarantees unique sourceIds across all cycles.
+    // Per-type local indices reset at cycle boundaries (each cycle is an
+    // independent scaled config, so threshold offsets restart from 0 within it).
     return {
       [Symbol.asyncIterator](): AsyncIterator<SourcePayload> {
         let globalIndex = 0;
@@ -221,8 +226,7 @@ export class EventStreamSource {
         let cycleGenerator: Generator<TypedScan> | null = null;
         let cycleConfig: EventTypeConfig = [];
         let cycleEntryThresholds: Array<Array<{ format: 'csv' | 'json' | 'ndjson' | 'yaml'; compression: 'none' | 'gzip'; limit: number }>> = [];
-        let cycleConfigPos = 0;
-        let cycleCountInCurrentEntry = 0;
+        let cycleEventTypeToIdx: Map<string, number> = new Map();
         let cycleLocalIndices: number[] = [];
         let cycleTotal = 0;
         let cycleYielded = 0;
@@ -234,9 +238,13 @@ export class EventStreamSource {
           cycleEntryThresholds = cycleConfig.map((entry) =>
             buildTypedFormatThresholds(entry.formatMix, entry.count),
           );
+          // Build eventType → cycleConfig index map for per-type local index lookup.
+          cycleEventTypeToIdx = new Map();
+          for (let i = 0; i < cycleConfig.length; i++) {
+            const et = cycleConfig[i]!.eventType;
+            if (!cycleEventTypeToIdx.has(et)) cycleEventTypeToIdx.set(et, i);
+          }
           cycleGenerator = ShipmentEvents.typedScansGenerator(cycleConfig);
-          cycleConfigPos = 0;
-          cycleCountInCurrentEntry = 0;
           cycleLocalIndices = new Array<number>(cycleConfig.length).fill(0);
           cycleYielded = 0;
           remaining -= batchSize;
@@ -260,20 +268,11 @@ export class EventStreamSource {
 
             const scan = step.value;
 
-            // Advance cycleConfigPos to match the entry that owns this scan.
-            while (cycleConfigPos < cycleConfig.length - 1) {
-              const entry = cycleConfig[cycleConfigPos]!;
-              if (cycleCountInCurrentEntry >= entry.count) {
-                cycleConfigPos++;
-                cycleCountInCurrentEntry = 0;
-              } else {
-                break;
-              }
-            }
-
-            const currentEntry = cycleConfig[cycleConfigPos]!;
-            const localIdx = cycleLocalIndices[cycleConfigPos] ?? 0;
-            const thresholds = cycleEntryThresholds[cycleConfigPos] ?? [];
+            // Resolve config entry by the scan's eventType (interleaved order).
+            const cycleConfigIdx = cycleEventTypeToIdx.get(scan.eventType) ?? 0;
+            const currentEntry = cycleConfig[cycleConfigIdx]!;
+            const localIdx = cycleLocalIndices[cycleConfigIdx] ?? 0;
+            const thresholds = cycleEntryThresholds[cycleConfigIdx] ?? [];
 
             let format: 'csv' | 'json' | 'ndjson' | 'yaml' = currentEntry.formatMix[0]?.format ?? 'json';
             let compression: 'none' | 'gzip' = currentEntry.formatMix[0]?.compression ?? 'none';
@@ -288,8 +287,7 @@ export class EventStreamSource {
             const payload = await Sources.buildPayloadFromScan(scan, format, compression, globalIndex, currentEntry.eventType);
             const sourceId = `${currentEntry.eventType}-${format}-${compression}-${globalIndex}`;
 
-            cycleLocalIndices[cycleConfigPos] = localIdx + 1;
-            cycleCountInCurrentEntry++;
+            cycleLocalIndices[cycleConfigIdx] = localIdx + 1;
             cycleYielded++;
             globalIndex++;
 

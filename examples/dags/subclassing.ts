@@ -1,0 +1,126 @@
+/**
+ * subclassing/dags: pure module — NodeStateBase subclasses and a retry-budget node.
+ * No side effects, no dispatcher, no execute.
+ * Imported by examples/subclassing.ts (the executable entry point).
+ */
+
+import {
+  NodeOutputBuilder,
+  NodeStateBase,
+  ScalarNode,
+} from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
+import type { JsonObject } from '@noocodex/dagonizer/entities';
+
+// ---------------------------------------------------------------------------
+// Basic subclass
+// ---------------------------------------------------------------------------
+
+// #region basic-subclass
+export class PipelineState extends NodeStateBase {
+  items: string[] = [];
+  processedIds = new Set<string>();
+  totalCost = 0;
+}
+// #endregion basic-subclass
+
+// ---------------------------------------------------------------------------
+// Subclass with clone (manual copy, no super.clone())
+// ---------------------------------------------------------------------------
+
+interface Config {
+  retries: number;
+}
+
+// #region clone-manual
+class SharedConfigState extends NodeStateBase {
+  items: string[] = [];
+  config: Config;
+
+  constructor(config: Config) {
+    super();
+    this.config = config;
+  }
+
+  override clone(): this {
+    const cloned = new SharedConfigState(this.config) as this;
+    cloned.items = [...this.items];
+    return cloned;
+  }
+}
+// #endregion clone-manual
+
+export { SharedConfigState };
+
+// ---------------------------------------------------------------------------
+// Subclass with clone (delegate to super.clone())
+// ---------------------------------------------------------------------------
+
+// #region clone-super
+class ItemListState extends NodeStateBase {
+  items: string[] = [];
+
+  override clone(): this {
+    const base = super.clone();
+    base.items = [...this.items];
+    return base;
+  }
+}
+// #endregion clone-super
+
+export { ItemListState };
+
+// ---------------------------------------------------------------------------
+// Static restore
+// ---------------------------------------------------------------------------
+
+// #region static-restore
+export class RestoredState extends NodeStateBase {
+  items: string[] = [];
+}
+
+// NodeStateBase.restore is static with this-polymorphism.
+// Subclasses inherit it; RestoredState.restore(snap) returns RestoredState.
+export function demoStaticRestore(): void {
+  const state = new RestoredState();
+  const snap = state.snapshot();
+  const restored = RestoredState.restore(snap);
+  // restored is RestoredState (not NodeStateBase)
+  void restored;
+}
+// #endregion static-restore
+
+// ---------------------------------------------------------------------------
+// Retry budget: a node that routes via withinRetryBudget
+// ---------------------------------------------------------------------------
+
+// #region retry-budget-node
+export class ApiState extends NodeStateBase {
+  data: unknown = null;
+
+  protected override snapshotData(): JsonObject {
+    return { data: this.data as JsonObject };
+  }
+
+  protected override restoreData(snap: JsonObject): void {
+    this.data = snap['data'] ?? null;
+  }
+}
+
+export class ApiNode extends ScalarNode<ApiState, 'success' | 'retry' | 'salvage'> {
+  readonly name    = 'api';
+  readonly outputs = ['success', 'retry', 'salvage'] as const;
+
+  protected override async executeOne(state: ApiState, context: NodeContextInterface) {
+    try {
+      // Stub: production code would call an external service here.
+      state.data = { ok: true };
+      state.clearAttempts(context.nodeName);
+      return NodeOutputBuilder.of('success');
+    } catch {
+      const canRetry = state.withinRetryBudget(context.nodeName, 3);
+      return NodeOutputBuilder.of(canRetry ? 'retry' : 'salvage');
+    }
+  }
+}
+// #endregion retry-budget-node

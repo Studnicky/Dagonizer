@@ -31,49 +31,11 @@ The DAG is always the unit of distribution. A single node never travels to a con
 
 An `EmbeddedDAGNode` or `ScatterNode` (dag body) placement declares a logical container role:
 
-```ts twoslash
-import type { EmbeddedDAGNode } from '@noocodex/dagonizer/entities';
-// ---cut---
-// DAG document fragment
-const node = {
-  '@id':  'urn:noocodex:dag:main/node/enrich',
-  '@type': 'EmbeddedDAGNode',
-  name: 'enrich',
-  dag: 'enrichment-pipeline',
-  container: 'cpu',             // logical role name
-  outputs: { success: 'save', error: 'end-fail' },
-} satisfies EmbeddedDAGNode;
-```
+<<< @/../examples/dags/12-workers.ts#parent-dag
 
 The deployment binds the logical role to a backend at dispatcher construction:
 
-```ts twoslash
-import { NodeStateBase, Dagonizer } from '@noocodex/dagonizer';
-import type { DagContainerInterface, DagTaskInterface, DagOutcomeInterface } from '@noocodex/dagonizer/contracts';
-
-class AppState extends NodeStateBase {}
-interface AppServices { db: unknown }
-
-interface _WorkerThreadContainerOptions {
-  registryModule: string;
-  registryVersion: string;
-  poolSize?: number;
-}
-declare const WorkerThreadContainer: new (options: _WorkerThreadContainerOptions) => DagContainerInterface<AppState>;
-
-declare const services: AppServices;
-// ---cut---
-const dispatcher = new Dagonizer<AppState, AppServices>({
-  services,
-  containers: {
-    cpu: new WorkerThreadContainer({
-      registryModule: new URL('./registry.js', import.meta.url).href,
-      registryVersion: '1.0.0',
-      poolSize: 4,
-    }),
-  },
-});
-```
+<<< @/../examples/12-workers.ts#dispatcher
 
 When the dispatcher reaches the `enrich` placement, it delegates the sub-DAG to the `cpu` backend. The child state crosses as a JSON snapshot; the worker runs the sub-DAG to completion; the terminal snapshot is applied in place. The DAG document and node code are identical in both paths. An unbound role falls back to in-process and fires `contractWarning` — the DAG still runs, the degradation is visible.
 
@@ -92,69 +54,15 @@ The browser package `@noocodex/dagonizer-executor-web` ships `WebWorkerContainer
 
 ### Pool sizing
 
-`NodeSystemInfo.recommendedWorkerCount(config)` returns a cgroup-aware default based on `os.availableParallelism()` and available memory. Pass `poolSize` to override.
+`NodeSystemInfo.recommendedWorkerCount(config)` returns a cgroup-aware default based on `os.availableParallelism()` and available memory. Spread `RecommendedWorkerCountConfigDefault` and override only the fields you want to clamp:
 
-```ts twoslash
-import type { RecommendedWorkerCountConfig } from '@noocodex/dagonizer/entities';
-
-interface _NodeSystemInfo {
-  recommendedWorkerCount(config: RecommendedWorkerCountConfig): number;
-}
-declare const NodeSystemInfo: new () => _NodeSystemInfo;
-// ---cut---
-import { RecommendedWorkerCountConfigDefault } from '@noocodex/dagonizer/entities';
-
-const sysInfo = new NodeSystemInfo();
-const poolSize = sysInfo.recommendedWorkerCount({
-  ...RecommendedWorkerCountConfigDefault,
-  maximumWorkers: 8,
-});
-```
+<<< @/../examples/12-workers.ts#pool-sizing
 
 ### The registry module contract
 
 Cross-process containers (fork, cluster, spawn, worker) dynamic-import a registry module inside the isolate to reconstruct the DAG bundle and services without crossing the boundary. The module's default export implements `RegistryModuleInterface`:
 
-```ts twoslash
-import { NodeStateBase, Dagonizer } from '@noocodex/dagonizer';
-import type { DispatcherBundle } from '@noocodex/dagonizer';
-
-class AppState extends NodeStateBase {}
-interface AppServices { db: DatabaseClient }
-
-interface DatabaseClient {
-  query(sql: string): Promise<unknown[]>;
-}
-
-declare class DatabaseClient {
-  constructor(url: string);
-  query(sql: string): Promise<unknown[]>;
-}
-
-declare const myDispatcherBundle: DispatcherBundle<AppState, AppServices>;
-// ---cut---
-import type { RegistryModuleInterface, RegistryBundleInterface } from '@noocodex/dagonizer/contracts';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
-
-// registry.ts — default export consumed by DagHost
-const registry: RegistryModuleInterface = {
-  async createBundle(servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
-    // Wire services from the opaque config the parent passed at init time.
-    const db = new DatabaseClient(servicesConfig['dbUrl'] as string);
-    const services = { db };
-
-    // Return the bundle, services, version string, and state restore factory.
-    return {
-      bundle: myDispatcherBundle,
-      services,
-      registryVersion: '1.0.0',
-      restoreState: AppState,
-    };
-  },
-};
-
-export default registry;
-```
+<<< @/../examples/dags/12-workers.registry.ts#registry
 
 `registryVersion` must match the string the parent passed to `WorkerThreadContainer` (or the equivalent backend). The `DagHost` inside the worker rejects an `init` message with a mismatched version before accepting any `execute` requests.
 
@@ -178,6 +86,8 @@ When a top-level DAG completes at a terminal placement bound to a `HandoffChanne
 - `correlationId` — monotonic dispatcher-assigned identifier for deduplication
 - `placementPath` — nesting path for instrumentation
 
+Subclass `InMemoryChannel` and override the protected `onPublished` hook to chain a downstream DAG. `InMemoryChannel` carries no constructor options; passing a callback object is not supported — extension via subclass is the only mechanism.
+
 ```ts twoslash
 import { NodeStateBase, Dagonizer } from '@noocodex/dagonizer';
 import { InMemoryChannel } from '@noocodex/dagonizer/channels';
@@ -187,13 +97,12 @@ import type { JsonObject } from '@noocodex/dagonizer/entities';
 class AppState extends NodeStateBase {}
 interface AppServices { db: unknown }
 
+// In production, downstreamDispatcher and dlqChannel are constructed at
+// function startup (e.g. module scope for Lambda warm starts).
 declare const services: AppServices;
 declare const downstreamDispatcher: Dagonizer<AppState>;
 declare const dlqChannel: InMemoryChannel;
-// ---cut---
-// Extension via subclass (zero callbacks). Override the protected onPublished
-// hook to chain a downstream DAG. InMemoryChannelOptions carries no fields;
-// passing a callback object to the constructor is not supported.
+
 class HandoffChannel extends InMemoryChannel {
   protected override async onPublished(handoff: DAGHandoff): Promise<void> {
     // DAGHandoff is a oneOf discriminated union: either stateSnapshot (by-value
@@ -211,10 +120,11 @@ const channel = new HandoffChannel();
 const dispatcher = new Dagonizer<AppState, AppServices>({
   services,
   channels: {
-    done: channel,       // publishes when the 'done' terminal is reached
+    done: channel,         // publishes when the 'done' terminal is reached
     escalate: dlqChannel,  // different terminals can bind different channels
   },
 });
+export {};
 ```
 
 A terminal not listed in `channels` follows today's behavior — the run completes, no envelope is published. Embedded and contained child DAGs never publish; only the top-level host does.
@@ -234,18 +144,18 @@ import type { DAGHandoff, JsonObject } from '@noocodex/dagonizer/entities';
 class AppState extends NodeStateBase {}
 interface AppServices { db: unknown }
 
+// buildServices and myBundle are deployment-specific; they construct the
+// service bag and the compiled DAG+node bundle for this function.
 declare function buildServices(): AppServices;
 declare const myBundle: DispatcherBundle<AppState, AppServices>;
 const REGISTRY_VERSION = '1.0.0';
-// ---cut---
 
-// A transport-specific channel stub — implement `publish` with your SDK call.
+// A transport-specific channel — implement `publish` with your SDK call.
+// Core never imports a cloud SDK; `SqsChannel` is your deployment code.
 class SqsChannel implements HandoffChannelInterface {
   async publish(handoff: DAGHandoff): Promise<void> {
-    // Insert your SQS / PubSub / SNS SDK call here.
-    // Example: await sqsClient.send(new SendMessageCommand({ ... }));
-    // Core never imports a cloud SDK; this is your deployment code.
-    void handoff; // remove this line when wiring the real SDK
+    // await sqsClient.send(new SendMessageCommand({ ... }));
+    void handoff;
   }
 }
 
@@ -259,9 +169,6 @@ export async function handler(envelope: DAGHandoff): Promise<void> {
   // 2. Restore state from the envelope.
   // DAGHandoff is a oneOf: stateSnapshot (by-value) or stateSnapshotRef
   // (by-reference URI). Narrow to the by-value branch before calling restore.
-  // A stateSnapshotRef envelope requires the receiver to fetch the snapshot
-  // from the referenced URI before restoring — see the stateSnapshotRef note
-  // in the envelope fields list above.
   if (!('stateSnapshot' in envelope)) {
     throw new Error('stateSnapshotRef envelopes require fetching the snapshot URI before restore');
   }
@@ -272,12 +179,11 @@ export async function handler(envelope: DAGHandoff): Promise<void> {
   const dispatcher = new Dagonizer<AppState, typeof services>({
     services,
     channels: {
-      done:     new SqsChannel(),   // publishes to the downstream queue
-      escalate: new SqsChannel(),   // routes failures to a DLQ
+      done:     new SqsChannel(),  // publishes to the downstream queue
+      escalate: new SqsChannel(),  // routes failures to a DLQ
     },
   });
 
-  // Register DAGs and nodes.
   dispatcher.registerBundle(myBundle);
 
   // 4. Execute. The channel publishes after the terminal is reached.

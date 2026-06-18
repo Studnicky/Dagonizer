@@ -137,6 +137,8 @@ function keyFor(id: string): string {
       <label class="backend-field">
         <span class="backend-prefix">backend</span>
         <select
+          id="backend-picker-select"
+          name="backend-picker-select"
           class="backend-select"
           :value="activeId"
           :disabled="disabled === true"
@@ -191,6 +193,8 @@ function keyFor(id: string): string {
       </p>
       <div class="key-row">
         <input
+          :id="`backend-key-${backend.id}`"
+          :name="`backend-key-${backend.id}`"
           class="key-input"
           :value="keyFor(backend.id)"
           :type="revealMap[backend.id] ? 'text' : 'password'"
@@ -234,6 +238,8 @@ function keyFor(id: string): string {
       </p>
       <div class="key-row">
         <input
+          id="backend-key-ollama-model"
+          name="backend-key-ollama-model"
           class="key-input"
           type="text"
           :value="ollamaModel"

@@ -131,18 +131,9 @@ Terminal states are sticky: once reached, all further events are silently ignore
 
 ### Lifecycle timestamps
 
-```ts twoslash
-import type { DAGLifecycleState } from '@noocodex/dagonizer/lifecycle';
-// ---cut---
-type _LifecycleDoc = DAGLifecycleState;
-//   ^? type _LifecycleDoc =
-//        | { kind: 'pending';   startedAt: null;   finishedAt: null;   error: null;  reason: null }
-//        | { kind: 'running';   startedAt: number; finishedAt: null;   error: null;  reason: null }
-//        | { kind: 'completed'; startedAt: number; finishedAt: number; error: null;  reason: null }
-//        | { kind: 'failed';    startedAt: number; finishedAt: number; error: Error; reason: null }
-//        | { kind: 'cancelled'; startedAt: number; finishedAt: number; error: null;  reason: string }
-//        | { kind: 'timed_out'; startedAt: number; finishedAt: number; error: null;  reason: null }
-```
+Narrowing `state.lifecycle.kind` unlocks the typed fields:
+
+<<< @/../examples/18-observability.ts#lifecycle-state
 
 Timestamps are monotonic milliseconds from `Clock.monotonicMs()`. Use them for duration math; do not display them as wall-clock values.
 

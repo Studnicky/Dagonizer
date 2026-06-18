@@ -158,55 +158,23 @@ See [catching contract drift](../guide/derive.md#catching-contract-drift) for th
 
 ### `getDAG(name)`
 
-```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-class MyState extends NodeStateBase {}
-// ---cut---
-const d = new Dagonizer<MyState>();
-const dag = d.getDAG('my-flow');
-//    ^? const dag: import("@noocodex/dagonizer").DAG | undefined
-```
-
-Look up a registered DAG by name. Returns `undefined` when the DAG has not been registered.
+Returns `DAG | undefined`. `undefined` when the DAG has not been registered.
 
 ### `getNode(name)`
 
-```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-class MyState extends NodeStateBase {}
-// ---cut---
-const d = new Dagonizer<MyState>();
-const node = d.getNode('my-node');
-//    ^? const node: import("@noocodex/dagonizer").NodeInterface<MyState, string, undefined> | undefined
-```
-
-Look up a registered node by name. Returns `undefined` when the node has not been registered.
+Returns `NodeInterface<TState, string, TServices> | undefined`. `undefined` when the node has not been registered.
 
 ### `listDAGs()`
-
-```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-class MyState extends NodeStateBase {}
-// ---cut---
-const d = new Dagonizer<MyState>();
-const dags = d.listDAGs();
-//    ^? const dags: readonly import("@noocodex/dagonizer").DAG[]
-```
 
 Snapshot of every registered DAG. The returned array is a fresh shallow copy; mutating it does not affect the registry.
 
 ### `listNodes()`
 
-```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-class MyState extends NodeStateBase {}
-// ---cut---
-const d = new Dagonizer<MyState>();
-const nodes = d.listNodes();
-//    ^? const nodes: readonly import("@noocodex/dagonizer").NodeInterface<MyState, string, undefined>[]
-```
-
 Snapshot of every registered node. The returned array is a fresh shallow copy; mutating it does not affect the registry.
+
+All four read accessors in context:
+
+<<< @/../examples/01-linear.ts#registry-read
 
 ---
 
@@ -392,8 +360,9 @@ A coherent unit of nodes and DAGs registered together. Plugin packages and featu
 ```ts twoslash
 import { SCATTER_PROGRESS_KEY } from '@noocodex/dagonizer';
 // ---cut---
-const key = SCATTER_PROGRESS_KEY;
-//    ^? const key: "__dagonizer_scatter_progress__"
+// SCATTER_PROGRESS_KEY === '__dagonizer_scatter_progress__'
+const key = SCATTER_PROGRESS_KEY; // type: "__dagonizer_scatter_progress__"
+export {};
 ```
 
 Reserved metadata key used by the scatter executor to persist per-item resume bookkeeping. Consumer nodes must not write to this key. The stored value is a `StoredScatterProgress` map keyed by the scatter placement's `name`.

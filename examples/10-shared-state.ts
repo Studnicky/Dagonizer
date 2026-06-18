@@ -54,6 +54,7 @@ import type { Services } from './dags/10-shared-state.js';
 // Part 2: Checkpoint round-trip
 //   Abort after step-a, capture checkpoint with store, restore, resume.
 
+// #region store-checkpoint
 {
   const logStore = new MemoryStore();
   const dispatcher = new Dagonizer<NodeStateBase, Services>({ "services": { "log": logStore } });
@@ -110,4 +111,5 @@ import type { Services } from './dags/10-shared-state.js';
     // → "step-a,child-step,step-b"  (all three present, none duplicated)
   }
 }
+// #endregion store-checkpoint
 // #endregion run

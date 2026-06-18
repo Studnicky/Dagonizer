@@ -5,6 +5,7 @@
  */
 
 import {
+  DAGBuilder,
   DAG_CONTEXT,
   NodeOutputBuilder,
   NodeStateBase,
@@ -116,3 +117,25 @@ export const parent: DAG = {
   ],
 };
 // #endregion parent-dag
+
+// ---------------------------------------------------------------------------
+// DAGBuilder equivalent of the parent DAG above (typed stateMapping)
+// ---------------------------------------------------------------------------
+
+// #region builder-state-mapping
+// DAGBuilder equivalent of the JSON-LD parent DAG — typed inputs/outputs
+// narrow the stateMapping keys to paths that exist on IncrementState at
+// compile time.
+const builderParent = new DAGBuilder('parent', '1').entrypoint('invoke');
+builderParent.embeddedDAG<IncrementState, IncrementState>(
+  'invoke',
+  'child',
+  { success: 'end', error: 'end-error' },
+  {
+    inputs:  { payload: 'seed' },    // child.payload ← parent.seed
+    outputs: { result: 'payload' },  // parent.result ← child.payload
+  },
+);
+builderParent.terminal('end');
+builderParent.terminal('end-error', { outcome: 'failed' });
+// #endregion builder-state-mapping

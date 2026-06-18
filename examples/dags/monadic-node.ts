@@ -14,9 +14,25 @@
  * Pure module: no side effects, no dispatcher, no execute.
  */
 
+// #region execute-contract
+import { MonadicNode, RoutedBatchBuilder } from '@noocodex/dagonizer';
+import type { NodeContextInterface, NodeStateInterface, RoutedBatch } from '@noocodex/dagonizer';
+import { Batch } from '@noocodex/dagonizer';
+
+// The execute signature: consume Batch<TState>, return RoutedBatch<TOutput, TState>.
+// Items are partitioned across output ports — routing IS partitioning.
+export class EchoNode extends MonadicNode<NodeStateInterface, 'out'> {
+  readonly name    = 'echo';
+  readonly outputs = ['out'] as const;
+  async execute(batch: Batch<NodeStateInterface>, _ctx: NodeContextInterface): Promise<RoutedBatch<'out', NodeStateInterface>> {
+    return RoutedBatchBuilder.of('out', batch);
+  }
+}
+// #endregion execute-contract
+
 // #region monadic-node
 import { NodeOutputBuilder, NodeStateBase, ScalarNode } from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeOutputInterface } from '@noocodex/dagonizer';
+import type { NodeOutputInterface } from '@noocodex/dagonizer';
 
 // ── Domain state ──────────────────────────────────────────────────────────────
 
@@ -68,3 +84,48 @@ export class SearchCatalogueNode extends LoggingNode<CatalogueState, 'success' |
   }
 }
 // #endregion monadic-node
+
+// #region node-taxonomy
+// EventState: domain state for geo-enrichment nodes.
+class EventState extends NodeStateBase {
+  coords: string | null = null;
+  region                = '';
+}
+
+// Stub geo-lookup cache — in production this would be an injected service.
+const geoCache = {
+  lookup(coords: string): string {
+    return coords.length > 0 ? 'us-east' : 'unknown';
+  },
+};
+
+// per-item (the common case): ScalarNode processes one EventState at a time.
+export class GeoNode extends ScalarNode<EventState, 'has-geo' | 'needs-geo'> {
+  readonly name    = 'geo';
+  readonly outputs = ['has-geo', 'needs-geo'] as const;
+
+  protected override async executeOne(state: EventState) {
+    if (state.coords === null) {
+      return NodeOutputBuilder.of('needs-geo');
+    }
+    return NodeOutputBuilder.of('has-geo');
+  }
+}
+
+// batch-native: MonadicNode processes the whole batch in one execute call,
+// allowing a single shared-cache lookup across all items simultaneously.
+export class EnrichNode extends MonadicNode<EventState, 'enriched'> {
+  readonly name    = 'enrich';
+  readonly outputs = ['enriched'] as const;
+
+  async execute(batch: Batch<EventState>, _ctx: NodeContextInterface): Promise<RoutedBatch<'enriched', EventState>> {
+    for (const item of batch) {
+      const state = item.state;
+      if (state.coords !== null) {
+        state.region = geoCache.lookup(state.coords);
+      }
+    }
+    return RoutedBatchBuilder.of('enriched', batch);
+  }
+}
+// #endregion node-taxonomy

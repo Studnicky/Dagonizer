@@ -139,14 +139,6 @@ Persist this checkpoint to a `CheckpointStore` under `key`. Composes `toJson` + 
 
 ### `ckpt.restoreState(adapter)`
 
-```ts twoslash
-import type { Checkpoint } from '@noocodex/dagonizer/checkpoint';
-declare const ckpt: Checkpoint;
-// ---cut---
-ckpt.restoreState
-//   ^?
-```
-
 Rehydrate the state from this checkpoint via the supplied adapter. Returns the rehydrated state, dag name, cursor, and execution history. Pass the result to `dispatcher.resume`.
 
 `CheckpointRestoreAdapter<TState>` is an interface with a single `restore(snap: JsonObject): TState` method. For a quick inline factory, wrap a plain function with `CheckpointRestoreAdapterFn.fromFn(fn)` from `@noocodex/dagonizer/checkpoint`:

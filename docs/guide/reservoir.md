@@ -10,29 +10,7 @@ The reservoir is **not** a new placement: it is configuration on a `ScatterNode`
 
 ## Configuration
 
-```ts twoslash
-import { DAGBuilder, ScalarNode, NodeOutputBuilder } from '@noocodex/dagonizer';
-import type { NodeStateInterface, NodeOutputInterface } from '@noocodex/dagonizer';
-
-class ClassifyNode extends ScalarNode<NodeStateInterface, 'success' | 'error'> {
-  readonly name = 'classify';
-  readonly outputs = ['success', 'error'] as const;
-  protected override async executeOne(_state: NodeStateInterface): Promise<NodeOutputInterface<'success' | 'error'>> {
-    return NodeOutputBuilder.of('success');
-  }
-}
-const classifyNode = new ClassifyNode();
-// ---cut---
-declare const builder: DAGBuilder;
-builder.scatter('classify', 'events', classifyNode, { 'success': 'persist', 'error': 'salvage' }, {
-  reservoir: {
-    keyField: 'route',   // accessor path on each source item → the partition key
-    capacity: 100,       // release a key's batch at this size (>= 1)
-    idleMs: 2000,        // optional: release a key's partial batch after this idle
-  },
-  gather: { strategy: 'append', target: 'results' },
-});
-```
+<<< @/../examples/dags/scatter-extensions.ts#reservoir-dag
 
 The partition key is `String(accessor.get(item, keyField))`. The reservoir
 requires a **node body** (a `{ node }` body, not a sub-DAG or container body) —

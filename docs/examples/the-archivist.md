@@ -205,20 +205,7 @@ The DAG is JSON-LD natively. `DAGBuilder.build()` returns a plain JavaScript obj
 
 There is no separate projection layer or dual configuration. The object `DAGBuilder.build()` returns is the same object the engine consumes and the same object that serializes to JSON-LD. Load a DAG from JSON, register it, execute it: one surface throughout.
 
-```ts twoslash
-import { Dagonizer, DAGDocument, NodeStateBase } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer/entities';
-
-declare const archivistDAG: DAG;
-declare const dispatcher: Dagonizer<NodeStateBase>;
-// ---cut---
-// Serialize the Archivist DAG to JSON for persistence or transfer:
-const json = DAGDocument.serialize(archivistDAG);
-
-// Restore it in another process or reload:
-const dag = DAGDocument.load(json);
-dispatcher.registerDAG(dag);
-```
+<<< ../../examples/the-archivist/dag-roundtrip.ts#dag-roundtrip
 
 Embedded-DAG placements in the JSON-LD output look like:
 

@@ -23,20 +23,7 @@ nextSteps:
 
 ## Basic subclass
 
-```ts twoslash
-import { NodeStateBase, Dagonizer } from '@noocodex/dagonizer';
-
-class PipelineState extends NodeStateBase {
-  items: string[] = [];
-  processedIds = new Set<string>();
-  totalCost = 0;
-}
-
-const state = new PipelineState();
-state.items = ['a', 'b', 'c'];
-
-const dispatcher = new Dagonizer<PipelineState>();
-```
+<<< @/../examples/dags/subclassing.ts#basic-subclass
 
 Nodes typed `NodeInterface<PipelineState, TOutput>` access `state.items`, `state.processedIds`, and `state.totalCost` directly. The constructor initialises every field in declaration order, which preserves V8 hidden-class stability across instances.
 
@@ -57,143 +44,23 @@ Two invariants the override must hold:
 
 The dispatcher calls `clone()` before scatter clones so each clone operates on its own state copy. The base implementation copies metadata via `structuredClone` and resets the lifecycle plus error/warning lists. Override `clone()` when the subclass carries reference-typed fields the base class does not know about:
 
-```ts twoslash
-import { NodeStateBase } from '@noocodex/dagonizer';
-
-interface Config {
-  retries: number;
-}
-// ---cut---
-class S extends NodeStateBase {
-  items: string[] = [];
-  config: Config;
-
-  constructor(config: Config) {
-    super();
-    this.config = config;
-  }
-
-  override clone(): this {
-    const cloned = new S(this.config) as this; // shared reference is fine here
-    // NodeStateBase.clone() copies _metadata via structuredClone
-    // but does not know about `items`. Copy it explicitly.
-    cloned.items = [...this.items];
-    return cloned;
-  }
-}
-```
+<<< @/../examples/dags/subclassing.ts#clone-manual
 
 The base `clone()` resets lifecycle to `pending` and clears errors and warnings. Call `super.clone()` to keep that behaviour and layer the domain copy on top:
 
-```ts twoslash
-import { NodeStateBase } from '@noocodex/dagonizer';
-
-class S extends NodeStateBase {
-  items: string[] = [];
-
-// ---cut---
-override clone(): this {
-  const base = super.clone(); // new Constructor() + _metadata copy from base
-  base.items = [...this.items];
-  return base;
-}
-// ---cut-after---
-}
-```
+<<< @/../examples/dags/subclassing.ts#clone-super
 
 ## Static `restore`
 
 `NodeStateBase.restore` is a static method with `this`-polymorphism. Subclasses inherit it without re-declaration:
 
-```ts twoslash
-import { NodeStateBase } from '@noocodex/dagonizer';
-
-class PipelineState extends NodeStateBase {
-  items: string[] = [];
-}
-
-const state = new PipelineState();
-// ---cut---
-const snap = state.snapshot();
-const restored = PipelineState.restore(snap);
-// restored is PipelineState, not NodeStateBase
-```
+<<< @/../examples/dags/subclassing.ts#static-restore
 
 When `restoreData()` is overridden, `restore()` calls `applySnapshot()` which calls `restoreData()`. No re-implementation needed.
 
 ## Full example
 
-```ts twoslash
-import { NodeStateBase, Dagonizer, Checkpoint, DAG_CONTEXT, ScalarNode, NodeOutputBuilder } from '@noocodex/dagonizer';
-import { CheckpointRestoreAdapterFn } from '@noocodex/dagonizer/checkpoint';
-import type { DAG } from '@noocodex/dagonizer';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
-
-class CountState extends NodeStateBase {
-  count = 0;
-  log: string[] = [];
-
-  protected override snapshotData(): JsonObject {
-    return { count: this.count, log: [...this.log] };
-  }
-
-  protected override restoreData(snap: JsonObject): void {
-    const c = snap['count'];
-    if (typeof c === 'number') this.count = c;
-    const l = snap['log'];
-    if (Array.isArray(l)) this.log = l.filter((x): x is string => typeof x === 'string');
-  }
-}
-
-class TickNode extends ScalarNode<CountState, 'success'> {
-  readonly name = 'tick';
-  readonly outputs = ['success'] as const;
-  protected override async executeOne(state: CountState) {
-    state.count++;
-    state.log.push(`tick:${state.count}`);
-    return NodeOutputBuilder.of('success');
-  }
-}
-
-const tick = new TickNode();
-
-const dag: DAG = {
-  '@context': DAG_CONTEXT,
-  '@id':      'urn:noocodex:dag:count',
-  '@type':    'DAG',
-  name: 'count', version: '1', entrypoint: 'a',
-  nodes: [
-    { '@id': 'urn:noocodex:dag:count/node/a', '@type': 'SingleNode', name: 'a', node: 'tick', outputs: { success: 'b' } },
-    { '@id': 'urn:noocodex:dag:count/node/b', '@type': 'SingleNode', name: 'b', node: 'tick', outputs: { success: 'c' } },
-    { '@id': 'urn:noocodex:dag:count/node/c', '@type': 'SingleNode', name: 'c', node: 'tick', outputs: { success: 'end' } },
-    { '@id': 'urn:noocodex:dag:count/node/end', '@type': 'TerminalNode', name: 'end', outcome: 'completed' },
-  ],
-};
-
-const dispatcher = new Dagonizer<CountState>();
-dispatcher.registerNode(tick);
-dispatcher.registerDAG(dag);
-
-// Run, abort after one node, checkpoint, restore, resume.
-async function main() {
-  const ctl = new AbortController();
-  const s1 = new CountState();
-  const exec = dispatcher.execute('count', s1, { signal: ctl.signal });
-  for await (const node of exec) {
-    if (node.nodeName === 'a') ctl.abort(new Error('pause after a'));
-  }
-  const partial = await exec;
-  // partial.state.count === 1, partial.cursor === 'b'
-
-  const ckpt = await Checkpoint.capture('count', partial);
-  const ckpt2 = Checkpoint.load(JSON.parse(ckpt.toJson()) as unknown);
-  const { state: s2, dagName, cursor } = ckpt2.restoreState(
-    CheckpointRestoreAdapterFn.fromFn((snap) => CountState.restore(snap)),
-  );
-  const final = await dispatcher.resume(dagName, s2, cursor);
-  // final.state.count === 3, final.state.log.length === 3
-}
-```
+<<< @/../examples/subclassing.ts#full-example
 
 ## Retry-attempt tracking
 
@@ -208,29 +75,7 @@ async function main() {
 
 A typical node that participates in a retry loop:
 
-```ts twoslash
-import { NodeStateBase, NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
-import type { NodeContextInterface } from '@noocodex/dagonizer';
-
-class MyState extends NodeStateBase {
-  data: unknown = null;
-}
-// ---cut---
-class FetchNode extends ScalarNode<MyState, 'success' | 'retry' | 'salvage'> {
-  readonly name = 'fetch';
-  readonly outputs = ['success', 'retry', 'salvage'] as const;
-  protected override async executeOne(state: MyState, context: NodeContextInterface) {
-    try {
-      state.data = await fetch('/api', { signal: context.signal }).then((r) => r.json());
-      state.clearAttempts(context.nodeName);
-      return NodeOutputBuilder.of('success');
-    } catch {
-      const canRetry = state.withinRetryBudget(context.nodeName, 3);
-      return NodeOutputBuilder.of(canRetry ? 'retry' : 'salvage');
-    }
-  }
-}
-```
+<<< @/../examples/dags/subclassing.ts#retry-budget-node
 
 The DAG topology provides the loop: the `retry` output edges back to `fetch`; `salvage` routes forward to a recovery node. The counter is included in `snapshot()` (under the `retries` map in `NodeStateData`), so a retry budget survives checkpoint and resume.
 

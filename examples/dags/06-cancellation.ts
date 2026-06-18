@@ -14,6 +14,35 @@ import type { DAG } from '@noocodex/dagonizer';
 import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
+// Node: iterates a list while checking context.signal.aborted between items
+// ---------------------------------------------------------------------------
+
+// #region signal-iteration
+export class BatchProcessNode extends ScalarNode<NodeStateBase, 'success'> {
+  readonly name = 'batch-process';
+  readonly outputs = ['success'] as const;
+
+  protected override async executeOne(_state: NodeStateBase, context: NodeContextInterface) {
+    const items = ['alpha', 'beta', 'gamma', 'delta', 'epsilon'];
+    for (const item of items) {
+      if (context.signal.aborted) break;        // check between iterations
+      await this.processItem(item, context.signal); // propagate to every IO call
+    }
+    return NodeOutputBuilder.of('success');
+  }
+
+  /** Simulate per-item IO; propagates the signal so the item-level wait aborts. */
+  private async processItem(item: string, signal: AbortSignal): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(resolve, 200);
+      signal.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
+    });
+    void item; // consume for side-effect
+  }
+}
+// #endregion signal-iteration
+
+// ---------------------------------------------------------------------------
 // Node: simulates a slow downstream; must honour context.signal to cancel
 // ---------------------------------------------------------------------------
 
@@ -44,8 +73,32 @@ export class SlowNode extends ScalarNode<NodeStateBase, 'success'> {
 // #endregion node-cancellation-aware
 
 // ---------------------------------------------------------------------------
-// DAG
+// DAGs
 // ---------------------------------------------------------------------------
+
+export const batchDag: DAG = {
+  '@context':  DAG_CONTEXT,
+  '@id':       'urn:noocodex:dag:batch-dag',
+  '@type':     'DAG',
+  name:        'batch-dag',
+  version:     '1',
+  entrypoint:  'batch-process',
+  nodes: [
+    {
+      '@id':   'urn:noocodex:dag:batch-dag/node/batch-process',
+      '@type': 'SingleNode',
+      name:    'batch-process',
+      node:    'batch-process',
+      outputs: { success: 'end' },
+    },
+    {
+      '@id':     'urn:noocodex:dag:batch-dag/node/end',
+      '@type':   'TerminalNode',
+      name:      'end',
+      outcome:   'completed',
+    },
+  ],
+};
 
 export const dag: DAG = {
   '@context':  DAG_CONTEXT,

@@ -44,18 +44,7 @@ The adapter subpath exposes everything an LLM-provider adapter needs:
 
 ### Using an adapter
 
-```ts twoslash
-import { GroqApiAdapter } from '@noocodex/dagonizer-adapter-groq';
-import { ChatRequestBuilder } from '@noocodex/dagonizer/adapter';
-
-const adapter = new GroqApiAdapter(process.env['GROQ_API_KEY']!);
-const response = await adapter.chat(ChatRequestBuilder.from({
-  messages: [{ role: 'user', content: 'Hello' }],
-}));
-if (response.message.kind === 'text') {
-  console.log(response.message.content);
-}
-```
+<<< @/../examples/24-llm-adapter.ts#adapter-usage
 
 ### Writing an adapter
 
@@ -72,6 +61,7 @@ export class MyAdapter extends BaseAdapter {
 
   protected async performChat(request: ChatRequest): Promise<ChatResponse> {
     // Hit the provider, parse response.
+    void request;
     return {
       message: ChatResponseMessageBuilder.from('hello back', []),
       finishReason: 'stop',
@@ -93,38 +83,11 @@ The tool subpath exposes a small surface for external-service wrappers:
 
 ### Using a tool
 
-```ts twoslash
-import { OpenLibrarySearchTool } from '@noocodex/dagonizer-tool-openlibrary';
-
-const tool = new OpenLibrarySearchTool();
-const candidates = await tool.execute({ query: 'labyrinths' });
-```
+<<< @/../examples/dags/26-tool-use.ts#tool-usage
 
 ### Writing a tool
 
-```ts twoslash
-import type { Tool } from '@noocodex/dagonizer/tool';
-import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
-import type { AbortableOptionsInterface } from '@noocodex/dagonizer/contracts';
-import { HttpTransport } from '@noocodex/dagonizer/tool';
-
-export class MyTool implements Tool<{ q: string }, readonly string[]> {
-  readonly definition: ToolDefinition = {
-    name: 'mine',
-    description: 'Search my service',
-    inputSchema: { type: 'object', properties: { q: { type: 'string' } }, required: ['q'] },
-    strict: true,
-  };
-  async execute(input: { q: string }, options?: AbortableOptionsInterface): Promise<readonly string[]> {
-    const transportOptions = options?.signal !== undefined ? { signal: options.signal } : {};
-    const data = await HttpTransport.getJson<{ items: string[] }>(
-      `https://api.example.com/search?q=${encodeURIComponent(input.q)}`,
-      transportOptions,
-    );
-    return data.items;
-  }
-}
-```
+<<< @/../examples/dags/26-tool-use.ts#tool-impl
 
 `HttpTransport` handles retry on 429/5xx/network, abort propagation, JSON parsing, and timeout; every tool gets it for free.
 
@@ -189,6 +152,7 @@ class IntentClassifier extends DecisionNode<MyState, Intent> {
   protected routeFor(intent: Intent): Intent { return intent; }
   protected applyChoice(s: MyState, intent: Intent): void { s.intent = intent; }
 }
+export {};
 ```
 
 The pattern handles LLM dispatch, retry, abort propagation, contract field forwarding. The 15 lines above are everything the consumer writes.

@@ -34,7 +34,11 @@ export const WorkSetItemSchema = {
   'additionalProperties': false,
 } as const;
 
-/** TypeScript type derived from `WorkSetItemSchema` via `json-schema-to-ts`. */
+/**
+ * One item in the work set: its stable string `id` and its state `snapshot`
+ * at the point of interruption. Used by `WorkSetCheckpoint` to rehydrate
+ * the pending batch on resume.
+ */
 export type WorkSetItem = FromSchema<typeof WorkSetItemSchema>;
 
 // ---------------------------------------------------------------------------
@@ -56,7 +60,11 @@ export const WorkSetEntrySchema = {
   'additionalProperties': false,
 } as const;
 
-/** TypeScript type derived from `WorkSetEntrySchema` via `json-schema-to-ts`. */
+/**
+ * All work-set items pending at a single placement at interruption time.
+ * `placement` is the placement name; `items` is the ordered list of pending
+ * `WorkSetItem` values for that placement.
+ */
 export type WorkSetEntry = FromSchema<typeof WorkSetEntrySchema>;
 
 // ---------------------------------------------------------------------------
@@ -77,5 +85,10 @@ export const WorkSetProgressSchema = {
   'additionalProperties': false,
 } as const;
 
-/** TypeScript type derived from `WorkSetProgressSchema` via `json-schema-to-ts`. */
+/**
+ * Full in-flight work set captured at interruption, keyed by placement.
+ * Written to top-level state metadata by `WorkSetCheckpoint` at the abort
+ * boundary; read back on resume to rebuild the pending batches. Absent for
+ * size-1 canonical runs (single item whose state is the top-level state).
+ */
 export type WorkSetProgress = FromSchema<typeof WorkSetProgressSchema>;

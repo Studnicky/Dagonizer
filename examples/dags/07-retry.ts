@@ -13,7 +13,7 @@ import {
   ScalarNode,
 } from '@noocodex/dagonizer';
 import type { DAG } from '@noocodex/dagonizer';
-import type { NodeContextInterface } from '@noocodex/dagonizer';
+import type { NodeContextInterface, RetryPolicyOptionsInterface } from '@noocodex/dagonizer';
 
 // ---------------------------------------------------------------------------
 // Simulated flaky downstream: class encapsulates mutable attempt counter
@@ -75,6 +75,61 @@ export class FetchNode extends ScalarNode<FetchState, 'success' | 'error'> {
   }
 }
 // #endregion retry-node
+
+// ---------------------------------------------------------------------------
+// Error filtering: retryOn / abortOn precedence demonstration
+// ---------------------------------------------------------------------------
+
+// #region error-filtering
+export class NetworkError extends Error { constructor() { super('network'); } }
+export class AuthError    extends Error { constructor() { super('auth');    } }
+
+/** Policy that only retries NetworkError and never retries AuthError. */
+export const filteredPolicy = RetryPolicy.from({
+  maxAttempts: 5,
+  strategy:    BackoffStrategy.EXPONENTIAL,
+  retryOn:     [NetworkError],  // only retry these
+  abortOn:     [AuthError],     // never retry these, even if listed in retryOn
+});
+// Precedence: abortOn wins over retryOn. If the error matches abortOn, no retry.
+// #endregion error-filtering
+
+// ---------------------------------------------------------------------------
+// Abort cooperation: policy.run() propagates the abort signal mid-backoff
+// ---------------------------------------------------------------------------
+
+// #region abort-cooperation
+/** Drives a task under a RetryPolicy and propagates an AbortSignal.
+ *  If the signal fires during a backoff wait, run() throws immediately
+ *  rather than waiting for the next attempt window to expire.
+ */
+export async function runWithAbort(
+  task: () => Promise<string>,
+  signal: AbortSignal,
+): Promise<string> {
+  const policy = RetryPolicy.from({ maxAttempts: 10, baseDelay: 1000 });
+  // If signal aborts during a 1 s sleep, run() throws immediately.
+  return policy.run(task, { signal });
+}
+// #endregion abort-cooperation
+
+// ---------------------------------------------------------------------------
+// Custom backoff: FibonacciRetry subclass
+// ---------------------------------------------------------------------------
+
+// #region custom-backoff
+/** RetryPolicy subclass that spaces retries on the Fibonacci sequence (× 100 ms). */
+export class FibonacciRetry extends RetryPolicy {
+  constructor(options: RetryPolicyOptionsInterface = {}) {
+    super(options);
+  }
+
+  override getDelay(attempt: number, _options: { readonly error?: Error | null } = {}): number {
+    const fib = (n: number): number => (n <= 1 ? n : fib(n - 1) + fib(n - 2));
+    return Math.min(fib(attempt) * 100, this.maxDelay);
+  }
+}
+// #endregion custom-backoff
 
 // ---------------------------------------------------------------------------
 // DAG

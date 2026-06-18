@@ -20,6 +20,7 @@ import type { JsonObject } from '@noocodex/dagonizer/entities';
 // serialisation boundary that Checkpoint.capture + restoreState impose.
 // ---------------------------------------------------------------------------
 
+// #region pipeline-state
 export class PipelineState extends NodeStateBase {
   stage  = '';
   tally  = 0;
@@ -38,6 +39,7 @@ export class PipelineState extends NodeStateBase {
     if (Array.isArray(t)) this.trail = t.filter((x): x is string => typeof x === 'string');
   }
 }
+// #endregion pipeline-state
 
 // ---------------------------------------------------------------------------
 // Nodes: each stage marks its name, increments tally, and appends to trail

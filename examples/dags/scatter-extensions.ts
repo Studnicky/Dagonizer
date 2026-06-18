@@ -9,19 +9,27 @@
  */
 
 import {
+  Batch,
+  DAG_CONTEXT,
   GatherStrategies,
   GatherStrategy,
+  MonadicNode,
   NodeOutputBuilder,
   NodeStateBase,
   OutcomeReducer,
   OutcomeReducers,
+  RoutedBatchBuilder,
   ScalarNode,
 } from '@noocodex/dagonizer';
 import type {
+  DAG,
   GatherConfig,
   GatherExecution,
+  NodeContextInterface,
   NodeStateInterface,
-  OutcomeRecord } from '@noocodex/dagonizer';
+  OutcomeRecord,
+  RoutedBatch,
+} from '@noocodex/dagonizer';
 import type { StateAccessor } from '@noocodex/dagonizer/contracts';
 
 // ── Domain state (re-exported so entry can reference the type) ────────────────
@@ -51,6 +59,52 @@ export class ScoreNode extends ScalarNode<RankingState, 'success' | 'error'> {
   }
 }
 // #endregion score-node
+
+// #region monad-node
+// BatchEnrichNode: processes the whole batch in one call.
+// Extends MonadicNode (the root); the batch arrives as Batch<RankingState>.
+// Use this pattern when you need access to all items at once (e.g., to hit a
+// shared cache, vectorize, or partition by a property across the whole batch).
+export class BatchEnrichNode extends MonadicNode<RankingState, 'enriched'> {
+  readonly name = 'batch-enrich';
+  readonly outputs = ['enriched'] as const;
+
+  async execute(
+    batch: Batch<RankingState>,
+    _ctx: NodeContextInterface,
+  ): Promise<RoutedBatch<'enriched', RankingState>> {
+    // Operate on the whole batch at once: normalise every item's score.
+    const items = batch.items();
+    const max = Math.max(...items.map((item) => item.state.candidate.score), 1);
+    for (const item of items) {
+      item.state.candidate = {
+        ...item.state.candidate,
+        score: item.state.candidate.score / max,
+      };
+    }
+    return RoutedBatchBuilder.of('enriched', batch);
+  }
+}
+// #endregion monad-node
+
+// #region call-node-directly
+// Direct node invocation: create a Batch from a single state and call execute().
+// Returns a RoutedBatch; check routed.has('success') to inspect results.
+// Used in tests for per-node isolation without a full dispatcher.
+export async function scoreOneItem(item: string): Promise<boolean> {
+  const state = new RankingState();
+  state.candidate = { title: item, score: 0 };
+  const node = new ScoreNode();
+  const ctx: NodeContextInterface = {
+    signal: new AbortController().signal,
+    dagName: 'test',
+    nodeName: 'score',
+    services: undefined,
+  };
+  const routed = await node.execute(Batch.of(state), ctx);
+  return routed.has('success');
+}
+// #endregion call-node-directly
 
 // #region gather-strategy
 /**
@@ -117,3 +171,51 @@ class ThresholdReducer extends OutcomeReducer {
 OutcomeReducers.register(new ThresholdReducer());
 // OutcomeReducers.resolve('threshold-75') now works in any scatter placement.
 // #endregion outcome-reducer
+
+// #region reservoir-dag
+/**
+ * DAG showing a reservoir-configured scatter: items are batched by `route`
+ * before the score node runs. The reservoir holds up to 10 items per partition
+ * key; a partial batch flushes after 500 ms of idle time.
+ */
+export const reservoirDag: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id':      'urn:noocodex:dag:reservoir-demo',
+  '@type':    'DAG',
+  name:       'reservoir-demo',
+  version:    '1',
+  entrypoint: 'batch-score',
+  nodes: [
+    {
+      '@id':       'urn:noocodex:dag:reservoir-demo/node/batch-score',
+      '@type':     'ScatterNode',
+      name:        'batch-score',
+      body:        { node: 'score' },
+      source:      'items',
+      itemKey:     'item',
+      concurrency: 4,
+      reservoir: {
+        keyField: 'route',  // accessor path on each source item → the partition key
+        capacity: 10,       // release a batch when 10 items accumulate per key
+        idleMs:   500,      // flush partial batches after 500 ms idle
+      },
+      gather: {
+        strategy: 'top-n',
+        target:   'topCandidates',
+      },
+      outputs: {
+        'all-success': 'end',
+        partial:       'end',
+        'all-error':   'end',
+        empty:         'end',
+      },
+    },
+    {
+      '@id':   'urn:noocodex:dag:reservoir-demo/node/end',
+      '@type': 'TerminalNode',
+      name:    'end',
+      outcome: 'completed',
+    },
+  ],
+};
+// #endregion reservoir-dag

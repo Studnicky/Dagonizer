@@ -17,6 +17,7 @@ import type { JsonObject } from '@noocodex/dagonizer/entities';
 // State: overrides snapshot/restore to persist domain fields
 // ---------------------------------------------------------------------------
 
+// #region counting-state
 export class CountingState extends NodeStateBase {
   count = 0;
   log:  string[] = [];
@@ -40,6 +41,7 @@ export class CountingState extends NodeStateBase {
     if (Array.isArray(l)) this.log = l.filter((x): x is string => typeof x === 'string');
   }
 }
+// #endregion counting-state
 
 // ---------------------------------------------------------------------------
 // Node: increments count and records each tick in log

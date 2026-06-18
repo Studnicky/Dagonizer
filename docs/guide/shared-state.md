@@ -115,41 +115,7 @@ The runnable example declares a `Services` interface whose `log` field has type 
 
 `RdfStore` from `@noocodex/dagonizer-patterns-graph` implements both `Store` and `TripleStore`. Plugin authors using the graph node patterns (`RecallContextNode`, `RecordFindingsNode`, `MemoryDigestNode`) pass an `RdfStore` directly as `services.memory`: it satisfies both the pattern's `TripleStore` requirement and the engine's `Store` contract for snapshot/restore.
 
-```ts twoslash
-interface _RdfStore {
-  set(key: string, value: unknown): Promise<void>;
-  update<T>(key: string, fn: (n: T | undefined) => T): Promise<T>;
-  assert(
-    s: { termType: string; value: string },
-    p: { termType: string; value: string },
-    o: { termType: string; value: string },
-  ): void;
-  select(pattern: {
-    predicate: { termType: string; value: string };
-    subject: string;
-  }): Array<Record<string, unknown>>;
-}
-declare const RdfStore: new () => _RdfStore;
-// ---cut---
-const store = new RdfStore();
-
-// Use as a Store: set/get/has/delete/update/snapshot/restore.
-await store.set('tokenBudget', 4096);
-await store.update<number>('tokenBudget', (n) => (n ?? 0) - 100);
-
-// Use as a TripleStore: assert, ask, select, count, clearGraph, triples.
-store.assert(
-  { termType: 'NamedNode', value: 'urn:doc:1' },
-  { termType: 'NamedNode', value: 'urn:schema:author' },
-  { termType: 'Literal',   value: 'Alice' },
-);
-const rows = store.select({
-  predicate: { termType: 'NamedNode', value: 'urn:schema:author' },
-  subject: '?doc',
-});
-```
-
-The Store-side `set(key, value)` reifies as a single triple under `urn:dagonizer:store:{key}`. The subject prefix and value predicate are configurable via `RdfStoreOptions`. No external dependencies; the backing is a plain `Quad[]`.
+The Store side exposes `set`, `get`, `has`, `delete`, `update`, `snapshot`, and `restore`. The TripleStore side exposes `assert`, `ask`, `select`, `count`, `clearGraph`, and `triples`. The Store-side `set(key, value)` reifies as a single triple under `urn:dagonizer:store:{key}`. The subject prefix and value predicate are configurable via `RdfStoreOptions`. No external dependencies; the backing is a plain `Quad[]`.
 
 See `@noocodex/dagonizer-patterns-graph` for `RdfStoreOptions`, subclassing guidance, and snapshot trade-offs.
 
@@ -157,45 +123,7 @@ See `@noocodex/dagonizer-patterns-graph` for `RdfStoreOptions`, subclassing guid
 
 `TypedStore<Schema>` wraps any `Store` and constrains the key and value types to a declared schema. Consumers with a fixed, known key set use `TypedStore` to get inferred types at every call site without specifying `<T>` explicitly. Consumers with dynamic or open-ended keys use `Store` directly.
 
-```ts twoslash
-import { MemoryStore, TypedStore } from '@noocodex/dagonizer/store';
-
-interface PipelineSchema {
-  tokenBudget:  number;
-  messages:     string[];
-  lastNodeName: string;
-}
-
-const inner = new MemoryStore();
-const typed = new TypedStore<PipelineSchema>(inner);
-
-await typed.set('tokenBudget', 4096);
-const budget = await typed.get('tokenBudget');   // number | null
-await typed.update('messages', (msgs) => [...(msgs ?? []), 'hello']);
-
-// TypeScript rejects wrong keys and wrong value types at compile time.
-// await typed.set('unknown', 'x');              // TS error: key not in schema
-// await typed.set('tokenBudget', 'not a num');  // TS error: expected number
-```
-
-`TypedStore` passes `snapshot()`, `restore()`, `connect()`, and `disconnect()` through to the underlying `Store`. Use `.inner` to access the full `Store` interface for operations that need the wider, heterogeneous contract.
-
-```ts twoslash
-import { MemoryStore, TypedStore } from '@noocodex/dagonizer/store';
-import type { Store } from '@noocodex/dagonizer/contracts';
-
-interface PipelineSchema {
-  tokenBudget:  number;
-  messages:     string[];
-  lastNodeName: string;
-}
-
-const inner = new MemoryStore();
-const typed = new TypedStore<PipelineSchema>(inner);
-// ---cut---
-const raw: Store = typed.inner;
-await raw.set<boolean>('someFlag', true);
-```
+<<< @/../examples/dags/10-shared-state.ts#typed-store
 
 `TypedStore` is a wrapper, not a subclass of `BaseStore`. It does not satisfy the `Store` interface (its `set` signature is narrower). Pass `typed.inner` anywhere a `Store` is expected.
 
@@ -207,19 +135,7 @@ Every `Store` method returns a `Promise`. There is no sync variant. Always `awai
 
 **`set + get` is NOT atomic.** If two concurrent paths each call `get` then `set`, the second write silently discards the first. Use `update` for every read-modify-write:
 
-```ts twoslash
-import { MemoryStore } from '@noocodex/dagonizer/store';
-
-const store = new MemoryStore();
-
-// Race: two paths increment independently. Both read 0, both write 1. Final: 1 (lost update).
-const current = await store.get<number>('counter') ?? 0;
-await store.set<number>('counter', current + 1);
-
-// Atomic: update holds the RMW as one indivisible operation. Final: 2.
-await store.update<number>('counter', (n) => (n ?? 0) + 1);
-await store.update<number>('counter', (n) => (n ?? 0) + 1);
-```
+<<< @/../examples/dags/10-shared-state.ts#store-concurrency
 
 **`set` is last-write-wins.** When two concurrent callers call `set` without coordination, whichever completes last persists. Avoid `set` for any value that two nodes write independently; use `update` instead.
 
@@ -229,80 +145,9 @@ Stores do not synchronize across process boundaries. The concurrency contract is
 
 Extend `BaseStore` and implement six `protected abstract` methods plus two `protected abstract get` accessors. Subclasses must override `update` to satisfy the atomicity contract; the base-class default is a fallback that is safe only when no concurrent calls touch the same key.
 
-```ts twoslash
-import type { JsonValue } from '@noocodex/dagonizer/entities';
+<<< @/../examples/dags/custom-store.ts#custom-store
 
-interface RedisClient {
-  get(key: string): Promise<string | null>;
-  set(key: string, value: string): Promise<void>;
-  exists(key: string): Promise<number>;
-  del(key: string): Promise<number>;
-  keys(pattern: string): Promise<string[]>;
-  flushDb(): Promise<void>;
-  atomicRmw<T>(key: string, fn: (current: T | undefined) => T): Promise<T>;
-  connect(): Promise<void>;
-  quit(): Promise<void>;
-}
-// ---cut---
-import type { StoreSnapshotEntry } from '@noocodex/dagonizer/store';
-import { BaseStore, type BaseStoreOptions } from '@noocodex/dagonizer/store';
-
-export class RedisStore extends BaseStore {
-  readonly #client: RedisClient;
-
-  constructor(client: RedisClient, options: BaseStoreOptions = {}) {
-    super(options);
-    this.#client = client;
-  }
-
-  protected get snapshotType(): string    { return 'redis-store-v1'; }
-  protected get snapshotVersion(): number { return 1; }
-
-  protected async performGet<T extends JsonValue>(key: string): Promise<T | null> {
-    const raw = await this.#client.get(key);
-    return raw === null ? null : JSON.parse(raw) as T;
-  }
-
-  protected async performSet<T extends JsonValue>(key: string, value: T): Promise<void> {
-    await this.#client.set(key, JSON.stringify(value));
-  }
-
-  protected async performHas(key: string): Promise<boolean> {
-    return (await this.#client.exists(key)) === 1;
-  }
-
-  protected async performDelete(key: string): Promise<boolean> {
-    return (await this.#client.del(key)) === 1;
-  }
-
-  protected async performSnapshotEntries(): Promise<readonly StoreSnapshotEntry[]> {
-    const keys = await this.#client.keys(this.qualifyKey('*'));
-    return Promise.all(keys.map(async (key) => ({
-      key,
-      value: JSON.parse((await this.#client.get(key)) ?? 'null'),
-    })));
-  }
-
-  protected async performRestoreEntries(entries: readonly StoreSnapshotEntry[]): Promise<void> {
-    await this.#client.flushDb();
-    await Promise.all(entries.map(({ key, value }) =>
-      this.#client.set(key, JSON.stringify(value)),
-    ));
-  }
-
-  override async update<T extends JsonValue>(
-    key: string,
-    fn: (current: T | undefined) => T,
-  ): Promise<T> {
-    const qualified = this.qualifyKey(key);
-    // Use WATCH/MULTI/EXEC or a Lua script to make this atomic on the Redis side.
-    return this.#client.atomicRmw(qualified, fn);
-  }
-
-  override async connect(): Promise<void>    { await this.#client.connect(); }
-  override async disconnect(): Promise<void> { await this.#client.quit(); }
-}
-```
+`MapStore` is backed by a real `Map<string, JsonValue>`. Its `update` override reads and writes `#data` synchronously — no `await` between the read and the write — so no concurrent microtask can interleave. In production, swap the `Map` operations for calls to a Redis, Postgres, or any other storage client; the six `perform*` hooks stay identical regardless of backing.
 
 All six `perform*` hooks receive the qualified key (namespace prefix already applied by `BaseStore`). Call `this.qualifyKey(key)` in the `update` override to ensure namespace consistency.
 
@@ -314,51 +159,7 @@ The `type` string is the stable discriminant for the resume path; include a vers
 
 `Checkpoint.capture` is the async factory for checkpoints that include named stores. It accepts a `dagName`, execution `result`, and optional `stores` map. All stores are snapshotted in parallel.
 
-```ts twoslash
-import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
-
-class MyState extends NodeStateBase {}
-
-declare const dispatcher: Dagonizer<MyState>;
-declare const ctl: AbortController;
-
-interface CheckpointStoreLike {
-  save(id: string, data: unknown): Promise<void>;
-  load(id: string): Promise<string>;
-}
-declare const checkpointStore: CheckpointStoreLike;
-declare const runId: string;
-// ---cut---
-import { Checkpoint, CheckpointRestoreAdapterFn, MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
-import { MemoryStore } from '@noocodex/dagonizer/store';
-
-// Save
-const memory = new MemoryStore();
-const audit  = new MemoryStore();
-
-const state = new MyState();
-const result = await dispatcher.execute('my-dag', state, { signal: ctl.signal });
-
-if (result.cursor !== null) {
-  const ckpt = await Checkpoint.capture('my-dag', result, {
-    stores: { memory, audit },
-  });
-  await checkpointStore.save(runId, ckpt.toJson());
-}
-
-// Resume
-const raw = JSON.parse(await checkpointStore.load(runId)) as unknown;
-const ckpt2 = Checkpoint.load(raw);
-
-const freshMemory = new MemoryStore();
-const freshAudit  = new MemoryStore();
-await ckpt2.restoreStores({ memory: freshMemory, audit: freshAudit });
-
-const { dagName, state: restored, cursor } = ckpt2.restoreState(
-  CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap)),
-);
-await dispatcher.resume(dagName, restored, cursor);
-```
+<<< @/../examples/10-shared-state.ts#store-checkpoint
 
 **Failure modes:**
 
@@ -370,11 +171,7 @@ await dispatcher.resume(dagName, restored, cursor);
 
 ## Distributed execution: `RemoteStore`
 
-`RemoteStore` extends `Store` with three coordination primitives for plugins whose backing lives over the network or is replicated across processes. Local `MemoryStore` and single-node-durable stores implement `Store` directly; plugins that talk over HTTP, gRPC, or WebSocket implement `RemoteStore`.
-
-```ts twoslash
-import type { RemoteStore } from '@noocodex/dagonizer/contracts';
-```
+`RemoteStore` extends `Store` with three coordination primitives for plugins whose backing lives over the network or is replicated across processes. Local `MemoryStore` and single-node-durable stores implement `Store` directly; plugins that talk over HTTP, gRPC, or WebSocket implement `RemoteStore`. Import it from `@noocodex/dagonizer/contracts`.
 
 The engine consumes a `RemoteStore` through the `Store` surface. The extra methods are optional coordination hooks available to the dispatcher when distributed execution is active.
 
@@ -407,22 +204,7 @@ Three `StoreErrorClassification` reasons cover remote-specific failure modes:
 
 Discriminate by `reason`:
 
-```ts twoslash
-import type { RemoteStore } from '@noocodex/dagonizer/contracts';
-
-declare const store: RemoteStore;
-// ---cut---
-import { StoreError } from '@noocodex/dagonizer/store';
-
-try {
-  await store.acquireLease('run-abc', 5_000, 1_000);
-} catch (err) {
-  if (err instanceof StoreError && err.classification.reason === 'LEASE_DENIED') {
-    const { subject, holder } = err.classification;
-    console.error(`lease for ${subject} held by ${holder}`);
-  }
-}
-```
+<<< @/../examples/dags/10-shared-state.ts#store-error-discrimination
 
 See [Reference: Store](../reference/store) for the full interface.
 

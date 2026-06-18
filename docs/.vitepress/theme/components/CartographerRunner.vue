@@ -658,6 +658,8 @@ onMounted(() => {
                 <div class="cr-section-head">Total events</div>
                 <div class="cr-stream-count-row">
                   <input
+                    id="cartographer-total-events"
+                    name="cartographer-total-events"
                     type="number"
                     min="1"
                     max="1000000"
@@ -687,6 +689,8 @@ onMounted(() => {
                       <td class="cr-feed-fmt mono">{{ row.eventType }}</td>
                       <td>
                         <input
+                          :id="`cartographer-type-pct-${row.eventType}`"
+                          :name="`cartographer-type-pct-${row.eventType}`"
                           type="number"
                           min="0"
                           max="100"
@@ -710,6 +714,8 @@ onMounted(() => {
                       <td>Worker pool size</td>
                       <td>
                         <input
+                          id="cartographer-pool-size"
+                          name="cartographer-pool-size"
                           type="number"
                           min="1"
                           max="32"
@@ -723,6 +729,8 @@ onMounted(() => {
                       <td>Batch size</td>
                       <td>
                         <input
+                          id="cartographer-batch-capacity"
+                          name="cartographer-batch-capacity"
                           type="number"
                           min="1"
                           max="10000"
