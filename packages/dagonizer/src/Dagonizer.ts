@@ -13,6 +13,8 @@ import type { NodeInterface } from './contracts/NodeInterface.js';
 import type { NodeInvoker } from './contracts/NodeInvoker.js';
 import type { ObserverRelay } from './contracts/ObserverRelay.js';
 import type { OutcomeRecord } from './contracts/OutcomeRecord.js';
+import type { ReservoirDriverInterface, ScatterItemBatchResult } from './contracts/ReservoirDriver.js';
+import type { ScatterItemResult, ScatterPoolDriverInterface } from './contracts/ScatterPoolDriver.js';
 import type { StateAccessor } from './contracts/StateAccessor.js';
 import { GatherStrategies } from './core/GatherStrategies.js';
 import type { GatherStrategy } from './core/GatherStrategies.js';
@@ -41,9 +43,7 @@ import { Timeout } from './entities/Timeout.js';
 import type { WorkSetProgress } from './entities/workset/WorkSetProgress.js';
 import { DAGError, ExecutionError, NodeTimeoutError } from './errors/index.js';
 import { ReservoirBuffer } from './execution/ReservoirBuffer.js';
-import type { ReservoirDriverInterface, ScatterItemBatchResult } from './execution/ReservoirBuffer.js';
 import { ScatterWorkerPool } from './execution/ScatterWorkerPool.js';
-import type { ScatterItemResult, ScatterPoolDriverInterface } from './execution/ScatterWorkerPool.js';
 import { Execution } from './Execution.js';
 import { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
@@ -288,6 +288,21 @@ type _InternalNodeResult<TState extends NodeStateInterface> = {
 type _RunOptions = { embedded: boolean };
 
 /**
+ * Trailing config object for the batch-native embedded-DAG re-entry path of
+ * `runNodes`. Consolidates the two formerly-optional positional tail params so
+ * there is no optional positional tail: `runNodes(..., placementPath, batch?)`.
+ *
+ * `inputBatch` seeds the per-item batch the embedded sub-DAG runs over;
+ * `terminalByItemId` is populated by the child run with each item's terminal
+ * outcome. Both are absent on the ordinary (non-batch) execution path, so the
+ * whole object defaults to `{}`.
+ */
+type _RunNodesBatch<TState extends NodeStateInterface> = {
+  inputBatch?: Batch<TState>;
+  terminalByItemId?: Map<string, 'completed' | 'failed'>;
+};
+
+/**
  * Module-private adapter interface that `_ScatterPoolDriverImpl` uses to
  * call dispatcher methods without requiring access to private class members.
  *
@@ -315,8 +330,7 @@ interface _ScatterDispatchAdapter<TState extends NodeStateInterface, TServices> 
     options: ExecuteOptionsInterface,
     runOptions: _RunOptions,
     placementPath: readonly string[],
-    inputBatch?: Batch<TState>,
-    terminalByItemId?: Map<string, 'completed' | 'failed'>,
+    batch?: _RunNodesBatch<TState>,
   ): AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void>;
   resolveContainer(role: string | undefined): DagContainerInterface<TState> | null;
   nextCorrelationId(dagName: string): string;
@@ -698,7 +712,7 @@ class _ScatterPoolDriverImpl<TState extends NodeStateInterface, TServices>
       const childOptions: ExecuteOptionsInterface = { ...(signal !== null && { 'signal': signal }) };
       const terminalByItemId = new Map<string, 'completed' | 'failed'>();
       const repClone = state.clone();
-      const iter = this.#adapter.runNodes(scatter.body.dag, repClone, null, childOptions, { 'embedded': true }, innerPath, batch, terminalByItemId);
+      const iter = this.#adapter.runNodes(scatter.body.dag, repClone, null, childOptions, { 'embedded': true }, innerPath, { 'inputBatch': batch, terminalByItemId });
 
       // Drain the generator fully; per-item terminal outcomes land in the map.
       let step = await iter.next();
@@ -1216,7 +1230,7 @@ implements DagonizerInterface<TState, TServices> {
     initialState: TState,
     options: ExecuteOptionsInterface = {},
   ): Execution<TState> {
-    return new Execution<TState>(() => this.runNodes(dagName, initialState, null, options));
+    return new Execution<TState>(this.runNodes(dagName, initialState, null, options));
   }
 
   /**
@@ -1235,7 +1249,7 @@ implements DagonizerInterface<TState, TServices> {
     options: ExecuteOptionsInterface = {},
   ): readonly Execution<TState>[] {
     return batchStates.map((state) =>
-      new Execution<TState>(() => this.runNodes(dagName, state, null, options)),
+      new Execution<TState>(this.runNodes(dagName, state, null, options)),
     );
   }
 
@@ -1251,7 +1265,7 @@ implements DagonizerInterface<TState, TServices> {
     fromStage: string,
     options: ExecuteOptionsInterface = {},
   ): Execution<TState> {
-    return new Execution<TState>(() => this.runNodes(dagName, state, fromStage, options));
+    return new Execution<TState>(this.runNodes(dagName, state, fromStage, options));
   }
 
   /**
@@ -1274,9 +1288,9 @@ implements DagonizerInterface<TState, TServices> {
     options: ExecuteOptionsInterface,
     runOptions: _RunOptions = { 'embedded': false },
     placementPath: readonly string[] = [],
-    inputBatch?: Batch<TState>,
-    terminalByItemId?: Map<string, 'completed' | 'failed'>,
+    batch: _RunNodesBatch<TState> = {},
   ): AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void> {
+    const { inputBatch, terminalByItemId } = batch;
     const dag = this.dags.get(dagName);
 
     if (!dag) {
@@ -1608,7 +1622,7 @@ implements DagonizerInterface<TState, TServices> {
           const childRepState = repState.clone();
           const childOptions: ExecuteOptionsInterface = { ...(signal !== null && { 'signal': signal }) };
           const intermediateResults: Array<NodeResultInterface<TState>> = [];
-          const iter = this.runNodes(node.dag, childRepState, null, childOptions, { 'embedded': true }, innerPath, childBatch, childTerminalByItemId);
+          const iter = this.runNodes(node.dag, childRepState, null, childOptions, { 'embedded': true }, innerPath, { 'inputBatch': childBatch, 'terminalByItemId': childTerminalByItemId });
 
           // Collect inner intermediates when streaming (top-level only); at nested
           // or composite scale, drain without buffering to avoid O(N*M*L) heap.
@@ -2495,7 +2509,7 @@ implements DagonizerInterface<TState, TServices> {
       'accessor':           this.accessor,
       'withNodeTimeout':    (n, s, fn) => this.withNodeTimeout(n, s, fn),
       'buildContext':       (d, n, s) => this.buildContext(d, n, s),
-      'runNodes':           (d, st, f, o, ro, pp, ib, tb) => this.runNodes(d, st, f, o, ro, pp, ib, tb),
+      'runNodes':           (d, st, f, o, ro, pp, b) => this.runNodes(d, st, f, o, ro, pp, b),
       'resolveContainer':   (role) => this.resolveContainer(role),
       'nextCorrelationId':  (d) => this.nextCorrelationId(d),
       'buildObserverRelay': (st) => this.buildObserverRelay(st),

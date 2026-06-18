@@ -11,8 +11,11 @@
  *     active nodes, drag the layout, click for inspection).
  *   - `CytoscapeGraph`: subclassable factory that builds a fully
  *     configured `cytoscape.Core` (elements + canonical stylesheet +
- *     preset layout) from a `DAG`. The cytoscape constructor is
- *     dependency-injected; subclass it to layer on live-run animation.
+ *     preset layout) from a `DAG`. The `cytoscape` peer is loaded lazily
+ *     via `Cytoscape.create`; subclass `CytoscapeGraph` to layer on
+ *     live-run animation.
+ *   - `Cytoscape`: domain module whose `Cytoscape.create(options)` static
+ *     dynamic-imports the optional `cytoscape` peer and constructs a `Core`.
  */
 
 export { MermaidRenderer } from './MermaidRenderer.js';
@@ -32,6 +35,7 @@ export type {
   LayoutResult,
   CompositeLayoutOptions,
 } from './CompositeLayout.js';
+export { Cytoscape } from './Cytoscape.js';
 export { CytoscapeGraph } from './CytoscapeGraph.js';
 export type {
   CytoscapeGraphInterface,

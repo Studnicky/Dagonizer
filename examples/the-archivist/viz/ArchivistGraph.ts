@@ -7,13 +7,14 @@
  * selectors. The base `CytoscapeGraph` stylesheet already defines visual
  * rules for both kinds (dashed violet border for non-deterministic nodes).
  *
- * Cytoscape is dependency-injected: this module uses `import type` only
- * so it never imports cytoscape as a value. Pass the `cytoscape` function
- * at construction time, as `CytoscapeGraph` requires.
+ * Cytoscape is resolved internally by `CytoscapeGraph` via a lazy
+ * `Cytoscape.create()` dynamic import; consumers no longer pass the
+ * `cytoscape` function. A subclass that needs a custom `cytoscape.Core`
+ * build (extensions registered, headless harness) overrides the protected
+ * `construct(options)` hook instead.
  *
  * @example
  * ```ts
- * import cytoscape from 'cytoscape';
  * import { ArchivistGraph } from './viz/ArchivistGraph.ts';
  * import { archivistDAG } from './dag.ts';
  * import { BookSearchScatterDAG } from './embedded-dags/BookSearchScatterDAG.ts';
@@ -23,7 +24,7 @@
  *   ['book-search-scatter', BookSearchScatterDAG],
  *   ['compose-retry-loop',  ComposeRetryLoopDAG],
  * ]);
- * const graph = new ArchivistGraph(cytoscape, containerEl, archivistDAG, { embeddedDAGs });
+ * const graph = new ArchivistGraph(containerEl, archivistDAG, { embeddedDAGs });
  * const cy = await graph.mount();
  * ```
  */
@@ -41,12 +42,11 @@ import { NODE_KINDS } from '../nodes/ArchivistNode.ts';
  */
 export class ArchivistGraph extends CytoscapeGraph {
   constructor(
-    cytoscapeFactory: ConstructorParameters<typeof CytoscapeGraph>[0],
-    container: ConstructorParameters<typeof CytoscapeGraph>[1],
-    dag: ConstructorParameters<typeof CytoscapeGraph>[2],
-    options: Partial<CytoscapeGraphOptions> = {},
+    container: ConstructorParameters<typeof CytoscapeGraph>[0],
+    dag: ConstructorParameters<typeof CytoscapeGraph>[1],
+    options: CytoscapeGraphOptions = {},
   ) {
-    super(cytoscapeFactory, container, dag, options);
+    super(container, dag, options);
   }
 
   /**

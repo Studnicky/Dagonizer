@@ -150,16 +150,15 @@ const type: string = entry['@type'];
 
 ## CytoscapeGraph
 
-Subclassable factory class for mounting an interactive cytoscape graph in a DOM container. `cytoscape` and `@dagrejs/dagre` are optional peer dependencies; install them to use this class. The cytoscape constructor is dependency-injected: consumers pass it to the `CytoscapeGraph` constructor so the factory never bundles cytoscape directly.
+Subclassable factory class for mounting an interactive cytoscape graph in a DOM container. `cytoscape` and `@dagrejs/dagre` are optional peer dependencies; install them to use this class. The cytoscape runtime is resolved internally by a lazy `Cytoscape.create()` dynamic import, so the package never bundles cytoscape and SSR/headless builds never load it until a graph mounts. A subclass that needs a custom `cytoscape.Core` build (extensions registered, a pinned cytoscape version, a renderer-less test harness) overrides the protected `construct(options)` hook instead of injecting a factory.
 
 ```ts twoslash
 import { CytoscapeGraph } from '@studnicky/dagonizer/viz';
 import type { DAG } from '@studnicky/dagonizer';
-import cytoscape from 'cytoscape';
 // ---cut---
 declare const container: HTMLElement;
 declare const dag: DAG;
-const graph = new CytoscapeGraph(cytoscape, container, dag);
+const graph = new CytoscapeGraph(container, dag);
 const cy = await graph.mount(); // returns cytoscape.Core
 ```
 
@@ -169,18 +168,16 @@ const cy = await graph.mount(); // returns cytoscape.Core
 import { CytoscapeGraph } from '@studnicky/dagonizer/viz';
 import type { CytoscapeGraphOptions } from '@studnicky/dagonizer/viz';
 import type { DAG } from '@studnicky/dagonizer';
-import cytoscape from 'cytoscape';
 // ---cut---
 declare const container: HTMLElement;
 declare const dag: DAG;
 declare const options: CytoscapeGraphOptions;
-// new CytoscapeGraph(cytoscapeFactory, container, dag, options?)
-const graph = new CytoscapeGraph(cytoscape, container, dag, options);
+// new CytoscapeGraph(container, dag, options?)
+const graph = new CytoscapeGraph(container, dag, options);
 ```
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `cytoscapeFactory` | `typeof cytoscape` | The cytoscape constructor (DI-injected; not bundled) |
 | `container` | `HTMLElement` | DOM element to mount the graph into |
 | `dag` | `DAG` | The DAG to render |
 | `options` | `CytoscapeGraphOptions?` | Optional configuration |
@@ -203,11 +200,10 @@ Builds elements via `CytoscapeRenderer.render`, computes layout via `CompositeLa
 ```ts twoslash
 import { CytoscapeGraph } from '@studnicky/dagonizer/viz';
 import type { DAG } from '@studnicky/dagonizer';
-import cytoscape from 'cytoscape';
 // ---cut---
 declare const container: HTMLElement;
 declare const dag: DAG;
-const graph = new CytoscapeGraph(cytoscape, container, dag);
+const graph = new CytoscapeGraph(container, dag);
 // cy is null before mount, cytoscape.Core after
 const cy = graph.cy;
 ```
@@ -218,6 +214,7 @@ Returns the `cytoscape.Core` after a successful `mount()`, or `null` if the grap
 
 | Hook | Signature | Purpose |
 |------|-----------|---------|
+| `construct` | `(options: cytoscape.CytoscapeOptions) => Promise<cytoscape.Core>` | Override to supply a custom `cytoscape.Core` (extensions registered, a pinned build, a headless harness). Default delegates to `Cytoscape.create`, which lazily dynamic-imports the optional `cytoscape` peer. This is the extension point that replaces the former injected factory. |
 | `buildElements` | `() => ReadonlyArray<cytoscape.ElementDefinition>` | Override to customize element construction. Default delegates to `CytoscapeRenderer.render`. |
 | `stylesheet` | `() => cytoscape.StylesheetStyle[]` | Override to supply a custom stylesheet. |
 | `presetLayout` | `() => cytoscape.PresetLayoutOptions` | Override to change the preset layout options passed to cytoscape. Default uses `preset` with `fit: true, padding: 60`. |
