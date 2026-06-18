@@ -370,7 +370,7 @@ importers:
   packages/dagonizer-executor-node:
     dependencies:
       '@noocodex/dagonizer':
-        specifier: workspace:>=0.20.0
+        specifier: workspace:>=0.21.0
         version: link:../dagonizer
     devDependencies:
       '@eslint/js':
@@ -395,7 +395,7 @@ importers:
   packages/dagonizer-executor-web:
     dependencies:
       '@noocodex/dagonizer':
-        specifier: workspace:>=0.20.0
+        specifier: workspace:>=0.21.0
         version: link:../dagonizer
     devDependencies:
       '@eslint/js':
@@ -460,7 +460,7 @@ importers:
   packages/dagonizer-store-sqlite:
     dependencies:
       '@noocodex/dagonizer':
-        specifier: workspace:>=0.20.0
+        specifier: workspace:>=0.21.0
         version: link:../dagonizer
     devDependencies:
       '@eslint/js':
@@ -488,7 +488,7 @@ importers:
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
       '@noocodex/dagonizer-book-entities':
-        specifier: workspace:>=0.20.0
+        specifier: workspace:>=0.21.0
         version: link:../dagonizer-book-entities
     devDependencies:
       '@types/node':
@@ -501,7 +501,7 @@ importers:
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
       '@noocodex/dagonizer-book-entities':
-        specifier: workspace:>=0.20.0
+        specifier: workspace:>=0.21.0
         version: link:../dagonizer-book-entities
     devDependencies:
       '@types/node':
@@ -514,7 +514,7 @@ importers:
         specifier: workspace:>=0.14.0 <1.0.0
         version: link:../dagonizer
       '@noocodex/dagonizer-book-entities':
-        specifier: workspace:>=0.20.0
+        specifier: workspace:>=0.21.0
         version: link:../dagonizer-book-entities
     devDependencies:
       '@types/node':

@@ -1,5 +1,16 @@
 # @noocodex/dagonizer-examples
 
+## 0.0.8
+
+### Patch Changes
+
+- Updated dependencies [0296d9d]
+- Updated dependencies [0296d9d]
+  - @noocodex/dagonizer@0.21.0
+  - @noocodex/dagonizer-adapter-ollama@0.21.0
+  - @noocodex/dagonizer-embedder-ollama@0.21.0
+  - @noocodex/dagonizer-executor-node@0.21.0
+
 ## 0.0.7
 
 ### Patch Changes
