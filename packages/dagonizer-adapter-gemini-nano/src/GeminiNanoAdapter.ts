@@ -23,8 +23,8 @@ import type {
   ChatResponse,
   ErrorClassification,
   ToolDefinition,
-} from '@noocodex/dagonizer/adapter';
-import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ToolCallCodec, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
+} from '@studnicky/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder, Classifications, DEFAULT_MAX_ATTEMPTS, LlmError, ToolCallCodec, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
 
 export type GeminiNanoAvailability =
   | 'available'

@@ -27,7 +27,7 @@
  *
  * @example
  * ```ts
- * import { MermaidRenderer } from '@noocodex/dagonizer/viz';
+ * import { MermaidRenderer } from '@studnicky/dagonizer/viz';
  * const source = MermaidRenderer.render(myDag);
  * console.log(source);
  * ```

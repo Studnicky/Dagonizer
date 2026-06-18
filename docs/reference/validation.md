@@ -10,7 +10,7 @@ seeAlso:
 
 # Validation
 
-`@noocodex/dagonizer/validation`
+`@studnicky/dagonizer/validation`
 
 The validation module provides the Ajv instance and the unified entity validator used internally by the dispatcher.
 
@@ -21,7 +21,7 @@ The validation module provides the Ajv instance and the unified entity validator
 Unified Ajv-backed entity validator. Access per-entity sub-validators via static fields.
 
 ```ts twoslash
-import { Validator } from '@noocodex/dagonizer/validation';
+import { Validator } from '@studnicky/dagonizer/validation';
 ```
 
 ### `Validator.dag`
@@ -33,8 +33,8 @@ Validates raw values against `DAGSchema` (Ajv 2020-12). Used internally by `Dago
 #### `Validator.dag.validate(value)`
 
 ```ts twoslash
-import { Validator } from '@noocodex/dagonizer/validation';
-import type { DAG } from '@noocodex/dagonizer/entities';
+import { Validator } from '@studnicky/dagonizer/validation';
+import type { DAG } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const raw: unknown;
 const dag: DAG = Validator.dag.validate(raw);
@@ -45,8 +45,8 @@ Validates `value` against `DAGSchema`. Returns a typed `DAG` on success. Throws 
 #### `Validator.dag.is(value)`
 
 ```ts twoslash
-import { Validator } from '@noocodex/dagonizer/validation';
-import type { DAG } from '@noocodex/dagonizer/entities';
+import { Validator } from '@studnicky/dagonizer/validation';
+import type { DAG } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const raw: unknown;
 if (Validator.dag.is(raw)) {
@@ -59,7 +59,7 @@ Type predicate. Returns `true` when `value` satisfies `DAGSchema`.
 #### `Validator.dag.errors(value)`
 
 ```ts twoslash
-import { Validator } from '@noocodex/dagonizer/validation';
+import { Validator } from '@studnicky/dagonizer/validation';
 // ---cut---
 declare const raw: unknown;
 const errs: string[] | null = Validator.dag.errors(raw);
@@ -76,8 +76,8 @@ Type: `EntityValidator<CheckpointData>`
 Validates raw values against `CheckpointDataSchema`. Used by `Checkpoint.load`.
 
 ```ts twoslash
-import { Validator } from '@noocodex/dagonizer/validation';
-import type { CheckpointData } from '@noocodex/dagonizer/entities';
+import { Validator } from '@studnicky/dagonizer/validation';
+import type { CheckpointData } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const raw: unknown;
 const data: CheckpointData = Validator.checkpoint.validate(raw);
@@ -89,7 +89,7 @@ Returns a typed `CheckpointData` or throws `ValidationError`. Called by `Checkpo
 
 ### Other validators
 
-Every JSON Schema in `@noocodex/dagonizer/entities` has a matching static `EntityValidator` on `Validator`. Names use camelCase derived from the schema name.
+Every JSON Schema in `@studnicky/dagonizer/entities` has a matching static `EntityValidator` on `Validator`. Names use camelCase derived from the schema name.
 
 | Field | Entity | Schema |
 |---|---|---|
@@ -122,7 +122,7 @@ Every entry exposes the same `EntityValidator<T>` surface: `is(value)`, `validat
 Per-entity validator interface. Every `Validator.<entity>` field is an `EntityValidator`.
 
 ```ts twoslash
-import type { EntityValidator } from '@noocodex/dagonizer/validation';
+import type { EntityValidator } from '@studnicky/dagonizer/validation';
 // EntityValidator<T>:
 //   is(value: unknown): value is T
 //   validate(value: unknown): T

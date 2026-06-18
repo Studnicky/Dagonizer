@@ -27,8 +27,8 @@
  * Run: npx tsx examples/18-observability.ts
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
-import type { ExecutionResultInterface } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
+import type { ExecutionResultInterface } from '@studnicky/dagonizer';
 import { PipelineState, ValidateNode, TransformNode, dag } from './dags/18-observability.js';
 
 // ---------------------------------------------------------------------------

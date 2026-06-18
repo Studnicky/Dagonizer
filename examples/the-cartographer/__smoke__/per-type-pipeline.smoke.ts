@@ -10,8 +10,8 @@
 
 import { strict as assert } from 'node:assert';
 
-import { Dagonizer } from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
 
 import { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';

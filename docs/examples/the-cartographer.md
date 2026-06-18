@@ -26,7 +26,7 @@ multi-format satellite tracking feeds, routes each event only through the nodes
 it needs, and aggregates continent-level insights with GDPR-compliant PII
 handling — all without an LLM, without a GPU, running entirely in your browser.
 
-It runs on the same `@noocodex/dagonizer` engine as [The Archivist](./the-archivist).
+It runs on the same `@studnicky/dagonizer` engine as [The Archivist](./the-archivist).
 Only the node domain differs: agent reasoning vs data enrichment. The DAG topology,
 lifecycle hooks, observer pattern, streaming scatter, and embedded-DAG composition
 are identical.

@@ -17,7 +17,7 @@
 
 import { pathToFileURL } from 'node:url';
 
-import { DagHost } from '@noocodex/dagonizer/container';
+import { DagHost } from '@studnicky/dagonizer/container';
 
 import { NdjsonChannel } from './NdjsonChannel.js';
 

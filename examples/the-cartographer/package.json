@@ -1,15 +1,15 @@
 {
-  "name": "@noocodex/the-cartographer-example",
+  "name": "@studnicky/the-cartographer-example",
   "version": "0.0.0",
   "private": true,
-  "description": "Cartographer example for @noocodex/dagonizer: streaming shipment-tracking / consumer-insights data pipeline.",
+  "description": "Cartographer example for @studnicky/dagonizer: streaming shipment-tracking / consumer-insights data pipeline.",
   "license": "MIT",
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@noocodex/dagonizer": "workspace:^",
+    "@studnicky/dagonizer": "workspace:^",
     "@rapideditor/country-coder": "^5.6.1",
     "tz-lookup": "^6.1.25",
     "yaml": "^2.7.1"

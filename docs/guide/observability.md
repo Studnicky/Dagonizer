@@ -21,14 +21,14 @@ Protected `on*` hooks on `Dagonizer` fire at every execution boundary. Subclass 
 
 | Symbol | Source | Role |
 |--------|--------|------|
-| `Dagonizer.onFlowStart` | `@noocodex/dagonizer` | Fires after `state.markRunning()`, before the first node |
-| `Dagonizer.onFlowEnd` | `@noocodex/dagonizer` | Fires after the last node (including aborted or failed paths) |
-| `Dagonizer.onNodeStart` | `@noocodex/dagonizer` | Fires before each `node.execute()` |
-| `Dagonizer.onNodeEnd` | `@noocodex/dagonizer` | Fires after each node resolves, before `yield` |
-| `Dagonizer.onError` | `@noocodex/dagonizer` | Fires when a signal fires or a node throws |
-| `Dagonizer.onPhaseEnter` | `@noocodex/dagonizer` | Fires before a `pre`/`post` phase placement runs |
-| `Dagonizer.onPhaseExit` | `@noocodex/dagonizer` | Fires after a `pre`/`post` phase placement completes |
-| `Dagonizer.onContractWarning` | `@noocodex/dagonizer` | Fires for non-fatal contract-registry warnings at `registerDAG` |
+| `Dagonizer.onFlowStart` | `@studnicky/dagonizer` | Fires after `state.markRunning()`, before the first node |
+| `Dagonizer.onFlowEnd` | `@studnicky/dagonizer` | Fires after the last node (including aborted or failed paths) |
+| `Dagonizer.onNodeStart` | `@studnicky/dagonizer` | Fires before each `node.execute()` |
+| `Dagonizer.onNodeEnd` | `@studnicky/dagonizer` | Fires after each node resolves, before `yield` |
+| `Dagonizer.onError` | `@studnicky/dagonizer` | Fires when a signal fires or a node throws |
+| `Dagonizer.onPhaseEnter` | `@studnicky/dagonizer` | Fires before a `pre`/`post` phase placement runs |
+| `Dagonizer.onPhaseExit` | `@studnicky/dagonizer` | Fires after a `pre`/`post` phase placement completes |
+| `Dagonizer.onContractWarning` | `@studnicky/dagonizer` | Fires for non-fatal contract-registry warnings at `registerDAG` |
 
 ## Subclass hooks
 

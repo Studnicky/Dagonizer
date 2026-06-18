@@ -1,7 +1,7 @@
 {
-  "name": "@noocodex/dagonizer-executor-node",
+  "name": "@studnicky/dagonizer-executor-node",
   "version": "0.21.0",
-  "description": "Node.js isolating executor backends for @noocodex/dagonizer: worker threads, fork, cluster, and spawn over the bridge protocol.",
+  "description": "Node.js isolating executor backends for @studnicky/dagonizer: worker threads, fork, cluster, and spawn over the bridge protocol.",
   "private": false,
   "license": "MIT",
   "author": "Andrew Studnicky <a.j.studnicky@gmail.com>",
@@ -35,7 +35,7 @@
     "node": ">=24"
   },
   "dependencies": {
-    "@noocodex/dagonizer": "workspace:>=0.21.0"
+    "@studnicky/dagonizer": "workspace:>=0.21.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

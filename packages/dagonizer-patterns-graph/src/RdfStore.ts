@@ -21,10 +21,10 @@
  *   should subclass and override `performRestoreEntries`.
  */
 
-import type { StoreSnapshotEntry } from '@noocodex/dagonizer/contracts';
-import type { JsonValue } from '@noocodex/dagonizer/entities';
-import type { Binding, Quad, SlotPattern, Term, TripleStore } from '@noocodex/dagonizer/patterns';
-import { BaseStore, type BaseStoreOptions } from '@noocodex/dagonizer/store';
+import type { StoreSnapshotEntry } from '@studnicky/dagonizer/contracts';
+import type { JsonValue } from '@studnicky/dagonizer/entities';
+import type { Binding, Quad, SlotPattern, Term, TripleStore } from '@studnicky/dagonizer/patterns';
+import { BaseStore, type BaseStoreOptions } from '@studnicky/dagonizer/store';
 
 /** Subject IRI prefix used when no override is supplied. */
 const DEFAULT_SUBJECT_PREFIX = 'urn:dagonizer:store:';

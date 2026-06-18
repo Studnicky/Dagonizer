@@ -17,9 +17,9 @@
  */
 
 // #region registry
-import type { RegistryBundleInterface, RegistryModuleInterface } from '@noocodex/dagonizer/contracts';
-import { CheckpointRestoreAdapterFn } from '@noocodex/dagonizer/checkpoint';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
+import type { RegistryBundleInterface, RegistryModuleInterface } from '@studnicky/dagonizer/contracts';
+import { CheckpointRestoreAdapterFn } from '@studnicky/dagonizer/checkpoint';
+import type { JsonObject } from '@studnicky/dagonizer/entities';
 
 import { dag, SquareWorkerNode, workerDag, WorkState } from './12-workers.js';
 

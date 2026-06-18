@@ -3,7 +3,7 @@ import importPlugin from 'eslint-plugin-import-x';
 import tseslint from 'typescript-eslint';
 
 /**
- * Shared ESLint flat config factory for all @noocodex/dagonizer-* packages.
+ * Shared ESLint flat config factory for all @studnicky/dagonizer-* packages.
  *
  * @param {string} tsconfigRootDir - Absolute path to the package directory (pass `import.meta.dirname`).
  * @param {{ project?: string, files?: string[] }} [options]

@@ -27,8 +27,8 @@ import {
   Dagonizer,
   GatherStrategies,
   OutcomeReducers,
-} from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
 
 // ── DAG: scatter over items, gather with 'top-n', reduce with 'threshold-75' ─
 

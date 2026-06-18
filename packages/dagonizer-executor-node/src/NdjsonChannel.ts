@@ -27,10 +27,10 @@
 
 import type { Readable, Writable } from 'node:stream';
 
-import type { MessageChannelInterface } from '@noocodex/dagonizer/contracts';
-import { BridgeMessageBuilder } from '@noocodex/dagonizer/entities';
-import type { BridgeMessage } from '@noocodex/dagonizer/entities';
-import { Validator } from '@noocodex/dagonizer/validation';
+import type { MessageChannelInterface } from '@studnicky/dagonizer/contracts';
+import { BridgeMessageBuilder } from '@studnicky/dagonizer/entities';
+import type { BridgeMessage } from '@studnicky/dagonizer/entities';
+import { Validator } from '@studnicky/dagonizer/validation';
 
 // ---------------------------------------------------------------------------
 // Constants

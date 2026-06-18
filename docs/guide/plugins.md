@@ -12,7 +12,7 @@ seeAlso:
 
 # Plugins
 
-Dagonizer ships three tiers of plugins, each installable independently. Every tier consumes a stable subpath surface on the main `@noocodex/dagonizer` package; the surface stays narrow so an adapter package does not pull in pattern code, a tool package does not pull in adapter internals, and so on.
+Dagonizer ships three tiers of plugins, each installable independently. Every tier consumes a stable subpath surface on the main `@studnicky/dagonizer` package; the surface stays narrow so an adapter package does not pull in pattern code, a tool package does not pull in adapter internals, and so on.
 
 ::: warning Beta
 The plugin packages are GitHub-only and not yet published to npm. Install via the repo + workspace path while live-API confirmation lands against each provider. The contracts (`./adapter`, `./tool`, `./patterns`) are stable.
@@ -22,11 +22,11 @@ The plugin packages are GitHub-only and not yet published to npm. Install via th
 
 | Tier | Subpath consumed | Packages | Shape |
 |------|------------------|----------|-------|
-| **Adapters** | `@noocodex/dagonizer/adapter` | `@noocodex/dagonizer-adapter-*` (8) | Concrete drop-in classes |
-| **Tools** | `@noocodex/dagonizer/tool` (+ `/adapter`) | `@noocodex/dagonizer-tool-*` (3) | Concrete classes implementing `Tool<TInput, TOutput>` |
-| **Patterns** | `@noocodex/dagonizer/patterns` (+ `/adapter`, `/tool`) | `@noocodex/dagonizer-patterns-*` (3) | Abstract base classes consumers extend |
+| **Adapters** | `@studnicky/dagonizer/adapter` | `@studnicky/dagonizer-adapter-*` (8) | Concrete drop-in classes |
+| **Tools** | `@studnicky/dagonizer/tool` (+ `/adapter`) | `@studnicky/dagonizer-tool-*` (3) | Concrete classes implementing `Tool<TInput, TOutput>` |
+| **Patterns** | `@studnicky/dagonizer/patterns` (+ `/adapter`, `/tool`) | `@studnicky/dagonizer-patterns-*` (3) | Abstract base classes consumers extend |
 
-## `@noocodex/dagonizer/adapter`
+## `@studnicky/dagonizer/adapter`
 
 The adapter subpath exposes everything an LLM-provider adapter needs:
 
@@ -51,8 +51,8 @@ The adapter subpath exposes everything an LLM-provider adapter needs:
 Extend `BaseAdapter` and implement `performChat`:
 
 ```ts twoslash
-import { BaseAdapter, ChatResponseMessageBuilder, ZERO_TOKEN_USAGE } from '@noocodex/dagonizer/adapter';
-import type { ChatRequest, ChatResponse } from '@noocodex/dagonizer/adapter';
+import { BaseAdapter, ChatResponseMessageBuilder, ZERO_TOKEN_USAGE } from '@studnicky/dagonizer/adapter';
+import type { ChatRequest, ChatResponse } from '@studnicky/dagonizer/adapter';
 
 export class MyAdapter extends BaseAdapter {
   constructor() {
@@ -71,7 +71,7 @@ export class MyAdapter extends BaseAdapter {
 }
 ```
 
-## `@noocodex/dagonizer/tool`
+## `@studnicky/dagonizer/tool`
 
 The tool subpath exposes a small surface for external-service wrappers:
 
@@ -91,7 +91,7 @@ The tool subpath exposes a small surface for external-service wrappers:
 
 `HttpTransport` handles retry on 429/5xx/network, abort propagation, JSON parsing, and timeout; every tool gets it for free.
 
-## `@noocodex/dagonizer/patterns`
+## `@studnicky/dagonizer/patterns`
 
 The patterns subpath exposes the abstract `MonadicNode` root plus the service contracts pattern packages depend on:
 
@@ -125,8 +125,8 @@ MonadicNode<TState, TOutput, TServices>            (root: main package)
 ### Example: classifying intent
 
 ```ts twoslash
-import { DecisionNode } from '@noocodex/dagonizer-patterns-rag';
-import { NodeStateBase } from '@noocodex/dagonizer';
+import { DecisionNode } from '@studnicky/dagonizer-patterns-rag';
+import { NodeStateBase } from '@studnicky/dagonizer';
 
 type Intent = 'search' | 'describe' | 'recommend' | 'off-topic';
 
@@ -161,9 +161,9 @@ The pattern handles LLM dispatch, retry, abort propagation, contract field forwa
 
 Each contract subpath is independently consumable:
 
-- An **adapter package** depends on `@noocodex/dagonizer/adapter` only; never pulls in the pattern surface.
-- A **tool package** depends on `@noocodex/dagonizer/tool` + `/adapter` (for `ToolDefinition`); never pulls in patterns.
-- A **pattern package** depends on `@noocodex/dagonizer/patterns` (root) + occasionally `/adapter` (RAG patterns need LLM types) + `/tool` (ScoutNode references `Tool`).
+- An **adapter package** depends on `@studnicky/dagonizer/adapter` only; never pulls in the pattern surface.
+- A **tool package** depends on `@studnicky/dagonizer/tool` + `/adapter` (for `ToolDefinition`); never pulls in patterns.
+- A **pattern package** depends on `@studnicky/dagonizer/patterns` (root) + occasionally `/adapter` (RAG patterns need LLM types) + `/tool` (ScoutNode references `Tool`).
 
 Consumers install only what they use. The dependency graph stays acyclic.
 

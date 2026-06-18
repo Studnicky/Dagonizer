@@ -28,8 +28,8 @@ import type { CartographerServices } from '../CartographerServices.ts';
 import { decodePayload } from '../nodes/decodePayload.ts';
 import { routeEventType } from '../nodes/routeEventType.ts';
 
-import type { DAG, DispatcherBundle } from '@noocodex/dagonizer';
-import { DAGBuilder } from '@noocodex/dagonizer';
+import type { DAG, DispatcherBundle } from '@studnicky/dagonizer';
+import { DAGBuilder } from '@studnicky/dagonizer';
 
 // #region stream-event-dag
 export const streamEventDAG: DAG = new DAGBuilder('stream-event', '1.0')

@@ -1,5 +1,5 @@
 /**
- * @noocodex/dagonizer-patterns-rag: RAG node pattern bases.
+ * @studnicky/dagonizer-patterns-rag: RAG node pattern bases.
  *
  * Three canonical pattern classes:
  *   - DecisionNode<TState, TChoice>: LLM consults and returns structured choice

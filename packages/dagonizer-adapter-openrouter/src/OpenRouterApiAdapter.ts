@@ -7,8 +7,8 @@
  * projects can set their own identity.
  */
 
-import { OpenAiCompatibleAdapter } from '@noocodex/dagonizer/adapter';
-import type { OpenAiCompatibleAdapterOptions } from '@noocodex/dagonizer/adapter';
+import { OpenAiCompatibleAdapter } from '@studnicky/dagonizer/adapter';
+import type { OpenAiCompatibleAdapterOptions } from '@studnicky/dagonizer/adapter';
 
 const DEFAULT_REFERER = 'https://studnicky.github.io/Dagonizer/';
 const DEFAULT_TITLE   = 'Dagonizer Archivist';

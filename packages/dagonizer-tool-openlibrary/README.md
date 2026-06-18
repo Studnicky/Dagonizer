@@ -1,17 +1,17 @@
-# @noocodex/dagonizer-tool-openlibrary
+# @studnicky/dagonizer-tool-openlibrary
 
-OpenLibrary search and subject tools for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Hits the free, key-less, CORS-friendly OpenLibrary API.
+OpenLibrary search and subject tools for [@studnicky/dagonizer](https://npmjs.com/package/@studnicky/dagonizer). Hits the free, key-less, CORS-friendly OpenLibrary API.
 
 ## Install
 
 ```bash
-npm install @noocodex/dagonizer @noocodex/dagonizer-tool-openlibrary
+npm install @studnicky/dagonizer @studnicky/dagonizer-tool-openlibrary
 ```
 
 ## Usage
 
 ```ts
-import { OpenLibrarySearchTool, SubjectSearchTool, CanonicalId } from '@noocodex/dagonizer-tool-openlibrary';
+import { OpenLibrarySearchTool, SubjectSearchTool, CanonicalId } from '@studnicky/dagonizer-tool-openlibrary';
 
 const candidates = await OpenLibrarySearchTool.execute({ query: 'Piranesi', limit: 5 });
 

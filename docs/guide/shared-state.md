@@ -17,8 +17,8 @@ seeAlso:
 ---
 
 <script setup lang="ts">
-import { DAGBuilder, NodeOutputBuilder, NodeStateBase, EMPTY_CONTRACT_FRAGMENT } from '@noocodex/dagonizer';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import { DAGBuilder, NodeOutputBuilder, NodeStateBase, EMPTY_CONTRACT_FRAGMENT } from '@studnicky/dagonizer';
+import type { NodeInterface } from '@studnicky/dagonizer/contracts';
 
 interface Services { log: { update: (k: string, fn: (c?: string) => string) => Promise<void> } }
 
@@ -66,12 +66,12 @@ Two mechanisms cross the scatter boundary in Dagonizer. The choice depends on th
 
 | Symbol | Source | Role |
 |--------|--------|------|
-| `Store` | `@noocodex/dagonizer/contracts` | Async key/value contract |
-| `BaseStore` | `@noocodex/dagonizer/store` | Abstract base with snapshot/restore plumbing |
-| `MemoryStore` | `@noocodex/dagonizer/store` | In-memory reference implementation |
-| `TypedStore<Schema>` | `@noocodex/dagonizer/store` | Wrapper that narrows keys and value types |
-| `StoreError` | `@noocodex/dagonizer/store` | Discriminated error with `classification.reason` |
-| `RemoteStore`, `RemoteStoreEndpoint`, `RemoteStoreLease` | `@noocodex/dagonizer/contracts` | Distributed coordination primitives |
+| `Store` | `@studnicky/dagonizer/contracts` | Async key/value contract |
+| `BaseStore` | `@studnicky/dagonizer/store` | Abstract base with snapshot/restore plumbing |
+| `MemoryStore` | `@studnicky/dagonizer/store` | In-memory reference implementation |
+| `TypedStore<Schema>` | `@studnicky/dagonizer/store` | Wrapper that narrows keys and value types |
+| `StoreError` | `@studnicky/dagonizer/store` | Discriminated error with `classification.reason` |
+| `RemoteStore`, `RemoteStoreEndpoint`, `RemoteStoreLease` | `@studnicky/dagonizer/contracts` | Distributed coordination primitives |
 
 ## DAG that exercises shared state
 
@@ -86,7 +86,7 @@ The runnable demo wires a `MemoryStore` onto the services bag of a parent DAG wi
 | Embed a registered sub-DAG exactly once and transfer specific fields in/out | `inputs` / `outputs` on `.embeddedDAG()` | Single-direction, isolated, checkpoint-friendly without extra wiring |
 | Scatter across an array and seed each clone with a parent field | `inputs` option on `.scatter()` (`stateMapping.input`) | Parent field copied into each clone state before the body runs |
 | Multiple nodes accumulate growing shared state (agent memory, RAG context, audit log) | `MemoryStore` (or another `Store`) on the services bag | Cross-node and cross-scatter; survives execution boundaries within a run |
-| RDF graph patterns (`RecallContextNode`, `RecordFindingsNode`, etc.) need a Store that is also a `TripleStore` | `RdfStore` from `@noocodex/dagonizer-patterns-graph` | Implements both contracts; key-value side reifies as triples; quad side exposes native RDF |
+| RDF graph patterns (`RecallContextNode`, `RecordFindingsNode`, etc.) need a Store that is also a `TripleStore` | `RdfStore` from `@studnicky/dagonizer-patterns-graph` | Implements both contracts; key-value side reifies as triples; quad side exposes native RDF |
 | Known, fixed key set; compile-time safety without explicit `<T>` at every call | `TypedStore<Schema>` wrapping any `Store` | Keys and value types inferred from the schema |
 | Long-running flow that survives restart | `MemoryStore.snapshot()` via `Checkpoint.capture({ stores })` | Resume captures shared state alongside parent state |
 | Mid-flight introspection by an external observer | `Store` instance held outside the dispatcher | The same instance lives outside the topology; read it concurrently without touching execution |
@@ -113,11 +113,11 @@ The runnable example declares a `Services` interface whose `log` field has type 
 
 ## RdfStore: RDF-backed shared state for graph patterns
 
-`RdfStore` from `@noocodex/dagonizer-patterns-graph` implements both `Store` and `TripleStore`. Plugin authors using the graph node patterns (`RecallContextNode`, `RecordFindingsNode`, `MemoryDigestNode`) pass an `RdfStore` directly as `services.memory`: it satisfies both the pattern's `TripleStore` requirement and the engine's `Store` contract for snapshot/restore.
+`RdfStore` from `@studnicky/dagonizer-patterns-graph` implements both `Store` and `TripleStore`. Plugin authors using the graph node patterns (`RecallContextNode`, `RecordFindingsNode`, `MemoryDigestNode`) pass an `RdfStore` directly as `services.memory`: it satisfies both the pattern's `TripleStore` requirement and the engine's `Store` contract for snapshot/restore.
 
 The Store side exposes `set`, `get`, `has`, `delete`, `update`, `snapshot`, and `restore`. The TripleStore side exposes `assert`, `ask`, `select`, `count`, `clearGraph`, and `triples`. The Store-side `set(key, value)` reifies as a single triple under `urn:dagonizer:store:{key}`. The subject prefix and value predicate are configurable via `RdfStoreOptions`. No external dependencies; the backing is a plain `Quad[]`.
 
-See `@noocodex/dagonizer-patterns-graph` for `RdfStoreOptions`, subclassing guidance, and snapshot trade-offs.
+See `@studnicky/dagonizer-patterns-graph` for `RdfStoreOptions`, subclassing guidance, and snapshot trade-offs.
 
 ## TypedStore: narrowing for known key sets
 
@@ -171,7 +171,7 @@ The `type` string is the stable discriminant for the resume path; include a vers
 
 ## Distributed execution: `RemoteStore`
 
-`RemoteStore` extends `Store` with three coordination primitives for plugins whose backing lives over the network or is replicated across processes. Local `MemoryStore` and single-node-durable stores implement `Store` directly; plugins that talk over HTTP, gRPC, or WebSocket implement `RemoteStore`. Import it from `@noocodex/dagonizer/contracts`.
+`RemoteStore` extends `Store` with three coordination primitives for plugins whose backing lives over the network or is replicated across processes. Local `MemoryStore` and single-node-durable stores implement `Store` directly; plugins that talk over HTTP, gRPC, or WebSocket implement `RemoteStore`. Import it from `@studnicky/dagonizer/contracts`.
 
 The engine consumes a `RemoteStore` through the `Store` surface. The extra methods are optional coordination hooks available to the dispatcher when distributed execution is active.
 

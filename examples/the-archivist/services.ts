@@ -20,8 +20,8 @@
 import type { ConversationTurn, MemoryDigest } from './ArchivistState.ts';
 import type { Candidate } from './entities/Book.ts';
 import type { MemoryStore } from './memory/MemoryStore.ts';
-import type { Embedder } from '@noocodex/dagonizer/contracts';
-import type { Tool } from '@noocodex/dagonizer/tool';
+import type { Embedder } from '@studnicky/dagonizer/contracts';
+import type { Tool } from '@studnicky/dagonizer/tool';
 
 /**
  * WebSearchTool: adapter contract for the live-web book search.

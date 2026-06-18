@@ -23,9 +23,9 @@ import {
   Dagonizer,
   NodeStateBase,
   ValidationError,
-} from '@noocodex/dagonizer';
-import { DAGDocument, DAGSchema } from '@noocodex/dagonizer/entities';
-import { Validator } from '@noocodex/dagonizer/validation';
+} from '@studnicky/dagonizer';
+import { DAGDocument, DAGSchema } from '@studnicky/dagonizer/entities';
+import { Validator } from '@studnicky/dagonizer/validation';
 import { EchoNode, dag } from './dags/03-schema.js';
 
 process.stdout.write(`\nLoaded:  ${dag.name} v${dag.version} (${dag.nodes.length} node(s))\n`);

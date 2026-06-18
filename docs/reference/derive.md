@@ -13,10 +13,10 @@ seeAlso:
 
 # Derive
 
-Contract-derived flow generation. Ships through `@noocodex/dagonizer/derive`.
+Contract-derived flow generation. Ships through `@studnicky/dagonizer/derive`.
 
 ```ts twoslash
-import { DAGDeriver, ContractRegistryValidator } from '@noocodex/dagonizer/derive';
+import { DAGDeriver, ContractRegistryValidator } from '@studnicky/dagonizer/derive';
 import type {
   DAGDeriverAnnotations,
   DAGDeriverEmitTerminal,
@@ -24,11 +24,11 @@ import type {
   DAGDeriverScatter,
   DAGDeriverTerminal,
   DAGDeriverOptions,
-} from '@noocodex/dagonizer/derive';
+} from '@studnicky/dagonizer/derive';
 import type {
   OperationContract,
   OperationContractFragment,
-} from '@noocodex/dagonizer/contracts';
+} from '@studnicky/dagonizer/contracts';
 ```
 
 ## DAGDeriver
@@ -36,9 +36,9 @@ import type {
 Static class.
 
 ```ts twoslash
-import type { DAGDeriverOptions } from '@noocodex/dagonizer/derive';
-import type { DAG } from '@noocodex/dagonizer';
-import type { NodeInterface, OperationContract } from '@noocodex/dagonizer/contracts';
+import type { DAGDeriverOptions } from '@studnicky/dagonizer/derive';
+import type { DAG } from '@studnicky/dagonizer';
+import type { NodeInterface, OperationContract } from '@studnicky/dagonizer/contracts';
 // ---cut---
 declare class DAGDeriver {
   static derive(opts: DAGDeriverOptions): DAG;
@@ -56,8 +56,8 @@ declare class DAGDeriver {
 Build a `DAG` from a node registry plus declared annotations. Each node co-locates its own `contract` field (`{ hardRequired, produces }`); the node's `name` and `outputs` complete the full `OperationContract` surface. At least one node must declare a `contract`.
 
 ```ts twoslash
-import type { DAGDeriverAnnotations } from '@noocodex/dagonizer/derive';
-import type { NodeInterface } from '@noocodex/dagonizer/contracts';
+import type { DAGDeriverAnnotations } from '@studnicky/dagonizer/derive';
+import type { NodeInterface } from '@studnicky/dagonizer/contracts';
 // ---cut---
 interface DAGDeriverOptions {
   name: string;
@@ -90,7 +90,7 @@ Topological depth buckets. Operations sharing a depth share a bucket. Useful for
 ## DAGDeriverAnnotations
 
 ```ts twoslash
-import type { NodeStateInterface } from '@noocodex/dagonizer';
+import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
 interface DAGDeriverEmitTerminal {
   name:    string;                    // placement name for the synthesized TerminalNode
@@ -148,7 +148,7 @@ An operation cannot appear in more than one of `scatters` or `embeddedDAGs`. Pla
 ## OperationContract
 
 ```ts twoslash
-import type { OperationContractFragment } from '@noocodex/dagonizer/contracts';
+import type { OperationContractFragment } from '@studnicky/dagonizer/contracts';
 // ---cut---
 interface OperationContract extends OperationContractFragment {
   name:         string;
@@ -158,7 +158,7 @@ interface OperationContract extends OperationContractFragment {
 }
 ```
 
-Defined in `@noocodex/dagonizer/contracts`.
+Defined in `@studnicky/dagonizer/contracts`.
 
 `outputs` declares every port the node can emit. `DAGDeriver` auto-wires each port to the next derived stage; `DAGDeriverAnnotations.terminals[name]` overrides individual ports per-operation. Terminals declaring a port not in the contract's `outputs` throw `DAGError` at derive time.
 
@@ -171,7 +171,7 @@ interface OperationContractFragment {
 }
 ```
 
-Defined in `@noocodex/dagonizer/contracts`. Co-located on `NodeInterface.contract` when the consumer wants the node itself to be the single source of truth for its data flow. The node's `name` and `outputs` complete the full `OperationContract` surface at registration time.
+Defined in `@studnicky/dagonizer/contracts`. Co-located on `NodeInterface.contract` when the consumer wants the node itself to be the single source of truth for its data flow. The node's `name` and `outputs` complete the full `OperationContract` surface at registration time.
 
 ---
 
@@ -180,7 +180,7 @@ Defined in `@noocodex/dagonizer/contracts`. Co-located on `NodeInterface.contrac
 Static class. Registration-time checker for co-located node contracts.
 
 ```ts twoslash
-import type { OperationContract } from '@noocodex/dagonizer/contracts';
+import type { OperationContract } from '@studnicky/dagonizer/contracts';
 // ---cut---
 interface WarningEmitter {
   warn(message: string): void;

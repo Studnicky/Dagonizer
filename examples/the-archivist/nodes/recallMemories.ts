@@ -29,8 +29,8 @@
  *   recall result (the digest will have bookCount === 0).
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
-import type { NodeContextInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
+import type { NodeContextInterface } from '@studnicky/dagonizer';
 
 import type { MemoryDigest } from '../ArchivistState.ts';
 import type { ArchivistState } from '../ArchivistState.ts';

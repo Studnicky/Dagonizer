@@ -28,16 +28,16 @@
  * All properties initialised in constructor for V8 shape stability.
  */
 
-import type { NodeStateInterface } from '@noocodex/dagonizer';
+import type { NodeStateInterface } from '@studnicky/dagonizer';
 import {
   DagContainerBase,
   DAG_CONTAINER_WORKER_DIED,
-} from '@noocodex/dagonizer/container';
+} from '@studnicky/dagonizer/container';
 import type {
   PoolEntry,
-} from '@noocodex/dagonizer/container';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
-import { RecommendedWorkerCountConfigDefault } from '@noocodex/dagonizer/entities';
+} from '@studnicky/dagonizer/container';
+import type { JsonObject } from '@studnicky/dagonizer/entities';
+import { RecommendedWorkerCountConfigDefault } from '@studnicky/dagonizer/entities';
 
 import { PostMessageChannel } from './PostMessageChannel.js';
 import { DEFAULT_WEB_PROBES, WebSystemInfo } from './WebSystemInfo.js';

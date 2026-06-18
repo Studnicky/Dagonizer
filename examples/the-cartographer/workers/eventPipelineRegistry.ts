@@ -30,8 +30,8 @@
 import type {
   RegistryBundleInterface,
   RegistryModuleInterface,
-} from '@noocodex/dagonizer/contracts';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
+} from '@studnicky/dagonizer/contracts';
+import type { JsonObject } from '@studnicky/dagonizer/entities';
 
 import { eventPipelineBundle } from '../dag.js';
 

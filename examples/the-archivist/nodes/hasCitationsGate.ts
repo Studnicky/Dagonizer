@@ -15,8 +15,8 @@
  * dereferencing typed fields.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
-import type { NodeContextInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
+import type { NodeContextInterface } from '@studnicky/dagonizer';
 
 import { MemoryStore } from '../memory/MemoryStore.ts';
 import type { ArchivistState } from '../ArchivistState.ts';

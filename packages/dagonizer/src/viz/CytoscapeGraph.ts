@@ -169,7 +169,7 @@ export interface CytoscapeGraphOptions {
  * @example
  * ```ts
  * import cytoscape from 'cytoscape';
- * import { CytoscapeGraph } from '@noocodex/dagonizer/viz';
+ * import { CytoscapeGraph } from '@studnicky/dagonizer/viz';
  *
  * const graph = new CytoscapeGraph(cytoscape, containerEl, dag);
  * const cy = await graph.mount();

@@ -20,7 +20,7 @@ seeAlso:
 
 # Example 12: Worker pool
 
-This example runs a scatter-dag-body placement over a real `WorkerThreadContainer` pool from `@noocodex/dagonizer-executor-node`. Each scatter clone's sub-DAG executes in a worker thread; the results are gathered back into the parent state identically to the in-process path.
+This example runs a scatter-dag-body placement over a real `WorkerThreadContainer` pool from `@studnicky/dagonizer-executor-node`. Each scatter clone's sub-DAG executes in a worker thread; the results are gathered back into the parent state identically to the in-process path.
 
 ## Key concept
 
@@ -42,13 +42,13 @@ Worker threads load a separate Node.js module — the main process's in-memory r
 
 | Symbol | Import | Role |
 |--------|--------|------|
-| `WorkerThreadContainer` | `@noocodex/dagonizer-executor-node` | `DagContainerInterface` over a worker_threads pool |
-| `WorkerThreadContainerOptions` | `@noocodex/dagonizer-executor-node` | `registryModule`, `registryVersion`, `servicesConfig`, `poolSize` |
-| `NodeSystemInfo` | `@noocodex/dagonizer-executor-node` | Pool sizing: `recommendedWorkerCount(config)` |
-| `DagContainerInterface` | `@noocodex/dagonizer/contracts` | Adapter contract: `runDag(task)` |
-| `RegistryModuleInterface` | `@noocodex/dagonizer/contracts` | Default export shape loaded by `DagHost` inside each worker |
-| `RegistryBundleInterface` | `@noocodex/dagonizer/contracts` | Return type of `createBundle`: bundle, services, version, restoreState |
-| `DagonizerOptionsInterface.containers` | `@noocodex/dagonizer` | Binds logical role strings to backend instances |
+| `WorkerThreadContainer` | `@studnicky/dagonizer-executor-node` | `DagContainerInterface` over a worker_threads pool |
+| `WorkerThreadContainerOptions` | `@studnicky/dagonizer-executor-node` | `registryModule`, `registryVersion`, `servicesConfig`, `poolSize` |
+| `NodeSystemInfo` | `@studnicky/dagonizer-executor-node` | Pool sizing: `recommendedWorkerCount(config)` |
+| `DagContainerInterface` | `@studnicky/dagonizer/contracts` | Adapter contract: `runDag(task)` |
+| `RegistryModuleInterface` | `@studnicky/dagonizer/contracts` | Default export shape loaded by `DagHost` inside each worker |
+| `RegistryBundleInterface` | `@studnicky/dagonizer/contracts` | Return type of `createBundle`: bundle, services, version, restoreState |
+| `DagonizerOptionsInterface.containers` | `@studnicky/dagonizer` | Binds logical role strings to backend instances |
 
 ## What it demonstrates
 
@@ -69,4 +69,4 @@ Source: [`examples/12-workers.ts`](../../examples/12-workers.ts)
 
 ## Other Node.js backends
 
-`@noocodex/dagonizer-executor-node` also exports `ForkContainer` (isolated heap, IPC), `ClusterContainer` (pre-forked cluster workers), and `SpawnContainer` (any executable over NDJSON stdio). All four implement `DagContainerInterface` and accept the same `registryModule` / `registryVersion` / `servicesConfig` options. Swap the backend in the `containers` map with no changes to the DAG or node code.
+`@studnicky/dagonizer-executor-node` also exports `ForkContainer` (isolated heap, IPC), `ClusterContainer` (pre-forked cluster workers), and `SpawnContainer` (any executable over NDJSON stdio). All four implement `DagContainerInterface` and accept the same `registryModule` / `registryVersion` / `servicesConfig` options. Swap the backend in the `containers` map with no changes to the DAG or node code.

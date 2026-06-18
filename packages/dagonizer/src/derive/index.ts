@@ -1,5 +1,5 @@
 /**
- * `@noocodex/dagonizer/derive`: contract-derived flow generation.
+ * `@studnicky/dagonizer/derive`: contract-derived flow generation.
  *
  *   - `OperationContract`: adapter contract describing one operation's
  *     `produces` and `hardRequired` field paths

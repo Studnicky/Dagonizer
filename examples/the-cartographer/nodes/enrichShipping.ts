@@ -18,9 +18,9 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { ShippingCalculator } from '../services.ts';
 
-import type { NodeContextInterface } from '@noocodex/dagonizer';
-import { MonadicNode, RoutedBatchBuilder } from '@noocodex/dagonizer';
-import type { Batch, RoutedBatch } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@studnicky/dagonizer';
+import { MonadicNode, RoutedBatchBuilder } from '@studnicky/dagonizer';
+import type { Batch, RoutedBatch } from '@studnicky/dagonizer';
 
 // #region enrich-shipping-node
 export class EnrichShippingNode extends MonadicNode<CartographerState, 'shipping-quoted', CartographerServices> {

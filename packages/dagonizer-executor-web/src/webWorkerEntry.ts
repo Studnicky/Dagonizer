@@ -9,8 +9,8 @@
  * Consumer usage (inside the worker file):
  *
  *   // worker.ts (consumer's file — they own the cast at THEIR boundary)
- *   import { WebWorkerEntry } from '@noocodex/dagonizer-executor-web';
- *   import type { WorkerScopeLikeInterface } from '@noocodex/dagonizer-executor-web';
+ *   import { WebWorkerEntry } from '@studnicky/dagonizer-executor-web';
+ *   import type { WorkerScopeLikeInterface } from '@studnicky/dagonizer-executor-web';
  *
  *   WebWorkerEntry.start(self as unknown as WorkerScopeLikeInterface);
  *
@@ -19,8 +19,8 @@
  * This package never depends on DOM lib types.
  */
 
-import { DagHost } from '@noocodex/dagonizer/container';
-import type { RegistryModuleInterface } from '@noocodex/dagonizer/contracts';
+import { DagHost } from '@studnicky/dagonizer/container';
+import type { RegistryModuleInterface } from '@studnicky/dagonizer/contracts';
 
 import { PostMessageChannel } from './PostMessageChannel.js';
 import type { WorkerScopeLikeInterface } from './WebWorkerLike.js';

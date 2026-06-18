@@ -1,19 +1,19 @@
-# @noocodex/dagonizer-store-sqlite
+# @studnicky/dagonizer-store-sqlite
 
-SQLite-backed `Store` for [`@noocodex/dagonizer`](https://github.com/Studnicky/Dagonizer) using Node's built-in `node:sqlite` module.
+SQLite-backed `Store` for [`@studnicky/dagonizer`](https://github.com/Studnicky/Dagonizer) using Node's built-in `node:sqlite` module.
 
 No external npm dependencies. Requires Node >= 24.
 
 ## Install
 
 ```sh
-pnpm add @noocodex/dagonizer-store-sqlite
+pnpm add @studnicky/dagonizer-store-sqlite
 ```
 
 ## Usage
 
 ```ts
-import { SqliteStore } from '@noocodex/dagonizer-store-sqlite';
+import { SqliteStore } from '@studnicky/dagonizer-store-sqlite';
 
 // In-process SQLite (no filesystem)
 const store = new SqliteStore({ path: ':memory:' });
@@ -46,4 +46,4 @@ await store.disconnect();
 
 ## See also
 
-- [`@noocodex/dagonizer`](https://github.com/Studnicky/Dagonizer): main package docs and API reference.
+- [`@studnicky/dagonizer`](https://github.com/Studnicky/Dagonizer): main package docs and API reference.

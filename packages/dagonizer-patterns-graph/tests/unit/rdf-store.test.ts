@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { Term } from '@noocodex/dagonizer/patterns';
-import { StoreError } from '@noocodex/dagonizer/store';
+import type { Term } from '@studnicky/dagonizer/patterns';
+import { StoreError } from '@studnicky/dagonizer/store';
 
 import { RdfStore } from '../../src/RdfStore.js';
 

@@ -14,12 +14,12 @@
  * could poison the model's output).
  */
 
-import type { ToolDefinition } from '@noocodex/dagonizer/adapter';
-import type { AbortableOptionsInterface } from '@noocodex/dagonizer/contracts';
-import { HttpTransport, ToolError } from '@noocodex/dagonizer/tool';
-import type { Tool } from '@noocodex/dagonizer/tool';
-import type { Candidate } from '@noocodex/dagonizer-book-entities';
-import { BookBuilder, CanonicalId, LanguageCode } from '@noocodex/dagonizer-book-entities';
+import type { ToolDefinition } from '@studnicky/dagonizer/adapter';
+import type { AbortableOptionsInterface } from '@studnicky/dagonizer/contracts';
+import { HttpTransport, ToolError } from '@studnicky/dagonizer/tool';
+import type { Tool } from '@studnicky/dagonizer/tool';
+import type { Candidate } from '@studnicky/dagonizer-book-entities';
+import { BookBuilder, CanonicalId, LanguageCode } from '@studnicky/dagonizer-book-entities';
 
 interface VolumeInfo {
   readonly title?:           string;

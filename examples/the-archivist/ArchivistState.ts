@@ -9,8 +9,8 @@
 
 import type { Candidate } from './entities/Book.ts';
 
-import { NodeStateBase } from '@noocodex/dagonizer';
-import type { JsonObject } from '@noocodex/dagonizer/types';
+import { NodeStateBase } from '@studnicky/dagonizer';
+import type { JsonObject } from '@studnicky/dagonizer/types';
 
 /**
  * A single turn in the visitor–archivist conversation.

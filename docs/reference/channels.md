@@ -16,11 +16,11 @@ seeAlso:
 
 # Channels
 
-Hand-off channel implementations. Ships through `@noocodex/dagonizer/channels`.
+Hand-off channel implementations. Ships through `@studnicky/dagonizer/channels`.
 
 ```ts twoslash
-import { InMemoryChannel } from '@noocodex/dagonizer/channels';
-import type { InMemoryChannelOptions } from '@noocodex/dagonizer/channels';
+import { InMemoryChannel } from '@studnicky/dagonizer/channels';
+import type { InMemoryChannelOptions } from '@studnicky/dagonizer/channels';
 ```
 
 ---
@@ -30,10 +30,10 @@ import type { InMemoryChannelOptions } from '@noocodex/dagonizer/channels';
 Local default and loopback `HandoffChannelInterface` implementation. Stores every published `DAGHandoff` envelope in an in-memory array. Deep-clones each envelope on publish via `structuredClone` to ensure full serialization fidelity.
 
 ```ts twoslash
-import { InMemoryChannel } from '@noocodex/dagonizer/channels';
-import type { InMemoryChannelOptions, } from '@noocodex/dagonizer/channels';
-import type { HandoffChannelInterface } from '@noocodex/dagonizer/contracts';
-import type { DAGHandoff } from '@noocodex/dagonizer/entities';
+import { InMemoryChannel } from '@studnicky/dagonizer/channels';
+import type { InMemoryChannelOptions, } from '@studnicky/dagonizer/channels';
+import type { HandoffChannelInterface } from '@studnicky/dagonizer/contracts';
+import type { DAGHandoff } from '@studnicky/dagonizer/entities';
 // ---cut---
 // class InMemoryChannel implements HandoffChannelInterface
 //   constructor(options?: InMemoryChannelOptions)
@@ -47,7 +47,7 @@ const _check: HandoffChannelInterface = new InMemoryChannel();
 ### Constructor
 
 ```ts twoslash
-import { InMemoryChannel } from '@noocodex/dagonizer/channels';
+import { InMemoryChannel } from '@studnicky/dagonizer/channels';
 // ---cut---
 new InMemoryChannel();
 new InMemoryChannel({});
@@ -58,8 +58,8 @@ new InMemoryChannel({});
 ### `published`
 
 ```ts twoslash
-import { InMemoryChannel } from '@noocodex/dagonizer/channels';
-import type { DAGHandoff } from '@noocodex/dagonizer/entities';
+import { InMemoryChannel } from '@studnicky/dagonizer/channels';
+import type { DAGHandoff } from '@studnicky/dagonizer/entities';
 const channel = new InMemoryChannel();
 // ---cut---
 const envelopes: readonly DAGHandoff[] = channel.published;
@@ -70,8 +70,8 @@ All envelopes in publish order. Each entry is the deep-cloned, stored copy — i
 ### `publish(handoff)`
 
 ```ts twoslash
-import { InMemoryChannel } from '@noocodex/dagonizer/channels';
-import type { DAGHandoff } from '@noocodex/dagonizer/entities';
+import { InMemoryChannel } from '@studnicky/dagonizer/channels';
+import type { DAGHandoff } from '@studnicky/dagonizer/entities';
 const channel = new InMemoryChannel();
 declare const handoff: DAGHandoff;
 // ---cut---
@@ -87,17 +87,17 @@ Default no-op. Override in a subclass to chain a downstream DAG. Receives the de
 **Extension via subclass, zero callbacks.** The dispatcher calls `channel.publish(handoff)` when a non-embedded flow reaches a terminal bound in `DagonizerOptionsInterface.channels`. The default `onPublished` is a no-op; subclass to restore state and run the continuation:
 
 ```ts twoslash
-import { InMemoryChannel } from '@noocodex/dagonizer/channels';
-import { Dagonizer } from '@noocodex/dagonizer';
-import { NodeStateBase } from '@noocodex/dagonizer';
-import type { DAGHandoff } from '@noocodex/dagonizer/entities';
+import { InMemoryChannel } from '@studnicky/dagonizer/channels';
+import { Dagonizer } from '@studnicky/dagonizer';
+import { NodeStateBase } from '@studnicky/dagonizer';
+import type { DAGHandoff } from '@studnicky/dagonizer/entities';
 class AppState extends NodeStateBase {}
 declare const downstreamDispatcher: Dagonizer<AppState>;
 // ---cut---
 class HandoffChannel extends InMemoryChannel {
   protected override async onPublished(handoff: DAGHandoff): Promise<void> {
     if (!('stateSnapshot' in handoff) || handoff.stateSnapshot == null) return;
-    const snapshot = handoff.stateSnapshot as import('@noocodex/dagonizer/entities').JsonObject;
+    const snapshot = handoff.stateSnapshot as import('@studnicky/dagonizer/entities').JsonObject;
     const state = AppState.restore(snapshot);
     await downstreamDispatcher.execute('continuation-dag', state);
   }
@@ -113,7 +113,7 @@ const dispatcher = new Dagonizer<AppState>({
 ## Type: `InMemoryChannelOptions`
 
 ```ts twoslash
-import type { InMemoryChannelOptions } from '@noocodex/dagonizer/channels';
+import type { InMemoryChannelOptions } from '@studnicky/dagonizer/channels';
 // ---cut---
 const _opts: InMemoryChannelOptions = {};
 ```
@@ -127,8 +127,8 @@ Constructor options for `InMemoryChannel`. Currently carries no fields. The type
 Replace `InMemoryChannel` with any class that implements `HandoffChannelInterface`:
 
 ```ts twoslash
-import type { HandoffChannelInterface } from '@noocodex/dagonizer/contracts';
-import type { DAGHandoff } from '@noocodex/dagonizer/entities';
+import type { HandoffChannelInterface } from '@studnicky/dagonizer/contracts';
+import type { DAGHandoff } from '@studnicky/dagonizer/entities';
 declare const sqsClient: { sendMessage(params: { Body: string }): Promise<void> };
 // ---cut---
 class SqsChannel implements HandoffChannelInterface {
@@ -143,7 +143,7 @@ class SqsChannel implements HandoffChannelInterface {
 }
 ```
 
-`HandoffChannelInterface` ships through `@noocodex/dagonizer/contracts`. See [Guide: Distribution and cloud](../guide/distribution) for the serverless handler pattern and `registryVersion` handshake.
+`HandoffChannelInterface` ships through `@studnicky/dagonizer/contracts`. See [Guide: Distribution and cloud](../guide/distribution) for the serverless handler pattern and `registryVersion` handshake.
 
 ---
 

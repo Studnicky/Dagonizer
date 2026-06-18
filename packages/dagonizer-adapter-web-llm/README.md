@@ -1,19 +1,19 @@
-# @noocodex/dagonizer-adapter-web-llm
+# @studnicky/dagonizer-adapter-web-llm
 
 > **Beta:** not yet published to npm. Ships in v0.10.0 as part of the Dagonizer plugin ecosystem (GitHub release only). Live-API smoke testing against the provider has not been completed; wire-format compatibility is verified via intercepted-fetch smoke tests. Expect minor adjustments before 1.0.
 
-WebLLM in-browser adapter for [@noocodex/dagonizer](https://npmjs.com/package/@noocodex/dagonizer). Runs a quantized open model entirely in the browser via [@mlc-ai/web-llm](https://npmjs.com/package/@mlc-ai/web-llm) on WebGPU.
+WebLLM in-browser adapter for [@studnicky/dagonizer](https://npmjs.com/package/@studnicky/dagonizer). Runs a quantized open model entirely in the browser via [@mlc-ai/web-llm](https://npmjs.com/package/@mlc-ai/web-llm) on WebGPU.
 
 ## Install
 
 ```bash
-npm install @noocodex/dagonizer @noocodex/dagonizer-adapter-web-llm @mlc-ai/web-llm
+npm install @studnicky/dagonizer @studnicky/dagonizer-adapter-web-llm @mlc-ai/web-llm
 ```
 
 ## Usage
 
 ```ts
-import { WebLlmAdapter, type WebLlmInitReport } from '@noocodex/dagonizer-adapter-web-llm';
+import { WebLlmAdapter, type WebLlmInitReport } from '@studnicky/dagonizer-adapter-web-llm';
 
 if (!WebLlmAdapter.detectWebGpu()) throw new Error('WebGPU not supported by this browser');
 

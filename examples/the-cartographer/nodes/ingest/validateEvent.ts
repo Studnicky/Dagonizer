@@ -26,7 +26,7 @@ import { IDENTITY_EXTRAS_BY_TYPE } from '../../services.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region validate-event-node
 export class ValidateEventNode extends ScalarNode<CartographerState, 'validated', CartographerServices> {

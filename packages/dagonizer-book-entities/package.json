@@ -1,5 +1,5 @@
 {
-  "name": "@noocodex/dagonizer-book-entities",
+  "name": "@studnicky/dagonizer-book-entities",
   "version": "0.21.0",
   "description": "Shared Book/Candidate entity types + CanonicalId dedupe for the book-domain Dagonizer tool packages.",
   "license": "MIT",

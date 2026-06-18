@@ -23,13 +23,13 @@ import {
   NodeOutputBuilder,
   NodeStateBase,
   ScalarNode,
-} from '@noocodex/dagonizer';
-import type { DAG } from '@noocodex/dagonizer';
-import type { GatherExecution, GatherRecord } from '@noocodex/dagonizer';
-import type { GatherConfig } from '@noocodex/dagonizer';
-import type { StateAccessor } from '@noocodex/dagonizer/contracts';
-import type { NodeStateInterface } from '@noocodex/dagonizer';
-import { GatherStrategyName } from '@noocodex/dagonizer/constants';
+} from '@studnicky/dagonizer';
+import type { DAG } from '@studnicky/dagonizer';
+import type { GatherExecution, GatherRecord } from '@studnicky/dagonizer';
+import type { GatherConfig } from '@studnicky/dagonizer';
+import type { StateAccessor } from '@studnicky/dagonizer/contracts';
+import type { NodeStateInterface } from '@studnicky/dagonizer';
+import { GatherStrategyName } from '@studnicky/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
 // State

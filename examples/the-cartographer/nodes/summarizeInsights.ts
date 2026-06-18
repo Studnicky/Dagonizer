@@ -23,7 +23,7 @@ import type {
 import type { CartographerServices } from '../CartographerServices.ts';
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region summarize-insights-node
 export class SummarizeInsightsNode extends ScalarNode<CartographerState, 'success', CartographerServices> {

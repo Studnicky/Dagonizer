@@ -20,7 +20,7 @@ import {
   OutcomeReducers,
   RoutedBatchBuilder,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 import type {
   DAG,
   GatherConfig,
@@ -29,8 +29,8 @@ import type {
   NodeStateInterface,
   OutcomeRecord,
   RoutedBatch,
-} from '@noocodex/dagonizer';
-import type { StateAccessor } from '@noocodex/dagonizer/contracts';
+} from '@studnicky/dagonizer';
+import type { StateAccessor } from '@studnicky/dagonizer/contracts';
 
 // ── Domain state (re-exported so entry can reference the type) ────────────────
 

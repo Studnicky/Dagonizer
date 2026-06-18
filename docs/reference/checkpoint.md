@@ -16,7 +16,7 @@ seeAlso:
 
 # Checkpoint
 
-`@noocodex/dagonizer/checkpoint`
+`@studnicky/dagonizer/checkpoint`
 
 The checkpoint module persists and restores in-flight DAG executions. `Checkpoint.capture()` is the canonical way to build a checkpoint; `Checkpoint.load()` parses a persisted record back into a `Checkpoint` instance. Both work whether or not the run uses named stores.
 
@@ -27,11 +27,11 @@ The checkpoint module persists and restores in-flight DAG executions. `Checkpoin
 `Checkpoint` instances are obtained via `Checkpoint.capture()` (when saving) or `Checkpoint.load()` / `Checkpoint.recall()` (when recalling). Instance methods `toJson`, `persist`, `restoreState`, and `restoreStores` cover the full lifecycle.
 
 ```ts twoslash
-import { Checkpoint } from '@noocodex/dagonizer/checkpoint';
+import { Checkpoint } from '@studnicky/dagonizer/checkpoint';
 ```
 
 ```ts twoslash
-import { Checkpoint } from '@noocodex/dagonizer';
+import { Checkpoint } from '@studnicky/dagonizer';
 ```
 
 ---
@@ -39,11 +39,11 @@ import { Checkpoint } from '@noocodex/dagonizer';
 ### `Checkpoint.capture(dagName, result, options?)`
 
 ```ts twoslash
-import { Checkpoint } from '@noocodex/dagonizer/checkpoint';
-import type { CaptureOptionsInterface } from '@noocodex/dagonizer/checkpoint';
-import type { NodeStateInterface } from '@noocodex/dagonizer';
-import { NodeStateBase } from '@noocodex/dagonizer';
-import type { ExecutionResultInterface } from '@noocodex/dagonizer';
+import { Checkpoint } from '@studnicky/dagonizer/checkpoint';
+import type { CaptureOptionsInterface } from '@studnicky/dagonizer/checkpoint';
+import type { NodeStateInterface } from '@studnicky/dagonizer';
+import { NodeStateBase } from '@studnicky/dagonizer';
+import type { ExecutionResultInterface } from '@studnicky/dagonizer';
 // ---cut---
 declare function capture<TState extends NodeStateInterface & NodeStateBase>(
   dagName: string,
@@ -67,7 +67,7 @@ Calling `Checkpoint.capture` without a `stores` option (or with an empty map) wr
 ### `Checkpoint.load(raw)`
 
 ```ts twoslash
-import { Checkpoint } from '@noocodex/dagonizer/checkpoint';
+import { Checkpoint } from '@studnicky/dagonizer/checkpoint';
 declare const raw: unknown;
 // ---cut---
 const checkpoint: Checkpoint = Checkpoint.load(raw);
@@ -84,8 +84,8 @@ Parse and validate a raw `CheckpointData` object (e.g. from `JSON.parse`) and wr
 ### `Checkpoint.recall(store, key)`
 
 ```ts twoslash
-import { Checkpoint } from '@noocodex/dagonizer/checkpoint';
-import type { CheckpointStore } from '@noocodex/dagonizer/contracts';
+import { Checkpoint } from '@studnicky/dagonizer/checkpoint';
+import type { CheckpointStore } from '@studnicky/dagonizer/contracts';
 declare const store: CheckpointStore;
 declare const key: string;
 // ---cut---
@@ -103,7 +103,7 @@ Load a checkpoint from a `CheckpointStore` by key. Returns `null` when the store
 ### `ckpt.toJson()`
 
 ```ts twoslash
-import type { Checkpoint } from '@noocodex/dagonizer/checkpoint';
+import type { Checkpoint } from '@studnicky/dagonizer/checkpoint';
 declare const ckpt: Checkpoint;
 // ---cut---
 const json: string = ckpt.toJson();
@@ -120,8 +120,8 @@ Serialize this checkpoint's data to a pretty-printed JSON string. Symmetric coun
 ### `ckpt.persist(store, key)`
 
 ```ts twoslash
-import type { Checkpoint } from '@noocodex/dagonizer/checkpoint';
-import type { CheckpointStore } from '@noocodex/dagonizer/contracts';
+import type { Checkpoint } from '@studnicky/dagonizer/checkpoint';
+import type { CheckpointStore } from '@studnicky/dagonizer/contracts';
 declare const ckpt: Checkpoint;
 declare const store: CheckpointStore;
 declare const key: string;
@@ -141,12 +141,12 @@ Persist this checkpoint to a `CheckpointStore` under `key`. Composes `toJson` + 
 
 Rehydrate the state from this checkpoint via the supplied adapter. Returns the rehydrated state, dag name, cursor, and execution history. Pass the result to `dispatcher.resume`.
 
-`CheckpointRestoreAdapter<TState>` is an interface with a single `restore(snap: JsonObject): TState` method. For a quick inline factory, wrap a plain function with `CheckpointRestoreAdapterFn.fromFn(fn)` from `@noocodex/dagonizer/checkpoint`:
+`CheckpointRestoreAdapter<TState>` is an interface with a single `restore(snap: JsonObject): TState` method. For a quick inline factory, wrap a plain function with `CheckpointRestoreAdapterFn.fromFn(fn)` from `@studnicky/dagonizer/checkpoint`:
 
 ```ts twoslash
-import { Checkpoint, CheckpointRestoreAdapterFn } from '@noocodex/dagonizer/checkpoint';
-import { NodeStateBase } from '@noocodex/dagonizer';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
+import { Checkpoint, CheckpointRestoreAdapterFn } from '@studnicky/dagonizer/checkpoint';
+import { NodeStateBase } from '@studnicky/dagonizer';
+import type { JsonObject } from '@studnicky/dagonizer/entities';
 class MyState extends NodeStateBase {}
 declare const ckpt: Checkpoint;
 // ---cut---
@@ -164,8 +164,8 @@ Throws `ValidationError` when `ckpt.data.cursor === null`.
 `RecalledCheckpoint<TState>` shape:
 
 ```ts twoslash
-import type { RecalledCheckpoint } from '@noocodex/dagonizer/checkpoint';
-import type { NodeStateInterface } from '@noocodex/dagonizer';
+import type { RecalledCheckpoint } from '@studnicky/dagonizer/checkpoint';
+import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
 declare const recalled: RecalledCheckpoint<NodeStateInterface>;
 const _state: NodeStateInterface = recalled.state;
@@ -180,8 +180,8 @@ const _skippedNodes: string[] = recalled.skippedNodes;
 ### `ckpt.restoreStores(stores)`
 
 ```ts twoslash
-import type { Checkpoint } from '@noocodex/dagonizer/checkpoint';
-import type { Snapshottable } from '@noocodex/dagonizer/contracts';
+import type { Checkpoint } from '@studnicky/dagonizer/checkpoint';
+import type { Snapshottable } from '@studnicky/dagonizer/contracts';
 declare const ckpt: Checkpoint;
 declare const stores: Readonly<Record<string, Snapshottable>>;
 // ---cut---
@@ -204,8 +204,8 @@ Populate each named store from the snapshots in this checkpoint. The keys in `st
 ### `ckpt.data`
 
 ```ts twoslash
-import type { Checkpoint } from '@noocodex/dagonizer/checkpoint';
-import type { CheckpointData } from '@noocodex/dagonizer/entities';
+import type { Checkpoint } from '@studnicky/dagonizer/checkpoint';
+import type { CheckpointData } from '@studnicky/dagonizer/entities';
 declare const ckpt: Checkpoint;
 // ---cut---
 const data: CheckpointData = ckpt.data;
@@ -218,22 +218,22 @@ The parsed and validated checkpoint record. Serialize with `ckpt.toJson()`.
 ## Interface: `CheckpointRestoreAdapter<TState>`
 
 ```ts twoslash
-import type { CheckpointRestoreAdapter } from '@noocodex/dagonizer/contracts';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
+import type { CheckpointRestoreAdapter } from '@studnicky/dagonizer/contracts';
+import type { JsonObject } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const adapter: CheckpointRestoreAdapter<{ value: number }>;
 const _result: { value: number } = adapter.restore({ key: 1 } as JsonObject);
 ```
 
-Contract for restoring a state instance from a JSON snapshot. Wrap a plain function with `CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap))`. Ships from `@noocodex/dagonizer/checkpoint`.
+Contract for restoring a state instance from a JSON snapshot. Wrap a plain function with `CheckpointRestoreAdapterFn.fromFn((snap) => MyState.restore(snap))`. Ships from `@studnicky/dagonizer/checkpoint`.
 
 ---
 
 ## Interface: `CaptureOptionsInterface`
 
 ```ts twoslash
-import type { CaptureOptionsInterface } from '@noocodex/dagonizer/checkpoint';
-import type { Snapshottable } from '@noocodex/dagonizer/contracts';
+import type { CaptureOptionsInterface } from '@studnicky/dagonizer/checkpoint';
+import type { Snapshottable } from '@studnicky/dagonizer/contracts';
 // ---cut---
 declare const opts: CaptureOptionsInterface;
 const _stores: Record<string, Snapshottable> | undefined = opts.stores;
@@ -248,8 +248,8 @@ const _stores: Record<string, Snapshottable> | undefined = opts.stores;
 ## Interface: `RecalledCheckpoint<TState>`
 
 ```ts twoslash
-import type { RecalledCheckpoint } from '@noocodex/dagonizer/checkpoint';
-import type { NodeStateInterface } from '@noocodex/dagonizer';
+import type { RecalledCheckpoint } from '@studnicky/dagonizer/checkpoint';
+import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
 declare const recalled: RecalledCheckpoint<NodeStateInterface>;
 const _state: NodeStateInterface = recalled.state;
@@ -266,7 +266,7 @@ const _skippedNodes: string[] = recalled.skippedNodes;
 Derived from `CheckpointDataSchema` via `json-schema-to-ts`.
 
 ```ts twoslash
-import type { CheckpointData } from '@noocodex/dagonizer/entities';
+import type { CheckpointData } from '@studnicky/dagonizer/entities';
 // ---cut---
 declare const data: CheckpointData;
 const _version: string = data.version;
@@ -289,7 +289,7 @@ The `version` field tracks the wire format, independent of the DAG's own version
 ## Const: `CHECKPOINT_DATA_VERSION`
 
 ```ts twoslash
-import { CHECKPOINT_DATA_VERSION } from '@noocodex/dagonizer/entities';
+import { CHECKPOINT_DATA_VERSION } from '@studnicky/dagonizer/entities';
 // ---cut---
 const _version: typeof CHECKPOINT_DATA_VERSION = CHECKPOINT_DATA_VERSION;
 ```
@@ -303,7 +303,7 @@ Current wire-format version for `CheckpointData`. Written into every checkpoint 
 JSON Schema object for `CheckpointData`.
 
 ```ts twoslash
-import { CheckpointDataSchema } from '@noocodex/dagonizer/entities';
+import { CheckpointDataSchema } from '@studnicky/dagonizer/entities';
 // ---cut---
 console.log(CheckpointDataSchema.$id);
 // 'https://noocodex.dev/schemas/dagonizer/CheckpointData'
@@ -316,7 +316,7 @@ console.log(CheckpointDataSchema.$id);
 In-process `CheckpointStore`. Stores entries in a `Map<string, string>` on the instance. Useful for tests, examples, and ephemeral demo flows. Not for production: the map vanishes when the process exits.
 
 ```ts twoslash
-import { MemoryCheckpointStore } from '@noocodex/dagonizer/checkpoint';
+import { MemoryCheckpointStore } from '@studnicky/dagonizer/checkpoint';
 ```
 
 ### Members

@@ -27,11 +27,11 @@ import { describe, it } from 'node:test';
 import { setImmediate, setTimeout } from 'node:timers';
 import { URL } from 'node:url';
 
-import { Dagonizer } from '@noocodex/dagonizer';
-import type { DagonizerInterface, DispatcherBundle, NodeStateInterface } from '@noocodex/dagonizer';
-import { DagTask } from '@noocodex/dagonizer/container';
-import type { DagContainerInterface } from '@noocodex/dagonizer/contracts';
-import { Timeout } from '@noocodex/dagonizer/runtime';
+import { Dagonizer } from '@studnicky/dagonizer';
+import type { DagonizerInterface, DispatcherBundle, NodeStateInterface } from '@studnicky/dagonizer';
+import { DagTask } from '@studnicky/dagonizer/container';
+import type { DagContainerInterface } from '@studnicky/dagonizer/contracts';
+import { Timeout } from '@studnicky/dagonizer/runtime';
 import {
   ConformanceRegistry,
   ConformanceState,
@@ -39,10 +39,10 @@ import {
   CONFORMANCE_DAG,
   CONFORMANCE_REGISTRY_VERSION,
   DagConformance,
-} from '@noocodex/dagonizer/testing';
+} from '@studnicky/dagonizer/testing';
 import type {
   DagConformanceHarnessInterface,
-} from '@noocodex/dagonizer/testing';
+} from '@studnicky/dagonizer/testing';
 
 import { WebWorkerContainer } from '../../src/WebWorkerContainer.js';
 import type { WebWorkerContainerOptions } from '../../src/WebWorkerContainer.js';

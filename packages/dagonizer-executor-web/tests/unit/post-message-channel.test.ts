@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { setImmediate } from 'node:timers';
 
-import type { BridgeMessage } from '@noocodex/dagonizer/entities';
+import type { BridgeMessage } from '@studnicky/dagonizer/entities';
 
 import { PostMessageChannel } from '../../src/PostMessageChannel.js';
 import type {

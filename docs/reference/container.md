@@ -19,7 +19,7 @@ seeAlso:
 
 # Container
 
-DAG containment infrastructure: pool-owning base, isolate-side host runtime, and value types. Ships through `@noocodex/dagonizer/container`.
+DAG containment infrastructure: pool-owning base, isolate-side host runtime, and value types. Ships through `@studnicky/dagonizer/container`.
 
 ```ts twoslash
 import {
@@ -31,12 +31,12 @@ import {
   DEFAULT_SHUTDOWN_GRACE_MS,
   DAG_CONTAINER_TRANSPORT,
   DAG_CONTAINER_WORKER_DIED,
-} from '@noocodex/dagonizer/container';
-import type { DagContainerOptions, PoolEntry, TransportErrorCode } from '@noocodex/dagonizer/container';
+} from '@studnicky/dagonizer/container';
+import type { DagContainerOptions, PoolEntry, TransportErrorCode } from '@studnicky/dagonizer/container';
 import type {
   DagOutcomeInterface,
   DagTaskInterface,
-} from '@noocodex/dagonizer/contracts';
+} from '@studnicky/dagonizer/contracts';
 ```
 
 ---
@@ -46,9 +46,9 @@ import type {
 Abstract pool-owning base for running DAG sub-DAGs in isolates (worker threads, forked child processes, Web Workers). Implements `DagContainerInterface`.
 
 ```ts twoslash
-import type { DagContainerInterface } from '@noocodex/dagonizer/contracts';
-import type { NodeStateInterface } from '@noocodex/dagonizer';
-import { DagContainerBase } from '@noocodex/dagonizer/container';
+import type { DagContainerInterface } from '@studnicky/dagonizer/contracts';
+import type { NodeStateInterface } from '@studnicky/dagonizer';
+import { DagContainerBase } from '@studnicky/dagonizer/container';
 // ---cut---
 // abstract class DagContainerBase<
 //   TState extends NodeStateInterface = NodeStateInterface,
@@ -62,7 +62,7 @@ Subclasses supply the worker type by implementing four abstract seams. The base 
 ### Constructor
 
 ```ts twoslash
-import type { DagContainerOptions } from '@noocodex/dagonizer/container';
+import type { DagContainerOptions } from '@studnicky/dagonizer/container';
 // ---cut---
 declare function construct(options: DagContainerOptions): void;
 ```
@@ -78,9 +78,9 @@ declare function construct(options: DagContainerOptions): void;
 `DagContainerBase.defaultOptions` provides an ergonomic default for `shutdownGraceMs`:
 
 ```ts twoslash
-import { DagContainerBase } from '@noocodex/dagonizer/container';
-import type { DagContainerOptions, PoolEntry } from '@noocodex/dagonizer/container';
-import type { MessageChannelInterface } from '@noocodex/dagonizer/contracts';
+import { DagContainerBase } from '@studnicky/dagonizer/container';
+import type { DagContainerOptions, PoolEntry } from '@studnicky/dagonizer/container';
+import type { MessageChannelInterface } from '@studnicky/dagonizer/contracts';
 // ---cut---
 class MyContainer extends DagContainerBase {
   protected createEntry(): PoolEntry<Worker> {
@@ -110,8 +110,8 @@ const container = new MyContainer({
 ### `runDag(task)`
 
 ```ts twoslash
-import type { DagTaskInterface, DagOutcomeInterface } from '@noocodex/dagonizer/contracts';
-import type { NodeStateInterface } from '@noocodex/dagonizer';
+import type { DagTaskInterface, DagOutcomeInterface } from '@studnicky/dagonizer/contracts';
+import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
 declare function runDag(task: DagTaskInterface<NodeStateInterface, unknown>): Promise<DagOutcomeInterface>;
 ```
@@ -130,7 +130,7 @@ Gracefully shuts down all pool entries. Signals each worker to stop (shutdown me
 ### `onTransportDeath(entry, code, reason)`
 
 ```ts twoslash
-import type { PoolEntry } from '@noocodex/dagonizer/container';
+import type { PoolEntry } from '@studnicky/dagonizer/container';
 // ---cut---
 // protected onTransportDeath(entry: PoolEntry<TWorker>, code: string, reason: string): void
 declare function onTransportDeath<TWorker>(entry: PoolEntry<TWorker>, code: string, reason: string): void;
@@ -145,9 +145,9 @@ Called by subclasses from death-listener callbacks when a worker dies unexpected
 Isolate-side runtime that speaks the `BridgeMessage` protocol over a `MessageChannelInterface`. Instantiated once per isolate, receives `init` / `execute` / `abort` / `shutdown` messages.
 
 ```ts twoslash
-import { DagHost } from '@noocodex/dagonizer/container';
-import type { DagHostOptions } from '@noocodex/dagonizer/container';
-import type { MessageChannelInterface } from '@noocodex/dagonizer/contracts';
+import { DagHost } from '@studnicky/dagonizer/container';
+import type { DagHostOptions } from '@studnicky/dagonizer/container';
+import type { MessageChannelInterface } from '@studnicky/dagonizer/contracts';
 // ---cut---
 declare const channel: MessageChannelInterface;
 const host = new DagHost(channel);
@@ -172,8 +172,8 @@ host.start();
 Value class for `DagTaskInterface`. Constructed by the dispatcher for each contained DAG execution.
 
 ```ts twoslash
-import { DagTask } from '@noocodex/dagonizer/container';
-import type { NodeStateInterface } from '@noocodex/dagonizer';
+import { DagTask } from '@studnicky/dagonizer/container';
+import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
 // DagTask<TState extends NodeStateInterface, TServices = undefined>
 //   implements DagTaskInterface<TState, TServices>
@@ -198,8 +198,8 @@ const _check: typeof DagTask = DagTask;
 Static factory for `DagOutcomeInterface` values. Used by containers to build transport-error outcomes when a DAG never ran to a terminal.
 
 ```ts twoslash
-import { DagOutcome } from '@noocodex/dagonizer/container';
-import type { DagOutcomeInterface } from '@noocodex/dagonizer/contracts';
+import { DagOutcome } from '@studnicky/dagonizer/container';
+import type { DagOutcomeInterface } from '@studnicky/dagonizer/contracts';
 // ---cut---
 // Build a transport-error outcome (correlationId required; code and message optional):
 const outcome: DagOutcomeInterface = DagOutcome.transportError('corr-1');
@@ -219,7 +219,7 @@ const outcome: DagOutcomeInterface = DagOutcome.transportError('corr-1');
 ## Const: `DEFAULT_SHUTDOWN_GRACE_MS`
 
 ```ts twoslash
-import { DEFAULT_SHUTDOWN_GRACE_MS } from '@noocodex/dagonizer/container';
+import { DEFAULT_SHUTDOWN_GRACE_MS } from '@studnicky/dagonizer/container';
 // ---cut---
 const _: 2000 = DEFAULT_SHUTDOWN_GRACE_MS;
 ```
@@ -231,8 +231,8 @@ Default grace period in milliseconds before a shutting-down worker is force-term
 ## Class: `DagContainerError`
 
 ```ts twoslash
-import { DagContainerError } from '@noocodex/dagonizer/container';
-import { DAGError } from '@noocodex/dagonizer';
+import { DagContainerError } from '@studnicky/dagonizer/container';
+import { DAGError } from '@studnicky/dagonizer';
 // ---cut---
 const _isSubclass: boolean = DagContainerError.prototype instanceof DAGError;
 ```
@@ -244,8 +244,8 @@ Thrown when a container operation fails for infrastructure reasons (pool destroy
 ## Enum: `TransportErrorCode`
 
 ```ts twoslash
-import { DAG_CONTAINER_TRANSPORT, DAG_CONTAINER_WORKER_DIED } from '@noocodex/dagonizer/container';
-import type { TransportErrorCode } from '@noocodex/dagonizer/container';
+import { DAG_CONTAINER_TRANSPORT, DAG_CONTAINER_WORKER_DIED } from '@studnicky/dagonizer/container';
+import type { TransportErrorCode } from '@studnicky/dagonizer/container';
 // ---cut---
 const _transport: TransportErrorCode = DAG_CONTAINER_TRANSPORT;
 const _died: TransportErrorCode = DAG_CONTAINER_WORKER_DIED;
@@ -260,5 +260,5 @@ const _died: TransportErrorCode = DAG_CONTAINER_WORKER_DIED;
 - [Distribution and cloud](../guide/distribution)
 - [Example 12: Worker containers](../examples/12-workers)
 - [Example 13: Multi-backend dispatch](../examples/13-multibackend)
-- [Reference: Contracts](./contracts) — `DagContainerInterface`, `DagTaskInterface`, `DagOutcomeInterface`, `MessageChannelInterface` (canonical import: `@noocodex/dagonizer/contracts`)
+- [Reference: Contracts](./contracts) — `DagContainerInterface`, `DagTaskInterface`, `DagOutcomeInterface`, `MessageChannelInterface` (canonical import: `@studnicky/dagonizer/contracts`)
 - [Reference: Channels](./channels) — `InMemoryChannel`

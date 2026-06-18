@@ -12,7 +12,7 @@ import type { CartographerServices } from '../CartographerServices.ts';
 
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region canonicalize-recipient-node
 export class CanonicalizeRecipientNode extends ScalarNode<CartographerState, 'done', CartographerServices> {

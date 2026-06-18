@@ -1,10 +1,10 @@
 /**
- * @noocodex/dagonizer-executor-node
+ * @studnicky/dagonizer-executor-node
  *
- * Node.js isolating DAG container backends for @noocodex/dagonizer.
+ * Node.js isolating DAG container backends for @studnicky/dagonizer.
  *
  * Subpath exports:
- *   import { WorkerThreadContainer } from '@noocodex/dagonizer-executor-node'
+ *   import { WorkerThreadContainer } from '@studnicky/dagonizer-executor-node'
  */
 
 export { ClusterContainer } from './ClusterContainer.js';

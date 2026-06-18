@@ -8,9 +8,9 @@ import {
   NodeOutputBuilder,
   NodeStateBase,
   ScalarNode,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface } from '@noocodex/dagonizer';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
+} from '@studnicky/dagonizer';
+import type { NodeContextInterface } from '@studnicky/dagonizer';
+import type { JsonObject } from '@studnicky/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
 // Basic subclass

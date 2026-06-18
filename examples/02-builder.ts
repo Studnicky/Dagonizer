@@ -21,7 +21,7 @@
  * Run: npx tsx examples/02-builder.ts
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
 import { dag, ChatState, ClassifyNode, RespondNode } from './dags/02-builder.topology.js';
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,5 @@
 /**
- * `@noocodex/dagonizer/types`: type-only barrel.
+ * `@studnicky/dagonizer/types`: type-only barrel.
  *
  * Every public type and interface re-exported from one place so consumers
  * can import the type surface without pulling the runtime classes. Three

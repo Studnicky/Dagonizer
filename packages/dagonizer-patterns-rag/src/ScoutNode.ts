@@ -11,9 +11,9 @@
  * that plug in a specific Tool instance.
  */
 
-import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface  } from '@noocodex/dagonizer';
-import { NodeOutputBuilder, ScalarNode  } from '@noocodex/dagonizer';
-import type { Tool } from '@noocodex/dagonizer/tool';
+import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface  } from '@studnicky/dagonizer';
+import { NodeOutputBuilder, ScalarNode  } from '@studnicky/dagonizer';
+import type { Tool } from '@studnicky/dagonizer/tool';
 
 export interface ScoutServices<TInput extends Record<string, unknown>, TOutput> {
   readonly tool: Tool<TInput, TOutput>;

@@ -11,7 +11,7 @@
  * Run: npx tsx examples/plural-native.ts
  */
 
-import { Dagonizer } from '@noocodex/dagonizer';
+import { Dagonizer } from '@studnicky/dagonizer';
 import {
   EchoNode,
   EnrichNode,

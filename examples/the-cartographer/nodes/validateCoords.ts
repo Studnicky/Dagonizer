@@ -10,7 +10,7 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
   ScalarNode,
-} from '@noocodex/dagonizer';
+} from '@studnicky/dagonizer';
 
 // #region validate-coords-node
 export class ValidateCoordsNode extends ScalarNode<CartographerState, 'valid' | 'rejected', CartographerServices> {

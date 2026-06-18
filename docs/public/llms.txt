@@ -2,7 +2,7 @@
 
 > Type-safe DAG dispatcher for Node.js. JSON-Schema-validated graph definitions, abortable execution, deterministic resume, pluggable gather strategies, contract-derived flow generation, and Mermaid visualization.
 
-Dagonizer (`@noocodex/dagonizer`) is a TypeScript library for authoring and executing directed acyclic graphs (DAGs) as typed, abortable workflows. Nodes implement a narrow `NodeInterface<TState, TOutput>`; the dispatcher routes each node's named output to the next placement, handling scatter (fork over a source array), embedded-DAG composition (cardinality-1 nested DAG invocation), retry policies, timeouts, and checkpoint/resume without consumer-visible callbacks or hidden state. The wire format is JSON-LD 1.1; every DAG document is a linked-data artifact that validates against a published JSON Schema 2020-12. Zero runtime dependencies beyond `ajv` and `json-schema-to-ts`.
+Dagonizer (`@studnicky/dagonizer`) is a TypeScript library for authoring and executing directed acyclic graphs (DAGs) as typed, abortable workflows. Nodes implement a narrow `NodeInterface<TState, TOutput>`; the dispatcher routes each node's named output to the next placement, handling scatter (fork over a source array), embedded-DAG composition (cardinality-1 nested DAG invocation), retry policies, timeouts, and checkpoint/resume without consumer-visible callbacks or hidden state. The wire format is JSON-LD 1.1; every DAG document is a linked-data artifact that validates against a published JSON Schema 2020-12. Zero runtime dependencies beyond `ajv` and `json-schema-to-ts`.
 
 Dagonizer is **not** a visual drag-and-drop tool, a serverless orchestration service, or a general-purpose task queue. It is a typed, embeddable graph runtime for Node.js that consumers extend by subclassing, not by patching.
 
@@ -67,5 +67,5 @@ Key features: strict TypeScript (exactOptionalPropertyTypes), JSON-LD canonical 
 
 - [CHANGELOG](https://studnicky.github.io/Dagonizer/feed.xml): RSS feed of per-version changelog entries.
 - [GitHub repository](https://github.com/Studnicky/Dagonizer): source, issues, and pull requests.
-- [npm package](https://www.npmjs.com/package/@noocodex/dagonizer): `@noocodex/dagonizer`; install, version history, and subpath exports.
+- [npm package](https://www.npmjs.com/package/@studnicky/dagonizer): `@studnicky/dagonizer`; install, version history, and subpath exports.
 - [Sitemap](https://studnicky.github.io/Dagonizer/sitemap.xml): machine-readable page index.

@@ -29,8 +29,8 @@
  * kind:   'deterministic': pure SPARQL pattern-match over a stable store.
  */
 
-import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeOutputInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@studnicky/dagonizer';
+import type { NodeContextInterface, NodeOutputInterface } from '@studnicky/dagonizer';
 
 import type { Candidate } from '../entities/Book.ts';
 import { BookBuilder } from '../entities/Book.ts';

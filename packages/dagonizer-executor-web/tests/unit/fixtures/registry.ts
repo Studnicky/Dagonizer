@@ -15,9 +15,9 @@
  * their test tree.
  */
 
-import type { RegistryBundleInterface, RegistryModuleInterface } from '@noocodex/dagonizer/contracts';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
-import { ConformanceRegistry } from '@noocodex/dagonizer/testing';
+import type { RegistryBundleInterface, RegistryModuleInterface } from '@studnicky/dagonizer/contracts';
+import type { JsonObject } from '@studnicky/dagonizer/entities';
+import { ConformanceRegistry } from '@studnicky/dagonizer/testing';
 
 const registryModule: RegistryModuleInterface = {
   async createBundle(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {

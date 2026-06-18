@@ -247,7 +247,7 @@ export type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from './contr
 export type { Snapshottable, StoreSnapshot, StoreSnapshotEntry } from './contracts/Snapshottable.js';
 export type { Store } from './contracts/Store.js';
 
-// Adapter infrastructure ships exclusively via @noocodex/dagonizer/adapter.
+// Adapter infrastructure ships exclusively via @studnicky/dagonizer/adapter.
 // See: AdapterDescriptor, BaseAdapter, BaseEmbedder, Classifications,
 //      EmbedderCascade, EmbedderRegistry, LlmAdapterCascade,
 //      LlmAdapterRegistry, LlmError (and their types).
