@@ -35,7 +35,7 @@ export interface WebNavigatorProbes {
 }
 
 // ---------------------------------------------------------------------------
-// WebSystemInfoProbes: constructor DI bag (kept for backwards compat)
+// WebSystemInfoProbes: constructor DI bag
 // ---------------------------------------------------------------------------
 
 /**

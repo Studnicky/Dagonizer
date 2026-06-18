@@ -20,6 +20,13 @@ export class ArchiveState extends NodeStateBase {
   archivist: Record<string, Record<string, string>> = {};
 }
 
+// #region contract-declaration
+// StateAccessor: get(target, path) → T | null; set(target, path, value) → void.
+// Implementations are stateless; the same instance resolves every scatter source
+// read, state-mapping input copy, and gather write.
+export const dotAccessor: StateAccessor = new DottedPathAccessor();
+// #endregion contract-declaration
+
 // #region custom-accessor
 /**
  * PrefixAccessor: a custom StateAccessor that silently adds a fixed namespace
@@ -49,6 +56,11 @@ export class PrefixAccessor implements StateAccessor {
 // Read a nested value by dotted path; returns `null` on a miss.
 export const accessor = new DottedPathAccessor();
 // #endregion dotted-get
+
+// #region dotted-set
+// Write a nested value by dotted path; intermediate objects are auto-vivified.
+export const writeAccessor = new DottedPathAccessor();
+// #endregion dotted-set
 
 // #region wire-accessor
 // Pass any StateAccessor to the Dagonizer constructor; scatter source reads

@@ -72,23 +72,11 @@ npx tsx examples/01-linear.ts
 
 Awaitable form:
 
-```ts
-const result = await dispatcher.execute('chat', state);
-// result.state         the final state
-// result.cursor        null if completed; a node name if interrupted
-// result.executedNodes nodes that ran
-// result.skippedNodes  nodes skipped (for example, empty scatter)
-```
+<<< @/../examples/01-linear.ts#execute-await
 
 Async-iterable form, one event per node:
 
-```ts
-const execution = dispatcher.execute('chat', state);
-for await (const node of execution) {
-  console.log(node.nodeName, node.output);
-}
-const result = await execution; // cached; the generator runs once
-```
+<<< @/../examples/01-linear.ts#execute-iterable
 
 ## Next destination
 

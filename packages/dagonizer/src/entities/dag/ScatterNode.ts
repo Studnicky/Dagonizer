@@ -73,6 +73,22 @@ export const ScatterNodeSchema = {
     // A node-body scatter with container set is a validation error.
     // Bound at dispatcher construction via DagonizerOptionsInterface.containers.
     'container': { 'type': 'string', 'minLength': 1 },
+    // Input-batching policy. When present, the scatter buffers items by keyField
+    // and releases a batch per key when capacity is reached or idleMs elapses.
+    // Absent means batch-size-1 (today's behavior unchanged).
+    'reservoir': {
+      'type': 'object',
+      'required': ['keyField', 'capacity'],
+      'properties': {
+        // Accessor path on the item whose resolved value is the partition key.
+        'keyField':  { 'type': 'string', 'minLength': 1 },
+        // Release a key's batch when it reaches this size.
+        'capacity':  { 'type': 'integer', 'minimum': 1 },
+        // Release a key's partial batch after this many milliseconds of idle.
+        'idleMs':    { 'type': 'integer', 'minimum': 1 },
+      },
+      'additionalProperties': false,
+    },
   },
   'additionalProperties': false,
 } as const;

@@ -25,11 +25,17 @@ export interface DagTaskInterface<
   TState extends NodeStateInterface = NodeStateInterface,
   TServices = undefined,
 > {
+  /** Name of the registered DAG to run. */
   dagName: string;
+  /** Nesting path of embedded-DAG placement names leading to this execution, for observability. */
   placementPath: string[];
+  /** Dispatcher-monotonic correlation id; no randomness. Matches the corresponding `ExecutionRequest.correlationId`. */
   correlationId: string;
+  /** Per-task execution budget. `Timeout.none()` means no per-task limit. */
   timeout: Timeout;
+  /** Live seeded child clone. In-process containers execute against this directly. */
   state: TState;
+  /** Composed `NodeContext` carrying the abort signal and services bag for this task. */
   context: NodeContextInterface<TServices>;
   /**
    * Materialise the wire form by snapshotting the live clone. Isolating

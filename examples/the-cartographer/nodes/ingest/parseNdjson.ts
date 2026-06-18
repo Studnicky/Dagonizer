@@ -1,34 +1,31 @@
 /**
- * parse-ndjson: shared ingest transform — NDJSON text → array of records.
+ * parse-ndjson: ingest transform — NDJSON text → array of records.
  *
- * Reads the decompressed NDJSON text from state.decodedText (the decompress node
- * inflated the gzip payload), parses each non-empty line as a JSON object, and
- * writes the records to state.parsedRecords for the map-fields node. Malformed
- * lines are skipped (the node never throws).
+ * Reads NDJSON text from state.decodedText when the source was gzipped
+ * (decodedText populated by the decompress node), else from
+ * state.currentSource.payload for plain NDJSON sources. Parses each non-empty
+ * line as a JSON object and writes the records to state.parsedRecords.
+ * Malformed lines are skipped (the node never throws).
  *
- * Routes 'map-fields' on success; 'invalid' when no line parses.
+ * Routes 'normalized' on success; 'invalid' when no line parses.
  */
 
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region parse-ndjson-node
-export class ParseNdjsonNode implements NodeInterface<CartographerState, 'map-fields' | 'invalid', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ParseNdjsonNode extends ScalarNode<CartographerState, 'normalized' | 'invalid', CartographerServices> {
   readonly 'name' = 'parse-ndjson';
-  readonly 'outputs' = ['map-fields', 'invalid'] as const;
+  readonly 'outputs' = ['normalized', 'invalid'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'map-fields' | 'invalid'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
-    const lines = state.decodedText.split('\n').filter((l) => l.trim().length > 0);
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'normalized' | 'invalid'>> {
+    // Use decompressed text when available (gzip path), else the raw payload.
+    const text = state.decodedText.length > 0 ? state.decodedText : state.currentSource.payload;
+    const lines = text.split('\n').filter((l) => l.trim().length > 0);
     const records: Array<Record<string, unknown>> = [];
     for (const line of lines) {
       try {
@@ -44,7 +41,9 @@ export class ParseNdjsonNode implements NodeInterface<CartographerState, 'map-fi
       return NodeOutputBuilder.of('invalid');
     }
     state.parsedRecords = records;
-    return NodeOutputBuilder.of('map-fields');
+    return NodeOutputBuilder.of('normalized');
   }
 }
+
+export const parseNdjson = new ParseNdjsonNode();
 // #endregion parse-ndjson-node

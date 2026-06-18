@@ -2,16 +2,15 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { Checkpoint, CheckpointRestoreAdapterFn } from '../../src/checkpoint/Checkpoint.js';
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
 import type { ScatterProgress } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 /** State carrying a typed items / processed array plus an optional second
  *  scatter source, and a `results` array for the map-gather fix scenario.
@@ -55,12 +54,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
   void it('clean run executes every item and leaves no progress entry', async () => {
     const dispatcher = new Dagonizer<ScatterState>();
     let calls = 0;
-    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+    class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: ScatterState) {
+      protected async executeOne(state: ScatterState): Promise<NodeOutputInterface<'success'>> {
         calls++;
         const item = state.getMetadata<number>('item') ?? 0;
         state.setMetadata('processedItem', item);
@@ -103,12 +100,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     // Concurrency 1 to make per-item ack writes deterministic.
     // Worker throws after two completions so the scatter aborts before
     // the loop drains; the acked progress entries survive on state.metadata.
-    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+    class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() {
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
         const idx = ++completedCount;
         if (idx === 3) {
           throw new Error('simulated mid-flight failure');
@@ -144,28 +139,25 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.ok(stored !== undefined, 'expected progress entry after interruption');
     const entry = stored['fan'];
     assert.ok(entry !== undefined, 'expected an entry under scatter name');
-    // Items 0 and 1 completed before item 2 threw; they appear in ackedResults.
-    assert.equal(entry.ackedResults.length, 2);
-    for (const r of entry.ackedResults) {
-      assert.equal(r.output, 'success');
+    // append is a compactable strategy (retainsRecordsForFinalize=false), so the
+    // checkpoint is bounded mode — acked items are tracked as watermark + aheadAcked.
+    // Items 0 and 1 completed before item 2 threw; watermark should be 2.
+    assert.equal(entry.mode, 'bounded', 'expected bounded checkpoint for append strategy');
+    if (entry.mode === 'bounded') {
+      // With concurrency=1 items complete in order: watermark should advance to 2.
+      const totalAcked = entry.watermark + entry.aheadAcked.length;
+      assert.equal(totalAcked, 2, `expected 2 acked items; got watermark=${entry.watermark} aheadAcked.length=${entry.aheadAcked.length}`);
+      assert.equal(entry.outcomeTally['success'] ?? 0, 2, 'expected 2 success acked');
     }
-    // Inbox should be empty (item 2 threw — the error propagates immediately so
-    // the inbox entry for item 2 is never cleaned up, but with concurrency=1
-    // only one item was in-flight when the throw occurred).
-    // The inbox may hold item 2 (pulled but not acked); check ackedResults only.
-    const ackedIndices = entry.ackedResults.map((r) => r.index).sort((a, b) => a - b);
-    assert.deepEqual(ackedIndices, [0, 1]);
   });
 
   void it('resume skips already-acked indices and re-executes only the rest', async () => {
     const dispatcher = new Dagonizer<ScatterState>();
     let calls = 0;
-    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+    class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() {
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
         calls++;
         return { 'errors': [], 'output': 'success' as const };
       }
@@ -187,17 +179,18 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     };
     dispatcher.registerDAG(dag);
 
-    // Pre-seed progress for items 0 and 1 using the new inbox model.
+    // Pre-seed progress for items 0 and 1 using bounded checkpoint mode.
+    // Append is compactable → bounded shape; result assertions are unchanged.
     const state = new ScatterState();
     state.items = [10, 20, 30, 40, 50];
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       'fan': {
+        'mode': 'bounded' as const,
         'placementName': 'fan',
         'inbox': [],
-        'ackedResults': [
-          { 'kind': 'plain' as const, 'index': 0, 'item': 10, 'output': 'success' },
-          { 'kind': 'plain' as const, 'index': 1, 'item': 20, 'output': 'success' },
-        ],
+        'watermark': 2,
+        'aheadAcked': [],
+        'outcomeTally': { 'success': 2 },
       },
     });
 
@@ -213,12 +206,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
 
   void it('resumed aggregate output reflects every item including prior-run ones', async () => {
     const dispatcher = new Dagonizer<ScatterState>();
-    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+    class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() {
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
         return { 'errors': [], 'output': 'success' as const };
       }
     }
@@ -245,14 +236,15 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     // during the prior run. Their gather contributions (append: item values)
     // are already in state.processed as they would be in a real state snapshot.
     state.processed = [11, 22];
+    // Append is compactable → bounded checkpoint shape; result assertions unchanged.
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       'fan': {
+        'mode': 'bounded' as const,
         'placementName': 'fan',
         'inbox': [],
-        'ackedResults': [
-          { 'kind': 'plain' as const, 'index': 0, 'item': 11, 'output': 'success' },
-          { 'kind': 'plain' as const, 'index': 1, 'item': 22, 'output': 'success' },
-        ],
+        'watermark': 2,
+        'aheadAcked': [],
+        'outcomeTally': { 'success': 2 },
       },
     });
 
@@ -276,12 +268,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     // --- Phase 1: run to interruption ---------------------------------------
     const interruptDispatcher = new Dagonizer<ScatterState>();
     let runCount = 0;
-    class InterruptingWorkerNode implements NodeInterface<ScatterState, 'success'> {
+    class InterruptingWorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'producer';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: ScatterState) {
+      protected async executeOne(state: ScatterState): Promise<NodeOutputInterface<'success'>> {
         const item = state.getMetadata<number>('item') ?? 0;
         const idx = ++runCount;
         if (idx === 3) {
@@ -321,18 +311,17 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.ok(persisted !== undefined, 'expected progress after interruption');
     const persistedEntry = persisted['fan'];
     assert.ok(persistedEntry !== undefined);
-    assert.equal(persistedEntry.ackedResults.length, 2);
-    // The persisted ackedResults carry the per-clone mapping values so the
-    // resume can reconstruct the gather contribution.
-    for (const r of persistedEntry.ackedResults) {
-      assert.ok(r.kind === 'map', 'expected mappingValues persisted for map gather');
-      assert.equal(r.mappingValues['produced'], f(interruptState.items[r.index] as number));
+    // map is a compactable strategy (retainsRecordsForFinalize=false), so the
+    // checkpoint is bounded mode — mapping values are already folded into parent
+    // state via reduce; no per-acked-result mapping values are persisted.
+    assert.equal(persistedEntry.mode, 'bounded', 'expected bounded checkpoint for map strategy');
+    if (persistedEntry.mode === 'bounded') {
+      const totalAcked = persistedEntry.watermark + persistedEntry.aheadAcked.length;
+      assert.equal(totalAcked, 2, 'expected 2 acked items in bounded checkpoint');
     }
-    // The parent results array must NOT carry the prior-run produced values
-    // yet; incremental gather fires per-ack so for map strategy the values
-    // ARE folded incrementally. However the map strategy's applyIncremental
-    // appends each item as it lands — so after the interruption at item 2,
-    // results should contain 2 entries (items 0 and 1).
+    // The parent results array holds the two folded values (reduce fires per-ack,
+    // so map strategy appends as each item lands).
+    // After interruption at item 2, results must contain 2 entries (items 0 and 1).
     assert.equal(partial.state.results.length, 2);
 
     // --- Phase 2: round-trip through snapshot, then resume ------------------
@@ -343,12 +332,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
 
     const resumeDispatcher = new Dagonizer<ScatterState>();
     let resumeRunCount = 0;
-    class ResumeWorkerNode implements NodeInterface<ScatterState, 'success'> {
+    class ResumeWorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'producer';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(state: ScatterState) {
+      protected async executeOne(state: ScatterState): Promise<NodeOutputInterface<'success'>> {
         resumeRunCount++;
         const item = state.getMetadata<number>('item') ?? 0;
         state.produced = f(item);
@@ -365,9 +352,9 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     assert.equal(result.cursor, null);
 
     // The parent `results` array is COMPLETE: one entry per item, in
-    // SOURCE ORDER, with NO duplicates. Map strategy with applyIncremental
-    // appends in the order items complete. With concurrency=1 and the inbox
-    // items (none — inbox was empty) followed by fresh items (indices 2,3,4),
+    // SOURCE ORDER, with NO duplicates. Map strategy's reduce appends in
+    // the order items complete. With concurrency=1 and the inbox items
+    // (none — inbox was empty) followed by fresh items (indices 2,3,4),
     // the final results array is [f(2), f(4), f(6), f(8), f(10)] but the
     // first two were folded in phase 1; on resume items 2,3,4 are folded.
     // Total: 5 entries.
@@ -383,22 +370,18 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     const dispatcher = new Dagonizer<ScatterState>();
     let aCalls = 0;
     let bCalls = 0;
-    class WorkerANode implements NodeInterface<ScatterState, 'success'> {
+    class WorkerANode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'workerA';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() {
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
         aCalls++;
         return { 'errors': [], 'output': 'success' as const };
       }
     }
-    class WorkerBNode implements NodeInterface<ScatterState, 'success'> {
+    class WorkerBNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'workerB';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() {
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
         bCalls++;
         return { 'errors': [], 'output': 'success' as const };
       }
@@ -434,19 +417,26 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
     state.items2 = [1, 2, 3, 4];
     state.processed = [100];        // fanA: index 0 already gathered
     state.processed2 = [1, 3];      // fanB: indices 0 and 2 already gathered
+    // Append is compactable → bounded checkpoint shape for both placements.
+    // fanA: index 0 acked (watermark=1). fanB: indices 0 and 2 acked (non-contiguous:
+    // watermark=1 because index 1 is missing; aheadAcked=[{index:2}]).
+    // Result assertions (aCalls/bCalls/processed lengths) are unchanged.
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       'fanA': {
+        'mode': 'bounded' as const,
         'placementName': 'fanA',
         'inbox': [],
-        'ackedResults': [{ 'kind': 'plain' as const, 'index': 0, 'item': 100, 'output': 'success' }],
+        'watermark': 1,
+        'aheadAcked': [],
+        'outcomeTally': { 'success': 1 },
       },
       'fanB': {
+        'mode': 'bounded' as const,
         'placementName': 'fanB',
         'inbox': [],
-        'ackedResults': [
-          { 'kind': 'plain' as const, 'index': 0, 'item': 1, 'output': 'success' },
-          { 'kind': 'plain' as const, 'index': 2, 'item': 3, 'output': 'success' },
-        ],
+        'watermark': 1,
+        'aheadAcked': [{ 'index': 2, 'output': 'success' }],
+        'outcomeTally': { 'success': 2 },
       },
     });
 
@@ -480,12 +470,10 @@ void describe('Dagonizer scatter per-item resume bookkeeping', () => {
       originalSet(key, value);
     };
 
-    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+    class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() {
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
         return { 'errors': [], 'output': 'success' as const };
       }
     }
@@ -517,12 +505,10 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
   void it('survives snapshot/restore through Checkpoint and resumes correctly', async () => {
     const dispatcher = new Dagonizer<ScatterState>();
     let calls = 0;
-    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+    class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() {
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> {
         calls++;
         return { 'errors': [], 'output': 'success' as const };
       }
@@ -553,21 +539,29 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
     const state = new ScatterState();
     state.items = [7, 14, 21, 28];
     state.processed = [7, 14]; // items 0 and 1 already gathered
+    // Append is compactable → bounded checkpoint shape; result assertions unchanged.
+    // Items 0 and 1 acked contiguously → watermark=2, aheadAcked empty.
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       'fan': {
+        'mode': 'bounded' as const,
         'placementName': 'fan',
         'inbox': [],
-        'ackedResults': [
-          { 'kind': 'plain' as const, 'index': 0, 'item': 7, 'output': 'success' },
-          { 'kind': 'plain' as const, 'index': 1, 'item': 14, 'output': 'success' },
-        ],
+        'watermark': 2,
+        'aheadAcked': [],
+        'outcomeTally': { 'success': 2 },
       },
     });
     const snap = state.snapshot();
     const restored = ScatterState.restore(snap);
     const storedRestored = restored.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
     assert.ok(storedRestored !== undefined);
-    assert.equal(storedRestored['fan']?.ackedResults.length, 2);
+    const fanEntry = storedRestored['fan'];
+    assert.ok(fanEntry !== undefined);
+    // Bounded checkpoint survives snapshot/restore; shape changed from retained.
+    assert.equal(fanEntry.mode, 'bounded');
+    if (fanEntry.mode === 'bounded') {
+      assert.equal(fanEntry.watermark, 2);
+    }
 
     const result = await dispatcher.resume('scatter-ckpt', restored, 'fan');
     // fan ran 2 fresh items + tail node = 3 calls.
@@ -578,12 +572,10 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
 
   void it('end-to-end Checkpoint capture/load round-trip preserves progress', async () => {
     const dispatcher = new Dagonizer<ScatterState>();
-    class WorkerNode implements NodeInterface<ScatterState, 'success'> {
+    class WorkerNode extends ScalarNode<ScatterState, 'success'> {
       readonly name = 'worker';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(_state: ScatterState, context: NodeContextInterface) {
+      protected async executeOne(_state: ScatterState, context: NodeContextInterface): Promise<NodeOutputInterface<'success'>> {
         // Long-running so we can abort mid-flight.
         await new Promise<void>((resolve, reject) => {
           const t = setTimeout(resolve, 1000);
@@ -614,12 +606,16 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
 
     const state = new ScatterState();
     state.items = [1, 2, 3, 4];
-    // Pre-seed one acked index so the partial-result path is exercised.
+    // Pre-seed one acked index. Append is compactable → bounded checkpoint shape.
+    // shape changed for compactable gather; result assertions (cursor/dagName) unchanged.
     state.setMetadata(SCATTER_PROGRESS_KEY, {
       'fan': {
+        'mode': 'bounded' as const,
         'placementName': 'fan',
         'inbox': [],
-        'ackedResults': [{ 'kind': 'plain' as const, 'index': 0, 'item': 1, 'output': 'success' }],
+        'watermark': 1,
+        'aheadAcked': [],
+        'outcomeTally': { 'success': 1 },
       },
     });
 
@@ -639,8 +635,13 @@ void describe('Dagonizer scatter checkpoint round-trip', () => {
 
     const stored = rehydrated.getMetadata<Record<string, ScatterProgress>>(SCATTER_PROGRESS_KEY);
     assert.ok(stored !== undefined, 'progress key should survive checkpoint codec');
-    // At minimum the pre-seeded acked entry should persist.
-    assert.ok((stored['fan']?.ackedResults.length ?? 0) >= 1);
+    // At minimum one item should have been acked (the pre-seeded entry or any fresh ack).
+    const fanStored = stored['fan'];
+    assert.ok(fanStored !== undefined, 'expected progress entry for fan scatter');
+    const ackedCount = fanStored.mode === 'bounded'
+      ? fanStored.watermark + fanStored.aheadAcked.length
+      : fanStored.ackedResults.length;
+    assert.ok(ackedCount >= 1, 'at least one item should be acked after partial run');
 
     // Sanity: dagName/state types route through the resume path.
     assert.equal(dagName, 'scatter-e2e');

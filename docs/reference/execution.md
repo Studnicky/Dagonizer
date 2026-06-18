@@ -15,8 +15,12 @@ seeAlso:
 
 ## Class: `Execution<TState>`
 
-```ts
+```ts twoslash
 import { Execution } from '@noocodex/dagonizer';
+import type { NodeStateInterface } from '@noocodex/dagonizer';
+// ---cut---
+declare const _: Execution<NodeStateInterface>;
+export {};
 ```
 
 Not instantiated directly; returned by the dispatcher.
@@ -27,7 +31,14 @@ Not instantiated directly; returned by the dispatcher.
 
 Iterate stage results as they complete:
 
-```ts
+```ts twoslash
+import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+import type { NodeResultInterface } from '@noocodex/dagonizer';
+class MyState extends NodeStateBase {}
+// ---cut---
+declare const dispatcher: Dagonizer<MyState>;
+declare const state: MyState;
+
 const execution = dispatcher.execute('my-flow', state);
 for await (const node of execution) {
   console.log(node.nodeName, node.output);
@@ -55,8 +66,15 @@ Phase placements (`PhaseNode`) run out of band and do not yield through the iter
 
 `Execution` implements `PromiseLike`. Await it for the final `ExecutionResultInterface<TState>`:
 
-```ts
-const result = await dispatcher.execute('my-flow', state);
+```ts twoslash
+import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+import type { ExecutionResultInterface } from '@noocodex/dagonizer';
+class MyState extends NodeStateBase {}
+// ---cut---
+declare const dispatcher: Dagonizer<MyState>;
+declare const state: MyState;
+
+const result: ExecutionResultInterface<MyState> = await dispatcher.execute('my-flow', state);
 ```
 
 If the iterator has already been consumed, the cached result is returned; the generator is not re-run.
@@ -74,10 +92,15 @@ If the iterator has already been consumed, the cached result is returned; the ge
 
 `InterruptionInfo`:
 
-```ts
-interface InterruptionInfo {
-  readonly nodeName: string;
-  readonly reason:   'abort' | 'timeout';
+```ts twoslash
+import type { ExecutionResultInterface } from '@noocodex/dagonizer';
+import type { NodeStateInterface } from '@noocodex/dagonizer';
+// ---cut---
+declare const result: ExecutionResultInterface<NodeStateInterface>;
+const interrupted = result.interruptedAt;
+if (interrupted !== null) {
+  const nodeName: string = interrupted.nodeName;
+  const reason: 'abort' | 'timeout' = interrupted.reason;
 }
 ```
 
@@ -89,7 +112,13 @@ Populated when the flow exited via signal abort or per-run / per-node timeout. `
 
 **One-shot await:**
 
-```ts
+```ts twoslash
+import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+class MyState extends NodeStateBase {}
+// ---cut---
+declare const dispatcher: Dagonizer<MyState>;
+declare const state: MyState;
+
 const result = await dispatcher.execute('flow', state);
 if (result.cursor !== null) {
   // interrupted: checkpoint it
@@ -98,7 +127,15 @@ if (result.cursor !== null) {
 
 **Streaming with early exit:**
 
-```ts
+```ts twoslash
+import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+class MyState extends NodeStateBase {}
+// ---cut---
+declare const dispatcher: Dagonizer<MyState>;
+declare const state: MyState;
+declare function isHeavyNode(name: string): boolean;
+
+const ctl = new AbortController();
 const execution = dispatcher.execute('flow', state, { signal: ctl.signal });
 for await (const node of execution) {
   if (isHeavyNode(node.nodeName)) {
@@ -110,7 +147,13 @@ const result = await execution; // result.cursor holds where we stopped
 
 **Consuming both modes:**
 
-```ts
+```ts twoslash
+import { Dagonizer, NodeStateBase } from '@noocodex/dagonizer';
+class MyState extends NodeStateBase {}
+// ---cut---
+declare const dispatcher: Dagonizer<MyState>;
+declare const state: MyState;
+
 const execution = dispatcher.execute('flow', state);
 const nodes: string[] = [];
 for await (const n of execution) nodes.push(n.nodeName);

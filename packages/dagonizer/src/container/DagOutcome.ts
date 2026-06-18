@@ -12,6 +12,11 @@
  * unrecoverable `NodeError` keyed to the `runDag` operation so the parent routes
  * the placement to its `error` output (embedded-DAG) or leaves the scatter item
  * un-acked for resume (the `TransportErrorCode.isInfrastructureFailure` path).
+ *
+ * `BatchRunResult` is the per-item result returned by `DagContainerBase.runDagBatch`.
+ * Each entry carries the item `id` alongside the full `DagOutcomeInterface` for
+ * that item, including its `terminalOutput`, `errors`, `stateSnapshot`, and
+ * `intermediates`.
  */
 
 import type { DagOutcomeInterface } from '../contracts/DagOutcomeInterface.js';
@@ -21,6 +26,14 @@ import type { NodeError } from '../entities/node/NodeError.js';
 import { DAG_CONTAINER_TRANSPORT } from './TransportErrorCode.js';
 
 export type { DagOutcomeInterface };
+
+/**
+ * Per-item result from a batch DAG execution (`runDagBatch`).
+ * Carries the item `id` so callers can correlate results back to input items.
+ */
+export interface BatchRunResult extends DagOutcomeInterface {
+  readonly id: string;
+}
 
 export class DagOutcome {
   private constructor() { /* static class */ }
@@ -50,6 +63,25 @@ export class DagOutcome {
       'errors': [error],
       'stateSnapshot': null,
       'intermediates': [],
+    };
+  }
+
+  /**
+   * Build a transport-error `BatchRunResult` for a single item. Used when the
+   * batch transport fails before the host can process the item.
+   */
+  static batchItemTransportError(
+    id: string,
+    correlationId: string,
+    options: { code?: string; message?: string } = {},
+  ): BatchRunResult {
+    const outcome = DagOutcome.transportError(correlationId, options);
+    return {
+      'id': id,
+      'terminalOutput': outcome.terminalOutput,
+      'errors': outcome.errors,
+      'stateSnapshot': outcome.stateSnapshot,
+      'intermediates': outcome.intermediates,
     };
   }
 }

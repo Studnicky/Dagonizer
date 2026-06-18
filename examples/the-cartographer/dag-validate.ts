@@ -8,27 +8,31 @@
 // #region well-formed-validate
 import { WellFormedValidator } from '@noocodex/dagonizer/validation';
 
-import { cartographerDAG, eventPipelineDAG } from './dag.ts';
-import { canonicalizeDAG } from './embedded-dags/CanonicalizeDAG.ts';
+import { cartographerDAG, eventPipelineTypedDAG } from './dag.ts';
 import { gdprComplianceDAG } from './embedded-dags/GdprComplianceDAG.ts';
 import { geoResolveDAG } from './embedded-dags/GeoResolveDAG.ts';
 import { ingestSourceDAG } from './embedded-dags/IngestSourceDAG.ts';
-import { ingestJsonDAG } from './embedded-dags/IngestJsonDAG.ts';
-import { ingestCsvDAG } from './embedded-dags/IngestCsvDAG.ts';
-import { ingestNdjsonGzDAG } from './embedded-dags/IngestNdjsonGzDAG.ts';
 import { orderEnrichmentDAG } from './embedded-dags/OrderEnrichmentDAG.ts';
-
+import { geoPipelineDAG } from './embedded-dags/GeoPipelineDAG.ts';
+import { pipelinePositionPingDAG } from './embedded-dags/PipelinePositionPingDAG.ts';
+import { pipelineSensorReadingDAG } from './embedded-dags/PipelineSensorReadingDAG.ts';
+import { pipelineCustomsEventDAG } from './embedded-dags/PipelineCustomsEventDAG.ts';
+import { pipelineFacilityScanDAG } from './embedded-dags/PipelineFacilityScanDAG.ts';
+import { pipelineDeliveryConfirmationDAG } from './embedded-dags/PipelineDeliveryConfirmationDAG.ts';
 const dags = [
   { 'label': 'cartographer',      'dag': cartographerDAG },
   { 'label': 'ingest-source',     'dag': ingestSourceDAG },
-  { 'label': 'ingest-json',       'dag': ingestJsonDAG },
-  { 'label': 'ingest-csv',        'dag': ingestCsvDAG },
-  { 'label': 'ingest-ndjson-gz',  'dag': ingestNdjsonGzDAG },
   { 'label': 'geo-resolve',       'dag': geoResolveDAG },
-  { 'label': 'canonicalize',      'dag': canonicalizeDAG },
   { 'label': 'order-enrichment',  'dag': orderEnrichmentDAG },
-  { 'label': 'event-pipeline',    'dag': eventPipelineDAG },
   { 'label': 'gdpr-compliance',   'dag': gdprComplianceDAG },
+  // Wave 4-5: per-type processing layer.
+  { 'label': 'event-pipeline-typed',           'dag': eventPipelineTypedDAG },
+  { 'label': 'geo-pipeline',                  'dag': geoPipelineDAG },
+  { 'label': 'pipeline-position-ping',        'dag': pipelinePositionPingDAG },
+  { 'label': 'pipeline-sensor-reading',       'dag': pipelineSensorReadingDAG },
+  { 'label': 'pipeline-customs-event',        'dag': pipelineCustomsEventDAG },
+  { 'label': 'pipeline-facility-scan',        'dag': pipelineFacilityScanDAG },
+  { 'label': 'pipeline-delivery-confirmation',  'dag': pipelineDeliveryConfirmationDAG },
 ] as const;
 
 let anyViolation = false;

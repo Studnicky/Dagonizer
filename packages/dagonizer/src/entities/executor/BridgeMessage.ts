@@ -7,10 +7,10 @@
  *
  * The `execute` branch carries a dag-only request: no `kind` discriminant
  * on the request, no `nodeName`. A DagHost runs only whole DAGs.
- * The `result` branch carries a dag-only response using `terminalOutput`
- * (not `output`). The inline shapes are structural copies of the canonical
- * ExecutionRequest / ExecutionResponse schemas to avoid $ref resolution at
- * compile time.
+ * The `result` branch carries a dag-only response using per-item `items`
+ * (not a top-level `terminalOutput`). The inline shapes are structural copies
+ * of the canonical ExecutionRequest / ExecutionResponse schemas to avoid
+ * $ref resolution at compile time.
  *
  * Parent → host: init, execute, abort, shutdown
  * Host → parent: ready, result, intermediate, instrumentation, error, log
@@ -42,14 +42,27 @@ const InlineNodeErrorShape = {
  * Inline copy of the dag-only ExecutionRequest shape.
  * See ExecutionRequest.ts for the canonical schema.
  * No `kind` discriminant; no `nodeName`. DagHost runs only whole DAGs.
+ * `items` carries one or more `{ id, snapshot }` pairs for batch execution.
  */
 const InlineExecutionRequestShape = {
   'type': 'object',
-  'required': ['dagName', 'placementPath', 'stateSnapshot', 'timeoutMs', 'correlationId'],
+  'required': ['dagName', 'placementPath', 'items', 'timeoutMs', 'correlationId'],
   'properties': {
     'dagName':       { 'type': 'string', 'minLength': 1 },
     'placementPath': { 'type': 'array', 'items': { 'type': 'string' } },
-    'stateSnapshot': { 'type': 'object' },
+    'items': {
+      'type': 'array',
+      'minItems': 1,
+      'items': {
+        'type': 'object',
+        'required': ['id', 'snapshot'],
+        'properties': {
+          'id':       { 'type': 'string', 'minLength': 1 },
+          'snapshot': { 'type': 'object' },
+        },
+        'additionalProperties': false,
+      },
+    },
     'timeoutMs':     { 'type': ['number', 'null'] },
     'correlationId': { 'type': 'string', 'minLength': 1 },
   },
@@ -59,22 +72,34 @@ const InlineExecutionRequestShape = {
 /**
  * Inline copy of the dag-only ExecutionResponse shape.
  * See ExecutionResponse.ts for the canonical schema.
- * Uses `terminalOutput` (not `output`).
+ * Per-item results live in `items[*].{ id, snapshot, terminalOutcome }`.
  * The ExecutorIntermediate items shape (output, skipped, nodeName) is an
  * inline copy of ExecutorIntermediate.ts — intentionally duplicated to
  * avoid $ref resolution at compile time.
  */
 const InlineExecutionResponseShape = {
   'type': 'object',
-  'required': ['correlationId', 'terminalOutput', 'errors', 'stateSnapshot', 'intermediates'],
+  'required': ['correlationId', 'items', 'errors', 'intermediates'],
   'properties': {
-    'correlationId':  { 'type': 'string', 'minLength': 1 },
-    'terminalOutput': { 'type': 'string' },
+    'correlationId': { 'type': 'string', 'minLength': 1 },
+    'items': {
+      'type': 'array',
+      'minItems': 1,
+      'items': {
+        'type': 'object',
+        'required': ['id', 'snapshot', 'terminalOutcome'],
+        'properties': {
+          'id':              { 'type': 'string', 'minLength': 1 },
+          'snapshot':        { 'type': ['object', 'null'] },
+          'terminalOutcome': { 'type': 'string' },
+        },
+        'additionalProperties': false,
+      },
+    },
     'errors': {
       'type': 'array',
       'items': InlineNodeErrorShape,
     },
-    'stateSnapshot': { 'type': ['object', 'null'] },
     'intermediates': {
       'type': 'array',
       'items': {

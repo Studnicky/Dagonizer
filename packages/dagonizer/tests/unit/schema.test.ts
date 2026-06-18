@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/dag/DAG.js';
 import { DAGDocument } from '../../src/entities/dag/DAGDocument.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { DAGError, ValidationError } from '../../src/errors/index.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 import { Validator } from '../../src/validation/Validator.js';
 
 // validDAG: a minimal well-formed DAG — SingleNode routes to an explicit TerminalNode.
@@ -74,12 +73,48 @@ void describe('Validator.dag', () => {
     } as unknown as DAG;
     assert.equal(Validator.dag.is(bad), false, 'null route must fail schema validation');
     assert.throws(() => Validator.dag.validate(bad), ValidationError);
+
+    // A single null route and multiple null routes both fail schema validation:
+    // null is never a valid output target, regardless of how many appear.
+    const oneNull = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:test',
+      '@type':    'DAG',
+      'name':     'test',
+      'version':  '1',
+      'entrypoint': 'start',
+      'nodes': [{
+        '@id':   'urn:noocodex:dag:test/node/start',
+        '@type': 'SingleNode',
+        'name':  'start',
+        'node':  'start',
+        'outputs': { 'done': null },
+      }],
+    } as unknown as DAG;
+    assert.equal(Validator.dag.is(oneNull), false, 'null output must not satisfy the schema');
+
+    const multiNull = {
+      '@context': DAG_CONTEXT,
+      '@id':      'urn:noocodex:dag:test',
+      '@type':    'DAG',
+      'name':     'test',
+      'version':  '1',
+      'entrypoint': 'start',
+      'nodes': [{
+        '@id':   'urn:noocodex:dag:test/node/start',
+        '@type': 'SingleNode',
+        'name':  'start',
+        'node':  'start',
+        'outputs': { 'ok': null, 'fail': null },
+      }],
+    } as unknown as DAG;
+    assert.equal(Validator.dag.is(multiNull), false, 'null outputs must not satisfy the schema');
   });
 
   void it('accepts a scatter node with a custom registered gather strategy name', () => {
     // GatherConfig.strategy is an open string: custom strategies are registered
-    // via GatherStrategies.register() and resolved at runtime. The schema no longer
-    // restricts strategy to a closed enum — unknown names are caught by
+    // via GatherStrategies.register() and resolved at runtime. The schema does
+    // not restrict strategy to a closed enum — unknown names are caught by
     // GatherStrategies.resolve() when the scatter executes, not at author time.
     const doc = {
       '@context': DAG_CONTEXT,
@@ -148,44 +183,13 @@ void describe('DAGDocument.fromValue', () => {
   });
 });
 
-void describe('DAGDocument.load', () => {
-  void it('parses + validates a JSON DAG', () => {
-    const json = JSON.stringify(validDAG);
-    const parsed = DAGDocument.load(json);
-    assert.deepEqual(parsed, validDAG);
-  });
-
-  void it('rejects malformed JSON', () => {
-    assert.throws(() => DAGDocument.load('{not json'), ValidationError);
-  });
-
-  void it('rejects schema-noncompliant JSON', () => {
-    assert.throws(() => DAGDocument.load('{"name": "x"}'), ValidationError);
-  });
-});
-
-void describe('DAGDocument.serialize round-trip', () => {
-  void it('serialize → load yields the original DAG', () => {
-    const json = DAGDocument.serialize(validDAG);
-    const parsed = DAGDocument.load(json);
-    assert.deepEqual(parsed, validDAG);
-  });
-
-  void it('serializeCompact omits whitespace', () => {
-    const compact = DAGDocument.serializeCompact(validDAG);
-    assert.equal(compact.includes('\n'), false);
-  });
-});
-
 void describe('Dagonizer.registerDAG schema pre-pass', () => {
   void it('rejects schema-invalid DAGs with ValidationError, not DAGError', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class OpNode implements NodeInterface<NodeStateBase, 'success'> {
+    class OpNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'op';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     dispatcher.registerNode(new OpNode());
 
@@ -202,12 +206,10 @@ void describe('Dagonizer.registerDAG schema pre-pass', () => {
 
   void it('semantic errors still surface as DAGError', () => {
     const dispatcher = new Dagonizer<NodeStateBase>();
-    class OpNode implements NodeInterface<NodeStateBase, 'success'> {
+    class OpNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'op';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute() { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
     dispatcher.registerNode(new OpNode());
 

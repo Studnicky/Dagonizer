@@ -88,13 +88,6 @@ class MinimalState extends NodeStateBase {}
 // ---------------------------------------------------------------------------
 
 function makeTask(correlationId: string, signal: AbortSignal): DagTaskInterface<MinimalState, undefined> {
-  const request: ExecutionRequest = {
-    'dagName': 'test-dag',
-    'placementPath': [],
-    'stateSnapshot': {} as JsonObject,
-    'timeoutMs': null,
-    'correlationId': correlationId,
-  };
   return {
     'dagName': 'test-dag',
     'placementPath': [],
@@ -108,7 +101,13 @@ function makeTask(correlationId: string, signal: AbortSignal): DagTaskInterface<
       'services': undefined,
     } as NodeContextInterface<undefined>,
     toRequest(): ExecutionRequest {
-      return request;
+      return {
+        'dagName': 'test-dag',
+        'placementPath': [],
+        'items': [{ 'id': correlationId, 'snapshot': {} as JsonObject }],
+        'timeoutMs': null,
+        'correlationId': correlationId,
+      };
     },
   };
 }
@@ -188,9 +187,8 @@ function startFakeHost(hostSide: MessageChannelInterface): void {
         'kind': 'result',
         'response': {
           'correlationId': correlationId,
-          'terminalOutput': `done-${correlationId}`,
+          'items': [{ 'id': correlationId, 'snapshot': null, 'terminalOutcome': `done-${correlationId}` }],
           'errors': [],
-          'stateSnapshot': null,
           'intermediates': [],
         },
       });
@@ -294,9 +292,8 @@ void describe('channel-correlation: single subscription + correlationId demux', 
               'kind': 'result',
               'response': {
                 'correlationId': secondId,
-                'terminalOutput': `done-${secondId}`,
+                'items': [{ 'id': secondId, 'snapshot': null, 'terminalOutcome': `done-${secondId}` }],
                 'errors': [],
-                'stateSnapshot': null,
                 'intermediates': [],
               },
             });
@@ -305,9 +302,8 @@ void describe('channel-correlation: single subscription + correlationId demux', 
                 'kind': 'result',
                 'response': {
                   'correlationId': firstId,
-                  'terminalOutput': `done-${firstId}`,
+                  'items': [{ 'id': firstId, 'snapshot': null, 'terminalOutcome': `done-${firstId}` }],
                   'errors': [],
-                  'stateSnapshot': null,
                   'intermediates': [],
                 },
               });
@@ -367,9 +363,8 @@ void describe('worker observability: forwarded node events reach the parent obse
           'kind': 'result',
           'response': {
             'correlationId': correlationId,
-            'terminalOutput': 'done',
+            'items': [{ 'id': correlationId, 'snapshot': null, 'terminalOutcome': 'done' }],
             'errors': [],
-            'stateSnapshot': null,
             'intermediates': [],
           },
         });

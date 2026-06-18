@@ -8,16 +8,16 @@ import {
   DAG_CONTEXT,
   NodeOutputBuilder,
   NodeStateBase,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface} from '@noocodex/dagonizer';
+import type { DAG } from '@noocodex/dagonizer';
 import type { JsonObject } from '@noocodex/dagonizer/entities';
 
 // ---------------------------------------------------------------------------
 // State: overrides snapshot/restore to persist domain fields
 // ---------------------------------------------------------------------------
 
+// #region counting-state
 export class CountingState extends NodeStateBase {
   count = 0;
   log:  string[] = [];
@@ -41,18 +41,17 @@ export class CountingState extends NodeStateBase {
     if (Array.isArray(l)) this.log = l.filter((x): x is string => typeof x === 'string');
   }
 }
+// #endregion counting-state
 
 // ---------------------------------------------------------------------------
 // Node: increments count and records each tick in log
 // ---------------------------------------------------------------------------
 
-export class IncNode implements NodeInterface<CountingState, 'success'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class IncNode extends ScalarNode<CountingState, 'success'> {
   readonly name = 'inc';
   readonly outputs = ['success'] as const;
 
-  async execute(state: CountingState) {
+  protected override async executeOne(state: CountingState) {
     state.count++;
     state.log.push(`tick:${state.count}`);
     return NodeOutputBuilder.of('success');

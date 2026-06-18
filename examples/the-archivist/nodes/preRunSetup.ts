@@ -20,22 +20,17 @@
  */
 
 // #region pre-phase-setup
-import { NodeOutputBuilder,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+import { NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 import type { ArchivistState } from '../ArchivistState.ts';
 import type { ArchivistServices } from '../services.ts';
 
-export class PreRunSetupNode implements NodeInterface<ArchivistState, 'ready', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class PreRunSetupNode extends ScalarNode<ArchivistState, 'ready', ArchivistServices> {
   readonly name = 'pre-run-setup';
   readonly outputs = ['ready'] as const;
 
-  execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     // Stamp a per-run identifier that downstream memory-write nodes key their
     // named graph on.  Format: ISO timestamp with milliseconds, URL-safe.
     // crypto.randomUUID() would be stronger but wall-clock is deterministic
@@ -57,5 +52,5 @@ export class PreRunSetupNode implements NodeInterface<ArchivistState, 'ready', A
 }
 // #endregion pre-phase-setup
 
-/** Backward-compatible const export for existing bundle/DAG references. */
+/** Singleton node instance referenced by the DAG wiring. */
 export const preRunSetup = new PreRunSetupNode();

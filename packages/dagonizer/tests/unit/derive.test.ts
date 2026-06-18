@@ -3,24 +3,38 @@ import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import type { OperationContract } from '../../src/contracts/OperationContract.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
 import type { DAGDeriverEmbeddedDAG } from '../../src/derive/DAGDeriverAnnotations.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
+import type { NodeStateInterface } from '../../src/NodeStateBase.js';
 
-// `DAGDeriver.derive` takes `nodes` with co-located contracts (single source of
-// truth); there is no standalone `contracts` input. Wrap each contract spec in
-// a node whose `contract` carries the topology fields; `execute` is a no-op
-// (derive reads only the contract, never runs the node).
-const contractNode = (c: OperationContract): NodeInterface => ({
-  'name': c.name,
-  'outputs': c.outputs,
-  'contract': { 'hardRequired': c.hardRequired, 'produces': c.produces },
-  'timeout': Timeout.none(),
-  async execute() { return { 'errors': [], 'output': c.outputs[0] as string }; },
-});
+// A ScalarNode subclass that carries a co-located contract (the topology fields
+// DAGDeriver reads) and routes to its first declared output when executed.
+// Pass an explicit `defaultOutput` to override which output is returned.
+class ContractNode<TState extends NodeStateInterface> extends ScalarNode<TState, string> {
+  readonly name: string;
+  readonly outputs: readonly string[];
+  override readonly contract: OperationContractFragment;
+  readonly #defaultOutput: string;
+
+  constructor(c: OperationContract, defaultOutput?: string) {
+    super();
+    this.name = c.name;
+    this.outputs = c.outputs;
+    this.contract = { 'hardRequired': c.hardRequired, 'produces': c.produces };
+    this.#defaultOutput = defaultOutput ?? (c.outputs[0] as string);
+  }
+
+  protected override async executeOne(): Promise<NodeOutputInterface<string>> {
+    return { 'errors': [], 'output': this.#defaultOutput };
+  }
+}
+
+const contractNode = <TState extends NodeStateInterface = NodeStateBase>(c: OperationContract): NodeInterface<TState> => new ContractNode<TState>(c);
 
 void describe('DAGDeriver.derive', () => {
   void it('produces a linear DAG from a chain of contracts', () => {
@@ -510,11 +524,12 @@ void describe('DAGDeriver.derive', () => {
       { 'name': 'invoke-child', 'hardRequired': ['intermediate'], 'produces': ['childResult'],  'outputs': ['success'] },
       { 'name': 'finalize',     'hardRequired': ['childResult'],  'produces': ['final'],        'outputs': ['success'] },
     ];
+    const nodes = contracts.map(contractNode);
     const parentDAG = DAGDeriver.derive({
       'name': 'parent',
       'version': '1',
       'entrypoint': 'prepare',
-      "nodes": contracts.map(contractNode),
+      "nodes": nodes,
       'annotations': {
         'embeddedDAGs': {
           'invoke-child': {
@@ -527,13 +542,16 @@ void describe('DAGDeriver.derive', () => {
         },
       },
     });
+
+    const childContracts: OperationContract[] = [
+      { 'name': 'child-step', 'hardRequired': ['input'], 'produces': ['final'], 'outputs': ['success'] },
+    ];
+    const childNodes = childContracts.map(contractNode);
     const childDAG = DAGDeriver.derive({
       'name': 'child',
       'version': '1',
       'entrypoint': 'child-step',
-      "nodes": [
-        { 'name': 'child-step', 'hardRequired': ['input'], 'produces': ['final'], 'outputs': ['success'] },
-      ].map(contractNode),
+      "nodes": childNodes,
       'annotations': {
         'terminals': {
           'child-step': [{ 'outcome': 'success', 'emit': { 'name': 'child-end', 'outcome': 'completed' } }],
@@ -542,17 +560,8 @@ void describe('DAGDeriver.derive', () => {
     });
 
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const make = (name: string): NodeInterface<NodeStateBase, 'success'> => ({
-      name,
-      'outputs': ['success'],
-      'contract': EMPTY_CONTRACT_FRAGMENT,
-      'timeout': Timeout.none(),
-      async execute() { return { 'errors': [], 'output': 'success' }; },
-    });
-    dispatcher.registerNode(make('prepare'));
-    dispatcher.registerNode(make('invoke-child'));
-    dispatcher.registerNode(make('finalize'));
-    dispatcher.registerNode(make('child-step'));
+    for (const n of nodes) dispatcher.registerNode(n);
+    for (const n of childNodes) dispatcher.registerNode(n);
     dispatcher.registerDAG(childDAG);
     dispatcher.registerDAG(parentDAG);
 
@@ -567,11 +576,12 @@ void describe('DAGDeriver.derive', () => {
       { 'name': 'first',  'hardRequired': ['input'], 'produces': ['x'], 'outputs': ['success'] },
       { 'name': 'second', 'hardRequired': ['x'],     'produces': ['y'], 'outputs': ['success'] },
     ];
+    const nodes = contracts.map(contractNode);
     const dag = DAGDeriver.derive({
       'name': 'reg-test',
       'version': '1',
       'entrypoint': 'first',
-      "nodes": contracts.map(contractNode),
+      "nodes": nodes,
       'annotations': {
         'terminals': {
           'second': [{ 'outcome': 'success', 'emit': { 'name': 'reg-end', 'outcome': 'completed' } }],
@@ -580,15 +590,7 @@ void describe('DAGDeriver.derive', () => {
     });
 
     const dispatcher = new Dagonizer<NodeStateBase>();
-    const make = (name: string): NodeInterface<NodeStateBase, 'success'> => ({
-      name,
-      'outputs': ['success'],
-      'contract': EMPTY_CONTRACT_FRAGMENT,
-      'timeout': Timeout.none(),
-      async execute() { return { 'errors': [], 'output': 'success' }; },
-    });
-    dispatcher.registerNode(make('first'));
-    dispatcher.registerNode(make('second'));
+    for (const n of nodes) dispatcher.registerNode(n);
 
     dispatcher.registerDAG(dag);
     assert.equal(dispatcher.getDAG('reg-test'), dag);
@@ -664,30 +666,18 @@ void describe('DAGDeriver.derive', () => {
 });
 
 void describe('DAGDeriver: terminals with emit variant', () => {
-  // Helper: make a node that always returns its first output.
   const make = <TOut extends string>(
     name: string,
     outputs: readonly [TOut, ...TOut[]],
-  ): NodeInterface<NodeStateBase, TOut> => ({
-    name,
-    outputs,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute() { return { 'errors': [], 'output': outputs[0] }; },
-  });
+  ): ContractNode<NodeStateBase> =>
+    new ContractNode<NodeStateBase>({ name, 'outputs': [...outputs], 'hardRequired': [], 'produces': [] });
 
-  // Helper: make a node that always returns a specific output.
   const makeWith = <TOut extends string>(
     name: string,
     outputs: readonly [TOut, ...TOut[]],
     output: TOut,
-  ): NodeInterface<NodeStateBase, TOut> => ({
-    name,
-    outputs,
-    'contract': EMPTY_CONTRACT_FRAGMENT,
-    'timeout': Timeout.none(),
-    async execute() { return { 'errors': [], 'output': output }; },
-  });
+  ): ContractNode<NodeStateBase> =>
+    new ContractNode<NodeStateBase>({ name, 'outputs': [...outputs], 'hardRequired': [], 'produces': [] }, output);
 
   void it('basic emit: synthesizes a TerminalNode placement and routes the output port to it', () => {
     const contracts: OperationContract[] = [
@@ -824,11 +814,12 @@ void describe('DAGDeriver: terminals with emit variant', () => {
       { 'name': 'classify', 'hardRequired': ['input'], 'produces': ['classification'], 'outputs': ['success', 'fail'] },
       { 'name': 'plan',     'hardRequired': ['classification'], 'produces': ['plan'],  'outputs': ['success'] },
     ];
+    const nodes = contracts.map(contractNode);
     const dag = DAGDeriver.derive({
       'name': 'emit-exec',
       'version': '1',
       'entrypoint': 'classify',
-      "nodes": contracts.map(contractNode),
+      "nodes": nodes,
       'annotations': {
         'terminals': {
           'classify': [{ 'outcome': 'fail', 'emit': { 'name': 'end-fail', 'outcome': 'failed' } }],

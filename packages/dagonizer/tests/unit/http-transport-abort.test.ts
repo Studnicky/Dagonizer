@@ -1,10 +1,16 @@
 /**
- * Tests for ADP-4: abort-aware backoff sleep in HttpTransport.
+ * HttpTransport behavior over a monkey-patched global fetch.
  *
- * Verifies:
- *  - An already-aborted signal at backoff time produces an immediate rejection
- *  - Aborting during the backoff sleep rejects without waiting the full delay
- *  - Normal retries still work when no signal is provided
+ * Abort-aware backoff (ADP-4):
+ *  - An already-aborted signal at backoff time rejects immediately, no hang.
+ *  - Aborting during the backoff sleep rejects before the full delay elapses.
+ *  - Retries still work when no signal is provided.
+ *
+ * Caller-side shape validation:
+ *  - HttpRequestOptions carries no `validate` callback; getJson/postJson return
+ *    the parsed JSON typed as TResponse for the caller to narrow.
+ *  - Wrong-shaped bodies are returned unmodified (no transport-level error).
+ *  - getJson works with no options (all defaults).
  */
 
 import assert from 'node:assert/strict';
@@ -105,5 +111,67 @@ void describe('HttpTransport abort-aware sleep (ADP-4)', () => {
       },
     );
     assert.equal(callCount, 2); // initial + 1 retry
+  });
+});
+
+void describe('HttpTransport — caller-side shape validation', () => {
+  // Caller receives the raw parsed JSON and can narrow it themselves.
+  void it('returns parsed JSON as TResponse for the caller to narrow', async () => {
+    interface Expected { count: number }
+
+    const result = await withFetchPatch(
+      async () => new Response(
+        JSON.stringify({ 'count': 42 }),
+        { 'status': 200, 'headers': { 'content-type': 'application/json' } },
+      ),
+      () => HttpTransport.getJson<Expected>('https://example.test/api'),
+    );
+
+    assert.equal(result.count, 42);
+  });
+
+  // Wrong-shaped body is returned as-is; caller must validate.
+  void it('returns wrong-shaped body without error — validation is caller responsibility', async () => {
+    interface Expected { ok: boolean }
+
+    const result = await withFetchPatch(
+      async () => new Response(
+        JSON.stringify({ 'wrong': 'shape' }),
+        { 'status': 200, 'headers': { 'content-type': 'application/json' } },
+      ),
+      () => HttpTransport.getJson<Expected>('https://example.test/api'),
+    );
+
+    // Shape is wrong but HttpTransport does not validate; the caller receives
+    // the raw parsed object typed as TResponse.
+    assert.deepEqual(result, { 'wrong': 'shape' });
+  });
+
+  // postJson also returns parsed JSON without transport-level shape checking.
+  void it('postJson returns parsed JSON as TResponse', async () => {
+    interface Expected { id: string }
+
+    const result = await withFetchPatch(
+      async () => new Response(
+        JSON.stringify({ 'id': 'abc-123' }),
+        { 'status': 200, 'headers': { 'content-type': 'application/json' } },
+      ),
+      () => HttpTransport.postJson<Expected>('https://example.test/api', { 'query': 'test' }),
+    );
+
+    assert.equal(result.id, 'abc-123');
+  });
+
+  // No options required.
+  void it('works without any options (all defaults)', async () => {
+    const result = await withFetchPatch(
+      async () => new Response(
+        JSON.stringify({ 'arbitrary': 'data' }),
+        { 'status': 200, 'headers': { 'content-type': 'application/json' } },
+      ),
+      () => HttpTransport.getJson<{ arbitrary: string }>('https://example.test/api'),
+    );
+
+    assert.equal(result.arbitrary, 'data');
   });
 });

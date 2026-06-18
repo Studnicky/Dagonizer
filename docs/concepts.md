@@ -26,11 +26,22 @@ Vocabulary that the rest of the docs assume. The engine is domain-agnostic: agen
 
 ## Node
 
-A **node** is a stateless unit of work that implements `NodeInterface<TState, TOutput>`. It receives shared state and a context (which carries the `AbortSignal`), mutates state in place, and returns a named output. The classify-intent node in the Archivist is a typical example: it reads the user query, writes a classification to state, and returns one of `'discover' | 'identify' | 'recall' | 'rejected'`.
+The fundamental unit of work is a **batch**. A **node** consumes a `Batch<TState>` and returns a `RoutedBatch<TOutput>` — it **partitions** the batch's items across its named output ports. That single operation is the one node contract:
 
-Nodes are registered with the dispatcher under a string name. The same registered node can appear in many DAGs and in many placements.
+<<< @/../examples/dags/plural-native.ts#execute-contract
 
-A node never throws. It catches its own errors and routes through a named `error` output. The dispatcher guards the boundary with a try/catch, but a throwing node is a bug.
+A single item is a batch of one; the engine never processes a scalar specially. **Routing is partitioning**: a node distributing items across `needs-gdpr` / `geo-only` ports, micro-batching, and the reservoir are all the same mechanism — `Map<output, Batch>`.
+
+You almost never write `execute` by hand. Nodes descend from the **taxonomy**:
+
+- **`MonadicNode<TState, TOutput, TServices>`** — the root node base (the *monad*). Implements `NodeInterface` and supplies `name` / `outputs` / `contract` / `timeout` / `validate` / `destroy`, leaving `execute(batch)` abstract. Extend it directly to author a **batch-native** node — the hot path where one call processes the whole batch and hits shared caches across it.
+- **`ScalarNode<TState, TOutput, TServices>`** — extends `MonadicNode` and is the **per-item** specialization. You implement `protected executeOne(state, context): Promise<NodeOutputInterface<TOutput>>`; the base loops it over the batch and groups items by the returned port. This is the common case.
+
+The classify-intent node in the Archivist is a typical `ScalarNode`: its `executeOne` reads the user query, writes a classification to state, and returns one of `'discover' | 'identify' | 'recall' | 'rejected'`.
+
+<<< @/../examples/dags/plural-native.ts#node-taxonomy
+
+Nodes are registered with the dispatcher under a string name; the same registered node can appear in many DAGs and placements. A node never throws — a per-item error routes to the item's `error` port (its own sub-batch). The dispatcher guards the boundary, but a throwing node is a bug.
 
 ## DAG
 
@@ -89,16 +100,9 @@ A **lifecycle** is the FSM behind each DAG execution: `pending → running → c
 
 Terminal states are sticky. Once a flow is `completed`, `failed`, `cancelled`, or `timed_out`, further lifecycle events are ignored.
 
-The discriminated union carries timestamps appropriate to each state:
+The discriminated union carries timestamps appropriate to each state. Narrowing on `kind` unlocks the typed fields:
 
-```ts
-| { kind: 'pending';   startedAt: null;   finishedAt: null;   error: null;  reason: null }
-| { kind: 'running';   startedAt: number; finishedAt: null;   error: null;  reason: null }
-| { kind: 'completed'; startedAt: number; finishedAt: number; error: null;  reason: null }
-| { kind: 'failed';    startedAt: number; finishedAt: number; error: Error; reason: null }
-| { kind: 'cancelled'; startedAt: number; finishedAt: number; error: null;  reason: string }
-| { kind: 'timed_out'; startedAt: number; finishedAt: number; error: null;  reason: null }
-```
+<<< @/../examples/18-observability.ts#lifecycle-state
 
 Timestamps are monotonic milliseconds from `Clock.monotonicMs()`, not wall-clock. Use them for duration math, not for display.
 
@@ -129,9 +133,7 @@ A **route** is the directed edge in the DAG: an output name on one placement map
 
 Cancellation flows through `AbortSignal`. Pass `{ signal }` or `{ deadlineMs }` to `execute()` or `resume()`. The dispatcher composes them:
 
-```ts
-AbortSignal.any([callerSignal, AbortSignal.timeout(deadlineMs)])
-```
+<<< @/../examples/18-observability.ts#signal-compose
 
 Each node receives the composed signal as `context.signal`. Nodes propagate it to every awaitable IO call. `RetryPolicy.run()` resolves its backoff sleep early when the signal fires.
 
@@ -145,39 +147,35 @@ After all clones finish, a gather strategy merges clone state back into the pare
 
 **`map`** copies fields from each clone into the parent. One clone writes a scalar; N clones produce an index-ordered array append. This is the generate-collect pattern: each clone writes a produced artifact and all artifacts land in one parent array.
 
-```ts
-gather: { strategy: 'map', mapping: { 'candidate': 'candidates' } }
-```
+<<< @/../examples/dags/04-scatter.ts#gather-map
 
 **`append`** requires `target` (dotted path). Flattens the clone's `field` (or the source item when `field` is absent) across all clones into the target array.
 
-```ts
-gather: { strategy: 'append', target: 'results' }
-```
+<<< @/../examples/dags/04-scatter.ts#gather-append
 
 **`partition`** requires `partitions: Record<outputToken, targetPath>`. Buckets clones by their output token and writes each group to its declared path.
 
-```ts
-gather: { strategy: 'partition', partitions: { success: 'passed', error: 'failed' } }
-```
+<<< @/../examples/dags/04-scatter.ts#gather-partition
 
 **`collect`** requires `target` (dotted path) and an optional `field`. Collects each clone's output token (or `field` value when specified) into `target` in source-index order. Unlike `append`, `collect` preserves positional correspondence between source items and their collected values.
 
-```ts
-gather: { strategy: 'collect', target: 'outputTokens' }
-```
+<<< @/../examples/dags/04-scatter.ts#gather-collect
 
 **`discard`** is a no-op merge. Clones run for side-effects only; no clone state flows back to the parent. Use when the body node writes to an external store and the parent state needs no update.
 
-```ts
-gather: { strategy: 'discard' }
-```
+<<< @/../examples/dags/04-scatter.ts#gather-discard
 
 **`custom`** requires `customNode: string`. The dispatcher stages the per-clone records under `state.metadata.gatherResults` and dispatches the named registered node. The Archivist's `mergeCandidates` node uses `custom` to deduplicate scout results by canonical book id.
 
-```ts
-gather: { strategy: 'custom', customNode: 'mergeCandidates' }
-```
+<<< @/../examples/dags/04-scatter.ts#gather-custom
+
+### Authoring a custom gather strategy
+
+A gather strategy is **one fold** over batches — `initial → reduce → finalize`:
+
+<<< @/../examples/dags/04-scatter.ts#custom-gather-strategy
+
+There is no `apply` / `applyIncremental` split and no `IncrementalGatherStrategy`: "incremental" is a `reduce` over a batch of 1, "all-at-once" is a `reduce` over a batch of N — the same method. Strategies that need every result (top-N, sort) accumulate in `reduce` and compute in `finalize`.
 
 ## Streaming and backpressure
 
@@ -201,9 +199,7 @@ After gather, an outcome reducer maps the set of per-clone records to one routin
 
 `stateMapping.input` seeds each clone before the body runs. Keys are dotted paths on the clone; values are dotted paths on the parent. The copy runs once per clone, before the body starts.
 
-```ts
-stateMapping: { input: { 'query': 'request.query' } }
-```
+<<< @/../examples/dags/02-builder.topology.ts#scatter-inputs
 
 Authored via the `inputs` option on `.scatter()` (or `.embeddedDAG()` for embedded-DAG placements). Without `stateMapping.input`, the clone starts with the parent's metadata and no domain-field seeds beyond what `clone()` copies.
 

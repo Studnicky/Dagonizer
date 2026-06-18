@@ -187,6 +187,21 @@ export type {
 } from './scatter/ScatterProgress.js';
 
 // ---------------------------------------------------------------------------
+// workset (checkpoint wire shapes)
+// ---------------------------------------------------------------------------
+
+export {
+  WorkSetItemSchema,
+  WorkSetEntrySchema,
+  WorkSetProgressSchema,
+} from './workset/WorkSetProgress.js';
+export type {
+  WorkSetItem,
+  WorkSetEntry,
+  WorkSetProgress,
+} from './workset/WorkSetProgress.js';
+
+// ---------------------------------------------------------------------------
 // adapter (LLM chat wire shapes)
 // ---------------------------------------------------------------------------
 

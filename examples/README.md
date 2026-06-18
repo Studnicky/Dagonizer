@@ -57,7 +57,7 @@ Or via npm scripts: `npm run example:12` and `npm run example:13`.
 
 ## LLM / Agent
 
-All examples run offline — `StubAdapter` / stub embedder require no credentials.
+These examples run against a real local model. Install [Ollama](https://ollama.com), then `ollama pull llama3.2` (chat) and `ollama pull nomic-embed-text` (embeddings) before running.
 
 | File | Purpose | Run |
 |------|---------|-----|
@@ -96,7 +96,7 @@ npx tsx examples/the-archivist/runArchivist.ts
 #   https://studnicky.github.io/Dagonizer/examples/the-archivist
 ```
 
-**Credential needs:** `LlmAdapterCascade` tries Groq, Cerebras, Gemini API, Mistral, OpenRouter (API keys via env), then Ollama (local), then Gemini Nano / WebLLM (browser only), then `StubAdapter` (offline fallback). No credentials are required — the stub adapter answers without a network call.
+**Credential needs:** `LlmAdapterCascade` tries Groq, Cerebras, Gemini API, Mistral, OpenRouter (API keys via env), then Ollama (local), then Gemini Nano / WebLLM (browser only). If none is reachable the cascade throws `NO_ADAPTER_AVAILABLE` — there is no canned fallback. The zero-setup path is a local Ollama (`ollama serve`).
 
 ### The Cartographer
 

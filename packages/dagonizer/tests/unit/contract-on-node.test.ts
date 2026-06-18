@@ -6,13 +6,14 @@ import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
 import type { OperationContractFragment } from '../../src/contracts/OperationContractFragment.js';
 import type { WarningEmitter } from '../../src/contracts/WarningEmitter.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { ContractRegistryValidator } from '../../src/derive/ContractRegistryValidator.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { DAGError } from '../../src/errors/DAGError.js';
-import type { NodeStateBase } from '../../src/NodeStateBase.js';
+import type { NodeStateBase, NodeStateInterface } from '../../src/NodeStateBase.js';
 import { NoopWarningEmitter } from '../../src/runtime/NoopWarningEmitter.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 class CollectingWarningEmitter implements WarningEmitter {
   readonly collected: string[] = [];
@@ -23,18 +24,17 @@ class CollectingWarningEmitter implements WarningEmitter {
 // Helpers
 // ---------------------------------------------------------------------------
 
-class MakeNode implements NodeInterface<NodeStateBase, string> {
+class MakeNode extends ScalarNode<NodeStateBase, string> {
   readonly name: string;
   readonly outputs: readonly string[];
-  readonly contract: OperationContractFragment;
-  readonly timeout: Timeout;
+  override readonly contract: OperationContractFragment;
   constructor(name: string, outputs: readonly string[], contract: OperationContractFragment = EMPTY_CONTRACT_FRAGMENT) {
+    super();
     this.name = name;
     this.outputs = outputs;
     this.contract = contract;
-    this.timeout = Timeout.none();
   }
-  async execute() { return { 'errors': [], 'output': this.outputs[0] ?? 'success' }; }
+  protected async executeOne(): Promise<NodeOutputInterface<string>> { return { 'errors': [], 'output': this.outputs[0] ?? 'success' }; }
 }
 
 function makeNode(
@@ -291,26 +291,24 @@ void describe('Chainable<A, B> type helper', () => {
   void it('compiles: Chainable resolves to true for compatible node pair', () => {
     // Declare nodes with literal-typed contracts so the type system
     // can see the exact string literals in hardRequired / produces.
-    class FetchNode implements NodeInterface {
+    class FetchNode extends ScalarNode<NodeStateInterface, 'success'> {
       readonly name = 'fetch';
       readonly outputs = ['success'] as const;
-      readonly contract: { 'hardRequired': ['url']; 'produces': ['raw'] } = {
+      override readonly contract: { 'hardRequired': ['url']; 'produces': ['raw'] } = {
         'hardRequired': ['url'],
         'produces': ['raw'],
       };
-      readonly timeout = Timeout.none();
-      async execute() { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
 
-    class ParseNode implements NodeInterface {
+    class ParseNode extends ScalarNode<NodeStateInterface, 'success'> {
       readonly name = 'parse';
       readonly outputs = ['success'] as const;
-      readonly contract: { 'hardRequired': ['raw']; 'produces': ['record'] } = {
+      override readonly contract: { 'hardRequired': ['raw']; 'produces': ['record'] } = {
         'hardRequired': ['raw'],
         'produces': ['record'],
       };
-      readonly timeout = Timeout.none();
-      async execute() { return { 'errors': [], 'output': 'success' as const }; }
+      protected async executeOne(): Promise<NodeOutputInterface<'success'>> { return { 'errors': [], 'output': 'success' as const }; }
     }
 
     const _fetchNode = new FetchNode();

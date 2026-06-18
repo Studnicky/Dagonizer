@@ -27,11 +27,14 @@ function onInput(event: Event): void {
 <template>
   <footer class="run-controls">
     <textarea
+      id="run-controls-input"
+      name="run-controls-input"
       class="run-input"
       :value="query"
       :disabled="running"
       placeholder="Describe a book, ask for a recommendation, or search by title…"
       rows="2"
+      autocomplete="off"
       @input="onInput"
     />
 

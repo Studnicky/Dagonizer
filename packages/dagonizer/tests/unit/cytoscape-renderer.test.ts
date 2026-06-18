@@ -663,3 +663,127 @@ void describe('CytoscapeRenderer.titleCase', () => {
     assert.equal(CytoscapeRenderer.titleCase('greet'), 'Greet');
   });
 });
+
+// ── Reservoir-glyph fixtures ────────────────────────────────────────────────
+
+/** ScatterNode with a reservoir config (keyField + capacity + idleMs). */
+const RESERVOIR_DAG: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id':      'urn:noocodex:dag:reservoir',
+  '@type':    'DAG',
+  'name':       'reservoir',
+  'version':    '1',
+  'entrypoint': 'buffer',
+  'nodes': [
+    {
+      '@id':      'urn:noocodex:dag:reservoir/node/buffer',
+      '@type':    'ScatterNode',
+      'name':     'buffer',
+      'body':     { 'node': 'worker' },
+      'source':   'events',
+      'gather':   { 'strategy': 'discard' },
+      'reservoir': { 'keyField': 'tenantId', 'capacity': 50, 'idleMs': 5000 },
+      'outputs':  { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+    },
+    { '@id': 'urn:noocodex:dag:reservoir/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+  ],
+};
+
+/** ScatterNode with reservoir but no idleMs (capacity-only flush). */
+const RESERVOIR_NO_IDLEMS_DAG: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id':      'urn:noocodex:dag:reservoir-no-idle',
+  '@type':    'DAG',
+  'name':       'reservoir-no-idle',
+  'version':    '1',
+  'entrypoint': 'batch',
+  'nodes': [
+    {
+      '@id':      'urn:noocodex:dag:reservoir-no-idle/node/batch',
+      '@type':    'ScatterNode',
+      'name':     'batch',
+      'body':     { 'node': 'processor' },
+      'source':   'records',
+      'gather':   { 'strategy': 'discard' },
+      'reservoir': { 'keyField': 'region', 'capacity': 100 },
+      'outputs':  { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+    },
+    { '@id': 'urn:noocodex:dag:reservoir-no-idle/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+  ],
+};
+
+/** Plain ScatterNode — no reservoir field. Parity guard fixture. */
+const PLAIN_SCATTER_DAG: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id':      'urn:noocodex:dag:plain-scatter',
+  '@type':    'DAG',
+  'name':       'plain-scatter',
+  'version':    '1',
+  'entrypoint': 'fan',
+  'nodes': [
+    {
+      '@id':    'urn:noocodex:dag:plain-scatter/node/fan',
+      '@type':  'ScatterNode',
+      'name':   'fan',
+      'body':   { 'node': 'worker' },
+      'source': 'items',
+      'gather': { 'strategy': 'discard' },
+      'outputs': { 'all-success': 'end', 'partial': 'end', 'all-error': 'end', 'empty': 'end' },
+    },
+    { '@id': 'urn:noocodex:dag:plain-scatter/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' },
+  ],
+};
+
+void describe('CytoscapeRenderer.render: reservoir glyph', () => {
+  void it('reservoir-configured scatter carries dag-reservoir + dag-scatter classes, type=scatter, and a reservoir data field with exact keyField/capacity/idleMs', () => {
+    const elements = CytoscapeRenderer.render(RESERVOIR_DAG, {});
+    const bufferNode = elements.find(
+      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'buffer',
+    );
+    assert.ok(bufferNode !== undefined, 'buffer node must be present');
+    assert.ok(
+      bufferNode.classes.includes('dag-reservoir'),
+      `expected dag-reservoir in classes "${bufferNode.classes}"`,
+    );
+    assert.ok(
+      bufferNode.classes.includes('dag-scatter'),
+      `expected dag-scatter in classes "${bufferNode.classes}"`,
+    );
+    assert.equal(bufferNode.data.type, 'scatter');
+    const res = bufferNode.data['reservoir'];
+    assert.ok(res !== undefined, 'reservoir data field must be present');
+    assert.equal(res.keyField, 'tenantId');
+    assert.equal(res.capacity, 50);
+    assert.equal(res.idleMs, 5000);
+  });
+
+  void it('reservoir data field without idleMs has idleMs undefined', () => {
+    const elements = CytoscapeRenderer.render(RESERVOIR_NO_IDLEMS_DAG, {});
+    const batchNode = elements.find(
+      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'batch',
+    );
+    assert.ok(batchNode !== undefined, 'batch node must be present');
+    const res = batchNode.data['reservoir'];
+    assert.ok(res !== undefined, 'reservoir data field must be present');
+    assert.equal(res.keyField, 'region');
+    assert.equal(res.capacity, 100);
+    assert.equal(res.idleMs, undefined);
+  });
+
+  // ── Parity guard ──────────────────────────────────────────────────────────
+
+  void it('plain (non-reservoir) scatter has no dag-reservoir class, no reservoir data field, classes exactly dag-scatter, and type=scatter', () => {
+    const elements = CytoscapeRenderer.render(PLAIN_SCATTER_DAG, {});
+    const fanNode = elements.find(
+      (el): el is CytoscapeNodeElement => isNode(el) && el.data.id === 'fan',
+    );
+    assert.ok(fanNode !== undefined, 'fan node must be present');
+    assert.ok(
+      !fanNode.classes.includes('dag-reservoir'),
+      `dag-reservoir must not be in classes "${fanNode.classes}"`,
+    );
+    assert.equal(fanNode.data['reservoir'], undefined);
+    assert.equal(fanNode.classes, 'dag-scatter');
+    assert.equal(fanNode.data.type, 'scatter');
+  });
+});

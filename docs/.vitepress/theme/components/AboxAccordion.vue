@@ -12,21 +12,117 @@
  * Blob operations inside handlers so Vite SSR pre-render stays clean.
  */
 
-import { ref } from 'vue';
-import type { CanonicalEvent } from '../../../../examples/the-cartographer/entities/CanonicalEvent.ts';
+import { computed, ref } from 'vue';
+import type { CanonicalEventVariant } from '../../../../examples/the-cartographer/entities/CanonicalEvent.ts';
 import type { EnrichedShipment } from '../../../../examples/the-cartographer/entities/EnrichedShipment.ts';
 
 // ── Props ────────────────────────────────────────────────────────────────────
 export interface AboxEntity {
   readonly id: string;
   readonly label: string;
-  readonly before: CanonicalEvent | undefined;
+  readonly before: CanonicalEventVariant | undefined;
+  readonly after: EnrichedShipment;
+}
+
+// ── Before display ───────────────────────────────────────────────────────────
+
+/** Flattened display-safe view of a CanonicalEventVariant for template access. */
+interface BeforeDisplay {
+  readonly shipmentId: string;
+  readonly eventId: string;
+  readonly eventType: string;
+  readonly sourceId: string;
+  readonly sourceFormat: string;
+  readonly epochMs: number;
+  readonly scanSeq: number;
+  readonly latitude: number;
+  readonly longitude: number;
+  readonly rawTimestamp: string;
+  readonly carrier: string;
+  readonly status: string;
+  readonly weight: number;
+  readonly weightUnit: string;
+  readonly recipientName: string;
+  readonly recipientEmail: string;
+  readonly recipientPhone: string;
+  readonly lawfulBasis: string;
+  readonly hasPii: boolean;
+  readonly geoContinent: string;
+  readonly geoCountry: string;
+  readonly consentHandled: boolean | undefined;
+}
+
+function variantToDisplay(v: CanonicalEventVariant): BeforeDisplay {
+  const sharedBody = v.body;
+  let weight = 0;
+  let weightUnit = 'kg';
+  let recipientName = '';
+  let recipientEmail = '';
+  let recipientPhone = '';
+  let lawfulBasis = '';
+  let hasPii = false;
+  if (v.eventType === 'facility-scan') {
+    weight = v.body.weight;
+    weightUnit = v.body.weightUnit;
+    recipientName = v.body.recipientName;
+    recipientEmail = v.body.recipientEmail;
+    recipientPhone = v.body.recipientPhone;
+    lawfulBasis = v.body.lawfulBasis;
+    hasPii = true;
+  } else if (v.eventType === 'delivery-confirmation') {
+    recipientName = v.body.recipientName;
+    recipientEmail = v.body.recipientEmail;
+    recipientPhone = v.body.recipientPhone;
+    lawfulBasis = v.body.lawfulBasis;
+    hasPii = true;
+  }
+  return {
+    'shipmentId':    v.shipmentId,
+    'eventId':       v.eventId,
+    'eventType':     v.eventType,
+    'sourceId':      v.sourceId,
+    'sourceFormat':  v.sourceFormat,
+    'epochMs':       v.epochMs,
+    'scanSeq':       sharedBody.scanSeq,
+    'latitude':      sharedBody.latitude,
+    'longitude':     sharedBody.longitude,
+    'rawTimestamp':  sharedBody.rawTimestamp,
+    'carrier':       sharedBody.carrier,
+    'status':        sharedBody.status,
+    weight,
+    weightUnit,
+    recipientName,
+    recipientEmail,
+    recipientPhone,
+    lawfulBasis,
+    hasPii,
+    'geoContinent':     v.geo?.continent ?? '',
+    'geoCountry':       v.geo?.country ?? '',
+    'consentHandled':   v.consentHandled,
+  };
+}
+
+/** Derived entity list: before is pre-computed to a flat display object so
+ *  the template never accesses union members directly. */
+interface DerivedEntity {
+  readonly id: string;
+  readonly label: string;
+  readonly beforeDisplay: BeforeDisplay | null;
   readonly after: EnrichedShipment;
 }
 
 const props = defineProps<{
   entities: AboxEntity[];
 }>();
+
+const derivedEntities = computed<DerivedEntity[]>(() =>
+  props.entities.map((e) => ({
+    'id':            e.id,
+    'label':         e.label,
+    'beforeDisplay': e.before !== undefined ? variantToDisplay(e.before) : null,
+    'after':         e.after,
+  })),
+);
 
 // ── One-open-at-a-time accordion ─────────────────────────────────────────────
 const openId = ref<string | null>(null);
@@ -61,7 +157,7 @@ function fmtWeight(weight: number, unit: string): string {
 <template>
   <div class="abox-accordion">
     <div
-      v-for="entity in props.entities"
+      v-for="entity in derivedEntities"
       :key="entity.id"
       class="abox-item"
       :class="{ 'abox-item--open': openId === entity.id }"
@@ -100,47 +196,47 @@ function fmtWeight(weight: number, unit: string): string {
           <!-- BEFORE column -->
           <div class="abox-col abox-col--before">
             <div class="abox-col-head">before</div>
-            <template v-if="entity.before !== undefined">
+            <template v-if="entity.beforeDisplay !== null">
               <div class="abox-field-group">
                 <div class="abox-field-head">identity</div>
                 <div class="abox-field-row">
                   <span class="abox-field-key">shipmentId</span>
-                  <span class="abox-field-val mono">{{ entity.before.shipmentId }}</span>
+                  <span class="abox-field-val mono">{{ entity.beforeDisplay.shipmentId }}</span>
                 </div>
                 <div class="abox-field-row">
                   <span class="abox-field-key">eventId</span>
-                  <span class="abox-field-val mono">{{ entity.before.eventId }}</span>
+                  <span class="abox-field-val mono">{{ entity.beforeDisplay.eventId }}</span>
                 </div>
                 <div class="abox-field-row">
-                  <span class="abox-field-key">kind</span>
-                  <span class="abox-field-val mono">{{ entity.before.kind }}</span>
+                  <span class="abox-field-key">eventType</span>
+                  <span class="abox-field-val mono">{{ entity.beforeDisplay.eventType }}</span>
                 </div>
                 <div class="abox-field-row">
                   <span class="abox-field-key">source</span>
-                  <span class="abox-field-val mono">{{ entity.before.sourceId }} ({{ entity.before.sourceFormat }})</span>
+                  <span class="abox-field-val mono">{{ entity.beforeDisplay.sourceId }} ({{ entity.beforeDisplay.sourceFormat }})</span>
                 </div>
               </div>
               <div class="abox-field-group">
                 <div class="abox-field-head">timestamp</div>
                 <div class="abox-field-row">
                   <span class="abox-field-key">epochMs</span>
-                  <span class="abox-field-val mono">{{ fmtEpoch(entity.before.epochMs) }}</span>
+                  <span class="abox-field-val mono">{{ fmtEpoch(entity.beforeDisplay.epochMs) }}</span>
                 </div>
                 <div class="abox-field-row">
                   <span class="abox-field-key">raw</span>
-                  <span class="abox-field-val mono">{{ entity.before.body.rawTimestamp || '—' }}</span>
+                  <span class="abox-field-val mono">{{ entity.beforeDisplay.rawTimestamp || '—' }}</span>
                 </div>
               </div>
               <div class="abox-field-group">
                 <div class="abox-field-head">location (raw)</div>
                 <div class="abox-field-row">
                   <span class="abox-field-key">lat/lng</span>
-                  <span class="abox-field-val mono">{{ fmtLatLng(entity.before.body.latitude, entity.before.body.longitude) }}</span>
+                  <span class="abox-field-val mono">{{ fmtLatLng(entity.beforeDisplay.latitude, entity.beforeDisplay.longitude) }}</span>
                 </div>
                 <div class="abox-field-row">
                   <span class="abox-field-key">geo pre-resolved</span>
                   <span class="abox-field-val mono">
-                    <template v-if="entity.before.geo !== undefined">{{ entity.before.geo.continent }} / {{ entity.before.geo.country }}</template>
+                    <template v-if="entity.beforeDisplay.geoContinent !== ''">{{ entity.beforeDisplay.geoContinent }} / {{ entity.beforeDisplay.geoCountry }}</template>
                     <template v-else>no</template>
                   </span>
                 </div>
@@ -149,38 +245,38 @@ function fmtWeight(weight: number, unit: string): string {
                 <div class="abox-field-head">parcel</div>
                 <div class="abox-field-row">
                   <span class="abox-field-key">carrier</span>
-                  <span class="abox-field-val mono">{{ entity.before.body.carrier || '—' }}</span>
+                  <span class="abox-field-val mono">{{ entity.beforeDisplay.carrier || '—' }}</span>
                 </div>
                 <div class="abox-field-row">
                   <span class="abox-field-key">weight</span>
-                  <span class="abox-field-val mono">{{ fmtWeight(entity.before.body.weight, entity.before.body.weightUnit) }}</span>
+                  <span class="abox-field-val mono">{{ entity.beforeDisplay.weight > 0 ? fmtWeight(entity.beforeDisplay.weight, entity.beforeDisplay.weightUnit) : '—' }}</span>
                 </div>
                 <div class="abox-field-row">
                   <span class="abox-field-key">status</span>
-                  <span class="abox-field-val mono">{{ entity.before.body.status || '—' }}</span>
+                  <span class="abox-field-val mono">{{ entity.beforeDisplay.status || '—' }}</span>
                 </div>
               </div>
               <div class="abox-field-group">
                 <div class="abox-field-head">pii</div>
                 <div class="abox-field-row">
                   <span class="abox-field-key">name</span>
-                  <span class="abox-field-val mono">{{ entity.before.body.recipientName || '—' }}</span>
+                  <span class="abox-field-val mono">{{ entity.beforeDisplay.recipientName || '—' }}</span>
                 </div>
                 <div class="abox-field-row">
                   <span class="abox-field-key">email</span>
-                  <span class="abox-field-val mono">{{ entity.before.body.recipientEmail || '—' }}</span>
+                  <span class="abox-field-val mono">{{ entity.beforeDisplay.recipientEmail || '—' }}</span>
                 </div>
                 <div class="abox-field-row">
                   <span class="abox-field-key">phone</span>
-                  <span class="abox-field-val mono">{{ entity.before.body.recipientPhone || '—' }}</span>
+                  <span class="abox-field-val mono">{{ entity.beforeDisplay.recipientPhone || '—' }}</span>
                 </div>
                 <div class="abox-field-row">
                   <span class="abox-field-key">lawful basis</span>
-                  <span class="abox-field-val mono">{{ entity.before.body.lawfulBasis }}</span>
+                  <span class="abox-field-val mono">{{ entity.beforeDisplay.lawfulBasis || '—' }}</span>
                 </div>
                 <div class="abox-field-row">
                   <span class="abox-field-key">consent handled</span>
-                  <span class="abox-field-val mono">{{ entity.before.consentHandled !== undefined ? String(entity.before.consentHandled) : 'not set' }}</span>
+                  <span class="abox-field-val mono">{{ entity.beforeDisplay.consentHandled !== undefined ? String(entity.beforeDisplay.consentHandled) : 'not set' }}</span>
                 </div>
               </div>
             </template>
@@ -203,8 +299,8 @@ function fmtWeight(weight: number, unit: string): string {
                 <span class="abox-field-val mono cr-brand">{{ entity.after.scanSeq }}</span>
               </div>
               <div class="abox-field-row">
-                <span class="abox-field-key">eventType</span>
-                <span class="abox-field-val mono cr-brand">{{ entity.after.eventType }}</span>
+                <span class="abox-field-key">status</span>
+                <span class="abox-field-val mono cr-brand">{{ entity.after.status }}</span>
               </div>
             </div>
             <div class="abox-field-group">

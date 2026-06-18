@@ -2,15 +2,15 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { DAGBuilder } from '../../src/builder/index.js';
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { ExecutionResultInterface } from '../../src/entities/execution/ExecutionResult.js';
 import type { DAG } from '../../src/entities/index.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 import { Validator } from '../../src/validation/Validator.js';
+import { TestNode } from '../_support/TestNode.js';
 
 // ── Observer subclass ─────────────────────────────────────────────────────
 
@@ -39,36 +39,28 @@ class CountingDagonizer<TState extends NodeStateBase> extends Dagonizer<TState> 
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-const makeNode = (
-  name: string,
-  outputs: readonly string[],
-): NodeInterface<NodeStateBase> => ({
-  name,
-  outputs,
-  'contract': EMPTY_CONTRACT_FRAGMENT,
-  'timeout': Timeout.none(),
-  async execute() { return { 'errors': [], 'output': outputs[0] as string }; },
-});
+const makeNode = (name: string, outputs: readonly string[]) =>
+  TestNode.make<NodeStateBase>(name, outputs, () => outputs[0] as string);
 
-const makeErrorNode = (
-  name: string,
-): NodeInterface<NodeStateBase> => ({
-  name,
-  'outputs': ['done'],
-  'contract': EMPTY_CONTRACT_FRAGMENT,
-  'timeout': Timeout.none(),
-  async execute(state) {
-    state.collectError({
-      'code':        'ERR',
-      'context':     {},
-      'message':     'node failed',
-      'operation':   name,
-      'recoverable': false,
-      'timestamp':   new Date().toISOString(),
-    });
-    return { 'errors': [], 'output': 'done' };
-  },
-});
+// Use a class for the error node since it needs state access in executeOne.
+const makeErrorNode = (nodeName: string) => {
+  class ErrorNode extends ScalarNode<NodeStateBase, 'done'> {
+    readonly name = nodeName;
+    readonly outputs = ['done'] as const;
+    protected async executeOne(state: NodeStateBase): Promise<NodeOutputInterface<'done'>> {
+      state.collectError({
+        'code':        'ERR',
+        'context':     {},
+        'message':     'node failed',
+        'operation':   nodeName,
+        'recoverable': false,
+        'timestamp':   new Date().toISOString(),
+      });
+      return { 'errors': [], 'output': 'done' as const };
+    }
+  }
+  return new ErrorNode();
+};
 
 // ── 1. Schema validation ──────────────────────────────────────────────────
 

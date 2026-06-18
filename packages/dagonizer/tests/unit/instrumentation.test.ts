@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
-import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
+import { ScalarNode } from '../../src/core/ScalarNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAGDeriver } from '../../src/derive/DAGDeriver.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { ExecutionResultInterface } from '../../src/entities/execution/ExecutionResult.js';
 import type { DAG } from '../../src/entities/index.js';
+import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 import { TestNode } from '../_support/TestNode.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -49,6 +48,17 @@ class RecordingDagonizer extends Dagonizer<NodeStateBase> {
   hooksOfType(hookName: string): Call[] {
     return this.calls.filter((call) => call.hook === hookName);
   }
+
+  // Placement paths the dispatcher threaded into `onNodeStart` / `onNodeEnd`
+  // for a given node, in fire order. The path is the last positional arg of
+  // each hook (index 2 for nodeStart, index 3 for nodeEnd). Each path is
+  // copied so callers see a stable snapshot rather than the live readonly view.
+  pathsFor(hook: 'nodeStart' | 'nodeEnd', nodeName: string): readonly (readonly string[])[] {
+    const pathIndex = hook === 'nodeStart' ? 2 : 3;
+    return this.calls
+      .filter((call) => call.hook === hook && call.args[0] === nodeName)
+      .map((call) => [...(call.args[pathIndex] as readonly string[])]);
+  }
 }
 
 // ── Three-node linear DAG used by several tests ──────────────────────────
@@ -68,6 +78,87 @@ const linearDAG: DAG = {
     { '@id': 'urn:noocodex:dag:linear/node/c', '@type': 'SingleNode',
       'name': 'c', 'node': 'c', 'outputs': { 'success': 'end' } },
     { '@id': 'urn:noocodex:dag:linear/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+  ],
+};
+
+// ── Nested DAG fixtures for placementPath threading ──────────────────────
+//
+// Three levels: pp-parent embeds pp-middle, which embeds pp-leaf. A single
+// execution exercises empty / one-deep / two-deep placement paths.
+
+// Innermost DAG: used as the inner placement inside `middleDAG`.
+const leafDAG: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id':   'urn:noocodex:dag:pp-leaf',
+  '@type': 'DAG',
+  'name': 'pp-leaf',
+  'version': '1',
+  'entrypoint': 'leaf-step',
+  'nodes': [
+    {
+      '@id':   'urn:noocodex:dag:pp-leaf/node/leaf-step',
+      '@type': 'SingleNode',
+      'name':  'leaf-step',
+      'node':  'leaf-step',
+      'outputs': { 'done': 'end' },
+    },
+    { '@id': 'urn:noocodex:dag:pp-leaf/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+  ],
+};
+
+// Middle DAG: wraps `leafDAG` so the leaf runs at depth 2 inside the parent.
+const middleDAG: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id':   'urn:noocodex:dag:pp-middle',
+  '@type': 'DAG',
+  'name': 'pp-middle',
+  'version': '1',
+  'entrypoint': 'middle-step',
+  'nodes': [
+    {
+      '@id':   'urn:noocodex:dag:pp-middle/node/middle-step',
+      '@type': 'SingleNode',
+      'name':  'middle-step',
+      'node':  'middle-step',
+      'outputs': { 'next': 'run-leaf' },
+    },
+    {
+      '@id':   'urn:noocodex:dag:pp-middle/node/run-leaf',
+      '@type': 'EmbeddedDAGNode',
+      'name':  'run-leaf',
+      'dag':   'pp-leaf',
+      'outputs': { 'success': 'end', 'error': 'end' },
+    },
+    { '@id': 'urn:noocodex:dag:pp-middle/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+  ],
+};
+
+// Parent DAG: top-level placement, then one embedded-DAG (which itself
+// nests another embedded-DAG). Used to assert empty / one-deep / two-deep
+// paths in a single execution.
+const placementParentDAG: DAG = {
+  '@context': DAG_CONTEXT,
+  '@id':   'urn:noocodex:dag:pp-parent',
+  '@type': 'DAG',
+  'name': 'pp-parent',
+  'version': '1',
+  'entrypoint': 'top-step',
+  'nodes': [
+    {
+      '@id':   'urn:noocodex:dag:pp-parent/node/top-step',
+      '@type': 'SingleNode',
+      'name':  'top-step',
+      'node':  'top-step',
+      'outputs': { 'next': 'run-middle' },
+    },
+    {
+      '@id':   'urn:noocodex:dag:pp-parent/node/run-middle',
+      '@type': 'EmbeddedDAGNode',
+      'name':  'run-middle',
+      'dag':   'pp-middle',
+      'outputs': { 'success': 'end', 'error': 'end' },
+    },
+    { '@id': 'urn:noocodex:dag:pp-parent/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
   ],
 };
 
@@ -166,9 +257,9 @@ void describe('Dagonizer subclass hooks contract', () => {
   void it('onContractWarning fires when a contract-bearing DAG has a dead-write', () => {
     const dispatcher = new RecordingDagonizer();
 
-    const rootNode = makeNodeWithContract('root', ['success'], { 'hardRequired': [], 'produces': ['input'] });
-    const aNode    = makeNodeWithContract('a',    ['success'], { 'hardRequired': ['input'], 'produces': ['x', 'unused'] });
-    const bNode    = makeNodeWithContract('b',    ['success'], { 'hardRequired': ['x'],     'produces': ['done'] });
+    const rootNode = makeNodeWithContract<NodeStateBase>('root', ['success'], { 'hardRequired': [], 'produces': ['input'] });
+    const aNode    = makeNodeWithContract<NodeStateBase>('a',    ['success'], { 'hardRequired': ['input'], 'produces': ['x', 'unused'] });
+    const bNode    = makeNodeWithContract<NodeStateBase>('b',    ['success'], { 'hardRequired': ['x'],     'produces': ['done'] });
 
     dispatcher.registerNode(rootNode);
     dispatcher.registerNode(aNode);
@@ -195,12 +286,10 @@ void describe('Dagonizer subclass hooks contract', () => {
   void it('onError fires when a node throws', async () => {
     const dispatcher = new RecordingDagonizer();
 
-    class BoomNode implements NodeInterface<NodeStateBase, 'success'> {
+    class BoomNode extends ScalarNode<NodeStateBase, 'success'> {
       readonly name = 'boom';
       readonly outputs = ['success'] as const;
-  readonly 'contract' = EMPTY_CONTRACT_FRAGMENT;
-      readonly timeout = Timeout.none();
-      async execute(_state: NodeStateBase): Promise<{ errors: []; output: 'success' }> { throw new Error('boom went off'); }
+      protected async executeOne(_state: NodeStateBase): Promise<NodeOutputInterface<'success'>> { throw new Error('boom went off'); }
     }
     dispatcher.registerNode(new BoomNode());
 
@@ -267,5 +356,126 @@ void describe('Dagonizer subclass hooks contract', () => {
       async () => { await dispatcher.execute('inst-throw', new NodeStateBase()); },
       /hook exploded on a/,
     );
+  });
+
+  void it('threads placementPath: empty for top-level nodes, single-element for one-deep, full path for two-deep', async () => {
+    const dispatcher = new RecordingDagonizer();
+
+    dispatcher.registerNode(makeNode('top-step',    ['next']));
+    dispatcher.registerNode(makeNode('middle-step', ['next']));
+    dispatcher.registerNode(makeNode('leaf-step',   ['done']));
+
+    dispatcher.registerDAG(leafDAG);
+    dispatcher.registerDAG(middleDAG);
+    dispatcher.registerDAG(placementParentDAG);
+
+    const result = await dispatcher.execute('pp-parent', new NodeStateBase());
+    assert.equal(result.state.lifecycle.kind, 'completed');
+
+    // top-step ran at the root of pp-parent: path is empty
+    assert.deepEqual(
+      dispatcher.pathsFor('nodeStart', 'top-step'),
+      [[]],
+      'top-step fires onNodeStart with empty placementPath',
+    );
+    assert.deepEqual(
+      dispatcher.pathsFor('nodeEnd', 'top-step'),
+      [[]],
+      'top-step fires onNodeEnd with empty placementPath',
+    );
+
+    // run-middle is the embedded-DAG placement in pp-parent; its own
+    // onNodeStart fires at the parent level so it too carries an empty path.
+    assert.deepEqual(
+      dispatcher.pathsFor('nodeStart', 'run-middle'),
+      [[]],
+      'run-middle (top-level placement) carries empty path',
+    );
+
+    // middle-step runs inside the run-middle placement: path is ['run-middle']
+    assert.deepEqual(
+      dispatcher.pathsFor('nodeStart', 'middle-step'),
+      [['run-middle']],
+      'middle-step carries one-deep placementPath',
+    );
+
+    // leaf-step lives inside run-leaf inside run-middle: full ancestry.
+    assert.deepEqual(
+      dispatcher.pathsFor('nodeStart', 'leaf-step'),
+      [['run-middle', 'run-leaf']],
+      'leaf-step carries the full two-deep placementPath',
+    );
+    assert.deepEqual(
+      dispatcher.pathsFor('nodeEnd', 'leaf-step'),
+      [['run-middle', 'run-leaf']],
+      'leaf-step onNodeEnd matches the same two-deep path',
+    );
+  });
+
+  void it('emits distinct placement paths for two embed placements pointing at the same inner DAG', async () => {
+    // Mirrors the Archivist case: two embedded-DAG placements point at the
+    // SAME inner DAG. The inner node fires twice, once per outer placement,
+    // and each fire must carry its OWN outer name as the path so the
+    // visualiser can disambiguate same-named inner nodes.
+
+    const innerDAG: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':   'urn:noocodex:dag:pp-shared-inner',
+      '@type': 'DAG',
+      'name': 'pp-shared-inner',
+      'version': '1',
+      'entrypoint': 'inner-step',
+      'nodes': [
+        {
+          '@id':   'urn:noocodex:dag:pp-shared-inner/node/inner-step',
+          '@type': 'SingleNode',
+          'name':  'inner-step',
+          'node':  'inner-step',
+          'outputs': { 'done': 'end' },
+        },
+        { '@id': 'urn:noocodex:dag:pp-shared-inner/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
+    };
+
+    const twoInstancesDAG: DAG = {
+      '@context': DAG_CONTEXT,
+      '@id':   'urn:noocodex:dag:pp-two-instances',
+      '@type': 'DAG',
+      'name': 'pp-two-instances',
+      'version': '1',
+      'entrypoint': 'first-embed',
+      'nodes': [
+        {
+          '@id':   'urn:noocodex:dag:pp-two-instances/node/first-embed',
+          '@type': 'EmbeddedDAGNode',
+          'name':  'first-embed',
+          'dag':   'pp-shared-inner',
+          'outputs': { 'success': 'second-embed', 'error': 'second-embed' },
+        },
+        {
+          '@id':   'urn:noocodex:dag:pp-two-instances/node/second-embed',
+          '@type': 'EmbeddedDAGNode',
+          'name':  'second-embed',
+          'dag':   'pp-shared-inner',
+          'outputs': { 'success': 'end', 'error': 'end' },
+        },
+        { '@id': 'urn:noocodex:dag:pp-two-instances/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' }
+      ],
+    };
+
+    const dispatcher = new RecordingDagonizer();
+
+    dispatcher.registerNode(makeNode('inner-step', ['done']));
+    dispatcher.registerDAG(innerDAG);
+    dispatcher.registerDAG(twoInstancesDAG);
+
+    await dispatcher.execute('pp-two-instances', new NodeStateBase());
+
+    // inner-step fires once under `first-embed` and once under
+    // `second-embed`. The path discriminates the two instances.
+    const innerPaths = dispatcher.pathsFor('nodeStart', 'inner-step');
+    assert.equal(innerPaths.length, 2, 'inner-step fires once per outer placement');
+    assert.deepEqual(innerPaths[0], ['first-embed']);
+    assert.deepEqual(innerPaths[1], ['second-embed']);
   });
 });

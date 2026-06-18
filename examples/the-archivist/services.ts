@@ -44,12 +44,13 @@ export interface ScoredCandidate {
 }
 
 /**
- * Every intent the classifier may emit. The four "legacy" intents
- * (`search` / `describe` / `recommend` / `off-topic`) drive the original
- * pipeline; the four newer intents (`lookup-author` / `find-reviews` /
- * `describe-book` / `recommend-similar`) each route to a dedicated
- * embedded-DAG branch. `recall-memories` is the meta-query intent: the
- * visitor asked what the agent has seen/remembered across sessions.
+ * Every intent the classifier may emit. The four broad intents
+ * (`search` / `describe` / `recommend` / `off-topic`) drive the
+ * general pipeline; the four specific intents (`lookup-author` /
+ * `find-reviews` / `describe-book` / `recommend-similar`) each route
+ * to a dedicated embedded-DAG branch. `recall-memories` is the
+ * meta-query intent: the visitor asked what the agent has
+ * seen/remembered across sessions.
  */
 export type ClassifiedIntent =
   | 'lookup-author'

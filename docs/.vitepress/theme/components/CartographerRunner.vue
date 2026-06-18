@@ -23,36 +23,50 @@ import { computed, nextTick, onMounted, ref } from 'vue';
 import { CartographerState } from '../../../../examples/the-cartographer/CartographerState.ts';
 import type { JourneyInsights, RegionInsights } from '../../../../examples/the-cartographer/CartographerState.ts';
 import type { CartographerServices } from '../../../../examples/the-cartographer/CartographerServices.ts';
-import { cartographerWorkersDAG, cartographerWorkersBundle, eventPipelineDAG } from '../../../../examples/the-cartographer/dag.ts';
-import { canonicalizeDAG, canonicalizeBundle } from '../../../../examples/the-cartographer/embedded-dags/CanonicalizeDAG.ts';
-import { ingestSourceDAG, ingestSourceBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestSourceDAG.ts';
-import { ingestJsonDAG, ingestJsonBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestJsonDAG.ts';
-import { ingestCsvDAG, ingestCsvBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestCsvDAG.ts';
-import { ingestNdjsonGzDAG, ingestNdjsonGzBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestNdjsonGzDAG.ts';
-import { geoResolveDAG, geoResolveBundle } from '../../../../examples/the-cartographer/embedded-dags/GeoResolveDAG.ts';
-import { gdprComplianceDAG, gdprComplianceBundle } from '../../../../examples/the-cartographer/embedded-dags/GdprComplianceDAG.ts';
-import { orderEnrichmentDAG, orderEnrichmentBundle } from '../../../../examples/the-cartographer/embedded-dags/OrderEnrichmentDAG.ts';
+import { cartographerWorkersDAG, buildCartographerWorkersBundle, eventPipelineBundle } from '../../../../examples/the-cartographer/dag.ts';
+import { ingestSourceBundle } from '../../../../examples/the-cartographer/embedded-dags/IngestSourceDAG.ts';
+import { geoResolveBundle } from '../../../../examples/the-cartographer/embedded-dags/GeoResolveDAG.ts';
+import { gdprComplianceBundle } from '../../../../examples/the-cartographer/embedded-dags/GdprComplianceDAG.ts';
+import { orderEnrichmentBundle } from '../../../../examples/the-cartographer/embedded-dags/OrderEnrichmentDAG.ts';
 import { GeoResolvers } from '../../../../examples/the-cartographer/services/GeoResolvers.ts';
 import type { EnrichedShipment } from '../../../../examples/the-cartographer/entities/EnrichedShipment.ts';
-import type { CanonicalEvent } from '../../../../examples/the-cartographer/entities/CanonicalEvent.ts';
+import type { CanonicalEventVariant } from '../../../../examples/the-cartographer/entities/CanonicalEvent.ts';
+import type { FormatMix } from '../../../../examples/the-cartographer/services.ts';
 
 import { ObservedDagonizer } from './ObservedDagonizer.ts';
+import { WebWorkerContainer } from '@noocodex/dagonizer-executor-web';
+import type { WebWorkerLikeInterface } from '@noocodex/dagonizer-executor-web';
 import DagGraph from './DagGraph.vue';
 import PanesTabs from './PanesTabs.vue';
 import AboxAccordion from './AboxAccordion.vue';
 import type { AboxEntity } from './AboxAccordion.vue';
+import Spinner from './Spinner.vue';
+
+// ── Web-worker container ───────────────────────────────────────────────────────
+// Runs the CPU-heavy stream-event scatter body (decode → route → per-type
+// pipelines) off the main thread. `createWorker` is the consumer seam Vite needs
+// to chunk the worker entry; the entry statically injects its registry so no
+// dynamic import runs in the worker.
+class CartographerWorkerContainer extends WebWorkerContainer {
+  protected override createWorker(): WebWorkerLikeInterface {
+    return new Worker(
+      new URL('./cartographerWorkerEntry.ts', import.meta.url),
+      { 'type': 'module' },
+    ) as unknown as WebWorkerLikeInterface;
+  }
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 type TraceEvent =
   | { readonly kind: 'start'; readonly node: string; readonly ts: number }
-  | { readonly kind: 'end';   readonly node: string; readonly ts: number; readonly output: string | undefined }
+  | { readonly kind: 'end';   readonly node: string; readonly ts: number; readonly output: string | null }
   | { readonly kind: 'error'; readonly node: string; readonly ts: number; readonly message: string };
 
 /** One line in the live stream feed (one gathered record per line). */
 interface StreamLine {
   readonly shipmentId: string;
   readonly scanSeq: number;
-  readonly eventType: string;
+  readonly status: string;
   readonly continent: string;
   readonly redacted: boolean;
 }
@@ -78,25 +92,122 @@ const feedContainerRef = ref<HTMLElement | null>(null);
 // Finished state snapshot (set after execution completes).
 const records = ref<EnrichedShipment[]>([]);
 /** Pre-stream canonical events captured in onFlowEnd (the before payloads). */
-const canonicalEvents = ref<CanonicalEvent[]>([]);
+const canonicalEvents = ref<CanonicalEventVariant[]>([]);
 const insightsMap = ref<Map<string, RegionInsights>>(new Map());
 const journeysMap = ref<Map<string, JourneyInsights>>(new Map());
 
 const dagGraph = ref<InstanceType<typeof DagGraph> | null>(null);
 
-// The DAG embedded-DAG registry: maps each sub-DAG key (used in the event-pipeline's
-// embeddedDAG calls) to its DAG object so DagGraph can expand them.
-const embeddedDagRegistry = new Map([
-  ['ingest-source',    ingestSourceDAG],
-  ['ingest-json',      ingestJsonDAG],
-  ['ingest-csv',       ingestCsvDAG],
-  ['ingest-ndjson-gz', ingestNdjsonGzDAG],
-  ['event-pipeline',   eventPipelineDAG],
-  ['geo-resolve',      geoResolveDAG],
-  ['canonicalize',     canonicalizeDAG],
-  ['order-enrichment', orderEnrichmentDAG],
-  ['gdpr-compliance',  gdprComplianceDAG],
+// Every sub-DAG the cartographer DAG embeds, keyed by name, derived from the
+// scatter-body bundle so it never drifts. Lets the graph expand the full
+// topology (process-stream → stream-event → 5 per-type pipelines → geo-pipeline
+// → leaves) and animate inner nodes as the worker relay reports them.
+const embeddedDagRegistry = new Map(
+  eventPipelineBundle.dags.map((d) => [d.name, d] as const),
+);
+
+// ── Feed configuration ───────────────────────────────────────────────────────
+
+/**
+ * Per-payload-type row (mutable UI state). The visitor controls each type's
+ * SHARE of the total; the absolute count is apportioned from the global total
+ * at run time. Streaming is the only execution mode.
+ */
+interface TypeRow {
+  eventType: CanonicalEventVariant['eventType'];
+  pct: number;
+}
+
+/**
+ * Default wire-format spread applied to every payload type. Format is an
+ * internal axis — the panel exposes total + type spread only — but the
+ * generator still emits mixed JSON / CSV / gzip-NDJSON / YAML so the streaming
+ * decoder is exercised across every wire format.
+ */
+const DEFAULT_FORMAT_MIX: FormatMix = [
+  { format: 'json',   compression: 'none', weight: 3 },
+  { format: 'csv',    compression: 'none', weight: 2 },
+  { format: 'ndjson', compression: 'gzip', weight: 2 },
+  { format: 'yaml',   compression: 'none', weight: 1 },
+];
+
+const typeRows = ref<TypeRow[]>([
+  { eventType: 'position-ping',         pct: 40 },
+  { eventType: 'facility-scan',         pct: 25 },
+  { eventType: 'sensor-reading',        pct: 20 },
+  { eventType: 'customs-event',         pct: 10 },
+  { eventType: 'delivery-confirmation', pct: 5  },
 ]);
+
+/** Total events to stream this run; clamped to [1, 1,000,000] at run time. */
+const totalEventsInput = ref(100000);
+
+/** Worker pool size; clamped to [1, 32] at run time. */
+const poolSizeInput = ref(
+  typeof navigator !== 'undefined' && navigator.hardwareConcurrency > 0
+    ? Math.max(2, navigator.hardwareConcurrency - 2)
+    : 4,
+);
+
+/** Reservoir capacity (events per worker dispatch batch); clamped to [1, 10000] at run time. */
+const batchCapacityInput = ref(1000);
+
+/** Sum of the per-type shares — normalises the spread into absolute counts. */
+const sumPct = computed(() =>
+  typeRows.value.reduce((s, r) => s + Math.max(0, r.pct), 0),
+);
+
+/** The clamped total events the next run will stream. */
+const clampedTotal = computed(() => {
+  const v = Math.floor(totalEventsInput.value);
+  return Math.min(1_000_000, Math.max(1, Number.isNaN(v) ? 1 : v));
+});
+
+/** The clamped worker pool size for the next run. */
+const clampedPoolSize = computed(() => {
+  const v = Math.floor(poolSizeInput.value);
+  return Math.min(32, Math.max(1, Number.isNaN(v) ? 1 : v));
+});
+
+/** The clamped reservoir capacity (batch size) for the next run. */
+const clampedBatchCapacity = computed(() => {
+  const v = Math.floor(batchCapacityInput.value);
+  return Math.min(10_000, Math.max(1, Number.isNaN(v) ? 1 : v));
+});
+
+/**
+ * Per-type absolute counts apportioned from the total by share, using the
+ * largest-remainder method so the counts sum exactly to the total.
+ */
+const derivedCounts = computed<number[]>(() => {
+  const total = clampedTotal.value;
+  const denom = sumPct.value;
+  if (denom <= 0) return typeRows.value.map(() => 0);
+  const exact = typeRows.value.map((r) => (total * Math.max(0, r.pct)) / denom);
+  const counts = exact.map((x) => Math.floor(x));
+  let remainder = total - counts.reduce((s, x) => s + x, 0);
+  const byFraction = exact
+    .map((x, i) => ({ i, frac: x - Math.floor(x) }))
+    .sort((a, b) => b.frac - a.frac);
+  for (let k = 0; k < byFraction.length && remainder > 0; k++) {
+    const entry = byFraction[k];
+    if (entry === undefined) break;
+    counts[entry.i] = (counts[entry.i] ?? 0) + 1;
+    remainder--;
+  }
+  return counts;
+});
+
+/** Maximum number of feed lines held in DOM at any time (virtualization). */
+const MAX_VISIBLE_FEED = 200;
+
+/** True total of records appended across the entire run (never trimmed). */
+const processedCount = ref(0);
+
+function clampTypePct(row: TypeRow): void {
+  const v = Math.floor(row.pct);
+  row.pct = Number.isNaN(v) ? 0 : Math.max(0, Math.min(100, v));
+}
 
 // ── Abort control ────────────────────────────────────────────────────────────
 let activeAbortController: AbortController | null = null;
@@ -135,7 +246,7 @@ const savings = computed(() => {
  */
 const aboxEntities = computed<AboxEntity[]>(() => {
   // Build a lookup map keyed by "shipmentId::scanSeq" for O(1) pairing.
-  const beforeMap = new Map<string, CanonicalEvent>();
+  const beforeMap = new Map<string, CanonicalEventVariant>();
   for (const ev of canonicalEvents.value) {
     const key = `${ev.shipmentId}::${ev.body.scanSeq}`;
     // If duplicates exist, prefer the one whose epochMs matches (first wins).
@@ -147,7 +258,7 @@ const aboxEntities = computed<AboxEntity[]>(() => {
   return records.value.map<AboxEntity>((after) => {
     const key = `${after.shipmentId}::${after.scanSeq}`;
     const before = beforeMap.get(key);
-    const label = `${after.shipmentId} · scan ${after.scanSeq} · ${after.eventType} · ${after.continent}`;
+    const label = `${after.shipmentId} · scan ${after.scanSeq} · ${after.status} · ${after.continent}`;
     return { 'id': key, label, before, after };
   });
 });
@@ -182,8 +293,14 @@ const leftTabs = computed(() => [
   {
     'key': 'stream',
     'label': 'Stream',
-    'badge': isRunning.value ? 'live' : (streamFeed.value.length > 0 ? String(streamFeed.value.length) : ''),
+    'badge': isRunning.value ? 'live' : (processedCount.value > 0 ? String(processedCount.value) : ''),
     'tone': (isRunning.value ? 'live' : 'default') as 'live' | 'default',
+  },
+  {
+    'key': 'config',
+    'label': 'Config',
+    'badge': String(clampedTotal.value),
+    'tone': 'default' as const,
   },
   {
     'key': 'insights',
@@ -232,6 +349,88 @@ function scrollFeedToBottom(): void {
   }
 }
 
+// ── Live-update throttling (survives 1,000,000-event runs) ───────────────────
+// The streaming scatter fires onNodeStart/onNodeEnd for every inner node of
+// every clone — N events × M sub-DAG nodes is millions of observer calls.
+// Mutating a reactive ref on each call is O(n²) and freezes the tab. The
+// observer instead writes plain buffers and schedules a single
+// requestAnimationFrame flush, so the DOM updates at most once per frame
+// regardless of event throughput. Node-id and edge sets are bounded by the
+// static sub-DAG (~dozens), never by event count.
+const MAX_TRACE = 60;
+
+let latestRunState: CartographerState | null = null;
+let traceBuffer: TraceEvent[] = [];
+const frameActiveNodes = new Set<string>();
+const frameCompletedNodes = new Set<string>();
+const frameTraversedEdges = new Set<string>();
+let frameErroredNode: string | null = null;
+let flushScheduled = false;
+let flushHandle = 0;
+
+/** Exact processed-event count from the bounded region rollup. */
+function exactProcessed(state: CartographerState): number {
+  let sum = 0;
+  for (const region of state.insights.values()) sum += region.shipmentCount;
+  return sum;
+}
+
+/** Push progress, feed, and processed-count from a state snapshot. */
+function applyLiveState(state: CartographerState): void {
+  const processed = exactProcessed(state);
+  processedCount.value = processed;
+  if (totalEvents > 0) {
+    progressPct.value = Math.min(100, Math.round((processed / totalEvents) * 100));
+  }
+  streamFeed.value = state.sampleRecords.slice(-MAX_VISIBLE_FEED).map((rec) => ({
+    shipmentId: rec.shipmentId,
+    scanSeq:    rec.scanSeq,
+    status:     rec.status,
+    continent:  rec.continent,
+    redacted:   rec.redactionApplied,
+  }));
+}
+
+/** Apply all buffered observer state to the DOM. Runs at most once per frame. */
+function flushLiveState(): void {
+  flushScheduled = false;
+  for (const id of frameCompletedNodes) dagGraph.value?.setCompleted(id);
+  frameCompletedNodes.clear();
+  for (const id of frameActiveNodes) dagGraph.value?.setActive(id);
+  frameActiveNodes.clear();
+  for (const edge of frameTraversedEdges) {
+    const sep = edge.lastIndexOf('|');
+    dagGraph.value?.markEdgeTraversed(edge.slice(0, sep), edge.slice(sep + 1));
+  }
+  frameTraversedEdges.clear();
+  if (frameErroredNode !== null) { dagGraph.value?.setErrored(frameErroredNode); frameErroredNode = null; }
+
+  trace.value = traceBuffer.slice(-MAX_TRACE);
+  if (latestRunState !== null) {
+    applyLiveState(latestRunState);
+    void nextTick(scrollFeedToBottom);
+  }
+}
+
+function scheduleFlush(): void {
+  if (flushScheduled) return;
+  flushScheduled = true;
+  flushHandle = requestAnimationFrame(flushLiveState);
+}
+
+/** Reset throttle buffers between runs. */
+function resetLiveBuffers(): void {
+  if (flushHandle !== 0) cancelAnimationFrame(flushHandle);
+  flushHandle = 0;
+  flushScheduled = false;
+  latestRunState = null;
+  traceBuffer = [];
+  frameActiveNodes.clear();
+  frameCompletedNodes.clear();
+  frameTraversedEdges.clear();
+  frameErroredNode = null;
+}
+
 // ── Run ───────────────────────────────────────────────────────────────────────
 async function run(): Promise<void> {
   if (isRunning.value) return;
@@ -245,95 +444,107 @@ async function run(): Promise<void> {
   insightsMap.value = new Map();
   journeysMap.value = new Map();
   streamFeed.value = [];
+  processedCount.value = 0;
   progressPct.value = 0;
-  totalEvents = 0;
+  totalEvents = clampedTotal.value;
+  resetLiveBuffers();
 
   await dagGraph.value?.reset();
 
-  const services: CartographerServices = GeoResolvers.live();
-
-  /** Count of records seen on the previous onNodeEnd call — detect growth. */
-  let prevRecordCount = 0;
-
-  const observer = {
-    onNodeStart(nodeName: string, _state: CartographerState, placementPath: readonly string[] = []) {
-      const fullId = [...placementPath, nodeName].join('/');
-      trace.value = [...trace.value, { 'kind': 'start', 'node': fullId, 'ts': Date.now() }];
-      dagGraph.value?.setActive(fullId);
-    },
-    onNodeEnd(nodeName: string, output: string | undefined, state: CartographerState, placementPath: readonly string[] = []) {
-      const fullId = [...placementPath, nodeName].join('/');
-      trace.value = [...trace.value, { 'kind': 'end', 'node': fullId, output, 'ts': Date.now() }];
-      dagGraph.value?.setCompleted(fullId);
-      if (output !== undefined) dagGraph.value?.markEdgeTraversed(fullId, output);
-
-      // Capture total once the ingest fan-in merge-events node fires.
-      // At that point canonicalEvents is fully populated.
-      if (nodeName === 'merge-events' && state.canonicalEvents.length > 0) {
-        totalEvents = state.canonicalEvents.length;
-      }
-
-      // Detect new gathered records (scatter appends to state.records).
-      const currentCount = state.records.length;
-      if (currentCount > prevRecordCount) {
-        const newRecords = state.records.slice(prevRecordCount, currentCount);
-        for (const rec of newRecords) {
-          streamFeed.value = [...streamFeed.value, {
-            'shipmentId':  rec.shipmentId,
-            'scanSeq':     rec.scanSeq,
-            'eventType':   rec.eventType,
-            'continent':   rec.continent,
-            'redacted':    rec.redactionApplied,
-          }];
-        }
-        prevRecordCount = currentCount;
-
-        // Update progress percentage.
-        if (totalEvents > 0) {
-          progressPct.value = Math.min(100, Math.round((currentCount / totalEvents) * 100));
-        }
-
-        // Auto-scroll feed on next tick (after DOM update).
-        void nextTick(scrollFeedToBottom);
-      }
-    },
-    onError(nodeName: string, error: Error, _state: CartographerState, placementPath: readonly string[] = []) {
-      const fullId = [...placementPath, nodeName].join('/');
-      trace.value = [...trace.value, { 'kind': 'error', 'node': fullId, 'ts': Date.now(), 'message': error.message !== '' ? error.message : String(error) }];
-      dagGraph.value?.setErrored(fullId);
-    },
-    onFlowEnd(_dagName: string, state: CartographerState) {
-      records.value = [...state.records];
-      // Capture pre-stream payload for the Before/After accordion.
-      canonicalEvents.value = [...state.canonicalEvents];
-      insightsMap.value = new Map(state.insights);
-      journeysMap.value = new Map(state.journeys);
-      progressPct.value = 100;
-    },
-  };
-
-  const dispatcher = new ObservedDagonizer<CartographerState, CartographerServices>({
-    services,
-    'observer': observer,
-  });
-
-  // Bundle registration order: sub-DAGs first so their names resolve.
-  dispatcher.registerBundle(geoResolveBundle);
-  dispatcher.registerBundle(canonicalizeBundle);
-  dispatcher.registerBundle(orderEnrichmentBundle);
-  dispatcher.registerBundle(gdprComplianceBundle);
-  dispatcher.registerBundle(ingestJsonBundle);
-  dispatcher.registerBundle(ingestCsvBundle);
-  dispatcher.registerBundle(ingestNdjsonGzBundle);
-  dispatcher.registerBundle(ingestSourceBundle);
-  dispatcher.registerBundle(cartographerWorkersBundle);
-
-  const state = new CartographerState();
-  state.eventCount = 16; // browser-friendly: small N so the demo completes quickly
-
-  activeAbortController = new AbortController();
+  let dispatcher: ObservedDagonizer<CartographerState, CartographerServices> | null = null;
 
   try {
+    // Offline recorded geo on both sides: the worker registry builds its own
+    // recorded services bag; the main thread (seed + summarize + gather) needs
+    // no network. Deterministic and infeasible-to-network-at-1M.
+    const services: CartographerServices = GeoResolvers.recorded();
+
+    // One worker pool drives the scatter fanout off the main thread. Pool size
+    // and reservoir capacity are visitor-controlled via the Config panel.
+    // The scatter binds container 'cpu' (cartographerWorkersDAG), so the body
+    // runs in these workers.
+    const container = new CartographerWorkerContainer({
+      'registryModule':  new URL('./cartographerWorkerEntry.ts', import.meta.url).href,
+      'registryVersion': '1.0.0',
+      'servicesConfig':  { 'useRecordedIp': true },
+      'poolSize':        clampedPoolSize.value,
+    });
+
+    const observer = {
+      onNodeStart(nodeName: string, _state: CartographerState, placementPath: readonly string[] = []) {
+        const fullId = [...placementPath, nodeName].join('/');
+        frameActiveNodes.add(fullId);
+        // Trace records top-level node events only; inner per-clone activity is
+        // conveyed through the progress bar, feed, and throttled graph lighting.
+        if (placementPath.length === 0) {
+          traceBuffer.push({ kind: 'start', node: fullId, ts: Date.now() });
+        }
+        scheduleFlush();
+      },
+      onNodeEnd(nodeName: string, output: string | null, state: CartographerState, placementPath: readonly string[] = []) {
+        const fullId = [...placementPath, nodeName].join('/');
+        latestRunState = state;
+        frameActiveNodes.delete(fullId);
+        frameCompletedNodes.add(fullId);
+        if (output !== null) frameTraversedEdges.add(`${fullId}|${output}`);
+        if (placementPath.length === 0) {
+          traceBuffer.push({ kind: 'end', node: fullId, ts: Date.now(), output });
+        }
+        scheduleFlush();
+      },
+      onError(nodeName: string, error: Error, _state: CartographerState, placementPath: readonly string[] = []) {
+        const fullId = [...placementPath, nodeName].join('/');
+        frameErroredNode = fullId;
+        traceBuffer.push({ kind: 'error', node: fullId, ts: Date.now(), message: error.message !== '' ? error.message : String(error) });
+        scheduleFlush();
+      },
+      onFlowEnd(_dagName: string, state: CartographerState) {
+        // Final synchronous flush — capture the terminal state exactly.
+        latestRunState = state;
+        records.value = [...state.sampleRecords];
+        // The streaming flow decodes inline; there is no materialised
+        // canonical-event array. The Before/After accordion's pre-stream source
+        // panel is wired in the separate UI follow-up.
+        canonicalEvents.value = [];
+        insightsMap.value = new Map(state.insights);
+        journeysMap.value = new Map(state.journeys);
+        trace.value = traceBuffer.slice(-MAX_TRACE);
+        applyLiveState(state);
+        progressPct.value = 100;
+      },
+    };
+
+    dispatcher = new ObservedDagonizer<CartographerState, CartographerServices>({
+      services,
+      'observer': observer,
+      'containers': { 'cpu': container },
+    });
+
+    // Bundle registration order: sub-DAGs first so their names resolve.
+    dispatcher.registerBundle(geoResolveBundle);
+    dispatcher.registerBundle(orderEnrichmentBundle);
+    dispatcher.registerBundle(gdprComplianceBundle);
+    dispatcher.registerBundle(ingestSourceBundle);
+    dispatcher.registerBundle(buildCartographerWorkersBundle(clampedBatchCapacity.value));
+
+    const state = new CartographerState();
+
+    // Apportion the total across payload types by share. Streaming is the only
+    // execution mode — the generative streamer yields events lazily so memory
+    // stays flat regardless of total.
+    const counts = derivedCounts.value;
+    state.eventConfig = typeRows.value.map((r, i) => ({
+      'eventType':  r.eventType,
+      'count':      counts[i] ?? 0,
+      'formatMix':  DEFAULT_FORMAT_MIX,
+    }));
+
+    state.useStreamingSource = true;
+    state.streamCount = clampedTotal.value;
+    state.eventCount = clampedTotal.value;
+
+    activeAbortController = new AbortController();
+
     const execution = dispatcher.execute('cartographer', state, { 'signal': activeAbortController.signal });
     for await (const stage of execution) {
       // Each yielded stage lights up a node via the observer hooks above.
@@ -344,7 +555,7 @@ async function run(): Promise<void> {
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error);
   } finally {
-    await dispatcher.destroy();
+    await dispatcher?.destroy();
     activeAbortController = null;
     isRunning.value = false;
     isDone.value = true;
@@ -359,8 +570,10 @@ function reset(): void {
   journeysMap.value = new Map();
   trace.value = [];
   streamFeed.value = [];
+  processedCount.value = 0;
   progressPct.value = 0;
   totalEvents = 0;
+  resetLiveBuffers();
   isDone.value = false;
   errorMessage.value = null;
   void dagGraph.value?.reset();
@@ -424,7 +637,7 @@ onMounted(() => {
                   <span class="cr-stream-sep">·</span>
                   <span class="cr-stream-scan mono">scan {{ line.scanSeq }}</span>
                   <span class="cr-stream-sep">·</span>
-                  <span class="cr-stream-type">{{ line.eventType }}</span>
+                  <span class="cr-stream-type">{{ line.status }}</span>
                   <span class="cr-stream-sep">·</span>
                   <span class="cr-stream-continent">{{ line.continent }}</span>
                   <template v-if="line.redacted">
@@ -433,6 +646,119 @@ onMounted(() => {
                   </template>
                 </div>
               </div>
+            </div>
+          </template>
+
+          <!-- Config tab: total events + payload-type spread (always streaming) -->
+          <template #config>
+            <div class="cr-left-pane cr-config-pane">
+
+              <!-- Total events -->
+              <div class="cr-config-section">
+                <div class="cr-section-head">Total events</div>
+                <div class="cr-stream-count-row">
+                  <input
+                    id="cartographer-total-events"
+                    name="cartographer-total-events"
+                    type="number"
+                    min="1"
+                    max="1000000"
+                    class="cr-count-input cr-count-input--wide"
+                    v-model.number="totalEventsInput"
+                  />
+                  <button type="button" class="cr-btn cr-btn--quickpick" @click="totalEventsInput = 1000">1k</button>
+                  <button type="button" class="cr-btn cr-btn--quickpick" @click="totalEventsInput = 10000">10k</button>
+                  <button type="button" class="cr-btn cr-btn--quickpick" @click="totalEventsInput = 100000">100k</button>
+                  <button type="button" class="cr-btn cr-btn--quickpick" @click="totalEventsInput = 1000000">1M</button>
+                </div>
+              </div>
+
+              <!-- Payload-type spread -->
+              <div class="cr-config-section">
+                <div class="cr-section-head">Payload type spread</div>
+                <table class="cr-table cr-table--compact cr-feed-table">
+                  <thead>
+                    <tr>
+                      <th>Payload type</th>
+                      <th>Share %</th>
+                      <th>≈ events</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(row, i) in typeRows" :key="row.eventType">
+                      <td class="cr-feed-fmt mono">{{ row.eventType }}</td>
+                      <td>
+                        <input
+                          :id="`cartographer-type-pct-${row.eventType}`"
+                          :name="`cartographer-type-pct-${row.eventType}`"
+                          type="number"
+                          min="0"
+                          max="100"
+                          class="cr-count-input"
+                          v-model.number="row.pct"
+                          @change="clampTypePct(row)"
+                        />
+                      </td>
+                      <td class="cr-feed-fmt mono">{{ (derivedCounts[i] ?? 0).toLocaleString() }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Execution knobs -->
+              <div class="cr-config-section">
+                <div class="cr-section-head">Execution</div>
+                <table class="cr-table cr-table--compact cr-feed-table">
+                  <tbody>
+                    <tr>
+                      <td>Worker pool size</td>
+                      <td>
+                        <input
+                          id="cartographer-pool-size"
+                          name="cartographer-pool-size"
+                          type="number"
+                          min="1"
+                          max="32"
+                          class="cr-count-input"
+                          v-model.number="poolSizeInput"
+                        />
+                      </td>
+                      <td class="cr-feed-fmt">threads (1–32)</td>
+                    </tr>
+                    <tr>
+                      <td>Batch size</td>
+                      <td>
+                        <input
+                          id="cartographer-batch-capacity"
+                          name="cartographer-batch-capacity"
+                          type="number"
+                          min="1"
+                          max="10000"
+                          class="cr-count-input"
+                          v-model.number="batchCapacityInput"
+                        />
+                      </td>
+                      <td class="cr-feed-fmt">events per worker dispatch (1–10 000)</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Summary line -->
+              <div class="cr-config-summary">
+                Always streaming: <span class="cr-config-count">{{ clampedTotal.toLocaleString() }}</span>
+                events across {{ typeRows.filter(r => r.pct > 0).length }} payload type(s),
+                {{ clampedPoolSize }} worker{{ clampedPoolSize !== 1 ? 's' : '' }},
+                batch size {{ clampedBatchCapacity.toLocaleString() }}
+              </div>
+
+              <div class="cr-config-note">
+                The generative streamer yields events lazily — heap stays flat regardless of total.
+                The live feed is virtualized to the most recent {{ MAX_VISIBLE_FEED }} lines and the
+                DAG/trace updates are frame-throttled, so a 1,000,000-event run does not freeze the
+                tab. The Stream badge shows the true processed count.
+              </div>
+
             </div>
           </template>
 
@@ -489,7 +815,7 @@ onMounted(() => {
                   </thead>
                   <tbody>
                     <tr v-for="row in continentRows" :key="row.region">
-                      <td>{{ row.region || row.continent }}</td>
+                      <td>{{ row.region }}</td>
                       <td>{{ row.shipmentCount }}</td>
                       <td>{{ row.shipmentCount > 0 ? pct(row.onTimeCount, row.shipmentCount) : '—' }}</td>
                       <td>{{ usdFromMinor(row.totalSubtotalUsdMinor) }}</td>
@@ -546,7 +872,7 @@ onMounted(() => {
                 class="cr-btn cr-btn--cancel"
                 @click="cancel"
               >
-                <span class="cr-btn-spinner" aria-hidden="true"></span>
+                <Spinner />
                 <span class="cr-btn-glyph">✕</span>
               </button>
               <button
@@ -620,7 +946,7 @@ onMounted(() => {
               >
                 <span class="cr-trace-kind">{{ entry.kind }}</span>
                 <span class="cr-trace-node mono">{{ entry.node }}</span>
-                <template v-if="entry.kind === 'end' && entry.output !== undefined">
+                <template v-if="entry.kind === 'end' && entry.output !== null">
                   <span class="cr-trace-output">→ {{ entry.output }}</span>
                 </template>
                 <template v-else-if="entry.kind === 'error'">
@@ -843,6 +1169,174 @@ onMounted(() => {
   background: rgba(212, 166, 73, 0.12);
 }
 
+/* ── Config pane ────────────────────────────────────────────────────────── */
+.cr-config-pane {
+  gap: 1rem;
+}
+
+.cr-config-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.cr-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.cr-btn--preset {
+  padding: 0.28rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  background: transparent;
+  color: var(--vp-c-text-2);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+  font-family: var(--vp-font-family-mono);
+}
+
+.cr-btn--preset:hover {
+  border-color: var(--dagonizer-brand);
+  color: var(--dagonizer-brand);
+  background: rgba(34, 232, 255, 0.07);
+}
+
+.cr-feed-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.cr-feed-fmt {
+  width: 6rem;
+  color: var(--dagonizer-brand);
+  font-size: 0.78rem;
+}
+
+.cr-btn--compression {
+  padding: 0.18rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: transparent;
+  color: var(--vp-c-text-3);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: var(--vp-font-family-mono);
+  transition: border-color 0.1s ease, color 0.1s ease, background 0.1s ease;
+}
+
+.cr-btn--compression-active {
+  border-color: var(--dagonizer-brand3);
+  color: var(--dagonizer-brand3);
+  background: rgba(212, 166, 73, 0.1);
+}
+
+.cr-btn--compression:hover {
+  border-color: var(--dagonizer-brand);
+  color: var(--dagonizer-brand);
+}
+
+.cr-count-input {
+  width: 5rem;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.78rem;
+  font-family: var(--vp-font-family-mono);
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  appearance: textfield;
+}
+
+.cr-count-input:focus {
+  outline: none;
+  border-color: var(--dagonizer-brand);
+}
+
+.cr-count-input--wide {
+  width: 8rem;
+}
+
+.cr-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.cr-toggle-check {
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  accent-color: var(--dagonizer-brand);
+  cursor: pointer;
+}
+
+.cr-toggle-text {
+  font-size: 0.82rem;
+  color: var(--vp-c-text-1);
+  line-height: 1.45;
+}
+
+.cr-stream-count-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.cr-btn--quickpick {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  background: transparent;
+  color: var(--vp-c-text-3);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: var(--vp-font-family-mono);
+  transition: border-color 0.1s ease, color 0.1s ease;
+}
+
+.cr-btn--quickpick:hover {
+  border-color: var(--dagonizer-brand);
+  color: var(--dagonizer-brand);
+}
+
+.cr-config-summary {
+  font-size: 0.8rem;
+  color: var(--vp-c-text-3);
+  font-family: var(--vp-font-family-mono);
+  padding: 0.45rem 0.6rem;
+  background: var(--vp-c-bg);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 5px;
+}
+
+.cr-config-count {
+  color: var(--dagonizer-brand);
+  font-weight: 700;
+}
+
+.cr-config-note {
+  font-size: 0.76rem;
+  color: var(--vp-c-text-3);
+  line-height: 1.55;
+  padding: 0.5rem 0.65rem;
+  border-left: 2px solid var(--dagonizer-brand);
+  background: rgba(34, 232, 255, 0.04);
+  border-radius: 0 4px 4px 0;
+}
+
 /* ── Left pane: insights ───────────────────────────────────────────────── */
 .cr-left-pane {
   display: flex;
@@ -976,23 +1470,9 @@ onMounted(() => {
   color: var(--dagonizer-brand3);
 }
 
-.cr-btn-spinner {
-  position: absolute;
-  inset: 6px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.18);
-  border-top-color: rgba(255, 255, 255, 0.9);
-  animation: btn-spin 0.9s linear infinite;
-  pointer-events: none;
-}
-
 .cr-btn-glyph {
   position: relative;
   z-index: 1;
-}
-
-@keyframes btn-spin {
-  to { transform: rotate(360deg); }
 }
 
 /* ── Tables ────────────────────────────────────────────────────────────── */

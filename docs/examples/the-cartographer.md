@@ -31,9 +31,11 @@ Only the node domain differs: agent reasoning vs data enrichment. The DAG topolo
 lifecycle hooks, observer pattern, streaming scatter, and embedded-DAG composition
 are identical.
 
-Try it live below. Click **Run** to stream 16 synthetic tracking events through
-the full pipeline. Watch the **DAG** pane: nodes light cyan while executing, edges
-flash when traversed, and branching skips are visible as edges that never fire.
+Try it live below. Click **Run** to stream 21 synthetic tracking events (the
+default: 6 position-pings, 5 facility-scans, 4 sensor-readings, 3 customs-events,
+3 delivery-confirmations) through the full pipeline. Watch the **DAG** pane: nodes
+light cyan while executing, edges flash when traversed, and branching skips are
+visible as edges that never fire.
 
 <CartographerRunner />
 
@@ -78,9 +80,11 @@ cartographer (top-level)
 
 The top-level `cartographer` DAG uses **two streaming scatters**:
 
-1. **Ingestion fan-in** (`ingest-sources`): four source feeds (CSV, JSON, gzip NDJSON,
-   JSON customs) each run their own `ingest-source` sub-DAG in an isolated clone. The
-   `append` gather concatenates each clone's decoded `ingestedEvents` into one
+1. **Ingestion fan-in** (`ingest-sources`): source feeds across five event types
+   (position-ping, facility-scan, sensor-reading, customs-event, delivery-confirmation),
+   each encoded across a configurable format mix (csv/json/ndjson/yaml with per-format
+   weights and compression), each run their own `ingest-source` sub-DAG in an isolated
+   clone. The `append` gather concatenates each clone's decoded `ingestedEvents` into one
    `ingestBuckets` array; `merge-events` flattens it into the unified `canonicalEvents`
    collection. Shared transform nodes (`decompress`, `parse-csv`, `parse-json`,
    `parse-ndjson`, `map-fields`, `coerce-types`, `validate-event`) are reused across
@@ -118,9 +122,9 @@ all records to produce the savings tally.
 
 <<< ../../examples/the-cartographer/dag.ts#cartographer-dag
 
-### Branching enrichment: `event-pipeline`
+### Branching enrichment: `event-pipeline-typed`
 
-<<< ../../examples/the-cartographer/dag.ts#event-pipeline-dag
+<<< ../../examples/the-cartographer/dag.ts#event-pipeline-typed-dag
 
 ### Ingestion sub-DAG: `ingest-source`
 
@@ -166,21 +170,22 @@ Factory that assembles the `CartographerServices` bag for the chosen backend.
 
 ### `seedEvents` — pre-phase
 
-The `pre`-phase node runs before the DAG entrypoint. It calls `Sources.build(state.eventCount)`
-to produce the four heterogeneous source feeds (JSON position-pings, CSV facility-scans,
-gzip NDJSON sensor-readings, JSON customs/delivery) and writes them to `state.sources`.
-The ingestion scatter then reads `state.sources` by path.
+The `pre`-phase node runs before the DAG entrypoint. It calls
+`Sources.buildTypedFeed(state.eventConfig)` (finite path) or sets `state.sources` to an
+`AsyncIterable<SourcePayload>` from `EventStreamSource.streamTyped(state.eventConfig, state.streamCount)`
+(streaming path) and writes the result to `state.sources`. The ingestion scatter then reads
+`state.sources` by path.
 
 <<< ../../examples/the-cartographer/nodes/seedEvents.ts#seed-events-node
 
-### `normalize` — local time at the scan's timezone
+### `canonicalizeCore` — timestamp and location normalization
 
-After geo-enrichment sets `state.geoContext.timezone`, `normalize` converts the raw
-timestamp to a UTC epoch, then derives the local time at the scan's IANA timezone using
-`Intl.DateTimeFormat`. Cross-zone journeys show different local times and UTC offsets
-per scan.
+After geo-enrichment sets `state.geoContext.timezone`, `canonicalizeCore` converts the
+raw timestamp to a UTC epoch, then derives the local time at the scan's IANA timezone
+using `Intl.DateTimeFormat`. Cross-zone journeys show different local times and UTC
+offsets per scan.
 
-<<< ../../examples/the-cartographer/nodes/normalize.ts#normalize-node
+<<< ../../examples/the-cartographer/nodes/canonicalizeCore.ts#canonicalize-core-node
 
 ### `aggregateEvent` — writes the enriched record
 
@@ -206,9 +211,22 @@ After all scatter clones complete, `summarizeInsights` folds `state.records` int
 
 <<< ../../examples/the-cartographer/entities/EnrichedShipment.ts#enriched-shipment-entity
 
-### `CanonicalEvent` — the unified event model
+### `CanonicalEventVariant` — the per-type event model
 
-<<< ../../examples/the-cartographer/entities/CanonicalEvent.ts#canonical-event-entity
+The canonical model is a discriminated union on `eventType`. Each member carries only
+the fields its event type owns. Five types are generated:
+
+- `position-ping` — a moving asset's satellite position fix with GPS coordinates
+- `facility-scan` — a parcel scanned at a depot or facility; carries PII and order fields
+- `sensor-reading` — cold-chain telemetry (temperature, humidity, shock); triggers the cold-chain check
+- `customs-event` — a customs clearance or hold event; carries `customsStatus`
+- `delivery-confirmation` — proof-of-delivery (the terminal event); carries PII and `delivered: true`
+
+Format is an independent axis: each event type specifies a format mix (csv/json/ndjson/yaml
+with per-format weights and compression), so position-pings might arrive as gzip JSON while
+facility-scans come as CSV. The same event type can appear in multiple formats in one feed.
+
+<<< ../../examples/the-cartographer/entities/CanonicalEvent.ts#canonical-event-variant-entity
 
 ### `GeoContext` — geo-enrichment result
 

@@ -14,7 +14,7 @@ seeAlso:
 
 Runtime utilities: monotonic clock, scheduler, retry policy, signal composition, and state accessor. All clock and scheduler primitives are swappable via their provider contracts for deterministic tests.
 
-```ts
+```ts twoslash
 import {
   BackoffStrategy,
   Clock,
@@ -41,32 +41,42 @@ Engine-owned monotonic clock. Static class; never instantiated.
 
 ### `Clock.monotonicMs()`
 
-```ts
-static monotonicMs(): number
+```ts twoslash
+import { Clock } from '@noocodex/dagonizer/runtime';
+// ---cut---
+const ms: number = Clock.monotonicMs();
 ```
 
 Monotonic time in integer milliseconds. Derived from `performance.now()`, not wall-clock. Used by lifecycle timestamps and `RetryPolicy` delay math.
 
 ### `Clock.hrtime()`
 
-```ts
-static hrtime(): bigint
+```ts twoslash
+import { Clock } from '@noocodex/dagonizer/runtime';
+// ---cut---
+const t: bigint = Clock.hrtime();
 ```
 
 Raw monotonic high-resolution time in nanoseconds. Available in both Node and browsers. The `Clock` module is the only permitted call site for `performance.now()` in the package.
 
 ### `Clock.configure(provider)`
 
-```ts
-static configure(provider: ClockProvider): void
+```ts twoslash
+import { Clock } from '@noocodex/dagonizer/runtime';
+import type { ClockProvider } from '@noocodex/dagonizer/runtime';
+// ---cut---
+declare const provider: ClockProvider;
+Clock.configure(provider);
 ```
 
 Install a custom clock provider. Use in tests with `VirtualClockProvider` to control timestamps.
 
 ### `Clock.reset()`
 
-```ts
-static reset(): void
+```ts twoslash
+import { Clock } from '@noocodex/dagonizer/runtime';
+// ---cut---
+Clock.reset();
 ```
 
 Restore the default real-time clock provider.
@@ -79,24 +89,33 @@ Engine-owned monotonic timer. Static class; never instantiated.
 
 ### `Scheduler.current()`
 
-```ts
-static current(): SchedulerProvider
+```ts twoslash
+import { Scheduler } from '@noocodex/dagonizer/runtime';
+import type { SchedulerProvider } from '@noocodex/dagonizer/runtime';
+// ---cut---
+const provider: SchedulerProvider = Scheduler.current();
 ```
 
 Returns the active scheduler. `RetryPolicy` calls `Scheduler.current().after(ms, signal)` for backoff delays.
 
 ### `Scheduler.configure(provider)`
 
-```ts
-static configure(provider: SchedulerProvider): void
+```ts twoslash
+import { Scheduler } from '@noocodex/dagonizer/runtime';
+import type { SchedulerProvider } from '@noocodex/dagonizer/runtime';
+// ---cut---
+declare const provider: SchedulerProvider;
+Scheduler.configure(provider);
 ```
 
 Install a custom scheduler. Use `VirtualScheduler` in tests to advance time without real waits.
 
 ### `Scheduler.reset()`
 
-```ts
-static reset(): void
+```ts twoslash
+import { Scheduler } from '@noocodex/dagonizer/runtime';
+// ---cut---
+Scheduler.reset();
 ```
 
 Restore the default `RealTimeScheduler`.
@@ -111,7 +130,7 @@ Default `SchedulerProvider`. Wraps `setTimeout` and `setInterval`. Do not instan
 
 ## Class: `RetryPolicy`
 
-```ts
+```ts twoslash
 import { RetryPolicy, BackoffStrategy } from '@noocodex/dagonizer/runtime';
 ```
 
@@ -125,24 +144,36 @@ See [Retry](/guide/retry) for detailed usage.
 
 ### `RetryPolicy.run(task, options?)`
 
-```ts
-async run<T>(task: (attempt: number) => Promise<T> | T, options?: AbortableOptionsInterface): Promise<T>
+```ts twoslash
+import { RetryPolicy, BackoffStrategy } from '@noocodex/dagonizer/runtime';
+// ---cut---
+const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategy.EXPONENTIAL });
+const result = await policy.run(async (attempt: number) => {
+  if (attempt < 3) throw new Error('not yet');
+  return 'done';
+});
 ```
 
 Runs `task` under the configured policy. Resolves with the function's return value on success, or throws the last error when attempts are exhausted. `options.signal` aborts mid-wait.
 
 ### `RetryPolicy.getDelay(attempt, error?)`
 
-```ts
-getDelay(attempt: number, error?: Error | null): number
+```ts twoslash
+import { RetryPolicy, BackoffStrategy } from '@noocodex/dagonizer/runtime';
+// ---cut---
+const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategy.CONSTANT });
+const delay: number = policy.getDelay(1);
 ```
 
 Compute the backoff delay (ms) for a 1-based attempt number. Override in subclasses for custom curves.
 
 ### `RetryPolicy.shouldRetry(error, attempt)`
 
-```ts
-shouldRetry(error: Error, attempt: number): boolean
+```ts twoslash
+import { RetryPolicy, BackoffStrategy } from '@noocodex/dagonizer/runtime';
+// ---cut---
+const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategy.CONSTANT });
+const shouldRetry: boolean = policy.shouldRetry(new Error('oops'), 1);
 ```
 
 Decision predicate. Override for conditional logic beyond the `retryOn` / `abortOn` lists.
@@ -151,7 +182,7 @@ Decision predicate. Override for conditional logic beyond the `retryOn` / `abort
 
 ## Const: `BackoffStrategy`
 
-```ts
+```ts twoslash
 const BackoffStrategy = {
   CONSTANT:            'constant',
   LINEAR:              'linear',
@@ -172,8 +203,16 @@ Fold `signal` and `deadlineMs` from `ExecuteOptionsInterface` into a single `Abo
 
 ### `SignalComposer.compose(options)`
 
-```ts
-static compose(options: ExecuteOptionsInterface): AbortSignal | null
+```ts twoslash
+import { SignalComposer } from '@noocodex/dagonizer/runtime';
+import type { ExecuteOptionsInterface } from '@noocodex/dagonizer/contracts';
+// ---cut---
+declare const ctrl: AbortController;
+declare const url: string;
+const signal = SignalComposer.compose({ signal: ctrl.signal, deadlineMs: 5000 });
+if (signal !== null) {
+  await fetch(url, { signal });
+}
 ```
 
 - Neither field supplied: returns `null`.
@@ -182,26 +221,17 @@ static compose(options: ExecuteOptionsInterface): AbortSignal | null
 
 `deadlineMs` is wired through `AbortSignal.timeout()`, which surfaces a platform `TimeoutError` as the abort reason. `Dagonizer` inspects that reason to mark the lifecycle `timed_out` rather than `cancelled`.
 
-```ts
-import { SignalComposer } from '@noocodex/dagonizer/runtime';
-
-const signal = SignalComposer.compose({ signal: ctrl.signal, deadlineMs: 5000 });
-if (signal !== null) {
-  await fetch(url, { signal });
-}
-```
-
 ---
 
 ## Class: `DottedPathAccessor`
 
 Default `StateAccessor`. Walks `path.split('.')` to read and write nested fields on a state object. Creates intermediate plain objects on write when they are absent. Treats `null` and `undefined` segments on read as misses (returns `undefined`).
 
-```ts
-class DottedPathAccessor implements StateAccessor {
-  get(state: object, path: string): unknown;
-  set(state: object, path: string, value: unknown): void;
-}
+```ts twoslash
+import { DottedPathAccessor } from '@noocodex/dagonizer/runtime';
+import type { StateAccessor } from '@noocodex/dagonizer/runtime';
+// ---cut---
+const accessor: StateAccessor = new DottedPathAccessor();
 ```
 
 Used by the dispatcher for scatter source reads, state-mapping input copies, and gather writes. Swap via `new Dagonizer({ accessor: customAccessor })`.

@@ -11,10 +11,10 @@
  *
  * Default model: `mistral-embed` (1024-dim vectors). Mistral's embedding
  * surface is batch-native: `input` is always an array. The default
- * `embedBatch` implementation in `BaseEmbedder` still works (one HTTP
- * call per text), but consumers wanting peak throughput can override;
- * left as a deliberate followup since the cost difference is small for
- * the intent-classifier corpus (≤ 10 short texts at startup).
+ * `embedBatch` implementation in `BaseEmbedder` issues one HTTP call per
+ * text; consumers wanting peak throughput can override it. The cost
+ * difference is small for the intent-classifier corpus (≤ 10 short texts
+ * at startup).
  *
  * Probe: returns true iff a non-empty API key was supplied. Same
  * shape `MistralApiAdapter` ships.

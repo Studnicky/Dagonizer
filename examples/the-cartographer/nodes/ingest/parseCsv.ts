@@ -1,28 +1,27 @@
 /**
- * parse-csv: shared ingest transform — CSV text → array of string-valued records.
+ * parse-csv: ingest transform — CSV text → array of string-valued records.
  *
- * Reads the CSV payload from state.currentSource.payload (CSV is not compressed),
- * splits the header + rows, and emits one `Record<string, string>` per row keyed
- * by the header columns. Handles quoted cells (commas/quotes/newlines escaped per
- * RFC-4180-style double-quote rules). Writes state.parsedRecords.
+ * Reads the CSV text from state.decodedText when the source was gzipped
+ * (decodedText populated by the decompress node), else from
+ * state.currentSource.payload for plain CSV sources. Splits the header + rows,
+ * and emits one `Record<string, string>` per row keyed by the header columns.
+ * Handles quoted cells (commas/quotes/newlines escaped per RFC-4180-style
+ * double-quote rules). Writes state.parsedRecords.
  *
- * Routes 'map-fields' on success; 'invalid' when there is no header row.
+ * Routes 'normalized' on success; 'invalid' when there is no header row.
  */
 
 import type { CartographerState } from '../../CartographerState.ts';
 import type { CartographerServices } from '../../CartographerServices.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region parse-csv-node
-export class ParseCsvNode implements NodeInterface<CartographerState, 'map-fields' | 'invalid', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ParseCsvNode extends ScalarNode<CartographerState, 'normalized' | 'invalid', CartographerServices> {
   readonly 'name' = 'parse-csv';
-  readonly 'outputs' = ['map-fields', 'invalid'] as const;
+  readonly 'outputs' = ['normalized', 'invalid'] as const;
 
   /** Split one CSV line into cells, honouring double-quoted fields. */
   private static splitCsvLine(line: string): string[] {
@@ -51,11 +50,9 @@ export class ParseCsvNode implements NodeInterface<CartographerState, 'map-field
     return cells;
   }
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'map-fields' | 'invalid'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
-    const text = state.currentSource.payload;
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'normalized' | 'invalid'>> {
+    // Use decompressed text when available (gzip path), else the raw payload.
+    const text = state.decodedText.length > 0 ? state.decodedText : state.currentSource.payload;
     const lines = text.split('\n').filter((l) => l.length > 0);
     const headerLine = lines[0];
     if (headerLine === undefined) {
@@ -72,7 +69,9 @@ export class ParseCsvNode implements NodeInterface<CartographerState, 'map-field
       records.push(record);
     }
     state.parsedRecords = records;
-    return NodeOutputBuilder.of('map-fields');
+    return NodeOutputBuilder.of('normalized');
   }
 }
+
+export const parseCsv = new ParseCsvNode();
 // #endregion parse-csv-node

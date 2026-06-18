@@ -78,6 +78,7 @@ onMounted(() => {
         <label class="ccp-label" for="ccp-window">window</label>
         <input
           id="ccp-window"
+          name="ccp-window"
           type="range"
           class="ccp-slider"
           :value="windowSize"
@@ -87,6 +88,8 @@ onMounted(() => {
           @input="onWindowInput"
         />
         <input
+          id="ccp-window-num"
+          name="ccp-window-num"
           type="number"
           class="ccp-num"
           :value="windowSize"

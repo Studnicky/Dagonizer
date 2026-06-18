@@ -28,11 +28,8 @@
  * Output route is always 'ranked'. mergeCandidates then takes the top-K.
  */
 
-import { NodeErrorBuilder, NodeOutputBuilder,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
-} from '@noocodex/dagonizer';
-import type { NodeContextInterface, NodeInterface } from '@noocodex/dagonizer';
+import { NodeErrorBuilder, NodeOutputBuilder, ScalarNode } from '@noocodex/dagonizer';
+import type { NodeContextInterface } from '@noocodex/dagonizer';
 
 import type { Embedder } from '@noocodex/dagonizer/contracts';
 
@@ -160,13 +157,11 @@ interface ScoredEntry {
   readonly titleEmbedding: readonly number[] | null;
 }
 
-export class RankCandidatesNode implements NodeInterface<ArchivistState, 'ranked' | 'retry' | 'salvage', ArchivistServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class RankCandidatesNode extends ScalarNode<ArchivistState, 'ranked' | 'retry' | 'salvage', ArchivistServices> {
   readonly name = 'rank-candidates';
   readonly outputs = ['ranked', 'retry', 'salvage'] as const;
 
-  async execute(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
+  protected override async executeOne(state: ArchivistState, context: NodeContextInterface<ArchivistServices>) {
     if (state.candidates.length === 0) {
       state.clearAttempts(context.nodeName);
       context.services.logger.info('rank-candidates: no candidates to rank');
@@ -289,5 +284,5 @@ export class RankCandidatesNode implements NodeInterface<ArchivistState, 'ranked
   }
 }
 
-/** Backward-compatible const export for existing bundle/DAG references. */
+/** Singleton node instance referenced by the DAG wiring. */
 export const rankCandidates = new RankCandidatesNode();

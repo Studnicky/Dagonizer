@@ -22,7 +22,7 @@ export abstract class RecallContextNode<
   protected abstract applyRecall(state: TState, bindings: readonly TBinding[]): void;
 
 
-  async execute(
+  protected override async executeOne(
     state: TState,
     context: NodeContextInterface<GraphServices>,
   ): Promise<NodeOutputInterface<'success' | 'empty'>> {

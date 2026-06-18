@@ -1,8 +1,8 @@
 /**
  * cold-chain-check: sensor-lane only — evaluate cold-chain telemetry for a breach.
  *
- * Runs ONLY on the route-kind 'sensor' lane (sensor-reading events carry temp /
- * shock telemetry). Other kinds skip this node entirely — the per-kind skip
+ * Runs ONLY on the route-event-type 'sensor' lane (sensor-reading events carry temp /
+ * shock telemetry). Other event types skip this node entirely — the per-event-type skip
  * showcase. Sets state.coldChainBreach from the canonical body's tempC / shockG.
  *
  * Routes 'checked'.
@@ -12,25 +12,23 @@ import type { CartographerState } from '../CartographerState.ts';
 import type { CartographerServices } from '../CartographerServices.ts';
 import { ColdChain } from '../services.ts';
 
-import { NodeOutputBuilder, type NodeContextInterface, type NodeInterface, type NodeOutputInterface,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+import { NodeOutputBuilder, type NodeContextInterface, type NodeOutputInterface,
+  ScalarNode,
 } from '@noocodex/dagonizer';
 
 // #region cold-chain-check-node
-export class ColdChainCheckNode implements NodeInterface<CartographerState, 'checked', CartographerServices> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class ColdChainCheckNode extends ScalarNode<CartographerState, 'checked', CartographerServices> {
   readonly 'name' = 'cold-chain-check';
   readonly 'outputs' = ['checked'] as const;
 
-  async execute(state: CartographerState, context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'checked'>> {
-    if (context.signal.aborted) {
-      throw new Error('Aborted');
-    }
-    const b = state.canonical.body;
-    state.coldChainBreach = ColdChain.breached(b.tempC, b.shockG);
+  protected override async executeOne(state: CartographerState, _context: NodeContextInterface<CartographerServices>): Promise<NodeOutputInterface<'checked'>> {
+    const v = state.canonicalVariant;
+    const tempC = v.eventType === 'sensor-reading' ? v.body.tempC : 0;
+    const shockG = v.eventType === 'sensor-reading' ? v.body.shockG : 0;
+    state.coldChainBreach = ColdChain.breached(tempC, shockG);
     return NodeOutputBuilder.of('checked');
   }
 }
 // #endregion cold-chain-check-node
+
+export const coldChainCheck = new ColdChainCheckNode();

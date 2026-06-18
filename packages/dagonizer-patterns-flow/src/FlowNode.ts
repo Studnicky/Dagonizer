@@ -7,9 +7,9 @@
  */
 
 import type { NodeStateInterface } from '@noocodex/dagonizer';
-import { MonadicNode } from '@noocodex/dagonizer/patterns';
+import { ScalarNode } from '@noocodex/dagonizer';
 
 export abstract class FlowNode<
   TState extends NodeStateInterface,
   TOutput extends string = string,
-> extends MonadicNode<TState, TOutput, undefined> {}
+> extends ScalarNode<TState, TOutput, undefined> {}

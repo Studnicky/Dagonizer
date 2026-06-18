@@ -23,11 +23,11 @@ import {
   DAG_CONTEXT,
   NodeOutputBuilder,
   NodeStateBase,
-  EMPTY_CONTRACT_FRAGMENT,
-  Timeout,
+  ScalarNode,
 } from '@noocodex/dagonizer';
-import type { DAG, NodeInterface} from '@noocodex/dagonizer';
-import type { JsonObject } from '@noocodex/dagonizer/entities';
+import type { DAG } from '@noocodex/dagonizer';
+import type { DAGHandoff, JsonObject } from '@noocodex/dagonizer/entities';
+import type { HandoffChannelInterface } from '@noocodex/dagonizer/contracts';
 
 // ---------------------------------------------------------------------------
 // Shared state: both DAGs operate on the same shape so the snapshot round-
@@ -63,37 +63,31 @@ export class PipelineState extends NodeStateBase {
 
 // DAG A: collect three items into state.items
 // #region node-collect
-export class CollectANode implements NodeInterface<PipelineState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class CollectANode extends ScalarNode<PipelineState, 'done'> {
   readonly name = 'collectA';
   readonly outputs = ['done'] as const;
 
-  async execute(state: PipelineState) {
+  protected override async executeOne(state: PipelineState) {
     state.items.push('alpha');
     return NodeOutputBuilder.of('done');
   }
 }
 
-export class CollectBNode implements NodeInterface<PipelineState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class CollectBNode extends ScalarNode<PipelineState, 'done'> {
   readonly name = 'collectB';
   readonly outputs = ['done'] as const;
 
-  async execute(state: PipelineState) {
+  protected override async executeOne(state: PipelineState) {
     state.items.push('beta');
     return NodeOutputBuilder.of('done');
   }
 }
 
-export class CollectCNode implements NodeInterface<PipelineState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class CollectCNode extends ScalarNode<PipelineState, 'done'> {
   readonly name = 'collectC';
   readonly outputs = ['done'] as const;
 
-  async execute(state: PipelineState) {
+  protected override async executeOne(state: PipelineState) {
     state.items.push('gamma');
     return NodeOutputBuilder.of('done');
   }
@@ -102,13 +96,11 @@ export class CollectCNode implements NodeInterface<PipelineState, 'done'> {
 
 // DAG B: summarize the items collected by DAG A
 // #region node-summarize
-export class SummarizeNode implements NodeInterface<PipelineState, 'done'> {
-  readonly contract = EMPTY_CONTRACT_FRAGMENT;
-  readonly timeout = Timeout.none();
+export class SummarizeNode extends ScalarNode<PipelineState, 'done'> {
   readonly name = 'summarize';
   readonly outputs = ['done'] as const;
 
-  async execute(state: PipelineState) {
+  protected override async executeOne(state: PipelineState) {
     state.summary = `processed ${state.items.length} item(s): ${state.items.join(', ')}`;
     return NodeOutputBuilder.of('done');
   }
@@ -190,3 +182,21 @@ export const dagB: DAG = {
   ],
 };
 // #endregion dag-b
+
+// ---------------------------------------------------------------------------
+// Queue channel pattern: implement HandoffChannelInterface for a real transport
+// ---------------------------------------------------------------------------
+
+// #region queue-channel-pattern
+/**
+ * Skeleton for a real queue-backed channel. Replace the comment with an SDK
+ * call (SQS, Pub/Sub, RabbitMQ, etc.). Never throw from publish; the
+ * dispatcher catches all errors.
+ */
+export class QueueChannel implements HandoffChannelInterface {
+  async publish(handoff: DAGHandoff): Promise<void> {
+    // await myQueueSdk.send(JSON.stringify(handoff));
+    void handoff;
+  }
+}
+// #endregion queue-channel-pattern
