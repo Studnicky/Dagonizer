@@ -9,6 +9,13 @@ export { NodeStateBase } from './NodeStateBase.js';
 // =============================================================================
 
 export {
+  GatherStrategyNames,
+  ScatterOutputNames,
+  MetadataKeys,
+  OutputNames,
+  NodeTypes,
+} from './entities/index.js';
+export type {
   GatherStrategyName,
   ScatterOutput,
   MetadataKey,
@@ -96,6 +103,7 @@ export {
   OutputSchema,
   NodeTypeSchema,
   BackoffStrategySchema,
+  BackoffStrategyNames,
   DAG_CONTEXT,
   ExecutorIntermediateSchema,
   ExecutionRequestSchema,
@@ -103,6 +111,7 @@ export {
   DAGHandoffSchema,
 } from './entities/index.js';
 export type {
+  BackoffStrategy,
   DAGNodeType,
   ScatterNode,
   EmbeddedDAGNode,
@@ -151,7 +160,6 @@ export type {
 // =============================================================================
 
 export {
-  BackoffStrategy,
   Clock,
   RealTimeScheduler,
   RetryPolicy,
@@ -249,7 +257,9 @@ export type { Chainable } from './contracts/Chainable.js';
 export type { NodeInterface } from './contracts/NodeInterface.js';
 export type { OperationContractFragment } from './contracts/OperationContractFragment.js';
 export { EMPTY_CONTRACT_FRAGMENT } from './contracts/OperationContractFragment.js';
-export type { RemoteStore, RemoteStoreEndpoint, RemoteStoreLease } from './contracts/RemoteStore.js';
+export type { RemoteStore } from './contracts/RemoteStore.js';
+export type { RemoteStoreEndpoint } from './contracts/RemoteStoreEndpoint.js';
+export type { RemoteStoreLease } from './contracts/RemoteStoreLease.js';
 export type { Snapshottable, StoreSnapshot, StoreSnapshotEntry } from './contracts/Snapshottable.js';
 export type { Store } from './contracts/Store.js';
 

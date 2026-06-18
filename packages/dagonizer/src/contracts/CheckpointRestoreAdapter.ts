@@ -4,7 +4,7 @@
  *
  * Consumers implement this interface (typically as a static class) to
  * rehydrate a `TState` instance from a `JsonObject` snapshot produced by
- * `NodeStateBase.snapshot()`. Use `CheckpointRestoreAdapterFn.fromFn` from
+ * `NodeStateBase.snapshot()`. Use `CheckpointRestoreAdapterFn.wrap` from
  * `checkpoint/Checkpoint.ts` to wrap a plain function in this contract.
  */
 

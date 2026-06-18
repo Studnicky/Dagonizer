@@ -17,8 +17,8 @@ class TestState {
 class TestDecision extends DecisionNode<TestState, 'yes' | 'no', 'yes' | 'no'> {
   readonly name = 'test-decision';
   readonly outputs = ['yes', 'no'] as const;
-  protected buildPrompt(_s: TestState): string { return 'choose'; }
-  protected parseChoice(c: string): 'yes' | 'no' { return c.toLowerCase().includes('y') ? 'yes' : 'no'; }
+  protected composePrompt(_s: TestState): string { return 'choose'; }
+  protected decodeChoice(c: string): 'yes' | 'no' { return c.toLowerCase().includes('y') ? 'yes' : 'no'; }
   protected routeFor(c: 'yes' | 'no'): 'yes' | 'no' { return c; }
   protected applyChoice(s: TestState, c: 'yes' | 'no'): void { s.intent = c; }
 }

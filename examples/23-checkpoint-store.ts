@@ -102,7 +102,7 @@ if (recalled === null) {
 }
 
 const { state, dagName, cursor } = recalled.restoreState(
-  CheckpointRestoreAdapterFn.fromFn((snap) => PipelineState.restore(snap)),
+  CheckpointRestoreAdapterFn.wrap((snap) => PipelineState.restore(snap)),
 );
 
 process.stdout.write(`[resume] restored cursor="${cursor}" tally=${String(state.tally)}\n`);

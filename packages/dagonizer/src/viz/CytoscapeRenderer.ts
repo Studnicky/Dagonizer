@@ -82,7 +82,7 @@ export interface CytoscapeNodeData {
    * Determinism classification for stylesheet selection
    * (`node[kind="deterministic"]` / `node[kind="non-deterministic"]`).
    * The base renderer leaves this unset; subclasses enrich it by
-   * overriding `buildElements()` (e.g. from a node registry).
+   * overriding `composeElements()` (e.g. from a node registry).
    */
   kind?: 'deterministic' | 'non-deterministic';
 }
@@ -240,7 +240,7 @@ export class CytoscapeRenderer {
    * receive only `id`, `label`, and `type`; container-bound placements receive
    * the additional `container*` color keys (honoring `exactOptionalPropertyTypes`).
    */
-  private static buildNodeData(
+  private static composeNodeData(
     id: string,
     label: string,
     kind: CytoscapeNodeData['type'],
@@ -289,7 +289,7 @@ export class CytoscapeRenderer {
     const role = PlacementUtils.containerRole(placement);
 
     const baseLabel = CytoscapeRenderer.titleCase(placement.name);
-    const baseData: CytoscapeNodeData = CytoscapeRenderer.buildNodeData(id, baseLabel, kind, role);
+    const baseData: CytoscapeNodeData = CytoscapeRenderer.composeNodeData(id, baseLabel, kind, role);
 
     // Append dag-contained class for stylesheet selection.
     const classes = role !== null ? `dag-${kind} dag-contained` : `dag-${kind}`;

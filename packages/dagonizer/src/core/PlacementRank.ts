@@ -18,17 +18,17 @@ import type { DAG } from '../entities/dag/DAG.js';
 import { Placement } from '../entities/dag/Placement.js';
 import type { DAGNodeType } from '../entities/dag/Placement.js';
 
-/** Returns the set of forward next-placement names for a given placement. */
-function forwardTargets(placement: DAGNodeType): readonly string[] {
-  if (Placement.isTerminal(placement) || Placement.isPhase(placement)) {
-    return [];
-  }
-  // SingleNode, ScatterNode, EmbeddedDAGNode all have an `outputs` record.
-  return Object.values(placement.outputs);
-}
-
 export class PlacementRank {
   private constructor() { /* static class */ }
+
+  /** Returns the set of forward next-placement names for a given placement. */
+  private static forwardTargets(placement: DAGNodeType): readonly string[] {
+    if (Placement.isTerminal(placement) || Placement.isPhase(placement)) {
+      return [];
+    }
+    // SingleNode, ScatterNode, EmbeddedDAGNode all have an `outputs` record.
+    return Object.values(placement.outputs);
+  }
 
   /**
    * Compute a topological rank for every placement in `dag`.
@@ -53,7 +53,7 @@ export class PlacementRank {
     // Build adjacency map: placement name → forward next-placement names.
     const adjacency = new Map<string, readonly string[]>();
     for (const placement of dag.nodes) {
-      adjacency.set(placement.name, forwardTargets(placement));
+      adjacency.set(placement.name, PlacementRank.forwardTargets(placement));
     }
 
     // Build predecessor map: for each placement, which placements forward-edge into it?
@@ -62,7 +62,7 @@ export class PlacementRank {
       predecessors.set(placement.name, []);
     }
     for (const placement of dag.nodes) {
-      const targets = forwardTargets(placement);
+      const targets = PlacementRank.forwardTargets(placement);
       for (const target of targets) {
         const preds = predecessors.get(target);
         if (preds !== undefined) {

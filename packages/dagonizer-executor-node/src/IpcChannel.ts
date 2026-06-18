@@ -4,7 +4,7 @@
  * Accepts a structural endpoint so the same class serves both sides of the
  * IPC boundary:
  *
- *   Parent side:  IpcChannel.fromChildProcess(child)
+ *   Parent side:  IpcChannel.ofChildProcess(child)
  *   Child side:   new IpcChannel({ send: (m) => process.send!(m), on: (e, fn) => process.on(e, fn) })
  *
  * send      → endpoint.send(message)
@@ -30,7 +30,7 @@ export interface IpcEndpoint {
 
 // ---------------------------------------------------------------------------
 // IpcProcessLike: minimal structural type satisfied by ChildProcess and
-// cluster.Worker — allows IpcChannel.fromChildProcess to serve both.
+// cluster.Worker — allows IpcChannel.ofChildProcess to serve both.
 // ---------------------------------------------------------------------------
 
 export interface IpcProcessLike {
@@ -51,7 +51,7 @@ export class IpcChannel extends BaseMessageChannel {
    * to the IpcEndpoint contract with the Serializable→object cast isolated here.
    * Both ForkContainer and ClusterContainer use this factory.
    */
-  static fromChildProcess(process: IpcProcessLike): IpcChannel {
+  static ofChildProcess(process: IpcProcessLike): IpcChannel {
     const sendFn = (message: unknown): void => { process.send(message as object); };
     const onFn = (event: 'message', listener: (message: unknown) => void): IpcEndpoint => {
       process.on(event, listener);

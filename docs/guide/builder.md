@@ -73,7 +73,7 @@ Placements added via `.scatter()` with a `{ dag }` body do not receive a `NodeIn
 
 See [Contract-derived flows](./derive) and [Reference, contracts](../reference/contracts).
 
-## `DAGBuilder.fromNodes()`, the linear shortcut
+## `DAGBuilder.derive()`, the linear shortcut
 
 For the common case where the flow is linear and every node carries a contract, skip the fluent chain:
 
@@ -83,7 +83,7 @@ Equivalent fluent form:
 
 <<< @/../examples/dags/02-builder.topology.ts#from-nodes-fluent
 
-`DAGBuilder.fromNodes()` delegates to `DAGDeriver.derive({ nodes })`, the same deriver that powers contract-first topology. Use it when the shape is linear and all nodes carry contracts. Drop into the fluent `.node()` API when you need:
+`DAGBuilder.derive()` delegates to `DAGDeriver.derive({ nodes })`, the same deriver that powers contract-first topology. Use it when the shape is linear and all nodes carry contracts. Drop into the fluent `.node()` API when you need:
 
 - Scatter placements (node body or sub-DAG body)
 - Multiple named terminal placements with distinct outcomes

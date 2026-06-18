@@ -219,7 +219,7 @@ export class ScatterWorkerPool<TState extends NodeStateInterface> {
     // throw BEFORE the caller calls ScatterCheckpoint.clear() so the
     // checkpoint is preserved on state for resume.
     if (this.#signal?.aborted === true && this.#poolErrors.length === 0) {
-      throw ExecutionError.fromSignal(this.#signal);
+      throw ExecutionError.ofSignal(this.#signal);
     }
 
     if (this.#poolErrors.length > 0) {

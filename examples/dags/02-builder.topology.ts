@@ -135,7 +135,7 @@ export function contractErrorDemo(): void {
 // #endregion contract-error
 
 // ---------------------------------------------------------------------------
-// DAGBuilder.fromNodes(): linear shortcut for contract-carrying node chains
+// DAGBuilder.derive(): linear shortcut for contract-carrying node chains
 // ---------------------------------------------------------------------------
 
 class LinearFetchNode extends ScalarNode<ChatState, 'success'> {
@@ -160,11 +160,11 @@ class LinearSaveNode extends ScalarNode<ChatState, 'success'> {
 }
 
 // #region from-nodes
-// DAGBuilder.fromNodes() delegates to DAGDeriver.derive. Use it when the flow
+// DAGBuilder.derive() delegates to DAGDeriver.derive. Use it when the flow
 // is linear and every node carries a contract. The deriver infers the topology
 // from hardRequired / produces declarations; no explicit routes are needed.
 // annotations.terminals declares the terminal node for the last operation's output.
-export const fromNodesDag = DAGBuilder.fromNodes(
+export const fromNodesDag = DAGBuilder.derive(
   'linear-pipeline',
   '1.0',
   'linear-fetch',

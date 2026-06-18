@@ -200,18 +200,18 @@ These constants are available from `@studnicky/dagonizer/constants` as value+typ
 
 <<< @/../examples/dags/constants-usage.ts#constants
 
-Constants are exported with paired value and type so the JSON literal can be used as a discriminator.
+Each constant is exported as a value object (plural name) paired with a type (singular name) so the JSON literal can be used as a discriminator.
 
-| Constant | Members |
-|---|---|
-| `GatherStrategyName` | `'map'`, `'append'`, `'partition'`, `'custom'`, `'collect'`, `'discard'` |
-| `ScatterOutput` | `'all-success'`, `'partial'`, `'all-error'`, `'empty'` |
-| `MetadataKey` | `'currentItem'`, `'gatherResults'`, `'itemIndex'` |
-| `Output` | Reserved canonical output names |
-| `NodeType` | `'embedded'`, `'scatter'`, `'single'` |
-| `BackoffStrategy` | `'constant'`, `'linear'`, `'exponential'`, `'decorrelated-jitter'` |
+| Value | Type | Members |
+|---|---|---|
+| `GatherStrategyNames` | `GatherStrategyName` | `'map'`, `'append'`, `'partition'`, `'custom'`, `'collect'`, `'discard'` |
+| `ScatterOutputNames` | `ScatterOutput` | `'all-success'`, `'partial'`, `'all-error'`, `'empty'` |
+| `MetadataKeys` | `MetadataKey` | `'currentItem'`, `'gatherResults'`, `'itemIndex'` |
+| `OutputNames` | `Output` | Reserved canonical output names |
+| `NodeTypes` | `NodeType` | `'embedded'`, `'scatter'`, `'single'` |
+| `BackoffStrategyNames` | `BackoffStrategy` | `'constant'`, `'linear'`, `'exponential'`, `'decorrelated-jitter'` |
 
-Each constant has a matching `*Schema` JSON Schema for `oneOf`-style validation. See [Reference: Runtime](./runtime#const-backoffstrategy) for `BackoffStrategy` usage details.
+Each constant has a matching `*Schema` JSON Schema for `oneOf`-style validation. See [Reference: Runtime](./runtime#const-backoffstrategynames-and-type-backoffstrategy) for `BackoffStrategyNames` usage details.
 
 ---
 

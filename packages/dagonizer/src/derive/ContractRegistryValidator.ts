@@ -31,7 +31,7 @@ export class ContractRegistryValidator {
    * Build the adjacency set (name → set of names it can reach) using the same
    * `produces ↔ hardRequired` edge rule as `DAGDeriver.edges`.
    */
-  private static buildUpstreamProducers(
+  private static composeUpstreamProducers(
     contracts: readonly OperationContract[],
   ): Map<string, Set<string>> {
     // upstreamProducers[B] = set of all field paths produced by any ancestor of B.
@@ -108,7 +108,7 @@ export class ContractRegistryValidator {
     options: { entrypointName: string } = CONTRACT_VALIDATION_DEFAULTS,
   ): void {
     const { entrypointName } = { ...CONTRACT_VALIDATION_DEFAULTS, ...options };
-    const upstreamProducers = ContractRegistryValidator.buildUpstreamProducers(contracts);
+    const upstreamProducers = ContractRegistryValidator.composeUpstreamProducers(contracts);
 
     // The entrypoint's hardRequired paths are the flow's external initial
     // state: ambient and present from the start, so ANY node may read them

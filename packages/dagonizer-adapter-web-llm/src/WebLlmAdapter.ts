@@ -121,7 +121,7 @@ export class WebLlmAdapter extends BaseAdapter {
 
     // Tool-calling via JSON-coerce: inject a system message with the
     // tool-plan schema then ask for json_object.
-    const messages = this.#buildMessages(request);
+    const messages = this.#composeMessages(request);
     const wantsJson = (request.tools.length > 0)
       || request.outputSchema.kind === 'schema';
 
@@ -153,7 +153,7 @@ export class WebLlmAdapter extends BaseAdapter {
     return super.classify(error);
   }
 
-  #buildMessages(request: ChatRequest): ReadonlyArray<{ role: 'system' | 'user' | 'assistant'; content: string }> {
+  #composeMessages(request: ChatRequest): ReadonlyArray<{ role: 'system' | 'user' | 'assistant'; content: string }> {
     const messages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [];
     for (const m of request.messages) {
       if (m.role === 'tool') {

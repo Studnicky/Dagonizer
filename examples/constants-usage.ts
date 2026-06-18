@@ -13,10 +13,11 @@
  */
 
 import {
-  MetadataKey,
-  NodeType,
-  Output,
-  ScatterOutput,
+  MetadataKeys,
+  NodeTypes,
+  OutputNames,
+  ScatterOutputNames,
+  type MetadataKey,
 } from '@studnicky/dagonizer/constants';
 import type { CatalogueItem } from './dags/constants-usage.js';
 import { ConstantUsage } from './dags/constants-usage.js';
@@ -25,16 +26,16 @@ import { ConstantUsage } from './dags/constants-usage.js';
 
 process.stdout.write('\n=== @studnicky/dagonizer/constants typed-guard demo ===\n\n');
 
-// Output
+// OutputNames
 process.stdout.write('Output values:\n');
-for (const v of Object.values(Output)) {
-  process.stdout.write(`  Output.${v} => "${ConstantUsage.describeOutput(v)}"\n`);
+for (const v of Object.values(OutputNames)) {
+  process.stdout.write(`  OutputNames.${v} => "${ConstantUsage.describeOutput(v)}"\n`);
 }
 
-// NodeType
+// NodeTypes
 process.stdout.write('\nNodeType scatter check:\n');
-for (const v of Object.values(NodeType)) {
-  process.stdout.write(`  NodeType.${v} isScatter=${String(ConstantUsage.isScatterPlacement(v))}\n`);
+for (const v of Object.values(NodeTypes)) {
+  process.stdout.write(`  NodeTypes.${v} isScatter=${String(ConstantUsage.isScatterPlacement(v))}\n`);
 }
 
 // GatherStrategyName
@@ -47,14 +48,14 @@ for (const c of candidates) {
 // MetadataKey
 process.stdout.write('\nMetadataKey.CURRENT_ITEM read:\n');
 const bag: Partial<Record<MetadataKey, CatalogueItem>> = {
-  [MetadataKey.CURRENT_ITEM]: { title: 'The Archivist Compendium' },
+  [MetadataKeys.CURRENT_ITEM]: { title: 'The Archivist Compendium' },
 };
 process.stdout.write(`  currentItem=${JSON.stringify(ConstantUsage.readCurrentItem(bag))}\n`);
 
 // ScatterOutput
 process.stdout.write('\nScatterOutput interpretations:\n');
-for (const v of Object.values(ScatterOutput)) {
-  process.stdout.write(`  ScatterOutput.${v} => "${ConstantUsage.interpretScatterOutput(v)}"\n`);
+for (const v of Object.values(ScatterOutputNames)) {
+  process.stdout.write(`  ScatterOutputNames.${v} => "${ConstantUsage.interpretScatterOutput(v)}"\n`);
 }
 
 process.stdout.write('\nAll constant guards exercised.\n');

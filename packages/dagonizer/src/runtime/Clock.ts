@@ -28,7 +28,7 @@ class RealTimeClockProvider implements ClockProvider {
 
 const NS_PER_MS = 1_000_000n;
 
-let _provider: ClockProvider = new RealTimeClockProvider();
+let activeProvider: ClockProvider = new RealTimeClockProvider();
 
 /**
  * Engine-owned monotonic clock. All time reads go through `Clock.hrtime()` or
@@ -40,7 +40,7 @@ export class Clock {
 
   /** Monotonic high-resolution time in nanoseconds since arbitrary origin. */
   static hrtime(): bigint {
-    return _provider.hrtime();
+    return activeProvider.hrtime();
   }
 
   /**
@@ -49,16 +49,16 @@ export class Clock {
    * scheduler delays, and other relative-time math.
    */
   static monotonicMs(): number {
-    return Number(_provider.hrtime() / NS_PER_MS);
+    return Number(activeProvider.hrtime() / NS_PER_MS);
   }
 
   /** Install a custom clock provider. Engine-only; called at boot or in tests. */
   static configure(provider: ClockProvider): void {
-    _provider = provider;
+    activeProvider = provider;
   }
 
   /** Reset to the real-time provider. */
   static reset(): void {
-    _provider = new RealTimeClockProvider();
+    activeProvider = new RealTimeClockProvider();
   }
 }

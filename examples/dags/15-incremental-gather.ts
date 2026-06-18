@@ -29,7 +29,7 @@ import type { GatherExecution, GatherRecord } from '@studnicky/dagonizer';
 import type { GatherConfig } from '@studnicky/dagonizer';
 import type { StateAccessor } from '@studnicky/dagonizer/contracts';
 import type { NodeStateInterface } from '@studnicky/dagonizer';
-import { GatherStrategyName } from '@studnicky/dagonizer/constants';
+import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
 // State
@@ -257,5 +257,5 @@ export const batchDag: DAG = {
 };
 // #endregion batch-dag
 
-// Re-export GatherStrategyName for the entry-point to verify built-in list.
-export { GatherStrategyName };
+// Re-export GatherStrategyNames for the entry-point to verify built-in list.
+export { GatherStrategyNames };

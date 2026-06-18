@@ -2,16 +2,16 @@
  * WebWorkerContainer: DagContainerBase over a pool of Web Workers.
  *
  * Each pool slot is a fresh WebWorkerLikeInterface created by the protected
- * `createWorker()` method. This package cannot construct browser workers itself
+ * `spawnWorker()` method. This package cannot construct browser workers itself
  * — `new Worker(url)` requires a browser context and a real module URL only the
- * consumer knows — so the base `createWorker()` throws. Consumers extend
- * WebWorkerContainer and override `createWorker()` to return a real worker.
+ * consumer knows — so the base `spawnWorker()` throws. Consumers extend
+ * WebWorkerContainer and override `spawnWorker()` to return a real worker.
  * Extension is by subclass (zero callbacks, zero function-pass-in).
  *
  * Consumer wiring (browser):
  *
  *   class AppWorkerContainer extends WebWorkerContainer {
- *     protected override createWorker(): WebWorkerLikeInterface {
+ *     protected override spawnWorker(): WebWorkerLikeInterface {
  *       return new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
  *     }
  *   }
@@ -98,11 +98,11 @@ export class WebWorkerContainer extends DagContainerBase<NodeStateInterface, Web
 
   /**
    * Construct a fresh worker and its wired channel. Delegates worker creation
-   * to `createWorker()` (the consumer override point). Returns a PoolEntry with
+   * to `spawnWorker()` (the consumer override point). Returns a PoolEntry with
    * `initialized: false`; the base attaches death listeners and inits separately.
    */
-  protected override createEntry(): PoolEntry<WebWorkerLikeInterface> {
-    const worker = this.createWorker();
+  protected override composeEntry(): PoolEntry<WebWorkerLikeInterface> {
+    const worker = this.spawnWorker();
     const channel = new PostMessageChannel(worker);
     return { 'worker': worker, 'channel': channel, 'initialized': false };
   }
@@ -145,14 +145,14 @@ export class WebWorkerContainer extends DagContainerBase<NodeStateInterface, Web
    * Subclass WebWorkerContainer and override this method to return a real
    * worker, for example:
    *
-   *   protected override createWorker(): WebWorkerLikeInterface {
+   *   protected override spawnWorker(): WebWorkerLikeInterface {
    *     return new Worker(new URL('./your-entry.js', import.meta.url), { type: 'module' });
    *   }
    */
-  protected createWorker(): WebWorkerLikeInterface {
+  protected spawnWorker(): WebWorkerLikeInterface {
     throw new Error(
-      'WebWorkerContainer.createWorker() must be overridden — subclass ' +
-      'WebWorkerContainer and implement createWorker() to return ' +
+      'WebWorkerContainer.spawnWorker() must be overridden — subclass ' +
+      'WebWorkerContainer and implement spawnWorker() to return ' +
       "`new Worker(new URL('./your-entry.js', import.meta.url), { type: 'module' })`.",
     );
   }

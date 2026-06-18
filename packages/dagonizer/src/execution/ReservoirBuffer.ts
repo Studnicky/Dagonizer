@@ -304,7 +304,7 @@ export class ReservoirBuffer<TState extends NodeStateInterface> {
 
     // Abort: throw before caller calls ScatterCheckpoint.clear() so checkpoint is preserved.
     if (this.#signal?.aborted === true && this.#poolErrors.length === 0) {
-      throw ExecutionError.fromSignal(this.#signal);
+      throw ExecutionError.ofSignal(this.#signal);
     }
 
     if (this.#poolErrors.length > 0) {

@@ -16,7 +16,8 @@
  * Run: npx tsx examples/virtual-clock.ts
  */
 
-import { BackoffStrategy, Clock, RetryPolicy, Scheduler } from '@studnicky/dagonizer/runtime';
+import { BackoffStrategyNames } from '@studnicky/dagonizer';
+import { Clock, RetryPolicy, Scheduler } from '@studnicky/dagonizer/runtime';
 import { VirtualClockProvider, VirtualScheduler } from '@studnicky/dagonizer/testing';
 
 process.stdout.write('\n=== VirtualClock: deterministic retry under programmatic time ===\n\n');
@@ -39,7 +40,7 @@ let attempts = 0;
 
 const policy = RetryPolicy.from({
   maxAttempts:  5,
-  strategy:     BackoffStrategy.EXPONENTIAL,
+  strategy:     BackoffStrategyNames.EXPONENTIAL,
   baseDelay:    100,    // 100ms → 200ms → 400ms …
   jitterFactor: 0,      // no jitter: delays are exact, enabling deterministic advance
 });

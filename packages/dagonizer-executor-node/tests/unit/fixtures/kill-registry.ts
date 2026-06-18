@@ -82,7 +82,7 @@ function buildKillBundle(): RegistryBundleInterface {
 }
 
 const registry: RegistryModuleInterface = {
-  async createBundle(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
+  async instantiate(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
     return buildKillBundle();
   },
 };

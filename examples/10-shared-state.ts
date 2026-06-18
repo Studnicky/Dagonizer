@@ -102,7 +102,7 @@ import type { Services } from './dags/10-shared-state.js';
     resumeDispatcher.registerDAG(parentDag);
 
     const { dagName, state, cursor } = ckpt2.restoreState(
-      CheckpointRestoreAdapterFn.fromFn((snap) => NodeStateBase.restore(snap)),
+      CheckpointRestoreAdapterFn.wrap((snap) => NodeStateBase.restore(snap)),
     );
     await resumeDispatcher.resume(dagName, state, cursor);
 

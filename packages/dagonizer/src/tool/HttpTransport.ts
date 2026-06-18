@@ -64,7 +64,7 @@ export class HttpTransport {
   ): Promise<TResponse> {
     const resolved = HttpTransport.resolveOptions(options);
     const response = await HttpTransport.request(url, { 'method': 'GET' }, resolved);
-    return HttpTransport.parseJson<TResponse>(response, validator);
+    return HttpTransport.decodeJson<TResponse>(response, validator);
   }
 
   /**
@@ -87,7 +87,7 @@ export class HttpTransport {
       },
       resolved,
     );
-    return HttpTransport.parseJson<TResponse>(response, validator);
+    return HttpTransport.decodeJson<TResponse>(response, validator);
   }
 
   /** Merge caller-supplied partial options with the module defaults. */
@@ -166,7 +166,7 @@ export class HttpTransport {
     throw lastError ?? new ToolError(`request failed after ${String(maxRetries)} retries: ${url}`, { 'reason': 'UNKNOWN', 'retryable': false, 'status': null });
   }
 
-  private static async parseJson<TResponse>(
+  private static async decodeJson<TResponse>(
     response: Response,
     validator: EntityValidator<TResponse>,
   ): Promise<TResponse> {

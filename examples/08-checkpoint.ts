@@ -69,7 +69,7 @@ const ckpt = Checkpoint.load(JSON.parse(persisted) as unknown);
 // Consumers supply their own restore fn so the checkpoint module never
 // imports domain state classes.
 const { state, dagName, cursor } = ckpt.restoreState(
-  CheckpointRestoreAdapterFn.fromFn((snap) => CountingState.restore(snap)),  // rehydrates domain fields via restoreData()
+  CheckpointRestoreAdapterFn.wrap((snap) => CountingState.restore(snap)),  // rehydrates domain fields via restoreData()
 );
 
 process.stdout.write(`  restored: count=${state.count} cursor="${cursor}"\n`);

@@ -9,7 +9,7 @@
  * Constructor options:
  *   registryModule   — URL string passed to DagHost init
  *   registryVersion  — version for the init ↔ ready handshake
- *   servicesConfig   — opaque JSON passed to createBundle (default: {})
+ *   servicesConfig   — opaque JSON passed to instantiate (default: {})
  *   poolSize         — number of processes (default: NodeSystemInfo)
  *   command          — override spawn command (default: process.execPath)
  *   args             — override spawn args (default: [spawnEntry.js path])
@@ -58,10 +58,10 @@ export class SpawnContainer extends NodeContainerBase<ChildProcess> {
   // ---------------------------------------------------------------------------
 
   /**
-   * createEntry: spawn a child process + construct an NdjsonChannel, initialized: false.
+   * composeEntry: spawn a child process + construct an NdjsonChannel, initialized: false.
    * No death listeners, no init handshake — the base handles both.
    */
-  protected override createEntry(): PoolEntry<ChildProcess> {
+  protected override composeEntry(): PoolEntry<ChildProcess> {
     const child = spawn(this.#command, [...this.#args], {
       'stdio': ['pipe', 'pipe', 'inherit'],
     });

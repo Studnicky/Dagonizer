@@ -17,7 +17,7 @@
  * Subclass contract:
  *   - call `super(NodeContainerBase.resolveOptions(options))` as the first
  *     constructor statement.
- *   - implement the `DagContainerBase` abstract seams (`createEntry`,
+ *   - implement the `DagContainerBase` abstract seams (`composeEntry`,
  *     `attachDeathListeners`, `terminateWorker`, `awaitWorkerExit`).
  *   - resolve the subclass-specific `entryUrl` after `super()` returns.
  */
@@ -44,7 +44,7 @@ import { NodeSystemInfo } from './NodeSystemInfo.js';
  *
  *   registryModule   — URL string passed to DagHost init
  *   registryVersion  — version for the init ↔ ready handshake
- *   servicesConfig   — opaque JSON passed to createBundle (default: {})
+ *   servicesConfig   — opaque JSON passed to instantiate (default: {})
  *   poolSize         — number of workers (default: recommended worker count)
  *   entryUrl         — override the default entry module URL (for tests)
  */

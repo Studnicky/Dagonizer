@@ -59,7 +59,7 @@ export class CanonicalId {
   private constructor() { /* static class */ }
 
   /** Pick the best id from an array of possible ISBNs. */
-  static fromIsbns(isbns: readonly string[] | undefined): string | null {
+  static ofIsbns(isbns: readonly string[] | undefined): string | null {
     if (isbns === undefined || isbns.length === 0) return null;
     const thirteen = isbns.find(
       (s) => s.length === 13 && (s.startsWith('978') || s.startsWith('979')),
@@ -72,7 +72,7 @@ export class CanonicalId {
   }
 
   /** Generate a stable work URN from title + first author (case + punct stripped). */
-  static fromWork(title: string, firstAuthor: string | undefined): string {
+  static ofWork(title: string, firstAuthor: string | undefined): string {
     const slugTitle  = CanonicalId.slugify(title);
     const slugAuthor = CanonicalId.slugify(firstAuthor ?? 'unknown');
     return `urn:work:${slugTitle}::${slugAuthor}`;
@@ -92,9 +92,9 @@ export class CanonicalId {
     readonly title:    string;
     readonly authors?: readonly string[];
   }): string {
-    const isbn = CanonicalId.fromIsbns(input.isbns);
+    const isbn = CanonicalId.ofIsbns(input.isbns);
     if (isbn !== null) return isbn;
-    return CanonicalId.fromWork(input.title, input.authors?.[0]);
+    return CanonicalId.ofWork(input.title, input.authors?.[0]);
   }
 
   /**
@@ -219,8 +219,8 @@ export class CanonicalId {
   }
 
   private static sourceList(c: Candidate): string[] {
-    const fromNotes = c.notes?.['_sources'];
-    if (Array.isArray(fromNotes)) return fromNotes.filter((s): s is string => typeof s === 'string');
+    const noteSources = c.notes?.['_sources'];
+    if (Array.isArray(noteSources)) return noteSources.filter((s): s is string => typeof s === 'string');
     return c.source.split('+').map((s) => s.trim()).filter(Boolean);
   }
 }

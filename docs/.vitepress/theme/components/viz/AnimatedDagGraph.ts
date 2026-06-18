@@ -6,7 +6,7 @@
  * ## Extension contract
  *
  * Extends `CytoscapeGraph` and overrides:
- *   - `buildElements()` — renders only expanded embedded-DAGs, enriches
+ *   - `composeElements()` — renders only expanded embedded-DAGs, enriches
  *     each node's `data.kind` from `nodeKinds`.
  *   - `layoutRegistry()` — returns the same expanded-only subset so
  *     `CompositeLayout` agrees with the rendered element set.
@@ -166,7 +166,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
 
   /**
    * Build a registry containing only the embedded-DAGs currently in
-   * `#expandedDags`. Used by both `buildElements()` and `layoutRegistry()`.
+   * `#expandedDags`. Used by both `composeElements()` and `layoutRegistry()`.
    */
   #filteredRegistry(): ReadonlyMap<string, DAG> {
     const out = new Map<string, DAG>();
@@ -178,7 +178,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
 
   // ── CytoscapeGraph hook overrides ─────────────────────────────────────────
 
-  protected override buildElements(): ReadonlyArray<CytoscapeElement> {
+  protected override composeElements(): ReadonlyArray<CytoscapeElement> {
     const filtered = this.#filteredRegistry();
     const raw = CytoscapeRenderer.render(this.dag, { embeddedDAGs: filtered });
 
@@ -534,7 +534,7 @@ export class AnimatedDagGraph extends CytoscapeGraph {
   async rebuild(): Promise<void> {
     const cy = this.cyInstance;
     if (cy === null) return;
-    const positioned = await this.applyLayout(this.buildElements());
+    const positioned = await this.applyLayout(this.composeElements());
     cy.elements().remove();
     cy.add(positioned as Parameters<Core['add']>[0]);
     this.rerunLayout();

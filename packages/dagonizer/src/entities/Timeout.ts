@@ -8,7 +8,7 @@
  *
  * The `ms` field is `readonly` and the constructor is `private`, so no
  * external code can mutate or construct instances — the static factories
- * (`none()`, `ofMs()`, `fromWire()`) are the only creation points. Using
+ * (`none()`, `ofMs()`, `ofWire()`) are the only creation points. Using
  * a public readonly field (rather than a private field + getter) ensures
  * structural compatibility when this class appears in interfaces that
  * span multiple TypeScript compilation roots (e.g. `dist/` vs `src/`
@@ -37,7 +37,7 @@ export class Timeout {
   /**
    * Narrow a wire value (`number | null`; null or ≤0 = none) to a Timeout.
    */
-  static fromWire(value: number | null): Timeout {
+  static ofWire(value: number | null): Timeout {
     return value === null ? Timeout.none() : Timeout.ofMs(value);
   }
 

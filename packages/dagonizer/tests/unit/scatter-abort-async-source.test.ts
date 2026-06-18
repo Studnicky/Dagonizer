@@ -10,7 +10,7 @@
  *
  * Fix: the pull-loop condition adds `&& signal?.aborted !== true`; after the
  * drain loop, if the signal is aborted and no pool error occurred, throw
- * `ExecutionError.fromSignal(signal)` BEFORE any `ScatterCheckpoint.clear()`.
+ * `ExecutionError.ofSignal(signal)` BEFORE any `ScatterCheckpoint.clear()`.
  *
  * This test file:
  *   1. Reproduces the defect against current code (should FAIL before the fix).

@@ -202,14 +202,14 @@ dispatcher.registerDAG(dag);
 
 ---
 
-### `DAGDocument.fromValue(value)` {#static-fromvalue}
+### `DAGDocument.ofValue(value)` {#static-ofvalue}
 
 ```ts twoslash
 import { DAGDocument } from '@studnicky/dagonizer';
 // ---cut---
-// static fromValue(value: unknown): DAG
+// static ofValue(value: unknown): DAG
 declare const value: unknown;
-const dag = DAGDocument.fromValue(value);
+const dag = DAGDocument.ofValue(value);
 ```
 
 Validate an already-parsed value. Same boundary semantics as `load` but skips `JSON.parse`.
@@ -278,7 +278,7 @@ declare const state: MyState;
 const execution: Execution<MyState> = dispatcher.resume('my-flow', state, 'node-b');
 ```
 
-Identical to `execute()` but begins at `fromStage` instead of the DAG's entrypoint. The caller is responsible for rehydrating `state` (typically via `Checkpoint.load(raw).restoreState(CheckpointRestoreAdapterFn.fromFn(fn))`) before calling.
+Identical to `execute()` but begins at `fromStage` instead of the DAG's entrypoint. The caller is responsible for rehydrating `state` (typically via `Checkpoint.load(raw).restoreState(CheckpointRestoreAdapterFn.wrap(fn))`) before calling.
 
 <<< @/../examples/the-archivist/runArchivist.ts#resume-run
 

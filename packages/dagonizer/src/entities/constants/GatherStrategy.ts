@@ -29,7 +29,7 @@ export type GatherStrategyName = FromSchema<typeof GatherStrategySchema>;
 // → 'append' | 'collect' | 'custom' | 'discard' | 'map' | 'partition'
 
 /** Gather strategy names; discriminator values used by `GatherConfig.strategy`. */
-export const GatherStrategyName = {
+export const GatherStrategyNames = {
   'APPEND':    'append',
   'COLLECT':   'collect',
   'CUSTOM':    'custom',

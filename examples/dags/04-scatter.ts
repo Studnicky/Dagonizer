@@ -16,7 +16,7 @@ import type { Batch, GatherExecution, GatherRecord, NodeStateInterface } from '@
 import type { GatherConfig } from '@studnicky/dagonizer/entities';
 import type { DAG } from '@studnicky/dagonizer';
 import type { StateAccessor } from '@studnicky/dagonizer/contracts';
-import { GatherStrategyName } from '@studnicky/dagonizer/constants';
+import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 // #region state
 export class ScrapeState extends NodeStateBase {
@@ -116,7 +116,7 @@ export const dag: DAG = {
       "itemKey":      'url',                           // metadata key each item is written under
       "concurrency":  2,                               // max clones in-flight simultaneously
       "gather": {
-        "strategy":   GatherStrategyName.PARTITION,      // route clones by their output key
+        "strategy":   GatherStrategyNames.PARTITION,      // route clones by their output key
         "partitions": { "ok": 'succeeded', "fail": 'failed' },  // output key → state field name
       },
       // Aggregate outputs: reflect final distribution, not per-clone results.

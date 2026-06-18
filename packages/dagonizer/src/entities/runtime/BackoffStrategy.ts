@@ -21,7 +21,7 @@ export type BackoffStrategy = FromSchema<typeof BackoffStrategySchema>;
 // → 'constant' | 'decorrelated-jitter' | 'exponential' | 'linear'
 
 /** Backoff delay strategies for `RetryPolicy`. */
-export const BackoffStrategy = {
+export const BackoffStrategyNames = {
   'CONSTANT': 'constant',
   'DECORRELATED_JITTER': 'decorrelated-jitter',
   'EXPONENTIAL': 'exponential',

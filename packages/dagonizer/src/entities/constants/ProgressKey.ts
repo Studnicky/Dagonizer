@@ -24,7 +24,7 @@ export const ProgressKeySchema = {
 export type ProgressKey = FromSchema<typeof ProgressKeySchema>;
 
 /** Reserved progress metadata keys used by the dispatcher. */
-export const ProgressKey = {
+export const ProgressKeys = {
   'SCATTER': '__dagonizer_scatter_progress__',
   'WORK_SET': '__dagonizer_workset_progress__',
 } as const satisfies Record<string, ProgressKey>;
@@ -38,7 +38,7 @@ export const ProgressKey = {
  * placement's `name` so multiple scatter placements in one flow keep
  * independent entries.
  */
-export const SCATTER_PROGRESS_KEY = ProgressKey.SCATTER;
+export const SCATTER_PROGRESS_KEY = ProgressKeys.SCATTER;
 
 /**
  * Reserved metadata key used by the work-set scheduler to persist the in-flight
@@ -51,4 +51,4 @@ export const SCATTER_PROGRESS_KEY = ProgressKey.SCATTER;
  * for size-1 canonical runs (one item whose state IS the top-level state); the
  * cursor model handles that case exactly.
  */
-export const WORKSET_PROGRESS_KEY = ProgressKey.WORK_SET;
+export const WORKSET_PROGRESS_KEY = ProgressKeys.WORK_SET;

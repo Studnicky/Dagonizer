@@ -16,7 +16,8 @@ import type { NodeInterface } from '../contracts/NodeInterface.js';
 import { ContractRegistryValidator } from '../derive/ContractRegistryValidator.js';
 import { DAGDeriver } from '../derive/DAGDeriver.js';
 import type { DAGDeriverAnnotations } from '../derive/DAGDeriverAnnotations.js';
-import { DAG, DAG_CONTEXT } from '../entities/dag/DAG.js';
+import { DAGIdentity, DAG_CONTEXT } from '../entities/dag/DAG.js';
+import type { DAG } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import type { GatherConfig } from '../entities/dag/GatherConfig.js';
 import type { PhaseNode } from '../entities/dag/PhaseNode.js';
@@ -176,7 +177,7 @@ export class DAGBuilder {
     routes: Record<TOutput, string>,
   ): this {
     this.#nodes.push({
-      '@id':     DAG.placementId(this.#name, name),
+      '@id':     DAGIdentity.placementId(this.#name, name),
       '@type':   'SingleNode',
       name,
       'node':    dagNode.name,
@@ -220,9 +221,9 @@ export class DAGBuilder {
     // ScatterNode always carries them. Fields whose defaults are data-dependent at
     // runtime (concurrency) or whose absence is semantically meaningful (inputs,
     // container) remain optional and are spread only when the caller provides them.
-    const resolved = ScatterOptions.from(options);
+    const resolved = ScatterOptions.resolve(options);
     const scatterNode: ScatterNode = {
-      '@id':     DAG.placementId(this.#name, name),
+      '@id':     DAGIdentity.placementId(this.#name, name),
       '@type':   'ScatterNode',
       name,
       'source':  source,
@@ -288,7 +289,7 @@ export class DAGBuilder {
         }
         : undefined;
     const embeddedNode: EmbeddedDAGNode = {
-      '@id':     DAG.placementId(this.#name, name),
+      '@id':     DAGIdentity.placementId(this.#name, name),
       '@type':   'EmbeddedDAGNode',
       name,
       'dag':     dagName,
@@ -317,7 +318,7 @@ export class DAGBuilder {
   terminal(name: string, options: { outcome?: 'completed' | 'failed' } = {}): this {
     const { outcome } = { ...TERMINAL_DEFAULTS, ...options };
     const placement: TerminalNode = {
-      '@id':   DAG.placementId(this.#name, name),
+      '@id':   DAGIdentity.placementId(this.#name, name),
       '@type': 'TerminalNode',
       name,
       outcome,
@@ -344,7 +345,7 @@ export class DAGBuilder {
     dagNode: NodeInterface<TState, TOutput, TServices>,
   ): this {
     const placement: PhaseNode = {
-      '@id':   DAG.placementId(this.#name, name),
+      '@id':   DAGIdentity.placementId(this.#name, name),
       '@type': 'PhaseNode',
       name,
       'node':  dagNode.name,
@@ -372,7 +373,7 @@ export class DAGBuilder {
     }
     const dag: DAG = {
       '@context': DAG_CONTEXT,
-      '@id':      DAG.id(this.#name),
+      '@id':      DAGIdentity.id(this.#name),
       '@type':    'DAG',
       'name':       this.#name,
       'version':    this.#version,
@@ -414,7 +415,7 @@ export class DAGBuilder {
    * @param options - Optional configuration.
    * @param options.annotations - Optional deriver annotation overrides.
    */
-  static fromNodes(
+  static derive(
     name: string,
     version: string,
     entrypoint: string,

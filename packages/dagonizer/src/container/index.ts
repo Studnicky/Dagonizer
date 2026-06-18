@@ -6,7 +6,7 @@
  * and transport error codes.
  *
  * Subclasses extend DagContainerBase<TState, TWorker> and implement the
- * four abstract seams: createEntry, attachDeathListeners, terminateWorker,
+ * four abstract seams: composeEntry, attachDeathListeners, terminateWorker,
  * awaitWorkerExit. The base owns pool growth, semaphore waiting, lazy init,
  * death eviction, and graceful shutdown.
  */

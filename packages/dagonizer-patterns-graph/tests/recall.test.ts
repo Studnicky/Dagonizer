@@ -16,7 +16,7 @@ class TestState {
 class TestRecall extends RecallContextNode<TestState, string> {
   readonly name = 'test-recall';
   readonly outputs = ['success', 'empty'] as const;
-  protected buildQuery(_s: TestState): SlotPattern { return { 'subject': '?s' }; }
+  protected composeQuery(_s: TestState): SlotPattern { return { 'subject': '?s' }; }
   protected mapBindings(rows: readonly Binding[]): readonly string[] { return rows.map((r) => r['s']?.value ?? ''); }
   protected applyRecall(s: TestState, items: readonly string[]): void { s.recalled = [...items]; }
 }

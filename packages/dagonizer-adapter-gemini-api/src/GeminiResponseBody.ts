@@ -7,7 +7,7 @@
  * derived via `json-schema-to-ts` `FromSchema`. The schema is
  * deliberately permissive (`additionalProperties: true`, no top-level
  * `required`) because Gemini omits `candidates`/`usageMetadata` on empty
- * or blocked responses; `#parseResponse` handles the absent cases
+ * or blocked responses; `#decodeResponse` handles the absent cases
  * explicitly. The single structural invariant — `candidates` is an array
  * when present — is expressed by the schema and enforced by the
  * compiled validator on `geminiResponseBodyValidator`.

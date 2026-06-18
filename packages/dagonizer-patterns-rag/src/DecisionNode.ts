@@ -22,7 +22,7 @@ export abstract class DecisionNode<
   TOutput extends string = string,
 > extends LlmDispatchNode<TState, TOutput> {
   /** Parse the model's text response into a structured choice. */
-  protected abstract parseChoice(content: string): TChoice;
+  protected abstract decodeChoice(content: string): TChoice;
 
   /** Route the choice to one of the declared output ports. */
   protected abstract routeFor(choice: TChoice): TOutput;
@@ -36,7 +36,7 @@ export abstract class DecisionNode<
   ): Promise<NodeOutputInterface<TOutput>> {
     const response = await this.dispatch(state, context);
     const content = this.extractContent(response);
-    const choice = this.parseChoice(content);
+    const choice = this.decodeChoice(content);
     this.applyChoice(state, choice);
     return NodeOutputBuilder.of(this.routeFor(choice));
   }

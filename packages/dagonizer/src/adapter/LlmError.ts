@@ -85,7 +85,7 @@ export class LlmError extends Error {
   }
 
   /** Wrap a `fetch()` rejection in an `LlmError` with NETWORK classification. */
-  static fromNetworkError(err: unknown): LlmError {
+  static ofNetworkError(err: unknown): LlmError {
     const message = err instanceof Error ? err.message : String(err);
     return new LlmError(`network: ${message}`, Classifications['NETWORK'], { 'cause': err });
   }

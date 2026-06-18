@@ -16,7 +16,6 @@ Runtime utilities: monotonic clock, scheduler, retry policy, signal composition,
 
 ```ts twoslash
 import {
-  BackoffStrategy,
   Clock,
   DottedPathAccessor,
   RealTimeScheduler,
@@ -131,7 +130,8 @@ Default `SchedulerProvider`. Wraps `setTimeout` and `setInterval`. Do not instan
 ## Class: `RetryPolicy`
 
 ```ts twoslash
-import { RetryPolicy, BackoffStrategy } from '@studnicky/dagonizer/runtime';
+import { RetryPolicy } from '@studnicky/dagonizer/runtime';
+import { BackoffStrategyNames } from '@studnicky/dagonizer';
 ```
 
 Also re-exported from `@studnicky/dagonizer` root.
@@ -145,9 +145,10 @@ See [Retry](/guide/retry) for detailed usage.
 ### `RetryPolicy.run(task, options?)`
 
 ```ts twoslash
-import { RetryPolicy, BackoffStrategy } from '@studnicky/dagonizer/runtime';
+import { RetryPolicy } from '@studnicky/dagonizer/runtime';
+import { BackoffStrategyNames } from '@studnicky/dagonizer';
 // ---cut---
-const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategy.EXPONENTIAL });
+const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategyNames.EXPONENTIAL });
 const result = await policy.run(async (attempt: number) => {
   if (attempt < 3) throw new Error('not yet');
   return 'done';
@@ -159,9 +160,10 @@ Runs `task` under the configured policy. Resolves with the function's return val
 ### `RetryPolicy.getDelay(attempt, error?)`
 
 ```ts twoslash
-import { RetryPolicy, BackoffStrategy } from '@studnicky/dagonizer/runtime';
+import { RetryPolicy } from '@studnicky/dagonizer/runtime';
+import { BackoffStrategyNames } from '@studnicky/dagonizer';
 // ---cut---
-const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategy.CONSTANT });
+const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategyNames.CONSTANT });
 const delay: number = policy.getDelay(1);
 ```
 
@@ -170,9 +172,10 @@ Compute the backoff delay (ms) for a 1-based attempt number. Override in subclas
 ### `RetryPolicy.shouldRetry(error, attempt)`
 
 ```ts twoslash
-import { RetryPolicy, BackoffStrategy } from '@studnicky/dagonizer/runtime';
+import { RetryPolicy } from '@studnicky/dagonizer/runtime';
+import { BackoffStrategyNames } from '@studnicky/dagonizer';
 // ---cut---
-const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategy.CONSTANT });
+const policy = RetryPolicy.from({ maxAttempts: 3, strategy: BackoffStrategyNames.CONSTANT });
 const shouldRetry: boolean = policy.shouldRetry(new Error('oops'), 1);
 ```
 
@@ -180,20 +183,20 @@ Decision predicate. Override for conditional logic beyond the `retryOn` / `abort
 
 ---
 
-## Const: `BackoffStrategy`
+## Const: `BackoffStrategyNames` and type `BackoffStrategy`
 
 ```ts twoslash
-const BackoffStrategy = {
+const BackoffStrategyNames = {
   CONSTANT:            'constant',
   LINEAR:              'linear',
   EXPONENTIAL:         'exponential',
   DECORRELATED_JITTER: 'decorrelated-jitter',
 } as const;
 
-type BackoffStrategy = (typeof BackoffStrategy)[keyof typeof BackoffStrategy];
+type BackoffStrategy = (typeof BackoffStrategyNames)[keyof typeof BackoffStrategyNames];
 ```
 
-`BackoffStrategy` serves as both the const enum object and the union type of its values. Pass a value as `strategy` in `RetryPolicyOptionsInterface`. See [Retry](/guide/retry) for delay formulas.
+`BackoffStrategyNames` is the frozen lookup object; `BackoffStrategy` is the union type of its values. Both ship from `@studnicky/dagonizer` (and `@studnicky/dagonizer/entities`). Pass a value as `strategy` in `RetryPolicyOptionsInterface`. See [Retry](/guide/retry) for delay formulas.
 
 ---
 

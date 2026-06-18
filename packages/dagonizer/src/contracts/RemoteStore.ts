@@ -10,31 +10,9 @@
  * dispatcher uses when distributed execution is active.
  */
 
+import type { RemoteStoreEndpoint } from './RemoteStoreEndpoint.js';
+import type { RemoteStoreLease } from './RemoteStoreLease.js';
 import type { Store } from './Store.js';
-
-/** Identity + capability descriptor for a remote store. */
-export interface RemoteStoreEndpoint {
-  /** Stable identifier for the remote endpoint (URL, gRPC target, etc.). */
-  url: string;
-  /**
-   * Region/zone hint for placement decisions.
-   * Default value at construction: `''` (no region constraint).
-   */
-  region: string;
-}
-
-/**
- * Lease token returned by `acquireLease`. Opaque to consumers; the store
- * validates it on `releaseLease` and on writes when leasing is enforced.
- */
-export interface RemoteStoreLease {
-  /** Opaque token the store recognises on `releaseLease` / write checks. */
-  token:     string;
-  /** Monotonic ms timestamp the lease expires at (exclusive). */
-  expiresAt: number;
-  /** Subject the lease is scoped to (e.g. a key namespace or DAG run id). */
-  subject:   string;
-}
 
 /** RemoteStore: distributed shared-state contract. */
 export interface RemoteStore extends Store {

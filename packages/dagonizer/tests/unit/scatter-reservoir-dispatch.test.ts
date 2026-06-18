@@ -50,7 +50,8 @@ import type { DagContainerInterface } from '../../src/contracts/DagContainerInte
 import type { DispatcherBundle } from '../../src/contracts/DispatcherBundle.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
 import type { ObserverRelay } from '../../src/contracts/ObserverRelay.js';
-import type { RegistryBundleInterface, RegistryModuleInterface } from '../../src/contracts/RegistryModuleInterface.js';
+import type { RegistryBundleInterface } from '../../src/contracts/RegistryBundleInterface.js';
+import type { RegistryModuleInterface } from '../../src/contracts/RegistryModuleInterface.js';
 import type { StateAccessor } from '../../src/contracts/StateAccessor.js';
 import { GatherStrategies, GatherStrategy } from '../../src/core/GatherStrategies.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
@@ -618,7 +619,7 @@ const SUITE_D_REGISTRY_VERSION = '1.0.0';
  * router reads `currentItem` on the host side).
  */
 const suiteDRestoreAdapter: CheckpointRestoreAdapter<NodeStateInterface> =
-  CheckpointRestoreAdapterFn.fromFn((snap: JsonObject): NodeStateInterface => {
+  CheckpointRestoreAdapterFn.wrap((snap: JsonObject): NodeStateInterface => {
     const state = new ReservoirDispatchState();
     state.applySnapshot(snap);
     return state;
@@ -634,7 +635,7 @@ const suiteDBundle: DispatcherBundle<NodeStateInterface, unknown> = {
 };
 
 const suiteDRegistry: RegistryModuleInterface = {
-  createBundle(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
+  instantiate(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
     return Promise.resolve({
       'bundle': suiteDBundle,
       'services': undefined,
@@ -714,7 +715,7 @@ class SingleChannelContainer extends DagContainerBase<ReservoirDispatchState, nu
 
   protected override releaseChannel(_channel: MessageChannelInterface): void { /* bypass pool */ }
 
-  protected override createEntry(): PoolEntry<null> {
+  protected override composeEntry(): PoolEntry<null> {
     return { 'worker': null, 'channel': this.#channel, 'initialized': false };
   }
 

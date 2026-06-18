@@ -12,7 +12,7 @@
  *   - init handshake: ready reply with matching registryVersion
  *   - init version mismatch: error with VERSION_MISMATCH code
  *   - init non-existent module: error with INIT_FAILED code
- *   - init invalid module (no createBundle): INVALID_REGISTRY_MODULE error
+ *   - init invalid module (no instantiate): INVALID_REGISTRY_MODULE error
  *   - execute a dag: result with items[0].terminalOutcome + items[0].snapshot + intermediates
  *   - execute forwards intermediate messages
  *   - abort fires the AbortController (sleeper terminates)
@@ -47,7 +47,7 @@ const PACKAGE_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..', '
 const REGISTRY_MODULE_URL = resolve(PACKAGE_ROOT, 'dist-testing', 'ConformanceRegistry.js');
 const REGISTRY_VERSION = '1.0.0';
 
-// A module URL that exists but is not a registry module (no createBundle export).
+// A module URL that exists but is not a registry module (no instantiate export).
 const INVALID_MODULE_URL = resolve(PACKAGE_ROOT, 'dist', 'index.js');
 
 // ---------------------------------------------------------------------------
@@ -126,7 +126,7 @@ void describe('DagHost — init handshake', () => {
     }
   });
 
-  void it('replies error with INVALID_REGISTRY_MODULE for module without createBundle', async () => {
+  void it('replies error with INVALID_REGISTRY_MODULE for module without instantiate', async () => {
     const { parentSide } = buildHostPair();
     const reply = await sendInit(parentSide, INVALID_MODULE_URL);
 

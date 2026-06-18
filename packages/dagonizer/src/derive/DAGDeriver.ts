@@ -33,7 +33,8 @@
 
 import type { NodeInterface } from '../contracts/NodeInterface.js';
 import type { OperationContract } from '../contracts/OperationContract.js';
-import { DAG, DAG_CONTEXT } from '../entities/dag/DAG.js';
+import { DAGIdentity, DAG_CONTEXT } from '../entities/dag/DAG.js';
+import type { DAG } from '../entities/dag/DAG.js';
 import type { EmbeddedDAGNode } from '../entities/dag/EmbeddedDAGNode.js';
 import type { ScatterNode } from '../entities/dag/ScatterNode.js';
 import type { SingleNodePlacementInterface } from '../entities/dag/SingleNode.js';
@@ -142,7 +143,7 @@ export class DAGDeriver {
 
     return {
       '@context': DAG_CONTEXT,
-      '@id':      DAG.id(opts.name),
+      '@id':      DAGIdentity.id(opts.name),
       '@type':    'DAG',
       'name':       opts.name,
       'version':    opts.version,
@@ -375,7 +376,7 @@ export class DAGDeriver {
             throw new DAGError(`DAGDeriver: contract for '${name}' not found in registry`);
           }
           const single: SingleNodePlacementInterface = {
-            '@id':   DAG.placementId(dagName, name),
+            '@id':   DAGIdentity.placementId(dagName, name),
             '@type': 'SingleNode',
             name,
             'node': name,
@@ -402,7 +403,7 @@ export class DAGDeriver {
         );
       }
       const terminalNode: TerminalNode = {
-        '@id':     DAG.placementId(dagName, emitName),
+        '@id':     DAGIdentity.placementId(dagName, emitName),
         '@type':   'TerminalNode',
         'name':    emitName,
         'outcome': emit.outcome,
@@ -470,7 +471,7 @@ export class DAGDeriver {
     const gather: ScatterNode['gather'] = gatherByStrategy[scatter.strategy](scatter);
 
     const scatterNode: ScatterNode = {
-      '@id':     DAG.placementId(dagName, name),
+      '@id':     DAGIdentity.placementId(dagName, name),
       '@type':   'ScatterNode',
       name,
       'body':    { 'node': scatter.node },
@@ -525,7 +526,7 @@ export class DAGDeriver {
       : undefined;
 
     const embeddedNode: EmbeddedDAGNode = {
-      '@id':   DAG.placementId(dagName, name),
+      '@id':   DAGIdentity.placementId(dagName, name),
       '@type': 'EmbeddedDAGNode',
       name,
       'dag':   embeddedDAG.dag,

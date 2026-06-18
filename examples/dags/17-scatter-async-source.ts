@@ -36,7 +36,7 @@ import {
   ScalarNode,
 } from '@studnicky/dagonizer';
 import type { DAG } from '@studnicky/dagonizer';
-import { GatherStrategyName } from '@studnicky/dagonizer/constants';
+import { GatherStrategyNames } from '@studnicky/dagonizer/constants';
 
 // ---------------------------------------------------------------------------
 // Event log (shared between generator and worker, filled during execution)
@@ -113,7 +113,7 @@ export const dag: DAG = {
       "itemKey":   'stream-item',       // metadata key each pulled item is bound to
       "concurrency": 2,                 // max 2 items in-flight simultaneously
       "gather": {
-        "strategy": GatherStrategyName.MAP,
+        "strategy": GatherStrategyNames.MAP,
         "mapping":  { "item": 'results' }, // clone.item (scalar) → parent.results[]
       },
       "outputs": {

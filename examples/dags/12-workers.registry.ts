@@ -3,7 +3,7 @@
  *
  * The WorkerThreadContainer dynamic-imports this compiled file (the .js
  * build output under examples/dist/) inside each worker thread. DagHost
- * calls `registry.createBundle(servicesConfig)` to reconstruct the same
+ * calls `registry.instantiate(servicesConfig)` to reconstruct the same
  * bundle of nodes and DAGs that the parent dispatcher uses, ensuring the
  * worker runs an identical execution graph.
  *
@@ -24,7 +24,7 @@ import type { JsonObject } from '@studnicky/dagonizer/entities';
 import { dag, SquareWorkerNode, workerDag, WorkState } from './12-workers.js';
 
 const registry: RegistryModuleInterface = {
-  async createBundle(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
+  async instantiate(_servicesConfig: JsonObject): Promise<RegistryBundleInterface> {
     return {
       "bundle": {
         "nodes": [new SquareWorkerNode()],
@@ -32,7 +32,7 @@ const registry: RegistryModuleInterface = {
       },
       "services":        undefined,
       "registryVersion": '1.0.0',
-      "restoreState":    CheckpointRestoreAdapterFn.fromFn((snapshot: JsonObject) => WorkState.restore(snapshot)),
+      "restoreState":    CheckpointRestoreAdapterFn.wrap((snapshot: JsonObject) => WorkState.restore(snapshot)),
     };
   },
 };

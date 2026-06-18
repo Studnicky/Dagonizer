@@ -20,12 +20,11 @@
 import type { AbortableOptionsInterface } from '../contracts/AbortableOptionsInterface.js';
 import type { ErrorConstructorType } from '../contracts/ErrorConstructorType.js';
 import type { RetryPolicyOptionsInterface } from '../contracts/RetryPolicyOptionsInterface.js';
-import { BackoffStrategy } from '../entities/runtime/BackoffStrategy.js';
+import { BackoffStrategyNames } from '../entities/runtime/BackoffStrategy.js';
+import type { BackoffStrategy } from '../entities/runtime/BackoffStrategy.js';
 import { DAGError, ExecutionError } from '../errors/DAGError.js';
 
 import { Scheduler } from './Scheduler.js';
-
-export { BackoffStrategy };
 
 const DEFAULT_BASE_DELAY_MS = 1000;
 const DEFAULT_MAX_DELAY_MS = 30_000;
@@ -37,7 +36,7 @@ const DECORRELATED_JITTER_MULTIPLIER = 3;
 /** Canonical defaults for `RetryPolicyOptionsInterface` numeric/strategy fields. */
 const RETRY_POLICY_DEFAULTS = {
   'maxAttempts':  DEFAULT_MAX_ATTEMPTS,
-  'strategy':     BackoffStrategy.EXPONENTIAL as BackoffStrategy,
+  'strategy':     BackoffStrategyNames.EXPONENTIAL as BackoffStrategy,
   'baseDelay':    DEFAULT_BASE_DELAY_MS,
   'maxDelay':     DEFAULT_MAX_DELAY_MS,
   'multiplier':   DEFAULT_MULTIPLIER,
@@ -73,7 +72,7 @@ const BACKOFF_COMPUTERS: Readonly<Record<BackoffStrategy, (attempt: number, base
  * ```ts
  * const policy = RetryPolicy.from({
  *   maxAttempts: 3,
- *   strategy: BackoffStrategy.EXPONENTIAL,
+ *   strategy: BackoffStrategyNames.EXPONENTIAL,
  *   retryOn: [NetworkError],
  *   abortOn: [AuthError],
  * });
@@ -151,7 +150,7 @@ export class RetryPolicy {
     }
     let delay = computer(attempt, this.baseDelay, this.multiplier);
 
-    if (this.jitterFactor > 0 && this.strategy !== BackoffStrategy.DECORRELATED_JITTER) {
+    if (this.jitterFactor > 0 && this.strategy !== BackoffStrategyNames.DECORRELATED_JITTER) {
       const jitter = delay * this.jitterFactor * (Math.random() * 2 - 1);
       delay += jitter;
     }
@@ -208,7 +207,7 @@ export class RetryPolicy {
 
     while (attempt < this.maxAttempts) {
       if (signal?.aborted) {
-        throw ExecutionError.fromSignal(signal);
+        throw ExecutionError.ofSignal(signal);
       }
       attempt++;
 
@@ -218,7 +217,7 @@ export class RetryPolicy {
         // while `task` was executing but before `await` returned control here,
         // treat it as an abort rather than a successful result.
         if (signal?.aborted === true) {
-          throw ExecutionError.fromSignal(signal);
+          throw ExecutionError.ofSignal(signal);
         }
         return result;
       } catch (error) {
@@ -248,7 +247,7 @@ export class RetryPolicy {
     } catch (err) {
       // Re-throw abort errors as the signal's reason for consistent error shape.
       if (signal?.aborted === true) {
-        throw ExecutionError.fromSignal(signal);
+        throw ExecutionError.ofSignal(signal);
       }
       throw err;
     }

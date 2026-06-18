@@ -31,7 +31,7 @@ export abstract class LlmDispatchNode<
   TOutput extends string,
 > extends ScalarNode<TState, TOutput, RagServices> {
   /** Build the user prompt from state. */
-  protected abstract buildPrompt(state: TState): string;
+  protected abstract composePrompt(state: TState): string;
 
   /**
    * Optional hook to override the request envelope (model selection,
@@ -42,7 +42,7 @@ export abstract class LlmDispatchNode<
    * `toolCallId`/`toolName` — the `ChatMessageSchema` `oneOf` enforces
    * `additionalProperties: false` on the non-tool branch.
    */
-  protected buildRequest(prompt: string, signal: AbortSignal): PartialChatRequest {
+  protected composeRequest(prompt: string, signal: AbortSignal): PartialChatRequest {
     return {
       'messages': [{ 'role': 'user', 'content': prompt }],
       signal,
@@ -51,8 +51,8 @@ export abstract class LlmDispatchNode<
 
   /** Send the request through the configured LLM. */
   protected async dispatch(state: TState, context: NodeContextInterface<RagServices>): Promise<ChatResponse> {
-    const prompt = this.buildPrompt(state);
-    const request: ChatRequest = ChatRequestBuilder.from(this.buildRequest(prompt, context.signal));
+    const prompt = this.composePrompt(state);
+    const request: ChatRequest = ChatRequestBuilder.from(this.composeRequest(prompt, context.signal));
     return context.services.llm.chat(request);
   }
 

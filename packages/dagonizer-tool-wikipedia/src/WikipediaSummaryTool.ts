@@ -88,7 +88,7 @@ export class WikipediaSummaryTool implements Tool<WikipediaInput, readonly Candi
       && (payload.description ?? '').toLowerCase().includes('book');
 
     const canonical = isBookish
-      ? CanonicalId.fromWork(payload.title, undefined)
+      ? CanonicalId.ofWork(payload.title, undefined)
       : `urn:wiki:${CanonicalId.slugify(payload.title)}`;
 
     const notes: Record<string, unknown> = {

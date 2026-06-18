@@ -65,9 +65,3 @@ export class OllamaProbe {
     }
   }
 }
-
-/**
- * Free-function aliases for the OllamaProbe static methods.
- */
-export const detectOllama = (): Promise<boolean> => OllamaProbe.detect();
-export const listOllamaModels = (): Promise<readonly string[]> => OllamaProbe.listModels();

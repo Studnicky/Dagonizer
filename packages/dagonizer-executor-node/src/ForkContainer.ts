@@ -9,7 +9,7 @@
  * Constructor options:
  *   registryModule   — URL string passed to DagHost init
  *   registryVersion  — version for the init ↔ ready handshake
- *   servicesConfig   — opaque JSON passed to createBundle (default: {})
+ *   servicesConfig   — opaque JSON passed to instantiate (default: {})
  *   poolSize         — number of child processes (default: NodeSystemInfo)
  *   entryUrl         — override the default forkEntry.js URL (for tests)
  *
@@ -49,15 +49,15 @@ export class ForkContainer extends NodeContainerBase<ChildProcess> {
   // ---------------------------------------------------------------------------
 
   /**
-   * createEntry: fork a child process + construct an IpcChannel, initialized: false.
+   * composeEntry: fork a child process + construct an IpcChannel, initialized: false.
    * No death listeners, no init handshake — the base handles both.
    */
-  protected override createEntry(): PoolEntry<ChildProcess> {
+  protected override composeEntry(): PoolEntry<ChildProcess> {
     // Fork the entry module. IPC is enabled by default for fork().
     // No execArgv override needed: package.json "type": "module" makes
     // the compiled .js output ESM.
     const child = fork(this.#entryUrl.pathname, []);
-    const channel = IpcChannel.fromChildProcess(child);
+    const channel = IpcChannel.ofChildProcess(child);
     return { 'worker': child, 'channel': channel, 'initialized': false };
   }
 

@@ -3,12 +3,12 @@ import { test } from 'node:test';
 
 import { BookBuilder, CanonicalId } from '../src/index.js';
 
-void test('CanonicalId.fromIsbns picks ISBN-13 over ISBN-10', () => {
-  assert.equal(CanonicalId.fromIsbns(['1234567890', '9781234567897']), '9781234567897');
+void test('CanonicalId.ofIsbns picks ISBN-13 over ISBN-10', () => {
+  assert.equal(CanonicalId.ofIsbns(['1234567890', '9781234567897']), '9781234567897');
 });
-void test('CanonicalId.fromWork is stable', () => {
-  const a = CanonicalId.fromWork('Neuromancer', 'William Gibson');
-  const b = CanonicalId.fromWork('Neuromancer', 'William Gibson');
+void test('CanonicalId.ofWork is stable', () => {
+  const a = CanonicalId.ofWork('Neuromancer', 'William Gibson');
+  const b = CanonicalId.ofWork('Neuromancer', 'William Gibson');
   assert.equal(a, b);
 });
 void test('CanonicalId.dedupe collapses by canonical id', () => {

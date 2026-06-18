@@ -232,10 +232,11 @@ export type DAG = FromSchema<typeof DAGSchema>;
  * frozen value namespace. TypeScript permits a `type` alias and a `const`
  * with the same identifier because they live in separate declaration spaces.
  *
- * `DAG.id` and `DAG.placementId` produce the canonical URN identifiers used
- * in `@id` fields of JSON-LD DAG documents.
+ * `DAGIdentity.id` and `DAGIdentity.placementId` produce the canonical URN
+ * identifiers used in `@id` fields of JSON-LD DAG documents. The value carries a
+ * distinct name from the `DAG` entity type so the two never share one identifier.
  */
-export const DAG = Object.freeze({
+export const DAGIdentity = Object.freeze({
   /**
    * Returns the canonical URN for a DAG by name.
    *
@@ -244,7 +245,7 @@ export const DAG = Object.freeze({
    *
    * @example
    * ```ts
-   * DAG.id('my-workflow'); // 'urn:noocodex:dag:my-workflow'
+   * DAGIdentity.id('my-workflow'); // 'urn:noocodex:dag:my-workflow'
    * ```
    */
   id(dagName: string): string {
@@ -260,7 +261,7 @@ export const DAG = Object.freeze({
    *
    * @example
    * ```ts
-   * DAG.placementId('my-workflow', 'fetchData'); // 'urn:noocodex:dag:my-workflow/node/fetchData'
+   * DAGIdentity.placementId('my-workflow', 'fetchData'); // 'urn:noocodex:dag:my-workflow/node/fetchData'
    * ```
    */
   placementId(dagName: string, placementName: string): string {

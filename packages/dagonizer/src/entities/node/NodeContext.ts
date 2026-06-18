@@ -52,3 +52,23 @@ export interface NodeContextInterface<TServices = undefined> extends NodeContext
    */
   'services': TServices;
 }
+
+/**
+ * Static factory for `NodeContextInterface`. Named `NodeContextBuilder` to
+ * avoid collision with the `NodeContext` wire type (the `FromSchema`-derived
+ * type occupies that identifier). The `*Builder` pattern follows the same
+ * convention used elsewhere in this codebase where the type name is taken.
+ *
+ * Key order (signal, dagName, nodeName, services) is fixed for V8 shape
+ * stability: every instance has the same hidden class regardless of call site.
+ */
+export class NodeContextBuilder {
+  static of<TServices>(
+    dagName: string,
+    nodeName: string,
+    signal: AbortSignal,
+    services: TServices,
+  ): NodeContextInterface<TServices> {
+    return { signal, dagName, nodeName, services };
+  }
+}
