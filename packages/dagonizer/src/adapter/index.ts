@@ -59,6 +59,12 @@ export type {
   OpenAiCompatibleConfig,
 } from './OpenAiCompatibleAdapter.js';
 
+// `OpenAiResponseBody` is a schema entity (canonical home `entities/adapter/`).
+// Re-exported here so the OpenAI-compatible wire shape stays reachable through
+// the `./adapter` public subpath alongside the adapter that parses it.
+export { OpenAiResponseBodySchema } from '../entities/adapter/OpenAiResponseBody.js';
+export type { OpenAiResponseBody } from '../entities/adapter/OpenAiResponseBody.js';
+
 export {
   Classifications,
   LlmError,

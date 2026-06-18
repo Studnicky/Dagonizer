@@ -1,21 +1,27 @@
+import { ScatterCheckpoint } from './checkpoint/ScatterCheckpoint.js';
+import { WorkSetCheckpoint } from './checkpoint/WorkSetCheckpoint.js';
 import { DagContainerBase } from './container/DagContainerBase.js';
 import type { BatchRunResult } from './container/DagOutcome.js';
 import { DagTask } from './container/DagTask.js';
 import { TransportErrorCode } from './container/TransportErrorCode.js';
 import type { DagContainerInterface } from './contracts/DagContainerInterface.js';
+import type { DispatcherBundle } from './contracts/DispatcherBundle.js';
 import type { ExecuteOptionsInterface } from './contracts/ExecuteOptionsInterface.js';
+import type { GatherExecution, GatherRecord } from './contracts/GatherExecution.js';
 import type { HandoffChannelInterface } from './contracts/HandoffChannelInterface.js';
 import type { NodeInterface } from './contracts/NodeInterface.js';
 import type { NodeInvoker } from './contracts/NodeInvoker.js';
+import type { ObserverRelay } from './contracts/ObserverRelay.js';
+import type { OutcomeRecord } from './contracts/OutcomeRecord.js';
 import type { StateAccessor } from './contracts/StateAccessor.js';
-import { Batch } from './core/batch/Batch.js';
 import { GatherStrategies } from './core/GatherStrategies.js';
-import type { GatherExecution, GatherRecord, GatherStrategy } from './core/GatherStrategies.js';
+import type { GatherStrategy } from './core/GatherStrategies.js';
 import { OutcomeReducers } from './core/OutcomeReducers.js';
-import type { OutcomeRecord } from './core/OutcomeReducers.js';
 import { PlacementRank } from './core/PlacementRank.js';
 import { WorkSet } from './core/WorkSet.js';
 import { ContractRegistryValidator } from './derive/ContractRegistryValidator.js';
+import { Batch } from './entities/batch/Batch.js';
+import { SCATTER_PROGRESS_KEY, WORKSET_PROGRESS_KEY } from './entities/constants/ProgressKey.js';
 import type { DAG } from './entities/dag/DAG.js';
 import { EmbeddedDAGNodeDefaults } from './entities/dag/EmbeddedDAGNode.js';
 import type { EmbeddedDAGNode } from './entities/dag/EmbeddedDAGNode.js';
@@ -31,6 +37,7 @@ import type { JsonObject } from './entities/json.js';
 import type { NodeContextInterface } from './entities/node/NodeContext.js';
 import type { NodeResultInterface } from './entities/node/NodeResult.js';
 import type { ScatterAckedResult, ScatterInboxItem } from './entities/scatter/ScatterProgress.js';
+import { Timeout } from './entities/Timeout.js';
 import type { WorkSetProgress } from './entities/workset/WorkSetProgress.js';
 import { DAGError, ExecutionError, NodeTimeoutError } from './errors/index.js';
 import { ReservoirBuffer } from './execution/ReservoirBuffer.js';
@@ -41,12 +48,9 @@ import { Execution } from './Execution.js';
 import { DAGLifecycleMachine } from './lifecycle/DAGLifecycleMachine.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
 import { DottedPathAccessor } from './runtime/DottedPathAccessor.js';
-import { ScatterCheckpoint } from './runtime/ScatterCheckpoint.js';
 import { Scheduler } from './runtime/Scheduler.js';
 import { SignalComposer } from './runtime/SignalComposer.js';
 import { StateMapper } from './runtime/StateMapper.js';
-import { Timeout } from './runtime/Timeout.js';
-import { WorkSetCheckpoint } from './runtime/WorkSetCheckpoint.js';
 import { DAGValidator } from './validation/DAGValidator.js';
 import { Validator } from './validation/Validator.js';
 
@@ -74,53 +78,11 @@ const DAGONIZER_OPTION_DEFAULTS = {
   'registryVersion': DEFAULT_REGISTRY_VERSION,
 } as const;
 
-/**
- * Reserved metadata key used by `executeScatter` to persist per-clone
- * resume bookkeeping. **Consumer nodes must not write to this key.**
- * It is engine-internal and may be overwritten or cleared between batch
- * boundaries.
- *
- * The stored value is a `StoredScatterProgress` map keyed by the
- * scatter placement's `name` so multiple scatter placements in one flow
- * keep independent entries.
- */
-export const SCATTER_PROGRESS_KEY = '__dagonizer_scatter_progress__';
-
-/**
- * Reserved metadata key used by the work-set scheduler to persist the
- * in-flight work set on interruption. **Consumer nodes must not write
- * to this key.** It is engine-internal and is cleared on resume after
- * the work set is rebuilt and on clean completion.
- *
- * The stored value is a `WorkSetProgress` blob serialised by
- * `WorkSetCheckpoint.write` and read back by `WorkSetCheckpoint.read`.
- * Absent for size-1 canonical runs (one item whose state IS the
- * top-level state); the cursor model handles that case exactly.
- */
-export const WORKSET_PROGRESS_KEY = '__dagonizer_workset_progress__';
-
 // Scatter progress types originate in entities/scatter/ScatterProgress.ts;
 // re-exported here for public consumers.
 export type { ScatterAckedResult, ScatterInboxItem, ScatterProgress, StoredScatterProgress } from './entities/scatter/ScatterProgress.js';
 
 // ── Module-private adapter classes ───────────────────────────────────────────
-
-/**
- * Internal relay interface: callbacks the parent Dagonizer injects into a
- * container so worker-side hook events flow to the parent's protected hooks.
- * NOT exported from any public surface; it is internal plumbing only.
- *
- * `onFlowStart`/`onFlowEnd` are absent: those are top-level concerns owned
- * by the parent's `execute()` call. The relay carries only the node/phase/error
- * hooks that worker sub-DAGs need to forward.
- */
-export interface ObserverRelay {
-  onNodeStart(nodeName: string, placementPath: readonly string[]): void;
-  onNodeEnd(nodeName: string, output: string | null, placementPath: readonly string[]): void;
-  onError(nodeName: string, error: Error, placementPath: readonly string[]): void;
-  onPhaseEnter(dagName: string, phase: 'pre' | 'post', placementName: string, placementPath: readonly string[]): void;
-  onPhaseExit(dagName: string, phase: 'pre' | 'post', placementName: string, placementPath: readonly string[]): void;
-}
 
 /**
  * Hook-forwarding interface that `ObserverRelayImpl` uses to call back into
@@ -238,23 +200,6 @@ export type { DAGNodeType } from './entities/dag/Placement.js';
 export { Placement } from './entities/dag/Placement.js';
 
 type DAGNodeAtType = DAGNodeType['@type'];
-
-/**
- * A coherent bundle of nodes + DAGs that register together.
- *
- * Plugin packages (or feature modules) export a `DispatcherBundle` so
- * consumers register the whole unit in one call instead of iterating
- * `registerNode` / `registerDAG` themselves. Nodes register first so
- * every DAG's references resolve when the DAG's semantic validator
- * runs.
- *
- * Both arrays are required; either may be empty (a node-only bundle
- * uses `dags: []`; a DAG-only bundle uses `nodes: []`).
- */
-export interface DispatcherBundle<TState extends NodeStateInterface, TServices = undefined> {
-  nodes: NodeInterface<TState, string, TServices>[];
-  dags:  DAG[];
-}
 
 /**
  * Interface for Dagonizer. Both `execute()` and `resume()` return an

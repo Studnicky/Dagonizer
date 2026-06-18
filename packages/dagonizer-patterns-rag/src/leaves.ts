@@ -11,8 +11,8 @@
  * output port naming. The same class extension pattern applies.
  */
 
-import type { NodeStateInterface } from '@studnicky/dagonizer';
 import type { ToolCall } from '@studnicky/dagonizer/adapter';
+import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { ComposeNode } from './ComposeNode.js';
 import { DecisionNode } from './DecisionNode.js';

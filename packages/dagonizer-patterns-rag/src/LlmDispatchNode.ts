@@ -16,11 +16,11 @@
  * response into a node output.
  */
 
-import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer';
 import { ScalarNode } from '@studnicky/dagonizer';
 import { ChatRequestBuilder } from '@studnicky/dagonizer/adapter';
 import type { ChatRequest, ChatResponse, PartialChatRequest } from '@studnicky/dagonizer/adapter';
 import type { LlmClient } from '@studnicky/dagonizer/patterns';
+import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer/types';
 
 export interface RagServices {
   readonly llm: LlmClient;

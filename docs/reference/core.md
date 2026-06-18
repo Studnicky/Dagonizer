@@ -28,7 +28,7 @@ import {
   OutcomeReducer,
   OutcomeReducers,
 } from '@studnicky/dagonizer/core';
-import type { GatherExecution, GatherRecord, OutcomeRecord } from '@studnicky/dagonizer/core';
+import type { GatherExecution, GatherRecord, OutcomeRecord } from '@studnicky/dagonizer/contracts';
 ```
 
 ## GatherStrategy
@@ -37,7 +37,7 @@ Abstract class. Subclass and implement `reduce`; optionally override `initial` a
 
 ```ts twoslash
 import { GatherStrategy, GatherStrategies, Batch } from '@studnicky/dagonizer/core';
-import type { GatherRecord } from '@studnicky/dagonizer/core';
+import type { GatherRecord } from '@studnicky/dagonizer/contracts';
 import type { GatherConfig } from '@studnicky/dagonizer/entities';
 import type { NodeStateInterface } from '@studnicky/dagonizer';
 import type { StateAccessor } from '@studnicky/dagonizer/contracts';
@@ -71,7 +71,7 @@ The dispatcher resolves a strategy by `name` (the `GatherConfig.strategy` field)
 ### GatherRecord
 
 ```ts twoslash
-import type { GatherRecord } from '@studnicky/dagonizer/core';
+import type { GatherRecord } from '@studnicky/dagonizer/contracts';
 import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
 // GatherRecord carries per-clone results from the scatter loop.
@@ -91,7 +91,7 @@ Per-clone record produced by the scatter loop. Records are ordered by source ind
 ### GatherExecution
 
 ```ts twoslash
-import type { GatherExecution } from '@studnicky/dagonizer/core';
+import type { GatherExecution } from '@studnicky/dagonizer/contracts';
 import type { NodeStateInterface } from '@studnicky/dagonizer';
 // ---cut---
 // GatherExecution is the invocation context handed to GatherStrategy.finalize.
@@ -141,7 +141,7 @@ Abstract class. Subclass and implement `reduce`; register the instance with `Out
 
 ```ts twoslash
 import { OutcomeReducer, OutcomeReducers } from '@studnicky/dagonizer/core';
-import type { OutcomeRecord } from '@studnicky/dagonizer/core';
+import type { OutcomeRecord } from '@studnicky/dagonizer/contracts';
 // ---cut---
 class MyReducer extends OutcomeReducer {
   readonly name = 'my-reducer';
@@ -157,7 +157,7 @@ The dispatcher resolves a reducer by `name` (the `ScatterNode.reducer` field, de
 ### OutcomeRecord
 
 ```ts twoslash
-import type { OutcomeRecord } from '@studnicky/dagonizer/core';
+import type { OutcomeRecord } from '@studnicky/dagonizer/contracts';
 // ---cut---
 // OutcomeRecord carries per-clone summary for routing.
 declare const record: OutcomeRecord;

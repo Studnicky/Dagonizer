@@ -18,8 +18,8 @@
 
 import type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js';
 import type { NodeContextInterface } from '../entities/node/NodeContext.js';
+import type { Timeout } from '../entities/Timeout.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
-import type { Timeout } from '../runtime/Timeout.js';
 
 export interface DagTaskInterface<
   TState extends NodeStateInterface = NodeStateInterface,

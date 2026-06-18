@@ -3,8 +3,9 @@ import { describe, it } from 'node:test';
 
 import { Checkpoint, CheckpointRestoreAdapterFn } from '../../src/checkpoint/Checkpoint.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
-import { Dagonizer, SCATTER_PROGRESS_KEY } from '../../src/Dagonizer.js';
+import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ScatterProgress } from '../../src/Dagonizer.js';
+import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';

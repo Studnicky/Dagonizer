@@ -15,8 +15,8 @@
 
 import type { ErrorObject, ValidateFunction } from 'ajv';
 
-import type { OpenAiResponseBody } from '../adapter/OpenAiResponseBody.js';
-import { OpenAiResponseBodySchema } from '../adapter/OpenAiResponseBody.js';
+import type { OpenAiResponseBody } from '../entities/adapter/OpenAiResponseBody.js';
+import { OpenAiResponseBodySchema } from '../entities/adapter/OpenAiResponseBody.js';
 import { TextChannelToolCallEnvelopeSchema } from '../entities/adapter/TextChannelToolCallEnvelope.js';
 import type { TextChannelToolCallEnvelope } from '../entities/adapter/TextChannelToolCallEnvelope.js';
 import { CheckpointDataSchema } from '../entities/checkpoint/CheckpointData.js';

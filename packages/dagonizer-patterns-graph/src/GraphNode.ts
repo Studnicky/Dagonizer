@@ -7,9 +7,9 @@
  * RecordFindingsNode, MemoryDigestNode) implement specific operations.
  */
 
-import type { NodeStateInterface } from '@studnicky/dagonizer';
 import { ScalarNode } from '@studnicky/dagonizer';
 import type { TripleStore } from '@studnicky/dagonizer/patterns';
+import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 export interface GraphServices {
   readonly memory: TripleStore;

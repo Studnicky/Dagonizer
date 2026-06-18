@@ -11,7 +11,7 @@
  * deleted or retyped. All methods operate on the stable map reference.
  */
 
-import type { Batch } from './batch/Batch.js';
+import type { Batch } from '../entities/batch/Batch.js';
 
 export class WorkSet<TState> {
   readonly #entries: Map<string, Batch<TState>>;

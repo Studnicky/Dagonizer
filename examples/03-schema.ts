@@ -24,7 +24,8 @@ import {
   NodeStateBase,
   ValidationError,
 } from '@studnicky/dagonizer';
-import { DAGDocument, DAGSchema } from '@studnicky/dagonizer/entities';
+import { DAGDocument } from '@studnicky/dagonizer/dag';
+import { DAGSchema } from '@studnicky/dagonizer/entities';
 import { Validator } from '@studnicky/dagonizer/validation';
 import { EchoNode, dag } from './dags/03-schema.js';
 

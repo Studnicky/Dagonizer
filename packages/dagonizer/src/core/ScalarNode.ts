@@ -12,13 +12,14 @@
  * directly and implementing `execute`.
  */
 
+import { Batch } from '../entities/batch/Batch.js';
+import type { Item } from '../entities/batch/Item.js';
+import type { RoutedBatch } from '../entities/batch/RoutedBatch.js';
 import type { NodeContextInterface } from '../entities/node/NodeContext.js';
 import type { NodeOutputInterface } from '../entities/node/NodeOutput.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-import { Batch } from './batch/Batch.js';
-import type { Item } from './batch/Item.js';
-import type { RoutedBatch } from './batch/RoutedBatch.js';
+
 import { MonadicNode } from './MonadicNode.js';
 
 export abstract class ScalarNode<

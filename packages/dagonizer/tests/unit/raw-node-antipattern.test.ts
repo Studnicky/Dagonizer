@@ -15,16 +15,16 @@ import { describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
 import { EMPTY_CONTRACT_FRAGMENT } from '../../src/contracts/OperationContractFragment.js';
-import { Batch } from '../../src/core/batch/Batch.js';
-import type { Item } from '../../src/core/batch/Item.js';
-import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
 import { NodeRunner } from '../../src/core/NodeRunner.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { Batch } from '../../src/entities/batch/Batch.js';
+import type { Item } from '../../src/entities/batch/Item.js';
+import type { RoutedBatch } from '../../src/entities/batch/RoutedBatch.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
 import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { NodeOutputBuilder } from '../../src/entities/node/NodeOutput.js';
+import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 
 class TagState extends NodeStateBase {
   value: number;

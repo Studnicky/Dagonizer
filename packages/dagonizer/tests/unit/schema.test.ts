@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { DAGDocument } from '../../src/dag/DAGDocument.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/dag/DAG.js';
-import { DAGDocument } from '../../src/entities/dag/DAGDocument.js';
 import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
 import { DAGError, ValidationError } from '../../src/errors/index.js';
 import type { NodeStateBase } from '../../src/NodeStateBase.js';

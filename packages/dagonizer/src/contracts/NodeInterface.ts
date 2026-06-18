@@ -1,10 +1,10 @@
-import type { Batch } from '../core/batch/Batch.js';
-import type { RoutedBatch } from '../core/batch/RoutedBatch.js';
+import type { Batch } from '../entities/batch/Batch.js';
+import type { RoutedBatch } from '../entities/batch/RoutedBatch.js';
 import type { Node } from '../entities/node/Node.js';
 import type { NodeContextInterface } from '../entities/node/NodeContext.js';
+import type { Timeout } from '../entities/Timeout.js';
 import type { ValidationResult } from '../entities/validation/ValidationResult.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
-import type { Timeout } from '../runtime/Timeout.js';
 
 
 import type { OperationContractFragment } from './OperationContractFragment.js';

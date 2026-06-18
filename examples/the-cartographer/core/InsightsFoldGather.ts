@@ -18,10 +18,9 @@
  * executions are safe because executions run one at a time.
  */
 
+import type { GatherExecution, GatherRecord } from '@studnicky/dagonizer/contracts';
 import { GatherStrategies, GatherStrategy } from '@studnicky/dagonizer/core';
-import type { GatherExecution, GatherRecord } from '@studnicky/dagonizer/core';
-import type { GatherConfig } from '@studnicky/dagonizer';
-import type { NodeStateInterface } from '@studnicky/dagonizer';
+import type { GatherConfig, NodeStateInterface } from '@studnicky/dagonizer/types';
 import type { StateAccessor } from '@studnicky/dagonizer/contracts';
 
 import type { EnrichedShipment } from '../entities/EnrichedShipment.ts';

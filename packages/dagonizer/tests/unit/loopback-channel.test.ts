@@ -29,12 +29,12 @@ import type { DagContainerOptions, PoolEntry } from '../../src/container/DagCont
 import type { DagOutcomeInterface } from '../../src/container/DagOutcome.js';
 import type { DagTaskInterface } from '../../src/container/DagTask.js';
 import type { MessageChannelInterface } from '../../src/contracts/MessageChannelInterface.js';
-import type { ObserverRelay } from '../../src/Dagonizer.js';
+import type { ObserverRelay } from '../../src/contracts/ObserverRelay.js';
 import type { BridgeMessage } from '../../src/entities/executor/BridgeMessage.js';
 import type { ExecutionRequest } from '../../src/entities/executor/ExecutionRequest.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
+import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 import { LoopbackChannel } from '../../testing/LoopbackChannel.js';
 
 const INIT_MSG: BridgeMessage = {

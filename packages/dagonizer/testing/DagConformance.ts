@@ -46,7 +46,8 @@ import assert from 'node:assert/strict';
 // Runtime value imported from the package entry (resolves via package exports).
 
 import type { DagContainerInterface } from '../dist/contracts/DagContainerInterface.js';
-import type { DagonizerInterface, DispatcherBundle } from '../dist/Dagonizer.js';
+import type { DispatcherBundle } from '../dist/contracts/DispatcherBundle.js';
+import type { DagonizerInterface } from '../dist/Dagonizer.js';
 import type { NodeStateInterface } from '../dist/NodeStateBase.js';
 
 import type {

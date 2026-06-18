@@ -8,11 +8,11 @@
  */
 
 import type { NodeInterface } from '../contracts/NodeInterface.js';
+import type { Batch } from '../entities/batch/Batch.js';
+import type { RoutedBatch } from '../entities/batch/RoutedBatch.js';
 import type { NodeContextInterface } from '../entities/node/NodeContext.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
-import type { Batch } from './batch/Batch.js';
-import type { RoutedBatch } from './batch/RoutedBatch.js';
 
 export class NodeRunner {
   private constructor() { /* static class */ }

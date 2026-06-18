@@ -10,8 +10,8 @@
  *   - RankCandidatesNode: TChoice = readonly Score[]
  */
 
-import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer';
 import { NodeOutputBuilder } from '@studnicky/dagonizer';
+import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { LlmDispatchNode } from './LlmDispatchNode.js';
 import type { RagServices } from './LlmDispatchNode.js';

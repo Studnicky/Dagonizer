@@ -37,10 +37,10 @@ import { Dagonizer } from '../../src/Dagonizer.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
 import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';
+import { Timeout } from '../../src/entities/Timeout.js';
 import { NodeTimeoutError } from '../../src/errors/DAGError.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
-import { Timeout } from '../../src/runtime/Timeout.js';
 import { VirtualScheduler } from '../../testing/VirtualScheduler.js';
 
 // ---------------------------------------------------------------------------

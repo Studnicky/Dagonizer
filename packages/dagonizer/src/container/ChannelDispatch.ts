@@ -22,7 +22,7 @@
 
 import type { DagOutcomeInterface } from '../contracts/DagOutcomeInterface.js';
 import type { MessageChannelInterface } from '../contracts/MessageChannelInterface.js';
-import type { ObserverRelay } from '../Dagonizer.js';
+import type { ObserverRelay } from '../contracts/ObserverRelay.js';
 import type { BridgeMessage } from '../entities/executor/BridgeMessage.js';
 import type { ExecutionRequest } from '../entities/executor/ExecutionRequest.js';
 import type { JsonObject } from '../entities/json.js';

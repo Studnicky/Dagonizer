@@ -28,7 +28,6 @@
  * All properties initialised in constructor for V8 shape stability.
  */
 
-import type { NodeStateInterface } from '@studnicky/dagonizer';
 import {
   DagContainerBase,
   DAG_CONTAINER_WORKER_DIED,
@@ -38,6 +37,7 @@ import type {
 } from '@studnicky/dagonizer/container';
 import type { JsonObject } from '@studnicky/dagonizer/entities';
 import { RecommendedWorkerCountConfigDefault } from '@studnicky/dagonizer/entities';
+import type { NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { PostMessageChannel } from './PostMessageChannel.js';
 import { DEFAULT_WEB_PROBES, WebSystemInfo } from './WebSystemInfo.js';

@@ -1,4 +1,4 @@
-import { WORKSET_PROGRESS_KEY } from '../Dagonizer.js';
+import { WORKSET_PROGRESS_KEY } from '../entities/constants/ProgressKey.js';
 import type { WorkSetProgress } from '../entities/workset/WorkSetProgress.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { Validator } from '../validation/Validator.js';

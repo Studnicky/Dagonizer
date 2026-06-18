@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Batch } from '../../src/core/batch/Batch.js';
-import type { Item } from '../../src/core/batch/Item.js';
-import { RoutedBatchBuilder } from '../../src/core/batch/RoutedBatch.js';
 import { NodeRunner } from '../../src/core/NodeRunner.js';
 import { ScalarNode } from '../../src/core/ScalarNode.js';
+import { Batch } from '../../src/entities/batch/Batch.js';
+import type { Item } from '../../src/entities/batch/Item.js';
+import { RoutedBatchBuilder } from '../../src/entities/batch/RoutedBatch.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';
 import { NodeErrorBuilder } from '../../src/entities/node/NodeError.js';
 import type { NodeOutputInterface } from '../../src/entities/node/NodeOutput.js';

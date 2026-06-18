@@ -3,8 +3,8 @@
  * Leaves: DedupeByKeyNode, GroupByFieldNode, MergeReducerNode.
  */
 
-import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer';
 import { NodeOutputBuilder } from '@studnicky/dagonizer';
+import type { NodeContextInterface, NodeOutputInterface, NodeStateInterface } from '@studnicky/dagonizer/types';
 
 import { FlowNode } from './FlowNode.js';
 

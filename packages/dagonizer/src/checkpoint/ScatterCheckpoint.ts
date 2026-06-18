@@ -1,4 +1,4 @@
-import { SCATTER_PROGRESS_KEY } from '../Dagonizer.js';
+import { SCATTER_PROGRESS_KEY } from '../entities/constants/ProgressKey.js';
 import type { ScatterAckedResult, ScatterInboxItem, ScatterProgress, StoredScatterProgress } from '../entities/scatter/ScatterProgress.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { Validator } from '../validation/Validator.js';

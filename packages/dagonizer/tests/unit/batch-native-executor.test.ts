@@ -16,11 +16,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Batch } from '../../src/core/batch/Batch.js';
-import type { Item } from '../../src/core/batch/Item.js';
-import type { RoutedBatch } from '../../src/core/batch/RoutedBatch.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
+import { Batch } from '../../src/entities/batch/Batch.js';
+import type { Item } from '../../src/entities/batch/Item.js';
+import type { RoutedBatch } from '../../src/entities/batch/RoutedBatch.js';
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/dag/DAG.js';
 import type { NodeContextInterface } from '../../src/entities/node/NodeContext.js';

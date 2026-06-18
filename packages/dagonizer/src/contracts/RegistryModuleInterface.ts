@@ -10,11 +10,11 @@
  * bag via its registry module.
  */
 
-import type { DispatcherBundle } from '../Dagonizer.js';
 import type { JsonObject } from '../entities/json.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 
 import type { CheckpointRestoreAdapter } from './CheckpointRestoreAdapter.js';
+import type { DispatcherBundle } from './DispatcherBundle.js';
 
 /**
  * Returned by `RegistryModuleInterface.createBundle`. Bundles the DAG/node
