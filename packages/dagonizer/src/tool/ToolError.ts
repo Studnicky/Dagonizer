@@ -7,7 +7,13 @@
  * `@studnicky/dagonizer/adapter`'s `LlmError` so downstream observability
  * sees a consistent vocabulary regardless of whether the failure was
  * model-side or tool-side.
+ *
+ * Extends `DAGError` (code `'TOOL_ERROR'`) so `instanceof DAGError` holds for
+ * every tool failure and the dispatcher's framework-error guards classify it
+ * uniformly alongside `StoreError`, `ExecutionError`, and the rest.
  */
+
+import { DAGError } from '../errors/DAGError.js';
 
 export type ToolErrorReason =
   | 'NETWORK'
@@ -29,7 +35,7 @@ export interface ToolErrorOptions {
   cause?: unknown;
 }
 
-export class ToolError extends Error {
+export class ToolError extends DAGError {
   readonly reason: ToolErrorReason;
   readonly retryable: boolean;
   // Always initialised (null = no HTTP status) so every ToolError instance
@@ -37,9 +43,10 @@ export class ToolError extends Error {
   readonly status: number | null;
 
   constructor(message: string, options: ToolErrorOptions) {
-    const opts: ErrorOptions = {};
-    if (options.cause !== undefined) opts.cause = options.cause;
-    super(message, opts);
+    super(message, {
+      'code': 'TOOL_ERROR',
+      ...(options.cause instanceof Error && { 'cause': options.cause }),
+    });
     this.name = 'ToolError';
     this.reason = options.reason;
     this.retryable = options.retryable;

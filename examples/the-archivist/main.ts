@@ -24,7 +24,7 @@ import { archivistBundle } from './dag.ts';
 import { UserLanguage } from './language/UserLanguage.ts';
 import { bookSearchScatterBundle } from './embedded-dags/BookSearchScatterDAG.ts';
 import { composeRetryLoopBundle } from './embedded-dags/ComposeRetryLoopDAG.ts';
-import { ConsoleLogger, type LogEvent } from './logger/ConsoleLogger.ts';
+import { DomConsoleLogger } from './logger/DomConsoleLogger.ts';
 import { MemoryStore } from './memory/MemoryStore.ts';
 import { ObservedArchivist } from './ObservedArchivist.ts';
 import { BaseLlmClient } from './providers/BaseLlmClient.ts';
@@ -52,14 +52,6 @@ const logEl   = document.getElementById('archivist-log') as HTMLPreElement;
 
 /** Static CLI helpers for the browser demo: log wiring and query submission. */
 class ArchivistCli {
-  static appendLogLine(event: LogEvent): void {
-    const line = document.createElement('span');
-    line.className = event.level;
-    line.textContent = `[${event.level}] ${event.message}\n`;
-    logEl.appendChild(line);
-    logEl.scrollTop = logEl.scrollHeight;
-  }
-
   static appendErrorLine(message: string): void {
     const line = document.createElement('span');
     line.className = 'error';
@@ -90,9 +82,9 @@ class ArchivistCli {
   }
 }
 
-// ── Logger wiring: stream every event to the <pre>. ──────────────────────
-const logger = new ConsoleLogger();
-logger.subscribe(ArchivistCli.appendLogLine);
+// ── Logger wiring: DomConsoleLogger streams every event to the <pre> via
+//    its onEmit override (no subscribe callback). ──────────────────────────
+const logger = new DomConsoleLogger({ 'panel': logEl });
 
 // ── Cascade: browser-runnable adapters in preference order. ──────────────
 const CAPS_FULL_TOOLS:    AdapterCapabilities = { 'toolUse': 'full',    'structuredOutput': true, 'jsonMode': true };

@@ -3,10 +3,12 @@
  *
  * Two surfaces from one class:
  *
- *   • Subscriber surface: `subscribe(fn)` / `unsubscribe(fn)` for the
- *     in-browser demo. Every log call fans out to subscribers with a
- *     structured `LogEvent` so the Vue runner's trace tab can render the
- *     same lines the CLI sees.
+ *   • Emit hook: `onEmit(event)` is a protected no-op called on every log
+ *     emission with a structured `LogEvent`. Subclasses override it to fan
+ *     a log line out to a UI surface (the in-browser demo's trace tab or a
+ *     `<pre>` panel) without the base class knowing anything about the DOM.
+ *     This replaces the former `subscribe`/`unsubscribe` callback seam: the
+ *     hook is class extension, not a function passed in.
  *
  *   • Sink surface: `info(message)` / `warn(message)` satisfy the
  *     `ArchivistServices.logger` contract. In Node, lines also go to
@@ -30,10 +32,7 @@ export interface LogEvent {
   readonly ts: number;
 }
 
-export type LogSubscriber = (event: LogEvent) => void;
-
 export class ConsoleLogger {
-  readonly #subscribers = new Set<LogSubscriber>();
   readonly #buffer: LogEvent[] = [];
   readonly #maxBuffer: number;
 
@@ -47,11 +46,8 @@ export class ConsoleLogger {
   /** Empty the buffer; invoked at the top of each Archivist run. */
   clear(): void {
     this.#buffer.length = 0;
-    for (const fn of this.#subscribers) fn({ 'level': 'info', 'message': '(log cleared)', 'ts': Date.now() });
+    this.onEmit({ 'level': 'info', 'message': '(log cleared)', 'ts': Date.now() });
   }
-
-  subscribe(fn: LogSubscriber): void { this.#subscribers.add(fn); }
-  unsubscribe(fn: LogSubscriber): void { this.#subscribers.delete(fn); }
 
   /** Standard log; visible in CLI stdout and in the browser stream. */
   info(message: string): void { this.#emit('info', message); }
@@ -62,11 +58,23 @@ export class ConsoleLogger {
   /** Demo summary line; same stream, distinct level so the UI can highlight. */
   result(message: string): void { this.#emit('result', message); }
 
+  /**
+   * Called on every log emission. No-op in the base class.
+   *
+   * Subclasses override this to mirror the event onto a UI surface (DOM,
+   * reactive view, etc.). The base class never depends on the override:
+   * the engine path (`info`/`warn`/`result` → buffer + stdout) runs
+   * identically whether or not a subclass extends the hook.
+   */
+  protected onEmit(_event: LogEvent): void {
+    // No-op in the base class. Subclasses mirror the event to a UI surface.
+  }
+
   #emit(level: LogLevel, message: string): void {
     const event: LogEvent = { level, message, 'ts': Date.now() };
     this.#buffer.push(event);
     if (this.#buffer.length > this.#maxBuffer) this.#buffer.shift();
-    for (const fn of this.#subscribers) fn(event);
+    this.onEmit(event);
     if (HAS_NODE_STDIO) {
       const stream = level === 'warn' ? process.stderr : process.stdout;
       const tag = level === 'warn' ? '[archivist:warn]' : level === 'result' ? '[archivist:result]' : '[archivist]';

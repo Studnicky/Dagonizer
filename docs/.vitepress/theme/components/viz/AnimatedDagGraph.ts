@@ -139,12 +139,11 @@ export class AnimatedDagGraph extends CytoscapeGraph {
   // ── Constructor ──────────────────────────────────────────────────────────
 
   constructor(
-    cytoscapeFactory: ConstructorParameters<typeof CytoscapeGraph>[0],
-    container: ConstructorParameters<typeof CytoscapeGraph>[1],
+    container: ConstructorParameters<typeof CytoscapeGraph>[0],
     dag: DAG,
     options: AnimatedDagGraphOptions = {},
   ) {
-    super(cytoscapeFactory, container, dag, {
+    super(container, dag, {
       ...(options.embeddedDAGs !== undefined ? { 'embeddedDAGs': options.embeddedDAGs } : {}),
       ...(options.layoutOptions !== undefined ? { 'layoutOptions': options.layoutOptions } : {}),
     });

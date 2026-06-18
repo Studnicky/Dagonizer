@@ -23,7 +23,8 @@ import type { ExecutionResultInterface } from '@studnicky/dagonizer';
 
 import { ArchivistState } from '../../../../examples/the-archivist/ArchivistState.ts';
 import { archivistBundle, archivistDAG } from '../../../../examples/the-archivist/dag.ts';
-import { ConsoleLogger } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
+import { DomConsoleLogger } from '../../../../examples/the-archivist/logger/DomConsoleLogger.ts';
+import type { LogEvent } from '../../../../examples/the-archivist/logger/ConsoleLogger.ts';
 import { MemoryStore } from '../../../../examples/the-archivist/memory/MemoryStore.ts';
 import { ONTOLOGY_NTRIPLES } from '../../../../examples/the-archivist/ontology/ArchivistOntology.ts';
 import { SeedLibrary } from '../../../../examples/the-archivist/data/SeedLibrary.ts';
@@ -109,7 +110,10 @@ const memoryStore = new MemoryStore();
 memoryStore.enablePersistence();
 const memoryTick = ref(0); // bumped after each write so MemoryGraph re-renders
 const isPersisted = ref(memoryStore.isPersisted);
-const logger = new ConsoleLogger();
+// Reactive event sink owned by Vue: DomConsoleLogger.onEmit appends here, so
+// TraceFeed re-renders from `logEvents` without any subscribe callback.
+const logEvents = ref<LogEvent[]>([]);
+const logger = new DomConsoleLogger({ 'events': logEvents.value });
 
 // `memoryStore` is a plain class, not a reactive object, so a bare
 // `memoryStore.size` read in the template never re-evaluates on its own. Route
@@ -948,7 +952,7 @@ function reset(): void {
 
             <!-- Trace tab: merged node lifecycle + logger feed -->
             <template #trace>
-              <TraceFeed :entries="trace" :logger="logger" @node-click="onToolSelect" />
+              <TraceFeed :entries="trace" :log-events="logEvents" @node-click="onToolSelect" />
             </template>
           </PanesTabs>
         </div>

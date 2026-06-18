@@ -16,12 +16,12 @@
  * ScatterWorkerPool but at batch granularity.
  */
 
+import type { ReservoirDriverInterface } from '../contracts/ReservoirDriver.js';
+import type { StateAccessor } from '../contracts/StateAccessor.js';
 import type { ScatterInboxItem } from '../entities/scatter/ScatterProgress.js';
 import { ExecutionError } from '../errors/index.js';
 import type { NodeStateInterface } from '../NodeStateBase.js';
 import { Scheduler } from '../runtime/Scheduler.js';
-
-import type { ScatterItemResult } from './ScatterWorkerPool.js';
 
 // V8-stable buffered item shape. Module-private; not exported.
 type BufferedItem = {
@@ -29,22 +29,6 @@ type BufferedItem = {
   item: unknown;
   bufferKey: string;
 };
-
-/**
- * Result envelope for a batch execution. One result per item in the batch.
- */
-export type ScatterItemBatchResult<TState extends NodeStateInterface> = {
-  results: ScatterItemResult<TState>[];
-};
-
-/**
- * Adapter contract that `ReservoirBuffer` calls for batch execution and ack.
- * Implemented by `_ScatterPoolDriverImpl` in Dagonizer.ts.
- */
-export interface ReservoirDriverInterface<TState extends NodeStateInterface> {
-  executeBatch(items: { index: number; item: unknown; bufferKey: string }[]): Promise<ScatterItemBatchResult<TState>>;
-  ackBatch(batchResult: ScatterItemBatchResult<TState>): Promise<void>;
-}
 
 /**
  * Options for constructing a `ReservoirBuffer`.
@@ -56,7 +40,7 @@ export type ReservoirBufferOptions = {
   nextIndex: number;
   signal: AbortSignal | null;
   reservoir: { keyField: string; capacity: number; idleMs?: number };
-  accessor: { get(obj: unknown, path: string): unknown };
+  accessor: StateAccessor;
 };
 
 /**
@@ -75,7 +59,7 @@ export class ReservoirBuffer<TState extends NodeStateInterface> {
   readonly #freshIter: AsyncIterator<unknown>;
   readonly #signal: AbortSignal | null;
   readonly #reservoir: { keyField: string; capacity: number; idleMs?: number };
-  readonly #accessor: { get(obj: unknown, path: string): unknown };
+  readonly #accessor: StateAccessor;
   readonly #activeBuffers: Map<string, BufferedItem[]>;
   readonly #poolErrors: unknown[];
   readonly #keyGeneration: Map<string, number>;
@@ -101,6 +85,17 @@ export class ReservoirBuffer<TState extends NodeStateInterface> {
     this.#freshDone = false;
     this.#activeWorkers = 0;
     this.#slotResolve = null;
+  }
+
+  /**
+   * Resolve the reservoir buffer key from a scatter item via the canonical
+   * `StateAccessor`. Scatter items are `unknown` at the buffer boundary; the
+   * accessor reads paths only on objects, so a non-object item yields `null`
+   * (an empty buffer key, grouped under the `''` partition).
+   */
+  #resolveKey(item: unknown, keyField: string): unknown {
+    if (typeof item !== 'object' || item === null) return null;
+    return this.#accessor.get(item, keyField);
   }
 
   /** Resolve any pending waitForSlot promise when a slot becomes free. */
@@ -193,7 +188,7 @@ export class ReservoirBuffer<TState extends NodeStateInterface> {
       // resumed inbox carries it. The fallback recomputes the key from the item
       // (defense-in-depth: a checkpoint written by a prior non-reservoir run, or
       // any future pre-scan path) so an inbox item is never silently dropped.
-      const key = inboxItem.bufferKey ?? String(this.#accessor.get(inboxItem.item, keyField) ?? '');
+      const key = inboxItem.bufferKey ?? String(this.#resolveKey(inboxItem.item, keyField) ?? '');
       const buf = this.#activeBuffers.get(key);
       const buffered: BufferedItem = { 'index': inboxItem.index, 'item': inboxItem.item, 'bufferKey': key };
       if (buf !== undefined) {
@@ -240,7 +235,7 @@ export class ReservoirBuffer<TState extends NodeStateInterface> {
       const index = this.#nextIndex++;
 
       // Resolve buffer key from item.
-      const rawKey = this.#accessor.get(itemValue, keyField);
+      const rawKey = this.#resolveKey(itemValue, keyField);
       const bufferKey = String(rawKey ?? '');
 
       // Push to inbox with bufferKey set (at-least-once: durable before buffering).

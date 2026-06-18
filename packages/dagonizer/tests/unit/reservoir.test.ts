@@ -15,6 +15,8 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import type { NodeInterface } from '../../src/contracts/NodeInterface.js';
+import type { ReservoirDriverInterface, ScatterItemBatchResult } from '../../src/contracts/ReservoirDriver.js';
+import type { StateAccessor } from '../../src/contracts/StateAccessor.js';
 import { MonadicNode } from '../../src/core/MonadicNode.js';
 import { Dagonizer } from '../../src/Dagonizer.js';
 import type { ScatterProgress } from '../../src/Dagonizer.js';
@@ -24,7 +26,6 @@ import { SCATTER_PROGRESS_KEY } from '../../src/entities/constants/ProgressKey.j
 import { DAG_CONTEXT } from '../../src/entities/dag/DAG.js';
 import type { DAG } from '../../src/entities/index.js';
 import type { JsonObject } from '../../src/entities/json.js';
-import type { ReservoirDriverInterface, ScatterItemBatchResult } from '../../src/execution/ReservoirBuffer.js';
 import { ReservoirBuffer } from '../../src/execution/ReservoirBuffer.js';
 import { NodeStateBase } from '../../src/NodeStateBase.js';
 import { Scheduler } from '../../src/runtime/Scheduler.js';
@@ -498,13 +499,16 @@ function makeFakeDriver(releases: { size: number; key: string }[]): ReservoirDri
   };
 }
 
-/** Simple accessor that reads a top-level property from a plain object. */
-const accessor = {
-  get(obj: unknown, path: string): unknown {
-    if (obj !== null && typeof obj === 'object' && path in (obj as Record<string, unknown>)) {
-      return (obj as Record<string, unknown>)[path];
+/** Simple `StateAccessor` that reads/writes a top-level property on a plain object. */
+const accessor: StateAccessor = {
+  get<T = unknown>(state: object, path: string): T | null {
+    if (path in (state as Record<string, unknown>)) {
+      return (state as Record<string, T>)[path] ?? null;
     }
-    return undefined;
+    return null;
+  },
+  set(state: object, path: string, value: unknown): void {
+    (state as Record<string, unknown>)[path] = value;
   },
 };
 

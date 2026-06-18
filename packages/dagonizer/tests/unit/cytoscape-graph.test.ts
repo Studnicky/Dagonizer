@@ -39,26 +39,37 @@ interface Capture {
 }
 
 /**
- * Build a stub cytoscape factory that records the config it is given and
- * returns a minimal fake `Core` implementing only what `CytoscapeGraph` calls
- * (`batch` + `nodes().style`). Real cytoscape needs a DOM/canvas, which is not
- * available under `node --test`; the stub exercises the assembly path without it.
+ * `CytoscapeGraph` subclass that overrides the `construct` hook to record the
+ * config it is given and return a minimal fake `Core` implementing only what
+ * `CytoscapeGraph` calls (`batch` + `nodes().style`). Real cytoscape needs a
+ * DOM/canvas, which is not available under `node --test`; overriding `construct`
+ * (the sanctioned extension point that replaced the former injected factory)
+ * exercises the assembly path without loading the optional `cytoscape` peer.
  */
-function stubFactory(capture: Capture): typeof cytoscape {
-  const fakeNodes = { "style": (): void => { /* no-op */ } };
-  const fakeCore = {
-    "batch": (fn: () => void): void => { capture.batchCalls += 1; fn(); },
-    "nodes": (): typeof fakeNodes => fakeNodes,
-  };
-  const factory = (config: cytoscape.CytoscapeOptions): cytoscape.Core => {
-    capture.config = config;
+class StubCytoscapeGraph extends CytoscapeGraph {
+  readonly #capture: Capture;
+
+  constructor(
+    capture: Capture,
+    container: NonNullable<cytoscape.CytoscapeOptions['container']>,
+    dag: DAG,
+  ) {
+    super(container, dag);
+    this.#capture = capture;
+  }
+
+  protected override construct(options: cytoscape.CytoscapeOptions): Promise<cytoscape.Core> {
+    this.#capture.config = options;
+    const fakeNodes = { "style": (): void => { /* no-op */ } };
+    const capture = this.#capture;
+    const fakeCore = {
+      "batch": (fn: () => void): void => { capture.batchCalls += 1; fn(); },
+      "nodes": (): typeof fakeNodes => fakeNodes,
+    };
     // Constructs intentionally-invalid input: fakeCore omits the full cytoscape.Core surface;
     // only the methods called by CytoscapeGraph (batch + nodes) are implemented.
-    return fakeCore as unknown as cytoscape.Core;
-  };
-  // Constructs intentionally-invalid input: the factory function signature narrows to
-  // typeof cytoscape (DOM factory) for injection without a real DOM environment.
-  return factory as unknown as typeof cytoscape;
+    return Promise.resolve(fakeCore as unknown as cytoscape.Core);
+  }
 }
 
 // Constructs intentionally-invalid input: fakeContainer stands in for a DOM element;
@@ -91,11 +102,11 @@ void describe('CytoscapeGraph.mount', () => {
     const capture: Capture = { "config": null, "batchCalls": 0 };
     let onReadyCalls = 0;
 
-    class RecordingGraph extends CytoscapeGraph {
+    class RecordingGraph extends StubCytoscapeGraph {
       protected override onReady(): void { onReadyCalls += 1; }
     }
 
-    const graph = new RecordingGraph(stubFactory(capture), fakeContainer, dag);
+    const graph = new RecordingGraph(capture, fakeContainer, dag);
     const cy = await graph.mount();
 
     assert.ok(cy !== null, 'mount must return a Core');
@@ -113,7 +124,7 @@ void describe('CytoscapeGraph.mount', () => {
     ]);
 
     const capture: Capture = { "config": null, "batchCalls": 0 };
-    const graph = new CytoscapeGraph(stubFactory(capture), fakeContainer, dag);
+    const graph = new StubCytoscapeGraph(capture, fakeContainer, dag);
     await graph.mount();
 
     const nodes = capturedElements(capture).filter((el) => el.group === 'nodes');
@@ -131,7 +142,7 @@ void describe('CytoscapeGraph.mount', () => {
       { '@id': 'urn:noocodex:dag:test/node/end', '@type': 'TerminalNode', 'name': 'end', 'outcome': 'completed' } as DAG['nodes'][0],
     ]);
     const capture: Capture = { "config": null, "batchCalls": 0 };
-    const graph = new CytoscapeGraph(stubFactory(capture), fakeContainer, dag);
+    const graph = new StubCytoscapeGraph(capture, fakeContainer, dag);
     await graph.mount();
 
     const style = capturedStyle(capture);
@@ -156,7 +167,7 @@ void describe('CytoscapeGraph.mount', () => {
     ]);
 
     const capture: Capture = { "config": null, "batchCalls": 0 };
-    const graph = new CytoscapeGraph(stubFactory(capture), fakeContainer, dag);
+    const graph = new StubCytoscapeGraph(capture, fakeContainer, dag);
     await graph.mount();
 
     const workNode = capturedElements(capture).find((el) => el.group === 'nodes' && el.data?.id === 'work');

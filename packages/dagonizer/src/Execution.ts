@@ -35,18 +35,23 @@ import type { ExecutionResultInterface } from './entities/execution/ExecutionRes
 import type { NodeResultInterface } from './entities/node/NodeResult.js';
 import type { NodeStateInterface } from './NodeStateBase.js';
 
-type NodesFnType<TState extends NodeStateInterface>
-  = () => AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void>;
-
 export class Execution<TState extends NodeStateInterface>
 implements AsyncIterable<NodeResultInterface<TState>>, PromiseLike<ExecutionResultInterface<TState>> {
-  readonly #nodesFn: NodesFnType<TState>;
-  #generator: AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void> | null = null;
+  readonly #generator: AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void>;
   #drained: Promise<ExecutionResultInterface<TState>> | null = null;
   #cachedResult: ExecutionResultInterface<TState> | null = null;
 
-  constructor(nodesFn: NodesFnType<TState>) {
-    this.#nodesFn = nodesFn;
+  /**
+   * Wrap an already-created flow generator.
+   *
+   * The dispatcher passes `this.runNodes(...)` directly: an async generator
+   * function returns a generator that does not begin executing until the first
+   * `next()`, so construction is side-effect-free. The flow body runs exactly
+   * once, lazily, on the first iteration or `await`. There is no factory
+   * function-pass-in — the generator IS the execution.
+   */
+  constructor(generator: AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void>) {
+    this.#generator = generator;
   }
 
   [Symbol.asyncIterator](): AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void> {
@@ -71,9 +76,6 @@ implements AsyncIterable<NodeResultInterface<TState>>, PromiseLike<ExecutionResu
   async *#iterate(): AsyncGenerator<NodeResultInterface<TState>, ExecutionResultInterface<TState>, void> {
     if (this.#cachedResult !== null) {
       return this.#cachedResult;
-    }
-    if (this.#generator === null) {
-      this.#generator = this.#nodesFn();
     }
     const gen = this.#generator;
     while (true) {
